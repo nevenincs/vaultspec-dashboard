@@ -89,6 +89,23 @@ pub struct StreamParams {
     pub scope: Option<String>,
 }
 
+/// Decide whether a `since=` resume falls in a GAP, returning the oldest buffered
+/// seq when it does (for the gap event payload) and `None` when replay is possible.
+/// A gap means the NEXT seq the client needs (`since + 1`) is older than the
+/// oldest still buffered — the ring has evicted it, so the client must re-keyframe
+/// (contract §7).
+///
+/// `saturating_add`, NOT `since + 1`: `since` is an UNSANITIZED wire `u64`, so a
+/// hostile/absurd `since = u64::MAX` would overflow the increment — a panic in
+/// debug (a 500 on stream setup) and a SILENT wrap to 0 in release (overflow-checks
+/// off) that fabricates a spurious gap. Saturating keeps the predicate total: a
+/// `since` at/above every buffered seq simply yields no gap (no replay, no
+/// re-keyframe). Same wire-arithmetic discipline as the events bucketer's
+/// `saturating_sub` (robustness M3) and the `saturating_sub` on `last_seq` above.
+fn gap_oldest(since: u64, oldest: Option<u64>) -> Option<u64> {
+    oldest.filter(|&oldest| since.saturating_add(1) < oldest)
+}
+
 pub async fn stream(
     State(state): State<Arc<AppState>>,
     Query(params): Query<StreamParams>,
@@ -130,26 +147,22 @@ pub async fn stream(
         // (S50); resume and gap-detection are on the GLOBAL seq, application is
         // per-granularity client-side.
         let oldest = ring.front().map(|(seq, _)| *seq);
-        match oldest {
-            Some(oldest) if since + 1 < oldest => {
-                // Replay impossible: explicit gap, client re-keyframes
-                // (contract §7).
+        if let Some(oldest) = gap_oldest(since, oldest) {
+            // Replay impossible: explicit gap, client re-keyframes (contract §7).
+            backlog.push(
+                Event::default()
+                    .event("gap")
+                    .data(json!({"requested": since, "oldest_buffered": oldest}).to_string()),
+            );
+        } else {
+            for (seq, payload) in ring.iter().filter(|(seq, _)| *seq > since) {
+                emitted_up_to = emitted_up_to.max(*seq);
                 backlog.push(
                     Event::default()
-                        .event("gap")
-                        .data(json!({"requested": since, "oldest_buffered": oldest}).to_string()),
+                        .event("graph")
+                        .id(seq.to_string())
+                        .data(payload.to_string()),
                 );
-            }
-            _ => {
-                for (seq, payload) in ring.iter().filter(|(seq, _)| *seq > since) {
-                    emitted_up_to = emitted_up_to.max(*seq);
-                    backlog.push(
-                        Event::default()
-                            .event("graph")
-                            .id(seq.to_string())
-                            .data(payload.to_string()),
-                    );
-                }
             }
         }
     }
@@ -206,6 +219,24 @@ mod tests {
     use super::*;
     use crate::app::StreamEvent;
     use tokio::sync::broadcast;
+
+    #[test]
+    fn gap_oldest_detects_replay_gaps_and_saturates_a_hostile_since() {
+        // No ring → never a gap (nothing buffered to compare against).
+        assert_eq!(gap_oldest(5, None), None);
+        // The next needed seq (since+1=6) is older than oldest(7) → GAP.
+        assert_eq!(gap_oldest(5, Some(7)), Some(7));
+        // since+1 == oldest: the next needed seq IS still buffered → replay, no gap.
+        assert_eq!(gap_oldest(5, Some(6)), None);
+        // Caught up (oldest <= since) → no gap.
+        assert_eq!(gap_oldest(5, Some(5)), None);
+        assert_eq!(gap_oldest(9, Some(3)), None);
+        // Hostile/absurd wire `since = u64::MAX`: saturating_add must NOT overflow
+        // (no debug panic, no release wrap-to-0 fabricating a spurious gap). A
+        // since at/above every buffered seq simply yields no gap.
+        assert_eq!(gap_oldest(u64::MAX, Some(7)), None);
+        assert_eq!(gap_oldest(u64::MAX, None), None);
+    }
 
     #[test]
     fn lagged_item_maps_to_a_gap_event_not_a_silent_drop() {
