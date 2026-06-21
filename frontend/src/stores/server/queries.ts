@@ -8040,6 +8040,13 @@ export interface StreamChunk {
  * Incremental text/event-stream parser: returns completed frames and the
  * unconsumed remainder (pure; transport-independent).
  */
+/** Per-SSE-frame byte ceiling (bounded-by-default, hardening G5): real delta/event
+ *  frames are small; a frame whose accumulated `data:` exceeds this is a runaway or
+ *  hostile payload — stop accumulating and DROP it rather than buffer + `JSON.parse`
+ *  a multi-megabyte string (a client memory-exhaustion path). Generous vs any real
+ *  frame so it only fires on a runaway. */
+export const MAX_SSE_FRAME_BYTES = 2 * 1024 * 1024;
+
 export function parseSseFrames(buffer: string): {
   frames: StreamChunk[];
   rest: string;
@@ -8052,9 +8059,13 @@ export function parseSseFrames(buffer: string): {
     let data = "";
     for (const line of part.split("\n")) {
       if (line.startsWith("event:")) channel = line.slice(6).trim();
-      else if (line.startsWith("data:")) data += line.slice(5).trim();
+      else if (line.startsWith("data:")) {
+        data += line.slice(5).trim();
+        if (data.length > MAX_SSE_FRAME_BYTES) break;
+      }
     }
-    if (data.length === 0) continue;
+    // Drop an empty frame, or a runaway one over the byte ceiling (never parse it).
+    if (data.length === 0 || data.length > MAX_SSE_FRAME_BYTES) continue;
     try {
       frames.push({ channel, data: JSON.parse(data) });
     } catch {

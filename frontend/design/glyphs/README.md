@@ -6,31 +6,29 @@ truth is `src/*.svg`; `contact-sheet.html` is the review surface.
 
 These are **design sources**. They are not wired into the app. The running
 field consumes textures through the `GlyphTextureProvider` seam
-(`frontend/src/scene/field/nodeSprites.ts`); the eventual swap from the
-programmatic placeholder set (`frontend/src/scene/field/glyphs.ts`) to this
-family is a texture-generation change behind that same seam, out of scope for
-this deliverable.
+(`frontend/src/scene/field/nodeSprites.ts`); the eventual swap from that seam's
+programmatic placeholder set to this family is a texture-generation change
+behind that same seam, out of scope for this deliverable.
 
 ## Naming convention
 
 One file per glyph: `{category}-{name}.svg`, lowercase kebab-case.
 
-| Category   | Members                                                                              |
-| ---------- | ----------------------------------------------------------------------------------- |
-| `doc-`     | research, adr, plan, exec, audit, reference, index                                  |
-| `node-`    | feature (the compound species)                                                      |
-| `event-`   | commit, doc-created, doc-modified, lifecycle                                        |
-| `tier-`    | declared, structural, temporal, semantic                                            |
-| `state-`   | active, complete, archived, broken, stale                                           |
-| `ring-`    | track, fill-25, fill-50, fill-75, complete                                          |
+| Category | Members                                            |
+| -------- | -------------------------------------------------- |
+| `doc-`   | research, adr, plan, exec, audit, reference, index |
+| `node-`  | feature (the compound species)                     |
+| `event-` | commit, doc-created, doc-modified, lifecycle       |
+| `tier-`  | declared, structural, temporal, semantic           |
+| `state-` | active, complete, archived, broken, stale          |
+| `ring-`  | track, fill-25, fill-50, fill-75, complete         |
 
-The `doc-*` and `node-feature` names map one-to-one onto the `GLYPH_KINDS`
-vocabulary in `glyphs.ts` (`feature`, `research`, `adr`, `plan`, `exec`,
-`audit`, `reference`, `index`) so the field can resolve a kind to a glyph by
-name. `code` and `index` exist in `GLYPH_KINDS`; `doc-index` covers `index`,
-and a `code` glyph is intentionally out of scope for this 26-glyph family
-(it is a placeholder kind, not a vault doc type). The `tier-*` and `state-*`
-names map onto `TIER_GLYPH_MARKS` / `STATE_GLYPH_MARKS`.
+The `doc-*` and `node-feature` names map one-to-one onto the field's glyph-kind
+vocabulary (`feature`, `research`, `adr`, `plan`, `exec`, `audit`, `reference`,
+`index`) so the field can resolve a kind to a glyph by name. `doc-index` covers
+`index`, and a `code` glyph is intentionally out of scope for this 26-glyph
+family (it is a placeholder kind, not a vault doc type). The `tier-*` and
+`state-*` names map onto the field's tier / state marks.
 
 ## Construction rules (keep the family one hand when extending)
 
@@ -94,8 +92,8 @@ family-wide (all 26), never one-off — the cardinal rule is one hand.
   - `tier-structural` — open square + bold accent corner-notch
   - `tier-temporal` — dashed/dotted ring + center dot (the only dashed stroke)
   - `tier-semantic` — three stacked tilde waves (the only multi-stroke field)
-  Four distinct silhouettes, four distinct treatments; no two collide under a
-  squint test. Hue is never load-bearing.
+    Four distinct silhouettes, four distinct treatments; no two collide under a
+    squint test. Hue is never load-bearing.
 - **All glyphs read at 14px.** Verified by headless-Chrome screenshot at the
   three sizes. Simplifications recorded below.
 - **Contact-sheet label contrast meets WCAG AA on both themes:** ink `#2b2723`

@@ -1,8 +1,9 @@
 // Adversarial wire-payload hardening (stores trust boundary): the live adapters must
 // defend against hostile / oversized / prototype-polluting engine responses — the
 // client never trusts the wire is bounded or well-formed (apps hardening audit: G2
-// client payload ceiling, G3 prototype-pollution guard; first of the G4 hostile
-// fixtures). These feed deliberately-malformed payloads through the real adapters.
+// client payload ceiling, G3 prototype-pollution guard, G5 per-frame SSE byte
+// ceiling; the G4 hostile fixtures). These feed deliberately-malformed payloads
+// through the real adapters + the SSE frame parser.
 
 import { describe, expect, it } from "vitest";
 
@@ -11,6 +12,7 @@ import {
   adaptGraphSlice,
   adaptSettings,
 } from "../server/liveAdapters";
+import { MAX_SSE_FRAME_BYTES, parseSseFrames } from "../server/queries";
 
 describe("adaptGraphSlice — client payload ceiling (G2: oversized-payload DoS defense)", () => {
   it("clamps an oversized node payload to the ceiling + reports honest truncation", () => {
@@ -88,5 +90,18 @@ describe("adaptSettings — prototype-pollution guard (G3: hostile wire keys)", 
     expect(Object.prototype.hasOwnProperty.call(settings.scoped, "__proto__")).toBe(
       false,
     );
+  });
+});
+
+describe("parseSseFrames — per-frame byte ceiling (G5: runaway SSE frame)", () => {
+  it("drops a frame whose data exceeds the byte ceiling, never parsing it", () => {
+    const huge = "x".repeat(MAX_SSE_FRAME_BYTES + 1);
+    const { frames } = parseSseFrames(`event: delta\ndata: ${huge}\n\n`);
+    expect(frames).toEqual([]);
+  });
+
+  it("parses a normal small frame within the ceiling", () => {
+    const { frames } = parseSseFrames('event: delta\ndata: {"x":1}\n\n');
+    expect(frames).toEqual([{ channel: "delta", data: { x: 1 } }]);
   });
 });
