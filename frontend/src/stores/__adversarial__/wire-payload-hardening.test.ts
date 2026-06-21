@@ -27,6 +27,31 @@ describe("adaptGraphSlice — client payload ceiling (G2: oversized-payload DoS 
     });
   });
 
+  it("drops edges dangling to nodes sliced away by the node cap (self-consistent slice)", () => {
+    // The cap keeps the first MAX nodes; an edge to a node BEYOND the cap would
+    // dangle to an absent node (a three.js NaN/glitch trigger) unless the adapter
+    // re-filters edges against the FINAL node set, not just the excluded set.
+    const nodes = Array.from({ length: MAX_CLIENT_GRAPH_NODES + 5 }, (_, i) => ({
+      id: `n${i}`,
+      doc_type: "adr",
+    }));
+    const sliced = `n${MAX_CLIENT_GRAPH_NODES + 1}`; // beyond the ceiling
+    const edges = [
+      { id: "e-kept", src: "n0", dst: "n1" },
+      { id: "e-dangling", src: "n0", dst: sliced },
+    ];
+    const slice = adaptGraphSlice({ nodes, edges });
+    const keptIds = new Set(slice.nodes.map((n) => n.id));
+    expect(keptIds.has(sliced)).toBe(false); // the endpoint was capped away
+    // Every served edge connects two surviving nodes — the dangler is dropped.
+    for (const e of slice.edges) {
+      expect(keptIds.has(e.src)).toBe(true);
+      expect(keptIds.has(e.dst)).toBe(true);
+    }
+    expect(slice.edges.some((e) => e.id === "e-dangling")).toBe(false);
+    expect(slice.edges.some((e) => e.id === "e-kept")).toBe(true);
+  });
+
   it("does not truncate a normal bounded payload", () => {
     const slice = adaptGraphSlice({
       nodes: [{ id: "a", doc_type: "adr" }],

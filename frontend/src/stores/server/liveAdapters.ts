@@ -220,12 +220,16 @@ export function adaptGraphSlice(body: unknown): GraphSlice {
     }
     return true;
   });
-  const keptEdges =
-    droppedNodeIds.size === 0
-      ? edges
-      : edges.filter(
-          (edge) => !droppedNodeIds.has(edge.src) && !droppedNodeIds.has(edge.dst),
-        );
+  // Self-consistent slice: an edge survives only when BOTH endpoints are in the
+  // FINAL node set. That covers excluded (index/code) nodes AND nodes sliced away
+  // by the client cap — a fired `nodeOverflow` must not leave an edge dangling to
+  // an absent node (a three.js NaN/glitch trigger). When neither the cap nor the
+  // exclusion fired, every node is present, so the fast path skips the filter.
+  const needsEdgeFilter = nodeOverflow || droppedNodeIds.size > 0;
+  const keptNodeIds = needsEdgeFilter ? new Set(nodes.map((n) => n.id)) : null;
+  const endpointsKept = (e: { src: string; dst: string }): boolean =>
+    keptNodeIds === null || (keptNodeIds.has(e.src) && keptNodeIds.has(e.dst));
+  const keptEdges = needsEdgeFilter ? edges.filter(endpointsKept) : edges;
   // Drop the raw meta_edges off the returned slice — it is now in `edges`.
   const { meta_edges: _folded, ...rest } = body as Rec;
   if (!metaEdges.length) {
@@ -239,16 +243,11 @@ export function adaptGraphSlice(body: unknown): GraphSlice {
   // Deduplicate by id: if an origin already inlined a meta-edge into `edges`
   // (same id as would be synthesized), the fold must not append a duplicate
   // (provenance-stable-keys-are-identity-bearing: one edge per id per slice). A
-  // meta-edge whose endpoint was dropped above is also excluded for consistency.
+  // meta-edge whose endpoint was dropped (excluded or capped) is likewise excluded.
   const existingIds = new Set(keptEdges.map((e) => e.id));
   const folded = metaEdges
     .map(metaEdgeToEdge)
-    .filter(
-      (e) =>
-        !existingIds.has(e.id) &&
-        !droppedNodeIds.has(e.src) &&
-        !droppedNodeIds.has(e.dst),
-    );
+    .filter((e) => !existingIds.has(e.id) && endpointsKept(e));
   return {
     ...(rest as object),
     nodes,
