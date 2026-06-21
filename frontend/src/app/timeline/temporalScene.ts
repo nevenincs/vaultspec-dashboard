@@ -131,7 +131,7 @@ export function lineageToTemporalScene(input: TemporalSceneInput): TemporalScene
     tier: arc.tier,
     // Connections remain present and inspectable, but the timeline's product
     // read is date density first. Lower confidence here maps to thinner/fainter
-    // Cosmos links without removing the underlying edge records.
+    // graph links without removing the underlying edge records.
     confidence: Math.min(0.18, arc.confidence),
     derivation: arc.derivation,
   }));

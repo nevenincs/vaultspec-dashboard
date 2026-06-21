@@ -11,8 +11,8 @@
 // by the Style Dictionary build (the regenerated foundation pipeline), and are
 // the sRGB renderings of the OKLCH semantic steps per theme. The scene-read
 // subset the readers below resolve is exactly that flat-hex surface:
-//   --color-canvas-bg            the field ground (pixiField background)
-//   --color-scene-rule           the flat-grey connection-field stroke (edgeMeshes)
+//   --color-canvas-bg            the field ground (canvas background)
+//   --color-scene-rule           the flat-grey connection-field stroke (edges)
 //   --color-scene-category-*      the eight node-category body hues (categoryColor)
 //   --color-ink / --color-ink-muted / --color-rule   label + chrome ink
 //   --color-tier-* / --color-state-* / --color-status-*   off-canvas marks

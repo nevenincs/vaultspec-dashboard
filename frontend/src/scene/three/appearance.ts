@@ -1,17 +1,17 @@
-// Visual-appearance parity with CosmosField. These node-size and edge-appearance
-// formulas + constants MIRROR the private ones in `cosmosField.ts` (cosmosPointSize,
-// edgeAppearance, the EDGE_* / SALIENCE_RADIUS_MAX constants) so the three.js field
-// reads visually on-par with cosmos. Colours come from the SAME token seam cosmos
-// uses (categoryColor / cssColorNumber on the scene-read literal-hex tokens), so a
-// theme change re-themes both fields identically. Scene-layer module: framework-free.
+// Visual-appearance formulas + constants for the three.js field: node size
+// (nodeWorldRadius / BASE_POINT_SIZE / SALIENCE_RADIUS_MAX) and edge appearance
+// (the EDGE_* constants). Originally derived from the now-retired CosmosField for
+// visual parity; this module is now their canonical home. Colours come from the
+// shared token seam (categoryColor / cssColorNumber on the scene-read literal-hex
+// tokens), so a theme change re-themes the field. Scene-layer module: framework-free.
 
 import type { SceneEdgeData, SceneNodeData } from "../sceneController";
 import { categoryColor } from "../field/categoryColor";
 import { cssColorNumber } from "../field/tokenReads";
 import { appearanceDefaults, controlNumber } from "./graphControlSchema";
 
-// Mirror of cosmosField's COSMOS_POINT_SIZE — the base node diameter, used here as
-// the base world radius so relative sizing matches cosmos.
+// The base node diameter, used as the base world radius for relative node sizing.
+// (Originally COSMOS_POINT_SIZE from the retired CosmosField.)
 const BASE_POINT_SIZE = 4;
 /** Salience multiplier band: salience 0 → 1.0× base; salience 1 → this × base. Moved
  *  here from the retired nodeAppearance.ts (Phase B dead-module prune); nodeWorldRadius
@@ -67,8 +67,8 @@ export interface AppearanceParams {
 // selectable mode). graph-backend-unification ADR D2: gradient edges are binding.
 export const APPEARANCE_DEFAULTS: AppearanceParams = appearanceDefaults();
 
-/** World-space node radius — mirrors cosmosField.cosmosPointSize, scaled by the
- *  live appearance params (node module size + salience spread). */
+/** World-space node radius — BASE_POINT_SIZE scaled by the live appearance params
+ *  (node module size + salience spread). */
 export function nodeWorldRadius(
   node: SceneNodeData,
   params: AppearanceParams = APPEARANCE_DEFAULTS,
