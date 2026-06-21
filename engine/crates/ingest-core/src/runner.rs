@@ -8,7 +8,7 @@
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::{mpsc, OnceLock};
+use std::sync::{OnceLock, mpsc};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -298,24 +298,58 @@ impl CoreRunner {
 /// together, so `set-body` is a faithful capability sentinel.
 const CAPABILITY_SENTINEL_VERB: &str = "set-body";
 
+/// Wall-clock bound for the capability probe (B1/B2, resource-hardening;
+/// subprocess-calls-carry-cap-and-timeout). `--help` returns near-instantly on a
+/// healthy core, but a stale/broken core (a stalled venv import, a wedged
+/// interpreter) can hang it forever; without a deadline the probe would pin the
+/// caller — on the serve path a Tokio blocking-pool worker — indefinitely, the
+/// exact hang `run_json` was hardened against. A breach kills the child and
+/// reports not-capable; `resolve_core_invocation` then falls back to the uv-run
+/// invocation so the real failure surfaces through the typed `run_json` path.
+/// Generous (covers a cold `uv run` resolve) yet finite.
+const CAPABILITY_PROBE_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Probe whether an invocation's core ships the document write verbs by asking it
 /// to describe the sentinel verb (`vault set-body --help`). A core that ships the
-/// verb exits 0; a stale core answers "No such command" with a non-zero exit. The
-/// probe is bounded by `--help` returning immediately (it cannot hang) and writes
-/// no state. An invocation that cannot even spawn is not capable.
+/// verb exits 0; a stale core answers "No such command" with a non-zero exit. An
+/// invocation that cannot spawn — or that outruns [`CAPABILITY_PROBE_TIMEOUT`] —
+/// is not capable.
+///
+/// Bounded like `run_json`: stdout is drained on a worker thread so the parent can
+/// enforce a wall-clock deadline AND kill a hung child, rather than blocking on a
+/// stalled `--help`. No new dependency (std `thread` + `mpsc::recv_timeout`).
 fn provides_write_verb(invocation: &[String]) -> bool {
     let Some((program, leading)) = invocation.split_first() else {
         return false;
     };
-    Command::new(program)
+    let spawned = Command::new(program)
         .args(leading)
         .args(["vault", CAPABILITY_SENTINEL_VERB, "--help"])
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .output()
-        .map(|out| out.status.success())
-        .unwrap_or(false)
+        .spawn();
+    let Ok(mut child) = spawned else {
+        return false;
+    };
+    // Drain stdout on a worker thread; `--help` output is tiny, so a small
+    // ceiling guards a pathological child while keeping the pipe from filling.
+    let stdout_pipe = child.stdout.take().expect("piped stdout");
+    let (tx, rx) = mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        let mut sink = Vec::new();
+        let _ = stdout_pipe.take(64 * 1024).read_to_end(&mut sink);
+        let _ = tx.send(());
+    });
+    let drained = rx.recv_timeout(CAPABILITY_PROBE_TIMEOUT).is_ok();
+    if !drained {
+        // The probe outran its deadline: kill the child (frees the pipe so the
+        // reader unblocks) and report not-capable rather than hang forever.
+        let _ = child.kill();
+    }
+    let status = child.wait();
+    let _ = reader.join();
+    drained && status.map(|s| s.success()).unwrap_or(false)
 }
 
 /// Resolve the core invocation once: prefer the project-pinned uv-managed core,
@@ -337,11 +371,7 @@ fn resolve_core_invocation() -> Vec<String> {
     if which("vaultspec-core") && provides_write_verb(&bare) {
         return bare;
     }
-    if which("uv") {
-        uv_run
-    } else {
-        bare
-    }
+    if which("uv") { uv_run } else { bare }
 }
 
 fn which(program: &str) -> bool {

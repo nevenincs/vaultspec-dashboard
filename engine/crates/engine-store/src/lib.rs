@@ -476,12 +476,23 @@ fn get_artifact(conn: &Connection, kind: &str, input_hash: &str) -> Result<Optio
     }
 }
 
+/// Hard ceiling on rows materialized by a single `events_in_range` read
+/// (bounded-by-default-for-every-accumulator). The 90-day retention prune bounds
+/// the TABLE, but not a single query: a wide `[from_ts, to_ts]` could otherwise
+/// materialize an unbounded `Vec<EventRow>` into memory. This is a fixed backstop
+/// that NO caller can opt out of (unlike a caller-supplied limit) — closing the
+/// footgun before any front door wires this read to the wire. A wire caller that
+/// reaches this cap must still surface truncation honestly (a `truncated` block,
+/// mirroring the graph-query ceilings); the cap is the resource-safety floor, not
+/// a substitute for that. Sized well above any realistic 90-day window.
+const EVENTS_RANGE_CAP: i64 = 50_000;
+
 fn events_in_range(conn: &Connection, from_ts: i64, to_ts: i64) -> Result<Vec<EventRow>> {
     let mut stmt = conn.prepare(
         "SELECT seq, ts, kind, git_ref, node_ids FROM temporal_events
-         WHERE ts >= ?1 AND ts <= ?2 ORDER BY seq",
+         WHERE ts >= ?1 AND ts <= ?2 ORDER BY seq LIMIT ?3",
     )?;
-    let rows = stmt.query_map(params![from_ts, to_ts], |r| {
+    let rows = stmt.query_map(params![from_ts, to_ts, EVENTS_RANGE_CAP], |r| {
         Ok((
             r.get::<_, i64>(0)?,
             r.get::<_, i64>(1)?,
