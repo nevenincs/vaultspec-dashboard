@@ -6,9 +6,13 @@
 // The binding Figma board labels the category chips by the human doc-type vocabulary
 // (Decision/Audit/Code/Step/Feature/Summary/Plan/Research/Reference). Those map onto
 // the canonical scene/category tokens emitted on :root (adr/audit/code/exec/feature/
-// plan/reference/research) — the SAME colors the graph nodes paint with, so a
-// chip and its node always agree. The color is consumed via the CSS custom property
-// (`var(--color-scene-category-<token>)`); no raw hex is ever typed here.
+// plan/reference/research). For the seven graph-node categories the chip and its node
+// share the SAME bound color, so they always agree. `code` is the one exception: it is
+// a chip / Files / search-result category only — `code` artefacts are NOT knowledge-
+// graph nodes (excluded at the engine projection and dropped in `adaptGraphSlice`), and
+// the scene node colour/glyph vocabulary (`categoryColor`/`glyphAtlas`) carries no
+// `code`. So a Code chip has no graph-node counterpart by design. The color is consumed
+// via the CSS custom property (`var(--color-scene-category-<token>)`); no raw hex here.
 //
 // `index` is deliberately NOT a category, on ANY surface (chip, badge, node, viewer):
 // `.vault/index` feature-index documents are metanodes the engine drops at ingest
