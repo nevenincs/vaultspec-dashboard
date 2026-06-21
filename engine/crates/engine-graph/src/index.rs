@@ -262,8 +262,18 @@ fn index_structural(
     // parallelizable work, deferred to the batch call below (perf ADR D2).
     let mut per_doc: Vec<(String, String, Vec<ExtractedMention>)> =
         Vec::with_capacity(extracted.len());
+    // index-node-exclusion ADR D1: `.vault/index` feature-index documents are
+    // metanodes, never graph nodes. Skip them at the source so no index node is
+    // ever minted, and record their ids so any edge that resolved onto an index
+    // stem can be pruned below (no dangling incident edge survives).
+    let mut excluded_index_ids: std::collections::HashSet<NodeId> =
+        std::collections::HashSet::new();
     for (rel_path, blob_hash, text) in extracted {
         let stem = doc_stem(&rel_path);
+        if doc_type_of(&rel_path).as_deref() == Some("index") {
+            excluded_index_ids.insert(node_id(&CanonicalKey::Document { stem: &stem }));
+            continue;
+        }
         if let Some(prev) = seen_stems.insert(stem.clone(), rel_path.clone())
             && prev != rel_path
         {
@@ -405,6 +415,12 @@ fn index_structural(
     // node where one exists (W03.P07.S37). Runs after every doc node is in the
     // graph so minting order is irrelevant; the binding edge id is identity-only.
     bind_steps_to_exec_records(graph, scope, observed_at);
+
+    // index-node-exclusion ADR D1: drop any structural edge that resolved onto a
+    // skipped index document, so an index stem leaves no dangling incident edge.
+    if !excluded_index_ids.is_empty() {
+        graph.prune_edges_incident_to(&excluded_index_ids);
+    }
 
     // Rule node species (graph-node-semantics ADR): project the codify
     // pipeline's output from the rules tree as authority-class `law` nodes with
@@ -642,10 +658,25 @@ pub fn ingest_declared_from_json(
         Ok(parsed) => parsed,
         Err(e) => return (0, Some(format!("core graph parse: {e}"))),
     };
+    // index-node-exclusion ADR D1: `.vault/index` feature-index documents are
+    // metanodes, never graph nodes. Core's authored graph still references them,
+    // so identify the index nodes from the parsed node list and drop every
+    // declared / core-derived edge incident to one — no dangling index edge enters
+    // the graph (and no node-less endpoint could resurrect as a phantom).
+    let index_ids: std::collections::HashSet<NodeId> = parsed
+        .docs
+        .iter()
+        .filter(|d| d.doc_type.as_deref() == Some("index"))
+        .map(|d| node_id(&CanonicalKey::Document { stem: &d.id }))
+        .collect();
+    let incident = |edge: &Edge| index_ids.contains(&edge.src) || index_ids.contains(&edge.dst);
     // Declared edges carry core's authored kind/multiplicity/weight verbatim;
     // core-derived edges ride the distinct `core-derived` relation at 0.8.
     let mut count = 0;
     for d in parsed.declared {
+        if incident(&d.edge) {
+            continue;
+        }
         if crate::edges::ingest(
             graph,
             d.edge,
@@ -662,6 +693,9 @@ pub fn ingest_declared_from_json(
         }
     }
     for edge in parsed.core_derived {
+        if incident(&edge) {
+            continue;
+        }
         if crate::edges::ingest(graph, edge, EdgeAttrs::default()).is_ok() {
             count += 1;
         }
@@ -871,7 +905,10 @@ pub(crate) fn bind_steps_to_exec_records(
         })
         .map(|n| (n.id.clone(), n.key.clone()))
         .collect();
-    let exec_stems: Vec<String> = graph
+    // A SET, not a Vec: each step binds to exactly ONE computed `expected_exec`,
+    // so membership is an O(1) lookup. A Vec here made the bind below O(steps ×
+    // exec_docs) — a super-linear rebuild cost on plan-heavy corpora (perf audit).
+    let exec_stems: std::collections::HashSet<String> = graph
         .nodes()
         .filter(|n| n.id.0.starts_with("doc:") && n.doc_type.as_deref() == Some("exec"))
         .map(|n| n.key.clone())
@@ -896,33 +933,34 @@ pub(crate) fn bind_steps_to_exec_records(
         }
         let plan_prefix = plan_stem.strip_suffix("-plan").unwrap_or(plan_stem);
         let expected_exec = format!("{plan_prefix}-{tail}");
-        for exec_stem in &exec_stems {
-            if exec_stem == &expected_exec {
-                let exec_node = node_id(&CanonicalKey::Document { stem: exec_stem });
-                let provenance = Provenance::CoreGraph {
-                    payload_hash: String::new(),
-                    // Identity-only: the step container id binds to the exec stem.
-                    edge_id: format!("{}->{}", step_id.0, exec_stem),
-                };
-                let relation = RelationKind::References;
-                let id = edge_id(step_id, &exec_node, &relation, Tier::Declared, &provenance);
-                let _ = crate::edges::ingest(
-                    graph,
-                    Edge {
-                        id,
-                        src: step_id.clone(),
-                        dst: exec_node,
-                        relation,
-                        tier: Tier::Declared,
-                        confidence: 1.0,
-                        state: None,
-                        provenance,
-                        scope: scope.clone(),
-                        observed_at,
-                    },
-                    EdgeAttrs::default(),
-                );
-            }
+        // O(1) membership: bind only when THIS plan's expected exec record exists.
+        if exec_stems.contains(&expected_exec) {
+            let exec_node = node_id(&CanonicalKey::Document {
+                stem: &expected_exec,
+            });
+            let provenance = Provenance::CoreGraph {
+                payload_hash: String::new(),
+                // Identity-only: the step container id binds to the exec stem.
+                edge_id: format!("{}->{}", step_id.0, expected_exec),
+            };
+            let relation = RelationKind::References;
+            let id = edge_id(step_id, &exec_node, &relation, Tier::Declared, &provenance);
+            let _ = crate::edges::ingest(
+                graph,
+                Edge {
+                    id,
+                    src: step_id.clone(),
+                    dst: exec_node,
+                    relation,
+                    tier: Tier::Declared,
+                    confidence: 1.0,
+                    state: None,
+                    provenance,
+                    scope: scope.clone(),
+                    observed_at,
+                },
+                EdgeAttrs::default(),
+            );
         }
     }
 }
@@ -1866,6 +1904,76 @@ tier: L3
         assert!(
             folded.edge_count() > structural.edge_count(),
             "the declared edge actually folded in"
+        );
+    }
+
+    #[test]
+    fn index_documents_are_never_nodes_and_leave_no_incident_edge() {
+        // index-node-exclusion ADR D1: a `.vault/index` feature-index document is
+        // a metanode. It must never become a graph node, and no edge — structural
+        // or declared — incident to it may survive. Both the structural reader and
+        // the declared-graph ingest are exercised.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".vault/index")).unwrap();
+        std::fs::write(
+            root.join(".vault/index/x.index.md"),
+            "---\ntags:\n  - '#index'\n  - '#x'\n---\n\nMentions [[2026-06-12-x-plan]].\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        // A real doc whose wiki-link resolves ONTO the index doc — the
+        // resolved-but-dangling structural edge the prune must remove.
+        std::fs::write(
+            root.join(".vault/plan/2026-06-12-x-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#x'\n---\n\nSee [[x.index]].\n",
+        )
+        .unwrap();
+        let store = engine_store::Store::open(&root.join(".vault")).unwrap();
+        let (mut graph, _) = index_worktree_structural(root, &scope(), &store, 0).unwrap();
+
+        let index_id = node_id(&CanonicalKey::Document { stem: "x.index" });
+        assert!(graph.node(&index_id).is_none(), "index doc is never a node");
+        assert!(
+            graph
+                .nodes()
+                .all(|n| n.doc_type.as_deref() != Some("index")),
+            "no node carries the index doc_type"
+        );
+        assert!(
+            graph
+                .edges()
+                .all(|e| e.edge.src != index_id && e.edge.dst != index_id),
+            "no structural edge incident to the index doc survives"
+        );
+
+        // Declared path: core's authored graph references the index node; every
+        // edge to/from it must be dropped at ingest, minting no node.
+        let declared_json = serde_json::json!({
+            "nodes": [
+                {"id": "2026-06-12-x-plan", "doc_type": "plan"},
+                {"id": "x.index", "doc_type": "index"}
+            ],
+            "edges": [
+                {"source": "x.index", "target": "2026-06-12-x-plan", "kind": "related"}
+            ]
+        })
+        .to_string();
+        let (count, err) = ingest_declared_from_json(&mut graph, &declared_json, &scope(), 0);
+        assert!(err.is_none(), "declared ingest parses");
+        assert_eq!(
+            count, 0,
+            "the only declared edge is index-incident and dropped"
+        );
+        assert!(
+            graph.node(&index_id).is_none(),
+            "declared ingest mints no index node"
+        );
+        assert!(
+            graph
+                .edges()
+                .all(|e| e.edge.src != index_id && e.edge.dst != index_id),
+            "no declared edge incident to the index doc survives"
         );
     }
 
