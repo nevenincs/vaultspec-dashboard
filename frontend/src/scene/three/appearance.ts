@@ -85,7 +85,7 @@ export function nodeWorldRadius(
   return BASE_POINT_SIZE * scale;
 }
 
-/** Node body fill — the eight-category hue through the scene token seam. */
+/** Node body fill — the seven-category hue through the scene token seam. */
 export function nodeColorNumber(node: SceneNodeData): number {
   return categoryColor(node.docType ?? node.kind);
 }
