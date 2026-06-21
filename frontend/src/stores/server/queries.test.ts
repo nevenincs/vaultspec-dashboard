@@ -50,10 +50,6 @@ import {
   deriveDashboardGraphControlsView,
   deriveDashboardGraphDefaultsInitializationView,
   dashboardGraphDefaultsInitializationIdentity,
-  deriveDashboardLayoutSelectorPresentationView,
-  deriveDashboardLayoutSelectorView,
-  deriveDashboardLensSelectorPresentationView,
-  deriveDashboardLensSelectorView,
   deriveDashboardPlayheadView,
   deriveDashboardRangeSelectView,
   deriveDashboardShellChromeView,
@@ -145,8 +141,6 @@ import {
   useDashboardFilterChoicesView,
   useDashboardFilterSidebarView,
   useDashboardGraphControlsView,
-  useDashboardLayoutSelectorView,
-  useDashboardLensSelectorView,
   useDashboardStageSceneView,
   useDashboardTimelineModeView,
   useDashboardShellChromeView,
@@ -1787,212 +1781,6 @@ describe("deriveDashboardStageSceneView (Stage scene owner)", () => {
   });
 });
 
-describe("deriveDashboardLayoutSelectorView (stage layout picker)", () => {
-  it("projects live representation mode as the active spatial segment", () => {
-    expect(
-      deriveDashboardLayoutSelectorView({
-        date_range: { from: "2026-06-01", to: "2026-06-18" },
-        representation_mode: "radial",
-        timeline_mode: { kind: "live" },
-      }),
-    ).toEqual({
-      dateRange: { from: "2026-06-01", to: "2026-06-18" },
-      representationMode: "radial",
-      spatialActive: "radial",
-      timeline: {
-        mode: { kind: "live" },
-        timeTravel: false,
-        opsDisabled: false,
-        asOf: undefined,
-      },
-    });
-  });
-
-  it("lets time-travel own the active segment without losing held layout", () => {
-    expect(
-      deriveDashboardLayoutSelectorView({
-        date_range: {},
-        representation_mode: "connectivity",
-        timeline_mode: { kind: "time-travel", at: 42 },
-      }),
-    ).toEqual({
-      dateRange: {},
-      representationMode: "connectivity",
-      spatialActive: null,
-      timeline: {
-        mode: { kind: "time-travel", at: 42 },
-        timeTravel: true,
-        opsDisabled: true,
-        asOf: 42,
-      },
-    });
-  });
-
-  it("falls back before dashboard state loads", () => {
-    expect(deriveDashboardLayoutSelectorView(undefined)).toMatchObject({
-      dateRange: {},
-      representationMode: "connectivity",
-      spatialActive: "connectivity",
-      timeline: {
-        mode: { kind: "live" },
-        timeTravel: false,
-        opsDisabled: false,
-        asOf: undefined,
-      },
-    });
-  });
-
-  it("normalizes malformed representation mode before layout selection", () => {
-    expect(
-      deriveDashboardLayoutSelectorView({
-        date_range: {},
-        representation_mode: "invalid" as "connectivity",
-        timeline_mode: { kind: "live" },
-      }),
-    ).toMatchObject({
-      representationMode: "connectivity",
-      spatialActive: "connectivity",
-    });
-  });
-
-  it("projects layout picker segment chrome for live mode", () => {
-    const view = deriveDashboardLayoutSelectorView({
-      date_range: {},
-      representation_mode: "radial",
-      timeline_mode: { kind: "live" },
-    });
-
-    expect(deriveDashboardLayoutSelectorPresentationView(view)).toMatchObject({
-      containerClassName: "flex items-center gap-fg-1",
-      spatial: {
-        ariaLabel: "spatial layout",
-        className: "flex gap-fg-0-5 rounded-fg-md bg-paper-sunken p-fg-0-5",
-        segments: [
-          {
-            value: "connectivity",
-            label: "Free",
-            title: "Connections pull related items together - force-directed",
-            active: false,
-            tabIndex: -1,
-            className:
-              "flex items-center justify-center rounded-fg-xs px-fg-2 py-fg-1 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus text-ink-muted hover:text-ink",
-          },
-          {
-            value: "lineage",
-            label: "Lineage",
-            active: false,
-            tabIndex: -1,
-          },
-          {
-            value: "hierarchical",
-            label: "Hierarchy",
-            active: false,
-            tabIndex: -1,
-          },
-          {
-            value: "radial",
-            label: "Radial",
-            active: true,
-            tabIndex: 0,
-            className:
-              "flex items-center justify-center rounded-fg-xs px-fg-2 py-fg-1 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus bg-paper-raised font-medium text-ink shadow-fg-raised",
-          },
-          {
-            value: "community",
-            label: "Clusters",
-            active: false,
-            tabIndex: -1,
-          },
-        ],
-      },
-      temporal: {
-        ariaLabel: "temporal view",
-        className: "flex gap-fg-0-5 rounded-fg-md bg-paper-sunken p-fg-0-5",
-        segments: [
-          {
-            value: "timeline",
-            label: "Timeline",
-            title: "Arrange along time - enter the temporal view (time-travel)",
-            active: false,
-            tabIndex: 0,
-          },
-        ],
-      },
-    });
-  });
-
-  it("projects time-travel layout states", () => {
-    const view = deriveDashboardLayoutSelectorView({
-      date_range: {},
-      representation_mode: "connectivity",
-      timeline_mode: { kind: "time-travel", at: 42 },
-    });
-    const presentation = deriveDashboardLayoutSelectorPresentationView(view);
-
-    expect(presentation.spatial.segments[0]).toMatchObject({
-      value: "connectivity",
-      active: false,
-      tabIndex: 0,
-    });
-    expect(presentation.temporal.segments[0]).toMatchObject({
-      value: "timeline",
-      active: true,
-      tabIndex: 0,
-    });
-  });
-});
-
-describe("deriveDashboardLensSelectorView (stage lens picker)", () => {
-  it("projects the active salience lens with the dashboard default fallback", () => {
-    expect(deriveDashboardLensSelectorView({ salience_lens: "design" })).toEqual({
-      lens: "design",
-    });
-    expect(deriveDashboardLensSelectorView(undefined)).toEqual({
-      lens: "status",
-    });
-    expect(
-      deriveDashboardLensSelectorView({ salience_lens: "invalid" as "status" }),
-    ).toEqual({
-      lens: "status",
-    });
-  });
-
-  it("projects lens rows for the stage renderer", () => {
-    expect(
-      deriveDashboardLensSelectorPresentationView(
-        deriveDashboardLensSelectorView({ salience_lens: "design" }),
-        { disabled: true },
-      ),
-    ).toEqual({
-      containerAriaLabel: "salience lens",
-      containerClassName:
-        "flex items-center gap-fg-0-5 rounded-fg-md border border-rule bg-paper-raised/95 p-fg-0-5 shadow-fg-raised backdrop-blur-sm",
-      rows: [
-        {
-          lens: "status",
-          label: "Status",
-          hint: "What is in-flight: plans, progress, the pivotal bridges that gate work",
-          ariaLabel: "Status lens",
-          active: false,
-          disabled: true,
-          className:
-            "flex items-center gap-fg-1 rounded-fg-xs px-fg-1-5 py-fg-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus border border-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink",
-        },
-        {
-          lens: "design",
-          label: "Design",
-          hint: "Why the system is this way: the binding decisions and their grounding",
-          ariaLabel: "Design lens",
-          active: true,
-          disabled: true,
-          className:
-            "flex items-center gap-fg-1 rounded-fg-xs px-fg-1-5 py-fg-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus border border-accent bg-accent-subtle text-ink",
-        },
-      ],
-    });
-  });
-});
-
 describe("deriveDashboardRangeSelectView (timeline range selector)", () => {
   it("clones the committed dashboard date range for the range band", () => {
     const source = { date_range: { from: "2026-06-01", to: "2026-06-18" } };
@@ -2166,22 +1954,6 @@ describe("useDashboardState cache boundaries", () => {
       freezeAvailable: true,
       timeline: { timeTravel: false },
     });
-
-    const layout = renderHook(
-      () => useDashboardLayoutSelectorView({ scope: "scope-a" }),
-      { wrapper: wrapper(client) },
-    );
-    expect(layout.result.current).toMatchObject({
-      dateRange: {},
-      representationMode: "connectivity",
-      spatialActive: "connectivity",
-      timeline: { timeTravel: false },
-    });
-
-    const lens = renderHook(() => useDashboardLensSelectorView({ scope: "scope-a" }), {
-      wrapper: wrapper(client),
-    });
-    expect(lens.result.current).toEqual({ lens: "status" });
 
     const filterChoices = renderHook(
       () => useDashboardFilterChoicesView({ scope: "scope-a" }),
