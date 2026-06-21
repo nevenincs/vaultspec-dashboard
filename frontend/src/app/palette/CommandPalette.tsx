@@ -41,8 +41,10 @@ import {
   useCommandPaletteOpsMessage,
   useCommandPaletteQuery,
   useSearchPaletteGlobalShortcut,
+  useDocumentSearchGlobalShortcut,
 } from "../../stores/view/commandPalette";
 import { SearchPaletteSurface } from "./SearchPaletteSurface";
+import { DocumentSearchSurface } from "./DocumentSearchSurface";
 import {
   commandPaletteMovedCursor,
   deriveCommandPaletteArmedRepair,
@@ -66,9 +68,14 @@ export function CommandPalette() {
   // share the one overlay so Command-K controls searching (filtering-has-one-
   // canonical-surface / keyboard-shortcuts-bind-through-the-one-keymap-registry).
   useSearchPaletteGlobalShortcut(commandPaletteConfirm.cancel);
+  // The document shortcut (Mod+Shift+O) opens the SAME overlay in the literal
+  // document-finder plane (command-palette-planes ADR).
+  useDocumentSearchGlobalShortcut(commandPaletteConfirm.cancel);
 
   if (!open) return null;
-  return mode === "search" ? <SearchPaletteSurface /> : <CommandPaletteSurface />;
+  if (mode === "search") return <SearchPaletteSurface />;
+  if (mode === "document") return <DocumentSearchSurface />;
+  return <CommandPaletteSurface />;
 }
 
 function CommandPaletteSurface() {

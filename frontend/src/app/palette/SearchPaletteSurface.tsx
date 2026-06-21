@@ -44,7 +44,7 @@ import {
 import { useUnifiedSearchController } from "../../stores/server/searchController";
 import { deriveSearchPillViews } from "../../stores/server/searchPill";
 import { useActiveScope, useContentView } from "../../stores/server/queries";
-import { useDashboardNodeSelection } from "../../stores/view/selection";
+import { openNodeIsland } from "../../stores/view/selection";
 import { Kbd } from "../kit";
 import { CodeViewer } from "../viewer/CodeViewer";
 import { MarkdownReader } from "../viewer/MarkdownReader";
@@ -70,7 +70,6 @@ export function SearchPaletteSurface() {
   const cursor = useSearchPaletteCursor();
   const expanded = useSearchPaletteExpanded();
   const scope = useActiveScope();
-  const selectDashboardNode = useDashboardNodeSelection(scope);
 
   const search = useUnifiedSearchController(query, scope);
   const pills = useMemo(
@@ -133,9 +132,12 @@ export function SearchPaletteSurface() {
 
   const openSelected = useCallback(() => {
     if (!selectedNodeId) return;
-    void selectDashboardNode(selectedNodeId).catch(() => undefined);
+    // The ONE standardized open verb (command-palette-planes ADR): a result opens
+    // through the canonical selection seam, exactly like the context-menu Open and
+    // the graph click-through.
+    void openNodeIsland(selectedNodeId, scope).catch(() => undefined);
     close();
-  }, [selectedNodeId, selectDashboardNode, close]);
+  }, [selectedNodeId, scope, close]);
 
   const onInputKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     const intent = deriveSearchPaletteKeyboardIntent(e.key, expanded);

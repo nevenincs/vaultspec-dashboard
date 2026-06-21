@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   archiveFeatureAction,
   docStemFromNodeId,
+  openEntityAction,
   relateToSelectionAction,
 } from "./sharedActions";
 
@@ -75,6 +76,40 @@ describe("relateToSelectionAction", () => {
         body: { scope: "wt", src: "a", dst: "b" },
       },
     });
+  });
+});
+
+describe("openEntityAction", () => {
+  it("is a non-mutating navigate verb with a run when the entity has a node", () => {
+    const a = openEntityAction({
+      id: "search-result:open",
+      nodeId: "doc:b",
+      scope: "wt",
+    });
+    expect(a.disabled).toBeUndefined();
+    expect(a.section).toBe("navigate");
+    expect(a.label).toBe("Open");
+    expect(typeof a.run).toBe("function");
+    expect(a.dispatch).toBeUndefined();
+    // Open is non-mutating, so it is never time-travel gated.
+    expect(a.disabledInTimeTravel).toBeUndefined();
+  });
+
+  it("disables with reason when the entity has no node to open", () => {
+    const a = openEntityAction({
+      id: "search-result:open",
+      nodeId: null,
+      disabledReason: "no graph node",
+    });
+    expect(a.disabled).toBe(true);
+    expect(a.disabledReason).toBe("no graph node");
+    expect(a.run).toBeUndefined();
+  });
+
+  it("honors a custom label", () => {
+    expect(
+      openEntityAction({ id: "x:open", nodeId: "doc:a", label: "Open document" }).label,
+    ).toBe("Open document");
   });
 });
 

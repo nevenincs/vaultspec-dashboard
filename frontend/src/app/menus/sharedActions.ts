@@ -10,13 +10,60 @@
 // arguments + the injected ActionContext (selectedNodeId), never a store — so they
 // stay pure and unit-testable.
 
-import { Archive, Link2 } from "lucide-react";
+import { Archive, ArrowUpRight, Link2 } from "lucide-react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
 import type { ActionContext } from "../../platform/actions/registry";
 import { OPS_ACTION } from "../../stores/server/opsActions";
+import { openMenuNodeIsland } from "../../stores/view/menuActions";
 
 const DOC_NODE_PREFIX = "doc:";
+
+export interface OpenEntityOptions {
+  /** The action id (surface-scoped, e.g. "search-result:open" / "node:open"). */
+  id: string;
+  /** The graph node id the entity resolves to, or null/absent when it has none. */
+  nodeId?: string | null;
+  /** The active scope, forwarded to the open seam. */
+  scope?: string | null;
+  /** Override the label (defaults to "Open"). */
+  label?: string;
+  /** Reason shown when the entity has no node to open. */
+  disabledReason?: string;
+}
+
+/**
+ * "Open": open a result entity on the stage — the ONE standardized open verb every
+ * edge composes (the command-palette-planes ADR's "one open verb for every result
+ * entity"). It runs the canonical selection seam (`openMenuNodeIsland` →
+ * `openNodeIsland`: select + open the island + recenter), so opening a document- or
+ * semantic-search hit, a graph node, or a context-menu target is literally the same
+ * verb. A non-mutating navigation (no time-travel gate). Disabled-with-reason when
+ * the entity carries no graph node to open.
+ */
+export function openEntityAction(opts: OpenEntityOptions): ActionDescriptor {
+  const base = {
+    id: opts.id,
+    label: opts.label ?? "Open",
+    section: "navigate" as const,
+    icon: ArrowUpRight,
+  };
+  const nodeId =
+    typeof opts.nodeId === "string" && opts.nodeId.trim().length > 0
+      ? opts.nodeId.trim()
+      : null;
+  if (nodeId === null) {
+    return {
+      ...base,
+      disabled: true,
+      disabledReason: opts.disabledReason ?? "nothing to open",
+    };
+  }
+  return {
+    ...base,
+    run: () => openMenuNodeIsland(nodeId, { scope: opts.scope ?? undefined }),
+  };
+}
 
 /** The document stem a `doc:<stem>` node id names, or null for a non-document node. */
 export function docStemFromNodeId(nodeId: string | null | undefined): string | null {

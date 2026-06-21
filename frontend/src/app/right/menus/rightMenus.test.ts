@@ -75,6 +75,7 @@ describe("searchResultMenu", () => {
 
   it("offers focus / open-editor / reveal / copies for a code result", () => {
     expect(byId(searchResultMenu(code))).toEqual([
+      "search-result:open",
       "search-result:focus",
       "search-result:open-editor",
       "search-result:reveal",

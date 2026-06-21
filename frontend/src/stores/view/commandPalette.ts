@@ -22,12 +22,15 @@ export const COMMAND_PALETTE_KEYBINDING: KeybindingDef = {
   context: "global",
 };
 
-// The Cmd-K palette has two modes (figma SearchPalette frames 651:1771 / 652:1804):
-// `command` is the verb/navigation plane (the original surface); `search` is the
-// rag-backed semantic search surface that renders the SearchResultPill list and the
-// on-demand expanded reader split. Both modes share the one overlay so "Command-K
-// controls searching" holds — search is a mode of the palette, not a second popup.
-export type CommandPaletteMode = "command" | "search";
+// The Cmd-K palette has THREE planes (command-palette-planes ADR), all modes of the
+// one overlay so "Command-K controls searching" holds:
+//   `command`  — the verb/navigation plane fed by the command-provider registry.
+//   `search`   — the rag-backed SEMANTIC search (meaning-ranked vault+code), with the
+//                on-demand expanded reader split (figma SearchPalette 651:1771 / 652:1804).
+//   `document` — the LITERAL document finder over the vault tree (structural tier,
+//                rag-free), for "where is the thing named X". Stays available when the
+//                semantic tier is offline.
+export type CommandPaletteMode = "command" | "search" | "document";
 
 export const SEARCH_PALETTE_ACTION_ID = "app:search";
 export const SEARCH_PALETTE_SHORTCUT_LABEL = "Search documents and code";
@@ -39,8 +42,20 @@ export const SEARCH_PALETTE_KEYBINDING: KeybindingDef = {
   context: "global",
 };
 
+export const DOCUMENT_SEARCH_ACTION_ID = "app:document-search";
+export const DOCUMENT_SEARCH_SHORTCUT_LABEL = "Go to document by name";
+export const DOCUMENT_SEARCH_KEYBINDING: KeybindingDef = {
+  id: DOCUMENT_SEARCH_ACTION_ID,
+  defaultChord: "Mod+Shift+O",
+  label: DOCUMENT_SEARCH_SHORTCUT_LABEL,
+  group: "General",
+  context: "global",
+};
+
 export function normalizeCommandPaletteMode(mode: unknown): CommandPaletteMode {
-  return mode === "search" ? "search" : "command";
+  if (mode === "search") return "search";
+  if (mode === "document") return "document";
+  return "command";
 }
 
 export function normalizeSearchPaletteCursor(cursor: unknown): number {
@@ -231,6 +246,7 @@ interface CommandPaletteState {
   opsEpoch: number;
   openPalette: () => void;
   openSearch: () => void;
+  openDocument: () => void;
   closePalette: () => void;
   togglePalette: () => void;
   setMode: (mode: unknown) => void;
@@ -307,6 +323,21 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
       return {
         open: true,
         mode: "search",
+        query: "",
+        cursor: 0,
+        searchCursor: 0,
+        searchExpanded: false,
+        armedCommandId: null,
+        opsMessage: null,
+        opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
+      };
+    }),
+  openDocument: () =>
+    set((state) => {
+      const current = normalizeCommandPaletteSurfaceState(state);
+      return {
+        open: true,
+        mode: "document",
         query: "",
         cursor: 0,
         searchCursor: 0,
@@ -452,6 +483,10 @@ export function openSearchPalette(): void {
   useCommandPaletteStore.getState().openSearch();
 }
 
+export function openDocumentSearchPalette(): void {
+  useCommandPaletteStore.getState().openDocument();
+}
+
 export function closeCommandPalette(): void {
   useCommandPaletteStore.getState().closePalette();
 }
@@ -554,6 +589,37 @@ export function useSearchPaletteGlobalShortcut(cancelConfirm: () => void): void 
           return;
         }
         openSearchPalette();
+      },
+    }));
+    return () => {
+      disposeAction();
+      disposeBinding();
+    };
+  }, [cancelConfirm, open, mode]);
+}
+
+/**
+ * Register the global document-search shortcut (`app:document-search`, default
+ * `Mod+Shift+O`) on the one keymap registry + dispatcher. It opens the palette in the
+ * literal document-finder plane (or toggles it closed when already there), mirroring
+ * `useSearchPaletteGlobalShortcut`.
+ */
+export function useDocumentSearchGlobalShortcut(cancelConfirm: () => void): void {
+  const open = useCommandPaletteOpen();
+  const mode = useCommandPaletteMode();
+  useEffect(() => {
+    const disposeBinding = registerKeybindings([DOCUMENT_SEARCH_KEYBINDING]);
+    const disposeAction = registerKeyAction(DOCUMENT_SEARCH_ACTION_ID, () => ({
+      id: DOCUMENT_SEARCH_ACTION_ID,
+      label: DOCUMENT_SEARCH_SHORTCUT_LABEL,
+      run: () => {
+        cancelConfirm();
+        resetCommandPaletteOpsFeedback();
+        if (open && mode === "document") {
+          closeCommandPalette();
+          return;
+        }
+        openDocumentSearchPalette();
       },
     }));
     return () => {

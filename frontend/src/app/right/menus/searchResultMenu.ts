@@ -16,6 +16,7 @@ import { copyAction } from "../../../platform/actions/clipboardActions";
 import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
+import { openEntityAction } from "../../menus/sharedActions";
 import {
   openInEditorAction,
   revealAction,
@@ -36,6 +37,17 @@ export function searchResultMenu(entity: unknown): ActionDescriptor[] {
   if (normalizedEntity?.kind !== "search-result") return [];
 
   const actions: ActionDescriptor[] = [];
+
+  // Navigate: open the result on the stage — the ONE standardized open verb every
+  // edge composes (command-palette-planes ADR). Disabled-with-reason when the
+  // result carries no graph node to open.
+  actions.push(
+    openEntityAction({
+      id: "search-result:open",
+      nodeId: normalizedEntity.nodeId,
+      disabledReason: "no graph node",
+    }),
+  );
 
   // Navigate: focus the result's graph node. Disabled-with-reason when there is
   // no node to focus (a null-node_id result, the unselectable row).

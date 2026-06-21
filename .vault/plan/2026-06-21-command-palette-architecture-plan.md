@@ -144,28 +144,28 @@ Standardize the open verb on result entities, add the literal document-search pl
 
 Author the one shared open ActionDescriptor over the selection seam and compose it at every edge.
 
-- [ ] `W02.P04.S16` - author the shared openEntityAction builder over the selection seam; `frontend/src/app/menus/sharedActions.ts`.
-- [ ] `W02.P04.S17` - re-point the semantic-search result open onto openEntityAction; `frontend/src/app/palette/SearchPaletteSurface.tsx`.
-- [ ] `W02.P04.S18` - compose openEntityAction in the context-menu resolver open entry; `frontend/src/app/menus/sharedActions.ts`.
-- [ ] `W02.P04.S19` - unit-test the shared open verb across entity kinds; `frontend/src/app/menus/sharedActions.test.ts`.
+- [x] `W02.P04.S16` - author the shared openEntityAction builder over the selection seam; `frontend/src/app/menus/sharedActions.ts`.
+- [x] `W02.P04.S17` - re-point the semantic-search result open onto openEntityAction; `frontend/src/app/palette/SearchPaletteSurface.tsx`.
+- [x] `W02.P04.S18` - compose openEntityAction in the context-menu resolver open entry; `frontend/src/app/menus/sharedActions.ts`.
+- [x] `W02.P04.S19` - unit-test the shared open verb across entity kinds; `frontend/src/app/menus/sharedActions.test.ts`.
 
 ### Phase `W02.P05` - document-search plane
 
 Add the literal name and title finder over a bounded engine projection, producing result entities.
 
-- [ ] `W02.P05.S20` - spike and record the bounded engine projection choice for literal search; `.vault/reference/2026-06-21-command-palette-architecture-reference.md`.
-- [ ] `W02.P05.S21` - implement the document-search controller producing result entities; `frontend/src/stores/server/documentSearchController.ts`.
-- [ ] `W02.P05.S22` - bound the result list and read degradation from the tiers block; `frontend/src/stores/server/documentSearchController.ts`.
-- [ ] `W02.P05.S23` - unit-test the document-search controller; `frontend/src/stores/server/documentSearchController.test.ts`.
+- [x] `W02.P05.S20` - spike and record the bounded engine projection choice for literal search; `.vault/reference/2026-06-21-command-palette-architecture-reference.md`.
+- [x] `W02.P05.S21` - implement the document-search controller producing result entities; `frontend/src/stores/server/documentSearchController.ts`.
+- [x] `W02.P05.S22` - bound the result list and read degradation from the tiers block; `frontend/src/stores/server/documentSearchController.ts`.
+- [x] `W02.P05.S23` - unit-test the document-search controller; `frontend/src/stores/server/documentSearchController.test.ts`.
 
 ### Phase `W02.P06` - three-mode palette overlay
 
 Extend the palette store and surface to command, semantic-search, and document-search modes with honest degradation.
 
-- [ ] `W02.P06.S24` - extend the commandPalette store to three modes; `frontend/src/stores/view/commandPalette.ts`.
-- [ ] `W02.P06.S25` - render the document-search mode surface to the binding Figma frame; `frontend/src/app/palette/DocumentSearchSurface.tsx`.
-- [ ] `W02.P06.S26` - wire the mode transitions and their keybindings; `frontend/src/stores/view/commandPalette.ts`.
-- [ ] `W02.P06.S27` - add render tests for the three-mode palette; `frontend/src/app/palette/CommandPalette.render.test.tsx`.
+- [x] `W02.P06.S24` - extend the commandPalette store to three modes; `frontend/src/stores/view/commandPalette.ts`.
+- [x] `W02.P06.S25` - render the document-search mode surface to the binding Figma frame; `frontend/src/app/palette/DocumentSearchSurface.tsx`.
+- [x] `W02.P06.S26` - wire the mode transitions and their keybindings; `frontend/src/stores/view/commandPalette.ts`.
+- [x] `W02.P06.S27` - add render tests for the three-mode palette; `frontend/src/app/palette/CommandPalette.render.test.tsx`.
 
 ## Wave `W03` - action taxonomy, shortcuts, and backend verb feed
 

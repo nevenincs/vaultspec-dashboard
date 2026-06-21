@@ -135,3 +135,32 @@ describe("CommandPalette lifecycle", () => {
     expect(screen.queryByRole("option", { name: "ops: vault check" })).toBeNull();
   });
 });
+
+describe("CommandPalette three planes", () => {
+  it("renders the command plane by default and switches to search and document planes", () => {
+    renderPalette();
+
+    act(() => useCommandPaletteStore.getState().openPalette());
+    expect(screen.getByRole("dialog", { name: "command palette" })).toBeTruthy();
+
+    act(() => useCommandPaletteStore.getState().openSearch());
+    expect(
+      screen.getByRole("dialog", { name: "Search documents and code" }),
+    ).toBeTruthy();
+
+    act(() => useCommandPaletteStore.getState().openDocument());
+    expect(screen.getByRole("dialog", { name: "Go to document by name" })).toBeTruthy();
+    expect(screen.getByPlaceholderText("Go to document by name…")).toBeTruthy();
+  });
+
+  it("opens the document plane from its global shortcut and toggles closed", () => {
+    renderPalette();
+
+    fireEvent.keyDown(window, { key: "O", ctrlKey: true, shiftKey: true });
+    expect(useCommandPaletteStore.getState().mode).toBe("document");
+    expect(useCommandPaletteStore.getState().open).toBe(true);
+
+    fireEvent.keyDown(window, { key: "O", ctrlKey: true, shiftKey: true });
+    expect(useCommandPaletteStore.getState().open).toBe(false);
+  });
+});
