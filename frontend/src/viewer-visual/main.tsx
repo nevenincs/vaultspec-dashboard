@@ -16,6 +16,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { DocChrome } from "../app/viewer/DocChrome";
 import { MarkdownReader } from "../app/viewer/MarkdownReader";
 import type { ContentResponse } from "../stores/server/engine";
 import { deriveContentView } from "../stores/server/queries";
@@ -29,7 +30,7 @@ if (!rootElement) {
 }
 
 const params = new URLSearchParams(window.location.search);
-const surfaceWidth = Number(params.get("w") ?? "860") || 860;
+const surfaceWidth = Number(params.get("w") ?? "460") || 460;
 const theme = params.get("theme") ?? "light";
 // Force the parity theme directly on <html> — bypass stored prefs / media query
 // so the capture is deterministic regardless of the host machine's settings.
@@ -51,33 +52,10 @@ const response: ContentResponse = {
 };
 const content = deriveContentView(response, null, false);
 
-// The binding Reader frame (263:871) is a 760-wide card: a chrome topbar
-// (breadcrumb + View/Edit toggle — the DocHeader crown, wired for real in the
-// next phase), a rule, then the reading column + footer the real MarkdownReader
-// renders. The harness composes the card so the full-frame parity capture matches
-// the Figma frame; the breadcrumb/toggle are faithful static chrome for now.
-function ChromeTopbar() {
-  return (
-    <div className="flex shrink-0 items-center justify-between bg-paper py-[0.8125rem] pl-[1.25rem] pr-[0.875rem]">
-      <div className="flex items-center gap-fg-1-5 text-[0.78125rem]">
-        <span className="text-ink-muted">Vault</span>
-        <span className="text-ink-faint">/</span>
-        <span className="text-ink-muted">Decisions</span>
-        <span className="text-ink-faint">/</span>
-        <span className="font-medium text-ink">Graph layout catalog</span>
-      </div>
-      <div className="flex items-center gap-fg-0-5 rounded-[0.5625rem] bg-paper-sunken p-[0.1875rem]">
-        <span className="rounded-fg-sm bg-paper-raised px-fg-3 py-[0.3125rem] text-[0.71875rem] font-medium text-ink">
-          View
-        </span>
-        <span className="rounded-fg-sm px-fg-3 py-[0.3125rem] text-[0.71875rem] text-ink-muted">
-          Edit
-        </span>
-      </div>
-    </div>
-  );
-}
-
+// The binding reader frame (455:1117) is a card: the ONE chrome bar (breadcrumb +
+// View/Edit toggle — the real `DocChrome`), then the reading column + footer the
+// real MarkdownReader renders. The harness composes the card from the SAME
+// `DocChrome` the app uses, so this capture verifies the real chrome, not a mock.
 function ReaderVisualHarness() {
   return (
     <div className="flex h-screen min-h-0 justify-center bg-paper text-ink">
@@ -86,8 +64,16 @@ function ReaderVisualHarness() {
         style={{ width: `${surfaceWidth}px` }}
         data-reader-surface
       >
-        <ChromeTopbar />
-        <div className="h-px w-full shrink-0 bg-rule" />
+        <DocChrome
+          trail={[
+            { label: "Vault" },
+            { label: "Decisions" },
+            { label: "Phase-lane arc timeline" },
+          ]}
+          mode="view"
+          onModeChange={() => undefined}
+          canEdit
+        />
         <div className="min-h-0 flex-1">
           <MarkdownReader content={content} scope={null} />
         </div>

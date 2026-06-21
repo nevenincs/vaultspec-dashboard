@@ -23,7 +23,7 @@ import {
   useCodeViewerScrollTop,
 } from "../../stores/view/codeViewer";
 import { useElementHeight } from "../chrome/useElementWidth";
-import { Badge } from "../kit";
+import { Badge, Button } from "../kit";
 import type { TokenLine } from "./useHighlighter";
 import { useTokenLines } from "./useHighlighter";
 
@@ -129,22 +129,31 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
     );
   }
 
+  const fileName = view.path ? (view.path.split("/").pop() ?? view.path) : null;
+  const langDisplay = view.languageHint
+    ? view.languageHint.charAt(0).toUpperCase() + view.languageHint.slice(1)
+    : "Text";
+  const onCopy = () => {
+    void navigator.clipboard?.writeText(view.text).catch(() => undefined);
+  };
+
   return (
     <div className="flex h-full flex-col">
-      {/* Board 101:2 header: the mono path, a neutral language badge (capitalized),
-          and a "read-only" affordance label. */}
-      <header className="flex items-center gap-fg-2 border-b border-rule bg-paper px-fg-3 py-fg-1">
-        <span className="min-w-0 flex-1 truncate font-mono text-label text-ink-muted">
-          {view.path}
-        </span>
-        {view.languageHint && (
-          <Badge>
-            <span className="capitalize">{view.languageHint}</span>
-          </Badge>
-        )}
-        <span className="shrink-0 text-caption text-ink-faint">
-          {view.readOnlyLabel}
-        </span>
+      {/* Binding CodeViewer header (270:927): the mono filename + a language badge
+          on the left, a "Read-only" flag and a Copy affordance on the right. */}
+      <header className="flex items-center justify-between gap-fg-2 border-b border-rule bg-paper px-fg-4 py-fg-2">
+        <div className="flex min-w-0 items-center gap-[0.625rem]">
+          <span className="min-w-0 truncate font-mono text-label text-ink">
+            {fileName ?? langDisplay}
+          </span>
+          {view.languageHint && <Badge>{langDisplay}</Badge>}
+        </div>
+        <div className="flex shrink-0 items-center gap-[0.625rem]">
+          <span className="text-label text-ink-faint">{view.readOnlyLabel}</span>
+          <Button variant="ghost" onClick={onCopy}>
+            Copy
+          </Button>
+        </div>
       </header>
       {view.truncationMessage && (
         <div className="border-b border-rule bg-paper-sunken px-fg-3 py-fg-1 text-label text-ink-muted">
@@ -152,6 +161,19 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
         </div>
       )}
       <CodeLines rawLines={view.rawLines} tokenLines={tokenLines} />
+      {/* Binding CodeViewer status footer (270:927): language · encoding · line
+          count · read-only. */}
+      <footer className="flex shrink-0 items-center gap-fg-1-5 border-t border-rule bg-paper px-fg-4 py-fg-1-5 text-caption text-ink-muted">
+        <span>{langDisplay}</span>
+        <span className="text-ink-faint">·</span>
+        <span>UTF-8</span>
+        <span className="text-ink-faint">·</span>
+        <span>
+          {view.rawLines.length} {view.rawLines.length === 1 ? "line" : "lines"}
+        </span>
+        <span className="text-ink-faint">·</span>
+        <span>{view.readOnlyLabel}</span>
+      </footer>
     </div>
   );
 }

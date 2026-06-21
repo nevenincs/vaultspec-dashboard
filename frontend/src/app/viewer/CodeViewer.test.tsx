@@ -6,7 +6,7 @@
 // display-only — these assert there is no editing affordance (no textbox). Uses
 // core vitest matchers (no jest-dom), the project convention.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { ContentView } from "../../stores/server/queries";
@@ -34,10 +34,17 @@ function available(
 }
 
 describe("CodeViewer", () => {
-  it("renders the monospace path header and the language badge", () => {
-    render(<CodeViewer content={available("fn main() {}\n")} />);
-    expect(screen.getByText("src/auth/mod.rs")).toBeTruthy();
-    expect(screen.getByText("rust")).toBeTruthy();
+  it("renders the binding filename header, language badge, and status footer", () => {
+    const { container } = render(<CodeViewer content={available("fn main() {}\n")} />);
+    // Binding CodeViewer (270:927): the header shows the FILENAME (not the full
+    // path) plus a capitalized language badge; the status footer carries the
+    // language · encoding · line count · read-only line.
+    const header = container.querySelector("header")!;
+    expect(within(header).getByText("mod.rs")).toBeTruthy();
+    expect(within(header).getByText("Rust")).toBeTruthy();
+    const footer = container.querySelector("footer")!;
+    expect(footer.textContent).toContain("UTF-8");
+    expect(footer.textContent).toContain("Rust");
   });
 
   it("renders line numbers for each line", () => {

@@ -1,11 +1,10 @@
 // Breadcrumb — the centralized path trail (figma-frontend-rewrite W01.P02.S05;
-// binding kit board 135:2). Renders an ordered list of path segments separated by
-// the ChevronRight chrome glyph from the sanctioned glyph set; the final segment is
-// the current location (aria-current) and is not interactive, while preceding
-// segments fire their `onSelect`. Surfaces compose this for the doc header / reader
-// path. Display-only and prop-driven (icons-come-from-the-two-sanctioned-families).
-
-import { ChevronRight } from "./glyphs";
+// binding kit board 135:2 / Breadcrumb 157:123). Renders an ordered list of path
+// segments separated by a "/" divider (the binding separator — Figma 157:123 and
+// the reader chrome use a slash, not a chevron); the final segment is the current
+// location (aria-current) and is not interactive, while preceding segments fire
+// their `onSelect`. Surfaces compose this for the doc header / reader path.
+// Display-only and prop-driven.
 
 export interface BreadcrumbItem {
   label: string;
@@ -20,13 +19,13 @@ export interface BreadcrumbProps {
 export function Breadcrumb({ items, className = "" }: BreadcrumbProps) {
   return (
     <nav aria-label="Breadcrumb" className={className || undefined}>
-      <ol className="flex min-w-0 items-center gap-fg-1 text-meta text-ink-muted">
+      <ol className="flex min-w-0 items-center gap-fg-1-5 text-[0.8125rem] leading-[1.4] text-ink-muted">
         {items.map((item, i) => {
           const isLast = i === items.length - 1;
           return (
             <li
               key={`${item.label}-${i}`}
-              className="flex min-w-0 items-center gap-fg-1"
+              className="flex min-w-0 items-center gap-fg-1-5"
             >
               {isLast ? (
                 <span aria-current="page" className="truncate font-medium text-ink">
@@ -43,7 +42,7 @@ export function Breadcrumb({ items, className = "" }: BreadcrumbProps) {
               )}
               {!isLast && (
                 <span className="shrink-0 text-ink-faint" aria-hidden>
-                  <ChevronRight size={12} />
+                  /
                 </span>
               )}
             </li>

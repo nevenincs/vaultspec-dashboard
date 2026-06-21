@@ -1,65 +1,65 @@
 // The ONE shared markdown fixture for the reader visual-parity campaign
-// (editor-figma-parity). It is the EXACT content of the binding Figma reader frame
-// `263:871` (Reader / Mode=View, "Graph layout catalog") so the live reader and the
-// design render the identical document — a pixel diff then compares only treatment,
-// not content. Copied verbatim from the Figma design context (the dek, lead, body,
-// blockquote, list, table, and code block all match the frame's text).
+// (editor-figma-parity). It is the EXACT content of the binding Figma reader
+// instance `455:1117` (doc-reader · Reader / Mode=View, "Phase-lane arc timeline")
+// so the live reader and the design render the identical document — a pixel diff
+// then compares only treatment, not content. Copied verbatim from the Figma design
+// context (the dek, lead, body, blockquote, list, table, and code block all match
+// the instance's text).
 //
 // Raw `.md` INCLUDING the leading YAML frontmatter fence: the reader parses the
 // frontmatter out of `content.text`, so the fixture carries it verbatim, mirroring
 // a real `.vault/` document. `status: accepted` feeds the meta line's status; the
 // dek is the first body line after the H1 and the lead is the paragraph after it.
 
-export const READER_FIXTURE_PATH = ".vault/adr/2026-06-16-graph-layout-catalog-adr.md";
+export const READER_FIXTURE_PATH = ".vault/adr/2026-06-16-dashboard-timeline-adr.md";
 
 export const READER_FIXTURE_MARKDOWN = `---
 tags:
   - '#adr'
-  - '#graph-layout-catalog'
+  - '#dashboard-timeline'
   - '#scene'
-  - '#layouts'
+  - '#timeline'
 date: '2026-06-16'
 modified: '2026-06-16'
 status: accepted
 related:
-  - '[[representation-layout]]'
+  - '[[dashboard-timeline-adr]]'
   - '[[graph-scale-hardening]]'
-  - '[[salience-lens]]'
+  - '[[dashboard-foundation-reference]]'
 ---
 
-# Graph layout catalog
+# Phase-lane arc timeline
 
-Hierarchical, radial, and community layouts as framework-free, deterministic-seed modes.
+A relational timeline where every document sits in its pipeline lane.
 
-A single source of truth for how the graph arranges itself — every layout is a pure projection of the same model, selected by name and seeded for repeatable structure.
+A relational timeline where every dated document sits in the lane its kind belongs to — one bounded projection of the same graph model.
 
 ## Context
 
-The catalog defines layouts as **deterministic-seed modes** so a given graph renders identically across sessions. Each mode is **framework-free** — no force simulation owns the result — and composes the shared spine described in [[representation-layout]]. The reference driver is \`radialLayout()\`.
+The phase-lane timeline places **every dated document in** a pipeline lane, so the corpus reads as a diachronic story rather **than a flat list**.
 
-> A layout is a deterministic function of the model and a seed — never of the session, the viewport, or the order nodes arrived.
+> A lane is a deterministic function of document kind: research and reference share one lane, then adr, plan, exec, audit → review, and rule → codify.
 
 ## Decision
 
-### Seeded, framework-free modes
+### Bounded, lane-assigned arcs
 
-- **Hierarchical** — a tidy-tree spine for parent/child derivations.
-- **Radial** — concentric shells ranked by depth from the focus node.
-- **Community** — force-free grouping by shared feature membership.
+- **Lanes** — one per pipeline phase, derived from a document's kind.
+- **Arcs** — relations between dated documents, bounded by the node ceiling.
+- **Reveal** — arc growth animates client-side; the engine stays read-only.
 
-| Mode         | Spine                          |
-| ------------ | ------------------------------ |
-| Hierarchical | Parent / child tidy-tree       |
-| Radial       | Depth-ranked concentric shells |
-| Community    | Shared-feature clusters        |
+| Lane      | Contains                   |
+| --------- | -------------------------- |
+| Research  | Research & reference notes |
+| Decision  | ADRs in the decision lane  |
+| Execution | Plans, steps & summaries   |
 
 ### Reference implementation
 
 \`\`\`typescript
-export function radialLayout(nodes: Node[], opts: LayoutOpts) {
-  const ring = depth * spacing   // concentric shells
-  const seed = "deterministic"
-  return nodes.map((n, i) => place(n, ring, i))
+export function laneOf(doc: DatedNode): Lane {
+  const lane = PIPELINE_LANE[doc.kind]
+  return clampToRange(lane, doc.date)
 }
 \`\`\`
 `;

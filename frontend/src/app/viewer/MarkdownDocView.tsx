@@ -39,17 +39,22 @@ import {
   applyRenamedMarkdownDocWorkspace,
   promoteDocTab,
 } from "../../stores/view/tabs";
-import { Button } from "../kit";
+import { Button, type BreadcrumbItem } from "../kit";
+import { DocChrome, type DocChromeMode } from "./DocChrome";
 import { MarkdownReader } from "./MarkdownReader";
 
 export function MarkdownDocView({
   nodeId,
   content,
   scope,
+  trail,
 }: {
   nodeId: string;
   content: ContentView;
   scope: string | null;
+  /** The path trail for the chrome breadcrumb (built by the host from the
+   *  preserved stores header model). */
+  trail: BreadcrumbItem[];
 }) {
   // Memoize on the now-stable ContentView (useContentView memoizes its result) so
   // `documentEditor.properties` is a referentially-stable object — it is passed into
@@ -95,6 +100,14 @@ export function MarkdownDocView({
     promoteDocTab(nodeId);
   };
 
+  const onModeChange = (next: DocChromeMode) => {
+    if (next === "edit") {
+      if (!editor.isEditing && documentEditor.canEdit) enterEdit();
+    } else if (editor.isEditing) {
+      closeDocumentEditor();
+    }
+  };
+
   const saveBodyNow = () => {
     markEditorSaving();
     saveBody.mutate(
@@ -110,16 +123,13 @@ export function MarkdownDocView({
 
   if (!editor.isEditing) {
     return (
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-end gap-fg-2 border-b border-rule px-fg-3 py-fg-1">
-          <Button
-            variant="ghost"
-            onClick={enterEdit}
-            disabled={!documentEditor.canEdit}
-          >
-            Edit
-          </Button>
-        </div>
+      <div className="flex h-full flex-col bg-paper">
+        <DocChrome
+          trail={trail}
+          mode="view"
+          onModeChange={onModeChange}
+          canEdit={documentEditor.canEdit}
+        />
         <div className="min-h-0 flex-1">
           <MarkdownReader content={content} scope={scope} />
         </div>
@@ -128,7 +138,13 @@ export function MarkdownDocView({
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col bg-paper">
+      <DocChrome
+        trail={trail}
+        mode="edit"
+        onModeChange={onModeChange}
+        canEdit={documentEditor.canEdit}
+      />
       <div className="flex items-center justify-between gap-fg-2 border-b border-rule px-fg-3 py-fg-1">
         <span className={`text-label ${editor.statusToneClass}`}>
           {editor.statusLabel}

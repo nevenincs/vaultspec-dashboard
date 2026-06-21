@@ -13,7 +13,7 @@
 // (dashboard-layer-ownership).
 
 import type { ReactElement, ReactNode } from "react";
-import { useMemo } from "react";
+import { isValidElement, useMemo } from "react";
 import type { Root } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
@@ -127,6 +127,31 @@ const COMPONENTS: Components = {
 
 const REMARK_PLUGINS = [remarkGfm, remarkWikiLink];
 
+/** Recursively flatten rendered children to their plain text. */
+function flattenText(node: ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(flattenText).join("");
+  if (isValidElement(node)) {
+    return flattenText((node.props as { children?: ReactNode }).children);
+  }
+  return "";
+}
+
+/** Heading overrides — a final render-layer guard for the no-noise directive:
+ *  every heading renders as PLAIN TEXT (its flattened text content), so even a
+ *  heading that bypassed the body sanitizer can never display inline formatting.
+ *  The body is heading-sanitized upstream (sanitizeReaderBody); this is
+ *  defense-in-depth. */
+const HEADING_COMPONENTS: Components = {
+  h1: ({ children }) => <h1>{flattenText(children)}</h1>,
+  h2: ({ children }) => <h2>{flattenText(children)}</h2>,
+  h3: ({ children }) => <h3>{flattenText(children)}</h3>,
+  h4: ({ children }) => <h4>{flattenText(children)}</h4>,
+  h5: ({ children }) => <h5>{flattenText(children)}</h5>,
+  h6: ({ children }) => <h6>{flattenText(children)}</h6>,
+};
+
 /** The editorial DocHeader block: doc-type eyebrow, serif title, italic dek, and
  *  the date · reading-time · status meta line (board 259:838). */
 function DocHeaderBlock({
@@ -230,6 +255,7 @@ function MarkdownBody({
   const components = useMemo<Components>(
     () => ({
       ...COMPONENTS,
+      ...HEADING_COMPONENTS,
       a({ href, children, ...props }) {
         const nodeId = href ? wikiLinkNodeId(href) : null;
         if (nodeId) {
