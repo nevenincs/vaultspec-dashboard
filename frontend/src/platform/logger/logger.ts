@@ -160,9 +160,9 @@ export class Logger {
   }
 
   /**
-   * Re-emit a record produced elsewhere (the worker bridge ingests records
-   * the FA2 worker posts across the thread boundary). The record's own
-   * namespace and level are preserved; only the min-level gate applies.
+   * Re-emit a record produced elsewhere — e.g. the worker-log bridge re-ingesting
+   * a record an off-main-thread worker posted across the thread boundary. The
+   * record's own namespace and level are preserved; only the min-level gate applies.
    */
   ingest(record: LogRecord): void {
     if (LEVEL_RANK[record.level] < this.core.minRank) return;
