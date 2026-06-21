@@ -52,6 +52,23 @@ describe("classifyError", () => {
     });
   });
 
+  it("classifies an intentional AbortError as cancelled, not fatal", () => {
+    // TanStack/AbortController aborts on unmount/scope-change/refetch reject with
+    // an AbortError — normal lifecycle, must NOT be logged as an "unclassified
+    // failure". Recognized structurally by name (decoupled from the fetch layer).
+    const abort = new Error("signal is aborted without reason");
+    abort.name = "AbortError";
+    expect(classifyError(abort)).toEqual({
+      kind: "cancelled",
+      retryable: false,
+      signal: "cancelled",
+    });
+    // A native DOMException-style abort (name === "AbortError") also classifies.
+    expect(classifyError(new DOMException("aborted", "AbortError")).kind).toBe(
+      "cancelled",
+    );
+  });
+
   it("falls back to fatal for an unrecognized error", () => {
     expect(classifyError(new Error("who knows")).kind).toBe("fatal");
   });

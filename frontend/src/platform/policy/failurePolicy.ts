@@ -11,11 +11,18 @@ import { logger } from "../logger/logger";
 
 const policyLog = logger.child("policy");
 
-export type FailureKind = "transient" | "degraded" | "contained" | "fatal";
+export type FailureKind =
+  | "transient"
+  | "degraded"
+  | "contained"
+  | "fatal"
+  | "cancelled";
 
 export interface FailureClassification {
   /** transient: retry. degraded: route to the degradation vocabulary.
-   *  contained: nearest region boundary. fatal: app boundary / unexpected. */
+   *  contained: nearest region boundary. fatal: app boundary / unexpected.
+   *  cancelled: an intentional abort (unmount / scope change / refetch) — NOT a
+   *  failure; logged as a debug breadcrumb, never an error/warn, never degraded. */
   kind: FailureKind;
   /** True when a retry could plausibly succeed. */
   retryable: boolean;
@@ -56,6 +63,17 @@ function statusOf(error: unknown): number | null {
   return null;
 }
 
+/** Structural read of an intentional abort — an `AbortError` matched by `name`,
+ *  covering both an `Error` and a native `DOMException` (not an `Error` subclass
+ *  in every engine) without importing either, mirroring `statusOf`. */
+function isAbortError(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    (error as { name?: unknown }).name === "AbortError"
+  );
+}
+
 const TRANSIENT_STATUSES = new Set([408, 425, 429, 502, 503, 504]);
 
 /** Map any thrown value to a FailureKind. Pure and total. */
@@ -86,6 +104,18 @@ export function classifyError(error: unknown): FailureClassification {
   // A bare fetch failure (engine not running) rejects as a TypeError.
   if (error instanceof TypeError) {
     return { kind: "degraded", retryable: true, signal: "backend-unreachable" };
+  }
+
+  // An intentional cancellation — TanStack/AbortController aborts a query on
+  // unmount, scope change, or refetch, rejecting with an `AbortError` ("signal is
+  // aborted without reason"). It is normal lifecycle, NOT a failure. Recognized
+  // STRUCTURALLY by `name`, NOT `instanceof Error`: a native abort rejects with a
+  // `DOMException`, which is not an `Error` subclass in every engine — so an
+  // instanceof check would miss the real runtime abort and keep error-logging it
+  // as an "unclassified failure" (the spurious spam this closes). Same structural
+  // discipline as `statusOf` above.
+  if (isAbortError(error)) {
+    return { kind: "cancelled", retryable: false, signal: "cancelled" };
   }
 
   return { kind: "fatal", retryable: false };
@@ -122,7 +152,11 @@ class FailurePolicy {
       signal: classification.signal,
       ...context,
     };
-    if (classification.kind === "fatal") {
+    if (classification.kind === "cancelled") {
+      // Intentional cancellation: a debug breadcrumb only — never error/warn, and
+      // it falls through the `degraded` routing below untouched.
+      policyLog.debug("request cancelled", fields);
+    } else if (classification.kind === "fatal") {
       policyLog.error(
         "unclassified failure",
         error instanceof Error ? error : { error, ...fields },
