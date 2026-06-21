@@ -13,7 +13,9 @@
 // subset the readers below resolve is exactly that flat-hex surface:
 //   --color-canvas-bg            the field ground (canvas background)
 //   --color-scene-rule           the flat-grey connection-field stroke (edges)
-//   --color-scene-category-*      the eight node-category body hues (categoryColor)
+//   --color-scene-category-*      node-category body hues — categoryColor reads the
+//                                 seven graph categories (the code token is a
+//                                 chip/search hue, not a graph node)
 //   --color-ink / --color-ink-muted / --color-rule   label + chrome ink
 //   --color-tier-* / --color-state-* / --color-status-*   off-canvas marks
 //
