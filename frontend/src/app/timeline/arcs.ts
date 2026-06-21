@@ -11,13 +11,13 @@
 // arc field to bundle or thin, so the HEB-bundling / disparity-filter machinery
 // the v1 surface carried is gone.
 //
-// Tier-as-treatment vocabulary (reused from the stage `edgeMeshes.ts`, NOT the
-// Pixi code — the MAPPING and the token names): declared = solid inked line;
+// Tier-as-treatment vocabulary (reused from the stage edge styling in
+// `edgeStyle.ts` — the MAPPING and the token names): declared = solid inked line;
 // structural = solid, status-hued (resolved/stale/broken); temporal = dotted;
 // semantic = a faint wide haze. Line treatment is the PRIMARY channel and hue is
 // secondary, so the arc reads in grayscale at the 14px gate; confidence rides
 // LIGHTNESS (a four-bucket lightness step), never opacity alone — mirroring
-// edgeMeshes' `confidenceBucket`/`bucketLightness` so the timeline matches the
+// edgeStyle's `confidenceBucket`/`bucketLightness` so the timeline matches the
 // stage for free.
 //
 // Pure + deterministic. Every helper is a referentially-transparent function of
