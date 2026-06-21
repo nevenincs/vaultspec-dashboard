@@ -38,7 +38,7 @@ const PERSIST_DEBOUNCE_MS = 400;
 function addOverride(
   map: GraphControlOverrides,
   id: string,
-  value: number | string,
+  value: number | string | boolean,
 ): void {
   // Sparse: persist only what the user changed from the schema default.
   if (specById(id)?.default !== value) map[id] = value;
@@ -62,6 +62,7 @@ export function buildGraphControlOverrides(
   addOverride(map, "edgeWidthMax", appearance.edgeWidthMax);
   addOverride(map, "edgeOpacityMax", appearance.edgeOpacityMax);
   addOverride(map, "edgeColorMode", appearance.edgeColorMode);
+  addOverride(map, "nodeIcons", appearance.nodeIcons);
   return map;
 }
 

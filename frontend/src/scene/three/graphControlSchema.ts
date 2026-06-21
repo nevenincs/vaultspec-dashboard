@@ -428,6 +428,17 @@ export const GRAPH_CONTROL_SCHEMA = [
     description:
       "Edge inherits the endpoint node hue — solid (source/leaf) or gradient (leaf→parent). Never tier/grey/black.",
   },
+  {
+    id: "nodeIcons",
+    label: "Node icons",
+    uiLabel: "Show icons",
+    group: "visualisation",
+    type: "boolean",
+    default: false,
+    exposure: ["ui", "lab"],
+    description:
+      "Draw each node as its doc-type element mark (Decision / Research / Plan / …) instead of a plain category circle. A toggle, not a replacement: circles cross-fade to icons as the node grows on screen, so the field reads as dots when zoomed out and as icons when zoomed in.",
+  },
 
   // Internal-but-tunable viz constants (exposure []): registry-only today — the
   // field still reads these as hardcoded constants; listed so the surface is
@@ -874,6 +885,14 @@ function stringDefault(id: string): string {
   return spec.default;
 }
 
+function booleanDefault(id: string): boolean {
+  const spec = SPEC_BY_ID.get(id);
+  if (!spec || typeof spec.default !== "boolean") {
+    throw new Error(`graphControlSchema: missing boolean default for "${id}"`);
+  }
+  return spec.default;
+}
+
 /** Public canonical-value lookups — the field + cameraCore read their (formerly
  *  hardcoded) constants from here so each tweakable has exactly ONE definition (the
  *  schema), never a schema entry plus a duplicate local const. Fail fast on a bad id. */
@@ -921,6 +940,7 @@ export function appearanceDefaults(): AppearanceParams {
     edgeOpacityMin: numericDefault("edgeOpacityMin"),
     edgeOpacityMax: numericDefault("edgeOpacityMax"),
     edgeColorMode: stringDefault("edgeColorMode") as EdgeColorMode,
+    nodeIcons: booleanDefault("nodeIcons"),
   };
 }
 
@@ -930,7 +950,7 @@ export function appearanceDefaults(): AppearanceParams {
 // default. The registry owns the bounded normalize (engine-never-learns-ids, exactly
 // as keymap/registry owns normalizeKeybindingOverrides) and the resolve→values.
 
-export type GraphControlOverrides = Record<string, number | string>;
+export type GraphControlOverrides = Record<string, number | string | boolean>;
 
 /** Engine-contract bound on the sparse override map (matches the engine cap;
  *  bounded-by-default-for-every-accumulator). */
@@ -974,6 +994,9 @@ export function normalizeGraphControlOverrides(
         continue;
       }
       out[id] = raw;
+    } else if (spec.type === "boolean") {
+      if (typeof raw !== "boolean") continue;
+      out[id] = raw;
     } else {
       continue;
     }
@@ -999,7 +1022,10 @@ export function resolveForceParams(overrides: GraphControlOverrides): D3ForcePar
 export function resolveAppearanceParams(
   overrides: GraphControlOverrides,
 ): AppearanceParams {
-  const out = appearanceDefaults() as unknown as Record<string, number | string>;
+  const out = appearanceDefaults() as unknown as Record<
+    string,
+    number | string | boolean
+  >;
   for (const [id, value] of Object.entries(overrides)) {
     if (SPEC_BY_ID.get(id)?.group === "visualisation") out[id] = value;
   }

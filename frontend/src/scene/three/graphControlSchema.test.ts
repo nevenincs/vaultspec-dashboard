@@ -54,6 +54,7 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   edgeOpacityMin: 0.1,
   edgeOpacityMax: 0.5,
   edgeColorMode: "gradient",
+  nodeIcons: false,
   // --- visualisation: internal render constants ---
   baseNodeRadius: 4,
   salienceRadiusMax: 2.6,
@@ -101,6 +102,7 @@ const EXPECTED_UI_LABELS: Record<string, string> = {
   edgeWidthMax: "Link thickness",
   edgeOpacityMax: "Link opacity",
   edgeColorMode: "Link colour",
+  nodeIcons: "Show icons",
 };
 
 describe("graphControlSchema defaults", () => {
@@ -123,9 +125,9 @@ describe("graphControlSchema defaults", () => {
     }
   });
 
-  it("derives the typed appearance defaults (7 params) from the schema", () => {
+  it("derives the typed appearance defaults (8 params) from the schema", () => {
     const appearance = appearanceDefaults();
-    expect(Object.keys(appearance)).toHaveLength(7);
+    expect(Object.keys(appearance)).toHaveLength(8);
     for (const [key, value] of Object.entries(appearance)) {
       expect(value).toBe(EXPECTED_DEFAULTS[key]);
     }
@@ -209,17 +211,28 @@ describe("graphControlSchema ui labels (single source for the curated UI)", () =
 });
 
 describe("graph_controls overrides (normalize + resolve)", () => {
-  it("keeps valid schema ids, clamps numbers, validates enum; drops the rest", () => {
+  it("keeps valid schema ids, clamps numbers, validates enum + boolean; drops the rest", () => {
     expect(
       normalizeGraphControlOverrides({
         charge: -300, // valid (in -600..0)
         linkDistance: 9999, // out of range -> clamp to 200
         edgeColorMode: "solid", // valid enum
+        nodeIcons: true, // valid boolean
         nodeSizeScale: "big", // wrong type -> dropped
         unknownId: 5, // not a schema id -> dropped
         frozen: true, // not a schema id -> dropped
       }),
-    ).toEqual({ charge: -300, linkDistance: 200, edgeColorMode: "solid" });
+    ).toEqual({
+      charge: -300,
+      linkDistance: 200,
+      edgeColorMode: "solid",
+      nodeIcons: true,
+    });
+  });
+
+  it("rejects a non-boolean value for a boolean control", () => {
+    expect(normalizeGraphControlOverrides({ nodeIcons: "yes" })).toEqual({});
+    expect(normalizeGraphControlOverrides({ nodeIcons: 1 })).toEqual({});
   });
 
   it("rejects an invalid enum value and non-finite numbers", () => {

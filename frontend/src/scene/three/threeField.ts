@@ -64,6 +64,7 @@ import {
 import { D3_FORCE_DEFAULTS, D3ForceSolver, type D3ForceParams } from "./d3ForceSolver";
 import { labelTextStyle } from "./labelStyle";
 import { uiScale } from "./uiScale";
+import { buildGlyphAtlas, glyphKeyForNode, type GlyphAtlas } from "./glyphAtlas";
 
 // Pointer hit tolerance in screen px at the 16px rem basis; UI-scaled at use.
 // Tweakable constants are read FROM the canonical control registry
@@ -98,6 +99,15 @@ const PULSE_RING_ALPHA = controlNumber("pulseRingAlpha");
 // only emphasis is this gentle node recede + a thin accent focus ring. No glow, no near-black.
 const NODE_RECEDE_MIX = 0.3; // gentle non-focus mix toward the canvas bg (subtle de-emphasis)
 const FOCUS_RING_WIDTH_PX = 2; // thin accent focus ring on the hovered hub
+// Icon mode (graph-node-icons): the circle ↔ doc-type-icon cross-fade by on-screen
+// node size. Below LO the node is a plain dot (an icon would be sub-legible — the marks
+// are gated at 14px); above HI it is the full icon; between, the two cross-fade. The
+// icon quad is drawn a touch larger than the dot it replaces so the silhouette reads.
+// Local render constants (mirroring NODE_RECEDE_MIX / FOCUS_RING_WIDTH_PX above), not
+// schema knobs — they are fixed legibility thresholds, not user-tunable look params.
+const ICON_SIZE_MULT = 1.7; // icon half-extent vs node radius
+const ICON_FADE_LO_PX = 5; // node radius (screen px) where the icon begins to appear
+const ICON_FADE_HI_PX = 11; // ...and is fully shown (the dot has fully faded)
 // Bounded GL-context-restore retries (bounded-by-default): after this many failed rebuilds
 // on webglcontextrestored, the scene reports render-unavailable (recoverable:false).
 const MAX_GL_RESTORE_ATTEMPTS = 3;
@@ -152,8 +162,14 @@ varying float vAA;
 // zoom (Obsidian/Cytoscape scale-together), fixing the prior mismatch where nodes
 // scaled in world units but edges held a constant pixel width.
 uniform float uPxScale;          // UI-scale (root font / 16): the screen-px band tracks the DOM
+// Icon mode: when on, the circle FADES OUT as the node grows so its doc-type icon (the
+// sibling glyph mesh) fades IN — dots far out, icons close in. uIconMode 0 ≡ circles only.
+uniform float uIconMode;
+varying float vIconFade;
 const float NODE_MIN_PX = ${glslFloat(controlNumber("nodeMinPx"))}; // floor on screen — visible zoomed out (schema nodeMinPx)
 const float NODE_MAX_PX = ${glslFloat(controlNumber("nodeMaxPx"))}; // ceiling on screen — no balloon zoomed in (schema nodeMaxPx)
+const float ICON_FADE_LO = ${glslFloat(ICON_FADE_LO_PX)};
+const float ICON_FADE_HI = ${glslFloat(ICON_FADE_HI_PX)};
 
 void main() {
   vec2 uv = (vec2(mod(aIndex, uTexSize), floor(aIndex / uTexSize)) + 0.5) / uTexSize;
@@ -170,6 +186,8 @@ void main() {
   vEdge = length(position.xy); // 0 at centre → 1 at the rim
   // Analytic edge-AA band: ~1.5 screen px at the rim, from the CLAMPED on-screen px.
   vAA = pxC > 0.0 ? clamp(1.5 / pxC, 0.0, 0.5) : 0.01;
+  vIconFade =
+    uIconMode * smoothstep(ICON_FADE_LO * uPxScale, ICON_FADE_HI * uPxScale, pxC);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 0.0, 1.0);
 }
 `;
@@ -181,9 +199,12 @@ varying vec3 vColor;
 varying float vDim;
 varying float vEdge;
 varying float vAA;
+varying float vIconFade;
 
 void main() {
   float alpha = 1.0 - smoothstep(1.0 - vAA, 1.0, vEdge);
+  // Cross-fade: the circle recedes as its icon takes over (icon mode only; vIconFade 0 otherwise).
+  alpha *= (1.0 - vIconFade);
   if (alpha <= 0.0) discard;
   // Emphasis is COLOUR-ONLY at full opacity (never an opacity fade). A focus node keeps its
   // full category colour; a non-focus node (vDim > 0.5) mixes GENTLY toward uDimColor (the
@@ -258,6 +279,72 @@ void main() {
 }
 `;
 
+// Glyph layer (graph-node-icons): a quad per node textured from the doc-type mark
+// atlas, sampling the SAME position texture + on-screen px clamp as the node circle so
+// the icon sits exactly where the dot was. Tinted by the node's category hue (the atlas
+// is a white-ink coverage map — the white-ink-then-tint contract). The quad's UVs map
+// its TOP vertex to v=0 so the upright (top-down) atlas renders upright.
+const GLYPH_VERTEX = /* glsl */ `
+attribute float aIndex;
+attribute float aSize;
+attribute vec3 aColor;
+attribute float aDim;
+attribute float aHidden;
+attribute float aCell;
+attribute vec2 aUv;
+uniform sampler2D uPositions;
+uniform float uTexSize;
+uniform float uPixelsPerWorld;
+uniform float uPxScale;
+uniform float uAtlasCols;
+uniform float uAtlasRows;
+varying vec2 vUv;
+varying vec3 vColor;
+varying float vDim;
+varying float vFade;
+const float NODE_MIN_PX = ${glslFloat(controlNumber("nodeMinPx"))};
+const float NODE_MAX_PX = ${glslFloat(controlNumber("nodeMaxPx"))};
+const float ICON_MULT = ${glslFloat(ICON_SIZE_MULT)};
+const float ICON_FADE_LO = ${glslFloat(ICON_FADE_LO_PX)};
+const float ICON_FADE_HI = ${glslFloat(ICON_FADE_HI_PX)};
+
+void main() {
+  vec2 puv = (vec2(mod(aIndex, uTexSize), floor(aIndex / uTexSize)) + 0.5) / uTexSize;
+  vec2 center = texture2D(uPositions, puv).xy;
+  float ppw = uPixelsPerWorld;
+  float pxC = clamp(aSize * ppw, NODE_MIN_PX * uPxScale, NODE_MAX_PX * uPxScale);
+  float radiusWorld = ppw > 0.0 ? pxC / ppw : aSize;
+  float scale = (aHidden > 0.5 || aCell < 0.0) ? 0.0 : radiusWorld * ICON_MULT;
+  vec2 world = center + position.xy * scale;
+  float col = mod(aCell, uAtlasCols);
+  float row = floor(aCell / uAtlasCols);
+  vUv = vec2((col + aUv.x) / uAtlasCols, (row + aUv.y) / uAtlasRows);
+  vColor = aColor;
+  vDim = aDim;
+  vFade = smoothstep(ICON_FADE_LO * uPxScale, ICON_FADE_HI * uPxScale, pxC);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 0.0, 1.0);
+}
+`;
+
+const GLYPH_FRAGMENT = /* glsl */ `
+precision mediump float;
+uniform sampler2D uAtlas;
+uniform vec3 uDimColor;
+varying vec2 vUv;
+varying vec3 vColor;
+varying float vDim;
+varying float vFade;
+
+void main() {
+  float cov = texture2D(uAtlas, vUv).r;
+  float a = cov * vFade;
+  if (a <= 0.01) discard;
+  // Same gentle de-emphasis recede as the circle, so a de-emphasised icon matches.
+  vec3 col = vDim > 0.5 ? mix(vColor, uDimColor, ${glslFloat(NODE_RECEDE_MIX)}) : vColor;
+  gl_FragColor = vec4(col, a);
+}
+`;
+
 interface BuiltEdge {
   a: number;
   b: number;
@@ -278,6 +365,14 @@ export class ThreeField implements SceneFieldRenderer {
   private edgeMesh: Mesh | null = null;
   private nodeMaterial: ShaderMaterial | null = null;
   private edgeMaterial: ShaderMaterial | null = null;
+  // Icon mode (graph-node-icons): a sibling glyph mesh + the shared doc-type-mark atlas.
+  // The atlas is built lazily on first icon enable and cached across data swaps; the mesh
+  // is rebuilt with each set-data alongside the node mesh. Null when icons have never been
+  // turned on (or the host cannot build the texture).
+  private glyphMesh: Mesh | null = null;
+  private glyphMaterial: ShaderMaterial | null = null;
+  private glyphAtlas: GlyphAtlas | null = null;
+  private glyphAtlasFailed = false;
   // GPU mirror of the CPU positions (cpuPositions). The vertex shaders sample this
   // by node id; we flag it needsUpdate after every tick so three re-uploads it.
   private positionTex: DataTexture | null = null;
@@ -487,6 +582,8 @@ export class ThreeField implements SceneFieldRenderer {
     this.pulseTimer = 0;
     this.scheduled = false;
     this.disposeGraph();
+    this.glyphAtlas?.texture.dispose();
+    this.glyphAtlas = null;
     this.detachMinimap?.();
     this.detachMinimap = null;
     this.minimapCanvas = null;
@@ -577,6 +674,12 @@ export class ThreeField implements SceneFieldRenderer {
     this.edgeMaterial = null;
     this.positionTex?.dispose();
     this.positionTex = null;
+    // The glyph atlas is a GPU texture too — its handle is dead after a context loss, so
+    // drop it (and the mesh) and let buildNodes rebuild both from the cached marks.
+    this.disposeGlyphs();
+    this.glyphAtlas?.texture.dispose();
+    this.glyphAtlas = null;
+    this.glyphAtlasFailed = false;
     if (this.nodes.length === 0 || !this.solver) return;
     const texSize = this.solver.texSize;
     this.positionTex = new DataTexture(
@@ -923,6 +1026,7 @@ export class ThreeField implements SceneFieldRenderer {
         uPixelsPerWorld: { value: this.pixelsPerWorld() },
         uDimColor: { value: [dim.r, dim.g, dim.b] },
         uPxScale: { value: uiScale() },
+        uIconMode: { value: this.appearance.nodeIcons ? 1 : 0 },
       },
       vertexShader: NODE_VERTEX,
       fragmentShader: NODE_FRAGMENT,
@@ -934,6 +1038,83 @@ export class ThreeField implements SceneFieldRenderer {
     this.nodeMesh.frustumCulled = false;
     this.nodeMesh.renderOrder = 1;
     this.scene.add(this.nodeMesh);
+
+    // Build the icon layer when icon mode is active (lazy: the atlas is built on first
+    // enable and cached). Re-syncs aColor/aSize from the node attrs just computed.
+    if (this.appearance.nodeIcons) this.buildGlyphs(nodes, texSize, aColor, aSize);
+  }
+
+  /**
+   * Build the per-node glyph (icon) instanced mesh — the sibling of buildNodes. Reuses
+   * the node attrs (same index/size/colour) and adds the atlas cell per node. The atlas
+   * is built once and cached; if it cannot be built (no texture support) the icon layer
+   * is skipped and the circles render unchanged. Disposed in disposeGraph; rebuilt on a
+   * data swap or an icon-mode enable.
+   */
+  private buildGlyphs(
+    nodes: SceneNodeData[],
+    texSize: number,
+    aColor: Float32Array,
+    aSize: Float32Array,
+  ): void {
+    if (!this.renderer || nodes.length === 0) return;
+    if (!this.glyphAtlas) {
+      if (this.glyphAtlasFailed) return;
+      this.glyphAtlas = buildGlyphAtlas();
+      if (!this.glyphAtlas) {
+        this.glyphAtlasFailed = true;
+        return;
+      }
+    }
+    const atlas = this.glyphAtlas;
+    const n = nodes.length;
+    const aIndex = new Float32Array(n);
+    const aDim = new Float32Array(n);
+    const aHidden = new Float32Array(n);
+    const aCell = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      aIndex[i] = i;
+      aCell[i] = atlas.cellOf(glyphKeyForNode(nodes[i]));
+    }
+
+    // Unit quad (-1..1), UVs map the TOP vertex to v=0 so the top-down atlas is upright.
+    const quadPos = new Float32Array([-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0]);
+    const quadUv = new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]);
+    const quadIdx = new Uint32Array([0, 1, 2, 2, 1, 3]);
+    const geom = new InstancedBufferGeometry();
+    geom.setAttribute("position", new Float32BufferAttribute(quadPos, 3));
+    geom.setAttribute("aUv", new Float32BufferAttribute(quadUv, 2));
+    geom.setIndex(new Uint32BufferAttribute(quadIdx, 1));
+    geom.setAttribute("aIndex", new InstancedBufferAttribute(aIndex, 1));
+    geom.setAttribute("aSize", new InstancedBufferAttribute(aSize.slice(), 1));
+    geom.setAttribute("aColor", new InstancedBufferAttribute(aColor.slice(), 3));
+    geom.setAttribute("aDim", new InstancedBufferAttribute(aDim, 1));
+    geom.setAttribute("aHidden", new InstancedBufferAttribute(aHidden, 1));
+    geom.setAttribute("aCell", new InstancedBufferAttribute(aCell, 1));
+    geom.instanceCount = n;
+
+    const dim = new Color(canvasBackground());
+    this.glyphMaterial = new ShaderMaterial({
+      uniforms: {
+        uPositions: { value: null as Texture | null },
+        uTexSize: { value: texSize },
+        uPixelsPerWorld: { value: this.pixelsPerWorld() },
+        uPxScale: { value: uiScale() },
+        uAtlas: { value: atlas.texture },
+        uAtlasCols: { value: atlas.cols },
+        uAtlasRows: { value: atlas.rows },
+        uDimColor: { value: [dim.r, dim.g, dim.b] },
+      },
+      vertexShader: GLYPH_VERTEX,
+      fragmentShader: GLYPH_FRAGMENT,
+      transparent: true,
+      depthTest: false,
+    });
+    this.glyphMesh = new Mesh(geom, this.glyphMaterial);
+    this.glyphMesh.frustumCulled = false;
+    this.glyphMesh.renderOrder = 2; // above edges (0) and node circles (1)
+    this.glyphMesh.visible = this.appearance.nodeIcons;
+    this.scene.add(this.glyphMesh);
   }
 
   private buildEdges(
@@ -1045,6 +1226,7 @@ export class ThreeField implements SceneFieldRenderer {
       this.edgeMesh.geometry.dispose();
       this.edgeMesh = null;
     }
+    this.disposeGlyphs();
     this.nodeMaterial?.dispose();
     this.edgeMaterial?.dispose();
     this.nodeMaterial = null;
@@ -1058,6 +1240,18 @@ export class ThreeField implements SceneFieldRenderer {
     this.builtEdges = [];
     this.edgeData = [];
     this.edgeBaseAlpha = new Float32Array(0);
+  }
+
+  /** Tear down the glyph mesh + material (the cached atlas texture survives, reused on
+   *  the next build; it is only disposed on destroy or a GL context loss). */
+  private disposeGlyphs(): void {
+    if (this.glyphMesh) {
+      this.scene.remove(this.glyphMesh);
+      this.glyphMesh.geometry.dispose();
+      this.glyphMesh = null;
+    }
+    this.glyphMaterial?.dispose();
+    this.glyphMaterial = null;
   }
 
   // --- emphasis / visibility -----------------------------------------------
@@ -1090,10 +1284,14 @@ export class ThreeField implements SceneFieldRenderer {
     // node OR no emphasis), 1 = de-emphasised (recede toward the warm ground, FULL alpha).
     // A focus node keeps full saturation; the hovered hub's pop is the ring + glow.
     const nodeDim = this.nodeMesh.geometry.getAttribute("aDim");
+    const glyphDim = this.glyphMesh?.geometry.getAttribute("aDim");
     for (let i = 0; i < this.nodes.length; i++) {
-      nodeDim.setX(i, active && !active.has(this.nodes[i].id) ? 1 : 0);
+      const dimmed = active && !active.has(this.nodes[i].id) ? 1 : 0;
+      nodeDim.setX(i, dimmed);
+      glyphDim?.setX(i, dimmed); // the icon recedes with its circle
     }
     nodeDim.needsUpdate = true;
+    if (glyphDim) glyphDim.needsUpdate = true;
 
     // EDGES keep their category GRADIENT colour + confidence width in EVERY mode (built once
     // in buildEdges, never recoloured on hover/selection) — user goal: theme palette only,
@@ -1107,10 +1305,14 @@ export class ThreeField implements SceneFieldRenderer {
   ): void {
     if (!this.nodeMesh || !this.edgeMesh) return;
     const hidden = this.nodeMesh.geometry.getAttribute("aHidden");
+    const glyphHidden = this.glyphMesh?.geometry.getAttribute("aHidden");
     for (let i = 0; i < this.nodes.length; i++) {
-      hidden.setX(i, nodeIds.has(this.nodes[i].id) ? 0 : 1);
+      const h = nodeIds.has(this.nodes[i].id) ? 0 : 1;
+      hidden.setX(i, h);
+      glyphHidden?.setX(i, h); // a filtered-out node hides its icon too
     }
     hidden.needsUpdate = true;
+    if (glyphHidden) glyphHidden.needsUpdate = true;
     // edgeIds membership is by edge id; we kept only endpoint ids, so visibility
     // falls back to endpoint membership (both endpoints visible ⇒ shown). Apply the
     // edge alpha from the retained base opacity gated by that mask.
@@ -1194,13 +1396,18 @@ export class ThreeField implements SceneFieldRenderer {
       this.appearance.edgeOpacityMin !== prev.edgeOpacityMin ||
       this.appearance.edgeOpacityMax !== prev.edgeOpacityMax ||
       this.appearance.edgeColorMode !== prev.edgeColorMode;
+    const iconsChanged = this.appearance.nodeIcons !== prev.nodeIcons;
 
     if (sizeChanged && this.nodeMesh) {
       const aSize = this.nodeMesh.geometry.getAttribute("aSize");
+      const glyphSize = this.glyphMesh?.geometry.getAttribute("aSize");
       for (let i = 0; i < this.nodes.length; i++) {
-        aSize.setX(i, nodeWorldRadius(this.nodes[i], this.appearance));
+        const r = nodeWorldRadius(this.nodes[i], this.appearance);
+        aSize.setX(i, r);
+        glyphSize?.setX(i, r); // the icon tracks the dot's size
       }
       aSize.needsUpdate = true;
+      if (glyphSize) glyphSize.needsUpdate = true;
       // Node size is the collision body too: re-feed collide radii so spacing tracks
       // the drawn size (the solver rebuilds collide + gently reheats).
       if (this.solver) {
@@ -1238,6 +1445,25 @@ export class ThreeField implements SceneFieldRenderer {
       aWidth.needsUpdate = true;
       aColor.needsUpdate = true;
       this.applyEdgeAlpha();
+    }
+
+    if (iconsChanged) {
+      const on = this.appearance.nodeIcons;
+      if (this.nodeMaterial) this.nodeMaterial.uniforms.uIconMode.value = on ? 1 : 0;
+      // Build the icon layer on first enable; thereafter just toggle its visibility.
+      if (on && !this.glyphMesh && this.solver && this.nodeMesh) {
+        const aColor = this.nodeMesh.geometry.getAttribute("aColor")
+          .array as Float32Array;
+        const aSize = this.nodeMesh.geometry.getAttribute("aSize")
+          .array as Float32Array;
+        this.buildGlyphs(this.nodes, this.solver.texSize, aColor, aSize);
+        // Reflect the current emphasis/visibility onto the freshly-built glyph attrs.
+        this.applyEmphasis();
+        if (this.visibleNodeIds) {
+          this.applyVisibility(this.visibleNodeIds, new Set<string>());
+        }
+      }
+      if (this.glyphMesh) this.glyphMesh.visible = on;
     }
 
     this.requestRender();
@@ -1336,6 +1562,11 @@ export class ThreeField implements SceneFieldRenderer {
       this.edgeMaterial.uniforms.uPositions.value = tex;
       this.edgeMaterial.uniforms.uPixelsPerWorld.value = ppw;
       this.edgeMaterial.uniforms.uPxScale.value = pxScale;
+    }
+    if (this.glyphMaterial && this.glyphMesh?.visible) {
+      this.glyphMaterial.uniforms.uPositions.value = tex;
+      this.glyphMaterial.uniforms.uPixelsPerWorld.value = ppw;
+      this.glyphMaterial.uniforms.uPxScale.value = pxScale;
     }
     this.renderer.render(this.scene, this.camera);
     this.drawLabels();

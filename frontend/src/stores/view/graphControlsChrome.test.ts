@@ -7,6 +7,7 @@ import {
   deriveGraphControlsBoundPresentationView,
   deriveGraphControlsFreezeToggleView,
   deriveGraphControlsNavigationView,
+  deriveGraphControlsReflowToggleView,
   deriveGraphControlsSettingsPopoverView,
   deriveGraphControlsTunePresentationView,
   formatGraphControlsAppearanceValue,
@@ -27,6 +28,8 @@ import {
   toggleGraphControlsAppearanceOpen,
   toggleGraphControlsLayoutOpen,
   toggleGraphControlsSettingsOpen,
+  toggleGraphReflowFilter,
+  setGraphReflowFilter,
   useGraphControlsChromeStore,
 } from "./graphControlsChrome";
 import { specById } from "../../scene/three/graphControlSchema";
@@ -190,6 +193,32 @@ describe("graph controls chrome view seam", () => {
     expect(normalizeGraphControlsFrozenScope("  scope-b  ")).toBe("scope-b");
     expect(normalizeGraphControlsFrozenScope("   ")).toBeNull();
   });
+
+  it("sets, toggles, normalizes, and resets the reflow-filter flag", () => {
+    expect(useGraphControlsChromeStore.getState().reflowFilter).toBe(false);
+
+    setGraphReflowFilter(true);
+    expect(useGraphControlsChromeStore.getState().reflowFilter).toBe(true);
+
+    toggleGraphReflowFilter();
+    expect(useGraphControlsChromeStore.getState().reflowFilter).toBe(false);
+
+    // Non-boolean truthy normalizes to false (only a real boolean true enables it).
+    setGraphReflowFilter("true");
+    expect(useGraphControlsChromeStore.getState().reflowFilter).toBe(false);
+
+    setGraphReflowFilter(true);
+    resetGraphControlsChrome();
+    expect(useGraphControlsChromeStore.getState().reflowFilter).toBe(false);
+  });
+
+  it("derives plain-language reflow toggle copy for each state", () => {
+    expect(deriveGraphControlsReflowToggleView(false).label).toBe("Reflow on filter");
+    expect(deriveGraphControlsReflowToggleView(true).label).toBe("Reflow on filter");
+    // The title explains the OTHER mode it switches to (no jargon).
+    expect(deriveGraphControlsReflowToggleView(false).title).toContain("remove");
+    expect(deriveGraphControlsReflowToggleView(true).title).toContain("dim");
+  });
 });
 
 describe("graph controls tune seam (three-native force params)", () => {
@@ -280,6 +309,7 @@ describe("graph controls appearance seam (set-appearance-params)", () => {
       edgeOpacityMin: 0.1,
       edgeOpacityMax: 0.5,
       edgeColorMode: "gradient",
+      nodeIcons: false,
     });
     expect(useGraphControlsChromeStore.getState().appearanceParams).toEqual(
       GRAPH_CONTROLS_APPEARANCE_DEFAULTS,

@@ -56,6 +56,9 @@ export interface AppearanceParams {
   edgeOpacityMax: number;
   /** How an edge inherits colour from its endpoint nodes (never tier/grey/black). */
   edgeColorMode: EdgeColorMode;
+  /** Draw nodes as their doc-type element mark instead of a plain category circle
+   *  (graph-node-icons). A toggle — circles cross-fade to icons by on-screen size. */
+  nodeIcons: boolean;
 }
 
 // Derived from the canonical control registry (graphControlSchema) — the schema is

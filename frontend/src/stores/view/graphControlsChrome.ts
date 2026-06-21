@@ -258,6 +258,9 @@ export interface GraphControlsAppearanceParams {
   edgeOpacityMin: number;
   edgeOpacityMax: number;
   edgeColorMode: GraphControlsEdgeColorMode;
+  /** Draw nodes as their doc-type element mark instead of a plain category circle
+   *  (graph-node-icons). A boolean toggle in the appearance section. */
+  nodeIcons: boolean;
 }
 
 /** The appearance knobs the UI exposes as sliders (the min ends are not surfaced). */
@@ -308,6 +311,10 @@ export function normalizeGraphControlsAppearanceParams(
       mode === "solid" || mode === "gradient"
         ? mode
         : GRAPH_CONTROLS_APPEARANCE_DEFAULTS.edgeColorMode,
+    nodeIcons:
+      typeof value.nodeIcons === "boolean"
+        ? value.nodeIcons
+        : GRAPH_CONTROLS_APPEARANCE_DEFAULTS.nodeIcons,
   };
 }
 
@@ -319,6 +326,10 @@ export interface GraphControlsAppearancePresentationView {
   colorModeAriaLabel: string;
   solidLabel: string;
   gradientLabel: string;
+  /** "Show icons" toggle copy (graph-node-icons), schema-derived. */
+  iconsLabel: string;
+  iconsTitle: string;
+  iconsAriaLabel: string;
   resetButtonClassName: string;
   resetLabel: string;
   sliders: Record<
@@ -344,6 +355,9 @@ export function deriveGraphControlsAppearancePresentationView(): GraphControlsAp
     colorModeAriaLabel: "Link colour mode",
     solidLabel: "Solid",
     gradientLabel: "Blended",
+    iconsLabel: specById("nodeIcons")?.uiLabel ?? "Show icons",
+    iconsTitle: "Draw each node as its document-type icon instead of a plain circle",
+    iconsAriaLabel: "Show node icons",
     resetButtonClassName:
       "self-start text-caption text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
     resetLabel: "Reset to defaults",
@@ -432,6 +446,25 @@ export function deriveGraphControlsFreezeToggleView(
   };
 }
 
+export interface GraphControlsReflowToggleView {
+  label: string;
+  title: string;
+}
+
+/** Plain-language copy for the reflow-filter toggle row (ui-labels-are-user-facing:
+ *  no "simulation"/"topology" jargon). The title explains the OTHER mode it switches
+ *  to, so the user knows what the toggle does in either state. */
+export function deriveGraphControlsReflowToggleView(
+  reflow: boolean,
+): GraphControlsReflowToggleView {
+  return {
+    label: "Reflow on filter",
+    title: reflow
+      ? "Filtered-out nodes are removed and the graph re-forms around what's left — turn off to dim them in place instead"
+      : "Filtered-out nodes are dimmed in place — turn on to remove them so the graph re-forms around what's left",
+  };
+}
+
 export interface GraphControlsNavigationButtonView {
   label: string;
   title?: string;
@@ -473,6 +506,13 @@ interface GraphControlsChromeState {
   appearanceOpen: boolean;
   frozen: boolean;
   frozenScope: string | null;
+  // Reflow filter mode (canvas-local behaviour toggle, sibling of `frozen`): when on,
+  // filtering REMOVES the filtered-out nodes/edges from the live simulation so the
+  // layout re-forms around the survivors, instead of dimming/hiding them in place. A
+  // pure scene-behaviour flag — never the canonical dashboard filter, and (like
+  // `frozen`) never a persisted graph_controls override (the setting persists only
+  // number/enum controls).
+  reflowFilter: boolean;
   tuneParams: GraphControlsTuneParams;
   appearanceParams: GraphControlsAppearanceParams;
   setSettingsOpen: (open: unknown) => void;
@@ -482,6 +522,8 @@ interface GraphControlsChromeState {
   setAppearanceOpen: (open: unknown) => void;
   toggleAppearanceOpen: () => void;
   setFrozen: (frozen: unknown, scope: unknown) => void;
+  setReflowFilter: (on: unknown) => void;
+  toggleReflowFilter: () => void;
   setTuneParams: (params: unknown) => void;
   patchTuneParams: (patch: unknown) => void;
   setAppearanceParams: (params: unknown) => void;
@@ -495,6 +537,7 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
   appearanceOpen: true,
   frozen: false,
   frozenScope: null,
+  reflowFilter: false,
   tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
   appearanceParams: normalizeGraphControlsAppearanceParams(
     GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
@@ -514,6 +557,8 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
       frozen: normalizeGraphControlsFrozen(frozen),
       frozenScope: normalizeGraphControlsFrozenScope(frozenScope),
     }),
+  setReflowFilter: (on) => set({ reflowFilter: normalizeGraphControlsOpen(on) }),
+  toggleReflowFilter: () => set((state) => ({ reflowFilter: !state.reflowFilter })),
   setTuneParams: (tuneParams) =>
     set({ tuneParams: normalizeGraphControlsTuneParams(tuneParams) }),
   patchTuneParams: (patch) =>
@@ -553,6 +598,7 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
       appearanceOpen: true,
       frozen: false,
       frozenScope: null,
+      reflowFilter: false,
       tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
       appearanceParams: normalizeGraphControlsAppearanceParams(
         GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
@@ -606,6 +652,18 @@ export function toggleGraphControlsAppearanceOpen(): void {
 
 export function setGraphControlsFrozen(frozen: unknown, scope: unknown): void {
   useGraphControlsChromeStore.getState().setFrozen(frozen, scope);
+}
+
+export function useGraphReflowFilter(): boolean {
+  return useGraphControlsChromeStore((state) => state.reflowFilter);
+}
+
+export function setGraphReflowFilter(on: unknown): void {
+  useGraphControlsChromeStore.getState().setReflowFilter(on);
+}
+
+export function toggleGraphReflowFilter(): void {
+  useGraphControlsChromeStore.getState().toggleReflowFilter();
 }
 
 export function resetGraphControlsChrome(): void {

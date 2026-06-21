@@ -47,6 +47,9 @@ export interface GraphAppearanceParams {
   edgeOpacityMin?: number;
   edgeOpacityMax?: number;
   edgeColorMode?: "solid" | "gradient";
+  /** Draw nodes as their doc-type element mark instead of a plain category circle
+   *  (graph-node-icons). The field cross-fades circles to icons by on-screen size. */
+  nodeIcons?: boolean;
 }
 
 export type GraphBoundsShape = "free" | "circle" | "rect";
@@ -197,7 +200,19 @@ export interface SceneDelta {
 }
 
 export type SceneCommand =
-  | { kind: "set-data"; nodes: SceneNodeData[]; edges: SceneEdgeData[] }
+  // `reflow` is an ADDITIVE optional flag (default undefined ≡ false preserves the
+  // existing behaviour): a `reflow:true` set-data is a FILTER-driven topology change
+  // (nodes/edges removed or re-added by the active filter), so the field forces a
+  // warm-start — carried nodes resume their positions and the layout re-forms around
+  // the survivors — and never refits the camera, instead of the cold re-explode a
+  // large drop would otherwise take. Powers the reflow filter mode (graph-controls
+  // toggle); omit it and set-data behaves exactly as before.
+  | {
+      kind: "set-data";
+      nodes: SceneNodeData[];
+      edges: SceneEdgeData[];
+      reflow?: boolean;
+    }
   | { kind: "apply-deltas"; deltas: SceneDelta[]; seq: number }
   // `animate` is an ADDITIVE optional flag on the locked seam (default undefined ≡
   // true preserves the existing animated-follow behaviour): `animate:false`

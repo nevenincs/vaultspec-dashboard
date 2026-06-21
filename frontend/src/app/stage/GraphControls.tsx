@@ -55,11 +55,13 @@ import {
   deriveGraphControlsAppearancePresentationView,
   deriveGraphControlsFreezeToggleView,
   deriveGraphControlsNavigationView,
+  deriveGraphControlsReflowToggleView,
   deriveGraphControlsSettingsPopoverView,
   deriveGraphControlsTunePresentationView,
   setGraphControlsAppearanceParams,
   toggleGraphControlsAppearanceOpen,
   toggleGraphControlsLayoutOpen,
+  toggleGraphReflowFilter,
   setGraphControlsFrozen,
   setGraphControlsSettingsOpen,
   setGraphControlsTuneParams,
@@ -73,6 +75,7 @@ import {
   useGraphControlsLayoutOpen,
   useGraphControlsSettingsOpen,
   useGraphControlsTuneParams,
+  useGraphReflowFilter,
 } from "../../stores/view/graphControlsChrome";
 import { getScene } from "./Stage";
 
@@ -272,6 +275,29 @@ function FreezeRow() {
 }
 
 // ---------------------------------------------------------------------------
+// ReflowRow — the "Reflow on filter" row: a label + a kit Switch over the
+// canvas-local reflow flag. OFF (default) = filtering dims/hides nodes in place
+// (stable positions); ON = filtering REMOVES them from the live simulation so the
+// graph re-forms around the survivors. Unlike FreezeRow this dispatches no scene
+// command directly — Stage's reactive data effect reads the flag and re-feeds the
+// (filtered) set-data with the reflow hint. A canvas-behaviour toggle, never the
+// canonical filter (filtering-has-one-canonical-surface: the rail still authors WHAT
+// is filtered; this only changes HOW the canvas reacts).
+// ---------------------------------------------------------------------------
+
+function ReflowRow() {
+  const reflow = useGraphReflowFilter();
+  const tuneView = deriveGraphControlsTunePresentationView();
+  const view = deriveGraphControlsReflowToggleView(reflow);
+  return (
+    <div className={tuneView.freezeRowClassName} title={view.title}>
+      <span className={tuneView.freezeLabelClassName}>{view.label}</span>
+      <Switch checked={reflow} onChange={toggleGraphReflowFilter} label={view.label} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // LayoutSection — the collapsible LAYOUT group: the field's d3-force knobs (Spacing
 // / Link length / Grouping) + the Freeze layout row. The sliders map onto
 // `set-force-params` (Spacing → −charge magnitude; link distance / spring straight
@@ -346,6 +372,7 @@ function LayoutSection() {
         onInteractEnd={endInteraction}
       />
       <FreezeRow />
+      <ReflowRow />
     </FoldableCategory>
   );
 }
@@ -383,6 +410,7 @@ function AppearanceSection() {
         edgeOpacityMin: next.edgeOpacityMin,
         edgeOpacityMax: next.edgeOpacityMax,
         edgeColorMode: next.edgeColorMode,
+        nodeIcons: next.nodeIcons,
       },
     });
     armKeyboardSettle();
@@ -454,6 +482,17 @@ function AppearanceSection() {
           <Segment value="solid">{view.solidLabel}</Segment>
           <Segment value="gradient">{view.gradientLabel}</Segment>
         </SegmentedToggle>
+      </div>
+      <div
+        className="flex items-center justify-between gap-fg-2"
+        title={view.iconsTitle}
+      >
+        <span className="text-label text-ink-muted">{view.iconsLabel}</span>
+        <Switch
+          checked={params.nodeIcons}
+          onChange={(v) => apply({ nodeIcons: v })}
+          label={view.iconsAriaLabel}
+        />
       </div>
     </FoldableCategory>
   );
