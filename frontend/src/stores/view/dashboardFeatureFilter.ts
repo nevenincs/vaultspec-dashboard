@@ -47,9 +47,9 @@ export function useDashboardFeatureFilterDraft(
 
   const write = useCallback((next: string) => {
     const parsed = parseFeatureQueryInput(next);
-    void writeFeatureQueryRef.current(parsed satisfies FeatureQuery | null).catch(
-      () => undefined,
-    );
+    void writeFeatureQueryRef
+      .current(parsed satisfies FeatureQuery | null)
+      .catch(() => undefined);
   }, []);
 
   const debouncedWrite = useMemo(

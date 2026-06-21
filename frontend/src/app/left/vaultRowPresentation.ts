@@ -23,6 +23,7 @@ import {
 } from "@phosphor-icons/react";
 
 import { docTypeLabel } from "../../stores/server/docTypeVocabulary";
+import { featureTagDisplayName } from "../../stores/featureQuery";
 import type { Category } from "../kit";
 import { freshnessLabel, isFresh } from "../presentation/freshness";
 
@@ -230,14 +231,11 @@ export function docDateLabel(iso?: string): string {
 }
 
 /** A readable FEATURE name for the Features section rows (binding `LeftRail`
- *  238:600 — "Dashboard Left Rail", not the raw `#dashboard-left-rail` tag): drop
- *  a leading `#`, de-kebab/underscore, and Title-Case each word. Presentation only;
- *  the selection-join identity stays the real feature tag. */
-export function featureDisplayName(tag: string): string {
-  const cleaned = tag.replace(/^#/, "").replace(/[-_]+/g, " ").trim();
-  if (cleaned.length === 0) return tag;
-  return cleaned.replace(/\b\w/g, (ch) => ch.toUpperCase());
-}
+ *  238:600 — "Dashboard Left Rail", not the raw `#dashboard-left-rail` tag).
+ *  Delegates to the shared `featureTagDisplayName` so the rail rows, the feature
+ *  search autofill, and the feature-query narrow all sanitize identically.
+ *  Presentation only; the selection-join identity stays the real feature tag. */
+export const featureDisplayName = featureTagDisplayName;
 
 /** A readable row title derived from the document stem (see note above). */
 export function docDisplayTitle(path: string): string {

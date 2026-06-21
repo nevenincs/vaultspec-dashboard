@@ -172,5 +172,7 @@ export function featureTagSuggestions(
     .filter((row) => row.rank >= 0)
     .sort((a, b) => a.rank - b.rank || a.display.localeCompare(b.display));
 
-  return ranked.slice(0, Math.max(0, limit)).map(({ tag, display }) => ({ tag, display }));
+  return ranked
+    .slice(0, Math.max(0, limit))
+    .map(({ tag, display }) => ({ tag, display }));
 }

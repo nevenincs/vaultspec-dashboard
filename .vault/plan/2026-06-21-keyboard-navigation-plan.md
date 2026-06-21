@@ -9,15 +9,6 @@ related:
   - '[[2026-06-21-keyboard-navigation-adr]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `keyboard-navigation` plan
 
@@ -36,9 +27,9 @@ One pure, reusable primitive standardizes Class-B composite navigation (roving t
 
 A bounded, ordered focus-region registry over the existing landmarks, cycled by F6/Shift+F6 registered as global Class-A keybindings in the existing keymap registry (never a private listener). A skip-to-content link is the first tab stop, and focus is placed on load so document.activeElement is never body.
 
-- [ ] `W01.P02.S03` - Add the bounded ordered focus-region registry (left rail, stage dock, graph canvas, right rail, timeline) with visible-aware resolution and entry-memory hand-off to FocusZone; `frontend/src/stores/view/focusRegions.ts`.
-- [ ] `W01.P02.S04` - Register F6 / Shift+F6 region-cycle as global Class-A keybindings in the keymap registry and wire the dispatcher action to advance/reverse focus to the next visible region; `frontend/src/stores/view/regionCycleKeybindings.ts`.
-- [ ] `W01.P02.S05` - Add the visually-hidden skip-to-content link as first tab stop and place initial focus on load so a visible focused element always exists; `frontend/src/app/AppShell.tsx`.
+- [x] `W01.P02.S03` - Add the bounded ordered focus-region registry (left rail, stage dock, graph canvas, right rail, timeline) with visible-aware resolution and entry-memory hand-off to FocusZone; `frontend/src/app/chrome/focusRegions.ts`.
+- [x] `W01.P02.S04` - Register F6 / Shift+F6 region-cycle as global Class-A keybindings in the keymap registry and wire the dispatcher action to advance/reverse focus to the next visible region; `frontend/src/app/chrome/regionCycleKeybindings.ts`.
+- [x] `W01.P02.S05` - Add the visually-hidden skip-to-content link as first tab stop and place initial focus on load so a visible focused element always exists; `frontend/src/app/AppShell.tsx`.
 
 ### Phase `W01.P03` - Trap remediation and focus-restore discipline
 

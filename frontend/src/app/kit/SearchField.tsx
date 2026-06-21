@@ -9,11 +9,7 @@
 // the next string through `onChange`. The optional clear control appears only when
 // the field is non-empty AND a handler is supplied.
 
-import type {
-  FocusEventHandler,
-  KeyboardEventHandler,
-  Ref,
-} from "react";
+import type { FocusEventHandler, KeyboardEventHandler, Ref } from "react";
 import { Search, X } from "lucide-react";
 
 // 14px structural-chrome glyph — the search mark reads as attenuated chrome inside

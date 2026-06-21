@@ -3,7 +3,11 @@ import { useCallback, useMemo, useRef } from "react";
 import type { FeatureQuery } from "../featureQuery";
 import { useDashboardStateMutations } from "./dashboardState";
 import { normalizeDashboardFeatureQuery } from "./dashboardStateNormalization";
-import { dashboardStateSessionIdentity, useDashboardState, useSession } from "./queries";
+import {
+  dashboardStateSessionIdentity,
+  useDashboardState,
+  useSession,
+} from "./queries";
 import { normalizeStoreScope } from "./scopeIdentity";
 
 export interface DashboardFeatureFilterIntent {

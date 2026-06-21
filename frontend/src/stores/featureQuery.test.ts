@@ -23,7 +23,10 @@ describe("parseFeatureQueryInput", () => {
   });
 
   it("reads a /pattern/ as an advanced regex", () => {
-    expect(parseFeatureQueryInput("/sync$/")).toEqual({ value: "sync$", mode: "regex" });
+    expect(parseFeatureQueryInput("/sync$/")).toEqual({
+      value: "sync$",
+      mode: "regex",
+    });
   });
 
   it("clears on an empty or whitespace input", () => {
