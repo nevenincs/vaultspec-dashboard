@@ -14,7 +14,7 @@ describe("scope switching (ADR §2.1 wholesale swap; finding 022)", () => {
       src: "a",
       dst: "b",
       relation: "similar-to",
-      tier: "semantic",
+      tier: "structural",
       confidence: 0.5,
     });
 
