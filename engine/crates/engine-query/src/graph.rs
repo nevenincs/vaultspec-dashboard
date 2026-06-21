@@ -23,6 +23,43 @@ pub enum Granularity {
     Feature,
 }
 
+/// The unknown-granularity error: carries the offending token so each front
+/// door shapes its own envelope (HTTP 400 + tiers, CLI error) off one parse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownGranularity(pub String);
+
+impl std::fmt::Display for UnknownGranularity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown granularity `{}`", self.0)
+    }
+}
+
+impl std::error::Error for UnknownGranularity {}
+
+impl Granularity {
+    /// Parse the engine-owned granularity parameter (contract §4) from an
+    /// optional wire/CLI token: absent or `document` → [`Granularity::Document`]
+    /// (the default species the live engine serves), `feature` →
+    /// [`Granularity::Feature`], anything else → [`UnknownGranularity`]. This is
+    /// the ONE place the granularity vocabulary is parsed, so the `/graph/query`
+    /// HTTP route and the CLI `graph` verb cannot drift on the tokens they accept
+    /// — the same single-home discipline the bounding helper already follows.
+    pub fn from_param(raw: Option<&str>) -> Result<Self, UnknownGranularity> {
+        match raw {
+            None | Some("document") => Ok(Self::Document),
+            Some("feature") => Ok(Self::Feature),
+            Some(other) => Err(UnknownGranularity(other.to_string())),
+        }
+    }
+}
+
+impl std::str::FromStr for Granularity {
+    type Err = UnknownGranularity;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_param(Some(s))
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct GraphSlice {
     /// Contract §4 node views: at document granularity, the stored node
@@ -732,9 +769,10 @@ fn graph_query_inner(
             // endpoint is a REAL node that was filtered out would dangle — an
             // unbounded, self-inconsistent payload `bound_slice` never prunes
             // (it only acts on cap truncation > MAX_GRAPH_NODES). Drop such an
-            // edge HERE, but KEEP an edge whose endpoint is an unresolved/broken
-            // target (not a graph node at all) so the broken lens still surfaces
-            // it (audit W02P05-201): a broken link is intentionally dangling.
+            // edge HERE. An edge to a genuinely unresolved/broken target is kept
+            // ONLY under the explicitly-requested broken lens (see `endpoint_ok`
+            // below); by default it is dropped too, as a dangling link the client
+            // never renders (audit W02P05-201, narrowed by the 2026-06-21 prune).
             //
             // FILE-BROWSER SCOPE: this is the `.vault/` document browser's graph, so
             // it must contain ONLY authored `.vault/` DOCUMENTS - one node per
@@ -750,24 +788,21 @@ fn graph_query_inner(
                 .filter(|n| n.kind == NodeKind::Document)
                 .collect();
             let kept: HashSet<&str> = doc_nodes.iter().map(|n| n.id.0.as_str()).collect();
-            // Reuse the per-generation cached in-scope node-id set when present
-            // (F4); otherwise build it (the uncached path). Owned-String set so
-            // both paths share one type for the endpoint check.
-            let built_scope_nodes: HashSet<String>;
-            let scope_nodes: &HashSet<String> = match views {
-                Some(index) => &index.scope_node_ids,
-                None => {
-                    built_scope_nodes = graph
-                        .nodes()
-                        .filter(|n| n.facets.iter().any(|f| &f.scope == scope))
-                        .map(|n| n.id.0.clone())
-                        .collect();
-                    &built_scope_nodes
-                }
+            // A served edge must connect two KEPT nodes — only then does the
+            // client render it. Any other endpoint makes the edge pure wire waste
+            // the client just filters out (user directive 2026-06-21: never serve
+            // an edge only to be filtered out). The ONE exception is the
+            // explicitly-requested broken lens (`structural_state` ∋ "broken"): an
+            // edge to a genuinely UNRESOLVED target — not a real graph node at all
+            // — is that lens's subject and may dangle (audit W02P05-201).
+            // Membership is tested against the WHOLE graph, not the scope-faceted
+            // set, so a real-but-excluded node (a plan-container wave/phase/step, a
+            // code/index node, a cross-scope node) is never mistaken for
+            // "unresolved" and its edge is dropped in both cases.
+            let broken_lens = filter.structural_state.iter().any(|s| s == "broken");
+            let endpoint_ok = |id: &str| {
+                kept.contains(id) || (broken_lens && graph.node(&NodeId(id.to_string())).is_none())
             };
-            // An endpoint is acceptable if it survived the node filter, or it is
-            // not a real in-scope node (a broken/unresolved reference).
-            let endpoint_ok = |id: &str| kept.contains(id) || !scope_nodes.contains(id);
             let candidate_edge_ids;
             let mut edges: Vec<&Edge> = match views {
                 Some(index) => {
@@ -1455,13 +1490,15 @@ mod tests {
     }
 
     #[test]
-    fn plan_container_to_exec_binding_resolves_generated_by_and_never_re_keys() {
-        // graph-lineage-dag ADR D3.1/D3.3 (S33/S48): the authored
-        // PlanContainer(step) -> exec-record binding edge — whose src node kind is
-        // PlanContainer (doc_type None), the shape the OLD doc-type-pair gate
-        // dropped — now resolves `generated-by` by reading `node.kind`. And the
-        // label is NOT part of the edge stable key: re-deriving the same logical
-        // binding yields the same id regardless of the served label.
+    fn plan_container_to_exec_binding_is_pruned_but_keeps_its_stable_key() {
+        // Documents-only slice (commit 60f6779d21, narrowed by the 2026-06-21
+        // wire-waste prune): the PlanContainer(step) -> exec-record binding edge
+        // has a PlanContainer src, which is NOT a `.vault/` document and is
+        // excluded from the document slice — so the binding edge is PRUNED rather
+        // than served to dangle against an absent node the client only filters out
+        // (the lineage representation that once consumed the `generated-by` spine
+        // is retired). Its stable key still never re-keys (graph-lineage-dag ADR
+        // D3.3): the derivation label was never an id input.
         let mut g = LinkageGraph::new();
         let step = plan_container("2026-06-16-feature-plan", "W01/P01/S01");
         let exec = exec_doc("2026-06-16-feature-W01-P01-S01");
@@ -1497,22 +1534,15 @@ mod tests {
         let binding_id = binding.id.clone();
         engine_graph::ingest(&mut g, binding, EdgeAttrs::default()).unwrap();
 
+        // Documents-only slice: the PlanContainer src excludes the binding edge.
         let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
-        let edge = slice
-            .edges
-            .iter()
-            .find(|e| e["id"] == binding_id.0)
-            .expect("the PlanContainer->exec binding edge is served");
-        assert_eq!(
-            edge["derivation"], "generated-by",
-            "reading node.kind resolves the authored plan->step->exec spine (D3.1)"
+        assert!(
+            !slice.edges.iter().any(|e| e["id"] == binding_id.0),
+            "the PlanContainer->exec binding edge is pruned from the documents-only slice"
         );
-        // The relation/tier truth is preserved alongside the label.
-        assert_eq!(edge["relation"], "references");
 
-        // D3.3: the served label is NOT an id input. Re-computing the edge id
-        // with the SAME endpoints/relation/tier/provenance yields the same id —
-        // the `generated-by` label never entered that computation.
+        // D3.3: the stable key never re-keys. Re-computing the edge id with the
+        // SAME endpoints/relation/tier/provenance yields the same id.
         let recomputed = edge_id(
             &step_id,
             &exec_id,
@@ -1527,12 +1557,13 @@ mod tests {
     }
 
     #[test]
-    fn contains_hierarchy_edges_resolve_generated_by() {
-        // graph-lineage-dag ADR D3.2 (S34): the plan-internal Contains hierarchy
-        // (plan -> wave -> phase -> step, PlanContainer endpoints) rides
-        // `generated-by` so the authored scaffold is a connected spine, not
-        // dropped off-spine. The open-question decision: it carries no distinct
-        // sub-label.
+    fn contains_hierarchy_edges_are_pruned_from_the_documents_only_slice() {
+        // Documents-only slice (commit 60f6779d21, narrowed by the 2026-06-21
+        // wire-waste prune): the plan-internal Contains hierarchy
+        // (plan -> wave -> phase -> step) has PlanContainer endpoints, none of
+        // which are `.vault/` documents. The document slice serves documents only,
+        // so the hierarchy edges are pruned rather than served to dangle (the
+        // lineage representation that once consumed the spine is retired).
         let mut g = LinkageGraph::new();
         let wave = plan_container("2026-06-16-feature-plan", "W01");
         let phase = plan_container("2026-06-16-feature-plan", "W01/P01");
@@ -1567,16 +1598,10 @@ mod tests {
         engine_graph::ingest(&mut g, contains, EdgeAttrs::default()).unwrap();
 
         let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
-        let edge = slice
-            .edges
-            .iter()
-            .find(|e| e["id"] == contains_id.0)
-            .expect("the Contains hierarchy edge is served");
-        assert_eq!(
-            edge["derivation"], "generated-by",
-            "the Contains scaffold rides generated-by (D3.2 / S34)"
+        assert!(
+            !slice.edges.iter().any(|e| e["id"] == contains_id.0),
+            "Contains hierarchy edges (PlanContainer endpoints) are pruned from the documents-only slice"
         );
-        assert_eq!(edge["relation"], "contains");
     }
 
     /// An `index` doc-type document node (a generated feature index): a real
@@ -1722,6 +1747,50 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn document_slice_drops_unresolved_danglers_by_default_keeps_the_broken_lens() {
+        // User directive (2026-06-21): the backend must never serve an edge the
+        // client only filters out. A RESOLVED edge whose target never resolved to
+        // a real graph node (the shape that leaked ~1.5k `mentions`-to-plan-step
+        // edges onto the wire) is pure waste — dropped by default. A BROKEN edge to
+        // an unresolved target is the broken-lens subject, surfaced ONLY when the
+        // lens is explicitly requested (`structural_state: ["broken"]`).
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-plan", "feature-a"));
+        engine_graph::ingest(
+            &mut g,
+            structural("a-plan", "unresolved-step", ResolutionState::Resolved, 0.9),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+        engine_graph::ingest(
+            &mut g,
+            structural("a-plan", "gone-doc", ResolutionState::Broken, 0.0),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+
+        // Default query: both dangling edges are dropped (no wire waste).
+        let default_slice =
+            graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
+        assert!(
+            default_slice.edges.is_empty(),
+            "dangling edges are dropped by default: {:?}",
+            default_slice.edges
+        );
+
+        // Broken lens: the dangling BROKEN edge is surfaced on explicit request;
+        // the resolved dangler is excluded by the state filter and never returns.
+        let lens: Filter = serde_json::from_str(r#"{"structural_state": ["broken"]}"#).unwrap();
+        let lens_slice = graph_query(&g, &scope(), lens, Granularity::Document).unwrap();
+        assert_eq!(
+            lens_slice.edges.len(),
+            1,
+            "only the broken dangler surfaces"
+        );
+        assert_eq!(lens_slice.edges[0]["state"], "broken");
     }
 
     #[test]

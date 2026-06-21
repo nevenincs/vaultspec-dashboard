@@ -250,12 +250,16 @@ fn derivation_in_slice<'a>(
 }
 
 #[test]
-fn the_plan_to_exec_spine_is_labeled_generated_by_on_the_graph_query_surface() {
-    // graph-node-representation ADR D3 / graph-lineage-dag ADR D3.1/D3.2: the
-    // WHOLE authored plan -> wave -> phase -> step -> exec hierarchy is one
-    // connected `generated-by` spine. The `Contains` scaffold edges (read by
-    // `node.kind == PlanContainer`) AND the step -> exec binding edge (src kind
-    // PlanContainer, dst an exec record) all label `generated-by`.
+fn the_plan_exec_wikilink_is_generated_by_and_the_container_scaffold_is_pruned() {
+    // graph-node-representation ADR D3 + documents-only slice (commit 60f6779d21,
+    // narrowed by the 2026-06-21 wire-waste prune): the `generated-by` derivation
+    // LABEL is live, but the PlanContainer scaffold edges — the `Contains`
+    // hierarchy and the step -> exec binding, all with a PlanContainer endpoint —
+    // are NOT `.vault/` documents, so they are PRUNED from the documents-only slice
+    // (they would only dangle to an absent node the client filters out; the lineage
+    // representation that once consumed the spine is retired). The container-spine
+    // label parity is still covered on the LIVE consumer — the `/graph/lineage`
+    // timeline surface — by `the_lineage_arc_surface_…` below.
     let (g, ids) = spine_graph();
     let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
 
@@ -265,14 +269,13 @@ fn the_plan_to_exec_spine_is_labeled_generated_by_on_the_graph_query_surface() {
         ("phase->step Contains", &ids.contains_phase_step),
         ("step->exec binding", &ids.binding),
     ] {
-        assert_eq!(
-            derivation_in_slice(&slice, edge_id),
-            "generated-by",
-            "{label} rides the generated-by spine (D3.1/D3.2)"
+        assert!(
+            !slice.edges.iter().any(|e| e["id"] == *edge_id),
+            "{label} (PlanContainer endpoint) is pruned from the documents-only slice"
         );
     }
-    // The doc->doc wikilink path (exec -> plan via `related:`) is the plan↔exec
-    // pair, also generated-by — the same spine reached the other way.
+    // The doc->doc wikilink path (exec -> plan via `related:`) survives — both
+    // endpoints are documents — and carries the generated-by label.
     assert_eq!(
         derivation_in_slice(&slice, &ids.wikilink),
         "generated-by",
@@ -350,19 +353,10 @@ fn the_generated_by_label_never_enters_the_edge_stable_key() {
     // (provenance-stable-keys-are-identity-bearing): the WIDENED container-path
     // detection changes the served label only, NEVER an id. Re-deriving the
     // step->exec binding's stable key with the same endpoints/relation/tier/
-    // provenance reproduces the same id the served (now `generated-by`-labeled)
-    // edge carries — the label is not an id input, so re-indexing never re-keys.
-    let (g, ids) = spine_graph();
-    let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
-    let served = slice
-        .edges
-        .iter()
-        .find(|e| e["id"] == ids.binding)
-        .expect("the binding edge is served");
-    assert_eq!(
-        served["derivation"], "generated-by",
-        "the binding carries the widened label"
-    );
+    // provenance reproduces the same id — the label is not an id input, so
+    // re-indexing never re-keys. (Independent of whether the binding is served:
+    // it is pruned from the documents-only slice as a PlanContainer-endpoint edge.)
+    let (_g, ids) = spine_graph();
 
     // Recompute the stable key from the SAME identity inputs the binding minted
     // from — the derivation label was never one of them.
