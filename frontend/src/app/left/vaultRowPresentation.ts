@@ -22,6 +22,7 @@ import {
   Stack,
 } from "@phosphor-icons/react";
 
+import { docTypeLabel } from "../../stores/server/docTypeVocabulary";
 import type { Category } from "../kit";
 import { freshnessLabel, isFresh } from "../presentation/freshness";
 
@@ -42,7 +43,9 @@ export const DOC_MARK_PX = 14;
 export const CHEVRON_PX = 12;
 export const STATUS_MARK_PX = 10;
 
-/** Canonical `.vault/` group order; unknown groups append alphabetically. */
+/** Canonical `.vault/` group order — the pipeline reading order (terminology-
+ *  standardization ADR D2); unknown groups append alphabetically. `index` is never
+ *  a displayed group (ADR D5), so it is not listed here. */
 export const VAULT_GROUPS = [
   "research",
   "adr",
@@ -50,7 +53,6 @@ export const VAULT_GROUPS = [
   "exec",
   "audit",
   "reference",
-  "index",
 ] as const;
 
 // Doc-type marks (sidebar ADR / iconography ADR): one Phosphor mark per doc type,
@@ -72,46 +74,35 @@ export function docMark(docType: string): Icon {
   return DOC_MARKS[docType] ?? FileDashed;
 }
 
-// Doc-type group labels (binding Figma `LeftRail` 244:750 group headers): the
-// human plural vocabulary the board prints as uppercase SectionLabels — RESEARCH /
-// DECISIONS / PLANS / STEPS / AUDITS (and References / Index). The label text is
-// authored Title-Cased here and the kit `SectionLabel` applies the uppercase, so
-// the casing is data (an acronym is never mangled by a CSS `capitalize`) declared
-// once here and consumed identically by the VAULT and TREE browser headers.
-const DOC_GROUP_LABELS: Record<string, string> = {
-  research: "Research",
-  adr: "Decisions",
-  plan: "Plans",
-  exec: "Steps",
-  audit: "Audits",
-  reference: "References",
-  index: "Index",
-};
-
-/** The display label for a doc-type group header. Known groups use the curated
- *  binding-board vocabulary; an unknown group Title-Cases its first letter. */
+/** The display label for a doc-type group header (binding Figma `LeftRail` 244:750
+ *  group headers: RESEARCH / DECISIONS / PLANS / STEPS / AUDITS / REFERENCES). The
+ *  human plural vocabulary is the ONE canonical doc-type schema (terminology-
+ *  standardization ADR D1) — this delegates to it so the rail headers can never
+ *  drift from the filter facets and search pills. The label text is Title-Cased and
+ *  the kit `SectionLabel` applies the uppercase, so the casing stays data (an
+ *  acronym is never mangled by a CSS `capitalize`). Kept exported here for the VAULT
+ *  and TREE browser headers. */
 export function docGroupLabel(docType: string): string {
-  return (
-    DOC_GROUP_LABELS[docType] ?? docType.charAt(0).toUpperCase() + docType.slice(1)
-  );
+  return docTypeLabel(docType);
 }
 
 // Doc-type → kit category token (binding board 135:2 StatusDot/Chip category set).
-// The eight canonical scene/category colors emitted on :root cover adr/audit/code/
-// exec/feature/index/plan/research — the SAME colors the graph nodes paint with, so
-// a row's leading StatusDot and its node always agree. `reference` has no bound
-// scene/category color, so it has no dot (the row falls back to its doc-type mark).
+// The canonical scene/category colors emitted on :root cover adr/audit/exec/feature/
+// plan/reference/research — the SAME colors the graph nodes paint with, so a row's
+// leading StatusDot and its node always agree. `reference` now has its own bound
+// `scene/category-reference` color (terminology-standardization ADR D3). `index` is
+// never a displayed row (ADR D5), so it carries no category here.
 const DOC_TYPE_CATEGORY: Record<string, Category> = {
   research: "research",
   adr: "adr",
   plan: "plan",
   exec: "exec",
   audit: "audit",
-  index: "index",
+  reference: "reference",
 };
 
 /** The kit category whose bound scene color tints a doc row's leading StatusDot,
- *  or null for a doc type with no bound category color (e.g. `reference`). */
+ *  or null for a doc type with no bound category color. */
 export function docTypeCategory(docType: string): Category | null {
   return DOC_TYPE_CATEGORY[docType] ?? null;
 }

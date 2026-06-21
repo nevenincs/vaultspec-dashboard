@@ -33,7 +33,6 @@ import type {
   DashboardPanelState,
   DashboardState,
   DashboardTimelineMode,
-  DiscoverResponse,
   EmbeddingsResponse,
   EngineEdge,
   EngineNode,
@@ -247,8 +246,6 @@ export const engineKeys = {
     [...engineKeys.all, "neighbors", scope, id, depth] as const,
   evidence: (scope: string, id: string) =>
     [...engineKeys.all, "evidence", scope, id] as const,
-  discover: (scope: string, id: string) =>
-    [...engineKeys.all, "discover", scope, id] as const,
   events: (scope: string, range: { from?: string; to?: string }, bucket?: string) =>
     [...engineKeys.all, "events", scope, stableKey(range), bucket ?? "raw"] as const,
   // The bounded recent-commit history (status-overview ADR): keyed by (scope,
@@ -361,7 +358,6 @@ export const SCOPED_ENGINE_QUERY_SUBTREES = [
   "content",
   "neighbors",
   "evidence",
-  "discover",
   "events",
   "history",
   "prs",
@@ -396,7 +392,6 @@ export const GRAPH_GENERATION_QUERY_SUBTREES = [
   "node",
   "neighbors",
   "evidence",
-  "discover",
   "events",
   "diff",
   "lineage",
@@ -3331,7 +3326,11 @@ export function useNodeNeighbors(id: unknown, scope: unknown, depth: unknown = 1
 
 // The edge-tier bucketing order for the inspector's neighbor list. The engine
 // never mints a semantic graph edge (ADR D3.5), so semantic is not an edge tier.
-export const INSPECTOR_EDGE_TIER_ORDER = ["declared", "structural", "temporal"] as const;
+export const INSPECTOR_EDGE_TIER_ORDER = [
+  "declared",
+  "structural",
+  "temporal",
+] as const;
 
 export interface InspectorNeighborTierView {
   tiers: Map<EngineEdge["tier"], EngineEdge[]>;
@@ -3604,7 +3603,7 @@ export function deriveCodeViewerView(content: ContentView): CodeViewerView {
   };
 }
 
-type MarkdownHeaderCategory = "adr" | "audit" | "exec" | "index" | "plan" | "research";
+type MarkdownHeaderCategory = "adr" | "audit" | "exec" | "plan" | "research";
 
 export interface MarkdownHeaderView {
   /** The document title rendered by the viewer header. */
@@ -3625,7 +3624,6 @@ const MARKDOWN_HEADER_DOC_TYPE_CATEGORY: Record<string, MarkdownHeaderCategory> 
   plan: "plan",
   exec: "exec",
   audit: "audit",
-  index: "index",
 };
 
 function markdownHeaderDocType(path: string | undefined, stem: string): string | null {
@@ -3633,7 +3631,7 @@ function markdownHeaderDocType(path: string | undefined, stem: string): string |
     const match = /(?:^|\/)\.vault\/([^/]+)\//.exec(path);
     if (match) return match[1] ?? null;
   }
-  const suffix = /-(research|adr|plan|exec|audit|reference|index)$/.exec(stem);
+  const suffix = /-(research|adr|plan|exec|audit|reference)$/.exec(stem);
   return suffix ? (suffix[1] ?? null) : null;
 }
 
@@ -3707,10 +3705,8 @@ export interface MarkdownReaderView {
 export type FrontmatterTagCategory =
   | "adr"
   | "audit"
-  | "code"
   | "exec"
   | "feature"
-  | "index"
   | "plan"
   | "research";
 
@@ -3756,7 +3752,6 @@ const DOCTYPE_EYEBROW: Partial<Record<FrontmatterTagCategory, string>> = {
   adr: "Decision",
   audit: "Audit",
   exec: "Step",
-  index: "Index",
   plan: "Plan",
   research: "Research",
 };
@@ -3779,10 +3774,8 @@ const MONTHS = [
 const FRONTMATTER_TAG_CATEGORIES = new Set<FrontmatterTagCategory>([
   "adr",
   "audit",
-  "code",
   "exec",
   "feature",
-  "index",
   "plan",
   "research",
 ]);
@@ -4716,89 +4709,6 @@ export function useNodeEvidence(id: unknown, scope: unknown) {
     enabled,
   });
   return enabled ? query : { ...query, data: undefined };
-}
-
-// --- node-scoped semantic discover (canvas-controls ADR) ---------------------
-//
-// Discover is `POST /nodes/{id}/discover` returning ranked candidate edges that
-// never auto-assert (contract §4). The chrome panel is a dumb view: it MUST NOT
-// fetch the engine itself (dashboard-layer-ownership — stores is the sole wire
-// client). This hook is that single wire seam; the panel consumes it and reads
-// the interpreted view below, never `engineClient.discover` or the raw `tiers`
-// block. Disabled until a node is actually open; `retry:false` so a rag-down
-// 502 surfaces immediately as the designed discover-offline state rather than
-// after backoff.
-
-/** The interpreted discover view the panel renders: loading / offline / the
- *  ranked candidates. Degradation (rag absent → a 502 or a `semantic` tier
- *  reporting unavailable) is a DESIGNED state, never an anonymous error. */
-export interface DiscoverView {
-  /** The discover request is in flight with no held candidates. */
-  loading: boolean;
-  /**
-   * Designed degradation: rag is not available. Sourced from a tiers-bearing
-   * error envelope marking `semantic` unavailable, a served block that marks
-   * it unavailable, OR a plain transport failure on the discover route (the
-   * route only fails when rag is down). Rendered as discover-offline, not an
-   * error.
-   */
-  offline: boolean;
-  /** The ranked candidate edges when served; empty array while loading/offline. */
-  candidates: EngineEdge[];
-}
-
-const DISCOVER_TIER = "semantic";
-
-/**
- * Derive the discover view (loading / offline / candidates) from a discover
- * query's data + error + pending flags, reading the `semantic` tier ONLY here
- * in the stores layer so the panel consumes interpreted truth, never the raw
- * `tiers` block. A served block (success or a tiers-bearing error envelope)
- * marking `semantic` unavailable degrades; a tiers-less transport fault on this
- * route is still rag-down (the route fails only when rag is absent), so it maps
- * to offline too — the panel never renders a bare error here.
- */
-export function deriveDiscoverView(
-  data: DiscoverResponse | undefined,
-  error: unknown,
-  loading: boolean,
-  enabled: boolean,
-): DiscoverView {
-  if (!enabled) return { loading: false, offline: false, candidates: [] };
-  const tiers = tiersFromQuery({ data, error });
-  const tierDegraded =
-    tiers !== undefined && readTierAvailability(tiers, [DISCOVER_TIER]).degraded;
-  // Any error on the discover route is rag-down (the route fails only then), so
-  // a tiers-less transport fault is still the designed offline state.
-  const offline = error !== null || tierDegraded;
-  return {
-    loading,
-    offline,
-    candidates: offline ? [] : (data?.candidates ?? []),
-  };
-}
-
-/**
- * Stores hook: node-scoped semantic discovery for the open node, read through
- * the wire client so the discover panel consumes the interpreted view instead
- * of fetching itself. `nodeId === null` means the panel is closed: the query is
- * disabled and the view is the inert closed state.
- */
-export function useDiscover(nodeId: unknown, scope: unknown): DiscoverView {
-  const request = normalizeNodeScopedRequestIdentity(scope, nodeId);
-  const enabled = request.scope !== null && isAddressableNode(request.nodeId);
-  const query = useQuery({
-    queryKey: engineKeys.discover(request.scope ?? "", request.nodeId ?? ""),
-    queryFn: () => engineClient.discover(request.nodeId!, request.scope!),
-    enabled,
-    retry: false,
-  });
-  return deriveDiscoverView(
-    query.data,
-    query.error ?? null,
-    enabled && query.isPending,
-    enabled,
-  );
 }
 
 export function useEngineEvents(scope: unknown, range: unknown = {}, bucket?: unknown) {
@@ -7417,13 +7327,7 @@ export interface ChangedFilesView {
   };
 }
 
-export type ChangedDocumentCategory =
-  | "adr"
-  | "audit"
-  | "exec"
-  | "index"
-  | "plan"
-  | "research";
+export type ChangedDocumentCategory = "adr" | "audit" | "exec" | "plan" | "research";
 
 export interface ChangedSourceFileRow {
   path: string;
@@ -7460,7 +7364,6 @@ const CHANGED_DOCUMENT_CATEGORY: Record<string, ChangedDocumentCategory> = {
   plan: "plan",
   exec: "exec",
   audit: "audit",
-  index: "index",
 };
 
 function fileBasename(path: string): string {

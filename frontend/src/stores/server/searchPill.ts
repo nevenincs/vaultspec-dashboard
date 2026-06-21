@@ -12,6 +12,7 @@
 // `SearchResultPill` component renders this verbatim.
 
 import type { SearchResultEntity } from "../../platform/actions/entity";
+import { docTypeLabel } from "./docTypeVocabulary";
 import type { SearchResult } from "./engine";
 import { searchResultSpecies, type SearchResultSpecies } from "./searchController";
 
@@ -27,8 +28,8 @@ type CategoryToken =
   | "code"
   | "exec"
   | "feature"
-  | "index"
   | "plan"
+  | "reference"
   | "research";
 
 function categoryColorVar(token: CategoryToken): string {
@@ -59,30 +60,21 @@ export interface SearchPillView {
   entity: SearchResultEntity;
 }
 
-// The plain type WORD per vault doc-type (UX simplicity law: never the raw `adr`/
-// `exec` codes). Unknown doc-types fall back to a capitalised form.
-const DOC_TYPE_WORD: Record<string, string> = {
-  research: "Research",
-  adr: "Decision",
-  plan: "Plan",
-  audit: "Audit",
-  exec: "Note",
-  reference: "Reference",
-  index: "Index",
-  feature: "Feature",
-};
+// The plain type WORD per vault doc-type is read from the ONE canonical doc-type
+// vocabulary (terminology-standardization ADR D1) — never a per-surface map. Unknown
+// doc-types fall back to a Title-cased form inside `docTypeLabel`. (UX simplicity
+// law: never the raw `adr`/`exec` codes.)
 
 // The bound scene/category colour per doc-type (the SAME colour the graph node
-// paints with, via the centralised category vocabulary). `reference` has no own
-// category token; it borrows `index` (its nearest structural sibling).
+// paints with, via the centralised category vocabulary). `reference` now has its
+// own bound `scene/category-reference` token (ADR D3).
 const DOC_TYPE_CATEGORY: Record<string, CategoryToken> = {
   research: "research",
   adr: "adr",
   plan: "plan",
   audit: "audit",
   exec: "exec",
-  reference: "index",
-  index: "index",
+  reference: "reference",
   feature: "feature",
 };
 
@@ -194,9 +186,7 @@ function deriveFace(
   // Doc (and unknown, which renders a neutral generic pill).
   const docType = result.doc_type?.trim().toLowerCase() ?? "";
   const typeWord =
-    species === "doc"
-      ? (DOC_TYPE_WORD[docType] ?? (docType ? capitalize(docType) : "Document"))
-      : "Result";
+    species === "doc" ? (docType ? docTypeLabel(docType) : "Document") : "Result";
   const category: CategoryToken =
     species === "doc" ? (DOC_TYPE_CATEGORY[docType] ?? "feature") : "feature";
   // Prefer the wire H1 title; fall back to a prettified node-id stem (the identity),

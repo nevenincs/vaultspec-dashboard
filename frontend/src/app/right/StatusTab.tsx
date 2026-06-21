@@ -67,15 +67,10 @@ import { openDocTab } from "../../stores/view/tabs";
 import { freshnessLabel } from "../presentation/freshness";
 import { ChangesOverview } from "./ChangesOverview";
 import { PlanStepTree } from "./PlanStepTree";
+import { RailDegraded, RailEmpty, RailLoading, type RailState } from "./railStates";
 // Centralized kit primitives (design-system-is-centralized).
-import {
-  Badge,
-  ChevronDown,
-  ChevronRight,
-  FoldSection,
-  ProgressBar,
-  SectionLabel,
-} from "../kit";
+import { Badge, ChevronDown, ChevronRight, ProgressBar } from "../kit";
+import { RailSection } from "../chrome/RailSection";
 
 const TWISTY_PX = 10;
 const ICON_PX = 13;
@@ -104,22 +99,21 @@ function SectionCard({
 }: SectionCardProps) {
   const open = useStatusSectionOpen(id, defaultOpen);
   const chrome = deriveStatusSectionChromeView(id, open);
-  // The canonical fold (FoldSection): a twisty + the SectionLabel eyebrow over a
-  // collapsible body, flush — no border, no card background. Identical to the
-  // left rail's group folds (design-system-is-centralized).
+  // The ONE shared section header (RailSection), identical to the left rail's
+  // Features / Documents sections — same padding, hover, eyebrow casing, and count
+  // (design-system-is-centralized; full cross-rail parity).
   return (
-    <FoldSection
+    <RailSection
+      title={title}
+      count={count}
       open={open}
       onToggle={() => toggleStatusSection(id, defaultOpen)}
       bodyId={chrome.bodyId}
-      twistyPx={chrome.twistyPx}
-      headerClassName={chrome.headerClassName}
-      bodyClassName={chrome.bodyClassName}
-      label={<SectionLabel count={count}>{title}</SectionLabel>}
+      bodyVisible={chrome.bodyVisible}
       data-section
     >
-      {chrome.bodyVisible ? children : null}
-    </FoldSection>
+      {children}
+    </RailSection>
   );
 }
 
@@ -145,7 +139,7 @@ function LocationStrip({ scope }: { scope: unknown }) {
   // is read from the one `useLocationAnchor` selector — no fetch, no raw tiers.
   return (
     <div
-      className="flex flex-col gap-fg-0-5 px-fg-1"
+      className="flex flex-col gap-[0.1875rem] p-fg-3"
       data-location-strip
       data-location-state="located"
     >
@@ -353,7 +347,7 @@ function PrRow({ row }: { row: PullRequestRowView }) {
   const Icon = row.icon === "merged" ? GitMerge : GitPullRequest;
   return (
     <li
-      className="flex flex-col gap-fg-0-5 rounded-fg-xs px-fg-1 py-fg-1"
+      className="flex flex-col gap-fg-0-5 rounded-fg-sm border border-rule bg-paper-raised px-fg-2 py-fg-2"
       data-pr
       data-pr-number={pr.number}
     >
@@ -436,7 +430,7 @@ function IssueRow({ row }: { row: IssueRowView }) {
   const { issue } = row;
   return (
     <li
-      className="flex flex-col gap-fg-0-5 rounded-fg-xs px-fg-1 py-fg-1"
+      className="flex flex-col gap-fg-0-5 rounded-fg-sm border border-rule bg-paper-raised px-fg-2 py-fg-2"
       data-issue
       data-issue-number={issue.number}
     >
@@ -615,7 +609,31 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
 // The Status overview surface.
 // ---------------------------------------------------------------------------
 
-export function StatusTab() {
+/**
+ * Resolve which of the four binding rail states (node 599:2099) the body shows.
+ * Mutually exclusive, in priority order: still loading core work → the skeletons;
+ * the pipeline view degraded (structural tier down) → the degraded notice; nothing
+ * open across plans / PRs / issues → the empty medallion; otherwise the populated
+ * stack. Derived purely from the interpreted stores views — never a raw transport
+ * error (degradation-is-read-from-tiers-not-guessed-from-errors).
+ */
+export function deriveRailState(
+  plans: { loading: boolean; degraded: boolean; plans: readonly unknown[] },
+  openPrs: { prs: readonly unknown[] },
+  openIssues: { issues: readonly unknown[] },
+): RailState {
+  if (plans.loading) return "loading";
+  if (plans.degraded) return "degraded";
+  if (
+    plans.plans.length === 0 &&
+    openPrs.prs.length === 0 &&
+    openIssues.issues.length === 0
+  )
+    return "empty";
+  return "populated";
+}
+
+export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {}) {
   const scope = useActiveScope();
   // Section-header counts mirror the binding board ("OPEN PLANS — N"). They read
   // the same interpreted views the bodies consume; TanStack dedupes the shared
@@ -629,37 +647,50 @@ export function StatusTab() {
     openPrs: openPrs.prs.length,
     openIssues: openIssues.issues.length,
   });
+  // `stateOverride` is a test-only seam (the /status.html parity harness drives each
+  // designed state); production always derives the state from live data.
+  const railState = stateOverride ?? deriveRailState(plansView, openPrs, openIssues);
   return (
-    <div className="space-y-fg-2 text-body" data-status-tab>
+    <div className="space-y-fg-4 text-body" data-status-tab data-rail-state={railState}>
       <LocationStrip scope={scope} />
-      <ChangesOverview />
-      <SectionCard
-        id={sections.openPlans.id}
-        title={sections.openPlans.title}
-        count={sections.openPlans.count}
-      >
-        <OpenPlansBody scope={scope} />
-      </SectionCard>
-      <SectionCard
-        id={sections.openPrs.id}
-        title={sections.openPrs.title}
-        count={sections.openPrs.count}
-      >
-        <OpenPrsBody scope={scope} />
-      </SectionCard>
-      <SectionCard
-        id={sections.openIssues.id}
-        title={sections.openIssues.title}
-        count={sections.openIssues.count}
-      >
-        <OpenIssuesBody scope={scope} />
-      </SectionCard>
-      <SectionCard id={sections.recentPrs.id} title={sections.recentPrs.title}>
-        <RecentPrsBody scope={scope} />
-      </SectionCard>
-      <SectionCard id={sections.recentCommits.id} title={sections.recentCommits.title}>
-        <RecentCommitsBody scope={scope} />
-      </SectionCard>
+      {railState === "loading" && <RailLoading />}
+      {railState === "degraded" && <RailDegraded />}
+      {railState === "empty" && <RailEmpty />}
+      {railState === "populated" && (
+        <>
+          <ChangesOverview />
+          <SectionCard
+            id={sections.openPlans.id}
+            title={sections.openPlans.title}
+            count={sections.openPlans.count}
+          >
+            <OpenPlansBody scope={scope} />
+          </SectionCard>
+          <SectionCard
+            id={sections.openPrs.id}
+            title={sections.openPrs.title}
+            count={sections.openPrs.count}
+          >
+            <OpenPrsBody scope={scope} />
+          </SectionCard>
+          <SectionCard
+            id={sections.openIssues.id}
+            title={sections.openIssues.title}
+            count={sections.openIssues.count}
+          >
+            <OpenIssuesBody scope={scope} />
+          </SectionCard>
+          <SectionCard id={sections.recentPrs.id} title={sections.recentPrs.title}>
+            <RecentPrsBody scope={scope} />
+          </SectionCard>
+          <SectionCard
+            id={sections.recentCommits.id}
+            title={sections.recentCommits.title}
+          >
+            <RecentCommitsBody scope={scope} />
+          </SectionCard>
+        </>
+      )}
     </div>
   );
 }

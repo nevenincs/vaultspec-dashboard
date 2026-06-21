@@ -18,7 +18,12 @@
 
 import { cssColorNumber } from "./tokenReads";
 
-/** The eight sanctioned node categories (Figma graph/Node-items 83:2). */
+/** The sanctioned node categories (Figma graph/Node-items 83:2), plus `reference`
+ *  (terminology-standardization ADR D3). `code` and `index` are NOT scene node
+ *  categories: `code` artefacts and `.vault/index` feature-index documents are never
+ *  knowledge-graph nodes (code excluded at the engine projection, index dropped at
+ *  ingest), so neither is ever painted on the canvas. The Files/search surface keeps
+ *  its own `code` colour token; this scene module no longer references it. */
 export type NodeCategory =
   | "feature"
   | "research"
@@ -26,26 +31,28 @@ export type NodeCategory =
   | "plan"
   | "exec"
   | "audit"
-  | "index"
-  | "code";
+  | "reference";
 
 /**
- * Map a node's `kind` (doc type, or `feature`/`code`) onto one of the eight
- * categories. The vault doc-type vocabulary carries a few kinds outside the eight
- * Figma swatches; they fold onto the nearest category so every node still reads
- * as a category-coloured circle, never an uncoloured one:
- *   - reference -> research (both are grounding / source documents)
- *   - summary   -> index    (both are roll-up / index artefacts)
- *   - rule      -> adr      (a rule is a codified decision)
+ * Map a node's `kind` (doc type, or `feature`/`code`) onto a category. The vault
+ * doc-type vocabulary carries a few kinds outside the Figma swatches; they fold
+ * onto the nearest category so every displayed node still reads as a category-
+ * coloured circle:
+ *   - reference -> reference (its own bound colour, ADR D3)
+ *   - summary   -> exec      (a summary is an exec document — a Phase Summary of
+ *                             execution records under `.vault/exec/`; the prior
+ *                             summary->index mapping was the metanode confusion the
+ *                             index-node-exclusion ADR corrects)
+ *   - rule      -> adr       (a rule is a codified decision)
  *
  * It ALSO accepts the wire node SPECIES (`kind`) for nodes that carry no doc
  * type, so a caller can pass `docType ?? kind` and still land on a category:
  *   - plan-container -> plan (a plan's structural wave/phase/step rows)
- *   - code-artifact  -> code (a source-code node)
- *   - document       -> code (defensive: a document node should carry a doc type,
- *                             so this only fires if doc_type was missing)
- * An unknown value falls back to `code` (the generic artefact swatch) so even the
- * fallback is an in-family category hue, never the bare ink-muted neutral.
+ *
+ * DEFAULT: an unmapped kind falls back to the `reference` swatch so a stray or
+ * diagnostic node still paints a colour instead of crashing. `code` and `index`
+ * never reach a displayed knowledge node (index dropped at ingest, code excluded at
+ * the engine projection), so this fallback is defensive only.
  */
 export function nodeCategory(kind: string): NodeCategory {
   switch (kind) {
@@ -55,23 +62,18 @@ export function nodeCategory(kind: string): NodeCategory {
     case "plan":
     case "exec":
     case "audit":
-    case "index":
-    case "code":
-      return kind;
     case "reference":
-      return "research";
+      return kind;
     case "summary":
-      return "index";
+      return "exec";
     case "rule":
       return "adr";
-    // Wire node-species fallbacks (nodes with no doc_type): map onto the nearest
-    // category so every species still paints its legend colour.
+    // Wire node-species fallback (a node with no doc_type): map onto the nearest
+    // category so the species still paints a legend colour.
     case "plan-container":
       return "plan";
-    case "code-artifact":
-      return "code";
     default:
-      return "code";
+      return "reference";
   }
 }
 
@@ -90,8 +92,7 @@ const CATEGORY_FALLBACK: Record<NodeCategory, number> = {
   plan: 0x3f8457,
   exec: 0xb5703f,
   audit: 0x3f9aa6,
-  index: 0x8f9a7e,
-  code: 0xb05a6b,
+  reference: 0x9d5e86,
 };
 
 /**

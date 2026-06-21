@@ -27,20 +27,38 @@ import {
 } from "./browserTreeExpansion";
 
 describe("deriveAllVaultBrowserTreeKeys", () => {
-  it("returns the two sections plus every feature and doc-type folder key", () => {
+  it("enumerates sections, every feature with its category sub-folders, and doc-type folders", () => {
+    // The three-level Features hierarchy (feature → category sub-folder → docs)
+    // and the two-level Documents hierarchy (category → docs): expand-all must
+    // reach every collapsible key, including the per-feature×docType sub-folders.
     expect(
       deriveAllVaultBrowserTreeKeys({
-        features: ["alpha", "beta"],
+        features: [
+          { feature: "alpha", docTypes: ["research", "adr"] },
+          { feature: "beta", docTypes: ["plan"] },
+        ],
         docTypes: ["adr", "plan"],
       }),
     ).toEqual([
       "sec:features",
       "sec:documents",
       "feat:alpha",
+      "featcat:alpha:research",
+      "featcat:alpha:adr",
       "feat:beta",
+      "featcat:beta:plan",
       "type:adr",
       "type:plan",
     ]);
+  });
+
+  it("emits a feature key with no sub-folder keys when the feature has no doc types", () => {
+    expect(
+      deriveAllVaultBrowserTreeKeys({
+        features: [{ feature: "alpha", docTypes: [] }],
+        docTypes: [],
+      }),
+    ).toEqual([...VAULT_BROWSER_TREE_SECTION_KEYS, "feat:alpha"]);
   });
 
   it("is just the section keys when the tree has no groups", () => {

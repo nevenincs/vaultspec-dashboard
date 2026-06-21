@@ -102,20 +102,34 @@ export const VAULT_BROWSER_TREE_SECTION_KEYS = [
   "sec:documents",
 ] as const;
 
+/** A feature's collapsible level for the expand-all enumeration: the feature
+ *  folder key plus its category sub-folder keys (one per doc type present under
+ *  that feature). Mirrors the three-level Features hierarchy the tree renders
+ *  (feature → category sub-folder → documents) per terminology-standardization
+ *  ADR D4. */
+export interface VaultBrowserTreeFeatureKeyShape {
+  feature: string;
+  docTypes: readonly string[];
+}
+
 /**
  * Every collapsible folder key in the Vault tree, matching the keys the tree
- * actually toggles on (TreeBrowser): the two `sec:*` sections, the `feat:<feature>`
- * rows under Features, and the `type:<docType>` rows under Documents. The
- * "expand all" action sets the expanded set to exactly these; document rows are
- * leaves and are never expanded.
+ * actually toggles on (TreeBrowser): the two `sec:*` sections, the
+ * `feat:<feature>` rows under Features and each feature's
+ * `featcat:<feature>:<docType>` category sub-folder, and the `type:<docType>`
+ * category rows under Documents. The "expand all" action sets the expanded set to
+ * exactly these; document rows are leaves and are never expanded.
  */
 export function deriveAllVaultBrowserTreeKeys(input: {
-  features: readonly string[];
+  features: readonly VaultBrowserTreeFeatureKeyShape[];
   docTypes: readonly string[];
 }): string[] {
   return [
     ...VAULT_BROWSER_TREE_SECTION_KEYS,
-    ...input.features.map((feature) => `feat:${feature}`),
+    ...input.features.flatMap((feature) => [
+      `feat:${feature.feature}`,
+      ...feature.docTypes.map((docType) => `featcat:${feature.feature}:${docType}`),
+    ]),
     ...input.docTypes.map((docType) => `type:${docType}`),
   ];
 }

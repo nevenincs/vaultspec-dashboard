@@ -1,24 +1,42 @@
-// The Vault tab's tree (binding `LeftRail` 238:600): TWO parallel collapsible
+// The Vault tab's tree (binding `LeftRail` Vault variant): TWO parallel collapsible
 // sections over the ONE `/vault-tree` projection (views-are-projections-of-one-
-// model) — a FEATURES index and a doc-type-first DOCUMENTS tree. Both start
-// COLLAPSED; expanding a section reveals its folder rows, and expanding a folder
-// reveals its documents as two-line DocRows (title + date + status). The whole
-// listing is narrowed by the ONE canonical left-rail facet pass (feature text +
-// doc types + statuses + feature tags + edited range) read from
-// `dashboardState.filters`, so the rail tree agrees with the graph the same
-// filter narrows (left-rail-top ADR D5).
+// model) — a FEATURES tree (feature → category sub-folder → documents) and a
+// doc-type-first DOCUMENTS tree (category → documents).
+//
+// ONE ROW ELEMENT AT EVERY LEVEL. Features, category folders, and document leaves
+// all render through the SAME `VaultTreeRow` shell so every level reads identically:
+// the same fully-rounded row (`rounded-fg-xs` — never a square or half-rounded edge),
+// the same one-step-per-level indentation, and the SAME selection treatment — a
+// filled accent tint over the WHOLE rounded row plus accent label ink (the binding
+// Figma selected-row look: accent tint + accent name). There is no left-edge bar and
+// no straight-edged highlight anywhere; selection is the rounded fill, identical on a
+// folder and on a leaf.
+//
+// Category identity is the centralized color-coded GLYPH (`DocTypeMark`): feature
+// rows carry the plan mark in the feature color, category folders carry their
+// doc-type mark in the doc-type color. Color lives ONLY on these parent rows — a
+// document leaf carries the SAME doc-type mark in QUIET neutral ink (no category
+// color) so the leaf still reads as a row with an icon, but color stays a top-level
+// signal.
 //
 // Composition only (dashboard-layer-ownership): this fetches nothing, mints no
 // node identity, and reads degradation ONLY through the stores selector (never the
 // raw `tiers` block). Selection joins on the same stable `doc:<stem>` node id the
-// rest of the rail uses.
+// rest of the rail uses. `index` is never a displayed node (ADR D5) — the
+// projection already excludes it.
 
-import type { ReactNode, KeyboardEvent as ReactKeyboardEvent } from "react";
+import type {
+  CSSProperties,
+  ReactNode,
+  KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { useCallback, useEffect, useRef } from "react";
 
-import { ChevronDown, ChevronRight, Folder } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
-import { Badge, FoldSection, SectionLabel } from "../kit";
+import { categoryColorVar, categoryToken, type Category } from "../kit";
+import { RailSection } from "../chrome/RailSection";
+import { DocTypeMark } from "../../scene/field/markComponents";
 import { RailDegradedNotice, RailMessage, RailSkeleton } from "./railStates";
 import type { VaultDocEntity } from "../../platform/actions/entity";
 import type { VaultTreeEntry } from "../../stores/server/engine";
@@ -58,18 +76,43 @@ import {
 import "./menus/vaultDocMenu";
 import {
   CHEVRON_PX,
-  DOC_MARK_PX,
   docDateLabel,
   docDisplayTitle,
   docGroupLabel,
+  docTypeCategory,
   featureDisplayName,
-  freshnessLabel,
-  freshnessToneClass,
 } from "./vaultRowPresentation";
 
 /** Display stem — the shared derivation from the selection join. */
 export function entryStem(path: string): string {
   return pathStem(path);
+}
+
+// --- indentation (a real tree: one step per level, token-aligned rem; no px) ------
+// Each tree LEVEL indents exactly one rem step deeper than its parent so the nesting
+// reads as a clear staircase under one UI-scale change (no-hardcoded-px — rem, not
+// px). The section header sits at level 0; a section's first folder row is level 1;
+// a feature's category sub-folder is level 2; a document leaf is one level deeper
+// than its parent folder. The inset is applied as `padding-inline-start` so the
+// whole row (chevron + icon + label) shifts together.
+const INDENT_STEP_REM = 1;
+const INDENT_BASE_REM = 0.5;
+function indentStyle(level: number): CSSProperties {
+  return { paddingInlineStart: `${INDENT_BASE_REM + level * INDENT_STEP_REM}rem` };
+}
+
+// The leading category GLYPH reads at the row text size — a real icon, not a dot.
+const ICON_PX = 15;
+
+/** The ONE row shell + selection treatment shared by EVERY tree level (feature,
+ *  category folder, document leaf). Fully rounded (`rounded-fg-xs`) always; a
+ *  highlighted row is filled with the accent tint over the whole rounded row — the
+ *  binding Figma selected-row look. No left-edge bar, no half-rounded/straight edge:
+ *  a leaf and a folder select identically. */
+function rowClassName(highlighted: boolean): string {
+  return `flex w-full items-center gap-fg-1-5 rounded-fg-xs py-fg-1-5 pe-fg-2 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+    highlighted ? "bg-accent-subtle" : "hover:bg-paper-sunken"
+  }`;
 }
 
 // --- props -----------------------------------------------------------------------
@@ -98,21 +141,6 @@ function vaultDocEntity(entry: VaultTreeEntry, scope: string | null): VaultDocEn
   };
 }
 
-/** Flatten a feature group's doc-type sub-lists into one recency-ordered list of
- *  documents — the Features section lists a feature's documents directly (the
- *  doc-type-first split lives in the Documents section). */
-function featureEntries(group: VaultTreeFeatureGroup): VaultTreeEntry[] {
-  return group.docTypes
-    .flatMap((sub) => sub.entries)
-    .slice()
-    .sort((a, b) => {
-      const am = a.dates.modified ?? "";
-      const bm = b.dates.modified ?? "";
-      if (am !== bm) return am < bm ? 1 : -1;
-      return a.path.localeCompare(b.path);
-    });
-}
-
 export function TreeBrowser({
   onEntryClick,
   onEntryOpen,
@@ -129,7 +157,8 @@ export function TreeBrowser({
   const highlight = highlightedPath ?? sharedHighlight;
 
   // Expansion keyed by stable nav-key: sections `sec:*`, feature folders
-  // `feat:<feature>`, doc-type folders `type:<docType>`. The browser-tree store
+  // `feat:<feature>`, feature category sub-folders `featcat:<feature>:<docType>`,
+  // and Documents-section category folders `type:<docType>`. The browser-tree store
   // owns this so a scope/workspace swap clears disclosure state in ONE reset path.
   // Sections start COLLAPSED (the tested a11y contract; binding sections are
   // collapsible). A fresh key is absent from the expanded set.
@@ -209,6 +238,13 @@ export function TreeBrowser({
     [moveActive],
   );
 
+  const rowNav: RowNav = {
+    registerNav,
+    registerVisibleKey,
+    setActiveKey,
+    navKeyDown,
+  };
+
   if (state === "loading") {
     // LOADING mode (binding `LeftRail` State=Loading): the shared designed skeleton.
     return <RailSkeleton label="Loading the vault…" />;
@@ -236,10 +272,14 @@ export function TreeBrowser({
 
   const view = deriveVaultRailView(tree.data?.entries ?? [], facets);
   const empty = view.featureCount === 0 && view.docTypeCount === 0;
-  // Latest full expandable-key set (the two sections + every feature + doc-type
-  // folder) for the expand-all verb; document rows are leaves and never expand.
+  // Latest full expandable-key set (the two sections + every feature + every
+  // feature category sub-folder + every Documents category folder) for the
+  // expand-all verb; document rows are leaves and never expand.
   treeKeysRef.current = deriveAllVaultBrowserTreeKeys({
-    features: view.featureGroups.map((group) => group.feature),
+    features: view.featureGroups.map((group) => ({
+      feature: group.feature,
+      docTypes: group.docTypes.map((sub) => sub.docType),
+    })),
     docTypes: view.docTypeGroups.map((group) => group.docType),
   });
 
@@ -268,74 +308,234 @@ export function TreeBrowser({
         />
       ) : (
         <>
-          {/* FEATURES — feature → its documents. */}
+          {/* FEATURES — feature → category sub-folders → documents (ADR D4). */}
           <Section
             title="Features"
             count={view.featureCount}
             sectionKey="sec:features"
             expanded={expanded}
             toggle={toggle}
-            registerNav={registerNav}
-            registerVisibleKey={registerVisibleKey}
-            setActiveKey={setActiveKey}
-            navKeyDown={navKeyDown}
+            nav={rowNav}
           >
             {view.featureGroups.map((group) => (
-              <FolderRow
+              <FeatureFolderRow
                 key={group.feature}
-                folderKey={`feat:${group.feature}`}
-                name={featureDisplayName(group.feature)}
-                count={group.count}
-                entries={featureEntries(group)}
+                group={group}
                 expanded={expanded}
                 toggle={toggle}
                 scope={scope}
                 highlight={highlight}
                 onClick={clickHandler}
                 onOpen={openHandler}
-                registerNav={registerNav}
-                registerVisibleKey={registerVisibleKey}
-                setActiveKey={setActiveKey}
-                navKeyDown={navKeyDown}
+                nav={rowNav}
               />
             ))}
           </Section>
 
-          {/* DOCUMENTS — doc-type folder → its documents. */}
+          {/* DOCUMENTS — category folder → its documents (ADR D4). */}
           <Section
             title="Documents"
             count={view.docTypeCount}
             sectionKey="sec:documents"
             expanded={expanded}
             toggle={toggle}
-            registerNav={registerNav}
-            registerVisibleKey={registerVisibleKey}
-            setActiveKey={setActiveKey}
-            navKeyDown={navKeyDown}
+            nav={rowNav}
           >
             {view.docTypeGroups.map((group: VaultDocTypeGroup) => (
-              <FolderRow
+              <CategoryFolderRow
                 key={group.docType}
                 folderKey={`type:${group.docType}`}
-                name={docGroupLabel(group.docType)}
+                docType={group.docType}
                 count={group.count}
                 entries={group.entries}
+                level={1}
                 expanded={expanded}
                 toggle={toggle}
                 scope={scope}
                 highlight={highlight}
                 onClick={clickHandler}
                 onOpen={openHandler}
-                registerNav={registerNav}
-                registerVisibleKey={registerVisibleKey}
-                setActiveKey={setActiveKey}
-                navKeyDown={navKeyDown}
+                nav={rowNav}
               />
             ))}
           </Section>
         </>
       )}
     </nav>
+  );
+}
+
+// --- shared row navigation plumbing ----------------------------------------------
+
+interface RowNav {
+  registerNav: (key: string) => (el: HTMLButtonElement | null) => void;
+  registerVisibleKey: (key: string) => number;
+  setActiveKey: (key: string) => void;
+  navKeyDown: (
+    key: string,
+    opts?: { onArrowRight?: () => void; onArrowLeft?: () => void },
+  ) => (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
+}
+
+// --- the ONE tree row (feature, category folder, AND document leaf) ---------------
+
+interface VaultTreeRowProps {
+  /** Stable nav/expansion key. */
+  navKey: string;
+  /** Tree level (1 = a section's first row, 2 = a feature's sub-folder, …). */
+  level: number;
+  /** Visible label. */
+  label: string;
+  /** Which `DocTypeMark` silhouette to lead with (a GLYPH_KINDS key). */
+  markKind: string;
+  /** When set, the icon is tinted by this category's bound color (parent rows). When
+   *  absent, the icon reads in quiet neutral ink (document leaves) — color is a
+   *  top-level-only signal. */
+  markColor?: Category;
+  /** Expandable (folder) rows show a chevron and toggle; leaves show an aligned
+   *  spacer and select/open. */
+  expandable: boolean;
+  expanded?: boolean;
+  /** Trailing member count (folders). */
+  count?: number;
+  /** Trailing meta text (a document's modified date). */
+  meta?: string;
+  /** Whether this row is the selected document (leaf). */
+  highlighted?: boolean;
+  /** `aria-controls` target id for an expandable row's body. */
+  bodyId?: string;
+  /** Activate: toggle (folder) or select (leaf). */
+  onActivate: () => void;
+  /** Open in the reader (leaf: double-click / Enter). */
+  onOpen?: () => void;
+  /** Context-menu entity (leaves only). */
+  entity?: VaultDocEntity;
+  /** Marks the row's wrapper for `[data-vault-folder]` selectors. */
+  folderMarker?: boolean;
+  nav: RowNav;
+  /** The body revealed when an expandable row is open. */
+  body?: ReactNode;
+}
+
+function VaultTreeRow({
+  navKey,
+  level,
+  label,
+  markKind,
+  markColor,
+  expandable,
+  expanded = false,
+  count,
+  meta,
+  highlighted = false,
+  bodyId,
+  onActivate,
+  onOpen,
+  entity,
+  folderMarker,
+  nav,
+  body,
+}: VaultTreeRowProps) {
+  const tabIndex = nav.registerVisibleKey(navKey);
+  const button = (
+    <button
+      ref={nav.registerNav(navKey)}
+      type="button"
+      title={entity?.path ?? label}
+      aria-expanded={expandable ? expanded : undefined}
+      aria-controls={expandable ? bodyId : undefined}
+      aria-current={!expandable && highlighted ? "page" : undefined}
+      tabIndex={tabIndex}
+      style={indentStyle(level)}
+      onFocus={() => nav.setActiveKey(navKey)}
+      onClick={onActivate}
+      onDoubleClick={onOpen}
+      onContextMenu={
+        entity
+          ? (e) => {
+              e.preventDefault();
+              openContextMenu(entity, { x: e.clientX, y: e.clientY });
+            }
+          : undefined
+      }
+      onKeyDown={(e: ReactKeyboardEvent<HTMLButtonElement>) => {
+        if (
+          entity &&
+          handleKeyboardContextMenu(e, (anchor) => openContextMenu(entity, anchor))
+        ) {
+          return;
+        }
+        if (expandable) {
+          nav.navKeyDown(navKey, {
+            onArrowRight: expanded ? undefined : onActivate,
+            onArrowLeft: expanded ? onActivate : undefined,
+          })(e);
+          return;
+        }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onOpen?.();
+          return;
+        }
+        nav.navKeyDown(navKey)(e);
+      }}
+      className={rowClassName(highlighted)}
+    >
+      {/* disclosure chevron (folders) or an aligned spacer (leaves) so every row's
+          icon shares one column. */}
+      <span className="flex shrink-0 items-center text-ink-faint" aria-hidden>
+        {expandable ? (
+          expanded ? (
+            <ChevronDown size={CHEVRON_PX} />
+          ) : (
+            <ChevronRight size={CHEVRON_PX} />
+          )
+        ) : (
+          <span style={{ display: "inline-block", width: CHEVRON_PX }} />
+        )}
+      </span>
+      {/* the category GLYPH — tinted (parents) or quiet neutral ink (leaves). */}
+      <span
+        className="flex shrink-0 items-center text-ink-faint"
+        style={markColor ? { color: categoryColorVar(markColor) } : undefined}
+        data-doc-mark={markKind}
+        data-category={markColor ? categoryToken(markColor) : undefined}
+        aria-hidden
+      >
+        <DocTypeMark kind={markKind} size={ICON_PX} />
+      </span>
+      <span
+        className={`min-w-0 flex-1 truncate text-body ${
+          highlighted ? "text-accent-text" : "text-ink"
+        }`}
+      >
+        {label}
+      </span>
+      {count !== undefined && (
+        <span className="shrink-0 text-meta text-ink-faint" data-tabular>
+          {count}
+        </span>
+      )}
+      {meta && (
+        <span className="shrink-0 text-meta text-ink-faint" data-tabular>
+          {meta}
+        </span>
+      )}
+    </button>
+  );
+
+  if (!expandable) {
+    return <li>{button}</li>;
+  }
+  return (
+    <div data-vault-folder={folderMarker ? "" : undefined}>
+      {button}
+      {expanded && (
+        <div id={bodyId} data-vault-folder-body>
+          {body}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -347,270 +547,234 @@ interface SectionProps {
   sectionKey: string;
   expanded: ReadonlySet<string>;
   toggle: (key: string) => void;
-  registerNav: (key: string) => (el: HTMLButtonElement | null) => void;
-  registerVisibleKey: (key: string) => number;
-  setActiveKey: (key: string) => void;
-  navKeyDown: (
-    key: string,
-    opts?: { onArrowRight?: () => void; onArrowLeft?: () => void },
-  ) => (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
+  nav: RowNav;
   children: ReactNode;
 }
 
-/** A top-level collapsible section — a twisty + Title-case eyebrow + count, folding
- *  its folder rows. Built on the ONE canonical fold (FoldSection), identical idiom
- *  to the right rail's Status sections (design-system-is-centralized). The header
- *  joins the rail's single roving-tabindex nav order (the whole rail is ONE
- *  tab-stop) via `registerVisibleKey`/`registerNav`. */
+/** A top-level collapsible section (Features / Documents). Renders through the ONE
+ *  shared `RailSection` so its header is IDENTICAL to the right rail's section
+ *  headers (OPEN PLANS / OPEN PRS) — same padding, same flush hover, same UPPERCASE
+ *  eyebrow + inline count — with the rail's roving-tabindex nav driven through the
+ *  pass-through header props (design-system-is-centralized; full cross-rail parity). */
 function Section({
   title,
   count,
   sectionKey,
   expanded,
   toggle,
-  registerNav,
-  registerVisibleKey,
-  setActiveKey,
-  navKeyDown,
+  nav,
   children,
 }: SectionProps) {
   const open = deriveBrowserTreeExpansionItem(sectionKey, expanded).expanded;
-  const tabIndex = registerVisibleKey(sectionKey);
+  const tabIndex = nav.registerVisibleKey(sectionKey);
   return (
-    <FoldSection
+    <RailSection
+      title={title}
+      count={count}
       open={open}
       onToggle={() => toggle(sectionKey)}
       bodyId={`vault-${sectionKey}`}
-      twistyPx={DOC_MARK_PX}
-      headerClassName="flex w-full items-center gap-fg-2 rounded-fg-xs py-fg-1 transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-      bodyClassName="flex flex-col gap-fg-1"
-      headerRef={registerNav(sectionKey)}
+      headerRef={nav.registerNav(sectionKey)}
       headerProps={{
         tabIndex,
-        onFocus: () => setActiveKey(sectionKey),
-        onKeyDown: navKeyDown(sectionKey, {
+        onFocus: () => nav.setActiveKey(sectionKey),
+        onKeyDown: nav.navKeyDown(sectionKey, {
           onArrowRight: open ? undefined : () => toggle(sectionKey),
           onArrowLeft: open ? () => toggle(sectionKey) : undefined,
         }),
       }}
-      label={
-        <SectionLabel
-          className="min-w-0 flex-1"
-          transform="none"
-          data-vault-section={title.toLowerCase()}
-        >
-          {title}
-        </SectionLabel>
-      }
-      trailing={
-        <span className="text-meta text-ink-faint" data-tabular>
-          {count}
-        </span>
-      }
+      labelProps={{ "data-vault-section": title.toLowerCase() }}
       data-vault-section-header
     >
       {children}
-    </FoldSection>
+    </RailSection>
   );
 }
 
-// --- the folder row (binding `LeftRail` Row 666:2165) -----------------------------
+/** A neutral fallback category for a doc type with no bound category color. */
+const NEUTRAL_FOLDER_CATEGORY: Category = "code";
 
-interface FolderRowProps {
-  folderKey: string;
-  name: string;
-  count: number;
-  entries: VaultTreeEntry[];
+function folderCategory(docType: string): Category {
+  return docTypeCategory(docType) ?? NEUTRAL_FOLDER_CATEGORY;
+}
+
+// --- the feature folder row (Features section, level 1 → category sub-folders) -----
+
+interface FeatureFolderRowProps {
+  group: VaultTreeFeatureGroup;
   expanded: ReadonlySet<string>;
   toggle: (key: string) => void;
   scope: string | null;
   highlight: string | null;
   onClick: (entry: VaultTreeEntry) => void;
   onOpen: (entry: VaultTreeEntry) => void;
-  registerNav: (key: string) => (el: HTMLButtonElement | null) => void;
-  registerVisibleKey: (key: string) => number;
-  setActiveKey: (key: string) => void;
-  navKeyDown: (
-    key: string,
-    opts?: { onArrowRight?: () => void; onArrowLeft?: () => void },
-  ) => (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
+  nav: RowNav;
 }
 
-/** A feature / doc-type folder: chevron + folder glyph + name + member count,
- *  toggling a body of DocRows. The folder glyph is the ONE structural Lucide
- *  chrome mark (icons-come-from-the-two-sanctioned-families); leaves (the DocRows)
- *  carry no icon. */
-function FolderRow({
-  folderKey,
-  name,
-  count,
-  entries,
+/** A feature folder: leads with the plan mark in the feature color, expands to one
+ *  category sub-folder per doc type present (each itself expanding to documents). */
+function FeatureFolderRow({
+  group,
   expanded,
   toggle,
   scope,
   highlight,
   onClick,
   onOpen,
-  registerNav,
-  registerVisibleKey,
-  setActiveKey,
-  navKeyDown,
-}: FolderRowProps) {
+  nav,
+}: FeatureFolderRowProps) {
+  const folderKey = `feat:${group.feature}`;
   const open = deriveBrowserTreeExpansionItem(folderKey, expanded).expanded;
-  const bodyId = `vault-${folderKey}`;
-  const tabIndex = registerVisibleKey(folderKey);
   return (
-    <div data-vault-folder>
-      <button
-        ref={registerNav(folderKey)}
-        type="button"
-        aria-expanded={open}
-        aria-controls={bodyId}
-        tabIndex={tabIndex}
-        onFocus={() => setActiveKey(folderKey)}
-        onClick={() => toggle(folderKey)}
-        onKeyDown={navKeyDown(folderKey, {
-          onArrowRight: open ? undefined : () => toggle(folderKey),
-          onArrowLeft: open ? () => toggle(folderKey) : undefined,
-        })}
-        className="flex w-full items-center gap-fg-1-5 rounded-fg-xs px-fg-2 py-fg-1-5 text-left transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-      >
-        <span className="shrink-0 text-ink-faint" aria-hidden>
-          {open ? (
-            <ChevronDown size={CHEVRON_PX} />
-          ) : (
-            <ChevronRight size={CHEVRON_PX} />
-          )}
-        </span>
-        <span className="shrink-0 text-ink-muted" aria-hidden>
-          <Folder size={DOC_MARK_PX} />
-        </span>
-        <span className="min-w-0 flex-1 truncate text-body text-ink">{name}</span>
-        <span className="shrink-0 text-meta text-ink-faint" data-tabular>
-          {count}
-        </span>
-      </button>
-
-      {open && (
-        <ul
-          id={bodyId}
-          className="flex flex-col gap-fg-2 py-fg-1-5"
-          data-vault-folder-body
-        >
-          {entries.map((entry) => (
-            <DocRow
-              key={entry.path}
-              navKey={`${folderKey}:doc:${entry.path}`}
-              entry={entry}
-              highlighted={entry.path === highlight}
-              scope={scope}
-              registerNav={registerNav}
-              registerVisibleKey={registerVisibleKey}
-              setActiveKey={setActiveKey}
-              navKeyDown={navKeyDown}
-              onClick={() => onClick(entry)}
-              onOpen={() => onOpen(entry)}
-            />
-          ))}
-        </ul>
-      )}
-    </div>
+    <VaultTreeRow
+      navKey={folderKey}
+      level={1}
+      label={featureDisplayName(group.feature)}
+      markKind="plan"
+      markColor="feature"
+      expandable
+      expanded={open}
+      count={group.count}
+      bodyId={`vault-${folderKey}`}
+      onActivate={() => toggle(folderKey)}
+      folderMarker
+      nav={nav}
+      body={group.docTypes.map((sub) => (
+        <CategoryFolderRow
+          key={sub.docType}
+          folderKey={`featcat:${group.feature}:${sub.docType}`}
+          docType={sub.docType}
+          count={sub.entries.length}
+          entries={sub.entries}
+          level={2}
+          expanded={expanded}
+          toggle={toggle}
+          scope={scope}
+          highlight={highlight}
+          onClick={onClick}
+          onOpen={onOpen}
+          nav={nav}
+        />
+      ))}
+    />
   );
 }
 
-// --- the document row (binding `LeftRail/DocRow` 660:1875) ------------------------
+// --- the category folder row (Features sub-folder AND Documents category) ---------
 
-interface DocRowProps {
-  navKey: string;
-  entry: VaultTreeEntry;
-  highlighted: boolean;
+interface CategoryFolderRowProps {
+  folderKey: string;
+  docType: string;
+  count: number;
+  entries: VaultTreeEntry[];
+  /** Tree level: 1 = Documents-section category folder, 2 = Features sub-folder. */
+  level: number;
+  expanded: ReadonlySet<string>;
+  toggle: (key: string) => void;
   scope: string | null;
-  registerNav: (key: string) => (el: HTMLButtonElement | null) => void;
-  registerVisibleKey: (key: string) => number;
-  setActiveKey: (key: string) => void;
-  navKeyDown: (key: string) => (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
-  onClick: () => void;
-  onOpen: () => void;
+  highlight: string | null;
+  onClick: (entry: VaultTreeEntry) => void;
+  onOpen: (entry: VaultTreeEntry) => void;
+  nav: RowNav;
 }
 
-/** One document, as a two-line leaf: the human title over a meta line carrying the
- *  modified date and (for ADRs) the status badge. Selection alone gets the kit
- *  accent treatment (2px left bar + accent tint) — exactly one selected row. */
-function DocRow({
-  navKey,
-  entry,
-  highlighted,
+/** A category folder: leads with the doc-type's category mark, expands to its
+ *  document leaves. Used in BOTH sections for visual parity (ADR D4). Its documents
+ *  sit one level deeper. */
+function CategoryFolderRow({
+  folderKey,
+  docType,
+  count,
+  entries,
+  level,
+  expanded,
+  toggle,
   scope,
-  registerNav,
-  registerVisibleKey,
-  setActiveKey,
-  navKeyDown,
+  highlight,
   onClick,
   onOpen,
-}: DocRowProps) {
-  const title = docDisplayTitle(entry.path);
-  const date = docDateLabel(entry.dates.modified);
-  const fresh = freshnessLabel(entry.dates.modified, Date.now());
-  const entity = vaultDocEntity(entry, scope);
-  const tabIndex = registerVisibleKey(navKey);
-  const handleNavKeyDown = navKeyDown(navKey);
+  nav,
+}: CategoryFolderRowProps) {
+  const open = deriveBrowserTreeExpansionItem(folderKey, expanded).expanded;
   return (
-    <li>
-      <button
-        ref={registerNav(navKey)}
-        type="button"
-        title={entry.path}
-        aria-current={highlighted ? "page" : undefined}
-        tabIndex={tabIndex}
-        onFocus={() => setActiveKey(navKey)}
-        onClick={onClick}
-        onDoubleClick={onOpen}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          openContextMenu(entity, { x: e.clientX, y: e.clientY });
-        }}
-        onKeyDown={(e: ReactKeyboardEvent<HTMLButtonElement>) => {
-          if (
-            handleKeyboardContextMenu(e, (anchor) => openContextMenu(entity, anchor))
-          ) {
-            return;
-          }
-          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-            handleNavKeyDown(e);
-            return;
-          }
-          if (e.key === "Enter") {
-            e.preventDefault();
-            onOpen();
-          }
-        }}
-        className={`flex w-full min-w-0 flex-col gap-fg-0-5 rounded-r-fg-xs border-l-2 py-fg-1-5 pe-fg-2 ps-fg-8 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-          highlighted
-            ? "border-l-accent bg-accent-subtle"
-            : "border-l-transparent hover:bg-paper-sunken"
-        }`}
-      >
-        <span
-          className={`w-full truncate text-body ${highlighted ? "text-accent-text" : "text-ink"}`}
-        >
-          {title}
-        </span>
-        <span className="flex items-center gap-fg-1-5">
-          {date && (
-            <span
-              className={`shrink-0 text-meta ${freshnessToneClass(fresh)}`}
-              data-tabular
-            >
-              {date}
-            </span>
-          )}
-          {entry.status && (
-            <Badge tone="neutral" data-doc-status>
-              {entry.status}
-            </Badge>
-          )}
-        </span>
-      </button>
-    </li>
+    <VaultTreeRow
+      navKey={folderKey}
+      level={level}
+      label={docGroupLabel(docType)}
+      markKind={docType}
+      markColor={folderCategory(docType)}
+      expandable
+      expanded={open}
+      count={count}
+      bodyId={`vault-${folderKey}`}
+      onActivate={() => toggle(folderKey)}
+      folderMarker={level === 1}
+      nav={nav}
+      body={
+        <ul className="flex flex-col gap-fg-1 py-fg-1">
+          {entries.map((entry) => (
+            <DocumentRow
+              key={entry.path}
+              navKey={`${folderKey}:doc:${entry.path}`}
+              entry={entry}
+              docType={docType}
+              level={level + 1}
+              highlighted={entry.path === highlight}
+              scope={scope}
+              onClick={() => onClick(entry)}
+              onOpen={() => onOpen(entry)}
+              nav={nav}
+            />
+          ))}
+        </ul>
+      }
+    />
+  );
+}
+
+// --- the document leaf (the SAME row shell, no chevron, neutral icon) -------------
+
+interface DocumentRowProps {
+  navKey: string;
+  entry: VaultTreeEntry;
+  docType: string;
+  level: number;
+  highlighted: boolean;
+  scope: string | null;
+  onClick: () => void;
+  onOpen: () => void;
+  nav: RowNav;
+}
+
+/** One document leaf. Renders through the SAME `VaultTreeRow` shell as every folder
+ *  — fully rounded, same selection — with an aligned spacer in place of the chevron,
+ *  the doc-type mark in QUIET neutral ink (color is a top-level signal), the human
+ *  title, and the modified date as trailing meta. Selection is the rounded accent
+ *  tint + accent label, identical to any other selected row. */
+function DocumentRow({
+  navKey,
+  entry,
+  docType,
+  level,
+  highlighted,
+  scope,
+  onClick,
+  onOpen,
+  nav,
+}: DocumentRowProps) {
+  return (
+    <VaultTreeRow
+      navKey={navKey}
+      level={level}
+      label={docDisplayTitle(entry.path)}
+      markKind={docType}
+      expandable={false}
+      meta={docDateLabel(entry.dates.modified)}
+      highlighted={highlighted}
+      onActivate={onClick}
+      onOpen={onOpen}
+      entity={vaultDocEntity(entry, scope)}
+      nav={nav}
+    />
   );
 }

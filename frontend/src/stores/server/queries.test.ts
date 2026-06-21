@@ -11,7 +11,6 @@ import { liveScope, liveTransport } from "../../testing/liveClient";
 import { EngineError, engineClient } from "./engine";
 import type {
   ChangedFile,
-  DiscoverResponse,
   EngineStatus,
   EngineEdge,
   DashboardState,
@@ -60,7 +59,6 @@ import {
   deriveDashboardShellChromeView,
   deriveDashboardStageSceneView,
   deriveDashboardTimelineModeView,
-  deriveDiscoverView,
   fileTreeChildStatusStyle,
   deriveFileTreeLevelView,
   deriveFileTreeRootSurfaceState,
@@ -169,7 +167,6 @@ import {
   useHistoryView,
   useIssuesView,
   useLinkResolution,
-  useDiscover,
   useNodeContent,
   useNodeDetail,
   useNodeEvidence,
@@ -587,35 +584,6 @@ describe("node-scoped query cache boundaries", () => {
       words: 0,
     });
   });
-
-  it("does not expose cached discover candidates when no addressable node or no scope is selected", () => {
-    const client = testQueryClient();
-    client.setQueryData(engineKeys.discover("scope-a", "feature:state"), {
-      candidates: [{ id: "cached", src: "doc:a", dst: "doc:b", relation: "related" }],
-      tiers: {},
-    });
-    client.setQueryData(engineKeys.discover("scope-a", "doc:ready"), {
-      candidates: [{ id: "cached", src: "doc:a", dst: "doc:b", relation: "related" }],
-      tiers: {},
-    });
-
-    const noScope = renderHook(() => useDiscover("doc:ready", null), {
-      wrapper: wrapper(client),
-    });
-    const featureNode = renderHook(() => useDiscover("feature:state", "scope-a"), {
-      wrapper: wrapper(client),
-    });
-    const malformedScope = renderHook(
-      () => useDiscover("doc:ready", { scope: "scope-a" }),
-      {
-        wrapper: wrapper(client),
-      },
-    );
-
-    expect(noScope.result.current.candidates).toEqual([]);
-    expect(featureNode.result.current.candidates).toEqual([]);
-    expect(malformedScope.result.current.candidates).toEqual([]);
-  });
 });
 
 describe("remaining scoped query cache boundaries", () => {
@@ -962,7 +930,6 @@ describe("deriveInspectorNeighborTierView (right-rail inspector edges)", () => {
 
   it("groups neighbor edges by canonical tier order and excludes meta-edges", () => {
     const view = deriveInspectorNeighborTierView([
-      edge("semantic-1", "semantic"),
       edge("declared-1", "declared"),
       edge("structural-meta", "structural", {
         count: 2,
@@ -971,10 +938,10 @@ describe("deriveInspectorNeighborTierView (right-rail inspector edges)", () => {
       edge("temporal-1", "temporal"),
     ]);
 
-    expect(view.tierKeys).toEqual(["declared", "temporal", "semantic"]);
+    expect(view.tierKeys).toEqual(["declared", "temporal"]);
     expect([...view.tiers.keys()]).toEqual(view.tierKeys);
     expect(view.tiers.get("declared")?.map((item) => item.id)).toEqual(["declared-1"]);
-    expect(view.tiers.get("semantic")?.map((item) => item.id)).toEqual(["semantic-1"]);
+    expect(view.tiers.get("temporal")?.map((item) => item.id)).toEqual(["temporal-1"]);
     expect(view.tiers.has("structural")).toBe(false);
   });
 
@@ -1717,7 +1684,7 @@ describe("deriveDashboardStageSceneView (Stage scene owner)", () => {
     hovered_id: null,
     filters: {
       doc_types: ["adr"],
-      tiers: { semantic: false },
+      tiers: { structural: false },
       feature_query: { value: "state-*", mode: "glob" },
       statuses: ["draft"],
       plan_tiers: ["wave-1"],
@@ -1747,7 +1714,7 @@ describe("deriveDashboardStageSceneView (Stage scene owner)", () => {
         scope: "scope-a",
         filter: {
           doc_types: ["adr"],
-          tiers: { semantic: false },
+          tiers: { structural: false },
           feature_query: { value: "state-*", mode: "glob" },
           statuses: ["draft"],
           plan_tiers: ["wave-1"],
@@ -3746,93 +3713,12 @@ describe("useGitFileDiff git availability boundary", () => {
   });
 });
 
-describe("deriveDiscoverView (canvas-controls discover, contract §4)", () => {
-  const edge = (id: string): DiscoverResponse["candidates"][number] => ({
-    id,
-    src: "feature:a",
-    dst: "feature:b",
-    relation: "related",
-    tier: "semantic",
-    confidence: 0.8,
-  });
-  const served = (
-    candidates: DiscoverResponse["candidates"],
-    semanticUp = true,
-  ): DiscoverResponse => ({
-    candidates,
-    tiers: { semantic: { available: semanticUp } },
-  });
-
-  it("is the inert closed state when the panel is not open (disabled query)", () => {
-    const v = deriveDiscoverView(undefined, null, false, false);
-    expect(v).toEqual({ loading: false, offline: false, candidates: [] });
-  });
-
-  it("carries the loading flag while the request is in flight, no candidates yet", () => {
-    const v = deriveDiscoverView(undefined, null, true, true);
-    expect(v.loading).toBe(true);
-    expect(v.offline).toBe(false);
-    expect(v.candidates).toEqual([]);
-  });
-
-  it("surfaces ranked candidates when rag serves them", () => {
-    const v = deriveDiscoverView(served([edge("e1"), edge("e2")]), null, false, true);
-    expect(v.offline).toBe(false);
-    expect(v.candidates.map((c) => c.id)).toEqual(["e1", "e2"]);
-  });
-
-  it("maps a tiers-bearing 502 (rag down) to the designed offline state, not an error", () => {
-    const err = new EngineError("/nodes/x/discover", 502, {
-      tiers: { semantic: { available: false, reason: "rag service down" } },
-    });
-    const v = deriveDiscoverView(undefined, err, false, true);
-    expect(v.offline).toBe(true);
-    expect(v.candidates).toEqual([]);
-  });
-
-  it("maps a tiers-less transport fault on the discover route to offline (route fails only when rag is down)", () => {
-    const v = deriveDiscoverView(undefined, new Error("network"), false, true);
-    expect(v.offline).toBe(true);
-  });
-
-  it("treats a SUCCESS envelope marking semantic unavailable as offline", () => {
-    const v = deriveDiscoverView(served([], false), null, false, true);
-    expect(v.offline).toBe(true);
-  });
-
-  it("treats a served block missing semantic as offline", () => {
-    const v = deriveDiscoverView(
-      { candidates: [edge("stale")], tiers: { structural: { available: true } } },
-      null,
-      false,
-      true,
-    );
-    expect(v.offline).toBe(true);
-    expect(v.candidates).toEqual([]);
-  });
-
-  it("lets a fresh tiers-bearing error win over stale discover candidates", () => {
-    const err = new EngineError("/nodes/x/discover", 502, {
-      tiers: { semantic: { available: false, reason: "rag service down" } },
-    });
-    const v = deriveDiscoverView(served([edge("stale")]), err, false, true);
-    expect(v.offline).toBe(true);
-    expect(v.candidates).toEqual([]);
-  });
-
-  it("is empty-not-offline when rag is up and serves zero candidates", () => {
-    const v = deriveDiscoverView(served([]), null, false, true);
-    expect(v.offline).toBe(false);
-    expect(v.candidates).toEqual([]);
-  });
-});
-
 describe("engineKeys", () => {
   it("keys graph slices by the (scope, filter, as-of, granularity, lens, focus) tuple", () => {
-    const a = engineKeys.graph("wt-1", { tiers: { semantic: false } }, 123);
-    const b = engineKeys.graph("wt-1", { tiers: { semantic: false } }, 123);
-    const c = engineKeys.graph("wt-2", { tiers: { semantic: false } }, 123);
-    const d = engineKeys.graph("wt-1", { tiers: { semantic: false } });
+    const a = engineKeys.graph("wt-1", { tiers: { structural: false } }, 123);
+    const b = engineKeys.graph("wt-1", { tiers: { structural: false } }, 123);
+    const c = engineKeys.graph("wt-2", { tiers: { structural: false } }, 123);
+    const d = engineKeys.graph("wt-1", { tiers: { structural: false } });
     expect(a).toEqual(b);
     expect(a).not.toEqual(c);
     // Defaults (key tail is [..., asOf, granularity, lens, focus]): as-of "live",
@@ -3900,9 +3786,6 @@ describe("engineKeys", () => {
     expect(engineKeys.evidence("wt-1", "doc:plan")).not.toEqual(
       engineKeys.evidence("wt-2", "doc:plan"),
     );
-    expect(engineKeys.discover("wt-1", "doc:plan")).not.toEqual(
-      engineKeys.discover("wt-2", "doc:plan"),
-    );
     expect(engineKeys.planInterior("wt-1", "doc:plan")).not.toEqual(
       engineKeys.planInterior("wt-2", "doc:plan"),
     );
@@ -3942,7 +3825,6 @@ describe("engineKeys", () => {
       engineKeys.content("wt-1", "doc:plan"),
       engineKeys.neighbors("wt-1", "doc:plan", 1),
       engineKeys.evidence("wt-1", "doc:plan"),
-      engineKeys.discover("wt-1", "doc:plan"),
       engineKeys.events("wt-1", {}),
       engineKeys.history("wt-1", 20),
       engineKeys.prs("wt-1", "open"),
@@ -3978,7 +3860,6 @@ describe("engineKeys", () => {
       engineKeys.node("wt-1", "doc:plan"),
       engineKeys.neighbors("wt-1", "doc:plan", 1),
       engineKeys.evidence("wt-1", "doc:plan"),
-      engineKeys.discover("wt-1", "doc:plan"),
       engineKeys.events("wt-1", {}),
       engineKeys.diff("wt-1", 1_000, 2_000),
       engineKeys.lineage("wt-1", {}),
@@ -4053,7 +3934,6 @@ describe("engineKeys", () => {
       engineKeys.content("wt-1", "doc:plan"),
       engineKeys.neighbors("wt-1", "doc:plan", 1),
       engineKeys.evidence("wt-1", "doc:plan"),
-      engineKeys.discover("wt-1", "doc:plan"),
       engineKeys.events("wt-1", {}),
       engineKeys.history("wt-1", 20),
       engineKeys.prs("wt-1", "open"),
@@ -4103,7 +3983,6 @@ describe("engineKeys", () => {
       engineKeys.content("wt-1", "doc:plan"),
       engineKeys.neighbors("wt-1", "doc:plan", 1),
       engineKeys.evidence("wt-1", "doc:plan"),
-      engineKeys.discover("wt-1", "doc:plan"),
       engineKeys.events("wt-1", {}),
       engineKeys.history("wt-1", 20),
       engineKeys.prs("wt-1", "open"),
@@ -4161,7 +4040,6 @@ describe("engineKeys", () => {
       engineKeys.node(scope, nodeId),
       engineKeys.neighbors(scope, nodeId, 1),
       engineKeys.evidence(scope, nodeId),
-      engineKeys.discover(scope, nodeId),
       engineKeys.events(scope, { from: "2026-01-01", to: "2026-01-31" }),
       engineKeys.diff(scope, 1_000, 2_000),
       engineKeys.lineage(scope, {}),
@@ -4473,7 +4351,6 @@ describe("engineKeys", () => {
       engineKeys.node(scope, nodeId),
       engineKeys.neighbors(scope, nodeId, 1),
       engineKeys.evidence(scope, nodeId),
-      engineKeys.discover(scope, nodeId),
       engineKeys.events(scope, { from: "2026-01-01", to: "2026-01-31" }),
       engineKeys.diff(scope, 1_000, 2_000),
       engineKeys.lineage(scope, {}),
@@ -4632,7 +4509,7 @@ describe("the lens-keyed graph query cache", () => {
       normalizeGraphSliceRequestIdentity(
         " wt-1 ",
         {
-          tiers: { semantic: false },
+          tiers: { structural: false },
           date_range: { from: "2026-06-01", to: "2026-06-30" },
           text: " graph ",
         },
@@ -4644,7 +4521,7 @@ describe("the lens-keyed graph query cache", () => {
     ).toEqual({
       scope: "wt-1",
       filter: {
-        tiers: { semantic: false },
+        tiers: { structural: false },
         date_range: { from: "2026-06-01", to: "2026-06-30" },
         text: "graph",
       },

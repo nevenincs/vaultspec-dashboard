@@ -4,21 +4,26 @@
 // is defined exactly once (design-system-is-centralized).
 //
 // The binding Figma board labels the category chips by the human doc-type vocabulary
-// (Decision/Audit/Code/Step/Topic/Summary/Plan/Research). Those map onto the eight
-// canonical scene/category tokens emitted on :root (adr/audit/code/exec/feature/
-// index/plan/research) — the SAME colors the graph nodes paint with, so a chip and
-// its node always agree. The color is consumed via the CSS custom property
+// (Decision/Audit/Code/Step/Feature/Summary/Plan/Research/Reference). Those map onto
+// the canonical scene/category tokens emitted on :root (adr/audit/code/exec/feature/
+// plan/reference/research) — the SAME colors the graph nodes paint with, so a
+// chip and its node always agree. The color is consumed via the CSS custom property
 // (`var(--color-scene-category-<token>)`); no raw hex is ever typed here.
+//
+// `index` is deliberately NOT a category, on ANY surface (chip, badge, node, viewer):
+// `.vault/index` feature-index documents are metanodes the engine drops at ingest
+// (index-node-exclusion ADR), a strictly-ignored element. There is no index category
+// token, color, or chip anywhere in the dashboard.
 
-/** The eight canonical category tokens emitted as --color-scene-category-*. */
+/** The canonical category tokens emitted as --color-scene-category-*. */
 export type CategoryToken =
   | "adr"
   | "audit"
   | "code"
   | "exec"
   | "feature"
-  | "index"
   | "plan"
+  | "reference"
   | "research";
 
 /** The Figma-facing category labels (board 135:2 Chip Category variants) plus
@@ -27,8 +32,7 @@ export type Category =
   | CategoryToken
   | "decision" // → adr
   | "step" // → exec
-  | "summary" // → exec
-  | "topic"; // → feature
+  | "summary"; // → exec
 
 /** Resolve any accepted category label to its canonical scene/category token. */
 export function categoryToken(category: Category): CategoryToken {
@@ -38,8 +42,6 @@ export function categoryToken(category: Category): CategoryToken {
     case "step":
     case "summary":
       return "exec";
-    case "topic":
-      return "feature";
     default:
       return category;
   }

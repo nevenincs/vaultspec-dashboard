@@ -169,9 +169,17 @@ export interface StatusSectionChromeView {
   bodyVisible: boolean;
 }
 
-const STATUS_SECTION_HEADER_CLASS =
+// The canonical rail section-header / body treatment, shared by EVERY collapsible
+// rail section on BOTH rails (the right rail's OPEN PLANS / OPEN PRS and the left
+// rail's Features / Documents) through the `RailSection` component — exported so the
+// section style is defined exactly once (design-system-is-centralized). px-fg-1 +
+// py-fg-1-5 header padding, the flush hover wash, and the px-fg-1/pb-fg-2/pt-fg-0-5
+// body inset are identical across rails.
+export const RAIL_SECTION_HEADER_CLASS =
   "flex w-full items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-1-5 text-left transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
-const STATUS_SECTION_BODY_CLASS = "px-fg-1 pb-fg-2 pt-fg-0-5";
+export const RAIL_SECTION_BODY_CLASS = "px-fg-1 pb-fg-2 pt-fg-0-5";
+const STATUS_SECTION_HEADER_CLASS = RAIL_SECTION_HEADER_CLASS;
+const STATUS_SECTION_BODY_CLASS = RAIL_SECTION_BODY_CLASS;
 
 export function deriveStatusSectionChromeView(
   id: unknown,

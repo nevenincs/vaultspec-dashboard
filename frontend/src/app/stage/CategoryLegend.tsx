@@ -1,8 +1,11 @@
 // Category legend (binding Figma `graph/Hero` 213:505 Legend 99:2): the key to the
 // node-fill encoding, docked top-left of the canvas as a single raised card. Each
-// item is a small dot carrying the SAME bound scene/category color the graph nodes
-// paint with (via the shared `category` vocabulary) over a plain-language label, so
-// a swatch and its nodes always agree.
+// item leads with the SAME centralized category GLYPH the left-rail tree uses —
+// the shared `DocTypeMark` silhouette tinted by the bound scene/category color (the
+// SAME color the graph nodes paint with) — over a plain-language label, so the
+// legend, the tree, and the nodes all read as one icon + color schema. Features use
+// the plan mark in the feature color (matching the tree); doc types use their own
+// mark.
 //
 // LIVE legend: each item is also a canvas FILTER TOGGLE — clicking a category
 // hides/shows that category's nodes on the graph canvas (a dimmed item is hidden).
@@ -21,8 +24,17 @@ import {
   useHiddenCategorySet,
 } from "../../stores/view/graphCategoryVisibility";
 import { docTypeLabel } from "../../stores/server/docTypeVocabulary";
+import { DocTypeMark } from "../../scene/field/markComponents";
 import { Card, categoryColorVar, categoryToken } from "../kit";
 import type { Category } from "../kit";
+
+// The leading category GLYPH reads at the caption size — the same shared mark and
+// color schema as the left-rail tree (features carry the plan mark, doc types their
+// own). Feature folds onto the plan mark to match the tree's feature treatment.
+const LEGEND_ICON_PX = 14;
+function legendMarkKind(category: Category): string {
+  return category === "feature" ? "plan" : category;
+}
 
 /** The legend vocabulary in the canonical pipeline reading order (terminology-
  *  standardization ADR D2): Feature · Research · Decisions · Plans · Steps · Audits
@@ -68,9 +80,12 @@ export function CategoryLegend() {
           >
             <span
               aria-hidden
-              className="size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: categoryColorVar(category) }}
-            />
+              className="flex shrink-0 items-center"
+              style={{ color: categoryColorVar(category) }}
+              data-category-legend-mark={legendMarkKind(category)}
+            >
+              <DocTypeMark kind={legendMarkKind(category)} size={LEGEND_ICON_PX} />
+            </span>
             <span className="text-caption text-ink-muted">{label}</span>
           </button>
         );
