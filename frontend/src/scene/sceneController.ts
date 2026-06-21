@@ -298,6 +298,19 @@ export type SceneEvent =
       clientX: number;
       clientY: number;
     }
+  // --- render capability (scene-WebGL hardening) ----------------------------
+  /**
+   * The scene's GPU render capability, emitted on init, WebGL context loss, and
+   * restore. The stores layer surfaces it like a degradation tier and app-chrome
+   * renders the designed CanvasState (gpu-unavailable / context-lost) — the scene
+   * only DETECTS + REPORTS + owns the GL rebuild, never its own DOM fallback.
+   */
+  | {
+      kind: "render-capability";
+      state: "ok" | "context-lost" | "unavailable";
+      recoverable: boolean;
+      reason?: string;
+    }
   // --- graph-representation addenda (W03.P08) -------------------------------
   /**
    * Emitted after a set-representation-mode is applied. Carries the mode the

@@ -98,6 +98,9 @@ const PULSE_RING_ALPHA = controlNumber("pulseRingAlpha");
 // only emphasis is this gentle node recede + a thin accent focus ring. No glow, no near-black.
 const NODE_RECEDE_MIX = 0.3; // gentle non-focus mix toward the canvas bg (subtle de-emphasis)
 const FOCUS_RING_WIDTH_PX = 2; // thin accent focus ring on the hovered hub
+// Bounded GL-context-restore retries (bounded-by-default): after this many failed rebuilds
+// on webglcontextrestored, the scene reports render-unavailable (recoverable:false).
+const MAX_GL_RESTORE_ATTEMPTS = 3;
 
 /** 0xRRGGBB int → a CSS "#rrggbb" string for canvas-2D (minimap) fills/strokes. */
 function hexCss(n: number): string {
@@ -307,6 +310,8 @@ export class ThreeField implements SceneFieldRenderer {
   private needsRender = false;
   private scheduled = false;
   private raf = 0;
+  // GL-context-restore attempt counter (bounded retry on webglcontextrestored).
+  private glRestoreAttempts = 0;
 
   private width = 1;
   private height = 1;
@@ -350,7 +355,35 @@ export class ThreeField implements SceneFieldRenderer {
     // contained: three is imported only by this field.
     ColorManagement.enabled = false;
 
-    const renderer = new WebGLRenderer({ antialias: true, alpha: false });
+    // Capability detection, TWO-TIER (user mandate: "software-WebGL fallback — must run in
+    // headless Chrome w/o GPU"). Tier 1 prefers a real GPU (powerPreference high-performance
+    // + failIfMajorPerformanceCaveat) so a capable machine never silently drops to a crawl.
+    // Tier 2: if that throws (headless / SwiftShader / software-only / weak iGPU), RETRY
+    // without the caveat so the graph still RENDERS via software-WebGL (degraded frame rate is
+    // the perf-adaptive LOD axis's concern, not a blank canvas). Only when NO GL context can be
+    // created at all do we report `unavailable` — app-chrome renders the gpu-unavailable
+    // CanvasState (the scene never draws its own DOM fallback; layer boundary).
+    let renderer: WebGLRenderer;
+    try {
+      renderer = new WebGLRenderer({
+        antialias: true,
+        alpha: false,
+        powerPreference: "high-performance",
+        failIfMajorPerformanceCaveat: true,
+      });
+    } catch {
+      try {
+        renderer = new WebGLRenderer({ antialias: true, alpha: false });
+      } catch (err) {
+        this.controller?.emit({
+          kind: "render-capability",
+          state: "unavailable",
+          recoverable: false,
+          reason: err instanceof Error ? err.message : "WebGL context unavailable",
+        });
+        return;
+      }
+    }
     this.dpr = Math.min(window.devicePixelRatio, 2);
     renderer.setPixelRatio(this.dpr);
     host.appendChild(renderer.domElement);
@@ -362,6 +395,14 @@ export class ThreeField implements SceneFieldRenderer {
       inset: "0",
     });
     this.renderer = renderer;
+    // WebGL context-loss resilience: preventDefault on loss is REQUIRED for the browser to
+    // fire a restore; on restore we rebuild GL resources from the persisted CPU layout.
+    renderer.domElement.addEventListener("webglcontextlost", this.onContextLost, false);
+    renderer.domElement.addEventListener(
+      "webglcontextrestored",
+      this.onContextRestored,
+      false,
+    );
 
     const labels = document.createElement("canvas");
     Object.assign(labels.style, {
@@ -384,6 +425,12 @@ export class ThreeField implements SceneFieldRenderer {
     this.resize(rect.width || 1, rect.height || 1);
 
     (window as unknown as { __threeField?: ThreeField }).__threeField = this;
+    // GL context created successfully — report render-capable.
+    this.controller?.emit({
+      kind: "render-capability",
+      state: "ok",
+      recoverable: true,
+    });
   }
 
   private applyBackground(): void {
@@ -423,12 +470,104 @@ export class ThreeField implements SceneFieldRenderer {
     this.labelCanvas = null;
     this.labelCtx = null;
     if (this.renderer) {
+      this.renderer.domElement.removeEventListener(
+        "webglcontextlost",
+        this.onContextLost,
+      );
+      this.renderer.domElement.removeEventListener(
+        "webglcontextrestored",
+        this.onContextRestored,
+      );
       this.renderer.domElement.remove();
       this.renderer.dispose();
       this.renderer = null;
     }
     const g = window as unknown as { __threeField?: ThreeField };
     if (g.__threeField === this) delete g.__threeField;
+  }
+
+  // --- WebGL context-loss resilience (scene-WebGL hardening) ----------------
+
+  /** WebGL context lost (GPU crash / driver reset / tab backgrounding): preventDefault is
+   *  REQUIRED or the browser never fires a restore. Pause the loop + report; the CPU
+   *  d3-force layout (cpuPositions/solver) is untouched and persists for the rebuild. */
+  private onContextLost = (e: Event): void => {
+    e.preventDefault();
+    this.running = false;
+    if (this.raf) cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    this.scheduled = false;
+    this.controller?.emit({
+      kind: "render-capability",
+      state: "context-lost",
+      recoverable: true,
+    });
+  };
+
+  /** WebGL context restored: rebuild the GL resources from the persisted CPU layout and
+   *  resume. Bounded retry — after MAX_GL_RESTORE_ATTEMPTS failures, report unavailable. */
+  private onContextRestored = (): void => {
+    try {
+      this.rebuildGLResources();
+      this.glRestoreAttempts = 0;
+      this.controller?.emit({
+        kind: "render-capability",
+        state: "ok",
+        recoverable: true,
+      });
+      this.running = true;
+      this.requestRender();
+    } catch (err) {
+      this.glRestoreAttempts += 1;
+      this.controller?.emit(
+        this.glRestoreAttempts >= MAX_GL_RESTORE_ATTEMPTS
+          ? {
+              kind: "render-capability",
+              state: "unavailable",
+              recoverable: false,
+              reason: err instanceof Error ? err.message : "GL restore failed",
+            }
+          : { kind: "render-capability", state: "context-lost", recoverable: true },
+      );
+    }
+  };
+
+  /** Recreate the GPU-side resources after a context restore, from the persisted CPU state
+   *  (nodes / edges / idToIndex / cpuPositions / solver) — the layout never re-explodes,
+   *  only the GL handles rebuild. The 2D label canvas is unaffected by GL context loss. */
+  private rebuildGLResources(): void {
+    if (this.nodeMesh) {
+      this.scene.remove(this.nodeMesh);
+      this.nodeMesh.geometry.dispose();
+      this.nodeMesh = null;
+    }
+    if (this.edgeMesh) {
+      this.scene.remove(this.edgeMesh);
+      this.edgeMesh.geometry.dispose();
+      this.edgeMesh = null;
+    }
+    this.nodeMaterial?.dispose();
+    this.edgeMaterial?.dispose();
+    this.nodeMaterial = null;
+    this.edgeMaterial = null;
+    this.positionTex?.dispose();
+    this.positionTex = null;
+    if (this.nodes.length === 0 || !this.solver) return;
+    const texSize = this.solver.texSize;
+    this.positionTex = new DataTexture(
+      this.cpuPositions,
+      texSize,
+      texSize,
+      RGBAFormat,
+      FloatType,
+    );
+    this.positionTex.minFilter = NearestFilter;
+    this.positionTex.magFilter = NearestFilter;
+    this.positionTex.needsUpdate = true;
+    this.buildNodes(this.nodes, texSize);
+    this.buildEdges(this.edgeData, this.idToIndex, texSize);
+    this.applyEmphasis();
+    this.applyEdgeAlpha();
   }
 
   command(cmd: SceneCommand): void {
