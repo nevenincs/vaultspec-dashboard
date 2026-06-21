@@ -56,10 +56,6 @@ import {
   edgeAppearance,
   edgeEndColors,
   highlightColor,
-  hoverContextEdgeColor,
-  hoverContextLabelColor,
-  hoverFocusEdgeColor,
-  hoverRecedeColor,
   inkColor,
   inkMutedColor,
   nodeColorNumber,
@@ -93,19 +89,15 @@ const LABEL_BUDGET = controlNumber("labelBudget");
 const DOC_LABEL_SALIENCE_FLOOR = controlNumber("documentLabelSalienceFloor");
 const PULSE_RING_WIDTH = controlNumber("pulseRingWidth");
 const PULSE_RING_ALPHA = controlNumber("pulseRingAlpha");
-// Hover/focus emphasis — PARITY with the binding graph/Hover 742:3413 (figma-is-binding).
-// De-emphasis is COLOUR-ONLY at FULL opacity: a non-focus node recedes to the FLAT warm
-// ground (the node material's uDimColor = hoverRecedeColor; design-review tokenized the
-// recede flat, exact-to-frame), never an opacity fade. A focus node keeps FULL category
-// saturation — the pop is ADDITIVE: a 2px accent ring + a category-hue glow bloom on the
-// hovered hub (drawLabels), not a fill brighten. Edges never fade: focus edges warm-ink +
-// thicker, context edges taupe + thinner. These treatment magnitudes are inline pending the
-// coordinated graphControlSchema migration (apps-review owns that file); the 4 emphasis
-// COLOURS read via the scene seam (appearance) — themed scene-read tokens, design hex fallback.
-const FOCUS_RING_WIDTH_PX = 2; // accent focus ring on the hovered hub (design 2px)
-const FOCUS_GLOW_RADIUS_PX = 24; // category-hue glow bloom radius beyond the hub (design ~24)
-const FOCUS_EDGE_WIDTH = 1.75; // focus-cluster edge width (design 1.75px)
-const CONTEXT_EDGE_WIDTH = 1; // context edge width (design 1px)
+// Hover/selection emphasis — SUBTLE + theme-palette only (user goal): keep the
+// hover↔non-hover difference SMALL, every colour from the established Figma palette, no
+// black, no adhoc hex, gradient blends kept. De-emphasis is COLOUR-ONLY at full opacity: a
+// non-focus node mixes GENTLY toward the canvas background (node material uDimColor =
+// canvasBackground) so it recedes a touch without leaving its hue family; focus nodes keep
+// full category colour. Edges keep their category GRADIENT in every mode (no recolour); the
+// only emphasis is this gentle node recede + a thin accent focus ring. No glow, no near-black.
+const NODE_RECEDE_MIX = 0.3; // gentle non-focus mix toward the canvas bg (subtle de-emphasis)
+const FOCUS_RING_WIDTH_PX = 2; // thin accent focus ring on the hovered hub
 
 /** 0xRRGGBB int → a CSS "#rrggbb" string for canvas-2D (minimap) fills/strokes. */
 function hexCss(n: number): string {
@@ -181,14 +173,10 @@ varying float vAA;
 void main() {
   float alpha = 1.0 - smoothstep(1.0 - vAA, 1.0, vEdge);
   if (alpha <= 0.0) discard;
-  // Emphasis is COLOUR-ONLY — alpha is NEVER reduced (no opacity fade; user redesign):
-  //   vDim > 1.5  → FOCUS: brighten toward white (additive pop).
-  //   vDim > 0.5  → de-emphasised: recede by colour toward the muted ground (full alpha).
-  // PARITY (graph/Hover): emphasis is COLOUR-ONLY at FULL alpha — a focus node keeps full
-  // category saturation (the pop is the ring + glow, not a fill change); a non-focus node
-  // (vDim > 0.5) recedes to the FLAT warm-ground colour (uDimColor = hover-recede token);
-  // design-review tokenized the recede flat (a swap, not a mix). Nothing ever fades.
-  vec3 col = vDim > 0.5 ? uDimColor : vColor;
+  // Emphasis is COLOUR-ONLY at full opacity (never an opacity fade). A focus node keeps its
+  // full category colour; a non-focus node (vDim > 0.5) mixes GENTLY toward uDimColor (the
+  // canvas background) so it recedes a touch — a small, subtle difference, no flat greyout.
+  vec3 col = vDim > 0.5 ? mix(vColor, uDimColor, ${glslFloat(NODE_RECEDE_MIX)}) : vColor;
   gl_FragColor = vec4(col, alpha);
 }
 `;
@@ -734,10 +722,10 @@ export class ThreeField implements SceneFieldRenderer {
     geom.setAttribute("aHidden", new InstancedBufferAttribute(aHidden, 1));
     geom.instanceCount = n;
 
-    // The node de-emphasis recede target is the warm low-chroma ground (graph/Hover
-    // parity), read via the scene seam (hoverRecedeColor) — NOT ink-muted. A non-focus
-    // node mixes toward this at NODE_RECEDE_MIX, at full alpha.
-    const dim = new Color(hoverRecedeColor());
+    // The node de-emphasis recede target is the canvas BACKGROUND (an established palette
+    // token, theme-adaptive): a non-focus node mixes gently toward it (NODE_RECEDE_MIX) so it
+    // recedes into the paper a touch, at full alpha. No adhoc colour.
+    const dim = new Color(canvasBackground());
     this.nodeMaterial = new ShaderMaterial({
       uniforms: {
         uPositions: { value: null as Texture | null },
@@ -917,54 +905,10 @@ export class ThreeField implements SceneFieldRenderer {
     }
     nodeDim.needsUpdate = true;
 
-    // EDGES — recolour + re-weight by focus membership while an emphasis is active: the
-    // focus cluster's edges go warm-ink + thicker (1.75), context edges taupe + thinner
-    // (1). On restore (no emphasis), recompute the default category-gradient colour +
-    // confidence width. Alpha is owned by applyEdgeAlpha (emphasis-aware; edges never fade).
-    if (this.edgeMesh) {
-      const eColor = this.edgeMesh.geometry.getAttribute("aColor");
-      const eWidth = this.edgeMesh.geometry.getAttribute("aWidthPx");
-      if (active) {
-        const focusCol = new Color(hoverFocusEdgeColor());
-        const ctxCol = new Color(hoverContextEdgeColor());
-        this.builtEdges.forEach((e, i) => {
-          const isFocus = active.has(e.srcId) && active.has(e.dstId);
-          const c = isFocus ? focusCol : ctxCol;
-          const w = isFocus ? FOCUS_EDGE_WIDTH : CONTEXT_EDGE_WIDTH;
-          for (let k = 0; k < 4; k++) {
-            const v = i * 4 + k;
-            eColor.setXYZ(v, c.r, c.g, c.b);
-            eWidth.setX(v, w);
-          }
-        });
-      } else {
-        const colA = new Color();
-        const colB = new Color();
-        this.builtEdges.forEach((e, i) => {
-          const sIdx = this.idToIndex.get(e.srcId) ?? 0;
-          const tIdx = this.idToIndex.get(e.dstId) ?? 0;
-          const ends = edgeEndColors(
-            this.appearance.edgeColorMode,
-            this.nodeColors[sIdx],
-            this.nodeColors[tIdx],
-          );
-          colA.set(ends.a);
-          colB.set(ends.b);
-          const w = edgeAppearance(this.edgeData[i], this.appearance).width;
-          for (let k = 0; k < 4; k++) {
-            const v = i * 4 + k;
-            const c = k < 2 ? colA : colB;
-            eColor.setXYZ(v, c.r, c.g, c.b);
-            eWidth.setX(v, w);
-          }
-        });
-      }
-      eColor.needsUpdate = true;
-      eWidth.needsUpdate = true;
-    }
-    // Alpha (emphasis-aware: full while emphasised, base confidence otherwise; filter
-    // visibility still gates) is written here so colour/width + alpha compose.
-    this.applyEdgeAlpha();
+    // EDGES keep their category GRADIENT colour + confidence width in EVERY mode (built once
+    // in buildEdges, never recoloured on hover/selection) — user goal: theme palette only,
+    // gradients kept, no near-black recolour. Emphasis touches nodes only (above); edge alpha
+    // depends solely on confidence + the filter visibility mask (applyEdgeAlpha).
   }
 
   private applyVisibility(
@@ -991,14 +935,11 @@ export class ThreeField implements SceneFieldRenderer {
     if (!this.edgeMesh) return;
     const alpha = this.edgeMesh.geometry.getAttribute("aAlpha");
     const vis = this.visibleNodeIds;
-    // While an emphasis is active, edges NEVER fade (graph/Hover parity): every shown edge
-    // renders at full opacity (the focus distinction is carried by colour + width, set in
-    // applyEmphasis). Off-emphasis, an edge shows its confidence-derived base opacity. The
-    // filter visibility mask still hides a filtered-out edge in both modes.
-    const emphasised = this.emphasisSet() !== null;
+    // Edges show their confidence-derived base opacity in every mode (gated by the filter
+    // visibility mask) — no hover alpha boost, so the hover↔non-hover difference stays subtle.
     this.builtEdges.forEach((e, i) => {
       const shown = !vis || (vis.has(e.srcId) && vis.has(e.dstId));
-      const a = shown ? (emphasised ? 1 : (this.edgeBaseAlpha[i] ?? 0)) : 0;
+      const a = shown ? (this.edgeBaseAlpha[i] ?? 0) : 0;
       for (let k = 0; k < 4; k++) alpha.setX(i * 4 + k, a);
     });
     alpha.needsUpdate = true;
@@ -1253,23 +1194,6 @@ export class ThreeField implements SceneFieldRenderer {
         3 * s,
         nodeWorldRadius(this.nodes[i], this.appearance) * ppw,
       );
-      // Category-hue glow bloom under the hovered hub (graph/Hover parity) — a soft
-      // additive halo in the node's own category colour that makes the focus POP without
-      // dimming the rest. Drawn beneath the ring + labels.
-      if (hovered) {
-        const hue = this.nodeColors[i];
-        const gr = (hue >> 16) & 0xff;
-        const gg = (hue >> 8) & 0xff;
-        const gb = hue & 0xff;
-        const glowR = nodeR + FOCUS_GLOW_RADIUS_PX * s;
-        const grad = ctx.createRadialGradient(p.x, p.y, nodeR * 0.6, p.x, p.y, glowR);
-        grad.addColorStop(0, `rgba(${gr}, ${gg}, ${gb}, 0.55)`);
-        grad.addColorStop(1, `rgba(${gr}, ${gg}, ${gb}, 0)`);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
-        ctx.fillStyle = grad;
-        ctx.fill();
-      }
       // Base emphasis ring (precedence selected > hovered > pinned). The hovered hub's
       // focus ring is the binding 2px ACCENT (graph/Hover); selected stays the dominant
       // (wider) accent ring, pinned a thin dashed accent marker.
@@ -1313,7 +1237,6 @@ export class ThreeField implements SceneFieldRenderer {
     const featureFont = labelTextStyle("feature").font;
     const docFont = labelTextStyle("document").font;
     const inkMuted = `#${inkMutedColor().toString(16).padStart(6, "0")}`;
-    const contextLabel = `#${hoverContextLabelColor().toString(16).padStart(6, "0")}`;
     ctx.textBaseline = "middle";
     let budget = LABEL_BUDGET; // clutter cap
     for (let i = 0; i < this.nodes.length && budget > 0; i++) {
@@ -1330,7 +1253,7 @@ export class ThreeField implements SceneFieldRenderer {
       // focus labels read in ink, context labels in the muted taupe. Off-emphasis, the
       // default feature=ink / document=ink-muted ramp applies.
       if (focus) {
-        ctx.fillStyle = focus.has(node.id) ? ink : contextLabel;
+        ctx.fillStyle = focus.has(node.id) ? ink : inkMuted;
       } else {
         ctx.fillStyle = isFeature ? ink : inkMuted;
       }

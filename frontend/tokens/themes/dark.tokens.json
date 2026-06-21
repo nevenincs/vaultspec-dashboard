@@ -60,12 +60,8 @@
       "category-plan": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#5fa97a" } },
       "category-exec": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#d59468" } },
       "category-audit": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#6cc0cf" } },
-      "category-index": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#b3bd9f" } },
       "category-code": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#d07f8e" } },
-      "hover-recede": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#46423b" } },
-      "hover-edge-context": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#706b64" } },
-      "hover-edge-focus": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#d5d0c9" } },
-      "hover-label-context": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#8a857e" } }
+      "category-reference": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#b87fa3" } }
     }
   }
 }

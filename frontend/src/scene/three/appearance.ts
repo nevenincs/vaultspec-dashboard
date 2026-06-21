@@ -97,7 +97,7 @@ export interface EdgeAppearance {
 
 /** The recognised inference tiers — kept ONLY to dim an edge of an unknown tier;
  *  tier no longer drives edge colour (colour inherits from the endpoint nodes). */
-const KNOWN_EDGE_TIERS = new Set(["declared", "structural", "temporal", "semantic"]);
+const KNOWN_EDGE_TIERS = new Set(["declared", "structural", "temporal"]);
 
 /** Edge opacity + width from confidence and the live appearance params. Colour is
  *  NOT here — see `edgeEndColors`: an edge inherits its endpoints' category hues. */
@@ -151,12 +151,12 @@ export function accentColor(): number {
  * canvas. Must come from a resolving literal-hex scene token per theme: the
  * var()-aliased `--color-accent` / `--color-focus` do NOT resolve through the
  * scene's getComputedStyle read (the literal-hex contract), so they cannot carry a
- * theme-aware highlight. Uses the semantic-highlight hue today; repoint at a
- * dedicated `--color-scene-highlight` surfaced from `--semantic-focus-ring` through
+ * theme-aware highlight. Reads the temporal-tier literal-hex token today; repoint at
+ * a dedicated `--color-scene-highlight` surfaced from `--semantic-focus-ring` through
  * the token build if/when one lands.
  */
 export function highlightColor(): number {
-  return cssColorNumber("--color-tier-semantic", 0x8b85b7);
+  return cssColorNumber("--color-tier-temporal", 0x5c5040);
 }
 
 export function inkColor(): number {
@@ -167,20 +167,9 @@ export function inkMutedColor(): number {
   return cssColorNumber("--color-ink-muted", 0x6f675c);
 }
 
-// Hover/focus emphasis scene colours — PARITY with the binding graph/Hover 742:3413
-// (figma-is-binding). Read through the scene token seam; the design-frame hexes are the
-// cssColorNumber FALLBACKS until design-review lands the proper Figma-bound
-// `--color-scene-hover-*` tokens (light + dark) in styles.css, after which these resolve
-// themed with NO code change (the sanctioned token+fallback bridge).
-export function hoverRecedeColor(): number {
-  return cssColorNumber("--color-scene-hover-recede", 0xccc1b4);
-}
-export function hoverContextLabelColor(): number {
-  return cssColorNumber("--color-scene-hover-label-context", 0xa9a49c);
-}
-export function hoverFocusEdgeColor(): number {
-  return cssColorNumber("--color-scene-hover-edge-focus", 0x46423b);
-}
-export function hoverContextEdgeColor(): number {
-  return cssColorNumber("--color-scene-hover-edge-context", 0xbbb4ab);
-}
+// Graph emphasis (hover / selection) uses ONLY established palette tokens: categoryColor
+// for node + edge hues (gradient kept), canvasBackground for the gentle node recede,
+// accentColor for the focus ring, inkColor / inkMutedColor for labels. No adhoc hover
+// hexes, no near-black. The prior `--color-scene-hover-*` tokens (recede / edge-focus /
+// edge-context / label-context) were adhoc-derived (one near-black) and are retired from
+// the scene; their DTCG entries are now orphaned and can be pruned from the token source.

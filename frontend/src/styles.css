@@ -162,12 +162,8 @@
   --color-scene-category-plan: #3f8457;
   --color-scene-category-exec: #b5703f;
   --color-scene-category-audit: #3f9aa6;
-  --color-scene-category-index: #8f9a7e;
   --color-scene-category-code: #b05a6b;
-  --color-scene-hover-recede: #ccc1b4;
-  --color-scene-hover-edge-context: #bbb4ab;
-  --color-scene-hover-edge-focus: #46423b;
-  --color-scene-hover-label-context: #a9a49c;
+  --color-scene-category-reference: #9d5e86;
   /* vaultspec:generated:colors:end */
 
   /* == 5. FIGMA-BINDING FOUNDATION (figma-parity-reconciliation W01.P01) ===
@@ -366,12 +362,8 @@
     --color-scene-category-plan: #3f8457;
     --color-scene-category-exec: #b5703f;
     --color-scene-category-audit: #3f9aa6;
-    --color-scene-category-index: #8f9a7e;
     --color-scene-category-code: #b05a6b;
-    --color-scene-hover-recede: #ccc1b4;
-    --color-scene-hover-edge-context: #bbb4ab;
-    --color-scene-hover-edge-focus: #46423b;
-    --color-scene-hover-label-context: #a9a49c;
+    --color-scene-category-reference: #9d5e86;
   }
 
   [data-theme="dark"] {
@@ -418,12 +410,8 @@
     --color-scene-category-plan: #5fa97a;
     --color-scene-category-exec: #d59468;
     --color-scene-category-audit: #6cc0cf;
-    --color-scene-category-index: #b3bd9f;
     --color-scene-category-code: #d07f8e;
-    --color-scene-hover-recede: #46423b;
-    --color-scene-hover-edge-context: #706b64;
-    --color-scene-hover-edge-focus: #d5d0c9;
-    --color-scene-hover-label-context: #8a857e;
+    --color-scene-category-reference: #b87fa3;
   }
 
   [data-theme="high-contrast"] {
@@ -470,12 +458,8 @@
     --color-scene-category-plan: #79c596;
     --color-scene-category-exec: #ecab7e;
     --color-scene-category-audit: #8fd8e6;
-    --color-scene-category-index: #cdd6ba;
     --color-scene-category-code: #e69aa8;
-    --color-scene-hover-recede: #767069;
-    --color-scene-hover-edge-context: #8a857e;
-    --color-scene-hover-edge-focus: #ddd8d2;
-    --color-scene-hover-label-context: #d5d0c9;
+    --color-scene-category-reference: #d0a3c0;
   }
   /* vaultspec:generated:themes:end */
 

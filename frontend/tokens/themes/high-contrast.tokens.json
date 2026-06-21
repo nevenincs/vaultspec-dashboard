@@ -60,12 +60,8 @@
       "category-plan": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#79c596" } },
       "category-exec": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#ecab7e" } },
       "category-audit": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#8fd8e6" } },
-      "category-index": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#cdd6ba" } },
       "category-code": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#e69aa8" } },
-      "hover-recede": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#767069" } },
-      "hover-edge-context": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#8a857e" } },
-      "hover-edge-focus": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#ddd8d2" } },
-      "hover-label-context": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#d5d0c9" } }
+      "category-reference": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#d0a3c0" } }
     }
   }
 }
