@@ -311,7 +311,7 @@ describe("dashboard-state engine client (live engine)", () => {
   it("preserves the complete dashboard graph filter contract in graph query variables", () => {
     const state = dashboardDocumentStateSeed("scope-a", {
       filters: {
-        tiers: { semantic: false },
+        tiers: { structural: false },
         min_confidence: { temporal: 0.72 },
         relations: ["references"],
         structural_state: ["broken"],
@@ -335,7 +335,7 @@ describe("dashboard-state engine client (live engine)", () => {
     expect(dashboardGraphQueryVariables(state)).toEqual({
       scope: "scope-a",
       filter: {
-        tiers: { semantic: false },
+        tiers: { structural: false },
         min_confidence: { temporal: 0.72 },
         relations: ["references"],
         structural_state: ["broken"],
@@ -377,7 +377,7 @@ describe("dashboard-state engine client (live engine)", () => {
     } as unknown as DashboardFilters);
 
     expect(filters).toEqual({
-      tiers: { declared: true, semantic: false },
+      tiers: { declared: true },
       min_confidence: { temporal: 0 },
       relations: ["references"],
       structural_state: ["broken"],
@@ -389,8 +389,17 @@ describe("dashboard-state engine client (live engine)", () => {
         feature_query: { value: "state-*", mode: "contains" },
       } as unknown as DashboardFilters),
     ).toEqual({});
-    expect(normalizeDashboardFilterTiers({ semantic: false, rogue: true })).toEqual({
-      semantic: false,
+    // `semantic` is not an edge tier (the engine never mints semantic graph
+    // edges, ADR D3.5), so it is dropped from the tier filter exactly like an
+    // unknown key; `structural` survives as a real edge tier.
+    expect(
+      normalizeDashboardFilterTiers({
+        structural: false,
+        semantic: false,
+        rogue: true,
+      }),
+    ).toEqual({
+      structural: false,
     });
     expect(
       normalizeDashboardMinConfidence({
@@ -400,20 +409,30 @@ describe("dashboard-state engine client (live engine)", () => {
       }),
     ).toEqual({ temporal: 0.42 });
     expect(
-      dashboardFiltersWithTier({ tiers: { semantic: false } }, "rogue", true),
-    ).toEqual({ tiers: { semantic: false } });
-    expect(normalizeDashboardTierName(" semantic ")).toBe("semantic");
+      dashboardFiltersWithTier({ tiers: { structural: false } }, "rogue", true),
+    ).toEqual({ tiers: { structural: false } });
+    expect(normalizeDashboardTierName(" structural ")).toBe("structural");
+    expect(normalizeDashboardTierName(" semantic ")).toBeNull();
     expect(normalizeDashboardTierName("rogue")).toBeNull();
     expect(normalizeDashboardTierEnabled(false)).toBe(false);
     expect(normalizeDashboardTierEnabled("false")).toBeNull();
     expect(normalizeDashboardConfidenceTier(" temporal ")).toBe("temporal");
     expect(normalizeDashboardConfidenceTier("declared")).toBeNull();
     expect(
-      dashboardFiltersWithTier({ tiers: { semantic: false } }, " semantic ", true),
-    ).toEqual({ tiers: { semantic: true } });
+      dashboardFiltersWithTier({ tiers: { structural: false } }, " structural ", true),
+    ).toEqual({ tiers: { structural: true } });
+    // `semantic` is not an edge tier (ADR D3.5), so toggling it is a no-op: the
+    // invalid tier name is rejected and the existing edge-tier filter is kept.
     expect(
-      dashboardFiltersWithTier({ tiers: { semantic: false } }, " semantic ", "true"),
-    ).toEqual({ tiers: { semantic: false } });
+      dashboardFiltersWithTier({ tiers: { structural: false } }, " semantic ", true),
+    ).toEqual({ tiers: { structural: false } });
+    expect(
+      dashboardFiltersWithTier(
+        { tiers: { structural: false } },
+        " structural ",
+        "true",
+      ),
+    ).toEqual({ tiers: { structural: false } });
     expect(
       dashboardFiltersWithMinConfidence(
         { min_confidence: { temporal: 0.5 } },
@@ -644,8 +663,8 @@ describe("dashboard-state engine client (live engine)", () => {
   });
 
   it("normalizes dashboard layout and lens enum values at the patch seam", () => {
-    expect(normalizeDashboardRepresentationMode(" semantic ")).toBe("semantic");
-    expect(normalizeDashboardRepresentationMode("semantic")).toBe("semantic");
+    expect(normalizeDashboardRepresentationMode(" radial ")).toBe("radial");
+    expect(normalizeDashboardRepresentationMode("radial")).toBe("radial");
     expect(normalizeDashboardRepresentationMode("unknown")).toBe("connectivity");
     expect(normalizeDashboardSalienceLens(" design ")).toBe("design");
     expect(normalizeDashboardSalienceLens("design")).toBe("design");
@@ -815,7 +834,7 @@ describe("dashboard-state engine client (live engine)", () => {
         right_collapsed: true,
         right_tab: "search",
       });
-      await result.current.mutations.setRepresentationMode("semantic");
+      await result.current.mutations.setRepresentationMode("radial");
       await result.current.mutations.setGraphBounds({ shape: "free", size: 100 });
     });
 
@@ -838,7 +857,7 @@ describe("dashboard-state engine client (live engine)", () => {
       right_collapsed: true,
       right_tab: "search",
     });
-    expect(state?.representation_mode).toBe("semantic");
+    expect(state?.representation_mode).toBe("radial");
 
     let malformedVisualIntent!: DashboardState;
     await act(async () => {

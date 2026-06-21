@@ -881,12 +881,14 @@ export function adaptSearch(body: unknown): SearchResponse {
   };
 }
 
-/** Stem-suffix doc-type derivation (matches the vault naming convention). */
+/** Stem-suffix doc-type derivation (matches the vault naming convention).
+ *  `.index` (`.vault/index` feature-index) stems get NO special doc-type — they
+ *  are strictly-ignored metanodes (index-node-exclusion ADR), never categorized as
+ *  an `index` type; they fall through to the generic `document`. */
 export function docTypeFromStem(stem: string): string {
   if (/-W\d+-P\d+-S\d+$|-P\d+-S\d+$|-S\d+$|-summary$/.test(stem)) return "exec";
   const match = /-(research|adr|plan|exec|audit|reference)$/.exec(stem);
   if (match) return match[1];
-  if (/\.index$/.test(stem)) return "index";
   return "document";
 }
 

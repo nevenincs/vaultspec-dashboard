@@ -574,14 +574,16 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
       src_feature: "a",
       dst_feature: "b",
       count: 7,
-      breakdown_by_tier: { structural: 2, semantic: 5 },
+      breakdown_by_tier: { structural: 2, temporal: 5 },
     });
     // ID uses JSON-encoded endpoint pair to prevent collisions when endpoint
     // ids contain the "->" separator (wire-01 adversarial finding).
     expect(edge.id).toBe('meta:["feature:a","feature:b"]');
     expect(edge.relation).toBe("related");
-    // Dominant tier = the breakdown's heaviest tier (semantic here).
-    expect(edge.tier).toBe("semantic");
+    // Dominant tier = the breakdown's heaviest edge tier (temporal here). The
+    // engine never mints semantic graph edges (ADR D3.5), so semantic is never a
+    // candidate even if a stray key appears in the breakdown.
+    expect(edge.tier).toBe("temporal");
   });
 
   const meta = (breakdown: Record<string, number>) => ({
@@ -598,13 +600,13 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
     expect(metaEdgeToEdge(meta({ structural: 2, temporal: 2 })).tier).toBe(
       "structural",
     );
-    // declared precedes semantic; equal counts → declared.
-    expect(metaEdgeToEdge(meta({ declared: 3, semantic: 3 })).tier).toBe("declared");
+    // declared precedes temporal; equal counts → declared.
+    expect(metaEdgeToEdge(meta({ declared: 3, temporal: 3 })).tier).toBe("declared");
   });
 
   it("falls back to structural for an empty/all-zero breakdown", () => {
     expect(metaEdgeToEdge(meta({})).tier).toBe("structural");
-    expect(metaEdgeToEdge(meta({ declared: 0, semantic: 0 })).tier).toBe("structural");
+    expect(metaEdgeToEdge(meta({ declared: 0, temporal: 0 })).tier).toBe("structural");
   });
 
   it("passes a document-granularity slice through unchanged (tolerance)", () => {
@@ -907,7 +909,7 @@ describe("adaptGraphSlice salience conformance (live sample, graph-node-salience
           doc_type: "plan",
           feature_tags: ["x"],
           salience: 0.91,
-          degree_by_tier: { declared: 1, structural: 2, temporal: 0, semantic: 0 },
+          degree_by_tier: { declared: 1, structural: 2, temporal: 0 },
         },
         {
           id: "doc:2026-06-14-x-adr",
@@ -915,7 +917,7 @@ describe("adaptGraphSlice salience conformance (live sample, graph-node-salience
           doc_type: "adr",
           feature_tags: ["x"],
           salience: 0.54,
-          degree_by_tier: { declared: 1, structural: 1, temporal: 0, semantic: 0 },
+          degree_by_tier: { declared: 1, structural: 1, temporal: 0 },
         },
       ],
       edges: [],
@@ -1200,7 +1202,9 @@ describe("adaptVaultTree (live stem entries)", () => {
     expect(docTypeFromStem("2026-06-12-x-plan")).toBe("plan");
     expect(docTypeFromStem("2026-06-12-x-research")).toBe("research");
     expect(docTypeFromStem("2026-06-12-x-P01-summary")).toBe("exec");
-    expect(docTypeFromStem("dashboard-gui.index")).toBe("index");
+    // `.index` (`.vault/index` feature-index) is a strictly-ignored metanode
+    // (index-node-exclusion ADR): no `index` doc-type, falls through to document.
+    expect(docTypeFromStem("dashboard-gui.index")).toBe("document");
     expect(docTypeFromStem("mystery")).toBe("document");
   });
 });

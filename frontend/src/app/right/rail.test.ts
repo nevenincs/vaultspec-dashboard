@@ -317,7 +317,7 @@ describe("inspector tier grouping (G3.c)", () => {
         src: "a",
         dst: "c",
         relation: "similar-to",
-        tier: "semantic",
+        tier: "temporal",
         confidence: 0.5,
       },
       {
@@ -325,12 +325,12 @@ describe("inspector tier grouping (G3.c)", () => {
         src: "a",
         dst: "d",
         relation: "related",
-        tier: "semantic",
+        tier: "temporal",
         confidence: 0.5,
-        meta: { count: 2, breakdown_by_tier: { semantic: 2 } },
+        meta: { count: 2, breakdown_by_tier: { temporal: 2 } },
       },
     ]);
-    expect(view.tierKeys).toEqual(["declared", "semantic"]);
-    expect(view.tiers.get("semantic")!.map((e) => e.id)).toEqual(["e2"]);
+    expect(view.tierKeys).toEqual(["declared", "temporal"]);
+    expect(view.tiers.get("temporal")!.map((e) => e.id)).toEqual(["e2"]);
   });
 });

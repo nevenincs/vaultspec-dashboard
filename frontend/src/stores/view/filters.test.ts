@@ -51,13 +51,13 @@ describe("toGraphFilter (R3 wire compile)", () => {
   it("carries per-tier confidence as 0..1 floats and facet lists", () => {
     const wire = toGraphFilter(
       choices({
-        tiers: { declared: true, structural: true, temporal: true, semantic: false },
+        tiers: { declared: true, structural: false, temporal: true },
         minConfidence: { temporal: 0.7 },
         structuralStates: ["broken"],
         textMatch: "auth",
       }),
     );
-    expect(wire.tiers?.semantic).toBe(false);
+    expect(wire.tiers?.structural).toBe(false);
     expect(wire.min_confidence).toEqual({ temporal: 0.7 });
     expect(wire.structural_state).toEqual(["broken"]);
     expect(wire.text).toBe("auth");
@@ -78,7 +78,7 @@ describe("normalizeFilterChoices", () => {
         dateRange: { from: "", to: "2026-06-30" },
       }),
     ).toEqual({
-      tiers: { declared: true, structural: true, temporal: true, semantic: false },
+      tiers: { declared: true, structural: true, temporal: true },
       minConfidence: { temporal: 1 },
       docTypes: ["adr"],
       featureTags: ["state"],
@@ -209,7 +209,7 @@ describe("computeVisibility (RL-5a membership)", () => {
   ];
   const edges = [
     edge("e1", "a", "b"),
-    edge("e2", "a", "c", { tier: "semantic", confidence: 0.4 }),
+    edge("e2", "a", "c", { tier: "temporal", confidence: 0.4 }),
     edge("e3", "b", "c", { tier: "structural", state: "broken" }),
   ];
 
@@ -218,7 +218,7 @@ describe("computeVisibility (RL-5a membership)", () => {
       nodes,
       edges,
       choices({
-        tiers: { declared: true, structural: true, temporal: true, semantic: false },
+        tiers: { declared: true, structural: true, temporal: false },
       }),
     );
     expect(v.visibleEdgeIds.has("e2")).toBe(false);
@@ -259,14 +259,14 @@ describe("computeVisibility (RL-5a membership)", () => {
 
   it("keeps meta-edges while any constituent tier is on", () => {
     const meta = edge("m1", "a", "b", {
-      tier: "semantic",
-      meta: { count: 3, breakdown_by_tier: { declared: 2, semantic: 1 } },
+      tier: "temporal",
+      meta: { count: 3, breakdown_by_tier: { declared: 2, temporal: 1 } },
     });
     const v = computeVisibility(
       nodes,
       [meta],
       choices({
-        tiers: { declared: true, structural: true, temporal: true, semantic: false },
+        tiers: { declared: true, structural: true, temporal: false },
       }),
     );
     expect(v.visibleEdgeIds.has("m1")).toBe(true);

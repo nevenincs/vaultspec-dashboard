@@ -20,8 +20,11 @@ import type { GraphSlice } from "../../stores/server/engine";
 import type { GraphSliceAvailability } from "../../stores/server/queries";
 import type { SurfaceStates } from "../degradation/matrix";
 
-/** The four provenance tiers, in canonical order — the only legal tier names. */
-const KNOWN_TIERS = new Set(["declared", "structural", "temporal", "semantic"]);
+/** The three provenance EDGE tiers — the only legal graph-edge tier names. The
+ *  engine never mints a semantic graph edge (ADR D3.5), so `semantic` is NOT a
+ *  graph-edge tier; semantic-search degradation is search's concern, surfaced in
+ *  the search UI, never on the graph stage. */
+const KNOWN_TIERS = new Set(["declared", "structural", "temporal"]);
 
 /**
  * The canvas's resolved chrome state. The renderer keeps drawing the held slice
@@ -88,9 +91,14 @@ export function resolveCanvasState(inputs: CanvasStateInputs): CanvasState {
     }
     return { kind: "unavailable" };
   }
+  // The graph stage surfaces only EDGE-tier degradation. `semantic` is not a
+  // graph-edge tier (the engine never mints semantic graph edges, ADR D3.5) —
+  // semantic-search availability is search's concern, surfaced in the search UI,
+  // so it is dropped here before any graph-stage degradation is announced.
+  const edgeDegradedTiers = availability.degradedTiers.filter((t) => t !== "semantic");
   // An unknown tier on the wire is a data error, not a silent re-bucket: any
-  // degraded-tier name outside the four canonical tiers surfaces here.
-  const unknown = availability.degradedTiers.filter((t) => !KNOWN_TIERS.has(t));
+  // degraded edge-tier name outside the three canonical edge tiers surfaces here.
+  const unknown = edgeDegradedTiers.filter((t) => !KNOWN_TIERS.has(t));
   if (unknown.length > 0) return { kind: "unknown-tier", tiers: unknown };
   // A fired node ceiling: render the capped subgraph plus the refine affordance.
   if (slice.truncated) {
@@ -101,11 +109,13 @@ export function resolveCanvasState(inputs: CanvasStateInputs): CanvasState {
       reason: slice.truncated.reason,
     };
   }
-  // An honestly-absent tier: non-blocking annotation over the live field.
-  if (availability.degraded) {
+  // An honestly-absent EDGE tier: non-blocking annotation over the live field.
+  // Gated on the edge-tier subset so a semantic-search-only degradation never
+  // banners the graph stage.
+  if (edgeDegradedTiers.length > 0) {
     return {
       kind: "degraded",
-      tiers: availability.degradedTiers,
+      tiers: edgeDegradedTiers,
       reasons: availability.reasons,
     };
   }
@@ -266,7 +276,6 @@ function tierList(tiers: string[]): string {
  * Stored lowercase for mid-sentence use; capitalized at a sentence start.
  */
 const TIER_FEATURE_LABEL: Record<string, string> = {
-  semantic: "semantic search",
   declared: "links",
   structural: "mentions",
   temporal: "timeline",

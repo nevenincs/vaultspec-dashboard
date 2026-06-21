@@ -26,7 +26,7 @@ export const BUILTIN_LENSES: Lens[] = [
     builtin: true,
     choices: {
       ...structuredClone(DEFAULT_CHOICES),
-      tiers: { declared: false, structural: true, temporal: false, semantic: false },
+      tiers: { declared: false, structural: true, temporal: false },
       structuralStates: ["broken"],
     },
   },

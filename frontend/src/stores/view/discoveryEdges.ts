@@ -7,7 +7,6 @@ const DISCOVERY_EDGE_TIERS = new Set<EngineEdge["tier"]>([
   "declared",
   "structural",
   "temporal",
-  "semantic",
 ]);
 
 export function normalizeDiscoveryEdgeId(id: unknown): string | null {

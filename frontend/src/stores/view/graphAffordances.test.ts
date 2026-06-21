@@ -28,7 +28,7 @@ describe("graph-affordance reconciliation seam", () => {
       src: "doc:keep",
       dst: "doc:related",
       relation: "similar-to",
-      tier: "semantic",
+      tier: "temporal",
       confidence: 0.7,
     };
     const staleEdge: EngineEdge = {
@@ -36,7 +36,7 @@ describe("graph-affordance reconciliation seam", () => {
       src: "doc:keep",
       dst: "doc:missing",
       relation: "similar-to",
-      tier: "semantic",
+      tier: "temporal",
       confidence: 0.7,
     };
     useViewStore.setState({

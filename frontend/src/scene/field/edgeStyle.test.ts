@@ -25,17 +25,21 @@ const edge = (tier: string, extra?: Partial<SceneEdgeData>): SceneEdgeData =>
   }) as SceneEdgeData;
 
 describe("edgeGroupKey", () => {
-  it("maps the four tiers to their fixed treatments", () => {
+  it("maps the three edge tiers to their fixed treatments", () => {
     expect(edgeGroupKey(edge("declared"))).toBe("declared");
     expect(edgeGroupKey(edge("structural", { state: "broken" }))).toBe(
       "structural:broken",
     );
     expect(edgeGroupKey(edge("structural"))).toBe("structural:resolved");
     expect(edgeGroupKey(edge("temporal", { confidence: 0.9 }))).toBe("temporal:3");
-    expect(edgeGroupKey(edge("semantic", { confidence: 0.3 }))).toBe("semantic:1");
   });
 
   it("surfaces unknown tiers as data errors, never re-buckets (audit 003)", () => {
+    // `semantic` is not an edge tier (the engine never mints semantic graph
+    // edges, ADR D3.5), so it surfaces as an unknown-tier data error.
+    expect(() => edgeGroupKey(edge("semantic", { confidence: 0.3 }))).toThrow(
+      UnknownTierError,
+    );
     expect(() => edgeGroupKey(edge("imaginary"))).toThrow(UnknownTierError);
     try {
       edgeGroupKey(edge("imaginary"));

@@ -9,9 +9,71 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CanvasStateOverlay, degradedBannerCopy } from "./CanvasStateOverlay";
+import type { GraphSlice } from "../../stores/server/engine";
+import type { GraphSliceAvailability } from "../../stores/server/queries";
+import {
+  CanvasStateOverlay,
+  degradedBannerCopy,
+  resolveCanvasState,
+} from "./CanvasStateOverlay";
 
 afterEach(cleanup);
+
+const liveSlice = { nodes: [{ id: "n1" }], edges: [] } as unknown as GraphSlice;
+
+function availabilityWith(
+  degradedTiers: string[],
+  reasons: Record<string, string> = {},
+): GraphSliceAvailability {
+  return {
+    loading: false,
+    degraded: degradedTiers.length > 0,
+    degradedTiers,
+    reasons,
+  };
+}
+
+describe("resolveCanvasState (graph stage surfaces only edge tiers)", () => {
+  const base = {
+    scope: "wt-1",
+    granularity: "document" as const,
+    stageSurface: "normal" as const,
+    slice: liveSlice,
+    queriedScope: "wt-1",
+  };
+
+  it("drops a semantic-only degradation — semantic is search's concern, not the graph stage", () => {
+    const state = resolveCanvasState({
+      ...base,
+      availability: availabilityWith(["semantic"], {
+        semantic: "rag service not started",
+      }),
+    });
+    // The engine never mints semantic graph edges (ADR D3.5), so a degraded
+    // semantic SEARCH tier must not banner the graph stage at all.
+    expect(state.kind).toBe("ok");
+  });
+
+  it("still surfaces a degraded EDGE tier as a non-blocking banner", () => {
+    const state = resolveCanvasState({
+      ...base,
+      availability: availabilityWith(["temporal"], { temporal: "index not built" }),
+    });
+    expect(state.kind).toBe("degraded");
+    if (state.kind !== "degraded") throw new Error("expected degraded");
+    expect(state.tiers).toEqual(["temporal"]);
+  });
+
+  it("drops semantic from a mixed degradation, keeping the edge tier", () => {
+    const state = resolveCanvasState({
+      ...base,
+      availability: availabilityWith(["semantic", "temporal"]),
+    });
+    expect(state.kind).toBe("degraded");
+    if (state.kind !== "degraded") throw new Error("expected degraded");
+    expect(state.tiers).toEqual(["temporal"]);
+  });
+});
 
 describe("CanvasStateOverlay (designed canvas states)", () => {
   it("renders nothing when the canvas is ok (no overlay over a healthy field)", () => {
@@ -53,14 +115,14 @@ describe("CanvasStateOverlay (designed canvas states)", () => {
   it("renders a degraded tier as a NON-blocking corner banner over the live field", () => {
     render(
       <CanvasStateOverlay
-        state={{ kind: "degraded", tiers: ["semantic"], reasons: {} }}
+        state={{ kind: "degraded", tiers: ["temporal"], reasons: {} }}
       />,
     );
     const banner = document.querySelector('[data-canvas-state="degraded"]');
     // Names the affected FEATURE in plain language (never the internal tier name)
     // and affirms the graph is still live — never the blocking "Graph is not
     // available" card (which would occlude a working graph).
-    expect(banner?.textContent).toContain("Semantic search unavailable");
+    expect(banner?.textContent).toContain("Timeline unavailable");
     expect(banner?.textContent).toContain("the rest of the graph is live");
     expect(banner?.textContent).not.toContain("tier");
     expect(banner?.textContent).not.toContain("Graph is not available");
@@ -88,17 +150,17 @@ describe("CanvasStateOverlay (designed canvas states)", () => {
       <CanvasStateOverlay
         state={{
           kind: "degraded",
-          tiers: ["declared", "semantic"],
+          tiers: ["declared", "temporal"],
           reasons: {
             declared: "declared tier building",
-            semantic: "rag service not installed or not started",
+            temporal: "temporal index not built",
           },
         }}
       />,
     );
     const banner = document.querySelector('[data-canvas-state="degraded"]');
     expect(banner?.textContent).toBe(
-      "Still loading links; semantic search unavailable — the rest of the graph is live",
+      "Still loading links; timeline unavailable — the rest of the graph is live",
     );
   });
 
@@ -127,9 +189,9 @@ describe("CanvasStateOverlay (designed canvas states)", () => {
 });
 
 describe("degradedBannerCopy (plain-language tier copy)", () => {
-  it("maps each tier to its plain feature name (no tier jargon)", () => {
-    expect(degradedBannerCopy(["semantic"], {})).toBe(
-      "Semantic search unavailable — the rest of the graph is live",
+  it("maps each edge tier to its plain feature name (no tier jargon)", () => {
+    expect(degradedBannerCopy(["temporal"], {})).toBe(
+      "Timeline unavailable — the rest of the graph is live",
     );
     expect(degradedBannerCopy(["declared"], {})).toBe(
       "Links unavailable — the rest of the graph is live",
@@ -144,18 +206,16 @@ describe("degradedBannerCopy (plain-language tier copy)", () => {
 
   it("composes mixed building + down with plain prose joins", () => {
     expect(
-      degradedBannerCopy(["declared", "semantic"], {
+      degradedBannerCopy(["declared", "temporal"], {
         declared: "declared tier building",
-        semantic: "rag not started",
+        temporal: "temporal index not built",
       }),
-    ).toBe(
-      "Still loading links; semantic search unavailable — the rest of the graph is live",
-    );
+    ).toBe("Still loading links; timeline unavailable — the rest of the graph is live");
   });
 
   it("joins multiple down features with 'and'", () => {
-    expect(degradedBannerCopy(["declared", "semantic"], {})).toBe(
-      "Links and semantic search unavailable — the rest of the graph is live",
+    expect(degradedBannerCopy(["declared", "temporal"], {})).toBe(
+      "Links and timeline unavailable — the rest of the graph is live",
     );
   });
 });

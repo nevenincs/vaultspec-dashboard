@@ -28,15 +28,10 @@
 //   - audit  : the wire carries a graded SEVERITY (high/critical/medium/low),
 //              not a PASS/FAIL verdict, and no findings count (GAP). The severity
 //              is surfaced as the audit's status; verdict/findings are omitted.
-//   - index/feature: documents = member_count.
-//   - code   : path = id minus the `code:` prefix; language derived from the
-//              path extension (the same extension→hint mapping the engine's
-//              `language_hint` uses, mirrored client-side so no extra fetch). The
-//              git-dirty flag is a tree-level boolean on `/status`, not a per-node
-//              field (GAP) — surfaced only when explicitly supplied.
+//   - feature: documents = member_count.
 
 import type { EngineNode, PlanInterior } from "../server/engine";
-import { nodeCategory, type NodeCategory } from "../../scene/field/categoryColor";
+import type { NodeCategory } from "../../scene/field/categoryColor";
 
 /** A document-type bucket the card renders type-specific content for. */
 export type CardContentKind =
@@ -45,8 +40,7 @@ export type CardContentKind =
   | "exec"
   | "research"
   | "audit"
-  | "topic"
-  | "code"
+  | "feature"
   | "generic";
 
 /** The plan card content: status pill + complexity tier + step/phase line. */
@@ -95,18 +89,10 @@ export interface AuditCardContent {
   readonly findings?: number;
 }
 
-/** The index/feature (Topic) card content: a document-count line. */
-export interface TopicCardContent {
-  readonly kind: "topic";
+/** The index/feature card content: a document-count line. */
+export interface FeatureCardContent {
+  readonly kind: "feature";
   readonly documents?: number;
-}
-
-/** The code card content: path + language + git-dirty. */
-export interface CodeCardContent {
-  readonly kind: "code";
-  readonly path: string;
-  readonly language?: string;
-  readonly gitDirty?: boolean;
 }
 
 /** A type with no bespoke content shape renders only the shared header/chip. */
@@ -120,8 +106,7 @@ export type TypeCardContent =
   | ExecCardContent
   | ResearchCardContent
   | AuditCardContent
-  | TopicCardContent
-  | CodeCardContent
+  | FeatureCardContent
   | GenericCardContent;
 
 /** The DOM-consumable scene-category token for a node category (a `var()` the
@@ -157,41 +142,14 @@ export function phasesLeftFromInterior(
   return allPhases.filter((p) => p.steps.some((s) => !s.done)).length;
 }
 
-/** Total incident degree across the four tiers — the ADR "references" proxy. */
+/** Total incident degree across the three edge tiers — the ADR "references"
+ *  proxy. The engine never mints a semantic graph edge (ADR D3.5), so semantic is
+ *  not an edge tier and contributes no degree. */
 function totalDegree(node: EngineNode): number | undefined {
   const d = node.degree_by_tier;
   if (!d) return undefined;
-  const sum =
-    (d.declared ?? 0) + (d.structural ?? 0) + (d.temporal ?? 0) + (d.semantic ?? 0);
+  const sum = (d.declared ?? 0) + (d.structural ?? 0) + (d.temporal ?? 0);
   return sum > 0 ? sum : undefined;
-}
-
-/** The extension→grammar-hint mapping, mirroring the engine's `language_hint`
- *  so the code card names the language with no extra fetch (the per-node wire
- *  carries no language; the path is enough). */
-const LANGUAGE_BY_EXT: Record<string, string> = {
-  ts: "TypeScript",
-  tsx: "TypeScript",
-  js: "JavaScript",
-  jsx: "JavaScript",
-  rs: "Rust",
-  py: "Python",
-  md: "Markdown",
-  json: "JSON",
-  toml: "TOML",
-  css: "CSS",
-  html: "HTML",
-  yml: "YAML",
-  yaml: "YAML",
-  sh: "Shell",
-};
-
-/** Derive a language label from a path extension; undefined when unrecognized. */
-export function languageFromPath(path: string): string | undefined {
-  const dot = path.lastIndexOf(".");
-  if (dot < 0) return undefined;
-  const ext = path.slice(dot + 1).toLowerCase();
-  return LANGUAGE_BY_EXT[ext];
 }
 
 /** A coarse human relative-date from an ISO date (created), e.g. "3 days ago".
@@ -219,7 +177,7 @@ export function relativeDate(
 export interface DeriveTypeContentOpts {
   /** The bounded plan-interior, when already fetched (plans only). */
   readonly interior?: PlanInterior;
-  /** A tree-level git-dirty boolean, when known (code nodes only). */
+  /** A tree-level git-dirty boolean, when known. */
   readonly gitDirty?: boolean;
   /** The clock for relative-date derivation (test seam). */
   readonly now?: number;
@@ -234,8 +192,7 @@ export function deriveTypeContent(
   node: EngineNode,
   opts: DeriveTypeContentOpts = {},
 ): TypeCardContent {
-  const category = nodeCategory(node.kind);
-  switch (bucketFor(node, category)) {
+  switch (bucketFor(node)) {
     case "plan":
       return {
         kind: "plan",
@@ -259,29 +216,17 @@ export function deriveTypeContent(
       };
     case "audit":
       return { kind: "audit", severity: node.status_value };
-    case "topic":
-      return { kind: "topic", documents: node.member_count };
-    case "code": {
-      const path = node.id.startsWith("code:")
-        ? node.id.slice("code:".length)
-        : node.id;
-      return {
-        kind: "code",
-        path,
-        language: languageFromPath(path),
-        gitDirty: opts.gitDirty,
-      };
-    }
+    case "feature":
+      return { kind: "feature", documents: node.member_count };
     default:
       return { kind: "generic" };
   }
 }
 
-/** Resolve which content bucket a node renders. The card buckets are coarser
- *  than the eight scene categories: `feature` and `index` collapse onto the
- *  "topic" (document-count) shape, `code` keeps its own, doc-types map 1:1, and
- *  anything else (rule/reference/summary) renders generic content. */
-function bucketFor(node: EngineNode, category: NodeCategory): CardContentKind {
+/** Resolve which content bucket a node renders. `feature` carries the
+ *  document-count shape, the displayable doc-types map 1:1, and anything else
+ *  (rule/reference/summary) renders generic content. */
+function bucketFor(node: EngineNode): CardContentKind {
   switch (node.kind) {
     case "plan":
       return "plan";
@@ -293,14 +238,9 @@ function bucketFor(node: EngineNode, category: NodeCategory): CardContentKind {
       return "research";
     case "audit":
       return "audit";
-    case "code":
-      return "code";
     case "feature":
-    case "index":
-      return "topic";
+      return "feature";
     default:
-      // reference folds onto research's category, summary onto index's — but
-      // those carry no bespoke per-type content fields, so render generic.
-      return category === "index" ? "topic" : "generic";
+      return "generic";
   }
 }

@@ -40,7 +40,7 @@ describe("viewStore discovery pinning (G3.c, session-only)", () => {
       src: "a",
       dst: "b",
       relation: "similar-to",
-      tier: "semantic" as const,
+      tier: "temporal" as const,
       confidence: 0.6,
     };
     pinDiscoveryCandidate(edge);

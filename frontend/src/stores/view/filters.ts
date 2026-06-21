@@ -17,7 +17,7 @@ import { normalizeDashboardDateRange } from "../server/dashboardDateRange";
 import { SEARCH_QUERY_MAX_CHARS, normalizeSearchQuery } from "../searchQuery";
 import type { SceneCommand } from "../../scene/sceneController";
 
-export type TierName = "declared" | "structural" | "temporal" | "semantic";
+export type TierName = "declared" | "structural" | "temporal";
 
 export interface FilterChoices {
   tiers: Record<TierName, boolean>;
@@ -31,7 +31,7 @@ export interface FilterChoices {
 }
 
 export const DEFAULT_CHOICES: FilterChoices = {
-  tiers: { declared: true, structural: true, temporal: true, semantic: true },
+  tiers: { declared: true, structural: true, temporal: true },
   minConfidence: {},
   docTypes: [],
   featureTags: [],
@@ -41,7 +41,7 @@ export const DEFAULT_CHOICES: FilterChoices = {
   dateRange: {},
 };
 
-const TIER_NAMES = ["declared", "structural", "temporal", "semantic"] as const;
+const TIER_NAMES = ["declared", "structural", "temporal"] as const;
 const CONFIDENCE_TIERS = ["temporal"] as const;
 const STRUCTURAL_STATES = ["resolved", "stale", "broken"] as const;
 export const FILTER_CHOICE_VALUE_MAX_CHARS = 256;

@@ -100,7 +100,7 @@ describe("inspector view projection", () => {
   it("projects a ready node with bounded evidence, tier groups, and presentation", () => {
     const neighborTiers = deriveInspectorNeighborTierView([
       edge("declared-1", "declared"),
-      edge("semantic-1", "semantic"),
+      edge("temporal-1", "temporal"),
     ]);
 
     const view = deriveInspectorView(
@@ -143,18 +143,18 @@ describe("inspector view projection", () => {
       { label: "state", value: "accepted" },
       { label: "progress", value: "1/2", tabular: true },
     ]);
-    expect(view.tierKeys).toEqual(["declared", "semantic"]);
+    expect(view.tierKeys).toEqual(["declared", "temporal"]);
     expect(view.tiers.get("declared")?.[0]).toMatchObject({
       id: "declared-1",
       label: "relates -> declared-1",
       confidenceLabel: null,
       displayLabel: "relates -> declared-1",
     });
-    expect(view.tiers.get("semantic")?.[0]).toMatchObject({
-      id: "semantic-1",
-      label: "relates -> semantic-1",
+    expect(view.tiers.get("temporal")?.[0]).toMatchObject({
+      id: "temporal-1",
+      label: "relates -> temporal-1",
       confidenceLabel: "75%",
-      displayLabel: "relates -> semantic-1 · 75%",
+      displayLabel: "relates -> temporal-1 · 75%",
     });
     expect(view.evidence?.documents).toHaveLength(5);
     expect(view.evidence?.documents[0]).toEqual({
@@ -244,7 +244,7 @@ describe("inspector view projection", () => {
     const rows = deriveInspectorEdgeTierView(
       deriveInspectorNeighborTierView([
         {
-          ...edge("feature-auth", "semantic"),
+          ...edge("feature-auth", "temporal"),
           dst: "feature:auth",
           state: "resolved",
           confidence: 0.831,
@@ -252,12 +252,12 @@ describe("inspector view projection", () => {
       ]).tiers,
     );
 
-    expect(rows.get("semantic")).toEqual([
+    expect(rows.get("temporal")).toEqual([
       {
         id: "feature-auth",
         relation: "relates",
         dst: "feature:auth",
-        tier: "semantic",
+        tier: "temporal",
         label: "relates -> auth",
         stateLabel: "(resolved)",
         confidenceLabel: "83%",

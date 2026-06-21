@@ -9,7 +9,6 @@ import type {
   SalienceLens,
 } from "./engine";
 import {
-  CANONICAL_TIERS,
   DASHBOARD_BOUND_SHAPES,
   DASHBOARD_PANEL_TABS,
   DEFAULT_SALIENCE_LENS,
@@ -21,6 +20,10 @@ import { DOCUMENT_DASHBOARD_GRAPH_GRANULARITY } from "./dashboardDefaults";
 import { normalizeNodeId, normalizeNodeIds } from "../nodeIds";
 import { normalizeSearchQuery } from "../searchQuery";
 
+// The toggleable EDGE-tier filter vocabulary (3 tiers). The engine never mints a
+// semantic graph edge (ADR D3.5), so `semantic` is not an edge-tier filter —
+// distinct from the 4-tier availability `CANONICAL_TIERS` degradation block.
+const DASHBOARD_EDGE_TIERS = ["declared", "structural", "temporal"] as const;
 const DASHBOARD_CONFIDENCE_FILTER_TIERS = ["temporal"] as const;
 const DASHBOARD_STRUCTURAL_FILTER_STATES = ["resolved", "stale", "broken"] as const;
 const DASHBOARD_FEATURE_QUERY_MODES = ["glob", "regex"] as const;
@@ -71,8 +74,8 @@ export function normalizeDashboardSelectedIds(ids: unknown): string[] {
 
 export function isDashboardTierName(
   value: unknown,
-): value is (typeof CANONICAL_TIERS)[number] {
-  return isStringMember(value, CANONICAL_TIERS);
+): value is (typeof DASHBOARD_EDGE_TIERS)[number] {
+  return isStringMember(value, DASHBOARD_EDGE_TIERS);
 }
 
 export function normalizeDashboardPanelTab(tab: unknown): DashboardPanelTab | null {
@@ -225,7 +228,7 @@ export function normalizeDashboardFilterTiers(
 ): DashboardFilters["tiers"] | undefined {
   if (!isObjectRecord(tiers)) return undefined;
   const normalized: DashboardFilters["tiers"] = {};
-  for (const tier of CANONICAL_TIERS) {
+  for (const tier of DASHBOARD_EDGE_TIERS) {
     const value = tiers[tier];
     if (typeof value === "boolean") normalized[tier] = value;
   }

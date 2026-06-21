@@ -117,7 +117,7 @@ describe("discovery intent seam", () => {
       src: "doc:source",
       dst: "feature:target",
       relation: "related",
-      tier: "semantic" as const,
+      tier: "temporal" as const,
       confidence: 0.874,
     };
 
@@ -141,7 +141,7 @@ describe("discovery intent seam", () => {
           src: " doc:source ",
           dst: " feature:target ",
           relation: "related",
-          tier: "semantic" as const,
+          tier: "temporal" as const,
           confidence: 1.7,
         },
         {
@@ -149,7 +149,7 @@ describe("discovery intent seam", () => {
           src: "doc:source",
           dst: "feature:duplicate",
           relation: "related",
-          tier: "semantic" as const,
+          tier: "temporal" as const,
           confidence: 0.5,
         },
         {
@@ -157,7 +157,7 @@ describe("discovery intent seam", () => {
           src: "",
           dst: "feature:target",
           relation: "related",
-          tier: "semantic" as const,
+          tier: "temporal" as const,
           confidence: Number.NaN,
         },
         {
@@ -165,7 +165,7 @@ describe("discovery intent seam", () => {
           src: "doc:source",
           dst: "feature:overlong",
           relation: "related",
-          tier: "semantic" as const,
+          tier: "temporal" as const,
           confidence: 0.9,
         },
       ],
@@ -175,7 +175,7 @@ describe("discovery intent seam", () => {
           src: " doc:pinned-source ",
           dst: " feature:pinned-target ",
           relation: "related",
-          tier: "semantic" as const,
+          tier: "temporal" as const,
           confidence: Number.POSITIVE_INFINITY,
         },
       ],
@@ -203,7 +203,7 @@ describe("discovery intent seam", () => {
         src: "doc:old",
         dst: "feature:old",
         relation: "related",
-        tier: "semantic" as const,
+        tier: "temporal" as const,
         confidence: 0.1,
       },
       ...Array.from({ length: PINNED_DISCOVERIES_CAP + 3 }, (_, i) => ({
@@ -211,7 +211,7 @@ describe("discovery intent seam", () => {
         src: ` doc:${i} `,
         dst: ` feature:${i} `,
         relation: "related",
-        tier: "semantic" as const,
+        tier: "temporal" as const,
         confidence: i / 100,
       })),
       {
@@ -219,7 +219,7 @@ describe("discovery intent seam", () => {
         src: "doc:duplicate-tail",
         dst: "feature:duplicate-tail",
         relation: "related",
-        tier: "semantic" as const,
+        tier: "temporal" as const,
         confidence: 0.7,
       },
       {
@@ -227,7 +227,7 @@ describe("discovery intent seam", () => {
         src: "   ",
         dst: "feature:bad",
         relation: "related",
-        tier: "semantic" as const,
+        tier: "temporal" as const,
         confidence: 0.5,
       },
     ];
@@ -255,7 +255,7 @@ describe("discovery intent seam", () => {
           src: "doc:source",
           dst: "feature:target",
           relation: "related",
-          tier: "semantic" as const,
+          tier: "temporal" as const,
           confidence: 0.8,
         },
       ]),
@@ -275,7 +275,7 @@ describe("discovery intent seam", () => {
       src: " doc:source ",
       dst: " feature:target ",
       relation: "related",
-      tier: "semantic",
+      tier: "temporal",
       confidence: 0.8,
     });
     pinDiscoveryCandidate({
@@ -283,7 +283,7 @@ describe("discovery intent seam", () => {
       src: "doc:source",
       dst: "feature:target",
       relation: "related",
-      tier: "semantic",
+      tier: "temporal",
       confidence: 0.8,
     });
 

@@ -164,7 +164,7 @@ describe("view store", () => {
       src: "a",
       dst: "b",
       relation: "declares",
-      tier: "semantic",
+      tier: "temporal",
       confidence: 0.5,
     });
     const store = useViewStore.getState();
@@ -184,7 +184,7 @@ describe("view store", () => {
       src: " doc:a ",
       dst: " doc:b ",
       relation: "similar-to",
-      tier: "semantic",
+      tier: "temporal",
       confidence: 0.7,
     });
     store.pinDiscovery({
@@ -192,7 +192,7 @@ describe("view store", () => {
       src: "",
       dst: "doc:c",
       relation: "similar-to",
-      tier: "semantic",
+      tier: "temporal",
       confidence: 0.7,
     });
 
@@ -211,7 +211,7 @@ describe("view store", () => {
       src: " doc:a ",
       dst: " doc:b ",
       relation: " similar-to ",
-      tier: "semantic",
+      tier: "temporal",
       confidence: 7,
     });
     store.pinDiscovery({
@@ -219,7 +219,7 @@ describe("view store", () => {
       src: "doc:a",
       dst: "doc:b",
       relation: "   ",
-      tier: "semantic",
+      tier: "temporal",
       confidence: 0.5,
     });
     store.pinDiscovery({
@@ -235,7 +235,7 @@ describe("view store", () => {
       src: "doc:a",
       dst: "doc:b",
       relation: "similar-to",
-      tier: "semantic",
+      tier: "temporal",
       confidence: 0.5,
     });
 
@@ -262,7 +262,7 @@ describe("view store", () => {
       src: "doc:keep",
       dst: "doc:related",
       relation: "similar-to",
-      tier: "semantic",
+      tier: "temporal",
       confidence: 0.7,
     };
     const staleEdge: EngineEdge = {
@@ -270,7 +270,7 @@ describe("view store", () => {
       src: "doc:keep",
       dst: "doc:missing",
       relation: "similar-to",
-      tier: "semantic",
+      tier: "temporal",
       confidence: 0.7,
     };
     useViewStore.setState({

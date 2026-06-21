@@ -72,7 +72,7 @@ describe("lens persistence (keyed by workspace+scope, finding 018)", () => {
         {
           name: " weekly   review ",
           choices: {
-            tiers: { semantic: false },
+            tiers: { structural: false },
             minConfidence: { temporal: 2 },
             featureTags: ["state", 7],
             structuralStates: ["broken", "bad"],
@@ -89,7 +89,7 @@ describe("lens persistence (keyed by workspace+scope, finding 018)", () => {
         name: "weekly review",
         choices: {
           ...structuredClone(DEFAULT_CHOICES),
-          tiers: { ...DEFAULT_CHOICES.tiers, semantic: false },
+          tiers: { ...DEFAULT_CHOICES.tiers, structural: false },
           minConfidence: { temporal: 1 },
           featureTags: ["state"],
           structuralStates: ["broken"],
@@ -129,13 +129,13 @@ describe("lens store", () => {
   it("snapshots supplied canonical choices, resolves them, and removes", () => {
     useLensStore.getState().saveCurrent("last sprint", {
       ...structuredClone(DEFAULT_CHOICES),
-      tiers: { ...DEFAULT_CHOICES.tiers, semantic: false },
+      tiers: { ...DEFAULT_CHOICES.tiers, structural: false },
       textMatch: "auth",
     });
 
     const choices = useLensStore.getState().choicesFor("last sprint");
     expect(choices?.textMatch).toBe("auth");
-    expect(choices?.tiers.semantic).toBe(false);
+    expect(choices?.tiers.structural).toBe(false);
 
     useLensStore.getState().remove("last sprint");
     expect(useLensStore.getState().choicesFor("last sprint")).toBeNull();
@@ -175,7 +175,6 @@ describe("lens store", () => {
       declared: false,
       structural: true,
       temporal: false,
-      semantic: false,
     });
   });
 

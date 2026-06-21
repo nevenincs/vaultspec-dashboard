@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 import type { EngineNode, PlanInterior } from "../server/engine";
 import {
   deriveTypeContent,
-  languageFromPath,
   phasesLeftFromInterior,
   relativeDate,
 } from "./hoverCardContent";
@@ -121,29 +120,21 @@ describe("deriveTypeContent — per-type field sourcing", () => {
     expect(content.findings).toBeUndefined();
   });
 
-  it("feature/index map onto the topic shape with member_count documents", () => {
+  it("feature maps onto the feature card shape with member_count documents", () => {
     const feat = deriveTypeContent(
       node({ id: "feature:x", kind: "feature", member_count: 9 }),
     );
-    if (feat.kind !== "topic") throw new Error("expected topic content");
+    if (feat.kind !== "feature") throw new Error("expected feature content");
     expect(feat.documents).toBe(9);
+  });
 
+  it("an index kind never reaches a feature card (index is not a graph node)", () => {
+    // index docs are dropped at engine ingest and never become nodes; defensively,
+    // deriveTypeContent buckets an index kind as generic, not the feature shape.
     const idx = deriveTypeContent(
       node({ id: "doc:i", kind: "index", member_count: 4 }),
     );
-    if (idx.kind !== "topic") throw new Error("expected topic content");
-    expect(idx.documents).toBe(4);
-  });
-
-  it("code: path from the code: id, language from the extension, git-dirty optional", () => {
-    const content = deriveTypeContent(
-      node({ id: "code:src/app/HoverCard.tsx", kind: "code" }),
-      { gitDirty: true },
-    );
-    if (content.kind !== "code") throw new Error("expected code content");
-    expect(content.path).toBe("src/app/HoverCard.tsx");
-    expect(content.language).toBe("TypeScript");
-    expect(content.gitDirty).toBe(true);
+    expect(idx.kind).toBe("generic");
   });
 
   it("an unmapped doc-type renders generic content (no fabricated fields)", () => {
@@ -188,14 +179,7 @@ describe("phasesLeftFromInterior", () => {
   });
 });
 
-describe("languageFromPath / relativeDate helpers", () => {
-  it("maps known extensions, undefined for unknown", () => {
-    expect(languageFromPath("a/b/c.rs")).toBe("Rust");
-    expect(languageFromPath("a/b/c.py")).toBe("Python");
-    expect(languageFromPath("a/b/c")).toBeUndefined();
-    expect(languageFromPath("a/b/c.xyz")).toBeUndefined();
-  });
-
+describe("relativeDate helper", () => {
   it("formats coarse relative dates deterministically against a clock", () => {
     const now = Date.parse("2026-06-16T12:00:00Z");
     expect(relativeDate("2026-06-16T06:00:00Z", now)).toBe("today");

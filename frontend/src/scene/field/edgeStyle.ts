@@ -9,7 +9,7 @@
 import type { SceneEdgeData } from "../sceneController";
 import { cssColorNumber as getCssColor } from "./tokenReads";
 
-export const EDGE_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
+export const EDGE_TIERS = ["declared", "structural", "temporal"] as const;
 export type EdgeTier = (typeof EDGE_TIERS)[number];
 
 /** Light-mode fallback for the scene rule grey (node test env has no document). */
@@ -42,8 +42,6 @@ export function edgeGroupKey(edge: SceneEdgeData): string {
       return `structural:${edge.state ?? "resolved"}`;
     case "temporal":
       return `temporal:${confidenceBucket(edge.confidence)}`;
-    case "semantic":
-      return `semantic:${confidenceBucket(edge.confidence)}`;
     default:
       throw new UnknownTierError(edge.id, String(edge.tier));
   }
