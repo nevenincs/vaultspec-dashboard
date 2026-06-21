@@ -17,7 +17,7 @@ import { isValidElement, useMemo } from "react";
 import type { Root } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
-import Markdown from "react-markdown";
+import Markdown, { defaultUrlTransform } from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -29,13 +29,17 @@ import {
 } from "../../stores/server/queries";
 import { openDocTab } from "../../stores/view/tabs";
 import { StatusDot, categoryColorVar } from "../kit";
-import { remarkWikiLink, wikiLinkNodeId } from "./remarkWikiLink";
+import { remarkWikiLink, wikiLinkNodeId, WIKI_LINK_SCHEME } from "./remarkWikiLink";
 import { useHighlightedHast } from "./useHighlighter";
 
-/** Preserve the `vaultspec:` wiki-link scheme through react-markdown's URL
- *  sanitizer (which strips unknown schemes by default). */
+/** Preserve the `vaultspec:doc:` wiki-link scheme through react-markdown's URL
+ *  sanitizer (which strips unknown schemes by default), while delegating every
+ *  OTHER scheme to that same default sanitizer — so a `javascript:`/`data:`/
+ *  `vbscript:` URL in a (possibly shared or untrusted) doc body is still stripped
+ *  rather than rendered as a live `href`. An identity passthrough preserved the
+ *  wiki scheme but disabled sanitization wholesale (a stored-XSS surface). */
 function urlTransform(url: string): string {
-  return url;
+  return url.startsWith(WIKI_LINK_SCHEME) ? url : defaultUrlTransform(url);
 }
 
 /** Render a Shiki HAST tree to React elements through the jsx runtime. */

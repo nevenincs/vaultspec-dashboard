@@ -112,6 +112,36 @@ describe("MarkdownReader body", () => {
     expect(screen.getByText(/a finished step/)).toBeTruthy();
     expect(screen.getByText(/a pending step/)).toBeTruthy();
   });
+
+  it("sanitizes a javascript: URL in a body link (no stored-XSS via href)", () => {
+    // A doc body (possibly shared or cloned from an untrusted source) carrying a
+    // `javascript:` link must never render as a live href. The reader's
+    // `urlTransform` delegates every non-wiki scheme to react-markdown's default
+    // sanitizer; an identity passthrough (the prior bug) would have disabled this.
+    const doc = [
+      "---",
+      "tags:",
+      "  - '#adr'",
+      "date: '2026-06-16'",
+      "modified: '2026-06-16'",
+      "---",
+      "",
+      "# Heading",
+      "",
+      "An intro dek paragraph.",
+      "",
+      "Body para with [click me](javascript:alert(document.cookie)) and",
+      "[safe link](https://example.com) inline.",
+    ].join("\n");
+    render(<MarkdownReader content={available(doc)} />);
+    const malicious = screen.getByText("click me").closest("a");
+    expect((malicious?.getAttribute("href") ?? "").toLowerCase()).not.toMatch(
+      /^javascript:/,
+    );
+    // A legitimate http(s) link is preserved — sanitization never breaks real links.
+    const safe = screen.getByText("safe link").closest("a");
+    expect(safe?.getAttribute("href")).toBe("https://example.com");
+  });
 });
 
 describe("MarkdownReader states (read from the tiers-derived view)", () => {
