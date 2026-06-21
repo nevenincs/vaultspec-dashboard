@@ -42,11 +42,10 @@ export const GLYPH_KEYS = [
   "exec",
   "audit",
   "reference",
-  "code",
 ] as const;
 export type GlyphKey = (typeof GLYPH_KEYS)[number];
 
-// Atlas geometry: COLS*ROWS must cover GLYPH_KEYS (8). 4×2 cells of 64px → a 256×128
+// Atlas geometry: COLS*ROWS must cover GLYPH_KEYS (7). 4×2 cells of 64px → a 256×128
 // pow2 atlas. SS supersamples each cell for box-downsampled edge AA.
 const COLS = 4;
 const ROWS = 2;
@@ -65,14 +64,15 @@ export interface GlyphAtlas {
 /**
  * Resolve a scene node to its glyph key — the SAME fallback ladder
  * `categoryColor` uses to colour the node body, so a node's icon always matches its
- * hue. `docType` wins; then the wire species (`feature`, `code`); else the category
- * fallback (`nodeCategory` always lands on a key in GLYPH_KEYS).
+ * hue. `docType` wins; then the wire species (`feature`); else the category fallback
+ * (`nodeCategory` always lands on a key in GLYPH_KEYS). `code`/`index` are never graph
+ * nodes (code excluded at the engine projection, index dropped at ingest), so they
+ * carry no glyph here — a stray code-artifact species folds to the `reference` mark.
  */
 export function glyphKeyForNode(node: { kind: string; docType?: string }): GlyphKey {
   const dt = node.docType;
   if (dt && (GLYPH_KEYS as readonly string[]).includes(dt)) return dt as GlyphKey;
   const k = node.kind;
-  if (k === "code" || k === "code-artifact") return "code";
   if ((GLYPH_KEYS as readonly string[]).includes(k)) return k as GlyphKey;
   // nodeCategory maps any species onto one of feature/research/adr/plan/exec/audit/
   // reference — all present in GLYPH_KEYS — so this never misses.
