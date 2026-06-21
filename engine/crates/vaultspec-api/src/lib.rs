@@ -20,7 +20,7 @@ use axum::{Json, Router, middleware};
 use serde_json::{Value, json};
 
 /// Request-body ceiling (defense-in-depth, 2026-06-13). Every API body —
-/// graph-query filters, search, discover — is small JSON; 1 MiB is orders of
+/// graph-query filters, search — is small JSON; 1 MiB is orders of
 /// magnitude of headroom while bounding a pathological body (and the response
 /// amplification a huge filter would drive). A 413 still rides the shared
 /// envelope via `ensure_tiers_envelope`. The real boundary stays loopback.
@@ -52,7 +52,6 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/nodes/{id}/content",
     "/nodes/{id}/neighbors",
     "/nodes/{id}/evidence",
-    "/nodes/{id}/discover",
     "/nodes/{id}/plan-interior",
     "/events",
     "/history",
@@ -130,7 +129,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/nodes/{id}/content", get(routes::content::node_content))
         .route("/nodes/{id}/neighbors", get(routes::query::node_neighbors))
         .route("/nodes/{id}/evidence", get(routes::query::node_evidence))
-        .route("/nodes/{id}/discover", post(routes::query::node_discover))
         // Bounded plan-container interior (dashboard-pipeline-wire W03): the
         // wave/phase/step tree of a plan node, under a node ceiling.
         .route(

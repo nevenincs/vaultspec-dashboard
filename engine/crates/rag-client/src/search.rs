@@ -3,10 +3,32 @@
 //! verbatim. The single engine value-add: every result is annotated with
 //! the engine node id it maps to, so results click through into the graph.
 
+use engine_model::NodeId;
 use serde_json::Value;
 
 use crate::client::{RagError, RagTransport, Result};
-use crate::discover::target_node_id;
+
+/// Map a rag source to an engine node id: vault stems → document nodes,
+/// paths → code-artifact nodes (the same correlation the event log uses).
+pub fn target_node_id(source: &str) -> NodeId {
+    use engine_model::{CanonicalKey, node_id};
+    let trimmed = source.trim_start_matches("./");
+    if let Some(stem) = trimmed
+        .strip_prefix(".vault/")
+        .and_then(|rest| rest.split('/').next_back())
+        .and_then(|file| file.strip_suffix(".md"))
+    {
+        node_id(&CanonicalKey::Document { stem })
+    } else if !trimmed.contains('/') && !trimmed.contains('.') {
+        // Bare stem (rag vault hits report stems, not paths).
+        node_id(&CanonicalKey::Document { stem: trimmed })
+    } else {
+        node_id(&CanonicalKey::CodeArtifact {
+            path: trimmed,
+            symbol: None,
+        })
+    }
+}
 
 /// Forward a search request body to rag verbatim and annotate each result
 /// with `node_id`. Everything else in the envelope passes through intact.

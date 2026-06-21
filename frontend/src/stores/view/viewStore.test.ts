@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { EngineEdge } from "../server/engine";
 import { useLiveStatusStore } from "../server/liveStatus";
 import {
   browserTreeExpansionKey,
@@ -13,8 +12,6 @@ import {
   toggleCreateDocDialog,
   useCreateDocChromeStore,
 } from "./createDocChrome";
-import { openDiscoveryPanel, useDiscoveryPanelStore } from "./discoveries";
-import { DISCOVERY_EDGE_ID_MAX_CHARS } from "./discoveryEdges";
 import { useFilterSidebarStore } from "./filterSidebar";
 import {
   setGraphControlsSettingsOpen,
@@ -48,7 +45,6 @@ import {
   LEFT_RAIL_MAX_WIDTH,
   LEFT_RAIL_MIN_WIDTH,
   OPENED_IDS_CAP,
-  PINNED_DISCOVERIES_CAP,
   RIGHT_RAIL_DEFAULT_WIDTH,
   RIGHT_RAIL_MAX_WIDTH,
   RIGHT_RAIL_MIN_WIDTH,
@@ -158,126 +154,11 @@ describe("view store", () => {
     });
   });
 
-  it("caps session-pinned discoveries to the most-recent entries (P-LOW-10)", () => {
-    const edge = (id: string): EngineEdge => ({
-      id,
-      src: "a",
-      dst: "b",
-      relation: "declares",
-      tier: "temporal",
-      confidence: 0.5,
-    });
-    const store = useViewStore.getState();
-    for (let i = 0; i < PINNED_DISCOVERIES_CAP + 5; i += 1)
-      store.pinDiscovery(edge(`p${i}`));
-    const pins = useViewStore.getState().pinnedDiscoveries;
-    expect(pins).toHaveLength(PINNED_DISCOVERIES_CAP);
-    expect(pins.some((e) => e.id === "p0")).toBe(false);
-  });
-
-  it("normalizes pinned discovery endpoints and ignores invalid endpoint ids", () => {
-    const store = useViewStore.getState();
-    useViewStore.setState({ pinnedDiscoveries: [] });
-
-    store.pinDiscovery({
-      id: "pin-valid",
-      src: " doc:a ",
-      dst: " doc:b ",
-      relation: "similar-to",
-      tier: "temporal",
-      confidence: 0.7,
-    });
-    store.pinDiscovery({
-      id: "pin-invalid",
-      src: "",
-      dst: "doc:c",
-      relation: "similar-to",
-      tier: "temporal",
-      confidence: 0.7,
-    });
-
-    expect(useViewStore.getState().pinnedDiscoveries).toEqual([
-      expect.objectContaining({ id: "pin-valid", src: "doc:a", dst: "doc:b" }),
-    ]);
-  });
-
-  it("normalizes full pinned discovery edges at the store boundary", () => {
-    const store = useViewStore.getState();
-    useViewStore.setState({ pinnedDiscoveries: [] });
-    const overlongId = "p".repeat(DISCOVERY_EDGE_ID_MAX_CHARS + 1);
-
-    store.pinDiscovery({
-      id: " pin-valid ",
-      src: " doc:a ",
-      dst: " doc:b ",
-      relation: " similar-to ",
-      tier: "temporal",
-      confidence: 7,
-    });
-    store.pinDiscovery({
-      id: "pin-invalid-relation",
-      src: "doc:a",
-      dst: "doc:b",
-      relation: "   ",
-      tier: "temporal",
-      confidence: 0.5,
-    });
-    store.pinDiscovery({
-      id: "pin-invalid-tier",
-      src: "doc:a",
-      dst: "doc:b",
-      relation: "similar-to",
-      tier: "runtime-invalid",
-      confidence: 0.5,
-    } as unknown as EngineEdge);
-    store.pinDiscovery({
-      id: overlongId,
-      src: "doc:a",
-      dst: "doc:b",
-      relation: "similar-to",
-      tier: "temporal",
-      confidence: 0.5,
-    });
-
-    expect(useViewStore.getState().pinnedDiscoveries).toEqual([
-      expect.objectContaining({
-        id: "pin-valid",
-        src: "doc:a",
-        dst: "doc:b",
-        relation: "similar-to",
-        confidence: 1,
-      }),
-    ]);
-
-    store.unpinDiscovery({ id: "pin-valid" });
-    expect(useViewStore.getState().pinnedDiscoveries).toHaveLength(1);
-
-    store.unpinDiscovery(" pin-valid ");
-    expect(useViewStore.getState().pinnedDiscoveries).toEqual([]);
-  });
-
   it("prunes visual node affordances against the held graph model", () => {
-    const validEdge: EngineEdge = {
-      id: "pin-valid",
-      src: "doc:keep",
-      dst: "doc:related",
-      relation: "similar-to",
-      tier: "temporal",
-      confidence: 0.7,
-    };
-    const staleEdge: EngineEdge = {
-      id: "pin-stale",
-      src: "doc:keep",
-      dst: "doc:missing",
-      relation: "similar-to",
-      tier: "temporal",
-      confidence: 0.7,
-    };
     useViewStore.setState({
       selection: null,
       workingSet: [],
       openedIds: [],
-      pinnedDiscoveries: [],
     });
     const store = useViewStore.getState();
     store.selectEntity({
@@ -289,8 +170,6 @@ describe("view store", () => {
     store.addToWorkingSet("doc:missing");
     store.openNode("doc:keep");
     store.openNode("doc:missing");
-    store.pinDiscovery(validEdge);
-    store.pinDiscovery(staleEdge);
 
     store.pruneNodeAffordances(["doc:keep", "doc:related"]);
 
@@ -298,7 +177,6 @@ describe("view store", () => {
       selection: { kind: "event", id: "evt-stale", nodeIds: ["doc:keep"] },
       workingSet: ["doc:keep"],
       openedIds: ["doc:keep"],
-      pinnedDiscoveries: [validEdge],
     });
   });
 
@@ -644,7 +522,6 @@ describe("view store", () => {
     store.setRightRailWidth(277);
     store.setTimelineHeight(188);
     store.setPanelFlyoutOpen(true);
-    openDiscoveryPanel("doc:previous-discovery");
     toggleCreateDocDialog();
     setCreateDocFeature("previous-feature");
     setGraphControlsSettingsOpen(true);
@@ -669,7 +546,6 @@ describe("view store", () => {
       workingSet: [],
       overlays: { featureCountries: false, featureHulls: true },
     });
-    expect(useDiscoveryPanelStore.getState().openFor).toBeNull();
     expect(useCreateDocChromeStore.getState()).toMatchObject({
       open: false,
       feature: "",
@@ -696,7 +572,6 @@ describe("view store", () => {
     useViewStore
       .getState()
       .setOverlays({ featureCountries: true, featureHulls: false });
-    openDiscoveryPanel("doc:workspace-old-discovery");
     toggleCreateDocDialog();
     setCreateDocFeature("workspace-old-feature");
     setGraphControlsSettingsOpen(true);
@@ -720,7 +595,6 @@ describe("view store", () => {
       workingSet: [],
       overlays: { featureCountries: true, featureHulls: false },
     });
-    expect(useDiscoveryPanelStore.getState().openFor).toBeNull();
     expect(useCreateDocChromeStore.getState()).toMatchObject({
       open: false,
       feature: "",

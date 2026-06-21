@@ -3,7 +3,7 @@
 //! `query_tiers()` reads `AppState::declared_status`; the `query.rs`
 //! `rag_tiers()` helper does NOT — so the 8 query routes that use it
 //! (`/map`, `/vault-tree`, `/graph/query` live path, `/filters`, `/nodes/{id}`
-//! and its `/neighbors`, `/evidence`, `/discover` success paths) hardcode
+//! and its `/neighbors`, `/evidence` success paths) hardcode
 //! `declared: {available: true}` even when core was unreachable and the tier
 //! genuinely did not ingest. This test contrasts `/status` (honest) against
 //! `/vault-tree` (lying) for the SAME state.

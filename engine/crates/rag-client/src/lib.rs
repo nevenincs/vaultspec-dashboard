@@ -9,12 +9,8 @@
 
 pub mod client;
 pub mod control;
-pub mod discover;
 pub mod search;
 pub mod vectors;
-
-/// Semantic confidence is capped below structural (engine-spec §3, D3.5).
-pub const SEMANTIC_CONFIDENCE_CAP: f32 = 0.7;
 
 /// Availability of the semantic tier, surfaced verbatim in the per-response
 /// `tiers` degradation block (contract §2).
@@ -25,21 +21,4 @@ pub enum RagAvailability {
     Unavailable {
         reason: String,
     },
-}
-
-/// Clamp a raw rag score into the engine's semantic confidence band.
-pub fn semantic_confidence(raw_score: f32) -> f32 {
-    raw_score.clamp(0.0, SEMANTIC_CONFIDENCE_CAP)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn semantic_confidence_is_capped_below_structural() {
-        assert_eq!(semantic_confidence(0.95), SEMANTIC_CONFIDENCE_CAP);
-        assert_eq!(semantic_confidence(0.4), 0.4);
-        assert_eq!(semantic_confidence(-1.0), 0.0);
-    }
 }

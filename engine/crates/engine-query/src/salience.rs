@@ -108,7 +108,7 @@ impl Lens {
                 AuthorityClass::Judgment => 0.5,
                 AuthorityClass::RoadmapAuthority => 0.4,
                 AuthorityClass::Evidence => 0.1,
-                AuthorityClass::Manifest | AuthorityClass::None => 0.0,
+                AuthorityClass::None => 0.0,
             },
             Lens::Status => match class {
                 AuthorityClass::RoadmapAuthority => 1.0,
@@ -118,7 +118,7 @@ impl Lens {
                 AuthorityClass::Evidence => 0.2,
                 AuthorityClass::Substrate => 0.3,
                 AuthorityClass::Law => 0.4,
-                AuthorityClass::Manifest | AuthorityClass::None => 0.0,
+                AuthorityClass::None => 0.0,
             },
         }
     }
@@ -161,32 +161,32 @@ impl Lens {
 
 /// Per-tier topology weight (ADR stage 1; research "edge-tier weighting"). The
 /// declared and structural tiers are identity-bearing high precision; temporal
-/// is correlation (medium); semantic is dense, soft, lowest. Headline centrality
-/// (PageRank, betweenness, k-core) runs over the declared+structural BACKBONE
-/// only (`backbone_weight` returns 0 for temporal/semantic), so the dense
-/// semantic tier cannot hijack centrality; temporal/semantic enter later stages
-/// only as damped enrichment (recency, the status burst).
+/// is correlation (medium). Headline centrality (PageRank, betweenness, k-core)
+/// runs over the declared+structural BACKBONE only (`backbone_weight` returns 0
+/// for temporal), so a soft correlation tier cannot hijack centrality; temporal
+/// enters later stages only as damped enrichment (recency, the status burst).
+/// Semantic (RAG) is never a graph tier (D3.5), so it carries no topology weight.
 ///
-/// `declared >= structural >> temporal >= semantic` per the research's strong
+/// `declared >= structural >> temporal` per the research's strong
 /// recommendation.
 pub fn tier_weight(tier: Tier) -> f64 {
     match tier {
         Tier::Declared => 1.0,
         Tier::Structural => 0.9,
         Tier::Temporal => 0.3,
-        Tier::Semantic => 0.15,
     }
 }
 
 /// The headline-centrality backbone admits ONLY the high-precision declared and
 /// structural tiers (ADR Rationale: "computing the headline centrality on the
-/// high-precision declared/structural backbone"). Temporal and semantic edges
-/// are excluded from the backbone topology entirely; they enter as damped
-/// enrichment in later stages. Returns `None` for an off-backbone tier.
+/// high-precision declared/structural backbone"). Temporal edges are excluded
+/// from the backbone topology entirely; they enter as damped enrichment in later
+/// stages. (Semantic is never a graph tier — D3.5.) Returns `None` for an
+/// off-backbone tier.
 pub fn backbone_weight(tier: Tier) -> Option<f64> {
     match tier {
         Tier::Declared | Tier::Structural => Some(tier_weight(tier)),
-        Tier::Temporal | Tier::Semantic => None,
+        Tier::Temporal => None,
     }
 }
 
@@ -1433,7 +1433,6 @@ mod tests {
             Tier::Declared => 1.0,
             Tier::Structural => 0.9,
             Tier::Temporal => 0.7,
-            Tier::Semantic => 0.6,
         };
         engine_model::Edge {
             id: edge_id(&s, &d, &RelationKind::Mentions, tier, &provenance),

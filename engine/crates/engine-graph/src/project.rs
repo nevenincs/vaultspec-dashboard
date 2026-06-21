@@ -13,12 +13,7 @@ use crate::graph::LinkageGraph;
 /// Per-tier degree counts for a node (contract §4 `degree_by_tier`).
 pub fn degree_by_tier(graph: &LinkageGraph, id: &NodeId) -> BTreeMap<&'static str, usize> {
     let mut counts: BTreeMap<&'static str, usize> = BTreeMap::new();
-    for tier in [
-        Tier::Declared,
-        Tier::Structural,
-        Tier::Temporal,
-        Tier::Semantic,
-    ] {
+    for tier in [Tier::Declared, Tier::Structural, Tier::Temporal] {
         counts.insert(tier.as_str(), 0);
     }
     for stored in graph.edges_of(id) {
@@ -207,7 +202,7 @@ mod tests {
     }
 
     #[test]
-    fn degree_by_tier_is_zero_filled_for_all_four_tiers() {
+    fn degree_by_tier_is_zero_filled_for_all_three_graph_tiers() {
         let mut g = LinkageGraph::new();
         g.upsert_node(node("a-plan", "feature-a"));
         g.upsert_node(node("b-adr", "feature-b"));
@@ -218,9 +213,15 @@ mod tests {
         )
         .unwrap();
         let counts = degree_by_tier(&g, &node_id(&CanonicalKey::Document { stem: "a-plan" }));
+        // Three graph tiers: semantic is never a graph tier (D3.5), so the map
+        // has exactly these three keys.
+        assert_eq!(counts.len(), 3, "exactly three graph tiers, no semantic");
         assert_eq!(counts["declared"], 1);
         assert_eq!(counts["structural"], 0);
         assert_eq!(counts["temporal"], 0);
-        assert_eq!(counts["semantic"], 0);
+        assert!(
+            !counts.contains_key("semantic"),
+            "semantic is not a graph tier"
+        );
     }
 }

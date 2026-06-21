@@ -122,6 +122,26 @@ impl LinkageGraph {
         );
     }
 
+    /// Remove every edge incident to any id in `ids` (either endpoint), and
+    /// drop those ids from the adjacency map. index-node-exclusion ADR D1: an
+    /// `.vault/index` document is never a node, so any edge that resolved onto
+    /// its stem is pruned rather than left dangling.
+    pub(crate) fn prune_edges_incident_to(&mut self, ids: &std::collections::HashSet<NodeId>) {
+        if ids.is_empty() {
+            return;
+        }
+        // Structural change invalidates the memoized projection (perf ADR D3).
+        self.meta_edges_cache.take();
+        self.edges
+            .retain(|_, stored| !ids.contains(&stored.edge.src) && !ids.contains(&stored.edge.dst));
+        for adj in self.adjacency.values_mut() {
+            adj.retain(|edge_id| self.edges.contains_key(edge_id));
+        }
+        for id in ids {
+            self.adjacency.remove(id);
+        }
+    }
+
     pub fn node(&self, id: &NodeId) -> Option<&Node> {
         self.nodes.get(id)
     }

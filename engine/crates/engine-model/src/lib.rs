@@ -65,7 +65,12 @@ pub enum RelationKind {
     CoreDerived,
 }
 
-/// The four provenance tiers (engine-spec §3, D3.1).
+/// The three provenance tiers minted as graph fact (engine-spec §3, D3.1).
+///
+/// Semantic (RAG) matches are NOT a tier here: they are ephemeral suggestions,
+/// never graph fact (D3.5), and are rejected at ingestion. The `semantic`
+/// availability tier on the wire `tiers` block (rag up/down) is a separate
+/// concept that lives in the envelope layer, not on this enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Tier {
@@ -75,8 +80,6 @@ pub enum Tier {
     Structural,
     /// Commit/record correlation via named rules. Confidence 0.3–0.9.
     Temporal,
-    /// RAG matches; ephemeral, capped at 0.7, present-only (D3.5).
-    Semantic,
 }
 
 /// Structural-tier resolution state — retained and surfaced, never dropped:
@@ -143,8 +146,8 @@ pub enum Provenance {
 /// served temporal tier (events and as-of time-travel) carries on the wire.
 pub type Timestamp = i64;
 
-/// The atom of the engine: one edge schema across all four tiers; tier and
-/// provenance are mandatory, never inferred from context (D3.1).
+/// The atom of the engine: one edge schema across all three graph tiers; tier
+/// and provenance are mandatory, never inferred from context (D3.1).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Edge {
     pub id: EdgeId,

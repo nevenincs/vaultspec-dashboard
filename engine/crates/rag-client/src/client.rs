@@ -58,7 +58,7 @@ pub const HEARTBEAT_STALE_MS: i64 = 120_000;
 
 /// Rag response body ceiling (robustness H3, 2026-06-13): the read has a
 /// timeout but no total-byte bound, so a runaway rag service could stream an
-/// unbounded body and OOM the engine. Search/discover envelopes are small;
+/// unbounded body and OOM the engine. Search envelopes are small;
 /// 16 MiB is generous headroom while bounding the pathological case. A body
 /// past the cap is a typed `Protocol` error (the semantic tier degrades),
 /// never a buffer grown to exhaustion.

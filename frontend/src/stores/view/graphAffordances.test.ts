@@ -3,7 +3,6 @@
 import { cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { EngineEdge } from "../server/engine";
 import {
   graphAffordanceNodeIds,
   reconcileGraphAffordances,
@@ -17,28 +16,11 @@ afterEach(() => {
     selection: null,
     workingSet: [],
     openedIds: [],
-    pinnedDiscoveries: [],
   });
 });
 
 describe("graph-affordance reconciliation seam", () => {
   it("prunes local visual subscriptions against the held graph model", () => {
-    const validEdge: EngineEdge = {
-      id: "pin-valid",
-      src: "doc:keep",
-      dst: "doc:related",
-      relation: "similar-to",
-      tier: "temporal",
-      confidence: 0.7,
-    };
-    const staleEdge: EngineEdge = {
-      id: "pin-stale",
-      src: "doc:keep",
-      dst: "doc:missing",
-      relation: "similar-to",
-      tier: "temporal",
-      confidence: 0.7,
-    };
     useViewStore.setState({
       selection: {
         kind: "event",
@@ -47,7 +29,6 @@ describe("graph-affordance reconciliation seam", () => {
       },
       workingSet: ["doc:keep", "doc:missing"],
       openedIds: ["doc:keep", "doc:missing"],
-      pinnedDiscoveries: [validEdge, staleEdge],
     });
 
     reconcileGraphAffordances(["doc:keep", "doc:related"]);
@@ -56,7 +37,6 @@ describe("graph-affordance reconciliation seam", () => {
       selection: { kind: "event", id: "evt-stale", nodeIds: ["doc:keep"] },
       workingSet: ["doc:keep"],
       openedIds: ["doc:keep"],
-      pinnedDiscoveries: [validEdge],
     });
   });
 

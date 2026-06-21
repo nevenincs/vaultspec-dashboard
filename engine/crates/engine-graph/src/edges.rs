@@ -8,9 +8,12 @@
 //! - structural: 0.9 (resolved), 0.5 (stale), 0.0 (broken — retained,
 //!   flagged, floor confidence)
 //! - temporal: 0.3 ..= 0.9
-//! - semantic: 0.0 ..= 0.7, and never persisted as graph fact (D3.5) —
-//!   semantic edges are rejected here by design; they live in the rag
-//!   client's ephemeral TTL cache, not in the graph.
+//!
+//! Semantic (RAG) matches are NOT a graph tier (D3.5): they are ephemeral
+//! suggestions that live in the rag client's ephemeral TTL cache, never in the
+//! graph. `Tier` carries no `Semantic` variant, so a `"semantic"` edge tier
+//! string fails to deserialize as an unknown tier — rejected by the normal
+//! unknown-tier path, no special-case here.
 
 use engine_model::{Edge, RelationKind, ResolutionState, Tier};
 
@@ -33,8 +36,6 @@ pub enum EdgeError {
         expected: f32,
         found: f32,
     },
-    #[error("semantic edges are ephemeral suggestions, never graph fact (D3.5)")]
-    SemanticIsEphemeral,
 }
 
 /// Validate an edge against the fixed bands and invariants.
@@ -82,7 +83,6 @@ pub fn validate(edge: &Edge) -> Result<(), EdgeError> {
                 });
             }
         }
-        Tier::Semantic => return Err(EdgeError::SemanticIsEphemeral),
     }
     Ok(())
 }
@@ -184,9 +184,27 @@ mod tests {
         );
         assert!(validate(&edge(Tier::Temporal, 0.7, None)).is_ok());
         assert!(validate(&edge(Tier::Temporal, 0.2, None)).is_err());
-        assert_eq!(
-            validate(&edge(Tier::Semantic, 0.5, None)),
-            Err(EdgeError::SemanticIsEphemeral)
+    }
+
+    #[test]
+    fn a_semantic_edge_tier_is_rejected_as_an_unknown_tier_never_minted() {
+        // Semantic (RAG) matches are ephemeral suggestions, never graph fact
+        // (D3.5). With no `Tier::Semantic` variant, a `"semantic"` edge tier on
+        // the wire is rejected by the normal unknown-tier deserialize path — the
+        // same path any unknown tier string takes — rather than a special-case
+        // ingestion error. It is rejected gracefully (an Err), never a panic.
+        let valid = edge(Tier::Declared, 1.0, None);
+        let json = serde_json::to_string(&valid).unwrap();
+        assert!(
+            json.contains("\"tier\":\"declared\""),
+            "sanity: tier encodes"
+        );
+        // The only change is the tier string -> the now-unknown "semantic".
+        let with_semantic = json.replace("\"tier\":\"declared\"", "\"tier\":\"semantic\"");
+        let parsed: Result<Edge, _> = serde_json::from_str(&with_semantic);
+        assert!(
+            parsed.is_err(),
+            "a `semantic` edge tier deserializes as an unknown tier (rejected, never minted)"
         );
     }
 

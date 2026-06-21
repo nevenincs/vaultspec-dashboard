@@ -101,7 +101,6 @@ impl Tier {
             Tier::Declared => "declared",
             Tier::Structural => "structural",
             Tier::Temporal => "temporal",
-            Tier::Semantic => "semantic",
         }
     }
 }
@@ -178,6 +177,18 @@ pub fn edge_id(
     tier: Tier,
     provenance: &Provenance,
 ) -> EdgeId {
+    edge_id_with_tier_name(src, dst, relation, tier.as_str(), provenance)
+}
+
+/// The shared id-derivation core: content hash of
+/// `(src, dst, relation, tier-wire-name, provenance stable key)`.
+fn edge_id_with_tier_name(
+    src: &NodeId,
+    dst: &NodeId,
+    relation: &RelationKind,
+    tier_name: &str,
+    provenance: &Provenance,
+) -> EdgeId {
     // Field separator 0x1f (unit separator) cannot appear in any component's
     // meaningful content and prevents concatenation ambiguity.
     let material = format!(
@@ -185,7 +196,7 @@ pub fn edge_id(
         src.0,
         dst.0,
         relation.as_str(),
-        tier.as_str(),
+        tier_name,
         provenance.stable_key(),
     );
     EdgeId(format!("e:{:032x}", fnv1a_128(material.as_bytes())))

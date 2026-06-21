@@ -183,7 +183,12 @@ pub struct Filter {
     pub date_range: Option<DateRange>,
 }
 
-const TIER_NAMES: &[&str] = &["declared", "structural", "temporal", "semantic"];
+/// The graph EDGE tiers a filter may name (declared/structural/temporal).
+/// Semantic is NOT a graph tier (D3.5) — it is never minted as a graph edge, so
+/// it is not a valid edge-filter key and is not part of the served edge-tier
+/// vocabulary. (The separate `semantic` AVAILABILITY tier on the envelope
+/// `tiers` block — rag up/down — is unrelated and lives in the envelope layer.)
+const TIER_NAMES: &[&str] = &["declared", "structural", "temporal"];
 const STATE_NAMES: &[&str] = &["resolved", "stale", "broken"];
 /// The ADR H1 status enum (dashboard-pipeline-wire W01): the known status set
 /// a status facet is validated against.

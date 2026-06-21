@@ -12,9 +12,11 @@ use engine_model::{NodeKind, Provenance, RelationKind};
 /// The authority register a document type answers in (ADR `Authority class`):
 /// the stable handle the salience lenses bias toward. A fixed map from
 /// `doc_type` to register — `design`, `roadmap`, `evidence`, `judgment`, `law`,
-/// `substrate`, or `manifest`. An unknown or absent type degrades honestly to
-/// `unknown` rather than being silently coerced (ADR: an unparseable type is a
-/// data state, never a fiction).
+/// or `substrate`. An unknown or absent type degrades honestly to `unknown`
+/// rather than being silently coerced (ADR: an unparseable type is a data state,
+/// never a fiction). `index` is intentionally NOT a register: `.vault/index`
+/// feature-index documents are metanodes dropped at ingest (index-node-exclusion
+/// ADR), so they never reach this function; a stray one degrades to `unknown`.
 pub fn authority_class(doc_type: Option<&str>) -> &'static str {
     match doc_type {
         Some("adr") => "design",
@@ -25,7 +27,6 @@ pub fn authority_class(doc_type: Option<&str>) -> &'static str {
         Some("exec") => "evidence",
         Some("audit") => "judgment",
         Some("rule") => "law",
-        Some("index") => "manifest",
         // An unknown or absent doc_type: surfaced as a data state (a node
         // species the ontology does not yet name), never coerced into a
         // register it does not belong to.
@@ -334,10 +335,12 @@ mod tests {
         assert_eq!(authority_class(Some("exec")), "evidence");
         assert_eq!(authority_class(Some("audit")), "judgment");
         assert_eq!(authority_class(Some("rule")), "law");
-        assert_eq!(authority_class(Some("index")), "manifest");
         assert_eq!(authority_class(Some("research")), "substrate");
         assert_eq!(authority_class(Some("reference")), "substrate");
-        // Honest degradation, never coercion.
+        // Honest degradation, never coercion. `index` is a metanode dropped at
+        // ingest (index-node-exclusion ADR) — it is not a register, so a stray one
+        // degrades to `unknown` like any other unnamed species.
+        assert_eq!(authority_class(Some("index")), "unknown");
         assert_eq!(authority_class(None), "unknown");
         assert_eq!(authority_class(Some("brainstorm")), "unknown");
     }
@@ -345,7 +348,7 @@ mod tests {
     #[test]
     fn only_exec_is_an_aggregate_species() {
         assert!(is_aggregate_species(Some("exec")));
-        for t in ["adr", "plan", "audit", "rule", "research", "index"] {
+        for t in ["adr", "plan", "audit", "rule", "research"] {
             assert!(
                 !is_aggregate_species(Some(t)),
                 "{t} is individually weighted"

@@ -195,6 +195,26 @@ impl DocumentViews {
     }
 }
 
+/// Whether a node is a DISPLAYABLE knowledge node (terminology-standardization
+/// ADR D5/D6; index-node-exclusion ADR D3): `code` artifacts
+/// (`NodeKind::CodeArtifact`) are never emitted as knowledge-graph nodes or
+/// `/vault-tree` rows. `index` doc-type documents (generated feature indexes) are
+/// now dropped at ingest and never become nodes at all (index-node-exclusion ADR
+/// D1), so the `index` branch below is a DEFENSIVE net only — it cannot fire on
+/// the live path, but is retained to defend the display boundary against any
+/// future producer that re-mints an index node (the producer-drop + consumer-
+/// defense belt-and-braces the bounded-query rules use). The id/kind are
+/// untouched — this is a pure filter.
+pub fn is_displayable_node(node: &Node) -> bool {
+    if node.kind == NodeKind::CodeArtifact {
+        return false;
+    }
+    if node.doc_type.as_deref() == Some("index") {
+        return false;
+    }
+    true
+}
+
 /// Hard ceiling on nodes serialized at either granularity (perf ADR D2 /
 /// research F2): an unbounded slice is linear but reaches a multi-gigabyte body
 /// at corpus scale, so NO engine front door — the HTTP route or the CLI `graph`
@@ -497,6 +517,9 @@ pub fn build_vault_tree_rows(graph: &LinkageGraph, scope: &ScopeRef) -> Vec<Valu
     let mut rows: Vec<Value> = graph
         .nodes()
         .filter(|n| n.id.0.starts_with("doc:"))
+        // terminology-standardization ADR D5: `index` documents are never
+        // surfaced as rail rows (they still exist on disk / in the index).
+        .filter(|n| is_displayable_node(n))
         .map(|n| {
             // Plan lifecycle progress for THIS scope, read from the SAME
             // `lifecycle_in_scope` facet the node-graph projection consumes — a
@@ -686,6 +709,13 @@ fn graph_query_inner(
             .filter(|n| filter.matches_node(n))
             .collect(),
     };
+    // terminology-standardization ADR D5/D6: `index` documents and `code`
+    // artifacts are not displayable knowledge nodes — drop them from the
+    // candidate set BEFORE either granularity projects, so neither the document
+    // slice, the feature-convergence aggregation, nor `kept` ever sees them. An
+    // edge touching an excluded but in-scope node then fails `endpoint_ok` below
+    // and is pruned, keeping the returned subgraph self-consistent.
+    matched.retain(|n| is_displayable_node(n));
     // Health facet (filter-controls campaign): orphaned/dangling are graph-context
     // (they read a node's incident edges), so they are applied here after the
     // per-node `matches_node` pass rather than inside it.
@@ -1547,6 +1577,151 @@ mod tests {
             "the Contains scaffold rides generated-by (D3.2 / S34)"
         );
         assert_eq!(edge["relation"], "contains");
+    }
+
+    /// An `index` doc-type document node (a generated feature index): a real
+    /// `doc:` node on disk, but never a displayable knowledge node (ADR D5).
+    fn index_doc(stem: &str, feature: &str) -> Node {
+        Node {
+            id: node_id(&CanonicalKey::Document { stem }),
+            kind: NodeKind::Document,
+            key: stem.into(),
+            title: None,
+            doc_type: Some("index".into()),
+            dates: None,
+            feature_tags: vec![feature.into()],
+            status: None,
+            tier: None,
+            facets: vec![Facet {
+                scope: scope(),
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: None,
+            }],
+        }
+    }
+
+    /// A `code` artifact node (`NodeKind::CodeArtifact`): a source file in the
+    /// index, but never a displayable knowledge node (ADR D6).
+    fn code_artifact(path: &str, feature: &str) -> Node {
+        Node {
+            id: node_id(&CanonicalKey::CodeArtifact { path, symbol: None }),
+            kind: NodeKind::CodeArtifact,
+            key: path.into(),
+            title: None,
+            doc_type: None,
+            dates: None,
+            feature_tags: vec![feature.into()],
+            status: None,
+            tier: None,
+            facets: vec![Facet {
+                scope: scope(),
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn vault_tree_rows_exclude_index_documents() {
+        // terminology-standardization ADR D5: an `index` document is a real
+        // `doc:` node but must never appear as a `/vault-tree` row.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-plan", "feature-a"));
+        g.upsert_node(index_doc("feature-a.index", "feature-a"));
+        let rows = build_vault_tree_rows(&g, &scope());
+        let stems: Vec<&str> = rows.iter().filter_map(|r| r["stem"].as_str()).collect();
+        assert!(
+            stems.contains(&"a-plan"),
+            "the knowledge document still rows"
+        );
+        assert!(
+            !stems.contains(&"feature-a.index"),
+            "the index document is excluded from vault-tree rows: {stems:?}"
+        );
+        assert!(
+            rows.iter().all(|r| r["doc_type"] != "index"),
+            "no row carries the index doc_type"
+        );
+    }
+
+    #[test]
+    fn graph_query_excludes_index_and_code_nodes() {
+        // terminology-standardization ADR D5/D6: an `index` document and a
+        // `code` artifact are real graph nodes but are never emitted as
+        // knowledge-graph nodes by the document slice.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-plan", "feature-a"));
+        g.upsert_node(index_doc("feature-a.index", "feature-a"));
+        g.upsert_node(code_artifact("src/main.rs", "feature-a"));
+        let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
+        let ids: Vec<&str> = slice
+            .nodes
+            .iter()
+            .filter_map(|n| n["id"].as_str())
+            .collect();
+        assert!(
+            ids.contains(&"doc:a-plan"),
+            "the knowledge document is kept"
+        );
+        assert!(
+            !ids.iter().any(|id| id.starts_with("code:")),
+            "no code-artifact node is emitted: {ids:?}"
+        );
+        assert!(
+            !ids.contains(&"doc:feature-a.index"),
+            "the index document is not emitted: {ids:?}"
+        );
+        assert!(
+            slice.nodes.iter().all(|n| n["doc_type"] != "index"),
+            "no emitted node carries the index doc_type"
+        );
+    }
+
+    #[test]
+    fn graph_query_drops_edges_to_an_excluded_node() {
+        // terminology-standardization ADR D5/D6 + graph-queries-are-bounded:
+        // when an `index`/`code` node is excluded from the kept node set, any
+        // edge whose endpoint is that excluded (but in-scope) node must also be
+        // dropped, so the returned subgraph stays self-consistent (only edges
+        // among kept nodes).
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-plan", "feature-a"));
+        g.upsert_node(index_doc("feature-a.index", "feature-a"));
+        // a-plan -> feature-a.index: a resolved edge to a REAL in-scope node
+        // that is excluded as non-displayable. It must not survive as a dangling
+        // edge to an absent node.
+        engine_graph::ingest(
+            &mut g,
+            structural("a-plan", "feature-a.index", ResolutionState::Resolved, 0.9),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+        let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
+        let kept: std::collections::HashSet<&str> = slice
+            .nodes
+            .iter()
+            .filter_map(|n| n["id"].as_str())
+            .collect();
+        let index_id = node_id(&CanonicalKey::Document {
+            stem: "feature-a.index",
+        })
+        .0;
+        assert!(
+            !kept.contains(index_id.as_str()),
+            "the index node is excluded"
+        );
+        for e in &slice.edges {
+            for key in ["src", "dst"] {
+                let id = e[key].as_str().expect("endpoint serialized");
+                assert_ne!(
+                    id,
+                    index_id.as_str(),
+                    "no served edge references the excluded index node"
+                );
+            }
+        }
     }
 
     #[test]

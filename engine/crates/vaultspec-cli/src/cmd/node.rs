@@ -13,7 +13,8 @@ fn parse_tiers(tiers: &[String]) -> Result<Vec<Tier>, CliError> {
             "declared" => Ok(Tier::Declared),
             "structural" => Ok(Tier::Structural),
             "temporal" => Ok(Tier::Temporal),
-            "semantic" => Ok(Tier::Semantic),
+            // `semantic` is NOT a graph tier (D3.5): it falls through to the
+            // unknown-tier rejection like any other unknown tier string.
             other => Err(CliError::Other(format!("unknown tier `{other}`"))),
         })
         .collect()

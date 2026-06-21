@@ -751,11 +751,6 @@ export interface NodeEvidence {
   tiers: TiersBlock;
 }
 
-export interface DiscoverResponse {
-  candidates: EngineEdge[];
-  tiers: TiersBlock;
-}
-
 // --- §5 temporal shapes ------------------------------------------------------------
 
 export interface EngineEvent {
@@ -1743,10 +1738,6 @@ export class EngineClient {
     return adaptPlanInterior(
       await this.get(`/nodes/${encodeURIComponent(id)}/plan-interior`, { scope }),
     );
-  }
-
-  discover(id: string, scope?: string): Promise<DiscoverResponse> {
-    return this.post(`/nodes/${encodeURIComponent(id)}/discover`, { scope });
   }
 
   // §5

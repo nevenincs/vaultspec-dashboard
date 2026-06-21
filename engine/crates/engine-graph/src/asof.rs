@@ -4,13 +4,15 @@
 //! playhead's progress rings are time-accurate.
 //!
 //! Historical views serve declared + structural + temporal tiers only; the
-//! semantic tier is present-only by design (D3.5) and is excluded here by
-//! construction — nothing in this module can mint a semantic edge.
+//! semantic AVAILABILITY tier is present-only by design (D3.5). Semantic is
+//! not a graph tier at all, so nothing in this module can mint a semantic edge
+//! by construction.
 
 use std::path::Path;
 
 use engine_model::{
-    CanonicalKey, Facet, Node, NodeKind, Presence, ResolutionState, ScopeRef, Timestamp, node_id,
+    CanonicalKey, Facet, Node, NodeId, NodeKind, Presence, ResolutionState, ScopeRef, Timestamp,
+    node_id,
 };
 use ingest_struct::extract::MentionKind;
 
@@ -192,6 +194,11 @@ pub fn asof_graph_resolved_cached(
     let resolved_sha = commit_id.to_string();
 
     let mut graph = LinkageGraph::new();
+    // index-node-exclusion ADR D1: `.vault/index` feature-index documents are
+    // metanodes, never graph nodes — skip them in the blob-true replay too, and
+    // prune any incident edge below.
+    let mut excluded_index_ids: std::collections::HashSet<NodeId> =
+        std::collections::HashSet::new();
     for doc_path in &vault_docs {
         let body = ingest_struct::reader::read_path_in_tree(&tree, &resolved_sha, doc_path)?;
         let stem = doc_path
@@ -201,6 +208,10 @@ pub fn asof_graph_resolved_cached(
             .trim_end_matches(".md")
             .to_string();
         let doc_type = crate::index::doc_type_of(doc_path);
+        if doc_type.as_deref() == Some("index") {
+            excluded_index_ids.insert(node_id(&CanonicalKey::Document { stem: &stem }));
+            continue;
+        }
         graph.upsert_node(Node {
             id: node_id(&CanonicalKey::Document { stem: &stem }),
             kind: NodeKind::Document,
@@ -277,6 +288,10 @@ pub fn asof_graph_resolved_cached(
             )?;
         }
     }
+
+    // index-node-exclusion ADR D1: drop any structural edge that resolved onto a
+    // skipped index document, so the historical view carries no dangling index edge.
+    graph.prune_edges_incident_to(&excluded_index_ids);
 
     // Release the shared gix handle NOW — before the declared-tier subprocess
     // reopens the same `.git` object DB (Windows hygiene). The per-doc loop above
@@ -378,13 +393,6 @@ mod tests {
             edge.edge.dst.0.contains("2026-06-12-old-adr"),
             "the T1 mention, not the present one: {}",
             edge.edge.dst.0
-        );
-
-        // Semantic tier excluded by construction: no semantic edges exist.
-        assert!(
-            graph
-                .edges()
-                .all(|s| s.edge.tier != engine_model::Tier::Semantic)
         );
     }
 

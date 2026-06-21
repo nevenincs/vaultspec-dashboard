@@ -29,7 +29,6 @@ describe("EngineClient", () => {
     await client.node("feature:a", "wt-1");
     await client.nodeNeighbors("feature:a", { scope: "wt-1", depth: 1 });
     await client.nodeEvidence("feature:a", "wt-1");
-    await client.discover("feature:a", "wt-1");
     await client.events({ scope: "wt-1", bucket: "auto" });
     await client.graphAsof({ scope: "wt-1", t: 123 });
     await client.graphDiff({ scope: "wt-1", from: 1, to: 2 });
@@ -49,7 +48,6 @@ describe("EngineClient", () => {
       "/api/nodes/feature%3Aa?scope=wt-1",
       "/api/nodes/feature%3Aa/neighbors?scope=wt-1&depth=1",
       "/api/nodes/feature%3Aa/evidence?scope=wt-1",
-      "/api/nodes/feature%3Aa/discover",
       "/api/events?scope=wt-1&bucket=auto",
       "/api/graph/asof?scope=wt-1&t=123",
       "/api/graph/diff?scope=wt-1&from=1&to=2",
@@ -64,14 +62,10 @@ describe("EngineClient", () => {
     const posts = calls.filter((c) => c.init?.method === "POST").map((c) => c.url);
     expect(posts).toEqual([
       "/api/graph/query",
-      "/api/nodes/feature%3Aa/discover",
       "/api/ops/core/vault-check",
       "/api/ops/rag/reindex",
       "/api/search",
     ]);
-    expect(calls.find((c) => c.url.endsWith("/discover"))?.init?.body).toBe(
-      JSON.stringify({ scope: "wt-1" }),
-    );
   });
 
   it("builds the multiplexed stream URL with splice resume (§7)", () => {

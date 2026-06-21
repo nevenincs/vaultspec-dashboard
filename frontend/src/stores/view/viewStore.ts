@@ -1,6 +1,5 @@
 import { create } from "zustand";
 
-import type { EngineEdge } from "../server/engine";
 import { normalizeNodeId, normalizeNodeIds } from "../nodeIds";
 import { resetLiveStatus } from "../server/liveStatus";
 import { resetBrowserMode } from "./browserMode";
@@ -9,8 +8,6 @@ import { resetCodeViewerScroll } from "./codeViewer";
 import { resetCommandPalette } from "./commandPalette";
 import { resetContextMenu } from "./contextMenu";
 import { resetCreateDocChrome } from "./createDocChrome";
-import { normalizeDiscoveryEdge, normalizeDiscoveryEdgeId } from "./discoveryEdges";
-import { resetDiscoveryPanel } from "./discoveries";
 import { resetFilterSidebar } from "./filterSidebar";
 import { resetGraphControlsChrome } from "./graphControlsChrome";
 import { resetInspectorExpansion } from "./inspectorExpansion";
@@ -293,12 +290,6 @@ export interface ViewState {
   /** The editor lifecycle status for the open document; `idle` when none is open. */
   editorStatus: EditorStatus;
   /**
-   * Session-pinned discovery candidates (G3.c): probabilistic suggestions
-   * never join the persistent graph — pinning keeps them on stage for THIS
-   * session only; nothing is written anywhere.
-   */
-  pinnedDiscoveries: EngineEdge[];
-  /**
    * Overlay visibility (graph-representation ADR): feature-country labels at
    * overview and BubbleSets hulls at document LOD. Owned here, emitted as
    * `set-overlays`.
@@ -415,14 +406,11 @@ export interface ViewState {
   /** Close the editor (clears the target, draft, base, and resets status to
    *  `idle`) — the same single-value clear a scope swap performs. */
   closeEditor: () => void;
-  pinDiscovery: (edge: EngineEdge) => void;
-  unpinDiscovery: (edgeId: unknown) => void;
   /**
    * Reconcile view-local node affordances against the currently held graph model.
    * These ids are visual subscriptions, not durable truth: when the canonical graph
-   * slice no longer carries a node, its event-selection ring, opened island,
-   * working-set expansion, or pinned candidate edge must not keep retaining
-   * observers.
+   * slice no longer carries a node, its event-selection ring, opened island, or
+   * working-set expansion must not keep retaining observers.
    */
   pruneNodeAffordances: (nodeIds: readonly string[]) => void;
   addToWorkingSet: (id: unknown) => void;
@@ -466,10 +454,6 @@ export interface ViewState {
  *  query (Stage's `useQueries` fan-out), so an uncapped set is an unbounded
  *  concurrent-request fan-out. Keep the most-recent N. */
 export const WORKING_SET_CAP = 24;
-
-/** Cap session-pinned discoveries (P-LOW-10): each is a full EngineEdge held
- *  for the session; keep the most-recent N so a long session stays bounded. */
-export const PINNED_DISCOVERIES_CAP = 50;
 
 /** Cap opened islands (B3, resource-hardening): each opened id mounts an island
  *  that holds a live `useNodeDetail` (+ `useNodeNeighbors`) query observer, so
@@ -588,7 +572,6 @@ function resetCorpusLocalStores(): void {
   resetCommandPalette();
   resetContextMenu();
   resetCreateDocChrome();
-  resetDiscoveryPanel();
   resetFilterSidebar();
   resetGraphControlsChrome();
   resetIslandAnchors();
@@ -617,7 +600,6 @@ function corpusLocalViewState(scope: unknown) {
     draftText: "",
     baseBlobHash: "",
     editorStatus: "idle" as const,
-    pinnedDiscoveries: [],
     panelFlyoutOpen: false,
   };
 }
@@ -638,7 +620,6 @@ export const useViewStore = create<ViewState>((set) => ({
   draftText: "",
   baseBlobHash: "",
   editorStatus: "idle",
-  pinnedDiscoveries: [],
   overlays: normalizeGraphOverlays(DEFAULT_GRAPH_OVERLAYS),
   renderCapability: DEFAULT_RENDER_CAPABILITY,
   hiddenCategories: [],
@@ -653,8 +634,7 @@ export const useViewStore = create<ViewState>((set) => ({
     const normalizedScope = normalizeViewStoreSessionString(scope);
     // WHOLESALE swap (ADR §2.1; finding scope-swap-partial-reset-022):
     // everything scoped to the previous corpus resets — selection, working
-    // set, opened islands, session-pinned discoveries (old-corpus semantic
-    // candidates must not ride into the new slice).
+    // set, opened islands (old-corpus state must not ride into the new slice).
     // Re-key the pin and lens stores so the previous scope's pins/lenses do
     // not bleed into the new scope (finding-018/022/023; isolation-01/02/03).
     // workspace is preserved; scope flips to the new value.
@@ -914,28 +894,6 @@ export const useViewStore = create<ViewState>((set) => ({
       baseBlobHash: "",
       editorStatus: "idle",
     }),
-  pinDiscovery: (edge) =>
-    set((state) => {
-      const normalizedEdge = normalizeDiscoveryEdge(edge);
-      if (normalizedEdge === null) return state;
-      if (state.pinnedDiscoveries.some((e) => e.id === normalizedEdge.id)) {
-        return state;
-      }
-      const next = [...state.pinnedDiscoveries, normalizedEdge];
-      return {
-        pinnedDiscoveries:
-          next.length > PINNED_DISCOVERIES_CAP
-            ? next.slice(next.length - PINNED_DISCOVERIES_CAP)
-            : next,
-      };
-    }),
-  unpinDiscovery: (edgeId) =>
-    set((state) => {
-      const id = normalizeDiscoveryEdgeId(edgeId);
-      return id === null
-        ? state
-        : { pinnedDiscoveries: state.pinnedDiscoveries.filter((e) => e.id !== id) };
-    }),
   pruneNodeAffordances: (nodeIds) =>
     set((state) => {
       const valid = new Set(normalizeNodeIds(nodeIds, nodeIds.length));
@@ -958,9 +916,6 @@ export const useViewStore = create<ViewState>((set) => ({
         state.dwelledHoverId !== null && !valid.has(state.dwelledHoverId)
           ? null
           : state.dwelledHoverId;
-      const pinnedDiscoveries = state.pinnedDiscoveries.filter(
-        (edge) => valid.has(edge.src) && valid.has(edge.dst),
-      );
       const nextSelection =
         selection?.kind === "event" && selection.nodeIds.length === 0
           ? null
@@ -970,8 +925,7 @@ export const useViewStore = create<ViewState>((set) => ({
         hoveredId === state.hoveredId &&
         dwelledHoverId === state.dwelledHoverId &&
         workingSet.length === state.workingSet.length &&
-        openedIds.length === state.openedIds.length &&
-        pinnedDiscoveries.length === state.pinnedDiscoveries.length
+        openedIds.length === state.openedIds.length
       ) {
         return state;
       }
@@ -981,7 +935,6 @@ export const useViewStore = create<ViewState>((set) => ({
         dwelledHoverId,
         workingSet,
         openedIds,
-        pinnedDiscoveries,
       };
     }),
   addToWorkingSet: (id) =>

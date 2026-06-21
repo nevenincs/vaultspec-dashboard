@@ -1,7 +1,7 @@
 // Graph-affordance reconciliation seam. The graph model is canonical; view-local
-// subscriptions such as event rings, opened islands, working-set expansions, and
-// pinned discovery edges must be pruned through one stores/view boundary whenever
-// the held graph model changes.
+// subscriptions such as event rings, opened islands, and working-set expansions
+// must be pruned through one stores/view boundary whenever the held graph model
+// changes.
 
 import { useEffect, useMemo } from "react";
 

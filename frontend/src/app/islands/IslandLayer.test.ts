@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  pinDiscoveryCandidate,
-  unpinDiscoveryCandidate,
-} from "../../stores/view/discoveries";
 import { setDwelledHoverNodeId, setHoveredNodeId } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 import {
@@ -30,24 +26,6 @@ describe("islandStyle", () => {
     expect(islandStyle({ x: 0, y: 0, scale: 8 })!.transform).toContain(
       `scale(${ISLAND_MAX_SCALE})`,
     );
-  });
-});
-
-describe("viewStore discovery pinning (G3.c, session-only)", () => {
-  it("pins candidates once and unpins by id", () => {
-    const edge = {
-      id: "cand-1",
-      src: "a",
-      dst: "b",
-      relation: "similar-to",
-      tier: "temporal" as const,
-      confidence: 0.6,
-    };
-    pinDiscoveryCandidate(edge);
-    pinDiscoveryCandidate(edge);
-    expect(useViewStore.getState().pinnedDiscoveries).toHaveLength(1);
-    unpinDiscoveryCandidate("cand-1");
-    expect(useViewStore.getState().pinnedDiscoveries).toHaveLength(0);
   });
 });
 

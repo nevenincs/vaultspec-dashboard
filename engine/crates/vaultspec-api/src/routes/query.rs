@@ -993,7 +993,8 @@ pub async fn node_neighbors(
             "declared" => Ok(Tier::Declared),
             "structural" => Ok(Tier::Structural),
             "temporal" => Ok(Tier::Temporal),
-            "semantic" => Ok(Tier::Semantic),
+            // `semantic` is NOT a graph tier (D3.5): it falls through to the
+            // unknown-tier rejection like any other unknown tier string.
             other => Err(super::api_error(
                 &state,
                 StatusCode::BAD_REQUEST,
@@ -1150,96 +1151,6 @@ pub async fn node_evidence(
     // doc_type}` and commits carry `subject`.
     Ok(super::envelope(
         serde_json::to_value(evidence).expect("evidence serializes"),
-        rag_tiers(&cell),
-        None,
-    ))
-}
-
-#[derive(Deserialize)]
-pub struct DiscoverBody {
-    #[serde(default)]
-    pub query: Option<String>,
-    #[serde(default)]
-    pub scope: Option<String>,
-}
-
-pub async fn node_discover(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-    Json(body): Json<DiscoverBody>,
-) -> ApiResult {
-    // Unknown node is a truthful 404 BEFORE any rag round-trip — consistent
-    // with /nodes, /neighbors, /evidence, and never proxies a doomed query
-    // (hardening, 2026-06-13 adversarial finding: discover used to 400 via
-    // rag for an unknown id while its sibling verbs 404).
-    // The /nodes/* family accepts an explicit scope for stateless frontend reads.
-    // Omitting it keeps the active-scope fallback for legacy callers.
-    let cell = node_scope_cell(&state, body.scope.as_deref())?;
-    let node = NodeId(id.clone());
-    let graph = cell.graph_arc();
-    if graph.node(&node).is_none() {
-        return Err(super::api_error(
-            &state,
-            StatusCode::NOT_FOUND,
-            format!("unknown node `{id}`"),
-        ));
-    }
-    let vault_root = cell.root.join(".vault");
-    let (availability, info) = rag_client::client::discover(&vault_root);
-    let rag_client::RagAvailability::Available = availability else {
-        let rag_client::RagAvailability::Unavailable { reason } = availability else {
-            unreachable!()
-        };
-        // Degrades to the §2 tier block, never an error (contract §4).
-        return Ok(super::envelope(
-            json!({"candidates": []}),
-            super::degraded_tiers(&cell, reason.as_str()),
-            None,
-        ));
-    };
-    let info = info.expect("available implies info");
-    let transport = rag_client::client::LoopbackTransport {
-        port: info.port,
-        bearer: info.service_token,
-        timeout: std::time::Duration::from_secs(30),
-    };
-    // Node-scoped query: built from the node's own key plus its feature
-    // tags (its content + linkage, engine-spec §4.3).
-    let query = body.query.unwrap_or_else(|| {
-        graph
-            .node(&node)
-            .map(|n| format!("{} {}", n.key, n.feature_tags.join(" ")))
-            .unwrap_or_else(|| id.clone())
-    });
-    // Poison recovery (robustness H2): a poisoned store lock must degrade, not
-    // cascade into a permanent outage on every node-discover request.
-    let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
-    let candidates = match rag_client::discover::discover(
-        &transport,
-        &store,
-        &node,
-        &query,
-        &cell.scope,
-        crate::app::now_ms(),
-    ) {
-        Ok(candidates) => candidates,
-        Err(e) => {
-            // rag was reachable but the query itself failed (scope not
-            // indexed, timeout, transient): the NODE exists, so this is not a
-            // client error — semantic suggestions are simply unavailable right
-            // now. Degrade the `semantic` tier (empty candidates + reason),
-            // matching the rag-Unavailable path above and `/search`, never a
-            // 400 (hardening, 2026-06-13: an unindexed scope used to 400 here).
-            let reason = rag_client::search::degradation_reason(&e);
-            return Ok(super::envelope(
-                json!({"candidates": []}),
-                super::degraded_tiers(&cell, reason.as_str()),
-                None,
-            ));
-        }
-    };
-    Ok(super::envelope(
-        json!({"candidates": candidates}),
         rag_tiers(&cell),
         None,
     ))

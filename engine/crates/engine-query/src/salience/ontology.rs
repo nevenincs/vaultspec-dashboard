@@ -32,10 +32,10 @@ pub enum AuthorityClass {
     Law,
     /// Reference/research substrate (grounds design authority).
     Substrate,
-    /// Generated index: a manifest, not authored knowledge.
-    Manifest,
     /// Any node without a recognized doc_type (commits, code artifacts, bare
-    /// docs): no authority class to bias toward.
+    /// docs): no authority class to bias toward. `.vault/index` feature-index
+    /// metanodes are dropped at ingest (index-node-exclusion ADR) and so never
+    /// reach this map; a stray one lands here, weighting to zero like any unknown.
     None,
 }
 
@@ -43,8 +43,8 @@ pub enum AuthorityClass {
 /// register (`crate::ontology::authority_class`) into the salience enum. The
 /// register itself is owned by the semantics projection — `adr -> design`,
 /// `plan -> roadmap`, `exec -> evidence`, `audit -> judgment`, `rule -> law`,
-/// `index -> manifest`, `reference`/`research -> substrate`, anything else
-/// `unknown` -> [`AuthorityClass::None`] — so the two never drift.
+/// `reference`/`research -> substrate`, anything else `unknown` ->
+/// [`AuthorityClass::None`] — so the two never drift.
 pub fn authority_class(node: &Node) -> AuthorityClass {
     match ontology::authority_class(node.doc_type.as_deref()) {
         "design" => AuthorityClass::DesignAuthority,
@@ -52,7 +52,6 @@ pub fn authority_class(node: &Node) -> AuthorityClass {
         "evidence" => AuthorityClass::Evidence,
         "judgment" => AuthorityClass::Judgment,
         "law" => AuthorityClass::Law,
-        "manifest" => AuthorityClass::Manifest,
         "substrate" => AuthorityClass::Substrate,
         _ => AuthorityClass::None,
     }
@@ -174,9 +173,11 @@ mod tests {
             authority_class(&node("rule", None, Presence::Exists)),
             AuthorityClass::Law
         );
+        // `index` is a metanode dropped at ingest (index-node-exclusion ADR) and
+        // is no longer a register; a stray one degrades to None like any unknown.
         assert_eq!(
             authority_class(&node("index", None, Presence::Exists)),
-            AuthorityClass::Manifest
+            AuthorityClass::None
         );
         assert_eq!(
             authority_class(&node("research", None, Presence::Exists)),
