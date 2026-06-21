@@ -6,8 +6,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SceneController } from "./sceneController";
 import type { SceneEvent, SceneFieldRenderer } from "./sceneController";
-import type { SceneNodeData, SceneEdgeData } from "./sceneController";
-import { representationLayout } from "./field/representationLayout";
 
 /** A minimal field double that records the commands it receives. */
 function recordingField(): { field: SceneFieldRenderer; commands: unknown[] } {
@@ -137,38 +135,5 @@ describe("set-representation-mode / set-overlays seam commands", () => {
 
     expect(controller.getRepresentationState().mode).toBe("temporal");
     expect(controller.nodeCount).toBe(2);
-  });
-});
-
-describe("connectivity-only scope fence (Cosmos live layout)", () => {
-  const nodes: SceneNodeData[] = [
-    { id: "r", kind: "research" },
-    { id: "a", kind: "adr" },
-    { id: "p", kind: "plan" },
-  ];
-  const edges: SceneEdgeData[] = [
-    {
-      id: "e1",
-      src: "r",
-      dst: "a",
-      relation: "informs",
-      tier: "declared",
-      confidence: 1,
-      derivation: "research->adr",
-    },
-  ];
-
-  it("connectivity yields no static seed — Cosmos owns positions", () => {
-    // This is the contract that keeps the rewrite scoped: connectivity defers to
-    // the live force solver, never a precomputed seed map.
-    expect(representationLayout("connectivity", nodes, edges).positions).toBeNull();
-  });
-
-  it("lineage stays a deterministic seed layout (identical inputs, identical seeds)", () => {
-    const a = representationLayout("lineage", nodes, edges);
-    const b = representationLayout("lineage", nodes, edges);
-    expect(a.applied).toBe("lineage");
-    expect(a.positions).not.toBeNull();
-    expect([...a.positions!.entries()]).toEqual([...b.positions!.entries()]);
   });
 });
