@@ -2135,11 +2135,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn content_route_degrades_structural_on_an_unreadable_path() {
-        // P01.S06: a code id naming a path that does not exist on disk degrades
-        // the STRUCTURAL tier honestly (the substrate could not resolve it),
-        // returning the structural degradation reason in the tiers block rather
-        // than a bare 500.
+    async fn content_route_404s_a_missing_code_file_not_a_structural_degradation() {
+        // rag-audit fix: a `code:` id naming a path that does NOT exist on disk
+        // (the dominant case is a node minted from a doc mention of a since-DELETED
+        // file) is a NOT-FOUND request — a tiered 404 so the viewer renders its
+        // designed "file unavailable" state — NOT the spurious 400 that conflated a
+        // missing file with an unreadable substrate and flooded the console.
+        // Mirrors the ref-scope `NotAtRef -> 404`; a genuine IO failure
+        // (permissions) still degrades the structural tier as a 400.
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
@@ -2163,15 +2166,8 @@ mod tests {
             Some(&token),
         )
         .await;
-        assert_eq!(status, StatusCode::BAD_REQUEST, "unreadable: {body}");
-        assert_eq!(
-            body["tiers"]["structural"]["available"], false,
-            "the structural tier degrades honestly"
-        );
-        assert!(
-            body["tiers"]["structural"]["reason"].is_string(),
-            "the structural degradation carries a reason"
-        );
+        assert_eq!(status, StatusCode::NOT_FOUND, "missing code file: {body}");
+        assert!(body["tiers"]["semantic"]["available"].is_boolean());
     }
 
     #[tokio::test]

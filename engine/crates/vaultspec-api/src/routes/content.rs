@@ -222,8 +222,25 @@ fn read_bytes(
 ) -> Result<ingest_struct::reader::DocumentBody, ContentError> {
     match &cell.scope {
         ScopeRef::Worktree { .. } => {
-            ingest_struct::reader::read_from_worktree(&cell.root, rel_path)
-                .map_err(|e| ContentError::Unreadable(format!("worktree read failed: {e}")))
+            ingest_struct::reader::read_from_worktree(&cell.root, rel_path).map_err(|e| {
+                // A file MISSING from the working tree is a not-found request
+                // error (404), NOT a substrate-unreadable degradation (400) —
+                // mirroring the ref arm's `NotAtRef -> NotFound`. The dominant
+                // case is a `code:` node minted from a doc mention of a
+                // since-DELETED path (e.g. a removed test file): without this
+                // distinction the content fetch 400s and floods the console,
+                // instead of the viewer rendering its designed "file
+                // unavailable" 404 state. A genuine IO failure (permissions,
+                // etc.) still degrades the structural tier as Unreadable.
+                match e {
+                    ingest_struct::reader::StructError::Io(io)
+                        if io.kind() == std::io::ErrorKind::NotFound =>
+                    {
+                        ContentError::NotFound(rel_path.to_string())
+                    }
+                    other => ContentError::Unreadable(format!("worktree read failed: {other}")),
+                }
+            })
         }
         ScopeRef::Ref { name } => {
             ingest_struct::reader::read_from_ref(&cell.root, name, rel_path).map_err(|e| {
