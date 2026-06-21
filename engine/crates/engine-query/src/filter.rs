@@ -39,7 +39,7 @@ pub enum FeatureQueryMode {
 
 /// A glob or regex search over a node's feature tags (filter-controls campaign):
 /// a node passes if ANY of its `feature_tags` matches. Distinct from the exact
-/// `feature_tags` membership facet — this is the power-search the topic field
+/// `feature_tags` membership facet — this is the power-search the feature field
 /// graduates to. Case-insensitive. The compiled program is size-bounded
 /// (`bounded-by-default-for-every-accumulator`) and validated at parse time, so a
 /// malformed pattern 400s rather than silently matching nothing.
@@ -49,6 +49,14 @@ pub struct FeatureQuery {
     pub value: String,
     pub mode: FeatureQueryMode,
 }
+
+/// Byte ceiling on a feature-query PATTERN STRING before it is compiled
+/// (bounded-by-default + defense-in-depth). The `regex` crate is linear-time, so a
+/// long pattern cannot cause catastrophic backtracking, and `size_limit` already
+/// bounds the compiled program — this simply rejects an absurd source up front (so
+/// the only bound is not the 1 MiB wire body limit) and keeps compile work
+/// trivial. Mirrors the frontend's per-value cap.
+const FEATURE_QUERY_MAX_LEN: usize = 512;
 
 /// Translate a shell-style glob to an anchored regex source. `*`→`.*`, `?`→`.`;
 /// every other regex metacharacter is escaped so the glob stays literal.
@@ -147,7 +155,7 @@ pub struct Filter {
     pub feature_tags: Vec<String>,
     /// Glob/regex search over feature tags (filter-controls campaign): a node
     /// passes if any of its `feature_tags` matches the compiled pattern. The
-    /// topic search field graduates to this for power queries.
+    /// feature search field graduates to this for power queries.
     pub feature_query: Option<FeatureQuery>,
     /// ADR statuses (dashboard-pipeline-wire W01.P03.S12): one of
     /// `proposed`/`accepted`/`rejected`/`deprecated`. A node passes if it
@@ -286,6 +294,11 @@ impl Filter {
         if let Some(query) = &self.feature_query {
             if query.value.trim().is_empty() {
                 self.feature_query = None;
+            } else if query.value.len() > FEATURE_QUERY_MAX_LEN {
+                return Err(FilterError::InvalidFeatureQuery {
+                    value: query.value.clone(),
+                    reason: format!("pattern exceeds {FEATURE_QUERY_MAX_LEN} bytes"),
+                });
             } else {
                 compile_feature_regex(query).map_err(|err| FilterError::InvalidFeatureQuery {
                     value: query.value.clone(),

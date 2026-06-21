@@ -92,14 +92,28 @@ fn escape_attr(s: &str) -> String {
 /// static shell is not — it carries the token bootstrap and must be
 /// reachable by a clean browser; loopback bind + Host validation is its
 /// trust boundary.
+///
+/// This list is a SECURITY boundary: a registered data/mutation route whose
+/// prefix is MISSING here is served bearer-LESS. That drift is exactly what the
+/// adversarial sweep found — `/file-tree`, `/pipeline`, `/dashboard-state`,
+/// `/history`, `/prs`, `/issues` were registered but absent, so they ran ungated.
+/// The `every_contract_route_requires_a_bearer` test now binds this list to the
+/// canonical `crate::CONTRACT_ROUTES` inventory so the two cannot drift again:
+/// every first path-segment in CONTRACT_ROUTES MUST appear here.
 pub(crate) const API_PREFIXES: &[&str] = &[
     "/map",
     "/workspaces",
     "/vault-tree",
+    "/file-tree",
+    "/pipeline",
+    "/dashboard-state",
     "/graph",
     "/filters",
     "/nodes",
     "/events",
+    "/history",
+    "/prs",
+    "/issues",
     "/status",
     "/stream",
     "/search",

@@ -55,6 +55,9 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/nodes/{id}/discover",
     "/nodes/{id}/plan-interior",
     "/events",
+    "/history",
+    "/prs",
+    "/issues",
     "/status",
     "/stream",
     "/search",
@@ -170,6 +173,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // can retire a completed feature's documents through the broker. Feature-
         // scoped (the only archive grain vaultspec-core has); watcher re-ingests.
         .route("/ops/core/archive", post(routes::ops::ops_core_archive))
+        // Relate: forwards `vault link add <src> <dst>` so the dashboard can add a
+        // `related:` edge between two documents through the broker; watcher re-ingests.
+        .route("/ops/core/link", post(routes::ops::ops_core_link))
         // The brokered rag control plane (rag-control-plane ADR D2): GET for the
         // read verbs (service-state, jobs, watcher, projects, readiness, logs,
         // metrics), POST for the control verbs (reindex trigger, watcher
@@ -1672,6 +1678,34 @@ mod tests {
             "/ops/core/{verb}",
         ] {
             assert!(CONTRACT_ROUTES.contains(&family), "missing {family}");
+        }
+    }
+
+    #[tokio::test]
+    async fn every_contract_route_requires_a_bearer() {
+        // Anti-drift guard (adversarial sweep): the bearer-gate allowlist
+        // (`spa::API_PREFIXES`) is hand-maintained PARALLEL to the router, and it
+        // had DRIFTED — `/file-tree`, `/pipeline`, `/dashboard-state`, `/history`,
+        // `/prs`, `/issues` were registered but absent from the allowlist, so they
+        // shipped served bearer-LESS. Bind the gate to the canonical route
+        // inventory: EVERY `CONTRACT_ROUTES` path (except the by-design ungated
+        // `/health` liveness ping) MUST reject a tokenless request with 401. A new
+        // route whose prefix is missing from API_PREFIXES fails here instead of
+        // silently shipping ungated. The gate runs as middleware BEFORE method
+        // routing, so a tokenless GET is rejected even on POST-only routes.
+        let (_dir, state) = fixture_state();
+        let router = build_router(state);
+        for route in CONTRACT_ROUTES {
+            if *route == "/health" {
+                continue;
+            }
+            let path = route.replace("{id}", "x").replace("{verb}", "status");
+            let (status, _) = get_with_token(router.clone(), &path, None).await;
+            assert_eq!(
+                status,
+                StatusCode::UNAUTHORIZED,
+                "route `{route}` is served without a bearer — add its prefix to spa::API_PREFIXES",
+            );
         }
     }
 
