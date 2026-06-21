@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -37,6 +38,7 @@ import {
 import { useEditorKeybindings } from "../stores/view/editorKeybindings";
 import { setSceneCommandRunner } from "../stores/view/sceneCommandBridge";
 import { KeyboardNav } from "./a11y/KeyboardNav";
+import { useRegionCycleKeybindings } from "./chrome/regionCycleKeybindings";
 import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
 import { IconButton, Popover } from "./kit";
 import { PanelLeft } from "./kit/glyphs";
@@ -44,6 +46,8 @@ import { ContextMenuHost } from "./menu/ContextMenuHost";
 import { KeyboardShortcuts } from "./menu/KeyboardShortcuts";
 // Register every per-surface context-menu resolver once at app load.
 import "./menus/registerAll";
+// Register every per-surface command-palette provider once at app load.
+import "./menus/registerAllCommands";
 import { CommandPalette } from "./palette/CommandPalette";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { useSettingsEffects } from "./settings/settingsEffects";
@@ -87,6 +91,10 @@ export function AppShell() {
   } = shellFrame;
   const browserMode = useBrowserMode();
   const browserModeIntent = useBrowserModeIntent();
+  // The stage (main content) is the skip-link target and the initial-focus
+  // landing, so a visible focused element always exists from a cold load and the
+  // tab ring never starts on `<body>` (keyboard-navigation W01.P02).
+  const stageRef = useRef<HTMLElement>(null);
   const openLeftRailMode = useCallback(
     (mode: BrowserMode) => {
       browserModeIntent(mode);
@@ -144,6 +152,10 @@ export function AppShell() {
   useLeftRailKeybindings();
   useRightRailKeybindings();
   useEditorKeybindings();
+  // Region traversal (keyboard-navigation W01.P02): F6/Shift+F6 cycle focus
+  // between the major panels through the one keymap registry, and the focusin
+  // tracker feeds per-region entry memory. Mounted once at the shell top.
+  useRegionCycleKeybindings();
   // Bridge the stores-layer command palette / keymap to the scene controller
   // (deferral #13): register a forwarder that calls into the graph scene only when
   // a command actually fires (getScene is lazy), so graph camera/layout verbs are
@@ -151,6 +163,12 @@ export function AppShell() {
   useEffect(() => {
     setSceneCommandRunner((command) => getScene().controller.command(command as never));
     return () => setSceneCommandRunner(null);
+  }, []);
+  // Place initial focus on the stage once on mount so the page never loads with
+  // focus on `<body>` (the APG always-have-a-focused-element floor). The skip
+  // link remains the first Tab stop for keyboard users.
+  useEffect(() => {
+    stageRef.current?.focus({ preventScroll: true });
   }, []);
 
   return (
@@ -160,6 +178,19 @@ export function AppShell() {
         gridTemplateColumns: gridColumns,
       }}
     >
+      {/* Skip link — the first tab stop, jumps focus past the chrome into the
+          stage content (keyboard-navigation W01.P02). Visually hidden until
+          focused. */}
+      <a
+        href="#stage"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-fg-2 focus:top-fg-2 focus:z-50 focus:rounded-fg-sm focus:bg-paper focus:px-fg-2 focus:py-fg-1 focus:text-ink focus:outline focus:outline-2 focus:outline-focus"
+        onClick={(event) => {
+          event.preventDefault();
+          stageRef.current?.focus();
+        }}
+      >
+        Skip to content
+      </a>
       <CommandPalette />
       <SettingsDialog />
       <ContextMenuHost timeTravel={timeTravel} />
@@ -178,6 +209,7 @@ export function AppShell() {
             <div
               className={shellFrame.leftRailContentClassName}
               data-keymap-context={LEFT_RAIL_KEYMAP_CONTEXT}
+              data-focus-region="left-rail"
             >
               <LeftRail />
             </div>
@@ -191,7 +223,13 @@ export function AppShell() {
       </aside>
 
       {/* ── Stage column (flex) — graph | timeline ────────────────── */}
-      <main className={shellFrame.stageColumnClassName}>
+      <main
+        ref={stageRef}
+        id="stage"
+        tabIndex={-1}
+        data-focus-region="stage"
+        className={shellFrame.stageColumnClassName}
+      >
         {/* Graph + documents area (editor-dock-workspace): the dock workspace
             replaces the single-doc viewer overlay. The graph is a portal-pinned
             canvas panel (default right, full width until a document opens) and
@@ -218,6 +256,7 @@ export function AppShell() {
           <footer
             className={shellFrame.timelineClassName}
             style={shellFrame.timelineStyle}
+            data-focus-region="timeline"
           >
             <ResizeHandle
               side="top"
@@ -370,6 +409,7 @@ function ActivityRail({
     <div
       className={shellFrame.activityRailClassName}
       data-keymap-context={RIGHT_RAIL_KEYMAP_CONTEXT}
+      data-focus-region="right-rail"
     >
       <div
         className={shellFrame.activityPanelClassName}

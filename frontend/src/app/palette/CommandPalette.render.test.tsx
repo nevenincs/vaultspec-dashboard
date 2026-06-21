@@ -29,6 +29,9 @@ import {
   useKeymapDispatcher,
 } from "../../stores/view/keymapDispatcher";
 import { useViewStore } from "../../stores/view/viewStore";
+// Register every command provider so the live palette is populated (mirrors the app
+// shell, which imports this aggregator once at load).
+import "../menus/registerAllCommands";
 import { CommandPalette } from "./CommandPalette";
 
 function PaletteShortcutHarness() {

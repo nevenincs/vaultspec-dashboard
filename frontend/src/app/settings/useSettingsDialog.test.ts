@@ -5,10 +5,8 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  buildCommands,
-  type PaletteSources,
-} from "../../stores/view/commandPaletteCommands";
+import { opsCommandProvider } from "../../stores/view/commandProviders/opsCommandProvider";
+import type { CommandContext } from "../../stores/view/commandRegistry";
 import {
   closeSettingsDialog,
   normalizeSettingsDialogOpen,
@@ -17,6 +15,40 @@ import {
   toggleSettingsDialog,
   useSettingsDialog,
 } from "../../stores/view/settingsDialog";
+
+const noop = () => undefined;
+function commandContext(): CommandContext {
+  return {
+    scope: "all",
+    timeTravel: false,
+    keybindingOverrides: {},
+    graphFrozen: false,
+    shell: {
+      leftRailVisible: true,
+      leftCollapsed: false,
+      rightCollapsed: false,
+      timelineVisible: true,
+    },
+    intents: {
+      collapseTree: noop,
+      resetFilters: noop,
+      setTheme: noop,
+      runOp: noop,
+      closeDocument: noop,
+      setGraphFrozen: noop,
+      jumpToLive: noop,
+      fitTimelineToCorpus: noop,
+      setTimelineRangeDays: noop,
+      toggleLeftRail: noop,
+      toggleLeftCollapsed: noop,
+      toggleRightRail: noop,
+      toggleTimeline: noop,
+      setRightTab: noop,
+      resetLayout: noop,
+      showKeyboardShortcuts: noop,
+    },
+  };
+}
 
 afterEach(() => useSettingsDialog.getState().closeDialog());
 
@@ -73,30 +105,18 @@ describe("useSettingsDialog store", () => {
 });
 
 describe("command-palette Settings entry point", () => {
-  const sources = (over: Partial<PaletteSources> = {}): PaletteSources => ({
-    featureTags: [],
-    lensNames: [],
-    query: "",
-    applyLens: () => undefined,
-    saveLens: () => undefined,
-    runOp: () => undefined,
-    navigate: () => undefined,
-    openSettings: () => undefined,
-    ...over,
-  });
-
-  it("builds an 'open settings' command in the app family that calls openSettings", () => {
-    let openSettingsCalls = 0;
-    function openSettings(): void {
-      openSettingsCalls += 1;
-    }
-
-    const commands = buildCommands(sources({ openSettings }));
-    const settings = commands.find((c) => c.id === "app:settings");
+  it("ops provider contributes an 'open settings' command that opens the dialog", () => {
+    const settings = opsCommandProvider(commandContext())
+      .map(
+        (c) => c as { id?: string; family?: string; label?: string; run?: () => void },
+      )
+      .find((c) => c.id === "app:settings");
     expect(settings).toBeDefined();
     expect(settings?.family).toBe("app");
     expect(settings?.label).toBe("open settings");
-    settings?.run();
-    expect(openSettingsCalls).toBe(1);
+
+    expect(useSettingsDialog.getState().open).toBe(false);
+    settings?.run?.();
+    expect(useSettingsDialog.getState().open).toBe(true);
   });
 });

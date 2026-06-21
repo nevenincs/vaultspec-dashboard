@@ -1,14 +1,15 @@
 import { useMemo } from "react";
 
 import {
-  normalizeActionDescriptor,
-  type ActionDescriptorBase,
-} from "../../platform/actions/action";
-import { useCommandPaletteLensIntent } from "../server/commandPaletteLensIntent";
+  resolveCommands,
+  normalizeCommandDescriptor,
+  normalizeCommandFamily,
+  type CommandContext,
+  type CommandDescriptor,
+  type CommandFamily,
+} from "./commandRegistry";
 import { useDashboardFilterSidebarIntent } from "../server/dashboardFilterSidebarIntent";
 import { useThemeSettingIntent } from "../server/themeSettingIntent";
-import { featureNodeIdFromTag } from "../server/liveAdapters";
-import { OPS_WHITELIST } from "../server/opsActions";
 import { useBrowserMode } from "./browserMode";
 import {
   browserTreeExpansionKey,
@@ -24,26 +25,21 @@ import {
 } from "./leftRailKeybindings";
 import {
   useActiveScope,
-  useArchiveFeature,
-  useDashboardFilterChoicesView,
   useDashboardTimelineModeView,
   useFiltersVocabularyView,
 } from "../server/queries";
 import { openKeyboardShortcuts } from "./keyboardShortcuts";
-import { getLensChoices, saveCurrentLens, useLenses } from "./lenses";
 import { useCommandPaletteOpsRunMutation } from "./opsRun";
-import { useDashboardNodeSelection } from "./selection";
 import { closeDocumentEditor } from "./editor";
 import {
   graphFitToView,
   graphResetView,
   graphZoomIn,
   graphZoomOut,
-  resetGraphControlsToDefaults,
   setGraphFrozen,
 } from "./graphCommands";
 import { useGraphControlsFrozen } from "./graphControlsChrome";
-import { openSettingsDialog } from "./settingsDialog";
+import { getKeymapOverrides } from "./keymapDispatcher";
 import {
   orderedTimelineDateInputRange,
   timelineCorpusFitKey,
@@ -65,18 +61,13 @@ import {
   useCommandPaletteOpsFeedbackBoundary,
 } from "./commandPalette";
 
-/** The command families, ordered as they group in the list. */
-export type CommandFamily = "navigate" | "filters" | "window" | "core" | "rag" | "app";
-
-// A palette command IS a shared `ActionDescriptor` (dashboard-context-menus ADR
-// layer 1) plus the palette-specific `family` grouping. Consuming the shared
-// descriptor is what keeps the palette and the context menu from drifting; the
-// palette requires `run` and groups by `family`.
-export interface PaletteCommand extends ActionDescriptorBase {
-  family: CommandFamily;
-  run: () => void;
-  dispatch?: never;
-}
+// Re-export the command-plane vocabulary from its canonical home (the registry) so
+// existing importers keep resolving these names from this module.
+export type { CommandContext, CommandDescriptor, CommandFamily };
+export { normalizeCommandFamily };
+/** A palette command IS a registry CommandDescriptor (the shared shape every plane
+ *  consumes); this alias preserves the historical name. */
+export type PaletteCommand = CommandDescriptor;
 
 /** Human-facing group heading per family (object-then-action taxonomy). */
 export const FAMILY_LABEL: Record<CommandFamily, string> = {
@@ -88,37 +79,13 @@ export const FAMILY_LABEL: Record<CommandFamily, string> = {
   app: "app",
 };
 
-const COMMAND_FAMILIES = new Set<CommandFamily>([
-  "navigate",
-  "filters",
-  "window",
-  "core",
-  "rag",
-  "app",
-]);
-
 export const COMMAND_PALETTE_SOURCE_ITEMS_CAP = 128;
 export const COMMAND_PALETTE_SOURCE_ITEM_MAX_CHARS = 256;
 
-function isCommandPaletteRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object";
-}
-
-export function normalizeCommandFamily(value: unknown): CommandFamily | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  return COMMAND_FAMILIES.has(normalized as CommandFamily)
-    ? (normalized as CommandFamily)
-    : null;
-}
-
+/** Normalize one palette command. Delegates to the registry's canonical
+ *  normalizer; preserved as a named export for existing importers. */
 export function normalizePaletteCommand(command: unknown): PaletteCommand | null {
-  if (!isCommandPaletteRecord(command)) return null;
-  const family = normalizeCommandFamily(command.family);
-  if (family === null) return null;
-  const action = normalizeActionDescriptor(command);
-  if (action === null || typeof action.run !== "function") return null;
-  return { ...action, family };
+  return normalizeCommandDescriptor(command);
 }
 
 function normalizedPaletteCommands(commands: readonly unknown[]): PaletteCommand[] {
@@ -148,65 +115,14 @@ export function normalizeCommandPaletteSourceItems(items: unknown): string[] {
   return out;
 }
 
-export interface PaletteSources {
-  featureTags: unknown;
-  lensNames: unknown;
-  query: unknown;
-  canSaveLens?: boolean;
-  applyLens: (name: string) => void;
-  saveLens: (name: string) => void;
-  runOp: (target: "core" | "rag", verb: string) => void;
-  navigate: (nodeId: string) => void;
-  openSettings: () => void;
-}
-
-export function buildCommands(sources: PaletteSources): PaletteCommand[] {
-  const commands: unknown[] = [];
-  const normalizedQuery = normalizeCommandPaletteQuery(sources.query);
-  const featureTags = normalizeCommandPaletteSourceItems(sources.featureTags);
-  const lensNames = normalizeCommandPaletteSourceItems(sources.lensNames);
-  for (const feature of featureTags) {
-    commands.push({
-      id: `nav:${feature}`,
-      label: `go to ${feature}`,
-      family: "navigate",
-      run: () => sources.navigate(featureNodeIdFromTag(feature)),
-    });
-  }
-  for (const name of lensNames) {
-    commands.push({
-      id: `lens:${name}`,
-      label: `lens: ${name}`,
-      family: "filters",
-      run: () => sources.applyLens(name),
-    });
-  }
-  for (const { target, verb, label } of OPS_WHITELIST) {
-    commands.push({
-      id: `ops:${target}:${verb}`,
-      label: `ops: ${label}`,
-      family: target,
-      confirm: true,
-      disabledInTimeTravel: true,
-      run: () => sources.runOp(target, verb),
-    });
-  }
-  commands.push({
-    id: "app:settings",
-    label: "open settings",
-    family: "app",
-    run: () => sources.openSettings(),
-  });
-  if (normalizedQuery.length > 0 && sources.canSaveLens !== false) {
-    commands.push({
-      id: `save-lens:${normalizedQuery}`,
-      label: `save current filters as lens "${normalizedQuery}"`,
-      family: "filters",
-      run: () => sources.saveLens(normalizedQuery),
-    });
-  }
-  return normalizedPaletteCommands(commands);
-}
+// Corpus fence (command-palette-providers + command-palette-planes ADRs): the old
+// `buildCommands` enrolled one `go to <feature>` and one `lens: <name>` per corpus
+// item plus a `save current filters as lens` command directly into the command
+// plane. That transient vault vocabulary is no longer a standing command — feature
+// and document navigation belong to the document-search plane, and lens apply/save
+// is a filters-surface concern. The remaining real verbs (the whitelisted ops and
+// open-settings) are contributed by the ops command provider. See the corpus-fence
+// guard test for the structural backstop.
 
 /**
  * The window-management command sources: the current shell-layout truth (so each
@@ -337,28 +253,9 @@ export function buildLeftRailCommands(
   return normalizedPaletteCommands(commands);
 }
 
-/**
- * The feature-archive commands: one confirm-guarded `archive feature: <tag>` per
- * known feature, reusing the palette's arm-to-confirm destructive-op safety (the
- * same guard the rag/core ops carry). Archiving is a vault mutation, so each is
- * `disabledInTimeTravel`. The `archiveFeature` effect is the stores mutation,
- * injected by the selector (the palette stays a pure projection).
- */
-export function buildFeatureArchiveCommands(
-  featureTags: unknown,
-  archiveFeature: (feature: string) => void,
-): PaletteCommand[] {
-  const tags = normalizeCommandPaletteSourceItems(featureTags);
-  const commands: unknown[] = tags.map((feature) => ({
-    id: `archive:${feature}`,
-    label: `archive feature: ${feature}`,
-    family: "core",
-    confirm: true,
-    disabledInTimeTravel: true,
-    run: () => archiveFeature(feature),
-  }));
-  return normalizedPaletteCommands(commands);
-}
+// Feature archive is no longer a per-feature standing command (corpus fence). It is
+// an entity verb (`archiveFeatureAction` in the shared action builders), reachable
+// from a feature/node context menu with the same arm-to-confirm + time-travel guard.
 
 /**
  * Timeline commands on the palette. Jump-to-now docks the playhead back to LIVE
@@ -766,8 +663,11 @@ export function deriveCommandPalettePresentationView(
 
 /**
  * Stores-owned command-palette read model. The command-palette store owns input,
- * cursor, and confirmation-row state; this selector owns command assembly from
- * dashboard/lens/ops state, time-travel gating, grouping, and search projection.
+ * cursor, and confirmation-row state; this selector assembles the `CommandContext`
+ * from raw, stable selectors (stable-selectors), calls the command-provider registry
+ * host (`resolveCommands`, which applies the central time-travel gate and the bounds),
+ * then projects the result through the query filter and family grouping. The command
+ * list itself is contributed by the registered providers, not hand-assembled here.
  */
 export function useCommandPaletteCommandView(
   query: unknown,
@@ -776,140 +676,91 @@ export function useCommandPaletteCommandView(
   const browserMode = useBrowserMode();
   const normalizedQuery = normalizeCommandPaletteQuery(query);
   const vocabulary = useFiltersVocabularyView(scope);
-  const dashboardFilterChoices = useDashboardFilterChoicesView(scope);
   const timeline = useDashboardTimelineModeView(scope);
-  const lensIntent = useCommandPaletteLensIntent(scope);
-  const selectNode = useDashboardNodeSelection(scope);
-  const lenses = useLenses();
   const runPaletteOp = useCommandPaletteOpsRunMutation();
-  const archiveFeature = useArchiveFeature();
   const resetFilters = useDashboardFilterSidebarIntent(scope).clearFilters;
   const graphFrozen = useGraphControlsFrozen();
   const setThemePreference = useThemeSettingIntent().setThemePreference;
   const shellFrame = useShellFrameView(scope);
   const shellActions = useShellWindowActions(scope, shellFrame);
+  const dateBounds = vocabulary.dateBounds;
   const timeTravel = timeline.opsDisabled;
   useCommandPaletteOpsFeedbackBoundary(scope, timeTravel);
 
   const commands = useMemo(() => {
-    const baseCommands = buildCommands({
-      featureTags: vocabulary.featureTags,
-      lensNames: lenses.map((lens) => lens.name),
-      query: normalizedQuery,
-      canSaveLens: dashboardFilterChoices.loaded,
-      applyLens: (name) => {
-        const choices = getLensChoices(name);
-        if (!choices) return;
-        void lensIntent.applyLensChoices(choices).catch(() => undefined);
+    const ctx: CommandContext = {
+      scope,
+      timeTravel,
+      keybindingOverrides: getKeymapOverrides(),
+      graphFrozen,
+      shell: {
+        leftRailVisible: shellFrame.leftRailVisible,
+        leftCollapsed: shellFrame.leftCollapsed,
+        rightCollapsed: shellFrame.rightCollapsed,
+        timelineVisible: shellFrame.timelineVisible,
       },
-      saveLens: (name) => {
-        if (!dashboardFilterChoices.loaded) return;
-        saveCurrentLens(name, dashboardFilterChoices.choices);
+      intents: {
+        collapseTree: () => {
+          const key = browserTreeExpansionKey(scope, browserMode);
+          useBrowserTreeExpansionStore.getState().collapseAll(key);
+        },
+        resetFilters: () => void resetFilters(),
+        setTheme: setThemePreference,
+        runOp: (target, verb) => {
+          runPaletteOp.mutate({ target, verb });
+        },
+        closeDocument: () => closeDocumentEditor(),
+        setGraphFrozen: (frozen) => setGraphFrozen(frozen, scope),
+        jumpToLive: () => movePlayhead("live", scope),
+        fitTimelineToCorpus: () => {
+          const width = timelineViewSnapshot().viewportWidth;
+          fitTimelineScopeToCorpus(
+            scope,
+            dateBounds,
+            width,
+            timelineCorpusFitKey(scope, dateBounds),
+          );
+        },
+        setTimelineRangeDays: (days) => {
+          const width = timelineViewSnapshot().viewportWidth;
+          const now = Date.now();
+          const toStr = new Date(now).toISOString().slice(0, 10);
+          const fromStr = new Date(now - days * 86_400_000).toISOString().slice(0, 10);
+          const range = orderedTimelineDateInputRange(fromStr, toStr);
+          if (range) fitTimelineNavigationToDateRange(range, width);
+        },
+        toggleLeftRail: shellActions.toggleLeftRail,
+        toggleLeftCollapsed: shellActions.toggleLeftCollapsed,
+        toggleRightRail: shellActions.toggleRightRail,
+        toggleTimeline: shellActions.toggleTimeline,
+        setRightTab: shellActions.setRightTab,
+        resetLayout: shellActions.resetLayout,
+        showKeyboardShortcuts: openKeyboardShortcuts,
       },
-      runOp: (target, verb) => {
-        runPaletteOp.mutate({ target, verb });
-      },
-      navigate: (nodeId) => {
-        void selectNode(nodeId).catch(() => undefined);
-      },
-      openSettings: openSettingsDialog,
-    });
-    const windowCommands = buildWindowCommands({
-      leftRailVisible: shellFrame.leftRailVisible,
-      leftCollapsed: shellFrame.leftCollapsed,
-      rightCollapsed: shellFrame.rightCollapsed,
-      timelineVisible: shellFrame.timelineVisible,
-      toggleLeftRail: shellActions.toggleLeftRail,
-      toggleLeftCollapsed: shellActions.toggleLeftCollapsed,
-      toggleRightRail: shellActions.toggleRightRail,
-      toggleTimeline: shellActions.toggleTimeline,
-      setRightTab: shellActions.setRightTab,
-      resetLayout: shellActions.resetLayout,
-      showKeyboardShortcuts: openKeyboardShortcuts,
-    });
-    const leftRailCommands = buildLeftRailCommands({
-      collapseTree: () => {
-        const key = browserTreeExpansionKey(scope, browserMode);
-        useBrowserTreeExpansionStore.getState().collapseAll(key);
-      },
-      resetFilters: () => void resetFilters(),
-    });
-    const archiveCommands = buildFeatureArchiveCommands(
-      vocabulary.featureTags,
-      (feature) => {
-        archiveFeature.mutate({ scope, feature });
-      },
-    );
-    const timelineCommands = buildTimelineCommands({
-      jumpToLive: () => movePlayhead("live", scope),
-      fitToCorpus: () => {
-        const width = timelineViewSnapshot().viewportWidth;
-        fitTimelineScopeToCorpus(
-          scope,
-          vocabulary.dateBounds,
-          width,
-          timelineCorpusFitKey(scope, vocabulary.dateBounds),
-        );
-      },
-      setRangeDays: (days) => {
-        const width = timelineViewSnapshot().viewportWidth;
-        const now = Date.now();
-        const toStr = new Date(now).toISOString().slice(0, 10);
-        const fromStr = new Date(now - days * 86_400_000).toISOString().slice(0, 10);
-        const range = orderedTimelineDateInputRange(fromStr, toStr);
-        if (range) fitTimelineNavigationToDateRange(range, width);
-      },
-    });
-    const editorCommands = buildEditorCommands(() => closeDocumentEditor());
-    const graphCommands = buildGraphCommands({
-      frozen: graphFrozen,
-      setFrozen: (frozen) => setGraphFrozen(frozen, scope),
-      resetDefaults: resetGraphControlsToDefaults,
-    });
-    const settingsCommands = buildSettingsCommands(setThemePreference);
-    const all = [
-      ...baseCommands,
-      ...windowCommands,
-      ...leftRailCommands,
-      ...archiveCommands,
-      ...timelineCommands,
-      ...editorCommands,
-      ...graphCommands,
-      ...settingsCommands,
-    ];
-    const gated = gateCommandsForTimeTravel(all, timeTravel);
-    return filterCommands(gated, normalizedQuery);
+    };
+    return filterCommands(resolveCommands(ctx), normalizedQuery);
   }, [
-    archiveFeature,
     browserMode,
-    dashboardFilterChoices,
+    dateBounds,
     graphFrozen,
-    lensIntent,
-    resetFilters,
-    lenses,
     normalizedQuery,
+    resetFilters,
     runPaletteOp,
+    scope,
     setThemePreference,
     shellActions,
-    scope,
-    selectNode,
     shellFrame,
     timeTravel,
-    vocabulary.dateBounds,
-    vocabulary.featureTags,
   ]);
 
   return useMemo(() => {
     const groups = groupByFamily(commands);
     const ordered = groups.flatMap((group) => group.commands);
-    const matchedResults = ordered.filter(
-      (command) => !command.id.startsWith("save-lens:"),
-    );
     return {
       groups,
       ordered,
-      matchedResults,
-      noMatch: matchedResults.length === 0,
+      matchedResults: ordered,
+      noMatch: ordered.length === 0,
       navLoading: vocabulary.loading,
     };
   }, [commands, vocabulary.loading]);

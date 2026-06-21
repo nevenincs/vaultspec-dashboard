@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type {
-  PaletteSources,
-  WindowCommandSources,
-} from "../../stores/view/commandPaletteCommands";
+import type { WindowCommandSources } from "../../stores/view/commandPaletteCommands";
 import {
-  buildCommands,
   buildWindowCommands,
   commandPaletteRightRailCommandId,
   commandPaletteOptionDomIdPart,
@@ -15,6 +11,7 @@ import {
   gateCommandsForTimeTravel,
   groupByFamily,
   normalizeCommandPaletteRightRailTab,
+  type PaletteCommand,
 } from "../../stores/view/commandPaletteCommands";
 import {
   COMMAND_PALETTE_ACTION_ID,
@@ -23,21 +20,35 @@ import {
 } from "../../stores/view/commandPalette";
 import { RIGHT_RAIL_TABS } from "../../stores/view/shellLayout";
 
-function sources(over: Partial<PaletteSources> = {}): PaletteSources {
-  return {
-    featureTags: ["auth-flow", "sync-service"],
-    lensNames: ["broken links"],
-    query: "",
-    applyLens: () => undefined,
-    saveLens: () => undefined,
-    runOp: () => undefined,
-    navigate: () => undefined,
-    openSettings: () => undefined,
-    ...over,
-  };
+// Synthetic command rows exercising the projection seams (grouping, filtering,
+// presentation). Command CONTENT now comes from the provider registry; these tests
+// pin the pure projection helpers, not corpus assembly.
+function command(id: string, patch: Partial<PaletteCommand> = {}): PaletteCommand {
+  return { id, label: id, family: "app", run: () => undefined, ...patch };
 }
 
-describe("buildCommands (G2.a / G5.c)", () => {
+function sample(): PaletteCommand[] {
+  return [
+    command("graph:fit", { label: "graph: fit to view", family: "navigate" }),
+    command("graph:zoom-in", { label: "graph: zoom in", family: "navigate" }),
+    command("left-rail:reset-filters", { label: "reset filters", family: "filters" }),
+    command("ops:core:vault-check", {
+      label: "ops: vault check",
+      family: "core",
+      confirm: true,
+      disabledInTimeTravel: true,
+    }),
+    command("ops:rag:reindex", {
+      label: "ops: reindex",
+      family: "rag",
+      confirm: true,
+      disabledInTimeTravel: true,
+    }),
+    command("app:settings", { label: "open settings", family: "app" }),
+  ];
+}
+
+describe("command-palette toggle binding", () => {
   it("declares the command-palette toggle as a bindable command", () => {
     expect(COMMAND_PALETTE_KEYBINDING).toEqual({
       id: COMMAND_PALETTE_ACTION_ID,
@@ -47,58 +58,11 @@ describe("buildCommands (G2.a / G5.c)", () => {
       context: "global",
     });
   });
-
-  it("fronts navigation, lenses, and the whitelisted ops verbs", () => {
-    const commands = buildCommands(sources());
-    const ids = commands.map((c) => c.id);
-    expect(ids).toContain("nav:auth-flow");
-    expect(ids).toContain("lens:broken links");
-    expect(ids).toContain("ops:core:vault-check");
-    expect(ids).toContain("ops:rag:reindex");
-    // Ops verbs require confirmation; navigation does not.
-    expect(commands.find((c) => c.id === "ops:rag:reindex")?.confirm).toBe(true);
-    expect(commands.find((c) => c.id === "ops:rag:reindex")?.disabledInTimeTravel).toBe(
-      true,
-    );
-    expect(commands.find((c) => c.id === "nav:auth-flow")?.confirm).toBeUndefined();
-    expect(
-      commands.find((c) => c.id === "nav:auth-flow")?.disabledInTimeTravel,
-    ).toBeUndefined();
-  });
-
-  it("tags each command with its family (object-then-action taxonomy)", () => {
-    const commands = buildCommands(sources());
-    expect(commands.find((c) => c.id === "nav:auth-flow")?.family).toBe("navigate");
-    expect(commands.find((c) => c.id === "lens:broken links")?.family).toBe("filters");
-    expect(commands.find((c) => c.id === "ops:core:vault-check")?.family).toBe("core");
-    expect(commands.find((c) => c.id === "ops:rag:reindex")?.family).toBe("rag");
-  });
-
-  it("offers save-lens only when a name is typed", () => {
-    expect(buildCommands(sources()).some((c) => c.id.startsWith("save-lens:"))).toBe(
-      false,
-    );
-    const withQuery = buildCommands(sources({ query: "my sprint" }));
-    expect(withQuery.some((c) => c.id === "save-lens:my sprint")).toBe(true);
-  });
-
-  it("does not offer save-lens while the canonical filter snapshot is not loaded", () => {
-    const commands = buildCommands(sources({ query: "my sprint", canSaveLens: false }));
-
-    expect(commands.some((c) => c.id.startsWith("save-lens:"))).toBe(false);
-  });
-
-  it("runs the wired actions", () => {
-    const navigated: string[] = [];
-    const commands = buildCommands(sources({ navigate: (id) => navigated.push(id) }));
-    commands.find((c) => c.id === "nav:sync-service")!.run();
-    expect(navigated).toEqual(["feature:sync-service"]);
-  });
 });
 
 describe("gateCommandsForTimeTravel", () => {
-  it("uses the shared disabledInTimeTravel descriptor flag", () => {
-    const commands = buildCommands(sources());
+  it("removes the shared disabledInTimeTravel commands in historical mode", () => {
+    const commands = sample();
     expect(gateCommandsForTimeTravel(commands, false)).toHaveLength(commands.length);
 
     const gated = gateCommandsForTimeTravel(commands, true);
@@ -110,20 +74,21 @@ describe("gateCommandsForTimeTravel", () => {
 
 describe("filterCommands", () => {
   it("matches case-insensitively on the label and passes empty through", () => {
-    const commands = buildCommands(sources());
-    expect(filterCommands(commands, "BROKEN")).toHaveLength(1);
+    const commands = sample();
+    expect(filterCommands(commands, "REINDEX")).toHaveLength(1);
     expect(filterCommands(commands, "")).toHaveLength(commands.length);
     expect(filterCommands(commands, "zzz")).toHaveLength(0);
   });
 
   it("is forgiving of word order and partial tokens", () => {
-    const commands = buildCommands(sources());
-    // "auth go" matches "go to auth-flow" regardless of token order.
-    const hits = filterCommands(commands, "auth go");
-    expect(hits.map((c) => c.id)).toContain("nav:auth-flow");
+    const commands = sample();
+    // "fit graph" matches "graph: fit to view" regardless of token order.
+    expect(filterCommands(commands, "fit graph").map((c) => c.id)).toContain(
+      "graph:fit",
+    );
     // A partial fragment still matches.
-    expect(filterCommands(commands, "sync").map((c) => c.id)).toContain(
-      "nav:sync-service",
+    expect(filterCommands(commands, "zoom").map((c) => c.id)).toContain(
+      "graph:zoom-in",
     );
   });
 });
@@ -220,9 +185,7 @@ describe("buildWindowCommands (window-management parity)", () => {
 
 describe("groupByFamily", () => {
   it("groups in canonical family order and drops empty families", () => {
-    const commands = buildCommands(sources());
-    const groups = groupByFamily(commands);
-    // The "app" family is always present (the settings command is unconditional).
+    const groups = groupByFamily(sample());
     expect(groups.map((g) => g.family)).toEqual([
       "navigate",
       "filters",
@@ -230,31 +193,25 @@ describe("groupByFamily", () => {
       "rag",
       "app",
     ]);
-    // Every command lands in exactly one group.
     const grouped = groups.flatMap((g) => g.commands);
-    expect(grouped).toHaveLength(commands.length);
+    expect(grouped).toHaveLength(sample().length);
   });
 
   it("omits a family with no commands", () => {
-    const navOnly = buildCommands(
-      sources({ lensNames: [], featureTags: ["only-feature"] }),
-    ).filter((c) => c.family === "navigate");
-    const groups = groupByFamily(navOnly);
-    expect(groups.map((g) => g.family)).toEqual(["navigate"]);
+    const navOnly = sample().filter((c) => c.family === "navigate");
+    expect(groupByFamily(navOnly).map((g) => g.family)).toEqual(["navigate"]);
   });
 });
 
 describe("deriveCommandPalettePresentationView", () => {
   it("derives the selected command, labels, and live-region count", () => {
-    const ordered = filterCommands(buildCommands(sources()), "auth");
+    const ordered = filterCommands(sample(), "fit");
     const groups = groupByFamily(ordered);
     const view = deriveCommandPalettePresentationView(
       {
         groups,
         ordered,
-        matchedResults: ordered.filter(
-          (command) => !command.id.startsWith("save-lens:"),
-        ),
+        matchedResults: ordered,
         noMatch: false,
         navLoading: true,
       },
@@ -262,17 +219,17 @@ describe("deriveCommandPalettePresentationView", () => {
     );
 
     expect(view.safeCursor).toBe(0);
-    expect(view.activeCommand?.id).toBe("nav:auth-flow");
+    expect(view.activeCommand?.id).toBe("graph:fit");
     expect(view.rowGroups).toEqual([
       {
         family: "navigate",
         label: "navigate",
         rows: [
           expect.objectContaining({
-            id: "nav:auth-flow",
-            optionDomIdPart: "nav%3Aauth-flow",
+            id: "graph:fit",
+            optionDomIdPart: "graph%3Afit",
             index: 0,
-            label: "go to auth-flow",
+            label: "graph: fit to view",
             rowClassName:
               "flex h-[30px] w-full items-center justify-between rounded-fg-md px-fg-4 text-left transition-colors duration-ui-fast ease-settle bg-accent-subtle text-ink",
             labelClassName: undefined,
@@ -293,27 +250,22 @@ describe("deriveCommandPalettePresentationView", () => {
       open: "open",
       close: "close",
     });
-    expect(view.liveMessage).toBe("1 command. go to auth-flow");
+    expect(view.liveMessage).toBe("1 command. graph: fit to view");
   });
 
-  it("projects DOM-safe option id parts for user-derived command ids", () => {
-    const ordered = buildCommands(
-      sources({
-        lensNames: ["broken links / weekly"],
-        query: 'new lens "QA"',
+  it("projects DOM-safe option id parts for special-character command ids", () => {
+    const ordered = [
+      command("lens:broken links / weekly", {
+        label: "broken links / weekly",
+        family: "filters",
       }),
-    ).filter(
-      (command) =>
-        command.id === "lens:broken links / weekly" ||
-        command.id === 'save-lens:new lens "QA"',
-    );
+      command('save:new lens "QA"', { label: 'new lens "QA"', family: "filters" }),
+    ];
     const view = deriveCommandPalettePresentationView(
       {
         groups: groupByFamily(ordered),
         ordered,
-        matchedResults: ordered.filter(
-          (command) => !command.id.startsWith("save-lens:"),
-        ),
+        matchedResults: ordered,
         noMatch: false,
         navLoading: false,
       },
@@ -321,26 +273,16 @@ describe("deriveCommandPalettePresentationView", () => {
     );
 
     const rows = view.rowGroups.flatMap((group) => group.rows);
-    expect(rows).toEqual([
-      expect.objectContaining({
-        id: "lens:broken links / weekly",
-        optionDomIdPart: commandPaletteOptionDomIdPart("lens:broken links / weekly"),
-      }),
-      expect.objectContaining({
-        id: 'save-lens:new lens "QA"',
-        optionDomIdPart: commandPaletteOptionDomIdPart('save-lens:new lens "QA"'),
-      }),
-    ]);
     expect(rows.map((row) => row.optionDomIdPart)).toEqual([
-      "lens%3Abroken%20links%20%2F%20weekly",
-      "save-lens%3Anew%20lens%20%22QA%22",
+      commandPaletteOptionDomIdPart("lens:broken links / weekly"),
+      commandPaletteOptionDomIdPart('save:new lens "QA"'),
     ]);
     expect(rows.every((row) => !/\s/.test(row.optionDomIdPart))).toBe(true);
     expect(view.activeOptionDomIdPart).toBe(rows[1]?.optionDomIdPart);
   });
 
   it("announces the armed confirmation prompt through the presentation view", () => {
-    const ordered = filterCommands(buildCommands(sources()), "vault");
+    const ordered = filterCommands(sample(), "vault");
     const groups = groupByFamily(ordered);
     const active = ordered.find((command) => command.confirm)!;
     const view = deriveCommandPalettePresentationView(
@@ -363,36 +305,12 @@ describe("deriveCommandPalettePresentationView", () => {
       view.rowGroups.flatMap((group) => group.rows).find((row) => row.id === active.id),
     ).toMatchObject({
       label: `confirm ${active.label}?`,
-      rowClassName:
-        "flex h-[30px] w-full items-center justify-between rounded-fg-md px-fg-4 text-left transition-colors duration-ui-fast ease-settle bg-accent-subtle text-ink",
       labelClassName: "text-state-stale",
       selected: true,
       armed: true,
       confirmShortcutLabel: "⏎ ⏎",
       selectionHintVisible: false,
     });
-    expect(view.liveMessage).toBe(`2 commands. confirm ${active.label}?`);
-  });
-
-  it("keeps no-match copy distinct from the save-lens survivor", () => {
-    const ordered = buildCommands(sources({ query: "new lens" })).filter((command) =>
-      command.id.startsWith("save-lens:"),
-    );
-    const view = deriveCommandPalettePresentationView(
-      {
-        groups: groupByFamily(ordered),
-        ordered,
-        matchedResults: [],
-        noMatch: true,
-        navLoading: false,
-      },
-      { cursor: 99, confirmArmed: false, armedCommandId: null },
-    );
-
-    expect(view.safeCursor).toBe(0);
-    expect(view.noMatchMessage).toBe("nothing matches");
-    expect(view.liveMessage).toBe(
-      'no matches — save current filters as lens "new lens"',
-    );
+    expect(view.liveMessage).toBe(`1 command. confirm ${active.label}?`);
   });
 });

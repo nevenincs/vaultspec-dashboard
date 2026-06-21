@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildCommands,
   buildEditorCommands,
-  buildFeatureArchiveCommands,
   buildGraphCommands,
   buildLeftRailCommands,
   buildSettingsCommands,
@@ -17,54 +15,12 @@ import {
   deriveCommandPaletteKeyboardIntent,
   deriveCommandPalettePresentationView,
   filterCommands,
-  gateCommandsForTimeTravel,
   groupByFamily,
   normalizeCommandFamily,
   normalizeCommandPaletteSourceItems,
   normalizePaletteCommand,
   type PaletteCommand,
 } from "./commandPaletteCommands";
-
-function sources(patch: Partial<Parameters<typeof buildCommands>[0]> = {}) {
-  const calls: string[] = [];
-  return {
-    calls,
-    input: {
-      featureTags: ["state", "timeline"],
-      lensNames: ["critical"],
-      query: "",
-      applyLens: (name: string) => calls.push(`lens:${name}`),
-      saveLens: (name: string) => calls.push(`save:${name}`),
-      runOp: (target: "core" | "rag", verb: string) =>
-        calls.push(`ops:${target}:${verb}`),
-      navigate: (nodeId: string) => calls.push(`nav:${nodeId}`),
-      openSettings: () => calls.push("settings"),
-      ...patch,
-    },
-  };
-}
-
-describe("buildFeatureArchiveCommands", () => {
-  it("emits one confirm-guarded, time-travel-gated archive command per feature", () => {
-    const commands = buildFeatureArchiveCommands(
-      ["state", "timeline"],
-      () => undefined,
-    );
-    expect(commands.map((c) => c.id)).toEqual(["archive:state", "archive:timeline"]);
-    expect(commands.every((c) => c.family === "core")).toBe(true);
-    expect(commands.every((c) => c.confirm === true)).toBe(true);
-    expect(commands.every((c) => c.disabledInTimeTravel === true)).toBe(true);
-  });
-
-  it("fires the injected archive effect with the command's feature tag", () => {
-    const archived: string[] = [];
-    const commands = buildFeatureArchiveCommands(["state"], (feature) => {
-      archived.push(feature);
-    });
-    commands.find((c) => c.id === "archive:state")?.run();
-    expect(archived).toEqual(["state"]);
-  });
-});
 
 describe("buildGraphCommands", () => {
   it("enrolls camera, freeze (label reflects state), and reset-defaults", () => {
@@ -260,71 +216,16 @@ describe("command palette command projection", () => {
     ).toBeNull();
   });
 
-  it("builds commands from shared sources and gates ops in time travel", () => {
-    const { calls, input } = sources({ query: "saved lens" });
-    const commands = buildCommands(input);
-
-    expect(commands.map((item) => item.id)).toEqual(
-      expect.arrayContaining([
-        "nav:state",
-        "lens:critical",
-        "ops:core:vault-check",
-        "ops:rag:reindex",
-        "app:settings",
-        "save-lens:saved lens",
-      ]),
-    );
-
-    commands.find((item) => item.id === "nav:state")?.run();
-    commands.find((item) => item.id === "ops:rag:reindex")?.run();
-    commands.find((item) => item.id === "save-lens:saved lens")?.run();
-    expect(calls).toEqual(["nav:feature:state", "ops:rag:reindex", "save:saved lens"]);
-
+  it("normalizes, de-duplicates, trims, and bounds command source lists", () => {
     expect(
-      gateCommandsForTimeTravel(commands, true).some((item) =>
-        item.id.startsWith("ops:"),
-      ),
-    ).toBe(false);
-  });
-
-  it("normalizes runtime query values before command assembly", () => {
-    const { calls, input } = sources({ query: "  saved lens  " });
-    const commands = buildCommands(input);
-
-    expect(commands.map((item) => item.id)).toContain("save-lens:saved lens");
-
-    commands.find((item) => item.id === "save-lens:saved lens")?.run();
-    expect(calls).toContain("save:saved lens");
-
-    expect(
-      buildCommands(sources({ query: { label: "saved lens" } }).input).some((item) =>
-        item.id.startsWith("save-lens:"),
-      ),
-    ).toBe(false);
-  });
-
-  it("normalizes command source lists before creating ids and callbacks", () => {
-    const { calls, input } = sources({
-      featureTags: [" state ", "", "state", { tag: "bad" }, "timeline"],
-      lensNames: [" critical ", "critical", null, "  ", "ops"],
-    });
-    const commands = buildCommands(input);
-
-    expect(commands.map((item) => item.id)).toEqual(
-      expect.arrayContaining([
-        "nav:state",
-        "nav:timeline",
-        "lens:critical",
-        "lens:ops",
+      normalizeCommandPaletteSourceItems([
+        " state ",
+        "",
+        "state",
+        { tag: "bad" },
+        "timeline",
       ]),
-    );
-    expect(commands.filter((item) => item.id === "nav:state")).toHaveLength(1);
-    expect(commands.some((item) => item.id === "nav:")).toBe(false);
-
-    commands.find((item) => item.id === "nav:state")?.run();
-    commands.find((item) => item.id === "lens:critical")?.run();
-    expect(calls).toEqual(["nav:feature:state", "lens:critical"]);
-
+    ).toEqual(["state", "timeline"]);
     expect(
       normalizeCommandPaletteSourceItems(
         Array.from(
@@ -340,14 +241,6 @@ describe("command palette command projection", () => {
         "timeline",
       ]),
     ).toEqual(["state", "timeline"]);
-    expect(
-      buildCommands(
-        sources({
-          featureTags: ["x".repeat(COMMAND_PALETTE_SOURCE_ITEM_MAX_CHARS + 1)],
-          lensNames: ["x".repeat(COMMAND_PALETTE_SOURCE_ITEM_MAX_CHARS + 1)],
-        }).input,
-      ).some((item) => item.id.startsWith("nav:") || item.id.startsWith("lens:")),
-    ).toBe(false);
     expect(normalizeCommandPaletteSourceItems({ items: ["state"] })).toEqual([]);
   });
 
