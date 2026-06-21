@@ -373,8 +373,19 @@ async fn run_sibling_write_bounded(
 /// consumes. No working-tree mutation flag is ever present.
 const GIT_WHITELIST: &[(&str, &[&str])] = &[
     ("status", &["status", "--porcelain=v1", "--branch"]),
-    ("numstat", &["diff", "--numstat", "--no-color"]),
-    ("diff", &["diff", "--no-color"]),
+    // numstat is HEAD-relative (`git diff HEAD`), so the per-file line tallies
+    // cover BOTH staged (index-vs-HEAD) and unstaged (worktree-vs-index) changes
+    // in one read — matching the full working-tree picture `status --porcelain`
+    // reports. A bare `git diff --numstat` saw only unstaged changes, so every
+    // staged file reconciled to null tallies (dashboard git-backend audit HIGH-1).
+    // Untracked files are still absent (not in HEAD); they carry no diff tally by
+    // construction and the client renders them without one.
+    ("numstat", &["diff", "HEAD", "--numstat", "--no-color"]),
+    // The per-file working-tree diff is HEAD-relative too, so a STAGED change still
+    // renders its diff (a bare `git diff -- <path>` showed nothing once a change was
+    // staged). Combined staged+unstaged vs HEAD is the "what changed in this file
+    // since the last commit" the browser wants; `git_args_for` appends `-- <path>`.
+    ("diff", &["diff", "HEAD", "--no-color"]),
     // The bounded read-only HISTORICAL text diff (figma-parity-reconciliation
     // S14): a two-rev `git diff <from> <to> -- <path>` over the git object DB.
     // Pure read-and-infer — the engine implements no diff algorithm and exposes
@@ -959,6 +970,52 @@ pub async fn ops_core_archive(
     let cell = resolve_core_ops_cell(&state, body.scope.as_deref())?;
     let feature = validate_token(&state, "feature", &body.feature)?;
     let args = ["vault", "feature", "archive", feature.as_str()];
+    let runner = ingest_core::runner::CoreRunner::detect();
+    let envelope = run_sibling_write_bounded(
+        &state,
+        &cell,
+        &runner.invocation,
+        &args,
+        None,
+        SIBLING_TIMEOUT,
+        SIBLING_STDOUT_CAP,
+    )
+    .await?;
+    Ok(super::envelope(
+        json!({ "envelope": envelope }),
+        super::query_tiers(&cell),
+        None,
+    ))
+}
+
+/// The typed request body for `POST /ops/core/link`: the optional worktree
+/// `scope` and the `src`/`dst` document stems of a `related:` edge. Both stems are
+/// validated/bounded BEFORE the subprocess spawns (the injection-guard surface).
+#[derive(serde::Deserialize, Default)]
+pub struct CoreLinkBody {
+    #[serde(default)]
+    pub scope: Option<String>,
+    pub src: String,
+    pub dst: String,
+}
+
+/// POST `/ops/core/link` — forward `vault link add <src> <dst>` through the engine
+/// broker so the dashboard can add a `related:` edge between two documents without
+/// exposing the frontend to vaultspec-core. Read-and-infer preserved: the engine
+/// validates and bounds the two stems and forwards the sibling's envelope VERBATIM
+/// under `data.envelope`; it persists nothing and grows no edge semantics (the
+/// dangling-edge refusal and resolution policy live in the sibling). A success and
+/// a business refusal (e.g. a dangling target) BOTH ride one HTTP 200 — the client
+/// branches on `envelope.status`. The watcher re-ingests the edited source and the
+/// generation bump signals the frontend.
+pub async fn ops_core_link(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CoreLinkBody>,
+) -> ApiResult {
+    let cell = resolve_core_ops_cell(&state, body.scope.as_deref())?;
+    let src = validate_token(&state, "src", &body.src)?;
+    let dst = validate_token(&state, "dst", &body.dst)?;
+    let args = ["vault", "link", "add", src.as_str(), dst.as_str()];
     let runner = ingest_core::runner::CoreRunner::detect();
     let envelope = run_sibling_write_bounded(
         &state,
@@ -3008,6 +3065,77 @@ mod tests {
         assert!(validate_token(&state, "doc_type", "adr").is_ok());
         assert!(validate_token(&state, "feature", "editor-demo").is_ok());
         assert!(validate_token(&state, "feature", "grid_layout").is_ok());
+    }
+
+    // --- core ARCHIVE channel (/ops/core/archive) ---------------------------
+
+    #[tokio::test]
+    async fn archive_field_validation_rejects_bad_features_with_a_tiered_400() {
+        // An empty, flag-shaped, or out-of-grammar feature is a tiers-carrying 400
+        // before any subprocess (the same injection-guard surface as create).
+        let (_dir, state) = sibling_state();
+        for bad in ["", "--force", "feat/evil", "has space", "--feature=x"] {
+            let err = ops_core_archive(
+                State(state.clone()),
+                Json(CoreArchiveBody {
+                    feature: bad.into(),
+                    ..Default::default()
+                }),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(
+                err.0,
+                StatusCode::BAD_REQUEST,
+                "feature `{bad}` must be a 400"
+            );
+            assert!(err.1.0["error"].as_str().unwrap().contains("feature"));
+            assert!(
+                err.1.0["tiers"]["semantic"]["available"].is_boolean(),
+                "the 400 carries the tiers block"
+            );
+        }
+        // A clean kebab/word feature tag passes validation.
+        assert!(validate_token(&state, "feature", "editor-demo").is_ok());
+    }
+
+    // --- core LINK channel (/ops/core/link) ---------------------------------
+
+    #[tokio::test]
+    async fn link_field_validation_rejects_bad_stems_with_a_tiered_400() {
+        // An empty, flag-shaped, or out-of-grammar src/dst stem is a tiers-carrying
+        // 400 before any subprocess (the same injection-guard surface as create).
+        let (_dir, state) = sibling_state();
+        let cases: &[(&str, &str)] = &[
+            ("", "b"),
+            ("a", ""),
+            ("--force", "b"),
+            ("a", "b/evil"),
+            ("a b", "c"),
+        ];
+        for (src, dst) in cases {
+            let err = ops_core_link(
+                State(state.clone()),
+                Json(CoreLinkBody {
+                    src: (*src).into(),
+                    dst: (*dst).into(),
+                    ..Default::default()
+                }),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(
+                err.0,
+                StatusCode::BAD_REQUEST,
+                "`{src}`→`{dst}` must be a 400"
+            );
+            assert!(
+                err.1.0["tiers"]["semantic"]["available"].is_boolean(),
+                "the 400 carries the tiers block"
+            );
+        }
+        // Clean kebab/word stems pass validation.
+        assert!(validate_token(&state, "src", "2026-06-20-editor-demo-adr").is_ok());
     }
 
     /// A stub `vault add` that emits a `status:"created"` success envelope, exit
