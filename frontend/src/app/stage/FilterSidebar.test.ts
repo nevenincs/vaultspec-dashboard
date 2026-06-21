@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -91,13 +91,20 @@ describe("FilterSidebar facet toggle logic", () => {
   });
 });
 
-describe("FilterSidebar topic search", () => {
+describe("FilterSidebar advanced flyout (no FEATURE section)", () => {
   afterEach(() => {
     cleanup();
     queryClient.clear();
+    document.body.innerHTML = "";
   });
 
-  it("narrows the TOPIC facet list client-side as the topic search filters", async () => {
+  it("opens anchored to the rail Filters button and hosts no feature control", async () => {
+    // The flyout portals to <body> and anchors to the rail's Filters button; a
+    // stand-in trigger lets `useFlyoutAnchor` measure a rect and render.
+    const trigger = document.createElement("button");
+    trigger.setAttribute("data-rail-filter-trigger", "");
+    document.body.appendChild(trigger);
+
     const scope = await liveScope();
     await seedSidebarQueries(
       scope,
@@ -106,18 +113,10 @@ describe("FilterSidebar topic search", () => {
 
     render(renderSidebar(scope));
 
-    // The unified flyout renders every topic flat (no collapse, no "+N more").
-    expect(await screen.findByText("delta-sync")).toBeTruthy();
-    expect(screen.getByText("design-system")).toBeTruthy();
-    expect(screen.getByText("timeline")).toBeTruthy();
-
-    // Typing in the in-section topic search narrows the list to matches only.
-    fireEvent.change(screen.getByPlaceholderText("Search topics…"), {
-      target: { value: "design" },
-    });
-
-    await waitFor(() => expect(screen.queryByText("delta-sync")).toBeNull());
-    expect(screen.getByText("design-system")).toBeTruthy();
-    expect(screen.queryByText("timeline")).toBeNull();
+    // KIND renders (the doc-type "adr" → "Decisions"); FEATURE filtering is no
+    // longer here — there is no in-flyout feature search field.
+    expect(await screen.findByText("Decisions")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Search features…")).toBeNull();
+    expect(screen.queryByText("delta-sync")).toBeNull();
   });
 });

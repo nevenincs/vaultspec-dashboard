@@ -11,7 +11,7 @@
 // it fetches nothing (the content query + the write mutations are the sole wire
 // clients) and reads the tiers-derived `ContentView`, never raw `tiers`.
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
 
 import {
   useRenameDoc,
@@ -19,6 +19,15 @@ import {
   useSetFrontmatter,
   type ContentView,
 } from "../../stores/server/queries";
+import { docStemFromNodeId } from "../menus/sharedActions";
+import { dispatchOps } from "../../stores/server/opsActions";
+import { openContextMenu } from "../../stores/view/contextMenu";
+import {
+  EDITOR_TOGGLE_MODE_ACTION_ID,
+  EDITOR_TOGGLE_MODE_LABEL,
+} from "../../stores/view/editorKeybindings";
+import { registerKeyAction } from "../../stores/view/keymapDispatcher";
+import { useViewStore } from "../../stores/view/viewStore";
 import {
   applyEditorWriteResult,
   applyRenameEditorResult,
@@ -42,6 +51,29 @@ import {
 import { Button, type BreadcrumbItem } from "../kit";
 import { DocChrome, type DocChromeMode } from "./DocChrome";
 import { MarkdownReader } from "./MarkdownReader";
+
+// The directory tags every .vault/ document carries; the OTHER tag is the feature.
+const VAULT_DIRECTORY_TAGS = new Set([
+  "adr",
+  "audit",
+  "exec",
+  "index",
+  "plan",
+  "reference",
+  "research",
+]);
+
+/** The feature tag of a document, derived from its frontmatter tags (the one tag
+ *  that is not a directory tag), or null when none is present. Used to scope the
+ *  conformance autofix. */
+export function featureFromDocTags(tags: string): string | null {
+  if (typeof tags !== "string") return null;
+  for (const raw of tags.split(/[,\s]+/)) {
+    const tag = raw.replace(/^#/, "").trim();
+    if (tag.length > 0 && !VAULT_DIRECTORY_TAGS.has(tag)) return tag;
+  }
+  return null;
+}
 
 export function MarkdownDocView({
   nodeId,
@@ -108,6 +140,48 @@ export function MarkdownDocView({
     }
   };
 
+  // Mod+E toggles edit mode (#16). The live toggle closure is held in a ref so the
+  // registered key-action thunk reads it without re-registering on every keystroke
+  // (the loop-safe ref pattern). The catalog DEF lives in editorKeybindings; this
+  // registers the per-doc thunk. With several doc panels mounted, the last-mounted
+  // owns the chord — so the close decision reads the GLOBAL editor target (not this
+  // panel's local isEditing): any panel's chord closes the one open editor rather
+  // than a non-target panel opening ITSELF (the multi-panel-toggle bug). When no
+  // editor is open, this panel enters edit on itself.
+  const toggleModeRef = useRef<() => void>(() => undefined);
+  toggleModeRef.current = () => {
+    if (useViewStore.getState().editorTarget !== null) {
+      // An editor is open (possibly a DIFFERENT panel) — close it directly rather
+      // than through onModeChange, whose close branch guards on THIS panel's local
+      // isEditing and would no-op for a non-target panel.
+      closeDocumentEditor();
+    } else if (documentEditor.canEdit) {
+      enterEdit();
+    }
+  };
+  useEffect(() => {
+    return registerKeyAction(EDITOR_TOGGLE_MODE_ACTION_ID, () => ({
+      id: EDITOR_TOGGLE_MODE_ACTION_ID,
+      label: EDITOR_TOGGLE_MODE_LABEL,
+      run: () => toggleModeRef.current(),
+    }));
+  }, []);
+
+  // Right-click anywhere on the open document opens the SAME vault-doc menu the
+  // tree row offers (focus / reveal / open-in-editor / copy / relate / new) — the
+  // open document IS a vault-doc. Needs the served path for the entity, so it is a
+  // no-op (native menu) until the content carries one. A plain event handler, never
+  // a selector, so it is safe in this loop-sensitive component.
+  const onDocContextMenu = (event: ReactMouseEvent) => {
+    const stem = docStemFromNodeId(nodeId);
+    if (stem === null || content.path === undefined) return;
+    event.preventDefault();
+    openContextMenu(
+      { kind: "vault-doc", id: nodeId, scope, path: content.path, stem, nodeId },
+      { x: event.clientX, y: event.clientY },
+    );
+  };
+
   const saveBodyNow = () => {
     markEditorSaving();
     saveBody.mutate(
@@ -123,7 +197,7 @@ export function MarkdownDocView({
 
   if (!editor.isEditing) {
     return (
-      <div className="flex h-full flex-col bg-paper">
+      <div className="flex h-full flex-col bg-paper" onContextMenu={onDocContextMenu}>
         <DocChrome
           trail={trail}
           mode="view"
@@ -181,9 +255,39 @@ export function MarkdownDocView({
           className="border-b border-rule bg-paper-sunken px-fg-3 py-fg-2"
           aria-label={editorChrome.advisoriesLabel}
         >
-          <span className="text-label text-ink-muted">
-            {editorChrome.advisoriesLabel}
-          </span>
+          <div className="flex items-center justify-between gap-fg-2">
+            <span className="text-label text-ink-muted">
+              {editorChrome.advisoriesLabel}
+            </span>
+            {/* Fix conformance for this document's feature (vault check all --fix
+                --feature), routed through the ops dispatch seam. Feature-scoped (the
+                sibling's only fix grain); the watcher re-ingests the fixed docs. */}
+            {(() => {
+              const feature = featureFromDocTags(editorChrome.frontmatterDraft.tags);
+              return (
+                <Button
+                  variant="ghost"
+                  disabled={feature === null}
+                  title={
+                    feature === null
+                      ? "no feature tag to scope the fix"
+                      : `Fix conformance for #${feature}`
+                  }
+                  onClick={() => {
+                    if (feature === null) return;
+                    void dispatchOps({
+                      target: "core",
+                      verb: "autofix",
+                      mode: "autofix",
+                      body: { scope: scope ?? undefined, feature },
+                    }).catch(() => undefined);
+                  }}
+                >
+                  Fix conformance
+                </Button>
+              );
+            })()}
+          </div>
           <ul className="mt-fg-1 flex flex-col gap-px">
             {editorChrome.advisoryRows.map((row) => (
               <li key={row.key} className={`text-label ${row.toneClass}`}>

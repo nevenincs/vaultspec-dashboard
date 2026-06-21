@@ -1,6 +1,6 @@
 // IconRail — the left rail's collapsed state. It is NOT a separate primary
 // navigation surface: the two icon buttons map directly to the browser modes the
-// expanded LeftRail hosts (Vault and Code). Selecting either icon sets the mode
+// expanded LeftRail hosts (Vault and Files). Selecting either icon sets the mode
 // and lets AppShell open the full rail.
 //
 // Layer law (dashboard-layer-ownership / view-rewrite-preserves-the-state-and-

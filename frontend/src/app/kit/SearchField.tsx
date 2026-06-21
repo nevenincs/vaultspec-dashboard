@@ -9,6 +9,11 @@
 // the next string through `onChange`. The optional clear control appears only when
 // the field is non-empty AND a handler is supplied.
 
+import type {
+  FocusEventHandler,
+  KeyboardEventHandler,
+  Ref,
+} from "react";
 import { Search, X } from "lucide-react";
 
 // 14px structural-chrome glyph — the search mark reads as attenuated chrome inside
@@ -28,6 +33,19 @@ export interface SearchFieldProps {
   onClear?: () => void;
   disabled?: boolean;
   id?: string;
+  /** Forwarded input ref — lets a composing combobox focus/measure the field. */
+  inputRef?: Ref<HTMLInputElement>;
+  /** Key handler on the input — for combobox arrow/enter/escape navigation
+   *  (Class-B widget keys stay in the composing component, not the keymap). */
+  onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
+  onFocus?: FocusEventHandler<HTMLInputElement>;
+  onBlur?: FocusEventHandler<HTMLInputElement>;
+  /** Combobox ARIA, supplied by a composing autocomplete (e.g. the feature bar). */
+  role?: "combobox";
+  "aria-expanded"?: boolean;
+  "aria-controls"?: string;
+  "aria-activedescendant"?: string;
+  "aria-autocomplete"?: "list";
 }
 
 export function SearchField({
@@ -38,6 +56,15 @@ export function SearchField({
   onClear,
   disabled,
   id,
+  inputRef,
+  onKeyDown,
+  onFocus,
+  onBlur,
+  role,
+  "aria-expanded": ariaExpanded,
+  "aria-controls": ariaControls,
+  "aria-activedescendant": ariaActiveDescendant,
+  "aria-autocomplete": ariaAutocomplete,
 }: SearchFieldProps) {
   const hasValue = value.length > 0;
   return (
@@ -49,15 +76,24 @@ export function SearchField({
         <Search size={GLYPH_PX} />
       </span>
       <input
+        ref={inputRef}
         type="text"
         id={id}
         value={value}
         disabled={disabled}
         placeholder={placeholder}
         aria-label={ariaLabel ?? placeholder}
+        role={role}
+        aria-expanded={ariaExpanded}
+        aria-controls={ariaControls}
+        aria-activedescendant={ariaActiveDescendant}
+        aria-autocomplete={ariaAutocomplete}
         spellCheck={false}
         autoComplete="off"
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        onFocus={onFocus}
+        onBlur={onBlur}
         className="min-w-0 flex-1 bg-transparent text-[0.75rem] text-ink outline-none placeholder:text-ink-faint focus-visible:outline-none disabled:opacity-50"
         data-kit-search-input
       />

@@ -1,13 +1,13 @@
-import {
-  normalizeDashboardStateWriteScope,
-  useDashboardStateMutations,
-} from "./dashboardState";
+import { useCallback, useMemo, useRef } from "react";
+
+import { useDashboardStateMutations } from "./dashboardState";
 import { normalizeDashboardTextFilter } from "./dashboardStateNormalization";
 import {
   dashboardStateSessionIdentity,
   useDashboardState,
   useSession,
 } from "./queries";
+import { normalizeStoreScope } from "./scopeIdentity";
 
 export interface DashboardTextFilterIntent {
   canonicalText: string;
@@ -15,7 +15,7 @@ export interface DashboardTextFilterIntent {
   writeTextFilter: (value: unknown) => Promise<unknown>;
 }
 
-export const normalizeDashboardTextFilterScope = normalizeDashboardStateWriteScope;
+export const normalizeDashboardTextFilterScope = normalizeStoreScope;
 
 export function normalizeDashboardTextFilterCanonicalText(value: unknown): string {
   return normalizeDashboardTextFilter(value) ?? "";
@@ -33,14 +33,22 @@ export function useDashboardTextFilterIntent(
   const session = useSession();
   const dashboardState = useDashboardState(normalizedScope);
   const dashboardMutations = useDashboardStateMutations(normalizedScope);
-  return {
-    canonicalText: normalizeDashboardTextFilterCanonicalText(
-      dashboardState.data?.filters.text,
-    ),
-    sourceIdentity: dashboardStateSessionIdentity(session.data),
-    writeTextFilter: (value) =>
+  const setTextFilterRef = useRef(dashboardMutations.setTextFilter);
+  setTextFilterRef.current = dashboardMutations.setTextFilter;
+  const canonicalText = normalizeDashboardTextFilterCanonicalText(
+    dashboardState.data?.filters.text,
+  );
+  const sourceIdentity = dashboardStateSessionIdentity(session.data);
+  const writeTextFilter = useCallback(
+    (value: unknown) =>
       normalizedScope === null
         ? Promise.resolve(null)
-        : dashboardMutations.setTextFilter(value),
-  };
+        : setTextFilterRef.current(value),
+    [normalizedScope],
+  );
+
+  return useMemo(
+    () => ({ canonicalText, sourceIdentity, writeTextFilter }),
+    [canonicalText, sourceIdentity, writeTextFilter],
+  );
 }

@@ -247,15 +247,8 @@ pub(crate) fn parse_granularity(
     state: &AppState,
     raw: Option<&str>,
 ) -> Result<Granularity, (StatusCode, Json<Value>)> {
-    match raw {
-        None | Some("document") => Ok(Granularity::Document),
-        Some("feature") => Ok(Granularity::Feature),
-        Some(other) => Err(super::api_error(
-            state,
-            StatusCode::BAD_REQUEST,
-            format!("unknown granularity `{other}`"),
-        )),
-    }
+    Granularity::from_param(raw)
+        .map_err(|e| super::api_error(state, StatusCode::BAD_REQUEST, e.to_string()))
 }
 
 // The document/graph node ceiling and the slice-bounding helper now live in

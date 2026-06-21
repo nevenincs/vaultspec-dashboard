@@ -127,6 +127,51 @@ describe("settings control draft", () => {
     expect(result.current.value).toBe("dark");
   });
 
+  it("keeps draft intent stable across unchanged canonical rerenders", () => {
+    const commits: string[] = [];
+    const { result, rerender } = renderHook(
+      ({ commit }: { commit: (next: unknown) => void }) =>
+        useSettingsControlDraft({
+          controlValue: "system",
+          continuous: true,
+          commit,
+        }),
+      { initialProps: { commit: recordStringCommit(commits) } },
+    );
+
+    const firstDraft = result.current;
+    const firstChange = result.current.change;
+
+    rerender({ commit: recordStringCommit(commits) });
+
+    expect(result.current).toBe(firstDraft);
+    expect(result.current.change).toBe(firstChange);
+  });
+
+  it("uses the latest commit function after unchanged draft rerenders", () => {
+    const firstCommits: string[] = [];
+    const secondCommits: string[] = [];
+    const { result, rerender } = renderHook(
+      ({ commit }: { commit: (next: unknown) => void }) =>
+        useSettingsControlDraft({
+          controlValue: "system",
+          continuous: false,
+          commit,
+        }),
+      { initialProps: { commit: recordStringCommit(firstCommits) } },
+    );
+
+    const firstDraft = result.current;
+    rerender({ commit: recordStringCommit(secondCommits) });
+
+    expect(result.current).toBe(firstDraft);
+
+    act(() => result.current.change("dark"));
+
+    expect(firstCommits).toEqual([]);
+    expect(secondCommits).toEqual(["dark"]);
+  });
+
   it("bounds canonical and changed drafts by the schema max length", () => {
     const commits: string[] = [];
     const { result, rerender } = renderHook(

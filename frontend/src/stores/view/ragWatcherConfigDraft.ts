@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   normalizeWatcherReconfigureArgs,
@@ -60,11 +60,19 @@ export function useRagWatcherConfigDraft(
     setCooldownDraft(normalizeRagWatcherConfigDraftValue(next));
   }, []);
 
-  return {
-    debounce,
-    cooldown,
-    setDebounce,
-    setCooldown,
-    reconfigureArgs: () => watcherReconfigureArgsFromDraft({ debounce, cooldown }),
-  };
+  const reconfigureArgs = useCallback(
+    () => watcherReconfigureArgsFromDraft({ debounce, cooldown }),
+    [cooldown, debounce],
+  );
+
+  return useMemo(
+    () => ({
+      debounce,
+      cooldown,
+      setDebounce,
+      setCooldown,
+      reconfigureArgs,
+    }),
+    [cooldown, debounce, reconfigureArgs, setCooldown, setDebounce],
+  );
 }

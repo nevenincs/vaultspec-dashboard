@@ -1,0 +1,41 @@
+{
+  "figma": {
+    "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\frontend\\output\\visual-compare\\reader-figma-455-1117.png",
+    "file": "reader-figma-455-1117.png",
+    "width": 460,
+    "height": 723
+  },
+  "live": {
+    "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\frontend\\output\\visual-compare\\reader-live-460x723.png",
+    "file": "reader-live-460x723.png",
+    "width": 460,
+    "height": 723
+  },
+  "compare": {
+    "width": 460,
+    "height": 723
+  },
+  "artifacts": {
+    "split": {
+      "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\frontend\\output\\visual-compare\\reader-split-460x723.png",
+      "file": "reader-split-460x723.png"
+    },
+    "overlay": {
+      "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\frontend\\output\\visual-compare\\reader-overlay-alpha-460x723.png",
+      "file": "reader-overlay-alpha-460x723.png"
+    },
+    "diff": {
+      "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\frontend\\output\\visual-compare\\reader-diff-460x723.png",
+      "file": "reader-diff-460x723.png"
+    }
+  },
+  "pixelDelta": {
+    "threshold": 24,
+    "changedPixelsOverThreshold": 38469,
+    "missingInLive": 17793,
+    "extraInLive": 20676,
+    "totalPixels": 332580,
+    "changedRatio": 0.1157,
+    "meanMaxChannelDelta": 14.32
+  }
+}

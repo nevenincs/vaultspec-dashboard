@@ -52,10 +52,26 @@ describe("projectFeatureGroups (Vault feature → doc_type → document projecti
 
   it("collects untagged entries under a single feature bucket rather than dropping them", () => {
     const groups = projectFeatureGroups([
-      tagged(".vault/index/x.index.md", "index", []),
+      tagged(".vault/research/x-research.md", "research", []),
     ]);
     expect(groups).toHaveLength(1);
     expect(groups[0]!.feature).toBe("(untagged)");
+  });
+
+  it("excludes index documents from the feature groups (terminology ADR D5)", () => {
+    // `index` is never a displayed node: an index-only set yields no groups, and an
+    // index entry alongside real docs never inflates a feature's count or appears as
+    // a doc-type sub-group.
+    expect(
+      projectFeatureGroups([tagged(".vault/index/x.index.md", "index", [])]),
+    ).toEqual([]);
+    const mixed = projectFeatureGroups([
+      tagged(".vault/adr/2026-01-08-grid-adr.md", "adr", ["grid"]),
+      tagged(".vault/index/grid.index.md", "index", ["grid"]),
+    ]);
+    expect(mixed).toHaveLength(1);
+    expect(mixed[0]!.count).toBe(1);
+    expect(mixed[0]!.docTypes.map((d) => d.docType)).toEqual(["adr"]);
   });
 });
 

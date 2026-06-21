@@ -105,6 +105,20 @@ export function searchResultMenu(entity: unknown): ActionDescriptor[] {
     });
   }
 
+  // The whole result as one JSON blob (source + nodeId + score + isCode).
+  actions.push(
+    copyAction({
+      id: "search-result:copy-full",
+      label: "Copy result (JSON)",
+      text: JSON.stringify({
+        source: normalizedEntity.source,
+        nodeId: normalizedEntity.nodeId ?? null,
+        score: normalizedEntity.score ?? null,
+        isCode: normalizedEntity.isCode ?? false,
+      }),
+    }),
+  );
+
   return actions;
 }
 

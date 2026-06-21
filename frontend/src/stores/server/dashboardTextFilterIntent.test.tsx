@@ -117,6 +117,39 @@ describe("useDashboardTextFilterIntent", () => {
     );
   });
 
+  it("keeps text-filter write intent stable across unchanged-scope rerenders", () => {
+    const client = testQueryClient();
+    const scope = "text-filter-stable";
+    const session: SessionState = {
+      workspace: "text-filter-workspace",
+      active_scope: scope,
+      active_workspace: null,
+      scope_context: { folder: null, feature_tags: [] },
+      recents: [],
+      tiers: {},
+    };
+    client.setQueryData(engineKeys.session(), session);
+    client.setQueryData(
+      engineKeys.dashboardState(scope, dashboardStateSessionIdentity(session)),
+      dashboardDocumentStateSeed(scope, {
+        filters: { text: "state edge" },
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ scope }: { scope: unknown }) => useDashboardTextFilterIntent(scope),
+      { initialProps: { scope: " text-filter-stable " }, wrapper: wrapper(client) },
+    );
+
+    const firstIntent = result.current;
+    const firstWriteTextFilter = result.current.writeTextFilter;
+
+    rerender({ scope });
+
+    expect(result.current).toBe(firstIntent);
+    expect(result.current.writeTextFilter).toBe(firstWriteTextFilter);
+  });
+
   it("is inert for malformed runtime scope values", async () => {
     const client = testQueryClient();
     const { result } = renderHook(

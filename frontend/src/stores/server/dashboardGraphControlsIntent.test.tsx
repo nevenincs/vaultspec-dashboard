@@ -78,6 +78,22 @@ describe("useDashboardGraphControlsIntent", () => {
     ).resolves.toBeNull();
   });
 
+  it("keeps graph-control intent callbacks stable across unchanged-scope rerenders", () => {
+    const client = testQueryClient();
+    const { result, rerender } = renderHook(
+      ({ scope }: { scope: unknown }) => useDashboardGraphControlsIntent(scope),
+      { initialProps: { scope: " scope-a " }, wrapper: wrapper(client) },
+    );
+
+    const firstIntent = result.current;
+    const firstSetGraphBounds = result.current.setGraphBounds;
+
+    rerender({ scope: "scope-a" });
+
+    expect(result.current).toBe(firstIntent);
+    expect(result.current.setGraphBounds).toBe(firstSetGraphBounds);
+  });
+
   it("accepts trimmed scopes for canonical dashboard graph-bounds writes", async () => {
     const scope = await liveScope();
     cleanupScope = scope;

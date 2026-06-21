@@ -19,6 +19,10 @@ import type { ActionDescriptor } from "../../platform/actions/action";
 import { useCanDispatchAction, useDispatch } from "../../platform/dispatch/useAction";
 import { logger } from "../../platform/logger/logger";
 import {
+  useActiveScope,
+  useDashboardSelectedNodeId,
+} from "../../stores/server/queries";
+import {
   armContextMenuItem,
   closeContextMenu,
   deriveContextMenuActivation,
@@ -42,7 +46,9 @@ export function ContextMenuHost({
 }: {
   timeTravel?: unknown;
 } = {}) {
-  const menu = useContextMenuResolvedView(timeTravel);
+  const scope = useActiveScope();
+  const selectedNodeId = useDashboardSelectedNodeId(scope);
+  const menu = useContextMenuResolvedView(timeTravel, selectedNodeId);
   const {
     open,
     entity,
@@ -149,10 +155,7 @@ export function ContextMenuHost({
         moveCursor(intent.delta);
       } else if (intent.kind === "cursor-edge") {
         disarmContextMenu();
-        const edgeCursor = deriveContextMenuCursorEdge(
-          runnableIndices,
-          intent.edge,
-        );
+        const edgeCursor = deriveContextMenuCursorEdge(runnableIndices, intent.edge);
         if (edgeCursor !== null) setContextMenuCursor(edgeCursor);
       } else {
         const action = ordered[cursor];

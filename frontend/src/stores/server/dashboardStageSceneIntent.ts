@@ -1,6 +1,7 @@
+import { useCallback, useMemo, useRef } from "react";
+
 import {
   normalizeDashboardFeatureTag,
-  normalizeDashboardStateWriteScope,
   normalizeStringMember,
   useDashboardStateMutations,
 } from "./dashboardState";
@@ -8,13 +9,14 @@ import {
   REPRESENTATION_MODES,
   type RepresentationMode,
 } from "./engine";
+import { normalizeStoreScope } from "./scopeIdentity";
 
 export interface DashboardStageSceneIntent {
   descendFeatureTag: (featureTag: unknown) => Promise<unknown>;
   setRepresentationMode: (mode: unknown) => Promise<unknown>;
 }
 
-export const normalizeDashboardStageSceneScope = normalizeDashboardStateWriteScope;
+export const normalizeDashboardStageSceneScope = normalizeStoreScope;
 
 export function normalizeDashboardStageSceneFeatureTag(
   featureTag: unknown,
@@ -38,19 +40,32 @@ export function useDashboardStageSceneIntent(
 ): DashboardStageSceneIntent {
   const normalizedScope = normalizeDashboardStageSceneScope(scope);
   const mutations = useDashboardStateMutations(normalizedScope);
-  const inert = () => Promise.resolve(null);
-  return {
-    descendFeatureTag: (featureTag) => {
+  const descendFeatureTagRef = useRef(mutations.descendFeatureTag);
+  const setRepresentationModeRef = useRef(mutations.setRepresentationMode);
+  descendFeatureTagRef.current = mutations.descendFeatureTag;
+  setRepresentationModeRef.current = mutations.setRepresentationMode;
+
+  const descendFeatureTag = useCallback(
+    (featureTag: unknown) => {
       const normalizedFeatureTag = normalizeDashboardStageSceneFeatureTag(featureTag);
       return normalizedScope === null || normalizedFeatureTag === null
-        ? inert()
-        : mutations.descendFeatureTag(normalizedFeatureTag);
+        ? Promise.resolve(null)
+        : descendFeatureTagRef.current(normalizedFeatureTag);
     },
-    setRepresentationMode: (mode) => {
+    [normalizedScope],
+  );
+  const setRepresentationMode = useCallback(
+    (mode: unknown) => {
       const normalizedMode = normalizeDashboardStageSceneRepresentationMode(mode);
       return normalizedScope === null || normalizedMode === null
-        ? inert()
-        : mutations.setRepresentationMode(normalizedMode);
+        ? Promise.resolve(null)
+        : setRepresentationModeRef.current(normalizedMode);
     },
-  };
+    [normalizedScope],
+  );
+
+  return useMemo(
+    () => ({ descendFeatureTag, setRepresentationMode }),
+    [descendFeatureTag, setRepresentationMode],
+  );
 }

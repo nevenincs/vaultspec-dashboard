@@ -37,7 +37,7 @@ describe("browserMode store (left-rail per-scope mode)", () => {
   it("declares the browser-mode option domain once for left-rail consumers", () => {
     expect(BROWSER_MODE_OPTIONS).toEqual([
       { id: "vault", label: "Vault" },
-      { id: "code", label: "Code" },
+      { id: "code", label: "Files" },
     ]);
     expect(BROWSER_MODE_OPTIONS.map((option) => option.id)).toContain(
       DEFAULT_BROWSER_MODE,
@@ -120,6 +120,15 @@ describe("browserMode store (left-rail per-scope mode)", () => {
     act(() => result.current("code"));
 
     expect(useBrowserModeStore.getState().mode).toBe("code");
+  });
+
+  it("keeps the hook intent stable across React chrome rerenders", () => {
+    const { result, rerender } = renderHook(() => useBrowserModeIntent());
+
+    const firstIntent = result.current;
+    rerender();
+
+    expect(result.current).toBe(firstIntent);
   });
 
   it("ignores unknown hook intent values from generic controls", () => {

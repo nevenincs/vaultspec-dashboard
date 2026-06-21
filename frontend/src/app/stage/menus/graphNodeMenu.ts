@@ -16,8 +16,9 @@ import { Crosshair, Maximize2, Minimize2, Network, Pin, PinOff } from "lucide-re
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
 import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
-import type { ActionResolver } from "../../../platform/actions/registry";
+import type { ActionContext, ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
+import { featureTagFromNodeId } from "../../../stores/server/liveAdapters";
 import {
   closeMenuNodeIsland,
   collapseMenuWorkingSet,
@@ -26,8 +27,16 @@ import {
   openMenuNodeIsland,
   toggleMenuPinnedNode,
 } from "../../../stores/view/menuActions";
+import {
+  archiveFeatureAction,
+  docStemFromNodeId,
+  relateToSelectionAction,
+} from "../../menus/sharedActions";
 
-export function graphNodeMenu(entity: unknown): ActionDescriptor[] {
+export function graphNodeMenu(
+  entity: unknown,
+  ctx?: ActionContext,
+): ActionDescriptor[] {
   const normalizedEntity = normalizeEntityDescriptor(entity);
   if (normalizedEntity?.kind !== "node") return [];
 
@@ -112,6 +121,26 @@ export function graphNodeMenu(entity: unknown): ActionDescriptor[] {
           disabled: true,
           disabledReason: "no title",
         },
+  );
+  // Relate this node to the focused node (vault link add) — enabled only for
+  // document nodes with a different document focused.
+  actions.push(
+    relateToSelectionAction({
+      id: "node:relate",
+      srcStem: docStemFromNodeId(normalizedEntity.id),
+      scope: normalizedEntity.scope,
+      ctx,
+      notADocumentReason: "only documents can be related",
+    }),
+  );
+  // Archive the whole feature a feature node represents (vault feature archive).
+  // Disabled-with-reason for non-feature nodes.
+  actions.push(
+    archiveFeatureAction({
+      id: "node:archive-feature",
+      feature: featureTagFromNodeId(normalizedEntity.id) ?? null,
+      scope: normalizedEntity.scope,
+    }),
   );
   return actions;
 }

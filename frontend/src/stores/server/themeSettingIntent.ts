@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo, useRef } from "react";
 
 import { isThemePreference } from "../../platform/theme/themeController";
 import { usePutSettings } from "./queries";
@@ -20,13 +20,20 @@ export function normalizeThemeSettingPreference(value: unknown): string | null {
  */
 export function useThemeSettingIntent(): ThemeSettingIntent {
   const putSettings = usePutSettings();
+  const mutateRef = useRef(putSettings.mutate);
+  mutateRef.current = putSettings.mutate;
+
   const setThemePreference = useCallback(
     (value: unknown) => {
       const normalized = normalizeThemeSettingPreference(value);
       if (normalized === null) return;
-      putSettings.mutate({ key: CONSUMED_SETTING_KEYS.theme, value: normalized });
+      mutateRef.current({ key: CONSUMED_SETTING_KEYS.theme, value: normalized });
     },
-    [putSettings],
+    [],
   );
-  return { writePending: putSettings.isPending, setThemePreference };
+
+  return useMemo(
+    () => ({ writePending: putSettings.isPending, setThemePreference }),
+    [putSettings.isPending, setThemePreference],
+  );
 }

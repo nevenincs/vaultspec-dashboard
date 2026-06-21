@@ -38,7 +38,6 @@ const DOC_TYPES = [
   "exec",
   "audit",
   "reference",
-  "index",
   "code",
   "feature",
 ] as const;

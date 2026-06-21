@@ -42,6 +42,7 @@ describe("eventMarkMenu", () => {
       "event:zoom:evt-1",
       "event:show-full-list:evt-1",
       "event:copy-id:evt-1",
+      "event:copy-touched:evt-1",
       "event:copy-ts:evt-1",
     ]);
 

@@ -1085,6 +1085,13 @@ export interface OpsLinkBody {
   dst: string;
 }
 
+/** The body of a conformance-autofix op (`POST /ops/core/autofix` →
+ *  `vault check all --fix --feature <tag>`). Feature-scoped. */
+export interface OpsAutofixBody {
+  scope?: string;
+  feature: string;
+}
+
 /**
  * The typed, discriminated result of a write/create op, interpreted by
  * `adaptOpsWrite` from the sibling envelope's `status` + `data` fields (never the
@@ -1875,6 +1882,14 @@ export class EngineClient {
    *  for both a success and a business refusal (e.g. a dangling target). */
   opsCoreLink(body: OpsLinkBody): Promise<OpsResult> {
     return this.post("/ops/core/link", body);
+  }
+
+  /** A conformance-autofix op: `POST /ops/core/autofix` forwards
+   *  `vault check all --fix --feature <tag>`. Feature-scoped (the only fix grain
+   *  the sibling exposes); the engine validates/bounds the feature token and
+   *  forwards core's envelope verbatim under `data.envelope`. */
+  opsCoreAutofix(body: OpsAutofixBody): Promise<OpsResult> {
+    return this.post("/ops/core/autofix", body);
   }
 
   /** The brokered rag READ verbs (rag-control-plane ADR D2): a GET against the

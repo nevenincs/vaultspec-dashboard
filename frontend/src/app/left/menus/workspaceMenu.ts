@@ -9,7 +9,7 @@
 // the registry, not re-derived here — every mutating action just declares
 // `disabledInTimeTravel`.
 
-import { Star } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
@@ -17,42 +17,27 @@ import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
 import { revealAction } from "../../../platform/actions/shellActions";
+import { SESSION_ACTION } from "../../../stores/server/sessionActions";
 
 /**
- * The menu for a workspace row. Copy its path, reveal it in the file manager,
- * and offer "Set as launch default" as a transform.
+ * The menu for a workspace row: copy its path, reveal it in the file manager, and
+ * "Remove from registry" (`workspace:forget`).
  *
- * Set-as-launch-default is a MUTATION, so it carries `disabledInTimeTravel`. The
- * WorkspacePicker registers and switches roots through the stores' config
- * mutation seam (`useSwapWorkspace` / `usePutSession`), both of which are React
- * hooks that cannot be invoked from a pure resolver — there is no non-hook,
- * non-fetch store function that sets the launch default. Routing a mutation
- * through a bare closure here would also bypass the appDispatcher seam every
- * mutating verb must travel. So this stays honest: the action is rendered
- * disabled-with-reason until a terminal handler for the verb exists, rather than
- * shipping a no-op closure that silently does nothing.
+ * Remove-from-registry is a DESTRUCTIVE mutation (`PUT /session forget_workspace`),
+ * so it is confirm-guarded and carries `disabledInTimeTravel`, and it dispatches
+ * through the one session seam (`SESSION_ACTION` → appDispatcher → engine), never a
+ * bare closure. The launch root is the registry's anchor and is never forgettable,
+ * so it renders disabled-with-reason there. (The prior "set as launch default"
+ * action was removed — `is_launch` is the auto-determined launch root, not a
+ * user-settable preference, so a permanently-disabled action would have implied a
+ * capability that does not exist; unified-action-plane removes such non-capabilities
+ * rather than shipping the disabled lie.)
  */
 export function workspaceMenu(entity: unknown): ActionDescriptor[] {
   const normalizedEntity = normalizeEntityDescriptor(entity);
   if (normalizedEntity?.kind !== "workspace") return [];
 
   const actions: ActionDescriptor[] = [];
-
-  // Transform (mutating, non-destructive): set this root as the launch default.
-  // Disabled-with-reason — no safe store path exists from a pure resolver (see
-  // the module note above). Still marked `disabledInTimeTravel` so the gate is
-  // declared on the descriptor regardless of the current disabled state.
-  actions.push({
-    id: "workspace:set-launch-default",
-    label: "Set as launch default",
-    section: "transform",
-    icon: Star,
-    disabled: true,
-    disabledReason: normalizedEntity.isLaunchDefault
-      ? "already the launch default"
-      : "no-op pending host",
-    disabledInTimeTravel: true,
-  });
 
   if (normalizedEntity.path) {
     actions.push(
@@ -64,6 +49,36 @@ export function workspaceMenu(entity: unknown): ActionDescriptor[] {
       }),
     );
     actions.push(revealAction({ id: "workspace:reveal", path: normalizedEntity.path }));
+  }
+
+  // Remove this project from the workspace registry (PUT /session forget_workspace),
+  // routed through the session dispatch seam. Destructive → confirm + time-travel
+  // gate. The launch root is the registry's anchor and is never forgettable, so it
+  // renders disabled-with-reason there.
+  const forgetBase = {
+    id: "workspace:forget",
+    label: "Remove from registry",
+    section: "danger" as const,
+    icon: Trash2,
+    confirm: true,
+    disabledInTimeTravel: true,
+  };
+  if (!normalizedEntity.path) {
+    actions.push({ ...forgetBase, disabled: true, disabledReason: "no project path" });
+  } else if (normalizedEntity.isLaunchDefault) {
+    actions.push({
+      ...forgetBase,
+      disabled: true,
+      disabledReason: "the launch project cannot be removed",
+    });
+  } else {
+    actions.push({
+      ...forgetBase,
+      dispatch: {
+        type: SESSION_ACTION,
+        payload: { forget_workspace: normalizedEntity.path },
+      },
+    });
   }
 
   return actions;

@@ -62,7 +62,37 @@ describe("graphNodeMenu (canonical node resolver)", () => {
       "node:expand-ego",
       "node:copy-id",
       "node:copy-title",
+      "node:relate",
+      "node:archive-feature",
     ]);
+  });
+
+  it("relate enables for a doc node with a different doc focused; archive only for feature nodes", () => {
+    const relate = find(
+      graphNodeMenu(base, { timeTravel: false, selectedNodeId: "doc:beta" }),
+      "node:relate",
+    );
+    expect(relate.disabled).toBeUndefined();
+    expect(relate.dispatch).toMatchObject({
+      type: "ops:run",
+      payload: { verb: "link-add", mode: "link", body: { src: "alpha", dst: "beta" } },
+    });
+    // A non-feature node cannot archive.
+    expect(find(graphNodeMenu(base), "node:archive-feature").disabled).toBe(true);
+    // A feature node archives its feature.
+    const featArchive = find(
+      graphNodeMenu({ kind: "node", id: "feature:dashboard" }),
+      "node:archive-feature",
+    );
+    expect(featArchive.disabled).toBeUndefined();
+    expect(featArchive.dispatch).toMatchObject({
+      type: "ops:run",
+      payload: {
+        verb: "feature-archive",
+        mode: "archive",
+        body: { feature: "dashboard" },
+      },
+    });
   });
 
   it("toggles to close-island / unpin / collapse-ego from membership flags", () => {
@@ -165,6 +195,8 @@ describe("metaEdgeMenu", () => {
       summary: " 3 structural ",
     };
     expect(byId(metaEdgeMenu(e))).toEqual([
+      "meta-edge:goto-src",
+      "meta-edge:goto-dst",
       "meta-edge:copy-summary",
       "meta-edge:copy-id",
     ]);
@@ -215,6 +247,7 @@ describe("canvasMenu", () => {
     expect(byId(canvasMenu())).toEqual([
       "canvas:fit",
       "canvas:reset",
+      "canvas:clear-selection",
       "canvas:clear-working-set",
     ]);
   });

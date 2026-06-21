@@ -4,7 +4,6 @@ import { createLiveClient, liveScope } from "../../testing/liveClient";
 import type { SceneCommand, SceneFieldRenderer } from "../../scene/sceneController";
 import { SceneController } from "../../scene/sceneController";
 import {
-  bindSelectionToScene,
   closeNodeIsland,
   isNodeIslandOpen,
   normalizeOpenedNodeIslandIds,
@@ -442,25 +441,6 @@ describe("selection seam", () => {
         nodeIds: ["doc:x"],
       }),
     ).toEqual({ kind: "event", id: "evt-1", nodeIds: ["doc:x"] });
-  });
-
-  it("focuses the carried node for event selections", () => {
-    const { scene, commands } = captureScene();
-    const off = bindSelectionToScene(scene);
-    selectEvent("evt-1", ["doc:x", "doc:y"]);
-    expect(commands).toContainEqual({ kind: "focus-node", id: "doc:x" });
-    off();
-  });
-
-  it("rings every node an event selection carries", () => {
-    const { scene, commands } = captureScene();
-    const off = bindSelectionToScene(scene);
-    selectEvent("evt-1", ["doc:x", "doc:y"]);
-    expect(commands).toContainEqual({
-      kind: "set-selected",
-      ids: new Set(["doc:x", "doc:y"]),
-    });
-    off();
   });
 
   it("projects dashboard node selection into the scene ring and cross-region focus", () => {

@@ -19,7 +19,7 @@ const byId = (actions: ActionDescriptor[], id: string) =>
   actions.find((a) => a.id === id);
 
 describe("workspaceMenu", () => {
-  it("offers set-launch-default (transform), copy path, and reveal", () => {
+  it("offers copy path, reveal, and remove-from-registry", () => {
     const actions = workspaceMenu({
       kind: "workspace",
       id: " ws1 ",
@@ -27,11 +27,10 @@ describe("workspaceMenu", () => {
       isLaunchDefault: false,
     });
     expect(ids(actions)).toEqual([
-      "workspace:set-launch-default",
       "workspace:copy-path",
       "workspace:reveal",
+      "workspace:forget",
     ]);
-    expect(byId(actions, "workspace:set-launch-default")?.section).toBe("transform");
     expect(byId(actions, "workspace:copy-path")?.section).toBe("copy");
     expect(byId(actions, "workspace:copy-path")?.dispatch?.payload).toEqual({
       text: "/abs/project",
@@ -39,25 +38,22 @@ describe("workspaceMenu", () => {
     });
   });
 
-  it("set-launch-default is mutating: it carries disabledInTimeTravel", () => {
+  it("forget is a destructive, confirm-guarded, time-travel-gated session mutation", () => {
     const action = byId(
-      workspaceMenu({ kind: "workspace", id: "ws1", path: "/p" }),
-      "workspace:set-launch-default",
+      workspaceMenu({ kind: "workspace", id: "ws1", path: "/abs/project" }),
+      "workspace:forget",
     );
+    expect(action?.section).toBe("danger");
+    expect(action?.confirm).toBe(true);
     expect(action?.disabledInTimeTravel).toBe(true);
+    expect(action?.disabled).toBeUndefined();
+    expect(action?.dispatch).toEqual({
+      type: "session:put",
+      payload: { forget_workspace: "/abs/project" },
+    });
   });
 
-  it("set-launch-default is disabled-with-reason (no safe store path)", () => {
-    const action = byId(
-      workspaceMenu({ kind: "workspace", id: "ws1", path: "/p" }),
-      "workspace:set-launch-default",
-    );
-    expect(action?.disabled).toBe(true);
-    expect(action?.disabledReason).toBe("no-op pending host");
-    expect(action?.run).toBeUndefined();
-  });
-
-  it("notes 'already the launch default' when the root is the default", () => {
+  it("the launch project cannot be removed (disabled-with-reason)", () => {
     const action = byId(
       workspaceMenu({
         kind: "workspace",
@@ -65,15 +61,18 @@ describe("workspaceMenu", () => {
         path: "/p",
         isLaunchDefault: true,
       }),
-      "workspace:set-launch-default",
+      "workspace:forget",
     );
-    expect(action?.disabledReason).toBe("already the launch default");
+    expect(action?.disabled).toBe(true);
+    expect(action?.disabledReason).toBe("the launch project cannot be removed");
+    expect(action?.dispatch).toBeUndefined();
   });
 
-  it("omits copy/reveal when the workspace carries no path", () => {
-    expect(ids(workspaceMenu({ kind: "workspace", id: "ws1" }))).toEqual([
-      "workspace:set-launch-default",
-    ]);
+  it("omits copy/reveal when the workspace carries no path; forget is disabled", () => {
+    const actions = workspaceMenu({ kind: "workspace", id: "ws1" });
+    expect(ids(actions)).toEqual(["workspace:forget"]);
+    expect(byId(actions, "workspace:forget")?.disabled).toBe(true);
+    expect(byId(actions, "workspace:forget")?.disabledReason).toBe("no project path");
   });
 
   it("rejects non-workspace entities at resolver ingress", () => {
@@ -94,6 +93,7 @@ describe("worktreeMenu", () => {
     expect(ids(actions)).toEqual([
       "worktree:switch-scope",
       "worktree:copy-branch",
+      "worktree:copy-id",
       "worktree:reveal",
     ]);
     expect(byId(actions, "worktree:switch-scope")?.section).toBe("navigate");
@@ -130,7 +130,7 @@ describe("worktreeMenu", () => {
 });
 
 describe("vaultDocMenu", () => {
-  it("offers focus, reveal, open-in-editor, copy path, copy stem, and new document", () => {
+  it("offers focus, reveal, open-in-editor, copy, relate, and new document", () => {
     const actions = vaultDocMenu({
       kind: "vault-doc",
       id: " doc:my-stem ",
@@ -144,11 +144,65 @@ describe("vaultDocMenu", () => {
       "vault-doc:open-in-editor",
       "vault-doc:copy-path",
       "vault-doc:copy-stem",
+      "vault-doc:relate",
       "left-rail:new-document",
     ]);
     expect(byId(actions, "vault-doc:focus")?.section).toBe("navigate");
     expect(byId(actions, "vault-doc:copy-stem")?.section).toBe("copy");
     expect(byId(actions, "left-rail:new-document")?.section).toBe("transform");
+  });
+
+  it("relate is disabled-with-reason when no document is focused", () => {
+    const actions = vaultDocMenu({
+      kind: "vault-doc",
+      id: "doc:my-stem",
+      path: ".vault/adr/my-stem.md",
+      stem: "my-stem",
+    });
+    const relate = byId(actions, "vault-doc:relate");
+    expect(relate?.disabled).toBe(true);
+    expect(relate?.disabledReason).toBe("focus a document to relate to");
+    expect(relate?.dispatch).toBeUndefined();
+  });
+
+  it("relate dispatches a link-add op when a DIFFERENT document is focused", () => {
+    const actions = vaultDocMenu(
+      {
+        kind: "vault-doc",
+        id: "doc:my-stem",
+        path: ".vault/adr/my-stem.md",
+        stem: "my-stem",
+        scope: "scope-a",
+      },
+      { timeTravel: false, selectedNodeId: "doc:other-stem" },
+    );
+    const relate = byId(actions, "vault-doc:relate");
+    expect(relate?.disabled).toBeUndefined();
+    expect(relate?.disabledInTimeTravel).toBe(true);
+    expect(relate?.dispatch).toEqual({
+      type: "ops:run",
+      payload: {
+        target: "core",
+        verb: "link-add",
+        mode: "link",
+        body: { scope: "scope-a", src: "my-stem", dst: "other-stem" },
+      },
+    });
+  });
+
+  it("relate is disabled when the focused node is this same document", () => {
+    const actions = vaultDocMenu(
+      {
+        kind: "vault-doc",
+        id: "doc:my-stem",
+        path: ".vault/adr/my-stem.md",
+        stem: "my-stem",
+      },
+      { timeTravel: false, selectedNodeId: "doc:my-stem" },
+    );
+    const relate = byId(actions, "vault-doc:relate");
+    expect(relate?.disabled).toBe(true);
+    expect(relate?.disabledReason).toBe("already this document");
   });
 
   it("rejects non-vault-doc entities at resolver ingress", () => {

@@ -6,18 +6,31 @@
 // the menu. This proves the codification candidate end-to-end: the menu's only
 // path to an effect is the seam (logged, traced, guardable).
 
+import type { QueryClient } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerResolver, resetResolvers } from "../../platform/actions/registry";
 import { appDispatcher } from "../../platform/dispatch/middleware";
+import {
+  MenuTestProviders,
+  createMenuTestQueryClient,
+} from "../../testing/menuQueryClient";
 import { openContextMenu, useContextMenuStore } from "../../stores/view/contextMenu";
 import { ContextMenuHost } from "./ContextMenuHost";
+
+// The host reads active scope / selected node id through TanStack query hooks.
+let testClient: QueryClient;
+function Providers({ children }: { children: ReactNode }) {
+  return <MenuTestProviders client={testClient}>{children}</MenuTestProviders>;
+}
 
 const TEST_VERB = "test:mutate";
 const handler = vi.fn();
 
 beforeEach(() => {
+  testClient = createMenuTestQueryClient();
   handler.mockReset();
   appDispatcher.register(TEST_VERB, handler);
   registerResolver("node", (entity) => [
@@ -33,13 +46,14 @@ afterEach(() => {
   cleanup();
   resetResolvers();
   useContextMenuStore.getState().closeMenu();
+  testClient.clear();
   vi.restoreAllMocks();
 });
 
 describe("menu seam transit", () => {
   it("routes a dispatch action through appDispatcher to its terminal handler", async () => {
     const dispatchSpy = vi.spyOn(appDispatcher, "dispatch");
-    render(<ContextMenuHost />);
+    render(<ContextMenuHost />, { wrapper: Providers });
     act(() => openContextMenu({ kind: "node", id: "n1" }, { x: 5, y: 5 }));
     fireEvent.click(await screen.findByText("Mutate"));
 

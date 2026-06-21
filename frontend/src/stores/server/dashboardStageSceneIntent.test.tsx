@@ -61,6 +61,24 @@ describe("useDashboardStageSceneIntent", () => {
     ).resolves.toBeNull();
   });
 
+  it("keeps stage-scene intent callbacks stable across unchanged-scope rerenders", () => {
+    const client = testQueryClient();
+    const { result, rerender } = renderHook(
+      ({ scope }: { scope: unknown }) => useDashboardStageSceneIntent(scope),
+      { initialProps: { scope: " scope-a " }, wrapper: wrapper(client) },
+    );
+
+    const firstIntent = result.current;
+    const firstDescendFeatureTag = result.current.descendFeatureTag;
+    const firstSetRepresentationMode = result.current.setRepresentationMode;
+
+    rerender({ scope: "scope-a" });
+
+    expect(result.current).toBe(firstIntent);
+    expect(result.current.descendFeatureTag).toBe(firstDescendFeatureTag);
+    expect(result.current.setRepresentationMode).toBe(firstSetRepresentationMode);
+  });
+
   it("is inert for malformed runtime scope values", async () => {
     const client = testQueryClient();
     const { result } = renderHook(

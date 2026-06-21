@@ -161,6 +161,33 @@ describe("ops dispatch adoption (B-1)", () => {
     ).toBe(false);
   });
 
+  it("validates the autofix dispatch mode (feature-scoped)", () => {
+    expect(
+      isOpsDispatchIntent({
+        target: "core",
+        verb: "autofix",
+        mode: "autofix",
+        body: { scope: "wt", feature: "dashboard" },
+      }),
+    ).toBe(true);
+    expect(
+      isOpsDispatchIntent({
+        target: "core",
+        verb: "autofix",
+        mode: "autofix",
+        body: {},
+      }),
+    ).toBe(false);
+    expect(
+      isOpsDispatchIntent({
+        target: "core",
+        verb: "feature-archive",
+        mode: "autofix",
+        body: { feature: "dashboard" },
+      }),
+    ).toBe(false);
+  });
+
   it("rejects malformed core write/create bodies before transport", async () => {
     const calls: string[] = [];
     engineClient.useTransport((input, init) => {

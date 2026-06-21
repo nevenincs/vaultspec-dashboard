@@ -110,13 +110,14 @@ describe("pipeline expansion store", () => {
     expect(normalizePipelineExpansionKey("   ")).toBeNull();
     expect(
       normalizePipelineExpansionKey(
-        "pipeline-expansion:".concat(
-          "x".repeat(PIPELINE_EXPANSION_KEY_MAX_CHARS + 1),
-        ),
+        "pipeline-expansion:".concat("x".repeat(PIPELINE_EXPANSION_KEY_MAX_CHARS + 1)),
       ),
     ).toBeNull();
     expect(
-      pipelineExpansionKey("scope-a", "t".repeat(PIPELINE_EXPANSION_AS_OF_MAX_CHARS + 1)),
+      pipelineExpansionKey(
+        "scope-a",
+        "t".repeat(PIPELINE_EXPANSION_AS_OF_MAX_CHARS + 1),
+      ),
     ).toBe(pipelineExpansionKey("scope-a"));
     expect(
       pipelineExpansionKey(
@@ -235,14 +236,16 @@ describe("pipeline expansion store", () => {
         row: { nodeId: "doc:plan-a", titleLabel: "Plan A" },
         nodeId: "doc:plan-a",
         expanded: false,
-        statusPlanClassName: "overflow-hidden",
+        statusPlanClassName:
+          "overflow-hidden rounded-fg-sm border border-rule bg-paper-raised",
         statusPlanSelectedValue: undefined,
       },
       {
         row: { nodeId: "doc:plan-b", titleLabel: "Plan B" },
         nodeId: "doc:plan-b",
         expanded: true,
-        statusPlanClassName: "overflow-hidden",
+        statusPlanClassName:
+          "overflow-hidden rounded-fg-sm border border-rule bg-paper-raised",
         statusPlanSelectedValue: "",
       },
     ]);

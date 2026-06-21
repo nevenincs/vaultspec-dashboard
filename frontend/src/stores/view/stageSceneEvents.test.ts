@@ -34,6 +34,21 @@ describe("stage scene-event bridge", () => {
     });
   });
 
+  it("projects an EDGE context-menu event through the edge entity (#14)", () => {
+    const intent = stageContextMenuIntent(
+      {
+        kind: "context-menu",
+        id: "edge:doc:a->doc:b",
+        target: "edge",
+        clientX: 12,
+        clientY: 34,
+      },
+      "scope-a",
+    );
+    expect(intent.anchor).toEqual({ x: 12, y: 34 });
+    expect(intent.entity).toEqual({ kind: "edge", id: "edge:doc:a->doc:b" });
+  });
+
   it("projects an empty-field context-menu event as the singleton canvas entity", () => {
     expect(
       stageContextMenuIntent(

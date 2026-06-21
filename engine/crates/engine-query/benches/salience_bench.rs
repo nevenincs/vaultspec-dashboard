@@ -25,9 +25,8 @@ use engine_model::{
     CanonicalKey, Dates, Facet, Node, NodeKind, Presence, Provenance, RelationKind,
     ResolutionState, ScopeRef, Tier, edge_id, node_id,
 };
+use engine_query::graph::MAX_GRAPH_NODES;
 use engine_query::salience::{Backbone, Lens, LensBasis, brandes_betweenness, compute_salience};
-
-const MAX_GRAPH_NODES: usize = 5000;
 
 fn scope() -> ScopeRef {
     ScopeRef::Ref {

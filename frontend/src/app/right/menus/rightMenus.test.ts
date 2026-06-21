@@ -28,12 +28,14 @@ describe("edgeMenu", () => {
     tier: "structural",
   };
 
-  it("offers highlight + the three copies", () => {
+  it("offers highlight, goto-destination, the three copies, and copy-full", () => {
     expect(byId(edgeMenu(full))).toEqual([
       "edge:highlight",
+      "edge:goto-destination",
       "edge:copy-id",
       "edge:copy-relation",
       "edge:copy-destination",
+      "edge:copy-full",
     ]);
   });
 
@@ -78,6 +80,7 @@ describe("searchResultMenu", () => {
       "search-result:reveal",
       "search-result:copy-source",
       "search-result:copy-score",
+      "search-result:copy-full",
     ]);
   });
 

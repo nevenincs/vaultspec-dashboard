@@ -5,6 +5,7 @@
 // unmount-while-open, the M1 hardening). The pure resolver + slice transitions
 // are covered elsewhere; this exercises the host's a11y/keyboard behaviour.
 
+import type { QueryClient } from "@tanstack/react-query";
 import {
   act,
   cleanup,
@@ -13,16 +14,28 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerResolver, resetResolvers } from "../../platform/actions/registry";
+import {
+  MenuTestProviders,
+  createMenuTestQueryClient,
+} from "../../testing/menuQueryClient";
 import { openContextMenu, useContextMenuStore } from "../../stores/view/contextMenu";
 import { ContextMenuHost } from "./ContextMenuHost";
+
+// The host reads active scope / selected node id through TanStack query hooks.
+let testClient: QueryClient;
+function Providers({ children }: { children: ReactNode }) {
+  return <MenuTestProviders client={testClient}>{children}</MenuTestProviders>;
+}
 
 const first = vi.fn();
 const second = vi.fn();
 
 beforeEach(() => {
+  testClient = createMenuTestQueryClient();
   registerResolver("node", () => [
     { id: "first", label: "First", section: "navigate", run: first },
     { id: "second", label: "Second", section: "navigate", run: second },
@@ -32,12 +45,13 @@ afterEach(() => {
   cleanup();
   resetResolvers();
   useContextMenuStore.getState().closeMenu();
+  testClient.clear();
   first.mockReset();
   second.mockReset();
 });
 
 function openAt(trigger?: HTMLElement) {
-  render(<ContextMenuHost />);
+  render(<ContextMenuHost />, { wrapper: Providers });
   act(() => {
     trigger?.focus();
     openContextMenu({ kind: "node", id: "n1", title: "Alpha" }, { x: 20, y: 20 });
@@ -90,7 +104,7 @@ describe("ContextMenuHost interactive", () => {
     const trigger = document.createElement("button");
     trigger.textContent = "opener";
     document.body.appendChild(trigger);
-    const view = render(<ContextMenuHost />);
+    const view = render(<ContextMenuHost />, { wrapper: Providers });
     act(() => {
       trigger.focus();
       openContextMenu({ kind: "node", id: "n1" }, { x: 10, y: 10 });

@@ -40,6 +40,13 @@ export function stageContextMenuIntent(
   scope: string | null,
 ): StageContextMenuIntent {
   const anchor = { x: event.clientX, y: event.clientY };
+  // Right-click on an EDGE routes to the edge resolver (highlight / copy / goto-
+  // destination); the scene only reports the edge id, so relation/dst/tier render
+  // disabled-with-reason. A right-click on a NODE builds the node entity, and an
+  // empty-canvas gesture (no id) falls through to the canvas menu.
+  if (event.id && event.target === "edge") {
+    return { anchor, entity: { kind: "edge", id: event.id } };
+  }
   const nodeEntity = event.id ? nodeEntityView({ id: event.id, scope }) : null;
   return {
     anchor,

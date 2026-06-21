@@ -28,7 +28,6 @@ const CATEGORY_TOKENS: Record<string, string> = {
   "--color-scene-category-plan": "#3f8457",
   "--color-scene-category-exec": "#b5703f",
   "--color-scene-category-audit": "#3f9aa6",
-  "--color-scene-category-index": "#8f9a7e",
   "--color-scene-category-code": "#b05a6b",
 };
 

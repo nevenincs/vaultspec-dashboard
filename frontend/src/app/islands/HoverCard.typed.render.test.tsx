@@ -107,30 +107,17 @@ describe("HoverCard — typed content per document type", () => {
     ).toContain("high");
   });
 
-  it("feature/index: renders a document-count line from member_count", () => {
+  it("feature: renders a document-count line from member_count", () => {
     render(
       <StatusHoverCard
         model={statusCardModelFromNode(
-          n({ id: "feature:x", kind: "feature", title: "Topic", member_count: 5 }),
+          n({ id: "feature:x", kind: "feature", title: "Feature", member_count: 5 }),
         )}
       />,
     );
     expect(
-      document.querySelector('[data-type-content="topic"]')?.textContent,
+      document.querySelector('[data-type-content="feature"]')?.textContent,
     ).toContain("5 documents");
-  });
-
-  it("code: renders path + language", () => {
-    render(
-      <StatusHoverCard
-        model={statusCardModelFromNode(
-          n({ id: "code:src/app/x.tsx", kind: "code", title: "x" }),
-        )}
-      />,
-    );
-    const block = document.querySelector('[data-type-content="code"]');
-    expect(block?.querySelector("[data-code-path]")?.textContent).toBe("src/app/x.tsx");
-    expect(block?.textContent).toContain("TypeScript");
   });
 });
 
@@ -147,7 +134,7 @@ describe("HoverCard — category accent + type identity", () => {
     expect(strip?.style.backgroundColor).toContain("--color-scene-category-plan");
   });
 
-  it("folds reference→research and rule→adr category, code as the unknown fallback", () => {
+  it("stamps reference on its own category (terminology-standardization ADR D3)", () => {
     render(
       <StatusHoverCard
         model={statusCardModelFromNode(
@@ -157,7 +144,7 @@ describe("HoverCard — category accent + type identity", () => {
     );
     expect(
       document.querySelector("[data-hover-card]")?.getAttribute("data-category"),
-    ).toBe("research");
+    ).toBe("reference");
   });
 });
 

@@ -28,6 +28,15 @@ describe("rag watcher config draft", () => {
       debounce_ms: 0,
       cooldown_s: 0,
     });
+    expect(
+      watcherReconfigureArgsFromDraft({
+        debounce: String(WATCHER_DEBOUNCE_MS_MAX),
+        cooldown: String(WATCHER_COOLDOWN_S_MAX),
+      }),
+    ).toEqual({
+      debounce_ms: WATCHER_DEBOUNCE_MS_MAX,
+      cooldown_s: WATCHER_COOLDOWN_S_MAX,
+    });
   });
 
   it("omits empty or invalid watcher drafts instead of leaking coerced values", () => {
@@ -103,6 +112,36 @@ describe("rag watcher config draft", () => {
 
     expect(result.current.debounce).toBe("250");
     expect(result.current.cooldown).toBe("3");
+  });
+
+  it("keeps the draft intent stable across unchanged watcher snapshot rerenders", () => {
+    const { result, rerender } = renderHook(
+      ({
+        debounce,
+        cooldown,
+        sourceKey,
+      }: {
+        debounce: number;
+        cooldown: number;
+        sourceKey: string;
+      }) =>
+        useRagWatcherConfigDraft(
+          {
+            debounce_ms: debounce,
+            cooldown_s: cooldown,
+          },
+          sourceKey,
+        ),
+      { initialProps: { debounce: 250, cooldown: 3, sourceKey: "scope-a" } },
+    );
+
+    const firstDraft = result.current;
+    const firstReconfigureArgs = result.current.reconfigureArgs;
+
+    rerender({ debounce: 250, cooldown: 3, sourceKey: "scope-a" });
+
+    expect(result.current).toBe(firstDraft);
+    expect(result.current.reconfigureArgs).toBe(firstReconfigureArgs);
   });
 
   it("normalizes malformed runtime setter input before storing drafts", () => {

@@ -1,4 +1,9 @@
-import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 import { CrashInjector, CrashZone } from "../platform/errors/CrashInjector";
 import { ErrorBoundary } from "../platform/errors/ErrorBoundary";
@@ -29,12 +34,13 @@ import {
   RIGHT_RAIL_KEYMAP_CONTEXT,
   useRightRailKeybindings,
 } from "./right/rightRailActions";
+import { useEditorKeybindings } from "../stores/view/editorKeybindings";
+import { setSceneCommandRunner } from "../stores/view/sceneCommandBridge";
 import { KeyboardNav } from "./a11y/KeyboardNav";
 import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
 import { IconButton, Popover } from "./kit";
 import { PanelLeft } from "./kit/glyphs";
 import { ContextMenuHost } from "./menu/ContextMenuHost";
-import { CreateDocDialog } from "./menu/CreateDocDialog";
 import { KeyboardShortcuts } from "./menu/KeyboardShortcuts";
 // Register every per-surface context-menu resolver once at app load.
 import "./menus/registerAll";
@@ -81,11 +87,14 @@ export function AppShell() {
   } = shellFrame;
   const browserMode = useBrowserMode();
   const browserModeIntent = useBrowserModeIntent();
-  const openLeftRailMode = (mode: BrowserMode) => {
-    browserModeIntent(mode);
-    if (!leftRailVisible) shellActions.toggleLeftRail();
-    if (leftCollapsed) shellActions.toggleLeftCollapsed();
-  };
+  const openLeftRailMode = useCallback(
+    (mode: BrowserMode) => {
+      browserModeIntent(mode);
+      if (!leftRailVisible) shellActions.toggleLeftRail();
+      if (leftCollapsed) shellActions.toggleLeftCollapsed();
+    },
+    [browserModeIntent, leftCollapsed, leftRailVisible, shellActions],
+  );
 
   const startResize = (
     axis: ShellResizeAxis,
@@ -134,6 +143,15 @@ export function AppShell() {
   // contexts gate which bindings fire when each rail region is focused).
   useLeftRailKeybindings();
   useRightRailKeybindings();
+  useEditorKeybindings();
+  // Bridge the stores-layer command palette / keymap to the scene controller
+  // (deferral #13): register a forwarder that calls into the graph scene only when
+  // a command actually fires (getScene is lazy), so graph camera/layout verbs are
+  // reachable as enrolled actions without the stores layer importing the scene.
+  useEffect(() => {
+    setSceneCommandRunner((command) => getScene().controller.command(command as never));
+    return () => setSceneCommandRunner(null);
+  }, []);
 
   return (
     <div
@@ -145,7 +163,6 @@ export function AppShell() {
       <CommandPalette />
       <SettingsDialog />
       <ContextMenuHost timeTravel={timeTravel} />
-      <CreateDocDialog />
       <KeyboardShortcuts />
       <DegradationDebugSwitch />
       <KeyboardNav />

@@ -1056,20 +1056,24 @@ describe("deriveDashboardDateRangeView (dashboard date display)", () => {
 });
 
 describe("deriveDashboardFilterSummaryView (stage filter toolbar)", () => {
-  it("counts active dashboard filter intent for the toolbar badge", () => {
+  it("counts active advanced-flyout facets for the Filters button badge", () => {
     expect(
       deriveDashboardFilterSummaryView({
         filters: {
           doc_types: ["adr", "plan"],
           feature_tags: ["state"],
+          statuses: ["accepted"],
+          health: ["dangling"],
           relations: ["references"],
           structural_state: ["broken"],
-          text: "centralize",
+          // The feature query is the search bar's own state, not an advanced
+          // facet — it must NOT be counted on the Filters button badge.
+          feature_query: { value: "*centralize*", mode: "glob" },
         },
         date_range: {},
       }),
     ).toEqual({
-      activeFilterCount: 6,
+      activeFilterCount: 7,
       dateRangeLabel: null,
     });
   });
@@ -1155,8 +1159,7 @@ describe("deriveDashboardFilterSidebarView (stage filter sidebar)", () => {
     expect(view.anyActive).toBe(true);
     expect(view.presentation).toMatchObject({
       panelAriaLabel: "filter panel",
-      panelClassName:
-        "pointer-events-auto absolute left-0 top-[calc(100%+0.5rem)] z-30 animate-slide-in-left",
+      panelClassName: "pointer-events-auto fixed z-50 animate-slide-in-left",
       headerClassName:
         "flex items-center justify-between border-b border-rule px-fg-3 py-fg-1-5",
       titleClassName: "text-body font-medium text-ink",

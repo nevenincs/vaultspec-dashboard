@@ -274,29 +274,13 @@ function TypeContentBlock({ content }: { content: TypeCardContent }) {
         </div>
       );
     }
-    case "topic": {
+    case "feature": {
       if (content.documents === undefined) return null;
       return (
-        <div data-type-content="topic">
+        <div data-type-content="feature">
           <InfoLine>
             {content.documents} document{content.documents === 1 ? "" : "s"}
           </InfoLine>
-        </div>
-      );
-    }
-    case "code": {
-      return (
-        <div data-type-content="code" className="flex flex-col gap-fg-0-5">
-          <p className="break-all font-mono text-caption text-ink-muted" data-code-path>
-            {content.path}
-          </p>
-          {(content.language || content.gitDirty) && (
-            <InfoLine>
-              {[content.language, content.gitDirty ? "uncommitted changes" : undefined]
-                .filter(Boolean)
-                .join(" · ")}
-            </InfoLine>
-          )}
         </div>
       );
     }

@@ -940,12 +940,7 @@ impl AppState {
     }
 }
 
-pub fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
+pub use engine_model::now_ms;
 
 /// Bearer gate: everything except `/health` requires the service token
 /// (contract §1 — not an auth boundary; loopback-only).

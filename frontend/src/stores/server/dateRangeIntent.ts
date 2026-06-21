@@ -1,10 +1,12 @@
+import { useCallback, useMemo, useRef } from "react";
+
 import {
-  normalizeDashboardStateWriteScope,
   useDashboardStateMutations,
 } from "./dashboardState";
 import { normalizeDashboardDateRange } from "./dashboardDateRange";
+import { normalizeStoreScope } from "./scopeIdentity";
 
-export const normalizeDateRangeIntentScope = normalizeDashboardStateWriteScope;
+export const normalizeDateRangeIntentScope = normalizeStoreScope;
 
 function isDateRangeIntentRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -22,14 +24,25 @@ export function useDateRangeIntent(scope: unknown): {
 } {
   const normalizedScope = normalizeDateRangeIntentScope(scope);
   const mutations = useDashboardStateMutations(normalizedScope);
-  const inert = () => Promise.resolve(null);
-  return {
-    setRange: (range) => {
+  const setDateRangeRef = useRef(mutations.setDateRange);
+  setDateRangeRef.current = mutations.setDateRange;
+
+  const setRange = useCallback(
+    (range: unknown) => {
       const normalizedRange = normalizeDateRangeIntentRange(range);
       return normalizedScope === null || normalizedRange === null
-        ? inert()
-        : mutations.setDateRange(normalizedRange);
+        ? Promise.resolve(null)
+        : setDateRangeRef.current(normalizedRange);
     },
-    clearRange: () => (normalizedScope === null ? inert() : mutations.setDateRange({})),
-  };
+    [normalizedScope],
+  );
+  const clearRange = useCallback(
+    () =>
+      normalizedScope === null
+        ? Promise.resolve(null)
+        : setDateRangeRef.current({}),
+    [normalizedScope],
+  );
+
+  return useMemo(() => ({ setRange, clearRange }), [clearRange, setRange]);
 }

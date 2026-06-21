@@ -22,6 +22,11 @@ import {
 export interface ActionContext {
   /** True when the view is in time-travel mode. */
   timeTravel: boolean;
+  /** The currently selected/focused node id (the dashboard's canonical node
+   *  selection), or null. Lets a resolver build an action RELATIVE to the
+   *  selection (e.g. "relate this document to the focused node") as a pure
+   *  derived-state consumer, without reaching into a store. */
+  selectedNodeId?: string | null;
 }
 
 /** A pure resolver: the menu for one entity kind. */

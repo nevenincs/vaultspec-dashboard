@@ -5,12 +5,26 @@
 // non-confirm item and closes, arms-then-fires a destructive item, renders a
 // disabled item with its reason, and light-dismisses on outside click.
 
+import type { QueryClient } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerResolver, resetResolvers } from "../../platform/actions/registry";
+import {
+  MenuTestProviders,
+  createMenuTestQueryClient,
+} from "../../testing/menuQueryClient";
 import { openContextMenu, useContextMenuStore } from "../../stores/view/contextMenu";
 import { ContextMenuHost } from "./ContextMenuHost";
+
+// The host reads the active scope / selected node id (the unified-action-plane
+// `ctx.selectedNodeId` thread) through TanStack query hooks, so the render must
+// carry a (seeded, no-scope) QueryClient like every other store-backed surface.
+let testClient: QueryClient;
+function Providers({ children }: { children: ReactNode }) {
+  return <MenuTestProviders client={testClient}>{children}</MenuTestProviders>;
+}
 
 const focus = vi.fn();
 const copy = vi.fn();
@@ -37,19 +51,21 @@ function registerNodeMenu() {
 }
 
 beforeEach(() => {
+  testClient = createMenuTestQueryClient();
   registerNodeMenu();
 });
 afterEach(() => {
   cleanup();
   resetResolvers();
   useContextMenuStore.getState().closeMenu();
+  testClient.clear();
   focus.mockReset();
   copy.mockReset();
   remove.mockReset();
 });
 
 function openNodeMenu() {
-  render(<ContextMenuHost />);
+  render(<ContextMenuHost />, { wrapper: Providers });
   act(() =>
     openContextMenu({ kind: "node", id: "n1", title: "Alpha" }, { x: 50, y: 50 }),
   );
@@ -104,7 +120,7 @@ describe("ContextMenuHost", () => {
         run: remove,
       },
     ]);
-    const view = render(<ContextMenuHost />);
+    const view = render(<ContextMenuHost />, { wrapper: Providers });
     act(() => openContextMenu({ kind: "node", id: "n1" }, { x: 10, y: 10 }));
 
     fireEvent.click(await screen.findByText("Remove"));
@@ -160,7 +176,7 @@ describe("ContextMenuHost", () => {
         dispatch: { type: "contextmenu:does-not-exist" },
       },
     ]);
-    render(<ContextMenuHost />);
+    render(<ContextMenuHost />, { wrapper: Providers });
     act(() =>
       openContextMenu({ kind: "node", id: "n1", title: "Alpha" }, { x: 10, y: 10 }),
     );

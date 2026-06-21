@@ -121,8 +121,7 @@ export function normalizeContextMenuCursor(value: unknown): number {
 export function normalizeContextMenuItemId(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
-  return normalized.length > 0 &&
-    normalized.length <= ACTION_DESCRIPTOR_ID_MAX_CHARS
+  return normalized.length > 0 && normalized.length <= ACTION_DESCRIPTOR_ID_MAX_CHARS
     ? normalized
     : null;
 }
@@ -331,10 +330,18 @@ export function groupContextMenuActions(
 export function deriveContextMenuResolvedView(
   snapshot: ContextMenuSnapshot,
   timeTravel: unknown,
+  selectedNodeId: unknown = null,
 ): ContextMenuResolvedView {
   const normalizedTimeTravel = normalizeContextMenuTimeTravel(timeTravel);
+  const normalizedSelectedNodeId =
+    typeof selectedNodeId === "string" && selectedNodeId.length > 0
+      ? selectedNodeId
+      : null;
   const actions = snapshot.entity
-    ? resolveActions(snapshot.entity, { timeTravel: normalizedTimeTravel })
+    ? resolveActions(snapshot.entity, {
+        timeTravel: normalizedTimeTravel,
+        selectedNodeId: normalizedSelectedNodeId,
+      })
     : [];
   const groups = groupContextMenuActions(actions);
   const ordered = groups.flatMap((group) => group.actions);
@@ -548,19 +555,44 @@ export function deriveContextMenuPanelPosition(
 }
 
 export function useContextMenuState(): ContextMenuSnapshot {
-  return useContextMenuStore(
-    useShallow((state) => normalizeContextMenuSnapshot(state)),
+  // The store already writes CANONICAL normalized values (openMenu/setPosition
+  // normalize on the way in), so the raw slices are referentially stable between
+  // mutations. Select those raw fields and shallow-compare them — re-normalizing
+  // inside the selector would mint fresh `anchor`/`position`/`entity` objects on
+  // every snapshot, defeating the shallow compare and looping the host's
+  // menu-dependent effects (stable-selectors). Assemble the typed snapshot in a
+  // useMemo over the raw slice.
+  const raw = useContextMenuStore(
+    useShallow((state) => ({
+      open: state.open,
+      anchor: state.anchor,
+      position: state.position,
+      entity: state.entity,
+      armedItemId: state.armedItemId,
+      cursor: state.cursor,
+    })),
   );
+  return useMemo(() => normalizeContextMenuSnapshot(raw), [raw]);
 }
 
 export function useContextMenuResolvedView(
   timeTravel: unknown,
+  selectedNodeId: unknown = null,
 ): ContextMenuResolvedView {
   const snapshot = useContextMenuState();
   const normalizedTimeTravel = normalizeContextMenuTimeTravel(timeTravel);
+  const normalizedSelectedNodeId =
+    typeof selectedNodeId === "string" && selectedNodeId.length > 0
+      ? selectedNodeId
+      : null;
   return useMemo(
-    () => deriveContextMenuResolvedView(snapshot, normalizedTimeTravel),
-    [snapshot, normalizedTimeTravel],
+    () =>
+      deriveContextMenuResolvedView(
+        snapshot,
+        normalizedTimeTravel,
+        normalizedSelectedNodeId,
+      ),
+    [snapshot, normalizedTimeTravel, normalizedSelectedNodeId],
   );
 }
 

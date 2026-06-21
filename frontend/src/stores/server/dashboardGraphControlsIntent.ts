@@ -1,6 +1,7 @@
+import { useCallback, useMemo, useRef } from "react";
+
 import {
   normalizeDashboardGraphBounds,
-  normalizeDashboardStateWriteScope,
   normalizeStringMember,
   useDashboardStateMutations,
 } from "./dashboardState";
@@ -8,12 +9,13 @@ import {
   DASHBOARD_BOUND_SHAPES,
   type DashboardGraphBounds,
 } from "./engine";
+import { normalizeStoreScope } from "./scopeIdentity";
 
 export interface DashboardGraphControlsIntent {
   setGraphBounds: (bounds: unknown) => Promise<unknown>;
 }
 
-export const normalizeDashboardGraphControlsScope = normalizeDashboardStateWriteScope;
+export const normalizeDashboardGraphControlsScope = normalizeStoreScope;
 
 function isDashboardGraphControlsBoundsRecord(
   value: unknown,
@@ -42,12 +44,18 @@ export function useDashboardGraphControlsIntent(
 ): DashboardGraphControlsIntent {
   const normalizedScope = normalizeDashboardGraphControlsScope(scope);
   const mutations = useDashboardStateMutations(normalizedScope);
-  return {
-    setGraphBounds: (bounds) => {
+  const setGraphBoundsRef = useRef(mutations.setGraphBounds);
+  setGraphBoundsRef.current = mutations.setGraphBounds;
+
+  const setGraphBounds = useCallback(
+    (bounds: unknown) => {
       const normalizedBounds = normalizeDashboardGraphControlsBounds(bounds);
       return normalizedScope === null || normalizedBounds === null
         ? Promise.resolve(null)
-        : mutations.setGraphBounds(normalizedBounds);
+        : setGraphBoundsRef.current(normalizedBounds);
     },
-  };
+    [normalizedScope],
+  );
+
+  return useMemo(() => ({ setGraphBounds }), [setGraphBounds]);
 }

@@ -202,9 +202,7 @@ describe("statusTabChrome store", () => {
     expect(view.limit).toBe(RECENT_COMMITS_LIMIT_CAP);
     expect(view.openHashes).toHaveLength(OPEN_RECENT_COMMIT_HASHES_CAP);
     expect(view.openHashes).not.toContain("");
-    expect(view.openHashes).not.toContain(
-      "x".repeat(RECENT_COMMIT_HASH_MAX_CHARS + 1),
-    );
+    expect(view.openHashes).not.toContain("x".repeat(RECENT_COMMIT_HASH_MAX_CHARS + 1));
     expect(view.openHashes[0]).toBe("commit-2");
     expect(view.openHashes[view.openHashes.length - 1]).toBe(
       `commit-${OPEN_RECENT_COMMIT_HASHES_CAP + 1}`,
@@ -241,8 +239,8 @@ describe("statusTabChrome store", () => {
         row: rows[0],
         expanded: true,
         showBody: true,
-        rootClassName: "",
-        headerClassName: "flex items-center gap-fg-1-5 rounded-fg-xs px-fg-1 py-fg-1",
+        rootClassName: "rounded-fg-sm border border-rule bg-paper-raised",
+        headerClassName: "flex items-center gap-fg-1-5 rounded-fg-xs px-fg-2 py-fg-1-5",
         toggleClassName:
           "flex shrink-0 items-center rounded-fg-xs text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
         rowButtonClassName:
@@ -255,8 +253,8 @@ describe("statusTabChrome store", () => {
         row: rows[1],
         expanded: true,
         showBody: false,
-        rootClassName: "",
-        headerClassName: "flex items-center gap-fg-1-5 rounded-fg-xs px-fg-1 py-fg-1",
+        rootClassName: "rounded-fg-sm border border-rule bg-paper-raised",
+        headerClassName: "flex items-center gap-fg-1-5 rounded-fg-xs px-fg-2 py-fg-1-5",
         toggleClassName:
           "flex shrink-0 items-center rounded-fg-xs text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus opacity-40",
         rowButtonClassName:
@@ -269,8 +267,8 @@ describe("statusTabChrome store", () => {
         row: rows[2],
         expanded: false,
         showBody: false,
-        rootClassName: "",
-        headerClassName: "flex items-center gap-fg-1-5 rounded-fg-xs px-fg-1 py-fg-1",
+        rootClassName: "rounded-fg-sm border border-rule bg-paper-raised",
+        headerClassName: "flex items-center gap-fg-1-5 rounded-fg-xs px-fg-2 py-fg-1-5",
         toggleClassName:
           "flex shrink-0 items-center rounded-fg-xs text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
         rowButtonClassName:

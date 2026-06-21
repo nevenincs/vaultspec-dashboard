@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCommands,
+  buildEditorCommands,
+  buildFeatureArchiveCommands,
+  buildGraphCommands,
   buildLeftRailCommands,
+  buildSettingsCommands,
+  buildTimelineCommands,
   commandPaletteMovedCursor,
   commandPaletteSafeCursor,
   COMMAND_PALETTE_SOURCE_ITEM_MAX_CHARS,
@@ -39,30 +44,167 @@ function sources(patch: Partial<Parameters<typeof buildCommands>[0]> = {}) {
   };
 }
 
+describe("buildFeatureArchiveCommands", () => {
+  it("emits one confirm-guarded, time-travel-gated archive command per feature", () => {
+    const commands = buildFeatureArchiveCommands(
+      ["state", "timeline"],
+      () => undefined,
+    );
+    expect(commands.map((c) => c.id)).toEqual(["archive:state", "archive:timeline"]);
+    expect(commands.every((c) => c.family === "core")).toBe(true);
+    expect(commands.every((c) => c.confirm === true)).toBe(true);
+    expect(commands.every((c) => c.disabledInTimeTravel === true)).toBe(true);
+  });
+
+  it("fires the injected archive effect with the command's feature tag", () => {
+    const archived: string[] = [];
+    const commands = buildFeatureArchiveCommands(["state"], (feature) => {
+      archived.push(feature);
+    });
+    commands.find((c) => c.id === "archive:state")?.run();
+    expect(archived).toEqual(["state"]);
+  });
+});
+
+describe("buildGraphCommands", () => {
+  it("enrolls camera, freeze (label reflects state), and reset-defaults", () => {
+    const cmds = buildGraphCommands({
+      frozen: false,
+      setFrozen: () => undefined,
+      resetDefaults: () => undefined,
+    });
+    expect(cmds.map((c) => c.id)).toEqual([
+      "graph:fit-to-view",
+      "graph:reset-view",
+      "graph:zoom-in",
+      "graph:zoom-out",
+      "graph:toggle-freeze",
+      "graph:reset-defaults",
+    ]);
+    expect(cmds.find((c) => c.id === "graph:toggle-freeze")?.label).toBe(
+      "graph: freeze layout",
+    );
+    const frozen = buildGraphCommands({
+      frozen: true,
+      setFrozen: () => undefined,
+      resetDefaults: () => undefined,
+    });
+    expect(frozen.find((c) => c.id === "graph:toggle-freeze")?.label).toBe(
+      "graph: unfreeze layout",
+    );
+  });
+
+  it("freeze toggle inverts the current state through the injected setter", () => {
+    let next: boolean | null = null;
+    buildGraphCommands({
+      frozen: true,
+      setFrozen: (f) => {
+        next = f;
+      },
+      resetDefaults: () => undefined,
+    })
+      .find((c) => c.id === "graph:toggle-freeze")
+      ?.run();
+    expect(next).toBe(false);
+  });
+});
+
+describe("buildSettingsCommands", () => {
+  it("offers the four theme preferences, each firing the injected setter", () => {
+    const set: string[] = [];
+    const cmds = buildSettingsCommands((v) => set.push(v));
+    expect(cmds.map((c) => c.id)).toEqual([
+      "settings:theme-system",
+      "settings:theme-light",
+      "settings:theme-dark",
+      "settings:theme-high-contrast",
+    ]);
+    cmds.forEach((c) => c.run());
+    expect(set).toEqual(["system", "light", "dark", "high-contrast"]);
+  });
+});
+
+describe("buildTimelineCommands / buildEditorCommands", () => {
+  it("timeline enrolls jump-to-now, fit-to-corpus, and the range presets", () => {
+    let jumped = 0;
+    let fitted = 0;
+    const days: number[] = [];
+    const commands = buildTimelineCommands({
+      jumpToLive: () => {
+        jumped += 1;
+      },
+      fitToCorpus: () => {
+        fitted += 1;
+      },
+      setRangeDays: (d) => days.push(d),
+    });
+    expect(commands.map((c) => c.id)).toEqual([
+      "timeline:jump-to-now",
+      "timeline:fit-to-corpus",
+      "timeline:range-1d",
+      "timeline:range-7d",
+      "timeline:range-30d",
+      "timeline:range-90d",
+    ]);
+    expect(commands.every((c) => c.family === "navigate")).toBe(true);
+    commands.find((c) => c.id === "timeline:jump-to-now")?.run();
+    commands.find((c) => c.id === "timeline:fit-to-corpus")?.run();
+    commands.find((c) => c.id === "timeline:range-30d")?.run();
+    expect(jumped).toBe(1);
+    expect(fitted).toBe(1);
+    expect(days).toEqual([30]);
+  });
+
+  it("editor close-document fires the injected effect", () => {
+    let closed = 0;
+    const commands = buildEditorCommands(() => {
+      closed += 1;
+    });
+    expect(commands.map((c) => c.id)).toEqual(["editor:close-document"]);
+    expect(commands[0]?.family).toBe("app");
+    commands[0]?.run();
+    expect(closed).toBe(1);
+  });
+});
+
 describe("buildLeftRailCommands", () => {
-  it("enrolls new-document, both browse modes, and collapse — reusing the shared ids", () => {
-    const commands = buildLeftRailCommands(() => undefined);
+  it("enrolls new-document, browse modes, facets, collapse, and reset — shared ids", () => {
+    const commands = buildLeftRailCommands({
+      collapseTree: () => undefined,
+      resetFilters: () => undefined,
+    });
     expect(commands.map((c) => c.id)).toEqual([
       "left-rail:new-document",
       "left-rail:browse-vault",
       "left-rail:browse-code",
+      "left-rail:toggle-facets",
       "left-rail:collapse-tree",
+      "left-rail:reset-filters",
     ]);
     const families = new Map(commands.map((c) => [c.id, c.family]));
     expect(families.get("left-rail:new-document")).toBe("app");
     expect(families.get("left-rail:browse-vault")).toBe("navigate");
-    expect(families.get("left-rail:collapse-tree")).toBe("navigate");
+    expect(families.get("left-rail:toggle-facets")).toBe("filters");
+    expect(families.get("left-rail:reset-filters")).toBe("filters");
     // Every palette command must carry a runnable effect (run-only plane).
     expect(commands.every((c) => typeof c.run === "function")).toBe(true);
   });
 
-  it("fires the injected collapse-tree effect (the only state-coupled command)", () => {
+  it("fires the injected collapse-tree and reset-filters effects", () => {
     let collapsed = 0;
-    const commands = buildLeftRailCommands(() => {
-      collapsed += 1;
+    let reset = 0;
+    const commands = buildLeftRailCommands({
+      collapseTree: () => {
+        collapsed += 1;
+      },
+      resetFilters: () => {
+        reset += 1;
+      },
     });
     commands.find((c) => c.id === "left-rail:collapse-tree")?.run();
+    commands.find((c) => c.id === "left-rail:reset-filters")?.run();
     expect(collapsed).toBe(1);
+    expect(reset).toBe(1);
   });
 });
 

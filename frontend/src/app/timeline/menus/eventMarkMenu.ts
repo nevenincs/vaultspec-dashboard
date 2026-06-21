@@ -136,6 +136,19 @@ export function eventMarkMenu(
       text: normalizedEntity.id,
       what: "id",
     }),
+    hasNodes
+      ? copyAction({
+          id: `event:copy-touched:${normalizedEntity.id}`,
+          label: "Copy touched node ids",
+          text: normalizedEntity.nodeIds.join("\n"),
+        })
+      : {
+          id: `event:copy-touched:${normalizedEntity.id}`,
+          label: "Copy touched node ids",
+          section: "copy",
+          disabled: true,
+          disabledReason: "no touched nodes",
+        },
   ];
 
   // Copy timestamp: only when the mark carries an instant.

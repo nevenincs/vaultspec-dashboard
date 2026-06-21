@@ -1,13 +1,13 @@
 // EVENT-PLANE PROPAGATION CONTRACT (ms-level, every event kind).
 //
 // The headline requirement is that every interaction propagates at the
-// MILLISECOND level, never "tens of seconds". The event plane achieves this by
-// construction: a canvas mouse event or a keyboard verb routes through a
-// SYNCHRONOUS Zustand store write (useViewStore.getState().<action>()), and the
-// store→scene binding pushes the canvas mirror back in the SAME turn — no fetch,
-// no debounce, no microtask, no timer anywhere on the path. (The "tens of
-// seconds" the dashboard used to feel was BACKEND query latency, addressed
-// separately; the event plane itself was never the bottleneck.)
+// MILLISECOND level, never "tens of seconds". The view-local event plane achieves
+// this by construction: a canvas mouse event or a keyboard verb routes through a
+// SYNCHRONOUS Zustand store write (useViewStore.getState().<action>()) or a
+// direct scene command — no fetch, no debounce, no microtask, no timer anywhere
+// on the path. (The "tens of seconds" the dashboard used to feel was BACKEND
+// query latency, addressed separately; the event plane itself was never the
+// bottleneck.)
 //
 // These tests pin that contract for EVERY event kind the canvas emits — hover,
 // select, open, expand, and the keyboard graph-walk — so a future change that
@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { actionForKey } from "../../app/stage/graphWalk";
 import type { SceneCommand, SceneFieldRenderer } from "../../scene/sceneController";
 import { SceneController } from "../../scene/sceneController";
-import { bindSelectionToScene, focusFromWalk, selectEvent } from "./selection";
+import { focusFromWalk, selectEvent } from "./selection";
 import { useViewStore } from "./viewStore";
 
 function captureScene() {
@@ -55,9 +55,7 @@ describe("event plane propagates at ms-level for every event kind", () => {
     s.clearWorkingSet();
   });
 
-  it("event select -> local metadata AND the canvas ring, synchronously", () => {
-    const { scene, commands } = captureScene();
-    const off = bindSelectionToScene(scene);
+  it("event select -> local metadata, synchronously", () => {
     expectSynchronous(
       "select",
       () => selectEvent("evt:selected", ["doc:selected"]),
@@ -67,13 +65,8 @@ describe("event plane propagates at ms-level for every event kind", () => {
           id: "evt:selected",
           nodeIds: ["doc:selected"],
         });
-        expect(commands).toContainEqual({
-          kind: "set-selected",
-          ids: new Set(["doc:selected"]),
-        });
       },
     );
-    off();
   });
 
   it("mouse open -> opened set, synchronously", () => {
@@ -92,21 +85,16 @@ describe("event plane propagates at ms-level for every event kind", () => {
     );
   });
 
-  it("keyboard graph-walk -> selection + an instant (non-animated) re-center, synchronously", () => {
+  it("keyboard graph-walk -> instant non-animated re-center before selection settles", () => {
     const { scene, commands } = captureScene();
-    expectSynchronous(
-      "keyboard walk",
-      () => focusFromWalk(scene, "doc:walked"),
-      () => {
-        // The walk owns the camera move and issues it INSTANTLY (animate:false),
-        // so a held arrow never lags behind the keypress.
-        expect(commands).toContainEqual({
-          kind: "focus-node",
-          id: "doc:walked",
-          animate: false,
-        });
-      },
-    );
+    void focusFromWalk(scene, "doc:walked", "scope-a").catch(() => undefined);
+    // The walk owns the camera move and issues it before the canonical dashboard
+    // selection write settles, so a held arrow never waits on backend state.
+    expect(commands).toContainEqual({
+      kind: "focus-node",
+      id: "doc:walked",
+      animate: false,
+    });
   });
 
   it("keyboard key -> canvas verb mapping is pure and synchronous for every verb", () => {

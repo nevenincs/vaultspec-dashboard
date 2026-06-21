@@ -59,6 +59,15 @@ export function worktreeMenu(entity: unknown): ActionDescriptor[] {
     );
   }
 
+  actions.push(
+    copyAction({
+      id: "worktree:copy-id",
+      label: "Copy worktree id",
+      text: normalizedEntity.id,
+      what: "id",
+    }),
+  );
+
   if (normalizedEntity.path) {
     actions.push(revealAction({ id: "worktree:reveal", path: normalizedEntity.path }));
   }

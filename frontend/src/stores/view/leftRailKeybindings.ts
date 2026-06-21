@@ -1,12 +1,19 @@
 import { useEffect } from "react";
 
-import { FilePlus2, FoldVertical, UnfoldVertical } from "lucide-react";
+import {
+  FilePlus2,
+  FoldVertical,
+  ListFilter,
+  SlidersHorizontal,
+  UnfoldVertical,
+} from "lucide-react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
 import {
   type KeybindingDef,
   registerKeybindings,
 } from "../../platform/keymap/registry";
+import { useDashboardFilterSidebarIntent } from "../server/dashboardFilterSidebarIntent";
 import { useActiveScope } from "../server/queries";
 import {
   BROWSER_MODE_OPTIONS,
@@ -15,7 +22,8 @@ import {
   setBrowserMode,
 } from "./browserMode";
 import { openCreateDocDialog } from "./createDocChrome";
-import { useDashboardTextFilterDraft } from "./dashboardTextFilter";
+import { useDashboardFeatureFilterDraft } from "./dashboardFeatureFilter";
+import { toggleFilterSidebar } from "./filterSidebar";
 import { registerKeyAction } from "./keymapDispatcher";
 
 export const LEFT_RAIL_KEYMAP_CONTEXT = "left-rail";
@@ -25,10 +33,14 @@ export const LEFT_RAIL_CLEAR_FILTER_ACTION_ID = "left-rail:clear-filter";
 export const LEFT_RAIL_NEW_DOC_ACTION_ID = "left-rail:new-document";
 export const LEFT_RAIL_EXPAND_TREE_ACTION_ID = "left-rail:expand-tree";
 export const LEFT_RAIL_COLLAPSE_TREE_ACTION_ID = "left-rail:collapse-tree";
+export const LEFT_RAIL_TOGGLE_FACETS_ACTION_ID = "left-rail:toggle-facets";
+export const LEFT_RAIL_RESET_FILTERS_ACTION_ID = "left-rail:reset-filters";
 
 export const LEFT_RAIL_NEW_DOC_LABEL = "New document…";
 export const LEFT_RAIL_EXPAND_TREE_LABEL = "Expand the whole vault tree";
 export const LEFT_RAIL_COLLAPSE_TREE_LABEL = "Collapse the whole vault tree";
+export const LEFT_RAIL_TOGGLE_FACETS_LABEL = "Toggle the filter facets";
+export const LEFT_RAIL_RESET_FILTERS_LABEL = "Reset all filters";
 
 const LEFT_RAIL_GROUP = "Left rail";
 
@@ -75,6 +87,20 @@ export function deriveLeftRailKeybindings(): KeybindingDef[] {
       label: LEFT_RAIL_COLLAPSE_TREE_LABEL,
       group: LEFT_RAIL_GROUP,
       context: "left-rail",
+    },
+    {
+      id: LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
+      defaultChord: "Mod+Shift+L",
+      label: LEFT_RAIL_TOGGLE_FACETS_LABEL,
+      group: LEFT_RAIL_GROUP,
+      context: "global",
+    },
+    {
+      id: LEFT_RAIL_RESET_FILTERS_ACTION_ID,
+      defaultChord: "Mod+Alt+0",
+      label: LEFT_RAIL_RESET_FILTERS_LABEL,
+      group: LEFT_RAIL_GROUP,
+      context: "global",
     },
   ];
 }
@@ -134,10 +160,34 @@ export function collapseTreeAction(collapseAll: () => void): ActionDescriptor {
   };
 }
 
+/** "Toggle the filter facets" — opens/closes the one canonical facet surface
+ *  (filtering-has-one-canonical-surface). Store-only intent. */
+export function toggleFacetsAction(): ActionDescriptor {
+  return {
+    id: LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
+    label: LEFT_RAIL_TOGGLE_FACETS_LABEL,
+    section: "navigate",
+    icon: SlidersHorizontal,
+    run: toggleFilterSidebar,
+  };
+}
+
+/** "Reset all filters" — clears the canonical `dashboardState.filters` to empty.
+ *  The caller supplies the scoped `resetFilters` closure (the stores write seam). */
+export function resetFiltersAction(resetFilters: () => void): ActionDescriptor {
+  return {
+    id: LEFT_RAIL_RESET_FILTERS_ACTION_ID,
+    label: LEFT_RAIL_RESET_FILTERS_LABEL,
+    section: "navigate",
+    icon: ListFilter,
+    run: resetFilters,
+  };
+}
+
 function focusLeftRailFilter(): void {
   if (typeof document === "undefined") return;
   const input = document.querySelector<HTMLInputElement>(
-    "[data-rail-filter] [data-kit-search-input]",
+    "[data-rail-filter-area] [data-kit-search-input]",
   );
   input?.focus();
   input?.select();
@@ -145,7 +195,8 @@ function focusLeftRailFilter(): void {
 
 export function useLeftRailKeybindings(): void {
   const scope = useActiveScope();
-  const clearTextFilter = useDashboardTextFilterDraft(scope).clear;
+  const clearFeatureFilter = useDashboardFeatureFilterDraft(scope).clear;
+  const resetFilters = useDashboardFilterSidebarIntent(scope).clearFilters;
 
   useEffect(() => {
     const disposeBindings = registerKeybindings(deriveLeftRailKeybindings());
@@ -169,8 +220,8 @@ export function useLeftRailKeybindings(): void {
       LEFT_RAIL_CLEAR_FILTER_ACTION_ID,
       (): ActionDescriptor => ({
         id: LEFT_RAIL_CLEAR_FILTER_ACTION_ID,
-        label: "Clear the document filter",
-        run: clearTextFilter,
+        label: "Clear the feature filter",
+        run: clearFeatureFilter,
       }),
     );
     // New document is a global chord (reachable while the stage is focused); the
@@ -179,13 +230,23 @@ export function useLeftRailKeybindings(): void {
     const disposeNewDoc = registerKeyAction(LEFT_RAIL_NEW_DOC_ACTION_ID, () =>
       newDocumentAction(),
     );
+    const disposeToggleFacets = registerKeyAction(
+      LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
+      () => toggleFacetsAction(),
+    );
+    const disposeResetFilters = registerKeyAction(
+      LEFT_RAIL_RESET_FILTERS_ACTION_ID,
+      () => resetFiltersAction(() => void resetFilters()),
+    );
 
     return () => {
+      disposeResetFilters();
+      disposeToggleFacets();
       disposeNewDoc();
       disposeClear();
       disposeFocus();
       disposeCycle();
       disposeBindings();
     };
-  }, [clearTextFilter]);
+  }, [clearFeatureFilter, resetFilters]);
 }

@@ -10,8 +10,7 @@
 // canonical text. This region hosts no filter control of its own.
 
 import { useBrowserMode, useBrowserModeIntent } from "../../stores/view/browserMode";
-import { useActiveScope } from "../../stores/server/queries";
-import { useDashboardTextFilterDraft } from "../../stores/view/dashboardTextFilter";
+import { useActiveScope, useVaultFilesNarrowText } from "../../stores/server/queries";
 import { BrowserModeToggle } from "./BrowserModeToggle";
 import { CodeTree } from "./CodeTree";
 import { VaultBrowser } from "./VaultBrowser";
@@ -20,9 +19,10 @@ export function BrowserRegion() {
   const scope = useActiveScope();
   const mode = useBrowserMode();
   const setMode = useBrowserModeIntent();
-  // The Files tree narrows by the SAME canonical feature/text filter the field
-  // authors; the Vault tree reads the full facet set straight from the store.
-  const textFilter = useDashboardTextFilterDraft(scope);
+  // The Files tree narrows by the SAME canonical feature filter the search bar
+  // authors, reduced to a plain path substring; the Vault tree reads the full facet
+  // set (including the feature query proper) straight from the store.
+  const filesNarrowText = useVaultFilesNarrowText(scope);
 
   return (
     <section
@@ -34,7 +34,7 @@ export function BrowserRegion() {
 
       {/* The active tab's tree. The listing scrolls; the tabs above stay pinned. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {mode === "code" ? <CodeTree filter={textFilter.value} /> : <VaultBrowser />}
+        {mode === "code" ? <CodeTree filter={filesNarrowText} /> : <VaultBrowser />}
       </div>
     </section>
   );

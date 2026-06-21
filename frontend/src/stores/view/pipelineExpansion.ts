@@ -67,8 +67,7 @@ const DEFAULT_PIPELINE_EXPANSION_KEY = pipelineExpansionKey(null);
 export function normalizePipelineExpansionKey(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
-  return normalized.length > 0 &&
-    normalized.length <= PIPELINE_EXPANSION_KEY_MAX_CHARS
+  return normalized.length > 0 && normalized.length <= PIPELINE_EXPANSION_KEY_MAX_CHARS
     ? normalized
     : null;
 }
@@ -91,11 +90,14 @@ export function normalizePipelineExpandedIds(ids: unknown): string[] {
   return normalized;
 }
 
-// Flush plan tracker — no border, no card background, no accent ring (the
-// expanded/collapsed states no longer change chrome). The only resting class is
-// `overflow-hidden` so the expanded step tree clips cleanly. One canonical fold
-// idiom (design-system-is-centralized).
-const PIPELINE_STATUS_PLAN_CLASS = "overflow-hidden";
+// Plan tracker card (binding ActivityRail · Status PlanPill, node 551:1555): a
+// bordered white card on the canonical small radius — `bg-paper-raised` over the
+// rail's warm paper, a faint `border-rule` hairline, `rounded-fg-sm`. The
+// expanded/collapsed states do not change chrome; `overflow-hidden` clips the
+// expanded step tree cleanly. Tokens, not literals (design-system-is-centralized,
+// figma-is-the-binding-source-of-truth).
+const PIPELINE_STATUS_PLAN_CLASS =
+  "overflow-hidden rounded-fg-sm border border-rule bg-paper-raised";
 
 export function derivePipelineExpansionRows<T extends PipelineExpansionRowInput>(
   rows: readonly T[],
@@ -210,9 +212,7 @@ export function usePipelineExpansion(
   const expanded = useMemo(() => new Set(activeIds), [activeIds]);
   const toggle = useMemo(
     () =>
-      canWrite
-        ? (id: unknown) => toggleStored(key, id)
-        : noopPipelineExpansionWrite,
+      canWrite ? (id: unknown) => toggleStored(key, id) : noopPipelineExpansionWrite,
     [canWrite, key, toggleStored],
   );
 

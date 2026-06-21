@@ -54,6 +54,24 @@ describe("useDashboardStageControlsIntent", () => {
     await expect(result.current.setLens("design")).resolves.toBeNull();
   });
 
+  it("keeps stage-control intent callbacks stable across unchanged-scope rerenders", () => {
+    const client = testQueryClient();
+    const { result, rerender } = renderHook(
+      ({ scope }: { scope: unknown }) => useDashboardStageControlsIntent(scope),
+      { initialProps: { scope: " scope-a " }, wrapper: wrapper(client) },
+    );
+
+    const firstIntent = result.current;
+    const firstSetRepresentationMode = result.current.setRepresentationMode;
+    const firstSetLens = result.current.setLens;
+
+    rerender({ scope: "scope-a" });
+
+    expect(result.current).toBe(firstIntent);
+    expect(result.current.setRepresentationMode).toBe(firstSetRepresentationMode);
+    expect(result.current.setLens).toBe(firstSetLens);
+  });
+
   it("is inert for malformed runtime scope values", async () => {
     const client = testQueryClient();
     const { result } = renderHook(

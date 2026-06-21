@@ -2,7 +2,7 @@
 //
 // A dev-only isolated entry — mirrors the timeline-visual / viewer-visual precedent —
 // that renders the REAL <FilterMenu/> with deterministic fixture data mirroring the
-// binding Figma "graph/Filter menu" 217:633 (KIND → TOPIC → STATUS → HEALTH → EDITED).
+// binding Figma "graph/Filter menu" 217:633 (KIND → FEATURE → STATUS → HEALTH → EDITED).
 // No engine, no stores: local state drives the toggles so the menu is live to click
 // while the initial render is pixel-stable for the figma-visual-parity capture.
 // Excluded from the production build (vite input is only index.html).
@@ -32,15 +32,15 @@ function toggle(list: string[], value: string): string[] {
 
 function FiltersHarness() {
   const [kind, setKind] = useState<string[]>(["research", "plan"]);
-  const [topic, setTopic] = useState<string[]>(["delta-sync"]);
-  const [topicSearch, setTopicSearch] = useState("");
+  const [feature, setFeature] = useState<string[]>(["delta-sync"]);
+  const [featureSearch, setFeatureSearch] = useState("");
   const [status, setStatus] = useState<string[]>([]);
   const [health, setHealth] = useState<string[]>([]);
   const [edited, setEdited] = useState("any");
 
   const anyActive =
     kind.length > 0 ||
-    topic.length > 0 ||
+    feature.length > 0 ||
     status.length > 0 ||
     health.length > 0 ||
     edited !== "any";
@@ -63,14 +63,14 @@ function FiltersHarness() {
     },
     {
       type: "checkbox",
-      key: "topic",
-      label: "TOPIC",
-      selected: topic,
-      onToggle: (v) => setTopic((s) => toggle(s, v)),
+      key: "feature",
+      label: "FEATURE",
+      selected: feature,
+      onToggle: (v) => setFeature((s) => toggle(s, v)),
       search: {
-        value: topicSearch,
-        onChange: setTopicSearch,
-        placeholder: "Search topics…",
+        value: featureSearch,
+        onChange: setFeatureSearch,
+        placeholder: "Search features…",
       },
       options: [
         { value: "delta-sync", label: "delta-sync", count: 8 },
@@ -131,7 +131,7 @@ function FiltersHarness() {
         anyActive={anyActive}
         onClearAll={() => {
           setKind([]);
-          setTopic([]);
+          setFeature([]);
           setStatus([]);
           setHealth([]);
           setEdited("any");

@@ -5,6 +5,8 @@ import {
   type ActionDescriptorBase,
 } from "../../platform/actions/action";
 import { useCommandPaletteLensIntent } from "../server/commandPaletteLensIntent";
+import { useDashboardFilterSidebarIntent } from "../server/dashboardFilterSidebarIntent";
+import { useThemeSettingIntent } from "../server/themeSettingIntent";
 import { featureNodeIdFromTag } from "../server/liveAdapters";
 import { OPS_WHITELIST } from "../server/opsActions";
 import { useBrowserMode } from "./browserMode";
@@ -17,9 +19,12 @@ import {
   LEFT_RAIL_COLLAPSE_TREE_LABEL,
   browseModeAction,
   newDocumentAction,
+  resetFiltersAction,
+  toggleFacetsAction,
 } from "./leftRailKeybindings";
 import {
   useActiveScope,
+  useArchiveFeature,
   useDashboardFilterChoicesView,
   useDashboardTimelineModeView,
   useFiltersVocabularyView,
@@ -28,7 +33,27 @@ import { openKeyboardShortcuts } from "./keyboardShortcuts";
 import { getLensChoices, saveCurrentLens, useLenses } from "./lenses";
 import { useCommandPaletteOpsRunMutation } from "./opsRun";
 import { useDashboardNodeSelection } from "./selection";
+import { closeDocumentEditor } from "./editor";
+import {
+  graphFitToView,
+  graphResetView,
+  graphZoomIn,
+  graphZoomOut,
+  resetGraphControlsToDefaults,
+  setGraphFrozen,
+} from "./graphCommands";
+import { useGraphControlsFrozen } from "./graphControlsChrome";
 import { openSettingsDialog } from "./settingsDialog";
+import {
+  orderedTimelineDateInputRange,
+  timelineCorpusFitKey,
+  timelineViewSnapshot,
+} from "./timeline";
+import {
+  fitTimelineNavigationToDateRange,
+  fitTimelineScopeToCorpus,
+  movePlayhead,
+} from "./timelineIntent";
 import {
   RIGHT_RAIL_TABS,
   type RailTabId,
@@ -286,18 +311,194 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
  * is deliberately absent — it needs the loaded tree key set, so it lives as a tree
  * control + chord where that data is in hand.
  */
-export function buildLeftRailCommands(collapseTree: () => void): PaletteCommand[] {
+export interface LeftRailCommandEffects {
+  /** Collapse the whole vault tree (scope+mode-bound, computed by the selector). */
+  collapseTree: () => void;
+  /** Reset the canonical dashboard filters to empty (scope-bound write seam). */
+  resetFilters: () => void;
+}
+
+export function buildLeftRailCommands(
+  effects: LeftRailCommandEffects,
+): PaletteCommand[] {
   const commands: unknown[] = [
     { ...newDocumentAction(), family: "app" },
     { ...browseModeAction("vault"), family: "navigate" },
     { ...browseModeAction("code"), family: "navigate" },
+    { ...toggleFacetsAction(), family: "filters" },
     {
       id: LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
       label: LEFT_RAIL_COLLAPSE_TREE_LABEL,
       family: "navigate",
-      run: collapseTree,
+      run: effects.collapseTree,
+    },
+    { ...resetFiltersAction(effects.resetFilters), family: "filters" },
+  ];
+  return normalizedPaletteCommands(commands);
+}
+
+/**
+ * The feature-archive commands: one confirm-guarded `archive feature: <tag>` per
+ * known feature, reusing the palette's arm-to-confirm destructive-op safety (the
+ * same guard the rag/core ops carry). Archiving is a vault mutation, so each is
+ * `disabledInTimeTravel`. The `archiveFeature` effect is the stores mutation,
+ * injected by the selector (the palette stays a pure projection).
+ */
+export function buildFeatureArchiveCommands(
+  featureTags: unknown,
+  archiveFeature: (feature: string) => void,
+): PaletteCommand[] {
+  const tags = normalizeCommandPaletteSourceItems(featureTags);
+  const commands: unknown[] = tags.map((feature) => ({
+    id: `archive:${feature}`,
+    label: `archive feature: ${feature}`,
+    family: "core",
+    confirm: true,
+    disabledInTimeTravel: true,
+    run: () => archiveFeature(feature),
+  }));
+  return normalizedPaletteCommands(commands);
+}
+
+/**
+ * Timeline commands on the palette. Jump-to-now docks the playhead back to LIVE
+ * (the same intent the timeline's Home key fires) — a navigate verb reachable
+ * without the timeline focused. The effect is injected by the selector so the
+ * builder stays a pure projection.
+ */
+export interface TimelineCommandEffects {
+  jumpToLive: () => void;
+  fitToCorpus: () => void;
+  setRangeDays: (days: number) => void;
+}
+
+const TIMELINE_RANGE_PRESETS: { days: number; label: string }[] = [
+  { days: 1, label: "24 hours" },
+  { days: 7, label: "7 days" },
+  { days: 30, label: "30 days" },
+  { days: 90, label: "90 days" },
+];
+
+export function buildTimelineCommands(
+  effects: TimelineCommandEffects,
+): PaletteCommand[] {
+  const commands: unknown[] = [
+    {
+      id: "timeline:jump-to-now",
+      label: "jump playhead to now",
+      family: "navigate",
+      run: effects.jumpToLive,
+    },
+    {
+      id: "timeline:fit-to-corpus",
+      label: "timeline: fit all to view",
+      family: "navigate",
+      run: effects.fitToCorpus,
+    },
+    ...TIMELINE_RANGE_PRESETS.map((preset) => ({
+      id: `timeline:range-${preset.days}d`,
+      label: `timeline: last ${preset.label}`,
+      family: "navigate",
+      run: () => effects.setRangeDays(preset.days),
+    })),
+  ];
+  return normalizedPaletteCommands(commands);
+}
+
+/**
+ * Document-editor commands on the palette. Close-document docks the open editor
+ * shut (`closeDocumentEditor`, a store-only no-op when none is open) — reachable
+ * without the editor focused. Save/edit-mode are component-coupled (they need the
+ * live draft + the write mutation) and are enrolled at the editor surface, not here.
+ */
+export function buildEditorCommands(closeDoc: () => void): PaletteCommand[] {
+  const commands: unknown[] = [
+    {
+      id: "editor:close-document",
+      label: "close the open document",
+      family: "app",
+      run: closeDoc,
     },
   ];
+  return normalizedPaletteCommands(commands);
+}
+
+/**
+ * Graph-control commands on the palette (deferral #13): the camera verbs, the
+ * freeze toggle, and reset-to-defaults — the discrete graph-control actions the
+ * GraphControls panel exposes as buttons, now reachable from cmd+K. They forward
+ * through the scene-command bridge (a no-op when the graph is not mounted). The
+ * continuous sliders (spacing/size/etc.) stay in the panel — they are not discrete
+ * commands.
+ */
+export function buildGraphCommands(opts: {
+  frozen: boolean;
+  setFrozen: (frozen: boolean) => void;
+  resetDefaults: () => void;
+}): PaletteCommand[] {
+  const commands: unknown[] = [
+    {
+      id: "graph:fit-to-view",
+      label: "graph: fit to view",
+      family: "navigate",
+      run: graphFitToView,
+    },
+    {
+      id: "graph:reset-view",
+      label: "graph: reset view",
+      family: "navigate",
+      run: graphResetView,
+    },
+    {
+      id: "graph:zoom-in",
+      label: "graph: zoom in",
+      family: "navigate",
+      run: graphZoomIn,
+    },
+    {
+      id: "graph:zoom-out",
+      label: "graph: zoom out",
+      family: "navigate",
+      run: graphZoomOut,
+    },
+    {
+      id: "graph:toggle-freeze",
+      label: opts.frozen ? "graph: unfreeze layout" : "graph: freeze layout",
+      family: "navigate",
+      run: () => opts.setFrozen(!opts.frozen),
+    },
+    {
+      id: "graph:reset-defaults",
+      label: "graph: reset controls to defaults",
+      family: "navigate",
+      run: opts.resetDefaults,
+    },
+  ];
+  return normalizedPaletteCommands(commands);
+}
+
+const THEME_PALETTE_COMMANDS: { value: string; label: string }[] = [
+  { value: "system", label: "theme: system (auto)" },
+  { value: "light", label: "theme: light" },
+  { value: "dark", label: "theme: dark" },
+  { value: "high-contrast", label: "theme: high contrast" },
+];
+
+/**
+ * Settings commands on the palette (deferral #22): pin the theme preference
+ * (system/light/dark/high-contrast) without opening the settings dialog. Writes
+ * through the engine-owned theme setting via the injected intent (settings stay
+ * schema-driven from the one registry).
+ */
+export function buildSettingsCommands(
+  setTheme: (value: string) => void,
+): PaletteCommand[] {
+  const commands: unknown[] = THEME_PALETTE_COMMANDS.map((theme) => ({
+    id: `settings:theme-${theme.value}`,
+    label: theme.label,
+    family: "app",
+    run: () => setTheme(theme.value),
+  }));
   return normalizedPaletteCommands(commands);
 }
 
@@ -581,6 +782,10 @@ export function useCommandPaletteCommandView(
   const selectNode = useDashboardNodeSelection(scope);
   const lenses = useLenses();
   const runPaletteOp = useCommandPaletteOpsRunMutation();
+  const archiveFeature = useArchiveFeature();
+  const resetFilters = useDashboardFilterSidebarIntent(scope).clearFilters;
+  const graphFrozen = useGraphControlsFrozen();
+  const setThemePreference = useThemeSettingIntent().setThemePreference;
   const shellFrame = useShellFrameView(scope);
   const shellActions = useShellWindowActions(scope, shellFrame);
   const timeTravel = timeline.opsDisabled;
@@ -622,25 +827,75 @@ export function useCommandPaletteCommandView(
       resetLayout: shellActions.resetLayout,
       showKeyboardShortcuts: openKeyboardShortcuts,
     });
-    const leftRailCommands = buildLeftRailCommands(() => {
-      const key = browserTreeExpansionKey(scope, browserMode);
-      useBrowserTreeExpansionStore.getState().collapseAll(key);
+    const leftRailCommands = buildLeftRailCommands({
+      collapseTree: () => {
+        const key = browserTreeExpansionKey(scope, browserMode);
+        useBrowserTreeExpansionStore.getState().collapseAll(key);
+      },
+      resetFilters: () => void resetFilters(),
     });
-    const all = [...baseCommands, ...windowCommands, ...leftRailCommands];
+    const archiveCommands = buildFeatureArchiveCommands(
+      vocabulary.featureTags,
+      (feature) => {
+        archiveFeature.mutate({ scope, feature });
+      },
+    );
+    const timelineCommands = buildTimelineCommands({
+      jumpToLive: () => movePlayhead("live", scope),
+      fitToCorpus: () => {
+        const width = timelineViewSnapshot().viewportWidth;
+        fitTimelineScopeToCorpus(
+          scope,
+          vocabulary.dateBounds,
+          width,
+          timelineCorpusFitKey(scope, vocabulary.dateBounds),
+        );
+      },
+      setRangeDays: (days) => {
+        const width = timelineViewSnapshot().viewportWidth;
+        const now = Date.now();
+        const toStr = new Date(now).toISOString().slice(0, 10);
+        const fromStr = new Date(now - days * 86_400_000).toISOString().slice(0, 10);
+        const range = orderedTimelineDateInputRange(fromStr, toStr);
+        if (range) fitTimelineNavigationToDateRange(range, width);
+      },
+    });
+    const editorCommands = buildEditorCommands(() => closeDocumentEditor());
+    const graphCommands = buildGraphCommands({
+      frozen: graphFrozen,
+      setFrozen: (frozen) => setGraphFrozen(frozen, scope),
+      resetDefaults: resetGraphControlsToDefaults,
+    });
+    const settingsCommands = buildSettingsCommands(setThemePreference);
+    const all = [
+      ...baseCommands,
+      ...windowCommands,
+      ...leftRailCommands,
+      ...archiveCommands,
+      ...timelineCommands,
+      ...editorCommands,
+      ...graphCommands,
+      ...settingsCommands,
+    ];
     const gated = gateCommandsForTimeTravel(all, timeTravel);
     return filterCommands(gated, normalizedQuery);
   }, [
+    archiveFeature,
     browserMode,
     dashboardFilterChoices,
+    graphFrozen,
     lensIntent,
+    resetFilters,
     lenses,
     normalizedQuery,
     runPaletteOp,
+    setThemePreference,
     shellActions,
     scope,
     selectNode,
     shellFrame,
     timeTravel,
+    vocabulary.dateBounds,
     vocabulary.featureTags,
   ]);
 

@@ -1,20 +1,24 @@
-// FilterSidebar — the stores CONTAINER for the unified filter flyout
-// (filter-controls campaign; binding Figma "graph/Filter menu" 217:633). It reads
-// canonical dashboard-state + the served filter vocabulary and feeds the dumb
-// presentational <FilterMenu/>; it never fetches and never reads a raw tiers block
-// (dashboard-layer-ownership). Delivered as an anchored flyout dropping from the
-// toolbar "Filter ▾" control — an OPAQUE overlay popover on the binding popover
-// elevation (bg-paper, not a translucent panel: a frosted/`/95` panel composites
-// see-through over the portal-pinned WebGL graph canvas and reads as broken), light-
-// dismissed on Escape or an outside pointer (the toolbar is excluded so its own
-// toggle owns open/close).
+// FilterSidebar — the stores CONTAINER for the unified ADVANCED-filter flyout
+// (filter-controls / left-rail feature-filter campaign; binding Figma
+// "graph/Filter menu" 217:633). It reads canonical dashboard-state + the served
+// filter vocabulary and feeds the dumb presentational <FilterMenu/>; it never
+// fetches and never reads a raw tiers block (dashboard-layer-ownership). Opened by
+// the rail's dedicated "Filters" button (never by focus/keyboard), it is PORTALLED
+// to <body> and positioned (fixed) to the RIGHT of that button so it flies out
+// OVER the stage — the graph and any open documents — instead of being clipped in
+// the rail column. An OPAQUE overlay (bg-paper, not a translucent panel that would
+// composite see-through over the portal-pinned WebGL graph canvas), light-dismissed
+// on Escape or an outside pointer (the button is excluded so its own toggle owns
+// open/close).
 //
-// Sections: KIND (doc types) · FEATURE (feature tags + client-side search) · STATUS
-// (lifecycle — ADR adjectives + plan meta-states) · HEALTH (validity —
-// dangling/orphaned…). STATUS/HEALTH render only when the engine serves their
-// vocabulary, so they are never dead controls. There is no date-range (EDITED)
-// control here: the timeline's interactive Setter is the sole date-range writer
-// (filter-consolidation ADR).
+// Sections: KIND (doc types) · STATUS (lifecycle — ADR adjectives + plan
+// meta-states) · HEALTH (validity — dangling/orphaned…) · EDITED (date window).
+// STATUS/HEALTH render only when the engine serves their vocabulary, so they are
+// never dead controls. FEATURE filtering is NOT here — it is authored by the rail's
+// feature search bar (filtering-has-one-canonical-surface).
+
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Popover } from "../kit";
 import { useDashboardFilterSidebarIntent } from "../../stores/server/dashboardFilterSidebarIntent";
@@ -26,10 +30,7 @@ import {
   type DashboardEditedWindow,
 } from "../../stores/server/queries";
 import {
-  clearFilterSidebarFeatureSearch,
   deriveFilterSidebarMenuSections,
-  setFilterSidebarFeatureSearch,
-  useFilterSidebarFeatureSearch,
   useFilterSidebarVisualState,
 } from "../../stores/view/filterSidebar";
 import { FilterMenu } from "./FilterMenu";
@@ -48,14 +49,51 @@ export interface FilterSidebarProps {
   hidden: { nodes: number; edges: number };
 }
 
+/** Gap (px) between the Filters button and the flyout's left edge. */
+const FLYOUT_ANCHOR_GAP = 8;
+
+interface FlyoutAnchor {
+  top: number;
+  left: number;
+}
+
+/** Track the rail Filters button's viewport rect while the flyout is open so the
+ *  portalled (fixed) panel stays pinned to the RIGHT of the button across scroll
+ *  and resize. Returns null until the trigger is measured. */
+function useFlyoutAnchor(open: boolean): FlyoutAnchor | null {
+  const [anchor, setAnchor] = useState<FlyoutAnchor | null>(null);
+  useEffect(() => {
+    if (!open) {
+      setAnchor(null);
+      return;
+    }
+    const update = () => {
+      const trigger = document.querySelector("[data-rail-filter-trigger]");
+      if (!trigger) {
+        setAnchor(null);
+        return;
+      }
+      const rect = trigger.getBoundingClientRect();
+      setAnchor({ top: rect.top, left: rect.right + FLYOUT_ANCHOR_GAP });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
+  return anchor;
+}
+
 export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
   const vocabulary = useFiltersVocabularyView(scope);
   const filterView = useDashboardFilterSidebarView(scope);
   const filterIntent = useDashboardFilterSidebarIntent(scope);
   const rangeIntent = useDateRangeIntent(scope);
-  const featureSearch = useFilterSidebarFeatureSearch();
-  // Reset the disclosure/search store when the scoped vocabulary changes so the
-  // feature search never rides across a different corpus.
+  // Reset the disclosure store when the scoped vocabulary changes so the flyout's
+  // visual state never rides across a different corpus.
   const visualStateKey = useFilterSidebarVisualState(
     scope,
     vocabulary.docTypes,
@@ -64,12 +102,11 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
     vocabulary.health,
   );
   const presentation = filterView.presentation;
+  const anchor = useFlyoutAnchor(open);
 
   const sections = deriveFilterSidebarMenuSections({
     vocabulary,
     filterView,
-    featureSearch,
-    onFeatureSearchChange: setFilterSidebarFeatureSearch,
     onToggleFacet: (facet, value) => void filterIntent.toggleFacet(facet, value),
     // EDITED date-range radios: "Any time" clears the range; a window maps to its
     // canonical {from,to} and writes through the date-range intent (the rail is the
@@ -85,12 +122,13 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
     },
   });
 
-  if (!open) return null;
+  if (!open || anchor === null) return null;
 
-  return (
-    // The shared kit Popover owns the light-dismiss wiring (Escape + outside
-    // pointer); `ignoreSelector` excludes the external rail filter trigger so it
-    // owns its own open/close without a dismiss-then-reopen race.
+  // Portalled to <body> so the fixed panel escapes the rail column's clipping and
+  // overlays the stage. The shared kit Popover owns the light-dismiss wiring
+  // (Escape + outside pointer); `ignoreSelector` excludes the rail Filters button
+  // so its own toggle owns open/close without a dismiss-then-reopen race.
+  return createPortal(
     <Popover
       open={open}
       onDismiss={onClose}
@@ -99,6 +137,7 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
       aria-label={presentation.panelAriaLabel}
       aria-modal={false}
       className={presentation.panelClassName}
+      style={{ top: anchor.top, left: anchor.left }}
       data-filter-sidebar
     >
       <FilterMenu
@@ -108,11 +147,11 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
         onClearAll={() => {
           void filterIntent.clearFilters();
           void rangeIntent.clearRange();
-          clearFilterSidebarFeatureSearch();
         }}
         sections={sections}
         maxHeight="calc(100vh - 3.5rem)"
       />
-    </Popover>
+    </Popover>,
+    document.body,
   );
 }

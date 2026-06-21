@@ -36,6 +36,7 @@ import {
   normalizeDashboardRepresentationMode,
   normalizeDashboardSalienceLens,
   normalizeDashboardSelectedIds,
+  normalizeDashboardFeatureQuery,
   normalizeDashboardTextFilter,
   normalizeDashboardTimelineMode,
 } from "./dashboardStateNormalization";
@@ -359,6 +360,17 @@ export function dashboardFiltersWithText(
   return next;
 }
 
+export function dashboardFiltersWithFeatureQuery(
+  filters: DashboardFilters,
+  query: unknown,
+): DashboardFilters {
+  const next = cloneDashboardFilters(filters);
+  const normalized = normalizeDashboardFeatureQuery(query);
+  if (normalized) next.feature_query = normalized;
+  else delete next.feature_query;
+  return next;
+}
+
 export function dashboardFiltersWithTier(
   filters: unknown,
   tier: unknown,
@@ -575,6 +587,15 @@ export function useDashboardStateMutations(scope: unknown) {
           : cachedDashboardFilters(client, normalizedScope, sessionIdentity);
       return mutation.mutateAsync(
         filtersPatch(dashboardFiltersWithText(filters, text)),
+      );
+    },
+    setFeatureQuery: (query: unknown) => {
+      const filters =
+        normalizedScope === null
+          ? {}
+          : cachedDashboardFilters(client, normalizedScope, sessionIdentity);
+      return mutation.mutateAsync(
+        filtersPatch(dashboardFiltersWithFeatureQuery(filters, query)),
       );
     },
     toggleFilterFacet: (facet: unknown, value: unknown) => {

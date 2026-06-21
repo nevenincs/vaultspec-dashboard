@@ -71,6 +71,24 @@ describe("useDateRangeIntent", () => {
     await expect(result.current.clearRange()).resolves.toBeNull();
   });
 
+  it("keeps date-range intent callbacks stable across unchanged-scope rerenders", () => {
+    const client = testQueryClient();
+    const { result, rerender } = renderHook(
+      ({ scope }: { scope: unknown }) => useDateRangeIntent(scope),
+      { initialProps: { scope: " scope-a " }, wrapper: wrapper(client) },
+    );
+
+    const firstIntent = result.current;
+    const firstSetRange = result.current.setRange;
+    const firstClearRange = result.current.clearRange;
+
+    rerender({ scope: "scope-a" });
+
+    expect(result.current).toBe(firstIntent);
+    expect(result.current.setRange).toBe(firstSetRange);
+    expect(result.current.clearRange).toBe(firstClearRange);
+  });
+
   it("drops malformed range payloads at the intent seam", async () => {
     const client = testQueryClient();
     const { result } = renderHook(() => useDateRangeIntent(null), {

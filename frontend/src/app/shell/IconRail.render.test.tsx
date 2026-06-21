@@ -9,7 +9,7 @@ import { IconRail } from "./IconRail";
 afterEach(cleanup);
 
 describe("IconRail", () => {
-  it("renders the collapsed left rail as Vault and Code only", () => {
+  it("renders the collapsed left rail with the browser-mode labels", () => {
     const selected: BrowserMode[] = [];
     render(<IconRail active="vault" onSelect={(mode) => selected.push(mode)} />);
 
@@ -17,9 +17,9 @@ describe("IconRail", () => {
     const buttons = Array.from(nav.querySelectorAll("button")).map((button) =>
       button.getAttribute("aria-label"),
     );
-    expect(buttons).toEqual(["Vault", "Code"]);
+    expect(buttons).toEqual(["Vault", "Files"]);
 
-    fireEvent.click(screen.getByRole("button", { name: "Code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Files" }));
     expect(selected).toEqual(["code"]);
   });
 });

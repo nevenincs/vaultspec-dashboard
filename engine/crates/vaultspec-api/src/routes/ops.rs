@@ -540,7 +540,7 @@ async fn run_git_bounded(
     args: &[String],
     timeout: Duration,
     cap: u64,
-) -> Result<String, (StatusCode, Json<Value>)> {
+) -> Result<(String, bool), (StatusCode, Json<Value>)> {
     let cwd = cell.root.clone();
     let mut child = tokio::process::Command::new(&program[0])
         .args(&program[1..])
@@ -582,32 +582,32 @@ async fn run_git_bounded(
             format!("reading {} output: {e}", program[0]),
         )
     })?;
-    if buf.len() as u64 >= cap {
+    // Cap reached: stop the child and return the BOUNDED PARTIAL rather than
+    // failing the whole read with a 502. The caller marks the response truncated
+    // so the client degrades honestly (shows what it got + a truncation notice)
+    // instead of rendering a healthy-looking transport error. A read that stayed
+    // under the cap still has its exit status checked — a genuine git fault is a
+    // degraded error, not a silent empty result.
+    let truncated = buf.len() as u64 >= cap;
+    if truncated {
         let _ = child.kill().await;
-        return Err(super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!(
-                "{} produced over {cap} bytes of output (capped)",
-                program[0]
-            ),
-        ));
+    } else {
+        let status = child.wait().await.map_err(|e| {
+            super::api_error(
+                state,
+                StatusCode::BAD_GATEWAY,
+                format!("awaiting {} exit: {e}", program[0]),
+            )
+        })?;
+        if !status.success() {
+            return Err(super::api_error(
+                state,
+                StatusCode::BAD_GATEWAY,
+                format!("{} exited {:?}", program[0], status.code()),
+            ));
+        }
     }
-    let status = child.wait().await.map_err(|e| {
-        super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!("awaiting {} exit: {e}", program[0]),
-        )
-    })?;
-    if !status.success() {
-        return Err(super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!("{} exited {:?}", program[0], status.code()),
-        ));
-    }
-    Ok(String::from_utf8_lossy(&buf).to_string())
+    Ok((String::from_utf8_lossy(&buf).to_string(), truncated))
 }
 
 /// Locate the rag CLI: PATH binary, else the uv-managed environment.
@@ -1600,7 +1600,7 @@ pub async fn ops_git(
         }
     };
     let args = git_args_for(&state, name, fixed, path.as_deref(), revs)?;
-    let output = run_git_bounded(
+    let (output, truncated) = run_git_bounded(
         &state,
         &cell,
         &git_invocation(),
@@ -1609,17 +1609,28 @@ pub async fn ops_git(
         SIBLING_STDOUT_CAP,
     )
     .await?;
+    // Honest bounded-output block when git exceeded the stdout cap: the client
+    // renders the partial it got plus a truncation notice rather than a transport
+    // error (graph-queries-are-bounded-by-default applied to the git pass-through).
+    let truncated_block = truncated.then(|| {
+        json!({
+            "returned_chars": output.len(),
+            "reason": format!(
+                "git output exceeded {SIBLING_STDOUT_CAP} bytes; bounded to the cap — narrow the request"
+            ),
+        })
+    });
     // S15: the success envelope carries the per-tier degradation block through
     // the shared `envelope` helper, and every error path above degrades through
     // `api_error` (which always attaches the tiers block) — so the historical
     // diff route, like every other front door, carries tiers on success AND
     // error (every-wire-response-carries-the-tiers-block). No body is ever
     // hand-built; the histdiff verb shares this single envelope construction.
-    Ok(super::envelope(
-        json!({"verb": name, "output": output}),
-        super::query_tiers(&cell),
-        None,
-    ))
+    let mut data = json!({"verb": name, "output": output});
+    if let Some(block) = truncated_block {
+        data["truncated"] = block;
+    }
+    Ok(super::envelope(data, super::query_tiers(&cell), None))
 }
 
 #[derive(serde::Deserialize)]

@@ -65,6 +65,24 @@ describe("useDashboardFilterSidebarIntent", () => {
     await expect(result.current.clearFilters()).resolves.toBeNull();
   });
 
+  it("keeps filter-sidebar intent callbacks stable across unchanged-scope rerenders", () => {
+    const client = testQueryClient();
+    const { result, rerender } = renderHook(
+      ({ scope }: { scope: unknown }) => useDashboardFilterSidebarIntent(scope),
+      { initialProps: { scope: " scope-a " }, wrapper: wrapper(client) },
+    );
+
+    const firstIntent = result.current;
+    const firstToggleFacet = result.current.toggleFacet;
+    const firstClearFilters = result.current.clearFilters;
+
+    rerender({ scope: "scope-a" });
+
+    expect(result.current).toBe(firstIntent);
+    expect(result.current.toggleFacet).toBe(firstToggleFacet);
+    expect(result.current.clearFilters).toBe(firstClearFilters);
+  });
+
   it("accepts trimmed scopes for canonical dashboard filter writes", async () => {
     const scope = await liveScope();
     cleanupScope = scope;

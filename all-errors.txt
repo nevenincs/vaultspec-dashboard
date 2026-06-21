@@ -1,0 +1,195 @@
+Total messages: 78 (Errors: 24, Warnings: 8)
+Returning 104 messages for level "error"
+
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-12-dashboard-gui-W02-P08-S32 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-audit @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-research @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-14-dashboard-timeline-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-W03-P05-S32 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-plan @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-16-figma-parity-reconciliation-W02-P06-S35 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-W02-P04-S26 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-12-dashboard-gui-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-12-dashboard-gui-W02-P08-S32 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-audit @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-research @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-14-dashboard-timeline-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-W03-P05-S32 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-plan @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-16-figma-parity-reconciliation-W02-P06-S35 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-W02-P04-S26 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-12-dashboard-gui-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-12-dashboard-gui-W02-P08-S32 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-audit @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-research @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-14-dashboard-timeline-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-W03-P05-S32 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-plan @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-16-figma-parity-reconciliation-W02-P06-S35 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-W02-P04-S26 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-12-dashboard-gui-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-12-dashboard-gui-W02-P08-S32 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-audit @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-research @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-14-dashboard-timeline-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-W03-P05-S32 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-plan @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-16-figma-parity-reconciliation-W02-P06-S35 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-W02-P04-S26 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-12-dashboard-gui-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-12-dashboard-gui-W02-P08-S32 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-audit @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-research @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-14-dashboard-timeline-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-W03-P05-S32 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-plan @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-16-figma-parity-reconciliation-W02-P06-S35 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-15-dashboard-timeline-W02-P04-S26 @ http://localhost:5174/@vite/client:524
+[ERROR] Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. doc:2026-06-12-dashboard-gui-adr @ http://localhost:5174/@vite/client:524
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] [policy] unclassified failure {name: AbortError, message: signal is aborted without reason, stack: AbortError: signal is aborted without reason
+    a…/stores/server/queries.ts?t=1781974236172:3246:55} @ http://localhost:5174/@vite/client:524
+[ERROR] [policy] unclassified failure {name: AbortError, message: signal is aborted without reason, stack: AbortError: signal is aborted without reason
+    a…/stores/server/queries.ts?t=1781974236172:3246:55} @ http://localhost:5174/@vite/client:524
+[ERROR] Failed to load resource: the server responded with a status of 502 (OK) @ http://localhost:5174/api/stream?channels=graph&since=552182&scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://localhost:5174/api/stream?channels=graph&since=552182&scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ http://localhost:5174/api/stream?channels=graph&since=552182&scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] [policy] unclassified failure {name: AbortError, message: signal is aborted without reason, stack: AbortError: signal is aborted without reason
+    a…/stores/server/queries.ts?t=1781974236172:3246:55} @ http://localhost:5174/@vite/client:524
+[ERROR] [policy] unclassified failure {name: AbortError, message: signal is aborted without reason, stack: AbortError: signal is aborted without reason
+    a…/stores/server/queries.ts?t=1781974236172:3246:55} @ http://localhost:5174/@vite/client:524
+[ERROR] %o
+
+%s
+
+%s
+ TypeError: registerVisibleKey is not a function
+    at Section (http://localhost:5174/src/app/left/TreeBrowser.tsx?t=1781974475083:260:19)
+    at Object.react_stack_bottom_frame (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:12868:12)
+    at renderWithHooks (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:4213:19)
+    at updateFunctionComponent (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:5569:16)
+    at beginWork (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:6140:20)
+    at runWithFiberInDEV (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:851:66)
+    at performUnitOfWork (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8429:92)
+    at workLoopSync (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8325:37)
+    at renderRootSync (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8309:6)
+    at performWorkOnRoot (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:7994:27) The above error occurred in the <Section> component. React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:5174/@vite/client:524
+[ERROR] [boundary] uncaught render error in region "left-rail" {name: TypeError, message: registerVisibleKey is not a function, stack: TypeError: registerVisibleKey is not a function
+  …vite/deps/react-dom_client.js?v=69636c7e:7994:27)} @ http://localhost:5174/@vite/client:524
+[ERROR] %o
+
+%s
+
+%s
+ TypeError: registerVisibleKey is not a function
+    at Section (http://localhost:5174/src/app/left/TreeBrowser.tsx?t=1781974485727:260:19)
+    at Object.react_stack_bottom_frame (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:12868:12)
+    at renderWithHooks (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:4213:19)
+    at updateFunctionComponent (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:5569:16)
+    at beginWork (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:6140:20)
+    at runWithFiberInDEV (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:851:66)
+    at performUnitOfWork (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8429:92)
+    at workLoopSync (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8325:37)
+    at renderRootSync (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8309:6)
+    at performWorkOnRoot (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:7994:27) The above error occurred in the <Section> component. React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:5174/@vite/client:524
+[ERROR] [boundary] uncaught render error in region "left-rail" {name: TypeError, message: registerVisibleKey is not a function, stack: TypeError: registerVisibleKey is not a function
+  …vite/deps/react-dom_client.js?v=69636c7e:7994:27)} @ http://localhost:5174/@vite/client:524
+[ERROR] %o
+
+%s
+
+%s
+ TypeError: registerVisibleKey is not a function
+    at Section (http://localhost:5174/src/app/left/TreeBrowser.tsx?t=1781974490021:260:19)
+    at Object.react_stack_bottom_frame (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:12868:12)
+    at renderWithHooks (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:4213:19)
+    at updateFunctionComponent (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:5569:16)
+    at beginWork (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:6140:20)
+    at runWithFiberInDEV (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:851:66)
+    at performUnitOfWork (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8429:92)
+    at workLoopSync (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8325:37)
+    at renderRootSync (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8309:6)
+    at performWorkOnRoot (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:7994:27) The above error occurred in the <Section> component. React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:5174/@vite/client:524
+[ERROR] [boundary] uncaught render error in region "left-rail" {name: TypeError, message: registerVisibleKey is not a function, stack: TypeError: registerVisibleKey is not a function
+  …vite/deps/react-dom_client.js?v=69636c7e:7994:27)} @ http://localhost:5174/@vite/client:524
+[ERROR] %o
+
+%s
+
+%s
+ TypeError: registerVisibleKey is not a function
+    at Section (http://localhost:5174/src/app/left/TreeBrowser.tsx?t=1781974494133:260:19)
+    at Object.react_stack_bottom_frame (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:12868:12)
+    at renderWithHooks (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:4213:19)
+    at updateFunctionComponent (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:5569:16)
+    at beginWork (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:6140:20)
+    at runWithFiberInDEV (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:851:66)
+    at performUnitOfWork (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8429:92)
+    at workLoopSync (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8325:37)
+    at renderRootSync (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8309:6)
+    at performWorkOnRoot (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:7994:27) The above error occurred in the <Section> component. React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:5174/@vite/client:524
+[ERROR] [boundary] uncaught render error in region "left-rail" {name: TypeError, message: registerVisibleKey is not a function, stack: TypeError: registerVisibleKey is not a function
+  …vite/deps/react-dom_client.js?v=69636c7e:7994:27)} @ http://localhost:5174/@vite/client:524
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] %o
+
+%s
+
+%s
+ TypeError: registerVisibleKey is not a function
+    at Section (http://localhost:5174/src/app/left/TreeBrowser.tsx?t=1781974501688:264:19)
+    at Object.react_stack_bottom_frame (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:12868:12)
+    at renderWithHooks (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:4213:19)
+    at updateFunctionComponent (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:5569:16)
+    at beginWork (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:6140:20)
+    at runWithFiberInDEV (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:851:66)
+    at performUnitOfWork (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8429:92)
+    at workLoopSync (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8325:37)
+    at renderRootSync (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:8309:6)
+    at performWorkOnRoot (http://localhost:5174/node_modules/.vite/deps/react-dom_client.js?v=69636c7e:7994:27) The above error occurred in the <Section> component. React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:5174/@vite/client:524
+[ERROR] [boundary] uncaught render error in region "left-rail" {name: TypeError, message: registerVisibleKey is not a function, stack: TypeError: registerVisibleKey is not a function
+  …vite/deps/react-dom_client.js?v=69636c7e:7994:27)} @ http://localhost:5174/@vite/client:524
+[ERROR] [policy] unclassified failure {name: AbortError, message: signal is aborted without reason, stack: AbortError: signal is aborted without reason
+    a…/stores/server/queries.ts?t=1781974236172:3246:55} @ http://localhost:5174/@vite/client:524
+[ERROR] [policy] unclassified failure {name: AbortError, message: signal is aborted without reason, stack: AbortError: signal is aborted without reason
+    a…/stores/server/queries.ts?t=1781974236172:3246:55} @ http://localhost:5174/@vite/client:524
+[ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:5174/api/nodes/code%3Aengine%2Fcrates%2Fengine-query%2Ftests%2Fbridge_dead_end_repro.rs/content?scope=Y%3A%2Fcode%2Fvaultspec-dashboard-worktrees%2Fmain:0
+[ERROR] [policy] unclassified failure {name: AbortError, message: signal is aborted without reason, stack: AbortError: signal is aborted without reason
+    a…/stores/server/queries.ts?t=1781974236172:3246:55} @ http://localhost:5174/@vite/client:524
+[ERROR] [policy] unclassified failure {name: AbortError, message: signal is aborted without reason, stack: AbortError: signal is aborted without reason
+    a…/stores/server/queries.ts?t=1781974236172:3246:55} @ http://localhost:5174/@vite/client:524
+The requested module '/src/app/stage/GraphControls.tsx?t=1781974029023' does not provide an export named 'GraphNavButtons'
+The requested module '/src/app/stage/GraphControls.tsx?t=1781974058625' does not provide an export named 'GraphNavButtons'
+The requested module '/src/app/stage/GraphControls.tsx?t=1781974072150' does not provide an export named 'GraphNavButtons'
+The requested module '/src/app/stage/GraphControls.tsx?t=1781974086732' does not provide an export named 'GraphNavButtons'

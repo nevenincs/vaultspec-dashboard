@@ -1,11 +1,12 @@
 // The browser-region mode toggle (binding Figma `LeftRail` 244:750 — the
-// "Vault / Code" SegmentedToggle). Re-skinned (W02.P04.S07) onto the
+// "Vault / Files" SegmentedToggle). Re-skinned (W02.P04.S07) onto the
 // centralized kit `SegmentedToggle` + `Segment` (board "Design System —
 // Components" 135:2) so the control is a real shared definition, not a
 // per-surface hand-built tablist (design-system-is-centralized). It switches the
 // file-thinking surface between its TWO modes — VAULT (the `/vault-tree`
 // projection nested feature → doc_type → document, the default) and CODE (the
-// `/file-tree` projection). The chosen mode is view-local state re-keyed per scope
+// `/file-tree` projection; internal id `code`, user-facing label `Files`). The
+// chosen mode is view-local state re-keyed per scope
 // (`stores/view/browserMode`), so it never bleeds across a swap.
 //
 // Read-only navigation law: this is a view-local affordance only — it emits no

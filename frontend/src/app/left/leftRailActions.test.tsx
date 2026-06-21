@@ -7,14 +7,19 @@ import { getKeybinding, resetKeybindings } from "../../platform/keymap/registry"
 import { resetKeyActions, resolveKeyAction } from "../../stores/view/keymapDispatcher";
 
 // The browser-mode store is real (a tiny zustand store with no wire); the
-// canonical text-filter draft and the active scope are mocked so the action run
+// canonical feature-filter draft and the active scope are mocked so the action run
 // closures can be observed without a query client.
 const clear = vi.fn();
 vi.mock("../../stores/server/queries", () => ({
   useActiveScope: () => "scope-a",
 }));
-vi.mock("../../stores/view/dashboardTextFilter", () => ({
-  useDashboardTextFilterDraft: () => ({ value: "", setValue: vi.fn(), clear }),
+vi.mock("../../stores/view/dashboardFeatureFilter", () => ({
+  useDashboardFeatureFilterDraft: () => ({
+    value: "",
+    setValue: vi.fn(),
+    commit: vi.fn(),
+    clear,
+  }),
 }));
 // The filter-sidebar intent reaches the query client; stub it so the keybinding
 // hook can register without a QueryClientProvider (matching the mocks above).
@@ -83,7 +88,7 @@ describe("useLeftRailKeybindings", () => {
     expect(useBrowserModeStore.getState().mode).toBe("vault");
   });
 
-  it("clear-filter invokes the canonical text-filter clear intent", () => {
+  it("clear-filter invokes the canonical feature-filter clear intent", () => {
     renderHook(() => useLeftRailKeybindings());
     resolveKeyAction(LEFT_RAIL_CLEAR_FILTER_ACTION_ID)!.run!();
     expect(clear).toHaveBeenCalledTimes(1);
@@ -91,7 +96,7 @@ describe("useLeftRailKeybindings", () => {
 
   it("focus-filter focuses the rendered rail filter input", () => {
     const wrapper = document.createElement("div");
-    wrapper.setAttribute("data-rail-filter", "");
+    wrapper.setAttribute("data-rail-filter-area", "");
     const input = document.createElement("input");
     input.setAttribute("data-kit-search-input", "");
     wrapper.appendChild(input);

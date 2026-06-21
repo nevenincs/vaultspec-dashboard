@@ -9,7 +9,7 @@ import { Crosshair } from "lucide-react";
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
 import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
-import type { ActionResolver } from "../../../platform/actions/registry";
+import type { ActionContext, ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
 import {
   openInEditorAction,
@@ -17,6 +17,7 @@ import {
 } from "../../../platform/actions/shellActions";
 import { newDocumentAction } from "../../../stores/view/leftRailKeybindings";
 import { focusMenuNode } from "../../../stores/view/menuActions";
+import { relateToSelectionAction } from "../../menus/sharedActions";
 
 /**
  * The menu for a vault document row. "Focus on stage" selects the document's
@@ -25,7 +26,7 @@ import { focusMenuNode } from "../../../stores/view/menuActions";
  * document's path. Focus is navigation (non-mutating) — it shares the one
  * selection store the browser row click uses, so no `disabledInTimeTravel`.
  */
-export function vaultDocMenu(entity: unknown): ActionDescriptor[] {
+export function vaultDocMenu(entity: unknown, ctx?: ActionContext): ActionDescriptor[] {
   const normalizedEntity = normalizeEntityDescriptor(entity);
   if (normalizedEntity?.kind !== "vault-doc") return [];
 
@@ -54,6 +55,13 @@ export function vaultDocMenu(entity: unknown): ActionDescriptor[] {
       label: "Copy stem",
       text: normalizedEntity.stem,
       what: "stem",
+    }),
+    // Add a related: edge from this document to the focused node (vault link add).
+    relateToSelectionAction({
+      id: "vault-doc:relate",
+      srcStem: normalizedEntity.stem,
+      scope: normalizedEntity.scope,
+      ctx,
     }),
     // Create a new vault document (vaultspec-core vault add) — the rail is the home
     // for creation now that the stage create affordance is retired. Opens the

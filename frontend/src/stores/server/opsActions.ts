@@ -10,6 +10,8 @@ import {
   engineClient,
   type OpsArchiveBody,
   type OpsCreateBody,
+  type OpsAutofixBody,
+  type OpsLinkBody,
   type OpsResult,
   type OpsWriteBody,
 } from "./engine";
@@ -28,11 +30,12 @@ export interface OpsPayload {
    * (default) runs the argument-free `opsCore` control verb; `write` runs a
    * document mutation (`set-body` | `set-frontmatter` | `edit` | `rename`) against
    * `/ops/core/{verb}/write`; `create` runs `/ops/core/create`; `archive` runs
-   * `/ops/core/archive` (feature-scoped `vault feature archive`). The write/create/
-   * archive modes carry their payload in `body`. A `rag` target ignores `mode` (it
-   * always forwards `body` to the brokered control verb).
+   * `/ops/core/archive` (feature-scoped `vault feature archive`); `link` runs
+   * `/ops/core/link` (`vault link add <src> <dst>`). The write/create/archive/link
+   * modes carry their payload in `body`. A `rag` target ignores `mode` (it always
+   * forwards `body` to the brokered control verb).
    */
-  mode?: "control" | "write" | "create" | "archive";
+  mode?: "control" | "write" | "create" | "archive" | "link" | "autofix";
   /** Optional validated args. For a `rag` control verb: the reindex/watcher/evict
    *  args (rag-control-plane). For a `core` `write`/`create` mode: the
    *  `OpsWriteBody` / `OpsCreateBody` document-mutation payload. Absent for an
@@ -66,14 +69,11 @@ const OPS_RAG_CONTROL_VERBS = new Set([
   "project-evict",
 ]);
 
-const OPS_CORE_WRITE_VERBS = new Set([
-  "set-body",
-  "set-frontmatter",
-  "edit",
-  "rename",
-]);
+const OPS_CORE_WRITE_VERBS = new Set(["set-body", "set-frontmatter", "edit", "rename"]);
 const OPS_CORE_CREATE_VERB = "create";
 const OPS_CORE_ARCHIVE_VERB = "feature-archive";
+const OPS_CORE_LINK_VERB = "link-add";
+const OPS_CORE_AUTOFIX_VERB = "autofix";
 
 export function isOpsWhitelistIntent(
   payload: Pick<OpsPayload, "target" | "verb">,
@@ -121,7 +121,9 @@ function isOpsMode(value: unknown): value is NonNullable<OpsPayload["mode"]> {
     value === "control" ||
     value === "write" ||
     value === "create" ||
-    value === "archive"
+    value === "archive" ||
+    value === "link" ||
+    value === "autofix"
   );
 }
 
@@ -192,6 +194,20 @@ function isOpsArchiveBody(body: unknown): body is OpsArchiveBody {
   return isNonEmptyString(body.feature) && isOptionalString(body.scope);
 }
 
+function isOpsLinkBody(body: unknown): body is OpsLinkBody {
+  if (!isRecord(body)) return false;
+  return (
+    isNonEmptyString(body.src) &&
+    isNonEmptyString(body.dst) &&
+    isOptionalString(body.scope)
+  );
+}
+
+function isOpsAutofixBody(body: unknown): body is OpsAutofixBody {
+  if (!isRecord(body)) return false;
+  return isNonEmptyString(body.feature) && isOptionalString(body.scope);
+}
+
 function isEmptyOpsBody(body: unknown): boolean {
   return body === undefined || (isRecord(body) && Object.keys(body).length === 0);
 }
@@ -225,8 +241,7 @@ function isOpsRagControlBodyForVerb(verb: string, body: unknown): boolean {
     if (!hasOnlyKeys(body, ["debounce_ms", "cooldown_s"])) return false;
     return (
       (body.debounce_ms === undefined ||
-        (typeof body.debounce_ms === "number" &&
-          Number.isFinite(body.debounce_ms))) &&
+        (typeof body.debounce_ms === "number" && Number.isFinite(body.debounce_ms))) &&
       (body.cooldown_s === undefined ||
         (typeof body.cooldown_s === "number" && Number.isFinite(body.cooldown_s)))
     );
@@ -248,13 +263,21 @@ export function isOpsDispatchIntent(payload: unknown): payload is OpsPayload {
   const mode = payload.mode;
   if (target === "core") {
     if (mode === "write") {
-      return OPS_CORE_WRITE_VERBS.has(verb) && isOpsWriteBodyForVerb(verb, payload.body);
+      return (
+        OPS_CORE_WRITE_VERBS.has(verb) && isOpsWriteBodyForVerb(verb, payload.body)
+      );
     }
     if (mode === "create") {
       return verb === OPS_CORE_CREATE_VERB && isOpsCreateBody(payload.body);
     }
     if (mode === "archive") {
       return verb === OPS_CORE_ARCHIVE_VERB && isOpsArchiveBody(payload.body);
+    }
+    if (mode === "link") {
+      return verb === OPS_CORE_LINK_VERB && isOpsLinkBody(payload.body);
+    }
+    if (mode === "autofix") {
+      return verb === OPS_CORE_AUTOFIX_VERB && isOpsAutofixBody(payload.body);
     }
     return isOpsWhitelistIntent({ target, verb });
   }
@@ -296,6 +319,10 @@ appDispatcher.register<OpsPayload>(OPS_ACTION, (action) => {
       return engineClient.opsCoreCreate(payload.body as OpsCreateBody);
     case "archive":
       return engineClient.opsCoreArchive(payload.body as OpsArchiveBody);
+    case "link":
+      return engineClient.opsCoreLink(payload.body as OpsLinkBody);
+    case "autofix":
+      return engineClient.opsCoreAutofix(payload.body as OpsAutofixBody);
     default:
       return engineClient.opsCore(payload.verb);
   }

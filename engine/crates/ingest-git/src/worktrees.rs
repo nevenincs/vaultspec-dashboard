@@ -210,6 +210,28 @@ fn ahead_behind(repo: &gix::Repository, head_ref: &Option<String>) -> (Option<u3
     try_ahead_behind(repo, head_ref).unwrap_or((None, None))
 }
 
+/// Bound for the ahead/behind cache (bounded-by-default-for-every-accumulator):
+/// the live working set is one pair per active branch, but distinct (head,
+/// upstream) pairs accumulate as commits land. Cap the map and clear it wholesale
+/// on overflow — every retained entry stays exactly correct (the counts for a
+/// commit-OID pair are immutable), so a cold rebuild after a clear is free of
+/// staleness, only of a recompute.
+const AHEAD_BEHIND_CACHE_CAP: usize = 512;
+
+/// Cache keyed on the immutable `(head_oid, upstream_oid)` pair: ahead/behind
+/// counts are a pure function of the two commit tips and the repo's object DB
+/// (shared across a repo's worktrees), so the same pair always yields the same
+/// counts. A tip moving produces a new key (miss → recompute); moving back to a
+/// seen pair hits with the correct value.
+fn ahead_behind_cache()
+-> &'static std::sync::Mutex<std::collections::HashMap<(gix::ObjectId, gix::ObjectId), (u32, u32)>>
+{
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<(gix::ObjectId, gix::ObjectId), (u32, u32)>>,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
 fn try_ahead_behind(
     repo: &gix::Repository,
     head_ref: &Option<String>,
@@ -237,6 +259,16 @@ fn try_ahead_behind(
 
     if head_id == upstream_id {
         return Some((Some(0), Some(0)));
+    }
+
+    // Serve a cached result for this exact tip pair before the O(history) walk.
+    let cache_key = (head_id, upstream_id);
+    if let Some(&(ahead, behind)) = ahead_behind_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&cache_key)
+    {
+        return Some((Some(ahead), Some(behind)));
     }
 
     // Build reachability sets then diff them.  O(history) per side — acceptable

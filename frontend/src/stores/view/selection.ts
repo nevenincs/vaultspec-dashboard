@@ -180,19 +180,11 @@ export function isNodeIslandOpen(id: unknown): boolean {
   );
 }
 
-// Selections originating on the stage must not re-focus the camera the
-// user is already pointing at — only cross-region selections focus.
-let sceneOriginated = false;
-
 type SceneOriginMarker = (originated?: boolean) => void;
 type SceneOriginRef = { current: boolean };
 
 function markSceneOriginated(mark?: SceneOriginMarker, originated = true): void {
-  if (mark) {
-    mark(originated);
-    return;
-  }
-  sceneOriginated = originated;
+  mark?.(originated);
 }
 
 /** The stage's own event path: select without bouncing focus back. */
@@ -308,10 +300,16 @@ export async function focusFromWalk(
   const nodeId = normalizeNodeId(id);
   if (id !== null && nodeId === null) return false;
   const normalizedScope = normalizeSelectionScope(scope);
-  if (nodeId !== null && normalizedScope === null) return false;
   markSceneOriginated(mark);
+  // The keyboard-walk camera re-center (HIGH-2) is a pure scene move: it must
+  // fire on the walked node regardless of whether the selection write can
+  // proceed, so the node re-centers INSTANTLY even before scope resolves.
   if (nodeId !== null) {
     scene.command({ kind: "focus-node", id: nodeId, animate: false });
+  }
+  if (nodeId !== null && normalizedScope === null) {
+    markSceneOriginated(mark, false);
+    return false;
   }
   try {
     const accepted = await selectNode(nodeId, normalizedScope);
@@ -427,47 +425,5 @@ export function selectNodeAndPulse(
   return selectNode(nodeId, scope).then((selected) => {
     if (selected) pulseSelectionNodes(scene, pulseIds);
     return selected;
-  });
-}
-
-/**
- * Bind local event/edge selection metadata to the scene. Canonical dashboard
- * node selection is projected by `projectDashboardSelectionToScene`; this seam
- * mirrors only local metadata that has not moved to the backend schema yet.
- */
-export function bindSelectionToScene(scene: SceneController): () => void {
-  let last: Selection = useViewStore.getState().selection;
-  /** Event-carried node ids currently ringed on the canvas. */
-  const pushSelected = (selection: Selection): void => {
-    let ids: ReadonlySet<string>;
-    if (!selection) {
-      ids = new Set();
-    } else if (selection.kind === "event") {
-      ids = new Set(selection.nodeIds);
-    } else {
-      ids = new Set();
-    }
-    scene.command({ kind: "set-selected", ids });
-  };
-  return useViewStore.subscribe((state) => {
-    if (state.selection === last) {
-      // A no-op selection (e.g. a stage deselect while already cleared) still
-      // consumes a pending scene-origin suppression, so it cannot leak onto
-      // the next genuine cross-region selection and swallow its focus (G2.b).
-      sceneOriginated = false;
-      return;
-    }
-    last = state.selection;
-    // The SELECTED ring follows every selection change regardless of origin —
-    // it is the canvas mirror of the one shared selection, not a camera move.
-    pushSelected(last);
-    if (sceneOriginated) {
-      sceneOriginated = false;
-      return;
-    }
-    if (!last) return;
-    if (last.kind === "event" && last.nodeIds.length > 0) {
-      scene.command({ kind: "focus-node", id: last.nodeIds[0] });
-    }
   });
 }

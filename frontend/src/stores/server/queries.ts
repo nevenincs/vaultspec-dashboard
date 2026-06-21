@@ -140,6 +140,12 @@ import { setKeymapOverridesReader } from "../view/keymapDispatcher";
 import { movePlayhead } from "../view/timelineIntent";
 import { normalizeNodeId, normalizeNodeIds } from "../nodeIds";
 import { normalizeSearchQuery } from "../searchQuery";
+import {
+  featureQueryMatches,
+  featureQueryPlainText,
+  featureTagDisplayName,
+  type FeatureQuery,
+} from "../featureQuery";
 import { useViewStore } from "../view/viewStore";
 import type { KeybindingOverrides } from "../../platform/keymap/registry";
 
@@ -1427,9 +1433,12 @@ export function projectVaultDocTypeGroups(
 }
 
 /** The canonical left-rail filter facets, read from `dashboardState.filters`
- *  (+ `date_range`). `text` is the rail's primary "filter by feature" control. */
+ *  (+ `date_range`). `featureQuery` is the rail's primary "filter by feature"
+ *  control — the backend feature filter (glob/regex over feature_tags) the rail's
+ *  feature search bar authors; the rail applies it client-side so it agrees with
+ *  the graph the same filter narrows. */
 export interface VaultRailFacets {
-  text: string;
+  featureQuery: FeatureQuery | null;
   docTypes: string[];
   statuses: string[];
   featureTags: string[];
@@ -1437,22 +1446,24 @@ export interface VaultRailFacets {
 }
 
 /** Apply the canonical facet filters to the vault listing (D5): the rail tree
- *  honours doc types, statuses, feature tags, and the edited date range — not just
- *  the feature text — so it agrees with the graph the same filter narrows. */
+ *  honours the feature query, doc types, statuses, feature tags, and the edited
+ *  date range — so it agrees with the graph the same filter narrows. The feature
+ *  query is matched against each entry's RAW feature tags AND their sanitized
+ *  display names, so a query narrows by either the hyphenated tag or the readable
+ *  name (the dual-match the search bar's autofill also uses). */
 export function narrowVaultRailEntries(
   entries: readonly VaultTreeEntry[],
   facets: VaultRailFacets,
 ): VaultTreeEntry[] {
-  const q = facets.text.trim().toLowerCase();
-  const { docTypes, statuses, featureTags } = facets;
+  const { featureQuery, docTypes, statuses, featureTags } = facets;
   const { from, to } = facets.dateRange;
   return entries.filter((entry) => {
-    if (q.length > 0) {
-      const hit =
-        entry.feature_tags.some((tag) => tag.toLowerCase().includes(q)) ||
-        stemFromPath(entry.path).toLowerCase().includes(q) ||
-        entry.path.toLowerCase().includes(q);
-      if (!hit) return false;
+    if (featureQuery) {
+      const candidates = entry.feature_tags.flatMap((tag) => [
+        tag,
+        featureTagDisplayName(tag),
+      ]);
+      if (!featureQueryMatches(featureQuery, candidates)) return false;
     }
     if (docTypes.length > 0 && !docTypes.includes(entry.doc_type)) return false;
     if (
@@ -1500,7 +1511,7 @@ export function deriveVaultRailView(
   });
   const docTypeGroups = projectVaultDocTypeGroups(narrowed);
   const anyFacet =
-    facets.text.trim().length > 0 ||
+    facets.featureQuery !== null ||
     facets.docTypes.length > 0 ||
     facets.statuses.length > 0 ||
     facets.featureTags.length > 0 ||
@@ -1524,13 +1535,26 @@ export function useVaultRailFacets(scope: unknown): VaultRailFacets {
   return useMemo(() => {
     const filters = dashboardState.data?.filters;
     return {
-      text: filters?.text ?? "",
+      featureQuery: filters?.feature_query ?? null,
       docTypes: filters?.doc_types ?? [],
       statuses: filters?.statuses ?? [],
       featureTags: filters?.feature_tags ?? [],
       dateRange: dashboardState.data?.date_range ?? {},
     };
   }, [dashboardState.data]);
+}
+
+/** A plain narrow string for the Files tree (which can only narrow paths by text):
+ *  the canonical feature query stripped of its glob/regex grammar down to the
+ *  literal a path match can use. The Vault tree narrows by the feature query
+ *  proper; the Files tree shares the SAME canonical control through this reduction
+ *  so one bar narrows both tabs. */
+export function useVaultFilesNarrowText(scope: unknown): string {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => featureQueryPlainText(dashboardState.data?.filters.feature_query),
+    [dashboardState.data?.filters.feature_query],
+  );
 }
 
 // --- code (worktree) file tree (dashboard-code-tree ADR) -------------------------
@@ -2036,12 +2060,16 @@ export function deriveDashboardFilterSummaryView(
 ): DashboardFilterSummaryView {
   const filters = state?.filters ?? {};
   return {
+    // The advanced-flyout facet count shown on the Filters button badge. The
+    // feature query is NOT counted here — it is the visible search bar's own
+    // state, authored beside the flyout, not an advanced facet inside it.
     activeFilterCount:
       (filters.doc_types?.length ?? 0) +
       (filters.feature_tags?.length ?? 0) +
+      (filters.statuses?.length ?? 0) +
+      (filters.health?.length ?? 0) +
       (filters.relations?.length ?? 0) +
-      (filters.structural_state?.length ?? 0) +
-      ((filters.text?.length ?? 0) > 0 ? 1 : 0),
+      (filters.structural_state?.length ?? 0),
     dateRangeLabel: dashboardDateRangeLabel(state?.date_range),
   };
 }
@@ -2144,8 +2172,12 @@ export interface DashboardFilterSidebarPresentationView {
 export const DASHBOARD_FILTER_SIDEBAR_PRESENTATION: DashboardFilterSidebarPresentationView =
   {
     panelAriaLabel: "filter panel",
-    panelClassName:
-      "pointer-events-auto absolute left-0 top-[calc(100%+0.5rem)] z-30 animate-slide-in-left",
+    // The advanced-filter flyout is portalled to <body> and positioned (fixed) to
+    // the RIGHT of the rail's Filters button so it flies out OVER the stage — the
+    // graph and any open documents — rather than being clipped inside the rail
+    // column. The top/left are set inline from the trigger rect; this class owns
+    // only the layer, pointer surface, and entrance.
+    panelClassName: "pointer-events-auto fixed z-50 animate-slide-in-left",
     headerClassName:
       "flex items-center justify-between border-b border-rule px-fg-3 py-fg-1-5",
     titleClassName: "text-body font-medium text-ink",
@@ -2265,7 +2297,6 @@ export function deriveDashboardFilterSidebarView(
       (filters.health?.length ?? 0) > 0 ||
       (filters.relations?.length ?? 0) > 0 ||
       (filters.structural_state?.length ?? 0) > 0 ||
-      (filters.text?.length ?? 0) > 0 ||
       dateActive,
   };
 }
@@ -7472,25 +7503,32 @@ function changedDocumentRow(file: ChangedFile): ChangedDocumentRow {
 // still opens the code viewer (source files) or the markdown reader (vault docs).
 
 /** The three status buckets the change tree groups entries into, in render order. */
-export type GitChangeBucket = "modified" | "deleted" | "new";
+export type GitChangeBucket = "staged" | "modified" | "deleted" | "new";
 
 const GIT_CHANGE_BUCKET_ORDER: readonly GitChangeBucket[] = [
+  // Staged first: it is what the next commit will capture, the most actionable
+  // group. The remaining buckets carry the worktree-side (unstaged) changes.
+  "staged",
   "modified",
   "deleted",
   "new",
 ] as const;
 
 // SectionLabel uppercases the eyebrow, so author Title-case and it renders
-// MODIFIED / DELETED / NEW to match the binding.
+// STAGED / MODIFIED / DELETED / NEW to match the binding.
 const GIT_CHANGE_BUCKET_LABEL: Record<GitChangeBucket, string> = {
+  staged: "Staged",
   modified: "Modified",
   deleted: "Deleted",
   new: "New",
 };
 
-/** Map a porcelain status group onto its tree bucket: staged/modified/renamed read
- *  as MODIFIED, added/untracked as NEW, deleted as DELETED. */
+/** Map a porcelain status group onto its tree bucket. An index-side change
+ *  (porcelain X set) buckets as STAGED — what the next commit will capture —
+ *  before the worktree-side groups: deleted → DELETED, added/untracked → NEW,
+ *  the rest → MODIFIED. */
 function gitChangeBucket(group: GitChangeGroup): GitChangeBucket {
+  if (group === "staged") return "staged";
   if (group === "deleted") return "deleted";
   if (group === "added" || group === "untracked") return "new";
   return "modified";
@@ -7591,6 +7629,7 @@ function gitChangeRow(file: ChangedFile, bucket: GitChangeBucket): GitChangeRow 
  *  only non-empty groups in render order. */
 function deriveGitChangeGroups(files: readonly ChangedFile[]): GitChangeGroupView[] {
   const byBucket: Record<GitChangeBucket, GitChangeRow[]> = {
+    staged: [],
     modified: [],
     deleted: [],
     new: [],

@@ -13,15 +13,8 @@ pub fn run(
     as_of: Option<&str>,
     granularity: &str,
 ) -> Result<Value, CliError> {
-    let granularity = match granularity {
-        "document" => Granularity::Document,
-        "feature" => Granularity::Feature,
-        other => {
-            return Err(CliError::Other(format!(
-                "unknown granularity `{other}` (document|feature)"
-            )));
-        }
-    };
+    let granularity = Granularity::from_param(Some(granularity))
+        .map_err(|e| CliError::Other(format!("{e} (document|feature)")))?;
     let filter: Filter = match filter_json {
         Some(raw) => serde_json::from_str(raw)
             .map_err(|e| CliError::Other(format!("filter is not valid JSON: {e}")))?,

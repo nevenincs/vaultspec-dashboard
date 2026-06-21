@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export const SETTINGS_CONTINUOUS_COMMIT_MS = 250;
 export const SETTINGS_CONTROL_DRAFT_MAX_CHARS = 4096;
@@ -61,6 +61,8 @@ export function useSettingsControlDraft({
   const [draft, setDraft] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousControlValue = useRef(normalizedControlValue);
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
   const onCancelPendingRef = useRef(onCancelPending);
   onCancelPendingRef.current = onCancelPending;
 
@@ -76,17 +78,17 @@ export function useSettingsControlDraft({
     (next: unknown) => {
       const normalized = normalizeSettingsControlDraftValue(next, normalizedMaxLength);
       if (!isContinuous) {
-        commit(normalized);
+        commitRef.current(normalized);
         return;
       }
       setDraft(normalized);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(
-        () => commit(normalized),
+        () => commitRef.current(normalized),
         SETTINGS_CONTINUOUS_COMMIT_MS,
       );
     },
-    [commit, isContinuous, normalizedMaxLength],
+    [isContinuous, normalizedMaxLength],
   );
 
   useEffect(() => {
@@ -108,9 +110,14 @@ export function useSettingsControlDraft({
 
   useEffect(() => () => clearPending(), [clearPending]);
 
-  return {
-    value: draft ?? normalizedControlValue,
-    change,
-    clearPending,
-  };
+  const value = draft ?? normalizedControlValue;
+
+  return useMemo(
+    () => ({
+      value,
+      change,
+      clearPending,
+    }),
+    [change, clearPending, value],
+  );
 }

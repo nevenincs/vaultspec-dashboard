@@ -458,8 +458,6 @@ export function filterSidebarFeatureOptions(
 export interface FilterSidebarMenuSectionsInput {
   vocabulary: unknown;
   filterView: unknown;
-  featureSearch: unknown;
-  onFeatureSearchChange: (value: unknown) => void;
   onToggleFacet: (facet: unknown, value: unknown) => void;
   /** Select an edited-window option (the EDITED date-range radios). The caller
    *  maps the window key to a canonical date range and writes it through the
@@ -496,8 +494,6 @@ function filterSidebarToggleHandler(
 export function deriveFilterSidebarMenuSections({
   vocabulary,
   filterView,
-  featureSearch,
-  onFeatureSearchChange,
   onToggleFacet,
   onSelectEditedWindow,
 }: FilterSidebarMenuSectionsInput): FilterSidebarMenuSectionView[] {
@@ -509,15 +505,10 @@ export function deriveFilterSidebarMenuSections({
     "featureSectionLabel" in filterViewRecord.presentation
       ? (filterViewRecord.presentation as unknown as DashboardFilterSidebarView["presentation"])
       : ({} as DashboardFilterSidebarView["presentation"]);
-  const normalizedFeatureSearch = normalizeFilterSidebarFeatureSearch(featureSearch);
   const docTypes = normalizeFilterSidebarFacetValues(vocabularyRecord.docTypes);
-  const featureTags = normalizeFilterSidebarFacetValues(vocabularyRecord.featureTags);
   const statuses = normalizeFilterSidebarFacetValues(vocabularyRecord.statuses);
   const health = normalizeFilterSidebarFacetValues(vocabularyRecord.health);
   const selectedDocTypes = normalizeFilterSidebarFacetValues(filterViewRecord.docTypes);
-  const selectedFeatureTags = normalizeFilterSidebarFacetValues(
-    filterViewRecord.featureTags,
-  );
   const selectedStatuses = normalizeFilterSidebarFacetValues(filterViewRecord.statuses);
   const selectedHealth = normalizeFilterSidebarFacetValues(filterViewRecord.health);
   // EDITED — the date-range radios (Any time / Last 7 days / …). The window options
@@ -554,22 +545,6 @@ export function deriveFilterSidebarMenuSections({
         value,
         label: filterSidebarDocTypeLabel(value),
       })),
-    },
-    {
-      type: "checkbox",
-      key: "feature",
-      label: presentation.featureSectionLabel,
-      selected: selectedFeatureTags,
-      onToggle: filterSidebarToggleHandler("feature_tags", onToggleFacet),
-      loading: vocabularyRecord.facetsLoading === true,
-      search: {
-        value: normalizedFeatureSearch,
-        onChange: onFeatureSearchChange,
-        placeholder: "Search features…",
-      },
-      options: filterSidebarFeatureOptions(featureTags, normalizedFeatureSearch).map(
-        (value) => ({ value, label: value }),
-      ),
     },
     ...(statuses.length > 0
       ? [

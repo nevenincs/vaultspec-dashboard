@@ -200,7 +200,7 @@ function normalizeDashboardStructuralStates(
     : undefined;
 }
 
-function normalizeDashboardFeatureQuery(
+export function normalizeDashboardFeatureQuery(
   value: unknown,
 ): DashboardFilters["feature_query"] | undefined {
   if (!isObjectRecord(value)) return undefined;

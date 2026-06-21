@@ -146,6 +146,18 @@ pub enum Provenance {
 /// served temporal tier (events and as-of time-travel) carries on the wire.
 pub type Timestamp = i64;
 
+/// The one wall-clock read shared by both front doors (CLI verbs and the serve
+/// routes): now as milliseconds since the Unix epoch, saturating to `0` if the
+/// clock is set before the epoch. Both `vaultspec-api` and `vaultspec-cli`
+/// previously carried a byte-identical copy of this; it lives here once, beside
+/// the `Timestamp` type it produces, so the two cannot drift.
+pub fn now_ms() -> Timestamp {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as Timestamp)
+        .unwrap_or(0)
+}
+
 /// The atom of the engine: one edge schema across all three graph tiers; tier
 /// and provenance are mandatory, never inferred from context (D3.1).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

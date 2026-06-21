@@ -4,11 +4,11 @@
 // in dashboard-state through the LayoutSelector. Clear working set is a
 // view-store call gated in time-travel.
 
-import { Maximize, RotateCcw, Trash2 } from "lucide-react";
+import { Maximize, RotateCcw, Trash2, XCircle } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { registerResolver } from "../../../platform/actions/registry";
-import { clearMenuWorkingSet } from "../../../stores/view/menuActions";
+import { clearMenuWorkingSet, focusMenuNode } from "../../../stores/view/menuActions";
 import { getScene } from "../Stage";
 
 export function canvasMenu(): ActionDescriptor[] {
@@ -26,6 +26,15 @@ export function canvasMenu(): ActionDescriptor[] {
       section: "navigate",
       icon: RotateCcw,
       run: () => getScene().controller.command({ kind: "reset-view" }),
+    },
+    {
+      // Clear the current node selection (the shared dashboard selection) — the
+      // empty-canvas counterpart to the graph-walk Escape clear.
+      id: "canvas:clear-selection",
+      label: "Clear selection",
+      section: "navigate",
+      icon: XCircle,
+      run: () => focusMenuNode(null),
     },
     {
       id: "canvas:clear-working-set",

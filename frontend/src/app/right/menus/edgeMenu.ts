@@ -7,13 +7,14 @@
 // App layer: resolvers live here; the registry is substrate. The registration
 // below contributes this resolver for the "edge" entity kind at module load.
 
-import { Highlighter } from "lucide-react";
+import { Crosshair, Highlighter } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
 import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
+import { focusMenuNode } from "../../../stores/view/menuActions";
 import { selectEdge } from "../../../stores/view/selection";
 
 /**
@@ -34,6 +35,26 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
     icon: Highlighter,
     run: () => selectEdge(normalizedEntity.id),
   });
+
+  // Navigate to the edge's destination node (the "related" node) when known.
+  actions.push(
+    normalizedEntity.dst
+      ? {
+          id: "edge:goto-destination",
+          label: "Go to destination node",
+          section: "navigate",
+          icon: Crosshair,
+          run: () => focusMenuNode(normalizedEntity.dst),
+        }
+      : {
+          id: "edge:goto-destination",
+          label: "Go to destination node",
+          section: "navigate",
+          icon: Crosshair,
+          disabled: true,
+          disabledReason: "no destination node",
+        },
+  );
 
   actions.push(
     copyAction({
@@ -79,6 +100,21 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
       disabledReason: "no destination",
     });
   }
+
+  // The whole edge as one JSON blob (id + relation + dst + tier) for pasting into
+  // an issue / note.
+  actions.push(
+    copyAction({
+      id: "edge:copy-full",
+      label: "Copy edge (JSON)",
+      text: JSON.stringify({
+        id: normalizedEntity.id,
+        relation: normalizedEntity.relation ?? null,
+        dst: normalizedEntity.dst ?? null,
+        tier: normalizedEntity.tier ?? null,
+      }),
+    }),
+  );
 
   return actions;
 }

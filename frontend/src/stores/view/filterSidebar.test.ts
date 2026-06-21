@@ -564,14 +564,13 @@ describe("filter sidebar view store", () => {
           ],
         },
       },
-      featureSearch: "design",
-      onFeatureSearchChange: () => undefined,
       onToggleFacet: (facet, value) => toggles.push([facet, value]),
     });
 
+    // FEATURE filtering moved to the rail's feature search bar; the advanced flyout
+    // hosts only KIND / STATUS / HEALTH / EDITED now.
     expect(sections.map((section) => section.key)).toEqual([
       "kind",
-      "feature",
       "status",
       "health",
       "edited",
@@ -583,20 +582,14 @@ describe("filter sidebar view store", () => {
       options: [{ value: "adr", label: "Decisions" }],
     });
     expect(sections[1]).toMatchObject({
-      type: "checkbox",
-      key: "feature",
-      selected: ["state"],
-      options: [{ value: "design-system", label: "design-system" }],
-    });
-    expect(sections[2]).toMatchObject({
       key: "status",
       options: [{ value: "accepted", dot: "complete" }],
     });
-    expect(sections[3]).toMatchObject({
+    expect(sections[2]).toMatchObject({
       key: "health",
       options: [{ value: "dangling", label: "dangling links", dot: "broken" }],
     });
-    expect(sections[4]).toMatchObject({
+    expect(sections[3]).toMatchObject({
       type: "radio",
       key: "edited",
       value: "any",
@@ -665,24 +658,22 @@ describe("filter sidebar view store", () => {
           editedWindows: [],
         },
       },
-      featureSearch: "state",
-      onFeatureSearchChange: () => undefined,
       onToggleFacet: (facet, value) => toggles.push([facet, value]),
     });
 
+    // Advanced flyout sections after the FEATURE move: KIND / STATUS / HEALTH.
     expect(sections[0]).toMatchObject({
+      key: "kind",
       selected: ["adr"],
       options: [{ value: "adr", label: "Decisions" }],
     });
     expect(sections[1]).toMatchObject({
-      selected: ["state"],
-      options: [{ value: "state", label: "state" }],
-    });
-    expect(sections[2]).toMatchObject({
+      key: "status",
       selected: ["accepted"],
       options: [{ value: "accepted", dot: "complete" }],
     });
-    expect(sections[3]).toMatchObject({
+    expect(sections[2]).toMatchObject({
+      key: "health",
       selected: ["dangling"],
       options: [{ value: "dangling", label: "dangling links", dot: "broken" }],
     });
@@ -690,9 +681,6 @@ describe("filter sidebar view store", () => {
     if (sections[0]?.type === "checkbox") {
       sections[0].onToggle(" adr ");
       sections[0].onToggle({ value: "adr" } as unknown as string);
-    }
-    if (sections[1]?.type === "checkbox") {
-      sections[1].search?.onChange(" state ");
     }
     expect(toggles).toEqual([["doc_types", "adr"]]);
   });

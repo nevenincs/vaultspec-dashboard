@@ -201,9 +201,4 @@ impl Ctx {
 pub use engine_model::scope_token as clean_path;
 
 /// Wall-clock ms since the epoch (`engine_model::Timestamp` unit).
-pub fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
+pub use engine_model::now_ms;

@@ -132,8 +132,7 @@ describe("useCommandPaletteLensIntent", () => {
         tiers: {
           declared: true,
           structural: true,
-          temporal: true,
-          semantic: false,
+          temporal: false,
         },
         minConfidence: { temporal: 0.6 },
         docTypes: ["adr"],
@@ -149,8 +148,7 @@ describe("useCommandPaletteLensIntent", () => {
       tiers: {
         declared: true,
         structural: true,
-        temporal: true,
-        semantic: false,
+        temporal: false,
       },
       doc_types: ["adr"],
       feature_tags: ["state"],
@@ -197,7 +195,7 @@ describe("useCommandPaletteLensIntent", () => {
     let applied!: DashboardState;
     await act(async () => {
       applied = (await result.current.intent.applyLensChoices({
-        tiers: { semantic: false },
+        tiers: { structural: false },
         minConfidence: { temporal: 2 },
         featureTags: ["state", 7],
         structuralStates: ["broken", "bad"],
@@ -208,9 +206,8 @@ describe("useCommandPaletteLensIntent", () => {
     expect(applied.filters).toMatchObject({
       tiers: {
         declared: true,
-        structural: true,
+        structural: false,
         temporal: true,
-        semantic: false,
       },
       feature_tags: ["state"],
       structural_state: ["broken"],

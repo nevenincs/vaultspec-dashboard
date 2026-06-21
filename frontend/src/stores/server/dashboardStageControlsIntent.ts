@@ -1,5 +1,6 @@
+import { useCallback, useMemo, useRef } from "react";
+
 import {
-  normalizeDashboardStateWriteScope,
   normalizeStringMember,
   useDashboardStateMutations,
 } from "./dashboardState";
@@ -9,6 +10,7 @@ import {
   type RepresentationMode,
   type SalienceLens,
 } from "./engine";
+import { normalizeStoreScope } from "./scopeIdentity";
 
 export interface DashboardStageControlsIntent {
   pending: boolean;
@@ -16,7 +18,7 @@ export interface DashboardStageControlsIntent {
   setLens: (lens: unknown) => Promise<unknown>;
 }
 
-export const normalizeDashboardStageControlsScope = normalizeDashboardStateWriteScope;
+export const normalizeDashboardStageControlsScope = normalizeStoreScope;
 
 export function normalizeDashboardStageControlsRepresentationMode(
   mode: unknown,
@@ -40,20 +42,36 @@ export function useDashboardStageControlsIntent(
 ): DashboardStageControlsIntent {
   const normalizedScope = normalizeDashboardStageControlsScope(scope);
   const mutations = useDashboardStateMutations(normalizedScope);
-  const inert = () => Promise.resolve(null);
-  return {
-    pending: mutations.mutation.isPending,
-    setRepresentationMode: (mode) => {
+  const setRepresentationModeRef = useRef(mutations.setRepresentationMode);
+  const setLensRef = useRef(mutations.setLens);
+  setRepresentationModeRef.current = mutations.setRepresentationMode;
+  setLensRef.current = mutations.setLens;
+
+  const setRepresentationMode = useCallback(
+    (mode: unknown) => {
       const normalizedMode = normalizeDashboardStageControlsRepresentationMode(mode);
       return normalizedScope === null || normalizedMode === null
-        ? inert()
-        : mutations.setRepresentationMode(normalizedMode);
+        ? Promise.resolve(null)
+        : setRepresentationModeRef.current(normalizedMode);
     },
-    setLens: (lens) => {
+    [normalizedScope],
+  );
+  const setLens = useCallback(
+    (lens: unknown) => {
       const normalizedLens = normalizeDashboardStageControlsLens(lens);
       return normalizedScope === null || normalizedLens === null
-        ? inert()
-        : mutations.setLens(normalizedLens);
+        ? Promise.resolve(null)
+        : setLensRef.current(normalizedLens);
     },
-  };
+    [normalizedScope],
+  );
+
+  return useMemo(
+    () => ({
+      pending: mutations.mutation.isPending,
+      setRepresentationMode,
+      setLens,
+    }),
+    [mutations.mutation.isPending, setLens, setRepresentationMode],
+  );
 }
