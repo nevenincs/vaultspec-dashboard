@@ -18,6 +18,7 @@ import { AlertTriangle, ScanSearch } from "lucide-react";
 
 import type { GraphSlice } from "../../stores/server/engine";
 import type { GraphSliceAvailability } from "../../stores/server/queries";
+import type { RenderCapability } from "../../stores/view/renderCapability";
 import type { SurfaceStates } from "../degradation/matrix";
 
 /** The three provenance EDGE tiers — the only legal graph-edge tier names. The
@@ -46,7 +47,13 @@ export type CanvasState =
   | { kind: "unavailable" }
   | { kind: "degraded"; tiers: string[]; reasons: Record<string, string> }
   | { kind: "truncated"; total: number; returned: number; reason: string }
-  | { kind: "unknown-tier"; tiers: string[] };
+  | { kind: "unknown-tier"; tiers: string[] }
+  // The canvas cannot render: a lost WebGL context (transient — the scene is
+  // restoring) or no hardware graphics at all (hard). A blocking centered card —
+  // nothing can render underneath, so unlike the degraded banner it is not over a
+  // live field.
+  | { kind: "gpu-unavailable" }
+  | { kind: "context-lost" };
 
 export interface CanvasStateInputs {
   /** Null until a worktree scope is resolved (cold start / no vault-bearing wt). */
@@ -63,6 +70,8 @@ export interface CanvasStateInputs {
   queriedScope: string | null;
   /** Pre-derived per-tier availability (never the raw `tiers` block). */
   availability: GraphSliceAvailability;
+  /** The scene's reported WebGL render-capability (render-capability SceneEvent). */
+  renderCapability: RenderCapability;
 }
 
 /**
@@ -74,12 +83,25 @@ export interface CanvasStateInputs {
  * honestly-absent tier is non-blocking degradation; otherwise the field is ok.
  */
 export function resolveCanvasState(inputs: CanvasStateInputs): CanvasState {
-  const { scope, granularity, stageSurface, slice, queriedScope, availability } =
-    inputs;
+  const {
+    scope,
+    granularity,
+    stageSurface,
+    slice,
+    queriedScope,
+    availability,
+    renderCapability,
+  } = inputs;
   // The empty/no-graph invitation dominates: a worktree with no vault corpus is
   // not a void to load but a next step to offer.
   if (stageSurface === "empty-invitation") return { kind: "empty" };
   if (scope === null) return { kind: "awaiting-scope" };
+  // Render-capability (after scope, before data states): if the canvas cannot render
+  // — no hardware graphics, or a lost WebGL context being restored — the data states
+  // are moot. `ok` (including the software-fallback, which still renders) falls
+  // through to the normal data flow.
+  if (renderCapability.status === "unavailable") return { kind: "gpu-unavailable" };
+  if (renderCapability.status === "context-lost") return { kind: "context-lost" };
   // No held slice. While the query is in flight (or none has started yet) it is a
   // scope-appropriate loading state; once a query has settled WITHOUT a slice the
   // graph genuinely failed to load → the unavailable card.
@@ -224,6 +246,25 @@ export function CanvasStateOverlay({ state }: { state: CanvasState }) {
           <p className="text-body font-medium text-state-stale">
             Graph is not available
           </p>
+        </StateCard>
+      );
+    // Render-capability (G1): the canvas itself cannot render. Plain language, no
+    // WebGL jargon (ui-labels-are-user-facing). Blocking centered cards — nothing
+    // renders underneath, unlike the degraded banner over a live field.
+    case "gpu-unavailable":
+      return (
+        <StateCard testid="gpu-unavailable">
+          <p className="text-body font-medium text-state-stale">Graphics unavailable</p>
+          <p className="text-label text-ink-muted">
+            This view needs hardware graphics to render.
+          </p>
+        </StateCard>
+      );
+    case "context-lost":
+      return (
+        <StateCard testid="context-lost">
+          <p className="text-body font-medium text-ink-faint">Restoring graphics…</p>
+          <LoadingSkeleton />
         </StateCard>
       );
     // Degraded — a single tier is down while the graph is LIVE behind it. A

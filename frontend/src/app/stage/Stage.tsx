@@ -32,6 +32,7 @@ import {
 } from "../../stores/view/stageSceneCommands";
 import { useGraphAffordanceReconciliation } from "../../stores/view/graphAffordances";
 import { useGraphOverlays } from "../../stores/view/graphOverlays";
+import { useRenderCapability } from "../../stores/view/renderCapability";
 import { usePinnedDiscoveries } from "../../stores/view/discoveries";
 import { bindPinsToScene } from "../../stores/view/pins";
 import {
@@ -109,6 +110,7 @@ export function Stage() {
   // change above. Composition sequencing (lens re-query then mode re-layout) is
   // realized by these two being independent reactive inputs.
   const overlays = useGraphOverlays();
+  const renderCapability = useRenderCapability();
   const availability = useGraphSliceAvailability(slice, graphScope !== null);
   const surfaces = useSurfaceStates();
   const workingSet = useWorkingSet();
@@ -338,6 +340,7 @@ export function Stage() {
     slice: slice.data ?? null,
     queriedScope: graphScope,
     availability,
+    renderCapability,
   });
   return (
     <div className="relative h-full w-full overflow-hidden">

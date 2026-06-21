@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { GraphSlice } from "../../stores/server/engine";
 import type { GraphSliceAvailability } from "../../stores/server/queries";
+import { normalizeRenderCapability } from "../../stores/view/renderCapability";
 import {
   CanvasStateOverlay,
   degradedBannerCopy,
@@ -40,6 +41,7 @@ describe("resolveCanvasState (graph stage surfaces only edge tiers)", () => {
     stageSurface: "normal" as const,
     slice: liveSlice,
     queriedScope: "wt-1",
+    renderCapability: { status: "ok" as const, recoverable: false },
   };
 
   it("drops a semantic-only degradation — semantic is search's concern, not the graph stage", () => {
@@ -72,6 +74,104 @@ describe("resolveCanvasState (graph stage surfaces only edge tiers)", () => {
     expect(state.kind).toBe("degraded");
     if (state.kind !== "degraded") throw new Error("expected degraded");
     expect(state.tiers).toEqual(["temporal"]);
+  });
+});
+
+describe("resolveCanvasState — render-capability (G1: WebGL/GPU degradation)", () => {
+  const base = {
+    scope: "wt-1",
+    granularity: "document" as const,
+    stageSurface: "normal" as const,
+    slice: liveSlice,
+    queriedScope: "wt-1",
+    availability: availabilityWith([]),
+  };
+
+  it("surfaces gpu-unavailable (no hardware graphics)", () => {
+    expect(
+      resolveCanvasState({
+        ...base,
+        renderCapability: { status: "unavailable", recoverable: false },
+      }).kind,
+    ).toBe("gpu-unavailable");
+  });
+
+  it("surfaces context-lost (transient, restoring)", () => {
+    expect(
+      resolveCanvasState({
+        ...base,
+        renderCapability: { status: "context-lost", recoverable: true },
+      }).kind,
+    ).toBe("context-lost");
+  });
+
+  it("treats ok (incl software-fallback) as render-OK — falls through to data states", () => {
+    expect(
+      resolveCanvasState({
+        ...base,
+        renderCapability: { status: "ok", recoverable: false },
+      }).kind,
+    ).toBe("ok");
+  });
+
+  it("takes precedence over a no-slice loading data state (render is moot)", () => {
+    expect(
+      resolveCanvasState({
+        ...base,
+        slice: null,
+        availability: { ...availabilityWith([]), loading: true },
+        renderCapability: { status: "unavailable", recoverable: false },
+      }).kind,
+    ).toBe("gpu-unavailable");
+  });
+});
+
+describe("normalizeRenderCapability (trust-boundary signal decode)", () => {
+  it("maps the software-fallback signal to render-OK (state:ok)", () => {
+    expect(
+      normalizeRenderCapability({
+        state: "ok",
+        recoverable: false,
+        reason: "software-fallback",
+      }),
+    ).toEqual({ status: "ok", recoverable: false });
+  });
+
+  it("decodes context-lost (recoverable) + unavailable (hard)", () => {
+    expect(
+      normalizeRenderCapability({ state: "context-lost", recoverable: true }),
+    ).toEqual({ status: "context-lost", recoverable: true });
+    expect(
+      normalizeRenderCapability({ state: "unavailable", recoverable: false }),
+    ).toEqual({ status: "unavailable", recoverable: false });
+  });
+
+  it("defaults garbage / unknown state to render-OK", () => {
+    expect(normalizeRenderCapability(null)).toEqual({
+      status: "ok",
+      recoverable: false,
+    });
+    expect(normalizeRenderCapability({ state: "bogus" })).toEqual({
+      status: "ok",
+      recoverable: false,
+    });
+  });
+});
+
+describe("CanvasStateOverlay — render-capability states", () => {
+  it("renders gpu-unavailable as a centered 'Graphics unavailable' card (no jargon)", () => {
+    render(<CanvasStateOverlay state={{ kind: "gpu-unavailable" }} />);
+    const node = document.querySelector('[data-canvas-state="gpu-unavailable"]');
+    expect(node?.textContent).toContain("Graphics unavailable");
+    expect(node?.textContent).not.toContain("WebGL");
+    expect(node?.className).toContain("pointer-events-none");
+  });
+
+  it("renders context-lost as a transient 'Restoring graphics…' card", () => {
+    render(<CanvasStateOverlay state={{ kind: "context-lost" }} />);
+    const node = document.querySelector('[data-canvas-state="context-lost"]');
+    expect(node?.textContent).toContain("Restoring graphics");
+    expect(node?.textContent).not.toContain("WebGL");
   });
 });
 

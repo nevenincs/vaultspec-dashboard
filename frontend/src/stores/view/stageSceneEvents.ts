@@ -8,6 +8,7 @@ import type { EntityDescriptor } from "../../platform/actions/entity";
 import { openContextMenu, type MenuAnchor } from "./contextMenu";
 import { nodeEntityView } from "./nodeEntity";
 import { openGraphNodeFromScene, setHoveredNodeId } from "./selection";
+import { setRenderCapability } from "./renderCapability";
 import { expandWorkingSet } from "./workingSet";
 
 interface StageSceneDashboardIntent {
@@ -81,6 +82,11 @@ export function handleStageSceneEvent(
   if (event.kind === "context-menu") {
     const intent = stageContextMenuIntent(event, context.scope);
     openContextMenu(intent.entity, intent.anchor);
+    return;
+  }
+
+  if (event.kind === "render-capability") {
+    setRenderCapability(event);
     return;
   }
 

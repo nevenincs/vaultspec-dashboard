@@ -153,6 +153,34 @@ export function normalizeGraphOverlays(overlays: unknown): GraphOverlayState {
   };
 }
 
+/** The scene's WebGL render-capability signal (the `render-capability` SceneEvent):
+ *  the scene DETECTS + REPORTS, the chrome surfaces the designed CanvasState. `ok`
+ *  (including the software-fallback that still RENDERS) is render-OK; only
+ *  `context-lost` / `unavailable` drive a degraded canvas state. */
+export type RenderCapabilityStatus = "ok" | "context-lost" | "unavailable";
+
+export interface RenderCapability {
+  status: RenderCapabilityStatus;
+  recoverable: boolean;
+}
+
+export const DEFAULT_RENDER_CAPABILITY: RenderCapability = {
+  status: "ok",
+  recoverable: false,
+};
+
+export function normalizeRenderCapability(signal: unknown): RenderCapability {
+  const record =
+    signal !== null && typeof signal === "object"
+      ? (signal as Record<string, unknown>)
+      : null;
+  const state = record?.["state"];
+  return {
+    status: state === "context-lost" || state === "unavailable" ? state : "ok",
+    recoverable: record?.["recoverable"] === true,
+  };
+}
+
 /**
  * Canvas-local category-visibility mask (graph legend toggles). The legend's
  * category dots are filter toggles that hide/show that category's nodes on the
@@ -276,6 +304,8 @@ export interface ViewState {
    * `set-overlays`.
    */
   overlays: GraphOverlayState;
+  /** The scene's reported WebGL render-capability (render-capability SceneEvent). */
+  renderCapability: RenderCapability;
 
   /**
    * Canvas-local hidden category tokens (graph legend toggles). A scene-only
@@ -400,6 +430,7 @@ export interface ViewState {
   clearWorkingSet: () => void;
   /** Set overlay visibility (feature countries, feature hulls). */
   setOverlays: (overlays: unknown) => void;
+  setRenderCapability: (signal: unknown) => void;
   /** Toggle one category's canvas visibility (graph legend dot). */
   toggleHiddenCategory: (category: unknown) => void;
   /** Replace the canvas category-visibility mask wholesale (e.g. show all). */
@@ -609,6 +640,7 @@ export const useViewStore = create<ViewState>((set) => ({
   editorStatus: "idle",
   pinnedDiscoveries: [],
   overlays: normalizeGraphOverlays(DEFAULT_GRAPH_OVERLAYS),
+  renderCapability: DEFAULT_RENDER_CAPABILITY,
   hiddenCategories: [],
   leftRailVisible: true,
   leftRailWidth: LEFT_RAIL_DEFAULT_WIDTH,
@@ -972,6 +1004,8 @@ export const useViewStore = create<ViewState>((set) => ({
     }),
   clearWorkingSet: () => set({ workingSet: [] }),
   setOverlays: (overlays) => set({ overlays: normalizeGraphOverlays(overlays) }),
+  setRenderCapability: (signal) =>
+    set({ renderCapability: normalizeRenderCapability(signal) }),
   toggleHiddenCategory: (category) =>
     set((state) => {
       const token = normalizeViewStoreSessionStringIdentity(category);
