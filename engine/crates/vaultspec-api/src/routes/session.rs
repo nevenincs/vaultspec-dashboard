@@ -225,17 +225,16 @@ pub async fn put_session(
         .set_workspace_layout
         .as_ref()
         .and_then(|u| u.layout.as_ref())
+        && layout.len() > MAX_WORKSPACE_LAYOUT_LEN
     {
-        if layout.len() > MAX_WORKSPACE_LAYOUT_LEN {
-            return Err(super::api_error(
-                &state,
-                StatusCode::BAD_REQUEST,
-                format!(
-                    "set_workspace_layout.layout is {} bytes; maximum is {MAX_WORKSPACE_LAYOUT_LEN}",
-                    layout.len()
-                ),
-            ));
-        }
+        return Err(super::api_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            format!(
+                "set_workspace_layout.layout is {} bytes; maximum is {MAX_WORKSPACE_LAYOUT_LEN}",
+                layout.len()
+            ),
+        ));
     }
 
     // active_scope: validate + warm through the registry FIRST (this is the one

@@ -1527,25 +1527,24 @@ mod tests {
     fn resolution_transitions_never_change_edge_identity() {
         // Audit W02P06-301: identity from mention text alone - a
         // broken-to-resolved transition mutates state, never the edge id.
-        for (kind, resolved_target) in [(MentionKind::StepId("W01.P02.S03".into()), "some-plan.md")]
-        {
-            let broken = structural_edge_for(
-                "doc-a",
-                "blob1",
-                &mention(kind.clone(), ResolutionState::Broken, None),
-                &scope(),
-                0,
-            );
-            let healed = structural_edge_for(
-                "doc-a",
-                "blob1",
-                &mention(kind, ResolutionState::Resolved, Some(resolved_target)),
-                &scope(),
-                99,
-            );
-            assert_eq!(broken.id, healed.id, "identity survives resolution");
-            assert_ne!(broken.state, healed.state, "state carries the signal");
-        }
+        let (kind, resolved_target) =
+            (MentionKind::StepId("W01.P02.S03".into()), "some-plan.md");
+        let broken = structural_edge_for(
+            "doc-a",
+            "blob1",
+            &mention(kind.clone(), ResolutionState::Broken, None),
+            &scope(),
+            0,
+        );
+        let healed = structural_edge_for(
+            "doc-a",
+            "blob1",
+            &mention(kind, ResolutionState::Resolved, Some(resolved_target)),
+            &scope(),
+            99,
+        );
+        assert_eq!(broken.id, healed.id, "identity survives resolution");
+        assert_ne!(broken.state, healed.state, "state carries the signal");
     }
 
     fn write_plan(root: &Path, name: &str, body: &str) {
