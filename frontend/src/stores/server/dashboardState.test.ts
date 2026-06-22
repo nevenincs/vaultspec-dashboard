@@ -37,6 +37,7 @@ import {
   dashboardGraphDefaultsPatch,
   dashboardGraphSettingsDefaultsPatch,
   dashboardGraphQueryVariables,
+  dashboardLineageFilterArg,
   focusPatch,
   granularityPatch,
   graphBoundsPatch,
@@ -106,6 +107,45 @@ afterEach(async () => {
       .catch(() => undefined);
     cleanupScope = null;
   }
+});
+
+describe("dashboardLineageFilterArg (timeline lineage filter, unified-filter-plane D3)", () => {
+  it("returns undefined when no facet is active so the lineage stays the full set", () => {
+    expect(dashboardLineageFilterArg({ filters: {} })).toBeUndefined();
+  });
+
+  it("serializes the active facets to the wire JSON the lineage route accepts", () => {
+    const arg = dashboardLineageFilterArg({
+      filters: {
+        doc_types: ["adr"],
+        feature_query: { value: "state-*", mode: "glob" },
+      },
+    });
+    expect(arg).toBeTypeOf("string");
+    expect(JSON.parse(arg!)).toEqual({
+      doc_types: ["adr"],
+      feature_query: { value: "state-*", mode: "glob" },
+    });
+  });
+
+  it("excludes the date range so the timeline stays the sole date-axis owner", () => {
+    // The top-level date_range is the timeline's own window, never a lineage facet
+    // (filtering-has-one-canonical-surface). cloneDashboardFilters never carries it,
+    // so the serialized filter narrows by doc_types only.
+    const arg = dashboardLineageFilterArg({
+      filters: {
+        doc_types: ["plan"],
+        date_range: { from: "2026-06-01", to: "2026-06-30" },
+      },
+    });
+    expect(JSON.parse(arg!)).toEqual({ doc_types: ["plan"] });
+  });
+
+  it("changes the serialized value when a facet changes so the lineage re-queries once", () => {
+    const a = dashboardLineageFilterArg({ filters: { doc_types: ["adr"] } });
+    const b = dashboardLineageFilterArg({ filters: { doc_types: ["plan"] } });
+    expect(a).not.toEqual(b);
+  });
 });
 
 describe("dashboard-state engine client (live engine)", () => {

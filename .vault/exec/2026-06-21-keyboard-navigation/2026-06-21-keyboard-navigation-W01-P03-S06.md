@@ -3,7 +3,7 @@ tags:
   - '#exec'
   - '#keyboard-navigation'
 date: '2026-06-21'
-modified: '2026-06-21'
+modified: '2026-06-22'
 step_id: 'S06'
 related:
   - "[[2026-06-21-keyboard-navigation-plan]]"

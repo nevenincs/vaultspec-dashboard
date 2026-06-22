@@ -3,29 +3,12 @@ tags:
   - '#audit'
   - '#worktree-enumeration-sweep'
 date: '2026-06-16'
-modified: '2026-06-16'
+modified: '2026-06-22'
 related:
   - "[[2026-06-16-worktree-enumeration-sweep-plan]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #audit) and one feature tag.
-     Replace worktree-enumeration-sweep with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
 
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar]]'.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
 
 # `worktree-enumeration-sweep` audit: `path-only enumerate migration review`
 
@@ -83,27 +66,4 @@ the multi-second cold-scope stall from `validate_scope_token` (the cold
 
 ## Codification candidates
 
-<!-- Findings that satisfy the three durability criteria
-(cross-session, constraint-shaped, project-bound) and should be
-promoted into project-shared rules under `.vaultspec/rules/rules/`
-via `vaultspec-core vault rule promote --from <this-audit-stem>
---as <rule-name>`.
 
-Each candidate names the finding it derives from, the proposed
-rule slug (kebab-case, naming the constraint's subject not the
-failure), and a one-sentence statement of the rule.
-
-Most audits produce zero codification candidates. Some produce one.
-Only the rare framework-wide-pattern audit produces several. If
-none of the findings above meet the bar, state that explicitly and
-move on -- an empty Codification candidates section is a positive
-signal, not a failure. -->
-
-<!-- Example:
-
-- **Source:** finding S04 (destructive verbs lack preview).
-  **Rule slug:** `destructive-verbs-need-dry-run`.
-  **Rule:** Every CLI verb that writes or removes state must
-  accept `--dry-run` and emit a usable preview before applying.
-
--->

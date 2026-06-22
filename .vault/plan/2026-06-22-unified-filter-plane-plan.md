@@ -34,32 +34,32 @@ Every engine endpoint that projects the corpus accepts the same canonical Filter
 
 The timeline narrows its lineage by dashboardState.filters, folding the filter into query identity but never the viewport, revising the prior date-only boundary (ADR D3).
 
-- [ ] `P02.S04` - Pass dashboardState.filters (and the active as-of) to the timeline lineage read so the timeline narrows by the canonical filter; `frontend/src/app/timeline/Timeline.tsx`.
-- [ ] `P02.S05` - Fold the filter and as-of into the lineage query identity but NOT the viewport, so a filter change is one new bounded query while scroll and zoom stay in-memory windowing with no refetch; `frontend/src/stores/server/queries.ts`.
-- [ ] `P02.S06` - Mirror the widened as-of and event-lane shapes in the mock engine double and assert a captured live sample narrows through the same client path the app uses; `frontend/src/stores/server`.
-- [ ] `P02.S07` - Add stores tests that a filter change re-queries the lineage once and a viewport nudge does not; `frontend/src/stores/server/queries.test.ts`.
+- [x] `P02.S04` - Pass dashboardState.filters (and the active as-of) to the timeline lineage read so the timeline narrows by the canonical filter; `frontend/src/app/timeline/Timeline.tsx`.
+- [x] `P02.S05` - Fold the filter and as-of into the lineage query identity but NOT the viewport, so a filter change is one new bounded query while scroll and zoom stay in-memory windowing with no refetch; `frontend/src/stores/server/queries.ts`.
+- [x] `P02.S06` - Mirror the widened as-of and event-lane shapes in the mock engine double and assert a captured live sample narrows through the same client path the app uses; `frontend/src/stores/server`.
+- [x] `P02.S07` - Add stores tests that a filter change re-queries the lineage once and a viewport nudge does not; `frontend/src/stores/server/queries.test.ts`.
 
 ### Phase `P03` - Promote the graph category toggle; retire the visibility mask
 
 The graph legend's category dots write the canonical doc_types/kinds facet and the canvas-local hiddenCategories mask is retired, so category narrowing cross-wires to every view (ADR D2).
 
-- [ ] `P03.S08` - Rewire the CategoryLegend dots to write the canonical doc_types/kinds facet through toggleFilterFacet and reflect the canonical filter active state instead of the canvas-local mask; `frontend/src/app/stage/CategoryLegend.tsx`.
-- [ ] `P03.S09` - Retire the canvas-local visibility seam: remove graphCategoryVisibility.ts, the hiddenCategories view-store slice, and the scene compose step in dashboardFilterChoices.ts; `frontend/src/stores/view`.
-- [ ] `P03.S10` - Align the promoted category set with the index-node-exclusion outcome so the legend offers only displayable categories (index and code stay tokens, not displayable nodes) and coordinate with that in-flight plan before editing shared category files; `frontend/src/stores/server/liveAdapters.ts`.
+- [x] `P03.S08` - Rewire the CategoryLegend dots to write the canonical doc_types/kinds facet through toggleFilterFacet and reflect the canonical filter active state instead of the canvas-local mask; `frontend/src/app/stage/CategoryLegend.tsx`.
+- [x] `P03.S09` - Retire the canvas-local visibility seam: remove graphCategoryVisibility.ts, the hiddenCategories view-store slice, and the scene compose step in dashboardFilterChoices.ts; `frontend/src/stores/view`.
+- [x] `P03.S10` - Align the promoted category set with the index-node-exclusion outcome so the legend offers only displayable categories (index and code stay tokens, not displayable nodes) and coordinate with that in-flight plan before editing shared category files; `frontend/src/stores/server/liveAdapters.ts`.
 
 ### Phase `P04` - Intent guardrails and settings seeds
 
 The structural guard fails any corpus view that bypasses the canonical filter, and the settings seeds are documented as such (ADR D5, D6).
 
-- [ ] `P04.S11` - Document label_filter and confidence_floor as canonical-filter seeds that initialize dashboardState.filters on scope load and are never a query-time bypass; `frontend/src/stores/server/dashboardState.ts`.
-- [ ] `P04.S12` - Extend the structural guard so a corpus-projecting surface that does not consume the canonical filter, or introduces a private filter or category-visibility mask, fails the gate; `frontend/src/app/filterConsolidation.guard.test.ts`.
+- [x] `P04.S11` - Document label_filter and confidence_floor as canonical-filter seeds that initialize dashboardState.filters on scope load and are never a query-time bypass; `frontend/src/stores/server/dashboardState.ts`.
+- [x] `P04.S12` - Extend the structural guard so a corpus-projecting surface that does not consume the canonical filter, or introduces a private filter or category-visibility mask, fails the gate; `frontend/src/app/filterConsolidation.guard.test.ts`.
 
 ### Phase `P05` - Verify and review
 
 The full gate is green and bidirectional cross-wiring across rail, graph, and timeline is live-verified and reviewed (ADR D1).
 
-- [ ] `P05.S13` - Run the full lint gate just dev lint all plus cargo and frontend tests to exit 0; `engine`.
-- [ ] `P05.S14` - Live-verify bidirectional cross-wiring: set a feature filter and toggle a category from the rail AND from the graph legend, confirm rail, graph, and timeline narrow together, and confirm time-travel honours the active filter; `frontend/src/app`.
+- [x] `P05.S13` - Run the full lint gate just dev lint all plus cargo and frontend tests to exit 0; `engine`.
+- [x] `P05.S14` - Live-verify bidirectional cross-wiring: set a feature filter and toggle a category from the rail AND from the graph legend, confirm rail, graph, and timeline narrow together, and confirm time-travel honours the active filter; `frontend/src/app`.
 - [ ] `P05.S15` - Run vaultspec-code-review for layer ownership, selector discipline, mock fidelity, and bounded queries, and resolve required revisions before close; `.vault/audit`.
 
 ## Description

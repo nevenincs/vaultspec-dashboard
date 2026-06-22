@@ -20,6 +20,7 @@ related:
   - '[[2026-06-21-keyboard-navigation-W02-P05-S14]]'
   - '[[2026-06-21-keyboard-navigation-W02-P05-S15]]'
   - '[[2026-06-21-keyboard-navigation-W03-P06-S16]]'
+  - '[[2026-06-21-keyboard-navigation-W03-P06-S17]]'
   - '[[2026-06-21-keyboard-navigation-W03-P06-S20]]'
   - '[[2026-06-21-keyboard-navigation-adr]]'
   - '[[2026-06-21-keyboard-navigation-plan]]'
@@ -52,6 +53,7 @@ Auto-generated index of all documents tagged with `#keyboard-navigation`.
 - `2026-06-21-keyboard-navigation-W02-P05-S14` - Enroll the vault tree onto FocusZone (Up/Down rove rows, Left/Right collapse/expand, Home/End, typeahead, Enter open) as one tab stop with entry-memory
 - `2026-06-21-keyboard-navigation-W02-P05-S15` - Enroll the files tree onto FocusZone with the same tree semantics
 - `2026-06-21-keyboard-navigation-W03-P06-S16` - Enroll the graph nav controls (zoom/fit/reset toolbar) onto FocusZone horizontal roving as one tab stop
+- `2026-06-21-keyboard-navigation-W03-P06-S17` - Give the graph settings panel a correct focus order (folds, sliders, switches, reset) with trap-free containment and focus-restore to its opener
 - `2026-06-21-keyboard-navigation-W03-P06-S20` - Verify the graph canvas application-role focus contract: single tab stop, in-canvas arrow-walk works, Escape/Tab exits to the shell region sequence
 
 ### plan

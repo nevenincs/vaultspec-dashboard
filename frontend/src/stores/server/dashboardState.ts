@@ -515,6 +515,15 @@ export function normalizeDashboardGraphSettingsDefaults(
   };
 }
 
+// The engine `confidence_floor` and `label_filter` settings are canonical-filter
+// SEEDS, not a second filtering authority (unified-filter-plane D5). On scope load
+// they INITIALIZE `dashboardState.filters` — confidence_floor (percent) into the
+// temporal/semantic `min_confidence` floors, label_filter into the `text` facet —
+// and from then on the one canonical filter is the sole authority every surface
+// reads and writes. They are never applied as a query-time bypass and never shadow
+// the canonical plane: a setting change re-seeds the filter, after which the rail,
+// graph, and timeline all narrow from that one state. (Keeping this intent pinned
+// stops a future change from turning either setting into a private filter.)
 export function dashboardGraphSettingsDefaultsPatch(
   defaults: unknown,
 ): DashboardStateMutationPatch {
@@ -674,6 +683,25 @@ export function dashboardGraphFilter(state: DashboardState): GraphFilter {
     delete filter.date_range;
   }
   return filter;
+}
+
+// The timeline's lineage filter is the canonical facet filter, serialized to the
+// URL-encoded JSON string `GET /graph/lineage` accepts (the SAME engine `Filter`
+// grammar `/graph/query` uses). Every facet — doc_types, feature_query, statuses,
+// health, kinds, relations, tiers, min_confidence, plan_tiers, structural_state,
+// text — narrows the timeline exactly as it narrows the graph, so the two views
+// agree (unified-filter-plane D3). The date range is DELIBERATELY excluded: the
+// timeline owns the date axis through its own window and stays the sole
+// date-range writer (filtering-has-one-canonical-surface), so the range is never
+// double-applied as a facet. `cloneDashboardFilters` already drops empty facets
+// and never carries `date_range`, so an empty result means "no active facet" and
+// returns `undefined` — the lineage read stays the unfiltered full set and shares
+// one cache entry instead of a distinct `{}` key.
+export function dashboardLineageFilterArg(
+  state: Pick<DashboardState, "filters">,
+): string | undefined {
+  const filter = cloneDashboardFilters(state.filters);
+  return Object.keys(filter).length > 0 ? JSON.stringify(filter) : undefined;
 }
 
 export function dashboardGraphAsOf(

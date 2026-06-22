@@ -3,7 +3,7 @@ tags:
   - '#research'
   - '#dashboard-left-rail'
 date: '2026-06-14'
-modified: '2026-06-14'
+modified: '2026-06-22'
 related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
   - "[[2026-06-14-dashboard-sidebar-adr]]"

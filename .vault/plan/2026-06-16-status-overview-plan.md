@@ -3,19 +3,12 @@ tags:
   - '#plan'
   - '#status-overview'
 date: '2026-06-16'
-modified: '2026-06-16'
+modified: '2026-06-22'
 tier: L2
 related:
   - '[[2026-06-16-status-overview-adr]]'
+  - '[[2026-06-16-status-overview-research]]'
 ---
-
-
-
-
-
-
-
-
 # `status-overview` plan
 
 ### Phase `P01` - Engine /history route

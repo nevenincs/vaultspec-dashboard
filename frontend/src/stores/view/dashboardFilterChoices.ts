@@ -8,9 +8,7 @@ import {
   useDashboardFilterChoicesView,
   type DashboardFilterChoicesView,
 } from "../server/queries";
-import { applyHiddenCategories } from "./categoryVisibilityMask";
 import { computeVisibility, visibilitySceneCommand } from "./filters";
-import { useHiddenCategorySet } from "./graphCategoryVisibility";
 
 export {
   deriveDashboardFilterChoicesView,
@@ -35,19 +33,16 @@ export function useDashboardVisibilityCommand(
   graph: VisibilityGraphSlice | null,
 ): SceneCommand | null {
   const filterChoices = useServerDashboardFilterChoices(scope);
-  // Canvas-local category-visibility mask (graph legend toggles), composed onto
-  // the canonical filter result. The legend hides categories on the canvas only;
-  // it never writes the canonical filter, so this lives here in the scene
-  // visibility projection rather than in dashboardState.filters.
-  const hiddenCategories = useHiddenCategorySet();
+  // The scene visibility membership is the canonical filter result, full stop
+  // (unified-filter-plane D2). The category legend now writes the canonical
+  // `doc_types` facet, so category narrowing flows through `filterChoices` like
+  // every other facet — there is no separate canvas-local visibility mask to
+  // compose. `computeVisibility` applies the canonical filter to the served slice
+  // (including client-added nodes the server query never saw — ego expansions,
+  // pins), and the scene fades the rest.
   return useMemo(() => {
     if (graph === null) return null;
-    const membership = applyHiddenCategories(
-      computeVisibility(graph.nodes, graph.edges, filterChoices),
-      graph.nodes,
-      graph.edges,
-      hiddenCategories,
-    );
+    const membership = computeVisibility(graph.nodes, graph.edges, filterChoices);
     return visibilitySceneCommand(membership);
-  }, [filterChoices, graph, hiddenCategories]);
+  }, [filterChoices, graph]);
 }

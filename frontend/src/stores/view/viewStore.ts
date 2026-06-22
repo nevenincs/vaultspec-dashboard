@@ -178,20 +178,6 @@ export function normalizeRenderCapability(signal: unknown): RenderCapability {
   };
 }
 
-/**
- * Canvas-local category-visibility mask (graph legend toggles). The legend's
- * category dots are filter toggles that hide/show that category's nodes on the
- * graph canvas ONLY — a scene-rendering visibility layer, never the canonical
- * dashboard filter (filtering-has-one-canonical-surface: the left rail stays the
- * sole facet-filter author, and this never writes dashboardState.filters, so the
- * tree/timeline/other consumers are unaffected). Held as a stable, deduped,
- * bounded `string[]` of canonical category tokens (selected raw and derived in
- * useMemo by the seam — stable-selectors). Empty = every category shown.
- */
-export function normalizeHiddenCategories(value: unknown): string[] {
-  return normalizeViewStoreSessionStringListIdentity(value);
-}
-
 export const normalizeViewStoreSessionString = normalizeViewStoreSessionStringIdentity;
 export const normalizeViewStoreSessionStringList =
   normalizeViewStoreSessionStringListIdentity;
@@ -297,13 +283,6 @@ export interface ViewState {
   overlays: GraphOverlayState;
   /** The scene's reported WebGL render-capability (render-capability SceneEvent). */
   renderCapability: RenderCapability;
-
-  /**
-   * Canvas-local hidden category tokens (graph legend toggles). A scene-only
-   * visibility mask over the graph canvas — never the canonical dashboard
-   * filter. Empty = all categories shown.
-   */
-  hiddenCategories: readonly string[];
 
   /** Switch the worktree scope — swaps the stage's scope wholesale. */
   setScope: (scope: unknown) => void;
@@ -419,10 +398,6 @@ export interface ViewState {
   /** Set overlay visibility (feature countries, feature hulls). */
   setOverlays: (overlays: unknown) => void;
   setRenderCapability: (signal: unknown) => void;
-  /** Toggle one category's canvas visibility (graph legend dot). */
-  toggleHiddenCategory: (category: unknown) => void;
-  /** Replace the canvas category-visibility mask wholesale (e.g. show all). */
-  setHiddenCategories: (categories: unknown) => void;
 
   /** Whether the entire left rail bar is mounted in the shell layout. */
   leftRailVisible: boolean;
@@ -622,7 +597,6 @@ export const useViewStore = create<ViewState>((set) => ({
   editorStatus: "idle",
   overlays: normalizeGraphOverlays(DEFAULT_GRAPH_OVERLAYS),
   renderCapability: DEFAULT_RENDER_CAPABILITY,
-  hiddenCategories: [],
   leftRailVisible: true,
   leftRailWidth: LEFT_RAIL_DEFAULT_WIDTH,
   rightRailWidth: RIGHT_RAIL_DEFAULT_WIDTH,
@@ -959,18 +933,6 @@ export const useViewStore = create<ViewState>((set) => ({
   setOverlays: (overlays) => set({ overlays: normalizeGraphOverlays(overlays) }),
   setRenderCapability: (signal) =>
     set({ renderCapability: normalizeRenderCapability(signal) }),
-  toggleHiddenCategory: (category) =>
-    set((state) => {
-      const token = normalizeViewStoreSessionStringIdentity(category);
-      if (!token) return {};
-      const current = state.hiddenCategories;
-      const next = current.includes(token)
-        ? current.filter((c) => c !== token)
-        : [...current, token];
-      return { hiddenCategories: normalizeHiddenCategories(next) };
-    }),
-  setHiddenCategories: (categories) =>
-    set({ hiddenCategories: normalizeHiddenCategories(categories) }),
   setLeftRailVisible: (leftRailVisible) =>
     set({ leftRailVisible: normalizeShellLayoutVisible(leftRailVisible) }),
   setLeftRailWidth: (width) =>

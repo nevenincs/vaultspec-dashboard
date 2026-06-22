@@ -166,6 +166,26 @@ the `editor-dock-workspace` cycle (the portal-pin contract), the
 `relative-units-migration` cycle (the rem/`uiScale` foundation). The responsive
 campaign composes over all of these rather than re-architecting them.
 
+### F10 — The layout dimensions ARE hardcoded px, but they escape the px-scan guard
+
+`no-hardcoded-px-in-dom-styling` is enforced by `frontend/scripts/scan-px.mjs`,
+whose detector is `PX_RE = /\b\d*\.?\d+px\b/` run only over files matching
+`/\.(css|tsx)$/`. The shell's layout dimensions slip through both halves of that
+net: they are stored as **bare JS numbers** with no `px` substring
+(`LEFT_RAIL_MIN/MAX/DEFAULT_WIDTH = 180/420/252`, `RIGHT_RAIL_* = 220/420/290`,
+`TIMELINE_* = 120/360/212` in `viewStore.ts`; `LEFT_RAIL_COLLAPSED_WIDTH = 48` and
+`SHELL_PANEL_KEY_STEP = 16` in `shellLayout.ts`), and they are composed into px
+only at runtime — `appShellGridColumns` returns `` `${n}px 1fr ${n}px` `` and
+`timelineStyle: { height: \`${n}px\` }` — inside `shellLayout.ts`, a **`.ts` file
+the scanner never walks** (it scans `.css`/`.tsx` only). The resize-handle offsets
+(`right-[-3px]`, `top-[-3px]`) live in the same `.ts` file and are likewise
+unscanned. So the layout is genuinely px-hardcoded in violation of the *spirit* of
+the rule while passing its *letter*. A responsive rebuild that reworks the grid is
+the right moment to consolidate these onto the rem/token scale (or a typed
+dimensional token set) and to close the guard's `.ts`/runtime-composition blind
+spot. This is the "proper layout consolidation" the responsive work must absorb,
+not a separate cleanup.
+
 ## Open questions for the ADR
 
 1. **Breakpoint mechanism** — JS viewport-class signal fed into the existing

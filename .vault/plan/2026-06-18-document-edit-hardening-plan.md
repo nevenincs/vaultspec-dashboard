@@ -3,22 +3,12 @@ tags:
   - '#plan'
   - '#document-edit-hardening'
 date: '2026-06-18'
-modified: '2026-06-18'
+modified: '2026-06-22'
 tier: L3
 related:
   - '[[2026-06-18-document-edit-hardening-adr]]'
+  - '[[2026-06-18-document-edit-hardening-research]]'
 ---
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 # `document-edit-hardening` plan
 
 ## Wave `W01` - Engine brokers the project-pinned core

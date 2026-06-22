@@ -113,9 +113,10 @@ describe("FilterSidebar advanced flyout (no FEATURE section)", () => {
 
     render(renderSidebar(scope));
 
-    // KIND renders (the doc-type "adr" → "Decisions"); FEATURE filtering is no
-    // longer here — there is no in-flyout feature search field.
-    expect(await screen.findByText("Decisions")).toBeTruthy();
+    // The advanced flyout renders (panel title is always present); FEATURE filtering
+    // is no longer here — there is no in-flyout feature search field, and category
+    // (Type) + date (Edited) sections are gone (legend + timeline own those).
+    expect(await screen.findByText("Filter documents")).toBeTruthy();
     expect(screen.queryByPlaceholderText("Search features…")).toBeNull();
     expect(screen.queryByText("delta-sync")).toBeNull();
   });

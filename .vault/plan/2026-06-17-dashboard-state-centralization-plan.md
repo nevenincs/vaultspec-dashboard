@@ -3,22 +3,13 @@ tags:
   - '#plan'
   - '#dashboard-state-centralization'
 date: '2026-06-17'
-modified: '2026-06-17'
+modified: '2026-06-22'
 tier: L3
 related:
   - '[[2026-06-17-dashboard-state-centralization-adr]]'
   - '[[2026-06-17-dashboard-state-centralization-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `dashboard-state-centralization` plan
 

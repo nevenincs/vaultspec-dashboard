@@ -3,21 +3,13 @@ tags:
   - '#plan'
   - '#resource-hardening'
 date: '2026-06-15'
+modified: '2026-06-22'
 tier: L2
 related:
   - '[[2026-06-15-resource-hardening-adr]]'
   - '[[2026-06-15-resource-hardening-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `resource-hardening` plan
 

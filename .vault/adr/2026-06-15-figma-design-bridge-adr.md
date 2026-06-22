@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#figma-design-bridge'
 date: '2026-06-15'
-modified: '2026-06-15'
+modified: '2026-06-22'
 related:
   - "[[2026-06-15-figma-design-bridge-research]]"
 ---

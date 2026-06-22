@@ -7,23 +7,26 @@
 // the plan mark in the feature color (matching the tree); doc types use their own
 // mark.
 //
-// LIVE legend: each item is also a canvas FILTER TOGGLE — clicking a category
-// hides/shows that category's nodes on the graph canvas (a dimmed item is hidden).
-// The toggle writes a CANVAS-LOCAL visibility mask through the
-// `graphCategoryVisibility` seam, NOT the canonical dashboard filter
-// (filtering-has-one-canonical-surface: the left rail stays the sole facet-filter
-// author). The mask composes into the stores' set-visibility projection, so the
-// scene fades the nodes; the dataset and the tree/timeline are untouched.
+// LIVE legend: each DOC-TYPE item is also a canonical FILTER TOGGLE — clicking a
+// category writes the ONE `dashboardState.filters.doc_types` facet through the
+// shared stores intent (the SAME facet the left-rail KIND section authors), so a
+// category narrowed on the graph narrows the rail tree, the graph, AND the timeline
+// together (unified-filter-plane D2: one filter authority, no canvas-local
+// visibility mask). The doc_types facet is multi-select INCLUSION: with no
+// selection every category is shown; selecting categories shows only those. The
+// `feature` item is the aggregation's colour KEY, not a doc-type, so it is a static
+// swatch (there is no `doc_types` value for a feature-convergence node) — the legend
+// "remains the colour/shape key" while every filterable category cross-wires.
 //
 // figma-frontend-rewrite / graph-overlay redesign: the legend composes the
 // centralized kit `Card` and the bound category tokens — never a hand-drawn pill or
 // a literal hex (design-system-is-centralized, warmth-lives-in-tokens).
 
-import {
-  toggleHiddenCategory,
-  useHiddenCategorySet,
-} from "../../stores/view/graphCategoryVisibility";
+import { useMemo } from "react";
+
+import { useDashboardFilterSidebarIntent } from "../../stores/server/dashboardFilterSidebarIntent";
 import { docTypeLabel } from "../../stores/server/docTypeVocabulary";
+import { useActiveScope, useVaultRailFacets } from "../../stores/server/queries";
 import { DocTypeMark } from "../../scene/field/markComponents";
 import { Card, categoryColorVar, categoryToken } from "../kit";
 import type { Category } from "../kit";
@@ -52,8 +55,27 @@ const LEGEND: { category: Category; label: string }[] = [
   { category: "reference", label: docTypeLabel("reference") },
 ];
 
+function LegendMark({ category }: { category: Category }) {
+  return (
+    <span
+      aria-hidden
+      className="flex shrink-0 items-center"
+      style={{ color: categoryColorVar(category) }}
+      data-category-legend-mark={legendMarkKind(category)}
+    >
+      <DocTypeMark kind={legendMarkKind(category)} size={LEGEND_ICON_PX} />
+    </span>
+  );
+}
+
 export function CategoryLegend() {
-  const hidden = useHiddenCategorySet();
+  const scope = useActiveScope();
+  const { docTypes } = useVaultRailFacets(scope);
+  const { toggleFacet } = useDashboardFilterSidebarIntent(scope);
+  // The active `doc_types` inclusion set (stable raw slice, Set derived in useMemo
+  // — stable-selectors). Empty = no filter, every category shown.
+  const activeDocTypes = useMemo(() => new Set(docTypes), [docTypes]);
+  const filterActive = docTypes.length > 0;
   return (
     <Card
       elevation="raised"
@@ -65,27 +87,36 @@ export function CategoryLegend() {
     >
       {LEGEND.map(({ category, label }) => {
         const token = categoryToken(category);
-        const isHidden = hidden.has(token);
+        // `feature` is the aggregation's colour key, not a vault doc-type, so it is
+        // a static swatch — there is no canonical `doc_types` value to toggle.
+        if (category === "feature") {
+          return (
+            <span
+              key={label}
+              data-category-legend-item={token}
+              className="flex shrink-0 items-center gap-fg-1 px-fg-1 py-fg-0-5"
+            >
+              <LegendMark category={category} />
+              <span className="text-caption text-ink-muted">{label}</span>
+            </span>
+          );
+        }
+        // Multi-select inclusion: with no selection every category is shown; once a
+        // selection exists, only its members stay full-opacity (the rest dim).
+        const included = !filterActive || activeDocTypes.has(token);
         return (
           <button
             type="button"
             key={label}
-            onClick={() => toggleHiddenCategory(token)}
-            aria-pressed={!isHidden}
-            title={isHidden ? `Show ${label}` : `Hide ${label}`}
+            onClick={() => void toggleFacet("doc_types", token)}
+            aria-pressed={activeDocTypes.has(token)}
+            title={`Filter by ${label}`}
             data-category-legend-item={token}
             className={`flex shrink-0 items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 outline-none transition-[opacity,background-color] duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-              isHidden ? "opacity-40" : "opacity-100"
+              included ? "opacity-100" : "opacity-40"
             }`}
           >
-            <span
-              aria-hidden
-              className="flex shrink-0 items-center"
-              style={{ color: categoryColorVar(category) }}
-              data-category-legend-mark={legendMarkKind(category)}
-            >
-              <DocTypeMark kind={legendMarkKind(category)} size={LEGEND_ICON_PX} />
-            </span>
+            <LegendMark category={category} />
             <span className="text-caption text-ink-muted">{label}</span>
           </button>
         );

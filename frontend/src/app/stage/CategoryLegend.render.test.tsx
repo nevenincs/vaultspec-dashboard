@@ -1,65 +1,85 @@
 // @vitest-environment happy-dom
 //
-// Category legend (binding Figma `graph/Hero` Legend 99:2): the LIVE legend's
-// render surface, accessibility, and toggle wiring, exercised through a real DOM
-// render against the real view store — no component-internal doubles.
-//
-// What is asserted (live legend):
-//   • the legend is an accessible group of category-filter toggle buttons, each
-//     pressed (shown) by default;
-//   • clicking a category toggles its canvas visibility — aria-pressed flips and
-//     the view store's hiddenCategories mask gains/loses the category token;
-//   • the swatch + label still name the encoding (a swatch and its nodes agree).
+// Category legend = canonical filter author (unified-filter-plane D2). Each
+// DOC-TYPE item writes the ONE `dashboardState.filters.doc_types` facet through the
+// shared filter intent (the SAME facet the left-rail KIND section authors), so a
+// category narrowed on the graph cross-wires to the rail tree, the graph, and the
+// timeline. The `feature` item is the aggregation's colour KEY, not a vault
+// doc-type, so it is a static swatch (no toggle). The retired canvas-local
+// `hiddenCategories` mask no longer exists.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { setHiddenCategories } from "../../stores/view/graphCategoryVisibility";
-import { useViewStore } from "../../stores/view/viewStore";
+const h = vi.hoisted(() => ({
+  docTypes: [] as string[],
+  toggleFacet: vi.fn(),
+}));
+
+vi.mock("../../stores/server/queries", () => ({
+  useActiveScope: () => "wt-1",
+  useVaultRailFacets: () => ({
+    docTypes: h.docTypes,
+    statuses: [],
+    featureTags: [],
+    featureQuery: null,
+    dateRange: {},
+  }),
+}));
+vi.mock("../../stores/server/dashboardFilterSidebarIntent", () => ({
+  useDashboardFilterSidebarIntent: () => ({
+    toggleFacet: h.toggleFacet,
+    clearFilters: vi.fn(),
+  }),
+}));
+
 import { CategoryLegend } from "./CategoryLegend";
 
-describe("CategoryLegend live filter toggles", () => {
-  beforeEach(() => setHiddenCategories([]));
-  afterEach(() => {
-    cleanup();
-    setHiddenCategories([]);
+function item(token: string): HTMLElement {
+  const el = document.querySelector(`[data-category-legend-item="${token}"]`);
+  if (!(el instanceof HTMLElement)) throw new Error(`no legend item ${token}`);
+  return el;
+}
+
+afterEach(() => {
+  cleanup();
+  h.docTypes = [];
+  h.toggleFacet.mockClear();
+});
+
+describe("CategoryLegend (canonical doc_types filter, unified-filter-plane D2)", () => {
+  it("writes the canonical doc_types facet when a doc-type item is clicked", () => {
+    render(createElement(CategoryLegend));
+    fireEvent.click(item("adr"));
+    expect(h.toggleFacet).toHaveBeenCalledWith("doc_types", "adr");
+    fireEvent.click(item("plan"));
+    expect(h.toggleFacet).toHaveBeenCalledWith("doc_types", "plan");
   });
 
-  it("renders an accessible group of category-filter toggles, all shown by default", () => {
+  it("renders the feature item as a static colour key, not a filter toggle", () => {
     render(createElement(CategoryLegend));
+    // The feature aggregation has no `doc_types` value, so its legend entry is a
+    // non-interactive swatch (a <span>), never a <button>.
+    expect(item("feature").tagName).toBe("SPAN");
+    expect(item("adr").tagName).toBe("BUTTON");
+  });
+
+  it("dims the categories the active doc_types filter excludes", () => {
+    h.docTypes = ["adr"];
+    render(createElement(CategoryLegend));
+    // With `adr` selected, only the ADR item stays full-opacity; the rest dim.
+    expect(item("adr").className).toContain("opacity-100");
+    expect(item("plan").className).toContain("opacity-40");
+    // The selected facet is reflected as pressed for assistive tech.
+    expect(item("adr").getAttribute("aria-pressed")).toBe("true");
+    expect(item("plan").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("shows every category at full opacity when no doc_types filter is active", () => {
+    render(createElement(CategoryLegend));
+    expect(item("adr").className).toContain("opacity-100");
+    expect(item("research").className).toContain("opacity-100");
     expect(screen.getByRole("group", { name: "category filters" })).toBeTruthy();
-    const toggles = screen.getAllByRole("button");
-    expect(toggles).toHaveLength(7);
-    // Every toggle starts pressed (category shown).
-    for (const toggle of toggles) {
-      expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    }
-  });
-
-  it("hides a category on click and writes the canvas mask, then restores", () => {
-    render(createElement(CategoryLegend));
-    // The accessible name is the visible label text ("Decisions" for adr).
-    const adr = screen.getByRole("button", { name: /decisions/i });
-    expect(adr.getAttribute("aria-pressed")).toBe("true");
-
-    fireEvent.click(adr);
-    expect(useViewStore.getState().hiddenCategories).toContain("adr");
-    expect(
-      screen.getByRole("button", { name: /decisions/i }).getAttribute("aria-pressed"),
-    ).toBe("false");
-
-    // Toggling again clears it — the mask is empty and the category is shown.
-    fireEvent.click(screen.getByRole("button", { name: /decisions/i }));
-    expect(useViewStore.getState().hiddenCategories).not.toContain("adr");
-    expect(
-      screen.getByRole("button", { name: /decisions/i }).getAttribute("aria-pressed"),
-    ).toBe("true");
-  });
-
-  it("toggles only the clicked category, leaving the rest shown", () => {
-    render(createElement(CategoryLegend));
-    fireEvent.click(screen.getByRole("button", { name: /plans/i }));
-    expect(useViewStore.getState().hiddenCategories).toEqual(["plan"]);
   });
 });

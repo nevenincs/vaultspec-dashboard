@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#dashboard-left-rail'
 date: '2026-06-14'
-modified: '2026-06-14'
+modified: '2026-06-22'
 related:
   - "[[2026-06-14-dashboard-left-rail-research]]"
   - "[[2026-06-14-dashboard-sidebar-adr]]"

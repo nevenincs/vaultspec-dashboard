@@ -66,6 +66,7 @@ import {
   useActiveScope,
   useDashboardDateRangeView,
   useFiltersVocabularyView,
+  useTimelineLineageFilterArg,
   useTimelineLineageView,
 } from "../../stores/server/queries";
 import { setHoveredNodeId } from "../../stores/view/selection";
@@ -995,7 +996,14 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   // (The playhead drives stage time-travel ONLY; the marks render the live corpus
   // and never refetch per playhead instant — the hook keeps its `asOf` param as a
   // harmless capability the timeline never drives.)
-  const lineage = useTimelineLineageView(scope);
+  // The canonical facet filter (unified-filter-plane D3) DOES fold into the query
+  // identity: a feature filter set in the rail, or a category toggled on the graph,
+  // narrows the timeline's lineage exactly as it narrows the graph. Like the
+  // generation bump, a filter change is one new bounded query (placeholderData
+  // keeps the prior set rendered); the viewport stays out of identity, so scroll
+  // and zoom remain pure in-memory windowing.
+  const lineageFilter = useTimelineLineageFilterArg(scope);
+  const lineage = useTimelineLineageView(scope, {}, lineageFilter);
 
   const { loading, errored, nodes, arcs } = lineage;
   const overviewInstants = useMemo(

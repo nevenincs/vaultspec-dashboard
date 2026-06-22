@@ -173,6 +173,7 @@ import {
   useReadTime,
   useSalienceSliceView,
   useTimelineLineage,
+  useTimelineLineageView,
   useVaultTree,
   useVaultTreeSurface,
   dashboardStateSessionIdentity,
@@ -3094,6 +3095,35 @@ describe("deriveGraphSliceAvailability (nav-controls descent, contract §2)", ()
     rerender({ lens: "design", filter: { doc_types: ["plan"] } });
     await waitFor(() => expect(graphRequests).toHaveLength(3));
     await waitFor(() => expect(result.current.slice.isSuccess).toBe(true));
+  });
+
+  it("forwards the canonical filter to the lineage wire on the same client path (unified-filter-plane D3)", async () => {
+    // The timeline narrows by the canonical filter exactly as the graph does: the
+    // active facet rides the SAME client path (engineClient.lineage) the app uses,
+    // so a captured live request proves the wire shape (mock-mirrors-live-wire-shape).
+    // No facet active -> no `filter=` param (the full set, one cache entry); a facet
+    // active -> the URL-encoded JSON filter on the wire, a new bounded query.
+    const scope = await liveScope();
+    const lineageRequests: string[] = [];
+    engineClient.useTransport((input, init) => {
+      if (input.includes("/graph/lineage")) lineageRequests.push(input);
+      return liveTransport(input, init);
+    });
+
+    const client = testQueryClient();
+    const { result, rerender } = renderHook(
+      (filter?: string) => useTimelineLineageView(scope, {}, filter),
+      { wrapper: wrapper(client), initialProps: undefined as string | undefined },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(lineageRequests).toHaveLength(1);
+    expect(lineageRequests[0]).not.toContain("filter=");
+
+    rerender(JSON.stringify({ doc_types: ["plan"] }));
+    await waitFor(() => expect(lineageRequests).toHaveLength(2));
+    expect(lineageRequests[1]).toContain("filter=");
+    expect(decodeURIComponent(lineageRequests[1]!)).toContain('"doc_types":["plan"]');
   });
 });
 

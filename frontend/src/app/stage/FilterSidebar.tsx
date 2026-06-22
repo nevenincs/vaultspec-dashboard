@@ -22,12 +22,9 @@ import { createPortal } from "react-dom";
 
 import { Popover } from "../kit";
 import { useDashboardFilterSidebarIntent } from "../../stores/server/dashboardFilterSidebarIntent";
-import { useDateRangeIntent } from "../../stores/server/dateRangeIntent";
 import {
-  dashboardEditedWindowRange,
   useDashboardFilterSidebarView,
   useFiltersVocabularyView,
-  type DashboardEditedWindow,
 } from "../../stores/server/queries";
 import {
   deriveFilterSidebarMenuSections,
@@ -91,7 +88,6 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
   const vocabulary = useFiltersVocabularyView(scope);
   const filterView = useDashboardFilterSidebarView(scope);
   const filterIntent = useDashboardFilterSidebarIntent(scope);
-  const rangeIntent = useDateRangeIntent(scope);
   // Reset the disclosure store when the scoped vocabulary changes so the flyout's
   // visual state never rides across a different corpus.
   const visualStateKey = useFilterSidebarVisualState(
@@ -108,18 +104,6 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
     vocabulary,
     filterView,
     onToggleFacet: (facet, value) => void filterIntent.toggleFacet(facet, value),
-    // EDITED date-range radios: "Any time" clears the range; a window maps to its
-    // canonical {from,to} and writes through the date-range intent (the rail is the
-    // canonical date-range author now, alongside the timeline).
-    onSelectEditedWindow: (window) => {
-      if (window === "any") {
-        void rangeIntent.clearRange();
-        return;
-      }
-      void rangeIntent.setRange(
-        dashboardEditedWindowRange(window as DashboardEditedWindow),
-      );
-    },
   });
 
   if (!open || anchor === null) return null;
@@ -145,8 +129,9 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
         title={presentation.titleLabel}
         anyActive={filterView.anyActive}
         onClearAll={() => {
+          // Clears only the facet filters; the date window is the timeline's to own
+          // (filtering-has-one-canonical-surface: one date writer).
           void filterIntent.clearFilters();
-          void rangeIntent.clearRange();
         }}
         sections={sections}
         maxHeight="calc(100vh - 3.5rem)"

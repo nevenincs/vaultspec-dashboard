@@ -460,10 +460,6 @@ export interface FilterSidebarMenuSectionsInput {
   vocabulary: unknown;
   filterView: unknown;
   onToggleFacet: (facet: unknown, value: unknown) => void;
-  /** Select an edited-window option (the EDITED date-range radios). The caller
-   *  maps the window key to a canonical date range and writes it through the
-   *  date-range intent. Omit to render the section read-only (e.g. in tests). */
-  onSelectEditedWindow?: (window: unknown) => void;
 }
 
 function isFilterSidebarRecord(value: unknown): value is Record<string, unknown> {

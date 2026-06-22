@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#index-node-exclusion'
 date: '2026-06-20'
-modified: '2026-06-20'
+modified: '2026-06-22'
 related:
   - '[[2026-06-20-index-node-exclusion-research]]'
   - '[[2026-06-20-terminology-standardization-adr]]'

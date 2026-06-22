@@ -443,7 +443,7 @@ describe("filter sidebar view store", () => {
     expect(filterSidebarStatusDot("accepted")).toBe("complete");
     expect(filterSidebarStatusDot("in-progress")).toBe("active");
     expect(filterSidebarStatusDot("unknown")).toBe("provisional");
-    expect(filterSidebarHealthLabel("dangling")).toBe("Broken links");
+    expect(filterSidebarHealthLabel("dangling")).toBe("Dangling");
     expect(filterSidebarHealthLabel("custom")).toBe("custom");
     expect(filterSidebarHealthDot("invalid")).toBe("danger");
     expect(filterSidebarHealthDot("custom")).toBe("stale");
@@ -567,41 +567,23 @@ describe("filter sidebar view store", () => {
       onToggleFacet: (facet, value) => toggles.push([facet, value]),
     });
 
-    // FEATURE filtering moved to the rail's feature search bar; the advanced flyout
-    // hosts only KIND / STATUS / HEALTH / EDITED now.
-    expect(sections.map((section) => section.key)).toEqual([
-      "kind",
-      "status",
-      "health",
-      "edited",
-    ]);
+    // Category filtering lives on the graph legend and dates on the timeline, so the
+    // advanced flyout hosts ONLY the doc-type-scoped STATUS groups + HEALTH.
+    expect(sections.map((section) => section.key)).toEqual(["status", "health"]);
     expect(sections[0]).toMatchObject({
       type: "checkbox",
-      key: "kind",
-      selected: ["adr"],
-      options: [{ value: "adr", label: "Decisions" }],
+      key: "status",
+      selected: [],
+      options: [{ value: "accepted", label: "Accepted", dot: "complete" }],
     });
     expect(sections[1]).toMatchObject({
-      key: "status",
-      options: [{ value: "accepted", dot: "complete" }],
-    });
-    expect(sections[2]).toMatchObject({
       key: "health",
-      options: [{ value: "dangling", label: "Broken links", dot: "broken" }],
-    });
-    expect(sections[3]).toMatchObject({
-      type: "radio",
-      key: "edited",
-      value: "any",
-      options: [
-        { value: "any", label: "Any time" },
-        { value: "7d", label: "Last 7 days" },
-      ],
+      options: [{ value: "dangling", label: "Dangling", dot: "broken" }],
     });
 
-    if (sections[0]?.type === "checkbox") sections[0].onToggle("adr");
+    if (sections[0]?.type === "checkbox") sections[0].onToggle("accepted");
 
-    expect(toggles).toEqual([["doc_types", "adr"]]);
+    expect(toggles).toEqual([["statuses", "accepted"]]);
   });
 
   it("normalizes malformed facet rows before menu projection", () => {
@@ -661,28 +643,25 @@ describe("filter sidebar view store", () => {
       onToggleFacet: (facet, value) => toggles.push([facet, value]),
     });
 
-    // Advanced flyout sections after the FEATURE move: KIND / STATUS / HEALTH.
+    // Advanced flyout sections: STATUS / HEALTH only (category → legend, date →
+    // timeline).
+    expect(sections.map((section) => section.key)).toEqual(["status", "health"]);
     expect(sections[0]).toMatchObject({
-      key: "kind",
-      selected: ["adr"],
-      options: [{ value: "adr", label: "Decisions" }],
-    });
-    expect(sections[1]).toMatchObject({
       key: "status",
       selected: ["accepted"],
-      options: [{ value: "accepted", dot: "complete" }],
+      options: [{ value: "accepted", label: "Accepted", dot: "complete" }],
     });
-    expect(sections[2]).toMatchObject({
+    expect(sections[1]).toMatchObject({
       key: "health",
       selected: ["dangling"],
-      options: [{ value: "dangling", label: "Broken links", dot: "broken" }],
+      options: [{ value: "dangling", label: "Dangling", dot: "broken" }],
     });
 
     if (sections[0]?.type === "checkbox") {
-      sections[0].onToggle(" adr ");
-      sections[0].onToggle({ value: "adr" } as unknown as string);
+      sections[0].onToggle(" accepted ");
+      sections[0].onToggle({ value: "accepted" } as unknown as string);
     }
-    expect(toggles).toEqual([["doc_types", "adr"]]);
+    expect(toggles).toEqual([["statuses", "accepted"]]);
   });
 
   it("exposes named chrome intent helpers for app-layer consumers", () => {

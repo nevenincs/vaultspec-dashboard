@@ -4,14 +4,23 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-// Structural guard for the filter-consolidation ADR: filtering controls are
-// authored from exactly ONE canonical surface — the left rail's filter area —
-// which writes the single dashboardState.filters. The graph stage, the timeline,
-// and the right activity rail are pure CONSUMERS of that state and must host no
-// facet-filter control. This test scans production source so that a future
-// "convenience" filter re-introduced on another surface fails the gate instead of
-// shipping green. The right rail's semantic Search pillar (POST /search) is a
-// distinct concept and is intentionally NOT matched here.
+// Structural guard for the filter-consolidation + unified-filter-plane ADRs.
+//
+// filter-consolidation: the advanced facet FLYOUT (FilterSidebar/FilterMenu) is
+// mounted from exactly ONE surface — the left rail — and the timeline and right rail
+// host no facet-flyout control.
+//
+// unified-filter-plane (D1/D2/D6): the binding invariant is now one canonical
+// STATE, not one canonical SURFACE. Any control that narrows the corpus writes the
+// single `dashboardState.filters` (the graph category legend authors `doc_types`
+// through the shared filter intent, exactly like the rail's KIND section), and
+// every corpus-projecting view CONSUMES that one plane. What is forbidden is a
+// PRIVATE filter / category-visibility mask that bypasses the canonical state — the
+// retired `hiddenCategories` seam is exactly that anti-pattern and must never
+// return. This test scans production source so a re-introduced private mask, or a
+// timeline that stops consuming the filter, fails the gate instead of shipping
+// green. The right rail's semantic Search pillar (POST /search) is a distinct
+// concept and is intentionally NOT matched here.
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_ROOT = resolve(HERE, ".."); // frontend/src
@@ -86,5 +95,34 @@ describe("filter-consolidation: one canonical filter surface", () => {
     for (const f of FILES.filter((f) => f.rel.startsWith("app/right/"))) {
       expect(FACET_CONTROL.test(f.body), `${f.rel} hosts a facet filter`).toBe(false);
     }
+  });
+
+  it("forbids any private category-visibility mask that bypasses the canonical filter (unified-filter-plane D2)", () => {
+    // The retired canvas-local mask (`hiddenCategories` + its seam) is the exact
+    // anti-pattern the one-authority model prohibits: a control that hides corpus
+    // nodes without writing `dashboardState.filters`, so the rail/timeline never see
+    // it. Category narrowing now flows through the canonical `doc_types` facet. If
+    // any of these tokens reappear in production source, a private mask has crept
+    // back — fail the gate.
+    const PRIVATE_MASK =
+      /hiddenCategories|toggleHiddenCategory|setHiddenCategories|useHiddenCategorySet|graphCategoryVisibility|applyHiddenCategories/;
+    const offenders = FILES.filter((f) => PRIVATE_MASK.test(f.body)).map((f) => f.rel);
+    expect(
+      offenders,
+      `private category-visibility mask reintroduced in ${offenders.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("keeps the timeline a consumer of the canonical filter (unified-filter-plane D3)", () => {
+    // The timeline must narrow by the canonical filter, not ignore it. It consumes
+    // the serialized facet filter through `useTimelineLineageFilterArg` and feeds it
+    // to its lineage read — a regression that drops this makes the timeline show the
+    // whole corpus while the rail and graph narrow.
+    const timeline = FILES.find((f) => f.rel === "app/timeline/Timeline.tsx");
+    expect(timeline, "app/timeline/Timeline.tsx not found").toBeTruthy();
+    expect(
+      /useTimelineLineageFilterArg/.test(timeline!.body),
+      "the timeline no longer consumes the canonical filter",
+    ).toBe(true);
   });
 });

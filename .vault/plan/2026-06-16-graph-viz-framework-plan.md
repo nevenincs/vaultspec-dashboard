@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#graph-viz-framework'
 date: '2026-06-16'
-modified: '2026-06-16'
+modified: '2026-06-22'
 tier: L3
 related:
   - '[[2026-06-16-graph-force-stability-adr]]'
@@ -15,15 +15,6 @@ related:
   - '[[2026-06-16-missing-backend-inventory-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `graph-viz-framework` plan
 

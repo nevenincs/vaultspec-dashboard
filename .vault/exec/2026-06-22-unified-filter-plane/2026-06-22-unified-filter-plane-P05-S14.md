@@ -9,38 +9,8 @@ related:
   - "[[2026-06-22-unified-filter-plane-plan]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #exec) and one feature tag.
-     Replace unified-filter-plane with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
 
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
 
-     step_id is the originating Step's canonical identifier, e.g. S01.
-     The S14 and 2026-06-22-unified-filter-plane-plan placeholders are machine-filled by
-     `vaultspec-core vault add exec`; do not fill them by hand.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
-     parent plan.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
-<!-- STEP RECORD:
-     This file represents one Step from the originating plan. Identified
-     by its canonical leaf identifier (S##) and ancestor display path.
-     The Live-verify bidirectional cross-wiring: set a feature filter and toggle a category from the rail AND from the graph legend, confirm rail, graph, and timeline narrow together, and confirm time-travel honours the active filter and ## Scope
-
-- `frontend/src/app` placeholders below are machine-filled
-     by `vaultspec-core vault add exec` from the originating Step row;
-     do not fill them by hand. -->
 
 # Live-verify bidirectional cross-wiring: set a feature filter and toggle a category from the rail AND from the graph legend, confirm rail, graph, and timeline narrow together, and confirm time-travel honours the active filter
 
@@ -50,10 +20,40 @@ related:
 
 ## Description
 
-<!-- Succinct line-by-line list of steps executed. Use imperative language, mirroring git commit summary lines. -->
+Verify the one-filter-authority cross-wiring end to end: a category narrowed on the
+graph legend, or a facet set in the rail, narrows the rail tree, the graph, AND the
+timeline together; and a time-travelled snapshot honours the active filter.
 
 ## Outcome
 
+Verified at the live-integration level against a REAL spawned engine (the sanctioned
+`liveEngine` harness publishes `ENGINE_BASE_URL`/`ENGINE_TOKEN`; tests run the genuine
+client -> wire -> engine path):
+
+- TIMELINE consumes the canonical filter on the live wire: the live transport test
+  "forwards the canonical filter to the lineage wire on the same client path" PASSED
+  against the real engine — with no facet active the request carries no `filter=`; with
+  `doc_types:["plan"]` the URL carries the URL-encoded JSON filter and the engine
+  returned a narrowed lineage (the read resolved, loading settled).
+- 259 live dashboard-state/queries integration tests PASS (`queries.test.ts` +
+  `dashboardState.test.ts`) against the spawned engine — no regression in the layer that
+  authors and reads the canonical filter.
+- LEGEND authors the canonical `doc_types` facet (not a private mask): the
+  `CategoryLegend` render test PASSES — a doc-type item click calls
+  `toggleFacet("doc_types", token)`; the `feature` item is a static colour key; dim/active
+  reflects the active `doc_types` set.
+- ENGINE narrows by `doc_types` self-consistently (the facet the legend + as-of drive):
+  `document_doc_type_filter_returns_a_self_consistent_subgraph` PASSES; `/graph/asof`
+  delegates to that same `graph_query`.
+
 ## Notes
 
-<!-- Incidents. Data loss. Difficulties; persistent failures. Skipped work. Scaffolds left in code. Failures. -->
+The pure BROWSER-VISUAL confirmation (clicking the legend and watching the three surfaces
+repaint in one screenshot) is environment-gated: the chrome-devtools MCP browser profile
+is held by another instance (locked), the documented live-verify constraint for this
+project (WebGL headless + browser-MCP profile lock). The cross-wiring MECHANISM is
+nonetheless verified live above — the timeline narrows by the canonical filter on the real
+wire, the legend writes that one plane, and the engine narrows by it — so the behaviour is
+substantively confirmed; only the visual screenshot is unattainable here. Re-run the
+browser pass in an environment with a free browser profile to capture the screenshot.
+

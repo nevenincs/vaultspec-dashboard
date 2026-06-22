@@ -95,6 +95,7 @@ import { normalizeSearchTarget, type SearchTarget } from "../searchTarget";
 import {
   cloneDashboardFilters,
   dashboardGraphQueryVariables,
+  dashboardLineageFilterArg,
   dashboardSelectionId,
   normalizeDashboardGraphBounds,
   normalizeDashboardGraphGranularity,
@@ -1553,6 +1554,23 @@ export function useVaultRailFacets(scope: unknown): VaultRailFacets {
       dateRange: dashboardState.data?.date_range ?? {},
     };
   }, [dashboardState.data]);
+}
+
+/** The canonical facet filter serialized for the timeline's lineage read
+ *  (unified-filter-plane D3): the timeline narrows by the SAME
+ *  `dashboardState.filters` the rail authors and the graph consumes, so a feature
+ *  filter set in the rail (or a category toggled on the graph) narrows the
+ *  timeline too. Returns `undefined` when no facet is active. Selects the raw,
+ *  stable filters slice and derives the string in `useMemo` — never inside the
+ *  selector (stable-selectors). The date range is excluded by
+ *  `dashboardLineageFilterArg`; the timeline owns its own date axis. */
+export function useTimelineLineageFilterArg(scope: unknown): string | undefined {
+  const dashboardState = useDashboardState(scope);
+  const filters = dashboardState.data?.filters;
+  return useMemo(
+    () => (filters ? dashboardLineageFilterArg({ filters }) : undefined),
+    [filters],
+  );
 }
 
 /** A plain narrow string for the Files tree (which can only narrow paths by text):

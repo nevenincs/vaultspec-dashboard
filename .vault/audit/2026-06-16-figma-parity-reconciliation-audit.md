@@ -3,31 +3,14 @@ tags:
   - '#audit'
   - '#figma-parity-reconciliation'
 date: '2026-06-16'
-modified: '2026-06-16'
+modified: '2026-06-22'
 related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
   - "[[2026-06-16-figma-parity-reconciliation-adr]]"
   - "[[2026-06-16-figma-parity-reconciliation-research]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #audit) and one feature tag.
-     Replace figma-parity-reconciliation with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
 
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar]]'.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
 
 # `figma-parity-reconciliation` audit: `Figma parity reconciliation: W04 Phase-5 verification`
 
@@ -112,21 +95,6 @@ MEDIUM below.
 
 ## Codification candidates
 
-<!-- Findings that satisfy the three durability criteria
-(cross-session, constraint-shaped, project-bound) and should be
-promoted into project-shared rules under `.vaultspec/rules/rules/`
-via `vaultspec-core vault rule promote --from <this-audit-stem>
---as <rule-name>`.
-
-Each candidate names the finding it derives from, the proposed
-rule slug (kebab-case, naming the constraint's subject not the
-failure), and a one-sentence statement of the rule.
-
-Most audits produce zero codification candidates. Some produce one.
-Only the rare framework-wide-pattern audit produces several. If
-none of the findings above meet the bar, state that explicitly and
-move on -- an empty Codification candidates section is a positive
-signal, not a failure. -->
 
 None. The two candidates this feature surfaced — `figma-is-the-binding-source-of-truth`
 and `view-rewrite-preserves-the-state-and-scene-contract` — were already codified in
