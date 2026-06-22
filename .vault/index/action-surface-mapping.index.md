@@ -6,6 +6,7 @@ tags:
 date: '2026-06-22'
 modified: '2026-06-22'
 related:
+  - '[[2026-06-22-action-surface-mapping-adr]]'
   - '[[2026-06-22-action-surface-mapping-audit]]'
   - '[[2026-06-22-action-surface-mapping-plan]]'
 ---
@@ -15,6 +16,10 @@ related:
 Auto-generated index of all documents tagged with `#action-surface-mapping`.
 
 ## Documents
+
+### adr
+
+- `2026-06-22-action-surface-mapping-adr` - `action-surface-mapping` adr: `converge by coverage delta, not blanket re-enrollment` | (**status:** `accepted`)
 
 ### audit
 
