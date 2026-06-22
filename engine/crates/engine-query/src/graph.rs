@@ -117,52 +117,6 @@ fn wire_name<T: Serialize>(value: &T) -> String {
         .unwrap_or_default()
 }
 
-/// Base node radius used by the graph wire's explicit sizing projection.
-pub const NODE_SIZE_BASE: f64 = 6.0;
-/// Maximum salience multiplier for active-lens document nodes.
-pub const NODE_SIZE_SALIENCE_MAX: f64 = 2.6;
-
-fn round_node_size(value: f64) -> f64 {
-    (value * 1e6).round() / 1e6
-}
-
-/// World-space node body radius for the graph wire. This mirrors the current
-/// scene fallback so the backend can expose the size contract before the canvas
-/// switches to consuming it directly.
-pub fn node_size_from_salience(salience: f64) -> f64 {
-    let s = salience.clamp(0.0, 1.0);
-    round_node_size(NODE_SIZE_BASE * (1.0 + s * (NODE_SIZE_SALIENCE_MAX - 1.0)))
-}
-
-fn node_size_from_member_count(member_count: usize) -> f64 {
-    round_node_size(NODE_SIZE_BASE * (1.4 + ((1 + member_count) as f64).log2() * 0.5))
-}
-
-fn node_size_for_view(node: &Value) -> f64 {
-    if let Some(salience) = node.get("salience").and_then(Value::as_f64) {
-        return node_size_from_salience(salience);
-    }
-    if node.get("kind").and_then(Value::as_str) == Some("feature")
-        && let Some(member_count) = node.get("member_count").and_then(Value::as_u64)
-        && member_count > 0
-    {
-        return node_size_from_member_count(member_count as usize);
-    }
-    NODE_SIZE_BASE
-}
-
-/// Attach or refresh the explicit graph-wire `node_size` projection. Document
-/// nodes use salience when present; feature-convergence nodes use member count;
-/// every other node gets the base radius.
-pub fn annotate_node_sizes(nodes: &mut [Value]) {
-    for node in nodes {
-        let size = node_size_for_view(node);
-        if let Some(obj) = node.as_object_mut() {
-            obj.insert("node_size".to_string(), Value::from(size));
-        }
-    }
-}
-
 fn union_index_values(index: &HashMap<String, Vec<String>>, values: &[String]) -> Vec<String> {
     let mut ids = Vec::new();
     for value in values {
@@ -313,7 +267,6 @@ fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> Value {
     view["aggregate"] = Value::Bool(crate::ontology::is_aggregate_species(
         node.doc_type.as_deref(),
     ));
-    view["node_size"] = Value::from(NODE_SIZE_BASE);
     // Per-type lifecycle status (node-visual-richness ADR P01): TWO additive
     // fields — `status_value` (the literal type-specific status token) and
     // `status_class` (the closed treatment-family enum) — projected from the
@@ -508,7 +461,6 @@ fn feature_nodes(graph: &LinkageGraph, scope: &ScopeRef, members: &[&Node]) -> V
                 "title": tag,
                 "feature_tags": [tag],
                 "member_count": docs.len(),
-                "node_size": node_size_from_member_count(docs.len()),
                 "degree_by_tier": degrees,
                 "lifecycle": lifecycle,
                 // Facet projection: the convergence exists in the queried
@@ -1297,7 +1249,6 @@ mod tests {
             .find(|n| n["id"] == "feature:feature-a")
             .expect("feature-a synthesized");
         assert_eq!(a["member_count"], 1);
-        assert_eq!(a["node_size"], 11.4);
         assert!(a["degree_by_tier"].is_object());
     }
 
@@ -1313,10 +1264,6 @@ mod tests {
             .expect("a-plan listed");
         assert!(a["degree_by_tier"]["structural"].as_u64().unwrap() >= 1);
         assert!(a.get("lifecycle").is_some(), "lifecycle key present");
-        assert_eq!(
-            a["node_size"], NODE_SIZE_BASE,
-            "document node views expose the base size before salience enrichment"
-        );
         // Ontology projection (graph-node-semantics ADR): authority_class and
         // aggregate ride additively on the document list shape.
         assert_eq!(

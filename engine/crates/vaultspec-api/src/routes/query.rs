@@ -554,7 +554,6 @@ pub async fn graph_query_route(
             salience_partial,
         );
         engine_query::salience::annotate_nodes(&mut slice.nodes, &scores);
-        engine_query::graph::annotate_node_sizes(&mut slice.nodes);
         engine_query::salience::order_by_salience(&mut slice.nodes, &scores);
     }
     // Bound the payload at BOTH granularities (perf ADR D2): the feature
@@ -1025,7 +1024,6 @@ pub async fn node_neighbors(
     let mut ego_value = serde_json::to_value(&ego).expect("ego serializes");
     if let Some(nodes) = ego_value.get_mut("nodes").and_then(|n| n.as_array_mut()) {
         engine_query::salience::annotate_nodes(nodes, &scores);
-        engine_query::graph::annotate_node_sizes(nodes);
         // Order by DOI so the ego node ceiling (below) keeps the TOP-salience
         // neighbours for the active lens — mirroring the document slice's
         // lens-dependent truncation. The ego center is the DOI focus, so it

@@ -108,14 +108,6 @@ async fn graph_query_defaults_to_the_status_lens_and_carries_salience() {
             (0.0..=1.0).contains(&s),
             "salience is normalized to [0,1]: {s}"
         );
-        let node_size = node["node_size"]
-            .as_f64()
-            .expect("document node carries explicit node_size");
-        let expected = engine_query::graph::node_size_from_salience(s);
-        assert!(
-            (node_size - expected).abs() < 1e-9,
-            "node_size follows active-lens salience sizing: {node}"
-        );
     }
 
     // The tiers block rides the success envelope.

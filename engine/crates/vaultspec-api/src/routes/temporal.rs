@@ -159,13 +159,9 @@ pub async fn graph_asof(
     let resolved = cell
         .asof_graph(&resolved_sha)
         .map_err(|e| super::revision_error(&state, &params.t, &e))?;
-    let mut slice = engine_query::graph::graph_query(
-        &resolved.asof.graph,
-        &scope,
-        filter,
-        granularity,
-    )
-    .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
+    let mut slice =
+        engine_query::graph::graph_query(&resolved.asof.graph, &scope, filter, granularity)
+            .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
     // Attach the active-lens salience to the historical document nodes (ADR wire
     // amendment: lens on /graph/asof). The basis is computed over the HISTORICAL
     // graph (the live per-generation cache holds the present view); the as-of
@@ -196,7 +192,6 @@ pub async fn graph_asof(
             true,
         );
         engine_query::salience::annotate_nodes(&mut slice.nodes, &scores);
-        engine_query::graph::annotate_node_sizes(&mut slice.nodes);
         engine_query::salience::order_by_salience(&mut slice.nodes, &scores);
     }
     Ok(super::envelope(
