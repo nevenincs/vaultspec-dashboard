@@ -59,8 +59,7 @@ export function useFocusRestore(
       // A DECLARED return target wins over the captured open-time element, so a
       // surface that opens via a non-invoker path restores to its real trigger
       // (never a stale `<body>`); else fall back to the captured element.
-      const declared = returnTargetRef.current;
-      (declared ? declared.current : previousFocus.current)?.focus?.();
+      (returnTargetRef.current?.current ?? previousFocus.current)?.focus?.();
       previousFocus.current = null;
     }
   }, [open]);
@@ -68,8 +67,7 @@ export function useFocusRestore(
   useEffect(
     () => () => {
       if (!openRef.current) return;
-      const declared = returnTargetRef.current;
-      (declared ? declared.current : previousFocus.current)?.focus?.();
+      (returnTargetRef.current?.current ?? previousFocus.current)?.focus?.();
       previousFocus.current = null;
     },
     [],
