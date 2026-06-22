@@ -222,9 +222,13 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
       run: w.resetLayout,
     },
     {
+      // The legend is a HELP verb per the action taxonomy (help = keyboard
+      // shortcuts, about), not a window-layout verb; it groups under the help
+      // family. The id keeps its `window:` stem so the registry-derived
+      // accelerator mapping is unchanged.
       id: "window:keyboard-shortcuts",
       label: "keyboard shortcuts",
-      family: "window",
+      family: "help",
       run: w.showKeyboardShortcuts,
     },
   );
