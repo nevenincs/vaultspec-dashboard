@@ -454,12 +454,6 @@ export interface EngineNode {
    */
   salience?: number;
   /**
-   * Backend-projected world-space node body radius. This is additive contract
-   * surface for the graph renderer; current canvas sizing still derives from
-   * salience/member_count until the renderer switches over explicitly.
-   */
-  node_size?: number;
-  /**
    * Per-node semantic embedding vector (graph-representation ADR §4 amendment):
    * the rag embedding delivered to the CPU worker for the semantic UMAP layout
    * mode. The engine never serves layout coordinates (graph-compute-is-CPU); it

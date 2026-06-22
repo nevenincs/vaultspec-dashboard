@@ -116,12 +116,6 @@ export interface SceneNodeData {
    * W01.P01.S04 lock discipline. The sigma.js fallback ignores it harmlessly.
    */
   salience?: number;
-  /**
-   * Backend-projected world-space node body radius. Additive contract field for
-   * the graph renderer; current sprite sizing can continue to derive from
-   * salience/memberCount until the render path is switched deliberately.
-   */
-  nodeSize?: number;
   temporal?: { bucket: string };
   /**
    * Per-node semantic embedding vector (graph-representation ADR §4 amendment):
