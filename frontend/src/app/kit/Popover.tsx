@@ -8,7 +8,7 @@
 // aria-*, data-*, style) pass straight through.
 
 import { useRef } from "react";
-import type { HTMLAttributes, ReactNode } from "react";
+import type { HTMLAttributes, ReactNode, RefObject } from "react";
 
 import { useDismissOnEscape } from "../chrome/useDismissOnEscape";
 import { useDismissOnOutsidePointer } from "../chrome/useDismissOnOutsidePointer";
@@ -26,14 +26,13 @@ export interface PopoverProps extends HTMLAttributes<HTMLDivElement> {
   ignoreSelector?: string;
   /** Escape listener target (default `window`; some surfaces use `document`). */
   escapeTarget?: Window | Document;
-  /** Whether the popover restores focus to the open-time element on close
-   *  (default `true`). A surface that manages its own focus restoration to a
-   *  known target opts OUT with `false` — e.g. the worktree picker restores to its
-   *  trigger via a ref, because it opens via paths (a default-open test seam, an
-   *  `ArrowDown`-dive into the first row) where the open-time `activeElement` is
-   *  NOT the intended return target, so the generic capture would land on the
-   *  wrong element (or `<body>`). */
-  restoreFocus?: boolean;
+  /** Explicit focus-return target. By default the popover restores focus to the
+   *  element focused when it opened (its trigger, the common case). A surface whose
+   *  open-time `activeElement` is NOT the intended return target — it opens via a
+   *  default-open seam or an `ArrowDown`-dive into a row, where the generic capture
+   *  would land on the wrong element (or `<body>`) — DECLARES its invoker here, and
+   *  the restore targets it on close/unmount (replacing any manual restore). */
+  returnFocusRef?: RefObject<HTMLElement | null>;
   children: ReactNode;
 }
 
@@ -42,20 +41,20 @@ export function Popover({
   onDismiss,
   ignoreSelector,
   escapeTarget,
-  restoreFocus = true,
+  returnFocusRef,
   children,
   ...rest
 }: PopoverProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   useDismissOnEscape(onDismiss, { enabled: open, target: escapeTarget });
   useDismissOnOutsidePointer(rootRef, onDismiss, { enabled: open, ignoreSelector });
-  // Restore focus to whatever was focused when the popover opened (its trigger)
-  // when it closes, so dismissing a flyout never drops focus to `<body>`
-  // (keyboard-navigation W01.P03.S09). Centralized here so every popover surface —
-  // the filter flyout, the panel flyout — inherits the restore without re-wiring
-  // it. A surface that owns an explicit restore target opts out via `restoreFocus`
-  // (else the two restores race and the generic one wins with the wrong element).
-  useFocusRestore(open && restoreFocus);
+  // Restore focus when the popover closes so dismissing a flyout never drops focus
+  // to `<body>` (keyboard-navigation W01.P03.S09). Centralized here so every popover
+  // surface — the filter flyout, the panel flyout — inherits the restore without
+  // re-wiring it. By default it restores the open-time element (the trigger); a
+  // surface whose opener is not that element DECLARES its invoker via
+  // `returnFocusRef` and drops any manual restore (no race).
+  useFocusRestore(open, { returnFocusRef });
   return (
     <div ref={rootRef} {...rest}>
       {children}

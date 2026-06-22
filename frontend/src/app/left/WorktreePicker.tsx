@@ -170,7 +170,10 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
   };
 
   const selectWorktree = (row: WorkspaceMapPickerRowView) => {
-    activateRow(row, () => triggerRef.current?.focus());
+    // Selecting collapses the picker (beginSwitch sets expanded=false), unmounting
+    // the Popover and firing its returnFocusRef restore to the trigger — so no
+    // manual focus restore is needed here.
+    activateRow(row);
   };
 
   const onRowKeyDown =
@@ -188,7 +191,6 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
       } else if (e.key === "Escape") {
         e.preventDefault();
         collapse(true);
-        triggerRef.current?.focus();
       }
     };
 
@@ -197,10 +199,10 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
       className="text-label"
       data-worktree-picker
       onKeyDown={(e) => {
-        // Escape anywhere in the control collapses to the trigger.
+        // Escape anywhere in the control collapses; the Popover's returnFocusRef
+        // restore returns focus to the trigger on unmount.
         if (e.key === "Escape" && expanded) {
           collapse(true);
-          triggerRef.current?.focus();
         }
       }}
     >
@@ -310,18 +312,16 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
         {expanded && (
           <Popover
             open={expanded}
-            onDismiss={() => {
-              collapse(false);
-              triggerRef.current?.focus();
-            }}
+            onDismiss={() => collapse(false)}
             ignoreSelector="[data-worktree-trigger]"
-            // This picker restores focus to its TRIGGER explicitly (the Escape
-            // handlers + onDismiss all call triggerRef.focus()), because it opens
-            // via paths where the open-time activeElement is not the trigger (the
-            // ArrowDown-dive into the first row, the default-open test seam). Opt
-            // out of the Popover's generic open-time focus restore so the two do
-            // not race — the generic one would win and land focus on <body>.
-            restoreFocus={false}
+            // This picker opens via paths where the open-time activeElement is NOT
+            // the trigger (the ArrowDown-dive into the first row, the default-open
+            // test seam), so it DECLARES its trigger as the Popover's focus-return
+            // target. Every close path collapses (Escape, dismiss, and select via
+            // beginSwitch all set expanded=false), which unmounts the Popover and
+            // fires its returnFocusRef restore — so the picker keeps no manual
+            // focus restore of its own.
+            returnFocusRef={triggerRef}
             className={DROPDOWN_CARD_CLASS}
             data-worktree-dropdown
           >

@@ -85,4 +85,30 @@ describe("useFocusRestore", () => {
     expect(onOpen).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(opener);
   });
+
+  it("restores to the DECLARED returnFocusRef target, not the captured open-time element", () => {
+    const { opener, inside } = buttons();
+    const returnFocusRef = { current: opener };
+    // Open-time focus is on `inside` (a non-invoker element — the ArrowDown-dive /
+    // default-open path), NOT the declared trigger. The declared target must win.
+    inside.focus();
+    const { rerender } = renderHook(
+      ({ open }: { open: boolean }) => useFocusRestore(open, { returnFocusRef }),
+      { initialProps: { open: false } },
+    );
+
+    rerender({ open: true });
+    rerender({ open: false });
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("restores to the returnFocusRef target on unmount-while-open", () => {
+    const { opener, inside } = buttons();
+    const returnFocusRef = { current: opener };
+    inside.focus();
+    const { unmount } = renderHook(() => useFocusRestore(true, { returnFocusRef }));
+
+    unmount();
+    expect(document.activeElement).toBe(opener);
+  });
 });

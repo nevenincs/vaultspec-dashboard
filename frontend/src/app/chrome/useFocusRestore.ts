@@ -1,10 +1,17 @@
 import { useEffect, useRef } from "react";
+import type { RefObject } from "react";
 
 export interface FocusRestoreOptions {
   /** Runs immediately after focus is captured on the open edge. */
   onOpen?: () => void;
   /** Runs before focus is restored on the close edge. */
   onClose?: () => void;
+  /** Explicit return target. When provided, focus restores to THIS element on
+   *  close/unmount instead of the captured open-time `activeElement` — for a
+   *  surface that opens via a path where the open-time focus is NOT its invoker
+   *  (an `ArrowDown`-dive into a row, a default-open seam). The consumer declares
+   *  its invoker once and drops any manual restore, so the two never race. */
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }
 
 function focusedElement(): HTMLElement | null {
@@ -22,17 +29,19 @@ export function normalizeFocusRestoreOpen(open: unknown): boolean {
  */
 export function useFocusRestore(
   open: unknown,
-  { onOpen, onClose }: FocusRestoreOptions = {},
+  { onOpen, onClose, returnFocusRef }: FocusRestoreOptions = {},
 ): void {
   const previousFocus = useRef<HTMLElement | null>(null);
   const openRef = useRef(false);
   const onOpenRef = useRef(onOpen);
   const onCloseRef = useRef(onClose);
+  const returnTargetRef = useRef(returnFocusRef);
 
   useEffect(() => {
     onOpenRef.current = onOpen;
     onCloseRef.current = onClose;
-  }, [onOpen, onClose]);
+    returnTargetRef.current = returnFocusRef;
+  }, [onOpen, onClose, returnFocusRef]);
 
   useEffect(() => {
     const normalizedOpen = normalizeFocusRestoreOpen(open);
@@ -47,7 +56,11 @@ export function useFocusRestore(
 
     if (!normalizedOpen && wasOpen) {
       onCloseRef.current?.();
-      previousFocus.current?.focus?.();
+      // A DECLARED return target wins over the captured open-time element, so a
+      // surface that opens via a non-invoker path restores to its real trigger
+      // (never a stale `<body>`); else fall back to the captured element.
+      const declared = returnTargetRef.current;
+      (declared ? declared.current : previousFocus.current)?.focus?.();
       previousFocus.current = null;
     }
   }, [open]);
@@ -55,7 +68,8 @@ export function useFocusRestore(
   useEffect(
     () => () => {
       if (!openRef.current) return;
-      previousFocus.current?.focus?.();
+      const declared = returnTargetRef.current;
+      (declared ? declared.current : previousFocus.current)?.focus?.();
       previousFocus.current = null;
     },
     [],
