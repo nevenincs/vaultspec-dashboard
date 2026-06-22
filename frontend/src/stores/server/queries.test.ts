@@ -1174,7 +1174,7 @@ describe("deriveDashboardFilterSidebarView (stage filter sidebar)", () => {
         "rounded-fg-pill bg-paper-sunken px-fg-1-5 py-fg-0-5 text-caption font-normal text-ink-muted",
       sectionIconClassName: "text-ink-faint",
       sectionBodyClassName: "pb-2",
-      kindSectionLabel: "Kind",
+      kindSectionLabel: "Type",
       featureSectionLabel: "Feature",
       editedSectionLabel: "Edited",
       editedWindowAriaLabel: "edited window",
@@ -6658,5 +6658,33 @@ describe("adaptLineageSlice + /graph/lineage consumer fidelity (W02.P04.S24)", (
     expect(slice.arcs[0].derivation).toBeUndefined(); // graceful fallback
     expect(slice.tiers.semantic.available).toBe(false);
     expect(slice.truncated).toBeNull();
+  });
+});
+
+describe("graph cache key (graph-filter-fetch-split: backend re-query, cache-instant repeat)", () => {
+  it("is filter-sensitive, so a facet change is a distinct cache entry (engine re-queries the limited set)", () => {
+    const scope = "scope-a";
+    const keyAdr = engineKeys.graph(scope, { doc_types: ["adr"] });
+    const keyPlan = engineKeys.graph(scope, { doc_types: ["plan"] });
+    const keyNone = engineKeys.graph(scope);
+    // A filter change keys a DIFFERENT entry — the engine re-queries the filtered
+    // (limited) set; it is never one un-filtered "all data" entry the client masks.
+    expect(keyAdr).not.toEqual(keyPlan);
+    expect(keyAdr).not.toEqual(keyNone);
+    // Only the filter segment differs; scope/granularity/lens/focus are identical.
+    expect(keyAdr.slice(0, 3)).toEqual(keyPlan.slice(0, 3));
+    expect(keyAdr.slice(4)).toEqual(keyPlan.slice(4));
+  });
+
+  it("is stable for identical filter content, so a repeated filter reuses the entry (no re-query)", () => {
+    const scope = "scope-a";
+    const keyA = engineKeys.graph(scope, { doc_types: ["adr"], statuses: ["draft"] });
+    const keyRepeat = engineKeys.graph(scope, {
+      doc_types: ["adr"],
+      statuses: ["draft"],
+    });
+    // The same facet selection resolves to the SAME key — a toggle back to a
+    // previously-seen filter is a cache hit (keepPreviousData keeps it from blanking).
+    expect(keyRepeat).toEqual(keyA);
   });
 });
