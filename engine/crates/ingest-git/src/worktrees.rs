@@ -223,12 +223,11 @@ const AHEAD_BEHIND_CACHE_CAP: usize = 512;
 /// (shared across a repo's worktrees), so the same pair always yields the same
 /// counts. A tip moving produces a new key (miss → recompute); moving back to a
 /// seen pair hits with the correct value.
-fn ahead_behind_cache()
--> &'static std::sync::Mutex<std::collections::HashMap<(gix::ObjectId, gix::ObjectId), (u32, u32)>>
-{
-    static CACHE: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<(gix::ObjectId, gix::ObjectId), (u32, u32)>>,
-    > = std::sync::OnceLock::new();
+type AheadBehindCache =
+    std::sync::Mutex<std::collections::HashMap<(gix::ObjectId, gix::ObjectId), (u32, u32)>>;
+
+fn ahead_behind_cache() -> &'static AheadBehindCache {
+    static CACHE: std::sync::OnceLock<AheadBehindCache> = std::sync::OnceLock::new();
     CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
@@ -296,6 +295,18 @@ fn try_ahead_behind(
         .filter(|id| !from_head.contains(*id))
         .count()
         .min(u32::MAX as usize) as u32;
+
+    {
+        let mut cache = ahead_behind_cache()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // Bounded: clear wholesale on overflow (retained entries are never stale,
+        // so this only forfeits cached work, never correctness).
+        if cache.len() >= AHEAD_BEHIND_CACHE_CAP {
+            cache.clear();
+        }
+        cache.insert(cache_key, (ahead, behind));
+    }
 
     Some((Some(ahead), Some(behind)))
 }
