@@ -1527,8 +1527,7 @@ mod tests {
     fn resolution_transitions_never_change_edge_identity() {
         // Audit W02P06-301: identity from mention text alone - a
         // broken-to-resolved transition mutates state, never the edge id.
-        let (kind, resolved_target) =
-            (MentionKind::StepId("W01.P02.S03".into()), "some-plan.md");
+        let (kind, resolved_target) = (MentionKind::StepId("W01.P02.S03".into()), "some-plan.md");
         let broken = structural_edge_for(
             "doc-a",
             "blob1",
