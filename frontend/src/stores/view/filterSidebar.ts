@@ -6,8 +6,7 @@ import {
   normalizeDashboardFilterFacetValue,
   type DashboardFilterFacet,
 } from "../server/dashboardState";
-import { DOC_TYPE_ORDER, docTypeLabel } from "../server/docTypeVocabulary";
-import type { DashboardFilterSidebarView } from "../server/queries";
+import { docTypeLabel } from "../server/docTypeVocabulary";
 import { normalizeSearchQuery } from "../searchQuery";
 import { normalizeViewStoreSessionString } from "./scopeIdentity";
 
@@ -189,10 +188,10 @@ const FILTER_SIDEBAR_HEALTH_DOT: Record<string, FilterSidebarFacetDotTone> = {
 // Health facet values translate to plain user-facing language — never the raw
 // engineering slug (ui-labels-are-user-facing).
 const FILTER_SIDEBAR_HEALTH_LABEL: Record<string, string> = {
-  dangling: "Broken links",
+  dangling: "Dangling",
   invalid: "Invalid frontmatter",
   "empty-scaffold": "Empty scaffold",
-  orphaned: "Unlinked",
+  orphaned: "Orphans",
 };
 
 export interface FilterSidebarState {
@@ -497,65 +496,27 @@ export function deriveFilterSidebarMenuSections({
   vocabulary,
   filterView,
   onToggleFacet,
-  onSelectEditedWindow,
 }: FilterSidebarMenuSectionsInput): FilterSidebarMenuSectionView[] {
   const vocabularyRecord = isFilterSidebarRecord(vocabulary) ? vocabulary : {};
   const filterViewRecord = isFilterSidebarRecord(filterView) ? filterView : {};
-  const presentation =
-    isFilterSidebarRecord(filterViewRecord.presentation) &&
-    "kindSectionLabel" in filterViewRecord.presentation &&
-    "featureSectionLabel" in filterViewRecord.presentation
-      ? (filterViewRecord.presentation as unknown as DashboardFilterSidebarView["presentation"])
-      : ({} as DashboardFilterSidebarView["presentation"]);
-  const docTypes = orderDocTypesByPipeline(
-    normalizeFilterSidebarFacetValues(vocabularyRecord.docTypes),
-  );
   const statuses = normalizeFilterSidebarFacetValues(vocabularyRecord.statuses);
   const health = normalizeFilterSidebarFacetValues(vocabularyRecord.health);
-  const selectedDocTypes = normalizeFilterSidebarFacetValues(filterViewRecord.docTypes);
   const selectedStatuses = normalizeFilterSidebarFacetValues(filterViewRecord.statuses);
   const selectedHealth = normalizeFilterSidebarFacetValues(filterViewRecord.health);
-  // EDITED — the date-range radios (Any time / Last 7 days / …). The window options
-  // and the selected window are interpreted in the stores filter-sidebar view; here
-  // they become a radio section whose select maps to a canonical date range through
-  // the caller's `onSelectEditedWindow`. Always present (the windows are static, not
-  // vocabulary-gated) and never a dead control — it writes the consumed date range.
-  const editedWindow =
-    typeof filterViewRecord.editedWindow === "string"
-      ? filterViewRecord.editedWindow
-      : "any";
-  const editedWindowOptions = (
-    Array.isArray(filterViewRecord.editedWindowRows)
-      ? filterViewRecord.editedWindowRows
-      : []
-  )
-    .filter(
-      (row): row is Record<string, unknown> =>
-        isFilterSidebarRecord(row) && typeof row.key === "string",
-    )
-    .map((row) => ({
-      value: row.key as string,
-      label: typeof row.label === "string" ? row.label : (row.key as string),
-    }));
+  // The flyout hosts ONLY the doc-type-scoped STATUS groups + HEALTH. Category
+  // filtering lives on the graph legend and date filtering on the timeline, so
+  // neither has a section here — one concept, one place
+  // (filtering-has-one-canonical-surface). Each section renders only when the
+  // corpus serves its vocabulary, so it is never a dead control.
   return [
-    {
-      type: "checkbox",
-      key: "kind",
-      label: presentation.kindSectionLabel,
-      selected: selectedDocTypes,
-      onToggle: filterSidebarToggleHandler("doc_types", onToggleFacet),
-      loading: vocabularyRecord.facetsLoading === true,
-      options: docTypes.map((value) => ({
-        value,
-        label: filterSidebarDocTypeLabel(value),
-      })),
-    },
+    // DECISION STATUS — the ADR lifecycle (proposed/accepted/rejected/deprecated/…).
+    // The served `statuses` vocabulary is ADR-only, so this group is decision-scoped.
     ...(statuses.length > 0
       ? [
           {
             type: "checkbox" as const,
             key: "status",
-            label: "STATUS",
+            label: "Decision status",
             selected: selectedStatuses,
             onToggle: filterSidebarToggleHandler("statuses", onToggleFacet),
             options: statuses.map((value) => ({
@@ -566,12 +527,14 @@ export function deriveFilterSidebarMenuSections({
           },
         ]
       : []),
+    // HEALTH — validity conditions the engine derives from the graph (dangling /
+    // orphans).
     ...(health.length > 0
       ? [
           {
             type: "checkbox" as const,
             key: "health",
-            label: "HEALTH",
+            label: "Health",
             selected: selectedHealth,
             onToggle: filterSidebarToggleHandler("health", onToggleFacet),
             options: health.map((value) => ({
@@ -582,35 +545,11 @@ export function deriveFilterSidebarMenuSections({
           },
         ]
       : []),
-    ...(editedWindowOptions.length > 0
-      ? [
-          {
-            type: "radio" as const,
-            key: "edited",
-            label: presentation.editedSectionLabel ?? "EDITED",
-            options: editedWindowOptions,
-            value: editedWindow,
-            onSelect: (value: string) => onSelectEditedWindow?.(value),
-          },
-        ]
-      : []),
   ];
 }
 
 export function filterSidebarDocTypeLabel(value: string): string {
   return docTypeLabel(value);
-}
-
-/** Order doc-type facet values by the canonical pipeline order (research → adr →
- *  plan → exec → audit → reference …), matching the left-rail tree and the legend,
- *  so the same doc types read in the same order everywhere. Unknown types append
- *  alphabetically. */
-function orderDocTypesByPipeline(values: string[]): string[] {
-  const rank = (v: string): number => {
-    const i = DOC_TYPE_ORDER.indexOf(v as (typeof DOC_TYPE_ORDER)[number]);
-    return i === -1 ? DOC_TYPE_ORDER.length : i;
-  };
-  return [...values].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 }
 
 /** A status facet value as plain sentence-case language ("in-progress" → "In

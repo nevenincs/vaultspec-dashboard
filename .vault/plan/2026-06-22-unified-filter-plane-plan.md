@@ -10,12 +10,15 @@ related:
   - '[[2026-06-22-unified-filter-plane-research]]'
 ---
 
-
-
-
-
-
-
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `unified-filter-plane` plan
 
@@ -23,11 +26,9 @@ related:
 
 Every engine endpoint that projects the corpus accepts the same canonical Filter, so time-travel and the event lane narrow identically to the live graph (ADR D4).
 
-
-
-- [ ] `P01.S01` - Widen GET /graph/asof to accept and apply the canonical Filter, replacing the hardcoded Filter::default(), with validation and the tiers envelope unchanged; `engine/crates/vaultspec-api/src/routes/temporal.rs`.
-- [ ] `P01.S02` - Audit the GET /events consumers and, if any corpus-projecting view renders the event lane, widen EventsParams to accept the canonical Filter facets alongside from/to/kinds/bucket, otherwise record /events as a non-corpus projection exempt from the filter; `engine/crates/vaultspec-api/src/routes/temporal.rs`.
-- [ ] `P01.S03` - Add engine tests proving a filtered as-of snapshot (and the event lane, if widened) narrows by every facet and stays bounded and self-consistent; `engine/crates/engine-query`.
+- [x] `P01.S01` - Widen GET /graph/asof to accept and apply the canonical Filter, replacing the hardcoded Filter::default(), with validation and the tiers envelope unchanged; `engine/crates/vaultspec-api/src/routes/temporal.rs`.
+- [x] `P01.S02` - Audit the GET /events consumers and, if any corpus-projecting view renders the event lane, widen EventsParams to accept the canonical Filter facets alongside from/to/kinds/bucket, otherwise record /events as a non-corpus projection exempt from the filter; `engine/crates/vaultspec-api/src/routes/temporal.rs`.
+- [x] `P01.S03` - Add engine tests proving a filtered as-of snapshot (and the event lane, if widened) narrows by every facet and stays bounded and self-consistent; `engine/crates/engine-query`.
 
 ### Phase `P02` - Timeline consumes the canonical filter
 

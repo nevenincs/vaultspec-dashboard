@@ -1211,6 +1211,45 @@ mod tests {
     }
 
     #[test]
+    fn document_doc_type_filter_returns_a_self_consistent_subgraph() {
+        // unified-filter-plane D2/D4: the promoted graph category toggle and the
+        // time-travelled snapshot drive the `doc_types` facet through this same
+        // `graph_query`. A `doc_types` descent must narrow the node set AND stay
+        // self-consistent — a resolved edge to a REAL node that the facet filtered
+        // out is dropped, never left dangling (graph-queries-are-bounded-by-default).
+        let g = fixture();
+        // Keep only `plan` documents: `a-plan` stays, `b-adr` is filtered out.
+        let filter: Filter = serde_json::from_str(r#"{"doc_types": ["plan"]}"#).unwrap();
+        let slice = graph_query(&g, &scope(), filter, Granularity::Document).unwrap();
+        let kept: std::collections::HashSet<&str> = slice
+            .nodes
+            .iter()
+            .filter_map(|n| n["id"].as_str())
+            .collect();
+        let a_plan = node_id(&CanonicalKey::Document { stem: "a-plan" }).0;
+        let b_adr = node_id(&CanonicalKey::Document { stem: "b-adr" }).0;
+        assert!(kept.contains(a_plan.as_str()), "the plan node is kept");
+        assert!(
+            !kept.contains(b_adr.as_str()),
+            "the adr node is filtered out by the doc_types facet"
+        );
+        // The resolved `a-plan -> b-adr` edge dangled to a real-but-filtered node,
+        // so it is dropped; no kept edge references a node absent from the slice.
+        let real: std::collections::HashSet<String> = g.nodes().map(|n| n.id.0.clone()).collect();
+        for e in &slice.edges {
+            for key in ["src", "dst"] {
+                let id = e[key].as_str().expect("endpoint serialized");
+                if real.contains(id) {
+                    assert!(
+                        kept.contains(id),
+                        "edge {key} {id} is a real in-scope node but absent from the kept slice"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn feature_granularity_returns_meta_edges_not_doc_edges() {
         let g = fixture();
         let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Feature).unwrap();
