@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ChangeEntity } from "../../../platform/actions/entity";
 import { changeMenu } from "./changeMenu";
+import { commitMenu } from "./commitMenu";
 import { edgeMenu } from "./edgeMenu";
 import { searchResultMenu } from "./searchResultMenu";
 
@@ -209,5 +210,45 @@ describe("changeMenu", () => {
     for (const action of changeMenu(file)) {
       expect(action.section === "navigate" || action.section === "copy").toBe(true);
     }
+  });
+});
+
+describe("commitMenu", () => {
+  const commit = {
+    kind: "commit" as const,
+    id: "0123456789abcdef0123456789abcdef01234567",
+    shortHash: "01234567",
+    subject: "feat: a thing",
+  };
+
+  it("offers the three read-only copy verbs for a full commit", () => {
+    expect(byId(commitMenu(commit))).toEqual([
+      "commit:copy-hash",
+      "commit:copy-short-hash",
+      "commit:copy-subject",
+    ]);
+  });
+
+  it("carries only read-only copy verbs - none is time-travel gated", () => {
+    for (const action of commitMenu(commit)) {
+      expect(action.section).toBe("copy");
+      expect(action.disabledInTimeTravel).toBeUndefined();
+    }
+  });
+
+  it("copies the full hash from the descriptor id via the copy dispatch lane", () => {
+    const copyHash = find(commitMenu(commit), "commit:copy-hash");
+    expect(copyHash.dispatch).toBeDefined();
+    expect(JSON.stringify(copyHash.dispatch)).toContain(commit.id);
+  });
+
+  it("omits short-hash and subject copies when those fields are absent", () => {
+    expect(byId(commitMenu({ kind: "commit", id: "abc1230000" }))).toEqual([
+      "commit:copy-hash",
+    ]);
+  });
+
+  it("returns nothing for a non-commit entity", () => {
+    expect(commitMenu({ kind: "change", id: "c1", path: "a.ts" })).toEqual([]);
   });
 });

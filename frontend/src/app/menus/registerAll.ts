@@ -21,6 +21,7 @@ import "../left/menus/codeFileMenu";
 import "../right/menus/edgeMenu";
 import "../right/menus/searchResultMenu";
 import "../right/menus/changeMenu";
+import "../right/menus/commitMenu";
 
 // Timeline (also the canonical "event" resolver for the activity rail).
 import "../timeline/menus/eventMarkMenu";

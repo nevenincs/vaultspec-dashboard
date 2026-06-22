@@ -52,6 +52,7 @@ import {
   derivePipelineExpansionRows,
   usePipelineExpansion,
 } from "../../stores/view/pipelineExpansion";
+import { openContextMenu } from "../../stores/view/contextMenu";
 import { selectEventNodes } from "../../stores/view/selection";
 import {
   deriveStatusSectionChromeView,
@@ -540,6 +541,18 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
               className={chromeRow.rootClassName}
               data-recent-commit
               data-hash={commit.hash}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                openContextMenu(
+                  {
+                    kind: "commit",
+                    id: commit.hash,
+                    shortHash: commit.short_hash,
+                    subject: commit.subject,
+                  },
+                  { x: e.clientX, y: e.clientY },
+                );
+              }}
             >
               <div className={chromeRow.headerClassName}>
                 <button

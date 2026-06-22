@@ -105,6 +105,15 @@ export interface ChangeEntity {
   hunk?: string;
 }
 
+/** Right rail: a recent commit row (read-only history). The `id` is the full
+ *  commit hash; the short hash and subject are carried for the copy verbs. */
+export interface CommitEntity {
+  kind: "commit";
+  id: string;
+  shortHash?: string;
+  subject?: string;
+}
+
 /** Graph: an aggregated meta-edge (feature-to-feature ribbon). */
 export interface MetaEdgeEntity {
   kind: "meta-edge";
@@ -141,6 +150,7 @@ export type EntityDescriptor =
   | EventEntity
   | SearchResultEntity
   | ChangeEntity
+  | CommitEntity
   | MetaEdgeEntity
   | IslandEntity
   | CanvasEntity;
@@ -158,6 +168,7 @@ export const ENTITY_KINDS: readonly EntityKind[] = [
   "event",
   "search-result",
   "change",
+  "commit",
   "meta-edge",
   "island",
   "canvas",
@@ -363,6 +374,12 @@ export function normalizeEntityDescriptor(entity: unknown): EntityDescriptor | n
       if (path === null) return null;
       const normalized: ChangeEntity = { kind, id, path };
       assignDefined(normalized, "hunk", normalizeOptionalHunk(entity.hunk));
+      return normalized;
+    }
+    case "commit": {
+      const normalized: CommitEntity = { kind, id };
+      assignDefined(normalized, "shortHash", normalizeOptionalText(entity.shortHash));
+      assignDefined(normalized, "subject", normalizeOptionalText(entity.subject));
       return normalized;
     }
     case "meta-edge": {
