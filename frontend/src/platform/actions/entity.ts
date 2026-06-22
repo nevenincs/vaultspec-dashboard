@@ -114,6 +114,15 @@ export interface CommitEntity {
   subject?: string;
 }
 
+/** Right rail: a pull-request row (id = the PR number as a string). Carries the PR
+ *  title and the remote url so the menu can open it. */
+export interface PullRequestEntity {
+  kind: "pull-request";
+  id: string;
+  title?: string;
+  url?: string;
+}
+
 /** Graph: an aggregated meta-edge (feature-to-feature ribbon). */
 export interface MetaEdgeEntity {
   kind: "meta-edge";
@@ -151,6 +160,7 @@ export type EntityDescriptor =
   | SearchResultEntity
   | ChangeEntity
   | CommitEntity
+  | PullRequestEntity
   | MetaEdgeEntity
   | IslandEntity
   | CanvasEntity;
@@ -169,6 +179,7 @@ export const ENTITY_KINDS: readonly EntityKind[] = [
   "search-result",
   "change",
   "commit",
+  "pull-request",
   "meta-edge",
   "island",
   "canvas",
@@ -380,6 +391,12 @@ export function normalizeEntityDescriptor(entity: unknown): EntityDescriptor | n
       const normalized: CommitEntity = { kind, id };
       assignDefined(normalized, "shortHash", normalizeOptionalText(entity.shortHash));
       assignDefined(normalized, "subject", normalizeOptionalText(entity.subject));
+      return normalized;
+    }
+    case "pull-request": {
+      const normalized: PullRequestEntity = { kind, id };
+      assignDefined(normalized, "title", normalizeOptionalText(entity.title));
+      assignDefined(normalized, "url", normalizeOptionalText(entity.url));
       return normalized;
     }
     case "meta-edge": {

@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { ChangeEntity } from "../../../platform/actions/entity";
 import { changeMenu } from "./changeMenu";
 import { commitMenu } from "./commitMenu";
+import { prMenu } from "./prMenu";
 import { edgeMenu } from "./edgeMenu";
 import { searchResultMenu } from "./searchResultMenu";
 
@@ -250,5 +251,46 @@ describe("commitMenu", () => {
 
   it("returns nothing for a non-commit entity", () => {
     expect(commitMenu({ kind: "change", id: "c1", path: "a.ts" })).toEqual([]);
+  });
+});
+
+describe("prMenu", () => {
+  const pr = {
+    kind: "pull-request" as const,
+    id: "42",
+    title: "Fix the thing",
+    url: "https://example.com/pr/42",
+  };
+
+  it("offers open, copy-link, and copy-number for a PR with a url", () => {
+    expect(byId(prMenu(pr))).toEqual([
+      "pull-request:open",
+      "pull-request:copy-url",
+      "pull-request:copy-number",
+    ]);
+  });
+
+  it("open is a non-mutating navigate verb (not time-travel gated)", () => {
+    const open = find(prMenu(pr), "pull-request:open");
+    expect(open.section).toBe("navigate");
+    expect(open.disabled).toBeUndefined();
+    expect(open.disabledInTimeTravel).toBeUndefined();
+    expect(typeof open.run).toBe("function");
+  });
+
+  it("disables open with a reason and drops copy-link when the PR has no url", () => {
+    const noUrl = prMenu({ kind: "pull-request", id: "7" });
+    expect(byId(noUrl)).toEqual(["pull-request:open", "pull-request:copy-number"]);
+    expect(find(noUrl, "pull-request:open").disabled).toBe(true);
+    expect(find(noUrl, "pull-request:open").disabledReason).toBe("no remote link");
+  });
+
+  it("copies the PR number from the descriptor id", () => {
+    const copyNumber = find(prMenu(pr), "pull-request:copy-number");
+    expect(JSON.stringify(copyNumber.dispatch)).toContain("42");
+  });
+
+  it("returns nothing for a non-PR entity", () => {
+    expect(prMenu({ kind: "commit", id: "abc" })).toEqual([]);
   });
 });

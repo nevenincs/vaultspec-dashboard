@@ -9,6 +9,7 @@ related:
   - '[[2026-06-22-action-surface-mapping-adr]]'
   - '[[2026-06-22-action-surface-mapping-audit]]'
   - '[[2026-06-22-action-surface-mapping-plan]]'
+  - '[[2026-06-22-action-surface-mapping-reference]]'
 ---
 
 # `action-surface-mapping` feature index
@@ -28,3 +29,7 @@ Auto-generated index of all documents tagged with `#action-surface-mapping`.
 ### plan
 
 - `2026-06-22-action-surface-mapping-plan` - `action-surface-mapping` plan
+
+### reference
+
+- `2026-06-22-action-surface-mapping-reference` - `action-surface-mapping` reference: `action coverage grid`

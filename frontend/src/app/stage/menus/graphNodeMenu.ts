@@ -29,6 +29,7 @@ import {
 } from "../../../stores/view/menuActions";
 import {
   archiveFeatureAction,
+  autofixFeatureAction,
   docStemFromNodeId,
   relateToSelectionAction,
 } from "../../menus/sharedActions";
@@ -131,6 +132,16 @@ export function graphNodeMenu(
       scope: normalizedEntity.scope,
       ctx,
       notADocumentReason: "only documents can be related",
+    }),
+  );
+  // Autofix the feature's documents (vault check all --fix). Feature-scoped, so it is
+  // a node/feature entity verb (not a standing palette command). Disabled-with-reason
+  // for non-feature nodes.
+  actions.push(
+    autofixFeatureAction({
+      id: "node:autofix-feature",
+      feature: featureTagFromNodeId(normalizedEntity.id) ?? null,
+      scope: normalizedEntity.scope,
     }),
   );
   // Archive the whole feature a feature node represents (vault feature archive).

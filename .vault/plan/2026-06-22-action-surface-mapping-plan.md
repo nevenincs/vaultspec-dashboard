@@ -110,43 +110,43 @@ related:
 
 Capture the 6-domain by 3-plane action coverage grid (current enrollment + eligible-missing) as the single source for the remaining delta.
 
-- [ ] `P19.S118` - author the 6-domain by 3-plane action coverage grid reference (current + eligible-missing); `.vault/reference/2026-06-22-action-surface-mapping-reference.md`.
+- [x] `P19.S118` - author the 6-domain by 3-plane action coverage grid reference (current + eligible-missing); `.vault/reference/2026-06-22-action-surface-mapping-reference.md`.
 
 ### Phase `P20` - left-rail palette-exposure gaps
 
 Surface the keymap-only focus-filter and clear-filter verbs as command-provider entries under their existing shared ids.
 
-- [ ] `P20.S119` - add the focusFilterAction shared builder under its existing keymap id; `frontend/src/stores/view/leftRailKeybindings.ts`.
-- [ ] `P20.S120` - add the clearFilterAction shared builder under its existing keymap id; `frontend/src/stores/view/leftRailKeybindings.ts`.
-- [ ] `P20.S121` - extend CommandContext and the assembly hook with the focus-filter and clear-filter intents; `frontend/src/stores/view/commandRegistry.ts`.
-- [ ] `P20.S122` - contribute focus-filter from the left-rail command provider; `frontend/src/stores/view/commandProviders/leftRailCommandProvider.ts`.
-- [ ] `P20.S123` - contribute clear-filter from the left-rail command provider; `frontend/src/stores/view/commandProviders/leftRailCommandProvider.ts`.
+- [x] `P20.S119` - add the focusFilterAction shared builder under its existing keymap id; `frontend/src/stores/view/leftRailKeybindings.ts`.
+- [x] `P20.S120` - add the clearFilterAction shared builder under its existing keymap id; `frontend/src/stores/view/leftRailKeybindings.ts`.
+- [x] `P20.S121` - extend CommandContext and the assembly hook with the focus-filter and clear-filter intents; `frontend/src/stores/view/commandRegistry.ts`.
+- [x] `P20.S122` - contribute focus-filter from the left-rail command provider; `frontend/src/stores/view/commandProviders/leftRailCommandProvider.ts`.
+- [x] `P20.S123` - contribute clear-filter from the left-rail command provider; `frontend/src/stores/view/commandProviders/leftRailCommandProvider.ts`.
 
 ### Phase `P21` - right-rail commit and PR verbs
 
 Ground the right-rail status verbs' capability and plane eligibility, then enroll them and resolve the right-rail provider asymmetry.
 
-- [ ] `P21.S124` - ground the right-rail commit and pull-request verbs' capability and plane eligibility via rag; `frontend/src/app/right/StatusTab.tsx`.
-- [ ] `P21.S125` - enroll the commit verb on its eligible plane under one shared id; `frontend/src/app/right/menus/changeMenu.ts`.
-- [ ] `P21.S126` - enroll the pull-request verb on its eligible plane under one shared id; `frontend/src/app/right/menus/changeMenu.ts`.
-- [ ] `P21.S127` - add a right-rail command provider resolving the window-provider tab asymmetry; `frontend/src/stores/view/commandProviders/rightRailCommandProvider.ts`.
+- [x] `P21.S124` - ground the right-rail commit and pull-request verbs' capability and plane eligibility via rag; `frontend/src/app/right/StatusTab.tsx`.
+- [x] `P21.S125` - enroll the commit verb on its eligible plane under one shared id; `frontend/src/app/right/menus/changeMenu.ts`.
+- [x] `P21.S126` - enroll the pull-request verb on its eligible plane under one shared id; `frontend/src/app/right/menus/changeMenu.ts`.
+- [x] `P21.S127` - add a right-rail command provider resolving the window-provider tab asymmetry; `frontend/src/stores/view/commandProviders/rightRailCommandProvider.ts`.
 
 ### Phase `P22` - editor capability verbs
 
 Verify autofix and frontmatter are real capabilities, then enroll on their eligible plane or remove the non-capability rather than ship a disabled lie.
 
-- [ ] `P22.S128` - verify the editor autofix capability and enroll it or record it as a non-capability; `frontend/src/stores/view/editorKeybindings.ts`.
-- [ ] `P22.S129` - verify the editor frontmatter-edit capability and enroll it or record editor-surface-only; `frontend/src/app/viewer/MarkdownDocView.tsx`.
+- [x] `P22.S128` - verify the editor autofix capability and enroll it or record it as a non-capability; `frontend/src/stores/view/editorKeybindings.ts`.
+- [x] `P22.S129` - verify the editor frontmatter-edit capability and enroll it or record editor-surface-only; `frontend/src/app/viewer/MarkdownDocView.tsx`.
 
 ### Phase `P23` - coverage guard, verify, review, codify
 
 Land the coverage-grid guard test, run the full gate and a live pass, review, and promote the codification candidate.
 
-- [ ] `P23.S130` - add the coverage-grid guard test asserting plane enrollment and cross-plane id identity; `frontend/src/stores/view/actionCoverage.guard.test.ts`.
-- [ ] `P23.S131` - run the full frontend lint gate to exit zero; `frontend`.
-- [ ] `P23.S132` - live-verify the newly enrolled verbs across the palette and menus; `frontend/src/app/palette`.
-- [ ] `P23.S133` - run the formal code review of the convergence delta; `.vault/audit/2026-06-22-action-surface-mapping-review-audit.md`.
-- [ ] `P23.S134` - promote the action-verbs-enroll-on-their-eligible-planes-by-shared-id rule after the cycle holds; `.vaultspec/rules/rules/action-verbs-enroll-on-their-eligible-planes-by-shared-id.md`.
+- [x] `P23.S130` - add the coverage-grid guard test asserting plane enrollment and cross-plane id identity; `frontend/src/stores/view/actionCoverage.guard.test.ts`.
+- [x] `P23.S131` - run the full frontend lint gate to exit zero; `frontend`.
+- [x] `P23.S132` - live-verify the newly enrolled verbs across the palette and menus; `frontend/src/app/palette`.
+- [x] `P23.S133` - run the formal code review of the convergence delta; `.vault/audit/2026-06-22-action-surface-mapping-review-audit.md`.
+- [x] `P23.S134` - promote the action-verbs-enroll-on-their-eligible-planes-by-shared-id rule after the cycle holds; `.vaultspec/rules/rules/action-verbs-enroll-on-their-eligible-planes-by-shared-id.md`.
 
 ## Description
 

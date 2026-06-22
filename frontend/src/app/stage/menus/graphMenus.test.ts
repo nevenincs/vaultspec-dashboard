@@ -63,6 +63,7 @@ describe("graphNodeMenu (canonical node resolver)", () => {
       "node:copy-id",
       "node:copy-title",
       "node:relate",
+      "node:autofix-feature",
       "node:archive-feature",
     ]);
   });

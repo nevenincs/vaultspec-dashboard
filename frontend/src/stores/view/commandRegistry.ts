@@ -103,6 +103,8 @@ export interface CommandIntents {
   resetFilters: () => void;
   /** Clear the left-rail feature-filter draft (scope-bound). */
   clearFeatureFilter: () => void;
+  /** Focus the right-rail search (switches to the search tab, then focuses). */
+  focusRightRailSearch: () => void;
   /** Pin the theme preference through the engine-owned setting. */
   setTheme: (value: string) => void;
   /** Run a whitelisted operational verb through the appDispatcher seam. */

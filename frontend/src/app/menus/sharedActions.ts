@@ -10,7 +10,7 @@
 // arguments + the injected ActionContext (selectedNodeId), never a store — so they
 // stay pure and unit-testable.
 
-import { Archive, ArrowUpRight, Link2 } from "lucide-react";
+import { Archive, ArrowUpRight, Link2, Wrench } from "lucide-react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
 import type { ActionContext } from "../../platform/actions/registry";
@@ -126,6 +126,47 @@ export function relateToSelectionAction(
         verb: "link-add",
         mode: "link",
         body: { scope: opts.scope ?? undefined, src: opts.srcStem, dst: dstStem },
+      },
+    },
+  };
+}
+
+export interface AutofixFeatureOptions {
+  /** The action id (surface-scoped). */
+  id: string;
+  /** The feature tag to autofix, or null when it cannot be derived (disabled). */
+  feature: string | null;
+  scope?: string | null;
+}
+
+/**
+ * "Autofix conformance": run `vault check all --fix` over a feature's documents
+ * (`POST /ops/core/autofix`), routed through the ops seam. A bulk write, so it carries
+ * `confirm` (arm-to-confirm) and `disabledInTimeTravel`; non-destructive, so it sits in
+ * the `transform` section, not `danger`. Disabled-with-reason when the feature cannot be
+ * derived (a non-feature node).
+ */
+export function autofixFeatureAction(opts: AutofixFeatureOptions): ActionDescriptor {
+  const base = {
+    id: opts.id,
+    label: opts.feature ? `Autofix “${opts.feature}”` : "Autofix feature",
+    section: "transform" as const,
+    icon: Wrench,
+    confirm: true,
+    disabledInTimeTravel: true,
+  };
+  if (opts.feature === null) {
+    return { ...base, disabled: true, disabledReason: "no feature to autofix" };
+  }
+  return {
+    ...base,
+    dispatch: {
+      type: OPS_ACTION,
+      payload: {
+        target: "core",
+        verb: "autofix",
+        mode: "autofix",
+        body: { scope: opts.scope ?? undefined, feature: opts.feature },
       },
     },
   };

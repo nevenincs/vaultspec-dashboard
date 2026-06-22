@@ -351,6 +351,18 @@ function PrRow({ row }: { row: PullRequestRowView }) {
       className="flex flex-col gap-fg-0-5 rounded-fg-sm border border-rule bg-paper-raised px-fg-2 py-fg-2"
       data-pr
       data-pr-number={pr.number}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        openContextMenu(
+          {
+            kind: "pull-request",
+            id: String(pr.number),
+            title: pr.title,
+            url: pr.url,
+          },
+          { x: e.clientX, y: e.clientY },
+        );
+      }}
     >
       <div className="flex items-center gap-fg-1-5">
         <Icon size={ICON_PX} aria-hidden className={`shrink-0 ${row.iconToneClass}`} />

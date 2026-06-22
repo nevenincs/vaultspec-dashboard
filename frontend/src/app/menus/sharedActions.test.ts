@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   archiveFeatureAction,
+  autofixFeatureAction,
   docStemFromNodeId,
   openEntityAction,
   relateToSelectionAction,
@@ -110,6 +111,35 @@ describe("openEntityAction", () => {
     expect(
       openEntityAction({ id: "x:open", nodeId: "doc:a", label: "Open document" }).label,
     ).toBe("Open document");
+  });
+});
+
+describe("autofixFeatureAction", () => {
+  it("disables with reason when the feature is null", () => {
+    const a = autofixFeatureAction({ id: "node:autofix-feature", feature: null });
+    expect(a.disabled).toBe(true);
+    expect(a.disabledReason).toBe("no feature to autofix");
+    expect(a.dispatch).toBeUndefined();
+  });
+
+  it("is a confirm-guarded, time-travel-gated transform dispatch for a feature", () => {
+    const a = autofixFeatureAction({
+      id: "node:autofix-feature",
+      feature: "dashboard",
+      scope: "wt",
+    });
+    expect(a.section).toBe("transform");
+    expect(a.confirm).toBe(true);
+    expect(a.disabledInTimeTravel).toBe(true);
+    expect(a.dispatch).toEqual({
+      type: "ops:run",
+      payload: {
+        target: "core",
+        verb: "autofix",
+        mode: "autofix",
+        body: { scope: "wt", feature: "dashboard" },
+      },
+    });
   });
 });
 

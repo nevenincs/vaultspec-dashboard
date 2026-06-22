@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 
+import { Search } from "lucide-react";
+
 import type { ActionDescriptor } from "../../platform/actions/action";
 import {
   type KeybindingDef,
@@ -63,7 +65,22 @@ export function deriveRightRailKeybindings(): KeybindingDef[] {
   ];
 }
 
-function focusRightRailSearch(setRightTab: (tab: RailTabId) => Promise<unknown>): void {
+/** "Focus the right-rail search" — a store-only focus intent shared by the keymap and
+ *  the palette (the unified action plane). The caller binds the effect (which switches
+ *  to the search tab, then focuses the field). */
+export function rightRailFocusSearchAction(focusSearch: () => void): ActionDescriptor {
+  return {
+    id: RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
+    label: "Focus the right-rail search",
+    section: "navigate",
+    icon: Search,
+    run: focusSearch,
+  };
+}
+
+export function focusRightRailSearch(
+  setRightTab: (tab: RailTabId) => Promise<unknown>,
+): void {
   void setRightTab("search").catch(() => undefined);
   if (typeof queueMicrotask === "function") {
     queueMicrotask(focusSearchField);
@@ -107,11 +124,7 @@ export function useRightRailKeybindings(): void {
     });
     const disposeFocusSearch = registerKeyAction(
       RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
-      (): ActionDescriptor => ({
-        id: RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
-        label: "Focus the right-rail search",
-        run: () => focusRightRailSearch(setRightTab),
-      }),
+      () => rightRailFocusSearchAction(() => focusRightRailSearch(setRightTab)),
     );
 
     return () => {

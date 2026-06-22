@@ -33,6 +33,7 @@ function commandContext(): CommandContext {
       collapseTree: noop,
       resetFilters: noop,
       clearFeatureFilter: noop,
+      focusRightRailSearch: noop,
       setTheme: noop,
       runOp: noop,
       closeDocument: noop,

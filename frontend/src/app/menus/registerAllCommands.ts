@@ -12,3 +12,4 @@ import "../../stores/view/commandProviders/editorCommandProvider";
 import "../../stores/view/commandProviders/settingsCommandProvider";
 import "../../stores/view/commandProviders/opsCommandProvider";
 import "../../stores/view/commandProviders/reloadCommandProvider";
+import "../../stores/view/commandProviders/rightRailCommandProvider";

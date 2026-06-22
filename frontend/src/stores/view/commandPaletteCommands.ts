@@ -43,6 +43,8 @@ import {
 } from "./graphCommands";
 import { useGraphControlsFrozen } from "./graphControlsChrome";
 import { getKeymapOverrides } from "./keymapDispatcher";
+import { focusRightRailSearch } from "./rightRailKeybindings";
+import { useShellPanelIntent } from "../server/panelStateIntent";
 import {
   type KeybindingOverrides,
   effectiveChord,
@@ -738,6 +740,7 @@ export function useCommandPaletteCommandView(
   const setThemePreference = useThemeSettingIntent().setThemePreference;
   const shellFrame = useShellFrameView(scope);
   const shellActions = useShellWindowActions(scope, shellFrame);
+  const rightPanelSetTab = useShellPanelIntent(scope).setRightTab;
   const dateBounds = vocabulary.dateBounds;
   const timeTravel = timeline.opsDisabled;
   useCommandPaletteOpsFeedbackBoundary(scope, timeTravel);
@@ -761,6 +764,7 @@ export function useCommandPaletteCommandView(
         },
         resetFilters: () => void resetFilters(),
         clearFeatureFilter: () => void clearFeatureFilter(),
+        focusRightRailSearch: () => focusRightRailSearch(rightPanelSetTab),
         setTheme: setThemePreference,
         runOp: (target, verb) => {
           runPaletteOp({ target, verb });
@@ -805,6 +809,7 @@ export function useCommandPaletteCommandView(
     graphFrozen,
     normalizedQuery,
     resetFilters,
+    rightPanelSetTab,
     runPaletteOp,
     scope,
     setThemePreference,
