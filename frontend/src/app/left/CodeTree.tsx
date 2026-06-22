@@ -444,18 +444,22 @@ function onRowKeyDown(
   focusByKey: (key: unknown) => void,
 ) {
   return (e: ReactKeyboardEvent<HTMLButtonElement>) => {
-    if (e.key === "ArrowDown") {
+    // Stop every arrow from bubbling to the global keymap dispatcher (which binds
+    // bare arrows to graph cycling on a window listener); an un-stopped tree arrow
+    // double-fires and the global selection change resets the tree's roving
+    // (keyboard-navigation W02.P05.S15 — the Class-B widget-key isolation).
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
+      e.stopPropagation();
       focusByKey(e.key);
-    } else if (e.key === "ArrowUp") {
+    } else if (e.key === "ArrowRight") {
       e.preventDefault();
-      focusByKey(e.key);
-    } else if (isDir && e.key === "ArrowRight" && !expanded) {
+      e.stopPropagation();
+      if (isDir && !expanded) toggleExpanded();
+    } else if (e.key === "ArrowLeft") {
       e.preventDefault();
-      toggleExpanded();
-    } else if (isDir && e.key === "ArrowLeft" && expanded) {
-      e.preventDefault();
-      toggleExpanded();
+      e.stopPropagation();
+      if (isDir && expanded) toggleExpanded();
     }
   };
 }

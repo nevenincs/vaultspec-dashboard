@@ -80,6 +80,12 @@ export function DegradationDebugSwitch() {
       ) : (
         <button
           type="button"
+          // Dev-only debug affordance: kept OUT of the keyboard tab ring
+          // (tabIndex -1, still mouse-clickable) so it never pollutes the
+          // product's tab order during development (keyboard-navigation
+          // W01.P03.S07). It already never renders in production (DEV guard
+          // above), so the production tab ring is unaffected.
+          tabIndex={-1}
           onClick={openDegradationDebug}
           className="rounded-fg-xs border border-rule bg-paper-raised/80 px-fg-1-5 py-fg-0-5 text-state-stale transition-colors hover:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           title="degradation debug switch (dev only, G8.a)"

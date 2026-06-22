@@ -3,14 +3,20 @@ generated: true
 tags:
   - '#index'
   - '#keyboard-navigation'
-date: '2026-06-21'
-modified: '2026-06-21'
+date: '2026-06-22'
+modified: '2026-06-22'
 related:
   - '[[2026-06-21-keyboard-navigation-W01-P01-S01]]'
   - '[[2026-06-21-keyboard-navigation-W01-P01-S02]]'
   - '[[2026-06-21-keyboard-navigation-W01-P02-S03]]'
   - '[[2026-06-21-keyboard-navigation-W01-P02-S04]]'
   - '[[2026-06-21-keyboard-navigation-W01-P02-S05]]'
+  - '[[2026-06-21-keyboard-navigation-W01-P03-S06]]'
+  - '[[2026-06-21-keyboard-navigation-W01-P03-S07]]'
+  - '[[2026-06-21-keyboard-navigation-W01-P03-S08]]'
+  - '[[2026-06-21-keyboard-navigation-W01-P03-S09]]'
+  - '[[2026-06-21-keyboard-navigation-W01-P04-S10]]'
+  - '[[2026-06-21-keyboard-navigation-W02-P05-S13]]'
   - '[[2026-06-21-keyboard-navigation-adr]]'
   - '[[2026-06-21-keyboard-navigation-plan]]'
   - '[[2026-06-21-keyboard-navigation-research]]'
@@ -33,6 +39,12 @@ Auto-generated index of all documents tagged with `#keyboard-navigation`.
 - `2026-06-21-keyboard-navigation-W01-P02-S03` - Add the bounded ordered focus-region registry (left rail, stage dock, graph canvas, right rail, timeline) with visible-aware resolution and entry-memory hand-off to FocusZone
 - `2026-06-21-keyboard-navigation-W01-P02-S04` - Register F6 / Shift+F6 region-cycle as global Class-A keybindings in the keymap registry and wire the dispatcher action to advance/reverse focus to the next visible region
 - `2026-06-21-keyboard-navigation-W01-P02-S05` - Add the visually-hidden skip-to-content link as first tab stop and place initial focus on load so a visible focused element always exists
+- `2026-06-21-keyboard-navigation-W01-P03-S06` - Stop the vault filter flyout auto-opening on field focus
+- `2026-06-21-keyboard-navigation-W01-P03-S07` - Remove the dev crash/degrade bar from the production tab ring (not rendered or tabindex -1 outside dev)
+- `2026-06-21-keyboard-navigation-W01-P03-S08` - Contain the timeline sr-only ~1000-button node list behind a single focusable region entry so it no longer enumerates 1000 tab stops
+- `2026-06-21-keyboard-navigation-W01-P03-S09` - Audit every overlay (dialog, menu, popover, flyout) to restore focus to its trigger on close and never drop to body
+- `2026-06-21-keyboard-navigation-W01-P04-S10` - Live-drive the app (chrome-devtools real keys): verify initial focus, full F6 region cycle, skip link, no trap, and Escape focus-restore
+- `2026-06-21-keyboard-navigation-W02-P05-S13` - Confirm the browser-mode toggle (Vault/Files SegmentedToggle) composes FocusZone roving radiogroup semantics
 
 ### plan
 

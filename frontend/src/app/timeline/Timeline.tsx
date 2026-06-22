@@ -752,6 +752,13 @@ function TemporalAccessibleNodes({
             <li key={node.id}>
               <button
                 type="button"
+                // CONTAINED out of the tab ring (keyboard-navigation W01.P03.S08):
+                // one button per node (~1000 at corpus scale) must NOT each be a
+                // tab stop. tabIndex -1 keeps each present for the screen-reader
+                // list and as the target set for the timeline's activedescendant
+                // mark cursor (W05); the timeline region itself is the single tab
+                // stop, and the cursor moves within it by arrow keys.
+                tabIndex={-1}
                 aria-label={label}
                 onFocus={() => setHoverIntent(node.id)}
                 onBlur={() => setHoverIntent(null)}

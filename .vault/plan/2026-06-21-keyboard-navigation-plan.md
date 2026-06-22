@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#keyboard-navigation'
 date: '2026-06-21'
-modified: '2026-06-21'
+modified: '2026-06-22'
 tier: L3
 related:
   - '[[2026-06-21-keyboard-navigation-adr]]'
@@ -35,16 +35,16 @@ A bounded, ordered focus-region registry over the existing landmarks, cycled by 
 
 Remove the three structural traps the diagnosis found and make focus restoration universal: no overlay drops focus to body; the filter flyout no longer auto-opens on focus or injects itself inline; the dev crash-bar leaves the production tab ring; the timeline sr-only list is contained behind one region entry.
 
-- [ ] `W01.P03.S06` - Stop the vault filter flyout auto-opening on field focus; `make it an explicit contained disclosure that traps nothing inline and restores focus to its trigger on dismiss; `frontend/src/app/left/RailFilterField.tsx`.
-- [ ] `W01.P03.S07` - Remove the dev crash/degrade bar from the production tab ring (not rendered or tabindex -1 outside dev); `frontend/src/app/chrome/CrashZone.tsx`.
-- [ ] `W01.P03.S08` - Contain the timeline sr-only ~1000-button node list behind a single focusable region entry so it no longer enumerates 1000 tab stops; `frontend/src/app/timeline/Timeline.tsx`.
-- [ ] `W01.P03.S09` - Audit every overlay (dialog, menu, popover, flyout) to restore focus to its trigger on close and never drop to body; `route all through the shared focus-restore util; `frontend/src/app/chrome/useFocusRestore.ts`.
+- [x] `W01.P03.S06` - Stop the vault filter flyout auto-opening on field focus; `frontend/src/app/stage/FilterSidebar.tsx`.
+- [x] `W01.P03.S07` - Remove the dev crash/degrade bar from the production tab ring (not rendered or tabindex -1 outside dev); `frontend/src/app/degradation/DebugSwitch.tsx`.
+- [x] `W01.P03.S08` - Contain the timeline sr-only ~1000-button node list behind a single focusable region entry so it no longer enumerates 1000 tab stops; `frontend/src/app/timeline/Timeline.tsx`.
+- [x] `W01.P03.S09` - Audit every overlay (dialog, menu, popover, flyout) to restore focus to its trigger on close and never drop to body; `frontend/src/app/kit/Popover.tsx`.
 
 ### Phase `W01.P04` - Foundation live-verification gate
 
 Drive the running app with real key events and prove the spine works before any component enrolls: initial focus exists, F6/Shift+F6 cycle every visible region, the skip link works, no Tab trap remains, and Escape always restores focus rather than dropping to body.
 
-- [ ] `W01.P04.S10` - Live-drive the app (chrome-devtools real keys): verify initial focus, full F6 region cycle, skip link, no trap, and Escape focus-restore; `capture the focus trace as evidence; `frontend/src/app/AppShell.tsx`.
+- [x] `W01.P04.S10` - Live-drive the app (chrome-devtools real keys): verify initial focus, full F6 region cycle, skip link, no trap, and Escape focus-restore; `capture the focus trace as evidence; `frontend/src/app/AppShell.tsx`.
 
 ## Wave `W02` - Left rail enrollment
 
@@ -56,7 +56,7 @@ Worktree picker, filter facet list, browser-mode toggle, vault tree, and files t
 
 - [ ] `W02.P05.S11` - Enroll the worktree picker (trigger + popover list) onto FocusZone; `arrow-navigate rows, Enter select, Escape restores to trigger; live-verify; `frontend/src/app/left/WorktreePicker.tsx`.
 - [ ] `W02.P05.S12` - Enroll the filter facet list (KIND/doc-type/feature/STATUS/HEALTH) onto FocusZone as one contained zone; `live-verify it is no longer an inline trap; `frontend/src/app/stage/FilterSidebar.tsx`.
-- [ ] `W02.P05.S13` - Confirm the browser-mode toggle (Vault/Files SegmentedToggle) composes FocusZone roving radiogroup semantics; `live-verify arrows switch and Tab exits; `frontend/src/app/left/BrowserModeToggle.tsx`.
+- [x] `W02.P05.S13` - Confirm the browser-mode toggle (Vault/Files SegmentedToggle) composes FocusZone roving radiogroup semantics; `frontend/src/app/kit/Segment.tsx`.
 - [ ] `W02.P05.S14` - Enroll the vault tree onto FocusZone (Up/Down rove rows, Left/Right collapse/expand, Home/End, typeahead, Enter open) as one tab stop with entry-memory; `live-verify; `frontend/src/app/left/TreeBrowser.tsx`.
 - [ ] `W02.P05.S15` - Enroll the files tree onto FocusZone with the same tree semantics; `live-verify parity with the vault tree; `frontend/src/app/left/CodeTree.tsx`.
 

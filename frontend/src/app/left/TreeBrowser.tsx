@@ -36,6 +36,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { categoryColorVar, categoryToken, type Category } from "../kit";
 import { RailSection } from "../chrome/RailSection";
+import { useFocusZone, type FocusZoneItemProps } from "../chrome/useFocusZone";
 import { DocTypeMark } from "../../scene/field/markComponents";
 import { RailDegradedNotice, RailMessage, RailSkeleton } from "./railStates";
 import type { VaultDocEntity } from "../../platform/actions/entity";
@@ -50,9 +51,7 @@ import {
 } from "../../stores/server/queries";
 import {
   deriveAllVaultBrowserTreeKeys,
-  deriveBrowserTreeKeyboardTarget,
   deriveBrowserTreeExpansionItem,
-  deriveBrowserTreeRovingKey,
   useBrowserTreeExpansion,
 } from "../../stores/view/browserTreeExpansion";
 import {
@@ -184,65 +183,28 @@ export function TreeBrowser({
       disposeExpand();
     };
   }, [expandWholeTree, collapseAll]);
-  const navEls = useRef(new Map<string, HTMLButtonElement>());
-  const previousNavOrder = useRef<string[]>([]);
-  const currentNavOrder = useRef<string[]>([]);
-  const tabStopAssigned = useRef(false);
-  const rovingKey = deriveBrowserTreeRovingKey(activeKey, previousNavOrder.current);
-  currentNavOrder.current = [];
-  tabStopAssigned.current = false;
-  const registerNav = useCallback(
-    (key: string) => (el: HTMLButtonElement | null) => {
-      if (el) navEls.current.set(key, el);
-      else navEls.current.delete(key);
-    },
-    [],
-  );
-  const registerVisibleKey = useCallback(
-    (key: string) => {
-      currentNavOrder.current.push(key);
-      previousNavOrder.current = currentNavOrder.current;
-      // The whole rail is ONE tab-stop: the active key roves, but before any focus
-      // (rovingKey === null) the FIRST visible node carries tabIndex 0 so the rail
-      // is reachable by Tab from the start (the proven CodeTree pattern).
-      const tabbable =
-        rovingKey === key || (rovingKey === null && !tabStopAssigned.current);
-      if (tabbable) tabStopAssigned.current = true;
-      return tabbable ? 0 : -1;
-    },
-    [rovingKey],
-  );
-  const moveActive = useCallback(
-    (from: string, key: unknown) => {
-      const next = deriveBrowserTreeKeyboardTarget(previousNavOrder.current, from, key);
-      if (next === null) return;
-      setActiveKey(next);
-      navEls.current.get(next)?.focus();
-    },
-    [setActiveKey],
-  );
-  const navKeyDown = useCallback(
-    (key: string, opts?: { onArrowRight?: () => void; onArrowLeft?: () => void }) =>
-      (e: ReactKeyboardEvent<HTMLButtonElement>) => {
-        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-          e.preventDefault();
-          moveActive(key, e.key);
-        } else if (e.key === "ArrowRight" && opts?.onArrowRight) {
-          e.preventDefault();
-          opts.onArrowRight();
-        } else if (e.key === "ArrowLeft" && opts?.onArrowLeft) {
-          e.preventDefault();
-          opts.onArrowLeft();
-        }
-      },
-    [moveActive],
-  );
-
+  // The whole tree is ONE tab stop with arrow / Home / End roving through the
+  // shared FocusZone primitive (keyboard-navigation W02.P05.S14). It replaces the
+  // prior bespoke render-time roving (registerNav / registerVisibleKey /
+  // moveActive), whose keyboard-target derivation returned null for the focused
+  // row so arrow nav was dead. FocusZone also stops consumed arrows from reaching
+  // the global keymap dispatcher (the Class-A/Class-B split). A row's cross-axis
+  // ArrowRight / ArrowLeft (expand / collapse) maps onto the zone's cross intents.
+  const zone = useFocusZone({
+    orientation: "vertical",
+    wrap: false,
+    activeKey,
+    onActiveKeyChange: setActiveKey,
+  });
   const rowNav: RowNav = {
-    registerNav,
-    registerVisibleKey,
+    rove: (key, opts) =>
+      zone.rove(
+        key,
+        opts
+          ? { onCrossNext: opts.onArrowRight, onCrossPrev: opts.onArrowLeft }
+          : undefined,
+      ),
     setActiveKey,
-    navKeyDown,
   };
 
   if (state === "loading") {
@@ -368,13 +330,14 @@ export function TreeBrowser({
 // --- shared row navigation plumbing ----------------------------------------------
 
 interface RowNav {
-  registerNav: (key: string) => (el: HTMLButtonElement | null) => void;
-  registerVisibleKey: (key: string) => number;
-  setActiveKey: (key: string) => void;
-  navKeyDown: (
+  /** Register a row with the FocusZone: returns its ref, roving tabIndex, and the
+   *  arrow/Home/End keydown handler. A row's cross-axis ArrowRight/ArrowLeft maps
+   *  to expand/collapse via the opts. */
+  rove: (
     key: string,
     opts?: { onArrowRight?: () => void; onArrowLeft?: () => void },
-  ) => (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
+  ) => FocusZoneItemProps;
+  setActiveKey: (key: string) => void;
 }
 
 // --- the ONE tree row (feature, category folder, AND document leaf) ---------------
@@ -436,10 +399,22 @@ function VaultTreeRow({
   nav,
   body,
 }: VaultTreeRowProps) {
-  const tabIndex = nav.registerVisibleKey(navKey);
+  const {
+    ref,
+    tabIndex,
+    onKeyDown: zoneKeyDown,
+  } = nav.rove(
+    navKey,
+    expandable
+      ? {
+          onArrowRight: expanded ? undefined : onActivate,
+          onArrowLeft: expanded ? onActivate : undefined,
+        }
+      : undefined,
+  );
   const button = (
     <button
-      ref={nav.registerNav(navKey)}
+      ref={ref}
       type="button"
       title={entity?.path ?? label}
       aria-expanded={expandable ? expanded : undefined}
@@ -465,19 +440,13 @@ function VaultTreeRow({
         ) {
           return;
         }
-        if (expandable) {
-          nav.navKeyDown(navKey, {
-            onArrowRight: expanded ? undefined : onActivate,
-            onArrowLeft: expanded ? onActivate : undefined,
-          })(e);
-          return;
-        }
-        if (e.key === "Enter") {
+        // Enter opens a leaf document (folders toggle via the native button click).
+        if (!expandable && e.key === "Enter") {
           e.preventDefault();
           onOpen?.();
           return;
         }
-        nav.navKeyDown(navKey)(e);
+        zoneKeyDown(e);
       }}
       className={rowClassName(highlighted)}
     >
@@ -566,7 +535,10 @@ function Section({
   children,
 }: SectionProps) {
   const open = deriveBrowserTreeExpansionItem(sectionKey, expanded).expanded;
-  const tabIndex = nav.registerVisibleKey(sectionKey);
+  const { ref, tabIndex, onKeyDown } = nav.rove(sectionKey, {
+    onArrowRight: open ? undefined : () => toggle(sectionKey),
+    onArrowLeft: open ? () => toggle(sectionKey) : undefined,
+  });
   return (
     <RailSection
       title={title}
@@ -574,14 +546,11 @@ function Section({
       open={open}
       onToggle={() => toggle(sectionKey)}
       bodyId={`vault-${sectionKey}`}
-      headerRef={nav.registerNav(sectionKey)}
+      headerRef={ref}
       headerProps={{
         tabIndex,
         onFocus: () => nav.setActiveKey(sectionKey),
-        onKeyDown: nav.navKeyDown(sectionKey, {
-          onArrowRight: open ? undefined : () => toggle(sectionKey),
-          onArrowLeft: open ? () => toggle(sectionKey) : undefined,
-        }),
+        onKeyDown,
       }}
       labelProps={{ "data-vault-section": title.toLowerCase() }}
       data-vault-section-header

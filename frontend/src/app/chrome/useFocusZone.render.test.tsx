@@ -59,8 +59,16 @@ describe("useFocusZone (rendered)", () => {
     expect(buttonFor("gamma").tabIndex).toBe(-1);
   });
 
-  it("roves the tab stop to match the active key", () => {
-    render(<ZoneHarness initialActive="beta" />);
+  it("falls back to the first item until the active key is a known item, then roves to it", () => {
+    const { rerender } = render(<ZoneHarness initialActive="beta" />);
+    // First render has no prior order, so the first item holds the sole tab stop
+    // (an active key that is not yet a rendered item must never leave the zone
+    // with NO tab stop).
+    expect(buttonFor("alpha").tabIndex).toBe(0);
+    expect(buttonFor("beta").tabIndex).toBe(-1);
+
+    // After a re-render the active key is a known item and claims the tab stop.
+    rerender(<ZoneHarness initialActive="beta" />);
     expect(buttonFor("alpha").tabIndex).toBe(-1);
     expect(buttonFor("beta").tabIndex).toBe(0);
     expect(buttonFor("gamma").tabIndex).toBe(-1);

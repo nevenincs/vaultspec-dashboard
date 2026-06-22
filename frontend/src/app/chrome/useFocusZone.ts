@@ -156,12 +156,30 @@ export function useFocusZone({
 }: UseFocusZoneOptions): UseFocusZone {
   const elements = useRef(new Map<string, HTMLElement>());
   const order = useRef<string[]>([]);
-  const tabStopAssigned = useRef(false);
+  const prevOrder = useRef<string[]>([]);
+  const seenKeys = useRef(new Set<string>());
+  const rovingKeyRef = useRef<string | null>(null);
+
+  // Resolve the roving key from the PREVIOUS render's order (the current order is
+  // not yet built — children call `rove` after this body runs). Honor the active
+  // key when it was a known item last render; otherwise fall back to the first
+  // item of the prior order. Falling back to a CONCRETE key (not null) keeps the
+  // resolution idempotent: React double-invokes each row's render (StrictMode), so
+  // `rove` runs twice per item — a first-item latch would be consumed by the first
+  // invocation and the committed second one would find no tab stop. `prevOrder[0]`
+  // is matched identically on every invocation. The latch below is only the
+  // first-render seed, before any prior order exists.
+  rovingKeyRef.current =
+    activeKey !== null && prevOrder.current.includes(activeKey)
+      ? activeKey
+      : (prevOrder.current[0] ?? null);
 
   // Render-pass reset: children call `rove` after this hook body runs in the
-  // same render, so the order they build reflects the current visible set.
+  // same render, so the order they build reflects the current visible set. The
+  // `seenKeys` set dedupes the order against React's double-invocation of each
+  // row's render, so a key is recorded once even though `rove` runs twice.
   order.current = [];
-  tabStopAssigned.current = false;
+  seenKeys.current = new Set();
 
   const focusItem = useCallback((key: string) => {
     elements.current.get(key)?.focus();
@@ -179,12 +197,19 @@ export function useFocusZone({
 
   const rove = useCallback(
     (key: string, options?: FocusZoneItemOptions): FocusZoneItemProps => {
-      order.current.push(key);
-      // One tab stop: the active key roves; before any focus (activeKey null)
-      // the first registered item carries it so the zone is Tab-reachable.
+      if (!seenKeys.current.has(key)) {
+        seenKeys.current.add(key);
+        order.current.push(key);
+        prevOrder.current = order.current;
+      }
+      // One tab stop: the resolved roving key carries it; when none resolved
+      // (the first render, before any prior order) the FIRST distinct item does,
+      // so the zone is always Tab-reachable. Both branches are idempotent under
+      // React's double-invoked render — `order.current[0]` is the same on every
+      // invocation, so no per-call latch can be consumed by the first pass.
+      const rovingKey = rovingKeyRef.current;
       const tabbable =
-        activeKey === key || (activeKey === null && !tabStopAssigned.current);
-      if (tabbable) tabStopAssigned.current = true;
+        rovingKey === key || (rovingKey === null && order.current[0] === key);
 
       const ref = (el: HTMLElement | null) => {
         if (el) elements.current.set(key, el);
@@ -217,7 +242,7 @@ export function useFocusZone({
 
       return { ref, tabIndex: tabbable ? 0 : -1, onKeyDown };
     },
-    [activeKey, orientation, moveTo],
+    [orientation, moveTo],
   );
 
   return { rove, focusItem };

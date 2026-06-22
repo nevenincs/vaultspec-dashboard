@@ -38,11 +38,18 @@ export function Segment({ value, children, disabled }: SegmentProps) {
   }, [value, registerSegment]);
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    // stopPropagation as well as preventDefault: the one global keymap dispatcher
+    // binds bare arrows to graph cycling on a window listener, so an un-stopped
+    // segment arrow double-fires (switches the segment AND moves the graph
+    // selection). A segment arrow is a Class-B widget key and must not reach the
+    // Class-A dispatcher (keyboard-navigation W02.P05.S13).
     if (e.key === "ArrowRight" || e.key === "ArrowDown") {
       e.preventDefault();
+      e.stopPropagation();
       moveFocus(value, 1);
     } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
       e.preventDefault();
+      e.stopPropagation();
       moveFocus(value, -1);
     }
   };
