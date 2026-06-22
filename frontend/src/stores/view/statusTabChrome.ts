@@ -5,6 +5,7 @@ import { create } from "zustand";
 export type StatusSectionId =
   | "changes"
   // The Changes fold's status sub-groups (binding GitStatusPill 642:1745 tree).
+  | "changes:staged"
   | "changes:modified"
   | "changes:deleted"
   | "changes:new"
@@ -16,6 +17,7 @@ export type StatusSectionId =
 
 const STATUS_SECTION_IDS = [
   "changes",
+  "changes:staged",
   "changes:modified",
   "changes:deleted",
   "changes:new",
