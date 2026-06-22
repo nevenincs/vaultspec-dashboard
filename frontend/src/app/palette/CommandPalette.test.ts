@@ -113,7 +113,17 @@ function windowSources(over: Partial<WindowCommandSources> = {}): WindowCommandS
 describe("buildWindowCommands (window-management parity)", () => {
   it("exposes every window-management action under the window family", () => {
     const commands = buildWindowCommands(windowSources());
-    expect(commands.every((c) => c.family === "window")).toBe(true);
+    // The keyboard-shortcuts legend is a HELP verb per the action taxonomy (it
+    // rides the `window:` id stem only so its registry-derived accelerator is
+    // unchanged); every OTHER window-management action is in the window family.
+    expect(
+      commands
+        .filter((c) => c.id !== "window:keyboard-shortcuts")
+        .every((c) => c.family === "window"),
+    ).toBe(true);
+    expect(commands.find((c) => c.id === "window:keyboard-shortcuts")?.family).toBe(
+      "help",
+    );
     expect(commands.map((c) => c.id)).toEqual([
       "window:left-rail",
       "window:left-collapse",
