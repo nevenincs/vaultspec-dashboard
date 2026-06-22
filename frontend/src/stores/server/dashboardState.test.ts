@@ -356,6 +356,35 @@ describe("dashboard-state engine client (live engine)", () => {
     });
   });
 
+  it("forwards node and text facets to the engine filter at BOTH granularities (node-facets-filter-on-the-engine)", () => {
+    // The node/edge/text-reducing facets must reach the engine query filter at every
+    // granularity — they are never dropped to a client-side narrow. At feature
+    // granularity the engine filters member documents BEFORE aggregating them (the
+    // client never sees the members); at document granularity it truncates to the node
+    // ceiling BEFORE serialization. The query filter is identical regardless of LOD.
+    const filters: Partial<DashboardFilters> = {
+      doc_types: ["adr"],
+      statuses: ["draft"],
+      plan_tiers: ["wave-1"],
+      text: "centralize",
+      feature_tags: ["state"],
+      tiers: { structural: false },
+    };
+    for (const graph_granularity of ["feature", "document"] as const) {
+      const state = dashboardDocumentStateSeed("scope-a", {
+        filters,
+        graph_granularity,
+      });
+      const filter = dashboardGraphQueryVariables(state).filter;
+      expect(filter.doc_types).toEqual(["adr"]);
+      expect(filter.statuses).toEqual(["draft"]);
+      expect(filter.plan_tiers).toEqual(["wave-1"]);
+      expect(filter.text).toBe("centralize");
+      expect(filter.feature_tags).toEqual(["state"]);
+      expect(filter.tiers).toEqual({ structural: false });
+    }
+  });
+
   it("normalizes dashboard graph filters at the canonical state seam", () => {
     const filters = cloneDashboardFilters({
       tiers: {

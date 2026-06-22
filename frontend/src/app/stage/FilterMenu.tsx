@@ -9,7 +9,7 @@
 // panel body only, on the binding popover elevation.
 
 import { type FacetDotTone, FacetRow } from "../kit/FacetRow";
-import { SearchField } from "../kit";
+import { SearchField, SectionLabel } from "../kit";
 
 export interface FilterFacetOption {
   /** Stable facet value sent to the wire (e.g. "research", "dangling"). */
@@ -84,7 +84,7 @@ function CheckboxBody({ section }: { section: CheckboxSection }) {
       )}
       {empty ? (
         <p
-          className="px-fg-1-5 py-[0.3125rem] text-[0.6875rem] text-ink-faint"
+          className="px-fg-1-5 py-fg-0-5 text-meta text-ink-faint"
           aria-busy={section.loading || undefined}
         >
           {section.loading ? "loading…" : (section.emptyLabel ?? "none in corpus")}
@@ -141,9 +141,7 @@ export function FilterMenu({
   const sectionList = sections.map((section, i) => (
     <div key={section.key} className="flex flex-col gap-fg-1">
       {i > 0 && <div className="my-fg-1 h-px w-full bg-rule" />}
-      <div className="text-[0.625rem] font-medium uppercase tracking-[0.025rem] text-ink-faint">
-        {section.label}
-      </div>
+      <SectionLabel>{section.label}</SectionLabel>
       {section.type === "checkbox" ? (
         <CheckboxBody section={section} />
       ) : (
@@ -158,16 +156,16 @@ export function FilterMenu({
       aria-label={title}
       data-filter-menu
       style={{ width, maxHeight }}
-      className="flex flex-col gap-fg-1-5 overflow-hidden rounded-[0.75rem] border border-rule bg-paper px-fg-3 pb-[0.625rem] pt-fg-3 shadow-fg-overlay"
+      className="flex flex-col gap-fg-1-5 overflow-hidden rounded-fg-md border border-rule bg-paper px-fg-3 pb-fg-2 pt-fg-3 shadow-fg-overlay"
     >
       {/* Header — title + Clear all (left-aligned, binding 224:630). Pinned. */}
       <div className="flex shrink-0 items-center gap-fg-1-5">
-        <span className="text-[0.78125rem] font-semibold text-ink">{title}</span>
+        <span className="text-body font-semibold text-ink">{title}</span>
         {anyActive && onClearAll && (
           <button
             type="button"
             onClick={onClearAll}
-            className="rounded-fg-xs text-[0.6875rem] font-medium text-accent-text transition-colors duration-ui-fast hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="rounded-fg-xs text-meta font-medium text-accent-text transition-colors duration-ui-fast hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             Clear all
           </button>

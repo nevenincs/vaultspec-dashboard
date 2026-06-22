@@ -101,6 +101,15 @@ pub struct AsofParams {
     /// The DOI focus node id (folded into the historical salience).
     #[serde(default)]
     pub focus: Option<String>,
+    /// The engine-owned wire filter as a URL-encoded JSON object — the SAME
+    /// grammar `/graph/query` and `/graph/lineage` accept (contract §4,
+    /// unified-filter-plane D4). ABSENT = no constraint (`Filter::default()`),
+    /// the unfiltered historical view. PRESENT = the time-travelled snapshot is
+    /// narrowed by every facet exactly as the live graph is, so an active filter
+    /// is honoured across the time axis instead of dropped on scrub. A malformed
+    /// value is a client error shaped through the shared envelope.
+    #[serde(default)]
+    pub filter: Option<String>,
 }
 
 pub async fn graph_asof(
@@ -110,6 +119,20 @@ pub async fn graph_asof(
     let cell = validate_scope(&state, &params.scope)?;
     let granularity = super::query::parse_granularity(&state, params.granularity.as_deref())?;
     let lens = super::query::parse_lens(&state, params.lens.as_deref())?;
+    // Parse the optional URL-encoded JSON filter; a malformed value is a client
+    // error through the shared envelope (mirrors `/graph/lineage`). The graph
+    // projection below validates the facet vocabulary, so this only catches a
+    // syntactically-broken value (unified-filter-plane D4).
+    let filter = match &params.filter {
+        None => engine_query::filter::Filter::default(),
+        Some(raw) => serde_json::from_str(raw).map_err(|e| {
+            super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!("invalid filter: {e}"),
+            )
+        })?,
+    };
     // Scope the historical snapshot to the SERVED WORKTREE (same as the
     // present view), NOT the ref name: the ref is the TIME axis (`t`), not the
     // corpus-view label. Stamping the ref as the facet scope makes two
@@ -139,7 +162,7 @@ pub async fn graph_asof(
     let mut slice = engine_query::graph::graph_query(
         &resolved.asof.graph,
         &scope,
-        engine_query::filter::Filter::default(),
+        filter,
         granularity,
     )
     .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;

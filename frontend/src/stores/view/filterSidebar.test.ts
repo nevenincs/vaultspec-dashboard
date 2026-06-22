@@ -443,7 +443,7 @@ describe("filter sidebar view store", () => {
     expect(filterSidebarStatusDot("accepted")).toBe("complete");
     expect(filterSidebarStatusDot("in-progress")).toBe("active");
     expect(filterSidebarStatusDot("unknown")).toBe("provisional");
-    expect(filterSidebarHealthLabel("dangling")).toBe("dangling links");
+    expect(filterSidebarHealthLabel("dangling")).toBe("Broken links");
     expect(filterSidebarHealthLabel("custom")).toBe("custom");
     expect(filterSidebarHealthDot("invalid")).toBe("danger");
     expect(filterSidebarHealthDot("custom")).toBe("stale");
@@ -587,7 +587,7 @@ describe("filter sidebar view store", () => {
     });
     expect(sections[2]).toMatchObject({
       key: "health",
-      options: [{ value: "dangling", label: "dangling links", dot: "broken" }],
+      options: [{ value: "dangling", label: "Broken links", dot: "broken" }],
     });
     expect(sections[3]).toMatchObject({
       type: "radio",
@@ -675,7 +675,7 @@ describe("filter sidebar view store", () => {
     expect(sections[2]).toMatchObject({
       key: "health",
       selected: ["dangling"],
-      options: [{ value: "dangling", label: "dangling links", dot: "broken" }],
+      options: [{ value: "dangling", label: "Broken links", dot: "broken" }],
     });
 
     if (sections[0]?.type === "checkbox") {

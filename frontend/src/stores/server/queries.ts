@@ -2209,7 +2209,7 @@ export const DASHBOARD_FILTER_SIDEBAR_PRESENTATION: DashboardFilterSidebarPresen
       "rounded-fg-pill bg-paper-sunken px-fg-1-5 py-fg-0-5 text-caption font-normal text-ink-muted",
     sectionIconClassName: "text-ink-faint",
     sectionBodyClassName: "pb-2",
-    kindSectionLabel: "Kind",
+    kindSectionLabel: "Type",
     featureSectionLabel: "Feature",
     editedSectionLabel: "Edited",
     editedWindowAriaLabel: "edited window",
@@ -2594,6 +2594,11 @@ export function useGraphSlice(
         focus: request.focus,
       }),
     enabled,
+    // Tier-1 filter changes (graph-filter-fetch-split ADR D1): hold the prior bounded
+    // slice while the newly-filtered one loads, so a filter change never blanks and a
+    // previously-seen filter resolves instantly from cache. The scene's warm-start
+    // (object constancy by id) animates the transition rather than re-exploding.
+    placeholderData: keepPreviousData,
   });
   return enabled ? query : { ...query, data: undefined };
 }

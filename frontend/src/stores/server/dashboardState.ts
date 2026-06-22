@@ -651,6 +651,21 @@ function cloneDateRange(range: unknown): DashboardDateRange {
   return normalizeDashboardDateRange(range);
 }
 
+// The graph-query filter forwards EVERY node/edge/text-reducing facet to the engine —
+// it must, and is never re-derived as a client-side narrow of the served slice
+// (node-facets-filter-on-the-engine; graph-filter-fetch-split ADR D2, REJECTED split).
+// Two correctness gates make these facets un-client-narrowable:
+//   1. Feature-aggregation gate: at feature granularity the engine applies the facet to
+//      the underlying DOCUMENTS, then aggregates the survivors into feature-convergence
+//      nodes and serves only those (tag + member_count) — the client never receives the
+//      member documents, so it cannot reproduce a doc_type/status/text narrow.
+//   2. Ceiling gate: at document granularity the engine truncates to MAX_DOCUMENT_NODES
+//      BEFORE serialization, so a client narrow would act AFTER truncation and silently
+//      drop matches beyond the ceiling.
+// Smoothness (no blank, instant-on-repeat) is handled by the query's keepPreviousData +
+// the bounded cache, NOT by moving filtering off the engine. The client membership
+// narrows only what it can fully see: client-added nodes (ego expansions, pins) and the
+// legend category mask.
 export function dashboardGraphFilter(state: DashboardState): GraphFilter {
   const filter = cloneDashboardFilters(state.filters);
   if (hasDashboardDateRange(state.date_range)) {

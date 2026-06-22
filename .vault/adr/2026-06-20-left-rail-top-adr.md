@@ -12,7 +12,12 @@ related:
 
 
 
-# `left-rail-top` adr: `Left rail top: project picker, global search, and filter reconciliation` | (**status:** `proposed`)
+# `left-rail-top` adr: `Left rail top: project picker, global search, and filter reconciliation` | (**status:** `accepted`)
+
+REITERATED 2026-06-22 (user direction): D2 and D6 are corrected below. The rail
+search bar is a FEATURE filter with a feature-name autocomplete; it does NOT escalate
+to semantic search. Semantic search lives ONLY in the Cmd-K palette. The advanced,
+granular facets live behind the button beside the search bar (D3).
 
 ## Problem Statement
 
@@ -73,15 +78,13 @@ switching project AND worktree both live here via `activateWorktreeScope` /
 `swapWorkspace` — no new reset logic. The worktree name appears as a secondary
 cue only when a project has more than one worktree.
 
-**D2 — One search bar; two concretized behaviours.** TYPE → live FILTER:
-keystrokes drive `dashboardState.filters.text` (the existing debounced draft),
-matching the active corpus's names — vault document stems + feature tags, or
-code file paths — narrowing the rail tree instantly and projecting to graph
-visibility, with no fetch. ENTER (or an explicit "search everywhere" affordance)
-→ SEMANTIC SEARCH: issues `/search` (rag) for the active target and surfaces
-ranked results in the ONE shared results interface, the Cmd-K `SearchPalette`
-(not a rail pane); result selection focuses the node. The placeholder states
-both modes ("Filter… ↵ to search").
+**D2 — The search bar is a FEATURE filter (reiterated 2026-06-22).** TYPE → live
+FILTER by feature: keystrokes drive the canonical `feature_query` (substring, glob
+`name-*`, regex `/…/`) over feature tags, narrowing the rail tree and projecting to
+graph visibility, with no fetch. A dropdown autocompletes FEATURE-NAME candidates to
+complete the filter. The bar does NOT search document titles/content and does NOT
+escalate to semantic search — there is no Enter→search on the rail. The placeholder
+is "Filter by feature…".
 
 **D3 — Fine-tuned facets hang off the search row.** A facet trigger on the
 search row opens the centralized `FilterMenu` flyout (KIND/TOPIC/STATUS/HEALTH/
@@ -97,9 +100,11 @@ of plumbing).** Extend rail-tree narrowing so the vault/code tree obeys the
 facet filters (`doc_types`, `statuses`, `health`, `feature_tags`), not only
 `text`, so the rail tree agrees with the graph it filters (closes F4).
 
-**D6 — Retire the fragmented search homes.** The right-rail `SearchTab` is
-retired; semantic results live only in the shared `SearchPalette`, reached from
-the rail bar (Enter) and Cmd-K. One search, one results surface.
+**D6 — Semantic search is the Cmd-K palette ONLY (reiterated 2026-06-22).**
+Semantic `/search` (rag) results live exclusively in the shared `SearchPalette`
+reached via Cmd-K — never from the rail search bar. The right-rail `SearchTab`
+stays retired. The rail filter plane (structural: feature filter + facets) and the
+semantic-search plane (Cmd-K) are distinct surfaces, not one escalating bar.
 
 Out of scope / preserved: the engine wire is unchanged; all scope/workspace
 switching reuses the existing reset orchestration; the Figma prototypes already

@@ -6,7 +6,7 @@ import {
   normalizeDashboardFilterFacetValue,
   type DashboardFilterFacet,
 } from "../server/dashboardState";
-import { docTypeLabel } from "../server/docTypeVocabulary";
+import { DOC_TYPE_ORDER, docTypeLabel } from "../server/docTypeVocabulary";
 import type { DashboardFilterSidebarView } from "../server/queries";
 import { normalizeSearchQuery } from "../searchQuery";
 import { normalizeViewStoreSessionString } from "./scopeIdentity";
@@ -186,11 +186,13 @@ const FILTER_SIDEBAR_HEALTH_DOT: Record<string, FilterSidebarFacetDotTone> = {
   orphaned: "archived",
 };
 
+// Health facet values translate to plain user-facing language — never the raw
+// engineering slug (ui-labels-are-user-facing).
 const FILTER_SIDEBAR_HEALTH_LABEL: Record<string, string> = {
-  dangling: "dangling links",
-  invalid: "invalid frontmatter",
-  "empty-scaffold": "empty scaffold",
-  orphaned: "orphaned",
+  dangling: "Broken links",
+  invalid: "Invalid frontmatter",
+  "empty-scaffold": "Empty scaffold",
+  orphaned: "Unlinked",
 };
 
 export interface FilterSidebarState {
@@ -505,7 +507,9 @@ export function deriveFilterSidebarMenuSections({
     "featureSectionLabel" in filterViewRecord.presentation
       ? (filterViewRecord.presentation as unknown as DashboardFilterSidebarView["presentation"])
       : ({} as DashboardFilterSidebarView["presentation"]);
-  const docTypes = normalizeFilterSidebarFacetValues(vocabularyRecord.docTypes);
+  const docTypes = orderDocTypesByPipeline(
+    normalizeFilterSidebarFacetValues(vocabularyRecord.docTypes),
+  );
   const statuses = normalizeFilterSidebarFacetValues(vocabularyRecord.statuses);
   const health = normalizeFilterSidebarFacetValues(vocabularyRecord.health);
   const selectedDocTypes = normalizeFilterSidebarFacetValues(filterViewRecord.docTypes);
@@ -556,7 +560,7 @@ export function deriveFilterSidebarMenuSections({
             onToggle: filterSidebarToggleHandler("statuses", onToggleFacet),
             options: statuses.map((value) => ({
               value,
-              label: value,
+              label: filterSidebarStatusLabel(value),
               dot: filterSidebarStatusDot(value),
             })),
           },
@@ -595,6 +599,27 @@ export function deriveFilterSidebarMenuSections({
 
 export function filterSidebarDocTypeLabel(value: string): string {
   return docTypeLabel(value);
+}
+
+/** Order doc-type facet values by the canonical pipeline order (research → adr →
+ *  plan → exec → audit → reference …), matching the left-rail tree and the legend,
+ *  so the same doc types read in the same order everywhere. Unknown types append
+ *  alphabetically. */
+function orderDocTypesByPipeline(values: string[]): string[] {
+  const rank = (v: string): number => {
+    const i = DOC_TYPE_ORDER.indexOf(v as (typeof DOC_TYPE_ORDER)[number]);
+    return i === -1 ? DOC_TYPE_ORDER.length : i;
+  };
+  return [...values].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
+
+/** A status facet value as plain sentence-case language ("in-progress" → "In
+ *  progress"), never the raw slug (ui-labels-are-user-facing). */
+export function filterSidebarStatusLabel(value: string): string {
+  const cleaned = value.replace(/[-_]+/g, " ").trim();
+  return cleaned.length === 0
+    ? value
+    : cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
 export function filterSidebarStatusDot(value: string): FilterSidebarFacetDotTone {
