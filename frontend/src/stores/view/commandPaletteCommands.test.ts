@@ -127,15 +127,18 @@ describe("buildTimelineCommands / buildEditorCommands", () => {
 });
 
 describe("buildLeftRailCommands", () => {
-  it("enrolls new-document, browse modes, facets, collapse, and reset — shared ids", () => {
+  it("enrolls new-document, browse, focus/clear filter, facets, collapse, reset — shared ids", () => {
     const commands = buildLeftRailCommands({
       collapseTree: () => undefined,
       resetFilters: () => undefined,
+      clearFilter: () => undefined,
     });
     expect(commands.map((c) => c.id)).toEqual([
       "left-rail:new-document",
       "left-rail:browse-vault",
       "left-rail:browse-code",
+      "left-rail:focus-filter",
+      "left-rail:clear-filter",
       "left-rail:toggle-facets",
       "left-rail:collapse-tree",
       "left-rail:reset-filters",
@@ -143,15 +146,18 @@ describe("buildLeftRailCommands", () => {
     const families = new Map(commands.map((c) => [c.id, c.family]));
     expect(families.get("left-rail:new-document")).toBe("app");
     expect(families.get("left-rail:browse-vault")).toBe("navigate");
+    expect(families.get("left-rail:focus-filter")).toBe("focus");
+    expect(families.get("left-rail:clear-filter")).toBe("filters");
     expect(families.get("left-rail:toggle-facets")).toBe("filters");
     expect(families.get("left-rail:reset-filters")).toBe("filters");
     // Every palette command must carry a runnable effect (run-only plane).
     expect(commands.every((c) => typeof c.run === "function")).toBe(true);
   });
 
-  it("fires the injected collapse-tree and reset-filters effects", () => {
+  it("fires the injected collapse-tree, reset-filters, and clear-filter effects", () => {
     let collapsed = 0;
     let reset = 0;
+    let cleared = 0;
     const commands = buildLeftRailCommands({
       collapseTree: () => {
         collapsed += 1;
@@ -159,11 +165,16 @@ describe("buildLeftRailCommands", () => {
       resetFilters: () => {
         reset += 1;
       },
+      clearFilter: () => {
+        cleared += 1;
+      },
     });
     commands.find((c) => c.id === "left-rail:collapse-tree")?.run();
     commands.find((c) => c.id === "left-rail:reset-filters")?.run();
+    commands.find((c) => c.id === "left-rail:clear-filter")?.run();
     expect(collapsed).toBe(1);
     expect(reset).toBe(1);
+    expect(cleared).toBe(1);
   });
 });
 

@@ -42,6 +42,7 @@ function commandContext(): CommandContext {
     intents: {
       collapseTree: noop,
       resetFilters: noop,
+      clearFeatureFilter: noop,
       setTheme: noop,
       runOp: noop,
       closeDocument: noop,

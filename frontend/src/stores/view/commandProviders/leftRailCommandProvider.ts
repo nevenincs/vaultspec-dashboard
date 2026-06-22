@@ -10,6 +10,7 @@ export function leftRailCommandProvider(ctx: CommandContext): readonly unknown[]
   return buildLeftRailCommands({
     collapseTree: ctx.intents.collapseTree,
     resetFilters: ctx.intents.resetFilters,
+    clearFilter: ctx.intents.clearFeatureFilter,
   });
 }
 

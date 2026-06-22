@@ -101,6 +101,8 @@ export interface CommandIntents {
   collapseTree: () => void;
   /** Reset the canonical dashboard filters to empty (scope-bound). */
   resetFilters: () => void;
+  /** Clear the left-rail feature-filter draft (scope-bound). */
+  clearFeatureFilter: () => void;
   /** Pin the theme preference through the engine-owned setting. */
   setTheme: (value: string) => void;
   /** Run a whitelisted operational verb through the appDispatcher seam. */

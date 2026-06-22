@@ -2,8 +2,10 @@ import { useEffect } from "react";
 
 import {
   FilePlus2,
+  FilterX,
   FoldVertical,
   ListFilter,
+  Search,
   SlidersHorizontal,
   UnfoldVertical,
 } from "lucide-react";
@@ -184,6 +186,32 @@ export function resetFiltersAction(resetFilters: () => void): ActionDescriptor {
   };
 }
 
+/** "Focus the document filter" — moves focus to the left-rail filter input. A
+ *  store-only focus intent (the same `focusLeftRailFilter` the chord fires), shared by
+ *  the keymap and the palette so the verb is authored once (the unified action plane). */
+export function focusFilterAction(): ActionDescriptor {
+  return {
+    id: LEFT_RAIL_FOCUS_FILTER_ACTION_ID,
+    label: "Focus the document filter",
+    section: "navigate",
+    icon: Search,
+    run: focusLeftRailFilter,
+  };
+}
+
+/** "Clear the document filter" — clears the left-rail feature-filter draft. The caller
+ *  supplies the scoped `clearFilter` closure (the stores write seam). Shared by the
+ *  keymap and the palette. */
+export function clearFilterAction(clearFilter: () => void): ActionDescriptor {
+  return {
+    id: LEFT_RAIL_CLEAR_FILTER_ACTION_ID,
+    label: "Clear the document filter",
+    section: "navigate",
+    icon: FilterX,
+    run: clearFilter,
+  };
+}
+
 function focusLeftRailFilter(): void {
   if (typeof document === "undefined") return;
   const input = document.querySelector<HTMLInputElement>(
@@ -208,21 +236,11 @@ export function useLeftRailKeybindings(): void {
         run: cycleBrowserMode,
       }),
     );
-    const disposeFocus = registerKeyAction(
-      LEFT_RAIL_FOCUS_FILTER_ACTION_ID,
-      (): ActionDescriptor => ({
-        id: LEFT_RAIL_FOCUS_FILTER_ACTION_ID,
-        label: "Focus the left-rail filter",
-        run: focusLeftRailFilter,
-      }),
+    const disposeFocus = registerKeyAction(LEFT_RAIL_FOCUS_FILTER_ACTION_ID, () =>
+      focusFilterAction(),
     );
-    const disposeClear = registerKeyAction(
-      LEFT_RAIL_CLEAR_FILTER_ACTION_ID,
-      (): ActionDescriptor => ({
-        id: LEFT_RAIL_CLEAR_FILTER_ACTION_ID,
-        label: "Clear the feature filter",
-        run: clearFeatureFilter,
-      }),
+    const disposeClear = registerKeyAction(LEFT_RAIL_CLEAR_FILTER_ACTION_ID, () =>
+      clearFilterAction(clearFeatureFilter),
     );
     // New document is a global chord (reachable while the stage is focused); the
     // expand/collapse-tree thunks live with the tree (TreeBrowser) where the loaded

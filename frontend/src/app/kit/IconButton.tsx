@@ -9,6 +9,7 @@
 // (pressed/selected) state holds the accent-subtle tint with accent ink, so the
 // pressed state reads without relying on color alone.
 
+import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 export interface IconButtonProps extends Omit<
@@ -23,28 +24,30 @@ export interface IconButtonProps extends Omit<
   active?: boolean;
 }
 
-export function IconButton({
-  label,
-  children,
-  active = false,
-  type = "button",
-  ...rest
-}: IconButtonProps) {
-  return (
-    <button
-      type={type}
-      aria-label={label}
-      aria-pressed={active}
-      data-kit="icon-button"
-      data-active={active}
-      className={`inline-flex size-7 shrink-0 items-center justify-center rounded-fg-sm transition-colors duration-ui-fast ease-settle outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50 ${
-        active
-          ? "bg-accent-subtle text-accent-text"
-          : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
-      }`}
-      {...rest}
-    >
-      {children}
-    </button>
-  );
-}
+// forwardRef so a FocusZone (or any roving toolbar) can move focus to the button
+// — the kit primitive a roving cluster instances (keyboard-navigation W02.P05.S16).
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
+  function IconButton(
+    { label, children, active = false, type = "button", ...rest },
+    ref,
+  ) {
+    return (
+      <button
+        ref={ref}
+        type={type}
+        aria-label={label}
+        aria-pressed={active}
+        data-kit="icon-button"
+        data-active={active}
+        className={`inline-flex size-7 shrink-0 items-center justify-center rounded-fg-sm transition-colors duration-ui-fast ease-settle outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50 ${
+          active
+            ? "bg-accent-subtle text-accent-text"
+            : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
+        }`}
+        {...rest}
+      >
+        {children}
+      </button>
+    );
+  },
+);

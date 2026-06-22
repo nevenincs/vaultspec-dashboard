@@ -25,7 +25,9 @@
 // fetches nothing, reads no raw `tiers` block, holds no node shape. Tokens only —
 // no raw hex, no hardcoded px.
 
-import { useCallback, useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+
+import { useFocusZone } from "../chrome/useFocusZone";
 
 import {
   Card,
@@ -130,23 +132,45 @@ function useFieldInteraction() {
 export function GraphNavControls() {
   const scene = getScene();
   const navigationView = deriveGraphControlsNavigationView();
+  // The camera cluster is ONE tab stop: arrows rove between the four buttons via
+  // the shared FocusZone, so the toolbar contributes a single stop to the stage
+  // tab ring (keyboard-navigation W02.P05.S16 — the APG toolbar pattern).
+  const [activeNav, setActiveNav] = useState<string | null>(null);
+  const zone = useFocusZone({
+    orientation: "both",
+    wrap: false,
+    activeKey: activeNav,
+    onActiveKeyChange: setActiveNav,
+  });
+  const zoomIn = zone.rove("zoom-in");
+  const zoomOut = zone.rove("zoom-out");
+  const fit = zone.rove("fit-to-view");
+  const reset = zone.rove("reset-view");
   return (
     <Card
       elevation="raised"
       padded={false}
       className="pointer-events-auto absolute bottom-fg-2 left-fg-2 z-10 p-fg-1"
-      role="group"
+      role="toolbar"
       aria-label={navigationView.ariaLabel}
       data-graph-nav-controls
     >
       <div className={navigationView.containerClassName}>
         <IconButton
+          ref={zoomIn.ref}
+          tabIndex={zoomIn.tabIndex}
+          onKeyDown={zoomIn.onKeyDown}
+          onFocus={() => setActiveNav("zoom-in")}
           label={navigationView.zoomIn.label}
           onClick={() => scene.controller.command({ kind: "zoom-in" })}
         >
           <Plus size={ICON_PX} aria-hidden />
         </IconButton>
         <IconButton
+          ref={zoomOut.ref}
+          tabIndex={zoomOut.tabIndex}
+          onKeyDown={zoomOut.onKeyDown}
+          onFocus={() => setActiveNav("zoom-out")}
           label={navigationView.zoomOut.label}
           onClick={() => scene.controller.command({ kind: "zoom-out" })}
         >
@@ -154,6 +178,10 @@ export function GraphNavControls() {
         </IconButton>
         <span className={navigationView.dividerClassName} aria-hidden />
         <IconButton
+          ref={fit.ref}
+          tabIndex={fit.tabIndex}
+          onKeyDown={fit.onKeyDown}
+          onFocus={() => setActiveNav("fit-to-view")}
           label={navigationView.fitToView.label}
           title={navigationView.fitToView.title}
           onClick={() => scene.controller.command({ kind: "fit-to-view" })}
@@ -161,6 +189,10 @@ export function GraphNavControls() {
           <Maximize size={ICON_PX} aria-hidden />
         </IconButton>
         <IconButton
+          ref={reset.ref}
+          tabIndex={reset.tabIndex}
+          onKeyDown={reset.onKeyDown}
+          onFocus={() => setActiveNav("reset-view")}
           label={navigationView.resetView.label}
           title={navigationView.resetView.title}
           onClick={() => scene.controller.command({ kind: "reset-view" })}

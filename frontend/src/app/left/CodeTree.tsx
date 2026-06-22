@@ -22,8 +22,6 @@
 
 import { File, Folder, type Icon } from "@phosphor-icons/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useCallback, useRef } from "react";
 
 import type { CodeFileEntity } from "../../platform/actions/entity";
 import type { FileTreeEntry } from "../../stores/server/engine";
@@ -35,13 +33,12 @@ import {
   type FileTreeRowView,
 } from "../../stores/server/queries";
 import {
-  deriveBrowserTreeKeyboardTarget,
-  deriveBrowserTreeRovingKey,
   deriveCodeBrowserTreeRowView,
   useBrowserTreeExpansion,
 } from "../../stores/view/browserTreeExpansion";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
+import { useFocusZone, type FocusZoneItemProps } from "../chrome/useFocusZone";
 import {
   useDashboardBrowserSelection,
   useHighlightedCodePath,
@@ -130,53 +127,26 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
     scope,
     "code",
   );
-  const navEls = useRef(new Map<string, HTMLButtonElement>());
-  const previousNavOrder = useRef<string[]>([]);
-  const currentNavOrder = useRef<string[]>([]);
-  const tabStopAssigned = useRef(false);
-  const rovingKey = deriveBrowserTreeRovingKey(activeKey, previousNavOrder.current);
-
-  currentNavOrder.current = [];
-  tabStopAssigned.current = false;
-
-  const registerNav = useCallback(
-    (key: string) => (el: HTMLButtonElement | null) => {
-      if (el) {
-        navEls.current.set(key, el);
-      } else {
-        navEls.current.delete(key);
-      }
-    },
-    [],
-  );
-  const registerVisibleKey = useCallback(
-    (key: string) => {
-      currentNavOrder.current.push(key);
-      previousNavOrder.current = currentNavOrder.current;
-      const tabbable =
-        rovingKey === key || (rovingKey === null && !tabStopAssigned.current);
-      if (tabbable) tabStopAssigned.current = true;
-      return tabbable ? 0 : -1;
-    },
-    [rovingKey],
-  );
-  const moveActive = useCallback(
-    (from: string, key: unknown) => {
-      const order = previousNavOrder.current;
-      if (order.length === 0) return;
-      const next = deriveBrowserTreeKeyboardTarget(order, from, key);
-      if (!next) return;
-      setActiveKey(next);
-      navEls.current.get(next)?.focus();
-    },
-    [setActiveKey],
-  );
+  // The whole file tree is ONE tab stop with arrow / Home / End roving through the
+  // shared FocusZone primitive (keyboard-navigation W02.P05.S15), replacing the
+  // prior bespoke render-time roving whose keyboard-target derivation left arrow
+  // nav dead. A row's cross-axis ArrowRight / ArrowLeft maps to expand / collapse.
+  const zone = useFocusZone({
+    orientation: "vertical",
+    wrap: false,
+    activeKey,
+    onActiveKeyChange: setActiveKey,
+  });
   const expansion = { expanded, toggle };
-  const navigation = {
-    registerNav,
-    registerVisibleKey,
+  const navigation: CodeTreeNavigation = {
+    rove: (key, opts) =>
+      zone.rove(
+        key,
+        opts
+          ? { onCrossNext: opts.onArrowRight, onCrossPrev: opts.onArrowLeft }
+          : undefined,
+      ),
     setActiveKey,
-    moveActive,
   };
 
   if (state === "loading") {
@@ -284,10 +254,14 @@ interface RowProps {
 }
 
 interface CodeTreeNavigation {
-  registerNav: (key: string) => (el: HTMLButtonElement | null) => void;
-  registerVisibleKey: (key: string) => number;
+  /** Register a row with the FocusZone: returns its ref, roving tabIndex, and the
+   *  arrow/Home/End keydown handler. Cross-axis ArrowRight/ArrowLeft maps to
+   *  expand/collapse via the opts. */
+  rove: (
+    key: string,
+    opts?: { onArrowRight?: () => void; onArrowLeft?: () => void },
+  ) => FocusZoneItemProps;
   setActiveKey: (id: string | null) => void;
-  moveActive: (from: string, key: unknown) => void;
 }
 
 /**
@@ -321,7 +295,23 @@ function DirectoryRow({
     return null;
   }
 
-  const tabIndex = navigation.registerVisibleKey(rowView.navKey);
+  const {
+    ref,
+    tabIndex,
+    onKeyDown: zoneKeyDown,
+  } = navigation.rove(
+    rowView.navKey,
+    rowView.isDir
+      ? {
+          onArrowRight: rowView.expanded
+            ? undefined
+            : () => expansion.toggle(entry.path),
+          onArrowLeft: rowView.expanded
+            ? () => expansion.toggle(entry.path)
+            : undefined,
+        }
+      : undefined,
+  );
   const Mark = rowMark(entry.kind);
 
   return (
@@ -332,7 +322,7 @@ function DirectoryRow({
         aria-current={rowView.highlighted ? "page" : undefined}
         aria-expanded={rowView.isDir ? rowView.expanded : undefined}
         tabIndex={tabIndex}
-        ref={navigation.registerNav(rowView.navKey)}
+        ref={ref}
         data-code-row
         data-code-dir={rowView.isDir ? "" : undefined}
         data-code-linked={rowView.linked ? "" : undefined}
@@ -359,12 +349,7 @@ function DirectoryRow({
           ) {
             return;
           }
-          onRowKeyDown(
-            rowView.isDir,
-            rowView.expanded,
-            () => expansion.toggle(entry.path),
-            (key) => navigation.moveActive(rowView.navKey, key),
-          )(e);
+          zoneKeyDown(e);
         }}
         style={rowView.rowStyle}
         className={rowView.rowClassName}
@@ -432,36 +417,6 @@ function DepthGuides({ depth }: { depth: number }) {
       ))}
     </span>
   );
-}
-
-/** Keyboard contract for a row (ADR "Keyboard and a11y"): on a directory,
- *  ArrowRight expands and ArrowLeft collapses; Enter/Space toggles. Files leave
- *  the default button activation (Enter/Space selects via onClick). */
-function onRowKeyDown(
-  isDir: boolean,
-  expanded: boolean,
-  toggleExpanded: () => void,
-  focusByKey: (key: unknown) => void,
-) {
-  return (e: ReactKeyboardEvent<HTMLButtonElement>) => {
-    // Stop every arrow from bubbling to the global keymap dispatcher (which binds
-    // bare arrows to graph cycling on a window listener); an un-stopped tree arrow
-    // double-fires and the global selection change resets the tree's roving
-    // (keyboard-navigation W02.P05.S15 — the Class-B widget-key isolation).
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      e.stopPropagation();
-      focusByKey(e.key);
-    } else if (e.key === "ArrowRight") {
-      e.preventDefault();
-      e.stopPropagation();
-      if (isDir && !expanded) toggleExpanded();
-    } else if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      e.stopPropagation();
-      if (isDir && expanded) toggleExpanded();
-    }
-  };
 }
 
 interface ChildLevelProps {

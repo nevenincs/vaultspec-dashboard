@@ -9,6 +9,7 @@ import {
   type CommandFamily,
 } from "./commandRegistry";
 import { useDashboardFilterSidebarIntent } from "../server/dashboardFilterSidebarIntent";
+import { useDashboardFeatureFilterDraft } from "./dashboardFeatureFilter";
 import { useThemeSettingIntent } from "../server/themeSettingIntent";
 import { useBrowserMode } from "./browserMode";
 import {
@@ -19,6 +20,8 @@ import {
   LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
   LEFT_RAIL_COLLAPSE_TREE_LABEL,
   browseModeAction,
+  clearFilterAction,
+  focusFilterAction,
   newDocumentAction,
   resetFiltersAction,
   toggleFacetsAction,
@@ -248,6 +251,8 @@ export interface LeftRailCommandEffects {
   collapseTree: () => void;
   /** Reset the canonical dashboard filters to empty (scope-bound write seam). */
   resetFilters: () => void;
+  /** Clear the left-rail feature-filter draft (scope-bound write seam). */
+  clearFilter: () => void;
 }
 
 export function buildLeftRailCommands(
@@ -257,6 +262,11 @@ export function buildLeftRailCommands(
     { ...newDocumentAction(), family: "app" },
     { ...browseModeAction("vault"), family: "navigate" },
     { ...browseModeAction("code"), family: "navigate" },
+    // Focus / clear the document filter — keymap-enrolled verbs now reachable from the
+    // palette under their SHARED ids (so their accelerators derive). Focus is a `focus`
+    // verb; clear is a `filters` verb.
+    { ...focusFilterAction(), family: "focus" },
+    { ...clearFilterAction(effects.clearFilter), family: "filters" },
     { ...toggleFacetsAction(), family: "filters" },
     {
       id: LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
@@ -723,6 +733,7 @@ export function useCommandPaletteCommandView(
   const timeline = useDashboardTimelineModeView(scope);
   const runPaletteOp = useCommandPaletteOpsRunMutation().mutate;
   const resetFilters = useDashboardFilterSidebarIntent(scope).clearFilters;
+  const clearFeatureFilter = useDashboardFeatureFilterDraft(scope).clear;
   const graphFrozen = useGraphControlsFrozen();
   const setThemePreference = useThemeSettingIntent().setThemePreference;
   const shellFrame = useShellFrameView(scope);
@@ -749,6 +760,7 @@ export function useCommandPaletteCommandView(
           useBrowserTreeExpansionStore.getState().collapseAll(key);
         },
         resetFilters: () => void resetFilters(),
+        clearFeatureFilter: () => void clearFeatureFilter(),
         setTheme: setThemePreference,
         runOp: (target, verb) => {
           runPaletteOp({ target, verb });
@@ -788,6 +800,7 @@ export function useCommandPaletteCommandView(
     );
   }, [
     browserMode,
+    clearFeatureFilter,
     dateBounds,
     graphFrozen,
     normalizedQuery,

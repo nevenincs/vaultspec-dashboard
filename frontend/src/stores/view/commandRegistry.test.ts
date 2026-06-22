@@ -33,6 +33,7 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
     intents: {
       collapseTree: noop,
       resetFilters: noop,
+      clearFeatureFilter: noop,
       setTheme: noop,
       runOp: noop,
       closeDocument: noop,
