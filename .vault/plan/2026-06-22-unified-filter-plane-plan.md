@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#unified-filter-plane'
 date: '2026-06-22'
-modified: '2026-06-22'
+modified: '2026-06-23'
 tier: L2
 related:
   - '[[2026-06-22-unified-filter-plane-adr]]'
@@ -60,7 +60,7 @@ The full gate is green and bidirectional cross-wiring across rail, graph, and ti
 
 - [x] `P05.S13` - Run the full lint gate just dev lint all plus cargo and frontend tests to exit 0; `engine`.
 - [x] `P05.S14` - Live-verify bidirectional cross-wiring: set a feature filter and toggle a category from the rail AND from the graph legend, confirm rail, graph, and timeline narrow together, and confirm time-travel honours the active filter; `frontend/src/app`.
-- [ ] `P05.S15` - Run vaultspec-code-review for layer ownership, selector discipline, mock fidelity, and bounded queries, and resolve required revisions before close; `.vault/audit`.
+- [x] `P05.S15` - Run vaultspec-code-review for layer ownership, selector discipline, mock fidelity, and bounded queries, and resolve required revisions before close; `.vault/audit`.
 
 ## Description
 
