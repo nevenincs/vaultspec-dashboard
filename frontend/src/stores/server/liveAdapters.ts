@@ -756,6 +756,7 @@ export function adaptFilters(body: unknown): FiltersVocabulary {
     // and plan tiers data-driven; empty stays honest (the facet rows hide).
     statuses: list("statuses"),
     plan_tiers: list("plan_tiers"),
+    plan_states: list("plan_states"),
     health: list("health"),
     date_bounds: dateBounds,
     tiers_block: (body.tiers ?? undefined) as TiersBlock | undefined,

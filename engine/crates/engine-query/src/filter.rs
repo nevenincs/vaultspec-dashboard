@@ -5,8 +5,8 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use engine_graph::{LinkageGraph, StoredEdge};
-use engine_model::{Node, ResolutionState};
+use engine_graph::{LinkageGraph, StoredEdge, lifecycle_in_scope};
+use engine_model::{Node, ResolutionState, ScopeRef};
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +20,8 @@ pub enum FilterError {
     UnknownStatus(String),
     #[error("unknown plan tier `{0}`")]
     UnknownPlanTier(String),
+    #[error("unknown plan state `{0}`")]
+    UnknownPlanState(String),
     #[error("unknown health condition `{0}`")]
     UnknownHealth(String),
     #[error("min_confidence for `{tier}` must be 0..=1, found {found}")]
@@ -165,6 +167,14 @@ pub struct Filter {
     /// Plan tiers (dashboard-pipeline-wire W01.P03.S13): one of `L1`-`L4`. A
     /// node passes if it carries a tier in this set.
     pub plan_tiers: Vec<String>,
+    /// Plan lifecycle states to KEEP: one of `active`/`complete`. A node passes
+    /// if its scoped lifecycle state (the SAME `lifecycle_in_scope(node, scope)`
+    /// the graph slice serves — never derived in the frontend) is in this set; a
+    /// node with no lifecycle is excluded when the facet is non-empty, the same
+    /// exclusion the `statuses` facet applies. Scope-dependent (lifecycle is
+    /// per-facet), so it is applied in `graph_query` where the scope is in hand —
+    /// the same place `health` is wired, not in the node-field `matches_node` pass.
+    pub plan_states: Vec<String>,
     /// Document health/validity conditions (filter-controls campaign): a node
     /// passes if it carries ANY requested condition. Engine-derivable subset:
     /// `dangling` (has a broken outgoing structural edge) and `orphaned` (no
@@ -196,6 +206,11 @@ const STATUS_NAMES: &[&str] = &["proposed", "accepted", "rejected", "deprecated"
 /// The plan tier enum (dashboard-pipeline-wire W01): the known tier set a
 /// plan-tier facet is validated against.
 const PLAN_TIER_NAMES: &[&str] = &["L1", "L2", "L3", "L4"];
+/// The plan/exec lifecycle state enum the engine derives per scope: `active`
+/// (in progress) or `complete` (finished) — see `engine_graph::index`
+/// (`if done == total { "complete" } else { "active" }`). The set a
+/// `plan_states` facet is validated against.
+const PLAN_STATE_NAMES: &[&str] = &["active", "complete"];
 /// The document-health conditions the engine derives from its own graph
 /// (filter-controls campaign): `dangling` = a node with a broken outgoing
 /// structural edge; `orphaned` = a node nothing links to. The schema-dependent
@@ -271,6 +286,11 @@ impl Filter {
                 return Err(FilterError::UnknownPlanTier(tier.clone()));
             }
         }
+        for state in &self.plan_states {
+            if !PLAN_STATE_NAMES.contains(&state.as_str()) {
+                return Err(FilterError::UnknownPlanState(state.clone()));
+            }
+        }
         for condition in &self.health {
             if !HEALTH_NAMES.contains(&condition.as_str()) {
                 return Err(FilterError::UnknownHealth(condition.clone()));
@@ -290,6 +310,8 @@ impl Filter {
         self.statuses.dedup();
         self.plan_tiers.sort();
         self.plan_tiers.dedup();
+        self.plan_states.sort();
+        self.plan_states.dedup();
         self.health.sort();
         self.health.dedup();
         self.text = self.text.map(|text| text.to_lowercase());
@@ -459,6 +481,24 @@ impl Filter {
             .iter()
             .any(|wanted| conditions.iter().any(|have| have == wanted))
     }
+
+    /// Does a node pass the plan-state facet? Scope-dependent — the lifecycle
+    /// state is per-facet (`lifecycle_in_scope(node, scope)`, the SAME projection
+    /// the graph slice serves), so it is applied in `graph_query` where the scope
+    /// is in hand, the same place `matches_health` is, not in `matches_node`. A
+    /// node passes only if its scoped lifecycle state is in the requested set; a
+    /// node with no lifecycle in this scope is EXCLUDED when the facet is set
+    /// (the same exclusion the `statuses` facet applies). An empty facet is no
+    /// constraint.
+    pub fn matches_plan_state(&self, node: &Node, scope: &ScopeRef) -> bool {
+        if self.plan_states.is_empty() {
+            return true;
+        }
+        match lifecycle_in_scope(node, scope).map(|l| l.state.as_str()) {
+            Some(state) => sorted_contains(&self.plan_states, state),
+            None => false,
+        }
+    }
 }
 
 /// Inclusive corpus date span (contract §4 `/filters` date bounds): the
@@ -491,6 +531,11 @@ pub struct Vocabulary {
     /// Plan tiers actually present in the graph (dashboard-pipeline-wire
     /// W01.P03.S11): the data-driven tier facet, sorted and deduped.
     pub plan_tiers: Vec<String>,
+    /// Plan lifecycle states actually present among lifecycle-bearing nodes'
+    /// facets (`active`/`complete`): the data-driven plan-state facet a client
+    /// renders, sorted and deduped — never a hardcoded enum, so the UI never
+    /// shows a dead control. Empty when no node carries a lifecycle.
+    pub plan_states: Vec<String>,
     pub structural_states: Vec<&'static str>,
     /// Document-health conditions actually present in the graph (filter-controls
     /// campaign): the `dangling`/`orphaned` facet a client renders, sorted, never
@@ -540,6 +585,16 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
     let mut plan_tiers: Vec<String> = graph.nodes().filter_map(|n| n.tier.clone()).collect();
     plan_tiers.sort();
     plan_tiers.dedup();
+    // Plan lifecycle states actually present (distinct over every facet's
+    // lifecycle on every node): the data-driven plan-state facet, sorted and
+    // deduped, so the UI never renders a state no node carries.
+    let mut plan_states: Vec<String> = graph
+        .nodes()
+        .flat_map(|n| n.facets.iter())
+        .filter_map(|f| f.lifecycle.as_ref().map(|l| l.state.clone()))
+        .collect();
+    plan_states.sort();
+    plan_states.dedup();
     // Corpus date span from frontmatter `created` dates (ISO yyyy-mm-dd,
     // lexically ordered): the bounds a date-range facet selects within.
     let date_bounds = graph
@@ -589,6 +644,7 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
         feature_tags,
         statuses,
         plan_tiers,
+        plan_states,
         structural_states: STATE_NAMES.to_vec(),
         health,
         date_bounds,
@@ -980,6 +1036,161 @@ mod tests {
             bad.validated(),
             Err(FilterError::InvalidFeatureQuery { .. })
         ));
+    }
+
+    #[test]
+    fn plan_state_facet_narrows_by_scoped_lifecycle_and_excludes_lifecycleless() {
+        // plan_states is the SERVED lifecycle-state facet (active/complete),
+        // scope-dependent like `health`: a node passes only if its scoped
+        // lifecycle state is in the requested set; a node with no lifecycle in
+        // that scope is EXCLUDED when the facet is set (the statuses exclusion).
+        use engine_model::{
+            CanonicalKey, Facet, Lifecycle, NodeKind, Presence, Progress, ScopeRef, node_id,
+        };
+        let scope = ScopeRef::Ref {
+            name: "main".into(),
+        };
+        let plan = |stem: &str, lifecycle: Option<Lifecycle>| Node {
+            id: node_id(&CanonicalKey::Document { stem }),
+            kind: NodeKind::Document,
+            key: stem.to_string(),
+            title: None,
+            doc_type: Some("plan".into()),
+            dates: None,
+            feature_tags: vec![],
+            status: None,
+            tier: None,
+            facets: vec![Facet {
+                scope: ScopeRef::Ref {
+                    name: "main".into(),
+                },
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle,
+            }],
+        };
+        let finished = plan(
+            "done",
+            Some(Lifecycle {
+                state: "complete".into(),
+                progress: Some(Progress { done: 5, total: 5 }),
+            }),
+        );
+        let in_progress = plan(
+            "wip",
+            Some(Lifecycle {
+                state: "active".into(),
+                progress: Some(Progress { done: 2, total: 5 }),
+            }),
+        );
+        let no_lifecycle = plan("bare", None);
+
+        let by_complete = Filter {
+            plan_states: vec!["complete".into()],
+            ..Default::default()
+        }
+        .validated()
+        .unwrap();
+        // (a) keeps a finished plan, excludes an active one.
+        assert!(by_complete.matches_plan_state(&finished, &scope));
+        assert!(!by_complete.matches_plan_state(&in_progress, &scope));
+        // (b) a node with no lifecycle is excluded when the facet is set.
+        assert!(!by_complete.matches_plan_state(&no_lifecycle, &scope));
+
+        // The complement: an `active` facet keeps the in-progress plan.
+        let by_active = Filter {
+            plan_states: vec!["active".into()],
+            ..Default::default()
+        }
+        .validated()
+        .unwrap();
+        assert!(by_active.matches_plan_state(&in_progress, &scope));
+        assert!(!by_active.matches_plan_state(&finished, &scope));
+
+        // An empty facet is no constraint — every node passes, lifecycle or not.
+        let none = Filter::default();
+        assert!(none.matches_plan_state(&finished, &scope));
+        assert!(none.matches_plan_state(&no_lifecycle, &scope));
+
+        // A lifecycle in a DIFFERENT scope does not satisfy this scope's facet.
+        let other_scope = ScopeRef::Ref {
+            name: "feature-x".into(),
+        };
+        assert!(
+            !by_complete.matches_plan_state(&finished, &other_scope),
+            "the lifecycle lives on the `main` facet, not `feature-x`"
+        );
+    }
+
+    #[test]
+    fn plan_state_validation_rejects_unknown_and_normalizes() {
+        // (c) an unknown plan-state value is a typed validation error.
+        let bad: Filter = serde_json::from_str(r#"{"plan_states": ["pending"]}"#).unwrap();
+        assert_eq!(
+            bad.validated(),
+            Err(FilterError::UnknownPlanState("pending".into()))
+        );
+        // The known set normalizes (sort + dedup) like the other facets.
+        let dup: Filter =
+            serde_json::from_str(r#"{"plan_states": ["complete", "active", "complete"]}"#).unwrap();
+        assert_eq!(
+            dup.validated().unwrap().plan_states,
+            vec!["active", "complete"],
+            "sorted, deduped"
+        );
+    }
+
+    #[test]
+    fn vocabulary_lists_the_present_plan_states() {
+        // (d) the vocabulary enumerates the DISTINCT lifecycle states actually
+        // present among lifecycle-bearing nodes' facets — sorted, deduped, never a
+        // hardcoded enum, so the UI never shows a dead control.
+        use engine_model::{
+            CanonicalKey, Facet, Lifecycle, NodeKind, Presence, Progress, ScopeRef, node_id,
+        };
+        fn plan(stem: &str, state: Option<&str>) -> Node {
+            Node {
+                id: node_id(&CanonicalKey::Document { stem }),
+                kind: NodeKind::Document,
+                key: stem.to_string(),
+                title: None,
+                doc_type: Some("plan".into()),
+                dates: None,
+                feature_tags: vec![],
+                status: None,
+                tier: None,
+                facets: vec![Facet {
+                    scope: ScopeRef::Ref {
+                        name: "main".into(),
+                    },
+                    presence: Presence::Exists,
+                    content_hash: None,
+                    lifecycle: state.map(|s| Lifecycle {
+                        state: s.to_string(),
+                        progress: Some(Progress { done: 1, total: 2 }),
+                    }),
+                }],
+            }
+        }
+
+        let mut graph = LinkageGraph::new();
+        // Two `complete` (proves dedup), one `active`, one with no lifecycle
+        // (contributes nothing).
+        graph.upsert_node(plan("p1", Some("complete")));
+        graph.upsert_node(plan("p2", Some("active")));
+        graph.upsert_node(plan("p3", Some("complete")));
+        graph.upsert_node(plan("p4", None));
+
+        let vocab = vocabulary(&graph);
+        assert_eq!(
+            vocab.plan_states,
+            vec!["active", "complete"],
+            "distinct lifecycle states, sorted + deduped from the graph"
+        );
+
+        // An empty graph carries an empty plan-state facet, never a hardcoded enum.
+        let empty = vocabulary(&LinkageGraph::new());
+        assert!(empty.plan_states.is_empty());
     }
 
     #[test]

@@ -1861,6 +1861,8 @@ export interface FiltersVocabularyView {
   featureTags: string[];
   /** STATUS lifecycle vocabulary (ADR adjectives + plan meta-states). */
   statuses: string[];
+  /** PLAN STATUS lifecycle vocabulary (active/complete), engine-served. */
+  planStates: string[];
   /** HEALTH validity vocabulary (dangling/orphaned, present-in-corpus). */
   health: string[];
   dateBounds: FiltersVocabulary["date_bounds"];
@@ -1878,6 +1880,7 @@ export function deriveFiltersVocabularyView(
     docTypes: vocabulary?.doc_types ?? [],
     featureTags: vocabulary?.feature_tags ?? [],
     statuses: vocabulary?.statuses ?? [],
+    planStates: vocabulary?.plan_states ?? [],
     health: vocabulary?.health ?? [],
     dateBounds: vocabulary?.date_bounds,
   };
@@ -2096,6 +2099,7 @@ export function deriveDashboardFilterSummaryView(
       (filters.doc_types?.length ?? 0) +
       (filters.feature_tags?.length ?? 0) +
       (filters.statuses?.length ?? 0) +
+      (filters.plan_states?.length ?? 0) +
       (filters.health?.length ?? 0) +
       (filters.relations?.length ?? 0) +
       (filters.structural_state?.length ?? 0),
@@ -2283,6 +2287,7 @@ export interface DashboardFilterSidebarView {
   docTypes: string[];
   featureTags: string[];
   statuses: string[];
+  planStates: string[];
   health: string[];
   editedWindow: DashboardEditedWindow;
   editedWindowRows: DashboardEditedWindowRowView[];
@@ -2305,6 +2310,7 @@ export function deriveDashboardFilterSidebarView(
     docTypes: filters.doc_types ?? [],
     featureTags: filters.feature_tags ?? [],
     statuses: filters.statuses ?? [],
+    planStates: filters.plan_states ?? [],
     health: filters.health ?? [],
     editedWindow,
     editedWindowRows: DASHBOARD_FILTER_SIDEBAR_PRESENTATION.editedWindows.map(
@@ -2323,6 +2329,7 @@ export function deriveDashboardFilterSidebarView(
       (filters.doc_types?.length ?? 0) > 0 ||
       (filters.feature_tags?.length ?? 0) > 0 ||
       (filters.statuses?.length ?? 0) > 0 ||
+      (filters.plan_states?.length ?? 0) > 0 ||
       (filters.health?.length ?? 0) > 0 ||
       (filters.relations?.length ?? 0) > 0 ||
       (filters.structural_state?.length ?? 0) > 0 ||

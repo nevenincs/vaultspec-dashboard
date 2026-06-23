@@ -974,6 +974,7 @@ describe("deriveFiltersVocabularyView (filter UI vocabulary)", () => {
       docTypes: ["adr", "plan"],
       featureTags: ["state", "search"],
       statuses: [],
+      planStates: [],
       health: [],
       dateBounds: { from: "2026-06-01", to: "2026-06-30" },
     });
@@ -987,6 +988,7 @@ describe("deriveFiltersVocabularyView (filter UI vocabulary)", () => {
       docTypes: [],
       featureTags: [],
       statuses: [],
+      planStates: [],
       health: [],
       dateBounds: undefined,
     });

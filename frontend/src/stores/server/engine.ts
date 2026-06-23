@@ -549,6 +549,10 @@ export interface GraphFilter {
   feature_query?: { value: string; mode: "glob" | "regex" };
   statuses?: string[];
   plan_tiers?: string[];
+  /** Plan lifecycle states (engine-served, NEVER frontend-derived): `active`
+   *  (in progress) / `complete` (finished). A node passes if its scoped lifecycle
+   *  state is in this set; nodes with no lifecycle are excluded when it is set. */
+  plan_states?: string[];
   /** Document-health conditions (filter-controls campaign): `dangling`/`orphaned`
    *  (engine-derived) + `invalid`/`empty-scaffold` (with core ingestion). A node
    *  passes if it carries any requested condition. */
@@ -677,11 +681,14 @@ export interface FiltersVocabulary {
   doc_types: string[];
   feature_tags: string[];
   kinds: string[];
-  /** ADR status adjectives (proposed/accepted/rejected/deprecated) + plan
-   *  meta-states (in-progress/finished) — the STATUS lifecycle facet. */
+  /** ADR status adjectives (proposed/accepted/rejected/deprecated) — the
+   *  DECISION STATUS lifecycle facet. */
   statuses?: string[];
   /** Plan complexity tiers (L1–L4). */
   plan_tiers?: string[];
+  /** Plan lifecycle states present in the corpus (`active`/`complete`) — the
+   *  PLAN STATUS facet. Empty when no lifecycle-bearing docs exist. */
+  plan_states?: string[];
   /** Document-health conditions present in the corpus (filter-controls campaign):
    *  the `dangling`/`orphaned` HEALTH facet, empty when the corpus is clean. */
   health?: string[];

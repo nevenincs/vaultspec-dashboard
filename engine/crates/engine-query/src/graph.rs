@@ -711,6 +711,14 @@ fn graph_query_inner(
     if !filter.health.is_empty() {
         matched.retain(|n| filter.matches_health(graph, n));
     }
+    // Plan-state facet: lifecycle state is per-scope, so this is graph-context
+    // too — applied here where `scope` is in hand (the SAME `lifecycle_in_scope`
+    // projection the slice serves), never derived in the frontend. A node with no
+    // lifecycle in this scope is dropped when the facet is set; edges to dropped
+    // nodes are pruned below (`endpoint_ok`), keeping the subgraph self-consistent.
+    if !filter.plan_states.is_empty() {
+        matched.retain(|n| filter.matches_plan_state(n, scope));
+    }
     matched.sort_by(|a, b| a.id.0.cmp(&b.id.0));
 
     let (nodes, edges, meta) = match granularity {

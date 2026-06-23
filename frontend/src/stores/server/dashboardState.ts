@@ -76,7 +76,12 @@ export type { DashboardPanelStateUpdate } from "./dashboardStateNormalization";
 
 export type DashboardStateMutationPatch = Omit<DashboardStatePatch, "scope">;
 // The toggleable multi-select filter facets (all are GraphFilter string[] fields).
-export type DashboardFilterFacet = "doc_types" | "feature_tags" | "statuses" | "health";
+export type DashboardFilterFacet =
+  | "doc_types"
+  | "feature_tags"
+  | "statuses"
+  | "plan_states"
+  | "health";
 // The edge-tier filter vocabulary. The engine never mints a semantic graph edge
 // (ADR D3.5), so `semantic` is not an edge tier and is not a toggleable filter
 // tier — distinct from the 4-tier availability `CANONICAL_TIERS` block.
@@ -85,6 +90,7 @@ const DASHBOARD_FILTER_FACETS: readonly DashboardFilterFacet[] = [
   "doc_types",
   "feature_tags",
   "statuses",
+  "plan_states",
   "health",
 ];
 export const DASHBOARD_FILTER_FACET_VALUE_MAX_CHARS = 256;

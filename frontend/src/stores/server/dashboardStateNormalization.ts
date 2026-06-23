@@ -260,6 +260,7 @@ export function cloneDashboardFilters(filters: unknown): DashboardFilters {
   const featureQuery = normalizeDashboardFeatureQuery(source.feature_query);
   const statuses = cloneStringArray(source.statuses);
   const planTiers = cloneStringArray(source.plan_tiers);
+  const planStates = cloneStringArray(source.plan_states);
   const health = cloneStringArray(source.health);
   const text = normalizeDashboardTextFilter(source.text);
   if (tiers) next.tiers = tiers;
@@ -272,6 +273,7 @@ export function cloneDashboardFilters(filters: unknown): DashboardFilters {
   if (featureQuery) next.feature_query = featureQuery;
   if (statuses?.length) next.statuses = statuses;
   if (planTiers?.length) next.plan_tiers = planTiers;
+  if (planStates?.length) next.plan_states = planStates;
   if (health?.length) next.health = health;
   if (text) next.text = text;
   return next;

@@ -496,8 +496,12 @@ export function deriveFilterSidebarMenuSections({
   const vocabularyRecord = isFilterSidebarRecord(vocabulary) ? vocabulary : {};
   const filterViewRecord = isFilterSidebarRecord(filterView) ? filterView : {};
   const statuses = normalizeFilterSidebarFacetValues(vocabularyRecord.statuses);
+  const planStates = normalizeFilterSidebarFacetValues(vocabularyRecord.planStates);
   const health = normalizeFilterSidebarFacetValues(vocabularyRecord.health);
   const selectedStatuses = normalizeFilterSidebarFacetValues(filterViewRecord.statuses);
+  const selectedPlanStates = normalizeFilterSidebarFacetValues(
+    filterViewRecord.planStates,
+  );
   const selectedHealth = normalizeFilterSidebarFacetValues(filterViewRecord.health);
   // The flyout hosts ONLY the doc-type-scoped STATUS groups + HEALTH. Category
   // filtering lives on the graph legend and date filtering on the timeline, so
@@ -518,6 +522,24 @@ export function deriveFilterSidebarMenuSections({
             options: statuses.map((value) => ({
               value,
               label: filterSidebarStatusLabel(value),
+              dot: filterSidebarStatusDot(value),
+            })),
+          },
+        ]
+      : []),
+    // PLAN STATUS — the plan lifecycle the ENGINE serves (active/complete), never
+    // frontend-derived. Plan-scoped; shown only when the corpus serves plan states.
+    ...(planStates.length > 0
+      ? [
+          {
+            type: "checkbox" as const,
+            key: "plan-status",
+            label: "Plan status",
+            selected: selectedPlanStates,
+            onToggle: filterSidebarToggleHandler("plan_states", onToggleFacet),
+            options: planStates.map((value) => ({
+              value,
+              label: filterSidebarPlanStateLabel(value),
               dot: filterSidebarStatusDot(value),
             })),
           },
@@ -555,6 +577,20 @@ export function filterSidebarStatusLabel(value: string): string {
   return cleaned.length === 0
     ? value
     : cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+// Plan lifecycle states the engine serves (active/complete) → plain user labels
+// (ui-labels-are-user-facing). Unknown values fall back to sentence-case.
+const FILTER_SIDEBAR_PLAN_STATE_LABEL: Record<string, string> = {
+  active: "In progress",
+  complete: "Finished",
+};
+
+export function filterSidebarPlanStateLabel(value: string): string {
+  return (
+    FILTER_SIDEBAR_PLAN_STATE_LABEL[value.toLowerCase()] ??
+    filterSidebarStatusLabel(value)
+  );
 }
 
 export function filterSidebarStatusDot(value: string): FilterSidebarFacetDotTone {
