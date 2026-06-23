@@ -1,14 +1,13 @@
 // Backend verb-feed provider units (command-palette-actions ADR, W03.P09): the ops
-// provider (whitelisted core/rag verbs + open-settings), the settings provider (theme
-// quick-toggles), and the reload provider (client-side refresh). Each is a pure
-// function of the injected CommandContext.
+// provider (whitelisted core/rag verbs + open-settings) and the settings provider (theme
+// quick-toggles). Each is a pure function of the injected CommandContext. The reload
+// provider has its own home in reloadCommandProvider.test.ts.
 
 import { describe, expect, it } from "vitest";
 
 import type { CommandContext } from "../commandRegistry";
 import { opsCommandProvider } from "./opsCommandProvider";
 import { settingsCommandProvider } from "./settingsCommandProvider";
-import { reloadCommandProvider } from "./reloadCommandProvider";
 
 type RawCommand = {
   id?: string;
@@ -114,14 +113,5 @@ describe("settingsCommandProvider", () => {
     ]);
     out.forEach((c) => c.run?.());
     expect(set).toEqual(["system", "light", "dark", "high-contrast"]);
-  });
-});
-
-describe("reloadCommandProvider", () => {
-  it("contributes a refresh-data command in the reload family", () => {
-    const out = rows(reloadCommandProvider, commandContext());
-    expect(out.map((c) => c.id)).toEqual(["reload:refresh-data"]);
-    expect(out[0]?.family).toBe("reload");
-    expect(typeof out[0]?.run).toBe("function");
   });
 });

@@ -432,16 +432,34 @@ export function refreshAfterAcceptedScopeSwitch(queryClient: QueryClient): void 
   invalidateScopedEngineQueries(queryClient);
 }
 
+/** Minimum interval between full Refresh sweeps. A held chord or rapid double-click
+ *  coalesces inside this window: the prior invalidation already re-fetches the latest, so
+ *  repeats within it are redundant work (global-context-actions, Refresh optimization). */
+export const REFRESH_COALESCE_MS = 300;
+let lastEngineRefreshAt = -Infinity;
+
 /**
- * Re-fetch the engine data on demand (the command-palette reload/refresh family):
- * invalidate the map, status, and every scoped engine query so the next read pulls
- * fresh data from the engine. A client-side refresh — it touches no backend mutation
- * verb, so it is safe in time-travel and needs no confirm guard.
+ * Re-fetch the engine data on demand (the reload/refresh family). Three optimization
+ * passes over the original per-subtree sweep:
+ *  1. COALESCE rapid repeats (held chord / double-click) inside `REFRESH_COALESCE_MS`, so
+ *     a burst fires ONE sweep rather than dozens of redundant invalidation passes.
+ *  2. ONE predicate (`engineKeys.all`) invalidates the entire engine query tree — map,
+ *     status, workspaces, and every scoped subtree — in a single cache scan, replacing the
+ *     26 separate `invalidateQueries` calls.
+ *  3. `refetchType: "active"` re-fetches ONLY currently-mounted queries; inactive cached
+ *     entries are marked stale and re-fetch lazily on next mount, bounding the fan-out to
+ *     what the user can actually see.
+ * Client-side only — no backend mutation, so it is safe in time-travel and needs no
+ * confirm guard.
  */
 export function refreshAllEngineQueries(): void {
-  void defaultQueryClient.invalidateQueries({ queryKey: engineKeys.map() });
-  void defaultQueryClient.invalidateQueries({ queryKey: engineKeys.status() });
-  invalidateScopedEngineQueries(defaultQueryClient);
+  const now = Date.now();
+  if (now - lastEngineRefreshAt < REFRESH_COALESCE_MS) return;
+  lastEngineRefreshAt = now;
+  void defaultQueryClient.invalidateQueries({
+    queryKey: engineKeys.all,
+    refetchType: "active",
+  });
 }
 
 export function refreshAfterAcceptedWorkspaceSwitch(queryClient: QueryClient): void {
