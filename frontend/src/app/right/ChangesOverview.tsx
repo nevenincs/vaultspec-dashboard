@@ -44,6 +44,8 @@ import {
   useStatusSectionOpen,
 } from "../../stores/view/statusTabChrome";
 import { openDocTab } from "../../stores/view/tabs";
+import type { ButtonHTMLAttributes, Ref } from "react";
+
 import { FoldSection, SectionLabel } from "../kit";
 
 // The Changes fold defaults closed — the board's resting GitStatusPill state.
@@ -154,7 +156,15 @@ function changesHeadLabel(changes: ChangesOverviewView): string {
 // The Changes fold
 // ---------------------------------------------------------------------------
 
-export function ChangesOverview() {
+export function ChangesOverview({
+  headerRef,
+  headerProps,
+}: {
+  /** Roving-nav header wiring so the Changes fold joins the rail's one-tab-stop
+   *  section-header zone (keyboard-navigation W04.P07.S21). */
+  headerRef?: Ref<HTMLButtonElement>;
+  headerProps?: ButtonHTMLAttributes<HTMLButtonElement>;
+} = {}) {
   const scope = useActiveScope();
   const changes = useChangesOverview(scope);
   const open = useStatusSectionOpen(CHANGES_SECTION_ID, CHANGES_DEFAULT_OPEN);
@@ -204,6 +214,8 @@ export function ChangesOverview() {
       bodyClassName={chrome.bodyClassName}
       label={label}
       trailing={trailing}
+      headerRef={headerRef}
+      headerProps={headerProps}
       data-changes-overview
     >
       <div className={changes.rootClassName}>

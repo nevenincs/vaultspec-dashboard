@@ -3,12 +3,14 @@ tags:
   - '#plan'
   - '#keyboard-navigation'
 date: '2026-06-21'
-modified: '2026-06-22'
+modified: '2026-06-23'
 tier: L3
 related:
   - '[[2026-06-21-keyboard-navigation-adr]]'
   - '[[2026-06-21-keyboard-navigation-research]]'
 ---
+
+
 # `keyboard-navigation` plan
 
 ## Wave `W01` - Foundation - the focus spine before any enrollment
@@ -70,7 +72,7 @@ Graph nav controls, the graph settings panel, the dock workspace tabs, the docum
 - [x] `W03.P06.S16` - Enroll the graph nav controls (zoom/fit/reset toolbar) onto FocusZone horizontal roving as one tab stop; `live-verify; `frontend/src/app/stage/GraphControls.tsx`.
 - [x] `W03.P06.S17` - Give the graph settings panel a correct focus order (folds, sliders, switches, reset) with trap-free containment and focus-restore to its opener; `live-verify slider arrow-adjust; `frontend/src/app/stage/GraphControls.tsx`.
 - [ ] `W03.P06.S18` - Enroll the dock workspace tab strip onto FocusZone tablist semantics (arrows switch tabs, Delete/close affordance reachable) as one tab stop; `live-verify; `frontend/src/app/stage/DockWorkspace.tsx`.
-- [ ] `W03.P06.S19` - Define the document/code viewer focus model (scrollable region focusable, internal controls in order); `live-verify a doc opens and is keyboard-scrollable; `frontend/src/app/viewer/CodeViewer.tsx`.
+- [x] `W03.P06.S19` - Define the document/code viewer focus model (scrollable region focusable, internal controls in order); `frontend/src/app/viewer/CodeViewer.tsx`.
 - [x] `W03.P06.S20` - Verify the graph canvas application-role focus contract: single tab stop, in-canvas arrow-walk works, Escape/Tab exits to the shell region sequence; `live-verify focus-in and focus-out; `frontend/src/app/stage/Stage.tsx`.
 
 ## Wave `W04` - Right rail enrollment
@@ -81,10 +83,10 @@ Bring the activity/status rail folds, rows, and the plan step tree onto the mode
 
 Fold sections, list rows, the plan step tree, and the search/results surface each become reachable and internally navigable as single tab stops.
 
-- [ ] `W04.P07.S21` - Give the right-rail fold sections a keyboard contract (twisty focusable, Enter/Space toggles, arrows move between folds) via FocusZone; `live-verify; `frontend/src/app/right/StatusTab.tsx`.
-- [ ] `W04.P07.S22` - Enroll the right-rail list rows (plans/PRs/issues/commits) onto FocusZone roving with Enter to open; `live-verify; `frontend/src/app/right/StatusTab.tsx`.
-- [ ] `W04.P07.S23` - Enroll the plan step tree onto FocusZone tree semantics (rove rows, expand/collapse) as one tab stop; `live-verify; `frontend/src/app/right/PlanStepTree.tsx`.
-- [ ] `W04.P07.S24` - Enroll the right-rail search/results surface onto the same model; `live-verify result arrow-navigation and open; `frontend/src/app/right/SearchTab.tsx`.
+- [x] `W04.P07.S21` - Give the right-rail fold sections a keyboard contract (twisty focusable, Enter/Space toggles, arrows move between folds) via FocusZone; `frontend/src/app/right/StatusTab.tsx`.
+- [x] `W04.P07.S22` - Enroll the right-rail list rows (plans/PRs/issues/commits) onto FocusZone roving with Enter to open; `live-verify; `frontend/src/app/right/StatusTab.tsx`.
+- [x] `W04.P07.S23` - Enroll the plan step tree onto FocusZone tree semantics (rove rows, expand/collapse) as one tab stop; `live-verify; `frontend/src/app/right/PlanStepTree.tsx`.
+- [x] `W04.P07.S24` - Enroll the right-rail search/results surface onto the same model; `live-verify result arrow-navigation and open; `frontend/src/app/right/SearchTab.tsx`.
 
 ## Wave `W05` - Timeline enrollment
 
@@ -106,17 +108,17 @@ Bring the modal/overlay surfaces, the shared kit primitives, and the AppShell ch
 
 Context menu, command palette, search palette, and settings dialog each trap focus while open, navigate internally, and restore focus to their trigger on close.
 
-- [ ] `W06.P09.S28` - Confirm the context menu host composes FocusZone menu semantics (arrows, Home/End, typeahead, Escape) and restores focus to the invoker; `live-verify keyboard-invoked menu (Shift+F10); `frontend/src/app/menu/ContextMenuHost.tsx`.
-- [ ] `W06.P09.S29` - Verify the command palette traps focus, navigates via activedescendant, activates on Enter, and restores focus on close; `live-verify open/move/activate/Escape; `frontend/src/app/palette/CommandPalette.tsx`.
-- [ ] `W06.P09.S30` - Verify the search palette mirrors the command palette focus contract; `live-verify; `frontend/src/app/palette/SearchPaletteSurface.tsx`.
-- [ ] `W06.P09.S31` - Verify the settings dialog traps Tab, orders its controls, and restores focus on close; `live-verify each control kind is keyboard-operable including the keybinding recorder; `frontend/src/app/settings/SettingsDialog.tsx`.
+- [x] `W06.P09.S28` - Confirm the context menu host composes FocusZone menu semantics (arrows, Home/End, typeahead, Escape) and restores focus to the invoker; `live-verify keyboard-invoked menu (Shift+F10); `frontend/src/app/menu/ContextMenuHost.tsx`.
+- [x] `W06.P09.S29` - Verify the command palette traps focus, navigates via activedescendant, activates on Enter, and restores focus on close; `live-verify open/move/activate/Escape; `frontend/src/app/palette/CommandPalette.tsx`.
+- [x] `W06.P09.S30` - Verify the search palette mirrors the command palette focus contract; `live-verify; `frontend/src/app/palette/SearchPaletteSurface.tsx`.
+- [x] `W06.P09.S31` - Verify the settings dialog traps Tab, orders its controls, and restores focus on close; `live-verify each control kind is keyboard-operable including the keybinding recorder; `frontend/src/app/settings/SettingsDialog.tsx`.
 
 ### Phase `W06.P10` - Kit primitives and shell chrome
 
 Every shared kit primitive composes FocusZone/restore correctly, and the AppShell chrome (resize separators, panel flyout menu) is keyboard-operable.
 
-- [ ] `W06.P10.S32` - Sweep the kit primitives (Tab, Segment, FoldSection, ListRow, Popover, Dialog, SearchField, Slider, Switch) to compose FocusZone/restore consistently; `live-verify each in situ; `frontend/src/app/kit`.
-- [ ] `W06.P10.S33` - Make the AppShell chrome keyboard-operable: resize separators (role=separator arrow-resize) and the panel flyout menu navigate and restore correctly; `live-verify; `frontend/src/app/AppShell.tsx`.
+- [x] `W06.P10.S32` - Sweep the kit primitives (Tab, Segment, FoldSection, ListRow, Popover, Dialog, SearchField, Slider, Switch) to compose FocusZone/restore consistently; `live-verify each in situ; `frontend/src/app/kit`.
+- [x] `W06.P10.S33` - Make the AppShell chrome keyboard-operable: resize separators (role=separator arrow-resize) and the panel flyout menu navigate and restore correctly; `live-verify; `frontend/src/app/AppShell.tsx`.
 
 ## Wave `W07` - End-to-end verification, review, and codify
 

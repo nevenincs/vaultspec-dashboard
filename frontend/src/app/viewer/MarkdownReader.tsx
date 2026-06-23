@@ -338,7 +338,15 @@ export function MarkdownReader({
           {markdownView.truncationMessage}
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-auto">
+      {/* Focusable scroll region so the rendered document can be SCROLLED by
+          keyboard (arrows / PageUp-Down) even when its prose holds no links to
+          tab through (WCAG 2.1.1; keyboard-navigation W03.P06.S19). */}
+      <div
+        className="min-h-0 flex-1 overflow-auto"
+        role="region"
+        aria-label="document"
+        tabIndex={0}
+      >
         <MarkdownBody view={markdownView} scope={scope} />
         <ReaderFooter editorial={markdownView.editorial} scope={scope} />
       </div>

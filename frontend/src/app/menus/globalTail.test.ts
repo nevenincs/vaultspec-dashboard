@@ -12,6 +12,8 @@ import {
   resolveActions,
   type ActionContext,
 } from "../../platform/actions/registry";
+import { registerKeybindings } from "../../platform/keymap/registry";
+import { deriveReloadKeybindings } from "../../stores/view/reloadKeybindings";
 import { globalTailActions } from "./globalTail";
 
 const LIVE: ActionContext = { timeTravel: false };
@@ -19,6 +21,17 @@ const LIVE: ActionContext = { timeTravel: false };
 afterEach(() => resetResolvers());
 
 describe("context-menu global tail (Refresh)", () => {
+  it("surfaces the REGISTRY-DERIVED accelerator on the Refresh row (approved treatment)", () => {
+    // No accelerator until the reload binding is registered.
+    expect(globalTailActions()[0].accelerator).toBeUndefined();
+    const dispose = registerKeybindings(deriveReloadKeybindings());
+    const accel = globalTailActions()[0].accelerator;
+    expect(accel).toBeDefined();
+    expect(accel).toMatch(/Shift\+R$/); // e.g. "Ctrl+Shift+R" / "⌘+Shift+R"
+    dispose();
+    expect(globalTailActions()[0].accelerator).toBeUndefined();
+  });
+
   it("is Refresh ONLY - the heavy rag-reindex verb is never in the tail (D5)", () => {
     const tail = globalTailActions();
     expect(tail.map((a) => a.id)).toEqual(["reload:refresh-data"]);

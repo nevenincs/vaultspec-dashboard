@@ -4,6 +4,8 @@
 // owns that presentation so one feature surface does not become another surface's
 // component library.
 
+import { useState } from "react";
+
 import { CircleSlash } from "lucide-react";
 
 import {
@@ -15,6 +17,14 @@ import {
   type PlanInteriorView,
 } from "../../stores/server/queries";
 import { useDashboardNodeSelection } from "../../stores/view/selection";
+import { useFocusZone, type FocusZoneItemProps } from "../chrome/useFocusZone";
+
+/** Roving navigation threaded to each selectable step so the whole step tree is
+ *  ONE tab stop with arrow/Home/End roving (keyboard-navigation W04.P07.S23). */
+interface StepNav {
+  rove: (key: string) => FocusZoneItemProps;
+  setActive: (key: string) => void;
+}
 
 const GATE_PX = 14;
 const SMALL_PX = 13;
@@ -69,17 +79,25 @@ function RollupFraction({ rollup }: { rollup: InteriorRollup }) {
 
 interface StepRowProps {
   step: InteriorStepView;
+  nav: StepNav;
 }
 
-function StepRow({ step }: StepRowProps) {
+function StepRow({ step, nav }: StepRowProps) {
   const selectDashboardNode = useDashboardNodeSelection(useActiveScope());
+  // A selectable step joins the roving order (one tab stop for the tree, arrows
+  // move between steps, Enter/Space selects via the native button). A
+  // non-selectable step stays out of the tab order (tabIndex -1, disabled).
+  const item = step.selectable ? nav.rove(step.node_id) : null;
   return (
     <li>
       <button
         type="button"
         data-work-row="step"
         disabled={!step.selectable}
-        tabIndex={-1}
+        ref={item?.ref}
+        tabIndex={item ? item.tabIndex : -1}
+        onKeyDown={item?.onKeyDown}
+        onFocus={item ? () => nav.setActive(step.node_id) : undefined}
         onClick={() => {
           if (step.targetNodeId) {
             void selectDashboardNode(step.targetNodeId).catch(() => undefined);
@@ -98,7 +116,7 @@ function StepRow({ step }: StepRowProps) {
   );
 }
 
-function PhaseGroup({ phase }: { phase: InteriorPhaseView }) {
+function PhaseGroup({ phase, nav }: { phase: InteriorPhaseView; nav: StepNav }) {
   return (
     <li className="space-y-fg-0-5">
       <p className="flex items-center gap-fg-1-5 px-fg-1 text-caption text-ink-faint">
@@ -108,14 +126,14 @@ function PhaseGroup({ phase }: { phase: InteriorPhaseView }) {
       </p>
       <ul className="space-y-px pl-fg-2" role="list">
         {phase.steps.map((s) => (
-          <StepRow key={s.node_id} step={s} />
+          <StepRow key={s.node_id} step={s} nav={nav} />
         ))}
       </ul>
     </li>
   );
 }
 
-function WaveGroup({ wave }: { wave: InteriorWaveView }) {
+function WaveGroup({ wave, nav }: { wave: InteriorWaveView; nav: StepNav }) {
   return (
     <li className="space-y-fg-0-5">
       <p className="flex items-center gap-fg-1-5 px-fg-1 text-caption font-medium text-ink-muted">
@@ -125,7 +143,7 @@ function WaveGroup({ wave }: { wave: InteriorWaveView }) {
       </p>
       <ul className="space-y-fg-1 pl-fg-2" role="list">
         {wave.phases.map((p) => (
-          <PhaseGroup key={p.node_id} phase={p} />
+          <PhaseGroup key={p.node_id} phase={p} nav={nav} />
         ))}
       </ul>
     </li>
@@ -133,6 +151,17 @@ function WaveGroup({ wave }: { wave: InteriorWaveView }) {
 }
 
 export function PlanStepTree({ view }: { view: PlanInteriorView }) {
+  // One FocusZone over all selectable steps: the step tree is a single tab stop
+  // and arrows / Home / End rove the steps (keyboard-navigation W04.P07.S23).
+  const [activeStep, setActiveStep] = useState<string | null>(null);
+  const zone = useFocusZone({
+    orientation: "vertical",
+    wrap: false,
+    activeKey: activeStep,
+    onActiveKeyChange: setActiveStep,
+  });
+  const nav: StepNav = { rove: zone.rove, setActive: setActiveStep };
+
   if (view.loading) {
     return (
       <p
@@ -168,16 +197,16 @@ export function PlanStepTree({ view }: { view: PlanInteriorView }) {
     <div className="space-y-fg-1 border-l border-rule pl-fg-2" data-step-tree>
       <ul className="space-y-fg-1" role="list" aria-label={view.listAriaLabel}>
         {view.waves.map((w) => (
-          <WaveGroup key={w.node_id} wave={w} />
+          <WaveGroup key={w.node_id} wave={w} nav={nav} />
         ))}
         {view.phases.map((p) => (
-          <PhaseGroup key={p.node_id} phase={p} />
+          <PhaseGroup key={p.node_id} phase={p} nav={nav} />
         ))}
         {view.hasUngroupedSteps && (
           <li>
             <ul className="space-y-px" role="list">
               {view.steps.map((s) => (
-                <StepRow key={s.node_id} step={s} />
+                <StepRow key={s.node_id} step={s} nav={nav} />
               ))}
             </ul>
           </li>

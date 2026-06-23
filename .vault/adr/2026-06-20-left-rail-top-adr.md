@@ -135,9 +135,11 @@ narrowing the current corpus versus searching everything.
 
 ## Codification candidates
 
-- **Rule slug:** `search-is-one-bar-filter-then-semantic`.
-  **Rule:** the dashboard exposes exactly one in-app search/filter entry (the
-  rail bar); typing narrows the active corpus locally (the `filters.text`
-  facet), Enter escalates to semantic `/search` results in the single shared
-  results surface — no second search box and no separate semantic-search pane.
-  (Candidate; promote only after it holds across an execution cycle.)
+- **Rule slug:** `rail-search-is-a-feature-filter-semantic-is-cmd-k`.
+  **Rule:** the rail search bar is a FEATURE filter (the `feature_query` facet,
+  with a feature-name autocomplete) that narrows the active corpus locally with no
+  fetch; it NEVER escalates to semantic search and has no Enter→search. Semantic
+  `/search` results live ONLY in the Cmd-K palette. The rail filter plane
+  (feature filter + the advanced facets behind the button) and the semantic-search
+  plane (Cmd-K) are distinct surfaces, never one escalating bar. (Reiterated
+  2026-06-22; candidate, promote only after it holds across an execution cycle.)

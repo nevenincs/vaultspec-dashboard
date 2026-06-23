@@ -79,6 +79,11 @@ function CodeLines({
       onScroll={(e) => setCodeViewerScrollTop(e.currentTarget.scrollTop)}
       role="region"
       aria-label={presentation.scrollerAriaLabel}
+      // Focusable so the read-only code can be SCROLLED by keyboard (arrows /
+      // PageUp-Down / Home-End): the region holds no focusable content, so without
+      // a tab stop a keyboard user could not reach or scroll it (WCAG 2.1.1;
+      // keyboard-navigation W03.P06.S19).
+      tabIndex={0}
     >
       <div style={presentation.spacerStyle}>
         {rawLines.slice(lineWindow.first, lineWindow.last).map((raw, i) => {

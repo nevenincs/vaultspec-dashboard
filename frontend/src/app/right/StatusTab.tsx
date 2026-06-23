@@ -29,9 +29,12 @@
 // badges, and the disclosure chevrons resolve to centralized kit primitives and
 // bound tokens — no raw hex, no loose font-size, no per-surface card chrome.
 
-import type { ReactNode } from "react";
+import { useState } from "react";
+import type { ButtonHTMLAttributes, Ref, ReactNode } from "react";
 
 import { CircleDot, GitBranch, GitMerge, GitPullRequest } from "lucide-react";
+
+import { useFocusZone } from "../chrome/useFocusZone";
 
 import {
   DEFAULT_HISTORY_LIMIT,
@@ -53,6 +56,8 @@ import {
   usePipelineExpansion,
 } from "../../stores/view/pipelineExpansion";
 import { openContextMenu } from "../../stores/view/contextMenu";
+import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
+import type { FocusZoneItemProps } from "../chrome/useFocusZone";
 import { selectEventNodes } from "../../stores/view/selection";
 import {
   deriveStatusSectionChromeView,
@@ -88,6 +93,9 @@ interface SectionCardProps {
   /** Resting open/closed state; sections default open (the everything-expanded
    *  light rail). */
   defaultOpen?: boolean;
+  /** Roving-nav header wiring (the rail's section headers are ONE tab stop). */
+  headerRef?: Ref<HTMLButtonElement>;
+  headerProps?: ButtonHTMLAttributes<HTMLButtonElement>;
   children: ReactNode;
 }
 
@@ -96,6 +104,8 @@ function SectionCard({
   title,
   count,
   defaultOpen = true,
+  headerRef,
+  headerProps,
   children,
 }: SectionCardProps) {
   const open = useStatusSectionOpen(id, defaultOpen);
@@ -111,6 +121,8 @@ function SectionCard({
       onToggle={() => toggleStatusSection(id, defaultOpen)}
       bodyId={chrome.bodyId}
       bodyVisible={chrome.bodyVisible}
+      headerRef={headerRef}
+      headerProps={headerProps}
       data-section
     >
       {children}
@@ -333,6 +345,25 @@ function OpenPlansBody({ scope }: { scope: unknown }) {
 // GitHub work items — PR + issue rows; gh-brokered, capability-local degraded.
 // ---------------------------------------------------------------------------
 
+/** Roving wiring threaded to a section's content rows so the list is ONE tab stop
+ *  and arrows move between rows (keyboard-navigation W04.P07.S22). */
+interface RowNav {
+  rove: (key: string) => FocusZoneItemProps;
+  setActive: (key: string) => void;
+}
+
+/** A per-section vertical roving zone over its rows. */
+function useRowZone(): RowNav {
+  const [active, setActive] = useState<string | null>(null);
+  const zone = useFocusZone({
+    orientation: "vertical",
+    wrap: false,
+    activeKey: active,
+    onActiveKeyChange: setActive,
+  });
+  return { rove: zone.rove, setActive };
+}
+
 /** A small token-tier check summary chip for a PR row. */
 function ChecksTag({ row }: { row: PullRequestRowView }) {
   if (!row.checksLabel || !row.checksToneClass) return null;
@@ -343,25 +374,44 @@ function ChecksTag({ row }: { row: PullRequestRowView }) {
   );
 }
 
-function PrRow({ row }: { row: PullRequestRowView }) {
+function PrRow({ row, nav }: { row: PullRequestRowView; nav?: RowNav }) {
   const { pr } = row;
   const Icon = row.icon === "merged" ? GitMerge : GitPullRequest;
+  const key = `pr:${pr.number}`;
+  const item = nav ? nav.rove(key) : null;
+  const openMenuAt = (anchor: { x: number; y: number }) =>
+    openContextMenu(
+      { kind: "pull-request", id: String(pr.number), title: pr.title, url: pr.url },
+      anchor,
+    );
   return (
     <li
-      className="flex flex-col gap-fg-0-5 rounded-fg-sm border border-rule bg-paper-raised px-fg-2 py-fg-2"
+      // A PR row is informational; its action is the context menu. When the
+      // section is enrolled it becomes a focusable, roving row reached by arrows,
+      // with Enter/Space + Shift+F10 opening that menu (keyboard-navigation S22).
+      ref={item?.ref}
+      tabIndex={item ? item.tabIndex : undefined}
+      onFocus={item ? () => nav?.setActive(key) : undefined}
+      onKeyDown={
+        item
+          ? (e) => {
+              if (handleKeyboardContextMenu(e, openMenuAt)) return;
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                const r = e.currentTarget.getBoundingClientRect();
+                openMenuAt({ x: r.left, y: r.bottom });
+                return;
+              }
+              item.onKeyDown(e);
+            }
+          : undefined
+      }
+      className="flex flex-col gap-fg-0-5 rounded-fg-sm border border-rule bg-paper-raised px-fg-2 py-fg-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       data-pr
       data-pr-number={pr.number}
       onContextMenu={(e) => {
         e.preventDefault();
-        openContextMenu(
-          {
-            kind: "pull-request",
-            id: String(pr.number),
-            title: pr.title,
-            url: pr.url,
-          },
-          { x: e.clientX, y: e.clientY },
-        );
+        openMenuAt({ x: e.clientX, y: e.clientY });
       }}
     >
       <div className="flex items-center gap-fg-1-5">
@@ -385,6 +435,7 @@ function PrRow({ row }: { row: PullRequestRowView }) {
 
 function OpenPrsBody({ scope }: { scope: unknown }) {
   const view = usePRsView(scope, "open");
+  const nav = useRowZone();
   if (view.showLoading) {
     return (
       <p className={view.loadingClassName} role="status">
@@ -405,7 +456,7 @@ function OpenPrsBody({ scope }: { scope: unknown }) {
   return (
     <ul className={view.listClassName} role="list" data-prs-list>
       {view.rows.map((row) => (
-        <PrRow key={row.pr.number} row={row} />
+        <PrRow key={row.pr.number} row={row} nav={nav} />
       ))}
     </ul>
   );
@@ -413,6 +464,7 @@ function OpenPrsBody({ scope }: { scope: unknown }) {
 
 function RecentPrsBody({ scope }: { scope: unknown }) {
   const view = usePRsView(scope, "merged");
+  const nav = useRowZone();
   if (view.showLoading) {
     return (
       <p className={view.loadingClassName} role="status">
@@ -433,7 +485,7 @@ function RecentPrsBody({ scope }: { scope: unknown }) {
   return (
     <ul className={view.listClassName} role="list" data-recent-prs-list>
       {view.rows.map((row) => (
-        <PrRow key={row.pr.number} row={row} />
+        <PrRow key={row.pr.number} row={row} nav={nav} />
       ))}
     </ul>
   );
@@ -675,6 +727,28 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
   // `stateOverride` is a test-only seam (the /status.html parity harness drives each
   // designed state); production always derives the state from live data.
   const railState = stateOverride ?? deriveRailState(plansView, openPrs, openIssues);
+  // The rail's six fold headers are ONE tab stop: arrows rove between sections via
+  // the shared FocusZone, Enter/Space toggles the focused fold (the native button)
+  // (keyboard-navigation W04.P07.S21). Each section's body rows remain reachable by
+  // Tab from its header.
+  const [activeHeader, setActiveHeader] = useState<string | null>(null);
+  const zone = useFocusZone({
+    orientation: "vertical",
+    wrap: false,
+    activeKey: activeHeader,
+    onActiveKeyChange: setActiveHeader,
+  });
+  const headerNav = (key: string) => {
+    const item = zone.rove(key);
+    return {
+      headerRef: item.ref as Ref<HTMLButtonElement>,
+      headerProps: {
+        tabIndex: item.tabIndex,
+        onKeyDown: item.onKeyDown,
+        onFocus: () => setActiveHeader(key),
+      } satisfies ButtonHTMLAttributes<HTMLButtonElement>,
+    };
+  };
   return (
     <div className="space-y-fg-4 text-body" data-status-tab data-rail-state={railState}>
       <LocationStrip scope={scope} />
@@ -683,8 +757,9 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
       {railState === "empty" && <RailEmpty />}
       {railState === "populated" && (
         <>
-          <ChangesOverview />
+          <ChangesOverview {...headerNav("changes")} />
           <SectionCard
+            {...headerNav(sections.openPlans.id)}
             id={sections.openPlans.id}
             title={sections.openPlans.title}
             count={sections.openPlans.count}
@@ -692,6 +767,7 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
             <OpenPlansBody scope={scope} />
           </SectionCard>
           <SectionCard
+            {...headerNav(sections.openPrs.id)}
             id={sections.openPrs.id}
             title={sections.openPrs.title}
             count={sections.openPrs.count}
@@ -699,16 +775,22 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
             <OpenPrsBody scope={scope} />
           </SectionCard>
           <SectionCard
+            {...headerNav(sections.openIssues.id)}
             id={sections.openIssues.id}
             title={sections.openIssues.title}
             count={sections.openIssues.count}
           >
             <OpenIssuesBody scope={scope} />
           </SectionCard>
-          <SectionCard id={sections.recentPrs.id} title={sections.recentPrs.title}>
+          <SectionCard
+            {...headerNav(sections.recentPrs.id)}
+            id={sections.recentPrs.id}
+            title={sections.recentPrs.title}
+          >
             <RecentPrsBody scope={scope} />
           </SectionCard>
           <SectionCard
+            {...headerNav(sections.recentCommits.id)}
             id={sections.recentCommits.id}
             title={sections.recentCommits.title}
           >

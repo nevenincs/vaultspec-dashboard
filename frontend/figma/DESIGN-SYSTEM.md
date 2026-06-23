@@ -83,8 +83,21 @@ where relevant, sizes. All colour bound; all metrics tokenised.
 - **ListRow** — the DocumentRow idiom: leading marker slot, name, meta, trailing; +selected
   treatment (accent-subtle bg + accent left bar) — ONE selected at a time.
 - **TreeRow** — disclosure chevron (▸ collapsed / ▾ expanded), indent guides, leaf vs parent.
+  Every tree row LEADS WITH A `DocTypeMark` (a Phosphor doc-type icon), **never the
+  coloured dot** (reconciled to frontend 2026-06-23; see the `mobile-responsive-layout`
+  audit addendum). Colour is a top-level signal only: parent rows (feature, category
+  folder) tint the mark by `scene/category-*`; a document leaf carries the same mark in
+  neutral `ink/faint`.
+- **DocTypeMark** — the canonical doc-type icon (set `807:3528`): Category
+  (Research→Pencil, Decision→Diamond, Plan→ClipboardText, Step→Stack, Audit→SealCheck,
+  Reference→BookOpen, Feature→plan mark) × Tone (Color = category-tinted parent /
+  Neutral = `ink/faint` leaf). Mirrors the frontend `vaultRowPresentation` map. Tree
+  rows and the category legend compose THIS, not a hand-placed dot.
 - **StatusMark set** — doc-type marks (research/adr/plan/exec/audit/index/code), tier marks,
   plan rollout circles (✓ complete / ◐ in-progress / ○ not-started), live dot, git-dirty dot.
+  The coloured `StatusDot` is RETIRED from the vault tree (superseded by `DocTypeMark`);
+  it remains valid for non-doc-type pips (e.g. the change pill's file/doc indicator) —
+  evaluate per surface before re-skinning the shared set.
 - **Panel / Card** — paper-raised surface, header bar, body, soft elevation, radius lg.
 - **HeaderBar / SectionHeader** — title + actions; collapsible variant.
 - **Tabs** — underline/segment tab bar (right rail: now/work/changes/search).

@@ -26,6 +26,11 @@ export function EnumControl({ def, value, onChange, disabled, id }: ControlProps
     const target = settingsEnumKeyboardTarget(view.options, index, e.key);
     if (target === null) return;
     e.preventDefault();
+    // Stop the consumed arrow from bubbling to the global keymap dispatcher's
+    // window listener (bare arrows = graph cycling); even inside the settings
+    // modal an un-stopped arrow would move the radio AND the graph selection
+    // (keyboard-navigation W06.P09.S31, the Class-B widget-key isolation).
+    e.stopPropagation();
     onChange(target);
     segEls.current.get(target)?.focus();
   };

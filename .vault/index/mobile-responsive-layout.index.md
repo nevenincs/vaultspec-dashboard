@@ -7,6 +7,7 @@ date: '2026-06-22'
 modified: '2026-06-22'
 related:
   - '[[2026-06-22-mobile-responsive-layout-adr]]'
+  - '[[2026-06-22-mobile-responsive-layout-audit]]'
   - '[[2026-06-22-mobile-responsive-layout-research]]'
 ---
 
@@ -18,7 +19,11 @@ Auto-generated index of all documents tagged with `#mobile-responsive-layout`.
 
 ### adr
 
-- `2026-06-22-mobile-responsive-layout-adr` - `mobile-responsive-layout` adr: `mobile responsive layout` | (**status:** `proposed`)
+- `2026-06-22-mobile-responsive-layout-adr` - `mobile-responsive-layout` adr: `mobile responsive layout` | (**status:** `accepted`)
+
+### audit
+
+- `2026-06-22-mobile-responsive-layout-audit` - `mobile-responsive-layout` audit: `compact frames design review`
 
 ### research
 

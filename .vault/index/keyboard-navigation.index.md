@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#keyboard-navigation'
-date: '2026-06-22'
-modified: '2026-06-22'
+date: '2026-06-23'
+modified: '2026-06-23'
 related:
   - '[[2026-06-21-keyboard-navigation-W01-P01-S01]]'
   - '[[2026-06-21-keyboard-navigation-W01-P01-S02]]'
@@ -21,7 +21,18 @@ related:
   - '[[2026-06-21-keyboard-navigation-W02-P05-S15]]'
   - '[[2026-06-21-keyboard-navigation-W03-P06-S16]]'
   - '[[2026-06-21-keyboard-navigation-W03-P06-S17]]'
+  - '[[2026-06-21-keyboard-navigation-W03-P06-S19]]'
   - '[[2026-06-21-keyboard-navigation-W03-P06-S20]]'
+  - '[[2026-06-21-keyboard-navigation-W04-P07-S21]]'
+  - '[[2026-06-21-keyboard-navigation-W04-P07-S22]]'
+  - '[[2026-06-21-keyboard-navigation-W04-P07-S23]]'
+  - '[[2026-06-21-keyboard-navigation-W04-P07-S24]]'
+  - '[[2026-06-21-keyboard-navigation-W06-P09-S28]]'
+  - '[[2026-06-21-keyboard-navigation-W06-P09-S29]]'
+  - '[[2026-06-21-keyboard-navigation-W06-P09-S30]]'
+  - '[[2026-06-21-keyboard-navigation-W06-P09-S31]]'
+  - '[[2026-06-21-keyboard-navigation-W06-P10-S32]]'
+  - '[[2026-06-21-keyboard-navigation-W06-P10-S33]]'
   - '[[2026-06-21-keyboard-navigation-adr]]'
   - '[[2026-06-21-keyboard-navigation-plan]]'
   - '[[2026-06-21-keyboard-navigation-research]]'
@@ -55,6 +66,17 @@ Auto-generated index of all documents tagged with `#keyboard-navigation`.
 - `2026-06-21-keyboard-navigation-W03-P06-S16` - Enroll the graph nav controls (zoom/fit/reset toolbar) onto FocusZone horizontal roving as one tab stop
 - `2026-06-21-keyboard-navigation-W03-P06-S17` - Give the graph settings panel a correct focus order (folds, sliders, switches, reset) with trap-free containment and focus-restore to its opener
 - `2026-06-21-keyboard-navigation-W03-P06-S20` - Verify the graph canvas application-role focus contract: single tab stop, in-canvas arrow-walk works, Escape/Tab exits to the shell region sequence
+- `2026-06-21-keyboard-navigation-W03-P06-S19` - Define the document/code viewer focus model (scrollable region focusable, internal controls in order)
+- `2026-06-21-keyboard-navigation-W04-P07-S21` - Give the right-rail fold sections a keyboard contract (twisty focusable, Enter/Space toggles, arrows move between folds) via FocusZone
+- `2026-06-21-keyboard-navigation-W04-P07-S22` - Enroll the right-rail list rows (plans/PRs/issues/commits) onto FocusZone roving with Enter to open
+- `2026-06-21-keyboard-navigation-W04-P07-S23` - Enroll the plan step tree onto FocusZone tree semantics (rove rows, expand/collapse) as one tab stop
+- `2026-06-21-keyboard-navigation-W04-P07-S24` - Enroll the right-rail search/results surface onto the same model
+- `2026-06-21-keyboard-navigation-W06-P09-S28` - Confirm the context menu host composes FocusZone menu semantics (arrows, Home/End, typeahead, Escape) and restores focus to the invoker
+- `2026-06-21-keyboard-navigation-W06-P09-S29` - Verify the command palette traps focus, navigates via activedescendant, activates on Enter, and restores focus on close
+- `2026-06-21-keyboard-navigation-W06-P09-S30` - Verify the search palette mirrors the command palette focus contract
+- `2026-06-21-keyboard-navigation-W06-P09-S31` - Verify the settings dialog traps Tab, orders its controls, and restores focus on close
+- `2026-06-21-keyboard-navigation-W06-P10-S32` - Sweep the kit primitives (Tab, Segment, FoldSection, ListRow, Popover, Dialog, SearchField, Slider, Switch) to compose FocusZone/restore consistently
+- `2026-06-21-keyboard-navigation-W06-P10-S33` - Make the AppShell chrome keyboard-operable: resize separators (role=separator arrow-resize) and the panel flyout menu navigate and restore correctly
 
 ### plan
 

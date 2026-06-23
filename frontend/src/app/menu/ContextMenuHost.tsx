@@ -149,6 +149,11 @@ export function ContextMenuHost({
       const intent = deriveContextMenuKeyboardIntent(e.key);
       if (intent === null) return;
       e.preventDefault();
+      // Stop the consumed key (arrows/Enter/Escape) from bubbling to the one
+      // global keymap dispatcher's window listener, which binds bare arrows to
+      // graph cycling — an un-stopped menu arrow would move the cursor AND the
+      // graph selection (keyboard-navigation W06.P09.S28, the Class-B isolation).
+      e.stopPropagation();
       if (intent.kind === "close") {
         closeContextMenu();
       } else if (intent.kind === "move-cursor") {

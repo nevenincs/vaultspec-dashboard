@@ -10,14 +10,39 @@
 // bloat the `global` section exists to prevent.
 
 import type { ActionDescriptor } from "../../platform/actions/action";
+import { chordToKeycaps } from "../../platform/keymap/chord";
+import { effectiveChord, getKeybinding } from "../../platform/keymap/registry";
 import { registerGlobalTailActions } from "../../platform/actions/registry";
-import { refreshDataAction } from "../../stores/view/reloadKeybindings";
+import { getKeymapOverrides } from "../../stores/view/keymapDispatcher";
+import {
+  RELOAD_REFRESH_DATA_ACTION_ID,
+  refreshDataAction,
+} from "../../stores/view/reloadKeybindings";
+
+/** The inline accelerator for the Refresh row, DERIVED from the one keymap registry
+ *  (palette-command-accelerators-derive-from-the-keymap-registry) so the chord the menu
+ *  teaches is exactly the chord that fires, override-aware and never hand-typed. Returns
+ *  undefined until the reload binding is registered (e.g. in a bare unit test). */
+function refreshAccelerator(): string | undefined {
+  const def = getKeybinding(RELOAD_REFRESH_DATA_ACTION_ID);
+  if (def === undefined) return undefined;
+  const label = chordToKeycaps(effectiveChord(def, getKeymapOverrides())).join("+");
+  return label.length > 0 ? label : undefined;
+}
 
 /** The global-tail actions, kind-agnostic (the entity is intentionally ignored). The
- *  tail assigns the terminal `global` section here, so the shared builder stays
- *  section-agnostic for the palette and keymap that ignore it. */
+ *  tail assigns the terminal `global` section here (the standard row style + a surfaced,
+ *  registry-derived accelerator — the approved visual treatment), so the shared builder
+ *  stays section-agnostic for the palette and keymap that ignore it. */
 export function globalTailActions(): ActionDescriptor[] {
-  return [{ ...refreshDataAction(), section: "global" as const }];
+  const accelerator = refreshAccelerator();
+  return [
+    {
+      ...refreshDataAction(),
+      section: "global" as const,
+      ...(accelerator ? { accelerator } : {}),
+    },
+  ];
 }
 
 registerGlobalTailActions(() => globalTailActions());

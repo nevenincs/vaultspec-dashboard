@@ -17,7 +17,7 @@
 // never dead controls. FEATURE filtering is NOT here — it is authored by the rail's
 // feature search bar (filtering-has-one-canonical-surface).
 
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Popover } from "../kit";
@@ -54,34 +54,123 @@ interface FlyoutAnchor {
   left: number;
 }
 
+function anchorsEqual(a: FlyoutAnchor | null, b: FlyoutAnchor | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.top === b.top && a.left === b.left;
+}
+
+interface FlyoutAnchorState {
+  /** The pinned position, or null before the trigger is measured. */
+  anchor: FlyoutAnchor | null;
+  /** True once the position has settled — the panel stays hidden until then so it
+   *  never visibly slides into place across the open-time reflow. */
+  ready: boolean;
+}
+
 /** Track the rail Filters button's viewport rect while the flyout is open so the
- *  portalled (fixed) panel stays pinned to the RIGHT of the button across scroll
- *  and resize. Returns null until the trigger is measured. */
-function useFlyoutAnchor(open: boolean): FlyoutAnchor | null {
+ *  portalled (fixed) panel stays pinned to the RIGHT of the button.
+ *
+ *  Robust against reflow timing (mirrors the canvas-pin settle loop): the button's
+ *  position is NOT stable on the frame the flyout opens — the rail header reflows as
+ *  TanStack-driven content (the vault tree, the active-filter badge, web fonts)
+ *  lands, which slides the button horizontally. Measuring once on open captured a
+ *  pre-settle position that only corrected on a later resize/scroll. Instead we:
+ *    • prime synchronously in a layout effect (correct on first paint when steady),
+ *    • run a BOUNDED rAF settle loop that re-measures until the rect holds steady,
+ *      then stops (no idle animation frame),
+ *    • observe the trigger AND the rail container with a ResizeObserver, so any
+ *      data-load-driven reflow that moves the button re-pokes the loop, and
+ *    • keep the panel HIDDEN until the rect has fully settled (held 6 frames, or a
+ *      300ms safety cap), so the open never shows a slide.
+ *  setAnchor fires only on a real rect change (stable-selectors), so no render loop. */
+function useFlyoutAnchor(open: boolean): FlyoutAnchorState {
   const [anchor, setAnchor] = useState<FlyoutAnchor | null>(null);
-  useEffect(() => {
+  const [ready, setReady] = useState(false);
+  useLayoutEffect(() => {
     if (!open) {
       setAnchor(null);
+      setReady(false);
       return;
     }
-    const update = () => {
-      const trigger = document.querySelector("[data-rail-filter-trigger]");
-      if (!trigger) {
-        setAnchor(null);
+    const trigger = document.querySelector<HTMLElement>("[data-rail-filter-trigger]");
+    if (!trigger) {
+      setAnchor(null);
+      setReady(false);
+      return;
+    }
+
+    let frame = 0;
+    let stableFrames = 0;
+    let stopped = false;
+    let revealed = false;
+    let current: FlyoutAnchor | null = null;
+
+    const measure = (): FlyoutAnchor => {
+      const rect = trigger.getBoundingClientRect();
+      return { top: rect.top, left: rect.right + FLYOUT_ANCHOR_GAP };
+    };
+    const apply = (next: FlyoutAnchor): boolean => {
+      if (anchorsEqual(current, next)) return false;
+      current = next;
+      setAnchor(next);
+      return true;
+    };
+    // Latch visible once — after the first reveal the panel tracks (visible)
+    // without ever hiding again, so ongoing scroll/resize never flickers it.
+    const reveal = (): void => {
+      if (!revealed) {
+        revealed = true;
+        setReady(true);
+      }
+    };
+    const tick = (): void => {
+      if (stopped) return;
+      if (apply(measure())) {
+        stableFrames = 0;
+      } else if (++stableFrames >= 6) {
+        // The rect has held for 6 frames — it has truly settled (not a transient
+        // pause mid-creep). Reveal at the correct final position, then stop.
+        reveal();
+        frame = 0;
         return;
       }
-      const rect = trigger.getBoundingClientRect();
-      setAnchor({ top: rect.top, left: rect.right + FLYOUT_ANCHOR_GAP });
+      frame = requestAnimationFrame(tick);
     };
-    update();
-    window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
+    const poke = (): void => {
+      stableFrames = 0;
+      if (!frame) frame = requestAnimationFrame(tick);
+    };
+
+    // The rail header that holds the trigger — the element whose reflow moves it.
+    const railContainer =
+      trigger.closest<HTMLElement>("[data-rail-filter-area]") ??
+      (trigger.offsetParent as HTMLElement | null);
+    const resizeObserver = new ResizeObserver(poke);
+    resizeObserver.observe(trigger);
+    if (railContainer) resizeObserver.observe(railContainer);
+    resizeObserver.observe(document.documentElement);
+    window.addEventListener("resize", poke);
+    window.addEventListener("scroll", poke, true);
+    // Safety cap: never leave the panel hidden indefinitely if the layout never
+    // perfectly settles (a continuously animating ancestor).
+    const safety = window.setTimeout(reveal, 300);
+
+    // Prime synchronously so the portal is positioned before its first paint,
+    // then settle through the post-open reflow.
+    apply(measure());
+    poke();
+
     return () => {
-      window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update, true);
+      stopped = true;
+      if (frame) cancelAnimationFrame(frame);
+      window.clearTimeout(safety);
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", poke);
+      window.removeEventListener("scroll", poke, true);
     };
   }, [open]);
-  return anchor;
+  return { anchor, ready };
 }
 
 export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
@@ -98,7 +187,7 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
     vocabulary.health,
   );
   const presentation = filterView.presentation;
-  const anchor = useFlyoutAnchor(open);
+  const { anchor, ready } = useFlyoutAnchor(open);
 
   const sections = deriveFilterSidebarMenuSections({
     vocabulary,
@@ -121,7 +210,11 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
       aria-label={presentation.panelAriaLabel}
       aria-modal={false}
       className={presentation.panelClassName}
-      style={{ top: anchor.top, left: anchor.left }}
+      style={{
+        top: anchor.top,
+        left: anchor.left,
+        visibility: ready ? undefined : "hidden",
+      }}
       data-filter-sidebar
     >
       <FilterMenu

@@ -134,3 +134,54 @@ was fixed in-pass versus deferred.
   hit areas.
   *(Candidate only — promote per the codify discipline after it holds across the
   build cycle, alongside the ADR's two standing candidates.)*
+
+## Addendum — Figma↔frontend tree-representation reconciliation (2026-06-23)
+
+A drift was found while reviewing the compact frames: the frontend retired the
+coloured **category dot** in the vault tree in favour of standardized **Phosphor
+doc-type marks** (real icons), and for these surfaces the **code now supersedes the
+binding Figma** (a sanctioned forward-from-code reconciliation, recorded here as the
+binding direction for the tree representation). The canonical mapping
+(`frontend/src/app/left/vaultRowPresentation.ts`, `TreeBrowser.tsx`):
+
+- `research → Pencil`, `adr → Diamond`, `plan → ClipboardText`, `exec → Stack`,
+  `audit → SealCheck`, `reference → BookOpen`, `index → ListBullets`, unknown →
+  `FileDashed`. A **feature** row leads with the **plan** mark in the feature colour.
+- **Colour is a top-level signal only:** parent rows (feature, category folder) tint
+  the mark by the bound `scene/category-*` colour; a document **leaf** carries the
+  same mark in **neutral** `ink/faint`. The mark reads ~14–15px in `currentColor`;
+  hue is never the identity channel (grayscale-by-shape, iconography ADR).
+
+**Done in this pass (foundation + mobile, low blast-radius):**
+- Authored the 8 true Phosphor doc-type marks (regular weight, from
+  `@phosphor-icons/core`) into the Figma `Icon` set (`159:136`) as `Glyph=` variants
+  (Pencil/Diamond/ClipboardText/Stack/SealCheck/BookOpen/FileDashed/ListBullets),
+  filled and bound to `ink/faint`.
+- Built a centralized **`DocTypeMark`** component set (`807:3528`): 14 variants =
+  Category (Research/Decision/Plan/Step/Audit/Reference/Feature) × Tone
+  (Color/Neutral) — the Figma equivalent of the frontend's `DocTypeMark`.
+- Reconciled the compact **Browse** frame: its 9 category dots were replaced with the
+  correct tinted doc-type marks (features → ClipboardText in feature colour; folders
+  → their doc-type mark in doc-type colour).
+
+**Completed (binding desktop surfaces, 2026-06-23).** The conversion turned out
+lower-risk than feared: `LeftRail/Row` (`641:1788`) exposes its mark as an
+**`Lead#641:5` INSTANCE_SWAP** property, so each row simply swaps its lead component.
+The fix:
+- Re-pointed every **State=Vault** row's `Lead` swap (`238:600`, 19 rows) from its
+  `StatusDot` variant to the matching **`DocTypeMark`, Tone=Color** variant. All Vault
+  rows are folders/features (disclosure = true), so all take the Color tint. The Files
+  tab correctly uses Folder/File glyphs (not dots) and was left untouched.
+- Added a neutral leaf mark to **`LeftRail/DocRow`** (`660:1881`): a `DocTypeMark`
+  lead exposed as a new `Lead` INSTANCE_SWAP (default Decision/Neutral), so document
+  leaves carry the same mark in neutral ink — matching the frontend's leaf rule.
+- The desktop AppShell (`455:1094`) and the component-system board (`698:2093`)
+  **inherited automatically** (they are instances of the `LeftRail` set). Page-wide
+  `StatusDot` count dropped **122 → 8**; the remaining 8 are `DocHeader` (reader
+  eyebrow, 5) and `ChangePill` (git pip, 2) — deliberately retained, different
+  concepts, not the tree.
+- Standardized the compact **Browse** frame to compose the canonical `DocTypeMark`
+  component (replacing the inline tinted glyphs), so both surfaces use one primitive.
+
+Result: Figma and the frontend tree representation are in sync. `DESIGN-SYSTEM.md` §5
+(StatusMark/TreeRow/DocTypeMark) records the icon representation as binding.

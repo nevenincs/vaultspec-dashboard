@@ -201,8 +201,12 @@ pub struct Filter {
 const TIER_NAMES: &[&str] = &["declared", "structural", "temporal"];
 const STATE_NAMES: &[&str] = &["resolved", "stale", "broken"];
 /// The ADR H1 status enum (dashboard-pipeline-wire W01): the known status set
-/// a status facet is validated against.
-const STATUS_NAMES: &[&str] = &["proposed", "accepted", "rejected", "deprecated"];
+/// a status facet is validated against. `superseded` is a real in-corpus ADR
+/// status (an ADR retired by a later one); it is served in the `statuses`
+/// vocabulary, so the filter grammar must accept it or a Decision-status toggle
+/// on a superseded ADR 400s.
+const STATUS_NAMES: &[&str] =
+    &["proposed", "accepted", "rejected", "deprecated", "superseded"];
 /// The plan tier enum (dashboard-pipeline-wire W01): the known tier set a
 /// plan-tier facet is validated against.
 const PLAN_TIER_NAMES: &[&str] = &["L1", "L2", "L3", "L4"];
