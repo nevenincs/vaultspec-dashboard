@@ -36,6 +36,7 @@ import {
   useRightRailKeybindings,
 } from "./right/rightRailActions";
 import { useEditorKeybindings } from "../stores/view/editorKeybindings";
+import { useReloadKeybindings } from "../stores/view/reloadKeybindings";
 import { setSceneCommandRunner } from "../stores/view/sceneCommandBridge";
 import { KeyboardNav } from "./a11y/KeyboardNav";
 import { useRegionCycleKeybindings } from "./chrome/regionCycleKeybindings";
@@ -152,6 +153,9 @@ export function AppShell() {
   useLeftRailKeybindings();
   useRightRailKeybindings();
   useEditorKeybindings();
+  // The global Refresh chord (Mod+Shift+R), enrolled on the one keymap registry
+  // alongside its palette command and context-menu global tail (global-context-actions).
+  useReloadKeybindings();
   // Region traversal (keyboard-navigation W01.P02): F6/Shift+F6 cycle focus
   // between the major panels through the one keymap registry, and the focusin
   // tracker feeds per-region entry memory. Mounted once at the shell top.

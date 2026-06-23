@@ -5,18 +5,14 @@
 // the backend; this just invalidates the query cache so the next read is fresh. A
 // non-mutating refresh, so it carries no confirm guard and is not time-travel gated.
 
-import { refreshAllEngineQueries } from "../../server/queries";
 import { registerCommandProvider, type CommandContext } from "../commandRegistry";
+import { refreshDataAction } from "../reloadKeybindings";
 
 export function reloadCommandProvider(_ctx: CommandContext): readonly unknown[] {
-  return [
-    {
-      id: "reload:refresh-data",
-      label: "reload: refresh all data",
-      family: "reload",
-      run: () => refreshAllEngineQueries(),
-    },
-  ];
+  // Compose the SHARED Refresh builder (unified-action-plane): the palette, the
+  // Mod+Shift+R chord, and the context-menu global tail all run the same descriptor, so
+  // the verb cannot drift. The palette groups by `family`, not the descriptor's section.
+  return [{ ...refreshDataAction(), family: "reload" }];
 }
 
 registerCommandProvider("reload", reloadCommandProvider);

@@ -33,17 +33,20 @@ export type ActionIcon = ComponentType<{
 /**
  * Intent grouping for a menu (the ADR's sectioned-not-flat law). Ordered:
  * navigate/select first, transform (mutating, non-destructive) next, copy after,
- * danger (destructive, arm-to-confirm) last. The palette groups by its own
- * `family` instead and leaves `section` unset.
+ * danger (destructive, arm-to-confirm), and `global` last - the terminal tail for
+ * the kind-agnostic global-tail actions appended to every menu (global-context-
+ * actions ADR D1). The palette groups by its own `family` instead and leaves
+ * `section` unset.
  */
-export type ActionSection = "navigate" | "transform" | "copy" | "danger";
+export type ActionSection = "navigate" | "transform" | "copy" | "danger" | "global";
 
-/** Canonical render order of sections in a menu. */
+/** Canonical render order of sections in a menu; `global` is always the trailing tail. */
 export const ACTION_SECTION_ORDER: readonly ActionSection[] = [
   "navigate",
   "transform",
   "copy",
   "danger",
+  "global",
 ];
 export const ACTION_DESCRIPTOR_ID_MAX_CHARS = 512;
 export const ACTION_DESCRIPTOR_LABEL_MAX_CHARS = 256;

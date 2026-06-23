@@ -37,7 +37,41 @@ export type ActionResolver<E extends EntityDescriptor = EntityDescriptor> = (
 
 const resolvers = new Map<EntityKind, ActionResolver>();
 
+// Global-tail contributors (global-context-actions ADR D2): kind-agnostic resolvers
+// whose actions are appended to EVERY resolved menu, after the per-kind body, under the
+// terminal `global` section. Registered once at app load (the Refresh state control is
+// the sole shipped member, D3); the seam stays open for any future truly-universal verb.
+const globalTailResolvers = new Set<ActionResolver>();
+
 export { normalizeEntityKind };
+
+/**
+ * Register a global-tail resolver appended to every menu; returns a disposer. The
+ * resolver is kind-agnostic (it receives the entity + ctx but is expected to ignore the
+ * kind) and its actions should carry `section: "global"` so they render in the terminal
+ * tail. Multiple registrations append in registration order.
+ */
+export function registerGlobalTailActions(resolver: ActionResolver): () => void {
+  if (typeof resolver !== "function") return () => undefined;
+  globalTailResolvers.add(resolver);
+  return () => {
+    globalTailResolvers.delete(resolver);
+  };
+}
+
+function resolveGlobalTail(
+  entity: EntityDescriptor,
+  ctx: ActionContext,
+): ActionDescriptor[] {
+  const out: ActionDescriptor[] = [];
+  for (const resolver of globalTailResolvers) {
+    for (const action of resolver(entity, ctx)) {
+      const normalized = normalizeActionDescriptor(action);
+      if (normalized !== null) out.push(normalized);
+    }
+  }
+  return out;
+}
 
 export function normalizeActionEntity(entity: unknown): EntityDescriptor | null {
   return normalizeEntityDescriptor(entity);
@@ -85,15 +119,21 @@ export function resolveActions(
   const normalizedEntity = normalizeActionEntity(entity);
   if (normalizedEntity === null) return [];
   const resolver = resolvers.get(normalizedEntity.kind);
+  // Only a registered kind is a real menu target; an unresolved kind opens no menu, so
+  // the global tail does not spawn a Refresh-only menu where none would otherwise exist.
   if (!resolver) return [];
-  const actions = resolver(normalizedEntity, ctx)
+  const kindActions = resolver(normalizedEntity, ctx)
     .map((action) => normalizeActionDescriptor(action))
     .filter((action): action is ActionDescriptor => action !== null);
+  // The global tail (D2) is appended after the per-kind body, then the ONE time-travel
+  // filter below gates per-kind and tail actions uniformly.
+  const actions = kindActions.concat(resolveGlobalTail(normalizedEntity, ctx));
   if (!ctx.timeTravel) return actions;
   return actions.filter((action) => action.disabledInTimeTravel !== true);
 }
 
-/** Test-only: drop all registered resolvers. */
+/** Test-only: drop all registered resolvers and global-tail contributors. */
 export function resetResolvers(): void {
   resolvers.clear();
+  globalTailResolvers.clear();
 }

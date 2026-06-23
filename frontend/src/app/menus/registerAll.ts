@@ -32,3 +32,7 @@ import "../stage/menus/graphNodeMenu";
 import "../stage/menus/metaEdgeMenu";
 import "../stage/menus/canvasMenu";
 import "../islands/menus/islandMenu";
+
+// The kind-agnostic global tail (Refresh), appended to every menu under the terminal
+// `global` section (global-context-actions).
+import "./globalTail";

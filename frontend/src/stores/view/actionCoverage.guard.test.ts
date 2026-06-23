@@ -31,10 +31,15 @@ import {
   RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
   deriveRightRailKeybindings,
 } from "./rightRailKeybindings";
+import {
+  RELOAD_REFRESH_DATA_ACTION_ID,
+  deriveReloadKeybindings,
+} from "./reloadKeybindings";
 
 // Register the command providers and the right-rail resolvers under test (side effects).
 import "./commandProviders/leftRailCommandProvider";
 import "./commandProviders/rightRailCommandProvider";
+import "./commandProviders/reloadCommandProvider";
 import "../../app/right/menus/commitMenu";
 import "../../app/right/menus/prMenu";
 
@@ -49,6 +54,7 @@ const DUAL_PLANE_VERBS = [
   LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
   LEFT_RAIL_RESET_FILTERS_ACTION_ID,
   RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
+  RELOAD_REFRESH_DATA_ACTION_ID,
 ];
 
 const noop = () => undefined;
@@ -97,7 +103,11 @@ describe("action coverage grid guard", () => {
   // The keymap SIDE of the identity: the action ids the keymap registry declares for
   // these surfaces. A dual-plane verb must appear under the SAME id in BOTH sets.
   const keymapIds = new Set(
-    [...deriveLeftRailKeybindings(), ...deriveRightRailKeybindings()].map((b) => b.id),
+    [
+      ...deriveLeftRailKeybindings(),
+      ...deriveRightRailKeybindings(),
+      ...deriveReloadKeybindings(),
+    ].map((b) => b.id),
   );
 
   it("every dual-plane verb is enrolled on BOTH the keymap and the palette under one id", () => {

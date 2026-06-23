@@ -29,6 +29,7 @@ import {
   hasResolver,
   normalizeActionEntity,
   normalizeEntityKind,
+  registerGlobalTailActions,
   registerResolver,
   resetResolvers,
   resolveActions,
@@ -409,5 +410,80 @@ describe("isRunnable", () => {
     });
 
     expect(calls).toEqual(["run"]);
+  });
+});
+
+describe("global-tail seam (global-context-actions D2/D3)", () => {
+  const refreshTail = (): ActionDescriptor[] => [
+    { id: "reload:refresh-data", label: "refresh", section: "global", run: () => {} },
+  ];
+
+  it("appends the tail AFTER the per-kind body, last, for a resolved kind", () => {
+    registerResolver("node", () => [
+      { id: "node:focus", label: "Focus", section: "navigate", run: () => {} },
+    ]);
+    registerGlobalTailActions(refreshTail);
+
+    const actions = resolveActions({ kind: "node", id: "doc:a" }, LIVE);
+    expect(actions.map((a) => a.id)).toEqual(["node:focus", "reload:refresh-data"]);
+    expect(actions[actions.length - 1].section).toBe("global");
+  });
+
+  it("reaches EVERY resolved kind (kind-agnostic)", () => {
+    registerResolver("node", () => [
+      { id: "node:focus", label: "Focus", run: () => {} },
+    ]);
+    registerResolver("change", () => [
+      { id: "change:open", label: "Open", path: "a.ts", run: () => {} } as never,
+    ]);
+    registerGlobalTailActions(refreshTail);
+
+    for (const entity of [
+      { kind: "node", id: "doc:a" },
+      { kind: "change", id: "c1", path: "a.ts" },
+    ]) {
+      expect(resolveActions(entity, LIVE).map((a) => a.id)).toContain(
+        "reload:refresh-data",
+      );
+    }
+  });
+
+  it("does NOT spawn a tail-only menu for an unregistered kind", () => {
+    registerGlobalTailActions(refreshTail);
+    expect(resolveActions({ kind: "node", id: "doc:a" }, LIVE)).toEqual([]);
+  });
+
+  it("inherits the ONE time-travel gate: a disabledInTimeTravel tail action is filtered", () => {
+    registerResolver("node", () => [
+      { id: "node:focus", label: "Focus", run: () => {} },
+    ]);
+    registerGlobalTailActions(() => [
+      {
+        id: "x:mutate",
+        label: "Mutate",
+        section: "global",
+        disabledInTimeTravel: true,
+        dispatch: { type: "noop" },
+      },
+    ]);
+
+    const live = resolveActions({ kind: "node", id: "doc:a" }, { timeTravel: false });
+    expect(live.map((a) => a.id)).toContain("x:mutate");
+    const travel = resolveActions({ kind: "node", id: "doc:a" }, { timeTravel: true });
+    expect(travel.map((a) => a.id)).not.toContain("x:mutate");
+  });
+
+  it("the disposer removes the tail contributor", () => {
+    registerResolver("node", () => [
+      { id: "node:focus", label: "Focus", run: () => {} },
+    ]);
+    const dispose = registerGlobalTailActions(refreshTail);
+    expect(
+      resolveActions({ kind: "node", id: "doc:a" }, LIVE).map((a) => a.id),
+    ).toContain("reload:refresh-data");
+    dispose();
+    expect(
+      resolveActions({ kind: "node", id: "doc:a" }, LIVE).map((a) => a.id),
+    ).not.toContain("reload:refresh-data");
   });
 });

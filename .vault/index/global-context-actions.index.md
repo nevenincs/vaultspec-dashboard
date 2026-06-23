@@ -7,6 +7,7 @@ date: '2026-06-22'
 modified: '2026-06-22'
 related:
   - '[[2026-06-22-global-context-actions-adr]]'
+  - '[[2026-06-22-global-context-actions-plan]]'
   - '[[2026-06-22-global-context-actions-research]]'
 ---
 
@@ -19,6 +20,10 @@ Auto-generated index of all documents tagged with `#global-context-actions`.
 ### adr
 
 - `2026-06-22-global-context-actions-adr` - `global-context-actions` adr: `global context-menu tail and Refresh as a shared state control` | (**status:** `accepted`)
+
+### plan
+
+- `2026-06-22-global-context-actions-plan` - `global-context-actions` plan
 
 ### research
 

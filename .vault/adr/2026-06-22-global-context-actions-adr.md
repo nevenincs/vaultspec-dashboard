@@ -67,9 +67,11 @@ exists).
   after `"danger"`, so the tail always renders last, under its own divider, never
   interleaved with a kind's own verbs.
 - **D2 — Registry-side tail seam.** A `registerGlobalTailActions(resolver)` invoked
-  inside `resolveActions` AFTER per-kind resolution and the time-travel filter. The tail
-  therefore reaches 100% of menus (no bypass exists), receives the same `ActionContext`
-  (including `selectedNodeId`), and inherits the time-travel gate uniformly. Host-side
+  inside `resolveActions`: the tail is appended after per-kind resolution and then gated
+  by the SAME single time-travel filter (not after it), so per-kind and tail actions are
+  filtered uniformly and a `disabledInTimeTravel` tail action cannot leak in historical
+  mode. The tail therefore reaches 100% of menus (no bypass exists), receives the same
+  `ActionContext` (including `selectedNodeId`), and inherits the gate uniformly. Host-side
   appending in `contextMenu.ts` was rejected as a second composition point that would
   re-thread `timeTravel`/`selectedNodeId` and could drift from the registry gate.
 - **D3 — Tail membership: Refresh only.** The always-on tail holds exactly the light
