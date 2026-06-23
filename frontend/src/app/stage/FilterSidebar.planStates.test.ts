@@ -33,9 +33,10 @@ describe("FilterSidebar plan_states facet (live engine, populated path)", () => 
     const client = createLiveClient();
     const scope = await liveScope();
     const vocabulary = await client.filters(scope);
-    // The fixture's alpha plan has `[x] S01` + `[ ] S02` → done≠total → `active`
-    // (engine filter.rs: `done == total ? "complete" : "active"`).
-    expect(vocabulary.plan_states ?? []).toContain("active");
+    // The fixture's alpha plan has `[x] S01` + `[ ] S02` → 0 < done < total →
+    // `in-progress` (engine filter.rs: done==total → finished, done==0 →
+    // not-started, else → in-progress).
+    expect(vocabulary.plan_states ?? []).toContain("in-progress");
   });
 
   it("renders the Plan-status facet row from the live vocabulary", async () => {
@@ -72,36 +73,37 @@ describe("FilterSidebar plan_states facet (live engine, populated path)", () => 
       ),
     );
 
-    // The Plan-status section + the `active` option's plain label ("In progress",
-    // ui-labels-are-user-facing) both render from the populated live vocabulary.
+    // The Plan-status section + the `in-progress` option's plain label
+    // ("In progress", ui-labels-are-user-facing) render from the live vocabulary.
     expect(await screen.findByText("Plan status")).toBeTruthy();
     expect(await screen.findByText("In progress")).toBeTruthy();
   });
 
-  it("honors a plan_states selection — the active plan is kept, an absent state drops it", async () => {
+  it("honors a plan_states selection — the in-progress plan is kept, an absent state drops it", async () => {
     const client = createLiveClient();
     const scope = await liveScope();
 
     const unfiltered = await client.graphQuery({ scope, granularity: "document" });
-    const active = await client.graphQuery({
+    const inProgress = await client.graphQuery({
       scope,
       granularity: "document",
-      filter: { plan_states: ["active"] },
+      filter: { plan_states: ["in-progress"] },
     });
-    const complete = await client.graphQuery({
+    const finished = await client.graphQuery({
       scope,
       granularity: "document",
-      filter: { plan_states: ["complete"] },
+      filter: { plan_states: ["finished"] },
     });
 
-    // Selecting the present `active` state NARROWS the graph (non-active nodes drop).
-    expect(active.nodes.length).toBeLessThan(unfiltered.nodes.length);
-    // The active plan survives the `active` filter…
-    expect(active.nodes.length).toBeGreaterThan(0);
-    // …and is excluded by an absent-but-valid `complete` filter — proving the
-    // engine honors the facet value, not just its presence. (Robust to the
-    // non-lifecycle-node filter semantics: every non-plan node is treated
-    // identically by both queries, so the difference isolates the plan-state.)
-    expect(active.nodes.length).toBeGreaterThan(complete.nodes.length);
+    // Selecting the present `in-progress` state NARROWS the graph (other nodes drop).
+    expect(inProgress.nodes.length).toBeLessThan(unfiltered.nodes.length);
+    // The in-progress plan survives the `in-progress` filter…
+    expect(inProgress.nodes.length).toBeGreaterThan(0);
+    // …and is excluded by an absent-but-valid `finished` filter (the fixture's
+    // alpha plan is 1-of-2 done, never finished) — proving the engine honors the
+    // facet VALUE, not just its presence. (Robust to the non-lifecycle-node filter
+    // semantics: every non-plan node is treated identically by both queries, so
+    // the difference isolates the plan-state.)
+    expect(inProgress.nodes.length).toBeGreaterThan(finished.nodes.length);
   });
 });
