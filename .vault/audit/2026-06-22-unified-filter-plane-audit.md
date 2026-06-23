@@ -65,10 +65,17 @@ LOW (non-blocking):
 ## Recommendations
 
 Ship as-is. Optionally add an explicit no-refetch-on-viewport assertion to the
-timeline lineage tests for documentation value. Re-run the browser-visual pass (the
-one environment-gated verification, P05.S14) in an environment with a free browser
-profile to capture the screenshot of the three surfaces narrowing together; the
-cross-wiring mechanism is already verified live at the integration level.
+timeline lineage tests for documentation value.
+
+Browser-visual verification (P05.S14) is now COMPLETE: with both MCP browsers
+profile-locked by concurrent instances, an ephemeral-profile Chromium was launched
+directly via the bundled `playwright` against the live dev app. Network interception
+proved that one click on the graph legend "Plans" fires `PATCH /dashboard-state`
+(canonical `doc_types` write), then `POST /graph/query` (graph narrows) and
+`GET /graph/lineage?filter={"doc_types":["plan"]}` (timeline narrows) — the legend
+button goes `aria-pressed=true` with the others dimmed, the graph collapses to a
+plan-only scatter, the timeline thins to match, and a second click restores all
+surfaces. Full bidirectional cross-wiring confirmed live.
 
 ## Codification candidates
 
