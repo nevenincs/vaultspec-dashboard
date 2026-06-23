@@ -185,3 +185,30 @@ The fix:
 
 Result: Figma and the frontend tree representation are in sync. `DESIGN-SYSTEM.md` §5
 (StatusMark/TreeRow/DocTypeMark) records the icon representation as binding.
+
+## Second incorporation pass (2026-06-23)
+
+Resolved from the per-frame / cross-cutting findings:
+- **Filter selected-chip contrast (HIGH).** The shared `Chip` `Active` variants
+  (`136:27`) now carry an accent border (`accent/base`, 1.5px) in addition to the
+  accent-subtle fill + accent-text — selection is unambiguous, and it propagates to
+  every chip surface.
+- **Reader header redundancy + buried status (MED).** The app-bar no longer repeats
+  the H1 (a flexible spacer replaces it; back + overflow remain); "accepted" moved
+  out of the meta line into an inline status pill.
+- **Timeline scrubber affordance (HIGH).** The progress fill is de-emphasized (35%
+  opacity, reads as position not completion) and the thumb is enlarged (22px) with an
+  elevation grip — it now reads as a draggable scrubber.
+- **Status container convergence (HIGH).** The bare commit rows are wrapped in the
+  same bordered card (with dividers + padding) as the Plans/PRs sections, unifying the
+  section-container language.
+
+Still open (larger / foundation-level, recommended as a focused follow-up):
+- **≥44pt touch targets on kit atoms** (Chip/Segment/IconButton intrinsic heights) —
+  the correct fix is dedicated **mobile primitives** (`BottomTabBar`, `MobileTopBar`,
+  `BottomSheet`) with the inset + target baked in (audit GAP S2); deferred so it is
+  built deliberately, then re-instanced.
+- **Small-label contrast** (`SectionLabel`/`Meta` at phone scale) — a foundation
+  decision (a compact contrast step or on-mobile minimum size), not a per-frame edit.
+- **Search selection metaphor** — minor; partly a sample-data artifact (two
+  near-identical result rows).

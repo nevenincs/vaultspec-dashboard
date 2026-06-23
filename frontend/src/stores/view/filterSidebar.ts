@@ -527,8 +527,12 @@ export function deriveFilterSidebarMenuSections({
           },
         ]
       : []),
-    // PLAN STATUS — the plan lifecycle the ENGINE serves (active/complete), never
-    // frontend-derived. Plan-scoped; shown only when the corpus serves plan states.
+    // PLAN STATUS — the lifecycle state the ENGINE serves (active → In progress,
+    // complete → Finished), never frontend-derived. Backed by `lifecycle.state`,
+    // which lifecycle-bearing docs carry (predominantly plans; an exec doc with a
+    // progress checklist participates too). There is no distinct "not started" —
+    // a 0/N plan reads as `active` (In progress). Shown only when the corpus serves
+    // plan states, so it is never a dead control.
     ...(planStates.length > 0
       ? [
           {

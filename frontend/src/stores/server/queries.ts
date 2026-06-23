@@ -2227,8 +2227,10 @@ export const DASHBOARD_FILTER_SIDEBAR_PRESENTATION: DashboardFilterSidebarPresen
     // the RIGHT of the rail's Filters button so it flies out OVER the stage — the
     // graph and any open documents — rather than being clipped inside the rail
     // column. The top/left are set inline from the trigger rect; this class owns
-    // only the layer, pointer surface, and entrance.
-    panelClassName: "pointer-events-auto fixed z-50 animate-slide-in-left",
+    // only the layer and pointer surface. The entrance is a fade applied by the
+    // container ONLY once the anchor has settled (no slide — it would read as a
+    // jump while the rail header reflows into place on open).
+    panelClassName: "pointer-events-auto fixed z-50",
     headerClassName:
       "flex items-center justify-between border-b border-rule px-fg-3 py-fg-1-5",
     titleClassName: "text-body font-medium text-ink",

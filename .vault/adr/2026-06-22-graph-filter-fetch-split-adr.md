@@ -12,6 +12,17 @@ related:
 
 # `graph-filter-fetch-split` adr: `Two-tier graph filter: backend bounds the payload, client narrows within it` | (**status:** `accepted`)
 
+RECONCILED 2026-06-22 with `2026-06-22-unified-filter-plane-adr`: the references
+below to "the legend category mask" / a client-narrow category visibility are
+SUPERSEDED. The graph legend now writes the canonical `doc_types` FILTER (engine-
+side, like every other node facet), and the canvas-local `hiddenCategories` mask is
+retired and guarded against reintroduction (`filterConsolidation.guard.test.ts`).
+This ADR's load-bearing decisions are UNAFFECTED — D1 (`keepPreviousData` cache-first
+fetch) stands, and node/text facets (now including the legend's `doc_types`) stay
+engine-side per the feature-aggregation + ceiling gates. The only remaining
+CLIENT-narrow members are client-ADDED nodes (ego expansions, pinned discoveries),
+NOT the legend.
+
 ## Problem Statement
 
 A performance directive: drive filtering on the BACKEND so the engine never serves

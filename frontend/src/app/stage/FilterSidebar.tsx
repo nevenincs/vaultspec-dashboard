@@ -209,7 +209,7 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
       role="dialog"
       aria-label={presentation.panelAriaLabel}
       aria-modal={false}
-      className={presentation.panelClassName}
+      className={`${presentation.panelClassName}${ready ? " animate-fade-in" : ""}`}
       style={{
         top: anchor.top,
         left: anchor.left,

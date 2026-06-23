@@ -1156,7 +1156,7 @@ describe("deriveDashboardFilterSidebarView (stage filter sidebar)", () => {
     expect(view.anyActive).toBe(true);
     expect(view.presentation).toMatchObject({
       panelAriaLabel: "filter panel",
-      panelClassName: "pointer-events-auto fixed z-50 animate-slide-in-left",
+      panelClassName: "pointer-events-auto fixed z-50",
       headerClassName:
         "flex items-center justify-between border-b border-rule px-fg-3 py-fg-1-5",
       titleClassName: "text-body font-medium text-ink",
