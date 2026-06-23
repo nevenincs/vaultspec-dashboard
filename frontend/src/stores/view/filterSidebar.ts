@@ -173,6 +173,7 @@ const FILTER_SIDEBAR_STATUS_DOT: Record<string, FilterSidebarFacetDotTone> = {
   draft: "provisional",
   "in-progress": "active",
   active: "active",
+  "not-started": "stale",
   rejected: "broken",
   deprecated: "archived",
   archived: "archived",
@@ -527,11 +528,9 @@ export function deriveFilterSidebarMenuSections({
           },
         ]
       : []),
-    // PLAN STATUS — the lifecycle state the ENGINE serves (active → In progress,
-    // complete → Finished), never frontend-derived. Backed by `lifecycle.state`,
-    // which lifecycle-bearing docs carry (predominantly plans; an exec doc with a
-    // progress checklist participates too). There is no distinct "not started" —
-    // a 0/N plan reads as `active` (In progress). Shown only when the corpus serves
+    // PLAN STATUS — the plan COMPLETION the ENGINE serves (derived from step
+    // progress: not-started / in-progress / finished), never frontend-derived.
+    // Plan-scoped (only `plan` docs carry it). Shown only when the corpus serves
     // plan states, so it is never a dead control.
     ...(planStates.length > 0
       ? [
@@ -583,11 +582,13 @@ export function filterSidebarStatusLabel(value: string): string {
     : cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
-// Plan lifecycle states the engine serves (active/complete) → plain user labels
+// Plan completion states the engine serves (derived from step progress:
+// not-started / in-progress / finished) → plain user labels
 // (ui-labels-are-user-facing). Unknown values fall back to sentence-case.
 const FILTER_SIDEBAR_PLAN_STATE_LABEL: Record<string, string> = {
-  active: "In progress",
-  complete: "Finished",
+  "not-started": "Not started",
+  "in-progress": "In progress",
+  finished: "Finished",
 };
 
 export function filterSidebarPlanStateLabel(value: string): string {

@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use engine_graph::{LinkageGraph, StoredEdge, lifecycle_in_scope};
-use engine_model::{Node, ResolutionState, ScopeRef};
+use engine_model::{Node, Progress, ResolutionState, ScopeRef};
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 
@@ -205,16 +205,38 @@ const STATE_NAMES: &[&str] = &["resolved", "stale", "broken"];
 /// status (an ADR retired by a later one); it is served in the `statuses`
 /// vocabulary, so the filter grammar must accept it or a Decision-status toggle
 /// on a superseded ADR 400s.
-const STATUS_NAMES: &[&str] =
-    &["proposed", "accepted", "rejected", "deprecated", "superseded"];
+const STATUS_NAMES: &[&str] = &[
+    "proposed",
+    "accepted",
+    "rejected",
+    "deprecated",
+    "superseded",
+];
 /// The plan tier enum (dashboard-pipeline-wire W01): the known tier set a
 /// plan-tier facet is validated against.
 const PLAN_TIER_NAMES: &[&str] = &["L1", "L2", "L3", "L4"];
-/// The plan/exec lifecycle state enum the engine derives per scope: `active`
-/// (in progress) or `complete` (finished) — see `engine_graph::index`
-/// (`if done == total { "complete" } else { "active" }`). The set a
-/// `plan_states` facet is validated against.
-const PLAN_STATE_NAMES: &[&str] = &["active", "complete"];
+/// The plan-COMPLETION enum the engine derives from a plan's checkbox PROGRESS
+/// (done/total), NOT from `lifecycle.state` — for a tiered plan `lifecycle.state`
+/// is the TIER (`L1`-`L4`), so completion must come from `progress`. The set a
+/// `plan_states` facet is validated against, and the only values ever served.
+const PLAN_STATE_NAMES: &[&str] = &["not-started", "in-progress", "finished"];
+
+/// Derive a plan's COMPLETION class from its checkbox progress (done/total).
+/// This is the single source of plan-state truth — `lifecycle.state` is overloaded
+/// (it is the plan TIER for a tiered plan, an ADR status for an ADR, a severity for
+/// an audit, …), so plan completion is read from PROGRESS only. `total == 0` (no
+/// checkboxes / not a progress-bearing facet) → `None` so the facet excludes it.
+fn plan_completion_from_progress(p: &Progress) -> Option<&'static str> {
+    if p.total == 0 {
+        None
+    } else if p.done >= p.total {
+        Some("finished")
+    } else if p.done == 0 {
+        Some("not-started")
+    } else {
+        Some("in-progress")
+    }
+}
 /// The document-health conditions the engine derives from its own graph
 /// (filter-controls campaign): `dangling` = a node with a broken outgoing
 /// structural edge; `orphaned` = a node nothing links to. The schema-dependent
@@ -486,20 +508,29 @@ impl Filter {
             .any(|wanted| conditions.iter().any(|have| have == wanted))
     }
 
-    /// Does a node pass the plan-state facet? Scope-dependent — the lifecycle
-    /// state is per-facet (`lifecycle_in_scope(node, scope)`, the SAME projection
-    /// the graph slice serves), so it is applied in `graph_query` where the scope
-    /// is in hand, the same place `matches_health` is, not in `matches_node`. A
-    /// node passes only if its scoped lifecycle state is in the requested set; a
-    /// node with no lifecycle in this scope is EXCLUDED when the facet is set
-    /// (the same exclusion the `statuses` facet applies). An empty facet is no
-    /// constraint.
+    /// Does a node pass the plan-state facet? Plan COMPLETION, derived from the
+    /// scoped lifecycle's checkbox PROGRESS (done/total) — never from
+    /// `lifecycle.state`, which is the plan TIER for a tiered plan and a
+    /// type-specific status for other doc types. Scope-dependent (lifecycle is
+    /// per-facet, `lifecycle_in_scope(node, scope)`), so it is applied in
+    /// `graph_query` where the scope is in hand, the same place `matches_health`
+    /// is, not in `matches_node`. A node passes only if it is a PLAN whose scoped
+    /// progress maps (via `plan_completion_from_progress`) to a completion class
+    /// in the requested set; a non-plan node, or a plan with no scoped progress
+    /// (total 0), is EXCLUDED when the facet is set (the same exclusion the
+    /// `statuses` facet applies). An empty facet is no constraint.
     pub fn matches_plan_state(&self, node: &Node, scope: &ScopeRef) -> bool {
         if self.plan_states.is_empty() {
             return true;
         }
-        match lifecycle_in_scope(node, scope).map(|l| l.state.as_str()) {
-            Some(state) => sorted_contains(&self.plan_states, state),
+        if node.doc_type.as_deref() != Some("plan") {
+            return false;
+        }
+        match lifecycle_in_scope(node, scope)
+            .and_then(|l| l.progress.as_ref())
+            .and_then(plan_completion_from_progress)
+        {
+            Some(completion) => sorted_contains(&self.plan_states, completion),
             None => false,
         }
     }
@@ -535,10 +566,12 @@ pub struct Vocabulary {
     /// Plan tiers actually present in the graph (dashboard-pipeline-wire
     /// W01.P03.S11): the data-driven tier facet, sorted and deduped.
     pub plan_tiers: Vec<String>,
-    /// Plan lifecycle states actually present among lifecycle-bearing nodes'
-    /// facets (`active`/`complete`): the data-driven plan-state facet a client
-    /// renders, sorted and deduped — never a hardcoded enum, so the UI never
-    /// shows a dead control. Empty when no node carries a lifecycle.
+    /// Plan COMPLETION classes actually present among PLAN nodes' facets
+    /// (`not-started`/`in-progress`/`finished`), derived from checkbox progress:
+    /// the data-driven plan-state facet a client renders, sorted and deduped —
+    /// never a hardcoded enum, so the UI never shows a dead control. Plan-scoped
+    /// and progress-derived, so it never leaks a tier/status/severity. Empty when
+    /// no plan carries progress.
     pub plan_states: Vec<String>,
     pub structural_states: Vec<&'static str>,
     /// Document-health conditions actually present in the graph (filter-controls
@@ -589,13 +622,20 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
     let mut plan_tiers: Vec<String> = graph.nodes().filter_map(|n| n.tier.clone()).collect();
     plan_tiers.sort();
     plan_tiers.dedup();
-    // Plan lifecycle states actually present (distinct over every facet's
-    // lifecycle on every node): the data-driven plan-state facet, sorted and
-    // deduped, so the UI never renders a state no node carries.
+    // Plan COMPLETION classes actually present: derived from PROGRESS over PLAN
+    // nodes only. `lifecycle.state` is overloaded across doc types (it is the plan
+    // TIER for a tiered plan, an ADR status for an ADR, a severity for an audit,
+    // …), so plan completion must come from `progress` (a checkbox done/total),
+    // and only on `doc_type == "plan"` nodes. Both constraints together guarantee
+    // the facet is exactly `not-started`/`in-progress`/`finished` and never leaks a
+    // tier/status/severity.
     let mut plan_states: Vec<String> = graph
         .nodes()
+        .filter(|n| n.doc_type.as_deref() == Some("plan"))
         .flat_map(|n| n.facets.iter())
-        .filter_map(|f| f.lifecycle.as_ref().map(|l| l.state.clone()))
+        .filter_map(|f| f.lifecycle.as_ref().and_then(|l| l.progress.as_ref()))
+        .filter_map(plan_completion_from_progress)
+        .map(|s| s.to_string())
         .collect();
     plan_states.sort();
     plan_states.dedup();
@@ -873,11 +913,16 @@ mod tests {
         assert!(!by_tier.matches_node(&node(None, Some("L1"))));
         assert!(!by_tier.matches_node(&node(None, None)));
 
+        // `superseded` is a real ADR status (a decision retired by a later one) and
+        // must VALIDATE — it is served in the statuses vocabulary.
+        let superseded: Filter = serde_json::from_str(r#"{"statuses": ["superseded"]}"#).unwrap();
+        assert!(superseded.validated().is_ok());
+
         // Out-of-enum facets fail validation loud.
-        let bad_status: Filter = serde_json::from_str(r#"{"statuses": ["superseded"]}"#).unwrap();
+        let bad_status: Filter = serde_json::from_str(r#"{"statuses": ["bogus"]}"#).unwrap();
         assert_eq!(
             bad_status.validated(),
-            Err(FilterError::UnknownStatus("superseded".into()))
+            Err(FilterError::UnknownStatus("bogus".into()))
         );
         let bad_tier: Filter = serde_json::from_str(r#"{"plan_tiers": ["L9"]}"#).unwrap();
         assert_eq!(
@@ -1043,11 +1088,14 @@ mod tests {
     }
 
     #[test]
-    fn plan_state_facet_narrows_by_scoped_lifecycle_and_excludes_lifecycleless() {
-        // plan_states is the SERVED lifecycle-state facet (active/complete),
-        // scope-dependent like `health`: a node passes only if its scoped
-        // lifecycle state is in the requested set; a node with no lifecycle in
-        // that scope is EXCLUDED when the facet is set (the statuses exclusion).
+    fn plan_state_facet_narrows_by_progress_completion_and_excludes_non_plans() {
+        // plan_states is the served plan-COMPLETION facet
+        // (not-started/in-progress/finished), derived from checkbox PROGRESS
+        // (done/total), NEVER from `lifecycle.state` (which is the plan TIER for a
+        // tiered plan). Scope-dependent like `health`: a node passes only if it is
+        // a PLAN whose scoped progress maps to a completion class in the requested
+        // set; a non-plan node, or a plan with no scoped progress, is EXCLUDED
+        // when the facet is set (the statuses exclusion).
         use engine_model::{
             CanonicalKey, Facet, Lifecycle, NodeKind, Presence, Progress, ScopeRef, node_id,
         };
@@ -1073,92 +1121,179 @@ mod tests {
                 lifecycle,
             }],
         };
+        // A tiered plan: lifecycle.state is the TIER (`L2`), completion lives in
+        // progress. done==total → finished.
         let finished = plan(
             "done",
             Some(Lifecycle {
-                state: "complete".into(),
+                state: "L2".into(),
                 progress: Some(Progress { done: 5, total: 5 }),
             }),
         );
+        // 0<done<total → in-progress.
         let in_progress = plan(
             "wip",
             Some(Lifecycle {
-                state: "active".into(),
+                state: "L3".into(),
                 progress: Some(Progress { done: 2, total: 5 }),
             }),
         );
+        // done==0, total>0 → not-started.
+        let not_started = plan(
+            "fresh",
+            Some(Lifecycle {
+                state: "L1".into(),
+                progress: Some(Progress { done: 0, total: 4 }),
+            }),
+        );
         let no_lifecycle = plan("bare", None);
+        // A non-plan node (an ADR carrying state "accepted") must be excluded by
+        // any plan_states filter.
+        let adr = Node {
+            id: node_id(&CanonicalKey::Document { stem: "a1" }),
+            kind: NodeKind::Document,
+            key: "a1".into(),
+            title: None,
+            doc_type: Some("adr".into()),
+            dates: None,
+            feature_tags: vec![],
+            status: Some("accepted".into()),
+            tier: None,
+            facets: vec![Facet {
+                scope: ScopeRef::Ref {
+                    name: "main".into(),
+                },
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: Some(Lifecycle {
+                    state: "accepted".into(),
+                    progress: None,
+                }),
+            }],
+        };
 
-        let by_complete = Filter {
-            plan_states: vec!["complete".into()],
+        let by_finished = Filter {
+            plan_states: vec!["finished".into()],
             ..Default::default()
         }
         .validated()
         .unwrap();
-        // (a) keeps a finished plan, excludes an active one.
-        assert!(by_complete.matches_plan_state(&finished, &scope));
-        assert!(!by_complete.matches_plan_state(&in_progress, &scope));
-        // (b) a node with no lifecycle is excluded when the facet is set.
-        assert!(!by_complete.matches_plan_state(&no_lifecycle, &scope));
+        // (a) keeps a finished plan, excludes an in-progress one.
+        assert!(by_finished.matches_plan_state(&finished, &scope));
+        assert!(!by_finished.matches_plan_state(&in_progress, &scope));
+        // (b) a plan with no progress is excluded when the facet is set.
+        assert!(!by_finished.matches_plan_state(&no_lifecycle, &scope));
+        // (c) a non-plan node (ADR "accepted") is excluded by a plan_states facet.
+        assert!(!by_finished.matches_plan_state(&adr, &scope));
 
-        // The complement: an `active` facet keeps the in-progress plan.
-        let by_active = Filter {
-            plan_states: vec!["active".into()],
+        // in-progress facet keeps the in-progress plan only.
+        let by_in_progress = Filter {
+            plan_states: vec!["in-progress".into()],
             ..Default::default()
         }
         .validated()
         .unwrap();
-        assert!(by_active.matches_plan_state(&in_progress, &scope));
-        assert!(!by_active.matches_plan_state(&finished, &scope));
+        assert!(by_in_progress.matches_plan_state(&in_progress, &scope));
+        assert!(!by_in_progress.matches_plan_state(&finished, &scope));
+        assert!(!by_in_progress.matches_plan_state(&not_started, &scope));
 
-        // An empty facet is no constraint — every node passes, lifecycle or not.
+        // not-started facet keeps the 0/N plan only.
+        let by_not_started = Filter {
+            plan_states: vec!["not-started".into()],
+            ..Default::default()
+        }
+        .validated()
+        .unwrap();
+        assert!(by_not_started.matches_plan_state(&not_started, &scope));
+        assert!(!by_not_started.matches_plan_state(&in_progress, &scope));
+        assert!(!by_not_started.matches_plan_state(&finished, &scope));
+
+        // An empty facet is no constraint — every node passes, plan or not.
         let none = Filter::default();
         assert!(none.matches_plan_state(&finished, &scope));
         assert!(none.matches_plan_state(&no_lifecycle, &scope));
+        assert!(none.matches_plan_state(&adr, &scope));
 
         // A lifecycle in a DIFFERENT scope does not satisfy this scope's facet.
         let other_scope = ScopeRef::Ref {
             name: "feature-x".into(),
         };
         assert!(
-            !by_complete.matches_plan_state(&finished, &other_scope),
+            !by_finished.matches_plan_state(&finished, &other_scope),
             "the lifecycle lives on the `main` facet, not `feature-x`"
         );
     }
 
     #[test]
     fn plan_state_validation_rejects_unknown_and_normalizes() {
-        // (c) an unknown plan-state value is a typed validation error.
+        // (c) an unknown plan-state value is a typed validation error. The old
+        // active/complete lifecycle-state values are no longer plan states.
         let bad: Filter = serde_json::from_str(r#"{"plan_states": ["pending"]}"#).unwrap();
         assert_eq!(
             bad.validated(),
             Err(FilterError::UnknownPlanState("pending".into()))
         );
-        // The known set normalizes (sort + dedup) like the other facets.
+        let stale: Filter = serde_json::from_str(r#"{"plan_states": ["complete"]}"#).unwrap();
+        assert_eq!(
+            stale.validated(),
+            Err(FilterError::UnknownPlanState("complete".into())),
+            "the old lifecycle-state value is rejected by the completion enum"
+        );
+        // The known completion set normalizes (sort + dedup) like the other facets.
         let dup: Filter =
-            serde_json::from_str(r#"{"plan_states": ["complete", "active", "complete"]}"#).unwrap();
+            serde_json::from_str(r#"{"plan_states": ["finished", "not-started", "finished"]}"#)
+                .unwrap();
         assert_eq!(
             dup.validated().unwrap().plan_states,
-            vec!["active", "complete"],
+            vec!["finished", "not-started"],
             "sorted, deduped"
         );
     }
 
     #[test]
-    fn vocabulary_lists_the_present_plan_states() {
-        // (d) the vocabulary enumerates the DISTINCT lifecycle states actually
-        // present among lifecycle-bearing nodes' facets — sorted, deduped, never a
-        // hardcoded enum, so the UI never shows a dead control.
+    fn vocabulary_lists_only_progress_derived_plan_completions() {
+        // (d) the vocabulary enumerates the DISTINCT plan-COMPLETION classes
+        // present among PLAN nodes — derived from checkbox progress (done/total),
+        // sorted, deduped, never a hardcoded enum and never a tier/status/severity
+        // (the previous bug, where `lifecycle.state` was read directly and leaked
+        // the plan TIER / ADR status / audit severity into this facet).
         use engine_model::{
             CanonicalKey, Facet, Lifecycle, NodeKind, Presence, Progress, ScopeRef, node_id,
         };
-        fn plan(stem: &str, state: Option<&str>) -> Node {
+        // A plan whose lifecycle.state is the TIER, with a given progress.
+        fn plan(stem: &str, tier: &str, done: u32, total: u32) -> Node {
             Node {
                 id: node_id(&CanonicalKey::Document { stem }),
                 kind: NodeKind::Document,
                 key: stem.to_string(),
                 title: None,
                 doc_type: Some("plan".into()),
+                dates: None,
+                feature_tags: vec![],
+                status: None,
+                tier: Some(tier.to_string()),
+                facets: vec![Facet {
+                    scope: ScopeRef::Ref {
+                        name: "main".into(),
+                    },
+                    presence: Presence::Exists,
+                    content_hash: None,
+                    lifecycle: Some(Lifecycle {
+                        state: tier.to_string(),
+                        progress: Some(Progress { done, total }),
+                    }),
+                }],
+            }
+        }
+        // A non-plan node carrying a lifecycle.state (ADR status / audit severity)
+        // that must NEVER leak into plan_states.
+        fn other(stem: &str, doc_type: &str, state: &str) -> Node {
+            Node {
+                id: node_id(&CanonicalKey::Document { stem }),
+                kind: NodeKind::Document,
+                key: stem.to_string(),
+                title: None,
+                doc_type: Some(doc_type.to_string()),
                 dates: None,
                 feature_tags: vec![],
                 status: None,
@@ -1169,27 +1304,42 @@ mod tests {
                     },
                     presence: Presence::Exists,
                     content_hash: None,
-                    lifecycle: state.map(|s| Lifecycle {
-                        state: s.to_string(),
-                        progress: Some(Progress { done: 1, total: 2 }),
+                    lifecycle: Some(Lifecycle {
+                        state: state.to_string(),
+                        progress: None,
                     }),
                 }],
             }
         }
 
         let mut graph = LinkageGraph::new();
-        // Two `complete` (proves dedup), one `active`, one with no lifecycle
-        // (contributes nothing).
-        graph.upsert_node(plan("p1", Some("complete")));
-        graph.upsert_node(plan("p2", Some("active")));
-        graph.upsert_node(plan("p3", Some("complete")));
-        graph.upsert_node(plan("p4", None));
+        // Two finished plans (proves dedup; tiers L2/L4 differ but completion is
+        // the same), one in-progress, one not-started.
+        graph.upsert_node(plan("p1", "L2", 5, 5));
+        graph.upsert_node(plan("p2", "L4", 3, 3));
+        graph.upsert_node(plan("p3", "L3", 2, 5));
+        graph.upsert_node(plan("p4", "L1", 0, 4));
+        // An ADR ("accepted") and an audit ("high") in the same graph: their
+        // lifecycle.state must NOT appear in plan_states.
+        graph.upsert_node(other("a1", "adr", "accepted"));
+        graph.upsert_node(other("au1", "audit", "high"));
 
         let vocab = vocabulary(&graph);
         assert_eq!(
             vocab.plan_states,
-            vec!["active", "complete"],
-            "distinct lifecycle states, sorted + deduped from the graph"
+            vec!["finished", "in-progress", "not-started"],
+            "distinct plan completions, sorted + deduped from PLAN progress only"
+        );
+        // Hard guarantee: plan_states is a subset of the completion enum — never a
+        // tier (L1-L4), an ADR status (accepted), or an audit severity (high).
+        let allowed = ["not-started", "in-progress", "finished"];
+        assert!(
+            vocab
+                .plan_states
+                .iter()
+                .all(|s| allowed.contains(&s.as_str())),
+            "plan_states must contain only completion classes, never a tier/status/severity: {:?}",
+            vocab.plan_states
         );
 
         // An empty graph carries an empty plan-state facet, never a hardcoded enum.
