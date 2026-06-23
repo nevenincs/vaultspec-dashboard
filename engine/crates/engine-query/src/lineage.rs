@@ -163,28 +163,51 @@ pub struct LineageSlice {
     pub truncated: Option<LineageTruncated>,
 }
 
-/// True when a collected lineage node's blob-true `created` date falls within
-/// `[from, to]` inclusive. ISO `yyyy-mm-dd` strings compare lexically, so the
-/// bounds are well-ordered without date parsing (the same lexical-compare
-/// discipline the filter's `DateBounds` uses). A node with no `created` date is
-/// always excluded — it has no position on the timeline — even under open
-/// bounds. An absent bound is open on that side. Reads only the already-derived
-/// `LineageNode`, so the per-request range slice never re-touches the graph.
-fn node_in_range(node: &LineageNode, from: Option<&str>, to: Option<&str>) -> bool {
-    let Some(created) = node.dates.created.as_deref() else {
+/// The calendar-date key for lexical date-range comparison: the leading
+/// `yyyy-mm-dd` (first 10 chars). The engine is read-and-infer over frontmatter
+/// it does not own, and `frontmatter_date` returns the `date:` value verbatim —
+/// so a time-suffixed value (`2026-06-22T10:00:00`) would otherwise compare
+/// LEXICALLY GREATER than a bare bound (`2026-06-22`) and be wrongly dropped at
+/// the `to` boundary. Truncating to the date prefix makes the compare robust and
+/// matches the frontend's bound normalization (`dashboardDateRange` `slice(0,10)`).
+/// Char-boundary-safe: a non-boundary split returns the whole string unchanged.
+fn date_key(s: &str) -> &str {
+    s.get(..10).unwrap_or(s)
+}
+
+/// True when a blob-true `created` date falls within `[from, to]` inclusive.
+/// ISO `yyyy-mm-dd` strings compare lexically (no date parsing); both `created`
+/// and the bounds are normalized to their date prefix ([`date_key`]) so a
+/// time-suffixed value still compares as its calendar date. A `None`/absent
+/// `created` is always excluded — it has no position on the timeline — even under
+/// open bounds. An absent bound is open on that side.
+///
+/// This is THE single date-range predicate, shared by the lineage range slice
+/// ([`node_in_range`]) and the `date_range` filter facet — the real function the
+/// `filter` module's comments reference (was duplicated inline in both).
+pub fn created_in_range(created: Option<&str>, from: Option<&str>, to: Option<&str>) -> bool {
+    let Some(created) = created else {
         return false;
     };
+    let created = date_key(created);
     if let Some(from) = from
-        && created < from
+        && created < date_key(from)
     {
         return false;
     }
     if let Some(to) = to
-        && created > to
+        && created > date_key(to)
     {
         return false;
     }
     true
+}
+
+/// Whether a collected lineage node is in `[from, to]`. Reads only the
+/// already-derived `LineageNode`, so the per-request range slice never re-touches
+/// the graph; delegates the boundary logic to [`created_in_range`].
+fn node_in_range(node: &LineageNode, from: Option<&str>, to: Option<&str>) -> bool {
+    created_in_range(node.dates.created.as_deref(), from, to)
 }
 
 /// Project one in-range, in-scope document node into a lineage node, or `None`
