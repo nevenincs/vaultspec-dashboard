@@ -5,7 +5,10 @@
 import type { MouseEvent } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { backgroundContextMenuHandler } from "./backgroundContextMenu";
+import {
+  backgroundContextMenuHandler,
+  isTimelineBackgroundTarget,
+} from "./backgroundContextMenu";
 
 function contextMenuEvent(targetIsBackground: boolean): MouseEvent {
   const background = { tag: "background" };
@@ -40,5 +43,34 @@ describe("backgroundContextMenuHandler", () => {
     const open = vi.fn();
     backgroundContextMenuHandler("timeline", open)(contextMenuEvent(true));
     expect(open.mock.calls[0][0]).toMatchObject({ region: "timeline" });
+  });
+
+  it("with a custom predicate, fires by predicate not by target identity", () => {
+    const open = vi.fn();
+    // A filled surface where target !== currentTarget but the predicate says background.
+    backgroundContextMenuHandler("timeline", open, () => true)(contextMenuEvent(false));
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("isTimelineBackgroundTarget", () => {
+  // A fake element whose `closest` reports whether an interactive ancestor exists —
+  // exercises the predicate logic without a DOM environment. `matched` is what the
+  // interactive-selector closest() would return.
+  const target = (matched: object | null) =>
+    ({ target: { closest: () => matched } }) as unknown as MouseEvent;
+
+  it("treats an empty lane (no interactive ancestor) as background", () => {
+    expect(isTimelineBackgroundTarget(target(null))).toBe(true);
+  });
+
+  it("does NOT treat an interactive element (mark/grip/control) as background", () => {
+    expect(isTimelineBackgroundTarget(target({ tag: "dot" }))).toBe(false);
+  });
+
+  it("treats a null / closest-less target as not background", () => {
+    expect(isTimelineBackgroundTarget({ target: null } as unknown as MouseEvent)).toBe(
+      false,
+    );
   });
 });

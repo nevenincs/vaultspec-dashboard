@@ -18,8 +18,8 @@ import {
   openKeyboardShortcuts,
 } from "./keyboardShortcuts";
 import { getKeymapOverrides } from "./keymapDispatcher";
+import { runResetLayout } from "./resetLayoutBridge";
 import { openSettingsDialog } from "./settingsDialog";
-import { resetShellLayout } from "./shellLayout";
 
 export const SETTINGS_ACTION_ID = "app:settings";
 export const RESET_LAYOUT_ACTION_ID = "window:reset-layout";
@@ -70,14 +70,17 @@ export function showKeyboardShortcutsAction(): ActionDescriptor {
   });
 }
 
-/** Reset the shell layout to defaults. A layout MUTATION, so it is time-travel gated. */
+/** Reset the shell layout to defaults via the FULL reset (the same one the palette's
+ *  `window:reset-layout` runs — resetShellLayout PLUS the dashboard panel collapse/right-tab
+ *  resets), through the shell-registered bridge. A layout MUTATION, so it is time-travel
+ *  gated. */
 export function resetLayoutAction(): ActionDescriptor {
   return withAccelerator({
     id: RESET_LAYOUT_ACTION_ID,
     label: "Reset layout",
     section: "transform",
     icon: RotateCcw,
-    run: resetShellLayout,
+    run: runResetLayout,
     disabledInTimeTravel: true,
   });
 }

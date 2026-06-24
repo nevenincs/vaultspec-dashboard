@@ -27,8 +27,12 @@ import {
   useShellWindowActions,
 } from "../stores/view/shellLayout";
 import { LeftRail } from "./left/LeftRail";
-import { backgroundContextMenuHandler } from "./menus/backgroundContextMenu";
+import {
+  backgroundContextMenuHandler,
+  isTimelineBackgroundTarget,
+} from "./menus/backgroundContextMenu";
 import { openContextMenu } from "../stores/view/contextMenu";
+import { setResetLayoutRunner } from "../stores/view/resetLayoutBridge";
 import {
   LEFT_RAIL_KEYMAP_CONTEXT,
   useLeftRailKeybindings,
@@ -170,6 +174,13 @@ export function AppShell() {
     setSceneCommandRunner((command) => getScene().controller.command(command as never));
     return () => setSceneCommandRunner(null);
   }, []);
+  // The background context menu's "Reset layout" runs the FULL reset (matching the
+  // palette's window:reset-layout) through this seam, since the full reset needs the
+  // scope-bound panel-intent hook a resolver cannot call (review HIGH-2 fix).
+  useEffect(() => {
+    setResetLayoutRunner(() => shellActions.resetLayout());
+    return () => setResetLayoutRunner(null);
+  }, [shellActions]);
   // Place initial focus on the stage once on mount so the page never loads with
   // focus on `<body>` (the APG always-have-a-focused-element floor). The skip
   // link remains the first Tab stop for keyboard users.
@@ -276,6 +287,7 @@ export function AppShell() {
                 onContextMenu={backgroundContextMenuHandler(
                   "timeline",
                   openContextMenu,
+                  isTimelineBackgroundTarget,
                 )}
               >
                 <Timeline
