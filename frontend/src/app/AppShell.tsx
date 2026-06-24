@@ -50,6 +50,7 @@ import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
 import { IconButton, Popover } from "./kit";
 import { PanelLeft } from "./kit/glyphs";
 import { ContextMenuHost } from "./menu/ContextMenuHost";
+import { UnsavedEditGuardHost } from "./chrome/UnsavedEditGuardHost";
 import { KeyboardShortcuts } from "./menu/KeyboardShortcuts";
 // Register every per-surface context-menu resolver once at app load.
 import "./menus/registerAll";
@@ -61,6 +62,7 @@ import { useSettingsEffects } from "./settings/settingsEffects";
 import { useThemeSetting } from "./settings/themeSetting";
 import { StatusTab } from "./right/StatusTab";
 import { IconRail } from "./shell/IconRail";
+import { CompactAppShell } from "./shell/CompactAppShell";
 import { getScene } from "./stage/Stage";
 import { DockWorkspace } from "./stage/DockWorkspace";
 import { Playhead } from "./timeline/Playhead";
@@ -188,6 +190,26 @@ export function AppShell() {
     stageRef.current?.focus({ preventScroll: true });
   }, []);
 
+  // Compact (phone/tablet) branch of the ONE shell projection
+  // (mobile-responsive-layout ADR D2): a single pane + bottom tab bar instead of
+  // the desktop three-column grid. The app-wide overlays (palette, settings,
+  // context menu, shortcuts, keyboard nav) render in both branches; the heavy
+  // graph dock workspace is absent on compact (ADR D4 — canvas not mounted on a
+  // cold compact load).
+  if (shellFrame.compact) {
+    return (
+      <div className="relative flex h-screen min-h-0 flex-col overflow-hidden bg-paper text-ink">
+        <CommandPalette />
+        <SettingsDialog />
+        <UnsavedEditGuardHost />
+        <ContextMenuHost timeTravel={timeTravel} />
+        <KeyboardShortcuts />
+        <KeyboardNav />
+        <CompactAppShell />
+      </div>
+    );
+  }
+
   return (
     <div
       className={shellFrame.rootClassName}
@@ -210,6 +232,7 @@ export function AppShell() {
       </a>
       <CommandPalette />
       <SettingsDialog />
+      <UnsavedEditGuardHost />
       <ContextMenuHost timeTravel={timeTravel} />
       <KeyboardShortcuts />
       <DegradationDebugSwitch />

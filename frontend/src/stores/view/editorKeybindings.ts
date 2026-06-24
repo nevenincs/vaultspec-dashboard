@@ -17,13 +17,9 @@ import {
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { useSaveBody } from "../server/queries";
-import {
-  applyEditorWriteResult,
-  closeDocumentEditor,
-  markEditorFailed,
-  markEditorSaving,
-} from "./editor";
+import { applyEditorWriteResult, markEditorFailed, markEditorSaving } from "./editor";
 import { registerKeyAction } from "./keymapDispatcher";
+import { requestCloseDocumentEditor } from "./unsavedEditGuard";
 import { useViewStore } from "./viewStore";
 
 export const EDITOR_SAVE_ACTION_ID = "editor:save-body";
@@ -119,7 +115,7 @@ export function useEditorKeybindings(): void {
           useViewStore.getState().editorTarget === null
             ? "no open document"
             : undefined,
-        run: closeDocumentEditor,
+        run: requestCloseDocumentEditor,
       }),
     );
 

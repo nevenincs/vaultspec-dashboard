@@ -28,10 +28,10 @@ import {
 } from "../../stores/view/editorKeybindings";
 import { registerKeyAction } from "../../stores/view/keymapDispatcher";
 import { useViewStore } from "../../stores/view/viewStore";
+import { requestCloseDocumentEditor } from "../../stores/view/unsavedEditGuard";
 import {
   applyEditorWriteResult,
   applyRenameEditorResult,
-  closeDocumentEditor,
   deriveMarkdownEditorFrontmatterPatch,
   deriveMarkdownEditorDocumentView,
   markEditorFailed,
@@ -136,7 +136,7 @@ export function MarkdownDocView({
     if (next === "edit") {
       if (!editor.isEditing && documentEditor.canEdit) enterEdit();
     } else if (editor.isEditing) {
-      closeDocumentEditor();
+      requestCloseDocumentEditor();
     }
   };
 
@@ -154,7 +154,7 @@ export function MarkdownDocView({
       // An editor is open (possibly a DIFFERENT panel) — close it directly rather
       // than through onModeChange, whose close branch guards on THIS panel's local
       // isEditing and would no-op for a non-target panel.
-      closeDocumentEditor();
+      requestCloseDocumentEditor();
     } else if (documentEditor.canEdit) {
       enterEdit();
     }
@@ -245,7 +245,7 @@ export function MarkdownDocView({
           >
             Save
           </Button>
-          <Button variant="ghost" onClick={closeDocumentEditor}>
+          <Button variant="ghost" onClick={requestCloseDocumentEditor}>
             Done
           </Button>
         </div>

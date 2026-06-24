@@ -33,7 +33,7 @@ import {
 } from "../server/queries";
 import { openKeyboardShortcuts } from "./keyboardShortcuts";
 import { useCommandPaletteOpsRunMutation } from "./opsRun";
-import { closeDocumentEditor } from "./editor";
+import { requestCloseDocumentEditor } from "./unsavedEditGuard";
 import {
   graphFitToView,
   graphResetView,
@@ -769,7 +769,7 @@ export function useCommandPaletteCommandView(
         runOp: (target, verb) => {
           runPaletteOp({ target, verb });
         },
-        closeDocument: () => closeDocumentEditor(),
+        closeDocument: () => requestCloseDocumentEditor(),
         setGraphFrozen: (frozen) => setGraphFrozen(frozen, scope),
         jumpToLive: () => movePlayhead("live", scope),
         fitTimelineToCorpus: () => {

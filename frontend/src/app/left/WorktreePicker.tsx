@@ -28,6 +28,7 @@ import type { WorktreeEntity } from "../../platform/actions/entity";
 import type { MapWorktree } from "../../stores/server/engine";
 import { type WorkspaceMapPickerRowView } from "../../stores/server/queries";
 import { openContextMenu } from "../../stores/view/contextMenu";
+import { guardUnsavedDiscard } from "../../stores/view/unsavedEditGuard";
 import {
   setWorktreePickerExpanded,
   toggleWorktreePickerExpanded,
@@ -172,8 +173,10 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
   const selectWorktree = (row: WorkspaceMapPickerRowView) => {
     // Selecting collapses the picker (beginSwitch sets expanded=false), unmounting
     // the Popover and firing its returnFocusRef restore to the trigger — so no
-    // manual focus restore is needed here.
-    activateRow(row);
+    // manual focus restore is needed here. Guard a dirty editor draft: a worktree
+    // switch wholesale-resets the view store (clearing `draftText`), so confirm
+    // before the unsaved changes are discarded.
+    guardUnsavedDiscard(() => activateRow(row));
   };
 
   const onRowKeyDown =
