@@ -107,7 +107,7 @@ describe("useSettingsDialog store", () => {
 });
 
 describe("command-palette Settings entry point", () => {
-  it("ops provider contributes an 'open settings' command that opens the dialog", () => {
+  it("ops provider contributes a Settings command that opens the dialog", () => {
     const settings = opsCommandProvider(commandContext())
       .map(
         (c) => c as { id?: string; family?: string; label?: string; run?: () => void },
@@ -115,7 +115,7 @@ describe("command-palette Settings entry point", () => {
       .find((c) => c.id === "app:settings");
     expect(settings).toBeDefined();
     expect(settings?.family).toBe("app");
-    expect(settings?.label).toBe("open settings");
+    expect(settings?.label).toBe("Settings…");
 
     expect(useSettingsDialog.getState().open).toBe(false);
     settings?.run?.();
