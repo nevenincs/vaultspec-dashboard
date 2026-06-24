@@ -957,31 +957,46 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (isTimelineGestureTarget(event.target)) return;
       const panStep = width * KEY_PAN_FRACTION;
+      // Every key this viewport consumes is stopped (not just preventDefault'd) so
+      // it never reaches the global keymap dispatcher's window listener — the bare
+      // arrows are bound there to graph feature/neighbour cycling, so a pan that
+      // only preventDefault'd would ALSO walk the graph (Class-B isolation; the
+      // every-composite-navigates-through-the-one-focuszone rule; review HIGH).
+      const consume = () => {
+        event.preventDefault();
+        event.stopPropagation();
+      };
       switch (event.key) {
         case "ArrowLeft":
-          event.preventDefault();
+          consume();
           panBy(-panStep);
           break;
         case "ArrowRight":
-          event.preventDefault();
+          consume();
           panBy(panStep);
           break;
+        case "ArrowUp":
+        case "ArrowDown":
+          // Not a pan/zoom verb, but still stopped so it does not bubble to the
+          // global feature-cycle bindings while the viewport holds focus.
+          event.stopPropagation();
+          break;
         case "Home":
-          event.preventDefault();
+          consume();
           jumpToCorpusEdge("start");
           break;
         case "End":
-          event.preventDefault();
+          consume();
           jumpToCorpusEdge("end");
           break;
         case "+":
         case "=":
-          event.preventDefault();
+          consume();
           zoomAround(width / 2, KEY_ZOOM_FACTOR);
           break;
         case "-":
         case "_":
-          event.preventDefault();
+          consume();
           zoomAround(width / 2, 1 / KEY_ZOOM_FACTOR);
           break;
         default:

@@ -30,6 +30,7 @@ import {
 import { openDocTab } from "../../stores/view/tabs";
 import { StatusDot, categoryColorVar } from "../kit";
 import { remarkWikiLink, wikiLinkNodeId, WIKI_LINK_SCHEME } from "./remarkWikiLink";
+import { stopScrollKeyPropagation } from "./scrollRegion";
 import { useHighlightedHast } from "./useHighlighter";
 
 /** Preserve the `vaultspec:doc:` wiki-link scheme through react-markdown's URL
@@ -353,6 +354,10 @@ export function MarkdownReader({
         role="region"
         aria-label="document"
         tabIndex={0}
+        // The scroll keys are stopped from the global dispatcher (which would
+        // preventDefault them — blocking this scroll — and walk the graph) so the
+        // browser scrolls the document natively (review HIGH).
+        onKeyDown={stopScrollKeyPropagation}
       >
         <MarkdownBody view={markdownView} scope={scope} />
         <ReaderFooter editorial={markdownView.editorial} scope={scope} />

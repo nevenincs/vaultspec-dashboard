@@ -24,6 +24,7 @@ import {
 } from "../../stores/view/codeViewer";
 import { useElementHeight } from "../chrome/useElementWidth";
 import { Badge, Button } from "../kit";
+import { stopScrollKeyPropagation } from "./scrollRegion";
 import type { TokenLine } from "./useHighlighter";
 import { useTokenLines } from "./useHighlighter";
 
@@ -84,6 +85,10 @@ function CodeLines({
       // a tab stop a keyboard user could not reach or scroll it (WCAG 2.1.1;
       // keyboard-navigation W03.P06.S19).
       tabIndex={0}
+      // ...and the scroll keys are stopped from the global dispatcher (which would
+      // preventDefault them — blocking the very scroll this enables — and walk the
+      // graph) so the browser scrolls natively (review HIGH).
+      onKeyDown={stopScrollKeyPropagation}
     >
       <div style={presentation.spacerStyle}>
         {rawLines.slice(lineWindow.first, lineWindow.last).map((raw, i) => {

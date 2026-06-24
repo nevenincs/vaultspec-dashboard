@@ -261,7 +261,7 @@ interface CodeTreeNavigation {
     key: string,
     opts?: { onArrowRight?: () => void; onArrowLeft?: () => void },
   ) => FocusZoneItemProps;
-  setActiveKey: (id: string | null) => void;
+  setActiveKey: (key: string) => void;
 }
 
 /**
