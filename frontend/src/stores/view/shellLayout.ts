@@ -369,9 +369,9 @@ const SHELL_RESIZE_HANDLE_BASE_CLASS =
   "absolute z-10 bg-transparent outline-none transition-colors duration-ui-fast ease-settle hover:bg-accent/20 focus-visible:bg-accent/20 focus-visible:outline-2 focus-visible:outline-focus";
 
 const SHELL_RESIZE_HANDLE_PLACEMENT: Record<ShellResizeHandleSide, string> = {
-  right: "right-[-3px] top-0 h-full w-2 cursor-col-resize",
-  left: "left-[-3px] top-0 h-full w-2 cursor-col-resize",
-  top: "left-0 top-[-3px] h-2 w-full cursor-row-resize",
+  right: "right-[-0.1875rem] top-0 h-full w-2 cursor-col-resize",
+  left: "left-[-0.1875rem] top-0 h-full w-2 cursor-col-resize",
+  top: "left-0 top-[-0.1875rem] h-2 w-full cursor-row-resize",
 };
 
 const SHELL_RESIZE_HANDLE_LABEL: Record<ShellResizeHandleSide, string> = {

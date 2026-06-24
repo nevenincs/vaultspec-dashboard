@@ -430,7 +430,7 @@ describe("browser tree expansion store", () => {
       visible: true,
       rowStyle: { paddingLeft: "0.25rem" },
       rowClassName:
-        "flex h-[30px] w-full items-center gap-fg-1 truncate rounded-fg-xs pr-fg-1 text-meta text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus bg-accent-subtle font-medium text-ink",
+        "flex h-[1.875rem] w-full items-center gap-fg-1 truncate rounded-fg-xs pr-fg-1 text-meta text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus bg-accent-subtle font-medium text-ink",
       selectionCueClassName: "h-3 w-0.5 shrink-0 rounded-full bg-accent",
       chevronClassName: "shrink-0 text-ink-faint",
       chevronSpacerStyle: { display: "inline-block", width: 12 },

@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // px-scan gate (relative-units-migration ADR): fails when hardcoded px appears in
-// DOM CSS or *.tsx Tailwind arbitrary values. The WebGL scene layer, test fixtures,
-// dev labs, and the CLI-managed token regions of styles.css are sanctioned exceptions.
+// DOM CSS or *.ts/*.tsx Tailwind arbitrary values. `.ts` chrome/view modules build
+// className strings too (e.g. shellLayout's resize-handle placements, the rail/palette
+// row classes), so they are scanned alongside `.tsx`. The WebGL scene layer, test
+// fixtures, dev labs, and the CLI-managed token regions of styles.css are sanctioned
+// exceptions.
 //
 // Usage:
 //   node scripts/scan-px.mjs            scan and exit non-zero on any violation
@@ -23,7 +26,7 @@ const allowlistPath = join(here, "px-allowlist.json");
 // Directories/patterns where px is intrinsic or the file is not shipped DOM styling.
 const EXCLUDE_DIR_SEGMENTS = ["scene", "graph-lab", "three-lab", "prototype"];
 const EXCLUDE_FILE_RE = /\.(test|spec|gate\.test)\.[tj]sx?$/;
-const SCAN_EXT_RE = /\.(css|tsx)$/;
+const SCAN_EXT_RE = /\.(css|tsx?)$/;
 
 // A line may opt out explicitly with this directive (e.g. a genuine 1px hairline a
 // reviewer has signed off on); kept for escape-hatch parity, expected to stay empty.

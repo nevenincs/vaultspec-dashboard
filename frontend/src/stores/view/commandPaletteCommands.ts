@@ -656,7 +656,7 @@ export function deriveCommandPalettePresentationView(
       optionDomIdPart: commandPaletteOptionDomIdPart(command.id),
       index,
       label: commandPaletteRowLabel(command, armed),
-      rowClassName: `flex h-[30px] w-full items-center justify-between rounded-fg-md px-fg-4 text-left transition-colors duration-ui-fast ease-settle ${
+      rowClassName: `flex h-[1.875rem] w-full items-center justify-between rounded-fg-md px-fg-4 text-left transition-colors duration-ui-fast ease-settle ${
         selected
           ? "bg-accent-subtle text-ink"
           : "text-ink-muted hover:bg-paper-sunken hover:text-ink"

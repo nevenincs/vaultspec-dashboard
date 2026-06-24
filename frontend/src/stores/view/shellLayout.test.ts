@@ -346,7 +346,7 @@ describe("shell layout frame view", () => {
       label: "Resize left rail",
       orientation: "vertical",
       className:
-        "absolute z-10 bg-transparent outline-none transition-colors duration-ui-fast ease-settle hover:bg-accent/20 focus-visible:bg-accent/20 focus-visible:outline-2 focus-visible:outline-focus right-[-3px] top-0 h-full w-2 cursor-col-resize",
+        "absolute z-10 bg-transparent outline-none transition-colors duration-ui-fast ease-settle hover:bg-accent/20 focus-visible:bg-accent/20 focus-visible:outline-2 focus-visible:outline-focus right-[-0.1875rem] top-0 h-full w-2 cursor-col-resize",
     });
     expect(deriveShellResizeHandleView("left")).toMatchObject({
       label: "Resize right rail",
