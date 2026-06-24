@@ -1,15 +1,14 @@
 ---
 tags:
-  - '#audit'
-  - '#unified-filter-plane'
+  - "#audit"
+  - "#unified-filter-plane"
 date: '2026-06-22'
-modified: '2026-06-23'
 related:
   - "[[2026-06-22-unified-filter-plane-plan]]"
+promoted_to:
+  - 'rule:one-filter-authority-every-corpus-view-consumes-it'
+modified: '2026-06-24'
 ---
-
-
-
 # `unified-filter-plane` audit: `unified filter plane review`
 
 ## Scope

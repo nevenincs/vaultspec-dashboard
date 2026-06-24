@@ -61,7 +61,13 @@ plan executed: the orphaned facet flyout rehomed into the rail, the EDITED date
 control dropped, the graph/timeline already filter-free via the sibling
 `StageNavBar` campaign, and a structural guard test landed). The centralization
 boundary has held across the `filter-controls` and `standardization-hardening`
-cycles that preceded it. Sibling rules `dashboard-layer-ownership` (the one-way
+cycles that preceded it. EXTENDED by `one-filter-authority-every-corpus-view-consumes-it`
+(`2026-06-22-unified-filter-plane`): this rule still fences the advanced facet
+FLYOUT to the left rail, but the "exactly ONE canonical surface" reading is relaxed
+for facet AUTHORING — the graph legend now co-authors the canonical `doc_types`
+facet through the shared write seam. The successor governs that one-STATE /
+authorable-from-many-surfaces / consumed-by-every-corpus-view intent; the flyout
+placement boundary here is unchanged. Sibling rules `dashboard-layer-ownership` (the one-way
 boundaries this builds on), `views-are-projections-of-one-model`,
 `design-system-is-centralized`, and `figma-is-the-binding-source-of-truth` (the
 binding rail filter design this mirrors).
