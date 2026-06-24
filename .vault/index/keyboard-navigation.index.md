@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#keyboard-navigation'
-date: '2026-06-23'
-modified: '2026-06-23'
+date: '2026-06-24'
+modified: '2026-06-24'
 related:
   - '[[2026-06-21-keyboard-navigation-W01-P01-S01]]'
   - '[[2026-06-21-keyboard-navigation-W01-P01-S02]]'
@@ -27,12 +27,15 @@ related:
   - '[[2026-06-21-keyboard-navigation-W04-P07-S22]]'
   - '[[2026-06-21-keyboard-navigation-W04-P07-S23]]'
   - '[[2026-06-21-keyboard-navigation-W04-P07-S24]]'
+  - '[[2026-06-21-keyboard-navigation-W05-P08-S26]]'
+  - '[[2026-06-21-keyboard-navigation-W05-P08-S27]]'
   - '[[2026-06-21-keyboard-navigation-W06-P09-S28]]'
   - '[[2026-06-21-keyboard-navigation-W06-P09-S29]]'
   - '[[2026-06-21-keyboard-navigation-W06-P09-S30]]'
   - '[[2026-06-21-keyboard-navigation-W06-P09-S31]]'
   - '[[2026-06-21-keyboard-navigation-W06-P10-S32]]'
   - '[[2026-06-21-keyboard-navigation-W06-P10-S33]]'
+  - '[[2026-06-21-keyboard-navigation-W07-P11-S36]]'
   - '[[2026-06-21-keyboard-navigation-adr]]'
   - '[[2026-06-21-keyboard-navigation-plan]]'
   - '[[2026-06-21-keyboard-navigation-research]]'
@@ -77,6 +80,9 @@ Auto-generated index of all documents tagged with `#keyboard-navigation`.
 - `2026-06-21-keyboard-navigation-W06-P09-S31` - Verify the settings dialog traps Tab, orders its controls, and restores focus on close
 - `2026-06-21-keyboard-navigation-W06-P10-S32` - Sweep the kit primitives (Tab, Segment, FoldSection, ListRow, Popover, Dialog, SearchField, Slider, Switch) to compose FocusZone/restore consistently
 - `2026-06-21-keyboard-navigation-W06-P10-S33` - Make the AppShell chrome keyboard-operable: resize separators (role=separator arrow-resize) and the panel flyout menu navigate and restore correctly
+- `2026-06-21-keyboard-navigation-W05-P08-S26` - Enroll the timeline controls (playhead step/nudge, range) onto the model with keyboard operation
+- `2026-06-21-keyboard-navigation-W05-P08-S27` - Give the timeline minimap a keyboard contract (focusable, arrows move the viewport band)
+- `2026-06-21-keyboard-navigation-W07-P11-S36` - If it held across the enrollment, codify the every-composite-navigates-through-the-one-focuszone rule via the codify pipeline
 
 ### plan
 

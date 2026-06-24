@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#keyboard-navigation'
 date: '2026-06-21'
-modified: '2026-06-23'
+modified: '2026-06-24'
 tier: L3
 related:
   - '[[2026-06-21-keyboard-navigation-adr]]'
@@ -97,8 +97,8 @@ Replace the timeline's ~1000-button flat enumeration with a single focusable reg
 The mark cursor (activedescendant traversal), the timeline controls (playhead/range), and the minimap each become reachable and operable as single tab stops.
 
 - [ ] `W05.P08.S25` - Build the timeline mark cursor: one focusable region with aria-activedescendant, arrows/Home/End traverse marks, Enter selects, replacing the sr-only per-mark button enumeration; `live-verify; `frontend/src/app/timeline/Timeline.tsx`.
-- [ ] `W05.P08.S26` - Enroll the timeline controls (playhead step/nudge, range) onto the model with keyboard operation; `live-verify; `frontend/src/app/timeline/TimelineControls.tsx`.
-- [ ] `W05.P08.S27` - Give the timeline minimap a keyboard contract (focusable, arrows move the viewport band); `live-verify; `frontend/src/app/timeline/Minimap.tsx`.
+- [x] `W05.P08.S26` - Enroll the timeline controls (playhead step/nudge, range) onto the model with keyboard operation; `live-verify; `frontend/src/app/timeline/TimelineControls.tsx`.
+- [x] `W05.P08.S27` - Give the timeline minimap a keyboard contract (focusable, arrows move the viewport band); `live-verify; `frontend/src/app/timeline/Minimap.tsx`.
 
 ## Wave `W06` - Overlays, kit primitives, and shell chrome enrollment
 
@@ -130,7 +130,7 @@ A full-shell live keyboard pass, a vaultspec-code-review, and the discretionary 
 
 - [ ] `W07.P11.S34` - Run the full-shell live keyboard traversal (load to every region via F6, arrow within each, all overlays trap+restore, canvas in/out, timeline cursor) proving every interactive element is reachable; `capture evidence; `frontend/src/app/AppShell.tsx`.
 - [ ] `W07.P11.S35` - Run the full lint gate (just dev lint frontend) and a vaultspec-code-review of the campaign diff for the Class A/B split, layer ownership, bounded accumulators, and no private global listeners; `.vault/audit/2026-06-21-keyboard-navigation-audit.md`.
-- [ ] `W07.P11.S36` - If it held across the enrollment, codify the every-composite-navigates-through-the-one-focuszone rule via the codify pipeline; `.vaultspec/rules/rules/every-composite-navigates-through-the-one-focuszone.md`.
+- [x] `W07.P11.S36` - If it held across the enrollment, codify the every-composite-navigates-through-the-one-focuszone rule via the codify pipeline; `.vaultspec/rules/rules/every-composite-navigates-through-the-one-focuszone.md`.
 
 ## Description
 
