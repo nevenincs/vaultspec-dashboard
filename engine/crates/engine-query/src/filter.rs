@@ -635,6 +635,15 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
         .collect();
     plan_states.sort();
     plan_states.dedup();
+    // Serve in the natural lifecycle order (not-started → in-progress → finished),
+    // not alphabetical — the client renders the served order, and "Finished" before
+    // "In progress" reads backwards (caught by the filter-flyout visual-parity pass).
+    plan_states.sort_by_key(|s| match s.as_str() {
+        "not-started" => 0,
+        "in-progress" => 1,
+        "finished" => 2,
+        _ => 3,
+    });
     // Corpus date span from frontmatter `created` dates (ISO yyyy-mm-dd,
     // lexically ordered): the bounds a date-range facet selects within.
     let date_bounds = graph
