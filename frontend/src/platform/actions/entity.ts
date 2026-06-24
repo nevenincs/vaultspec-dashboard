@@ -148,6 +148,16 @@ export interface CanvasEntity {
   id: "canvas";
 }
 
+/** Chrome: empty rail/timeline background (no row/mark under the pointer). The
+ *  background context menu carries the app-chrome escape hatches; `region` records
+ *  which surface published it (carried for future region-specific verbs + labels). */
+export type BackgroundRegion = "left-rail" | "right-rail" | "timeline";
+export interface BackgroundEntity {
+  kind: "background";
+  id: string;
+  region?: BackgroundRegion;
+}
+
 /** Every right-clickable entity across the four regions. */
 export type EntityDescriptor =
   | WorkspaceEntity
@@ -163,7 +173,8 @@ export type EntityDescriptor =
   | PullRequestEntity
   | MetaEdgeEntity
   | IslandEntity
-  | CanvasEntity;
+  | CanvasEntity
+  | BackgroundEntity;
 
 /** The entity `kind` discriminant - the registry key. */
 export type EntityKind = EntityDescriptor["kind"];
@@ -183,9 +194,11 @@ export const ENTITY_KINDS: readonly EntityKind[] = [
   "meta-edge",
   "island",
   "canvas",
+  "background",
 ];
 
 const ENTITY_KIND_SET = new Set<string>(ENTITY_KINDS);
+const BACKGROUND_REGIONS = new Set<string>(["left-rail", "right-rail", "timeline"]);
 export const ENTITY_DESCRIPTOR_ID_MAX_CHARS = 2048;
 export const ENTITY_DESCRIPTOR_PATH_MAX_CHARS = 2048;
 export const ENTITY_DESCRIPTOR_TEXT_MAX_CHARS = 512;
@@ -414,6 +427,14 @@ export function normalizeEntityDescriptor(entity: unknown): EntityDescriptor | n
         "scope",
         normalizeOptionalNullableScopeId(entity.scope),
       );
+      return normalized;
+    }
+    case "background": {
+      const normalized: BackgroundEntity = { kind, id };
+      const region = typeof entity.region === "string" ? entity.region.trim() : "";
+      if (BACKGROUND_REGIONS.has(region)) {
+        normalized.region = region as BackgroundRegion;
+      }
       return normalized;
     }
   }

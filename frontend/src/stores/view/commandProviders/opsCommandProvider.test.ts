@@ -87,12 +87,13 @@ describe("opsCommandProvider", () => {
     expect(calls).toEqual(["rag:reindex"]);
   });
 
-  it("contributes the open-settings app command", () => {
+  it("contributes the open-settings app command (composed from the shared builder)", () => {
     const settings = rows(opsCommandProvider, commandContext()).find(
       (c) => c.id === "app:settings",
     );
     expect(settings?.family).toBe("app");
-    expect(settings?.label).toBe("open settings");
+    // Composed from the shared `openSettingsAction` builder (unified-action-plane).
+    expect(settings?.label).toBe("Settings…");
   });
 });
 

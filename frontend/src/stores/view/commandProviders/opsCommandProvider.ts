@@ -7,8 +7,8 @@
 // the provider is HOW they enter the palette.
 
 import { OPS_WHITELIST } from "../../server/opsActions";
+import { openSettingsAction } from "../chromeActions";
 import { registerCommandProvider, type CommandContext } from "../commandRegistry";
-import { openSettingsDialog } from "../settingsDialog";
 
 export function opsCommandProvider(ctx: CommandContext): readonly unknown[] {
   // Map the ops TARGET (dispatch routing) explicitly to a display FAMILY rather than
@@ -24,12 +24,10 @@ export function opsCommandProvider(ctx: CommandContext): readonly unknown[] {
     disabledInTimeTravel: true,
     run: () => ctx.intents.runOp(target, verb),
   }));
-  commands.push({
-    id: "app:settings",
-    label: "open settings",
-    family: "app",
-    run: () => openSettingsDialog(),
-  });
+  // Compose the SHARED settings builder (unified-action-plane): the palette and the
+  // background context menu both surface Settings from one definition. The palette groups
+  // by `family`, not the descriptor's menu `section`.
+  commands.push({ ...openSettingsAction(), family: "app" });
   return commands;
 }
 

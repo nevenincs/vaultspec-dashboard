@@ -33,6 +33,9 @@ import "../stage/menus/metaEdgeMenu";
 import "../stage/menus/canvasMenu";
 import "../islands/menus/islandMenu";
 
+// Empty rail/timeline background (the app-chrome escape hatches), mirroring canvasMenu.
+import "./backgroundMenu";
+
 // The kind-agnostic global tail (Refresh), appended to every menu under the terminal
 // `global` section (global-context-actions).
 import "./globalTail";

@@ -27,6 +27,8 @@ import {
   useShellWindowActions,
 } from "../stores/view/shellLayout";
 import { LeftRail } from "./left/LeftRail";
+import { backgroundContextMenuHandler } from "./menus/backgroundContextMenu";
+import { openContextMenu } from "../stores/view/contextMenu";
 import {
   LEFT_RAIL_KEYMAP_CONTEXT,
   useLeftRailKeybindings,
@@ -269,7 +271,13 @@ export function AppShell() {
             />
             <ErrorBoundary region="timeline">
               <CrashZone region="timeline" />
-              <div className={shellFrame.timelineBodyClassName}>
+              <div
+                className={shellFrame.timelineBodyClassName}
+                onContextMenu={backgroundContextMenuHandler(
+                  "timeline",
+                  openContextMenu,
+                )}
+              >
                 <Timeline
                   onNodeClick={(node, arcs) =>
                     handleNodeClick(node, arcs, getScene().controller, scope)
@@ -420,6 +428,7 @@ function ActivityRail({
         role="region"
         aria-label="activity"
         tabIndex={0}
+        onContextMenu={backgroundContextMenuHandler("right-rail", openContextMenu)}
       >
         <StatusTab />
       </div>

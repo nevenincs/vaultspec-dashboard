@@ -18,6 +18,8 @@
 // reads the raw `tiers` block. This module composes; the hosted controls own their
 // behaviour.
 
+import { openContextMenu } from "../../stores/view/contextMenu";
+import { backgroundContextMenuHandler } from "../menus/backgroundContextMenu";
 import { Divider } from "../kit";
 import { BrowserRegion } from "./BrowserRegion";
 import { RailFilterField } from "./RailFilterField";
@@ -32,6 +34,7 @@ export function LeftRail() {
     <nav
       aria-label="scope rail"
       data-left-rail
+      onContextMenu={backgroundContextMenuHandler("left-rail", openContextMenu)}
       className="flex min-h-0 flex-1 flex-col gap-fg-3 px-fg-3 pt-fg-3 text-ink-muted"
     >
       <div className="shrink-0" data-rail-slot="worktree">
