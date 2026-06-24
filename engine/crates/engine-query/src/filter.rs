@@ -473,23 +473,19 @@ impl Filter {
         }
         // Date-range facet: a node passes if its blob-true `created` date is in
         // the window (inclusive, open bounds allowed); a node with no created
-        // date is excluded when the window is set. Lexical ISO compare, mirroring
-        // `lineage::created_in_range`.
-        if let Some(range) = &self.date_range {
-            let created = node.dates.as_ref().and_then(|d| d.created.as_deref());
-            let Some(created) = created else {
-                return false;
-            };
-            if let Some(from) = range.from.as_deref()
-                && created < from
-            {
-                return false;
-            }
-            if let Some(to) = range.to.as_deref()
-                && created > to
-            {
-                return false;
-            }
+        // date is excluded when the window is set. Routed through THE shared
+        // `lineage::created_in_range` predicate (was a duplicate inline compare):
+        // it normalizes both `created` and the bounds to their `yyyy-mm-dd` prefix
+        // before the lexical compare, so a time-suffixed `date:` still compares as
+        // its calendar date rather than being dropped at the `to` boundary.
+        if let Some(range) = &self.date_range
+            && !crate::lineage::created_in_range(
+                node.dates.as_ref().and_then(|d| d.created.as_deref()),
+                range.from.as_deref(),
+                range.to.as_deref(),
+            )
+        {
+            return false;
         }
         true
     }
