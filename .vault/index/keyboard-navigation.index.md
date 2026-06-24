@@ -17,6 +17,7 @@ related:
   - '[[2026-06-21-keyboard-navigation-W01-P03-S09]]'
   - '[[2026-06-21-keyboard-navigation-W01-P04-S10]]'
   - '[[2026-06-21-keyboard-navigation-W02-P05-S11]]'
+  - '[[2026-06-21-keyboard-navigation-W02-P05-S12]]'
   - '[[2026-06-21-keyboard-navigation-W02-P05-S13]]'
   - '[[2026-06-21-keyboard-navigation-W02-P05-S14]]'
   - '[[2026-06-21-keyboard-navigation-W02-P05-S15]]'
@@ -91,6 +92,7 @@ Auto-generated index of all documents tagged with `#keyboard-navigation`.
 - `2026-06-21-keyboard-navigation-W06-P10-S32` - Sweep the kit primitives (Tab, Segment, FoldSection, ListRow, Popover, Dialog, SearchField, Slider, Switch) to compose FocusZone/restore consistently
 - `2026-06-21-keyboard-navigation-W06-P10-S33` - Make the AppShell chrome keyboard-operable: resize separators (role=separator arrow-resize) and the panel flyout menu navigate and restore correctly
 - `2026-06-21-keyboard-navigation-W02-P05-S11` - Enroll the worktree picker (trigger + popover list) onto FocusZone
+- `2026-06-21-keyboard-navigation-W02-P05-S12` - Enroll the filter facet list (KIND/doc-type/feature/STATUS/HEALTH) onto FocusZone as one contained zone
 - `2026-06-21-keyboard-navigation-W03-P06-S18` - Enroll the dock workspace tab strip onto FocusZone tablist semantics (arrows switch tabs, Delete/close affordance reachable) as one tab stop
 - `2026-06-21-keyboard-navigation-W05-P08-S25` - Build the timeline mark cursor: one focusable region with aria-activedescendant, arrows/Home/End traverse marks, Enter selects, replacing the sr-only per-mark button enumeration
 - `2026-06-21-keyboard-navigation-W05-P08-S26` - Enroll the timeline controls (playhead step/nudge, range) onto the model with keyboard operation

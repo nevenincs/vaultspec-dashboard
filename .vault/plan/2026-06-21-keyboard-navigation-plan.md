@@ -56,7 +56,7 @@ Bring every left-rail interactive surface onto the two-tier model one-by-one, ea
 Worktree picker, filter facet list, browser-mode toggle, vault tree, and files tree each become a single tab stop with internal arrow navigation via FocusZone, with entry-memory and focus-restore.
 
 - [x] `W02.P05.S11` - Enroll the worktree picker (trigger + popover list) onto FocusZone; `arrow-navigate rows, Enter select, Escape restores to trigger; live-verify; `frontend/src/app/left/WorktreePicker.tsx`.
-- [ ] `W02.P05.S12` - Enroll the filter facet list (KIND/doc-type/feature/STATUS/HEALTH) onto FocusZone as one contained zone; `live-verify it is no longer an inline trap; `frontend/src/app/stage/FilterSidebar.tsx`.
+- [x] `W02.P05.S12` - Enroll the filter facet list (KIND/doc-type/feature/STATUS/HEALTH) onto FocusZone as one contained zone; `live-verify it is no longer an inline trap; `frontend/src/app/stage/FilterSidebar.tsx`.
 - [x] `W02.P05.S13` - Confirm the browser-mode toggle (Vault/Files SegmentedToggle) composes FocusZone roving radiogroup semantics; `frontend/src/app/kit/Segment.tsx`.
 - [x] `W02.P05.S14` - Enroll the vault tree onto FocusZone (Up/Down rove rows, Left/Right collapse/expand, Home/End, typeahead, Enter open) as one tab stop with entry-memory; `live-verify; `frontend/src/app/left/TreeBrowser.tsx`.
 - [x] `W02.P05.S15` - Enroll the files tree onto FocusZone with the same tree semantics; `live-verify parity with the vault tree; `frontend/src/app/left/CodeTree.tsx`.
