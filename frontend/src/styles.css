@@ -831,6 +831,10 @@
     color: var(--color-ink-muted);
     padding: 0.5rem 0.875rem;
     border-radius: var(--radius-fg-sm);
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    cursor: pointer;
   }
   .vs-markdown .vs-code-fence__body {
     overflow-x: auto;

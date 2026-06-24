@@ -87,13 +87,20 @@ function CodeFence({
   lang: string | null;
 }): ReactElement {
   const { hast } = useHighlightedHast(code, lang);
+  // Mirror the CodeViewer's Copy affordance (a direct clipboard write); the prior
+  // bare <span> rendered an actionable-looking "Copy" that did nothing (dead control).
+  const onCopy = () => {
+    void navigator.clipboard?.writeText(code).catch(() => undefined);
+  };
   return (
     <div className="vs-code-fence">
       <div className="vs-code-fence__header">
         <span className="vs-code-fence__lang">{langLabel(lang)}</span>
         <span className="vs-code-fence__actions">
           <span className="vs-code-fence__readonly">Read-only</span>
-          <span className="vs-code-fence__copy">Copy</span>
+          <button type="button" className="vs-code-fence__copy" onClick={onCopy}>
+            Copy
+          </button>
         </span>
       </div>
       <div className="vs-code-fence__body">

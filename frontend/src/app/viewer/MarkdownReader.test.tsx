@@ -10,7 +10,7 @@
 // matchers only (no jest-dom), the project convention.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ContentView } from "../../stores/server/queries";
 import { useViewStore } from "../../stores/view/viewStore";
@@ -141,6 +141,39 @@ describe("MarkdownReader body", () => {
     // A legitimate http(s) link is preserved — sanitization never breaks real links.
     const safe = screen.getByText("safe link").closest("a");
     expect(safe?.getAttribute("href")).toBe("https://example.com");
+  });
+
+  it("copies the fenced code block to the clipboard via the Copy button", () => {
+    // The fenced-code Copy affordance must actually write to the clipboard — it was a
+    // bare <span> (a dead control that looked actionable but did nothing), unlike the
+    // wired CodeViewer Copy. happy-dom may not implement navigator.clipboard, so install
+    // a spy.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    const doc = [
+      "---",
+      "tags:",
+      "  - '#adr'",
+      "date: '2026-06-16'",
+      "modified: '2026-06-16'",
+      "---",
+      "",
+      "# Heading",
+      "",
+      "An intro dek.",
+      "",
+      "```ts",
+      "const answer = 42;",
+      "```",
+    ].join("\n");
+    render(<MarkdownReader content={available(doc)} />);
+    const copy = screen.getByRole("button", { name: "Copy" });
+    fireEvent.click(copy);
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText.mock.calls[0][0]).toContain("const answer = 42;");
   });
 });
 
