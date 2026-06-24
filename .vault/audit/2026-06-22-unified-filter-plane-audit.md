@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#unified-filter-plane'
 date: '2026-06-22'
-modified: '2026-06-22'
+modified: '2026-06-23'
 related:
   - "[[2026-06-22-unified-filter-plane-plan]]"
 ---
@@ -76,6 +76,23 @@ proved that one click on the graph legend "Plans" fires `PATCH /dashboard-state`
 button goes `aria-pressed=true` with the others dimmed, the graph collapses to a
 plan-only scatter, the timeline thins to match, and a second click restores all
 surfaces. Full bidirectional cross-wiring confirmed live.
+
+EVERY advanced-filter facet was then verified live the same way (ephemeral-profile
+Chromium, network interception against the running app), each from its authoring
+surface:
+
+- `doc_types` — graph legend "Plans" -> `filter={"doc_types":["plan"]}`.
+- `plan_states` — flyout PLAN STATUS "In progress" -> `filter={"plan_states":["in-progress"]}`
+  (the progress-derived state — not-started / in-progress / finished — not a lifecycle tier).
+- `statuses` — flyout DECISION STATUS "Accepted" -> `filter={"statuses":["accepted"]}`.
+- `health` — flyout HEALTH "Dangling" -> `filter={"statuses":["accepted"],"health":["dangling"]}`.
+
+Each click set its checkbox/pressed state, fired `PATCH /dashboard-state` (the
+canonical write), and refetched `POST /graph/query` + `GET /graph/lineage?filter=...`
+so the graph and timeline narrowed together. The HEALTH click's lineage URL carried
+BOTH `statuses` and `health`, proving facets COMPOSE on the single
+`dashboardState.filters` record rather than each owning a private slice — the
+unified-filter-plane invariant confirmed end-to-end across every facet.
 
 ## Codification candidates
 
