@@ -10,15 +10,6 @@ related:
   - '[[2026-06-21-keyboard-navigation-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `keyboard-navigation` plan
 
@@ -138,7 +129,7 @@ Prove the whole frontend is keyboard-operable in one continuous live traversal, 
 A full-shell live keyboard pass, a vaultspec-code-review, and the discretionary rule codification gate the campaign as done only when every interactive element is reachable and operable.
 
 - [x] `W07.P11.S34` - Run the full-shell live keyboard traversal (load to every region via F6, arrow within each, all overlays trap+restore, canvas in/out, timeline cursor) proving every interactive element is reachable; `capture evidence; `frontend/src/app/AppShell.tsx`.
-- [ ] `W07.P11.S35` - Run the full lint gate (just dev lint frontend) and a vaultspec-code-review of the campaign diff for the Class A/B split, layer ownership, bounded accumulators, and no private global listeners; `.vault/audit/2026-06-21-keyboard-navigation-audit.md`.
+- [x] `W07.P11.S35` - Run the full lint gate (just dev lint frontend) and a vaultspec-code-review of the campaign diff for the Class A/B split, layer ownership, bounded accumulators, and no private global listeners; `.vault/audit/2026-06-21-keyboard-navigation-audit.md`.
 - [x] `W07.P11.S36` - If it held across the enrollment, codify the every-composite-navigates-through-the-one-focuszone rule via the codify pipeline; `.vaultspec/rules/rules/every-composite-navigates-through-the-one-focuszone.md`.
 
 ## Description

@@ -16,6 +16,7 @@ related:
   - '[[2026-06-21-keyboard-navigation-W01-P03-S08]]'
   - '[[2026-06-21-keyboard-navigation-W01-P03-S09]]'
   - '[[2026-06-21-keyboard-navigation-W01-P04-S10]]'
+  - '[[2026-06-21-keyboard-navigation-W02-P05-S11]]'
   - '[[2026-06-21-keyboard-navigation-W02-P05-S13]]'
   - '[[2026-06-21-keyboard-navigation-W02-P05-S14]]'
   - '[[2026-06-21-keyboard-navigation-W02-P05-S15]]'
@@ -27,6 +28,7 @@ related:
   - '[[2026-06-21-keyboard-navigation-W04-P07-S22]]'
   - '[[2026-06-21-keyboard-navigation-W04-P07-S23]]'
   - '[[2026-06-21-keyboard-navigation-W04-P07-S24]]'
+  - '[[2026-06-21-keyboard-navigation-W05-P08-S25]]'
   - '[[2026-06-21-keyboard-navigation-W05-P08-S26]]'
   - '[[2026-06-21-keyboard-navigation-W05-P08-S27]]'
   - '[[2026-06-21-keyboard-navigation-W06-P09-S28]]'
@@ -35,10 +37,13 @@ related:
   - '[[2026-06-21-keyboard-navigation-W06-P09-S31]]'
   - '[[2026-06-21-keyboard-navigation-W06-P10-S32]]'
   - '[[2026-06-21-keyboard-navigation-W06-P10-S33]]'
+  - '[[2026-06-21-keyboard-navigation-W07-P11-S34]]'
+  - '[[2026-06-21-keyboard-navigation-W07-P11-S35]]'
   - '[[2026-06-21-keyboard-navigation-W07-P11-S36]]'
   - '[[2026-06-21-keyboard-navigation-adr]]'
   - '[[2026-06-21-keyboard-navigation-plan]]'
   - '[[2026-06-21-keyboard-navigation-research]]'
+  - '[[2026-06-24-keyboard-navigation-audit]]'
 ---
 
 # `keyboard-navigation` feature index
@@ -50,6 +55,10 @@ Auto-generated index of all documents tagged with `#keyboard-navigation`.
 ### adr
 
 - `2026-06-21-keyboard-navigation-adr` - `keyboard-navigation` adr: `two-tier region focus model with a shared FocusZone and F6 pane cycling` | (**status:** `accepted`)
+
+### audit
+
+- `2026-06-24-keyboard-navigation-audit` - `keyboard-navigation` audit: `keyboard navigation review`
 
 ### exec
 
@@ -80,8 +89,12 @@ Auto-generated index of all documents tagged with `#keyboard-navigation`.
 - `2026-06-21-keyboard-navigation-W06-P09-S31` - Verify the settings dialog traps Tab, orders its controls, and restores focus on close
 - `2026-06-21-keyboard-navigation-W06-P10-S32` - Sweep the kit primitives (Tab, Segment, FoldSection, ListRow, Popover, Dialog, SearchField, Slider, Switch) to compose FocusZone/restore consistently
 - `2026-06-21-keyboard-navigation-W06-P10-S33` - Make the AppShell chrome keyboard-operable: resize separators (role=separator arrow-resize) and the panel flyout menu navigate and restore correctly
+- `2026-06-21-keyboard-navigation-W02-P05-S11` - Enroll the worktree picker (trigger + popover list) onto FocusZone
+- `2026-06-21-keyboard-navigation-W05-P08-S25` - Build the timeline mark cursor: one focusable region with aria-activedescendant, arrows/Home/End traverse marks, Enter selects, replacing the sr-only per-mark button enumeration
 - `2026-06-21-keyboard-navigation-W05-P08-S26` - Enroll the timeline controls (playhead step/nudge, range) onto the model with keyboard operation
 - `2026-06-21-keyboard-navigation-W05-P08-S27` - Give the timeline minimap a keyboard contract (focusable, arrows move the viewport band)
+- `2026-06-21-keyboard-navigation-W07-P11-S34` - Run the full-shell live keyboard traversal (load to every region via F6, arrow within each, all overlays trap+restore, canvas in/out, timeline cursor) proving every interactive element is reachable
+- `2026-06-21-keyboard-navigation-W07-P11-S35` - Run the full lint gate (just dev lint frontend) and a vaultspec-code-review of the campaign diff for the Class A/B split, layer ownership, bounded accumulators, and no private global listeners
 - `2026-06-21-keyboard-navigation-W07-P11-S36` - If it held across the enrollment, codify the every-composite-navigates-through-the-one-focuszone rule via the codify pipeline
 
 ### plan
