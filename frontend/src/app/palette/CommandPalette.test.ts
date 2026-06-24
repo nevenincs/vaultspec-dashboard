@@ -241,7 +241,7 @@ describe("deriveCommandPalettePresentationView", () => {
             index: 0,
             label: "graph: fit to view",
             rowClassName:
-              "flex h-[30px] w-full items-center justify-between rounded-fg-md px-fg-4 text-left transition-colors duration-ui-fast ease-settle bg-accent-subtle text-ink",
+              "flex h-[1.875rem] w-full items-center justify-between rounded-fg-md px-fg-4 text-left transition-colors duration-ui-fast ease-settle bg-accent-subtle text-ink",
             labelClassName: undefined,
             selected: true,
             armed: false,
