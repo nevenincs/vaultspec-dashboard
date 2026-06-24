@@ -65,7 +65,27 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
   const view = useDockTabHeaderView(api);
   return (
     <div className={view.rootClassName}>
-      <span className={view.titleClassName}>{view.title}</span>
+      {/* The title is keyboard-activatable so a keyboard user can SWITCH to a tab,
+          not only close it (dockview's `.dv-tab` owns pointer click-to-activate but
+          exposes no keyboard path — keyboard-navigation W03.P06.S18). Enter/Space
+          activates the panel; the keys are stopped so they never reach the global
+          keymap dispatcher. Pointer activation stays dockview's (no onClick here,
+          so a click still falls through to `.dv-tab`). */}
+      <span
+        className={view.titleClassName}
+        role="button"
+        tabIndex={0}
+        aria-label={view.activateAriaLabel}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            api.setActive();
+          }
+        }}
+      >
+        {view.title}
+      </span>
       <span
         role="button"
         tabIndex={0}

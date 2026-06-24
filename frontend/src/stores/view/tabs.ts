@@ -67,6 +67,7 @@ export interface DockTabHeaderView {
   titleClassName: string;
   closeButtonClassName: string;
   closeAriaLabel: string;
+  activateAriaLabel: string;
 }
 
 export type DockDocPanelView =
@@ -156,6 +157,7 @@ export function deriveDockTabHeaderView(
     titleClassName: DOCK_TAB_TITLE_CLASS,
     closeButtonClassName: DOCK_TAB_CLOSE_BUTTON_CLASS,
     closeAriaLabel: `Close ${title}`,
+    activateAriaLabel: `Switch to ${title}`,
   };
 }
 

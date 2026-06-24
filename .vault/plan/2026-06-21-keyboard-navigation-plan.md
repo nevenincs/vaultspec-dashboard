@@ -71,7 +71,7 @@ Graph nav controls, the graph settings panel, the dock workspace tabs, the docum
 
 - [x] `W03.P06.S16` - Enroll the graph nav controls (zoom/fit/reset toolbar) onto FocusZone horizontal roving as one tab stop; `live-verify; `frontend/src/app/stage/GraphControls.tsx`.
 - [x] `W03.P06.S17` - Give the graph settings panel a correct focus order (folds, sliders, switches, reset) with trap-free containment and focus-restore to its opener; `live-verify slider arrow-adjust; `frontend/src/app/stage/GraphControls.tsx`.
-- [ ] `W03.P06.S18` - Enroll the dock workspace tab strip onto FocusZone tablist semantics (arrows switch tabs, Delete/close affordance reachable) as one tab stop; `live-verify; `frontend/src/app/stage/DockWorkspace.tsx`.
+- [x] `W03.P06.S18` - Enroll the dock workspace tab strip onto FocusZone tablist semantics (arrows switch tabs, Delete/close affordance reachable) as one tab stop; `live-verify; `frontend/src/app/stage/DockWorkspace.tsx`.
 - [x] `W03.P06.S19` - Define the document/code viewer focus model (scrollable region focusable, internal controls in order); `frontend/src/app/viewer/CodeViewer.tsx`.
 - [x] `W03.P06.S20` - Verify the graph canvas application-role focus contract: single tab stop, in-canvas arrow-walk works, Escape/Tab exits to the shell region sequence; `live-verify focus-in and focus-out; `frontend/src/app/stage/Stage.tsx`.
 
