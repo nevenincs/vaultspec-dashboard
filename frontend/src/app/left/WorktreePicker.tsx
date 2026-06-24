@@ -21,7 +21,9 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useCallback, useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+
+import { useFocusZone } from "../chrome/useFocusZone";
 
 import { FolderPlus, IconButton, PanelLeft, Popover } from "../kit";
 import type { WorktreeEntity } from "../../platform/actions/entity";
@@ -33,7 +35,6 @@ import {
   setWorktreePickerExpanded,
   toggleWorktreePickerExpanded,
   worktreePickerFirstRowFocusTarget,
-  worktreePickerRowKeyboardTarget,
   useWorktreePickerView,
 } from "../../stores/view/worktreePickerChrome";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
@@ -102,14 +103,17 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
   // move between rows following the corpus-first order, Enter/Space activates the
   // focused corpus-bearing row, Escape collapses returning focus to the trigger.
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const rowEls = useRef(new Map<string, HTMLButtonElement>());
-  const registerRow = useCallback(
-    (id: string) => (el: HTMLButtonElement | null) => {
-      if (el) rowEls.current.set(id, el);
-      else rowEls.current.delete(id);
-    },
-    [],
-  );
+  // The worktree rows rove through the one shared FocusZone (keyboard-navigation
+  // W02.P05.S11): the dropdown is ONE tab stop, arrows move between rows, and the
+  // FocusZone stops consumed arrows from reaching the global keymap dispatcher
+  // (the prior bespoke roving leaked them — a double-fire on the graph nav).
+  const [activeRow, setActiveRow] = useState<string | null>(null);
+  const zone = useFocusZone({
+    orientation: "vertical",
+    wrap: false,
+    activeKey: activeRow,
+    onActiveKeyChange: setActiveRow,
+  });
   const listId = useId();
 
   useEffect(() => {
@@ -180,20 +184,25 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
   };
 
   const onRowKeyDown =
-    (row: WorkspaceMapPickerRowView, index: number) =>
+    (
+      row: WorkspaceMapPickerRowView,
+      zoneKeyDown: (e: ReactKeyboardEvent<HTMLButtonElement>) => void,
+    ) =>
     (e: ReactKeyboardEvent<HTMLButtonElement>) => {
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault();
-        const target = worktreePickerRowKeyboardTarget(rows, index, e.key);
-        if (target !== null) rowEls.current.get(target)?.focus();
-      } else if (e.key === "Enter" || e.key === " ") {
+      if (e.key === "Enter" || e.key === " ") {
         // Enter/Space activates a corpus-bearing row; a no-op (with the conveyed
         // disabled reason) on a bare/degraded row — never a stage scope.
         e.preventDefault();
+        e.stopPropagation();
         selectWorktree(row);
       } else if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         collapse(true);
+      } else {
+        // Arrows / Home / End rove through the shared FocusZone (which stops them
+        // from reaching the global dispatcher).
+        zoneKeyDown(e);
       }
     };
 
@@ -232,11 +241,13 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
             } else if (e.key === "ArrowDown" && !expanded) {
               e.preventDefault();
               setWorktreePickerExpanded(true, true);
-              requestAnimationFrame(() =>
-                rowEls.current
-                  .get(worktreePickerFirstRowFocusTarget(rows) ?? "")
-                  ?.focus(),
-              );
+              requestAnimationFrame(() => {
+                const first = worktreePickerFirstRowFocusTarget(rows);
+                if (first) {
+                  setActiveRow(first);
+                  zone.focusItem(first);
+                }
+              });
             }
           }}
           aria-expanded={expanded}
@@ -340,17 +351,20 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
                   {pickerView.emptyLabel}
                 </li>
               ) : null}
-              {rows.map((row, index) => {
+              {rows.map((row) => {
                 const { worktree } = row;
+                const item = zone.rove(worktree.id);
                 return (
                   <li key={worktree.id}>
                     <button
-                      ref={registerRow(worktree.id)}
+                      ref={item.ref}
+                      tabIndex={item.tabIndex}
                       type="button"
                       aria-disabled={!row.selectable}
                       aria-current={row.isActive ? "true" : undefined}
                       title={row.title}
                       aria-label={row.ariaLabel}
+                      onFocus={() => setActiveRow(worktree.id)}
                       onClick={() => selectWorktree(row)}
                       onContextMenu={(e) => {
                         e.preventDefault();
@@ -367,7 +381,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
                         ) {
                           return;
                         }
-                        onRowKeyDown(row, index)(e);
+                        onRowKeyDown(row, item.onKeyDown)(e);
                       }}
                       className={row.rowClassName}
                     >

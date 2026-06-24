@@ -43,6 +43,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 
 import type { LineageArc, LineageNode } from "../../stores/server/engine";
@@ -726,6 +727,17 @@ function TimelineDotLayer({
   );
 }
 
+/** Stable option id for a mark, the aria-activedescendant target. */
+function markOptionId(nodeId: string): string {
+  return `tl-mark-${nodeId}`;
+}
+
+// The accessible mark cursor (keyboard-navigation W05.P08.S25). The corpus's
+// marks live as one focusable `role="listbox"` carrying an aria-activedescendant
+// cursor over per-mark `role="option"` items — ONE tab stop. Arrows / Home / End
+// traverse the marks (highlighting the visual dot through the existing hover
+// intent), Enter / Space selects. This replaces the per-mark button enumeration
+// being individual tab stops (the W01.P03.S08 containment) with a true cursor.
 function TemporalAccessibleNodes({
   sceneData,
   arcs,
@@ -737,10 +749,69 @@ function TemporalAccessibleNodes({
   onNodeClick?: (node: LineageNode, arcs: readonly LineageArc[]) => void;
   setHoverIntent: (id: string | null) => void;
 }) {
+  const nodes = sceneData.nodes;
+  const [cursor, setCursor] = useState(0);
+  const at = Math.min(cursor, Math.max(0, nodes.length - 1));
+  const cursoredId = nodes[at]?.id ?? null;
+
+  const move = (next: number) => {
+    if (nodes.length === 0) return;
+    const i = Math.min(nodes.length - 1, Math.max(0, next));
+    setCursor(i);
+    const id = nodes[i]?.id;
+    if (id) setHoverIntent(id);
+  };
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLUListElement>) => {
+    // A consumed key is stopped so it never reaches the global keymap dispatcher
+    // (bare arrows = graph cycling) — the Class-B widget-key isolation.
+    switch (e.key) {
+      case "ArrowDown":
+      case "ArrowRight":
+        e.preventDefault();
+        e.stopPropagation();
+        move(at + 1);
+        break;
+      case "ArrowUp":
+      case "ArrowLeft":
+        e.preventDefault();
+        e.stopPropagation();
+        move(at - 1);
+        break;
+      case "Home":
+        e.preventDefault();
+        e.stopPropagation();
+        move(0);
+        break;
+      case "End":
+        e.preventDefault();
+        e.stopPropagation();
+        move(nodes.length - 1);
+        break;
+      case "Enter":
+      case " ": {
+        e.preventDefault();
+        e.stopPropagation();
+        const node = cursoredId ? sceneData.nodeById.get(cursoredId) : null;
+        if (node) onNodeClick?.(node, arcs);
+        break;
+      }
+      default:
+        break;
+    }
+  };
+
   return (
     <div className="sr-only" data-timeline-accessible-nodes>
-      <ul aria-label="timeline graph documents">
-        {sceneData.nodes.map((sceneNode) => {
+      <ul
+        role="listbox"
+        aria-label="timeline graph documents"
+        tabIndex={0}
+        aria-activedescendant={cursoredId ? markOptionId(cursoredId) : undefined}
+        onKeyDown={onKeyDown}
+        onBlur={() => setHoverIntent(null)}
+      >
+        {nodes.map((sceneNode, i) => {
           const node = sceneData.nodeById.get(sceneNode.id);
           if (!node) return null;
           const bucket = sceneData.bucketById.get(sceneNode.id);
@@ -753,16 +824,13 @@ function TemporalAccessibleNodes({
             <li key={node.id}>
               <button
                 type="button"
-                // CONTAINED out of the tab ring (keyboard-navigation W01.P03.S08):
-                // one button per node (~1000 at corpus scale) must NOT each be a
-                // tab stop. tabIndex -1 keeps each present for the screen-reader
-                // list and as the target set for the timeline's activedescendant
-                // mark cursor (W05); the timeline region itself is the single tab
-                // stop, and the cursor moves within it by arrow keys.
+                id={markOptionId(node.id)}
+                role="option"
+                aria-selected={i === at}
+                // Not a tab stop: the listbox is the one tab stop and the cursor
+                // points here via aria-activedescendant. Pointer click still selects.
                 tabIndex={-1}
                 aria-label={label}
-                onFocus={() => setHoverIntent(node.id)}
-                onBlur={() => setHoverIntent(null)}
                 onClick={() => onNodeClick?.(node, arcs)}
               >
                 {label}
