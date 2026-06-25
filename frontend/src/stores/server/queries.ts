@@ -443,12 +443,17 @@ let lastEngineRefreshAt = -Infinity;
  * passes over the original per-subtree sweep:
  *  1. COALESCE rapid repeats (held chord / double-click) inside `REFRESH_COALESCE_MS`, so
  *     a burst fires ONE sweep rather than dozens of redundant invalidation passes.
- *  2. ONE predicate (`engineKeys.all`) invalidates the entire engine query tree — map,
- *     status, workspaces, and every scoped subtree — in a single cache scan, replacing the
- *     26 separate `invalidateQueries` calls.
- *  3. `refetchType: "active"` re-fetches ONLY currently-mounted queries; inactive cached
- *     entries are marked stale and re-fetch lazily on next mount, bounding the fan-out to
- *     what the user can actually see.
+ *  2. ONE predicate (`engineKeys.all`) invalidates the entire engine query tree in a
+ *     single cache scan — every scoped subtree PLUS the singleton families (map, status,
+ *     workspaces, session, settings). This is intentionally BROADER than the prior scoped
+ *     sweep it replaced (which touched only the per-scope subtrees): a user-initiated
+ *     "Refresh data" is meant to catch even a stale workspace/session registry.
+ *  3. `refetchType: "active"` re-fetches ONLY queries with a mounted observer; inactive
+ *     cached entries are marked stale and re-fetch lazily on next mount, bounding the
+ *     fan-out to what the user can actually see. CONTRACT: this holds only while a visible
+ *     surface keeps an active (mounted, enabled) observer — a mounted-but-`enabled:false`
+ *     query a user expects Refresh to update would NOT refetch here (no such surface today;
+ *     a future one must not assume otherwise).
  * Client-side only — no backend mutation, so it is safe in time-travel and needs no
  * confirm guard.
  */
