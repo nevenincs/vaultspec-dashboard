@@ -253,6 +253,26 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // tower-http's DefaultPredicate skips small bodies and `text/event-stream`,
         // so the SSE `/stream` + `/status` channels are NOT buffered/compressed.
         .layer(tower_http::compression::CompressionLayer::new())
+        // Static security headers (defense-in-depth, #41). The engine is already
+        // loopback-only, Host-validated (DNS-rebinding 403), and bearer-gated,
+        // but the SPA it serves benefits from the standard hardening trio:
+        // `nosniff` stops MIME-confusion on served assets, `DENY` blocks
+        // clickjacking via framing, and `no-referrer` keeps loopback URLs out of
+        // any cross-origin referrer. Applied OUTERMOST so every response — static
+        // asset, API, error, and SSE — carries them. (CSP is a separate task: it
+        // needs testing against the Vite-built SPA's inline/style needs.)
+        .layer(tower_http::set_header::SetResponseHeaderLayer::overriding(
+            axum::http::header::X_CONTENT_TYPE_OPTIONS,
+            axum::http::HeaderValue::from_static("nosniff"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::overriding(
+            axum::http::header::X_FRAME_OPTIONS,
+            axum::http::HeaderValue::from_static("DENY"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::overriding(
+            axum::http::header::REFERRER_POLICY,
+            axum::http::HeaderValue::from_static("no-referrer"),
+        ))
         .with_state(state)
 }
 
@@ -532,6 +552,39 @@ mod tests {
             .unwrap();
         let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
         (status, value)
+    }
+
+    #[tokio::test]
+    async fn every_response_carries_the_static_security_headers() {
+        // #41 security hardening: the standard defense-in-depth trio rides every
+        // response (here /health, the one ungated route) so static assets, API
+        // payloads, and errors are all covered.
+        let (_dir, state) = fixture_state();
+        let router = build_router(state);
+        let response = router
+            .oneshot(
+                Request::get("/health")
+                    .header("host", "127.0.0.1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let headers = response.headers();
+        assert_eq!(
+            headers
+                .get("x-content-type-options")
+                .and_then(|v| v.to_str().ok()),
+            Some("nosniff"),
+        );
+        assert_eq!(
+            headers.get("x-frame-options").and_then(|v| v.to_str().ok()),
+            Some("DENY"),
+        );
+        assert_eq!(
+            headers.get("referrer-policy").and_then(|v| v.to_str().ok()),
+            Some("no-referrer"),
+        );
     }
 
     fn git(dir: &std::path::Path, args: &[&str]) {

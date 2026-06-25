@@ -1089,6 +1089,16 @@ pub fn write_service_json(state: &AppState, port: u16) -> std::io::Result<PathBu
         "last_heartbeat": now_ms(),
     });
     std::fs::write(&path, serde_json::to_string_pretty(&payload)?)?;
+    // Restrict the discovery file to its owner: it carries the bearer token, so
+    // the default world-readable 0644 is a local-auth-bypass vector on a shared
+    // host (#41 security hardening). On Unix, chmod 0600 after the write. On
+    // Windows the engine-data dir lives under the user's own workspace and
+    // inherits that profile's NTFS ACL, so no extra restriction is applied here.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    }
     Ok(path)
 }
 
