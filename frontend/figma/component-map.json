@@ -149,28 +149,28 @@
       "name": "CompactAppShell",
       "source": "src/app/shell/CompactAppShell.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "783:3226",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=783-3226",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "CompactDocReader",
       "source": "src/app/shell/CompactDocReader.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "788:3274",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=788-3274",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "CompactTimeline",
       "source": "src/app/shell/CompactTimeline.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "792:3322",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=792-3322",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "ConfirmDialog",
@@ -230,10 +230,10 @@
       "name": "DocChrome",
       "source": "src/app/viewer/DocChrome.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "283:1170",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=283-1170",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "DocHeader",
@@ -266,10 +266,10 @@
       "name": "DocumentSearchSurface",
       "source": "src/app/palette/DocumentSearchSurface.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "666:2038",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=666-2038",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "DropdownButton",
@@ -302,10 +302,10 @@
       "name": "FeatureSearchField",
       "source": "src/app/left/FeatureSearchField.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "636:1947",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=636-1947",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "FilterMenu",
@@ -347,10 +347,10 @@
       "name": "GraphNavControls",
       "source": "src/app/stage/GraphControls.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "260:839",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=260-839",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "GraphPanel",
@@ -365,10 +365,10 @@
       "name": "GraphSettingsPanel",
       "source": "src/app/stage/GraphControls.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "714:2630",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=714-2630",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "HoverCard",
@@ -599,10 +599,10 @@
       "name": "RailDegraded",
       "source": "src/app/right/railStates.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "727:3679",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=727-3679",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "state"
     },
     {
       "name": "RailDegradedNotice",
@@ -617,10 +617,10 @@
       "name": "RailEmpty",
       "source": "src/app/right/railStates.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "727:3338",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=727-3338",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "state"
     },
     {
       "name": "RailFilterField",
@@ -635,28 +635,28 @@
       "name": "RailLoading",
       "source": "src/app/right/railStates.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "727:4020",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=727-4020",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "state"
     },
     {
       "name": "RailMessage",
       "source": "src/app/left/railStates.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "515:1000",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=515-1000",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "RailSection",
       "source": "src/app/chrome/RailSection.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "508:1010",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=508-1010",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "RailSkeleton",
@@ -779,10 +779,10 @@
       "name": "StatusHoverCard",
       "source": "src/app/islands/HoverCard.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "319:1024",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=319-1024",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "StatusTab",
@@ -869,10 +869,10 @@
       "name": "UnsavedEditGuardHost",
       "source": "src/app/chrome/UnsavedEditGuardHost.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "635:2470",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=635-2470",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "VaultBrowser",
