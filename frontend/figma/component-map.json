@@ -599,8 +599,8 @@
       "name": "RailDegraded",
       "source": "src/app/right/railStates.tsx",
       "designSurface": true,
-      "figmaNodeId": "727:3679",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=727-3679",
+      "figmaNodeId": "859:3958",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=859-3958",
       "figmaNodeName": null,
       "bindingKind": "state"
     },
@@ -617,8 +617,8 @@
       "name": "RailEmpty",
       "source": "src/app/right/railStates.tsx",
       "designSurface": true,
-      "figmaNodeId": "727:3338",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=727-3338",
+      "figmaNodeId": "859:3964",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=859-3964",
       "figmaNodeName": null,
       "bindingKind": "state"
     },
@@ -635,8 +635,8 @@
       "name": "RailLoading",
       "source": "src/app/right/railStates.tsx",
       "designSurface": true,
-      "figmaNodeId": "727:4020",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=727-4020",
+      "figmaNodeId": "859:3948",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=859-3948",
       "figmaNodeName": null,
       "bindingKind": "state"
     },
