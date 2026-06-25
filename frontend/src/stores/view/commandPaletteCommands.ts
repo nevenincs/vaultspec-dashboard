@@ -32,6 +32,7 @@ import {
   useFiltersVocabularyView,
 } from "../server/queries";
 import { openKeyboardShortcuts } from "./keyboardShortcuts";
+import { showKeyboardShortcutsAction } from "./chromeActions";
 import { useCommandPaletteOpsRunMutation } from "./opsRun";
 import { requestCloseDocumentEditor } from "./unsavedEditGuard";
 import {
@@ -160,6 +161,8 @@ export interface WindowCommandSources {
   toggleTimeline: () => void;
   setRightTab: (tab: unknown) => void;
   resetLayout: () => void;
+  /** Retained on the shared CommandIntents contract; the window command builder now
+   *  composes the shared showKeyboardShortcutsAction instead of this callback. */
   showKeyboardShortcuts: () => void;
 }
 
@@ -221,21 +224,19 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
           ];
     }),
     {
+      // Reset-layout runs the full reset directly here (the palette has the hook); the
+      // background menu composes resetLayoutAction over the same id+behavior via the
+      // reset-layout bridge. One id (`window:reset-layout`), one behavior.
       id: "window:reset-layout",
       label: "reset layout",
       family: "window",
       run: w.resetLayout,
     },
-    {
-      // The legend is a HELP verb per the action taxonomy (help = keyboard
-      // shortcuts, about), not a window-layout verb; it groups under the help
-      // family. The id keeps its `window:` stem so the registry-derived
-      // accelerator mapping is unchanged.
-      id: "window:keyboard-shortcuts",
-      label: "keyboard shortcuts",
-      family: "help",
-      run: w.showKeyboardShortcuts,
-    },
+    // Keyboard-shortcuts composes the SHARED chromeActions builder (unified-action-plane):
+    // it now carries its TRUE keybinding id `app:keyboard-shortcuts` (NOT the old `window:`
+    // stem, which never matched the registry), so its `?` accelerator derives correctly
+    // across the palette, the keymap, AND the background context menu from one definition.
+    { ...showKeyboardShortcutsAction(), family: "help" as const },
   );
   return normalizedPaletteCommands(commands);
 }

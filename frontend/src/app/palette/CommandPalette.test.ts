@@ -113,15 +113,15 @@ function windowSources(over: Partial<WindowCommandSources> = {}): WindowCommandS
 describe("buildWindowCommands (window-management parity)", () => {
   it("exposes every window-management action under the window family", () => {
     const commands = buildWindowCommands(windowSources());
-    // The keyboard-shortcuts legend is a HELP verb per the action taxonomy (it
-    // rides the `window:` id stem only so its registry-derived accelerator is
-    // unchanged); every OTHER window-management action is in the window family.
+    // The keyboard-shortcuts legend is a HELP verb (action taxonomy) and now carries its
+    // TRUE keybinding id `app:keyboard-shortcuts` (composed from the shared chromeActions
+    // builder) so its accelerator derives; every OTHER window action is in the window family.
     expect(
       commands
-        .filter((c) => c.id !== "window:keyboard-shortcuts")
+        .filter((c) => c.id !== "app:keyboard-shortcuts")
         .every((c) => c.family === "window"),
     ).toBe(true);
-    expect(commands.find((c) => c.id === "window:keyboard-shortcuts")?.family).toBe(
+    expect(commands.find((c) => c.id === "app:keyboard-shortcuts")?.family).toBe(
       "help",
     );
     expect(commands.map((c) => c.id)).toEqual([
@@ -131,7 +131,7 @@ describe("buildWindowCommands (window-management parity)", () => {
       "window:timeline",
       ...RIGHT_RAIL_TABS.map((tab) => `window:rail-${tab.id}`),
       "window:reset-layout",
-      "window:keyboard-shortcuts",
+      "app:keyboard-shortcuts",
     ]);
   });
 

@@ -35,11 +35,16 @@ import {
   RELOAD_REFRESH_DATA_ACTION_ID,
   deriveReloadKeybindings,
 } from "./reloadKeybindings";
+import {
+  KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
+  KEYBOARD_SHORTCUTS_TOGGLE_BINDING,
+} from "./keyboardShortcuts";
 
 // Register the command providers and the right-rail resolvers under test (side effects).
 import "./commandProviders/leftRailCommandProvider";
 import "./commandProviders/rightRailCommandProvider";
 import "./commandProviders/reloadCommandProvider";
+import "./commandProviders/windowCommandProvider";
 import "../../app/right/menus/commitMenu";
 import "../../app/right/menus/prMenu";
 
@@ -55,6 +60,10 @@ const DUAL_PLANE_VERBS = [
   LEFT_RAIL_RESET_FILTERS_ACTION_ID,
   RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
   RELOAD_REFRESH_DATA_ACTION_ID,
+  // The keyboard-shortcuts legend: keymap (?) + palette (window provider, help family),
+  // converged onto one id so its accelerator derives across both planes + the background
+  // context menu (background-context-menus drift fix).
+  KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
 ];
 
 const noop = () => undefined;
@@ -107,6 +116,7 @@ describe("action coverage grid guard", () => {
       ...deriveLeftRailKeybindings(),
       ...deriveRightRailKeybindings(),
       ...deriveReloadKeybindings(),
+      KEYBOARD_SHORTCUTS_TOGGLE_BINDING,
     ].map((b) => b.id),
   );
 
