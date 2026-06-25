@@ -1,11 +1,10 @@
 // @vitest-environment happy-dom
 //
-// The left rail's DESIGNED modes (binding `LeftRail` State collection: Loading /
-// Empty / Degraded) render as first-class states — a skeleton, a centered glyph +
-// message, and an AlertTriangle notice — NOT a copy-toned sentence and NEVER a raw
-// tier reason. Both rail tabs (Vault + Files) consume these same components, so the
-// mode concept is one shared feature; this proves the components respond to each
-// state.
+// The left rail's DESIGNED modes (binding `LeftRail` State collection: Loading / Empty /
+// Degraded) now compose the shared state-mode kit (state-mode-uniformity ADR): a
+// `Skeleton` (UI-only, no text), and `StateBlock`s (shared glyph + one sentence). This
+// proves the rail responds to each state through the ONE canonical kit — uniform pulse,
+// tone, and glyph with every other surface.
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { createElement } from "react";
@@ -15,57 +14,63 @@ import { RailDegradedNotice, RailMessage, RailSkeleton } from "./railStates";
 
 afterEach(cleanup);
 
-describe("left-rail designed modes", () => {
-  it("LOADING renders an accessible skeleton (aria-busy, no spinner text)", () => {
+describe("left-rail designed modes (composed from the shared kit)", () => {
+  it("LOADING renders an accessible skeleton (aria-busy, uniform pulse, no spinner text)", () => {
     const { container } = render(createElement(RailSkeleton, { label: "Loading…" }));
-    const root = container.querySelector('[data-rail-state="loading"]');
+    const root = container.querySelector("[data-skeleton]");
     expect(root).toBeTruthy();
     expect(root!.getAttribute("aria-busy")).toBe("true");
-    // Skeleton bars, not a sentence: the visible content is pulse blocks.
-    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(2);
-    // The label is screen-reader-only, never rendered as visible body copy.
+    // The pulse is the uniform `animate-pulse-live` on the wrapper (was a per-bar
+    // `animate-pulse` — standardized by the kit).
+    expect(root!.className).toContain("animate-pulse-live");
+    // Pure shape: several skeleton fills, no sentence.
+    expect(container.querySelectorAll(".bg-rule-strong").length).toBeGreaterThan(2);
+    // The label is screen-reader-only, never visible body copy.
     expect(screen.getByText("Loading…").className).toContain("sr-only");
   });
 
-  it("EMPTY renders a centered glyph + one plain sentence", () => {
+  it("EMPTY renders a centered shared glyph + one plain sentence", () => {
     render(
       createElement(RailMessage, {
         tone: "empty",
         label: "No documents in this scope yet.",
       }),
     );
-    const root = document.querySelector('[data-rail-state="empty"]');
+    const root = document.querySelector('[data-state-block="empty"]');
     expect(root).toBeTruthy();
     expect(root!.querySelector("svg")).toBeTruthy();
     expect(screen.getByText("No documents in this scope yet.")).toBeTruthy();
   });
 
-  it("DEGRADED (full) renders the AlertTriangle state with a plain sentence", () => {
+  it("DEGRADED (full) renders the caution glyph state with a plain sentence", () => {
     render(
       createElement(RailMessage, {
         tone: "degraded",
         label: "Files are unavailable for this scope.",
       }),
     );
-    const root = document.querySelector('[data-rail-state="degraded"]');
+    const root = document.querySelector('[data-state-block="degraded"]');
     expect(root).toBeTruthy();
     expect(root!.getAttribute("role")).toBe("status");
     expect(root!.querySelector("svg")).toBeTruthy();
     expect(screen.getByText("Files are unavailable for this scope.")).toBeTruthy();
   });
 
-  it("DEGRADED (inline notice) renders a compact AlertTriangle row, no raw reason", () => {
+  it("DEGRADED (inline notice) renders a compact caution row, no raw reason", () => {
     render(
       createElement(RailDegradedNotice, {
         label: "Some documents are temporarily unavailable.",
       }),
     );
-    const root = document.querySelector('[data-rail-state="degraded-notice"]');
+    const root = document.querySelector('[data-state-block="degraded"]');
     expect(root).toBeTruthy();
     expect(root!.getAttribute("role")).toBe("status");
+    // The inline notice rides the sunken pill (its distinguishing layout).
+    expect(root!.className).toContain("bg-paper-sunken");
     expect(root!.querySelector("svg")).toBeTruthy();
-    const text = screen.getByText("Some documents are temporarily unavailable.");
-    expect(text).toBeTruthy();
+    expect(
+      screen.getByText("Some documents are temporarily unavailable."),
+    ).toBeTruthy();
     // No engineering vocabulary ever leaks into the degraded copy.
     expect(root!.textContent).not.toMatch(/service\.json|rag service|tier/i);
   });
