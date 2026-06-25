@@ -749,6 +749,33 @@
       "bindingKind": "surface"
     },
     {
+      "name": "Skeleton",
+      "source": "src/app/kit/Skeleton.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
+      "name": "SkeletonBar",
+      "source": "src/app/kit/Skeleton.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
+      "name": "SkeletonRow",
+      "source": "src/app/kit/Skeleton.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
       "name": "Slider",
       "source": "src/app/kit/Slider.tsx",
       "designSurface": true,
@@ -765,6 +792,15 @@
       "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=636-2160",
       "figmaNodeName": null,
       "bindingKind": "surface"
+    },
+    {
+      "name": "StateBlock",
+      "source": "src/app/kit/StateBlock.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
     },
     {
       "name": "StatusDot",
@@ -846,6 +882,15 @@
       "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=239-713",
       "figmaNodeName": "Timeline",
       "bindingKind": "surface"
+    },
+    {
+      "name": "TimelineStateModes",
+      "source": "src/app/timeline/Timeline.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
     },
     {
       "name": "TimeTravelChip",
