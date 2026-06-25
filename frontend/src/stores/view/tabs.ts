@@ -289,9 +289,25 @@ export function applyRenamedMarkdownDocWorkspace(
   draftText: string,
   scope: unknown = useViewStore.getState().scope,
 ): Promise<boolean> {
+  // Preserve the unsaved-work flag across the re-key. The engine rename operates on
+  // the on-disk body, NOT the draft — so the renamed file's blob is the OLD (pre-edit)
+  // body, and a draft that was dirty before the rename still diverges from it. But
+  // `openEditor` re-seeds at `idle`, which would show the edits as "Saved" against a
+  // base lacking them and drop the dirty flag (the unsaved-edit guard then no longer
+  // protects the draft — silent loss on the next nav). Capture the unsaved status
+  // BEFORE teardown and restore it after the re-seed so the draft stays dirty and the
+  // next save (expected_blob_hash = the renamed file's current blob) lands correctly.
+  const priorStatus = useViewStore.getState().editorStatus;
+  const hadUnsavedDraft =
+    priorStatus === "dirty" ||
+    priorStatus === "save-failed" ||
+    priorStatus === "conflict";
   closeDocTab(result.oldNodeId);
   const selected = openDocTab(result.newNodeId, "markdown", scope);
   useViewStore.getState().openEditor(result.newNodeId, draftText, result.newBlobHash);
+  if (hadUnsavedDraft) {
+    useViewStore.setState({ editorStatus: "dirty" });
+  }
   return selected;
 }
 

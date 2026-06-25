@@ -56,6 +56,18 @@ const DEFAULT_COPY = {
   confirmLabel: "Discard changes",
 } as const;
 
+function stagePending(
+  proceed: () => void,
+  copy?: Partial<Omit<PendingUnsavedDiscard, "proceed">>,
+): void {
+  useUnsavedEditGuardStore.getState().request({
+    title: copy?.title ?? DEFAULT_COPY.title,
+    message: copy?.message ?? DEFAULT_COPY.message,
+    confirmLabel: copy?.confirmLabel ?? DEFAULT_COPY.confirmLabel,
+    proceed,
+  });
+}
+
 /**
  * Run `proceed` immediately when the editor has no unsaved changes; otherwise stage
  * an arm-to-confirm so the user can keep editing or discard the dirty draft. Use this
@@ -71,12 +83,27 @@ export function guardUnsavedDiscard(
     proceed();
     return;
   }
-  useUnsavedEditGuardStore.getState().request({
-    title: copy?.title ?? DEFAULT_COPY.title,
-    message: copy?.message ?? DEFAULT_COPY.message,
-    confirmLabel: copy?.confirmLabel ?? DEFAULT_COPY.confirmLabel,
-    proceed,
-  });
+  stagePending(proceed, copy);
+}
+
+/**
+ * The document-scoped variant: arm-to-confirm only when the dirty editor targets THIS
+ * document. A tab/panel close on doc B must NOT prompt about doc A's unsaved draft, so
+ * a global dirty check is wrong here — gate on `editorTarget?.nodeId === nodeId`.
+ */
+export function guardUnsavedDiscardForDoc(
+  nodeId: string,
+  proceed: () => void,
+  copy?: Partial<Omit<PendingUnsavedDiscard, "proceed">>,
+): void {
+  const state = useViewStore.getState();
+  const dirtyForThisDoc =
+    state.editorStatus === "dirty" && state.editorTarget?.nodeId === nodeId;
+  if (!dirtyForThisDoc) {
+    proceed();
+    return;
+  }
+  stagePending(proceed, copy);
 }
 
 /**

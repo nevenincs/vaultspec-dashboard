@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { openDocumentEditor, updateEditorDraft } from "./editor";
 import {
   guardUnsavedDiscard,
+  guardUnsavedDiscardForDoc,
   requestCloseDocumentEditor,
   useUnsavedEditGuardStore,
 } from "./unsavedEditGuard";
@@ -82,5 +83,36 @@ describe("unsaved-edit guard", () => {
     // Confirmed — the editor is now closed and the draft cleared.
     expect(useViewStore.getState().editorTarget).toBeNull();
     expect(useViewStore.getState().draftText).toBe("");
+  });
+});
+
+describe("guardUnsavedDiscardForDoc (document-scoped)", () => {
+  beforeEach(() => {
+    useUnsavedEditGuardStore.setState({ pending: null });
+    useViewStore.getState().closeEditor();
+  });
+
+  it("runs immediately when nothing is dirty", () => {
+    const proceed = vi.fn();
+    guardUnsavedDiscardForDoc("doc:a", proceed);
+    expect(proceed).toHaveBeenCalledTimes(1);
+    expect(useUnsavedEditGuardStore.getState().pending).toBeNull();
+  });
+
+  it("runs immediately when a DIFFERENT document is dirty (no false prompt)", () => {
+    openDirtyEditor("doc:a");
+    const proceed = vi.fn();
+    // Closing doc:b while doc:a is the dirty editor must NOT prompt — b has no draft.
+    guardUnsavedDiscardForDoc("doc:b", proceed);
+    expect(proceed).toHaveBeenCalledTimes(1);
+    expect(useUnsavedEditGuardStore.getState().pending).toBeNull();
+  });
+
+  it("stages a confirm when THIS document is the dirty editor", () => {
+    openDirtyEditor("doc:a");
+    const proceed = vi.fn();
+    guardUnsavedDiscardForDoc("doc:a", proceed);
+    expect(proceed).not.toHaveBeenCalled();
+    expect(useUnsavedEditGuardStore.getState().pending).not.toBeNull();
   });
 });

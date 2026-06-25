@@ -37,6 +37,7 @@ import {
   useDockTabHeaderView,
   useDockWorkspaceTabsView,
 } from "../../stores/view/tabs";
+import { guardUnsavedDiscardForDoc } from "../../stores/view/unsavedEditGuard";
 
 /** The always-present graph panel id (never a node id, so it cannot collide). */
 const GRAPH_PANEL_ID = "__graph__";
@@ -93,13 +94,16 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
-          api.close();
+          // Arm-to-confirm when THIS tab's doc has an unsaved draft — closing the tab
+          // tears the editor down (draft discarded). Target-scoped so closing a clean
+          // tab while another doc is dirty does not prompt.
+          guardUnsavedDiscardForDoc(api.id, () => api.close());
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             e.stopPropagation();
-            api.close();
+            guardUnsavedDiscardForDoc(api.id, () => api.close());
           }
         }}
         className={view.closeButtonClassName}

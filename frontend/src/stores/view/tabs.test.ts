@@ -311,6 +311,43 @@ describe("rename re-key", () => {
       baseBlobHash: "hash-new",
     });
   });
+
+  it("preserves the dirty flag when the renamed editor had unsaved changes", async () => {
+    useViewStore.getState().openDoc("doc:old", "markdown", true);
+    useViewStore.getState().openEditor("doc:old", "saved body", "hash-old");
+    useViewStore.getState().setDraft("edited body");
+    expect(useViewStore.getState().editorStatus).toBe("dirty");
+
+    await applyRenamedMarkdownDocWorkspace(
+      { oldNodeId: "doc:old", newNodeId: "doc:new", newBlobHash: "hash-new" },
+      "edited body",
+      null,
+    );
+
+    // The draft survives AND stays dirty — the renamed file's blob is the old body,
+    // so the draft still diverges; it must not show "Saved" (which would lose it on
+    // the next nav). The next save targets the new blob hash.
+    expect(useViewStore.getState()).toMatchObject({
+      editorTarget: { nodeId: "doc:new" },
+      draftText: "edited body",
+      baseBlobHash: "hash-new",
+      editorStatus: "dirty",
+    });
+  });
+
+  it("re-seeds clean when the renamed editor had no unsaved changes", async () => {
+    useViewStore.getState().openDoc("doc:old", "markdown", true);
+    useViewStore.getState().openEditor("doc:old", "body", "hash-old");
+    expect(useViewStore.getState().editorStatus).toBe("idle");
+
+    await applyRenamedMarkdownDocWorkspace(
+      { oldNodeId: "doc:old", newNodeId: "doc:new", newBlobHash: "hash-new" },
+      "body",
+      null,
+    );
+
+    expect(useViewStore.getState().editorStatus).toBe("idle");
+  });
 });
 
 describe("reorder reconciliation", () => {
