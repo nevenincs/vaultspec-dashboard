@@ -306,6 +306,15 @@ describe("editor-state slice (bounded, single-value)", () => {
       properties: { tags: "", date: "", related: "" },
     });
   });
+
+  it("disables editing when the body was truncated (saving a prefix would lose the tail)", () => {
+    const view = deriveMarkdownEditorDocumentView(
+      content({
+        truncated: { total_bytes: 1_000_000, returned_bytes: 524_288, reason: "cap" },
+      }),
+    );
+    expect(view.canEdit).toBe(false);
+  });
 });
 
 // --- read-side derivations (pure functions over explicit vectors) ---------------

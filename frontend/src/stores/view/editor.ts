@@ -340,7 +340,11 @@ export function deriveMarkdownEditorDocumentView(
 ): MarkdownEditorDocumentView {
   const frontmatter = deriveMarkdownReaderView(content).frontmatter;
   return {
-    canEdit: content.available,
+    // A truncated body is only a PREFIX of the document (the engine capped the served
+    // bytes), so editing it and saving would write that prefix back and silently drop
+    // everything past the cap — the same data-loss class as the unsaved-draft gaps.
+    // Disable editing until the full body is available.
+    canEdit: content.available && content.truncated === null,
     initialText: content.text,
     initialBlobHash: content.blobHash ?? "",
     properties: {
