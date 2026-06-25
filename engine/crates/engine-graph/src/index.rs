@@ -1061,10 +1061,61 @@ fn doc_stem(rel_path: &str) -> String {
         .to_string()
 }
 
+/// Iterate the body's lines, skipping fenced code blocks (` ``` ` or `~~~`).
+/// A line whose trimmed start opens a fence toggles fence state; the fence
+/// delimiter lines and every line inside a fence are withheld. This is the
+/// line-based analogue of `ingest_struct::extract::extract_code_spans`'s
+/// byte-scan fence skip — the body-metadata parsers below must not read a
+/// fenced EXAMPLE's `# heading`, `- [x]` checkbox, or severity/status prose as
+/// if it were the document's own metadata.
+fn body_lines_outside_fences(text: &str) -> impl Iterator<Item = &str> {
+    let mut fence: Option<&'static str> = None;
+    text.lines().filter(move |line| {
+        let trimmed = line.trim_start();
+        let marker = if trimmed.starts_with("```") {
+            Some("```")
+        } else if trimmed.starts_with("~~~") {
+            Some("~~~")
+        } else {
+            None
+        };
+        match (fence, marker) {
+            // Opening a fence: the delimiter line itself is not content.
+            (None, Some(m)) => {
+                fence = Some(m);
+                false
+            }
+            // Closing the active fence (same marker): not content.
+            (Some(open), Some(m)) if open == m => {
+                fence = None;
+                false
+            }
+            // Any line while a fence is open (incl. a different marker): fenced.
+            (Some(_), _) => false,
+            // Outside any fence: a normal content line.
+            (None, None) => true,
+        }
+    })
+}
+
+/// Does `haystack` contain `word` delimited by non-alphanumeric boundaries, so
+/// "low" matches in "low priority" but NOT in "below"/"follow"/"allow", and
+/// "high" not in "highlight"/"higher"? Both args are lowercase; `haystack` is
+/// assumed already lowercased by the caller.
+fn contains_word(haystack: &str, word: &str) -> bool {
+    haystack.match_indices(word).any(|(idx, _)| {
+        let before = haystack[..idx].chars().next_back();
+        let after = haystack[idx + word.len()..].chars().next();
+        let is_boundary = |c: Option<char>| c.is_none_or(|c| !c.is_alphanumeric());
+        is_boundary(before) && is_boundary(after)
+    })
+}
+
 /// Document title: the first level-one heading in the body (contract §4
-/// `title`).
+/// `title`), skipping fenced code blocks so a fenced `# example` is not read
+/// as the title.
 pub(crate) fn doc_title(text: &str) -> Option<String> {
-    text.lines().find_map(|line| {
+    body_lines_outside_fences(text).find_map(|line| {
         line.strip_prefix("# ")
             .map(|t| t.trim().trim_matches('`').to_string())
             .filter(|t| !t.is_empty())
@@ -1141,7 +1192,7 @@ pub(crate) fn doc_type_of(rel_path: &str) -> Option<String> {
 fn checkbox_lifecycle(text: &str) -> Option<engine_model::Lifecycle> {
     let mut done: u32 = 0;
     let mut total: u32 = 0;
-    for line in text.lines() {
+    for line in body_lines_outside_fences(text) {
         let trimmed = line.trim_start();
         if trimmed.starts_with("- [x] ") || trimmed.starts_with("- [X] ") {
             done += 1;
@@ -1209,7 +1260,7 @@ pub(crate) fn doc_lifecycle(doc_type: Option<&str>, text: &str) -> Option<engine
 /// Recognizes the four-state machine; an ADR predating the convention yields
 /// `None` (honest absence, not a fabricated `accepted`).
 pub(crate) fn adr_status(text: &str) -> Option<String> {
-    let h1 = text.lines().find(|l| l.starts_with("# "))?;
+    let h1 = body_lines_outside_fences(text).find(|l| l.starts_with("# "))?;
     let lower = h1.to_lowercase();
     for status in ["deprecated", "rejected", "accepted", "proposed"] {
         // Match `status:` followed (loosely) by the keyword on the H1 line.
@@ -1237,26 +1288,68 @@ pub(crate) fn plan_tier(text: &str) -> Option<String> {
 /// lifecycle reports the worst one present. `None` when no severity is found
 /// (an audit predating the convention degrades honestly).
 pub(crate) fn audit_max_severity(text: &str) -> Option<String> {
-    let lower = text.to_lowercase();
+    // Scope to heading/label lines (the doc comment's claim) and match each
+    // severity as a WHOLE WORD, outside fenced blocks. The prior whole-body
+    // substring scan elevated almost every audit: prose "below"/"follow" hit
+    // "low" and "highlight"/"higher" hit "high", so the served severity — and
+    // thus the displayed badge (display-state-is-backend-served) — was ~always
+    // wrong.
+    let label_lines: Vec<String> = body_lines_outside_fences(text)
+        .filter(|line| is_severity_bearing_line(line))
+        .map(|line| line.to_lowercase())
+        .collect();
     for severity in ["critical", "high", "medium", "low"] {
-        if lower.contains(severity) {
+        if label_lines.iter().any(|line| contains_word(line, severity)) {
             return Some(severity.to_string());
         }
     }
     None
 }
 
-/// A rule's active/superseded status: a `## Status` section that names a
-/// successor (a `superseded` keyword, or "successor"/"superseded by" prose)
-/// reads as `superseded`; otherwise `active`. Rules default to active because a
-/// shipped rule binds by default (ADR: pinned to shipped reality).
+/// A line that may legitimately carry a finding severity: a markdown heading
+/// (`#`-prefixed) or a line that names a severity label (`**Severity:** …`).
+/// Prose body lines are excluded so an audit's narrative cannot elevate the
+/// served severity.
+fn is_severity_bearing_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with('#') || trimmed.to_lowercase().contains("severity")
+}
+
+/// A rule's active/superseded status, read from its `## Status` section only.
+/// A Status that says this rule is "superseded by" a successor reads as
+/// `superseded`; otherwise `active`. CRITICALLY, a rule whose Status says it
+/// "supersedes" another rule is the ACTIVE successor (it names the rule it
+/// retires), NOT itself retired — only "superseded by" means this rule is gone
+/// (codify convention). Rules default to active because a shipped rule binds by
+/// default (ADR: pinned to shipped reality), and the scan is confined to the
+/// `## Status` section so prose elsewhere ("…supersedes the prior framing…")
+/// cannot flip a live rule to superseded.
 pub(crate) fn rule_status(text: &str) -> String {
-    let lower = text.to_lowercase();
-    if lower.contains("superseded by") || lower.contains("supersedes") {
+    let Some(status) = status_section(text) else {
+        return "active".to_string();
+    };
+    if status.to_lowercase().contains("superseded by") {
         "superseded".to_string()
     } else {
         "active".to_string()
     }
+}
+
+/// The body of the `## Status` section — the lines between the `## Status`
+/// heading and the next `#`/`##` heading (or EOF), fence-skipped. `None` when
+/// the document has no `## Status` section.
+fn status_section(text: &str) -> Option<String> {
+    let mut lines = body_lines_outside_fences(text)
+        .skip_while(|l| !l.trim_start().to_lowercase().starts_with("## status"));
+    // Consume the `## Status` heading itself; `None` => no Status section.
+    lines.next()?;
+    let body: Vec<&str> = lines
+        .take_while(|l| {
+            let t = l.trim_start();
+            !(t.starts_with("## ") || t.starts_with("# "))
+        })
+        .collect();
+    Some(body.join("\n"))
 }
 
 /// Feature tags from vault frontmatter: `- '#tag'` entries that are not
@@ -1372,6 +1465,74 @@ mod tests {
         // An out-of-enum status token → None (rejected, never carried).
         let bad = "# `x` adr: `t` | (**status:** `superseded`)\n";
         assert_eq!(frontmatter_adr_status(bad), None);
+    }
+
+    #[test]
+    fn body_metadata_parsers_are_fence_aware_and_word_bounded() {
+        // #42 metadata-parser correctness pass: the body parsers must not read a
+        // fenced EXAMPLE as the document's own metadata, and severity/status
+        // matching is whole-word, not substring. Each assertion FAILS against the
+        // pre-fix parsers (whole-body substring / fence-blind line scans).
+
+        // doc_title: a fenced `# Example` must not become the title; the real H1
+        // below it wins.
+        let titled = "```md\n# Fenced Example Title\n```\n\n# Real Title\n\nbody\n";
+        assert_eq!(
+            doc_title(titled).as_deref(),
+            Some("Real Title"),
+            "a fenced `# heading` is not the document title",
+        );
+
+        // checkbox_lifecycle: a fenced example task list must not inflate
+        // progress; only the two real boxes (one done) count.
+        let plan = "## Steps\n\n- [x] real done\n- [ ] real open\n\n```\n- [x] ex\n- [x] ex\n- [ ] ex\n```\n";
+        let life = checkbox_lifecycle(plan).expect("real checkboxes present");
+        let progress = life.progress.expect("progress reported");
+        assert_eq!(
+            (progress.done, progress.total),
+            (1, 2),
+            "fenced example checkboxes do not inflate done/total",
+        );
+
+        // audit_max_severity: prose "below"/"highlight" must NOT match
+        // low/high; only the labelled heading's real severity (medium) wins.
+        let audit = "# Audit\n\nThe risk is below the threshold; we highlight nothing.\n\n### Finding F1 (Medium)\n\nDetails.\n";
+        assert_eq!(
+            audit_max_severity(audit).as_deref(),
+            Some("medium"),
+            "`below`/`highlight` prose does not elevate to low/high; the heading's medium wins",
+        );
+        // And a genuine `low` on a label line still resolves (word match works).
+        let low = "# Audit\n\n**Severity:** low\n\nNothing follows below.\n";
+        assert_eq!(audit_max_severity(low).as_deref(), Some("low"));
+        // A fenced `Critical` example must not elevate the severity.
+        let fenced_sev = "# Audit\n\n```\n### Finding (Critical)\n```\n\n### Finding F1 (Low)\n";
+        assert_eq!(
+            audit_max_severity(fenced_sev).as_deref(),
+            Some("low"),
+            "a fenced `Critical` example does not drive the lifecycle",
+        );
+
+        // rule_status: a rule whose `## Status` says it SUPERSEDES another is the
+        // ACTIVE successor, not retired; only "superseded by" retires it; and
+        // prose "supersedes" outside `## Status` never flips a live rule.
+        let successor = "# rule\n\n## Status\n\nActive. Supersedes `old-rule`.\n\n## Source\n";
+        assert_eq!(
+            rule_status(successor),
+            "active",
+            "a rule that supersedes another is the active successor",
+        );
+        let retired = "# rule\n\n## Status\n\nSuperseded by `new-rule`.\n\n## Source\n";
+        assert_eq!(rule_status(retired), "superseded");
+        let prose_only =
+            "# rule\n\n## Rule\n\nThis supersedes the prior framing.\n\n## Status\n\nActive.\n";
+        assert_eq!(
+            rule_status(prose_only),
+            "active",
+            "`supersedes` in prose outside `## Status` does not retire a live rule",
+        );
+        let no_status = "# rule\n\n## Rule\n\nbody, no status section\n";
+        assert_eq!(rule_status(no_status), "active");
     }
 
     #[test]
