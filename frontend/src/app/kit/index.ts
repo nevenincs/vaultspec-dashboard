@@ -62,3 +62,10 @@ export type { Category, CategoryToken } from "./category";
 
 // Centralized glyph set (the two sanctioned families, under binding Figma names)
 export * from "./glyphs";
+
+// Shared state-mode primitives (state-mode-uniformity ADR): loading = UI-only Skeleton
+// (no text), degraded/empty = StateBlock (shared glyph + one sentence). Composed by every
+// data-bearing surface so the four modes render uniformly.
+export { Skeleton, SkeletonBar, SkeletonRow } from "./Skeleton";
+export { StateBlock } from "./StateBlock";
+export type { StateBlockMode, StateBlockLayout } from "./StateBlock";

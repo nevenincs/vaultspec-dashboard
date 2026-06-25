@@ -17,22 +17,31 @@
 
 import {
   Calendar,
+  Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Crosshair,
   File,
   Folder,
   FolderPlus,
+  Funnel,
+  GitBranch,
   Maximize,
   Menu,
   Minus,
   PanelLeft,
   PanelRight,
   Plus,
+  Search,
+  TriangleAlert,
 } from "lucide-react";
 import { Books, Gear, Graph, TreeStructure } from "@phosphor-icons/react";
 
 // Structural chrome — Lucide. Re-exported under their binding Figma names.
+// The mobile additions (mobile-responsive-layout) mirror the Figma Icon-set
+// glyphs authored for the compact frames: the search MagnifyingGlass (Lucide
+// `Search`), the filter Funnel, the back ChevronLeft, and the activity GitBranch.
 export {
   FolderPlus,
   Plus,
@@ -40,6 +49,7 @@ export {
   File,
   Folder,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
   Maximize,
   Crosshair,
@@ -47,7 +57,16 @@ export {
   PanelLeft,
   PanelRight,
   Calendar,
+  Funnel,
+  GitBranch,
 };
+export { Search as MagnifyingGlass };
+
+// State-mode marks (state-mode-uniformity): the shared caution mark for the DEGRADED
+// mode (`TriangleAlert`) and the positive `Check` for the EMPTY/settled mode, sourced
+// here so every state surface composes the SAME glyph — never an ad-hoc per-surface
+// `lucide-react` import. `Folder` (above) is the neutral empty-corpus mark.
+export { TriangleAlert, Check };
 
 // Expressive / domain marks — Phosphor. `Hierarchy` is the connected-node graph
 // mark (Phosphor ships it as `Graph`; the binding board names the glyph
