@@ -20,6 +20,24 @@
       "bindingKind": "surface"
     },
     {
+      "name": "BottomSheet",
+      "source": "src/app/chrome/BottomSheet.tsx",
+      "designSurface": true,
+      "figmaNodeId": "826:3833",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=826-3833",
+      "figmaNodeName": null,
+      "bindingKind": "surface"
+    },
+    {
+      "name": "BottomTabBar",
+      "source": "src/app/shell/BottomTabBar.tsx",
+      "designSurface": true,
+      "figmaNodeId": "824:3779",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=824-3779",
+      "figmaNodeName": null,
+      "bindingKind": "surface"
+    },
+    {
       "name": "Breadcrumb",
       "source": "src/app/kit/Breadcrumb.tsx",
       "designSurface": true,
@@ -126,6 +144,33 @@
       "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=634-2090",
       "figmaNodeName": null,
       "bindingKind": "surface"
+    },
+    {
+      "name": "CompactAppShell",
+      "source": "src/app/shell/CompactAppShell.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
+      "name": "CompactDocReader",
+      "source": "src/app/shell/CompactDocReader.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
+      "name": "CompactTimeline",
+      "source": "src/app/shell/CompactTimeline.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
     },
     {
       "name": "ConfirmDialog",
@@ -470,6 +515,15 @@
       "bindingKind": "surface"
     },
     {
+      "name": "MobileTopBar",
+      "source": "src/app/shell/MobileTopBar.tsx",
+      "designSurface": true,
+      "figmaNodeId": "825:3838",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=825-3838",
+      "figmaNodeName": null,
+      "bindingKind": "surface"
+    },
+    {
       "name": "NodeInterior",
       "source": "src/app/islands/NodeInterior.tsx",
       "designSurface": false,
@@ -635,19 +689,19 @@
       "name": "SearchPaletteSurface",
       "source": "src/app/palette/SearchPaletteSurface.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "651:1771",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=651-1771",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "SearchResultPill",
       "source": "src/app/palette/SearchResultPill.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "650:1790",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=650-1790",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "SectionLabel",
@@ -806,6 +860,15 @@
       "name": "TreeBrowser",
       "source": "src/app/left/TreeBrowser.tsx",
       "designSurface": false,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
+      "name": "UnsavedEditGuardHost",
+      "source": "src/app/chrome/UnsavedEditGuardHost.tsx",
+      "designSurface": true,
       "figmaNodeId": null,
       "figmaUrl": null,
       "figmaNodeName": null,
