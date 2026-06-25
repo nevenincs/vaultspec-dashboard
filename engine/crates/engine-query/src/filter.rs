@@ -1259,7 +1259,7 @@ mod tests {
     fn vocabulary_lists_only_progress_derived_plan_completions() {
         // (d) the vocabulary enumerates the DISTINCT plan-COMPLETION classes
         // present among PLAN nodes — derived from checkbox progress (done/total),
-        // sorted, deduped, never a hardcoded enum and never a tier/status/severity
+        // in lifecycle order, deduped, never a hardcoded enum and never a tier/status/severity
         // (the previous bug, where `lifecycle.state` was read directly and leaked
         // the plan TIER / ADR status / audit severity into this facet).
         use engine_model::{
@@ -1332,8 +1332,8 @@ mod tests {
         let vocab = vocabulary(&graph);
         assert_eq!(
             vocab.plan_states,
-            vec!["finished", "in-progress", "not-started"],
-            "distinct plan completions, sorted + deduped from PLAN progress only"
+            vec!["not-started", "in-progress", "finished"],
+            "distinct plan completions in lifecycle order, deduped, from PLAN progress only"
         );
         // Hard guarantee: plan_states is a subset of the completion enum — never a
         // tier (L1-L4), an ADR status (accepted), or an audit severity (high).
