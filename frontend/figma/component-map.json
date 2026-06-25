@@ -752,28 +752,28 @@
       "name": "Skeleton",
       "source": "src/app/kit/Skeleton.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "859:3948",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=859-3948",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "SkeletonBar",
       "source": "src/app/kit/Skeleton.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "859:3951",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=859-3951",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "SkeletonRow",
       "source": "src/app/kit/Skeleton.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "859:3949",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=859-3949",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "Slider",
@@ -797,10 +797,10 @@
       "name": "StateBlock",
       "source": "src/app/kit/StateBlock.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "859:3968",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=859-3968",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "StatusDot",
@@ -887,10 +887,10 @@
       "name": "TimelineStateModes",
       "source": "src/app/timeline/Timeline.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "728:7313",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=728-7313",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "TimeTravelChip",
