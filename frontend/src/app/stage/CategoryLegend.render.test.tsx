@@ -80,6 +80,8 @@ describe("CategoryLegend (canonical doc_types filter, unified-filter-plane D2)",
     render(createElement(CategoryLegend));
     expect(item("adr").className).toContain("opacity-100");
     expect(item("research").className).toContain("opacity-100");
-    expect(screen.getByRole("group", { name: "category filters" })).toBeTruthy();
+    // A roving toolbar of doc-type filter toggles — one tab stop, arrows move
+    // between categories (keyboard-navigation FocusZone enrollment).
+    expect(screen.getByRole("toolbar", { name: "category filters" })).toBeTruthy();
   });
 });

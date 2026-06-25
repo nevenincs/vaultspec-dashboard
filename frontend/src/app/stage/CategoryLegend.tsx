@@ -22,12 +22,13 @@
 // centralized kit `Card` and the bound category tokens — never a hand-drawn pill or
 // a literal hex (design-system-is-centralized, warmth-lives-in-tokens).
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { useDashboardFilterSidebarIntent } from "../../stores/server/dashboardFilterSidebarIntent";
 import { docTypeLabel } from "../../stores/server/docTypeVocabulary";
 import { useActiveScope, useVaultRailFacets } from "../../stores/server/queries";
 import { DocTypeMark } from "../../scene/field/markComponents";
+import { useFocusZone } from "../chrome/useFocusZone";
 import { Card, categoryColorVar, categoryToken } from "../kit";
 import type { Category } from "../kit";
 
@@ -76,12 +77,23 @@ export function CategoryLegend() {
   // — stable-selectors). Empty = no filter, every category shown.
   const activeDocTypes = useMemo(() => new Set(docTypes), [docTypes]);
   const filterActive = docTypes.length > 0;
+  // The doc-type filter toggles rove through the one shared FocusZone as a toolbar
+  // (every-composite-navigates-through-the-one-focuszone): the legend is ONE tab
+  // stop and arrows move between the categories. The `feature` swatch is a static
+  // colour key (not a button), so it is outside the zone.
+  const [activeItem, setActiveItem] = useState<string | null>(null);
+  const zone = useFocusZone({
+    orientation: "both",
+    wrap: true,
+    activeKey: activeItem,
+    onActiveKeyChange: setActiveItem,
+  });
   return (
     <Card
       elevation="raised"
       padded={false}
       className="pointer-events-auto absolute left-fg-2 top-fg-2 z-10 flex max-w-[60%] flex-wrap items-center gap-fg-2 px-fg-2 py-fg-1-5"
-      role="group"
+      role="toolbar"
       aria-label="category filters"
       data-category-legend
     >
@@ -104,8 +116,13 @@ export function CategoryLegend() {
         // Multi-select inclusion: with no selection every category is shown; once a
         // selection exists, only its members stay full-opacity (the rest dim).
         const included = !filterActive || activeDocTypes.has(token);
+        const item = zone.rove(token);
         return (
           <button
+            ref={item.ref}
+            tabIndex={item.tabIndex}
+            onKeyDown={item.onKeyDown}
+            onFocus={() => setActiveItem(token)}
             type="button"
             key={label}
             onClick={() => void toggleFacet("doc_types", token)}
