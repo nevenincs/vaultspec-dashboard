@@ -437,10 +437,10 @@
       "name": "KeybindingControl",
       "source": "src/app/settings/controls/KeybindingControl.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "852:3944",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=852-3944",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "surface"
     },
     {
       "name": "KeyboardNav",
@@ -608,10 +608,10 @@
       "name": "RailDegradedNotice",
       "source": "src/app/left/railStates.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "851:3945",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=851-3945",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "state"
     },
     {
       "name": "RailEmpty",
@@ -662,10 +662,10 @@
       "name": "RailSkeleton",
       "source": "src/app/left/railStates.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
+      "figmaNodeId": "851:3949",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=851-3949",
       "figmaNodeName": null,
-      "bindingKind": null
+      "bindingKind": "state"
     },
     {
       "name": "RangeSelect",
