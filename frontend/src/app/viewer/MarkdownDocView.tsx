@@ -46,6 +46,7 @@ import {
 } from "../../stores/view/editor";
 import {
   applyRenamedMarkdownDocWorkspace,
+  editorStatusHasUnsavedDraft,
   promoteDocTab,
 } from "../../stores/view/tabs";
 import { Button, type BreadcrumbItem } from "../kit";
@@ -106,13 +107,25 @@ export function MarkdownDocView({
   const renameNow = () => {
     const to = editorChrome.renameTarget;
     if (to === null) return;
+    // Capture the unsaved-draft flag BEFORE markEditorSaving() flips the status to
+    // "saving": the rename re-key must restore "dirty" so the unsaved-edit guard keeps
+    // protecting the draft, and the rename re-seed cannot re-derive it (the status is
+    // already "saving" by the time the mutation resolves). Thread it through.
+    const hadUnsavedDraft = editorStatusHasUnsavedDraft(
+      useViewStore.getState().editorStatus,
+    );
     markEditorSaving();
     renameDoc.mutate(
       { nodeId, scope: scope ?? undefined, to, expectedBlobHash: editor.baseBlobHash },
       {
         onSuccess: ({ result }) => {
           if (result.kind === "renamed") {
-            void applyRenamedMarkdownDocWorkspace(result, editor.draftText, scope);
+            void applyRenamedMarkdownDocWorkspace(
+              result,
+              editor.draftText,
+              scope,
+              hadUnsavedDraft,
+            );
           } else {
             applyRenameEditorResult(result);
           }

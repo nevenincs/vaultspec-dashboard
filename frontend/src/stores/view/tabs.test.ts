@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { ContentView } from "../server/queries";
 import {
   applyRenamedMarkdownDocWorkspace,
+  editorStatusHasUnsavedDraft,
   activateDocTab,
   closeDocTab,
   deriveDockDocPanelView,
@@ -312,27 +313,48 @@ describe("rename re-key", () => {
     });
   });
 
-  it("preserves the dirty flag when the renamed editor had unsaved changes", async () => {
+  // INTEGRATION test for the REAL rename sequence (S19 adversarial-review defect):
+  // `renameNow` calls `markEditorSaving()` (status -> "saving") BEFORE the mutation
+  // resolves, so the unsaved flag MUST be captured before that and threaded into
+  // applyRenamed — re-deriving it inside applyRenamed would always observe "saving"
+  // and silently drop the dirty flag. This drives that exact ordering.
+  it("preserves dirty across the real sequence: markEditorSaving fires before applyRenamed", async () => {
     useViewStore.getState().openDoc("doc:old", "markdown", true);
     useViewStore.getState().openEditor("doc:old", "saved body", "hash-old");
     useViewStore.getState().setDraft("edited body");
     expect(useViewStore.getState().editorStatus).toBe("dirty");
 
+    // The renameNow ordering: capture FIRST, then flip to "saving", then re-key.
+    const hadUnsavedDraft = editorStatusHasUnsavedDraft(
+      useViewStore.getState().editorStatus,
+    );
+    useViewStore.getState().markSaving();
+    expect(useViewStore.getState().editorStatus).toBe("saving");
+
     await applyRenamedMarkdownDocWorkspace(
       { oldNodeId: "doc:old", newNodeId: "doc:new", newBlobHash: "hash-new" },
       "edited body",
       null,
+      hadUnsavedDraft,
     );
 
-    // The draft survives AND stays dirty — the renamed file's blob is the old body,
-    // so the draft still diverges; it must not show "Saved" (which would lose it on
-    // the next nav). The next save targets the new blob hash.
+    // Despite the intervening "saving", the captured flag restores dirty — the draft
+    // stays protected and the next save targets the new blob hash.
     expect(useViewStore.getState()).toMatchObject({
       editorTarget: { nodeId: "doc:new" },
       draftText: "edited body",
       baseBlobHash: "hash-new",
       editorStatus: "dirty",
     });
+  });
+
+  it("editorStatusHasUnsavedDraft flags dirty/save-failed/conflict, not saving/idle", () => {
+    expect(editorStatusHasUnsavedDraft("dirty")).toBe(true);
+    expect(editorStatusHasUnsavedDraft("save-failed")).toBe(true);
+    expect(editorStatusHasUnsavedDraft("conflict")).toBe(true);
+    expect(editorStatusHasUnsavedDraft("saving")).toBe(false);
+    expect(editorStatusHasUnsavedDraft("idle")).toBe(false);
+    expect(editorStatusHasUnsavedDraft("saved")).toBe(false);
   });
 
   it("re-seeds clean when the renamed editor had no unsaved changes", async () => {

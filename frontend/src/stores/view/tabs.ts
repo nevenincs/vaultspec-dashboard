@@ -288,20 +288,20 @@ export function applyRenamedMarkdownDocWorkspace(
   result: RenamedMarkdownDocWorkspaceResult,
   draftText: string,
   scope: unknown = useViewStore.getState().scope,
+  hadUnsavedDraft = false,
 ): Promise<boolean> {
   // Preserve the unsaved-work flag across the re-key. The engine rename operates on
   // the on-disk body, NOT the draft — so the renamed file's blob is the OLD (pre-edit)
   // body, and a draft that was dirty before the rename still diverges from it. But
   // `openEditor` re-seeds at `idle`, which would show the edits as "Saved" against a
   // base lacking them and drop the dirty flag (the unsaved-edit guard then no longer
-  // protects the draft — silent loss on the next nav). Capture the unsaved status
-  // BEFORE teardown and restore it after the re-seed so the draft stays dirty and the
-  // next save (expected_blob_hash = the renamed file's current blob) lands correctly.
-  const priorStatus = useViewStore.getState().editorStatus;
-  const hadUnsavedDraft =
-    priorStatus === "dirty" ||
-    priorStatus === "save-failed" ||
-    priorStatus === "conflict";
+  // protects the draft — silent loss on the next nav).
+  //
+  // `hadUnsavedDraft` MUST be captured by the caller BEFORE it flips the editor status
+  // away from "dirty": the real rename path (`renameNow`) calls `markEditorSaving()`
+  // (status -> "saving") BEFORE the mutation resolves, so reading the live status here
+  // would always observe "saving" and never restore the dirty flag (the defect the
+  // S19 adversarial review caught). The flag is threaded in, not re-derived here.
   closeDocTab(result.oldNodeId);
   const selected = openDocTab(result.newNodeId, "markdown", scope);
   useViewStore.getState().openEditor(result.newNodeId, draftText, result.newBlobHash);
@@ -309,6 +309,13 @@ export function applyRenamedMarkdownDocWorkspace(
     useViewStore.setState({ editorStatus: "dirty" });
   }
   return selected;
+}
+
+/** True when an editor status carries an unsaved draft (dirty, or a retained-draft
+ *  failure/conflict). Exported so the rename caller can capture it BEFORE
+ *  `markEditorSaving()` flips the status to "saving". */
+export function editorStatusHasUnsavedDraft(status: unknown): boolean {
+  return status === "dirty" || status === "save-failed" || status === "conflict";
 }
 
 /** Reorder the open docs to match dockview's geometry after a tab drag. */
