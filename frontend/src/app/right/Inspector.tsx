@@ -21,7 +21,16 @@ import { selectEdge } from "../../stores/view/selection";
 // eyebrows, the key/value property rows for the node metadata, the edge-count
 // badge, and the chrome chevrons all resolve to one shared definition.
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
-import { Badge, ChevronDown, ChevronRight, PropertyRow, SectionLabel } from "../kit";
+import {
+  Badge,
+  ChevronDown,
+  ChevronRight,
+  PropertyRow,
+  SectionLabel,
+  Skeleton,
+  SkeletonRow,
+  StateBlock,
+} from "../kit";
 
 // The edge resolver self-registers at module load. The "node" kind is served by
 // the canonical graph node resolver (registered via app/menus/registerAll), since
@@ -39,7 +48,7 @@ export function Inspector() {
   );
 
   if (view.state === "empty") {
-    return <p className={view.messageClassName}>{view.message}</p>;
+    return <StateBlock mode="empty" message={view.message} />;
   }
   if (view.state === "event") {
     return (
@@ -57,10 +66,18 @@ export function Inspector() {
     );
   }
   if (view.state === "loading") {
-    return <p className={view.messageClassName}>{view.message}</p>;
+    return (
+      <Skeleton label={view.message}>
+        <SkeletonRow width="w-2/3" />
+        <SkeletonRow width="w-1/2" />
+        <SkeletonRow width="w-1/3" />
+      </Skeleton>
+    );
   }
+  // Anything not yet ready is an unavailable node detail — the shared degraded
+  // block carries it (state-mode-uniformity ADR), never raw error text.
   if (view.state !== "ready") {
-    return <p className={view.messageClassName}>{view.message}</p>;
+    return <StateBlock mode="degraded" message={view.message} />;
   }
 
   const { node } = view;

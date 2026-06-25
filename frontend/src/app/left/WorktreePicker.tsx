@@ -25,7 +25,15 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import { useFocusZone } from "../chrome/useFocusZone";
 
-import { FolderPlus, IconButton, PanelLeft, Popover } from "../kit";
+import {
+  FolderPlus,
+  IconButton,
+  PanelLeft,
+  Popover,
+  Skeleton,
+  SkeletonRow,
+  StateBlock,
+} from "../kit";
 import type { WorktreeEntity } from "../../platform/actions/entity";
 import type { MapWorktree } from "../../stores/server/engine";
 import { type WorkspaceMapPickerRowView } from "../../stores/server/queries";
@@ -121,11 +129,13 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
   }, [defaultExpanded]);
 
   if (state === "loading") {
-    // Loading: a quiet copy-toned pending line — no spinner theatre.
+    // LOADING (state-mode-uniformity ADR D2/D4): the shared UI-only skeleton —
+    // no on-screen "loading…" text; the label is screen-reader-only.
     return (
-      <p className={pickerView.loadingClassName} role="status" aria-live="polite">
-        {pickerView.loadingLabel}
-      </p>
+      <Skeleton label={pickerView.loadingLabel} className="px-fg-1 py-fg-1">
+        <SkeletonRow width="w-3/4" />
+        <SkeletonRow width="w-1/2" />
+      </Skeleton>
     );
   }
 
@@ -138,13 +148,12 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
     // refetch (useWorkspaceMap) self-heals the picker after engine startup
     // without a page reload, so the retry is a manual nudge, not the only path.
     return (
-      <div
-        className={pickerView.errorRootClassName}
-        role="status"
-        aria-live="polite"
-        data-worktree-error
-      >
-        <p className={pickerView.errorLabelClassName}>{pickerView.errorLabel}</p>
+      <div className={pickerView.errorRootClassName} data-worktree-error>
+        <StateBlock
+          mode="degraded"
+          layout="inline"
+          message={pickerView.errorLabel ?? "couldn’t load worktrees."}
+        />
         <button
           type="button"
           onClick={retry}

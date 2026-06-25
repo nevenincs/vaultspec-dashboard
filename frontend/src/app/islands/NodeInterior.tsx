@@ -16,8 +16,6 @@
 // hard-coded. The interior reads stores hooks only — it never fetches and never
 // reads the raw `tiers` block (dashboard-layer-ownership).
 
-import { FileWarning } from "lucide-react";
-
 import type { EngineNode, NodeDetail } from "../../stores/server/engine";
 import {
   useFeatureLifecycleView,
@@ -25,6 +23,11 @@ import {
 } from "../../stores/server/queries";
 import { DocTypeMark, StateMark } from "../../scene/field/markComponents";
 import { useDashboardNodeSelection } from "../../stores/view/selection";
+// Shared state-mode kit (state-mode-uniformity ADR): loading is a UI-only Skeleton
+// (the human sentence becomes the screen-reader label), and an unavailable interior
+// reads as the shared degraded StateBlock — one glyph + one plain sentence, never
+// ad-hoc text or a bespoke shape.
+import { Skeleton, SkeletonRow, StateBlock } from "../kit";
 import {
   deriveNodeInteriorView,
   interiorSteps,
@@ -46,17 +49,22 @@ export function NodeInterior({ id, scope }: { id: string; scope: string | null }
     return <FeatureLifecycle id={id} scope={scope} selectNode={selectNode} />;
   }
   if (interior.state === "loading") {
-    return <p className={interior.messageClassName}>{interior.message}</p>;
+    return (
+      <Skeleton label={interior.message} className="mt-fg-1">
+        <SkeletonRow width="w-2/3" />
+        <SkeletonRow width="w-1/2" />
+      </Skeleton>
+    );
   }
   // Contained per-island failure (ADR "States"): an interior/detail fetch
-  // failure is rendered on THIS island, never as a canvas-wide error. A
-  // non-color icon cue carries the state so it reads without color perception.
+  // failure is rendered on THIS island, never as a canvas-wide error. It reads
+  // as the shared degraded state block — a glyph + one sentence carries the
+  // state without color perception (state-mode-uniformity ADR).
   if (interior.state === "unavailable") {
     return (
-      <p className={interior.messageClassName} role="status" data-interior-error>
-        <FileWarning aria-hidden size={interior.iconSize} strokeWidth={1.5} />
-        {interior.message}
-      </p>
+      <div className="mt-fg-1" data-interior-error>
+        <StateBlock mode="degraded" layout="inline" message={interior.message} />
+      </div>
     );
   }
   if (interior.state === "plan")
@@ -84,7 +92,12 @@ function FeatureLifecycle({
 }) {
   const lifecycle = useFeatureLifecycleView(id, scope);
   if (lifecycle.state === "loading") {
-    return <p className="mt-fg-1 text-label text-ink-faint">unfolding lifecycle…</p>;
+    return (
+      <Skeleton label="unfolding lifecycle…" className="mt-fg-1">
+        <SkeletonRow width="w-2/3" />
+        <SkeletonRow width="w-1/2" />
+      </Skeleton>
+    );
   }
   return (
     <ol className="mt-fg-1 flex items-center gap-fg-1" data-lifecycle-axis>

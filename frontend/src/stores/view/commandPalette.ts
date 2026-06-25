@@ -68,6 +68,12 @@ export function normalizeSearchPaletteExpanded(expanded: unknown): boolean {
   return expanded === true;
 }
 
+/** The non-typical render mode when there are no result pills (state-mode-uniformity
+ *  ADR): `loading` → a UI-only Skeleton (the message is the screen-reader label only),
+ *  `degraded`/`empty` → a StateBlock (shared glyph + one sentence). `null` means there
+ *  is no empty state to render (results are present). */
+export type SearchPaletteStateMode = "loading" | "degraded" | "empty" | null;
+
 export interface SearchPalettePresentationView {
   safeCursor: number;
   selectedNodeId: string | null;
@@ -78,6 +84,8 @@ export interface SearchPalettePresentationView {
   resultCountLabel: string;
   listboxLabel: string;
   panelClassName: string;
+  /** The non-typical state mode to render when there are no pills (see above). */
+  stateMode: SearchPaletteStateMode;
   emptyMessage: string | null;
   liveMessage: string;
   footerHints: {
@@ -143,13 +151,25 @@ export function deriveSearchPalettePresentationView(context: {
       : context.searchState === "loading"
         ? "searching…"
         : "";
+  // The empty/idle PROMPT (no query yet) stays a plain hint sentence — it is the
+  // typical idle state, not an empty/degraded result. Loading, degraded, and no-match
+  // are routed to the shared state-mode kit via `stateMode`; their sentence travels as
+  // the StateBlock message (or the Skeleton's screen-reader label for loading).
+  const stateMode: SearchPaletteStateMode =
+    count > 0 || query.length === 0
+      ? null
+      : context.searchState === "loading"
+        ? "loading"
+        : context.semanticOffline === true
+          ? "degraded"
+          : "empty";
   const emptyMessage =
     count > 0
       ? null
       : query.length === 0
         ? "Search across your documents and code by meaning."
         : context.searchState === "loading"
-          ? "Searching…"
+          ? "Searching documents and code"
           : context.semanticOffline === true
             ? "Semantic search is offline — showing title and text matches."
             : `No matches for “${query}”.`;
@@ -166,6 +186,7 @@ export function deriveSearchPalettePresentationView(context: {
     panelClassName: `flex max-h-[calc(100vh-9rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-fg-lg border border-rule bg-paper-raised shadow-fg-popover animate-slide-in-down ${
       expanded ? "w-[64rem]" : "w-[32rem]"
     }`,
+    stateMode,
     emptyMessage,
     liveMessage:
       context.error === true

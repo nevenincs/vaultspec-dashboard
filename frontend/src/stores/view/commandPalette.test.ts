@@ -197,6 +197,7 @@ describe("command palette store", () => {
       dialogLabel: "Search documents and code",
       inputPlaceholder: "Search documents and code…",
       resultCountLabel: "2 results",
+      stateMode: null,
       emptyMessage: null,
       liveMessage: "2 results",
       footerHints: {
@@ -222,6 +223,7 @@ describe("command palette store", () => {
       selectedNodeId: null,
       showExpandedPanel: false,
       resultCountLabel: "",
+      stateMode: null,
       emptyMessage: "Search across your documents and code by meaning.",
       liveMessage: "",
     });
@@ -238,7 +240,10 @@ describe("command palette store", () => {
       }),
     ).toMatchObject({
       resultCountLabel: "searching…",
-      emptyMessage: "Searching…",
+      // Loading is UI-only (state-mode-uniformity ADR): the message becomes the
+      // Skeleton's screen-reader label, never on-screen text.
+      stateMode: "loading",
+      emptyMessage: "Searching documents and code",
       liveMessage: "searching…",
     });
 
@@ -253,8 +258,24 @@ describe("command palette store", () => {
         error: true,
       }),
     ).toMatchObject({
+      stateMode: "degraded",
       emptyMessage: "Semantic search is offline — showing title and text matches.",
       liveMessage: "search request failed",
+    });
+
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "auth",
+        cursor: 0,
+        expanded: false,
+        pills: [],
+        searchState: "success",
+        semanticOffline: false,
+        error: false,
+      }),
+    ).toMatchObject({
+      stateMode: "empty",
+      emptyMessage: "No matches for “auth”.",
     });
   });
 

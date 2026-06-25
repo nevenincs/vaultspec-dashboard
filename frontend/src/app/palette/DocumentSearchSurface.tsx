@@ -32,6 +32,7 @@ import { useDocumentSearchController } from "../../stores/server/documentSearchC
 import { deriveSearchPillViews } from "../../stores/server/searchPill";
 import { useActiveScope } from "../../stores/server/queries";
 import { openNodeIsland } from "../../stores/view/selection";
+import { Skeleton, SkeletonRow, StateBlock } from "../kit";
 import { trapTabFocus } from "../chrome/focusTrap";
 import { useDismissOnEscape } from "../chrome/useDismissOnEscape";
 import { useFocusRestore } from "../chrome/useFocusRestore";
@@ -90,16 +91,13 @@ export function DocumentSearchSurface() {
       : state === "loading"
         ? "searching…"
         : "";
-  const emptyMessage =
-    count > 0
-      ? null
-      : query.trim().length === 0
-        ? "Find a document by name."
-        : state === "loading"
-          ? "Searching…"
-          : state === "degraded"
-            ? "Documents are temporarily unavailable."
-            : `No document matches “${query.trim()}”.`;
+  // The idle PROMPT (no query yet) stays a plain hint sentence — it is the typical idle
+  // state, not an empty/degraded result. Loading, degraded, and no-match render through
+  // the shared state-mode kit (state-mode-uniformity ADR): loading is a UI-only Skeleton
+  // (its sentence is the screen-reader label, never visible text); degraded/empty are a
+  // StateBlock (shared glyph + one plain sentence).
+  const idlePrompt =
+    count === 0 && query.trim().length === 0 ? "Find a document by name." : null;
 
   return (
     <div
@@ -141,11 +139,7 @@ export function DocumentSearchSurface() {
           )}
         </div>
 
-        {emptyMessage ? (
-          <div className="px-fg-4 py-fg-6 text-caption text-ink-faint">
-            {emptyMessage}
-          </div>
-        ) : (
+        {count > 0 ? (
           <ul
             id={listboxId}
             role="listbox"
@@ -168,6 +162,23 @@ export function DocumentSearchSurface() {
               </li>
             ))}
           </ul>
+        ) : idlePrompt ? (
+          <div className="px-fg-4 py-fg-6 text-caption text-ink-faint">
+            {idlePrompt}
+          </div>
+        ) : state === "loading" ? (
+          <Skeleton label="Searching documents" className="p-fg-1">
+            <SkeletonRow width="w-2/3" />
+            <SkeletonRow width="w-1/2" />
+            <SkeletonRow width="w-3/5" />
+          </Skeleton>
+        ) : state === "degraded" ? (
+          <StateBlock
+            mode="degraded"
+            message="Documents are temporarily unavailable."
+          />
+        ) : (
+          <StateBlock mode="empty" message="No document matches your search." />
         )}
       </div>
     </div>

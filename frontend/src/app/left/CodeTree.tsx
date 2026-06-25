@@ -23,6 +23,8 @@
 import { File, Folder, type Icon } from "@phosphor-icons/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
+import { Skeleton, SkeletonRow, StateBlock } from "../kit";
+
 import type { CodeFileEntity } from "../../platform/actions/entity";
 import type { FileTreeEntry } from "../../stores/server/engine";
 import {
@@ -451,29 +453,24 @@ function ChildLevel({
   const level = useFileTreeLevel(scope, path);
 
   if (level.state === "loading") {
+    // CHILD LOADING (state-mode-uniformity ADR D2/D4): a small inline skeleton,
+    // indented to the level — no on-screen text; the message is the sr-only label.
     return (
-      <p
-        className={level.childLoadingClassName}
-        style={fileTreeChildStatusStyle(depth)}
-        role="status"
-        aria-live="polite"
-        data-code-level-loading
-      >
-        {level.childLoadingMessage}
-      </p>
+      <div style={fileTreeChildStatusStyle(depth)} data-code-level-loading>
+        <Skeleton label={level.childLoadingMessage}>
+          <SkeletonRow width="w-2/3" />
+        </Skeleton>
+      </div>
     );
   }
 
   if (level.state === "error") {
+    // CHILD ERROR (state-mode-uniformity ADR D3): the shared inline degraded notice —
+    // shared glyph + one plain sentence, indented to the level.
     return (
-      <p
-        className={level.childErrorClassName}
-        style={fileTreeChildStatusStyle(depth)}
-        role="status"
-        data-code-level-error
-      >
-        {level.childErrorMessage}
-      </p>
+      <div style={fileTreeChildStatusStyle(depth)} data-code-level-error>
+        <StateBlock mode="degraded" layout="inline" message={level.childErrorMessage} />
+      </div>
     );
   }
 

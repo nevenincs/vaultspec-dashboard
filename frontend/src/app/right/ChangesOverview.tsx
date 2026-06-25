@@ -46,7 +46,7 @@ import {
 import { openDocTab } from "../../stores/view/tabs";
 import type { ButtonHTMLAttributes, Ref } from "react";
 
-import { FoldSection, SectionLabel } from "../kit";
+import { FoldSection, SectionLabel, Skeleton, SkeletonRow, StateBlock } from "../kit";
 
 // The Changes fold defaults closed — the board's resting GitStatusPill state.
 const CHANGES_SECTION_ID = "changes";
@@ -219,22 +219,26 @@ export function ChangesOverview({
       data-changes-overview
     >
       <div className={changes.rootClassName}>
+        {/* LOADING — UI-only skeleton mimicking the change rows (state-mode-uniformity
+            ADR D2): no visible "reading…" copy, the label is screen-reader-only. */}
         {changes.loading && (
-          <p className={changes.loadingClassName} data-changes-loading>
-            {changes.loadingLabel}
-          </p>
+          <Skeleton label={changes.loadingLabel}>
+            <SkeletonRow width="w-3/4" />
+            <SkeletonRow width="w-2/3" />
+          </Skeleton>
         )}
 
+        {/* DEGRADED — the shared caution glyph + one plain sentence (ADR D3), as a
+            compact inline notice over the partial content. */}
         {changes.degraded && (
-          <p className={changes.degradedClassName} data-changes-degraded>
-            {changes.degradedLabel}
-          </p>
+          <StateBlock mode="degraded" layout="inline" message={changes.degradedLabel} />
         )}
 
-        {/* Error state — the head shows the title; the body carries the retry. */}
+        {/* Error state — the head shows the title; the body carries the retry. The
+            shared degraded glyph + sentence stand in for the bare title text. */}
         {changes.errored && (
           <div className={changes.errorRootClassName} data-changes-error>
-            <p className={changes.errorTitleClassName}>{changes.errorTitle}</p>
+            <StateBlock mode="degraded" layout="inline" message={changes.errorTitle} />
             <button
               type="button"
               onClick={changes.retry}
@@ -255,11 +259,12 @@ export function ChangesOverview({
           </div>
         )}
 
-        {/* Clean working tree — an approachable copy-toned empty state. */}
+        {/* Clean working tree — the shared empty state: neutral glyph + one plain
+            sentence (state-mode-uniformity ADR D3). */}
         {changes.clean && (
-          <p className={changes.cleanClassName} data-git-clean>
-            {changes.cleanLabel}
-          </p>
+          <div data-git-clean>
+            <StateBlock mode="empty" message={changes.cleanLabel} />
+          </div>
         )}
       </div>
     </FoldSection>
