@@ -3,12 +3,23 @@ tags:
   - '#plan'
   - '#document-edit-hardening'
 date: '2026-06-18'
-modified: '2026-06-22'
+modified: '2026-06-25'
 tier: L3
 related:
   - '[[2026-06-18-document-edit-hardening-adr]]'
   - '[[2026-06-18-document-edit-hardening-research]]'
 ---
+
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
+
 # `document-edit-hardening` plan
 
 ## Wave `W01` - Engine brokers the project-pinned core
@@ -90,7 +101,7 @@ Prove the whole feature live against real vault documents (save, rename, create,
 Drive the live interface and brokered APIs against real vault documents, run the full gate, and route to code review.
 
 - [x] `W05.P08.S18` - Drive the live interface and brokered POST APIs against real vault docs for save rename create conflict refusal-with-advisory and dependent-view refresh and record evidence; `frontend/src/app/viewer/MarkdownDocView.tsx`.
-- [ ] `W05.P08.S19` - Run the full engine and frontend lint and test gate and route to code review; `frontend/src/app/viewer/MarkdownDocView.tsx`.
+- [x] `W05.P08.S19` - Run the full engine and frontend lint and test gate and route to code review; `frontend/src/app/viewer/MarkdownDocView.tsx`.
 
 ## Description
 
