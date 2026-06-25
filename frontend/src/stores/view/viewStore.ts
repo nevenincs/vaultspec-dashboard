@@ -853,12 +853,16 @@ export const useViewStore = create<ViewState>((set) => ({
     }),
   markSaving: () => set({ editorStatus: "saving" }),
   // Adopt the new blob hash as the next concurrency base so a follow-on edit saves
-  // against the fresh on-disk blob, not the stale one (no phantom conflict).
+  // against the fresh on-disk blob, not the stale one (no phantom conflict). But DON'T
+  // mask an edit-during-save: the textarea stays editable while a save is in flight, so
+  // a keystroke after `markSaving` sets status back to "dirty"; a then-incoming
+  // `markSaved` must KEEP "dirty" (the raced draft is unsaved) so the unsaved-edit guard
+  // still protects it — only flip to "saved" when no edit raced.
   markSaved: (blobHash) =>
-    set({
-      editorStatus: "saved",
+    set((state) => ({
       baseBlobHash: normalizeEditorBlobHash(blobHash),
-    }),
+      editorStatus: state.editorStatus === "dirty" ? "dirty" : "saved",
+    })),
   markConflict: () => set({ editorStatus: "conflict" }),
   markFailed: () => set({ editorStatus: "save-failed" }),
   closeEditor: () =>

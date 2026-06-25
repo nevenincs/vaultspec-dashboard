@@ -39,6 +39,24 @@ describe("unsaved-edit guard", () => {
     expect(useUnsavedEditGuardStore.getState().pending).not.toBeNull();
   });
 
+  it("stages a confirm on a retained-draft save-failed or conflict (not just dirty)", () => {
+    // save-failed and conflict BOTH retain the unsaved draft, so a close/switch must
+    // still arm-to-confirm — gating on "dirty" alone would silently drop the draft.
+    for (const status of ["save-failed", "conflict"] as const) {
+      useUnsavedEditGuardStore.setState({ pending: null });
+      useViewStore.getState().closeEditor();
+      openDocumentEditor("doc:a", "original body", "hash-1");
+      updateEditorDraft("edited body");
+      useViewStore.setState({ editorStatus: status });
+
+      const proceed = vi.fn();
+      guardUnsavedDiscard(proceed);
+
+      expect(proceed).not.toHaveBeenCalled();
+      expect(useUnsavedEditGuardStore.getState().pending).not.toBeNull();
+    }
+  });
+
   it("runs the staged action and clears on confirm (discard)", () => {
     openDirtyEditor("doc:a");
     const proceed = vi.fn();
@@ -110,6 +128,16 @@ describe("guardUnsavedDiscardForDoc (document-scoped)", () => {
 
   it("stages a confirm when THIS document is the dirty editor", () => {
     openDirtyEditor("doc:a");
+    const proceed = vi.fn();
+    guardUnsavedDiscardForDoc("doc:a", proceed);
+    expect(proceed).not.toHaveBeenCalled();
+    expect(useUnsavedEditGuardStore.getState().pending).not.toBeNull();
+  });
+
+  it("stages a confirm when THIS document is save-failed/conflict (retained draft)", () => {
+    openDocumentEditor("doc:a", "original body", "hash-1");
+    updateEditorDraft("edited body");
+    useViewStore.setState({ editorStatus: "save-failed" });
     const proceed = vi.fn();
     guardUnsavedDiscardForDoc("doc:a", proceed);
     expect(proceed).not.toHaveBeenCalled();

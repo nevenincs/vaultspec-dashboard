@@ -126,6 +126,7 @@ describe("editor-state slice (bounded, single-value)", () => {
     });
 
     updateEditorDraft("changed");
+    markEditorSaving();
     markEditorSaved({ blobHash: "bad" });
     expect(useViewStore.getState()).toMatchObject({
       editorStatus: "saved",
@@ -167,6 +168,22 @@ describe("editor-state slice (bounded, single-value)", () => {
     expect(useViewStore.getState().baseBlobHash).toBe("hash-2");
   });
 
+  it("markSaved does NOT mask an edit-during-save (a raced keystroke keeps it dirty)", () => {
+    openDocumentEditor(DOC_ID, "body", "hash-1");
+    updateEditorDraft("changed");
+    markEditorSaving();
+    expect(useViewStore.getState().editorStatus).toBe("saving");
+    // The textarea stays editable during the save — the user keeps typing mid-save.
+    updateEditorDraft("changed again mid-save");
+    expect(useViewStore.getState().editorStatus).toBe("dirty");
+    markEditorSaved("hash-2");
+    // The raced edit is unsaved: markSaved must KEEP "dirty" (not mask it as "saved")
+    // so the unsaved-edit guard still protects it — but it adopts the new base blob so
+    // the next save's expected_blob_hash matches the fresh on-disk body.
+    expect(useViewStore.getState().editorStatus).toBe("dirty");
+    expect(useViewStore.getState().baseBlobHash).toBe("hash-2");
+  });
+
   it("markConflict / markFailed set the status and retain the draft", () => {
     openDocumentEditor(DOC_ID, "body", "hash-1");
     updateEditorDraft("unsaved work");
@@ -181,6 +198,7 @@ describe("editor-state slice (bounded, single-value)", () => {
   it("maps typed write results onto the editor lifecycle state", () => {
     openDocumentEditor(DOC_ID, "body", "hash-1");
     updateEditorDraft("changed");
+    markEditorSaving();
 
     applyEditorWriteResult({
       kind: "saved",

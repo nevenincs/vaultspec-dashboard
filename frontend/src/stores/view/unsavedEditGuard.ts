@@ -14,6 +14,7 @@
 import { create } from "zustand";
 
 import { closeDocumentEditor } from "./editor";
+import { editorStatusHasUnsavedDraft } from "./tabs";
 import { useViewStore } from "./viewStore";
 
 /** A staged destructive action awaiting the user's keep-or-discard decision. */
@@ -72,14 +73,14 @@ function stagePending(
  * Run `proceed` immediately when the editor has no unsaved changes; otherwise stage
  * an arm-to-confirm so the user can keep editing or discard the dirty draft. Use this
  * at every call site that would otherwise silently throw away the draft (a scope
- * switch, an editor close). `editorStatus === "dirty"` is the single source of truth
- * for "there is unsaved work" (mirrors the editor's own "Unsaved changes" label).
+ * switch, an editor close). `editorStatusHasUnsavedDraft` (dirty, or a retained-draft
+ * save-failed/conflict — all hold unsaved work) is the source of truth for "unsaved work".
  */
 export function guardUnsavedDiscard(
   proceed: () => void,
   copy?: Partial<Omit<PendingUnsavedDiscard, "proceed">>,
 ): void {
-  if (useViewStore.getState().editorStatus !== "dirty") {
+  if (!editorStatusHasUnsavedDraft(useViewStore.getState().editorStatus)) {
     proceed();
     return;
   }
@@ -98,7 +99,8 @@ export function guardUnsavedDiscardForDoc(
 ): void {
   const state = useViewStore.getState();
   const dirtyForThisDoc =
-    state.editorStatus === "dirty" && state.editorTarget?.nodeId === nodeId;
+    editorStatusHasUnsavedDraft(state.editorStatus) &&
+    state.editorTarget?.nodeId === nodeId;
   if (!dirtyForThisDoc) {
     proceed();
     return;
