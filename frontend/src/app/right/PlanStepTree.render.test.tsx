@@ -26,10 +26,22 @@ const emptyView: PlanInteriorView = {
 };
 
 describe("PlanStepTree", () => {
-  it("renders a live loading state while the bounded interior is pending", () => {
-    render(<PlanStepTree view={{ ...emptyView, loading: true }} />);
+  it("renders a UI-only skeleton while the bounded interior is pending (no on-screen text)", () => {
+    const { container } = render(
+      <PlanStepTree view={{ ...emptyView, loading: true }} />,
+    );
 
-    expect(screen.getByRole("status").textContent).toContain("loading steps");
+    const status = screen.getByRole("status");
+    expect(status.getAttribute("aria-busy")).toBe("true");
+    // The message is the screen-reader label ONLY — never visible body copy (ADR D2).
+    const srOnly = container.querySelector(".sr-only");
+    expect(srOnly?.textContent).toContain("loading steps");
+    const visible = (status.textContent ?? "")
+      .replace(srOnly?.textContent ?? "", "")
+      .trim();
+    expect(visible).toBe("");
+    // Pure shape: skeleton rows.
+    expect(container.querySelectorAll(".bg-rule-strong").length).toBeGreaterThan(2);
   });
 
   it("renders an empty designed state for plans without interior steps", () => {

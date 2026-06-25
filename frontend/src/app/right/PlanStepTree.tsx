@@ -17,6 +17,7 @@ import {
   type PlanInteriorView,
 } from "../../stores/server/queries";
 import { useDashboardNodeSelection } from "../../stores/view/selection";
+import { Skeleton, SkeletonRow } from "../kit";
 import { useFocusZone, type FocusZoneItemProps } from "../chrome/useFocusZone";
 
 /** Roving navigation threaded to each selectable step so the whole step tree is
@@ -163,14 +164,14 @@ export function PlanStepTree({ view }: { view: PlanInteriorView }) {
   const nav: StepNav = { rove: zone.rove, setActive: setActiveStep };
 
   if (view.loading) {
+    // Loading is UI-only (state-mode-uniformity ADR D2): a skeleton of pending step
+    // rows; the message is the screen-reader label only, never on-screen copy.
     return (
-      <p
-        className="animate-pulse-live px-fg-2 py-fg-1 text-label text-ink-faint"
-        data-step-tree-loading
-        role="status"
-      >
-        {view.loadingMessage}
-      </p>
+      <Skeleton label={view.loadingMessage} className="px-fg-2 py-fg-1">
+        <SkeletonRow width="w-2/3" />
+        <SkeletonRow width="w-1/2" />
+        <SkeletonRow width="w-3/5" />
+      </Skeleton>
     );
   }
 
