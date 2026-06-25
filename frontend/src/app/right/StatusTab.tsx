@@ -56,8 +56,9 @@ import {
   usePipelineExpansion,
 } from "../../stores/view/pipelineExpansion";
 import { openContextMenu } from "../../stores/view/contextMenu";
+import { useViewportClass } from "../../stores/view/viewportClass";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
-import type { FocusZoneItemProps } from "../chrome/useFocusZone";
+import type { FocusZoneItemOptions, FocusZoneItemProps } from "../chrome/useFocusZone";
 import { selectEventNodes } from "../../stores/view/selection";
 import {
   deriveStatusSectionChromeView,
@@ -136,6 +137,9 @@ function SectionCard({
 
 function LocationStrip({ scope }: { scope: unknown }) {
   const anchor = useLocationAnchor(scope);
+  // Compact (binding compact Status frame 793:3322): the location is a bordered
+  // worktree/branch CARD with NO full path (the path line is desktop-only chrome).
+  const compact = useViewportClass() === "compact";
   if (!anchor.path) {
     return (
       <p
@@ -152,7 +156,11 @@ function LocationStrip({ scope }: { scope: unknown }) {
   // is read from the one `useLocationAnchor` selector — no fetch, no raw tiers.
   return (
     <div
-      className="flex flex-col gap-[0.1875rem] p-fg-3"
+      className={
+        compact
+          ? "m-fg-3 flex flex-col gap-[0.1875rem] rounded-fg-md border border-rule bg-paper-raised p-fg-3"
+          : "flex flex-col gap-[0.1875rem] p-fg-3"
+      }
       data-location-strip
       data-location-state="located"
     >
@@ -178,9 +186,11 @@ function LocationStrip({ scope }: { scope: unknown }) {
           </span>
         )}
       </div>
-      <span className={anchor.pathClassName} data-location-path title={anchor.path}>
-        {anchor.path}
-      </span>
+      {!compact && (
+        <span className={anchor.pathClassName} data-location-path title={anchor.path}>
+          {anchor.path}
+        </span>
+      )}
     </div>
   );
 }
@@ -197,6 +207,7 @@ interface PlanPillProps {
   className: string;
   selectedValue: "" | undefined;
   onToggle: () => void;
+  nav?: RowNav;
 }
 
 function PlanPill({
@@ -206,6 +217,7 @@ function PlanPill({
   className,
   selectedValue,
   onToggle,
+  nav,
 }: PlanPillProps) {
   const scope = useActiveScope();
   const fresh = freshnessLabel(row.modifiedAt, now);
@@ -216,6 +228,20 @@ function PlanPill({
   const openPlan = () => {
     void openDocTab(row.nodeId, "markdown", scope).catch(() => undefined);
   };
+
+  // The plan list is ONE tab stop: the open (title) button roves, ArrowUp/Down
+  // move between plans, and cross-axis ArrowRight/ArrowLeft expand/collapse the
+  // step tree (the disclosure-row model, like the vault tree). The chevron toggle
+  // is reachable by pointer but drops out of the tab ring (tabIndex -1)
+  // (keyboard-navigation; every-composite-navigates-through-the-one-focuszone).
+  const item = nav?.rove(row.nodeId, {
+    onCrossNext: () => {
+      if (!expanded) onToggle();
+    },
+    onCrossPrev: () => {
+      if (expanded) onToggle();
+    },
+  });
 
   return (
     <li
@@ -229,6 +255,9 @@ function PlanPill({
           <button
             type="button"
             onClick={onToggle}
+            // Reachable by pointer + by ArrowRight/Left on the roving row; not its
+            // own tab stop (the row is one stop — the open button below holds it).
+            tabIndex={-1}
             aria-expanded={expanded}
             aria-controls={treeId}
             aria-label={row.toggleLabel(expanded)}
@@ -239,6 +268,10 @@ function PlanPill({
           </button>
           <button
             type="button"
+            ref={item?.ref}
+            tabIndex={item ? item.tabIndex : undefined}
+            onKeyDown={item?.onKeyDown}
+            onFocus={() => nav?.setActive(row.nodeId)}
             onClick={openPlan}
             data-open-plan-row
             aria-label={row.openAriaLabel}
@@ -296,6 +329,9 @@ function OpenPlansBody({ scope }: { scope: unknown }) {
   const now = Date.now();
   const { expanded, toggle } = usePipelineExpansion(scope, asOf, view.planIds);
   const planRows = derivePipelineExpansionRows(view.planRows, expanded);
+  // One roving zone over the plan rows: the list is a single tab stop and arrows
+  // move between plans (the open button holds the stop; the chevron rides along).
+  const nav = useRowZone();
 
   if (view.degraded) {
     return (
@@ -334,6 +370,7 @@ function OpenPlansBody({ scope }: { scope: unknown }) {
             className={statusPlanClassName}
             selectedValue={statusPlanSelectedValue}
             onToggle={() => toggle(row.nodeId)}
+            nav={nav}
           />
         ),
       )}
@@ -348,7 +385,7 @@ function OpenPlansBody({ scope }: { scope: unknown }) {
 /** Roving wiring threaded to a section's content rows so the list is ONE tab stop
  *  and arrows move between rows (keyboard-navigation W04.P07.S22). */
 interface RowNav {
-  rove: (key: string) => FocusZoneItemProps;
+  rove: (key: string, opts?: FocusZoneItemOptions) => FocusZoneItemProps;
   setActive: (key: string) => void;
 }
 
