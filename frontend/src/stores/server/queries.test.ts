@@ -6531,10 +6531,9 @@ describe("deriveTimelineSurfaceChromeView (timeline status chrome)", () => {
       }),
     ).toMatchObject({
       showLoading: true,
+      // Loading is UI-only: the label is the screen-reader name of the shared
+      // Skeleton, with no presentation className carried (state-mode-uniformity ADR).
       loadingLabel: "reading the timeline…",
-      loadingClassName:
-        "pointer-events-none absolute left-fg-2 top-1/2 flex -translate-y-1/2 items-center gap-fg-1 text-caption text-ink-faint",
-      loadingDotClassName: "h-1.5 w-1.5 animate-pulse-live rounded-full bg-state-live",
       showEmpty: false,
       showError: false,
     });
@@ -6552,9 +6551,9 @@ describe("deriveTimelineSurfaceChromeView (timeline status chrome)", () => {
       }),
     ).toMatchObject({
       showEmpty: true,
+      // Empty renders through the shared StateBlock; only the sentence is the
+      // deriver's, presentation is the kit's (state-mode-uniformity ADR).
       emptyLabel: "lineage appears as documents gain dates",
-      emptyClassName:
-        "pointer-events-none absolute inset-0 flex items-center justify-center text-caption text-ink-faint",
     });
 
     expect(
@@ -6583,12 +6582,10 @@ describe("deriveTimelineSurfaceChromeView (timeline status chrome)", () => {
         surface: "reconnecting",
       }),
     ).toMatchObject({
+      // Degraded renders through the shared StateBlock inline notice; only the
+      // sentence is the deriver's (state-mode-uniformity ADR).
       showDegraded: true,
       degradedLabel: "reconnecting — showing the last lineage",
-      degradedClassName:
-        "pointer-events-none absolute top-fg-1 right-fg-2 flex items-center gap-fg-1 rounded-fg-pill bg-paper-raised/95 px-fg-1-5 py-fg-0-5 text-caption text-state-stale shadow-fg-raised",
-      degradedDotClassName:
-        "h-1.5 w-1.5 animate-pulse-live rounded-full bg-state-stale",
       showError: false,
     });
 

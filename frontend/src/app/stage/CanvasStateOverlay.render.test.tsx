@@ -190,24 +190,38 @@ describe("CanvasStateOverlay (designed canvas states)", () => {
     expect(node?.className).toContain("pointer-events-none");
   });
 
-  it("renders the binding 'Loading...' card for every loading state", () => {
+  it("renders the loading card as a UI-only skeleton — NO visible 'Loading...' text", () => {
     const { rerender } = render(
       <CanvasStateOverlay state={{ kind: "loading-constellation" }} />,
     );
-    expect(
-      document.querySelector('[data-canvas-state="loading-constellation"]')
-        ?.textContent,
-    ).toContain("Loading...");
+    const constellation = document.querySelector(
+      '[data-canvas-state="loading-constellation"]',
+    );
+    // Loading is UI-ONLY (state-mode-uniformity ADR): no on-screen "Loading..." copy —
+    // the human label lives only in the kit Skeleton's sr-only span.
+    expect(constellation?.textContent).not.toContain("Loading...");
+    const constellationSkeleton = constellation?.querySelector("[data-skeleton]");
+    expect(constellationSkeleton).toBeTruthy();
+    // The sr-only label is the only "loading" text, carried for assistive tech.
+    expect(constellationSkeleton?.querySelector(".sr-only")?.textContent).toBe(
+      "Loading graph",
+    );
+    expect(constellationSkeleton?.getAttribute("aria-busy")).toBe("true");
+
     rerender(<CanvasStateOverlay state={{ kind: "loading-document" }} />);
-    expect(
-      document.querySelector('[data-canvas-state="loading-document"]')?.textContent,
-    ).toContain("Loading...");
+    const docCard = document.querySelector('[data-canvas-state="loading-document"]');
+    expect(docCard?.textContent).not.toContain("Loading...");
+    expect(docCard?.querySelector("[data-skeleton]")).toBeTruthy();
   });
 
   it("renders the unavailable state as the binding 'Graph is not available' card", () => {
     render(<CanvasStateOverlay state={{ kind: "unavailable" }} />);
     const node = document.querySelector('[data-canvas-state="unavailable"]');
     expect(node?.textContent).toContain("Graph is not available");
+    // Carries the shared caution glyph in the state-stale tone (matching the kit
+    // StateBlock degraded mode) — read by shape, not colour alone.
+    expect(node?.querySelector(".text-state-stale")).toBeTruthy();
+    expect(node?.querySelector("svg")).toBeTruthy();
     // Centered card, pointer-transparent — it never grabs the canvas.
     expect(node?.className).toContain("pointer-events-none");
   });

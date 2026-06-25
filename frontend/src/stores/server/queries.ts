@@ -4709,16 +4709,15 @@ export interface TimelineLineageView {
 
 export interface TimelineSurfaceChromeView {
   showLoading: boolean;
+  // Loading is UI-only (state-mode-uniformity ADR): the label is the screen-reader
+  // name of the shared `Skeleton`, never visible body copy — no presentation
+  // className is carried. Empty/degraded render through the shared `StateBlock`, so
+  // their presentation classNames/dots are likewise the kit's, not the deriver's.
   loadingLabel: string;
-  loadingClassName: string;
-  loadingDotClassName: string;
   showEmpty: boolean;
   emptyLabel: string;
-  emptyClassName: string;
   showDegraded: boolean;
   degradedLabel: string;
-  degradedClassName: string;
-  degradedDotClassName: string;
   showError: boolean;
   errorLabel: string;
   errorClassName: string;
@@ -4767,21 +4766,13 @@ export function deriveTimelineSurfaceChromeView({
   return {
     showLoading: loading || autoFitPending,
     loadingLabel: "reading the timeline…",
-    loadingClassName:
-      "pointer-events-none absolute left-fg-2 top-1/2 flex -translate-y-1/2 items-center gap-fg-1 text-caption text-ink-faint",
-    loadingDotClassName: "h-1.5 w-1.5 animate-pulse-live rounded-full bg-state-live",
     showEmpty,
     emptyLabel:
       surface === "lifecycle-sparse"
         ? "lineage appears as documents gain dates"
         : "no lineage in this range yet",
-    emptyClassName:
-      "pointer-events-none absolute inset-0 flex items-center justify-center text-caption text-ink-faint",
     showDegraded: surface === "reconnecting" && !errored,
     degradedLabel: "reconnecting — showing the last lineage",
-    degradedClassName:
-      "pointer-events-none absolute top-fg-1 right-fg-2 flex items-center gap-fg-1 rounded-fg-pill bg-paper-raised/95 px-fg-1-5 py-fg-0-5 text-caption text-state-stale shadow-fg-raised",
-    degradedDotClassName: "h-1.5 w-1.5 animate-pulse-live rounded-full bg-state-stale",
     showError: errored,
     errorLabel: "couldn’t load the timeline",
     errorClassName:

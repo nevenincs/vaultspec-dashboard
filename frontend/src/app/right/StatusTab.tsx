@@ -76,7 +76,15 @@ import { ChangesOverview } from "./ChangesOverview";
 import { PlanStepTree } from "./PlanStepTree";
 import { RailDegraded, RailEmpty, RailLoading, type RailState } from "./railStates";
 // Centralized kit primitives (design-system-is-centralized).
-import { Badge, ChevronDown, ChevronRight, ProgressBar } from "../kit";
+import {
+  Badge,
+  ChevronDown,
+  ChevronRight,
+  ProgressBar,
+  Skeleton,
+  SkeletonRow,
+  StateBlock,
+} from "../kit";
 import { RailSection } from "../chrome/RailSection";
 
 const TWISTY_PX = 10;
@@ -335,28 +343,19 @@ function OpenPlansBody({ scope }: { scope: unknown }) {
 
   if (view.degraded) {
     return (
-      <p className="text-label text-ink-muted" data-open-plans-state="degraded">
-        {view.openPlansStatusLabel}
-      </p>
+      <StateBlock mode="degraded" layout="inline" message={view.openPlansStatusLabel} />
     );
   }
   if (view.loading) {
     return (
-      <p
-        className="animate-pulse-live text-label text-ink-faint motion-reduce:animate-none"
-        data-open-plans-state="loading"
-        role="status"
-      >
-        {view.openPlansStatusLabel}
-      </p>
+      <Skeleton label={view.openPlansStatusLabel}>
+        <SkeletonRow width="w-2/3" />
+        <SkeletonRow width="w-1/2" />
+      </Skeleton>
     );
   }
   if (view.planRows.length === 0) {
-    return (
-      <p className="text-label text-ink-faint" data-open-plans-state="empty">
-        {view.openPlansStatusLabel}
-      </p>
-    );
+    return <StateBlock mode="empty" message={view.openPlansStatusLabel} />;
   }
   return (
     <ul className="space-y-fg-1-5" role="list" data-open-plans-list>
@@ -475,20 +474,19 @@ function OpenPrsBody({ scope }: { scope: unknown }) {
   const nav = useRowZone();
   if (view.showLoading) {
     return (
-      <p className={view.loadingClassName} role="status">
-        {view.loadingLabel}
-      </p>
+      <Skeleton label={view.loadingLabel}>
+        <SkeletonRow width="w-2/3" />
+        <SkeletonRow width="w-1/2" />
+      </Skeleton>
     );
   }
   if (view.showUnavailable) {
     return (
-      <p className={view.unavailableClassName} data-state="unavailable">
-        {view.unavailableLabel}
-      </p>
+      <StateBlock mode="degraded" layout="inline" message={view.unavailableLabel} />
     );
   }
   if (view.showEmpty) {
-    return <p className={view.emptyClassName}>{view.emptyLabel}</p>;
+    return <StateBlock mode="empty" message={view.emptyLabel} />;
   }
   return (
     <ul className={view.listClassName} role="list" data-prs-list>
@@ -504,20 +502,19 @@ function RecentPrsBody({ scope }: { scope: unknown }) {
   const nav = useRowZone();
   if (view.showLoading) {
     return (
-      <p className={view.loadingClassName} role="status">
-        {view.loadingLabel}
-      </p>
+      <Skeleton label={view.loadingLabel}>
+        <SkeletonRow width="w-2/3" />
+        <SkeletonRow width="w-1/2" />
+      </Skeleton>
     );
   }
   if (view.showUnavailable) {
     return (
-      <p className={view.unavailableClassName} data-state="unavailable">
-        {view.unavailableLabel}
-      </p>
+      <StateBlock mode="degraded" layout="inline" message={view.unavailableLabel} />
     );
   }
   if (view.showEmpty) {
-    return <p className={view.emptyClassName}>{view.emptyLabel}</p>;
+    return <StateBlock mode="empty" message={view.emptyLabel} />;
   }
   return (
     <ul className={view.listClassName} role="list" data-recent-prs-list>
@@ -566,20 +563,19 @@ function OpenIssuesBody({ scope }: { scope: unknown }) {
   const view = useIssuesView(scope, "open");
   if (view.showLoading) {
     return (
-      <p className={view.loadingClassName} role="status">
-        {view.loadingLabel}
-      </p>
+      <Skeleton label={view.loadingLabel}>
+        <SkeletonRow width="w-2/3" />
+        <SkeletonRow width="w-1/2" />
+      </Skeleton>
     );
   }
   if (view.showUnavailable) {
     return (
-      <p className={view.unavailableClassName} data-state="unavailable">
-        {view.unavailableLabel}
-      </p>
+      <StateBlock mode="degraded" layout="inline" message={view.unavailableLabel} />
     );
   }
   if (view.showEmpty) {
-    return <p className={view.emptyClassName}>{view.emptyLabel}</p>;
+    return <StateBlock mode="empty" message={view.emptyLabel} />;
   }
   return (
     <ul className={view.listClassName} role="list" data-issues-list>
@@ -600,28 +596,19 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
 
   if (view.showUnavailable) {
     return (
-      <p className={view.unavailableClassName} data-recent-commits-state="degraded">
-        {view.unavailableLabel}
-      </p>
+      <StateBlock mode="degraded" layout="inline" message={view.unavailableLabel} />
     );
   }
   if (view.showLoading) {
     return (
-      <p
-        className={view.loadingClassName}
-        data-recent-commits-state="loading"
-        role="status"
-      >
-        {view.loadingLabel}
-      </p>
+      <Skeleton label={view.loadingLabel}>
+        <SkeletonRow width="w-2/3" />
+        <SkeletonRow width="w-1/2" />
+      </Skeleton>
     );
   }
   if (view.showEmpty) {
-    return (
-      <p className={view.emptyClassName} data-recent-commits-state="empty">
-        {view.emptyLabel}
-      </p>
-    );
+    return <StateBlock mode="empty" message={view.emptyLabel} />;
   }
 
   const chromeRows = deriveRecentCommitChromeRows(

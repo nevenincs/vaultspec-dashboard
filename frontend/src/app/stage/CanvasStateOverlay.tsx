@@ -14,8 +14,9 @@
 // The resolver below is a pure function from those inputs to one state, so the
 // ADR's state table is unit-testable without a DOM or a live backend.
 
-import { AlertTriangle, ScanSearch } from "lucide-react";
+import { ScanSearch } from "lucide-react";
 
+import { Folder, Skeleton, SkeletonBar, TriangleAlert } from "../kit";
 import type { GraphSlice } from "../../stores/server/engine";
 import type { GraphSliceAvailability } from "../../stores/server/queries";
 import type { RenderCapability } from "../../stores/view/renderCapability";
@@ -171,15 +172,17 @@ function StateCard({
   );
 }
 
-/** The three binding skeleton bars (498:989–991): `border/subtle` fill, 10px tall,
- *  4px radius, 200 / 150 / 220px wide. Pulse only when motion is allowed. */
-function LoadingSkeleton() {
+/** The three binding skeleton bars (498:989–991), composed from the shared kit
+ *  `Skeleton` (state-mode-uniformity ADR: loading is UI-ONLY, no on-screen text — the
+ *  human `label` lives in the wrapper's `sr-only`). Widths mirror the binding 200 / 150
+ *  / 220px bars; the kit pulses + announces busy state. */
+function LoadingSkeleton({ label }: { label: string }) {
   return (
-    <>
-      <span className="h-[0.625rem] w-[12.5rem] rounded-[0.25rem] bg-rule motion-safe:animate-pulse" />
-      <span className="h-[0.625rem] w-[9.375rem] rounded-[0.25rem] bg-rule motion-safe:animate-pulse" />
-      <span className="h-[0.625rem] w-[13.75rem] rounded-[0.25rem] bg-rule motion-safe:animate-pulse" />
-    </>
+    <Skeleton label={label} className="items-center">
+      <SkeletonBar width="w-[12.5rem]" height="h-[0.625rem]" />
+      <SkeletonBar width="w-[9.375rem]" height="h-[0.625rem]" />
+      <SkeletonBar width="w-[13.75rem]" height="h-[0.625rem]" />
+    </Skeleton>
   );
 }
 
@@ -218,31 +221,35 @@ export function CanvasStateOverlay({ state }: { state: CanvasState }) {
   switch (state.kind) {
     case "ok":
       return null;
-    // Loading (binding LoadingState 498:987): "Loading..." in faint ink over three
-    // skeleton bars. The awaiting-scope and both granularity loads share the one
-    // binding loading card.
+    // Loading (binding LoadingState 498:987): UI-ONLY — three skeleton bars, NO
+    // on-screen "Loading…" text (state-mode-uniformity ADR: the human label lives in
+    // the kit `Skeleton`'s sr-only). The awaiting-scope and both granularity loads
+    // share the one binding loading card.
     case "awaiting-scope":
     case "loading-constellation":
     case "loading-document":
       return (
         <StateCard testid={state.kind}>
-          <p className="text-body font-medium text-ink-faint">Loading...</p>
-          <LoadingSkeleton />
+          <LoadingSkeleton label="Loading graph" />
         </StateCard>
       );
-    // Empty (binding EmptyState): the no-results message in muted ink.
+    // Empty (binding EmptyState): the shared empty glyph (matching the kit `StateBlock`
+    // empty mode — `Folder` in `ink-faint`) over one plain no-results sentence.
     case "empty":
       return (
         <StateCard testid="empty">
+          <Folder aria-hidden size={20} className="shrink-0 text-ink-faint" />
           <p className="text-body text-ink-muted">No nodes match the current filter</p>
         </StateCard>
       );
-    // Unavailable (binding DegradedState 498:992): the graph genuinely failed to
-    // load — "Graph is not available" in the stale/caution accent, read by shape +
-    // the amber token (never colour alone).
+    // Unavailable (binding DegradedState 498:992): the graph genuinely failed to load.
+    // The shared caution mark (`TriangleAlert`, the same glyph the kit `StateBlock`
+    // degraded mode carries) in the `state-stale` tone over one sentence — read by
+    // shape + the amber token, never colour alone.
     case "unavailable":
       return (
         <StateCard testid="unavailable">
+          <TriangleAlert aria-hidden size={20} className="shrink-0 text-state-stale" />
           <p className="text-body font-medium text-state-stale">
             Graph is not available
           </p>
@@ -264,7 +271,7 @@ export function CanvasStateOverlay({ state }: { state: CanvasState }) {
       return (
         <StateCard testid="context-lost">
           <p className="text-body font-medium text-ink-faint">Restoring graphics…</p>
-          <LoadingSkeleton />
+          <LoadingSkeleton label="Restoring graphics" />
         </StateCard>
       );
     // Degraded — a single tier is down while the graph is LIVE behind it. A
@@ -296,7 +303,7 @@ export function CanvasStateOverlay({ state }: { state: CanvasState }) {
     case "unknown-tier":
       return (
         <CornerBanner testid="unknown-tier" tone="warn">
-          <AlertTriangle aria-hidden size={16} strokeWidth={1.5} />
+          <TriangleAlert aria-hidden size={16} strokeWidth={1.5} />
           <span>
             unrecognized tier on the wire: {tierList(state.tiers)} — this is a data
             error, not a degraded view

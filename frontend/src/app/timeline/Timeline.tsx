@@ -64,6 +64,7 @@ import {
 } from "../../stores/view/timelineIntent";
 import {
   deriveTimelineSurfaceChromeView,
+  type TimelineSurfaceChromeView,
   useActiveScope,
   useDashboardDateRangeView,
   useFiltersVocabularyView,
@@ -73,6 +74,7 @@ import {
 import { setHoveredNodeId } from "../../stores/view/selection";
 import { useElementHeight, useElementWidth } from "../chrome/useElementWidth";
 import { useSurfaceStates } from "../degradation/useDegradation";
+import { Skeleton, SkeletonBar, StateBlock } from "../kit";
 import { categoryColorVar, type Category, type CategoryToken } from "../kit/category";
 // Side-effect import: registers the timeline's event-mark menu resolver at load
 // (the contributed-menus model; the resolver module is owned by the
@@ -843,6 +845,73 @@ function TemporalAccessibleNodes({
   );
 }
 
+/**
+ * The timeline's loading / empty / degraded modes, composed from the shared
+ * state-mode kit (state-mode-uniformity ADR). Loading is UI-ONLY — a pulsing
+ * `Skeleton` of bars mimicking the axis + a dot row, with the human label carried
+ * ONLY as the screen-reader name (never visible body copy). Empty and degraded are
+ * the shared `StateBlock` (one sanctioned glyph + one plain sentence); degraded uses
+ * the compact inline notice. Each wrapper preserves the `data-timeline-*` identity
+ * attribute and the absolute positioning the surface relies on. The error mode stays
+ * inline in the surface (it carries an interactive retry, outside the kit's scope).
+ */
+export function TimelineStateModes({
+  chrome,
+}: {
+  chrome: Pick<
+    TimelineSurfaceChromeView,
+    | "showLoading"
+    | "loadingLabel"
+    | "showEmpty"
+    | "emptyLabel"
+    | "showDegraded"
+    | "degradedLabel"
+  >;
+}) {
+  return (
+    <>
+      {chrome.showLoading && (
+        <div
+          className="pointer-events-none absolute inset-x-fg-2 top-1/2 -translate-y-1/2"
+          data-timeline-loading
+        >
+          <Skeleton label={chrome.loadingLabel} className="!gap-fg-1-5">
+            <div className="flex items-center gap-fg-2">
+              <SkeletonBar width="w-[5rem]" />
+              <SkeletonBar width="flex-1" />
+              <SkeletonBar width="w-[4rem]" />
+            </div>
+            <div className="flex items-center gap-fg-3">
+              <SkeletonBar width="w-[2rem]" />
+              <SkeletonBar width="w-[2rem]" />
+              <SkeletonBar width="w-[2rem]" />
+              <SkeletonBar width="w-[2rem]" />
+            </div>
+          </Skeleton>
+        </div>
+      )}
+
+      {chrome.showEmpty && (
+        <div
+          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+          data-timeline-empty
+        >
+          <StateBlock mode="empty" message={chrome.emptyLabel} />
+        </div>
+      )}
+
+      {chrome.showDegraded && (
+        <div
+          className="pointer-events-none absolute top-fg-1 right-fg-2"
+          data-timeline-degraded
+        >
+          <StateBlock mode="degraded" layout="inline" message={chrome.degradedLabel} />
+        </div>
+      )}
+    </>
+  );
+}
+
 export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   const scope = useActiveScope();
   const { pxPerMs, scrollOffset } = useTimelineScrollState();
@@ -1185,45 +1254,10 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           />
         )}
 
-        {/* Loading / positioning: a quiet copy-toned liveness line — the lane
-            scaffold stays visible, so the surface never flashes empty (ADR
-            "States"). Also shown while the corpus auto-fit is pending. */}
-        {timelineChrome.showLoading && (
-          <div
-            className={timelineChrome.loadingClassName}
-            role="status"
-            data-timeline-loading
-          >
-            <span className={timelineChrome.loadingDotClassName} />
-            {timelineChrome.loadingLabel}
-          </div>
-        )}
-
-        {/* Empty / no-history: approachable, never an error. */}
-        {timelineChrome.showEmpty && (
-          <div
-            className={timelineChrome.emptyClassName}
-            role="status"
-            data-timeline-empty
-          >
-            {timelineChrome.emptyLabel}
-          </div>
-        )}
-
-        {/* Degraded-from-tiers (S59): the DESIGNED degraded state, read pre-derived
-            from the stores degradation layer (RECONNECTING on stream loss) — never
-            guessed from a transport error. */}
-        {timelineChrome.showDegraded && (
-          <div
-            className={timelineChrome.degradedClassName}
-            role="status"
-            aria-live="polite"
-            data-timeline-degraded
-          >
-            <span className={timelineChrome.degradedDotClassName} />
-            {timelineChrome.degradedLabel}
-          </div>
-        )}
+        {/* Loading (UI-only skeleton), empty, and degraded all render through the
+            shared state-mode kit (state-mode-uniformity ADR). The error branch stays
+            inline below — it carries an interactive retry, outside the kit's scope. */}
+        <TimelineStateModes chrome={timelineChrome} />
 
         {/* Error: a contained, copy-toned message scoped to the timeline. */}
         {timelineChrome.showError && (
