@@ -32,8 +32,8 @@
       "name": "BottomTabBar",
       "source": "src/app/shell/BottomTabBar.tsx",
       "designSurface": true,
-      "figmaNodeId": "824:3779",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=824-3779",
+      "figmaNodeId": "823:3859",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=823-3859",
       "figmaNodeName": null,
       "bindingKind": "surface"
     },
@@ -518,8 +518,8 @@
       "name": "MobileTopBar",
       "source": "src/app/shell/MobileTopBar.tsx",
       "designSurface": true,
-      "figmaNodeId": "825:3838",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=825-3838",
+      "figmaNodeId": "825:3819",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=825-3819",
       "figmaNodeName": null,
       "bindingKind": "surface"
     },
