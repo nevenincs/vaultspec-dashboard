@@ -132,7 +132,14 @@ pub fn parse_plan_structure(text: &str) -> PlanStructure {
     // W01 heading to "..." (upsert-by-id, last write wins), and the example phase
     // rows mint phantom containers. Strip the comment regions before classifying
     // so the parser observes only the authored structure (`engine-read-and-infer`).
-    let body = strip_html_comments(text);
+    //
+    // Fenced code blocks are stripped too: the grammar is byte-identical inside a
+    // fenced EXAMPLE (a meta-plan documenting plan structure, say), so a
+    // hand-authored ``` block would otherwise mint phantom waves/phases/steps —
+    // the same hazard the comment strip closes for the template's hint blocks.
+    // Both this strict parse and the `parse_flat_checklist` fallback below consume
+    // `body`, so the single strip covers both.
+    let body = strip_comments_and_fences(text);
 
     let mut structure = PlanStructure::default();
     // Current open containers (None until one is opened at the right depth).
@@ -236,6 +243,51 @@ fn strip_html_comments(text: &str) -> String {
         }
     }
     out.push_str(rest);
+    out
+}
+
+/// Drop the document down to its authored plan structure: remove HTML-comment
+/// hint blocks (the template's example canonical lines) AND fenced code blocks
+/// (a hand-authored example), so neither is parsed as real waves/phases/steps.
+/// Comments are stripped first (span-based), then fences (line-based) over the
+/// comment-free text, so a `` ``` `` inside a comment never leaves a dangling
+/// fence.
+fn strip_comments_and_fences(text: &str) -> String {
+    strip_fenced_blocks(&strip_html_comments(text))
+}
+
+/// Remove fenced code-block regions (` ``` … ``` ` or `~~~ … ~~~`), keeping
+/// every line outside them. Line-based: a line whose trimmed start opens a fence
+/// toggles fence state, and the delimiter lines plus everything inside the fence
+/// are dropped. A fence is closed only by its own marker, so a `~~~` inside a
+/// ` ``` ` block stays fenced. This is the structural-parser analogue of
+/// `extract::extract_code_spans`'s byte-scan fence skip.
+fn strip_fenced_blocks(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut fence: Option<&'static str> = None;
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        let marker = if trimmed.starts_with("```") {
+            Some("```")
+        } else if trimmed.starts_with("~~~") {
+            Some("~~~")
+        } else {
+            None
+        };
+        match (fence, marker) {
+            // Opening a fence: drop the delimiter line.
+            (None, Some(m)) => fence = Some(m),
+            // Closing the active fence (same marker): drop the delimiter line.
+            (Some(open), Some(m)) if open == m => fence = None,
+            // Any line while a fence is open (incl. a different marker): dropped.
+            (Some(_), _) => {}
+            // Outside any fence: keep the line.
+            (None, None) => {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+    }
     out
 }
 
@@ -558,6 +610,71 @@ Prose describing the phase, no checkboxes here.
         assert!(!s.steps[1].done, "- [ ] is open");
         assert_eq!(s.steps[2].id, "S03");
         assert!(s.steps[2].done, "- [X] is closed");
+    }
+
+    #[test]
+    fn fenced_example_rows_are_not_parsed_as_structure_or_flat_steps() {
+        // #44 (the #42 sibling): a plan body documenting plan structure inside a
+        // ``` fence must not have that fenced EXAMPLE parsed as real structure. The
+        // grammar is byte-identical inside the fence, so without the fence strip a
+        // fenced `## Wave`/`- [x] `S##`` row mints a phantom container/step (strict
+        // parse) or inflates the flat-checklist count (legacy fallback). Each
+        // assertion FAILS against the pre-fix parser.
+
+        // Strict (canonical) path: one real S## row + a fenced example wave/steps.
+        let canonical = "\
+# `demo` plan
+
+## Steps
+
+- [x] `W01.P01.S01` - the one real step; `src/a.rs`.
+
+```text
+## Wave `W09` - a fenced example wave
+### Phase `W09.P09` - example phase
+- [x] `W09.P09.S98` - a fenced example step
+- [ ] `W09.P09.S99` - another fenced example step
+```
+";
+        let s = parse_plan_structure(canonical);
+        assert!(
+            s.waves.is_empty(),
+            "a fenced `## Wave` is not a real wave: {:?}",
+            s.waves
+        );
+        assert!(s.phases.is_empty(), "no fenced phase is real");
+        assert_eq!(
+            s.steps.len(),
+            1,
+            "only the one real canonical step survives; fenced steps mint no \
+             phantom nodes: {:?}",
+            s.steps
+        );
+        assert_eq!(s.steps[0].id, "S01");
+
+        // Legacy (flat-checklist) path: NO canonical S## rows, so the strict parse
+        // yields nothing and the flat fallback runs — it must count only the real
+        // checkboxes, not the fenced example ones.
+        let legacy = "\
+# modelo plan
+
+- [x] real plain task one
+- [ ] real plain task two
+
+```text
+- [x] a fenced example task
+- [ ] another fenced example task
+```
+";
+        let s = parse_plan_structure(legacy);
+        assert!(s.waves.is_empty() && s.phases.is_empty());
+        assert_eq!(
+            s.steps.len(),
+            2,
+            "the flat checklist counts only the two real checkboxes, not the \
+             fenced example ones: {:?}",
+            s.steps
+        );
     }
 
     #[test]
