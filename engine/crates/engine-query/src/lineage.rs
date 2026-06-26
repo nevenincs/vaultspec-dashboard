@@ -171,7 +171,7 @@ pub struct LineageSlice {
 /// the `to` boundary. Truncating to the date prefix makes the compare robust and
 /// matches the frontend's bound normalization (`dashboardDateRange` `slice(0,10)`).
 /// Char-boundary-safe: a non-boundary split returns the whole string unchanged.
-fn date_key(s: &str) -> &str {
+pub fn date_key(s: &str) -> &str {
     s.get(..10).unwrap_or(s)
 }
 

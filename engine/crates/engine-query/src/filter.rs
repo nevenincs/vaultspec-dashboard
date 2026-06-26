@@ -644,11 +644,19 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
         "finished" => 2,
         _ => 3,
     });
-    // Corpus date span from frontmatter `created` dates (ISO yyyy-mm-dd,
-    // lexically ordered): the bounds a date-range facet selects within.
+    // Corpus date span from frontmatter `created` dates, normalized to their
+    // `yyyy-mm-dd` prefix (`lineage::date_key`) so a non-compliant time-suffixed
+    // value never skews the lexically-ordered span — consistent with the
+    // date-range facet's `created_in_range` compare. The bounds a date-range
+    // facet selects within.
     let date_bounds = graph
         .nodes()
-        .filter_map(|n| n.dates.as_ref().and_then(|d| d.created.clone()))
+        .filter_map(|n| {
+            n.dates
+                .as_ref()
+                .and_then(|d| d.created.as_deref())
+                .map(|c| crate::lineage::date_key(c).to_string())
+        })
         .fold(None::<(String, String)>, |acc, date| match acc {
             None => Some((date.clone(), date)),
             Some((min, max)) => Some((min.min(date.clone()), max.max(date))),
