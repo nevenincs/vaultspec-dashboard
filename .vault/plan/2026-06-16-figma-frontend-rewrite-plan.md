@@ -123,7 +123,7 @@ Wire all surfaces into the shell, run just dev lint frontend (exit 0) and vitest
 
 Per-board screenshot comparison of the running app against Figma; fix every residual divergence until identical.
 
-- [x] `W05.P13.S19` - Compare each assembled surface against its Figma board screenshot and fix every residual divergence until identical; `frontend/src/`.
+- [ ] `W05.P13.S19` - Compare each assembled surface against its Figma board screenshot and fix every residual divergence until identical; `frontend/src/`.
 
 ## Description
 
