@@ -104,8 +104,8 @@
       "name": "ChangesOverview",
       "source": "src/app/right/ChangesOverview.tsx",
       "designSurface": true,
-      "figmaNodeId": "609:2367",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=609-2367",
+      "figmaNodeId": "863:4168",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=863-4168",
       "figmaNodeName": "ActivityRail / Changes",
       "bindingKind": "surface"
     },
@@ -122,10 +122,10 @@
       "name": "CodeTree",
       "source": "src/app/left/CodeTree.tsx",
       "designSurface": true,
-      "figmaNodeId": "319:926",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=319-926",
+      "figmaNodeId": null,
+      "figmaUrl": null,
       "figmaNodeName": null,
-      "bindingKind": "surface"
+      "bindingKind": null
     },
     {
       "name": "CodeViewer",
@@ -311,8 +311,8 @@
       "name": "FilterMenu",
       "source": "src/app/stage/FilterMenu.tsx",
       "designSurface": true,
-      "figmaNodeId": "217:633",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=217-633",
+      "figmaNodeId": "838:3906",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=838-3906",
       "figmaNodeName": null,
       "bindingKind": "surface"
     },
@@ -320,8 +320,8 @@
       "name": "FilterSidebar",
       "source": "src/app/stage/FilterSidebar.tsx",
       "designSurface": true,
-      "figmaNodeId": "217:633",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=217-633",
+      "figmaNodeId": "838:3906",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=838-3906",
       "figmaNodeName": "LeftRail/Filter menu",
       "bindingKind": "surface"
     },
@@ -329,10 +329,10 @@
       "name": "FoldSection",
       "source": "src/app/kit/FoldSection.tsx",
       "designSurface": true,
-      "figmaNodeId": "440:1095",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=440-1095",
-      "figmaNodeName": "FoldCategory",
-      "bindingKind": "surface"
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
     },
     {
       "name": "GraphCanvasHost",
@@ -482,28 +482,28 @@
       "name": "MarkdownDocView",
       "source": "src/app/viewer/MarkdownDocView.tsx",
       "designSurface": true,
-      "figmaNodeId": "245:738",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=245-738",
+      "figmaNodeId": null,
+      "figmaUrl": null,
       "figmaNodeName": null,
-      "bindingKind": "surface"
+      "bindingKind": null
     },
     {
       "name": "MarkdownReader",
       "source": "src/app/viewer/MarkdownReader.tsx",
       "designSurface": true,
-      "figmaNodeId": "245:738",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=245-738",
-      "figmaNodeName": "MarkdownDocView",
-      "bindingKind": "surface"
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
     },
     {
       "name": "Minimap",
       "source": "src/app/timeline/Minimap.tsx",
       "designSurface": true,
-      "figmaNodeId": "251:801",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=251-801",
-      "figmaNodeName": "Timeline scrubber",
-      "bindingKind": "surface"
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
     },
     {
       "name": "MinimapWidget",
@@ -536,10 +536,10 @@
       "name": "NowStrip",
       "source": "src/app/right/NowStrip.tsx",
       "designSurface": true,
-      "figmaNodeId": "632:2026",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=632-2026",
+      "figmaNodeId": null,
+      "figmaUrl": null,
       "figmaNodeName": null,
-      "bindingKind": "surface"
+      "bindingKind": null
     },
     {
       "name": "NumberControl",
@@ -554,8 +554,8 @@
       "name": "PlanStepTree",
       "source": "src/app/right/PlanStepTree.tsx",
       "designSurface": true,
-      "figmaNodeId": "555:1517",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=555-1517",
+      "figmaNodeId": "863:4135",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=863-4135",
       "figmaNodeName": "Pill / StepTree",
       "bindingKind": "composite-state"
     },

@@ -5,6 +5,6 @@ import figma from "@figma/code-connect";
 
 import { StatusTab } from "../../src/app/right/StatusTab";
 
-figma.connect(StatusTab, "<MIRROR>?node-id=309-1066", {
+figma.connect(StatusTab, "<MIRROR>?node-id=599-2099", {
   example: () => <StatusTab />,
 });
