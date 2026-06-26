@@ -302,9 +302,9 @@
       "name": "FeatureSearchField",
       "source": "src/app/left/FeatureSearchField.tsx",
       "designSurface": true,
-      "figmaNodeId": "636:1947",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=636-1947",
-      "figmaNodeName": null,
+      "figmaNodeId": "846:3893",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=846-3893",
+      "figmaNodeName": "FeatureSuggestions",
       "bindingKind": "surface"
     },
     {

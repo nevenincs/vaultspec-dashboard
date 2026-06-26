@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#left-rail-feature-filter'
 date: '2026-06-24'
-modified: '2026-06-24'
+modified: '2026-06-26'
 related:
   - '[[2026-06-24-left-rail-feature-filter-research]]'
   - '[[2026-06-19-filter-controls-adr]]'
@@ -107,7 +107,7 @@ The decisions, as built:
   exists there; the autofill and the separate button do not). This is recorded as an
   ACCEPTED, NAMED divergence under the binding-source discipline, carrying the
   obligation to backfill the Figma design and its Code Connect so the binding source
-  regains parity; it is not a licence for further ad-hoc UI.
+  regains parity; it is not a licence for further ad-hoc UI. (Resolved — see Status.)
 
 ## Rationale
 
@@ -145,3 +145,22 @@ the same settle guarantees.
   behind the dedicated Filters button — never auto-opened by focus or keyboard. (May
   fold into the adjacent backend-served-filterable-state rule rather than stand alone;
   promote only after it holds across a subsequent cycle.)
+
+## Status
+
+Accepted. The D6 divergence is now RESOLVED: the binding Figma file carries the
+backfill — a Funnel `IconButton` Filters button on both rail variants
+(`State=Vault` / `State=Files`) and the standalone `RailFilter` component, a
+`FeatureSuggestion` row component (`State=Default` / `State=Active`), a
+`FeatureSuggestions` dropdown component, and a "Feature autofill — open" showcase
+frame, all bound to the existing variable and text/effect styles. The code's
+Filters-button glyph was reconciled from Lucide `SlidersHorizontal` to `Filter`
+(funnel) to match the kit's `Funnel`. Code Connect mappings were authored and
+validated (`figma connect parse` and `--dry-run` both pass) — `RailFilterField` →
+the `RailFilter` component and `FeatureSearchField` → the `FeatureSuggestions`
+component — with the now-redundant `RailFilterField` placeholder removed from the
+`CoverageMissing` batch. Publishing those mappings to the Code Connect backend is
+blocked by a pre-existing, unrelated failure: ~42 stale node bindings (chiefly the
+`CoverageMissing` batch, which targets a retired Figma frame) fail validation and,
+because publish is all-or-nothing, abort the run. Clearing that rot is a separate
+Code Connect remediation, not part of this feature.

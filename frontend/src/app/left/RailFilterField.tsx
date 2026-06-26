@@ -15,7 +15,7 @@
 // There is no semantic-search pillar here — feature filtering lives in this bar and
 // the command palette only.
 
-import { SlidersHorizontal } from "lucide-react";
+import { Filter } from "lucide-react";
 
 import { Badge, IconButton } from "../kit";
 import {
@@ -54,7 +54,7 @@ export function RailFilterField() {
           data-rail-filter-trigger
           onClick={() => toggleFilterSidebar()}
         >
-          <SlidersHorizontal size={16} aria-hidden />
+          <Filter size={16} aria-hidden />
         </IconButton>
         {activeFilters > 0 && (
           <span className="pointer-events-none absolute right-[-0.25rem] top-[-0.25rem]">
