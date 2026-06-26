@@ -3,25 +3,27 @@ tags:
   - '#plan'
   - '#figma-frontend-rewrite'
 date: '2026-06-16'
-modified: '2026-06-22'
+modified: '2026-06-26'
 tier: L3
 related:
   - '[[2026-06-16-figma-frontend-rewrite-adr]]'
 ---
 
-
-
-
-
-
-
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `figma-frontend-rewrite` plan
 
 ## Wave `W01` - Foundation: tokens + centralized component kit
 
 Author the binding Figma variable set into the DTCG token source and regenerate the stylesheet (light/dark/HC peers, add Fraunces), then build every centralized component to the kit board so all surfaces compose from real shared definitions.
-
 
 ### Phase `W01.P01` - Token foundation to binding variables + Fraunces
 
@@ -104,8 +106,8 @@ Re-skin the scene's paint (node fills, grey edge rule, tier/state encodings, hov
 
 Category node fills, grey edge rule, tier/state encodings, hover/selection, layout picker, filter menu, settings popover, hero.
 
-- [ ] `W04.P11.S16` - Re-skin node/edge paint (category fills, grey rule, tier/state encodings, hover/selection) to the graph boards; `frontend/src/scene/field/`.
-- [ ] `W04.P11.S17` - Re-skin the layout picker, filter menu, settings popover, zoom cluster, and minimap to the graph boards; `frontend/src/app/stage/`.
+- [x] `W04.P11.S16` - Re-skin node/edge paint (category fills, grey rule, tier/state encodings, hover/selection) to the graph boards; `frontend/src/scene/field/`.
+- [x] `W04.P11.S17` - Re-skin the layout picker, filter menu, settings popover, zoom cluster, and minimap to the graph boards; `frontend/src/app/stage/`.
 
 ## Wave `W05` - Integrate, harden, verify identical
 
@@ -115,13 +117,13 @@ Integrate all surfaces, run the full lint gate and test suite, harden, and verif
 
 Wire all surfaces into the shell, run just dev lint frontend (exit 0) and vitest, fix regressions.
 
-- [ ] `W05.P12.S18` - Wire every rebuilt surface into the shell, run the full lint gate (exit 0) and the vitest suite, fix regressions; `frontend/src/app/`.
+- [x] `W05.P12.S18` - Wire every rebuilt surface into the shell, run the full lint gate (exit 0) and the vitest suite, fix regressions; `frontend/src/app/`.
 
 ### Phase `W05.P13` - Visual verification identical
 
 Per-board screenshot comparison of the running app against Figma; fix every residual divergence until identical.
 
-- [ ] `W05.P13.S19` - Compare each assembled surface against its Figma board screenshot and fix every residual divergence until identical; `frontend/src/`.
+- [x] `W05.P13.S19` - Compare each assembled surface against its Figma board screenshot and fix every residual divergence until identical; `frontend/src/`.
 
 ## Description
 
@@ -138,4 +140,3 @@ Per-board screenshot comparison of the running app against Figma; fix every resi
 
 
 ## Verification
-
