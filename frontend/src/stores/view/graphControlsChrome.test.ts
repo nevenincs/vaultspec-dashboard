@@ -147,16 +147,16 @@ describe("graph controls chrome view seam", () => {
 
   it("projects freeze toggle action copy from state and availability", () => {
     expect(deriveGraphControlsFreezeToggleView(false, true)).toEqual({
-      label: "freeze layout",
-      title: "freeze the layout in place",
+      label: "Freeze Layout",
+      title: "Freeze the layout in place",
     });
     expect(deriveGraphControlsFreezeToggleView(true, true)).toEqual({
-      label: "resume layout",
-      title: "resume the layout",
+      label: "Resume Layout",
+      title: "Resume the layout",
     });
     expect(deriveGraphControlsFreezeToggleView(false, false)).toEqual({
-      label: "freeze layout",
-      title: "freeze is available in the Network layout",
+      label: "Freeze Layout",
+      title: "Freeze is available in the Network layout",
     });
   });
 
@@ -165,15 +165,15 @@ describe("graph controls chrome view seam", () => {
       containerClassName: "flex flex-col items-center gap-fg-0-5",
       ariaLabel: "Navigate",
       dividerClassName: "my-fg-0-5 h-px w-6 bg-rule",
-      zoomIn: { label: "zoom in" },
-      zoomOut: { label: "zoom out" },
+      zoomIn: { label: "Zoom In" },
+      zoomOut: { label: "Zoom Out" },
       fitToView: {
-        label: "fit to view",
-        title: "fit all nodes into the viewport",
+        label: "Fit to View",
+        title: "Fit all nodes into the viewport",
       },
       resetView: {
-        label: "reset view",
-        title: "reset the camera to the origin",
+        label: "Reset View",
+        title: "Reset the camera to the origin",
       },
     });
   });

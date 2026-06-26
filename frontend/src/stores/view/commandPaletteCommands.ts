@@ -311,19 +311,19 @@ export function buildTimelineCommands(
   const commands: unknown[] = [
     {
       id: "timeline:jump-to-now",
-      label: "jump playhead to now",
+      label: "Jump Playhead to Now",
       family: "navigate",
       run: effects.jumpToLive,
     },
     {
       id: "timeline:fit-to-corpus",
-      label: "timeline: fit all to view",
+      label: "Timeline: Fit All to View",
       family: "navigate",
       run: effects.fitToCorpus,
     },
     ...TIMELINE_RANGE_PRESETS.map((preset) => ({
       id: `timeline:range-${preset.days}d`,
-      label: `timeline: last ${preset.label}`,
+      label: `Timeline: Last ${preset.label}`,
       family: "navigate",
       run: () => effects.setRangeDays(preset.days),
     })),
@@ -341,7 +341,7 @@ export function buildEditorCommands(closeDoc: () => void): PaletteCommand[] {
   const commands: unknown[] = [
     {
       id: "editor:close-document",
-      label: "close the open document",
+      label: "Close Document",
       family: "app",
       run: closeDoc,
     },
@@ -365,37 +365,37 @@ export function buildGraphCommands(opts: {
   const commands: unknown[] = [
     {
       id: "graph:fit-to-view",
-      label: "graph: fit to view",
+      label: "Graph: Fit to View",
       family: "navigate",
       run: graphFitToView,
     },
     {
       id: "graph:reset-view",
-      label: "graph: reset view",
+      label: "Graph: Reset View",
       family: "navigate",
       run: graphResetView,
     },
     {
       id: "graph:zoom-in",
-      label: "graph: zoom in",
+      label: "Graph: Zoom In",
       family: "navigate",
       run: graphZoomIn,
     },
     {
       id: "graph:zoom-out",
-      label: "graph: zoom out",
+      label: "Graph: Zoom Out",
       family: "navigate",
       run: graphZoomOut,
     },
     {
       id: "graph:toggle-freeze",
-      label: opts.frozen ? "graph: unfreeze layout" : "graph: freeze layout",
+      label: opts.frozen ? "Graph: Resume Layout" : "Graph: Freeze Layout",
       family: "navigate",
       run: () => opts.setFrozen(!opts.frozen),
     },
     {
       id: "graph:reset-defaults",
-      label: "graph: reset controls to defaults",
+      label: "Graph: Reset Controls to Defaults",
       family: "navigate",
       run: opts.resetDefaults,
     },
@@ -404,10 +404,10 @@ export function buildGraphCommands(opts: {
 }
 
 const THEME_PALETTE_COMMANDS: { value: string; label: string }[] = [
-  { value: "system", label: "theme: system (auto)" },
-  { value: "light", label: "theme: light" },
-  { value: "dark", label: "theme: dark" },
-  { value: "high-contrast", label: "theme: high contrast" },
+  { value: "system", label: "Theme: System" },
+  { value: "light", label: "Theme: Light" },
+  { value: "dark", label: "Theme: Dark" },
+  { value: "high-contrast", label: "Theme: High Contrast" },
 ];
 
 /**
@@ -705,7 +705,7 @@ export function deriveCommandPalettePresentationView(
     navLoading: commandView.navLoading,
     noMatchMessage: "nothing matches",
     navLoadingMessage: "loading navigation…",
-    inputPlaceholder: "type a command…",
+    inputPlaceholder: "Type a command or search…",
     dialogLabel: "command palette",
     listboxLabel: "commands",
     liveMessage,

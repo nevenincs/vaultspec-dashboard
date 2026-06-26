@@ -251,7 +251,7 @@ describe("deriveCommandPalettePresentationView", () => {
         ],
       },
     ]);
-    expect(view.inputPlaceholder).toBe("type a command…");
+    expect(view.inputPlaceholder).toBe("Type a command or search…");
     expect(view.dialogLabel).toBe("command palette");
     expect(view.listboxLabel).toBe("commands");
     expect(view.navLoadingMessage).toBe("loading navigation…");

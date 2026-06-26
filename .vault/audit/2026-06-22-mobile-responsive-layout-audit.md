@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#mobile-responsive-layout'
 date: '2026-06-22'
-modified: '2026-06-22'
+modified: '2026-06-23'
 related:
   - '[[2026-06-22-mobile-responsive-layout-adr]]'
   - '[[2026-06-22-mobile-responsive-layout-research]]'
@@ -203,12 +203,44 @@ Resolved from the per-frame / cross-cutting findings:
   same bordered card (with dividers + padding) as the Plans/PRs sections, unifying the
   section-container language.
 
-Still open (larger / foundation-level, recommended as a focused follow-up):
-- **≥44pt touch targets on kit atoms** (Chip/Segment/IconButton intrinsic heights) —
-  the correct fix is dedicated **mobile primitives** (`BottomTabBar`, `MobileTopBar`,
-  `BottomSheet`) with the inset + target baked in (audit GAP S2); deferred so it is
-  built deliberately, then re-instanced.
-- **Small-label contrast** (`SectionLabel`/`Meta` at phone scale) — a foundation
-  decision (a compact contrast step or on-mobile minimum size), not a per-frame edit.
-- **Search selection metaphor** — minor; partly a sample-data artifact (two
-  near-identical result rows).
+### Mobile primitives built (2026-06-23) — closes GAP S2 + the ≥44pt finding
+
+Three centralized mobile chrome components were authored and re-instanced:
+- **`BottomTabBar`** — a COMPONENT_SET with an `Active` variant (Browse/Graph/Timeline/
+  Status/Search); safe-area inset + ≥44pt tab items + accent-subtle active pill baked
+  in. Re-instanced in Browse/Graph/Timeline/Status (the four hand-built bars retired).
+- **`MobileTopBar`** — leading title + 44×44pt trailing icon action slots; re-instanced
+  in Browse (generalizes to the other title bars).
+- **`SheetHandle`** + **`BottomSheet`** — the grabber primitive and the sheet shell
+  (top radius lg, modal elevation, bottom safe-area). The Filter sheet now composes
+  `SheetHandle` and carries the safe-area inset.
+
+### Re-review (v2, 2026-06-23) + third incorporation — converged
+
+The six changed frames were re-run through fresh no-context reviewers. Resolved:
+- **Filter selected chips → FILLED accent + white text** (the outline alone still read
+  as ambiguous); chips also given more vertical padding for touch. Kit-level, propagates.
+- **Timeline scrubber** → solid accent draggable knob (white ring + drop shadow) over an
+  accent-filled track — now reads as a video-style scrubber, not a progress bar.
+- **Status** → location block converged into the bordered-card system (was a filled
+  block); commit/CHANGES rows padded toward ≥44pt.
+- **Touch targets** → Browse rows padded to ~44pt; Browse/Reader top-bar icons enlarged
+  to 20px inside 44pt slots.
+- **Reader** → "accepted" badge text darkened to `chrome/accent-text` for contrast.
+- **Graph** → empty-state icon enlarged in a soft accent-subtle circle, balancing the
+  void.
+
+Remaining items are **intentional / foundation-level**, recorded as accepted rather than
+changed per-frame:
+- The **single earthy-green accent** (active-tab pill, primary CTA, selection) reads as
+  "the only saturated colour" to no-context reviewers — this is the project's one-accent
+  discipline (`warmth-lives-in-tokens-not-decoration`), not a defect.
+- The **active-segment style** (elevated light segment on a sunken track) is the
+  established kit `Segment`/`SegmentedToggle` convention.
+- **Small-label contrast** (`SectionLabel`/`Meta`) — a deliberate quiet-eyebrow token;
+  any change is a foundation decision (compact contrast step or on-mobile min size),
+  affecting desktop too.
+- **Container paddings on `space/*`** (GAP S3) — bind during the code build.
+
+The seven compact frames are design-converged and ready for user approval (the ADR's
+design-first gate) before the code build campaign executes.

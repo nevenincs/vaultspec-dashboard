@@ -19,13 +19,51 @@
 // behaviour.
 
 import { openContextMenu } from "../../stores/view/contextMenu";
+import { useActiveScope } from "../../stores/server/queries";
+import {
+  closeFilterSidebar,
+  useFilterSidebarOpen,
+} from "../../stores/view/filterSidebar";
+import { useViewportClass } from "../../stores/view/viewportClass";
 import { backgroundContextMenuHandler } from "../menus/backgroundContextMenu";
 import { Divider } from "../kit";
+import { FilterSidebar } from "../stage/FilterSidebar";
 import { BrowserRegion } from "./BrowserRegion";
 import { RailFilterField } from "./RailFilterField";
 import { WorktreePicker } from "./WorktreePicker";
 
 export function LeftRail() {
+  const compact = useViewportClass() === "compact";
+  const scope = useActiveScope();
+  const filterOpen = useFilterSidebarOpen();
+
+  // Compact (mobile-responsive-layout ADR D2): the worktree header, the
+  // rail-collapse/panel chrome, and the feature-search row fold into the mobile top
+  // bar, so the compact rail is JUST the Vault/Files browser tree. The canonical
+  // filter is still authored here (filtering-has-one-canonical-surface) — the
+  // FilterSidebar stays mounted (rendering as a bottom sheet on compact), opened by
+  // the top bar's filter button via the shared filter-sidebar store.
+  if (compact) {
+    return (
+      <nav
+        aria-label="scope rail"
+        data-left-rail
+        onContextMenu={backgroundContextMenuHandler("left-rail", openContextMenu)}
+        className="flex min-h-0 flex-1 flex-col px-fg-3 pt-fg-2 text-ink-muted"
+      >
+        <div className="flex min-h-0 flex-1 flex-col" data-rail-slot="browser">
+          <BrowserRegion />
+        </div>
+        <FilterSidebar
+          open={filterOpen}
+          onClose={closeFilterSidebar}
+          scope={scope}
+          hidden={{ nodes: 0, edges: 0 }}
+        />
+      </nav>
+    );
+  }
+
   return (
     // ONE labelled navigation landmark for the whole rail content. The flex column
     // gives the browser region the remaining height so it dominates the rail (the

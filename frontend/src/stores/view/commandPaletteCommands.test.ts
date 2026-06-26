@@ -41,7 +41,7 @@ describe("buildGraphCommands", () => {
       "graph:reset-defaults",
     ]);
     expect(cmds.find((c) => c.id === "graph:toggle-freeze")?.label).toBe(
-      "graph: freeze layout",
+      "Graph: Freeze Layout",
     );
     const frozen = buildGraphCommands({
       frozen: true,
@@ -49,7 +49,7 @@ describe("buildGraphCommands", () => {
       resetDefaults: () => undefined,
     });
     expect(frozen.find((c) => c.id === "graph:toggle-freeze")?.label).toBe(
-      "graph: unfreeze layout",
+      "Graph: Resume Layout",
     );
   });
 

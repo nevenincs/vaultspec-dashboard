@@ -73,7 +73,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     expect(screen.getByRole("textbox", { name: "Label filter" })).toBeTruthy();
     // Theme renders as the segmented (radiogroup) control with its members.
     expect(screen.getByRole("radiogroup", { name: "Theme" })).toBeTruthy();
-    expect(screen.getByRole("radio", { name: "dark" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Dark" })).toBeTruthy();
   });
 
   it("reflects the effective value and persists a change through the wire", async () => {
@@ -81,13 +81,13 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     // assert against an explicit value, not an assumed-unset default).
     await engineClient.putSettings({ key: "theme", value: "system" });
     renderDialog();
-    const systemRadio = await screen.findByRole("radio", { name: "system" });
+    const systemRadio = await screen.findByRole("radio", { name: "System" });
     await waitFor(() => expect(systemRadio.getAttribute("aria-checked")).toBe("true"));
     // Choose "dark" — write-through + invalidate re-reads the persisted value.
-    fireEvent.click(screen.getByRole("radio", { name: "dark" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
     await waitFor(() => {
       expect(
-        screen.getByRole("radio", { name: "dark" }).getAttribute("aria-checked"),
+        screen.getByRole("radio", { name: "Dark" }).getAttribute("aria-checked"),
       ).toBe("true");
     });
   });
@@ -116,10 +116,10 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     // Switch the first scope-eligible row's target to 'This scope', then pick a value.
     const thisScope = screen.getAllByRole("radio", { name: "This scope" })[0];
     fireEvent.click(thisScope);
-    fireEvent.click(screen.getByRole("radio", { name: "document" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Document" }));
     await waitFor(() => {
       expect(
-        screen.getByRole("radio", { name: "document" }).getAttribute("aria-checked"),
+        screen.getByRole("radio", { name: "Document" }).getAttribute("aria-checked"),
       ).toBe("true");
     });
   });

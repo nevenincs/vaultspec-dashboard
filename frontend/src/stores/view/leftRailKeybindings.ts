@@ -2,11 +2,11 @@ import { useEffect } from "react";
 
 import {
   FilePlus2,
+  Filter,
   FilterX,
   FoldVertical,
   ListFilter,
   Search,
-  SlidersHorizontal,
   UnfoldVertical,
 } from "lucide-react";
 
@@ -38,11 +38,11 @@ export const LEFT_RAIL_COLLAPSE_TREE_ACTION_ID = "left-rail:collapse-tree";
 export const LEFT_RAIL_TOGGLE_FACETS_ACTION_ID = "left-rail:toggle-facets";
 export const LEFT_RAIL_RESET_FILTERS_ACTION_ID = "left-rail:reset-filters";
 
-export const LEFT_RAIL_NEW_DOC_LABEL = "New document…";
-export const LEFT_RAIL_EXPAND_TREE_LABEL = "Expand the whole vault tree";
-export const LEFT_RAIL_COLLAPSE_TREE_LABEL = "Collapse the whole vault tree";
-export const LEFT_RAIL_TOGGLE_FACETS_LABEL = "Toggle the filter facets";
-export const LEFT_RAIL_RESET_FILTERS_LABEL = "Reset all filters";
+export const LEFT_RAIL_NEW_DOC_LABEL = "New Document…";
+export const LEFT_RAIL_EXPAND_TREE_LABEL = "Expand Vault Tree";
+export const LEFT_RAIL_COLLAPSE_TREE_LABEL = "Collapse Vault Tree";
+export const LEFT_RAIL_TOGGLE_FACETS_LABEL = "Toggle Filter Facets";
+export const LEFT_RAIL_RESET_FILTERS_LABEL = "Reset Filters";
 
 const LEFT_RAIL_GROUP = "Left rail";
 
@@ -169,7 +169,7 @@ export function toggleFacetsAction(): ActionDescriptor {
     id: LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
     label: LEFT_RAIL_TOGGLE_FACETS_LABEL,
     section: "navigate",
-    icon: SlidersHorizontal,
+    icon: Filter,
     run: toggleFilterSidebar,
   };
 }

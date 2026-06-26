@@ -35,6 +35,7 @@ import type { ButtonHTMLAttributes, Ref, ReactNode } from "react";
 import { CircleDot, GitBranch, GitMerge, GitPullRequest } from "lucide-react";
 
 import { useFocusZone } from "../chrome/useFocusZone";
+import { RagOpsConsoleBody } from "./RagOpsConsole";
 
 import {
   DEFAULT_HISTORY_LIMIT,
@@ -819,6 +820,14 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
             title={sections.recentCommits.title}
           >
             <RecentCommitsBody scope={scope} />
+          </SectionCard>
+          <SectionCard
+            {...headerNav("rag-ops")}
+            id="rag-ops"
+            title="RAG OPS"
+            defaultOpen={false}
+          >
+            <RagOpsConsoleBody />
           </SectionCard>
         </>
       )}

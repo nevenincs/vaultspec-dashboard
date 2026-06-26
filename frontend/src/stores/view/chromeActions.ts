@@ -63,7 +63,7 @@ export function openSettingsAction(): ActionDescriptor {
 export function showKeyboardShortcutsAction(): ActionDescriptor {
   return withAccelerator({
     id: KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
-    label: "Keyboard shortcuts",
+    label: "Keyboard Shortcuts",
     section: "navigate",
     icon: Keyboard,
     run: openKeyboardShortcuts,
@@ -77,7 +77,7 @@ export function showKeyboardShortcutsAction(): ActionDescriptor {
 export function resetLayoutAction(): ActionDescriptor {
   return withAccelerator({
     id: RESET_LAYOUT_ACTION_ID,
-    label: "Reset layout",
+    label: "Reset Layout",
     section: "transform",
     icon: RotateCcw,
     run: runResetLayout,

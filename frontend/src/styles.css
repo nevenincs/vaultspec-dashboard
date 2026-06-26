@@ -276,6 +276,7 @@
   /* keyframe registrations (definitions below) */
   --animate-fade-in: fade-in var(--duration-ui-fast) var(--ease-settle);
   --animate-slide-in-left: slide-in-left var(--duration-ui-slow) var(--ease-settle);
+  --animate-slide-in-right: slide-in-right var(--duration-ui) var(--ease-settle);
   --animate-slide-in-up: slide-in-up var(--duration-ui) var(--ease-settle);
   --animate-slide-in-down: slide-in-down var(--duration-ui) var(--ease-settle);
   --animate-pulse-live: pulse-live 1.6s var(--ease-snap) infinite;
@@ -892,6 +893,15 @@
   to {
     transform: translateX(0);
     opacity: 1;
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
   }
 }
 

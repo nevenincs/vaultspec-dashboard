@@ -25,9 +25,21 @@ import {
 
 export interface SettingsEnumControlOptionView {
   value: string;
+  /** Title-Case display label derived from the served enum token (presentation
+   *  only — `ui-labels-are-user-facing`: mapping a token to a word is not deriving
+   *  state). Standardized casing per the dashboard label convention. */
+  label: string;
   active: boolean;
   tabIndex: 0 | -1;
   className: string;
+}
+
+/** Title-Case a served enum token for display ("high-contrast" -> "High Contrast"). */
+function enumMemberLabel(member: string): string {
+  return member
+    .split(/[-_\s]+/)
+    .map((word) => (word ? word[0]!.toUpperCase() + word.slice(1) : word))
+    .join(" ");
 }
 
 export interface SettingsEnumControlView {
@@ -52,6 +64,7 @@ export function deriveSettingsEnumControlView(
       const active = member === activeValue;
       return {
         value: member,
+        label: enumMemberLabel(member),
         active,
         tabIndex: active ? 0 : -1,
         className: `rounded-fg-xs px-fg-2 py-fg-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 ${

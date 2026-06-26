@@ -20,6 +20,7 @@ import {
   TIMELINE_MIN_HEIGHT,
   useViewStore,
 } from "./viewStore";
+import { useViewportClass, type ViewportClass } from "./viewportClass";
 
 export {
   LEFT_RAIL_MAX_WIDTH,
@@ -292,6 +293,10 @@ export interface ShellFrameView extends ShellLayoutState {
   leftCollapsed: boolean;
   rightCollapsed: boolean;
   rightTab: DashboardPanelState["right_tab"];
+  /** True when the viewport is compact (phone/tablet): the AppShell renders the
+   *  single-pane + bottom-tab-bar frame instead of the desktop three-column grid
+   *  (mobile-responsive-layout ADR D1/D2). */
+  compact: boolean;
   gridColumns: string;
   rootClassName: string;
   leftRailClassName: string;
@@ -422,10 +427,12 @@ export function deriveShellResizeHandleView(
 export function deriveShellFrameView(
   shellLayout: ShellLayoutState,
   shellChrome: DashboardShellChromeView,
+  viewportClass: ViewportClass = "regular",
 ): ShellFrameView {
   const panelState = shellChrome.panelState;
   const leftCollapsed = panelState.left_collapsed;
   const rightCollapsed = panelState.right_collapsed;
+  const compact = viewportClass === "compact";
   const showTimeline = shellLayout.timelineVisible;
   const frame = {
     ...shellLayout,
@@ -434,6 +441,7 @@ export function deriveShellFrameView(
     leftCollapsed,
     rightCollapsed,
     rightTab: panelState.right_tab,
+    compact,
     gridColumns: appShellGridColumns({
       leftRailVisible: shellLayout.leftRailVisible,
       leftCollapsed,
@@ -489,7 +497,8 @@ export function useShellLayoutState(): ShellLayoutState {
 export function useShellFrameView(scope: unknown): ShellFrameView {
   const shellChrome = useDashboardShellChromeView(scope);
   const shellLayout = useShellLayoutState();
-  return deriveShellFrameView(shellLayout, shellChrome);
+  const viewportClass = useViewportClass();
+  return deriveShellFrameView(shellLayout, shellChrome, viewportClass);
 }
 
 export function useShellWindowActions(

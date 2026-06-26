@@ -69,16 +69,16 @@ describe("SettingControl dispatch + control kit", () => {
     render(<SettingControl def={enumDef} value="dark" onChange={onChange} />);
     const group = screen.getByRole("radiogroup", { name: "Theme" });
     expect(group).toBeTruthy();
-    const dark = screen.getByRole("radio", { name: "dark" });
+    const dark = screen.getByRole("radio", { name: "Dark" });
     expect(dark.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(screen.getByRole("radio", { name: "light" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Light" }));
     expect(onChange).toHaveBeenCalledWith("light");
   });
 
   it("segmented (enum): arrow keys rove and emit", () => {
     const onChange = vi.fn();
     render(<SettingControl def={enumDef} value="system" onChange={onChange} />);
-    fireEvent.keyDown(screen.getByRole("radio", { name: "system" }), {
+    fireEvent.keyDown(screen.getByRole("radio", { name: "System" }), {
       key: "ArrowRight",
     });
     expect(onChange).toHaveBeenCalledWith("light");
@@ -136,7 +136,7 @@ describe("SettingControl dispatch + control kit", () => {
   it("disabled: controls do not emit", () => {
     const onChange = vi.fn();
     render(<SettingControl def={enumDef} value="dark" onChange={onChange} disabled />);
-    fireEvent.click(screen.getByRole("radio", { name: "light" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Light" }));
     expect(onChange).not.toHaveBeenCalled();
   });
 });

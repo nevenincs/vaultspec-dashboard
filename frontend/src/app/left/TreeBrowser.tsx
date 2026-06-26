@@ -62,6 +62,7 @@ import {
 } from "../../stores/view/leftRailKeybindings";
 import { registerKeyAction } from "../../stores/view/keymapDispatcher";
 import { openContextMenu } from "../../stores/view/contextMenu";
+import { useViewportClass } from "../../stores/view/viewportClass";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
 import {
   pathStem,
@@ -412,6 +413,12 @@ function VaultTreeRow({
         }
       : undefined,
   );
+  // On a compact (touch) viewport a single tap on a leaf OPENS it (the mobile
+  // file-list gesture; there is no double-click on touch). Folders still toggle on
+  // tap, and desktop keeps single-tap-select / double-click-open
+  // (mobile-responsive-layout ADR D5).
+  const compact = useViewportClass() === "compact";
+  const tapOpensLeaf = compact && !expandable && onOpen != null;
   const button = (
     <button
       ref={ref}
@@ -423,7 +430,7 @@ function VaultTreeRow({
       tabIndex={tabIndex}
       style={indentStyle(level)}
       onFocus={() => nav.setActiveKey(navKey)}
-      onClick={onActivate}
+      onClick={tapOpensLeaf ? onOpen : onActivate}
       onDoubleClick={onOpen}
       onContextMenu={
         entity

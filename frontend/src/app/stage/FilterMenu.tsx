@@ -8,6 +8,8 @@
 // (dashboard-layer-ownership). Anchoring/dismiss is the caller's concern; this is the
 // panel body only, on the binding popover elevation.
 
+import type { ReactNode } from "react";
+
 import { type FacetDotTone, FacetRow } from "../kit/FacetRow";
 import { SearchField, SectionLabel } from "../kit";
 
@@ -67,6 +69,104 @@ export interface FilterMenuProps {
    *  stays pinned. Live surfaces pass a viewport-relative cap so a large corpus
    *  vocabulary cannot overflow off-screen; the parity harness omits it. */
   maxHeight?: number | string;
+  /** Compact (mobile) presentation: render each facet section as toggle CHIPS in a
+   *  bottom sheet (binding compact Filter frame 790:3278) instead of the desktop
+   *  checkbox rows, with a "Show results" apply/close action. The container chrome
+   *  (border/elevation) is the sheet's; this renders the body only. */
+  chips?: boolean;
+  /** Compact apply/close action for the chip CTA. */
+  onApply?: () => void;
+}
+
+/** A single toggle facet chip (compact): filled accent + paper ink when selected,
+ *  quiet sunken pill otherwise (matching the binding Chip Active treatment). */
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`inline-flex min-h-9 items-center rounded-fg-pill px-fg-3 py-fg-1-5 text-label transition-colors duration-ui-fast ease-settle outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        active
+          ? "bg-accent text-paper"
+          : "bg-paper-sunken text-ink-muted hover:text-ink"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Compact chip body: each checkbox section becomes a wrapped chip group; the date
+ *  (radio) section is omitted (the timeline owns the date window). */
+function ChipsBody({
+  sections,
+  title,
+  anyActive,
+  onClearAll,
+  onApply,
+}: {
+  sections: FilterMenuSection[];
+  title: string;
+  anyActive: boolean;
+  onClearAll?: () => void;
+  onApply?: () => void;
+}) {
+  const facetSections = sections.filter(
+    (s): s is CheckboxSection => s.type === "checkbox",
+  );
+  return (
+    <div className="flex flex-col gap-fg-4 pb-fg-2" data-filter-menu>
+      <div className="flex items-center justify-between">
+        <span className="text-title font-medium text-ink">{title}</span>
+        {anyActive && onClearAll && (
+          <button
+            type="button"
+            onClick={onClearAll}
+            className="rounded-fg-xs text-body font-medium text-accent-text transition-colors duration-ui-fast hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          >
+            Reset
+          </button>
+        )}
+      </div>
+      {facetSections.map((section) => {
+        const selected = new Set(section.selected);
+        return (
+          <div key={section.key} className="flex flex-col gap-fg-2">
+            <SectionLabel>{section.label}</SectionLabel>
+            <div className="flex flex-wrap gap-fg-2">
+              {section.options.map((opt) => (
+                <FilterChip
+                  key={opt.value}
+                  active={selected.has(opt.value)}
+                  onClick={() => section.onToggle(opt.value)}
+                >
+                  {opt.label ?? opt.value}
+                </FilterChip>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      {onApply && (
+        <button
+          type="button"
+          onClick={onApply}
+          className="mt-fg-1 flex w-full items-center justify-center rounded-fg-md bg-accent px-fg-3 py-fg-2 text-body font-medium text-paper transition-colors duration-ui-fast ease-settle hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        >
+          Show results
+        </button>
+      )}
+    </div>
+  );
 }
 
 function CheckboxBody({ section }: { section: CheckboxSection }) {
@@ -137,7 +237,20 @@ export function FilterMenu({
   sections,
   width = 252,
   maxHeight,
+  chips = false,
+  onApply,
 }: FilterMenuProps) {
+  if (chips) {
+    return (
+      <ChipsBody
+        sections={sections}
+        title={title}
+        anyActive={anyActive}
+        onClearAll={onClearAll}
+        onApply={onApply}
+      />
+    );
+  }
   const sectionList = sections.map((section, i) => (
     <div key={section.key} className="flex flex-col gap-fg-1">
       {i > 0 && <div className="my-fg-1 h-px w-full bg-rule" />}

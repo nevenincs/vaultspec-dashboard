@@ -39,7 +39,7 @@ describe("KeyboardShortcuts", () => {
     fireEvent.keyDown(window, { key: "?" });
     const dialog = screen.getByRole("dialog");
     expect(dialog.getAttribute("aria-modal")).toBe("true");
-    expect(screen.getByText("Keyboard shortcuts")).toBeTruthy();
+    expect(screen.getByText("Keyboard Shortcuts")).toBeTruthy();
   });
 
   it("renders the real shortcut groups with keycaps", () => {

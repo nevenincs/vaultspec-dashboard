@@ -33,7 +33,7 @@ export function KeyboardShortcuts() {
     <Dialog
       open={open}
       onClose={closeKeyboardShortcuts}
-      title="Keyboard shortcuts"
+      title="Keyboard Shortcuts"
       description="The keys this dashboard listens for. Press ? to toggle this legend."
     >
       <div className="flex flex-col gap-fg-4 px-fg-4 pt-fg-3 pb-fg-4">

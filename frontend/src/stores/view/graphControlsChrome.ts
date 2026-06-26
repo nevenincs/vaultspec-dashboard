@@ -144,7 +144,7 @@ export function deriveGraphControlsTunePresentationView(): GraphControlsTunePres
     containerClassName: "flex w-full flex-col gap-fg-2",
     freezeRowClassName: "flex items-center justify-between gap-fg-2",
     freezeLabelClassName: "text-body text-ink-muted",
-    freezeLabel: "Freeze layout",
+    freezeLabel: "Freeze Layout",
     resetButtonClassName:
       "self-start text-caption text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
     resetLabel: "Reset to defaults",
@@ -437,12 +437,12 @@ export function deriveGraphControlsFreezeToggleView(
   freezeAvailable: boolean,
 ): GraphControlsFreezeToggleView {
   return {
-    label: frozen ? "resume layout" : "freeze layout",
+    label: frozen ? "Resume Layout" : "Freeze Layout",
     title: freezeAvailable
       ? frozen
-        ? "resume the layout"
-        : "freeze the layout in place"
-      : "freeze is available in the Network layout",
+        ? "Resume the layout"
+        : "Freeze the layout in place"
+      : "Freeze is available in the Network layout",
   };
 }
 
@@ -487,15 +487,15 @@ export function deriveGraphControlsNavigationView(): GraphControlsNavigationView
     containerClassName: "flex flex-col items-center gap-fg-0-5",
     ariaLabel: "Navigate",
     dividerClassName: "my-fg-0-5 h-px w-6 bg-rule",
-    zoomIn: { label: "zoom in" },
-    zoomOut: { label: "zoom out" },
+    zoomIn: { label: "Zoom In" },
+    zoomOut: { label: "Zoom Out" },
     fitToView: {
-      label: "fit to view",
-      title: "fit all nodes into the viewport",
+      label: "Fit to View",
+      title: "Fit all nodes into the viewport",
     },
     resetView: {
-      label: "reset view",
-      title: "reset the camera to the origin",
+      label: "Reset View",
+      title: "Reset the camera to the origin",
     },
   };
 }

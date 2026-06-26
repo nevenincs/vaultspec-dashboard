@@ -61,7 +61,7 @@ export function EnumControl({ def, value, onChange, disabled, id }: ControlProps
             onKeyDown={onKeyDown(index)}
             className={option.className}
           >
-            {option.value}
+            {option.label}
           </button>
         );
       })}

@@ -30,6 +30,8 @@ import {
   deriveFilterSidebarMenuSections,
   useFilterSidebarVisualState,
 } from "../../stores/view/filterSidebar";
+import { useViewportClass } from "../../stores/view/viewportClass";
+import { BottomSheet } from "../chrome/BottomSheet";
 import { FilterMenu } from "./FilterMenu";
 
 // ---------------------------------------------------------------------------
@@ -187,13 +189,54 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
     vocabulary.health,
   );
   const presentation = filterView.presentation;
-  const { anchor, ready } = useFlyoutAnchor(open);
+  // On compact the filter is presented in a bottom sheet (ADR D3), not the
+  // desktop anchored flyout — so the flyout anchor machinery is gated off.
+  const compact = useViewportClass() === "compact";
+  const { anchor, ready } = useFlyoutAnchor(open && !compact);
 
   const sections = deriveFilterSidebarMenuSections({
     vocabulary,
     filterView,
     onToggleFacet: (facet, value) => void filterIntent.toggleFacet(facet, value),
   });
+
+  const filterMenu = (
+    <FilterMenu
+      key={visualStateKey}
+      title={presentation.titleLabel}
+      anyActive={filterView.anyActive}
+      onClearAll={() => {
+        // Clears only the facet filters; the date window is the timeline's to own
+        // (filtering-has-one-canonical-surface: one date writer).
+        void filterIntent.clearFilters();
+      }}
+      sections={sections}
+      maxHeight={compact ? "65vh" : "calc(100vh - 3.5rem)"}
+    />
+  );
+
+  // Compact: present the SAME canonical filter content in a bottom sheet (mounted
+  // from app/left via the rail — the filtering-has-one-canonical-surface guard
+  // holds). The sheet owns its own scrim/dismiss/safe-area + grabber.
+  if (compact) {
+    return (
+      <BottomSheet
+        open={open}
+        onDismiss={onClose}
+        title={presentation.titleLabel}
+        hideTitle
+      >
+        <FilterMenu
+          title="Filters"
+          anyActive={filterView.anyActive}
+          onClearAll={() => void filterIntent.clearFilters()}
+          sections={sections}
+          chips
+          onApply={onClose}
+        />
+      </BottomSheet>
+    );
+  }
 
   if (!open || anchor === null) return null;
 
@@ -217,18 +260,7 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
       }}
       data-filter-sidebar
     >
-      <FilterMenu
-        key={visualStateKey}
-        title={presentation.titleLabel}
-        anyActive={filterView.anyActive}
-        onClearAll={() => {
-          // Clears only the facet filters; the date window is the timeline's to own
-          // (filtering-has-one-canonical-surface: one date writer).
-          void filterIntent.clearFilters();
-        }}
-        sections={sections}
-        maxHeight="calc(100vh - 3.5rem)"
-      />
+      {filterMenu}
     </Popover>,
     document.body,
   );
