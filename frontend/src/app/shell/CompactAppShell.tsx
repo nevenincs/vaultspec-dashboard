@@ -5,10 +5,10 @@
 // (responsive-layout-is-one-viewport-aware-projection), not a parallel app.
 //
 // Surfaces (ADR D2): Browse (the left-rail vault/files content — the landing),
-// Graph (NON-navigable on compact, D4), Timeline (minimode, D2t — filled by a
-// later step), Status (the activity rail). Search is the momentary tab that opens
-// the full-screen command palette (D3). Documents open via the sliding navigator
-// (D5) — wired in a later step.
+// Timeline (scrubber minimode, D2t), Status (the activity rail). The graph is
+// desktop-only (D4) — it has NO compact tab or surface (an "unavailable" tab is
+// worse than no tab). Search is the momentary tab that opens the full-screen
+// command palette (D3). Documents open via the sliding navigator (D5).
 //
 // Layer law (dashboard-layer-ownership / view-rewrite-preserves-the-contract):
 // composes the existing surfaces and the mobile primitives, consuming the
@@ -26,8 +26,7 @@ import {
   useFilterSidebarOpen,
 } from "../../stores/view/filterSidebar";
 import { setTimelinePlayhead } from "../../stores/view/timeline";
-import { Button } from "../kit";
-import { Funnel, MagnifyingGlass, TreeStructure } from "../kit/glyphs";
+import { Funnel, MagnifyingGlass } from "../kit/glyphs";
 import { LeftRail } from "../left/LeftRail";
 import { StatusTab } from "../right/StatusTab";
 import { BottomTabBar, type CompactSurface } from "./BottomTabBar";
@@ -37,30 +36,9 @@ import { MobileTopBar } from "./MobileTopBar";
 
 const SURFACE_TITLE: Record<string, string> = {
   browse: "Browse",
-  graph: "Graph",
   timeline: "Timeline",
   status: "Status",
 };
-
-/** Graph is not navigable on compact (ADR D4): an honest, non-interactive state
- *  with a fallback to the document browse surface. */
-function GraphUnavailable() {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-fg-3 px-fg-8 text-center">
-      <span className="flex size-[4.5rem] items-center justify-center rounded-fg-pill bg-accent-subtle text-ink-faint">
-        <TreeStructure size={34} />
-      </span>
-      <h2 className="text-title text-ink">The graph isn’t available on mobile</h2>
-      <p className="text-body text-ink-muted">
-        The constellation needs a larger screen and a pointer. Open the dashboard on a
-        desktop to explore it.
-      </p>
-      <Button variant="primary" onClick={() => setCompactSurface("browse")}>
-        Browse documents
-      </Button>
-    </div>
-  );
-}
 
 export function CompactAppShell() {
   const surface = useCompactSurface();
@@ -86,7 +64,7 @@ export function CompactAppShell() {
   // Browse's top bar is the worktree name + search + advanced-filter (binding Figma
   // compact Browse: the worktree header + filter fold into the top bar). Other
   // surfaces show their title only — search is reached via the bottom Search tab, and
-  // the binding Status/Timeline/Graph frames carry no top-bar action.
+  // the binding Status/Timeline frames carry no top-bar action.
   const searchAction = {
     label: "Search",
     Glyph: MagnifyingGlass,
@@ -145,7 +123,6 @@ export function CompactAppShell() {
       >
         {surface === "browse" && <LeftRail />}
         {surface === "status" && <StatusTab />}
-        {surface === "graph" && <GraphUnavailable />}
         {surface === "timeline" && <CompactTimeline scope={scope} />}
       </main>
       <BottomTabBar active={surface} onSelect={onSelect} />

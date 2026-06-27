@@ -15,7 +15,9 @@ import { create } from "zustand";
 // Layer law (dashboard-layer-ownership): pure view-local state — no wire, no
 // query cache, no `tiers`. stable-selectors: the hook returns a PRIMITIVE string.
 
-export type CompactSurface = "browse" | "graph" | "timeline" | "status" | "search";
+// The graph is desktop-only (ADR D4: not navigable on a phone), so compact has NO
+// graph surface or tab — an "unavailable" tab is worse than no tab.
+export type CompactSurface = "browse" | "timeline" | "status" | "search";
 
 /** The real panes the shell can rest on (everything except the momentary search). */
 export type CompactPane = Exclude<CompactSurface, "search">;

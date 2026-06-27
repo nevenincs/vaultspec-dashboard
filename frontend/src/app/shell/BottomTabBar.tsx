@@ -17,7 +17,7 @@ import { useEffect, useState } from "react";
 
 import type { CompactSurface } from "../../stores/view/compactSurface";
 import { useFocusZone } from "../chrome/useFocusZone";
-import { Books, Calendar, GitBranch, Hierarchy, MagnifyingGlass } from "../kit/glyphs";
+import { Books, Calendar, GitBranch, MagnifyingGlass } from "../kit/glyphs";
 
 export type { CompactSurface };
 
@@ -30,7 +30,6 @@ interface TabDef {
 // Left-to-right order matches the binding Figma BottomTabBar.
 const TABS: readonly TabDef[] = [
   { id: "browse", label: "Browse", Glyph: Books },
-  { id: "graph", label: "Graph", Glyph: Hierarchy },
   { id: "timeline", label: "Timeline", Glyph: Calendar },
   { id: "status", label: "Status", Glyph: GitBranch },
   { id: "search", label: "Search", Glyph: MagnifyingGlass },
@@ -78,16 +77,17 @@ export function BottomTabBar({ active, onSelect }: BottomTabBarProps) {
             data-active={isActive}
             onClick={() => onSelect(id)}
             onFocus={() => setRovingTab(id)}
-            // ≥44pt tap target (min-h-11 = 2.75rem); active = accent-subtle pill +
-            // accent ink so the state survives without colour.
-            className={`flex min-h-11 flex-1 flex-col items-center justify-center gap-fg-0-5 rounded-fg-md py-fg-1 transition-colors duration-ui-fast ease-settle outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+            // Icon-only (binding Figma BottomTabBar): ≥44pt tap target
+            // (min-h-11 = 2.75rem), the glyph centered; active = accent-subtle pill
+            // + accent ink so the state survives without colour. The label is the
+            // accessible name (aria-label) only.
+            className={`flex min-h-11 flex-1 items-center justify-center rounded-fg-md py-fg-1 transition-colors duration-ui-fast ease-settle outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
               isActive
                 ? "bg-accent-subtle text-accent-text"
                 : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
             }`}
           >
-            <Glyph size={22} />
-            <span className="text-caption font-medium">{label}</span>
+            <Glyph size={24} />
           </button>
         );
       })}
