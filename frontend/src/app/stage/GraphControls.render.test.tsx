@@ -97,10 +97,10 @@ describe("GraphNavControls — Navigate (camera commands)", () => {
     const spy = vi.spyOn(getScene().controller, "command");
     renderGraphControls();
 
-    fireEvent.click(screen.getByRole("button", { name: "zoom in" }));
-    fireEvent.click(screen.getByRole("button", { name: "zoom out" }));
-    fireEvent.click(screen.getByRole("button", { name: "fit to view" }));
-    fireEvent.click(screen.getByRole("button", { name: "reset view" }));
+    fireEvent.click(screen.getByRole("button", { name: "Zoom In" }));
+    fireEvent.click(screen.getByRole("button", { name: "Zoom Out" }));
+    fireEvent.click(screen.getByRole("button", { name: "Fit to View" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset View" }));
 
     const kinds = spy.mock.calls.map((c) => (c[0] as { kind: string }).kind);
     expect(kinds).toEqual(
@@ -113,14 +113,14 @@ describe("GraphSettingsPanel — non-occluding overlay (collapsed by default)", 
   it("does not render the panel body until the trigger is opened", () => {
     renderGraphControls();
     // Collapsed by default: no panel body, so the canvas behind reads clean.
-    expect(screen.queryByRole("switch", { name: "freeze layout" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Freeze Layout" })).toBeNull();
     expect(
       screen
         .getByRole("button", { name: "Graph controls" })
         .getAttribute("aria-expanded"),
     ).toBe("false");
     openSettings();
-    expect(screen.getByRole("switch", { name: "freeze layout" })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Freeze Layout" })).toBeTruthy();
     expect(
       screen
         .getByRole("button", { name: "Graph controls" })
@@ -131,17 +131,17 @@ describe("GraphSettingsPanel — non-occluding overlay (collapsed by default)", 
   it("closes the panel on a second trigger click (toggle)", () => {
     renderGraphControls();
     openSettings();
-    expect(screen.getByRole("switch", { name: "freeze layout" })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Freeze Layout" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Graph controls" }));
-    expect(screen.queryByRole("switch", { name: "freeze layout" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Freeze Layout" })).toBeNull();
   });
 
   it("closes the panel on Escape", () => {
     renderGraphControls();
     openSettings();
-    expect(screen.getByRole("switch", { name: "freeze layout" })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Freeze Layout" })).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("switch", { name: "freeze layout" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Freeze Layout" })).toBeNull();
   });
 });
 
@@ -221,7 +221,7 @@ describe("GraphSettingsPanel — Freeze toggle", () => {
     renderGraphControls();
     openSettings();
 
-    fireEvent.click(screen.getByRole("switch", { name: "freeze layout" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Freeze Layout" }));
     expect(
       spy.mock.calls.some(
         (c) =>

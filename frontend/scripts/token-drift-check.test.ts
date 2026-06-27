@@ -40,7 +40,12 @@ describe("token drift check", () => {
   it("is formatting-agnostic (indentation changes are not drift)", async () => {
     const { colors } = await generateRegions();
     const reindented = colors.replace(/\n {2}/g, "\n      ");
-    expect(compareDecls(parseScopedDecls(colors, ":root"), parseScopedDecls(reindented, ":root"))).toEqual([]);
+    expect(
+      compareDecls(
+        parseScopedDecls(colors, ":root"),
+        parseScopedDecls(reindented, ":root"),
+      ),
+    ).toEqual([]);
   });
 
   it("generates the deterministic Figma-binding non-color foundation region", () => {
@@ -49,8 +54,8 @@ describe("token drift check", () => {
     expect(a).toEqual(b);
     // Figma role-named type scale (research F1 binding values).
     expect(a).toContain("--text-fg-display: 1.25rem;");
-    expect(a).toContain("--text-fg-title: 0.9375rem;");
-    expect(a).toContain("--text-fg-meta--line-height: 0.875rem;");
+    expect(a).toContain("--text-fg-title: 1rem;");
+    expect(a).toContain("--text-fg-meta--line-height: 1rem;");
     expect(a).toContain("--font-fg-sans:");
     expect(a).toContain("--font-fg-mono:");
     // Figma radius scale incl. the new pill18.
@@ -72,7 +77,10 @@ describe("token drift check", () => {
     const inline =
       '  --font-fg-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;';
     expect(
-      compareDecls(parseScopedDecls(wrapped, ":root"), parseScopedDecls(inline, ":root")),
+      compareDecls(
+        parseScopedDecls(wrapped, ":root"),
+        parseScopedDecls(inline, ":root"),
+      ),
     ).toEqual([]);
   });
 });
