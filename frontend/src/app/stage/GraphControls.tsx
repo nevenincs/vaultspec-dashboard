@@ -1,3 +1,4 @@
+// @figma GraphNavControls · SlhonORmySdoSMTQgDWw3w · 260:839
 // Graph overlay controls (binding Figma redesign `graph/Hero` 213:505 +
 // `graph/Sim + Display controls` 714:2630 + `NavControls/Vertical` 260:839). The
 // graph's top bar is RETIRED: every graph affordance is now a canvas OVERLAY, so

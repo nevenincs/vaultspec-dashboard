@@ -57,5 +57,7 @@ amended to point here). Sibling of `view-rewrite-preserves-the-state-and-scene-c
 ADR `2026-06-16-figma-parity-reconciliation-adr` (accepted; codification candidate) and
 research `2026-06-16-figma-parity-reconciliation-research` (finding F0, the governance
 conflict). Sibling rules `view-rewrite-preserves-the-state-and-scene-contract`,
-`themes-are-oklch-generated-from-a-token-tier`, `design-system-is-centralized`,
-`figma-code-connect-via-cli`.
+`themes-are-oklch-generated-from-a-token-tier`, `design-system-is-centralized`. (The
+former `figma-code-connect-via-cli` rule was removed when Code Connect was dropped — no
+Org/Enterprise seat; the Figma ↔ code join is now name-as-contract, see
+`frontend/figma/README.md`.)
