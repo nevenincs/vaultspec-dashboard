@@ -6,10 +6,13 @@ contracts. This is the day-to-day workflow for cross-referencing the live file, 
 registry, and implementation.
 
 - **File:** `SlhonORmySdoSMTQgDWw3w` · the live `vaultspec-dashboard` design file.
-- **Map:** `component-map.json` — each React component → its Figma node id + url.
-- **Identity:** each React component keeps its local `name`. Same-name Figma bindings are
-  the default; intentional primitive aliases declare `figmaNodeName` and `bindingKind`.
-  `figma:registry` + `figma:parity` keep the join honest.
+- **Join:** the name is the contract — a component's Figma name **equals** its React
+  export symbol (the ruleset lives in `README.md`). There is no `component-map.json`
+  registry and no Code Connect (both removed). For aliases/sub-frames, the node id is
+  cited in the React file header as `// @figma <Name> · SlhonORmySdoSMTQgDWw3w · <nodeId>`.
+- **Resolution:** Figma → code = `grep` the node id (or the bare name) across
+  `frontend/src`; code → Figma = read the file's `@figma` header, or MCP
+  `search_design_system` by the React symbol name (same-name, so it resolves).
 
 ## The two directions
 
@@ -20,18 +23,20 @@ and an agent implements that change in code.
 
 1. **Edit in Figma.** Adjust the component's live node — spacing,
    hierarchy, composition, a new element, a control state.
-2. **Find the source.** Look up the component in `component-map.json` (Figma node id →
-   `source` path). E.g. node `19:3` → `WorkspacePicker` → `src/app/left/WorkspacePicker.tsx`.
+2. **Find the source.** `grep -rn "<nodeId>" frontend/src` (the id is cited in the
+   component header), or search for the bare component name — it equals the React export.
+   E.g. node `634:2090` → search `CommandPalette` → `src/app/palette/CommandPalette.tsx`.
 3. **Pull the design context.** `get_design_context({ fileKey, nodeId })` returns the
    node's structure, measurements, and a screenshot. Read it against the existing source.
 4. **Implement in code, idiomatically.** Translate the intent — NOT the literal output.
    Use the existing token classes (`bg-paper-raised`, `text-ink`, `rounded-vs-md`,
    `gap-vs-2`, the type scale) and shared components; never paste raw hex/px. The Figma
    node tells you _what changed_; the codebase tells you _how to express it_.
-5. **Refresh the local map.** If the live Figma node changed identity, update
-   `component-map.json`, refresh `figma-snapshot.json` from MCP, then re-run the gates.
-   If the live node name differs from the React component because Figma uses a canonical
-   primitive name, keep the React name and record the Figma name in `figmaNodeName`.
+5. **Keep the join honest.** If the live Figma node was renamed, rename the React export
+   to match (the name IS the join), or — when Figma deliberately uses a different canonical
+   name — keep the React name and record the alias in the file header:
+   `// @figma <FigmaName> · SlhonORmySdoSMTQgDWw3w · <nodeId> · alias-of <ReactExport>`.
+   A rename is a contract event: change both sides in the same commit.
 
 **Token caveat:** Figma is still binding for foundation values, but the codebase preserves
 the OKLCH/DTCG generation mechanism. When a Figma foundation value changes, update
@@ -48,10 +53,9 @@ to the binding file, not a new authority source:
    domain marks).
 2. Build or update the live node via `use_figma`, fills **bound** to the
    `public/*` Semantic variables (theme-aware), after inspecting the file conventions.
-3. Update `component-map.json` + `figma-snapshot.json` with the node id; run the gates.
-   Mark direct same-name bindings as `surface`, deliberate primitive wrappers as
-   `primitive`, and uncertain semantic matches as `needs-review` until design confirms
-   the target.
+3. Name the new/updated Figma node to **equal** its React export symbol (or, for a
+   deliberate alias, cite it in the React header per the contract). New boards/sections
+   follow `[Band] Topic`; internal parts follow `_Parent/Part`. Verify with `get_metadata`.
 
 ## Guardrails baked into the build (learned, load-bearing)
 
@@ -81,15 +85,17 @@ available to sub-agents; Figma serialises writes.
 ## Verification
 
 ```
-npm run figma:registry   # every local registry URL points at the live file and is classified
-npm run figma:parity     # bound nodes exist and match name or explicit figmaNodeName alias
-npm run tokens:check      # the DTCG → CSS token drift gate
-just dev lint frontend    # the full gate (eslint + prettier + tsc + the above)
+npm run figma:names    # @figma headers are well-formed and point at SlhonORmySdoSMTQgDWw3w
+npm run tokens:check   # the DTCG → CSS token drift gate
+just dev lint frontend # the full gate (eslint + prettier + tsc + the above)
 ```
 
-## Tier ceiling
+Parity by name is a read-only MCP spot-check, not a local gate: `search_design_system`
+by a React symbol should resolve to the same-name node (or its cited alias).
 
-Use the `@figma/code-connect` CLI for Code Connect mappings. The MCP Code Connect tools
-can be plan-gated even when the CLI works. Keep `FIGMA_ACCESS_TOKEN` in `frontend/.env`,
-use `npx figma connect parse` before publish, and keep every node URL on
-`SlhonORmySdoSMTQgDWw3w`.
+## No Code Connect
+
+Code Connect is Org/Enterprise-only and is **not** used here (the CLI, the
+`component-map.json` registry, and the `figma:registry`/`figma:parity` gates were all
+removed). The name-as-contract in `README.md` is the substitute. Do not reintroduce
+`@figma/code-connect`, `.figma.tsx` files, or a central registry.

@@ -45,9 +45,10 @@ Surfaces that render over the canvas show a neutral `canvas-bg` ground with a
 - `npm run figma:registry` → 50 components mapped, 43/43 design surfaces bound.
 - `npm run figma:parity` → 49/49 bound components match their Figma node by name.
 - `get_variable_defs` resolves bound tokens on component nodes per theme mode.
-- **Superseded:** Code Connect is now driven through the `@figma/code-connect` CLI
-  against `SlhonORmySdoSMTQgDWw3w`; `component-map.json` remains the local live-node
-  registry.
+- **Superseded (current reality):** Code Connect, the `@figma/code-connect` CLI, the
+  `component-map.json` registry, and the `figma:registry`/`figma:parity` gates have all
+  been **removed**. The Figma ↔ code join is now name-as-contract — see `README.md`. The
+  `figma:registry`/`figma:parity` commands referenced above no longer exist.
 
 ## Re-seeding / extending
 

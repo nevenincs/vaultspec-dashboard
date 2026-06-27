@@ -45,6 +45,8 @@ current as *content* references but are not full-screen prototypes:
 1. The binding screens are the **AppShell** frames (`117:2`, `384:1004`) — the only
    full-shell 1472×940 frames. Everything else is a component, a content study, or a
    review cluster (the `§ …` sections).
-2. `component-map.json` is the node↔code registry of record; a surface with
-   `figmaNodeId: null` is not yet bound, not necessarily stale.
-3. Code-Connect tiles (250×156, under the `§` clusters) are QA placeholders, never screens.
+2. The join is by NAME (see `README.md`): a component's Figma name equals its React
+   export symbol. There is no `component-map.json` registry — a node with no same-name
+   React export is a sub-component (`_Parent/Part`), a study, or stale.
+3. The 250×156 tiles under the `§` clusters are **legacy Code-Connect QA scaffolding**
+   (Code Connect was removed) — stale placeholders, never screens; safe to ignore/delete.

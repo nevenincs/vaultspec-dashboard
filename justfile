@@ -162,6 +162,7 @@ _dev-lint-frontend:
   npm --prefix frontend run format:check
   npm --prefix frontend run typecheck
   npm --prefix frontend run tokens:check
+  npm --prefix frontend run figma:names
 
 # Regenerate the DTCG-derived color regions in styles.css and verify no drift.
 _dev-tokens:

@@ -68,7 +68,11 @@ An element is DONE only when ALL hold:
 2. **Kit** band — the component primitives (§5), each as a tidy spec frame with variants/states.
 3. **Surfaces** band — full screens composed from the kit (§6).
 4. **Graph** band — the node-graph visual language (§7).
-Naming: `kit/<Component>`, `surface/<Screen>`, `graph/<Spec>`. Selection states shown explicitly.
+Naming follows the one ruleset in `README.md`: organizational boards/sections are
+`[Band] Topic` (`[Kit] Components`, `[Surface] Activity Rail`); components are **bare**
+PascalCase equal to their React export (`Button`, `CommandPalette`), grouped by the board
+they sit in — not slash-prefixed. Selection/variant states shown explicitly via
+`Property=Value` axes; standalone state previews use the `Component.state` dot-path.
 
 ## 5. Component kit (centralised primitives — build FIRST)
 

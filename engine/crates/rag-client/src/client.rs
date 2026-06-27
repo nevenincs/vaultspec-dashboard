@@ -120,6 +120,12 @@ pub struct HealthInfo {
     pub project_count: Option<u32>,
     #[serde(default)]
     pub service_token: Option<String>,
+    /// rag's bare storage-schema version: the cheapest pre-read gate for the
+    /// direct-Qdrant embedding scroll (the full descriptor is on `/readiness`).
+    /// Absent in older rag builds that predate the storage-schema contract, where
+    /// it is `None` and the version gate treats the shape as the engine's baseline.
+    #[serde(default)]
+    pub schema_version: Option<u64>,
 }
 
 /// The `qdrant` sub-object of `/health`: the resident Qdrant's version, HTTP

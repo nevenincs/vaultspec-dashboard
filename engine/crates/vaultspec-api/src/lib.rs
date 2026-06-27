@@ -68,6 +68,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/ops/core/unarchive",
     "/ops/core/link",
     "/ops/rag/{verb}",
+    "/ops/rag/storage/{verb}",
     "/ops/git/{verb}",
     "/session",
     "/settings",
@@ -193,6 +194,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/ops/rag/{verb}",
             post(routes::ops::ops_rag).get(routes::ops::ops_rag_get),
+        )
+        // Destructive rag storage broker (rag-storage-broker ADR): delete/prune/
+        // migrate on the bounded CLI runner, validated args, dry-run-default, rag
+        // envelope verbatim. A 4-segment path, distinct from `/ops/rag/{verb}`.
+        .route(
+            "/ops/rag/storage/{verb}",
+            post(routes::ops::ops_rag_storage),
         )
         // Read-only git pass-through (dashboard-pipeline-wire W04): porcelain
         // status, numstat, unified diff — whitelisted, no mutating verb.

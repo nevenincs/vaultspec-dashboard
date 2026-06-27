@@ -415,6 +415,47 @@ mod bound_tests {
             "the self-consistent edge survived"
         );
     }
+
+    #[test]
+    fn storage_schema_gate_wiring_degrades_on_newer_version_and_dim_mismatch() {
+        // The embedding handler runs a two-stage storage-schema gate before the
+        // direct scroll; the async handler itself needs a live rag (its
+        // probe_machine_state reads service.json + /health), so this exercises the
+        // exact gate COMPOSITION the handler applies, with realistic shapes and no
+        // mocks. The gate rules themselves are exhaustively covered in rag-client.
+        use rag_client::vectors::{
+            EXPECTED_DENSE_DIM, KNOWN_STORAGE_SCHEMA_VERSION, extract_storage_schema_facts,
+            storage_schema_supported, storage_schema_version_supported,
+        };
+
+        // Stage 1, off /health's schema_version: a newer version degrades (with the
+        // drift stated) before any /readiness round-trip; an equal version passes.
+        assert!(
+            storage_schema_version_supported(Some(KNOWN_STORAGE_SCHEMA_VERSION + 1))
+                .unwrap_err()
+                .contains("newer")
+        );
+        assert!(storage_schema_version_supported(Some(KNOWN_STORAGE_SCHEMA_VERSION)).is_ok());
+
+        // Stage 2, off the /readiness descriptor: extract + gate exactly as the
+        // handler does. A dimension mismatch hard-refuses with the value stated.
+        let mismatched = serde_json::json!({
+            "schema": {"version": KNOWN_STORAGE_SCHEMA_VERSION, "vault": {"vectors": {
+                "dense": {"name": "dense", "dim": EXPECTED_DENSE_DIM + 256}}}}
+        });
+        assert!(
+            storage_schema_supported(&extract_storage_schema_facts(&mismatched), true)
+                .unwrap_err()
+                .contains("dimension")
+        );
+
+        // A compatible descriptor passes both stages (the serve path).
+        let ok = serde_json::json!({
+            "schema": {"version": KNOWN_STORAGE_SCHEMA_VERSION, "vault": {"vectors": {
+                "dense": {"name": "dense", "dim": EXPECTED_DENSE_DIM}}}}
+        });
+        assert!(storage_schema_supported(&extract_storage_schema_facts(&ok), true).is_ok());
+    }
 }
 
 pub async fn graph_query_route(
@@ -736,9 +777,10 @@ pub async fn graph_embeddings(
         &vault_root,
         std::time::Duration::from_millis(1500),
     );
-    let (info, qdrant_version) = match probe {
+    let (info, qdrant_version, schema_version) = match probe {
         rag_client::client::RagMachineState::Running { info, health } => {
-            (info, health.qdrant.and_then(|q| q.version))
+            let schema_version = health.schema_version;
+            (info, health.qdrant.and_then(|q| q.version), schema_version)
         }
         rag_client::client::RagMachineState::Crashed { reason, .. }
         | rag_client::client::RagMachineState::Absent { reason } => {
@@ -754,6 +796,44 @@ pub async fn graph_embeddings(
             "Qdrant version {} is not a recognized 1.x; direct embedding read degraded (capability gate)",
             qdrant_version.as_deref().unwrap_or("unknown")
         ));
+    }
+    // Storage-schema gate (rag-schema-gate ADR): the scroll reads rag's Qdrant SHAPE
+    // directly (collection name, dense vector name, dimension). Gate it on rag's
+    // advertised storage-schema contract before reading, so a rag shape change degrades
+    // the tier with the mismatch STATED rather than silently misreading. Stage 1 is the
+    // cheap version check off the `/health` schema_version already in hand — a newer
+    // shape short-circuits before any `/readiness` round-trip.
+    if let Err(reason) = rag_client::vectors::storage_schema_version_supported(schema_version) {
+        return degraded_embeddings(&reason);
+    }
+    // Stage 2: only a contract-advertising rag (Some version) pays the `/readiness`
+    // descriptor read for the dense-name + dimension checks; a pre-contract rag (None)
+    // reads as before (the gate is additive, never a regression). A `/readiness` read
+    // that fails means the shape cannot be validated before the direct read, so it
+    // degrades (fail closed), exactly like the running-probe.
+    if schema_version.is_some() {
+        let readiness_transport = rag_client::client::LoopbackTransport {
+            port: info.port,
+            bearer: info.service_token.clone(),
+            timeout: rag_client::control::READ_BUDGET,
+        };
+        match rag_client::control::readiness(&readiness_transport) {
+            Ok(readiness) => {
+                let facts = rag_client::vectors::extract_storage_schema_facts(&readiness);
+                // `advertised = true`: /health already promised the contract, so the
+                // descriptor must validate completely - a missing version/name/dim is a
+                // fail-closed degrade, not a vacuous pass.
+                if let Err(reason) = rag_client::vectors::storage_schema_supported(&facts, true) {
+                    return degraded_embeddings(&reason);
+                }
+            }
+            Err(e) => {
+                return degraded_embeddings(&format!(
+                    "rag /readiness unreadable for the storage-schema gate ({}); direct embedding read degraded",
+                    rag_client::search::degradation_reason(&e)
+                ));
+            }
+        }
     }
     // The semantic freshness epoch (rag-control-plane ADR D4): one bounded
     // `/jobs` read against rag's SERVICE port, reduced to the newest terminal
