@@ -43,6 +43,15 @@ const SIBLING_TIMEOUT: Duration = Duration::from_secs(120);
 /// generic lifecycle/reindex subprocess ceiling.
 const SEARCH_SIBLING_TIMEOUT: Duration = Duration::from_secs(8);
 
+/// Destructive-storage budget (rag-storage-broker ADR D4): a `prune` of a large
+/// orphaned set or an apply-mode `migrate` of a big shared store legitimately runs
+/// longer than the reindex budget, so the storage runner gets a more generous - but
+/// still bounded - ceiling rather than the 120s reindex bound killing a destructive
+/// apply mid-flight. Still bounded so a wedged storage op cannot pin an async worker
+/// forever; a breach kills the child and returns a 504. (A `migrate` is a COPY to the
+/// other backend, so a killed apply is recoverable by re-running, never source loss.)
+const STORAGE_SIBLING_TIMEOUT: Duration = Duration::from_secs(300);
+
 /// Search request query ceiling. The frontend intent store clips at the same
 /// user-facing size, but the API is a public boundary and must reject unbounded
 /// external callers before building rag argv.
@@ -2243,7 +2252,7 @@ pub async fn ops_rag_storage(
         &cell.root,
         &rag_invocation(),
         &args,
-        SIBLING_TIMEOUT,
+        STORAGE_SIBLING_TIMEOUT,
         SIBLING_STDOUT_CAP,
     )
     .await?;

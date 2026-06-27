@@ -15,6 +15,7 @@ related:
   - '[[2026-06-27-rag-storage-broker-P02-S07]]'
   - '[[2026-06-27-rag-storage-broker-P02-S08]]'
   - '[[2026-06-27-rag-storage-broker-adr]]'
+  - '[[2026-06-27-rag-storage-broker-audit]]'
   - '[[2026-06-27-rag-storage-broker-plan]]'
   - '[[2026-06-27-rag-storage-broker-research]]'
 ---
@@ -28,6 +29,10 @@ Auto-generated index of all documents tagged with `#rag-storage-broker`.
 ### adr
 
 - `2026-06-27-rag-storage-broker-adr` - `rag-storage-broker` adr: `broker rag's destructive storage verbs through the bounded CLI runner` | (**status:** `accepted`)
+
+### audit
+
+- `2026-06-27-rag-storage-broker-audit` - `rag-storage-broker` audit: `code review verification`
 
 ### exec
 
