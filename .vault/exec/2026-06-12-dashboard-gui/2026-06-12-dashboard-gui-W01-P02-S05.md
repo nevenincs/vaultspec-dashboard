@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement the contract-shaped scene graph model with node kind, lifecycle, degree-by-tier and edge relation, tier, confidence, state per G3.a and the contract identity guarantees
 
 ## Scope
@@ -47,4 +44,3 @@ Engine-aggregated constellation meta-edges (count plus breakdown-by-tier)
 are not represented yet; they enter with W02.P06.S21 and may need an
 optional field on the locked `SceneEdgeData` shape - noted for
 experience-architect review at that boundary, not smuggled in here.
-

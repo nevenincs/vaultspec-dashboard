@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-dashboard-state-centralization-plan]]"
 ---
 
-
-
-
 # Add validation for stable node ids, date-range ordering, bounded selected ids, and recognized salience lens values
 
 ## Scope
@@ -20,8 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 ## Notes
-

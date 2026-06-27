@@ -158,5 +158,3 @@ from being wedged in ad hoc (research F2, F5).
   lifted/command surfaces are never rail tabs. (Candidate only — promote after the tab law
   has held across at least one new-surface cycle, per the codify discipline; first
   encounter is not yet a rule.)
-
-

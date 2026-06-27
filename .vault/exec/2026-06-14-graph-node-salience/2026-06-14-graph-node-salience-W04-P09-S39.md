@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-salience-plan]]"
 ---
 
-
-
-
 # Surface a focus-change loading state from the stores layer into the scene loading channel, derived from the lens-and-focus query state
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Surfaced a focus-change loading state from the stores layer via useSalienceSliceView: loading is true on both the initial fetch (isPending) and a lens/focus re-query (isFetching), so the scene shows a loading state on a focus change behind the stores->scene boundary.
 
 ## Notes
-

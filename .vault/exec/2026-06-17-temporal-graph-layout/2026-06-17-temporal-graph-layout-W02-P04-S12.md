@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # extend debug snapshots with temporal range, bucket counts, and simulation status
 
 ## Scope

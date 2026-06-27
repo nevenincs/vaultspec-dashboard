@@ -7,8 +7,6 @@ modified: '2026-06-22'
 related: []
 ---
 
-
-
 # `status-worktree-latency` research: `status worktree enumeration latency`
 
 The `/status` front door was reported as slow (felt like "40s to index"). Live

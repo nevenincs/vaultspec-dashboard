@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # mirror the per-type status in the mock engine and the corpus fixtures
 
 ## Scope

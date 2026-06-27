@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-code-tree-plan]]"
 ---
 
-
-
-
 # Prove gitignore exclusion and worktree-only honest degradation
 
 ## Scope

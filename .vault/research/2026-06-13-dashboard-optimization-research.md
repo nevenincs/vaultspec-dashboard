@@ -9,8 +9,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-optimization` research: `performance and completeness campaign`
 
 This grounds a standing campaign: feature completeness plus performance optimization

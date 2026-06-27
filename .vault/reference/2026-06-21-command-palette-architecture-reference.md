@@ -8,8 +8,6 @@ related:
   - "[[2026-06-21-command-palette-planes-adr]]"
 ---
 
-
-
 # `command-palette-architecture` reference: `command palette implementation reference`
 
 Code-level reference for the command-palette campaign: the contribution registry

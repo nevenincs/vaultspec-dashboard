@@ -10,8 +10,6 @@ related:
   - '[[2026-06-16-review-rail-viewers-adr]]'
 ---
 
-
-
 # `editor-dock-workspace` adr: `dockable tabbed editor workspace` | (**status:** `accepted`)
 
 ## Problem Statement

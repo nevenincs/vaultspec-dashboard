@@ -7,8 +7,6 @@ modified: '2026-06-22'
 related: []
 ---
 
-
-
 # `dashboard-backend-completion` research: `frontend-driven backend completion and hardening`
 
 Handover brief for the backend/data-plane agent. The Figma design system and every

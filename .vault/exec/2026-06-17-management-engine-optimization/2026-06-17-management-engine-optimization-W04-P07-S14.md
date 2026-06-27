@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-management-engine-optimization-plan]]"
 ---
 
-
-
-
 # Remove fake and stub positive-signal fixtures
 
 ## Scope

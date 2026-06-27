@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-live-state-plan]]"
 ---
 
-
-
-
 # Add the live e2e for the stream-lost degraded surface and live reactivity
 
 ## Scope

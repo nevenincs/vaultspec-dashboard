@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-dashboard-state-centralization-plan]]"
 ---
 
-
-
-
 # Add mutation helpers for selection, hover, filters, date range, timeline mode, lens, focus, panel state, representation mode, granularity, and graph bounds
 
 ## Scope
@@ -20,8 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 ## Notes
-

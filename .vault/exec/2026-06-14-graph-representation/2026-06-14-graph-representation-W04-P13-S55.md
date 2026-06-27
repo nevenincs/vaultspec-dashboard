@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Run frontend vitest to green and commit by pathspec
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Frontend vitest green: 116 files / 850 tests pass, 9 skipped (e2e). Committed by pathspec in logical per-wave commits.
 
 ## Notes
-

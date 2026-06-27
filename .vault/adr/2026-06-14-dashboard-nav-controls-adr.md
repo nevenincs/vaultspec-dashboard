@@ -11,7 +11,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
 # `dashboard-nav-controls` adr: `navigation controls` | (**status:** `accepted`)
 
 ## Problem Statement

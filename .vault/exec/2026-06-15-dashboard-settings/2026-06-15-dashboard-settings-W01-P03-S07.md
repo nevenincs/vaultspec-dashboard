@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Add the GET /settings/schema route serving the grouped, ordered, described registry through the shared envelope
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 The engine serves the schema the client renders controls and synthesizes defaults from.
 
 ## Notes
-

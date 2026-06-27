@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-platform-plan]]"
 ---
 
-
-
-
 # Implement the logging, tracing, and arm-to-confirm guard middlewares
 
 ## Scope

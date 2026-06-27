@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the schema-driven settings controls from the binding Switch, Slider, and SegmentedToggle Kit primitives
 
 ## Scope

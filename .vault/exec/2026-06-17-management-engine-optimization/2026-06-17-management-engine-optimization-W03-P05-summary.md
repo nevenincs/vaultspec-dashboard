@@ -8,9 +8,6 @@ related:
   - "[[2026-06-17-management-engine-optimization-plan]]"
 ---
 
-
-
-
 # `management-engine-optimization` `W03.P05` summary
 
 Salience coreness no longer uses a quadratic peel and retains scale invariant coverage.

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Run the frontend vitest suite and confirm the rail and WorkTab tests pass green
 
 ## Scope

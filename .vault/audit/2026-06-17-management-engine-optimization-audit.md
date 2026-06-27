@@ -7,8 +7,6 @@ modified: '2026-06-17'
 related: []
 ---
 
-
-
 # `management-engine-optimization` audit: `initial execution review`
 
 ## Scope
@@ -82,7 +80,6 @@ backend hotpath step. Continue fake-signal cleanup by moving high-value captured
 adapter checks to live-client tests and deleting the sample-only duplicates.
 
 ## Codification candidates
-
 
 None from this review. The durable live-behavior testing constraint is already captured
 as an ADR codification candidate.

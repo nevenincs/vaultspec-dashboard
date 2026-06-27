@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Enroll the plan step tree onto FocusZone tree semantics (rove rows, expand/collapse) as one tab stop
 
 ## Scope

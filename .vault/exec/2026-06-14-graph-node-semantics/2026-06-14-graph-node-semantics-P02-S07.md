@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # carry the plan tier alongside progress in the lifecycle
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `plan_tier` reading the frontmatter tier; the plan lifecycle now carries the L1-L4 tier as state alongside the section-4 checkbox progress.
@@ -28,4 +24,3 @@ Added `plan_tier` reading the frontmatter tier; the plan lifecycle now carries t
 {OUTLINE}
 
 ## Notes
-

@@ -11,8 +11,6 @@ related:
   - "[[2026-06-14-dashboard-iconography-adr]]"
 ---
 
-
-
 # `dashboard-context-menus` research: `context menus: a project-wide action surface`
 
 The dashboard has a universal *lifted* verb surface — the `Cmd/Ctrl+K` command

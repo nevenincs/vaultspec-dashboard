@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add roving-tabindex keyboard navigation across rows and an accessible expand/collapse control (aria-expanded, aria-controls) for the plan row's step tree, deriving the focus order from the DOM at event time per the in-repo roving pattern
 
 ## Scope

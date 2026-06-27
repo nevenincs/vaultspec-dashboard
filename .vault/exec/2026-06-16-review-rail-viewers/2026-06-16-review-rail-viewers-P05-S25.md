@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Host the two viewers behind the open-in-viewer view-store intent so a selection routes to the markdown reader or the code viewer by node kind
 
 ## Scope

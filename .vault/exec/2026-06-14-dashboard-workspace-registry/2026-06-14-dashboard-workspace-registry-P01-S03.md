@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Auto-register the launch workspace as the first root on first run
 
 ## Scope

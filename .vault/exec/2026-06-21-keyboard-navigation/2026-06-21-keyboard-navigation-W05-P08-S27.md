@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Give the timeline minimap a keyboard contract (focusable, arrows move the viewport band)
 
 ## Scope
@@ -31,4 +28,3 @@ related:
 ## Notes
 
 - Satisfied by existing/concurrent work; this campaign's contribution is the live verification.
-

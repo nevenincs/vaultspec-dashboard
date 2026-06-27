@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement the client-side position cache and warm-start persistence keyed by workspace and scope per G5.d and G3.e
 
 ## Scope
@@ -49,4 +46,3 @@ to ~200kB), access is synchronous at mount time (no async gap before the
 first layout tick), and the ADR names either as acceptable. If a corpus
 ever overflows quota, the eviction path degrades to cold-start - a slower
 settle, never an error.
-

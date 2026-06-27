@@ -10,7 +10,6 @@ related:
   - '[[2026-06-17-temporal-graph-layout-research]]'
 ---
 
-
 # `temporal-graph-layout` plan
 
 Reimplement temporal mode as a Cosmos-backed graph canvas with authoritative date clustering and the existing timeline controls as the navigation skeleton.

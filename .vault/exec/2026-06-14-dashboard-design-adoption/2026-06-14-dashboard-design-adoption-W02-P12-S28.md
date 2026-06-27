@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Re-skin the timeline surface onto the new tokens and the animated-transitions motion grammar per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
 
 ## Scope

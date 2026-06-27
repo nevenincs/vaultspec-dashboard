@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement keyframe set-data and apply-deltas replay on the single sequence clock with splice-gap re-keyframe per G4.b
 
 ## Scope
@@ -63,4 +60,3 @@ the entity's `id` is the only load-bearing field on removal; the client
 removes by id and ignores the rest of the payload. The mock engine (S19)
 must emit removes with at least the id populated and may send the full
 last-known entity; both splice identically.
-

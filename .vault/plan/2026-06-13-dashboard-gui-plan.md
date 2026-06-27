@@ -12,7 +12,6 @@ related:
   - '[[2026-06-13-vaultspec-engine-plan]]'
 ---
 
-
 # `dashboard-gui` plan
 
 - [x] `S01` - Add granularity to the typed graph query and request feature granularity for the constellation; `frontend/src/stores/server/engine.ts`.

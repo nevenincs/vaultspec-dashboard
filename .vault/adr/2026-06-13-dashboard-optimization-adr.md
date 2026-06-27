@@ -9,8 +9,6 @@ related:
   - "[[2026-06-13-frontend-state-system-reference]]"
 ---
 
-
-
 # `dashboard-optimization` adr: `performance and completeness campaign` | (**status:** `accepted`)
 
 ## Problem Statement

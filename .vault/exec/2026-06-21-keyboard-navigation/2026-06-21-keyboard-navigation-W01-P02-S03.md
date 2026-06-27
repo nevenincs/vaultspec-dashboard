@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Add the bounded ordered focus-region registry (left rail, stage dock, graph canvas, right rail, timeline) with visible-aware resolution and entry-memory hand-off to FocusZone
 
 ## Scope

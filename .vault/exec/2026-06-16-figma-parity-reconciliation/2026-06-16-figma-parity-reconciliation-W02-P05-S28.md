@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the right rail tab bar to the binding Inspect Work Search Changes IA with the liveness pillars promoted to a persistent header
 
 ## Scope

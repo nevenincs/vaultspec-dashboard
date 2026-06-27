@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Add a tolerant content adapter normalizing the wire shape, blob_hash content-addressing the cache entry
 
 ## Scope

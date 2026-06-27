@@ -9,8 +9,6 @@ related:
   - "[[2026-06-13-dashboard-live-state-adr]]"
 ---
 
-
-
 # `frontend-state-system` audit: `state system delivery readiness`
 
 ## Scope
@@ -112,5 +110,3 @@ after a second cycle exercises it: `ui-intents-flow-through-dispatch` (a user in
 needs logging/guarding/tracing/audit is dispatched through the platform seam, not fired
 ad-hoc) - now that it has a first adopter, a second adopter would justify promotion.
 Recorded, not promoted.
-
-

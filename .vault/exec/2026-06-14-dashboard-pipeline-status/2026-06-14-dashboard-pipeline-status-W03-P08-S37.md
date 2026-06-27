@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Fade rows in/out on add/remove with stable ids for object constancy and render keyboard-initiated and reduced-motion paths instantly, reusing the existing animated-transitions grammar without introducing a new motion grammar
 
 ## Scope

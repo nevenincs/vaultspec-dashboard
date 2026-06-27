@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # add the new workspace crate manifest
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Wire typed validation into PUT /settings returning typed errors through the shared envelope helper
 
 ## Scope
@@ -28,4 +25,3 @@ related:
 Typed rejections ride the shared envelope; no hand-built tiers-less error bodies.
 
 ## Notes
-

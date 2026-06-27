@@ -9,8 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-adr]]"
 ---
 
-
-
 # `review-rail-viewers` audit: `review-rail-viewers code review`
 
 ## Scope
@@ -125,7 +123,6 @@ rule and both gates are green.
   encounter is not yet a rule.
 
 ## Codification candidates
-
 
 The ADR named two candidates; this audit confirms the boundary held on its first
 encounter but does NOT promote them yet, per the codify discipline (a lesson

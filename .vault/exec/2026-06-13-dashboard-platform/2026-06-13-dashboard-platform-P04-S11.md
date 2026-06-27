@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-platform-plan]]"
 ---
 
-
-
-
 # Implement the FailureKind taxonomy, classifyError, and the failure-policy hook with an injected degradation mapper
 
 ## Scope

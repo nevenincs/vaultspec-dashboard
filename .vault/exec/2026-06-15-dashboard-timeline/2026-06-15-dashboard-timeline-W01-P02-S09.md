@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add the lineage route handler taking scope, from, to, and filter params and calling the projection
 
 ## Scope

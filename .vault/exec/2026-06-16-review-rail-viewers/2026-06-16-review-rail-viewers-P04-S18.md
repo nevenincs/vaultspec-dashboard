@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Render the leading YAML block through a dedicated FrontmatterHeader: tags as pills, date and modified as stamps, related as clickable wiki-links
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Freeze and document the preserved stores hooks as the rewrite-consumable contract API surface
 
 ## Scope

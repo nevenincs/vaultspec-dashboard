@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the PlanInterior wire type (bounded waves to phases to steps with per-container rolled-up completion, per-step checked flag, heading, and bound exec-record id) plus its truncated honesty block mirroring the GraphSlice truncated shape
 
 ## Scope

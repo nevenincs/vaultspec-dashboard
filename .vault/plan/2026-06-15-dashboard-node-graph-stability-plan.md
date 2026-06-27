@@ -10,7 +10,6 @@ related:
   - '[[2026-06-15-dashboard-node-graph-stability-research]]'
 ---
 
-
 # `dashboard-node-graph-stability` plan
 
 ### Phase `P01` - d3-force solver driver behind the layout seam
@@ -66,12 +65,6 @@ constancy preserved. Work is grounded in the linked ADR and research; the layout
 FieldLayout interface) is preserved so the field assembly that drives it changes minimally.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

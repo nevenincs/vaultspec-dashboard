@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Mount the RepresentationModePanel and LensSelector into Stage
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Mounted `RepresentationModePanel` + `LensSelector` into Stage as a docked on-stage control cluster.
 
 ## Notes
-

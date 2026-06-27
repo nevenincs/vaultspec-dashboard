@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-code-tree-plan]]"
 ---
 
-
-
-
 # Test the code-mode selection join both directions and the four honest states
 
 ## Scope

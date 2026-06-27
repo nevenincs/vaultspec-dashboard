@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # integrate the graphology ForceAtlas2 web worker with warm-start and local-perturbation re-layout per G3.e, using Vite worker imports per the foundation report rider
 
 ## Scope
@@ -59,4 +56,3 @@ green, but no app-entry code reaches `createFa2Worker` yet, so Vite emits no
 worker chunk to inspect. Re-verify the emitted worker chunk when S21 mounts
 the stage and the field becomes reachable from the entry - noted as a P03
 boundary item.
-

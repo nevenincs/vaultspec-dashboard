@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Extend the Figma token mirror to carry the type, spacing, radius, and elevation families alongside color
 
 ## Scope

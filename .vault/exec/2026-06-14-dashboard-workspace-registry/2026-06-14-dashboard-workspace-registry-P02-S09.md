@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Route registry add and forget through the user-state config surface, not the graph API or the ops proxy
 
 ## Scope

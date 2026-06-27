@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Give the graph settings panel a correct focus order (folds, sliders, switches, reset) with trap-free containment and focus-restore to its opener
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # If it held across the enrollment, codify the every-composite-navigates-through-the-one-focuszone rule via the codify pipeline
 
 ## Scope

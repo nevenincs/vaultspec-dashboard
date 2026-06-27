@@ -9,9 +9,6 @@ related:
   - "[[2026-06-18-document-edit-hardening-plan]]"
 ---
 
-
-
-
 # Land the rename verb via PR with green CI, release the wheel, and bump the dashboard core pin
 
 ## Scope

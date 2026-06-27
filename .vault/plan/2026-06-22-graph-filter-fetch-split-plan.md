@@ -15,7 +15,6 @@ related:
 
 The graph-slice query shows the prior bounded slice while a Tier-1 change loads, so filtering never blanks and a previously-seen filter is cache-instant.
 
-
 Make graph filtering smooth and stop wasted re-queries without serving un-consumed data, per the accepted two-tier-filter ADR.
 
 - [x] `P01.S01` - Add placeholderData keepPreviousData to the graph-slice useQuery (and its salience sibling delegate); `frontend/src/stores/server/queries.ts`.
@@ -49,12 +48,6 @@ narrows them with no re-query. `D4`: neighbor egos and the legend mask stay
 client-narrow.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

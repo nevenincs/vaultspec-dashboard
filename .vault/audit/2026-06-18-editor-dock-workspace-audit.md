@@ -11,7 +11,6 @@ promoted_to:
 modified: '2026-06-22'
 ---
 
-
 # `editor-dock-workspace` audit: `dockable tabbed editor workspace review`
 
 ## Scope
@@ -111,7 +110,3 @@ store read.
   `SceneController` seam. (Already named as a candidate in the ADR; this review is
   one cycle of evidence toward promotion — promote after it holds across a full
   cycle per the codify discipline.)
-
-
-
-

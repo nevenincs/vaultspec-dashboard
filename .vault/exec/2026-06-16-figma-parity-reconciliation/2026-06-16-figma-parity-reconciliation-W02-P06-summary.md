@@ -8,9 +8,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # `figma-parity-reconciliation` `W02.P06` summary
 
 P06 rebuilt the remaining overlay and dialog surfaces onto the canonical Figma

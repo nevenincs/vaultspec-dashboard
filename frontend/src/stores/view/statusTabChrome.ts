@@ -13,7 +13,9 @@ export type StatusSectionId =
   | "open-prs"
   | "open-issues"
   | "recent-prs"
-  | "recent-commits";
+  | "recent-commits"
+  // The machine-level rag operations console (rag-service-management ADR D7).
+  | "rag-ops";
 
 const STATUS_SECTION_IDS = [
   "changes",
@@ -26,6 +28,7 @@ const STATUS_SECTION_IDS = [
   "open-issues",
   "recent-prs",
   "recent-commits",
+  "rag-ops",
 ] as const satisfies readonly StatusSectionId[];
 const STATUS_SECTION_ID_SET = new Set<string>(STATUS_SECTION_IDS);
 const DEFAULT_STATUS_SECTION_ID: StatusSectionId = "open-plans";

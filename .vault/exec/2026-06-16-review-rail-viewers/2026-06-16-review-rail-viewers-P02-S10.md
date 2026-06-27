@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Expose a content selector that derives degraded/offline state from the tiers block, never from a transport error
 
 ## Scope

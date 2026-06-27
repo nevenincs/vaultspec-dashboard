@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Extend the scope-isolation adversarial tests to cover workspace swaps with no cross-project state bleed
 
 ## Scope

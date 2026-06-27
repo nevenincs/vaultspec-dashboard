@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add a consumer test feeding a captured live-shaped lineage sample through the adapter and asserting the reconciled result
 
 ## Scope

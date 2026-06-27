@@ -7,8 +7,6 @@ modified: '2026-06-16'
 related: []
 ---
 
-
-
 # `status-overview` research: `right-rail Status overview: plan-completion model, engine data inventory, git-history gap`
 
 Grounding for the `status-overview` ADR. Question: when the right rail reports "what is

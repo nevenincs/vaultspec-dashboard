@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add tests for the honest states, the a11y roles and announcements, and reduced-motion instant behavior
 
 ## Scope

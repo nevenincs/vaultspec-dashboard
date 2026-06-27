@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Thread the active as-of playhead into usePipelineStatusView so the surface reflects the historical pipeline under a past playhead, consistent with the timeline ADR
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Author the WorkspacePicker rendering roots, launch-default and unreachable markers, and the add-a-project affordance
 
 ## Scope

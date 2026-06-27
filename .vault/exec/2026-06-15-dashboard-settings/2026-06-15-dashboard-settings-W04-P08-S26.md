@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Implement write-through on change via usePutSettings with pending and error handling
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 Changes persist (cache-seed + invalidate) and rejections surface on the row.
 
 ## Notes
-

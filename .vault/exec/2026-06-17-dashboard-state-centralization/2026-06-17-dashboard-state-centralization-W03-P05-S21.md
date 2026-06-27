@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-dashboard-state-centralization-plan]]"
 ---
 
-
-
-
 # Derive the graph wire filter from canonical dashboard state instead of rebuilding a partial filter in the stage
 
 ## Scope
@@ -20,8 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 ## Notes
-

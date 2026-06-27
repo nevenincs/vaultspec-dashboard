@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Define the diff added/removed green/red as high-contrast sacred tokens that override warmth even in the warm theme
 
 ## Scope

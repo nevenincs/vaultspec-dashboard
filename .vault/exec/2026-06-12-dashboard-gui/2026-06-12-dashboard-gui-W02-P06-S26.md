@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement the node-scoped discover flow with visually quarantined, session-pinned-only semantic candidates per G3.c
 
 ## Scope
@@ -45,4 +42,3 @@ A pinned candidate whose target is not materialized on stage is held as a
 dangling edge (surfaced by the model, not drawn) until an expansion brings
 the target in - acceptable until the discover flow optionally fetches the
 candidate's node, noted as a refinement.
-

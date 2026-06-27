@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Finalize the component registry repointed to the live Figma file mapping code components to the Kit primitives at frame 135:2
 
 ## Scope

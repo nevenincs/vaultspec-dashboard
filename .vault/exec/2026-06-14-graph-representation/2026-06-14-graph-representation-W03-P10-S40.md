@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Add GMap feature-country label geometry at overview LOD
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `overlays.ts`: `countryLabels` places one GMap country label per feature at its members' centroid (feature membership from featureTags, added to SceneNodeData + mapper).
 
 ## Notes
-

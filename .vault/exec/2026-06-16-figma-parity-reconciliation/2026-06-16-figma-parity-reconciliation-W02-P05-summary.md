@@ -8,9 +8,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # `figma-parity-reconciliation` `W02.P05` summary
 
 P05 rebuilt the right activity-rail panes and the stage chrome onto the canonical

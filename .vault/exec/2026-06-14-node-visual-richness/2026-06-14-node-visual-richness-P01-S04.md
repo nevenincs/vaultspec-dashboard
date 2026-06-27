@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # add engine unit and conformance tests for the per-type status mapping
 
 ## Scope
@@ -20,8 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 ## Notes
-

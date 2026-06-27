@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-dashboard-state-centralization-plan]]"
 ---
 
-
-
-
 # Add tolerant live adapters for the dashboard-state response while preserving stable identity fields
 
 ## Scope
@@ -20,8 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 ## Notes
-

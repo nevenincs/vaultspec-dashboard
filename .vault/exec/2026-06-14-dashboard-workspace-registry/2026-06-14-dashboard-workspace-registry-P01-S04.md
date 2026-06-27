@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Implement read-only add, forget, and select-active registry operations that never mutate a repository
 
 ## Scope

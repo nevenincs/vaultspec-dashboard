@@ -7,8 +7,6 @@ modified: '2026-06-22'
 related: []
 ---
 
-
-
 # `global-context-actions` research: `global context-menu tail + refresh state control`
 
 Every right-clickable element in the dashboard gets a bespoke per-kind context menu

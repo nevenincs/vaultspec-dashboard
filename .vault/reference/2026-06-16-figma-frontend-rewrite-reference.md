@@ -7,8 +7,6 @@ modified: '2026-06-22'
 related: []
 ---
 
-
-
 # `figma-frontend-rewrite` reference: `binding Figma design extraction`
 
 Extraction of the binding Figma file (key `SlhonORmySdoSMTQgDWw3w`, single page `Components`,

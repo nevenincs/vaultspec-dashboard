@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Add the Phosphor icon dependency for the expressive/domain plane
 
 ## Scope

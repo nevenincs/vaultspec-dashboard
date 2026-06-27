@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Extend the rail unit tests to assert the RAIL_TABS strip is exactly now, work, changes, search in that order
 
 ## Scope

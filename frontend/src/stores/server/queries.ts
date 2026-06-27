@@ -6311,7 +6311,10 @@ export function deriveRagStatusView(
   const tiers = tiersFromQuery({ data, error });
   const availability = readTierAvailability(tiers, [RAG_TIER]);
   const degraded = tiers !== undefined && availability.degraded;
-  const reason = availability.reasons[RAG_TIER];
+  // Prefer the per-tier semantic-degradation reason; fall back to the lifecycle
+  // reason the `/status` machine `state` carries (crashed/absent explanation) when
+  // the tier block names none.
+  const reason = availability.reasons[RAG_TIER] ?? data?.rag?.reason;
 
   if (data?.rag) {
     const rag = data.rag;

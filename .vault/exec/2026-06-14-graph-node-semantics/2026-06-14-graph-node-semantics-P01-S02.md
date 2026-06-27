@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # unit-test authority_class across every doc type plus the unknown fallback
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Unit-tested `authority_class` across all eight doc types plus None and an unrecognized type, asserting the unknown fallback is never a coercion.
@@ -28,4 +24,3 @@ Unit-tested `authority_class` across all eight doc types plus None and an unreco
 {OUTLINE}
 
 ## Notes
-

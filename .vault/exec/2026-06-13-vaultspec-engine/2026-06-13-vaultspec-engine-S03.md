@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-vaultspec-engine-plan]]"
 ---
 
-
-
-
 # Carry the contract section 4 node fields (title, dates, lifecycle, degree-by-tier) on list-shape graph nodes, not only the detail bundle
 
 ## Scope
@@ -40,4 +37,3 @@ degree_by_tier - not only the detail bundle. Conformance divergence 3 is green.
 so it can carry the query-time projections; the model `Node` stays the storage
 shape. This is the field addition that the seven test-fixture initializers had
 to learn - the build-unblock fix that preceded this addendum's forward work.
-

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-dashboard-state-centralization-plan]]"
 ---
 
-
-
-
 # Apply patch-style dashboard-state updates without writing vault content or graph semantics
 
 ## Scope
@@ -20,8 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 ## Notes
-

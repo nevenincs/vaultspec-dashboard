@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # prove the derivation label is not part of the edge stable key
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Proved the derivation label is not part of the edge stable key: `edge_id` takes no derivation input, so re-derivation is identical regardless of label.
@@ -28,4 +24,3 @@ Proved the derivation label is not part of the edge stable key: `edge_id` takes 
 {OUTLINE}
 
 ## Notes
-

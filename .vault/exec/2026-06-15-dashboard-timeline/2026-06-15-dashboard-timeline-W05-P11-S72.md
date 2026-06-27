@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Perform visual and manual in-browser verification of the timeline surface
 
 ## Scope

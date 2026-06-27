@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-salience-plan]]"
 ---
 
-
-
-
 # Unit-test the backbone builder: tier weighting applied, semantic-tier edges damped, bounded-subgraph membership preserved
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Unit tests: tier weighting applied (declared edge weights above structural), off-backbone edges damped out of the topology, and bounded-subgraph membership preserved (edges to dropped nodes do not appear). Green.
 
 ## Notes
-

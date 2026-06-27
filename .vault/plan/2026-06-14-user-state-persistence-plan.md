@@ -10,7 +10,6 @@ related:
   - '[[2026-06-14-user-state-persistence-research]]'
 ---
 
-
 # `user-state-persistence` plan
 
 ## Wave `W01` - vaultspec-session crate: durable store and session/settings domain

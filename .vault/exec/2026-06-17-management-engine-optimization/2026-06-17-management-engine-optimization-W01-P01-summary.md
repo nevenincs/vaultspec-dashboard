@@ -8,9 +8,6 @@ related:
   - "[[2026-06-17-management-engine-optimization-plan]]"
 ---
 
-
-
-
 # `management-engine-optimization` `W01.P01` summary
 
 Backend measurement coverage is now present for production graph-query and salience

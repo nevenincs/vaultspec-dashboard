@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Render the wave-phase-step tree from derivePlanInteriorView: each wave and phase carries its own rolled-up completion fraction, each step a checked/unchecked mark and its heading
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-platform-plan]]"
 ---
 
-
-
-
 # Wrap the four AppShell regions in region boundaries with designed fallbacks
 
 ## Scope

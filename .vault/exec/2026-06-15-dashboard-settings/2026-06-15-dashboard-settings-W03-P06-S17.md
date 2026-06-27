@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Add Dialog render and accessibility tests covering focus trap and dismiss paths
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 The Dialog's contract is covered with core vitest matchers.
 
 ## Notes
-

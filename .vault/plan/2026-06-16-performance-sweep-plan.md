@@ -15,8 +15,6 @@ related:
 
 Memoize per-request graph projections and shrink the on-disk cache so concurrent document queries and cache footprint stop scaling per-request.
 
-
-
 - [x] `P01.S01` - Memoize the enriched document-slice projection per graph generation (A1); `engine/crates/vaultspec-api/src/app.rs`.
 - [x] `P01.S02` - Gzip-compress the large declared-graph cache payloads at rest (A3); `engine/crates/engine-store/src/lib.rs`.
 
@@ -50,12 +48,6 @@ clone) is LOW - the heavy aggregation is already memoized via the `LinkageGraph`
 are recorded in the ADR consequences.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

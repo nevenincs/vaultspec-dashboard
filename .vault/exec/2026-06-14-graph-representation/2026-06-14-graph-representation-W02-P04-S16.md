@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Encode derivation onto edge treatment via tokens
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `DERIVATION_AXIS_ORDER` and `isLineageEdge` to `edgeMeshes` so derivation classifies a lineage edge and seeds the lineage axis WITHOUT introducing a competing edge colour (tier-as-treatment preserved).
 
 ## Notes
-

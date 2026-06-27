@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the discover overlay from its binding frame over the preserved rag-backed discover query
 
 ## Scope

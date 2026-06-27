@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-gui-plan]]"
 ---
 
-
-
-
 # Carry the canonical separate meta_edges wire shape and fold it into edges through one tolerant client adapter
 
 ## Scope

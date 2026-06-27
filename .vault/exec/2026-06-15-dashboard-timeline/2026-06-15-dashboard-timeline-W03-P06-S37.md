@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Render raw arcs under the client cap for v1
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement open-in-place feature lifecycle and plan interior islands with canonical lifecycle-axis and tier layouts per G3.b and G3.e
 
 ## Scope
@@ -48,4 +45,3 @@ Gates green: typecheck, eslint, vitest (126 passed), prettier.
 The fixture interiors are flat step lists; wave/phase grouping in the plan
 interior layout activates when the engine serves W##/P## identifiers in
 interior nodes (mock follows the contract's shape either way).
-

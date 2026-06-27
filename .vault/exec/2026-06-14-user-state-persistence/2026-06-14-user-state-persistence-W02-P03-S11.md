@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # restore and persist the active scope through the session crate at serve boot
 
 ## Scope

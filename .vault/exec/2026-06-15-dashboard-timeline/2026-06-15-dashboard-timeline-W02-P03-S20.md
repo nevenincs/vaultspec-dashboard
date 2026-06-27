@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add a tolerant liveAdapters adapter that reconciles the lineage slice shape
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Test the WorkspacePicker four honest states and the add-a-project validation refusal
 
 ## Scope

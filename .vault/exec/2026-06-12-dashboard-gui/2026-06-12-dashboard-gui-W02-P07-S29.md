@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # build the tier dial control with per-tier toggles and confidence thresholds, semantic rendered inapplicable in time-travel, per G3.f and G4.b
 
 ## Scope
@@ -41,4 +38,3 @@ boundary.
 
 Dial state is choice state only; whether semantic is AVAILABLE (rag down)
 is the degradation matrix's surface (S46) and renders on the dial then.
-

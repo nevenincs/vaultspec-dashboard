@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the app shell layout frame from its binding frame as a dumb projection over the preserved view stores
 
 ## Scope

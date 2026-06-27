@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # add status_value and status_class to the scene node data as a flagged seam redline
 
 ## Scope

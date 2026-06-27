@@ -11,8 +11,6 @@ related:
   - '[[2026-06-12-vaultspec-engine-adr]]'
 ---
 
-
-
 # `user-state-persistence` research: `application session-state and delegation layer`
 
 The dashboard has a complete in-memory view-state system but **no backend

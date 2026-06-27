@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Migrate the ~167 radius usages to the Figma scale, re-keying and converting rounded-full to pill18
 
 ## Scope

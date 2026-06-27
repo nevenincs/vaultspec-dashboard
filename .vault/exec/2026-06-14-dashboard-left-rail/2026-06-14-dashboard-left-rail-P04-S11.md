@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Keep the inline git status badge read-only with no mutation affordance anywhere in the rail
 
 ## Scope

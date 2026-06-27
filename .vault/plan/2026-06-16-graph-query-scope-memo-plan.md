@@ -9,13 +9,6 @@ related:
   - '[[2026-06-16-backend-hotpath-hardening-research]]'
 ---
 
-
-
-
-
-
-
-
 # `graph-query-scope-memo` plan
 
 - [x] `S01` - Compute scope_node_ids inside build_document_views (one pass) and return it; `thread it through graph_query_cached/inner so the Document branch reuses it instead of scanning all nodes per request; `engine/crates/engine-query/src/graph.rs`.
@@ -24,17 +17,8 @@ related:
 
 ## Description
 
-
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 
-
 ## Verification
-

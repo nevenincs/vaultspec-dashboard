@@ -7,8 +7,6 @@ modified: '2026-06-22'
 related: []
 ---
 
-
-
 # `figma-frontend-consolidation` research: `figma vs frontend drift inventory and prune matrix`
 
 The condition this campaign addresses is **design drift**: the React component set and the

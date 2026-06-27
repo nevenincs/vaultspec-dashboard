@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Implement effective-value resolution with scoped-then-global precedence, default fallback, and per-key provenance
 
 ## Scope
@@ -28,4 +25,3 @@ related:
 Precedence + provenance defined once and consumed by the stores selector.
 
 ## Notes
-

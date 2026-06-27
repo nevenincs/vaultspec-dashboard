@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Virtualize the line list so a large capped file scrolls cheaply, with no editing affordances
 
 ## Scope

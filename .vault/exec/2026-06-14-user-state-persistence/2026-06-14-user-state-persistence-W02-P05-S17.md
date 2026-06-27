@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # resolve the cell via the registry in the temporal routes
 
 ## Scope

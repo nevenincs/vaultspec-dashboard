@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # build the timeline lanes with engine-bucketed density rendering resolving to event marks at fine zoom per G4.a
 
 ## Scope
@@ -55,4 +52,3 @@ the fixture corpus's genuinely uniform daily counts (mostly one event per
 bucket per kind), not a missing channel. Also folded in the consolidated
 revision per finding timeline-raw-cap-020: a client-side raw-mark ceiling
 (500) backs the engine's bucketing guarantee belt-and-suspenders.
-

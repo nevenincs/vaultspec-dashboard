@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Enroll the files tree onto FocusZone with the same tree semantics
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # wire TanStack Query hooks with streamedQuery SSE consumption and cache keys of scope, filter, as-of per G5.b and the stateless-scope contract guarantee
 
 ## Scope
@@ -53,4 +50,3 @@ eslint, vitest (111 passed), prettier; production build passes.
 matching the audit-verified 5.101 install; revisit the alias when it
 stabilizes. Targeted cache invalidation from stream chunks (fs/git/backends
 driving `invalidateQueries`) lands with the consumers in W02.P06/W03.P10.
-

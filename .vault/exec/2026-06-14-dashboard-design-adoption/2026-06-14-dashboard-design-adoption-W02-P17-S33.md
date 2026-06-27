@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Author the four bespoke abstract tier marks in-family on Phosphor's grid, each passing the 14px grayscale-by-shape gate
 
 ## Scope

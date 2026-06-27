@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Return {path, blob_hash, byte_len, language_hint, text, truncated} through the shared envelope with the tiers block, byte-capped with an honest truncated block
 
 ## Scope

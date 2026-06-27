@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add the scroll-strip scale and offset model (pixels-per-time, LIVE-docked-right, scroll-left-walks-back) as a pure helper
 
 ## Scope

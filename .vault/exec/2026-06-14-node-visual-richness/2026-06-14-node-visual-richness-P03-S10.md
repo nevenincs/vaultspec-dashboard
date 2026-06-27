@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # clear the new status marks against the 14px grayscale ink-coverage gate
 
 ## Scope

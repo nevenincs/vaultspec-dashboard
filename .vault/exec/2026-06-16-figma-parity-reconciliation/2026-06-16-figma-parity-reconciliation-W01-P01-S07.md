@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Adopt Inter and JetBrains Mono as the bound font families, replacing the system stack
 
 ## Scope

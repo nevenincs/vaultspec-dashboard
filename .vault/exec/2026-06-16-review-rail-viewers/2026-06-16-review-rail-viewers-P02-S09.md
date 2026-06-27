@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Mirror the live /nodes/{id}/content shape exactly in the mock engine and feed a captured live sample through the adapter in a fidelity test
 
 ## Scope

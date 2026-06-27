@@ -718,10 +718,21 @@ export function adaptStatus(body: unknown): EngineStatus {
             typeof core.vault_health === "string" ? core.vault_health : undefined,
         }
       : undefined,
-    // Emit the canonical lifecycle word `isRagRunning` later tests: a reachable
-    // backend maps to exactly `"running"` (the running token), anything else to
-    // `"stopped"`. One source of the `"running"` token, one predicate over it.
-    rag: { service: rag.available === true ? RAG_RUNNING : "stopped" },
+    // The live `/status` now carries an explicit machine `state`
+    // (running/crashed/absent) plus a `reason`; source the lifecycle word from it
+    // so a CRASHED rag (discovered but not serving) is distinguishable from a
+    // genuinely ABSENT one. Fall back to the available-flag word for older or
+    // synthetic samples carrying no `state`. `isRagRunning` still gates on exactly
+    // `"running"`; one source of the `"running"` token, one predicate over it.
+    rag: {
+      service:
+        typeof rag.state === "string"
+          ? rag.state
+          : rag.available === true
+            ? RAG_RUNNING
+            : "stopped",
+      reason: typeof rag.reason === "string" ? rag.reason : undefined,
+    },
   };
 }
 

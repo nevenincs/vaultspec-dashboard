@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the EngineClient planInterior method that GETs a plan node's bounded wave-phase-step interior under the node ceiling and adapts the envelope through liveAdapters
 
 ## Scope

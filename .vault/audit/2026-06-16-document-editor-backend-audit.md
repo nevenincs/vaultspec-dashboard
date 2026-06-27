@@ -8,8 +8,6 @@ related:
   - "[[2026-06-16-document-editor-backend-plan]]"
 ---
 
-
-
 # `document-editor-backend` audit: `vault-conformant document editor backend`
 
 ## Scope

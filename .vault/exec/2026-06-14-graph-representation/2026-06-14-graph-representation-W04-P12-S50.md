@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Build the LensSelector control emitting lens intent into the view store
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Built `LensSelector.tsx`: two role=switch lens controls writing `setActiveLens` into the view store (a re-query). Lucide marks, tokens, ARIA. Never fetches, never reads raw tiers.
 
 ## Notes
-

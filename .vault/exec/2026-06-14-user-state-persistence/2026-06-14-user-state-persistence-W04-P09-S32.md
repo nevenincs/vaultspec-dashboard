@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # represent the current folder and its feature-tag contexts as a view selector
 
 ## Scope

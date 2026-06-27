@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Add SettingsDialog render tests covering schema-driven rendering and override states
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 The dialog's contract is covered honestly against the mock.
 
 ## Notes
-

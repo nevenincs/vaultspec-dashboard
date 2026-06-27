@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # echo the status fields through the query route envelope with the tiers block
 
 ## Scope
@@ -20,8 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 ## Notes
-

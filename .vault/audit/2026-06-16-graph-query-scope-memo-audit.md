@@ -8,8 +8,6 @@ related:
   - "[[2026-06-16-graph-query-scope-memo-plan]]"
 ---
 
-
-
 # `graph-query-scope-memo` audit: `scope-node memoization review`
 
 ## Scope
@@ -55,7 +53,4 @@ Document path is eliminated.
   already-bounded tiny structures. Candidates to decline with rationale unless a
   profile shows them hot.
 
-
 ## Codification candidates
-
-

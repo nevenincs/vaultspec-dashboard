@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # register the session route prefixes in the SPA gate
 
 ## Scope

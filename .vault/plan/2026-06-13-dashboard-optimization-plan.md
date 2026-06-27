@@ -10,13 +10,6 @@ related:
   - '[[2026-06-13-dashboard-optimization-research]]'
 ---
 
-
-
-
-
-
-
-
 # `dashboard-optimization` plan
 
 A standing campaign: feature completeness + performance optimization across TanStack, the GUI, and the backend, on an adverse-test foundation - reproduce, fix, verify, codify, in waves.
@@ -84,12 +77,6 @@ verify -> codify. The full backlog with evidence is in the `dashboard-optimizati
 research; the budgets and policies are ADR D1-D3.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

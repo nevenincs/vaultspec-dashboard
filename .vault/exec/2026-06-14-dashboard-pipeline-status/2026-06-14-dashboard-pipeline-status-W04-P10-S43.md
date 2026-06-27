@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add render tests asserting the expandable step tree shows rolled-up completion and checked/unchecked marks and renders honest truncation when the interior is capped
 
 ## Scope

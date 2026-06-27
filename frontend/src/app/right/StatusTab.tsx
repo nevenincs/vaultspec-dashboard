@@ -821,16 +821,19 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
           >
             <RecentCommitsBody scope={scope} />
           </SectionCard>
-          <SectionCard
-            {...headerNav("rag-ops")}
-            id="rag-ops"
-            title="RAG OPS"
-            defaultOpen={false}
-          >
-            <RagOpsConsoleBody />
-          </SectionCard>
         </>
       )}
+      {/* The machine-level rag operations console is independent of corpus state
+          (it manages the one machine service), so it renders in every rail state,
+          collapsed by default. */}
+      <SectionCard
+        {...headerNav("rag-ops")}
+        id="rag-ops"
+        title="RAG OPS"
+        defaultOpen={false}
+      >
+        <RagOpsConsoleBody />
+      </SectionCard>
     </div>
   );
 }

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Contrast-prove every text and border token against each theme (warm ground shifts effective contrast), recording the per-theme ratios
 
 ## Scope

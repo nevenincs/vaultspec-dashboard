@@ -9,9 +9,6 @@ related:
   - "[[2026-06-22-unified-filter-plane-plan]]"
 ---
 
-
-
-
 # Audit the GET /events consumers and, if any corpus-projecting view renders the event lane, widen EventsParams to accept the canonical Filter facets alongside from/to/kinds/bucket, otherwise record /events as a non-corpus projection exempt from the filter
 
 ## Scope
@@ -20,8 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 ## Notes
-

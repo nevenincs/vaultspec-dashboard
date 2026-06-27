@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add a unit test asserting the node-ceiling bound and the truncated block on an over-ceiling query
 
 ## Scope

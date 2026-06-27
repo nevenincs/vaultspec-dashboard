@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Tune the connection-drawing fidelity to the binding Hero frame, keeping document granularity bounded by the node ceiling
 
 ## Scope

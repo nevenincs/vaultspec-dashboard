@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # wire bidirectional selection between browser and stage per G2.b
 
 ## Scope
@@ -43,4 +40,3 @@ vitest (180 passed), prettier.
 
 Scroll-into-view on highlight is a polish item for the a11y pass (S48)
 where focus management is handled coherently.
-

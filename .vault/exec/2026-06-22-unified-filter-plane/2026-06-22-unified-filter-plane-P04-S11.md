@@ -9,9 +9,6 @@ related:
   - "[[2026-06-22-unified-filter-plane-plan]]"
 ---
 
-
-
-
 # Document label_filter and confidence_floor as canonical-filter seeds that initialize dashboardState.filters on scope load and are never a query-time bypass
 
 ## Scope
@@ -20,8 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 ## Notes
-

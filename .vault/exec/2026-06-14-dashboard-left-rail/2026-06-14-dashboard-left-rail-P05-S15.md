@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Prove per-scope mode and filter reset with no cross-scope bleed
 
 ## Scope

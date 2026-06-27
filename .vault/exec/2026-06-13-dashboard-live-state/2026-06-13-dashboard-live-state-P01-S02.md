@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-live-state-plan]]"
 ---
 
-
-
-
 # Throw StreamLostError on an abnormal stream close or non-ok response in the SSE consumer
 
 ## Scope

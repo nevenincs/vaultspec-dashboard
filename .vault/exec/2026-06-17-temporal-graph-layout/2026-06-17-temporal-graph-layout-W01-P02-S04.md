@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # add temporal graph mode to the representation dispatcher and dashboard state contract
 
 ## Scope

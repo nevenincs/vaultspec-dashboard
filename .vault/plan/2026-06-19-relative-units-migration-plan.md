@@ -15,7 +15,6 @@ related:
 
 Land a px-scan CI gate in the frontend lint recipe so the no-px mandate is enforceable and regression-proof while the migration lands incrementally behind a shrinking allowlist.
 
-
 Migrate all hardcoded px in the frontend DOM CSS and styling to relative units (rem/em), behind a structural px-scan guard, surface by surface; scene/canvas deferred.
 
 - [x] `P01.S01` - Add a px-scan gate script that fails on hardcoded px in app CSS and tsx Tailwind arbitrary values, path-scoped to exclude the scene layer, tests, and the managed token region; `frontend/scripts/scan-px.mjs`.
@@ -104,12 +103,6 @@ team) and is out of this plan's scope. See the relative-units-migration ADR and
 research in the related frontmatter.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

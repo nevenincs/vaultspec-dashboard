@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Extend the Style Dictionary resolver and build to emit the four non-color families into the generated stylesheet regions
 
 ## Scope

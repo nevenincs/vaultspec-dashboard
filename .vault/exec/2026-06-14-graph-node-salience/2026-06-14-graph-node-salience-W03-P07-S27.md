@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-salience-plan]]"
 ---
 
-
-
-
 # Memoize the lens basis per (graph-generation, lens) and the focus-folded final score per (lens, focus), recomputing only on graph change
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added the FocusKey memoization key (lens, focus, partial): the basis is keyed per (graph-generation, lens) by the caller and the focus-folded score per (lens, focus) by this key. A no-focus lens switch and a focus change are distinct keys; identical (lens,focus,partial) is a cache hit.
 
 ## Notes
-

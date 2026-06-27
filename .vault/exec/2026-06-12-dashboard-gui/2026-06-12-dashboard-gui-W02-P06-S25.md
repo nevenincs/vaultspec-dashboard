@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement expand-ego working set with breadcrumb chips, collapse, and clear-to-constellation per G3.b
 
 ## Scope
@@ -47,4 +44,3 @@ Expansions re-keyframe the field (set-data) rather than patch it; with
 warm-start seeding the existing constellation keeps its positions and only
 new nodes settle in - the G3.e local-perturbation path does the visual
 work.
-

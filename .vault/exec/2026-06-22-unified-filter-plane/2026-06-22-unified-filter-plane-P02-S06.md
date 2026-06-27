@@ -9,9 +9,6 @@ related:
   - "[[2026-06-22-unified-filter-plane-plan]]"
 ---
 
-
-
-
 # Mirror the widened as-of and event-lane shapes in the mock engine double and assert a captured live sample narrows through the same client path the app uses
 
 ## Scope
@@ -20,8 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 ## Notes
-

@@ -8,8 +8,6 @@ related:
   - "[[2026-06-19-keyboard-action-system-research]]"
 ---
 
-
-
 # `keyboard-action-system` adr: `one keymap registry binds chords to the existing action plane` | (**status:** `accepted`)
 
 ## Problem Statement

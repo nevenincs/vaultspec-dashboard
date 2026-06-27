@@ -7,8 +7,6 @@ modified: '2026-06-22'
 related: []
 ---
 
-
-
 # `filter-controls` research: `unified filter controls cross-stack discovery`
 
 Cross-stack discovery for unifying the dashboard's filtering experience: the

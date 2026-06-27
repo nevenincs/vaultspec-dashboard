@@ -12,8 +12,6 @@ related:
   - '[[2026-06-16-status-overview-research]]'
 ---
 
-
-
 # `status-overview` adr: `right-rail Status overview: plan-derived open work, git history, location anchor` | (**status:** `accepted`)
 
 ## Problem Statement

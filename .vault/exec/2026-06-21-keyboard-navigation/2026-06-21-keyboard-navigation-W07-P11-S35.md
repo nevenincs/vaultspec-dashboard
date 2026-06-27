@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Run the full lint gate (just dev lint frontend) and a vaultspec-code-review of the campaign diff for the Class A/B split, layer ownership, bounded accumulators, and no private global listeners
 
 ## Scope
@@ -31,4 +28,3 @@ related:
 ## Notes
 
 - The review surfaced no codification candidate (the findings are instances the existing rule governs). Two enrollment steps remain open and are NOT regressions: S12 (filter facet flyout — a concurrently-edited surface) and S18 (dockview tab strip — library-owned); both are keyboard-reachable, their FocusZone roving pending.
-

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the PipelineArtifact wire type (stable node id, doc_type, title, feature_tags, dates, pipeline_phase) and the PipelineStatusResponse envelope type carrying the artifacts array plus the tiers block, snake_case as served
 
 ## Scope

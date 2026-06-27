@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # build the search tab over the search pass-through with typed filter chips and node-id click-through to the stage
 
 ## Scope
@@ -40,4 +37,3 @@ vitest (188 passed), prettier.
 The rag-down fallback and the explicit semantic-search-offline state are
 S45's; this step renders the healthy path with a generic failure line
 pointing at the rag card until then.
-

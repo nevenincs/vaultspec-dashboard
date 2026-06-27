@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Update mockEngine and conformance fixtures for the theme setting end-to-end
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 Every served setting has a real consumer (review HIGH-1 closed).
 
 ## Notes
-

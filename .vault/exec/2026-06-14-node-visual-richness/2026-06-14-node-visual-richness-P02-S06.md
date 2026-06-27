@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # thread the status fields through the live adapter and the scene-mapping seam
 
 ## Scope

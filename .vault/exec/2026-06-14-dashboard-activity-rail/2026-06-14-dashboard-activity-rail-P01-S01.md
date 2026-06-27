@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Add the work tab entry to the RAIL_TABS array in second position so the order reads now, work, changes, search
 
 ## Scope

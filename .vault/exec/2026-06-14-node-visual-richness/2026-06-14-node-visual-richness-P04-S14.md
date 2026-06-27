@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # add a hover-id view slice and handle the hover scene event in the stage
 
 ## Scope

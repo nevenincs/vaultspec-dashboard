@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Make marks focusable, announcing kind, date, joined-node count, and lineage degree
 
 ## Scope

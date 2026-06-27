@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Unit-test the new commands, object constancy across a mode switch, and the echoed event
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `sceneController.representation.test.ts`: commands distinct from layout-mode, overlay tracking, field forwarding, honest applied-mode event, node-identity constancy across a switch. 6 tests green.
 
 ## Notes
-

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Render the degraded state from the selector's interpreted degraded flag (pipeline tier absent or unavailable) as a designed advisory notice, never guessed from a transport error
 
 ## Scope

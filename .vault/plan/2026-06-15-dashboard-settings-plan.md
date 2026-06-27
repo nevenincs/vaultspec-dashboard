@@ -11,7 +11,6 @@ related:
   - '[[2026-06-14-user-state-persistence-adr]]'
 ---
 
-
 # `dashboard-settings` plan
 
 ## Wave `W01` - Engine: schema authority, typed validation, served schema route
@@ -145,12 +144,6 @@ is grounded in the research and ADR linked in `related:`, and respects the layer
 tiers-envelope, mock-mirrors-live, and design-token rules.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

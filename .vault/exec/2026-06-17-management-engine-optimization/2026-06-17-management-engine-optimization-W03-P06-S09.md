@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-management-engine-optimization-plan]]"
 ---
 
-
-
-
 # Shorten graph commit critical section
 
 ## Scope

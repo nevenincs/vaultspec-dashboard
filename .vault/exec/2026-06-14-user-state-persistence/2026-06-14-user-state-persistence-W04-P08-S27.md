@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # mirror the new session and settings wire shape in the mock engine double
 
 ## Scope

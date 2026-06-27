@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Add a salience-encoding unit test
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `salienceEncoding.test.ts`: size monotonic in salience, band cap, salience supersedes member-count, member-count fallback, label-priority ordering, derivation classification. 12 tests green.
 
 ## Notes
-

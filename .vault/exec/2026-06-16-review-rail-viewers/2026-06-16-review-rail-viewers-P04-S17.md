@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Build the MarkdownReader component rendering GFM including plan task-list checkboxes, themed entirely from the existing --color tokens
 
 ## Scope

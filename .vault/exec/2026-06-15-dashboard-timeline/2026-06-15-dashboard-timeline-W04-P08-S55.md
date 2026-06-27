@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add the range-select chip with play-the-range to the control bar
 
 ## Scope

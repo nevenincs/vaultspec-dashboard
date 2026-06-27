@@ -8,8 +8,6 @@ related:
   - "[[2026-06-17-management-engine-optimization-research]]"
 ---
 
-
-
 # `management-engine-optimization` adr: `Rust backend hardening and live-signal cleanup` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -95,7 +93,6 @@ while optimizing. Verification must therefore compare live responses against
 observable invariants and fixtures rather than mirrored implementation logic.
 
 ## Codification candidates
-
 
 - **Rule slug:** `engine-tests-use-live-behavior`.
   **Rule:** Tests that assert management-engine or data-provider behavior must exercise

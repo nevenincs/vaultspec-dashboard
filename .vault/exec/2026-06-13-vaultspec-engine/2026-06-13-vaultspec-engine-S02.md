@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-vaultspec-engine-plan]]"
 ---
 
-
-
-
 # Synthesize feature nodes (kind feature, id from feature tag, lifecycle and facet projections) at feature granularity and address meta-edges between their node ids
 
 ## Scope
@@ -42,4 +39,3 @@ Synthesis derives entirely from the filtered member set, so feature nodes honor
 the same scope and filter as the document slice. The feature node id composition
 (`NodeId::derive(Feature, tag)`) is identical to `node_id(CanonicalKey::Feature)`
 - no new identity-bearing key form was introduced.
-

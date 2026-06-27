@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Add the GET /workspaces route returning id, label, path, launch-default marker, reachability, and the tiers block
 
 ## Scope

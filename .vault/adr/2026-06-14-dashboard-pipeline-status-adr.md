@@ -9,8 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-adr]]"
 ---
 
-
-
 # `dashboard-pipeline-status` adr: `in-flight pipeline status surface (Work tab)` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -148,6 +146,3 @@ the same honesty guarantees rather than re-deriving them (research F4).
   built read-only and projection-pure, it extends to that use unchanged.
 
 ## Codification candidates
-
-
-

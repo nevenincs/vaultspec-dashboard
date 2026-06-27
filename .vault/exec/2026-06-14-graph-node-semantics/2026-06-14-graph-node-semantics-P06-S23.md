@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # type the additive node and edge ontology fields in the stores engine types
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Typed `authority_class`/`aggregate` on EngineNode and `derivation` on EngineEdge in the stores engine types.
@@ -28,4 +24,3 @@ Typed `authority_class`/`aggregate` on EngineNode and `derivation` on EngineEdge
 {OUTLINE}
 
 ## Notes
-

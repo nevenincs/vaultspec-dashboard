@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Preserve the collapse model and the single top-to-bottom focus order across the slots
 
 ## Scope

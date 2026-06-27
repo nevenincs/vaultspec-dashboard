@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-management-engine-optimization-plan]]"
 ---
 
-
-
-
 # Wire cached query indexes through scope state
 
 ## Scope

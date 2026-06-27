@@ -10,8 +10,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-platform` adr: `frontend runtime substrate` | (**status:** `accepted`)
 
 ## Problem Statement

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the grayscale-safe StatusPill component rendering the ADR status as a word-first pill (proposed / accepted / deprecated) with hue as redundant reinforcement only
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-gui-plan]]"
 ---
 
-
-
-
 # Carry member_count through the scene seam and size feature nodes as constellation centers of gravity
 
 ## Scope

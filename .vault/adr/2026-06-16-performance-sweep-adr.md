@@ -11,8 +11,6 @@ related:
   - "[[2026-06-15-resource-hardening-adr]]"
 ---
 
-
-
 # `performance-sweep` adr: `engine + frontend performance optimization avenues` | (**status:** `accepted`)
 
 ## Problem Statement

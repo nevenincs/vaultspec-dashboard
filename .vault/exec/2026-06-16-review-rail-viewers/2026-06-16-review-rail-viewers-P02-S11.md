@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Add a view-store open-in-viewer intent carrying the target node id and the active viewer surface
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # seed and persist scope and folder context in the view store through the session API
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add tests for arc treatment, bundling, un-bundle-on-hover, and ego-highlight
 
 ## Scope

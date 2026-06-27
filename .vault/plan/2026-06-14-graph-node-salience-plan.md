@@ -12,13 +12,6 @@ related:
   - '[[2026-06-12-dashboard-foundation-reference]]'
 ---
 
-
-
-
-
-
-
-
 # `graph-node-salience` plan
 
 Compute node importance in the engine on CPU as a per-lens Degree-of-Interest projection over the bounded graph, served as a single active-lens `salience` node field behind the shared envelope and tiers block.
@@ -160,12 +153,6 @@ The work follows the ADR's six CPU stages. The engine builds a tier-weighted bac
 The two launch lenses are concrete parameterizations of one model: the design lens biases the teleport toward ADR and research authority, leads with backbone PageRank and high coreness, and weights recency low; the status lens (the default) biases toward in-flight plans, leads with Brandes betweenness plus the hub score, weights recency high with an activity-burst term, and aggregates exec children into their parent. The salience ADR depends on the accepted node-semantics ADR for the `authority_class`, `lifecycle`, and `aggregate` ontology fields the teleport bias, recency, and fan-out treatment consume. The wire amendment adds a `lens` request parameter to `/graph/query`, `/graph/asof`, `/graph/diff`, and `/nodes/{id}/neighbors` (defaulting to the status lens) and a single active-lens `salience` node field served through the shared envelope helper with the tiers block; because DOI makes the served node set lens-dependent, `MAX_GRAPH_NODES` truncation selects the top-DOI nodes for the active lens and focus, and a salience computed while a tier is degraded is flagged partial via the tiers block. The stores layer is the sole wire client: it owns the active-lens view state (distinct from the canvas tier-dial lens), parameterizes the query by lens, drives a focus-change loading state into the scene, and reads degradation from the tiers block; the mock engine is brought to live-wire parity and proven by a captured-live-sample conformance test. The composition ships a weight-sensitivity sweep (top-k Kendall-tau stability) as the artifact that turns the lens-derived weights from magic numbers into tested ones, and an engine benchmark proves Brandes betweenness feasibility under the ceiling.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

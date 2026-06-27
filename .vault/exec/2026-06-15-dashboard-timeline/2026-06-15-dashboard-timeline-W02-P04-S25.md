@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Extend useTimelineStore with scroll offset and pixels-per-time scale view state
 
 ## Scope

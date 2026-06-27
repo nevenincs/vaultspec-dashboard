@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the filtered-out node state treatment per the binding frame
 
 ## Scope

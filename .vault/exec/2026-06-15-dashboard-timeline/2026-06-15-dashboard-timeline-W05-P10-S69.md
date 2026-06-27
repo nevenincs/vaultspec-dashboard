@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add render and integration tests for the Timeline mounted in the AppShell
 
 ## Scope

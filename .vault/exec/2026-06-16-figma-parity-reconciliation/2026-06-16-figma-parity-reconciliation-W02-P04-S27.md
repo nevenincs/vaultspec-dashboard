@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the tree browser from the binding TreeBrowser Kit primitive over the preserved tree query with plan-progress pips
 
 ## Scope

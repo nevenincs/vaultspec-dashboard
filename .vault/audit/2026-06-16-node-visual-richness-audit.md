@@ -9,8 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-adr]]"
 ---
 
-
-
 # `node-visual-richness` audit: `typed hover-card review`
 
 ## Scope
@@ -103,5 +101,3 @@ rules (`dashboard-layer-ownership`, `views-are-projections-of-one-model`,
 `warmth-lives-in-tokens-not-decoration`, `themes-are-oklch-generated-from-a-token-tier`)
 rather than surfacing a new durable constraint. An empty section here is a positive
 signal.
-
-

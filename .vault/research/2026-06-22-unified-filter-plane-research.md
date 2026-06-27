@@ -11,8 +11,6 @@ related:
   - '[[2026-06-17-dashboard-state-centralization-audit]]'
 ---
 
-
-
 # `unified-filter-plane` research: `unified filter plane`
 
 This research maps how filtering flows today across the four owned layers — the

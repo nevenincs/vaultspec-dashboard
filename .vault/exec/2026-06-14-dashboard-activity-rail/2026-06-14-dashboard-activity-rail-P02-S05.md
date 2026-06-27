@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Create the WorkTab frame component as a new app-chrome surface in the right rail directory
 
 ## Scope

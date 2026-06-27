@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # test the enriched node_view carries authority and aggregate additively
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Tested the enriched node_view carries authority and aggregate additively without perturbing identity.
@@ -28,4 +24,3 @@ Tested the enriched node_view carries authority and aggregate additively without
 {OUTLINE}
 
 ## Notes
-

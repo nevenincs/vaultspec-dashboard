@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-salience-plan]]"
 ---
 
-
-
-
 # Define the tier-weight vector (declared >= structural >> temporal >= semantic) and build the weighted backbone adjacency over the bounded subgraph from the LinkageGraph
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Defined the tier-weight vector (declared 1.0 >= structural 0.9 >> temporal 0.3 >= semantic 0.15) and Backbone::build, which folds the bounded member subgraph into an undirected tier-weighted adjacency. Only edges among served members are admitted.
@@ -28,4 +24,3 @@ Defined the tier-weight vector (declared 1.0 >= structural 0.9 >> temporal 0.3 >
 Defined tier_weight (declared 1.0 >= structural 0.9 >> temporal 0.3 >= semantic 0.15) and Backbone::build, which folds the bounded member subgraph into an undirected tier-weighted adjacency. Membership-bounded: only edges among served members are admitted.
 
 ## Notes
-

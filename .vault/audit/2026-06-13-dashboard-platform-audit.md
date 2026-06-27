@@ -9,8 +9,6 @@ related:
   - "[[2026-06-13-dashboard-platform-adr]]"
 ---
 
-
-
 # `dashboard-platform` audit: `frontend runtime substrate`
 
 ## Scope

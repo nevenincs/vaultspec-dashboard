@@ -8,9 +8,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # `figma-parity-reconciliation` `W03.P09` summary
 
 Phase W03.P09 rebuilt the consolidated plain-language graph controls (Navigate, Layout,

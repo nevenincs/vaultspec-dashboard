@@ -8,8 +8,6 @@ related:
   - "[[2026-06-21-command-palette-architecture-research]]"
 ---
 
-
-
 # `command-palette-providers` adr: `schema-driven command contribution registry` | (**status:** `accepted`)
 
 ## Problem Statement

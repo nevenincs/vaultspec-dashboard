@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # add the ontology fields to the fixture corpus byte-for-byte like live
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added the ontology fields to the fixture corpus byte-for-byte like live (authority register map, aggregate=exec, derivation by pipeline pair, null on membership edges).
@@ -28,4 +24,3 @@ Added the ontology fields to the fixture corpus byte-for-byte like live (authori
 {OUTLINE}
 
 ## Notes
-

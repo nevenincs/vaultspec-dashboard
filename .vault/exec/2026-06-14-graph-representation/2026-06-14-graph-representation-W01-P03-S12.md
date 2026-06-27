@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Serve salience for the requested lens and derivation/embedding from the mock graph route
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Mock `/graph/query` reads the request lens and projects each node's salience for that lens onto the single `salience` field (default status); derivation/embedding pass through on nodes/edges.
 
 ## Notes
-

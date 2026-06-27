@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Issue no wire request from the filter and clear it on scope swap
 
 ## Scope

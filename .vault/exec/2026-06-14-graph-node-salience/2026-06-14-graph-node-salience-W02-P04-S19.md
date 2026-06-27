@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-salience-plan]]"
 ---
 
-
-
-
 # Unit-test normalization range and rank stability, weighted composition against a hand-computed blend, and the DOI focus-distance subtraction
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Unit tests for normalization range + rank stability, the weighted composition against a hand blend, and the DOI focus-distance subtraction (including BFS-hop distance from focus). Green.
 
 ## Notes
-

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement reduced-motion support and full keyboard operability, arrow-walk the graph and bracket-step the playhead, per G7.d
 
 ## Scope
@@ -47,4 +44,3 @@ Grayscale-safe tier legibility and WCAG AA contrast are design-time
 properties already carried by the treatment-primary encoding (S11) and
 the token palette (S47); the formal contrast audit rides the
 visual-language review with the commissioned family.
-

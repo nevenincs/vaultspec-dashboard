@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # run the full frontend and engine lint gate and test suites to exit zero
 
 ## Scope

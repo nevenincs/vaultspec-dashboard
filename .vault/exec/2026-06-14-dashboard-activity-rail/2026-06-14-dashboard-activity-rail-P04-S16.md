@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Add a WorkTab render test asserting the degraded state renders when the stores selector reports the work pillar unavailable
 
 ## Scope

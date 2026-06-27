@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Run vaultspec-code-review over the feature and land any required revisions to a PASS verdict
 
 ## Scope

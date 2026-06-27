@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Render a designed empty state in WorkTab for the available-but-no-work case stating no in-flight pipeline work in the current scope
 
 ## Scope

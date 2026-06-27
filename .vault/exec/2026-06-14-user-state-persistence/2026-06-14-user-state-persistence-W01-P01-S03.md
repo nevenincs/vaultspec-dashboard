@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # implement the best-effort user-state SQLite store with open-or-heal recreate-on-corrupt
 
 ## Scope

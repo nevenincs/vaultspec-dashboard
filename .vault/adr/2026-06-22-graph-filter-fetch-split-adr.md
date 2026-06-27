@@ -8,8 +8,6 @@ related:
   - "[[2026-06-22-graph-filter-fetch-split-research]]"
 ---
 
-
-
 # `graph-filter-fetch-split` adr: `Two-tier graph filter: backend bounds the payload, client narrows within it` | (**status:** `accepted`)
 
 RECONCILED 2026-06-22 with `2026-06-22-unified-filter-plane-adr`: the references

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-gui-plan]]"
 ---
 
-
-
-
 # Add granularity to the typed graph query and request feature granularity for the constellation
 
 ## Scope

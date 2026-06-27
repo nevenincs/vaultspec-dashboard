@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # create the placeholder programmatic glyph set for doc types, tiers, and states as sprite and SDF textures pending the commissioned family per G7.c
 
 ## Scope
@@ -51,4 +48,3 @@ G7.c commissioning was human-approved (recorded in the foundation ADR);
 these placeholders explicitly hold until the designed family arrives in SVG
 + SDF/sprite forms. The SDF path is computed but not yet consumed by a
 shader; it exists so the commissioned family's SDF delivery slot is proven.
-

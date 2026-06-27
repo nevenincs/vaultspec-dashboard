@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Render the loading lane scaffold with a subtle liveness cue, never a flash of empty
 
 ## Scope

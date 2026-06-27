@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # feed a captured live sample through the client path and assert the fields
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added a captured-live-sample conformance test feeding a document slice with the ontology fields through adaptGraphSlice, asserting authority_class/aggregate/derivation survive the client path.
@@ -28,4 +24,3 @@ Added a captured-live-sample conformance test feeding a document slice with the 
 {OUTLINE}
 
 ## Notes
-

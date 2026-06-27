@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # type status_value and status_class on the wire node and the stores mirror
 
 ## Scope

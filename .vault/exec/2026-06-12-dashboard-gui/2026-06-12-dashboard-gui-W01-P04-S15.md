@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement the React island layer rendering opened nodes at tracked anchors per G6.a
 
 ## Scope
@@ -48,4 +45,3 @@ not carry (vitest runs in node); the pure style/hook seams are tested and
 DOM verification rides the S21 stage mount plus the W03.P12.S50 e2e smoke.
 Island content is a placeholder shell by design - interiors are
 W02.P06.S24.
-

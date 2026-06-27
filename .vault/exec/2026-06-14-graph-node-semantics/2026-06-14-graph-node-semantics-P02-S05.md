@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # parse the ADR H1 status line into a type-specific lifecycle state
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `adr_status` parsing the H1 status line into proposed/accepted/rejected/deprecated, dispatched by `doc_lifecycle` on doc_type=adr with checkbox fallback.
@@ -28,4 +24,3 @@ Added `adr_status` parsing the H1 status line into proposed/accepted/rejected/de
 {OUTLINE}
 
 ## Notes
-

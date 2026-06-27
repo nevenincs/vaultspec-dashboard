@@ -8,8 +8,6 @@ related:
   - '[[2026-06-19-filter-controls-research]]'
 ---
 
-
-
 # `filter-controls` adr: `unified filter controls and document-health ingestion` | (**status:** `accepted`)
 
 ## Problem Statement

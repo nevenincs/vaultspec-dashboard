@@ -9,9 +9,6 @@ related:
   - "[[2026-06-22-unified-filter-plane-plan]]"
 ---
 
-
-
-
 # Rewire the CategoryLegend dots to write the canonical doc_types/kinds facet through toggleFilterFacet and reflect the canonical filter active state instead of the canvas-local mask
 
 ## Scope
@@ -20,8 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 ## Notes
-

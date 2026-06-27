@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # run the full lint gate to exit zero across frontend and rust
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Ran `just dev lint all` to exit 0: python, ty, taplo, markdown, rust (fmt+clippy), frontend (eslint+prettier+tsc), typos all green.
@@ -28,4 +24,3 @@ Ran `just dev lint all` to exit 0: python, ty, taplo, markdown, rust (fmt+clippy
 {OUTLINE}
 
 ## Notes
-

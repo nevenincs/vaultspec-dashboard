@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-code-tree-plan]]"
 ---
 
-
-
-
 # Prove bounded reads: a capped directory level truncates honestly and cursor-paginates
 
 ## Scope

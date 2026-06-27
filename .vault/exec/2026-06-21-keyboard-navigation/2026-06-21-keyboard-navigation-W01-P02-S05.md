@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Add the visually-hidden skip-to-content link as first tab stop and place initial focus on load so a visible focused element always exists
 
 ## Scope

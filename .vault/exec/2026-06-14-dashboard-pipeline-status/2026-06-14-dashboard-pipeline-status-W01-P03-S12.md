@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Serve the bounded in-flight pipeline projection from the mock engine for the fixture corpus, emitting the PipelineStatusResponse envelope with the tiers block byte-for-byte in the target wire shape
 
 ## Scope

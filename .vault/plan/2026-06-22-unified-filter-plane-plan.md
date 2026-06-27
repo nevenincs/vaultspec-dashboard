@@ -10,16 +10,6 @@ related:
   - '[[2026-06-22-unified-filter-plane-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 # `unified-filter-plane` plan
 
 ### Phase `P01` - Backend temporal wire parity
@@ -88,12 +78,6 @@ category legend, the view store, and the timeline; execution edits files in plac
 never reverts another agent's uncommitted work, and commits by pathspec.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

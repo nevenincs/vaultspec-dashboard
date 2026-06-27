@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Implement the scope-override affordance: global versus active-scope, inheriting-global cue, and clear-override or reset-to-default
 
 ## Scope

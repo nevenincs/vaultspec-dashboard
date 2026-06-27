@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Add lens enum type and thread lens onto the graphQuery request body
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Threaded optional `lens` onto the `graphQuery` request body, defaulted server-side to status.
@@ -28,4 +24,3 @@ Threaded optional `lens` onto the `graphQuery` request body, defaulted server-si
 Threaded optional `lens` onto `graphQuery` request body, defaulted server-side to status.
 
 ## Notes
-

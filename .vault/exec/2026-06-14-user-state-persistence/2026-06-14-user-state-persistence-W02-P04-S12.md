@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # move commit-graph and rebuild-and-swap onto the cell with a per-scope monotonic clock
 
 ## Scope

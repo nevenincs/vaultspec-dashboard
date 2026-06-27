@@ -7,8 +7,6 @@ modified: '2026-06-22'
 related: []
 ---
 
-
-
 # `graph-filter-fetch-split` research: `Optimal graph-filter data flow: backend payload bound vs client within-set narrowing`
 
 Grounded in a live rag-driven audit of the graph filter path (engine + stores), in

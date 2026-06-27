@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Mirror the enriched node-evidence shape in the mock engine to match the live wire byte-for-byte
 
 ## Scope

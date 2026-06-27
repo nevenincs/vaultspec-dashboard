@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Wire dialog open and close state for both entry points and add coverage tests
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 Both entry points drive one shared open state.
 
 ## Notes
-

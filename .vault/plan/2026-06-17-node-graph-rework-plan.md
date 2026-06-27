@@ -10,7 +10,6 @@ related:
   - '[[2026-06-17-node-graph-rework-research]]'
 ---
 
-
 # `node-graph-rework` plan
 
 Rework the headline node-graph canvas into a stable, performant, non-overlapping, free and centered canvas with a configurable circular bound, by running cosmos as a pure GPU renderer over a revived d3-force layout.
@@ -66,12 +65,6 @@ Revive the live d3-force tick driving cosmos for guaranteed non-overlap, neighbo
 This plan executes the accepted `node-graph-rework` ADR. The headline canvas is mid-migration on cosmos's own GPU simulation, which box-clamps positions (the rectangle), squeezes them into a corner, overlaps nodes, yanks and bounces on every refetch, renders meaningless edges, and exposes dead Tune sliders. The rework runs cosmos as a pure GPU point-and-line renderer (its own simulation off, rescale off) and revives the dormant `FieldLayout` d3-force driver as the position source, adding the one capability neither has: a configurable containment whose default shape is a circle. The work proceeds in four strictly ordered tiers, each verified against the live app before the next begins - basics, then performance and centering, then edge semantics, then the live simulation and forces. Forces are deliberately last. Grounding is in the ADR and its research.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

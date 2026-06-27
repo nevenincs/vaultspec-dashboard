@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Define the multi-level elevation, radius, and density tokens (background to foreground to panel to dialog to modal)
 
 ## Scope

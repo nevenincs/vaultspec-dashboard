@@ -10,7 +10,6 @@ related:
   - '[[2026-06-13-dashboard-platform-research]]'
 ---
 
-
 # `dashboard-platform` plan
 
 The horizontal frontend runtime substrate - structured logger, exception containment, the action/dispatch seam, and the failure-to-degradation policy - that the data, scene, and chrome teams build onto.

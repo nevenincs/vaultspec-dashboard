@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Record the v1 semantic-mode gate verdict in the layout dispatcher
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 The dispatcher reads `SEMANTIC_MODE_GATE.shipped`: SHIPPED -> semantic mode available; HELD -> downgrade to connectivity with a reason. Measured v1 verdict: SHIPPED (projection well within budget, clusters separate above the floor).
 
 ## Notes
-

@@ -8,8 +8,6 @@ related:
   - "[[2026-06-21-command-palette-architecture-research]]"
 ---
 
-
-
 # `command-palette-planes` adr: `three Cmd+K planes and the standardized open verb` | (**status:** `accepted`)
 
 ## Problem Statement

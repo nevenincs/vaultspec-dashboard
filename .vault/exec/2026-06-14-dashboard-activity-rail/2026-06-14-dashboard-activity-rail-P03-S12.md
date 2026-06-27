@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Confirm the work tab button carries role=tab and aria-selected reflecting the active tab like the other three tabs
 
 ## Scope

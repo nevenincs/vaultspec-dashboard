@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-optimization-plan]]"
 ---
 
-
-
-
 # Add the fake-timer delta-storm harness and the bounded-growth assertion helper
 
 ## Scope

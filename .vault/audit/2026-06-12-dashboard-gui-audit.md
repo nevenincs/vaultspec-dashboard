@@ -10,8 +10,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-adr]]"
 ---
 
-
-
 # `dashboard-gui` audit: `W01.P01 review`
 
 ## Scope
@@ -624,5 +622,3 @@ announce nothing to screen readers; and the WCAG AA claim has no automated
 contrast check over the token pairs. G7.d names AA and keyboard
 operability as the floor - prove the claim with a contrast smoke test and
 close the palette focus gaps (likely via 034's primitive dialog).
-
-

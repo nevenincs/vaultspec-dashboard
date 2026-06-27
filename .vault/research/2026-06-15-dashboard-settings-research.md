@@ -10,8 +10,6 @@ related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
 ---
 
-
-
 # `dashboard-settings` research: `extendable settings schema and UI`
 
 This research grounds a new settings module for the dashboard: a single place where a

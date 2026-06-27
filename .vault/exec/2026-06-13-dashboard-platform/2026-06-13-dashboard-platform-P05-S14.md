@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-platform-plan]]"
 ---
 
-
-
-
 # Run typecheck, lint, test, build, and vault check green and record the verification
 
 ## Scope

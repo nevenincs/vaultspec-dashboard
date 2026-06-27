@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement the shared selection concept syncing stage, view store, browser, timeline, and inspector per G2.b
 
 ## Scope
@@ -49,4 +46,3 @@ passed), prettier.
 
 The stage cross-highlight pulse for event selections is S36's; the binding
 already focuses the carried node.
-

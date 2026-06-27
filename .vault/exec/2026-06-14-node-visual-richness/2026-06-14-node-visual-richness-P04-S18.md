@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # add card render and interaction tests for bloom, dwell, reduced-motion, and the three intents
 
 ## Scope

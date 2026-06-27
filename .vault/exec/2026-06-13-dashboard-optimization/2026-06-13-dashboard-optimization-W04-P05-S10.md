@@ -9,7 +9,6 @@ related:
   - "[[2026-06-13-dashboard-optimization-plan]]"
 ---
 
-
 # Run the campaign verification gates and record the audit
 
 ## Scope

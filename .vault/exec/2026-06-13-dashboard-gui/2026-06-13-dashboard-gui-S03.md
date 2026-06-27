@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-gui-plan]]"
 ---
 
-
-
-
 # Reconcile the mock engine and corpus fixture to the live separate-meta_edges wire shape under both granularities
 
 ## Scope

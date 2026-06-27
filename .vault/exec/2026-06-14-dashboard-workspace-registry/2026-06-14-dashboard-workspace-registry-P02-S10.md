@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Mirror the /workspaces and extended /map and /session shapes in the frontend mock fixtures
 
 ## Scope

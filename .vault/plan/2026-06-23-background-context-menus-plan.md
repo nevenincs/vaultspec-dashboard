@@ -10,16 +10,6 @@ related:
   - '[[2026-06-23-background-context-menus-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 # `background-context-menus` plan
 
 ### Phase `P01` - The background entity, shared chrome-verb builders, and resolver
@@ -63,12 +53,6 @@ The work binds to `unified-action-plane` (chrome verbs authored once, composed e
 the existing `canvasMenu` background pattern. It depends on the just-shipped global-tail seam.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

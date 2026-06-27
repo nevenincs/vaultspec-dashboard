@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Prove the Phosphor SVG to texture path against the GlyphTextureProvider seam as a spike, deferring full domain marks to a surface wave
 
 ## Scope

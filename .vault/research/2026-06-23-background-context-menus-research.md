@@ -7,8 +7,6 @@ modified: '2026-06-23'
 related: []
 ---
 
-
-
 # `background-context-menus` research: `rail and timeline background menus for the app-chrome escape hatches`
 
 This is the named follow-up the `global-context-actions` ADR deferred (F5): give the left

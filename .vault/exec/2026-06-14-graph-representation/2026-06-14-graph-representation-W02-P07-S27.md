@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Add a pure disparity-filter thinning of temporal/semantic edges to their significant subset
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `disparityFilter.ts`: the Serrano-2009 disparity filter thinning temporal/semantic edges to their statistically significant subset (alpha 0.3, OR rule, leaf-preserving); declared/structural are never thinned.
 
 ## Notes
-

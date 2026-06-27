@@ -12,8 +12,6 @@ related:
   - "[[2026-06-14-dashboard-iconography-adr]]"
 ---
 
-
-
 # `dashboard-context-menus` adr: `context menus: standardised in-place action surface` | (**status:** `accepted`)
 
 ## Problem Statement

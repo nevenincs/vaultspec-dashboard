@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the inspector tab from its binding frame over the preserved selection and enriched node-evidence query
 
 ## Scope

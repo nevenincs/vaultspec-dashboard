@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-code-tree-plan]]"
 ---
 
-
-
-
 # Degrade honestly for a remote-ref scope or absent structural tier while carrying the tiers block
 
 ## Scope

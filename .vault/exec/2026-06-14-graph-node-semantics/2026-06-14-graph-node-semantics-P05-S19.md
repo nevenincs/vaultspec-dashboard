@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # add the rule node kind and its identity prefix
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `NodeKind::Rule` and its `rule:` identity prefix plus the `CanonicalKey::Rule { slug }` form.
@@ -28,4 +24,3 @@ Added `NodeKind::Rule` and its `rule:` identity prefix plus the `CanonicalKey::R
 {OUTLINE}
 
 ## Notes
-

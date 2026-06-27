@@ -9,8 +9,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-timeline` research: `relational phase-lane timeline`
 
 This research investigates how to represent a vault document corpus as a

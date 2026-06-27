@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add the client method that fetches the lineage slice for a scope, range, and filter
 
 ## Scope

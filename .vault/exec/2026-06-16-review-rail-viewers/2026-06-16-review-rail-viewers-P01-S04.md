@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Degrade the structural tier on an unreadable worktree and return a tiered 400 on traversal or missing path via degraded_tiers_for and api_error
 
 ## Scope

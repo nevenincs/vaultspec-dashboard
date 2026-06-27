@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # mint promoted-from derivation edges from rule back to its audit
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Minted `promoted-from` declared edges from each rule to its source audit (read from derived_from frontmatter or a backtick-quoted -audit stem), only when the audit node exists.
@@ -28,4 +24,3 @@ Minted `promoted-from` declared edges from each rule to its source audit (read f
 {OUTLINE}
 
 ## Notes
-

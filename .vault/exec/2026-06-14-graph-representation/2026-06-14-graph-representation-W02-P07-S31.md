@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Unit-test disparity filter, backbone selection, and bundling/un-bundling
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `backbone.test.ts`: disparity thinning (backbone never thinned, leaf preserved, hub-to-hub noise dropped), backbone split, and bundling/un-bundle-on-hover geometry. 11 tests green.
 
 ## Notes
-

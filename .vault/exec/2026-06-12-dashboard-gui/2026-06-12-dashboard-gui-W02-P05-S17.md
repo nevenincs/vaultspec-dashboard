@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement the typed engine API client covering the contract query families map, vault-tree, graph query, nodes, filters, events, asof, diff, status, search, ops
 
 ## Scope
@@ -50,4 +47,3 @@ Gates green: typecheck, eslint, vitest (89 passed), prettier.
 Endpoint paths follow the contract's illustrative shapes; they are
 confirmed against the live engine at S49 (capabilities binding, shapes
 illustrative per the contract status line).
-

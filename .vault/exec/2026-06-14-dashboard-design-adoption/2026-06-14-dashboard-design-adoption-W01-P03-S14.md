@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Define separate UI and code type-scale tokens, mandate tabular numerals on data-bearing contexts, and reserve monospace for identity/code with no bundled identity face
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # parse the audit worst-finding severity into a lifecycle max_severity
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `audit_max_severity` returning the worst finding severity (critical/high/medium/low) as the audit lifecycle state, degrading to None honestly.
@@ -28,4 +24,3 @@ Added `audit_max_severity` returning the worst finding severity (critical/high/m
 {OUTLINE}
 
 ## Notes
-

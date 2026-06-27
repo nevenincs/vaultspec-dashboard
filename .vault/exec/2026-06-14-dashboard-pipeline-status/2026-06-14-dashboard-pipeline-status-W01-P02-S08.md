@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the PipelineStatusView interface (loading, degraded, degradedTiers, reasons, artifacts) and the derivePipelineStatusView selector that reads the pipeline tier from the served block (success or error envelope, fresh error winning), modeled on deriveGraphSliceAvailability
 
 ## Scope

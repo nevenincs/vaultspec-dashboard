@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add tests for the control bar toggles, chips, tier dial, and fit/zoom/jump controls
 
 ## Scope

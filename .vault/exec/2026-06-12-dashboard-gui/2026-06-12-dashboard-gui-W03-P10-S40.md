@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # build the now strip showing git, core in-flight, and rag rollup from the status snapshot plus SSE backends and git channels
 
 ## Scope
@@ -42,4 +39,3 @@ prettier.
 
 The degraded-state illustrations (G7.4) ride the S46/S47 passes; tones
 and wording carry honesty until then.
-

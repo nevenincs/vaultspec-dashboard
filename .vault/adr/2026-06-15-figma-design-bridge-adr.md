@@ -8,8 +8,6 @@ related:
   - "[[2026-06-15-figma-design-bridge-research]]"
 ---
 
-
-
 # `figma-design-bridge` adr: `Code-canonical Figma mirror with a Pro-tier cross-connection registry` | (**status:** `accepted`)
 
 ## Problem Statement

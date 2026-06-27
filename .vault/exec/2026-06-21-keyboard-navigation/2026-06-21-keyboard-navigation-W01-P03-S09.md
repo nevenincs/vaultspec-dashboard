@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Audit every overlay (dialog, menu, popover, flyout) to restore focus to its trigger on close and never drop to body
 
 ## Scope

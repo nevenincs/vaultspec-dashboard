@@ -11,8 +11,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-rag-search` adr: `rag search controller` | (**status:** `accepted`)
 
 ## Problem Statement

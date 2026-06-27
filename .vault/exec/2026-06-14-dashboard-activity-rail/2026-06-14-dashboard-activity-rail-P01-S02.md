@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Extend the ActivityRail tab state union type to include the work tab id alongside activity, changes, and search
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Swap scrub, range-play, and bundle animation for instant state changes under prefers-reduced-motion
 
 ## Scope

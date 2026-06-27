@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-optimization-plan]]"
 ---
 
-
-
-
 # Bound the streamed-query accumulator to a summary so it cannot grow session-unbounded
 
 ## Scope

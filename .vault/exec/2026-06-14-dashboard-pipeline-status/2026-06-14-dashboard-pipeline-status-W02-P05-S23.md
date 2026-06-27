@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Render the ADR row as a leaf (no step tree): title, the StatusPill reading the real ADR-status facet, feature, and a freshness stamp
 
 ## Scope

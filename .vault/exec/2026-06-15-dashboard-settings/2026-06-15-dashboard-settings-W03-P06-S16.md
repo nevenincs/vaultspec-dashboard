@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Build the reusable Dialog primitive with focus trap, scrim, animated entry, and Escape or backdrop dismiss
 
 ## Scope
@@ -28,4 +25,3 @@ related:
 A reusable modal primitive the app previously lacked.
 
 ## Notes
-

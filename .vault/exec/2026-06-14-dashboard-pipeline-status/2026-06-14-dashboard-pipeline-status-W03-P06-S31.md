@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Render the bounded-interior truncation honestly from the interior view's truncated block as a designed 'narrowed - refine' state when a large plan exceeds the node ceiling, never a silent partial tree
 
 ## Scope

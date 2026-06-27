@@ -9,8 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-adr]]"
 ---
 
-
-
 # `dashboard-timeline` audit: `relational phase-lane timeline`
 
 ## Scope
@@ -118,7 +116,6 @@ eslint + prettier + tsc, and the backend + timeline test suites are green. Plan
 `2026-06-15-dashboard-timeline-plan` is 73/73 complete.
 
 ## Codification candidates
-
 
 None. HIGH-1 is a worked instance of the existing `mock-mirrors-live-wire-shape`
 rule (the mock diverged from the live `date_bounds` shape), not a new constraint -

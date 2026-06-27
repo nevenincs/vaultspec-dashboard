@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-code-tree-plan]]"
 ---
 
-
-
-
 # Mirror the /file-tree response shape in the frontend mock fixtures
 
 ## Scope

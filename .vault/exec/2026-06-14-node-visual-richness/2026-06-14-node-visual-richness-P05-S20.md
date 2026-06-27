@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # visually inspect status stamps per type and the hover-bloom on the running canvas
 
 ## Scope

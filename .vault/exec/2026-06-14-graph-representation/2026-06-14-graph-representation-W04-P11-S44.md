@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Amend node-canvas ADR body: salience-size supersedes member-count radius rule
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Amended the node-canvas ADR body (Implementation): salience drives node size for every species and SUPERSEDES the member-count radius rule; member-count folds into a feature node's salience upstream so the two channels no longer compete. Body-prose edit, named not assumed.
 
 ## Notes
-

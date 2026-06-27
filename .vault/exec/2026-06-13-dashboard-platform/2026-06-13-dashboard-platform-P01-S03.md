@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-platform-plan]]"
 ---
 
-
-
-
 # Bridge scene-worker logs to the main logger and migrate the two worker console calls
 
 ## Scope

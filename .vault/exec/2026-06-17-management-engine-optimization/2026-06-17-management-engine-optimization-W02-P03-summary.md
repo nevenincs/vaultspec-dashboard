@@ -8,9 +8,6 @@ related:
   - "[[2026-06-17-management-engine-optimization-plan]]"
 ---
 
-
-
-
 # `management-engine-optimization` `W02.P03` summary
 
 Filter matching now uses validation-time normalization and sorted membership checks.

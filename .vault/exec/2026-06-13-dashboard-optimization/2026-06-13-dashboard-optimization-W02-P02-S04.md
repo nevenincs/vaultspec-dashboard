@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-optimization-plan]]"
 ---
 
-
-
-
 # Add a shared trailing-edge debounce and coalesce the graph and status invalidation storms
 
 ## Scope

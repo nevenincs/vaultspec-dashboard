@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Add a bounded content query keyed by {scope, nodeId} with explicit gcTime and a cache cap, as the sole wire client of /nodes/{id}/content
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Run just dev lint frontend and confirm exit 0 including eslint, prettier format:check, and tsc
 
 ## Scope

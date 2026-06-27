@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add the LineageSlice wire type carrying nodes, arcs, tiers, and truncated
 
 ## Scope

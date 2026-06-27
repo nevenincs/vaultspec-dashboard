@@ -101,4 +101,3 @@ The ADR already carries the codification candidate
 universal CONSUMPTION). Per the codify discipline it binds only after holding across
 one full subsequent cycle, so it is recorded as a candidate here and NOT promoted in
 this pass. No new codification candidates surfaced from the review.
-

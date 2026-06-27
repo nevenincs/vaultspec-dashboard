@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement range selection as the product's single date-range filter with play-the-range growth animation per G4.c
 
 ## Scope
@@ -41,4 +38,3 @@ vitest (168 passed), prettier.
 
 Play uses the default 4s traversal; reduced-motion handling for the play
 animation rides S48 with the rest of the motion floor.
-

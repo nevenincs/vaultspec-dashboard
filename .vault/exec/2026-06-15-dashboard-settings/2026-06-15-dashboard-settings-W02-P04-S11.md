@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Add the useSettingsSchema query hook with its query key and invalidation wiring
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 A cached schema read hook for the dialog.
 
 ## Notes
-

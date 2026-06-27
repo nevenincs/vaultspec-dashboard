@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add render tests asserting the plan row (ring, title, tier, phase, freshness) and the leaf ADR row (title, status pill, feature, freshness) render from the mock-backed selector
 
 ## Scope

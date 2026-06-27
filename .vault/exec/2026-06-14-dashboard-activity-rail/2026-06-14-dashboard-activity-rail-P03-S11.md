@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Import WorkTab into AppShell and render it in the work tab content branch
 
 ## Scope

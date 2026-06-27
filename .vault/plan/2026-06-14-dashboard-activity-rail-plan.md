@@ -10,13 +10,6 @@ related:
   - '[[2026-06-14-dashboard-activity-rail-research]]'
 ---
 
-
-
-
-
-
-
-
 # `dashboard-activity-rail` plan
 
 Refactor the right rail from three tabs to the four-tab review-rail IA and add the `work` tab as a designed frame; the pipeline content is a separate plan.
@@ -24,8 +17,6 @@ Refactor the right rail from three tabs to the four-tab review-rail IA and add t
 ### Phase `P01` - rail tab-strip refactor to four tabs
 
 Refactor the right-rail tab strip from three tabs to the four-tab review-rail information architecture (now / work / changes / search), inserting the work tab in second position while preserving the existing tablist affordance and the unchanged membership of now, changes, and search.
-
-
 
 - [x] `P01.S01` - Add the work tab entry to the RAIL_TABS array in second position so the order reads now, work, changes, search; `frontend/src/app/AppShell.tsx`.
 - [x] `P01.S02` - Extend the ActivityRail tab state union type to include the work tab id alongside activity, changes, and search; `frontend/src/app/AppShell.tsx`.
@@ -72,12 +63,6 @@ Scope is deliberately narrow. The `work` tab ships as a FRAME only: it renders i
 The work is bound by the established layer-ownership boundaries. `WorkTab` is app chrome under `dashboard-layer-ownership`: it reads stores selector hooks only, never calls `fetch` against the engine, and never reads the raw `tiers` block. Per `degradation-is-read-from-tiers-not-guessed-from-errors`, its degraded state is gated on the per-tier availability the stores layer interprets from the `tiers` block, never inferred from a bare transport error or timeout. It introduces no new design token, no third icon family, and no new motion grammar (inherited base design-language, iconography, and motion ADRs are fixed), and its degraded and empty states are grayscale-safe so meaning is carried by shape and text first. The existing `role="tablist"` / `aria-selected` / keyboard tab-order affordance in `AppShell.tsx` is preserved across all four tabs. Grounding is the `dashboard-activity-rail` ADR (the decision) and the `dashboard-activity-rail` research (the converged two-pillar idiom and the layer-ownership map), both linked in `related:`.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

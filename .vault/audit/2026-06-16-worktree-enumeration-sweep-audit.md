@@ -8,8 +8,6 @@ related:
   - "[[2026-06-16-worktree-enumeration-sweep-plan]]"
 ---
 
-
-
 # `worktree-enumeration-sweep` audit: `path-only enumerate migration review`
 
 ## Scope
@@ -65,5 +63,3 @@ the multi-second cold-scope stall from `validate_scope_token` (the cold
   resolution" comment; the rationale also lives in the ADR follow-up section.
 
 ## Codification candidates
-
-

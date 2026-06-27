@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Render the reader degraded, empty, and error states from the tiers-derived content selector
 
 ## Scope

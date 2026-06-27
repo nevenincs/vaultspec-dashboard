@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Build the first-class high-contrast theme as a [data-theme=high-contrast] remap of the same semantic set, no component aware of the active theme
 
 ## Scope

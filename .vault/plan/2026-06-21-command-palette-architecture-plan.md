@@ -12,13 +12,6 @@ related:
   - '[[2026-06-21-command-palette-actions-adr]]'
 ---
 
-
-
-
-
-
-
-
 # `command-palette-architecture` plan
 
 ## Wave `W01` - contribution registry foundation

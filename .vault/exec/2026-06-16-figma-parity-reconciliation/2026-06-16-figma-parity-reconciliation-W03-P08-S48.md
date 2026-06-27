@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the selected node state with the single-accent selection ring per the binding frame
 
 ## Scope

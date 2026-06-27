@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Wire @theme inline for the aliasing tokens that reference another variable, so no unresolved var() ships to the wire
 
 ## Scope

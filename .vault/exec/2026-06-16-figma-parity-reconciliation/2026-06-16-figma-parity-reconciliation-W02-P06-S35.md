@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the timeline from the binding Timeline Kit primitive over the preserved events query and time-travel store
 
 ## Scope

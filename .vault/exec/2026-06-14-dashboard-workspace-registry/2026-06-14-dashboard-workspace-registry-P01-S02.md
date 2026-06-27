@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Implement the durable workspace-registry table with best-effort open-or-heal in the user-state store
 
 ## Scope

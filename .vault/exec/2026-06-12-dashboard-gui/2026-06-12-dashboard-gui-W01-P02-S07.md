@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement set-visibility membership diffs with d3-interpolator fade transitions per G3.f
 
 ## Scope
@@ -48,4 +45,3 @@ decoupled from filter semantics. Gates green: typecheck, eslint, vitest
 This record's body was clobbered in the shared worktree between authoring
 and staging (commit 9595f7f shipped the code without it); re-authored and
 committed separately. Staging discipline tightened per team-lead's policy.
-

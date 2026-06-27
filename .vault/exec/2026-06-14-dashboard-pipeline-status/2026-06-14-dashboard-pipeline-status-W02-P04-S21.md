@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Render the plan-level progress against the existing lifecycle.progress facet as the derivable-today fallback so the plan row's ring lights up before the full pipeline projection lands, per the staged-capability degradation
 
 ## Scope

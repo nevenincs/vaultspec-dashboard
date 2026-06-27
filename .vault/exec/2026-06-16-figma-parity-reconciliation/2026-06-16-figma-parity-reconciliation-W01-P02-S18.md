@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Add conformance tests feeding a captured live sample of both new shapes through the shared client adapter path
 
 ## Scope

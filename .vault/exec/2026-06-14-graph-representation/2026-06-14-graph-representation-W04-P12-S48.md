@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Amend canvas-controls ADR body: add lens selector control group
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Amended the canvas-controls ADR body: added the lens selector control group (emits lens intent into the view store = a wire re-query), distinct from the named-filter lenses and the tier dial.
 
 ## Notes
-

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the PlanInteriorView interface and the derivePlanInteriorView selector exposing rolled-up completion, the ordered tree, and the truncated honesty block so the step tree reads bounded-interior truncation as a designed state, never a silent partial result
 
 ## Scope

@@ -15,8 +15,6 @@ related:
 
 Add the bounded, read-only, enveloped GET /history?scope=&limit=N route serving commit hash+subject newest-first.
 
-
-
 - [x] `P01.S01` - Add subject to CommitEvent and serve GET /history with bounded commit list, tiers, truncated block; `engine tests; `engine/crates/vaultspec-api/src/routes/history.rs`.
 
 ### Phase `P02` - Stores history query + mock fidelity
@@ -39,17 +37,8 @@ Component tests across light/dark/HC, full lint gate, code review to PASS.
 
 ## Description
 
-
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 
-
 ## Verification
-

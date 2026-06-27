@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-vaultspec-engine-plan]]"
 ---
 
-
-
-
 # Add a consumer-shaped conformance test asserting the typed-client expectations for every contract capability over live serve responses
 
 ## Scope
@@ -40,4 +37,3 @@ concurrent runs on the same port collide - the ephemeral-port fix is recorded
 backlog. The plan row named the file `e2e.rs`; the shipped artifact is the
 sibling `conformance.rs` test crate, kept separate from the parity e2e suite so
 the consumer-typed-client leg reads as its own surface.
-

@@ -7,8 +7,6 @@ modified: '2026-06-22'
 related: []
 ---
 
-
-
 # `figma-frontend-rewrite` adr: `complete frontend teardown and Figma-binding rewrite` | (**status:** `accepted`)
 
 ## Problem Statement

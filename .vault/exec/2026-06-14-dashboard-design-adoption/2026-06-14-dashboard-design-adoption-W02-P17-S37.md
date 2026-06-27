@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Wire the authored domain marks through both the React chrome and the Pixi GlyphTextureProvider texture seam so both planes consume the same currentColor marks
 
 ## Scope

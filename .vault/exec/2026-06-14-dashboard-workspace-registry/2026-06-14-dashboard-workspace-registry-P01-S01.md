@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Define the WorkspaceRoot record and registry schema (stable id from git common dir, label, path, reachability)
 
 ## Scope

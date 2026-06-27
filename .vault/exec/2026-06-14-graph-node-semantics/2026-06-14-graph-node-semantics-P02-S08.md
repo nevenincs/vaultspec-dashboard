@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # parse rule active or superseded status into the lifecycle
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `rule_status` (active vs superseded) feeding the rule species lifecycle.
@@ -28,4 +24,3 @@ Added `rule_status` (active vs superseded) feeding the rule species lifecycle.
 {OUTLINE}
 
 ## Notes
-

@@ -7,8 +7,6 @@ modified: '2026-06-25'
 related: []
 ---
 
-
-
 # `state-mode-uniformity` research: `uniform state-mode system across figma + frontend`
 
 Every data-bearing surface in the dashboard can be in one of four modes — Typical,
@@ -55,7 +53,7 @@ the shared rail states — these are the reference. The drift lives in the neste
 brokered / search surfaces:
 
 - **Loading-has-text (the headline violation, ~10 sites):** `right/StatusTab.tsx` Open
-  Plans / Open PRs / Open Issues / Recent Commits sections (pulsing TEXT label), 
+  Plans / Open PRs / Open Issues / Recent Commits sections (pulsing TEXT label),
   `right/PlanStepTree.tsx` ("unfolding plan…"), `right/ChangesOverview.tsx`,
   `right/Inspector.tsx` + `islands/NodeInterior.tsx` ("unfolding lifecycle…"),
   `palette/DocumentSearchSurface.tsx` ("Searching…"), `palette/SearchPaletteSurface.tsx`,

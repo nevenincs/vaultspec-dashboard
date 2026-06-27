@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Implement system auto-switch plus manual theme override in the platform/app theme controller, without adopting the dark: utility variant
 
 ## Scope

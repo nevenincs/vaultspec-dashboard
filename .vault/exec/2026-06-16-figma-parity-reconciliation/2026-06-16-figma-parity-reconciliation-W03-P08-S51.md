@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Route node selection and hover intent back through the preserved SceneController event channel
 
 ## Scope

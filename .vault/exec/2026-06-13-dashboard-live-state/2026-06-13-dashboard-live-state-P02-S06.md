@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-live-state-plan]]"
 ---
 
-
-
-
 # Bind setDegradationHandler in app bootstrap so a stream-lost classification flips streamConnected false
 
 ## Scope

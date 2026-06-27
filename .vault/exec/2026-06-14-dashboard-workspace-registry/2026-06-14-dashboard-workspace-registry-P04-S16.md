@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Host the workspace switcher above the worktree switcher and render it as a quiet header when only one root exists
 
 ## Scope

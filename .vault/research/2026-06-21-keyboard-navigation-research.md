@@ -9,8 +9,6 @@ related:
   - '[[2026-06-19-keyboard-action-system-research]]'
 ---
 
-
-
 # `keyboard-navigation` research: `full-frontend keyboard traversal architecture`
 
 This research grounds a multi-wave campaign to make the entire dashboard frontend operable by

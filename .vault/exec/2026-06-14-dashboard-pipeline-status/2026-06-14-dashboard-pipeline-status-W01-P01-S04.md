@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the EngineClient pipelineStatus method that GETs the bounded in-flight pipeline projection for a scope and as-of and adapts the envelope through liveAdapters
 
 ## Scope

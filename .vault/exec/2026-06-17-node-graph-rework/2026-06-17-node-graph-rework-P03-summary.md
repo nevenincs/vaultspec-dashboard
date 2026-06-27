@@ -8,9 +8,6 @@ related:
   - "[[2026-06-17-node-graph-rework-plan]]"
 ---
 
-
-
-
 # `node-graph-rework` `P03` summary
 
 Tier 3 (edge semantics and rendering) is complete and verified live. Steps

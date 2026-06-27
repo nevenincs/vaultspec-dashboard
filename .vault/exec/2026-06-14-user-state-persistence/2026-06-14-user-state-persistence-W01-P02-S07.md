@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # expose the crate handle and document the read-and-infer fence
 
 ## Scope

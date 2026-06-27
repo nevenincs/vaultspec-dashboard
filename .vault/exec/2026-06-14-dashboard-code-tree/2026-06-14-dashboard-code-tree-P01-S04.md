@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-code-tree-plan]]"
 ---
 
-
-
-
 # Hard-cap each level, cursor-paginate a pathological directory, and emit a truncated-style honesty marker
 
 ## Scope

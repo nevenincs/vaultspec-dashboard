@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-platform-plan]]"
 ---
 
-
-
-
 # Publish the platform public API barrel and wire the query client error sink to the policy
 
 ## Scope

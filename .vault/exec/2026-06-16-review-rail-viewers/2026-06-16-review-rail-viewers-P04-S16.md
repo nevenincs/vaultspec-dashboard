@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Add react-markdown, remark-gfm, and frontmatter handling to the frontend dependencies
 
 ## Scope

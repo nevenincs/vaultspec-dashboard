@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Override fenced code rendering to delegate to the shared useHighlighter hook so reader fences and the code viewer share one tokenizer
 
 ## Scope

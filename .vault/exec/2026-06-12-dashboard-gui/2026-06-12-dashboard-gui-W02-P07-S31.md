@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement named lenses saved client-side and exposed to the command palette per G3.f and G5.d
 
 ## Scope
@@ -55,4 +52,3 @@ same mode-independent effect as pins. The builtin "broken links" lens now
 isolates to the structural tier filtered to broken - THE broken-links
 view, not "everything plus a broken facet" - with both behaviors pinned by
 tests.
-

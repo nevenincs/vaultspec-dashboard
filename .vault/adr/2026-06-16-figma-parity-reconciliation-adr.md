@@ -10,7 +10,6 @@ supersedes:
 modified: '2026-06-22'
 ---
 
-
 # `figma-parity-reconciliation` adr: `Figma-binding frontend rewrite and reconciliation` | (**status:** `accepted`)
 
 <!-- Accepted 2026-06-16 with user sign-off. Diff-scope decision: build the bounded historical/committed-range text-diff route (in scope). -->>

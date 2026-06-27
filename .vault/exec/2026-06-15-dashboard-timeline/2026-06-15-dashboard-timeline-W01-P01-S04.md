@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Bound the slice under the document node ceiling and emit an honest truncated block, serving declared, structural, and temporal tiers with semantic present-only
 
 ## Scope

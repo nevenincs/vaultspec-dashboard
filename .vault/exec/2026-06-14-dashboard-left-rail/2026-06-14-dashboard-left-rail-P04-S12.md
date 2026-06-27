@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Render the uniform four honest states across rail surfaces
 
 ## Scope

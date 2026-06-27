@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the grayscale-safe ProgressRing component rendering done/total as a tabular-numeral fraction text plus a fill-arc whose hue is redundant reinforcement, legible at 14px per the iconography gate
 
 ## Scope

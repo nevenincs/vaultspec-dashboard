@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Extend useTimelineStore with per-lane visibility view state
 
 ## Scope

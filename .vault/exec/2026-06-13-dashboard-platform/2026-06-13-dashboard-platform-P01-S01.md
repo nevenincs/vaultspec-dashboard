@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-platform-plan]]"
 ---
 
-
-
-
 # Implement the leveled, namespaced ring-buffer logger with a pluggable sink array
 
 ## Scope

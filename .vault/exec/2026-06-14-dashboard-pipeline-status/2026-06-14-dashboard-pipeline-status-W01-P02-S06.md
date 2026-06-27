@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the engineKeys.pipelineStatus cache key folding (scope, as-of) and the usePipelineStatus query hook that calls engineClient.pipelineStatus, disabled when scope is null, following the useGraphSlice pattern
 
 ## Scope

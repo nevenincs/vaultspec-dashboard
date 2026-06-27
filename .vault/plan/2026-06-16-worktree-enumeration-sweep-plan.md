@@ -9,20 +9,11 @@ related:
   - '[[2026-06-16-status-worktree-latency-adr]]'
 ---
 
-
-
-
-
-
-
-
 # `worktree-enumeration-sweep` plan
 
 ### Phase `P01` - add the cheap path-list API
 
 Add worktrees::list_roots returning canonicalized worktree roots without the per-worktree inspect (no status diff, no ahead_behind walk).
-
-
 
 - [x] `P01.S01` - Add pub fn list_roots(workspace) returning canonicalized worktree roots via collect_descriptors, with no inspect; `engine/crates/ingest-git/src/worktrees.rs`.
 - [x] `P01.S02` - Add a unit test that list_roots returns the same path set as enumerate but does no status/ahead-behind work; `engine/crates/ingest-git/src/worktrees.rs`.
@@ -46,17 +37,8 @@ Run the engine gate, measure scope-switch latency on the many-worktree workspace
 
 ## Description
 
-
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 
-
 ## Verification
-

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-code-tree-plan]]"
 ---
 
-
-
-
 # Add the read-only GET /file-tree?scope=&path=&cursor= route returning one directory level beside the vault-tree handler
 
 ## Scope

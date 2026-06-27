@@ -9,9 +9,6 @@ related:
   - "[[2026-06-22-unified-filter-plane-plan]]"
 ---
 
-
-
-
 # Live-verify bidirectional cross-wiring: set a feature filter and toggle a category from the rail AND from the graph legend, confirm rail, graph, and timeline narrow together, and confirm time-travel honours the active filter
 
 ## Scope
@@ -74,4 +71,3 @@ graph, the timeline, and (client-side, same `dashboardState.filters`) the rail t
 reverse direction (rail authoring the same plane) is the identical mechanism and was already
 verified in the left-rail feature-filter campaign. The throwaway verification script and
 screenshots were removed after capture (dev-artifacts-are-scoped-and-reclaimable).
-

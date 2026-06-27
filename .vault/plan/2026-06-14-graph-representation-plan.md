@@ -19,7 +19,6 @@ related:
 
 Deliver the consumed wire fields (salience float, derivation edge label, per-node embedding vector) and the lens query parameter through the stores layer and mock+corpus, so the frontend compiles and renders against realistic mock data. The engine production side is an integration seam. Downstream waves depend on these types existing. Backed by the graph-representation, graph-node-salience, and graph-node-semantics ADRs.
 
-
 ### Phase `W01.P01` - wire types: salience, derivation, embedding
 
 Add the additive node fields (salience float, embedding vector) and edge field (derivation label) to the stores wire types and scene seam types, marked as integration seams.
@@ -174,12 +173,6 @@ and `dashboard-canvas-controls` ADRs.
 
 ## Steps
 
-
-
-
-
-
-
 ## Parallelization
 
 Waves are sequenced: W01 (wire and stores types) must land before W02 (scene
@@ -221,4 +214,3 @@ The plan is complete when every Step is closed and:
   stores is the sole wire client; chrome never fetches; tokens via the shared
   `:root` layer (scene-read tokens literal hex); icons from the two sanctioned
   families; every graph read stays bounded.
-

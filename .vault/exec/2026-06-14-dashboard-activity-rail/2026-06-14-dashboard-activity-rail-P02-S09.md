@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Style WorkTab using only inherited design-language tokens and the two sanctioned icon families with no new token, icon, or motion grammar
 
 ## Scope

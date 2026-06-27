@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Test that the ordered rail stack renders with collapse and focus order
 
 ## Scope

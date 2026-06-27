@@ -10,8 +10,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-research]]"
 ---
 
-
-
 # `figma-parity-reconciliation` audit: `Figma parity reconciliation: W04 Phase-5 verification`
 
 ## Scope
@@ -94,7 +92,6 @@ MEDIUM below.
   Connect dry-run valid, the only remaining step is the human-gated `S66` publish.
 
 ## Codification candidates
-
 
 None. The two candidates this feature surfaced — `figma-is-the-binding-source-of-truth`
 and `view-rewrite-preserves-the-state-and-scene-contract` — were already codified in

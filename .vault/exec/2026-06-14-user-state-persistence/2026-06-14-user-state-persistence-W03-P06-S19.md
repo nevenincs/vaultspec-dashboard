@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # add GET and PUT session endpoints carrying the tiers block
 
 ## Scope

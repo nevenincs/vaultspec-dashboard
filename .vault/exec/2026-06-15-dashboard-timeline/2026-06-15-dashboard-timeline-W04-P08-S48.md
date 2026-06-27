@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Reuse the tier dial in the control bar with semantic inapplicable in time-travel
 
 ## Scope

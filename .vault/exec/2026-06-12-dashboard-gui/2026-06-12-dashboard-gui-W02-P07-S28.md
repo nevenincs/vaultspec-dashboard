@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement the filter model bound to the engine-enumerated filters vocabulary with per-tier confidence floats per G3.f and contract redline R3
 
 ## Scope
@@ -65,4 +62,3 @@ phase: edge visibility now fades through transition mesh groups whose
 alpha tracks the sampled progress per frame - membership rebuilds only at
 partition changes, alpha updates are per-frame, and nodes and edges share
 the one 200ms G3.f band.
-

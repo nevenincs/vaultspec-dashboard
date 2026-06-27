@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement event-mark click selection with node-ids cross-highlight pulse on the stage per G2.b and the contract event shape
 
 ## Scope
@@ -44,4 +41,3 @@ eslint, vitest (170 passed), prettier; production build passes.
 
 The `pulse` command is the third additive seam amendment (after meta and
 command), flagged for experience-architect confirmation at the P08 review.
-

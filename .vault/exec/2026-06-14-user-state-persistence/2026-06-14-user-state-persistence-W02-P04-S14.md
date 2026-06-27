@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # make the SSE stream and since resume per-scope from the cell ring
 
 ## Scope

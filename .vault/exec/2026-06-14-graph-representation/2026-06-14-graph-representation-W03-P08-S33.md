@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Add set-overlays command to the SceneCommand union
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `set-overlays` command (featureCountries/featureHulls) to the SceneCommand union; the controller tracks overlay state and exposes `getRepresentationState`.
 
 ## Notes
-

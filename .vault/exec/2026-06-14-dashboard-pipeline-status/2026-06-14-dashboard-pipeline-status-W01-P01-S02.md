@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the AdrStatus facet type (proposed | accepted | rejected | deprecated) and the PlanTier facet type (L1 | L2 | L3 | L4) and attach them to the PipelineArtifact type so an ADR row reads real status and a plan row reads real tier
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Add the effective-value selector resolving scoped-then-global with default fallback and provenance over schema and values
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 Provenance-aware effective-value resolution as pure stores selectors.
 
 ## Notes
-

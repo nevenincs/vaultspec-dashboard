@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-platform-plan]]"
 ---
 
-
-
-
 # Add the dev-only crash-injection affordance for adverse-condition testing
 
 ## Scope

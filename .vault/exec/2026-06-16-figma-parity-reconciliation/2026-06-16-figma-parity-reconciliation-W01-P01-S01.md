@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Author the DTCG type-scale source with the Figma role names display, title, body, body-strong, label, meta, caption, and mono
 
 ## Scope

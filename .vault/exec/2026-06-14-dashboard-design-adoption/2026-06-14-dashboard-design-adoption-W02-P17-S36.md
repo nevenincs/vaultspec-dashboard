@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Implement the progress ring as a small parametric programmatic component (exact arc fills) rather than static SVGs
 
 ## Scope

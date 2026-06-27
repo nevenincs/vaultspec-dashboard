@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # add the end-to-end smoke launching against live engine serve verifying constellation render, scrub, and search round-trip, requires the engine plan serve wave landed
 
 ## Scope
@@ -59,4 +56,3 @@ observable yet, and the workspace's rag VAULT index currently serves zero
 results for every query (verified against rag directly - the emptiness is
 upstream of the engine). Result-bearing round-trip assertions activate
 when the index carries this corpus.
-

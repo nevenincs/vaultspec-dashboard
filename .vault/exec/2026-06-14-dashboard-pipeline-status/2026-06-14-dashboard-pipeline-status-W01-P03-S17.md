@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add a selector unit test asserting derivePipelineStatusView reports degraded when the pipeline tier is absent or unavailable in the served block and reads a fresh error envelope's tiers over a stale held success
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-gui-plan]]"
 ---
 
-
-
-
 # Assert the live meta_edges fold and member_count carry in a consumer test and verify the rendered constellation end to end
 
 ## Scope

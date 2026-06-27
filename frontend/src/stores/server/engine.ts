@@ -1025,7 +1025,18 @@ export interface EngineStatus {
   // only shown when an upstream exists. `branch` is derived from the live `head_ref`.
   git?: { branch: string; ahead?: number; behind?: number; dirty: boolean };
   core?: { reachable: boolean; vault_health?: string };
-  rag?: { service: string; watcher?: string; index?: string; jobs?: number };
+  // `service` is the lifecycle word: now `running` / `crashed` / `absent`
+  // (sourced from the live `/status` machine `state`), distinguishing a crashed
+  // rag (discovered but not serving) from a genuinely absent one. `reason` is the
+  // degraded explanation for crashed/absent. `isRagRunning(service)` still gates
+  // on exactly `running`.
+  rag?: {
+    service: string;
+    reason?: string;
+    watcher?: string;
+    index?: string;
+    jobs?: number;
+  };
 }
 
 export interface OpsResult {

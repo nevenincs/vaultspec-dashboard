@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Collect the dated document nodes in the requested range with blob-true creation dates from the git object DB
 
 ## Scope

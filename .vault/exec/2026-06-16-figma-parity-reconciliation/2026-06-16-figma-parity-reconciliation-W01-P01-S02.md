@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Author the DTCG radius source with the Figma scale xs4, sm5, md7, lg10, and pill18
 
 ## Scope

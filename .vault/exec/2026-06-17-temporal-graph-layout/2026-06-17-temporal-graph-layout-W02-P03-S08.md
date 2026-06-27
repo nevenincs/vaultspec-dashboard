@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # expose bucket count, node count, radius, and placement metadata from the layout helper
 
 ## Scope

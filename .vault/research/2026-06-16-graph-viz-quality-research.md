@@ -12,8 +12,6 @@ related:
   - '[[2026-06-16-missing-backend-inventory-research]]'
 ---
 
-
-
 # `graph-viz-quality` research: `graph visualization quality scoring and node representation`
 
 The dashboard graph already ships six layouts — Free (force), Lineage (derivation

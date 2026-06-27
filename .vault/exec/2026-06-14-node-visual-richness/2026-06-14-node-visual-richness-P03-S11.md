@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # declare per-theme literal-hex status tokens and the scene reader
 
 ## Scope

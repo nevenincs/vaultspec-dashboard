@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Unit-test the FocusZone movement/wrap/entry-memory logic as pure functions, then live-verify it on one throwaway mount before any surface adopts it
 
 ## Scope

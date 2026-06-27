@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-status-overview-plan]]"
 ---
 
-
-
-
 # Add bounded useHistory query + deriveHistoryView (tiers-gated), engine client + adapter, mock /history route + fidelity test
 
 ## Scope

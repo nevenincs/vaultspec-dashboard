@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Alias the primitive ramps into a Radix-style 12-step semantic token tier named for role (surface/ink/border/accent/focus), supplying discrete hover, pressed, and focus-ring steps
 
 ## Scope

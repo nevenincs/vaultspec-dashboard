@@ -11,7 +11,6 @@ promoted_to:
 modified: '2026-06-15'
 ---
 
-
 # `dashboard-settings` audit: `code review and revision`
 
 ## Scope
@@ -66,7 +65,6 @@ acceptable behaviour.
   change (the dead-controls finding generalizes to a rule, below).
 
 ## Codification candidates
-
 
 - **Source:** the HIGH dead-controls finding, plus the ADR's accepted candidate.
   **Rule slug:** `settings-are-schema-driven-from-one-registry`.

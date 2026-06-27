@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the vault browser from its binding frame over the preserved vault-tree query and selection store
 
 ## Scope

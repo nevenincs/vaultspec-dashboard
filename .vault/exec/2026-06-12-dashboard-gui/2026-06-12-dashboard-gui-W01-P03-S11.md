@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # render edges with the fixed tier treatments, solid, status-coloured, dotted, haze, and grayscale-safe confidence encoding per G3.c and G7.d
 
 ## Scope
@@ -54,4 +51,3 @@ sketches arrives with the visual-language pass (S47/G7.a) - lightness
 already carries the confidence channel, so the gap is aesthetic, not
 semantic. Relation verb labels at high zoom belong to the camera work and
 unfold-on-selection (S12, W03 inspector).
-

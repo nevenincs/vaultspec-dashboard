@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-management-engine-optimization-plan]]"
 ---
 
-
-
-
 # Require live engine conformance instead of skipped success
 
 ## Scope

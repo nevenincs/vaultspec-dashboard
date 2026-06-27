@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # fold authority_class and aggregate onto the node_view projection
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Folded `authority_class` and `aggregate` onto the `node_view` projection (both additive, query-time).
@@ -28,4 +24,3 @@ Folded `authority_class` and `aggregate` onto the `node_view` projection (both a
 {OUTLINE}
 
 ## Notes
-

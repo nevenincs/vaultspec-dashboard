@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # build the facet chip bar for doc type, feature, relation, structural status, text match, with the hidden-count chip per G3.f
 
 ## Scope
@@ -47,4 +44,3 @@ Feature and relation chip rows are capped to the first handful of
 vocabulary values for bar compactness; the full enumerations surface
 through the palette (S43) and inspector (S42). The bar shows the
 high-traffic facets; nothing is hardcoded.
-

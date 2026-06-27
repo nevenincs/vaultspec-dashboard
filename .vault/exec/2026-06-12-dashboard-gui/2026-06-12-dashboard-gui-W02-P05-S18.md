@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # build the synthetic vault corpus fixtures with features, documents, plan interiors, tiered edges, and an event log mirroring contract shapes
 
 ## Scope
@@ -55,4 +52,3 @@ eslint, vitest (96 passed), prettier.
 Event timestamps span January-April 2026 across features, giving the
 timeline real density variation; sequence numbers for the delta clock are
 assigned by the mock engine (S19), which owns the temporal serving logic.
-
