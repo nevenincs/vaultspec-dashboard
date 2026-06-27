@@ -91,6 +91,19 @@ const RAG_CLI_WHITELIST: &[(&str, &[&str])] = &[
     ("server-install", &["install"]),
 ];
 
+/// The DESTRUCTIVE rag storage CLI whitelist: verb -> fixed rag base args
+/// (rag-storage-broker ADR D1). rag exposes these CLI-only (the destructive
+/// storage HTTP routes were deliberately closed), so - like the lifecycle verbs -
+/// they run on the bounded subprocess runner, never over HTTP. They live in their
+/// OWN whitelist and route, not [`RAG_CLI_WHITELIST`], because each takes a
+/// VALIDATED argument (a namespace prefix, a backend enum) and a destructive
+/// dry-run/apply gate the argument-free lifecycle verbs do not.
+const RAG_STORAGE_CLI_WHITELIST: &[(&str, &[&str])] = &[
+    ("storage-delete", &["server", "storage", "delete"]),
+    ("storage-prune", &["server", "storage", "prune"]),
+    ("storage-migrate", &["server", "storage", "migrate"]),
+];
+
 async fn run_sibling(
     state: &AppState,
     program: &[String],
@@ -360,6 +373,126 @@ async fn run_sibling_write_bounded(
     ))
 }
 
+/// Whether a parsed stdout value is a rag `--json` envelope (rag-storage-broker
+/// ADR D4). rag's storage verbs emit `{ok, command, data|error, ...}`; we key on a
+/// top-level `ok` boolean AND a `command` string. This is the storage analog of the
+/// write runner's top-level-`status` key — rag's storage envelope nests `status`
+/// under `data`, so the write runner's key would not match here.
+fn is_rag_envelope(value: &Value) -> bool {
+    value.get("ok").is_some_and(Value::is_boolean)
+        && value.get("command").is_some_and(Value::is_string)
+}
+
+/// The bounded runner for a DESTRUCTIVE rag storage verb (rag-storage-broker ADR
+/// D4). Like [`run_sibling_bounded_in_dir`] in its spawn-bounds-kill lifecycle (the
+/// 8 MiB stdout cap AND the 120s wall-clock timeout), but with the exit-handling the
+/// rag storage CLI requires: rag emits its result envelope and THEN exits 1 on a
+/// non-applied preview (`would_remove`) or a refusal. So on completion stdout is
+/// parsed: a rag envelope ([`is_rag_envelope`]) is forwarded VERBATIM REGARDLESS of
+/// the exit code (a `would_remove` preview is a business outcome, not a fault). Only
+/// an unparseable/empty stdout with a non-zero exit, a spawn failure, a timeout, or a
+/// capped runaway is a 502 — never a forged success and never a flattened preview.
+async fn run_storage_sibling_bounded(
+    state: &AppState,
+    cwd: &FsPath,
+    program: &[String],
+    args: &[String],
+    timeout: Duration,
+    cap: u64,
+) -> Result<Value, (StatusCode, Json<Value>)> {
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut child = tokio::process::Command::new(&program[0])
+        .args(&program[1..])
+        .args(&arg_refs)
+        .arg("--json")
+        .current_dir(cwd)
+        // Force the sibling's Python into UTF-8 so a path/prefix with non-ASCII
+        // bytes round-trips, matching the write runner.
+        .env("PYTHONUTF8", "1")
+        .env("PYTHONIOENCODING", "utf-8")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            super::api_error(
+                state,
+                StatusCode::BAD_GATEWAY,
+                format!("spawning {}: {e}", program[0]),
+            )
+        })?;
+
+    let stdout = child.stdout.take().expect("piped stdout");
+    let collect = async {
+        let mut buf = Vec::new();
+        let read = stdout.take(cap).read_to_end(&mut buf).await;
+        (read, buf)
+    };
+    let (read_result, buf) = match tokio::time::timeout(timeout, collect).await {
+        Ok(result) => result,
+        Err(_) => {
+            let _ = child.kill().await;
+            return Err(super::api_error(
+                state,
+                StatusCode::GATEWAY_TIMEOUT,
+                format!("{} timed out after {}s", program[0], timeout.as_secs()),
+            ));
+        }
+    };
+    read_result.map_err(|e| {
+        super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("reading {} output: {e}", program[0]),
+        )
+    })?;
+    if buf.len() as u64 >= cap {
+        let _ = child.kill().await;
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "{} produced over {} bytes of output (capped)",
+                program[0], cap
+            ),
+        ));
+    }
+    let status = child.wait().await.map_err(|e| {
+        super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("awaiting {} exit: {e}", program[0]),
+        )
+    })?;
+    let raw = String::from_utf8_lossy(&buf);
+    storage_outcome(&raw, status.success()).map_err(|reason| {
+        super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("{}: {reason}", program[0]),
+        )
+    })
+}
+
+/// Decide a storage subprocess's outcome from its stdout and exit success
+/// (rag-storage-broker ADR D4), as a pure function so the load-bearing
+/// exit-1-with-envelope decision is unit-tested without a subprocess. A rag
+/// envelope ([`is_rag_envelope`]) forwards verbatim REGARDLESS of the exit code (a
+/// `would_remove` preview exits 1 but is a business outcome); otherwise a non-zero
+/// exit (a real crash) or an unparseable/empty stdout is a stated fault the runner
+/// maps to a 502.
+fn storage_outcome(raw: &str, success: bool) -> Result<Value, String> {
+    if let Ok(parsed) = serde_json::from_str::<Value>(raw)
+        && is_rag_envelope(&parsed)
+    {
+        return Ok(parsed);
+    }
+    if !success {
+        return Err("exited non-zero with no parseable rag envelope".to_string());
+    }
+    Err("produced no parseable rag storage envelope".to_string())
+}
+
 /// The READ-ONLY git whitelist (dashboard-pipeline-wire W04.P09.S48), mirroring
 /// `CORE_WHITELIST` / `RAG_WHITELIST`: porcelain status (per-file `XY`), numstat
 /// (`+adds`/`-dels` per file), and unified diff for a path. Every verb is a pure
@@ -463,6 +596,115 @@ fn validate_rev(state: &AppState, rev: &str) -> Result<String, (StatusCode, Json
         ));
     }
     Ok(rev.to_string())
+}
+
+/// Validate a rag storage namespace prefix (rag-storage-broker ADR D2): the
+/// `storage-delete` verb targets exactly one namespace by its canonical
+/// `r{12-lowercase-hex}_` prefix (rag's blake2b-6 `root_collection_prefix`).
+/// Validating it confines the destructive target to a real namespace shape AND
+/// closes the flag-injection vector (a `-`-prefixed value rag would read as an
+/// option) before the subprocess spawns. A non-matching value is a 400 the route
+/// degrades through the shared error helper.
+fn validate_namespace_prefix(
+    state: &AppState,
+    prefix: &str,
+) -> Result<String, (StatusCode, Json<Value>)> {
+    let valid = prefix.len() == 14
+        && prefix.starts_with('r')
+        && prefix.ends_with('_')
+        && prefix
+            .get(1..13)
+            .is_some_and(|hex| hex.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')));
+    if !valid {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!(
+                "namespace prefix `{prefix}` must be rag's canonical \
+                 `r{{12-lowercase-hex}}_` form"
+            ),
+        ));
+    }
+    Ok(prefix.to_string())
+}
+
+/// The request body for the destructive storage broker (rag-storage-broker ADR
+/// D2/D3). `prefix` is the `storage-delete` target (validated); `to` is the
+/// `storage-migrate` backend (`server`|`local`); `apply` is the explicit
+/// dry-run-default override (absent/false previews, `true` applies). `migrate`'s
+/// root is the engine's active scope cell, never a body field — the caller never
+/// supplies a path.
+#[derive(serde::Deserialize, Default)]
+pub struct RagStorageBody {
+    #[serde(default)]
+    pub prefix: Option<String>,
+    #[serde(default)]
+    pub to: Option<String>,
+    #[serde(default)]
+    pub apply: Option<bool>,
+}
+
+/// Assemble the validated argv for a destructive storage verb (ADR D2/D3). Starts
+/// from the verb's fixed base args and appends, per verb: the validated namespace
+/// prefix (`delete`); the engine-controlled active-cell root and the `server|local`
+/// backend enum (`migrate`). Then the dry-run discipline: rag's `--json` mode
+/// REQUIRES `--yes` (it means non-interactive, so no confirmation prompt corrupts
+/// the stream), so `--yes` is ALWAYS passed and `--dry-run` is added for a preview
+/// (the default) and omitted only on an explicit `apply: true`. `--allow-unknown` is
+/// never assembled. A missing/invalid argument is a 400 before any subprocess; the
+/// runner appends `--json`.
+fn storage_args_for(
+    state: &AppState,
+    verb: &str,
+    fixed: &[&str],
+    cell_root: &str,
+    body: &RagStorageBody,
+) -> Result<Vec<String>, (StatusCode, Json<Value>)> {
+    let mut args: Vec<String> = fixed.iter().map(|s| s.to_string()).collect();
+    match verb {
+        "storage-delete" => {
+            let prefix = body.prefix.as_deref().ok_or_else(|| {
+                super::api_error(
+                    state,
+                    StatusCode::BAD_REQUEST,
+                    "storage-delete requires a `prefix`".to_string(),
+                )
+            })?;
+            args.push(validate_namespace_prefix(state, prefix)?);
+        }
+        "storage-migrate" => {
+            // The root is the engine-controlled active scope — never a caller path,
+            // closing the traversal vector exactly as the reindex `project_root` does.
+            args.push(cell_root.to_string());
+            let to = match body.to.as_deref() {
+                Some(t @ ("server" | "local")) => t,
+                _ => {
+                    return Err(super::api_error(
+                        state,
+                        StatusCode::BAD_REQUEST,
+                        "storage-migrate requires `to` = `server` or `local`".to_string(),
+                    ));
+                }
+            };
+            args.push("--to".to_string());
+            args.push(to.to_string());
+        }
+        "storage-prune" => {}
+        _ => {
+            return Err(super::api_error(
+                state,
+                StatusCode::FORBIDDEN,
+                format!("storage verb `{verb}` is not whitelisted (rag storage broker)"),
+            ));
+        }
+    }
+    // rag's `--json` requires `--yes` (non-interactive); `--dry-run` is the preview
+    // switch, present by default and dropped only on an explicit apply.
+    args.push("--yes".to_string());
+    if body.apply != Some(true) {
+        args.push("--dry-run".to_string());
+    }
+    Ok(args)
 }
 
 /// Build the full git argument vector for a whitelisted verb: its fixed
@@ -1966,6 +2208,52 @@ pub async fn ops_rag(
     }
 }
 
+/// POST `/ops/rag/storage/{verb}` — the DESTRUCTIVE rag storage broker
+/// (rag-storage-broker ADR): `storage-delete`/`storage-prune`/`storage-migrate` run
+/// on the bounded CLI subprocess runner (rag exposes them CLI-only), with their
+/// arguments validated before the spawn and the dry-run-default/explicit-apply gate
+/// applied. A non-whitelisted verb 403s before any subprocess; a malformed argument
+/// 400s; rag's `{ok, command, ...}` envelope (including a `would_remove` preview that
+/// exits 1) forwards verbatim with the tiers block, and only a genuine
+/// spawn/timeout/crash degrades to a gateway error. delete/prune are MACHINE-scoped
+/// (no `project_root` derivation); migrate sources its root from the active cell. The
+/// engine forwards a validated request to the sibling that OWNS the destructive op and
+/// decides no storage policy of its own (`engine-read-and-infer`).
+pub async fn ops_rag_storage(
+    State(state): State<Arc<AppState>>,
+    Path(verb): Path<String>,
+    body: Option<Json<RagStorageBody>>,
+) -> ApiResult {
+    let Some((_, fixed)) = RAG_STORAGE_CLI_WHITELIST
+        .iter()
+        .find(|(name, _)| *name == verb)
+    else {
+        return Err(super::api_error(
+            &state,
+            StatusCode::FORBIDDEN,
+            format!("storage verb `{verb}` is not whitelisted (rag storage broker)"),
+        ));
+    };
+    let cell = state.active_cell();
+    let cell_root = cell.root.to_string_lossy().to_string();
+    let body = body.map(|Json(b)| b).unwrap_or_default();
+    let args = storage_args_for(&state, &verb, fixed, &cell_root, &body)?;
+    let envelope = run_storage_sibling_bounded(
+        &state,
+        &cell.root,
+        &rag_invocation(),
+        &args,
+        SIBLING_TIMEOUT,
+        SIBLING_STDOUT_CAP,
+    )
+    .await?;
+    Ok(super::envelope(
+        json!({ "envelope": envelope }),
+        super::query_tiers(&cell),
+        None,
+    ))
+}
+
 /// The optional request body for `/ops/git/{verb}`: the `diff`/`histdiff`
 /// verb's path, plus the two revs the `histdiff` (historical) verb diffs
 /// between. Absent for argument-free verbs (status, numstat). The body is
@@ -2886,6 +3174,209 @@ mod tests {
         std::fs::create_dir_all(dir.path().join(".vault/plan")).unwrap();
         let state = crate::app::build_state(dir.path().to_path_buf());
         (dir, state)
+    }
+
+    // --- rag-storage-broker (destructive storage verbs) ---------------------
+
+    #[test]
+    fn namespace_prefix_guard_accepts_canonical_and_rejects_everything_else() {
+        let (_dir, state) = sibling_state();
+        // rag's canonical r{12-lowercase-hex}_ form.
+        assert_eq!(
+            validate_namespace_prefix(&state, "rabc123def456_").unwrap(),
+            "rabc123def456_"
+        );
+        for bad in [
+            "",
+            "-x",
+            "--allow-unknown",
+            "rABC123DEF456_",           // uppercase hex rejected
+            "rabc123def456",            // missing trailing underscore
+            "abc123def456_",            // missing leading r
+            "rabc123def45_",            // 11 hex, too short
+            "rabc123def4567_",          // 13 hex, too long
+            "rabc123def45g6_",          // non-hex char
+            "rabc123def456_; rm -rf /", // shell metacharacters
+        ] {
+            assert!(
+                validate_namespace_prefix(&state, bad).is_err(),
+                "`{bad}` must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn storage_args_assembles_validated_argv_per_verb() {
+        let (_dir, state) = sibling_state();
+        let base = |v: &str| {
+            RAG_STORAGE_CLI_WHITELIST
+                .iter()
+                .find(|(n, _)| *n == v)
+                .map(|(_, a)| *a)
+                .unwrap()
+        };
+
+        // delete: validated prefix, then --yes (required by --json) and --dry-run
+        // (preview default).
+        let body = RagStorageBody {
+            prefix: Some("rabc123def456_".into()),
+            ..Default::default()
+        };
+        let args = storage_args_for(
+            &state,
+            "storage-delete",
+            base("storage-delete"),
+            "/r",
+            &body,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            [
+                "server",
+                "storage",
+                "delete",
+                "rabc123def456_",
+                "--yes",
+                "--dry-run"
+            ]
+        );
+        assert!(!args.iter().any(|a| a == "--allow-unknown"));
+
+        // delete with apply: --yes and NO --dry-run.
+        let apply = RagStorageBody {
+            prefix: Some("rabc123def456_".into()),
+            apply: Some(true),
+            ..Default::default()
+        };
+        let args = storage_args_for(
+            &state,
+            "storage-delete",
+            base("storage-delete"),
+            "/r",
+            &apply,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            ["server", "storage", "delete", "rabc123def456_", "--yes"]
+        );
+
+        // prune: no positional, preview by default.
+        let args = storage_args_for(
+            &state,
+            "storage-prune",
+            base("storage-prune"),
+            "/r",
+            &RagStorageBody::default(),
+        )
+        .unwrap();
+        assert_eq!(args, ["server", "storage", "prune", "--yes", "--dry-run"]);
+
+        // migrate: the ENGINE-CONTROLLED cell root (not a body field) + the enum.
+        let migrate = RagStorageBody {
+            to: Some("server".into()),
+            ..Default::default()
+        };
+        let args = storage_args_for(
+            &state,
+            "storage-migrate",
+            base("storage-migrate"),
+            "/active/scope",
+            &migrate,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            [
+                "server",
+                "storage",
+                "migrate",
+                "/active/scope",
+                "--to",
+                "server",
+                "--yes",
+                "--dry-run"
+            ]
+        );
+    }
+
+    #[test]
+    fn storage_args_reject_missing_or_invalid_required_values() {
+        let (_dir, state) = sibling_state();
+        // delete with no prefix → 400.
+        assert!(
+            storage_args_for(
+                &state,
+                "storage-delete",
+                &["server", "storage", "delete"],
+                "/r",
+                &RagStorageBody::default(),
+            )
+            .is_err()
+        );
+        // migrate with a bad backend → 400.
+        let bad = RagStorageBody {
+            to: Some("s3".into()),
+            ..Default::default()
+        };
+        assert!(
+            storage_args_for(
+                &state,
+                "storage-migrate",
+                &["server", "storage", "migrate"],
+                "/r",
+                &bad,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn rag_envelope_detection_and_storage_outcome() {
+        // is_rag_envelope keys on top-level ok(bool) + command(string).
+        let env = serde_json::json!({"ok": false, "command": "storage.delete",
+            "data": {"status": "would_remove", "prefix": "rabc123def456_"}});
+        assert!(is_rag_envelope(&env));
+        assert!(!is_rag_envelope(
+            &serde_json::json!({"status": "would_remove"})
+        ));
+        assert!(!is_rag_envelope(
+            &serde_json::json!({"ok": "yes", "command": 1})
+        ));
+
+        // A would_remove preview EXITS 1 but is a forwarded business outcome.
+        let raw = env.to_string();
+        assert_eq!(storage_outcome(&raw, false).unwrap(), env);
+        // An applied result on exit 0 forwards too.
+        assert!(storage_outcome(&raw, true).is_ok());
+        // A genuine crash (non-zero exit, no envelope) is a stated fault → 502.
+        assert!(storage_outcome("Traceback...\nKeyError", false).is_err());
+        // Empty stdout on exit 0 is also a fault (never a forged success).
+        assert!(storage_outcome("", true).is_err());
+    }
+
+    #[tokio::test]
+    async fn storage_route_403s_unknown_verb_and_400s_a_bad_prefix_before_spawning() {
+        let (_dir, state) = sibling_state();
+        // An unknown storage verb 403s before any subprocess.
+        let err = ops_rag_storage(State(state.clone()), Path("storage-nuke".to_string()), None)
+            .await
+            .unwrap_err();
+        assert_eq!(err.0, StatusCode::FORBIDDEN);
+
+        // A whitelisted verb with a malformed prefix 400s before any subprocess.
+        let err = ops_rag_storage(
+            State(state.clone()),
+            Path("storage-delete".to_string()),
+            Some(Json(RagStorageBody {
+                prefix: Some("not-a-prefix".into()),
+                ..Default::default()
+            })),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
     }
 
     /// A program that ignores the trailing `--json` run_sibling appends.
