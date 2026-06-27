@@ -43,7 +43,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@figma/code-connect": "^1.4.8",
     "@playwright/test": "^1.60.0",
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/react": "^16.3.2",
