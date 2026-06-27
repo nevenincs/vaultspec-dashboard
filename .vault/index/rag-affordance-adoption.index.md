@@ -13,6 +13,7 @@ related:
   - '[[2026-06-27-rag-affordance-adoption-P02-S05]]'
   - '[[2026-06-27-rag-affordance-adoption-P02-S06]]'
   - '[[2026-06-27-rag-affordance-adoption-adr]]'
+  - '[[2026-06-27-rag-affordance-adoption-audit]]'
   - '[[2026-06-27-rag-affordance-adoption-plan]]'
   - '[[2026-06-27-rag-affordance-adoption-research]]'
 ---
@@ -26,6 +27,10 @@ Auto-generated index of all documents tagged with `#rag-affordance-adoption`.
 ### adr
 
 - `2026-06-27-rag-affordance-adoption-adr` - `rag-affordance-adoption` adr: `adopt rag's machine-global pointer and version-tolerant JSON start` | (**status:** `accepted`)
+
+### audit
+
+- `2026-06-27-rag-affordance-adoption-audit` - `rag-affordance-adoption` audit: `code review verification`
 
 ### exec
 

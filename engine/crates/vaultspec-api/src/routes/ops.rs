@@ -814,10 +814,17 @@ fn rag_start_args(body: &RagControlBody) -> Result<Vec<String>, String> {
 
 /// Whether a non-zero `server start` exit is an OLDER rag rejecting the unknown
 /// `--json` option (it predates the JSON-start contract), so the caller retries the
-/// plain start. A typer/click unknown-option error names the option in its message,
-/// so the heuristic is precise; a false negative leaves a genuine failure (already
-/// failing), a false positive retries once and reaches the same failure.
+/// plain start. The PRIMARY signal is text-independent: typer/click exits 2 on a
+/// usage error (an unknown option), and the engine adds exactly one option rag might
+/// not know - `--json` - while validating its own port, so an exit-2 from this
+/// invocation IS the `--json` rejection with near-certainty. A usage error means no
+/// service started, so the plain retry is always safe. The unknown-option text scan
+/// is a belt-and-suspenders for a non-standard exit code. rag's own `--json` FAILURE
+/// envelopes exit 1 (not 2), so this never misfires on a real start failure.
 fn rag_rejected_json(run: &LifecycleRun) -> bool {
+    if run.code == Some(2) {
+        return true;
+    }
     let lower = run.combined().to_ascii_lowercase();
     lower.contains("no such option") && lower.contains("--json")
 }
@@ -931,7 +938,8 @@ async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControl
             // install. Surface a distinct `needs_install` status (best-effort
             // heuristic) so the UI can offer `server qdrant install` or a retry with
             // `--qdrant-auto-provision`.
-            let lower = run.combined().to_ascii_lowercase();
+            let combined = run.combined();
+            let lower = combined.to_ascii_lowercase();
             let needs_install = lower.contains("qdrant")
                 && (lower.contains("install") || lower.contains("provision"));
             let mut envelope = json!({
@@ -939,13 +947,16 @@ async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControl
                 "attached": false,
                 "exit_code": run.code,
                 "reason": reason,
-                "output": run.combined(),
+                "output": combined,
             });
             // Authoritative failure cause from rag's `--json` start envelope (when the
             // running rag supports it): rag's STATED error + data (e.g. the
             // `machine_owned` holder pid, the `port_in_use` port), surfaced alongside
-            // the inferred reason. Absent on an older rag, so this is purely additive.
-            if let Some((rag_error, rag_data)) = rag_start_failure(&run.stdout) {
+            // the inferred reason. Read stdout then stderr (rag may emit the envelope
+            // on either). Absent on an older rag, so this is purely additive.
+            if let Some((rag_error, rag_data)) =
+                rag_start_failure(&run.stdout).or_else(|| rag_start_failure(&run.stderr))
+            {
                 envelope["rag_error"] = json!(rag_error);
                 if !rag_data.is_null() {
                     envelope["rag_data"] = rag_data;
@@ -3831,18 +3842,27 @@ mod tests {
 
     #[test]
     fn rag_rejected_json_detects_an_older_rag_unknown_option() {
-        // A typer/click unknown-option error on a non-zero exit -> retry without it.
-        let rejected = LifecycleRun {
+        // PRIMARY signal: a typer usage error exits 2 -> retry without --json, even
+        // with no recognizable text.
+        let exit2 = LifecycleRun {
             code: Some(2),
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+        assert!(rag_rejected_json(&exit2));
+        // Belt-and-suspenders: the unknown-option text on a non-standard exit code.
+        let by_text = LifecycleRun {
+            code: Some(1),
             stdout: String::new(),
             stderr: "Error: No such option: --json".to_string(),
         };
-        assert!(rag_rejected_json(&rejected));
-        // A genuine failure that does not name --json is NOT a rejection.
+        assert!(rag_rejected_json(&by_text));
+        // A genuine rag --json FAILURE exits 1 and does not name --json: NOT a
+        // rejection (rag's structured failures exit 1, never 2).
         let genuine = LifecycleRun {
             code: Some(1),
-            stdout: String::new(),
-            stderr: "Port 8766 is already in use.".to_string(),
+            stdout: r#"{"ok": false, "error": "port_in_use"}"#.to_string(),
+            stderr: String::new(),
         };
         assert!(!rag_rejected_json(&genuine));
     }

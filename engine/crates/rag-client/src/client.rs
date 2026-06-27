@@ -46,7 +46,9 @@ pub fn service_json_path(vault_root: &Path) -> PathBuf {
 /// `~/.vaultspec-rag/service.json` (machine-global only when rag uses the default
 /// status dir) is the next candidate, then the per-scope file. A candidate absent on
 /// a rag that predates the pointer is simply skipped by `discover_at`, so adding it
-/// is purely additive.
+/// is purely additive. rag writes BOTH the pointer and the STATUS_DIR file from one
+/// heartbeat tick with the same payload, so their heartbeats do not diverge (a fresh
+/// pointer never shadows the status file as stale).
 pub fn service_json_candidates(vault_root: &Path) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
