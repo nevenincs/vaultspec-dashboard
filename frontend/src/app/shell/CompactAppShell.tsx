@@ -25,7 +25,6 @@ import {
   toggleFilterSidebar,
   useFilterSidebarOpen,
 } from "../../stores/view/filterSidebar";
-import { setTimelinePlayhead } from "../../stores/view/timeline";
 import { Funnel, MagnifyingGlass } from "../kit/glyphs";
 import { LeftRail } from "../left/LeftRail";
 import { StatusTab } from "../right/StatusTab";
@@ -88,15 +87,7 @@ export function CompactAppShell() {
             active: filterOpen,
           },
         ]
-      : surface === "timeline"
-        ? [
-            {
-              label: "Jump to now",
-              text: "Now",
-              onClick: () => setTimelinePlayhead("live"),
-            },
-          ]
-        : [];
+      : [];
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
