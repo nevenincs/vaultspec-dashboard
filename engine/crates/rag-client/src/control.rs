@@ -148,6 +148,17 @@ pub fn metrics(transport: &impl RagTransport) -> Result<String> {
     transport.get("/metrics")
 }
 
+/// `GET /storage/survey[?limit=]` — rag's per-namespace storage survey: each
+/// prefix's on-disk `footprint_bytes` (a filesystem walk), `points` count,
+/// `collections`, and a `live`/`orphaned`/`unknown`/`unverifiable` `status`. The
+/// authoritative disk-SIZE + orphan source (server mode only; rag returns 409 in
+/// local-only mode, which the aggregation tolerates as "storage unavailable").
+/// `limit` is bounded by the broker so the namespace list is never unbounded.
+pub fn storage_survey(transport: &impl RagTransport, limit: Option<u32>) -> Result<Value> {
+    let qs = limit.map(|n| format!("?limit={n}")).unwrap_or_default();
+    parse(transport.get(&format!("/storage/survey{qs}"))?)
+}
+
 // --- POST controls (rag's envelope forwarded verbatim) -----------------------
 
 /// Validated arguments for a reindex trigger. The BROKER builds this after
@@ -218,6 +229,182 @@ pub fn projects_evict(transport: &impl RagTransport, root: &str) -> Result<Value
 /// than a snapshot read (see [`QUALITY_BUDGET`]).
 pub fn quality(transport: &impl RagTransport) -> Result<Value> {
     parse(transport.post_json("/quality", "{}")?)
+}
+
+// --- rag-ops aggregation (the size/state surface computed in Rust) -----------
+//
+// The console's overview needs ONE size+state snapshot, not six round-trips from
+// the frontend. The broker fetches rag's codified Tier-1 reads and this module
+// DERIVES the rollup in Rust (the performance directive): the storage size totals
+// and the live/orphaned counts are computed here from the survey, while the
+// index/GPU/qdrant/watcher/tenant blocks are forwarded verbatim (a rag-side shape
+// change to those is a tolerant pass-through, not a parse failure). This is the
+// only place that COMBINES rag reads; each underlying read stays verbatim.
+
+/// The namespace list is bounded so the survey rollup is never unbounded
+/// (`bounded-by-default`); rag orders orphaned/unknown first, so a truncated list
+/// still surfaces the namespaces that need attention.
+pub const RAG_OPS_SURVEY_LIMIT: u32 = 64;
+
+/// One namespace in the storage rollup (a `r<hash>_` prefix and its collections).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StorageNamespaceSummary {
+    pub prefix: String,
+    /// The resolved project root, or `None` for an unknown/orphaned namespace.
+    pub root: Option<String>,
+    /// `live` | `orphaned` | `unknown` | `unverifiable`.
+    pub status: String,
+    pub points: u64,
+    pub footprint_bytes: u64,
+    pub collections: Vec<String>,
+}
+
+/// The Rust-computed storage size rollup over rag's `/storage/survey`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StorageRollup {
+    /// `false` when the survey was unavailable (local-only mode 409, or any
+    /// survey error): the rest of the ops-state still serves, this block degrades.
+    pub available: bool,
+    pub total_points: u64,
+    pub total_footprint_bytes: u64,
+    /// Namespaces rag reports in total (may exceed the returned/summarized list).
+    pub total_namespaces: usize,
+    pub live_count: usize,
+    pub orphaned_count: usize,
+    /// The bounded namespace detail list (orphaned/unknown first).
+    pub namespaces: Vec<StorageNamespaceSummary>,
+}
+
+impl StorageRollup {
+    fn unavailable() -> Self {
+        StorageRollup {
+            available: false,
+            total_points: 0,
+            total_footprint_bytes: 0,
+            total_namespaces: 0,
+            live_count: 0,
+            orphaned_count: 0,
+            namespaces: Vec::new(),
+        }
+    }
+}
+
+/// The aggregated rag-ops snapshot: the Rust-computed storage rollup plus the
+/// verbatim index/qdrant/watcher (from `/service-state`) and tenant registry
+/// (from `/projects`) blocks. Serialized into the brokered envelope.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RagOpsState {
+    /// `/service-state` `index` block (GPU, doc/code counts, target dir).
+    pub index: Value,
+    /// `/service-state` `qdrant` block (mode, version, port, alive, restarts).
+    pub qdrant: Value,
+    /// `/service-state` `watcher` block (enabled, running, debounce, cooldown).
+    pub watcher: Value,
+    /// The Rust-computed storage size rollup.
+    pub storage: StorageRollup,
+    /// `/projects` tenant registry (slots, max, idle TTL) forwarded verbatim.
+    pub tenants: Value,
+}
+
+/// Derive the storage size rollup from a `/storage/survey` body. The totals sum
+/// every returned namespace; the detail list is the survey's (already bounded)
+/// namespace array. `None` (survey unavailable) degrades to an empty,
+/// `available:false` rollup.
+pub fn derive_storage_rollup(survey: Option<&Value>) -> StorageRollup {
+    let Some(survey) = survey else {
+        return StorageRollup::unavailable();
+    };
+    let mut namespaces = Vec::new();
+    let mut total_points = 0u64;
+    let mut total_footprint = 0u64;
+    let mut live = 0usize;
+    let mut orphaned = 0usize;
+    if let Some(arr) = survey.get("namespaces").and_then(Value::as_array) {
+        for ns in arr {
+            let points = ns.get("points").and_then(Value::as_u64).unwrap_or(0);
+            let footprint = ns
+                .get("footprint_bytes")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let status = ns
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+                .to_string();
+            match status.as_str() {
+                "live" => live += 1,
+                "orphaned" => orphaned += 1,
+                _ => {}
+            }
+            total_points = total_points.saturating_add(points);
+            total_footprint = total_footprint.saturating_add(footprint);
+            namespaces.push(StorageNamespaceSummary {
+                prefix: ns
+                    .get("prefix")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                root: ns.get("root").and_then(Value::as_str).map(String::from),
+                status,
+                points,
+                footprint_bytes: footprint,
+                collections: ns
+                    .get("collections")
+                    .and_then(Value::as_array)
+                    .map(|c| {
+                        c.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            });
+        }
+    }
+    let total_namespaces = survey
+        .get("total")
+        .and_then(Value::as_u64)
+        .map(|t| t as usize)
+        .unwrap_or(namespaces.len());
+    StorageRollup {
+        available: true,
+        total_points,
+        total_footprint_bytes: total_footprint,
+        total_namespaces,
+        live_count: live,
+        orphaned_count: orphaned,
+        namespaces,
+    }
+}
+
+/// Combine the Tier-1 reads into the aggregated [`RagOpsState`]. Pure (testable
+/// without a transport): the broker fetches the three reads and passes them here.
+pub fn derive_rag_ops_state(
+    service_state: &Value,
+    storage_survey: Option<&Value>,
+    projects: &Value,
+) -> RagOpsState {
+    RagOpsState {
+        index: service_state.get("index").cloned().unwrap_or(Value::Null),
+        qdrant: service_state.get("qdrant").cloned().unwrap_or(Value::Null),
+        watcher: service_state.get("watcher").cloned().unwrap_or(Value::Null),
+        storage: derive_storage_rollup(storage_survey),
+        tenants: projects.clone(),
+    }
+}
+
+/// Fetch and aggregate the rag-ops snapshot: `/service-state` + `/storage/survey`
+/// (bounded, tolerated when 409 in local-only mode) + `/projects`. One brokered
+/// call instead of three from the frontend, with the size rollup computed in Rust.
+pub fn fetch_rag_ops_state(
+    transport: &impl RagTransport,
+    project_root: &str,
+) -> Result<RagOpsState> {
+    let service = service_state(transport, project_root)?;
+    // Storage survey is server-mode-only: any survey error (409 local-only, a
+    // transient fault) degrades the storage block, never the whole snapshot.
+    let survey = storage_survey(transport, Some(RAG_OPS_SURVEY_LIMIT)).ok();
+    let projects = projects(transport)?;
+    Ok(derive_rag_ops_state(&service, survey.as_ref(), &projects))
 }
 
 // --- Semantic freshness epoch (ADR D4) ---------------------------------------
@@ -440,5 +627,66 @@ mod tests {
             "a body past the cap is a typed Protocol error, got {result:?}"
         );
         let _ = server.join();
+    }
+
+    #[test]
+    fn storage_survey_hits_the_path_with_a_bounded_limit() {
+        let t = FakeTransport::returning(vec![r#"{"namespaces":[],"total":0}"#]);
+        storage_survey(&t, Some(64)).unwrap();
+        assert_eq!(t.calls.borrow()[0].0, "/storage/survey?limit=64");
+    }
+
+    #[test]
+    fn storage_rollup_sums_points_and_bytes_and_counts_statuses() {
+        let survey = json!({
+            "namespaces": [
+                {"prefix": "raa_", "root": "/a", "status": "live",
+                 "points": 100, "footprint_bytes": 2048, "collections": ["raa_vault_docs"]},
+                {"prefix": "rbb_", "root": "/b", "status": "live",
+                 "points": 50, "footprint_bytes": 1024, "collections": ["rbb_vault_docs"]},
+                {"prefix": "rcc_", "root": null, "status": "orphaned",
+                 "points": 7, "footprint_bytes": 512, "collections": ["rcc_vault_docs"]},
+            ],
+            "total": 3, "returned": 3
+        });
+        let rollup = derive_storage_rollup(Some(&survey));
+        assert!(rollup.available);
+        assert_eq!(rollup.total_points, 157);
+        assert_eq!(rollup.total_footprint_bytes, 3584);
+        assert_eq!(rollup.live_count, 2);
+        assert_eq!(rollup.orphaned_count, 1);
+        assert_eq!(rollup.total_namespaces, 3);
+        assert_eq!(rollup.namespaces.len(), 3);
+        assert_eq!(rollup.namespaces[2].root, None);
+    }
+
+    #[test]
+    fn storage_rollup_degrades_when_survey_unavailable() {
+        // local-only mode (409) -> survey is None -> the storage block degrades,
+        // the rest of the ops-state still serves.
+        let rollup = derive_storage_rollup(None);
+        assert!(!rollup.available);
+        assert_eq!(rollup.total_points, 0);
+        assert!(rollup.namespaces.is_empty());
+    }
+
+    #[test]
+    fn rag_ops_state_forwards_verbatim_blocks_and_computes_storage() {
+        let service = json!({
+            "index": {"vault_count": 42, "cuda": true},
+            "qdrant": {"mode": "server", "version": "1.18.2", "port": 8765, "alive": true},
+            "watcher": {"running": true}
+        });
+        let survey = json!({"namespaces": [
+            {"prefix": "rx_", "status": "live", "points": 9, "footprint_bytes": 100}
+        ], "total": 1});
+        let projects = json!({"projects": [], "max_projects": 4});
+        let state = derive_rag_ops_state(&service, Some(&survey), &projects);
+        assert_eq!(state.index["vault_count"], 42);
+        assert_eq!(state.qdrant["version"], "1.18.2");
+        assert_eq!(state.watcher["running"], true);
+        assert_eq!(state.tenants["max_projects"], 4);
+        assert_eq!(state.storage.total_points, 9);
+        assert!(state.storage.available);
     }
 }

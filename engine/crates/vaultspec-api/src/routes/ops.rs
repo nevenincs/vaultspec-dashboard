@@ -628,6 +628,304 @@ fn rag_invocation() -> Vec<String> {
     }
 }
 
+/// The `/health` liveness budget for the lifecycle running-predicate (the
+/// `probe_machine_state` round-trip): short, because it is a loopback call to a
+/// service we just discovered.
+const RAG_LIFECYCLE_HEALTH_TIMEOUT: Duration = Duration::from_millis(1500);
+
+/// The captured outcome of a rag lifecycle subprocess (`server start`/`stop`):
+/// the exit code and the human stdout. Unlike [`run_sibling`], a non-zero exit is
+/// NOT auto-mapped to 502 — the lifecycle handler interprets it against the
+/// machine-global running-predicate (an already-running `server start` exits 1 by
+/// design and must ATTACH, not error). `server start`/`stop` carry NO `--json`
+/// flag on rag 0.2.25, so this runner does not append one (the shared
+/// [`run_sibling`] does, which is why status/doctor/install keep it).
+struct LifecycleRun {
+    code: Option<i32>,
+    stdout: String,
+    stderr: String,
+}
+
+impl LifecycleRun {
+    /// The human output across both streams (rag prints the needs-install hint and
+    /// error text to stderr), for the heuristic + the surfaced `output`.
+    fn combined(&self) -> String {
+        match (self.stdout.is_empty(), self.stderr.is_empty()) {
+            (false, false) => format!("{}\n{}", self.stdout, self.stderr),
+            (false, true) => self.stdout.clone(),
+            (true, false) => self.stderr.clone(),
+            (true, true) => String::new(),
+        }
+    }
+}
+
+/// Spawn a rag lifecycle verb (`server start`/`stop`) with the same
+/// spawn-bounded-read-kill lifecycle as [`run_sibling_bounded_in_dir`] but
+/// WITHOUT appending `--json` and WITHOUT mapping a non-zero exit to 502: the
+/// caller decides the outcome from the running-predicate. Spawn / read / timeout
+/// faults are still honest 502/504s (the engine genuinely could not run it).
+async fn run_rag_lifecycle_capture(
+    state: &AppState,
+    cwd: &FsPath,
+    program: &[String],
+    args: &[&str],
+) -> Result<LifecycleRun, (StatusCode, Json<Value>)> {
+    let mut child = tokio::process::Command::new(&program[0])
+        .args(&program[1..])
+        .args(args)
+        .current_dir(cwd)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            super::api_error(
+                state,
+                StatusCode::BAD_GATEWAY,
+                format!("spawning {}: {e}", program[0]),
+            )
+        })?;
+    let stdout = child.stdout.take().expect("piped stdout");
+    let stderr = child.stderr.take().expect("piped stderr");
+    // Read BOTH streams concurrently and bounded: the lifecycle handler scans the
+    // human text (rag prints the needs-install hint and error text to stderr), and
+    // an undrained stderr pipe would otherwise let a chatty child block on its write
+    // until the timeout kills it.
+    let collect = async {
+        let mut obuf = Vec::new();
+        let mut ebuf = Vec::new();
+        let mut otake = stdout.take(SIBLING_STDOUT_CAP);
+        let mut etake = stderr.take(SIBLING_STDOUT_CAP);
+        let (oread, eread) =
+            tokio::join!(otake.read_to_end(&mut obuf), etake.read_to_end(&mut ebuf),);
+        (oread, eread, obuf, ebuf)
+    };
+    let (oread, eread, obuf, ebuf) = match tokio::time::timeout(SIBLING_TIMEOUT, collect).await {
+        Ok(result) => result,
+        Err(_) => {
+            let _ = child.kill().await;
+            return Err(super::api_error(
+                state,
+                StatusCode::GATEWAY_TIMEOUT,
+                format!(
+                    "{} timed out after {}s",
+                    program[0],
+                    SIBLING_TIMEOUT.as_secs()
+                ),
+            ));
+        }
+    };
+    for read in [oread, eread] {
+        read.map_err(|e| {
+            super::api_error(
+                state,
+                StatusCode::BAD_GATEWAY,
+                format!("reading {} output: {e}", program[0]),
+            )
+        })?;
+    }
+    if obuf.len() as u64 >= SIBLING_STDOUT_CAP || ebuf.len() as u64 >= SIBLING_STDOUT_CAP {
+        let _ = child.kill().await;
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "{} produced over {} bytes of output (capped)",
+                program[0], SIBLING_STDOUT_CAP
+            ),
+        ));
+    }
+    let status = child.wait().await.map_err(|e| {
+        super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("awaiting {} exit: {e}", program[0]),
+        )
+    })?;
+    Ok(LifecycleRun {
+        code: status.code(),
+        stdout: String::from_utf8_lossy(&obuf).trim().to_string(),
+        stderr: String::from_utf8_lossy(&ebuf).trim().to_string(),
+    })
+}
+
+/// Re-probe the machine-global running-predicate with a small bounded settle: a
+/// just-started or just-won-the-race rag service may still be loading models when
+/// the first `/health` probe fires, so a single probe would misreport a slow-but-
+/// successful start as failed. Bounded at a few attempts with short gaps.
+async fn reprobe_rag_until_running(vault: &FsPath) -> rag_client::client::RagMachineState {
+    const ATTEMPTS: usize = 4;
+    let gap = Duration::from_millis(500);
+    let mut last = rag_client::client::RagMachineState::Absent {
+        reason: "rag start re-probe pending".to_string(),
+    };
+    for i in 0..ATTEMPTS {
+        last = rag_client::client::probe_machine_state(vault, RAG_LIFECYCLE_HEALTH_TIMEOUT);
+        if last.is_running() {
+            return last;
+        }
+        if i + 1 < ATTEMPTS {
+            tokio::time::sleep(gap).await;
+        }
+    }
+    last
+}
+
+/// `server-start` with the machine-singleton, attach-never-own discipline
+/// (rag-service-management ADR D1/D2). The dashboard manages whatever rag service
+/// is running on the machine and starts its OWN only when one is genuinely
+/// absent: it NEVER starts speculatively. It gates on the machine-global
+/// running-predicate; an already-running service ATTACHES and succeeds (whether
+/// or not the dashboard started it); a start that loses the race (machine-owned,
+/// exit 1) re-discovers and attaches; only a re-probe that still finds no running
+/// service is a failure (carried as an honest `status:"failed"` envelope with the
+/// captured output + degraded tier, never a forged success and never a 502 for an
+/// already-running service).
+/// Build the validated, bounded `server start` flag list from the request body
+/// (D5 arg pass-through). Exactly three flags are forwarded — `--local-only`,
+/// `--port`, `--qdrant-auto-provision` — and nothing else from the body reaches
+/// the start command. The port is bounded to the non-privileged range. The result
+/// always begins with `["server", "start"]`.
+fn rag_start_args(body: &RagControlBody) -> Result<Vec<String>, String> {
+    let mut args: Vec<String> = vec!["server".into(), "start".into()];
+    if body.local_only == Some(true) {
+        args.push("--local-only".into());
+    }
+    if body.qdrant_auto_provision == Some(true) {
+        args.push("--qdrant-auto-provision".into());
+    }
+    if let Some(port) = body.port {
+        if !(1024..=65535).contains(&port) {
+            return Err(format!(
+                "server start `port` {port} must be within 1024..=65535 (non-privileged)"
+            ));
+        }
+        args.push("--port".into());
+        args.push(port.to_string());
+    }
+    Ok(args)
+}
+
+async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControlBody) -> ApiResult {
+    // Validate the start flags BEFORE anything else: a bad port is a tiers-carrying
+    // 400 that never reaches rag (mirrors the reindex/search arg guards).
+    let args = rag_start_args(body)
+        .map_err(|reason| super::api_error(state, StatusCode::BAD_REQUEST, reason))?;
+    let args_ref: Vec<&str> = args.iter().map(String::as_str).collect();
+
+    let vault = cell.root.join(".vault");
+    // Gate: a running machine service is managed, not restarted (the start flags
+    // are moot when we attach to an existing service).
+    if let rag_client::client::RagMachineState::Running { info, health } =
+        rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT)
+    {
+        return Ok(super::envelope(
+            json!({ "envelope": {
+                "status": "already_running",
+                "attached": true,
+                "pid": health.pid.or(info.pid),
+                "port": info.port,
+            }}),
+            super::query_tiers(cell),
+            None,
+        ));
+    }
+    // Genuinely absent (crashed is treated as absent for start purposes): start
+    // our own.
+    let run = run_rag_lifecycle_capture(state, &cell.root, &rag_invocation(), &args_ref).await?;
+
+    // Exit 0 is the CLI's authoritative "started" (or "already running") — rag only
+    // exits non-zero on a real failure. A COLD start then loads the GPU models,
+    // which can take far longer than a single `/health` probe window, so we MUST NOT
+    // downgrade a slow-but-successful start to "failed": trust exit 0 and harvest
+    // pid/port best-effort without blocking on readiness.
+    if run.code == Some(0) {
+        let (pid, port) =
+            match rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT) {
+                rag_client::client::RagMachineState::Running { info, health } => {
+                    (health.pid.or(info.pid), Some(info.port))
+                }
+                other => (None, other.service_info().map(|i| i.port)),
+            };
+        return Ok(super::envelope(
+            json!({ "envelope": {
+                "status": "started",
+                "attached": true,
+                "pid": pid,
+                "port": port,
+                "output": run.combined(),
+            }}),
+            super::query_tiers(cell),
+            None,
+        ));
+    }
+
+    // Non-zero exit: either we lost the race (a CLI/MCP/other dashboard owns the
+    // machine, rag's lock refused our second service) or a genuine failure. Re-probe
+    // with a bounded settle — a just-won race may still be warming — before deciding.
+    match reprobe_rag_until_running(&cell.root.join(".vault")).await {
+        rag_client::client::RagMachineState::Running { info, health } => Ok(super::envelope(
+            json!({ "envelope": {
+                "status": "machine_owned",
+                "attached": true,
+                "pid": health.pid.or(info.pid),
+                "port": info.port,
+                "output": run.combined(),
+            }}),
+            super::query_tiers(cell),
+            None,
+        )),
+        other => {
+            // Still not running: a genuine failure (a non-rag process holds the
+            // port, a missing Qdrant binary, ...). Honest structured envelope with
+            // the captured output and the degraded tier.
+            let reason = match other {
+                rag_client::client::RagMachineState::Crashed { reason, .. }
+                | rag_client::client::RagMachineState::Absent { reason } => reason,
+                rag_client::client::RagMachineState::Running { .. } => unreachable!(),
+            };
+            // needs-install chain (D5): when the start failed because the managed
+            // Qdrant binary is missing, rag's output (on stdout OR stderr) points at
+            // install. Surface a distinct `needs_install` status (best-effort
+            // heuristic) so the UI can offer `server qdrant install` or a retry with
+            // `--qdrant-auto-provision`.
+            let lower = run.combined().to_ascii_lowercase();
+            let needs_install = lower.contains("qdrant")
+                && (lower.contains("install") || lower.contains("provision"));
+            Ok(super::envelope(
+                json!({ "envelope": {
+                    "status": if needs_install { "needs_install" } else { "failed" },
+                    "attached": false,
+                    "exit_code": run.code,
+                    "reason": reason,
+                    "output": run.combined(),
+                }}),
+                super::degraded_tiers(cell, &reason),
+                None,
+            ))
+        }
+    }
+}
+
+/// `server-stop`: stop the ONE machine-global rag service — which stops it for
+/// EVERY consumer (this dashboard, the CLI, MCP, and any other dashboard). The
+/// machine-wide blast radius is surfaced in the UI copy (the stores/console
+/// layer), not here. `server stop` carries no `--json` on rag 0.2.25, so the
+/// human output is captured and wrapped.
+async fn stop_rag_service(state: &AppState, cell: &ScopeCell) -> ApiResult {
+    let run = run_rag_lifecycle_capture(state, &cell.root, &rag_invocation(), &["server", "stop"])
+        .await?;
+    Ok(super::envelope(
+        json!({ "envelope": {
+            "status": if run.code == Some(0) { "stopped" } else { "stop_failed" },
+            "exit_code": run.code,
+            "output": run.combined(),
+        }}),
+        super::query_tiers(cell),
+        None,
+    ))
+}
+
 pub async fn ops_core(State(state): State<Arc<AppState>>, Path(verb): Path<String>) -> ApiResult {
     let Some((_, args)) = CORE_WHITELIST.iter().find(|(name, _)| *name == verb) else {
         return Err(super::api_error(
@@ -1261,6 +1559,18 @@ pub struct RagControlBody {
     /// on the active scope root and ignore this.
     #[serde(default)]
     pub root: Option<String>,
+    /// `server-start` only (D5 arg pass-through): use rag's on-disk local-only
+    /// backend (no managed Qdrant) — the only workable backend on CI/offline/
+    /// air-gapped hosts. Ignored by every other verb.
+    #[serde(default)]
+    pub local_only: Option<bool>,
+    /// `server-start` only: the service port to bind (bounded, non-privileged).
+    #[serde(default)]
+    pub port: Option<u16>,
+    /// `server-start` only: download the managed Qdrant binary if it is missing,
+    /// rather than failing with a needs-install hint.
+    #[serde(default)]
+    pub qdrant_auto_provision: Option<bool>,
 }
 
 /// Watcher debounce ceiling: 10 minutes. A larger value is almost certainly a
@@ -1321,6 +1631,95 @@ fn brokered_envelope(cell: &ScopeCell, result: rag_client::client::Result<Value>
     }
 }
 
+/// GET `/ops/rag/collection-health?collection=<name>` — Tier-2 Qdrant-native
+/// health (rag-service-management D6 / W02.P05). Reads Qdrant's documented
+/// `GET /collections/{name}` DIRECTLY on its loopback port, but GATED on the
+/// Qdrant version reported by rag's `/health`: an unknown/unsupported Qdrant major
+/// degrades honestly (`supported:false`, version stated) instead of risking the
+/// silent break a rag-side Qdrant change could cause. The collection name is
+/// supplied by the caller (sourced from the storage survey) and validated as a
+/// single path segment (injection guard). Returns the optimizer/segment/
+/// indexed-vs-total health the operations console reads as the "needs repair"
+/// signal.
+fn rag_collection_health(
+    state: &AppState,
+    cell: &ScopeCell,
+    params: &HashMap<String, String>,
+) -> ApiResult {
+    // Validate the collection name as a single, conservative path segment.
+    let collection = match params.get("collection") {
+        Some(c)
+            if !c.is_empty()
+                && c.len() <= 256
+                && c.chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-') =>
+        {
+            c.as_str()
+        }
+        _ => {
+            return Err(super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                "collection-health requires a `collection` query param (alphanumeric, `_`, `-`; <=256 chars)".to_string(),
+            ));
+        }
+    };
+    // Qdrant health is only meaningful when rag is running (rag owns Qdrant).
+    let probe = rag_client::client::probe_machine_state(
+        &cell.root.join(".vault"),
+        RAG_LIFECYCLE_HEALTH_TIMEOUT,
+    );
+    let rag_client::client::RagMachineState::Running { info, health } = probe else {
+        return Ok(super::envelope(
+            json!({ "envelope": { "supported": false, "reason": "rag service is not running" } }),
+            super::degraded_tiers(cell, "rag service is not running (no Qdrant)"),
+            None,
+        ));
+    };
+    let version = health.qdrant.as_ref().and_then(|q| q.version.as_deref());
+    // Capability/version gate (D6): fail closed on an unrecognized Qdrant major.
+    if !rag_client::vectors::qdrant_collection_api_supported(version) {
+        return Ok(super::envelope(
+            json!({ "envelope": {
+                "supported": false,
+                "qdrant_version": version,
+                "reason": "Qdrant version is not a recognized 1.x; Tier-2 health degraded",
+            }}),
+            super::query_tiers(cell),
+            None,
+        ));
+    }
+    // Reachability gate: in local-only mode there is no Qdrant HTTP endpoint, so a
+    // direct read would dial a port nothing listens on. Report `supported:false`
+    // honestly with a clear reason rather than degrading on a connection refusal.
+    if !health.qdrant.as_ref().is_some_and(|q| q.http_reachable()) {
+        return Ok(super::envelope(
+            json!({ "envelope": {
+                "supported": false,
+                "qdrant_version": version,
+                "reason": "Qdrant has no HTTP endpoint (local-only mode); Tier-2 health needs server mode",
+            }}),
+            super::query_tiers(cell),
+            None,
+        ));
+    }
+    // Supported: read Qdrant's collection-info directly on its loopback port.
+    let transport = rag_client::client::LoopbackTransport {
+        port: info.qdrant_port(),
+        bearer: None,
+        timeout: rag_client::control::READ_BUDGET,
+    };
+    let result = rag_client::vectors::read_collection_health(&transport, collection).map(|h| {
+        json!({
+            "supported": true,
+            "qdrant_version": version,
+            "collection": collection,
+            "health": h,
+        })
+    });
+    Ok(brokered_envelope(cell, result))
+}
+
 /// GET `/ops/rag/{verb}` — the brokered rag READ verbs (rag-control-plane ADR
 /// D2): service-state, jobs, watcher, projects, readiness, logs, metrics. Each
 /// is a bounded HTTP read of rag's resident service, forwarded verbatim with the
@@ -1335,7 +1734,18 @@ const RAG_READ_VERBS: &[&str] = &[
     "readiness",
     "logs",
     "metrics",
+    // The Rust-aggregated size/state snapshot (one call vs six) and the raw
+    // per-namespace storage survey (orphan/size detail).
+    "ops-state",
+    "storage-survey",
+    // Tier-2 Qdrant-native collection health (optimizer/segments/indexed), gated
+    // on the Qdrant version — the "needs repair" signal rag does not expose.
+    "collection-health",
 ];
+
+/// Storage-survey namespace ceiling for the raw `storage-survey` read verb (the
+/// aggregated `ops-state` uses its own bounded survey limit).
+const MAX_RAG_SURVEY_LIMIT: u32 = 256;
 
 pub async fn ops_rag_get(
     State(state): State<Arc<AppState>>,
@@ -1354,6 +1764,13 @@ pub async fn ops_rag_get(
     let cell = state.active_cell();
     let project_root = cell.root.to_string_lossy().to_string();
 
+    // collection-health is a Tier-2 Qdrant-native read on a DIFFERENT transport
+    // (Qdrant's loopback port) gated on the Qdrant version, so it handles its own
+    // discovery + transport rather than the standard rag-service one below.
+    if verb == "collection-health" {
+        return rag_collection_health(&state, &cell, &params);
+    }
+
     // Per-verb wall-clock budget (ADR honest difficulty: a fast `/jobs` poll and
     // a slow `/quality` probe need different bounds). Reads are fast.
     let transport = match rag_control_transport(&cell, rag_client::control::READ_BUDGET) {
@@ -1371,6 +1788,7 @@ pub async fn ops_rag_get(
     let job_id = params.get("job_id").map(String::as_str);
     let limit = bounded_rag_read_u32(&params, "limit", MAX_RAG_JOBS_LIMIT);
     let lines = bounded_rag_read_u32(&params, "lines", MAX_RAG_LOG_LINES);
+    let survey_limit = bounded_rag_read_u32(&params, "limit", MAX_RAG_SURVEY_LIMIT);
 
     use rag_client::control;
     let result = match verb.as_str() {
@@ -1382,6 +1800,10 @@ pub async fn ops_rag_get(
         "logs" => control::logs(&transport, lines, job_id),
         // Prometheus text is not JSON; forward it verbatim under a string field.
         "metrics" => control::metrics(&transport).map(|text| json!({ "metrics": text })),
+        "storage-survey" => control::storage_survey(&transport, survey_limit),
+        // The Rust-aggregated size/state snapshot: fetch + derive, then serialize.
+        "ops-state" => control::fetch_rag_ops_state(&transport, &project_root)
+            .and_then(|state| serde_json::to_value(state).map_err(Into::into)),
         _ => unreachable!("RAG_READ_VERBS membership is checked above"),
     };
     Ok(brokered_envelope(&cell, result))
@@ -1517,21 +1939,31 @@ pub async fn ops_rag(
         return Ok(brokered_envelope(&cell, result));
     }
 
-    // Process-lifecycle verbs: the bounded CLI subprocess runner (a dead service
-    // cannot be reached over HTTP, ADR D1).
-    let Some((_, args)) = RAG_CLI_WHITELIST.iter().find(|(name, _)| *name == verb) else {
-        return Err(super::api_error(
+    // Process-lifecycle verbs (a dead service cannot be reached over HTTP, ADR
+    // D1). server-start/stop carry the machine-singleton attach-never-own
+    // discipline and NO `--json` (rag 0.2.25 rejects it on those verbs);
+    // status/doctor/install keep the shared JSON sibling runner.
+    match verb.as_str() {
+        "server-start" => start_rag_service(&state, &cell, &body).await,
+        "server-stop" => stop_rag_service(&state, &cell).await,
+        "server-status" | "server-doctor" | "server-install" => {
+            let (_, args) = RAG_CLI_WHITELIST
+                .iter()
+                .find(|(name, _)| *name == verb)
+                .expect("verb is in the JSON-runner lifecycle set");
+            let envelope = run_sibling(&state, &rag_invocation(), args).await?;
+            Ok(super::envelope(
+                json!({ "envelope": envelope }),
+                super::query_tiers(&cell),
+                None,
+            ))
+        }
+        _ => Err(super::api_error(
             &state,
             StatusCode::FORBIDDEN,
             format!("verb `{verb}` is not whitelisted (rag control plane)"),
-        ));
-    };
-    let envelope = run_sibling(&state, &rag_invocation(), args).await?;
-    Ok(super::envelope(
-        json!({ "envelope": envelope }),
-        super::query_tiers(&cell),
-        None,
-    ))
+        )),
+    }
 }
 
 /// The optional request body for `/ops/git/{verb}`: the `diff`/`histdiff`

@@ -35,12 +35,17 @@ pub fn service_json_path(vault_root: &Path) -> PathBuf {
         .join("service.json")
 }
 
-/// Discovery candidates in precedence order. The LIVE rag service writes
-/// its discovery file under the user home (`~/.vaultspec-rag/service.json`
-/// — confirmed by lead dogfooding against the running service); the
-/// project-relative path is kept as a forward-compatible candidate.
+/// Discovery candidates in precedence order — machine-global FIRST
+/// (rag-service-management discovery invariant). rag is ONE resident service per
+/// machine, writing `~/.vaultspec-rag/service.json`; that machine-global candidate
+/// is consulted FIRST so a stale or forward-compatible per-scope file can never
+/// shadow the live machine service. The dashboard NEVER overrides
+/// `VAULTSPEC_RAG_STATUS_DIR` (which would fragment discovery off this path while
+/// the machine lock still allows only one service); if per-scope isolation is ever
+/// required, switch to a STATUS_DIR-independent machine pointer (the lock-holder
+/// pid), coordinated with rag first.
 pub fn service_json_candidates(vault_root: &Path) -> Vec<PathBuf> {
-    let mut candidates = vec![service_json_path(vault_root)];
+    let mut candidates = Vec::new();
     let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
     if let Some(home) = home {
         candidates.push(
@@ -49,6 +54,9 @@ pub fn service_json_candidates(vault_root: &Path) -> Vec<PathBuf> {
                 .join("service.json"),
         );
     }
+    // Forward-compatible per-scope fallback: consulted ONLY when the machine-global
+    // file is absent, never preferred over it.
+    candidates.push(service_json_path(vault_root));
     candidates
 }
 
@@ -92,6 +100,104 @@ impl ServiceInfo {
     pub fn qdrant_port(&self) -> u16 {
         self.storage_port
             .unwrap_or(crate::vectors::DEFAULT_QDRANT_PORT)
+    }
+}
+
+/// The ungated `GET /health` body (rag single-machine model). `/health` is the
+/// authoritative liveness signal: a fresh `service.json` heartbeat says "a
+/// service wrote this recently", but only `/health` `status == "ready"` with a
+/// live `pid` confirms the resident service is actually serving. The nested
+/// `qdrant` block is also the capability source for the version-gated
+/// Qdrant-native reads and the embedding-scroll gate.
+#[derive(Debug, Clone, Deserialize)]
+pub struct HealthInfo {
+    pub status: String,
+    #[serde(default)]
+    pub pid: Option<u32>,
+    #[serde(default)]
+    pub qdrant: Option<QdrantHealth>,
+    #[serde(default)]
+    pub project_count: Option<u32>,
+    #[serde(default)]
+    pub service_token: Option<String>,
+}
+
+/// The `qdrant` sub-object of `/health`: the resident Qdrant's version, HTTP
+/// port, and liveness. `version`/`port` gate the Tier-2 Qdrant-native reads and
+/// the direct embedding scroll; they are absent in local-only / older builds.
+#[derive(Debug, Clone, Deserialize)]
+pub struct QdrantHealth {
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub port: Option<u16>,
+    #[serde(default)]
+    pub alive: Option<bool>,
+    /// `"local"` (embedded on-disk, no HTTP endpoint) | `"server"` | `"remote"`.
+    /// In local mode there is no Qdrant HTTP port, so the direct Tier-2 reads
+    /// degrade honestly rather than dialing a port nothing listens on.
+    #[serde(default)]
+    pub mode: Option<String>,
+}
+
+impl QdrantHealth {
+    /// Whether Qdrant exposes a reachable HTTP endpoint (server/remote mode with a
+    /// live supervisor). False in local-only mode — the direct-Qdrant Tier-2 reads
+    /// are unavailable and must degrade honestly.
+    pub fn http_reachable(&self) -> bool {
+        self.alive == Some(true) && self.mode.as_deref() != Some("local")
+    }
+}
+
+impl HealthInfo {
+    /// `/health` reports the service ready to serve (case-insensitive match on
+    /// rag's `"ready"` state, distinct from `"degraded"`/`"error"`).
+    pub fn is_ready(&self) -> bool {
+        self.status.eq_ignore_ascii_case("ready")
+    }
+}
+
+/// The machine-global rag state for the lifecycle/ops surface, derived from
+/// discovery + heartbeat + an ungated `GET /health` liveness confirm. This is
+/// the authoritative "is a rag running on this machine" signal (the dashboard
+/// attaches to a `Running` service regardless of who started it, and starts its
+/// own only when genuinely `Absent`). It is deliberately NOT computed on the
+/// per-response hot path — that path stays filesystem-only via [`discover`] —
+/// because the `/health` round-trip belongs only to lifecycle/ops callers.
+#[derive(Debug, Clone)]
+pub enum RagMachineState {
+    /// `service.json` fresh AND `/health` ready with a live pid: a service the
+    /// dashboard manages (whether or not it started it).
+    Running {
+        info: ServiceInfo,
+        health: HealthInfo,
+    },
+    /// A service was discovered but is not serving: stale heartbeat, a
+    /// malformed `service.json`, or `/health` unreachable / not-ready. Surfaced
+    /// distinctly in the UI, but treated as absent for start purposes.
+    Crashed {
+        reason: String,
+        info: Option<ServiceInfo>,
+    },
+    /// No discoverable service on the machine: the only state in which the
+    /// dashboard may start its own service.
+    Absent { reason: String },
+}
+
+impl RagMachineState {
+    /// True only in [`RagMachineState::Running`].
+    pub fn is_running(&self) -> bool {
+        matches!(self, RagMachineState::Running { .. })
+    }
+
+    /// The discovered service info when a service was found (`Running` or a
+    /// `Crashed` that still had a readable `service.json`).
+    pub fn service_info(&self) -> Option<&ServiceInfo> {
+        match self {
+            RagMachineState::Running { info, .. } => Some(info),
+            RagMachineState::Crashed { info, .. } => info.as_ref(),
+            RagMachineState::Absent { .. } => None,
+        }
     }
 }
 
@@ -274,17 +380,33 @@ pub fn discover(vault_root: &Path) -> (RagAvailability, Option<ServiceInfo>) {
     discover_at(&service_json_candidates(vault_root))
 }
 
-/// Discovery over an explicit candidate list (hermetic for tests).
-pub fn discover_at(candidates: &[PathBuf]) -> (RagAvailability, Option<ServiceInfo>) {
-    let mut parse_error: Option<String> = None;
+/// The typed result of scanning the discovery candidates — the crashed-vs-absent
+/// distinction the running-predicate keys on, carried as data rather than inferred
+/// from a reason string. `Fresh` is a service.json with a fresh heartbeat; `Stale`
+/// is one whose heartbeat has lapsed (a crash); `Malformed` is an unreadable
+/// service.json (a corrupt/partial file — also a crash); `Absent` is no file.
+#[derive(Debug, Clone)]
+pub enum DiscoveryOutcome {
+    Fresh(ServiceInfo),
+    Stale { reason: String, info: ServiceInfo },
+    Malformed { reason: String },
+    Absent { reason: String },
+}
+
+/// Scan the discovery candidates into a typed [`DiscoveryOutcome`]. Both
+/// [`discover_at`] (the tiers-block view) and [`probe_machine_state_at`] (the
+/// running-predicate) derive from this single classification, so the crashed-vs-
+/// absent split is data, not a fragile substring match on a reason string.
+pub fn discover_kind(candidates: &[PathBuf]) -> DiscoveryOutcome {
+    let mut malformed: Option<String> = None;
     for path in candidates {
         let Ok(raw) = std::fs::read_to_string(path) else {
             continue;
         };
         match serde_json::from_str::<ServiceInfo>(&raw) {
             Ok(info) => {
-                // A present file with a stale heartbeat is a dead or
-                // crashed service — truthfully degraded, not available.
+                // A present file with a stale heartbeat is a dead or crashed
+                // service — truthfully degraded, not available.
                 if let Some(heartbeat) = info.last_heartbeat.as_ref().and_then(Heartbeat::as_millis)
                 {
                     let now = std::time::SystemTime::now()
@@ -292,28 +414,91 @@ pub fn discover_at(candidates: &[PathBuf]) -> (RagAvailability, Option<ServiceIn
                         .map(|d| d.as_millis() as i64)
                         .unwrap_or(0);
                     if now.saturating_sub(heartbeat) > HEARTBEAT_STALE_MS {
-                        return (
-                            RagAvailability::Unavailable {
-                                reason: "rag service heartbeat stale (service crashed or stopped)"
-                                    .to_string(),
-                            },
-                            None,
-                        );
+                        return DiscoveryOutcome::Stale {
+                            reason: "rag service heartbeat stale (service crashed or stopped)"
+                                .to_string(),
+                            info,
+                        };
                     }
                 }
-                return (RagAvailability::Available, Some(info));
+                return DiscoveryOutcome::Fresh(info);
             }
-            Err(e) => parse_error = Some(format!("rag service.json unreadable: {e}")),
+            Err(e) => malformed = Some(format!("rag service.json unreadable: {e}")),
         }
     }
-    (
-        RagAvailability::Unavailable {
-            reason: parse_error.unwrap_or_else(|| {
-                "rag service not installed or not started (no service.json)".to_string()
-            }),
+    match malformed {
+        Some(reason) => DiscoveryOutcome::Malformed { reason },
+        None => DiscoveryOutcome::Absent {
+            reason: "rag service not installed or not started (no service.json)".to_string(),
         },
-        None,
-    )
+    }
+}
+
+/// Discovery over an explicit candidate list (hermetic for tests). The
+/// tiers-block view: a fresh service is `Available`; everything else (stale,
+/// malformed, absent) is `Unavailable` with its reason.
+pub fn discover_at(candidates: &[PathBuf]) -> (RagAvailability, Option<ServiceInfo>) {
+    match discover_kind(candidates) {
+        DiscoveryOutcome::Fresh(info) => (RagAvailability::Available, Some(info)),
+        DiscoveryOutcome::Stale { reason, .. }
+        | DiscoveryOutcome::Malformed { reason }
+        | DiscoveryOutcome::Absent { reason } => (RagAvailability::Unavailable { reason }, None),
+    }
+}
+
+/// Probe the machine-global rag state: discovery + heartbeat (via [`discover`])
+/// plus an ungated `GET /health` liveness confirm on the discovered port. This is
+/// the authoritative running-predicate for the lifecycle/ops surface; it pays a
+/// `/health` round-trip and so must never be called on the per-response hot path
+/// (which uses the filesystem-only [`discover`]).
+pub fn probe_machine_state(vault_root: &Path, health_timeout: Duration) -> RagMachineState {
+    probe_machine_state_at(&service_json_candidates(vault_root), |port| {
+        LoopbackTransport {
+            port,
+            bearer: None,
+            timeout: health_timeout,
+        }
+        .get("/health")
+    })
+}
+
+/// Running-predicate over an explicit candidate list and an injectable
+/// `/health` probe (hermetic for tests). Maps discovery + the `/health` body to
+/// [`RagMachineState`]: a fresh `service.json` plus a `ready` `/health` is
+/// `Running`; a discovered-but-not-serving service is `Crashed`; no service is
+/// `Absent`.
+pub fn probe_machine_state_at(
+    candidates: &[PathBuf],
+    health_probe: impl Fn(u16) -> Result<String>,
+) -> RagMachineState {
+    match discover_kind(candidates) {
+        DiscoveryOutcome::Fresh(info) => match health_probe(info.port) {
+            Ok(raw) => match serde_json::from_str::<HealthInfo>(&raw) {
+                Ok(health) if health.is_ready() => RagMachineState::Running { info, health },
+                Ok(health) => RagMachineState::Crashed {
+                    reason: format!("rag /health reports '{}', not ready", health.status),
+                    info: Some(info),
+                },
+                Err(e) => RagMachineState::Crashed {
+                    reason: format!("rag /health response unparseable: {e}"),
+                    info: Some(info),
+                },
+            },
+            Err(e) => RagMachineState::Crashed {
+                reason: format!("rag discovered but /health unreachable: {e}"),
+                info: Some(info),
+            },
+        },
+        // A present-but-not-serving service.json (stale heartbeat or malformed
+        // file) is a crash, not absence — carried as a typed outcome, not inferred
+        // from the reason string. Only `Absent` licenses the dashboard to start.
+        DiscoveryOutcome::Stale { reason, info } => RagMachineState::Crashed {
+            reason,
+            info: Some(info),
+        },
+        DiscoveryOutcome::Malformed { reason } => RagMachineState::Crashed { reason, info: None },
+        DiscoveryOutcome::Absent { reason } => RagMachineState::Absent { reason },
+    }
 }
 
 #[cfg(test)]
@@ -566,5 +751,171 @@ mod tests {
             "a body past the cap is a typed Protocol error, got {result:?}"
         );
         let _ = server.join();
+    }
+
+    /// Write a `service.json` with a fresh heartbeat at `path`.
+    fn write_fresh_service_json(path: &Path, port: u16) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        std::fs::write(
+            path,
+            format!(r#"{{"port": {port}, "last_heartbeat": {now}, "pid": 4242}}"#),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn machine_state_running_requires_fresh_discovery_and_ready_health() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = service_json_path(dir.path());
+        write_fresh_service_json(&p, 8766);
+        let state = probe_machine_state_at(std::slice::from_ref(&p), |port| {
+            assert_eq!(port, 8766, "/health probes the discovered port");
+            Ok(r#"{"status": "ready", "pid": 4242, "qdrant": {"version": "1.18.2", "port": 8765}}"#
+                .to_string())
+        });
+        match state {
+            RagMachineState::Running { info, health } => {
+                assert_eq!(info.port, 8766);
+                assert!(health.is_ready());
+                assert_eq!(health.qdrant.unwrap().version.as_deref(), Some("1.18.2"));
+            }
+            other => panic!("expected Running, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn machine_state_crashed_when_health_not_ready() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = service_json_path(dir.path());
+        write_fresh_service_json(&p, 8766);
+        let state = probe_machine_state_at(std::slice::from_ref(&p), |_| {
+            Ok(r#"{"status": "degraded"}"#.into())
+        });
+        assert!(
+            matches!(state, RagMachineState::Crashed { ref reason, info: Some(_) } if reason.contains("degraded")),
+            "a discovered service whose /health is not ready is Crashed, got {state:?}"
+        );
+    }
+
+    #[test]
+    fn machine_state_crashed_when_health_unreachable() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = service_json_path(dir.path());
+        write_fresh_service_json(&p, 8766);
+        let state = probe_machine_state_at(std::slice::from_ref(&p), |_| Err(RagError::Protocol));
+        assert!(
+            matches!(state, RagMachineState::Crashed { ref reason, .. } if reason.contains("unreachable")),
+            "a fresh service.json with an unreachable /health is Crashed, got {state:?}"
+        );
+    }
+
+    #[test]
+    fn machine_state_crashed_on_stale_heartbeat_without_probing_health() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = service_json_path(dir.path());
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        // Heartbeat from 1970: stale → Crashed, and /health must NOT be probed.
+        std::fs::write(&p, r#"{"port": 8766, "last_heartbeat": 1000}"#).unwrap();
+        let state = probe_machine_state_at(std::slice::from_ref(&p), |_| {
+            panic!("/health must not be probed when discovery is already stale")
+        });
+        // Stale carries the discovered info now (typed DiscoveryOutcome::Stale).
+        assert!(
+            matches!(state, RagMachineState::Crashed { ref reason, info: Some(_) } if reason.contains("stale"))
+        );
+    }
+
+    #[test]
+    fn qdrant_http_reachable_is_false_in_local_mode() {
+        let parse = |s: &str| {
+            serde_json::from_str::<HealthInfo>(s)
+                .unwrap()
+                .qdrant
+                .unwrap()
+        };
+        // server mode, supervised + alive → reachable.
+        assert!(
+            parse(r#"{"status":"ready","qdrant":{"mode":"server","alive":true,"port":8765}}"#)
+                .http_reachable()
+        );
+        // local mode (embedded, no HTTP) → NOT reachable even if version is present.
+        assert!(
+            !parse(r#"{"status":"ready","qdrant":{"mode":"local","version":"1.18.2"}}"#)
+                .http_reachable()
+        );
+        // alive false → not reachable.
+        assert!(
+            !parse(r#"{"status":"ready","qdrant":{"mode":"server","alive":false}}"#)
+                .http_reachable()
+        );
+    }
+
+    #[test]
+    fn machine_state_absent_when_no_service_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = service_json_path(dir.path());
+        let state = probe_machine_state_at(std::slice::from_ref(&missing), |_| {
+            panic!("/health must not be probed when nothing is discovered")
+        });
+        assert!(matches!(state, RagMachineState::Absent { .. }));
+    }
+
+    #[test]
+    fn discovery_lists_the_machine_global_home_candidate_first() {
+        // The discovery invariant: rag is one service per machine, so the
+        // machine-global ~/.vaultspec-rag/service.json must be the FIRST (winning)
+        // candidate and the per-scope path only a fallback behind it.
+        let vault = Path::new("Z:/some/scope/.vault");
+        let candidates = service_json_candidates(vault);
+        let home_idx = candidates.iter().position(|p| {
+            p.to_string_lossy().contains(".vaultspec-rag") && p.ends_with("service.json")
+        });
+        let scope_idx = candidates
+            .iter()
+            .position(|p| p.to_string_lossy().contains("search-data"));
+        // USERPROFILE/HOME is always set in CI/dev, so the home candidate exists.
+        let home_idx = home_idx.expect("machine-global home candidate must be present");
+        let scope_idx = scope_idx.expect("per-scope candidate must be present");
+        assert!(
+            home_idx < scope_idx,
+            "machine-global home candidate must precede the per-scope candidate"
+        );
+    }
+
+    #[test]
+    fn machine_global_service_json_wins_over_a_per_scope_one() {
+        // With BOTH a fresh machine-global file and a fresh per-scope file, the
+        // machine-global one (listed first) is the service discovered.
+        let dir = tempfile::tempdir().unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        let home_style = dir.path().join(".vaultspec-rag").join("service.json");
+        std::fs::create_dir_all(home_style.parent().unwrap()).unwrap();
+        std::fs::write(
+            &home_style,
+            format!(r#"{{"port": 8766, "last_heartbeat": {now}}}"#),
+        )
+        .unwrap();
+        let per_scope = service_json_path(dir.path());
+        std::fs::create_dir_all(per_scope.parent().unwrap()).unwrap();
+        std::fs::write(
+            &per_scope,
+            format!(r#"{{"port": 9999, "last_heartbeat": {now}}}"#),
+        )
+        .unwrap();
+        // Candidate order mirrors service_json_candidates: machine-global first.
+        let (availability, info) = discover_at(&[home_style, per_scope]);
+        assert_eq!(availability, RagAvailability::Available);
+        assert_eq!(
+            info.unwrap().port,
+            8766,
+            "the machine-global service (port 8766) must win over the per-scope one (9999)"
+        );
     }
 }

@@ -71,6 +71,66 @@ pub fn vault_collection_name(root: &Path) -> String {
     format!("r{hex}_vault_docs")
 }
 
+/// Qdrant's documented `GET /collections/{name}` health for a collection — the
+/// optimizer/segment/indexed-vs-total signals rag does NOT expose over its own
+/// HTTP (Tier-2 of the rag-service-management three-tier contract). Tolerant
+/// (every field optional): Qdrant's REST shape is stable across its 1.x line, but
+/// a minor drift degrades a field rather than failing the read. This is the
+/// "needs repair" signal the operations console surfaces.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct CollectionHealth {
+    /// Qdrant optimizer health: `green` | `yellow` | `red`.
+    pub status: Option<String>,
+    pub points_count: Option<u64>,
+    /// How many vectors are fully indexed vs uploaded (a gap signals an in-flight
+    /// or stalled index).
+    pub indexed_vectors_count: Option<u64>,
+    /// Segment count — a fragmentation proxy (many small segments → needs an
+    /// optimizer pass).
+    pub segments_count: Option<u64>,
+    /// `"ok"` or `{status:"error", error:...}` — forwarded verbatim.
+    pub optimizer_status: Option<Value>,
+}
+
+/// The capability/version gate for the direct-Qdrant reads (rag-service-management
+/// D6, generalized). Qdrant's `GET /collections/{name}` REST shape is stable
+/// across the 1.x line, so the engine reads it for a major-1 Qdrant and degrades
+/// honestly — no Tier-2 health, no direct scroll — on an unknown major it was not
+/// built against (or when no version is reported). This prevents a rag-side Qdrant
+/// upgrade from silently breaking the direct read: the gate fails closed, the tier
+/// degrades, and the mismatch is stated rather than guessed.
+pub fn qdrant_collection_api_supported(version: Option<&str>) -> bool {
+    version
+        .and_then(|v| v.trim().split('.').next())
+        .and_then(|major| major.parse::<u32>().ok())
+        == Some(1)
+}
+
+/// Read one collection's Qdrant-native health via the documented
+/// `GET /collections/{name}`. The CALLER gates this on
+/// [`qdrant_collection_api_supported`] first (against the version from rag's
+/// `/health`); the read itself is tolerant of field presence. A 404 (the
+/// collection does not exist) surfaces as the transport's typed `Http` error,
+/// which the broker degrades honestly.
+pub fn read_collection_health(
+    transport: &impl RagTransport,
+    collection: &str,
+) -> Result<CollectionHealth> {
+    let raw = transport.get(&format!("/collections/{collection}"))?;
+    let envelope: Value = serde_json::from_str(&raw)?;
+    let result = envelope.get("result").cloned().unwrap_or(Value::Null);
+    Ok(CollectionHealth {
+        status: result
+            .get("status")
+            .and_then(Value::as_str)
+            .map(String::from),
+        points_count: result.get("points_count").and_then(Value::as_u64),
+        indexed_vectors_count: result.get("indexed_vectors_count").and_then(Value::as_u64),
+        segments_count: result.get("segments_count").and_then(Value::as_u64),
+        optimizer_status: result.get("optimizer_status").cloned(),
+    })
+}
+
 /// Qdrant scroll page size: how many points per `/points/scroll` round-trip.
 /// Bounded so a large corpus is read in capped pages rather than one unbounded
 /// body — the MAX_RAG_BODY ceiling (inherited from the transport) still backstops
@@ -374,5 +434,54 @@ mod tests {
     /// A deadline comfortably past the end of any test run, for the happy paths.
     fn far_future() -> Instant {
         Instant::now() + Duration::from_secs(3600)
+    }
+
+    #[test]
+    fn qdrant_capability_gate_accepts_major_1_and_fails_closed_otherwise() {
+        assert!(qdrant_collection_api_supported(Some("1.18.2")));
+        assert!(qdrant_collection_api_supported(Some("1.0.0")));
+        assert!(qdrant_collection_api_supported(Some(" 1.20.0 ")));
+        // An unknown major the engine was not built against → degrade honestly.
+        assert!(!qdrant_collection_api_supported(Some("2.0.0")));
+        assert!(!qdrant_collection_api_supported(Some("0.9.0")));
+        // No version / garbage → unsupported (fail closed).
+        assert!(!qdrant_collection_api_supported(None));
+        assert!(!qdrant_collection_api_supported(Some("")));
+        assert!(!qdrant_collection_api_supported(Some("nightly")));
+    }
+
+    #[test]
+    fn read_collection_health_parses_qdrant_native_signals() {
+        let body = r#"{"result": {
+            "status": "yellow",
+            "points_count": 1525,
+            "indexed_vectors_count": 1400,
+            "segments_count": 12,
+            "optimizer_status": "ok",
+            "config": {"params": {}}
+        }, "status": "ok", "time": 0.001}"#;
+        let transport = FakeTransport::returning(vec![body]);
+        let health = read_collection_health(&transport, TEST_COLLECTION).unwrap();
+        assert_eq!(health.status.as_deref(), Some("yellow"));
+        assert_eq!(health.points_count, Some(1525));
+        assert_eq!(health.indexed_vectors_count, Some(1400));
+        assert_eq!(health.segments_count, Some(12));
+        assert_eq!(health.optimizer_status, Some(serde_json::json!("ok")));
+        // The read hit Qdrant's documented collection-info path.
+        assert_eq!(
+            transport.calls.borrow()[0].0,
+            format!("/collections/{TEST_COLLECTION}")
+        );
+    }
+
+    #[test]
+    fn read_collection_health_is_tolerant_of_missing_fields() {
+        // A minor Qdrant shape drift (a field absent) degrades that field, never
+        // the whole read.
+        let transport = FakeTransport::returning(vec![r#"{"result": {"status": "green"}}"#]);
+        let health = read_collection_health(&transport, TEST_COLLECTION).unwrap();
+        assert_eq!(health.status.as_deref(), Some("green"));
+        assert_eq!(health.points_count, None);
+        assert_eq!(health.segments_count, None);
     }
 }
