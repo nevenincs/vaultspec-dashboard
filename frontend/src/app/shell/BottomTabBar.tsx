@@ -1,10 +1,11 @@
 // Compact bottom tab bar (mobile-responsive-layout ADR D2; binding Figma
 // `BottomTabBar` component set). The thumb-reachable primary navigation for the
-// compact (phone/tablet) shell: five surfaces — Browse · Graph · Timeline ·
-// Status · Search — one active at a time. It mirrors the Figma component: a
-// safe-area-inset bar of ≥44pt items, the active item carrying the accent-subtle
-// pill + accent-text (a non-colour-only cue, redundant with the accent glyph), so
-// the active state reads without relying on hue alone.
+// compact (phone/tablet) shell: four surfaces — Browse · Timeline · Status ·
+// Search — one active at a time (the graph is desktop-only, D4 — no tab). It
+// mirrors the Figma component: a safe-area-inset bar of ≥44pt icon-only items,
+// the active item carrying a COMPACT accent-subtle pill + accent-text (a
+// non-colour-only cue, redundant with the accent glyph), so the active state
+// reads without relying on hue alone.
 //
 // Layer law (dashboard-layer-ownership): dumb chrome. It takes the active surface
 // and an onSelect callback; it fetches nothing, holds no state, reads no `tiers`.
@@ -77,17 +78,19 @@ export function BottomTabBar({ active, onSelect }: BottomTabBarProps) {
             data-active={isActive}
             onClick={() => onSelect(id)}
             onFocus={() => setRovingTab(id)}
-            // Icon-only (binding Figma BottomTabBar): ≥44pt tap target
-            // (min-h-11 = 2.75rem), the glyph centered; active = accent-subtle pill
-            // + accent ink so the state survives without colour. The label is the
-            // accessible name (aria-label) only.
-            className={`flex min-h-11 flex-1 items-center justify-center rounded-fg-md py-fg-1 transition-colors duration-ui-fast ease-settle outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-              isActive
-                ? "bg-accent-subtle text-accent-text"
-                : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
-            }`}
+            // Icon-only (binding Figma BottomTabBar): the button is the ≥44pt tap
+            // target (min-h-11) spanning its share of the bar; the active state is a
+            // COMPACT centered pill hugging the glyph (not a full-width fill), so it
+            // reads like the binding design. The label is the accessible name only.
+            className="flex min-h-11 flex-1 items-center justify-center outline-none focus-visible:rounded-fg-md focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
-            <Glyph size={24} />
+            <span
+              className={`flex items-center justify-center rounded-fg-md px-fg-4 py-fg-1-5 transition-colors duration-ui-fast ease-settle ${
+                isActive ? "bg-accent-subtle text-accent-text" : "text-ink-muted"
+              }`}
+            >
+              <Glyph size={24} />
+            </span>
           </button>
         );
       })}
