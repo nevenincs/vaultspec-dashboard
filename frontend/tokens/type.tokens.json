@@ -26,45 +26,45 @@
         "weight": { "$type": "fontWeight", "$value": 600 }
       },
       "title": {
-        "$description": "Panel/rail heading role; binding Figma title 15/22. Maps to the legacy text-heading (NOT the legacy 13px text-title) - see the text-title vs text-heading collision guard, research F1.",
-        "size": { "$type": "dimension", "$value": "0.9375rem" },
-        "line-height": { "$type": "dimension", "$value": "1.375rem" },
+        "$description": "Panel/rail heading role; binding Figma title 16/24 (legibility bump). Maps to the legacy text-heading (NOT the legacy 13px text-title) - see the text-title vs text-heading collision guard, research F1.",
+        "size": { "$type": "dimension", "$value": "1rem" },
+        "line-height": { "$type": "dimension", "$value": "1.5rem" },
         "weight": { "$type": "fontWeight", "$value": 600 }
       },
       "body": {
-        "$description": "Primary UI text role; 13/20.",
-        "size": { "$type": "dimension", "$value": "0.8125rem" },
-        "line-height": { "$type": "dimension", "$value": "1.25rem" },
+        "$description": "Primary UI text role; binding Figma body 14/22 (legibility bump).",
+        "size": { "$type": "dimension", "$value": "0.875rem" },
+        "line-height": { "$type": "dimension", "$value": "1.375rem" },
         "weight": { "$type": "fontWeight", "$value": 400 }
       },
       "body-strong": {
-        "$description": "Emphasis variant of body at the bound medium weight; shares body's metrics. Covers the prior 13px text-title section-label use (13px + font-medium).",
-        "size": { "$type": "dimension", "$value": "0.8125rem" },
-        "line-height": { "$type": "dimension", "$value": "1.25rem" },
+        "$description": "Emphasis variant of body at the bound medium weight; shares body's metrics (14/22). Covers the prior text-title section-label use (medium weight).",
+        "size": { "$type": "dimension", "$value": "0.875rem" },
+        "line-height": { "$type": "dimension", "$value": "1.375rem" },
         "weight": { "$type": "fontWeight", "$value": 500 }
       },
       "label": {
-        "$description": "Form/control label role; binding Figma label 12/16.",
-        "size": { "$type": "dimension", "$value": "0.75rem" },
-        "line-height": { "$type": "dimension", "$value": "1rem" },
+        "$description": "Form/control label role; binding Figma label 13/18 (legibility bump).",
+        "size": { "$type": "dimension", "$value": "0.8125rem" },
+        "line-height": { "$type": "dimension", "$value": "1.125rem" },
         "weight": { "$type": "fontWeight", "$value": 500 }
       },
       "meta": {
-        "$description": "Timestamp/caption/pill role; binding Figma meta 11/14 (line-height 14, not the prior 16).",
-        "size": { "$type": "dimension", "$value": "0.6875rem" },
-        "line-height": { "$type": "dimension", "$value": "0.875rem" },
+        "$description": "Timestamp/caption/pill role; binding Figma meta 12/16 (legibility bump).",
+        "size": { "$type": "dimension", "$value": "0.75rem" },
+        "line-height": { "$type": "dimension", "$value": "1rem" },
         "weight": { "$type": "fontWeight", "$value": 400 }
       },
       "caption": {
-        "$description": "Dense metadata role; 10/14.",
-        "size": { "$type": "dimension", "$value": "0.625rem" },
-        "line-height": { "$type": "dimension", "$value": "0.875rem" },
+        "$description": "Dense metadata role; binding Figma caption 11/16 (legibility bump).",
+        "size": { "$type": "dimension", "$value": "0.6875rem" },
+        "line-height": { "$type": "dimension", "$value": "1rem" },
         "weight": { "$type": "fontWeight", "$value": 400 }
       },
       "mono": {
-        "$description": "Code/identity role (hashes, byte spans, provenance keys, paths); binding Figma mono 11, in JetBrains Mono.",
-        "size": { "$type": "dimension", "$value": "0.6875rem" },
-        "line-height": { "$type": "dimension", "$value": "1rem" },
+        "$description": "Code/identity role (hashes, byte spans, provenance keys, paths); binding Figma mono 12 (legibility bump), in JetBrains Mono.",
+        "size": { "$type": "dimension", "$value": "0.75rem" },
+        "line-height": { "$type": "dimension", "$value": "1.125rem" },
         "weight": { "$type": "fontWeight", "$value": 400 }
       }
     }
