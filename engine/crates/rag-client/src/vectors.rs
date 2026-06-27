@@ -106,6 +106,127 @@ pub fn qdrant_collection_api_supported(version: Option<&str>) -> bool {
         == Some(1)
 }
 
+/// The newest rag `STORAGE_SCHEMA_VERSION` the engine was built and tested against.
+/// The engine declares what it understands: a rag version GREATER than this means
+/// rag's on-disk Qdrant shape may have changed beyond what the direct scroll can
+/// read, so the gate degrades rather than scrolling blind. Bumping this is a
+/// deliberate "the engine now understands rag's new storage shape" change, reviewed
+/// alongside whatever read/scene change the new shape required - the storage-schema
+/// analog of the pinned Qdrant major in [`qdrant_collection_api_supported`].
+pub const KNOWN_STORAGE_SCHEMA_VERSION: u64 = 1;
+
+/// The dense embedding dimension the engine was built against (Qwen3-Embedding-0.6B
+/// default). rag advertises its EFFECTIVE dim on `/readiness`; a divergence means the
+/// served vectors are a different geometry than the scene was built for, so the gate
+/// hard-refuses (a mixed-dimension set is garbage) - the engine's analog of rag's own
+/// `assert_compatible` dimension hard-refuse.
+pub const EXPECTED_DENSE_DIM: u64 = 1024;
+
+/// The dense-vector name the engine scrolls by. rag's vault collection is a
+/// named-vector collection; the scroll requests this name and a descriptor that
+/// advertises a different name would yield all-absence, so the gate checks it.
+pub const DENSE_VECTOR_NAME: &str = "dense";
+
+/// The storage-schema facts the embedding-read gate needs from rag's `/readiness`
+/// descriptor: the schema version, the dense vector name, and its effective
+/// dimension. Every field is optional because the descriptor is an EXTERNAL contract
+/// the engine reads tolerantly - an absent or mistyped field is `None` (a stated
+/// incompatibility at the gate), never a parse panic.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct StorageSchemaFacts {
+    pub version: Option<u64>,
+    pub dense_name: Option<String>,
+    pub dense_dim: Option<u64>,
+}
+
+impl StorageSchemaFacts {
+    /// Whether rag advertised a storage-schema contract at all. A pre-contract rag
+    /// (older build) carries none of these, so the gate stays additive: the engine
+    /// reads the shape it always did rather than degrading a service that never
+    /// promised the contract.
+    fn advertises_contract(&self) -> bool {
+        self.version.is_some() || self.dense_name.is_some() || self.dense_dim.is_some()
+    }
+}
+
+/// Pull the storage-schema facts from a `/readiness` descriptor value (rag's `schema`
+/// block). Reads `schema.version` and `schema.vault.vectors.dense.{name,dim}`
+/// tolerantly - a missing or mistyped field becomes `None`, resolved by the gate.
+pub fn extract_storage_schema_facts(readiness: &Value) -> StorageSchemaFacts {
+    let schema = readiness.get("schema");
+    let dense = schema
+        .and_then(|s| s.get("vault"))
+        .and_then(|v| v.get("vectors"))
+        .and_then(|v| v.get("dense"));
+    StorageSchemaFacts {
+        version: schema
+            .and_then(|s| s.get("version"))
+            .and_then(Value::as_u64),
+        dense_name: dense
+            .and_then(|d| d.get("name"))
+            .and_then(Value::as_str)
+            .map(String::from),
+        dense_dim: dense.and_then(|d| d.get("dim")).and_then(Value::as_u64),
+    }
+}
+
+/// The cheap pre-read version gate: rag's bare `schema_version` (from `/health`) must
+/// not EXCEED the engine's known version. `None` (an older rag predating the contract)
+/// is compatible at the engine's baseline - the pre-contract shape the engine already
+/// reads. `Ok(())` when the engine may proceed, else a stated reason to degrade on.
+pub fn storage_schema_version_supported(
+    advertised: Option<u64>,
+) -> std::result::Result<(), String> {
+    match advertised {
+        Some(v) if v > KNOWN_STORAGE_SCHEMA_VERSION => Err(format!(
+            "rag storage schema v{v} is newer than the engine's known v{KNOWN_STORAGE_SCHEMA_VERSION}; \
+             the on-disk shape may have changed - direct embedding read degraded (schema gate)"
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// The full storage-schema gate over the `/readiness` facts: apply rag's published
+/// recipe - version not newer than known, a dense vector named exactly `dense`, and an
+/// effective dimension equal to the engine's expected. A descriptor that advertises NO
+/// contract (a pre-contract rag) passes additively (the engine reads the shape it always
+/// did; the upstream Qdrant gate still applies). `Ok(())` when the engine may scroll,
+/// else a stated reason the caller degrades the semantic tier on.
+pub fn storage_schema_supported(facts: &StorageSchemaFacts) -> std::result::Result<(), String> {
+    if !facts.advertises_contract() {
+        return Ok(());
+    }
+    storage_schema_version_supported(facts.version)?;
+    match facts.dense_name.as_deref() {
+        Some(DENSE_VECTOR_NAME) => {}
+        Some(other) => {
+            return Err(format!(
+                "rag advertises dense vector name '{other}', not '{DENSE_VECTOR_NAME}'; \
+                 the engine's scroll would return all-absence - direct embedding read degraded (schema gate)"
+            ));
+        }
+        None => {
+            return Err(
+                "rag descriptor carries no dense vector name; the scroll target cannot be \
+                 confirmed - direct embedding read degraded (schema gate)"
+                    .to_string(),
+            );
+        }
+    }
+    match facts.dense_dim {
+        Some(d) if d == EXPECTED_DENSE_DIM => Ok(()),
+        Some(d) => Err(format!(
+            "rag dense dimension {d} != the engine's expected {EXPECTED_DENSE_DIM}; \
+             served vectors would be a different geometry - direct embedding read degraded (schema gate)"
+        )),
+        None => Err(
+            "rag descriptor carries no dense dimension; vector geometry cannot be confirmed \
+             - direct embedding read degraded (schema gate)"
+                .to_string(),
+        ),
+    }
+}
+
 /// Read one collection's Qdrant-native health via the documented
 /// `GET /collections/{name}`. The CALLER gates this on
 /// [`qdrant_collection_api_supported`] first (against the version from rag's
@@ -448,6 +569,126 @@ mod tests {
         assert!(!qdrant_collection_api_supported(None));
         assert!(!qdrant_collection_api_supported(Some("")));
         assert!(!qdrant_collection_api_supported(Some("nightly")));
+    }
+
+    #[test]
+    fn storage_schema_version_gate_degrades_only_on_a_newer_version() {
+        // Equal / older / absent are compatible; strictly newer degrades.
+        assert!(storage_schema_version_supported(Some(KNOWN_STORAGE_SCHEMA_VERSION)).is_ok());
+        assert!(storage_schema_version_supported(Some(0)).is_ok());
+        assert!(
+            storage_schema_version_supported(None).is_ok(),
+            "a pre-contract rag (no schema_version) is compatible at the baseline"
+        );
+        let err =
+            storage_schema_version_supported(Some(KNOWN_STORAGE_SCHEMA_VERSION + 1)).unwrap_err();
+        assert!(
+            err.contains("newer"),
+            "the reason states the version drift: {err}"
+        );
+    }
+
+    #[test]
+    fn extractor_reads_version_dense_name_and_dim_from_the_readiness_descriptor() {
+        let readiness = serde_json::json!({
+            "ready": true,
+            "schema": {
+                "version": 1,
+                "vault": {"vectors": {"dense": {"name": "dense", "dim": 1024, "distance": "Cosine"}}}
+            }
+        });
+        let facts = extract_storage_schema_facts(&readiness);
+        assert_eq!(facts.version, Some(1));
+        assert_eq!(facts.dense_name.as_deref(), Some("dense"));
+        assert_eq!(facts.dense_dim, Some(1024));
+    }
+
+    #[test]
+    fn extractor_is_tolerant_of_an_absent_schema_block() {
+        // A pre-contract rag's /readiness has no `schema` block: every fact is None,
+        // never a panic.
+        let facts = extract_storage_schema_facts(&serde_json::json!({"ready": true}));
+        assert_eq!(facts, StorageSchemaFacts::default());
+        assert!(!facts.advertises_contract());
+    }
+
+    #[test]
+    fn schema_gate_passes_a_compatible_contract() {
+        let facts = StorageSchemaFacts {
+            version: Some(KNOWN_STORAGE_SCHEMA_VERSION),
+            dense_name: Some("dense".into()),
+            dense_dim: Some(EXPECTED_DENSE_DIM),
+        };
+        assert!(storage_schema_supported(&facts).is_ok());
+    }
+
+    #[test]
+    fn schema_gate_passes_a_pre_contract_rag_additively() {
+        // No contract advertised at all: the engine reads the shape it always did
+        // (the upstream Qdrant gate still applies), never a regression.
+        assert!(storage_schema_supported(&StorageSchemaFacts::default()).is_ok());
+    }
+
+    #[test]
+    fn schema_gate_degrades_on_a_newer_version() {
+        let facts = StorageSchemaFacts {
+            version: Some(KNOWN_STORAGE_SCHEMA_VERSION + 1),
+            dense_name: Some("dense".into()),
+            dense_dim: Some(EXPECTED_DENSE_DIM),
+        };
+        let err = storage_schema_supported(&facts).unwrap_err();
+        assert!(err.contains("newer"), "{err}");
+    }
+
+    #[test]
+    fn schema_gate_hard_refuses_a_dimension_mismatch() {
+        let facts = StorageSchemaFacts {
+            version: Some(KNOWN_STORAGE_SCHEMA_VERSION),
+            dense_name: Some("dense".into()),
+            dense_dim: Some(768),
+        };
+        let err = storage_schema_supported(&facts).unwrap_err();
+        assert!(err.contains("768") && err.contains("dimension"), "{err}");
+    }
+
+    #[test]
+    fn schema_gate_degrades_on_a_wrong_or_missing_dense_name() {
+        let wrong = StorageSchemaFacts {
+            version: Some(1),
+            dense_name: Some("embedding".into()),
+            dense_dim: Some(EXPECTED_DENSE_DIM),
+        };
+        assert!(
+            storage_schema_supported(&wrong)
+                .unwrap_err()
+                .contains("embedding")
+        );
+        // A schema that advertises a version/dim but no dense name is incompatible:
+        // the scroll target cannot be confirmed.
+        let missing = StorageSchemaFacts {
+            version: Some(1),
+            dense_name: None,
+            dense_dim: Some(EXPECTED_DENSE_DIM),
+        };
+        assert!(
+            storage_schema_supported(&missing)
+                .unwrap_err()
+                .contains("no dense vector name")
+        );
+    }
+
+    #[test]
+    fn schema_gate_degrades_when_an_advertised_contract_omits_the_dimension() {
+        let facts = StorageSchemaFacts {
+            version: Some(1),
+            dense_name: Some("dense".into()),
+            dense_dim: None,
+        };
+        assert!(
+            storage_schema_supported(&facts)
+                .unwrap_err()
+                .contains("no dense dimension")
+        );
     }
 
     #[test]
