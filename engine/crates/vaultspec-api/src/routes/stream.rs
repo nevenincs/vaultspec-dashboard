@@ -25,11 +25,33 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
     // always present (pinned, never evicted).
     let cell = state.active_cell();
     let graph = cell.graph_arc();
-    let rag = match rag_client::client::discover(&cell.root.join(".vault")).0 {
-        rag_client::RagAvailability::Available => json!({"available": true}),
-        rag_client::RagAvailability::Unavailable { reason } => {
-            json!({"available": false, "reason": reason})
-        }
+    // `/status` is an explicit poll (not the per-response hot path), so it pays
+    // the authoritative machine-global running-predicate: discovery + heartbeat +
+    // an ungated GET /health liveness confirm. This distinguishes a CRASHED
+    // service (discovered but not serving) from a genuinely ABSENT one — the
+    // distinction the lifecycle/console UI needs to decide attach-vs-start. The
+    // per-response `tiers` block stays filesystem-only (query_tiers).
+    let rag = match rag_client::client::probe_machine_state(
+        &cell.root.join(".vault"),
+        std::time::Duration::from_millis(1500),
+    ) {
+        rag_client::client::RagMachineState::Running { info, health } => json!({
+            "available": true,
+            "state": "running",
+            "pid": health.pid.or(info.pid),
+            "port": info.port,
+        }),
+        rag_client::client::RagMachineState::Crashed { reason, info } => json!({
+            "available": false,
+            "state": "crashed",
+            "reason": reason,
+            "port": info.as_ref().map(|i| i.port),
+        }),
+        rag_client::client::RagMachineState::Absent { reason } => json!({
+            "available": false,
+            "state": "absent",
+            "reason": reason,
+        }),
     };
     let core = ingest_core::runner::CoreRunner::detect();
     // Git status of the served worktree (contract §6) — front-door parity

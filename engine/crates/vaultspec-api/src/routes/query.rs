@@ -707,16 +707,14 @@ pub async fn graph_embeddings(
     // down ⇒ semantic tier Unavailable in the envelope tiers, no vectors returned
     // (ADR D7) — the engine builds no embeddings, ever (ADR D1).
     let vault_root = cell.root.join(".vault");
-    let (availability, info) = rag_client::client::discover(&vault_root);
-    let rag_client::RagAvailability::Available = availability else {
-        let rag_client::RagAvailability::Unavailable { reason } = availability else {
-            unreachable!()
-        };
-        return Ok(super::envelope(
+    // A degraded embedding envelope (no vectors) for any reason rag/Qdrant cannot
+    // serve — the stores layer reads availability from the tiers block (ADR D7),
+    // never a 5xx.
+    let degraded_embeddings = |reason: &str| {
+        Ok(super::envelope(
             json!({
                 "embeddings": [],
                 "generation": generation,
-                // No reachable rag ⇒ no freshness epoch to report (ADR D4).
                 "semantic_epoch": Value::Null,
                 "truncated": Value::Null,
                 "lens": lens.as_str(),
@@ -726,11 +724,37 @@ pub async fn graph_embeddings(
                     "vector_scroll_ms": Value::Null,
                 },
             }),
-            super::degraded_tiers(&cell, reason.as_str()),
+            super::degraded_tiers(&cell, reason),
             None,
-        ));
+        ))
     };
-    let info = info.expect("available implies info");
+    // Probe the machine-global running-predicate (discover + heartbeat + /health):
+    // the direct embedding scroll requires a RUNNING rag (a fresh-heartbeat-but-
+    // dead service is honest absence, not a doomed scroll), and /health carries the
+    // Qdrant version the D6 capability gate reads.
+    let probe = rag_client::client::probe_machine_state(
+        &vault_root,
+        std::time::Duration::from_millis(1500),
+    );
+    let (info, qdrant_version) = match probe {
+        rag_client::client::RagMachineState::Running { info, health } => {
+            (info, health.qdrant.and_then(|q| q.version))
+        }
+        rag_client::client::RagMachineState::Crashed { reason, .. }
+        | rag_client::client::RagMachineState::Absent { reason } => {
+            return degraded_embeddings(reason.as_str());
+        }
+    };
+    // D6 capability/version gate: the embedding scroll reads Qdrant DIRECTLY (an
+    // unversioned second contract). Refuse the scroll on a Qdrant major the engine
+    // was not built against, degrading the semantic tier honestly with the version
+    // STATED, rather than scrolling a shape the engine may silently misread.
+    if !rag_client::vectors::qdrant_collection_api_supported(qdrant_version.as_deref()) {
+        return degraded_embeddings(&format!(
+            "Qdrant version {} is not a recognized 1.x; direct embedding read degraded (capability gate)",
+            qdrant_version.as_deref().unwrap_or("unknown")
+        ));
+    }
     // The semantic freshness epoch (rag-control-plane ADR D4): one bounded
     // `/jobs` read against rag's SERVICE port, reduced to the newest terminal
     // reindex timestamp. It is the rag-side analog of the structural
