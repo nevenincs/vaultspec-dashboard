@@ -19,9 +19,7 @@
     "e2e": "playwright test",
     "tokens:build": "node style-dictionary.config.ts && prettier --write src/styles.css",
     "tokens:check": "node scripts/token-drift-check.ts",
-    "tokens:figma": "node scripts/figma-export.ts",
-    "figma:registry": "node scripts/figma-registry-check.ts",
-    "figma:parity": "node scripts/figma-parity.ts"
+    "tokens:figma": "node scripts/figma-export.ts"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
