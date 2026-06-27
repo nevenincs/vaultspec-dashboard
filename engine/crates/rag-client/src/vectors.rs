@@ -187,16 +187,36 @@ pub fn storage_schema_version_supported(
 }
 
 /// The full storage-schema gate over the `/readiness` facts: apply rag's published
-/// recipe - version not newer than known, a dense vector named exactly `dense`, and an
-/// effective dimension equal to the engine's expected. A descriptor that advertises NO
-/// contract (a pre-contract rag) passes additively (the engine reads the shape it always
-/// did; the upstream Qdrant gate still applies). `Ok(())` when the engine may scroll,
-/// else a stated reason the caller degrades the semantic tier on.
-pub fn storage_schema_supported(facts: &StorageSchemaFacts) -> std::result::Result<(), String> {
-    if !facts.advertises_contract() {
+/// recipe - version present and not newer than known, a dense vector named exactly
+/// `dense`, and an effective dimension equal to the engine's expected.
+///
+/// `advertised` is the engine's prior knowledge, from the `/health` `schema_version`,
+/// that rag promised a contract. When it is `true`, the descriptor MUST be a complete,
+/// compatible contract - a missing version (or name, or dim) is a fail-closed degrade,
+/// matching rag's own recipe, which refuses a descriptor with no integer version. When
+/// it is `false` AND the descriptor itself advertises nothing, a pre-contract rag passes
+/// additively (the engine reads the shape it always did; the upstream Qdrant gate still
+/// applies). `Ok(())` when the engine may scroll, else a stated reason to degrade on.
+pub fn storage_schema_supported(
+    facts: &StorageSchemaFacts,
+    advertised: bool,
+) -> std::result::Result<(), String> {
+    if !advertised && !facts.advertises_contract() {
         return Ok(());
     }
-    storage_schema_version_supported(facts.version)?;
+    // A contract is in play: require a parseable version. A rag that promised a contract
+    // (on /health, or by carrying any descriptor field) but whose descriptor omits the
+    // version is a fail-closed degrade - the shape cannot be confirmed before the read.
+    match facts.version {
+        Some(version) => storage_schema_version_supported(Some(version))?,
+        None => {
+            return Err(
+                "rag advertised a storage-schema contract but its descriptor carries no \
+                 version; the shape cannot be confirmed - direct embedding read degraded (schema gate)"
+                    .to_string(),
+            );
+        }
+    }
     match facts.dense_name.as_deref() {
         Some(DENSE_VECTOR_NAME) => {}
         Some(other) => {
@@ -619,14 +639,43 @@ mod tests {
             dense_name: Some("dense".into()),
             dense_dim: Some(EXPECTED_DENSE_DIM),
         };
-        assert!(storage_schema_supported(&facts).is_ok());
+        // The real wiring calls with advertised=true (/health promised the contract).
+        assert!(storage_schema_supported(&facts, true).is_ok());
+        // And a descriptor that advertises itself is compatible without the /health hint.
+        assert!(storage_schema_supported(&facts, false).is_ok());
     }
 
     #[test]
     fn schema_gate_passes_a_pre_contract_rag_additively() {
-        // No contract advertised at all: the engine reads the shape it always did
-        // (the upstream Qdrant gate still applies), never a regression.
-        assert!(storage_schema_supported(&StorageSchemaFacts::default()).is_ok());
+        // No contract advertised anywhere (/health None and an empty descriptor): the
+        // engine reads the shape it always did (the upstream Qdrant gate still applies),
+        // never a regression.
+        assert!(storage_schema_supported(&StorageSchemaFacts::default(), false).is_ok());
+    }
+
+    #[test]
+    fn schema_gate_fails_closed_when_advertised_but_the_descriptor_has_no_version() {
+        // /health promised a contract (advertised=true), but the descriptor omits the
+        // version: the shape cannot be confirmed, so the gate degrades rather than
+        // passing vacuously - matching rag's own "no integer version" refuse.
+        let facts = StorageSchemaFacts {
+            version: None,
+            dense_name: Some("dense".into()),
+            dense_dim: Some(EXPECTED_DENSE_DIM),
+        };
+        // No /health hint and the descriptor is silent on version but its name+dim
+        // advertise a contract, so it is still strict... the version check fires.
+        assert!(
+            storage_schema_supported(&facts, false)
+                .unwrap_err()
+                .contains("no version")
+        );
+        // /health promised the contract: a versionless descriptor fails closed.
+        assert!(
+            storage_schema_supported(&facts, true)
+                .unwrap_err()
+                .contains("no version")
+        );
     }
 
     #[test]
@@ -636,7 +685,7 @@ mod tests {
             dense_name: Some("dense".into()),
             dense_dim: Some(EXPECTED_DENSE_DIM),
         };
-        let err = storage_schema_supported(&facts).unwrap_err();
+        let err = storage_schema_supported(&facts, true).unwrap_err();
         assert!(err.contains("newer"), "{err}");
     }
 
@@ -647,7 +696,7 @@ mod tests {
             dense_name: Some("dense".into()),
             dense_dim: Some(768),
         };
-        let err = storage_schema_supported(&facts).unwrap_err();
+        let err = storage_schema_supported(&facts, true).unwrap_err();
         assert!(err.contains("768") && err.contains("dimension"), "{err}");
     }
 
@@ -659,7 +708,7 @@ mod tests {
             dense_dim: Some(EXPECTED_DENSE_DIM),
         };
         assert!(
-            storage_schema_supported(&wrong)
+            storage_schema_supported(&wrong, true)
                 .unwrap_err()
                 .contains("embedding")
         );
@@ -671,7 +720,7 @@ mod tests {
             dense_dim: Some(EXPECTED_DENSE_DIM),
         };
         assert!(
-            storage_schema_supported(&missing)
+            storage_schema_supported(&missing, true)
                 .unwrap_err()
                 .contains("no dense vector name")
         );
@@ -685,7 +734,7 @@ mod tests {
             dense_dim: None,
         };
         assert!(
-            storage_schema_supported(&facts)
+            storage_schema_supported(&facts, true)
                 .unwrap_err()
                 .contains("no dense dimension")
         );

@@ -15,6 +15,7 @@ related:
   - '[[2026-06-27-rag-schema-gate-P02-S07]]'
   - '[[2026-06-27-rag-schema-gate-P02-S08]]'
   - '[[2026-06-27-rag-schema-gate-adr]]'
+  - '[[2026-06-27-rag-schema-gate-audit]]'
   - '[[2026-06-27-rag-schema-gate-plan]]'
   - '[[2026-06-27-rag-schema-gate-research]]'
 ---
@@ -28,6 +29,10 @@ Auto-generated index of all documents tagged with `#rag-schema-gate`.
 ### adr
 
 - `2026-06-27-rag-schema-gate-adr` - `rag-schema-gate` adr: `gate the direct-Qdrant embedding read on rag's storage-schema contract` | (**status:** `accepted`)
+
+### audit
+
+- `2026-06-27-rag-schema-gate-audit` - `rag-schema-gate` audit: `code review verification`
 
 ### exec
 

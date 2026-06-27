@@ -444,7 +444,7 @@ mod bound_tests {
                 "dense": {"name": "dense", "dim": EXPECTED_DENSE_DIM + 256}}}}
         });
         assert!(
-            storage_schema_supported(&extract_storage_schema_facts(&mismatched))
+            storage_schema_supported(&extract_storage_schema_facts(&mismatched), true)
                 .unwrap_err()
                 .contains("dimension")
         );
@@ -454,7 +454,7 @@ mod bound_tests {
             "schema": {"version": KNOWN_STORAGE_SCHEMA_VERSION, "vault": {"vectors": {
                 "dense": {"name": "dense", "dim": EXPECTED_DENSE_DIM}}}}
         });
-        assert!(storage_schema_supported(&extract_storage_schema_facts(&ok)).is_ok());
+        assert!(storage_schema_supported(&extract_storage_schema_facts(&ok), true).is_ok());
     }
 }
 
@@ -820,7 +820,10 @@ pub async fn graph_embeddings(
         match rag_client::control::readiness(&readiness_transport) {
             Ok(readiness) => {
                 let facts = rag_client::vectors::extract_storage_schema_facts(&readiness);
-                if let Err(reason) = rag_client::vectors::storage_schema_supported(&facts) {
+                // `advertised = true`: /health already promised the contract, so the
+                // descriptor must validate completely - a missing version/name/dim is a
+                // fail-closed degrade, not a vacuous pass.
+                if let Err(reason) = rag_client::vectors::storage_schema_supported(&facts, true) {
                     return degraded_embeddings(&reason);
                 }
             }
