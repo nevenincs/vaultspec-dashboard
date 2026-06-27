@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#figma-frontend-rewrite'
 date: '2026-06-16'
-modified: '2026-06-26'
+modified: '2026-06-27'
 tier: L3
 related:
   - '[[2026-06-16-figma-frontend-rewrite-adr]]'
@@ -123,20 +123,12 @@ Wire all surfaces into the shell, run just dev lint frontend (exit 0) and vitest
 
 Per-board screenshot comparison of the running app against Figma; fix every residual divergence until identical.
 
-- [ ] `W05.P13.S19` - Compare each assembled surface against its Figma board screenshot and fix every residual divergence until identical; `frontend/src/`.
+- [x] `W05.P13.S19` - Compare each assembled surface against its Figma board screenshot and fix every residual divergence until identical; `frontend/src/`.
 
 ## Description
 
-
 ## Steps
 
-
-
-
-
-
-
 ## Parallelization
-
 
 ## Verification
