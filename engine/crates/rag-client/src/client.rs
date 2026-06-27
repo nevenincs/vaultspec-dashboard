@@ -35,27 +35,32 @@ pub fn service_json_path(vault_root: &Path) -> PathBuf {
         .join("service.json")
 }
 
-/// Discovery candidates in precedence order — machine-global FIRST
-/// (rag-service-management discovery invariant). rag is ONE resident service per
-/// machine, writing `~/.vaultspec-rag/service.json`; that machine-global candidate
-/// is consulted FIRST so a stale or forward-compatible per-scope file can never
-/// shadow the live machine service. The dashboard NEVER overrides
-/// `VAULTSPEC_RAG_STATUS_DIR` (which would fragment discovery off this path while
-/// the machine lock still allows only one service); if per-scope isolation is ever
-/// required, switch to a STATUS_DIR-independent machine pointer (the lock-holder
-/// pid), coordinated with rag first.
+/// Discovery candidates in precedence order — the STATUS_DIR-independent machine
+/// pointer FIRST (rag-service-management discovery invariant). rag is ONE resident
+/// service per machine. rag now writes a machine-global discovery pointer BESIDE its
+/// machine lock — at the Qdrant storage parent, `~/.vaultspec-rag/qdrant-server/
+/// service.json` — which is independent of `VAULTSPEC_RAG_STATUS_DIR`; this is the
+/// STATUS_DIR-independent pointer the discovery design previously deferred ("switch
+/// to a machine pointer, coordinated with rag first"), now adopted. It is consulted
+/// FIRST so discovery survives a non-default rag STATUS_DIR. The STATUS_DIR-default
+/// `~/.vaultspec-rag/service.json` (machine-global only when rag uses the default
+/// status dir) is the next candidate, then the per-scope file. A candidate absent on
+/// a rag that predates the pointer is simply skipped by `discover_at`, so adding it
+/// is purely additive.
 pub fn service_json_candidates(vault_root: &Path) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
     if let Some(home) = home {
-        candidates.push(
-            PathBuf::from(home)
-                .join(".vaultspec-rag")
-                .join("service.json"),
-        );
+        let rag_home = PathBuf::from(home).join(".vaultspec-rag");
+        // The machine-global pointer rag writes beside the lock (storage parent):
+        // STATUS_DIR-independent, so it is the most robust discovery anchor.
+        candidates.push(rag_home.join("qdrant-server").join("service.json"));
+        // The STATUS_DIR-default discovery file (the previous machine-global anchor;
+        // machine-global only when rag uses the default status dir).
+        candidates.push(rag_home.join("service.json"));
     }
     // Forward-compatible per-scope fallback: consulted ONLY when the machine-global
-    // file is absent, never preferred over it.
+    // files are absent, never preferred over them.
     candidates.push(service_json_path(vault_root));
     candidates
 }
@@ -883,6 +888,60 @@ mod tests {
         assert!(
             home_idx < scope_idx,
             "machine-global home candidate must precede the per-scope candidate"
+        );
+    }
+
+    #[test]
+    fn the_storage_parent_machine_pointer_is_the_first_candidate() {
+        // rag's STATUS_DIR-independent machine pointer (beside the lock, at the
+        // Qdrant storage parent `~/.vaultspec-rag/qdrant-server/service.json`) is
+        // the most robust anchor, so it is consulted FIRST — ahead of the
+        // STATUS_DIR-default `~/.vaultspec-rag/service.json`.
+        let candidates = service_json_candidates(Path::new("Z:/some/scope/.vault"));
+        let pointer_idx = candidates.iter().position(|p| {
+            p.to_string_lossy().contains("qdrant-server") && p.ends_with("service.json")
+        });
+        let status_default_idx = candidates.iter().position(|p| {
+            let s = p.to_string_lossy();
+            s.contains(".vaultspec-rag")
+                && !s.contains("qdrant-server")
+                && p.ends_with("service.json")
+        });
+        let pointer_idx =
+            pointer_idx.expect("the storage-parent machine pointer must be a candidate");
+        let status_default_idx =
+            status_default_idx.expect("the STATUS_DIR-default file must be a candidate");
+        assert_eq!(pointer_idx, 0, "the machine pointer is the first candidate");
+        assert!(
+            pointer_idx < status_default_idx,
+            "the machine pointer precedes the STATUS_DIR-default file"
+        );
+    }
+
+    #[test]
+    fn an_absent_machine_pointer_is_skipped_for_a_present_status_file() {
+        // Adding the pointer candidate is purely additive: when it is absent (a rag
+        // that predates it), discovery falls through to the next present candidate
+        // rather than failing.
+        let dir = tempfile::tempdir().unwrap();
+        let absent_pointer = dir.path().join("qdrant-server").join("service.json");
+        let status_file = dir.path().join(".vaultspec-rag").join("service.json");
+        std::fs::create_dir_all(status_file.parent().unwrap()).unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        std::fs::write(
+            &status_file,
+            format!(r#"{{"port": 8766, "last_heartbeat": {now}}}"#),
+        )
+        .unwrap();
+        let (availability, info) = discover_at(&[absent_pointer, status_file]);
+        assert_eq!(availability, RagAvailability::Available);
+        assert_eq!(
+            info.unwrap().port,
+            8766,
+            "discovery used the present candidate"
         );
     }
 
