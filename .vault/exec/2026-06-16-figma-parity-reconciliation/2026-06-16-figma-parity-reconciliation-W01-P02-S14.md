@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Add the bounded read-only historical text-diff route as a two-rev git diff whitelist extension, read-and-infer with no vault writes
 
 ## Scope

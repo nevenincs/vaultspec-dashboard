@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-salience-plan]]"
 ---
 
-
-
-
 # Implement the status-lens activity-burst term over recent temporal-tier edge activity (new exec records and commit-correlation edges in the recent window)
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Implemented the status-lens activity_burst over recent temporal-tier edges (new exec/commit-correlation edges in a 7-day window), soft-saturated to [0,1) so a hot node reads hot without swamping the field. Verified a recent temporal edge bursts and an edgeless node does not.
 
 ## Notes
-

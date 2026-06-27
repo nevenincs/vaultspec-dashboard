@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the scene token reads to the regenerated literal-hex foundation tokens
 
 ## Scope

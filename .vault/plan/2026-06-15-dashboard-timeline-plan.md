@@ -11,7 +11,6 @@ related:
   - '[[2026-06-12-dashboard-foundation-reference]]'
 ---
 
-
 # `dashboard-timeline` plan
 
 ## Wave `W01` - Backend: bounded temporal-lineage projection
@@ -195,12 +194,6 @@ from day one and gains richer labels when the field lands. The build does not
 block on the node-semantics campaign.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

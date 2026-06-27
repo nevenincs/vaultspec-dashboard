@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Make mockEngine serve the exact lineage wire shape with derivation-fallback edges
 
 ## Scope

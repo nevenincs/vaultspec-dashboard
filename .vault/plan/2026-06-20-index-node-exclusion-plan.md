@@ -3,12 +3,13 @@ tags:
   - '#plan'
   - '#index-node-exclusion'
 date: '2026-06-20'
-modified: '2026-06-22'
+modified: '2026-06-25'
 tier: L2
 related:
   - '[[2026-06-20-index-node-exclusion-adr]]'
   - '[[2026-06-20-index-node-exclusion-research]]'
 ---
+
 # `index-node-exclusion` plan
 
 Drop `.vault/index` documents at engine ingest and remove the `index` doc-type from every categorization vocabulary, backend and frontend.
@@ -47,8 +48,8 @@ Drop index from the chrome and scene category vocabularies and its generated col
 
 Run the full lint and test gate to exit 0 and live-verify the dashboard is index-free across graph, rail, and timeline.
 
-- [ ] `P04.S14` - Run just dev lint all and cargo and frontend tests to exit 0; `engine`.
-- [ ] `P04.S15` - Live-verify the dashboard renders index-free across graph, rail, timeline, and legend; `frontend/src/app`.
+- [x] `P04.S14` - Run just dev lint all and cargo and frontend tests to exit 0; `engine`.
+- [x] `P04.S15` - Live-verify the dashboard renders index-free across graph, rail, timeline, and legend; `frontend/src/app`.
 
 ## Description
 
@@ -71,12 +72,6 @@ and cleans lab/prototype fixtures. Phase `P04` runs the full gate and live-verif
 the dashboard is index-free.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

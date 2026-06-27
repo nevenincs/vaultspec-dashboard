@@ -10,13 +10,6 @@ related:
   - '[[2026-06-14-dashboard-activity-rail-research]]'
 ---
 
-
-
-
-
-
-
-
 # `dashboard-pipeline-wire` plan
 
 Engine read-and-infer buildout of four additive wire capabilities that unblock the review rail's Work and Changes surfaces.

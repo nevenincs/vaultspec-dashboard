@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # add a mock-versus-live parity test feeding a captured sample through the adapter
 
 ## Scope

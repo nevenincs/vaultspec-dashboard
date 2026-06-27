@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # mount the PixiJS application behind the SceneController lifecycle of mount, resize, destroy per G6.b
 
 ## Scope
@@ -46,4 +43,3 @@ typecheck, eslint, vitest (39 passed), prettier.
 Browser-level mount verification (a live canvas in the host) lands with the
 S21 stage component; until then the only DOM-level exercise of the field is
 the spike harness, which constructs Pixi directly by design.
-

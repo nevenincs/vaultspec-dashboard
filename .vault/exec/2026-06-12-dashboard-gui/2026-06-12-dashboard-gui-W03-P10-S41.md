@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # build the ops surface with confirmation flows over the whitelisted ops proxy verbs, disabled in time-travel mode per G4.b
 
 ## Scope
@@ -40,4 +37,3 @@ prettier.
 Verb result envelopes pass through verbatim from the proxy (no engine
 semantics added); richer envelope rendering can ride the inspector later
 if operators need it.
-

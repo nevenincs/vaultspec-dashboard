@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Re-affirm time-travel mode (warm tint, return-to-live chip, ops-disable) off the shared timelineMode
 
 ## Scope

@@ -9,8 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-adr]]"
 ---
 
-
-
 # `figma-parity-reconciliation` reference: `Preserved stores and SceneController contract`
 
 This document FREEZES the two layers the figma-parity-reconciliation view rewrite

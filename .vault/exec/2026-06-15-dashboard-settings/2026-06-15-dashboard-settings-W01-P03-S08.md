@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Add conformance tests for the schema route shape, the typed-error envelope, and the JSON value codec roundtrip
 
 ## Scope
@@ -28,4 +25,3 @@ related:
 The wire contract is pinned against the live serve.
 
 ## Notes
-

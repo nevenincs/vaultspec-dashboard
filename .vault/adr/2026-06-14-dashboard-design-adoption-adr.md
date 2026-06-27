@@ -11,8 +11,6 @@ related:
   - '[[2026-06-14-dashboard-design-language-research]]'
 ---
 
-
-
 # `dashboard-design-adoption` adr: `design language adoption cycle` | (**status:** `accepted`)
 
 ## Problem Statement

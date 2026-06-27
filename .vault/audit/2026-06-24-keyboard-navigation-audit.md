@@ -8,8 +8,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
 # `keyboard-navigation` audit: `keyboard navigation review`
 
 ## Scope
@@ -68,6 +66,3 @@ None. The campaign already codified
 `every-composite-navigates-through-the-one-focuszone`, and this review's findings
 are instances that rule governs rather than a new durable lesson — confirming the
 rule rather than extending it. An empty section here is the intended outcome.
-
-
-

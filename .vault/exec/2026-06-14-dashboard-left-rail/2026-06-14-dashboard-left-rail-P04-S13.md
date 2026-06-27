@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Establish the rail-wide keyboard contract, labelled landmark, and reduced-motion and keyboard-instant behaviour
 
 ## Scope

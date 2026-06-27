@@ -8,9 +8,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # `figma-parity-reconciliation` `W03.P07` summary
 
 Phase W03.P07 rewrote the scene foundation - the headline custom node-connection

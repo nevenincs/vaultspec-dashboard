@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-salience-plan]]"
 ---
 
-
-
-
 # Implement the weighted-linear a-priori composition (type-prior, personalized centrality, recency, lifecycle, structural role) parameterized by a per-lens weight row
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Implemented the weighted-linear a-priori composition (type-prior, PPR+betweenness-blended centrality, recency, structural-role, burst) parameterized by the per-lens WeightRow, scaled by the discrete lifecycle multiplier. Verified against a hand-computed blend.
 
 ## Notes
-

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Remove the dev crash/degrade bar from the production tab ring (not rendered or tabindex -1 outside dev)
 
 ## Scope

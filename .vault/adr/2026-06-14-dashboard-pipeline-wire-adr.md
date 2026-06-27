@@ -12,8 +12,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-pipeline-wire` adr: `pipeline and changes wire buildout (engine read-and-infer)` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -170,6 +168,3 @@ incrementally, rather than blocking the whole rail on the largest piece.
   the engine ADR's "nodes are live lenses" promise and the orchestration-era seam.
 
 ## Codification candidates
-
-
-

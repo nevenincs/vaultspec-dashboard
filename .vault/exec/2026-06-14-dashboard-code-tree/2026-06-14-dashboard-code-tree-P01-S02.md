@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-code-tree-plan]]"
 ---
 
-
-
-
 # Return per child the repo-relative path, kind dir or file, has_children hint, and code:<path> node id, metadata only with no bytes
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Prove the read-only law has no fetch or mutation escape hatch in the rail
 
 ## Scope

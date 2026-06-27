@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Add per-node embedding vectors to document nodes in the corpus
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Document nodes carry an 8-dim feature-clustered `embedding` (`featureEmbedding`) so the semantic UMAP mode separates meaning-clusters.
@@ -28,4 +24,3 @@ Document nodes carry an 8-dim feature-clustered `embedding` (`featureEmbedding`)
 Document nodes carry an 8-dim feature-clustered `embedding` (`featureEmbedding`) so the semantic UMAP mode separates meaning-clusters.
 
 ## Notes
-

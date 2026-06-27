@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # keep minimap, range, scroll, zoom, and playhead controls driving the temporal graph range
 
 ## Scope

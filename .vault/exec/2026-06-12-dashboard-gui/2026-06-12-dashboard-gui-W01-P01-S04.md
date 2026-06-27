@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # lock the SceneController command, event, and anchor surface with the RL-1 to RL-5 fold confirmed as final
 
 ## Scope

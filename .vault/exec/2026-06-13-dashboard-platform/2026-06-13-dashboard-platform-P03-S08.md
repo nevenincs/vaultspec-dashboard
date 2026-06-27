@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-platform-plan]]"
 ---
 
-
-
-
 # Implement the typed Action and dispatch core with the middleware chain
 
 ## Scope

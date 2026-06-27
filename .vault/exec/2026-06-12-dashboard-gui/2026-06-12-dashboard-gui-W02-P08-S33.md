@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement the playhead with LIVE docking and unmistakable time-travel mode entry and exit per G4.b
 
 ## Scope
@@ -54,4 +51,3 @@ resize, so on wide screens the dock position was computed against the
 wrong width. Both overlays now track real width via ResizeObserver. The
 rail's right edge intentionally extends to wall-clock now (LIVE docks
 there); the mock corpus simply ends in March.
-

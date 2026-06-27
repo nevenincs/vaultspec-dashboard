@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Confirm the role=tablist container keeps its aria-label and the four tabs render contiguously inside it
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Run the full lint gate (just dev lint all) to exit 0 including prettier and rustfmt
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 Feature files pass the full gate; the only gate blemishes were unrelated concurrent-agent files left untouched.
 
 ## Notes
-

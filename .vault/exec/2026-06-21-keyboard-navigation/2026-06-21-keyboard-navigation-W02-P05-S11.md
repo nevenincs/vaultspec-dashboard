@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Enroll the worktree picker (trigger + popover list) onto FocusZone
 
 ## Scope
@@ -34,4 +31,3 @@ related:
 ## Notes
 
 - This repo's scope resolves to a SINGLE worktree, so multi-row arrow roving could not be exercised in this environment (one row = nothing to rove to). The conversion is the exact pattern proven live across the trees/step tree/mark cursor; with >1 worktree it roves identically.
-

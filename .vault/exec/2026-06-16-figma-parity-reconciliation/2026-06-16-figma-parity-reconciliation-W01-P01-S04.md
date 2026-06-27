@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Author the DTCG spacing source mirroring the existing 4-base scale to bring spacing under the generated pipeline
 
 ## Scope

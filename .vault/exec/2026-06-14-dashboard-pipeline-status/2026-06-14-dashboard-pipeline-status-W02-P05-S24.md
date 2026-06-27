@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Render the standing empty state (a clean branch with no active pipeline work) as a designed calm 'no work in flight on this branch' message, never an error or an empty void
 
 ## Scope

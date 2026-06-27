@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Amend node-canvas ADR body: salience as label-priority input
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Amended the node-canvas ADR body: salience is a label-priority input to the DOI label cull so the ambient field labels by importance (the a-priori term made visible in the label channel).
 
 ## Notes
-

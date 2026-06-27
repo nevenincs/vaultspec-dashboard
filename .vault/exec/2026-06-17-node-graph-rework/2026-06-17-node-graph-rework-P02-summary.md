@@ -8,9 +8,6 @@ related:
   - "[[2026-06-17-node-graph-rework-plan]]"
 ---
 
-
-
-
 # `node-graph-rework` `P02` summary
 
 Tier 2 (performance and centering) is complete and verified live against the real

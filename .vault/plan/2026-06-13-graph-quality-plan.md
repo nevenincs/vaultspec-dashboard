@@ -10,13 +10,6 @@ related:
   - '[[2026-06-13-constellation-live-delta-adr]]'
 ---
 
-
-
-
-
-
-
-
 # `graph-quality` plan
 
 ### Phase `P01` - Layout algorithm controls

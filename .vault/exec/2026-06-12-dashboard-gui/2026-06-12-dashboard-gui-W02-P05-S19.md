@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement the mock engine with HTTP handlers and SSE channels carrying sequence numbers and tier degradation blocks, toggled by env flag
 
 ## Scope
@@ -77,4 +74,3 @@ direction amendment), all with tests:
 - The dead `direction` field was stripped from the wire edge type and the
   fixtures (contract §4 as amended by engine audit W03P10-602; direction is
   src→dst ordering).
-

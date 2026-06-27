@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Build the SettingsDialog composing the Dialog with categories built from the served schema and effective values
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 The schema-driven dialog shell.
 
 ## Notes
-

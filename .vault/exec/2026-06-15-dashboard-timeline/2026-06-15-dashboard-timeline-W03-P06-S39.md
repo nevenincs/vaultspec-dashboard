@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Un-bundle the hovered node's arcs as the bundling-legibility affordance
 
 ## Scope

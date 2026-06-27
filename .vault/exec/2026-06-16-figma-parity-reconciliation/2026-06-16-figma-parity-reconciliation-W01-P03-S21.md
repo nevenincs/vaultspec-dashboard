@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Author parse-clean figma mappings for every mappable code component against its Kit primitive
 
 ## Scope

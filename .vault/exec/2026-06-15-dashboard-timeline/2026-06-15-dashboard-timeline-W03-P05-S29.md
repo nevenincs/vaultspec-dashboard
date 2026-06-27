@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add visible-range virtualization with a margin so marks and arcs stay bounded at any corpus age
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Freeze and document the SceneController command and event contract as the canvas rewrite API surface
 
 ## Scope

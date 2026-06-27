@@ -10,8 +10,6 @@ related:
   - "[[2026-06-12-dashboard-gui-adr]]"
 ---
 
-
-
 # `dashboard-live-state` adr: `live and degradation state plane` | (**status:** `accepted`)
 
 ## Problem Statement

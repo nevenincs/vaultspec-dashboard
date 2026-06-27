@@ -11,7 +11,6 @@ related:
   - '[[2026-06-14-dashboard-design-language-research]]'
 ---
 
-
 # `dashboard-design-language` plan
 
 ### Phase `P01` - Foundations
@@ -77,12 +76,6 @@ Phase `P01` (foundations) is complete: both the base design-language ADR and the
 iconography ADR are accepted. Phases `P02` through `P05` carry the per-surface ADRs.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

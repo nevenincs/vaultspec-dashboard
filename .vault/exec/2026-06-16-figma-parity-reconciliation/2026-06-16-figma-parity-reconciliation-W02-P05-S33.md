@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the stage filter bar and sidebar from the binding FacetChipGroup primitive over the preserved filter store
 
 ## Scope

@@ -11,8 +11,6 @@ related:
   - '[[2026-06-12-dashboard-foundation-reference]]'
 ---
 
-
-
 # `editor-dock-workspace` research: `dockable tabbed editor workspace`
 
 The standing goal replaces the single-document viewer overlay with a dockview-based,

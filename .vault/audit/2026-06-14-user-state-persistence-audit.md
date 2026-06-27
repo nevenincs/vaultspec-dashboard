@@ -10,8 +10,6 @@ related:
   - '[[2026-06-14-user-state-persistence-research]]'
 ---
 
-
-
 # `user-state-persistence` audit: `live production verification and hardening campaign`
 
 ## Scope
@@ -97,7 +95,6 @@ was called.
 
 ## Codification candidates
 
-
 None from this campaign. The verification surfaced no new durable cross-session constraint:
 the backend behaved exactly as the ADR and reviews claimed, and the two LOW characteristics
 (cold-switch latency, untested cap eviction) are prototype-stage notes, not constraints that
@@ -106,4 +103,3 @@ should bind future agents. The one standing candidate remains the build-phase
 one-cycle codify discipline; this live pass is corroborating evidence that the orchestration
 crate respects its read-and-infer fence (it wrote nothing tracked, only its own gitignored
 state), strengthening that candidate for promotion next cycle.
-

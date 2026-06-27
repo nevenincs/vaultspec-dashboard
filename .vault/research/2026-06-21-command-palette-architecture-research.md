@@ -7,8 +7,6 @@ modified: '2026-06-22'
 related: []
 ---
 
-
-
 # `command-palette-architecture` research: `command palette contribution architecture`
 
 This research grounds a campaign to re-architect the dashboard's Cmd+K command

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Add the active_workspace field and its PUT handling to the session endpoint
 
 ## Scope

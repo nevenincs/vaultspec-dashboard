@@ -11,8 +11,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-activity-rail` research: `right-hand review rail: in-flight pipeline status and changes`
 
 The right-hand rail of the dashboard is being re-scoped into the surface that
@@ -155,4 +153,3 @@ a read-only git pass-through) that stay inside read-and-infer — none of them w
 - **Grayscale-safe identity + warmth-in-tokens.** Progress rings, status pills, and
   per-file `+/−` counts carry meaning by shape and text first; diff green/red stays at
   full contrast (diff legibility overrides warmth).
-

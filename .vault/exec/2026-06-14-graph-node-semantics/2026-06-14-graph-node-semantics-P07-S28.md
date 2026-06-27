@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # run the engine test suite and the relevant frontend vitest suites green
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Ran the engine cargo test workspace suite (all green) and the full frontend vitest suite (791 passed, 9 skipped) plus the targeted ontology suites.
@@ -28,4 +24,3 @@ Ran the engine cargo test workspace suite (all green) and the full frontend vite
 {OUTLINE}
 
 ## Notes
-

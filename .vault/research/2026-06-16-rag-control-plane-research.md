@@ -10,8 +10,6 @@ related:
   - '[[2026-06-12-dashboard-foundation-reference]]'
 ---
 
-
-
 # `rag-control-plane` research: `rag service control plane and semantic linkage lifecycle`
 
 A vault is just markdown files on disk with no linkage data embedded. Two separate engines

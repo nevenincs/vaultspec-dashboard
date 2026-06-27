@@ -10,7 +10,6 @@ related:
   - '[[2026-06-15-figma-design-bridge-research]]'
 ---
 
-
 <!-- RETIRED: W03, P11, P12, P13 -->
 
 # `figma-design-bridge` plan
@@ -150,12 +149,6 @@ is cross-cutting platform substrate, the components are app chrome, and the scen
 layer is untouched.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

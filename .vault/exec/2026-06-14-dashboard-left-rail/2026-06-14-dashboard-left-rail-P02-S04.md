@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Add a compact keyboard-reachable vault/code mode toggle to the browser region defaulting to vault
 
 ## Scope

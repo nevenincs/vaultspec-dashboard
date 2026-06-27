@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-vaultspec-engine-plan]]"
 ---
 
-
-
-
 # Add the git block to serve status and dates plus doc-type to vault-tree entries, matching the CLI front door
 
 ## Scope
@@ -35,4 +32,3 @@ server-side.
 
 The git block degrades to null when the served path cannot be matched to an
 enumerated worktree, rather than failing the status call.
-

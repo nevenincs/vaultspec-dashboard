@@ -12,8 +12,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-timeline` adr: `relational phase-lane timeline` | (**status:** `accepted`)
 
 ## Problem Statement

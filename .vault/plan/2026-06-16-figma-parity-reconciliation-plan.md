@@ -10,13 +10,6 @@ related:
   - '[[2026-06-16-figma-parity-reconciliation-research]]'
 ---
 
-
-
-
-
-
-
-
 # `figma-parity-reconciliation` plan
 
 Rewrite the dashboard chrome and headline canvas to the binding Figma designs over a

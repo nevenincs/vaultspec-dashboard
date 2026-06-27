@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Run a vaultspec-code-review pass over the full feature and record the audit
 
 ## Scope
@@ -28,4 +25,3 @@ related:
 Reviewed, revised, and verified; the audit and codified rule close the pipeline.
 
 ## Notes
-

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Re-key the chosen mode per scope and wire it into the wholesale reset
 
 ## Scope

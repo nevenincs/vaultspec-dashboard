@@ -7,8 +7,6 @@ modified: '2026-06-22'
 related: []
 ---
 
-
-
 # `keyboard-action-system` research: `global keyboard shortcuts and centralized action triggering`
 
 The campaign goal is a designed, centralized, **global action backend** powering every

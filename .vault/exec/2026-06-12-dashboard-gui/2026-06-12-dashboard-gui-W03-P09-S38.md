@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # build the vault-scoped read-only file browser over the vault-tree endpoint with doc-type glyphs and freshness per G2.c
 
 ## Scope
@@ -51,4 +48,3 @@ the present working tree (the vault-tree endpoint has no as-of parameter
 in the contract), while the stage renders T. If a historical tree ever
 becomes a contract capability, reconciliation is a new step, not a silent
 change here.
-

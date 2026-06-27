@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement hover ego-highlight with field recede and DOI label culling per G3.b
 
 ## Scope
@@ -47,4 +44,3 @@ typecheck, eslint, vitest (118 passed), prettier.
 Edge highlight rebuilds topology per hover transition - fine at
 DOI-bounded constellation sizes; revisit only if ego hover on dense
 descents shows jank.
-

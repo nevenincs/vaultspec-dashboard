@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # test the edge_view derivation labels across the pipeline vocabulary
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Tested edge_view derivation labels across the pipeline vocabulary and that every label is in the closed set.
@@ -28,4 +24,3 @@ Tested edge_view derivation labels across the pipeline vocabulary and that every
 {OUTLINE}
 
 ## Notes
-

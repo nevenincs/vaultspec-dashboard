@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the usePipelineStatusView hook that wires usePipelineStatus into derivePipelineStatusView, reading tiers from data then the EngineError envelope, so the Work surface consumes interpreted truth and never the raw tiers block
 
 ## Scope

@@ -8,8 +8,6 @@ related:
   - "[[2026-06-16-document-editor-backend-research]]"
 ---
 
-
-
 # `document-editor-backend` adr: `vault-conformant document editor backend` | (**status:** `accepted`)
 
 ## Problem Statement

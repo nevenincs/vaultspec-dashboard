@@ -8,9 +8,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # `user-state-persistence` `W02.P03` summary
 
 Wave `W02` summary (Phases `W02.P03` cell + registry, `W02.P04` per-scope serve infra,

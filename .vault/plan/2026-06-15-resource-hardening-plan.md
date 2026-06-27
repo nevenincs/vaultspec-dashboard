@@ -10,7 +10,6 @@ related:
   - '[[2026-06-15-resource-hardening-research]]'
 ---
 
-
 # `resource-hardening` plan
 
 ### Phase `P01` - Measurement floor: leak/exhaustion harness
@@ -85,12 +84,6 @@ from recurring and promotes the durable lessons to rules. Class-A disk triage
 (39 GB reclaimed) was already performed during research and is not re-done here.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

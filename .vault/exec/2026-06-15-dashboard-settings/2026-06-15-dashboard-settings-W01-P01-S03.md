@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Implement typed value encode and decode over the existing string value column with legacy-raw and absent-key default fallback
 
 ## Scope
@@ -28,4 +25,3 @@ related:
 Typing is a schema concern applied on both ends; the storage table is unchanged.
 
 ## Notes
-

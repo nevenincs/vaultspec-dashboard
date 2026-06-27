@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Retain and adapt the time-travel driver on the one delta clock with keyframe plus diff
 
 ## Scope

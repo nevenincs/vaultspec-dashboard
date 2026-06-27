@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Declare lucide-react as a real dependency at the in-tree installed version, ending the phantom-import state
 
 ## Scope

@@ -8,8 +8,6 @@ related:
   - "[[2026-06-25-state-mode-uniformity-research]]"
 ---
 
-
-
 # `state-mode-uniformity` adr: `uniform four-mode state system, shared kit, themed glyphs` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -86,10 +84,6 @@ variables; the reference is the rail state bodies. Parity is verified per surfac
 
 ## Rationale
 
-
 ## Consequences
 
-
 ## Codification candidates
-
-

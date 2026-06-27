@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Make the WorkTab degraded and empty states grayscale-safe so meaning is carried by shape and text first, not color alone
 
 ## Scope

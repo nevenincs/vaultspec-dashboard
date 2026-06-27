@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # test lineage-to-scene mapping for bounded nodes, self-consistent arcs, and tier metadata
 
 ## Scope

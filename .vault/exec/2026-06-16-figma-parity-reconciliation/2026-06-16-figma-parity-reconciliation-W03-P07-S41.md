@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rewrite the Pixi field renderer to the binding connection-field treatment driven through the preserved SceneController
 
 ## Scope

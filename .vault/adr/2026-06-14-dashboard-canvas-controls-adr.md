@@ -11,8 +11,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-canvas-controls` adr: `node canvas controls` | (**status:** `accepted`)
 
 ## Problem Statement

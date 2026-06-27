@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add render tests asserting the standing empty, degraded, loading, and per-capability placeholder states each render their designed surface and never an error void
 
 ## Scope

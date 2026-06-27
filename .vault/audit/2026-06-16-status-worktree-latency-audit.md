@@ -8,8 +8,6 @@ related:
   - "[[2026-06-16-status-worktree-latency-plan]]"
 ---
 
-
-
 # `status-worktree-latency` audit: `worktree latency fix review`
 
 ## Scope
@@ -60,5 +58,3 @@ The prior "~5s /status" root cause is confirmed: serial per-worktree
   with the old whole-enumeration-aborts behavior holds.
 
 ## Codification candidates
-
-

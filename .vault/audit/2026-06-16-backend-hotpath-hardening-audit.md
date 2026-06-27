@@ -8,8 +8,6 @@ related:
   - "[[2026-06-16-backend-hotpath-hardening-plan]]"
 ---
 
-
-
 # `backend-hotpath-hardening` audit: `hot-path memoization and stores bounding review`
 
 ## Scope
@@ -56,7 +54,4 @@ additions), `dashboard-layer-ownership` (gcTime lives in the stores wire client)
   generation), F5 (`filter.rs` const-array `.iter().any()` → prebuilt sets), F6
   (stream reducer ring buffer to avoid the per-chunk 256-array slice).
 
-
 ## Codification candidates
-
-

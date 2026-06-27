@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # drive scene set-time from the playhead via asof keyframes and client diff-log replay with re-keyframe on large jumps per G4.b
 
 ## Scope
@@ -54,4 +51,3 @@ Liveness and scrubbing share one code path (append → replay) as the ADR
 commits; wiring the live graph SSE channel into `spliceLive` activates
 when the live stream consumers land (W03.P10 status work uses the same
 stream).
-

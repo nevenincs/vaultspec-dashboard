@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the changes overview and diff view from their binding frames over the preserved diff query, including the historical text-diff route
 
 ## Scope

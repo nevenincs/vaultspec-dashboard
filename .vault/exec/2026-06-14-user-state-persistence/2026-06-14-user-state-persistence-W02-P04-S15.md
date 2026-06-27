@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # rewrite validate-scope to accept any selectable vault-bearing worktree in the workspace
 
 ## Scope
@@ -41,4 +38,3 @@ honestly. The launch worktree resolves on the warm fast path; a sibling worktree
 builds its cell on first access. The migrated scope-validation test passes.
 
 ## Notes
-

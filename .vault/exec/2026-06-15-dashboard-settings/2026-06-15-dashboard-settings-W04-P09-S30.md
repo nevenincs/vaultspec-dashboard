@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Add a Settings command to the command palette routing to the dialog
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 A second, keyboard-first entry point.
 
 ## Notes
-

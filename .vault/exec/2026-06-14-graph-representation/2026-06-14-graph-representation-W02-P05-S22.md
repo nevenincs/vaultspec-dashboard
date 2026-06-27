@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Wire lineage positions into the field layout path behind a representation mode
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Lineage positions wire into the field via `fieldAssembly.applyRepresentationMode` (W03.P08): the dispatcher's lineage seed is set on the layout and FA2 stopped, behind the `set-representation-mode` command.
 
 ## Notes
-

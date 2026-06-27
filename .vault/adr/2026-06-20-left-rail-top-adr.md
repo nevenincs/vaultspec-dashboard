@@ -10,8 +10,6 @@ related:
   - '[[2026-06-14-dashboard-left-rail-adr]]'
 ---
 
-
-
 # `left-rail-top` adr: `Left rail top: project picker, global search, and filter reconciliation` | (**status:** `accepted`)
 
 REITERATED 2026-06-22 (user direction): D2 and D6 are corrected below. The rail

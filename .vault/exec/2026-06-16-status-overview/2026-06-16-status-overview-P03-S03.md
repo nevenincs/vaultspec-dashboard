@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-status-overview-plan]]"
 ---
 
-
-
-
 # Build StatusTab (location anchor + open plans w/ step-tree expand + open-in-viewer + recent commits), wire into rail IA
 
 ## Scope

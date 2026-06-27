@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # render node sprites with LOD discipline, silhouette and state colour far, full anatomy near, per G3.a and the ADR section 3.1 node anatomy
 
 ## Scope
@@ -53,4 +50,3 @@ missed it. Contract-aligning, optional, additive; flagged for
 experience-architect at the P03 boundary alongside the S04 lock-time
 additions. DOI label culling (density-aware) arrives with the camera work
 in S12/S22; at this step labels render at near LOD only.
-

@@ -11,20 +11,11 @@ related:
   - '[[2026-06-12-dashboard-foundation-reference]]'
 ---
 
-
-
-
-
-
-
-
 # `graph-node-semantics` plan
 
 ### Phase `P01` - authority-class projection
 
 Map every doc_type to its authority register as a query-time projection on the node, additive and read-and-infer.
-
-
 
 - [x] `P01.S01` - add an ontology module with an authority_class map from doc_type to register; `engine/crates/engine-query/src/ontology.rs`.
 - [x] `P01.S02` - unit-test authority_class across every doc type plus the unknown fallback; `engine/crates/engine-query/src/ontology.rs`.
@@ -104,12 +95,6 @@ The work is grounded in the ADR, the ontology research, and foundation-reference
 (identity) and section 4 (node/edge wire shape).
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

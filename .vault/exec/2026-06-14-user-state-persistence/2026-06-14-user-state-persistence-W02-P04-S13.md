@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # spawn and tear down the watcher per warm scope
 
 ## Scope

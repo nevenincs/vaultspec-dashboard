@@ -10,8 +10,6 @@ related:
   - "[[2026-06-19-filter-controls-adr]]"
 ---
 
-
-
 # `unified-filter-plane` adr: `unified filter plane` | (**status:** `accepted`)
 
 ## Problem Statement

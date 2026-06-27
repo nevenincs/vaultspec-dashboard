@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Derive the warm low-chroma neutral surfaces carried into dark as warm near-black, plus the single muted earthy accent for highlights and selection rings
 
 ## Scope

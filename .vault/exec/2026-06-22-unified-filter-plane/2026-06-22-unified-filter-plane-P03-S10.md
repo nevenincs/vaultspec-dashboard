@@ -9,9 +9,6 @@ related:
   - "[[2026-06-22-unified-filter-plane-plan]]"
 ---
 
-
-
-
 # Align the promoted category set with the index-node-exclusion outcome so the legend offers only displayable categories (index and code stay tokens, not displayable nodes) and coordinate with that in-flight plan before editing shared category files
 
 ## Scope
@@ -20,8 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 ## Notes
-

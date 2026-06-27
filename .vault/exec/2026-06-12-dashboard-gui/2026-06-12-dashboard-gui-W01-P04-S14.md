@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement trackNode screen-space anchor subscriptions driven by camera and layout updates per G6.a
 
 ## Scope
@@ -46,4 +43,3 @@ Gates green: typecheck, eslint, vitest (76 passed), prettier.
 The driver's `update()` is called by the field assembly on camera change
 and on each layout position frame (S21 wiring); nothing here ticks on its
 own.
-

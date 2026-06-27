@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-platform-plan]]"
 ---
 
-
-
-
 # Install the global window.onerror and unhandledrejection traps routed to the logger
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Add engine tests for success, byte-cap truncation, traversal 400, and structural degradation
 
 ## Scope

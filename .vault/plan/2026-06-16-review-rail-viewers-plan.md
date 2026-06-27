@@ -10,7 +10,6 @@ related:
   - '[[2026-06-16-review-rail-viewers-research]]'
 ---
 
-
 # `review-rail-viewers` plan
 
 Build the frontmatter-aware markdown reader, the read-only code viewer, the bounded engine content endpoint behind them, and the right-rail overview re-scope, all cross-linked to the graph.

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-code-tree-plan]]"
 ---
 
-
-
-
 # Honor repository ignore rules via the gix machinery to exclude .git, build output, and vendored trees
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add unit tests for the scroll-strip scale, offset, virtualization, and cap helpers
 
 ## Scope

@@ -8,9 +8,6 @@ related:
   - "[[2026-06-17-management-engine-optimization-plan]]"
 ---
 
-
-
-
 # `management-engine-optimization` `W02.P04` summary
 
 Document query projection caching now includes generation-keyed candidate indexes and

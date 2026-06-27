@@ -8,8 +8,6 @@ related:
   - "[[2026-06-21-command-palette-architecture-research]]"
 ---
 
-
-
 # `command-palette-actions` adr: `UI action taxonomy, shortcuts, and backend verb feed` | (**status:** `accepted`)
 
 ## Problem Statement

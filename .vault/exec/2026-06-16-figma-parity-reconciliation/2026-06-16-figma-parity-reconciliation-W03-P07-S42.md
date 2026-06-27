@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rewrite the node sprites as category-colored circles faithful to the binding Node-items frame
 
 ## Scope

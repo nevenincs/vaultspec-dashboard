@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement camera pan and zoom with semantic-zoom thresholds and pointer hit-testing emitting hover, select, open events per G3.b
 
 ## Scope
@@ -52,4 +49,3 @@ Semantic-zoom thresholds (0.6, 1.6) are interim constants without
 hysteresis; if level flapping shows up in real interaction, add a hysteresis
 band - the discrete-level surface already isolates consumers from that
 change.
-

@@ -15,8 +15,6 @@ related:
 
 Add a single-worktree inspect path and parallelize the all-worktree enumeration in the ingest-git worktrees module, preserving the WorktreeInfo contract and the B5b status-thread bound.
 
-
-
 - [x] `P01.S01` - Add a public inspect_one(workspace, path) that resolves and inspects only the worktree matching path; `engine/crates/ingest-git/src/worktrees.rs`.
 - [x] `P01.S02` - Split enumerate into cheap descriptor collection then a bounded concurrent inspect fan-out, preserving the per-status thread bound; `engine/crates/ingest-git/src/worktrees.rs`.
 - [x] `P01.S03` - Add unit tests for inspect_one selection/None and parallel enumerate parity with the prior serial set; `engine/crates/ingest-git/src/worktrees.rs`.
@@ -49,12 +47,6 @@ bound. Grounded in the research findings F1-F4 and the ADR's accepted decision.
 
 ## Steps
 
-
-
-
-
-
-
 ## Parallelization
 
 P01 is the foundation and must land first: P02 depends on `inspect_one` existing,
@@ -63,7 +55,6 @@ enumerate) are independent and may be done in either order; S03 (tests) follows
 both. P02's two steps are independent of each other. P03 is strictly last.
 
 ## Verification
-
 
 The plan succeeds when:
 

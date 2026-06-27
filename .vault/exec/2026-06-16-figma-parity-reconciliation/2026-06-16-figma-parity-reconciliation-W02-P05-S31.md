@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the search tab from the binding SearchField Kit primitive over the preserved discover query, reading semantic-offline from tiers
 
 ## Scope

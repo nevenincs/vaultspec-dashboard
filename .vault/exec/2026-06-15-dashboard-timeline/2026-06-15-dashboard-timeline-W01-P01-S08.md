@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Register the lineage projection module in the engine-query crate root
 
 ## Scope

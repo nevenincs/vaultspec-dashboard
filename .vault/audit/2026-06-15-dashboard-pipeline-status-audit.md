@@ -10,8 +10,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-adr]]"
 ---
 
-
-
 # `dashboard-pipeline-status` audit: `production-data hardening verification`
 
 ## Scope
@@ -136,5 +134,3 @@ real browser against live production data, not only under the mock.
   candidate hardening for safe production read-only operation.
 
 ## Codification candidates
-
-

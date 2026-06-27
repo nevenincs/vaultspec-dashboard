@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Collect edges among the kept nodes from the shipped relation and tier edges with a graceful fallback when the derivation field is absent
 
 ## Scope

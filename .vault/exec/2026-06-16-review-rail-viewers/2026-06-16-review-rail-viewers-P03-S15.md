@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Map the required language set and the long tail to grammar loaders and a language_hint resolver shared by both viewers
 
 ## Scope

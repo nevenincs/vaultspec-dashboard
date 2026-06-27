@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement the rag-down text-match fallback with the explicit semantic-search-offline state per G8.a
 
 ## Scope
@@ -44,4 +41,3 @@ passes.
 The fallback matches stems and feature tags (what the vault-tree endpoint
 carries); body-text matching activates if the engine ever serves content
 excerpts in the tree.
-

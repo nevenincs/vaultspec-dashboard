@@ -3,12 +3,13 @@ tags:
   - '#plan'
   - '#keyboard-action-system'
 date: '2026-06-19'
-modified: '2026-06-22'
+modified: '2026-06-25'
 tier: L3
 related:
   - '[[2026-06-19-keyboard-action-system-adr]]'
   - '[[2026-06-19-keyboard-action-system-research]]'
 ---
+
 # `keyboard-action-system` plan
 
 Build one keymap registry that binds configurable chords to the existing action plane, harden the settings schema to persist and customize bindings, then enroll every surface.
@@ -128,7 +129,7 @@ Contribute right-rail ActionDescriptors (activity tab switch, focus search, work
 Full-gate verification, live chord verification in the running app, code review of the converged system, and codification of the one-keymap-registry rule after it holds across enrollment.
 
 - [x] `W04.P13.S35` - Run the full lint gate (just dev lint all) and the frontend and engine test suites to exit 0; `frontend/package.json`.
-- [ ] `W04.P13.S36` - Live-verify representative chords and a customized binding in the running app via chrome-devtools; `frontend/src/app/AppShell.tsx`.
+- [x] `W04.P13.S36` - Live-verify representative chords and a customized binding in the running app via chrome-devtools; `frontend/src/app/AppShell.tsx`.
 - [x] `W04.P13.S37` - Run a code review of the converged keyboard-action system and address findings; `.vault/audit/2026-06-19-keyboard-action-system-audit.md`.
 - [x] `W04.P13.S38` - Codify the one-keymap-registry rule once it holds across enrollment; `.vaultspec/rules/rules/keyboard-shortcuts-bind-through-the-one-keymap-registry.md`.
 
@@ -156,12 +157,6 @@ rail. The whole campaign honors the dashboard layer-ownership boundaries, the
 green claim.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

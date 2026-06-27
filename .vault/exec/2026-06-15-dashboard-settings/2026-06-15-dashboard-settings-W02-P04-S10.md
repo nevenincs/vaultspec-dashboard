@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Add the engine client method and types for GET /settings/schema
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 The stores client can read the schema and surface typed write errors.
 
 ## Notes
-

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Wire representation-mode and overlays from the view store into Stage scene commands
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Stage reads `activeRepresentationMode` and `overlays` and emits `set-representation-mode`/`set-overlays`; the lens re-query is the slice-key change. Composition is realized by these independent reactive inputs.
 
 ## Notes
-

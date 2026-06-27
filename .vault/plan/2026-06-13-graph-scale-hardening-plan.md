@@ -10,20 +10,11 @@ related:
   - '[[2026-06-13-graph-scale-hardening-research]]'
 ---
 
-
-
-
-
-
-
-
 # `graph-scale-hardening` plan
 
 ### Phase `P01` - Linear-ingest resolution (D1)
 
 Make cold index near-linear by resolving mentions against a once-built inventory and inverted index instead of a per-document tree walk and codebase re-read.
-
-
 
 - [x] `P01.S01` - Thread a once-built worktree inventory into resolution; `engine/crates/ingest-struct/src/resolve.rs`.
 - [x] `P01.S02` - Build inverted indices (basename, qualified-symbol, step-id) once and resolve each mention by lookup; `engine/crates/ingest-struct/src/resolve.rs`.
@@ -68,7 +59,6 @@ by memoizing on the immutable graph generation; P03 makes graph reads bounded
 the disciplines. P01 and P02 are pure performance work proven by tests staying
 green plus a `scale_bench` before/after; P03 changes the wire contract and is
 reviewed by both engine and GUI owners before P04 consumes it.
-
 
 ## Parallelization
 

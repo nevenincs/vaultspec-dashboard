@@ -11,8 +11,6 @@ related:
   - '[[2026-06-12-vaultspec-engine-adr]]'
 ---
 
-
-
 # `worktree-parse-performance` adr: `decouple the declared tier and parallelize structural parse for sub-5s per worktree` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -138,5 +136,3 @@ the mandate with margin.
   servable-parse critical path; a slow external tier is ingested asynchronously and folded in via
   deltas, reported as a degraded-then-upgraded tier, never blocking the interactive graph.
   *(Promote only after it holds across one full execution cycle, per the codify discipline.)*
-
-

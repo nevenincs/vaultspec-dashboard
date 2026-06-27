@@ -8,9 +8,6 @@ related:
   - "[[2026-06-17-management-engine-optimization-plan]]"
 ---
 
-
-
-
 # `management-engine-optimization` `W04.P07` summary
 
 Frontend backend confidence no longer comes from the authored TypeScript engine double.

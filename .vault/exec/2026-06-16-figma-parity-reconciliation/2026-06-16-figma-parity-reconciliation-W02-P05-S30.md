@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the work tab from the binding WorkTab Kit primitive over the preserved pipeline-status query
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # suppress or pause normal link-force simulation when temporal graph mode is active
 
 ## Scope

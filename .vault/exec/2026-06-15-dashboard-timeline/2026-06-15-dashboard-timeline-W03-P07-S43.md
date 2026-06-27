@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Retain and adapt the RangeSelect as the single date-range writer over the scroll-strip model
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Render per-setting rows through the control registry with label, description, group, and ordering from the schema
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 Every declared setting renders with no per-setting UI code.
 
 ## Notes
-

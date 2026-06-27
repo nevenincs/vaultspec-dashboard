@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Render the loading state from the selector's real pending flag tied to the query, never a perpetual spinner, going static under prefers-reduced-motion
 
 ## Scope

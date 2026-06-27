@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add the 14px grayscale-by-shape gate assertion for the phase-lane document marks
 
 ## Scope

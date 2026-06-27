@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Stop the vault filter flyout auto-opening on field focus
 
 ## Scope

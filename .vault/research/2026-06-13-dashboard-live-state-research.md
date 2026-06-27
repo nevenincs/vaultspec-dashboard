@@ -10,8 +10,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-live-state` research: `live and degradation state plane`
 
 The Data and State layer (`frontend/src/stores/`) is the frontend's nervous system: the

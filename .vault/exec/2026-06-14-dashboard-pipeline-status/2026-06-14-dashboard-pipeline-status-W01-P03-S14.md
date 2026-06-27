@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Carry real ADR status and plan tier as doc-node facets on the mock fixture corpus so an ADR mock row reads a real status word and a plan mock row reads a real tier
 
 ## Scope

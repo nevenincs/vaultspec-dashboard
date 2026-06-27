@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the engineKeys.planInterior cache key (plan node id) and the usePlanInterior query hook that calls engineClient.planInterior, disabled until a plan row is expanded, following the useNodeNeighbors enabled-on-id pattern
 
 ## Scope

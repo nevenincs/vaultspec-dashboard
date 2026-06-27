@@ -11,7 +11,6 @@ related:
   - '[[2026-06-12-vaultspec-engine-audit]]'
 ---
 
-
 # `vaultspec-engine` plan
 
 - [x] `S01` - Accept millisecond timestamps on as-of and diff inputs by resolving the latest commit at or before T on the scope ref, alongside the existing revision form; `engine/crates/engine-graph/src/asof.rs`.

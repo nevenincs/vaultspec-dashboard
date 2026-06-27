@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Author the lifecycle state marks in-family from Phosphor primitives honoring the active-versus-node-feature and broken-bolt collision constraints, each passing the 14px grayscale gate
 
 ## Scope

@@ -7,8 +7,6 @@ modified: '2026-06-15'
 related: []
 ---
 
-
-
 # `codebase-centralisation` audit: `rag-driven semantic centralisation health audit`
 
 ## Scope

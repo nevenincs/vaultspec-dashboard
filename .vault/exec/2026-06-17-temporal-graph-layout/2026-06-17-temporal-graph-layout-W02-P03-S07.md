@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # implement a pure temporal cluster layout helper for bucket anchors, stable ordering, and packed positions
 
 ## Scope

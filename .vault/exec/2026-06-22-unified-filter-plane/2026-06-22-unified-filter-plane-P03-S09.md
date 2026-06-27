@@ -9,9 +9,6 @@ related:
   - "[[2026-06-22-unified-filter-plane-plan]]"
 ---
 
-
-
-
 # Retire the canvas-local visibility seam: remove graphCategoryVisibility.ts, the hiddenCategories view-store slice, and the scene compose step in dashboardFilterChoices.ts
 
 ## Scope
@@ -20,8 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 ## Notes
-

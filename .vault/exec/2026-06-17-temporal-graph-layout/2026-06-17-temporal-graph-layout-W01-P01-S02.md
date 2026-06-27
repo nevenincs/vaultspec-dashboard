@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # preserve visible range and overscan as the sole temporal graph query boundary
 
 ## Scope

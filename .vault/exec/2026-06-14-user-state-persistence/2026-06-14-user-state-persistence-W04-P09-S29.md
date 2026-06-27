@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # restore the persisted session on load instead of recomputing the default scope
 
 ## Scope

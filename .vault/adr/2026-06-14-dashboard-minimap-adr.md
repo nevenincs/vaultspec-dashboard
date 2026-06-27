@@ -11,8 +11,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-minimap` adr: `minimap` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -264,4 +262,3 @@ None. The minimap introduces no new durable cross-surface constraint. Its govern
 rules - GPU is render-only, bounded-field rendering, app-chrome layer ownership, and
 views-project-over-one-model - are already codified project rules, applied here per
 surface rather than restated.
-

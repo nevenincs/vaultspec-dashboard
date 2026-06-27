@@ -9,9 +9,6 @@ related:
   - "[[2026-06-18-document-edit-hardening-plan]]"
 ---
 
-
-
-
 # File a gh issue and bootstrap a worktree in the vaultspec-core repo for a conformant vault document-rename verb
 
 ## Scope

@@ -10,8 +10,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-research]]"
 ---
 
-
-
 # `plan-structure-tolerance` adr: `tolerant plan-structure parsing for legacy plans` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -31,7 +29,6 @@ This ADR decides how the parser should treat legacy plans so the step tree is us
 them, without compromising the canonical path or the identity guarantees the wire depends
 on. It is a parser-semantics decision (it touches what entities the engine mints and their
 stable keys), which is why it is recorded as an ADR rather than a silent fix.
-
 
 ## Considerations
 
@@ -116,6 +113,3 @@ tree untouched.
   flat baseline behind an explicit heuristic, without disturbing the canonical path.
 
 ## Codification candidates
-
-
-

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-live-state-plan]]"
 ---
 
-
-
-
 # Extend deriveInputs to read injected live signals for streamLost and brokenLinkCount, keeping it pure
 
 ## Scope

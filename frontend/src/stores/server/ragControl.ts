@@ -118,6 +118,62 @@ export interface RagReadinessEnvelope {
   [key: string]: unknown;
 }
 
+// --- rag-ops aggregated size/state (W02) ---------------------------------------
+//
+// The engine computes the storage size rollup in Rust and serves it (plus the
+// verbatim index/qdrant/watcher/tenant blocks) as ONE `ops-state` snapshot, with
+// the Tier-2 Qdrant-native collection health as a separate gated drill-in. These
+// mirror that wire shape, deliberately tolerant (every field optional).
+
+/** One namespace in the storage rollup. */
+export interface RagStorageNamespace {
+  prefix: string;
+  /** Resolved project root, or null for an orphaned/unknown namespace. */
+  root: string | null;
+  /** `live` | `orphaned` | `unknown` | `unverifiable`. */
+  status: string;
+  points: number;
+  footprint_bytes: number;
+  collections: string[];
+}
+
+/** The Rust-computed storage size rollup over rag's storage survey. */
+export interface RagStorageRollup {
+  /** false in local-only mode (survey 409) or on a survey fault. */
+  available: boolean;
+  total_points: number;
+  total_footprint_bytes: number;
+  total_namespaces: number;
+  live_count: number;
+  orphaned_count: number;
+  namespaces: RagStorageNamespace[];
+}
+
+/** The aggregated rag-ops snapshot (`GET /ops/rag/ops-state`). */
+export interface RagOpsStateEnvelope {
+  index?: Record<string, unknown> | null;
+  qdrant?: Record<string, unknown> | null;
+  watcher?: Record<string, unknown> | null;
+  storage?: RagStorageRollup;
+  tenants?: Record<string, unknown> | null;
+}
+
+/** Tier-2 Qdrant-native collection health (`GET /ops/rag/collection-health`),
+ *  capability-gated on the Qdrant version: `supported:false` degrades honestly. */
+export interface RagCollectionHealthEnvelope {
+  supported: boolean;
+  qdrant_version?: string | null;
+  collection?: string;
+  reason?: string;
+  health?: {
+    status?: string | null;
+    points_count?: number | null;
+    indexed_vectors_count?: number | null;
+    segments_count?: number | null;
+    optimizer_status?: unknown;
+  };
+}
+
 /** The unwrapped brokered result: rag's value (or null when degraded) + tiers. */
 export interface BrokeredResult<T> {
   envelope: T | null;
@@ -209,6 +265,15 @@ export const ragControlKeys = {
     [...ragControlKeys.all, "projects", normalizeRagControlKeyPart(scope)] as const,
   readiness: (scope: unknown) =>
     [...ragControlKeys.all, "readiness", normalizeRagControlKeyPart(scope)] as const,
+  opsState: (scope: unknown) =>
+    [...ragControlKeys.all, "ops-state", normalizeRagControlKeyPart(scope)] as const,
+  collectionHealth: (scope: unknown, collection: unknown) =>
+    [
+      ...ragControlKeys.all,
+      "collection-health",
+      normalizeRagControlKeyPart(scope),
+      normalizeRagControlKeyPart(collection),
+    ] as const,
 };
 
 // --- pure interpreters (unit-tested without a render) --------------------------
@@ -329,6 +394,77 @@ export function deriveRagControlView(
     ready: readiness?.envelope?.ready,
     projects: projectSlots,
     hasProjects: projectSlots.length > 0,
+  };
+}
+
+// --- service lifecycle (machine-global; attach-never-own) ----------------------
+//
+// `server-start`/`server-stop` are MACHINE-GLOBAL (rag-service-management ADR
+// D1/D2): the dashboard manages whatever rag service is running on the machine
+// and starts its own only when one is genuinely absent. The engine's start path
+// gates on the running-predicate and ATTACHES to an already-running / machine-
+// owned service instead of erroring, so the lifecycle envelope carries a `status`
+// (`already_running` | `started` | `machine_owned` | `failed`) plus `attached`.
+// `stop` affects EVERY consumer (CLI, MCP, other dashboards).
+
+/** The interpreted outcome of a `server-start`: every status but `failed`/`unknown`
+ *  is a success — the dashboard is attached to the one machine service (whether it
+ *  started it, found it already running, or lost a start race to another consumer). */
+export type RagStartStatus =
+  | "already_running"
+  | "started"
+  | "machine_owned"
+  | "needs_install"
+  | "failed"
+  | "unknown";
+
+export interface RagStartOutcome {
+  status: RagStartStatus;
+  attached: boolean;
+  reason?: string;
+  output?: string;
+  pid?: number;
+  port?: number;
+}
+
+function readLifecycleString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function readLifecycleNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** Interpret a `server-start` envelope into the typed attach outcome. The engine
+ *  never 502s an already-running start, so the control UI reads success vs failure
+ *  from this `status`, not from a thrown transport error. */
+export function interpretRagStartEnvelope(
+  result: OpsResult | undefined,
+): RagStartOutcome {
+  const envelope =
+    result !== undefined &&
+    typeof result.envelope === "object" &&
+    result.envelope !== null
+      ? (result.envelope as Record<string, unknown>)
+      : undefined;
+  const statusRaw = readLifecycleString(envelope?.status);
+  const status: RagStartStatus =
+    statusRaw === "already_running" ||
+    statusRaw === "started" ||
+    statusRaw === "machine_owned" ||
+    statusRaw === "needs_install" ||
+    statusRaw === "failed"
+      ? statusRaw
+      : "unknown";
+  const isFailure =
+    status === "failed" || status === "needs_install" || status === "unknown";
+  return {
+    status,
+    attached: envelope?.attached === true || !isFailure,
+    reason: readLifecycleString(envelope?.reason),
+    output: readLifecycleString(envelope?.output),
+    pid: readLifecycleNumber(envelope?.pid),
+    port: readLifecycleNumber(envelope?.port),
   };
 }
 
@@ -614,6 +750,44 @@ export function useRagReadiness(scope: unknown) {
   return enabled ? query : { ...query, data: undefined };
 }
 
+/** The aggregated rag-ops size/state snapshot (W02): one bounded brokered read,
+ *  degrading via the tiers block. The console's overview consumes this. */
+export function useRagOpsState(scope: unknown) {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const enabled = normalizedScope !== null;
+  const query = useQuery({
+    queryKey: ragControlKeys.opsState(normalizedScope ?? ""),
+    queryFn: ({ signal }) =>
+      engineClient.opsRagGet<RagOpsStateEnvelope>("ops-state", undefined, signal),
+    enabled,
+    gcTime: READ_GC_MS,
+  });
+  return enabled ? query : { ...query, data: undefined };
+}
+
+/** Tier-2 Qdrant-native health for ONE collection (W02): the gated "needs repair"
+ *  drill-in. Enabled only when a non-empty collection name is supplied. */
+export function useRagCollectionHealth(scope: unknown, collection: unknown) {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const normalizedCollection = normalizeRagControlKeyPart(collection);
+  const enabled = normalizedScope !== null && normalizedCollection.length > 0;
+  const query = useQuery({
+    queryKey: ragControlKeys.collectionHealth(
+      normalizedScope ?? "",
+      normalizedCollection,
+    ),
+    queryFn: ({ signal }) =>
+      engineClient.opsRagGet<RagCollectionHealthEnvelope>(
+        "collection-health",
+        { collection: normalizedCollection },
+        signal,
+      ),
+    enabled,
+    gcTime: READ_GC_MS,
+  });
+  return enabled ? query : { ...query, data: undefined };
+}
+
 export function useRagControlView(scope: unknown): RagControlView {
   const normalizedScope = normalizeRagControlScope(scope);
   const serviceState = useRagServiceState(normalizedScope);
@@ -848,6 +1022,67 @@ export function useRagProjectEvict() {
         queryKey: [...ragControlKeys.all, "projects"],
       });
     },
+  });
+}
+
+/**
+ * Start the machine rag service with attach-never-own semantics: dispatch
+ * `server-start` (the engine gates on the running-predicate and attaches to an
+ * already-running / machine-owned service rather than erroring), then re-read the
+ * authoritative state so the UI reflects the now-attached service. Resolves with
+ * the raw `OpsResult`; the caller interprets it with `interpretRagStartEnvelope`.
+ * Offer this conditionally — only when rag is not already running (the running
+ * state is exposed by `deriveRagStatusView`).
+ */
+/** The bounded `server-start` flags the engine forwards (D5): local-only backend,
+ *  an explicit port, and auto-provisioning the managed Qdrant binary. */
+export interface RagStartArgs {
+  local_only?: boolean;
+  port?: number;
+  qdrant_auto_provision?: boolean;
+}
+
+export function useRagServiceStart(scope: unknown) {
+  const invalidate = useInvalidateAfterRagOpsRun(scope);
+  return useMutation({
+    mutationFn: (args?: RagStartArgs) =>
+      dispatchOps({
+        target: "rag",
+        verb: "server-start",
+        body: args && Object.keys(args).length > 0 ? args : undefined,
+      }),
+    onSuccess: () => invalidate("server-start"),
+  });
+}
+
+/**
+ * Stop the ONE machine rag service. This stops it for EVERY consumer on the
+ * machine (this dashboard, the CLI, MCP, other dashboards) — the UI copy must say
+ * so. Re-reads the authoritative state on completion.
+ */
+export function useRagServiceStop(scope: unknown) {
+  const invalidate = useInvalidateAfterRagOpsRun(scope);
+  return useMutation({
+    mutationFn: () => dispatchOps({ target: "rag", verb: "server-stop" }),
+    onSuccess: () => invalidate("server-stop"),
+  });
+}
+
+/** Run rag's `server doctor` readiness probe (diagnostics). Re-reads state. */
+export function useRagServiceDoctor(scope: unknown) {
+  const invalidate = useInvalidateAfterRagOpsRun(scope);
+  return useMutation({
+    mutationFn: () => dispatchOps({ target: "rag", verb: "server-doctor" }),
+    onSuccess: () => invalidate("server-doctor"),
+  });
+}
+
+/** Provision rag's managed dependencies (`install`) — the needs-install chain. */
+export function useRagServiceInstall(scope: unknown) {
+  const invalidate = useInvalidateAfterRagOpsRun(scope);
+  return useMutation({
+    mutationFn: () => dispatchOps({ target: "rag", verb: "server-install" }),
+    onSuccess: () => invalidate("server-install"),
   });
 }
 

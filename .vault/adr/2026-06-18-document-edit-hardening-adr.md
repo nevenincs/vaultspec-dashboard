@@ -10,8 +10,6 @@ related:
   - "[[2026-06-18-editor-dock-workspace-adr]]"
 ---
 
-
-
 # `document-edit-hardening` adr: `document edit hardening + bidirectional state coupling` | (**status:** `accepted`)
 
 ## Problem Statement

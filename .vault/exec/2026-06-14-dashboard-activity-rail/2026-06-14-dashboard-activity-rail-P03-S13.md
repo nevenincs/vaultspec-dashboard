@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Confirm the four-tab strip preserves keyboard tab order with the work tab reachable second in sequence
 
 ## Scope

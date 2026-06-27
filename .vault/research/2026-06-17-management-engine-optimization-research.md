@@ -7,8 +7,6 @@ modified: '2026-06-17'
 related: []
 ---
 
-
-
 # `management-engine-optimization` research: `Becca/Rust management-engine optimization discovery`
 
 This is the opening discovery pass for the Becca/Rust optimization campaign over the

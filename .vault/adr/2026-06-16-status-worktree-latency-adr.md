@@ -104,4 +104,3 @@ or onto a new dependency.
   worktree's `ahead_behind` walk becomes a concern (not needed now).
 
 ## Codification candidates
-

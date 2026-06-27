@@ -10,7 +10,6 @@ related:
   - '[[2026-06-16-document-editor-backend-research]]'
 ---
 
-
 # `document-editor-backend` plan
 
 ## Wave `W01` - vaultspec-core edit verbs

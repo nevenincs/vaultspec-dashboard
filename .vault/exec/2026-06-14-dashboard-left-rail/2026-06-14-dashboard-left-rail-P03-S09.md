@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Make the filter visibly distinct from the global right-rail search pillar
 
 ## Scope

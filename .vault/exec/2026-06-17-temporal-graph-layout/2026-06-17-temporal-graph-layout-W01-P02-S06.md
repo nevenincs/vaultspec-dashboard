@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # test that the Timeline segment activates temporal graph mode without fetching outside the store layer
 
 ## Scope

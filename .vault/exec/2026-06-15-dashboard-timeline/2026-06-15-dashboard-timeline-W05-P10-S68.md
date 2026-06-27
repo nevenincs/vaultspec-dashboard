@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Wire the rebuilt Timeline into the AppShell layout
 
 ## Scope

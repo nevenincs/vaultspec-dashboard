@@ -8,9 +8,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # `user-state-persistence` `W01.P01` summary
 
 Wave `W01` summary (Phases `W01.P01` scaffold + store and `W01.P02` domain + tests; Steps

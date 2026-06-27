@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Run the engine and frontend test suites to green
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 All suites green (frontend ~1200 tests; engine conformance + unit).
 
 ## Notes
-

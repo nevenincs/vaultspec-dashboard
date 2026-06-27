@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Add registry validation producing typed error kinds for unknown key and type or constraint violation
 
 ## Scope
@@ -28,4 +25,3 @@ related:
 Writes are typed-validated, not silently accepted; the canonical stored form is returned.
 
 ## Notes
-

@@ -10,7 +10,6 @@ related:
   - '[[2026-06-21-keyboard-navigation-research]]'
 ---
 
-
 # `keyboard-navigation` plan
 
 ## Wave `W01` - Foundation - the focus spine before any enrollment
@@ -153,12 +152,6 @@ arrow navigation lives in `FocusZone`. No engine endpoint, wire shape, or storag
 introduced.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

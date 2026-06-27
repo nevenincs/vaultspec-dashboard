@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Compute deterministic per-lens salience in the fixture corpus
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Corpus computes deterministic per-lens salience (`computeSalience`) from per-lens type prior + degree centrality + recency; status weights recency high, design low. Exposed as `salienceByLens`.
@@ -28,4 +24,3 @@ Corpus computes deterministic per-lens salience (`computeSalience`) from per-len
 Corpus computes deterministic per-lens salience (`computeSalience`) from per-lens type prior + degree centrality + recency; status weights recency high, design low. Exposed as `salienceByLens`.
 
 ## Notes
-

@@ -8,9 +8,6 @@ related:
   - "[[2026-06-17-management-engine-optimization-plan]]"
 ---
 
-
-
-
 # `management-engine-optimization` `W01.P02` summary
 
 Live backend conformance now fails loudly when the live engine is unavailable, and the

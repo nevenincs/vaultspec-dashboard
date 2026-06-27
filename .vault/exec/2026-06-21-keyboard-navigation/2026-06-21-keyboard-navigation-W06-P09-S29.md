@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Verify the command palette traps focus, navigates via activedescendant, activates on Enter, and restores focus on close
 
 ## Scope

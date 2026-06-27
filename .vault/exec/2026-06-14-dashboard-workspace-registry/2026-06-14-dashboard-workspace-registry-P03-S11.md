@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Change validate_scope to resolve a worktree against the active workspace's enumerable worktrees
 
 ## Scope

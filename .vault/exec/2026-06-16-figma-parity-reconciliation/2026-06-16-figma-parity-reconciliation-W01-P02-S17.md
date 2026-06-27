@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Mirror the historical text-diff route shape in the mock engine to match the live wire byte-for-byte
 
 ## Scope

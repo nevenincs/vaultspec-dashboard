@@ -12,8 +12,6 @@ related:
   - "[[2026-06-13-frontend-state-system-reference]]"
 ---
 
-
-
 # `user-state-persistence` adr: `co-resident orchestration layer for session state and workspace selection` | (**status:** `accepted`)
 
 ## Problem Statement

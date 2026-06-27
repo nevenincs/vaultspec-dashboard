@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Verify the four-tab law holds and every Overview row cross-links to file, node, and viewer with no inlined content
 
 ## Scope

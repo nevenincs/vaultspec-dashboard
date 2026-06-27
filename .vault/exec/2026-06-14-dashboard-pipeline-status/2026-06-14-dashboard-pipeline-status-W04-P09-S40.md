@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add accessible names to the ProgressRing, StatusPill, step check mark, and PipelineArc so progress, status, completion, and pipeline position read by text to assistive tech, not by hue alone
 
 ## Scope

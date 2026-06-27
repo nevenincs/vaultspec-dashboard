@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Build the control registry mapping a UI-hint control kind to its control component
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 Adding a setting reusing an existing kind needs no change here; a novel kind is one entry + one component.
 
 ## Notes
-

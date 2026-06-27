@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Add a captured-sample test proving mock mirrors live schema and value shape through the client adapter path
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 mock-mirrors-live-wire-shape proven in executable form.
 
 ## Notes
-

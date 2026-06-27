@@ -11,13 +11,6 @@ related:
   - '[[2026-06-16-graph-viz-quality-research]]'
 ---
 
-
-
-
-
-
-
-
 # `graph-viz-quality` plan
 
 Drive the dashboard graph backend to production-ready across all six layouts and build the quality-quantifying scorecard that proves it.

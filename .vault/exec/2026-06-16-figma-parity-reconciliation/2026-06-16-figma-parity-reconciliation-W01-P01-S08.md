@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Migrate the ~30 elevation usages from the six-level scale to the three Figma levels, smallest blast radius first
 
 ## Scope

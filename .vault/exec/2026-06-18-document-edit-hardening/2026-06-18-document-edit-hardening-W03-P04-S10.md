@@ -9,9 +9,6 @@ related:
   - "[[2026-06-18-document-edit-hardening-plan]]"
 ---
 
-
-
-
 # Extend post-write invalidation so the open editor content view re-reads after backend re-ingest
 
 ## Scope

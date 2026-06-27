@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # record the renderer verdict, PixiJS v8 confirmed or sigma.js v3 fallback invoked, against ADR row G6.b and flag any deviation to the ADR
 
 ## Scope

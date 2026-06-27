@@ -11,8 +11,6 @@ related:
   - "[[2026-06-15-dashboard-context-menus-adr]]"
 ---
 
-
-
 # `action-surface-mapping` audit: `frontend action-surface convergence audit`
 
 ## Scope
@@ -135,5 +133,3 @@ it is the one system where convergence is genuinely unfinished.
   *(Candidate only — promote after it holds across the re-scoped `action-surface-mapping`
   cycle, per the codify discipline. Recorded here as the durable constraint this audit
   surfaces.)*
-
-

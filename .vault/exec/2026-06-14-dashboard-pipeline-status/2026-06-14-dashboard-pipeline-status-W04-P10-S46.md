@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Run the full lint gate to exit 0 and vitest green, confirming the surface conforms to every state the dashboard-pipeline-status ADR names
 
 ## Scope

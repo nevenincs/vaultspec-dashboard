@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Render the vault browser and the code-tree code mode behind the toggle
 
 ## Scope

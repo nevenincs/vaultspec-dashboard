@@ -10,7 +10,6 @@ related:
   - '[[2026-06-14-node-visual-richness-research]]'
 ---
 
-
 # `node-visual-richness` plan
 
 ### Phase `P01` - engine status projection
@@ -82,12 +81,6 @@ projection in P01 is the one genuinely new engine surface and is additive over
 the already-settled ontology module.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

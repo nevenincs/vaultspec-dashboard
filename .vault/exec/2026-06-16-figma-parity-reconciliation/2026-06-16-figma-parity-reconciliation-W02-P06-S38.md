@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the settings dialog from its binding frame, schema-driven from the served settings registry
 
 ## Scope

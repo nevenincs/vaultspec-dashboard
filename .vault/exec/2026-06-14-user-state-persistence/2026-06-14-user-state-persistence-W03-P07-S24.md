@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # add a registry scope-switch and per-scope resume integration test
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-status-overview-plan]]"
 ---
 
-
-
-
 # Add subject to CommitEvent and serve GET /history with bounded commit list, tiers, truncated block
 
 ## Scope

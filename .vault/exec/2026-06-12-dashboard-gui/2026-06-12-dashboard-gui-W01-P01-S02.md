@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # run the integrated-GPU frame-time gate at 1k/5k and 10k/50k synthetic corpora and record results against the G6.b gate criteria
 
 ## Scope
@@ -59,4 +56,3 @@ audit recorded). The harness remains a five-minute manual task: `npm run dev`
 in `frontend/`, open `/spike.html?nodes=10000&edges=50000`, read the HUD.
 Flagged to team-lead rather than blocking the wave; the S03 verdict records
 this as the single open condition on G6.b.
-

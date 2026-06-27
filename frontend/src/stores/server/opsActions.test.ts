@@ -156,6 +156,31 @@ describe("ops dispatch adoption (B-1)", () => {
       }),
     ).toBe(true);
     expect(isOpsDispatchIntent({ target: "rag", verb: "server-start" })).toBe(true);
+    // server-start carries an optional bounded start-flag body (D5 arg pass-through).
+    expect(
+      isOpsDispatchIntent({
+        target: "rag",
+        verb: "server-start",
+        body: { qdrant_auto_provision: true },
+      }),
+    ).toBe(true);
+    expect(
+      isOpsDispatchIntent({
+        target: "rag",
+        verb: "server-start",
+        body: { port: 9000, local_only: true },
+      }),
+    ).toBe(true);
+    // A non-integer port or an unknown key is rejected before transport.
+    expect(
+      isOpsDispatchIntent({ target: "rag", verb: "server-start", body: { port: 1.5 } }),
+    ).toBe(false);
+    expect(
+      isOpsDispatchIntent({ target: "rag", verb: "server-start", body: { bogus: 1 } }),
+    ).toBe(false);
+    // doctor/install are argument-free lifecycle verbs.
+    expect(isOpsDispatchIntent({ target: "rag", verb: "server-doctor" })).toBe(true);
+    expect(isOpsDispatchIntent({ target: "rag", verb: "server-install" })).toBe(true);
     expect(
       isOpsDispatchIntent({ target: "rag", verb: "project-evict", mode: "write" }),
     ).toBe(false);

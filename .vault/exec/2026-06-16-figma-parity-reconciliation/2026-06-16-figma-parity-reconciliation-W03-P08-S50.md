@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the hover-card from the binding graph HoverCard frame 84:2 over the enriched node-evidence query
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Add a stores query hook for /workspaces and the active-workspace selector
 
 ## Scope

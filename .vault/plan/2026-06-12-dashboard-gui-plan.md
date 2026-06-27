@@ -12,7 +12,6 @@ related:
   - '[[2026-06-12-dashboard-foundation-research]]'
 ---
 
-
 # `dashboard-gui` plan
 
 ## Wave `W01` - scene and renderer core

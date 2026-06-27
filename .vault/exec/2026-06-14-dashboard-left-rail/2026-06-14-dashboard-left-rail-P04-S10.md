@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Enforce that every rail interaction emits only scope-select, node-select, or view-affordance intent through stores
 
 ## Scope

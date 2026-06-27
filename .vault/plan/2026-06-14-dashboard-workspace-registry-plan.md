@@ -10,7 +10,6 @@ related:
   - '[[2026-06-14-dashboard-left-rail-research]]'
 ---
 
-
 # `dashboard-workspace-registry` plan
 
 ### Phase `P01` - Backend registry and persistence
@@ -59,16 +58,8 @@ Verify: extend the scope-isolation tests to workspace swaps (no cross-project bl
 
 ## Description
 
-
 ## Steps
 
-
-
-
-
-
-
 ## Parallelization
-
 
 ## Verification

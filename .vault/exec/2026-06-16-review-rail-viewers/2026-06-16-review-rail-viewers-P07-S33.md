@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Run the full frontend lint gate and the engine fmt-plus-clippy gate to exit 0 including prettier format:check and tsc
 
 ## Scope

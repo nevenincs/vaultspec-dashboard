@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Render derivation arcs reusing the tier-as-treatment edge vocabulary
 
 ## Scope

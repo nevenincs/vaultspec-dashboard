@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Define the settings schema registry types: key, value type, default, scope eligibility, constraints, and UI-hint control kind
 
 ## Scope
@@ -28,4 +25,3 @@ related:
 A typed, serializable registry vocabulary in place as the foundation for the single source of truth.
 
 ## Notes
-

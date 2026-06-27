@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Unit-test composition sequencing keeps every lens viewable in every mode
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `composition.test.ts`: requery-then-relayout on lens, relayout-only on mode, requery-first when both change, no-op when unchanged, and EVERY lens viewable in EVERY mode (no forbidden combination). 6 tests green.
 
 ## Notes
-

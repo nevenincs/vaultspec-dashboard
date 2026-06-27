@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-salience-plan]]"
 ---
 
-
-
-
 # Add a salience module to engine-query exporting the per-lens scalar projection surface and its public types
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added the salience module to engine-query (registered in lib.rs as `pub mod salience`) exporting the per-lens projection surface: Backbone, PartialVectorBasis, LensBasis, StructuralRole, AggregatedExec, the tier-weight functions, and the AuthorityClass + LifecyclePhase ontology seam. CPU-bound; no GPU dependency.
 
 ## Notes
-

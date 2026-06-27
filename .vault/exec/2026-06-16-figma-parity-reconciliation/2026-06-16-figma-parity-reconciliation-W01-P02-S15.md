@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Carry the tiers degradation block on the historical text-diff route success and error envelopes through the shared helper
 
 ## Scope

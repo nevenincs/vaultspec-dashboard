@@ -11,13 +11,6 @@ related:
   - '[[2026-06-14-dashboard-command-palette-adr]]'
 ---
 
-
-
-
-
-
-
-
 # `dashboard-context-menus` plan
 
 Build one standardised, project-wide context-menu system as app-chrome over the existing dispatch backend, making actions a native React concept across all four regions.
@@ -45,7 +38,6 @@ closes the gate. No new model, engine endpoint, or wire client is introduced.
 ## Wave `W01` - platform foundation: action descriptor, menu state, menu host
 
 Deliver the reusable spine - the shared Action descriptor generalised from PaletteCommand, the menu open-state slice, the resolver registry, and the menu host surface (portal, positioning, dismiss, focus trap/restore, a11y). All later waves depend on this; backed by the context-menus ADR and the command-palette ADR.
-
 
 ### Phase `W01.P01` - shared Action descriptor and resolver registry
 

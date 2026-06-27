@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-status-overview-plan]]"
 ---
 
-
-
-
 # Component tests (anchor, expansion, commits, open-in-viewer, themes), full lint gate, code review
 
 ## Scope

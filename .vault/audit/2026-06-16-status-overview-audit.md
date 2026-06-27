@@ -8,8 +8,6 @@ related:
   - "[[2026-06-16-status-overview-adr]]"
 ---
 
-
-
 # `status-overview` audit: `Status-overview right rail — engine /history + dumb Status tab`
 
 ## Scope
@@ -62,5 +60,3 @@ PASS — no Critical/High issues; safe to merge. Both findings are LOW (optional
 ## Codification candidates
 
 - **Source:** the plan-derived open-work model honored across the engine projection, the stores query, and the dumb tab. **Rule slug:** `open-work-is-read-from-plan-steps-not-graph-density` (the ADR's own candidate). **Rule:** any surface reporting "what is being worked on" / open or in-flight work derives it from plan-document step state (the engine's `in_flight`/`progress` and `plan-interior` checkbox projection), never from graph connectivity, edge recency, or transport state. Per the codify discipline this is a candidate only — promote after the boundary has held across at least one full cycle (this is its first encounter, not yet a rule).
-
-

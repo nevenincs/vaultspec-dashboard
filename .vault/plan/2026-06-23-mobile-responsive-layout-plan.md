@@ -10,16 +10,6 @@ related:
   - '[[2026-06-22-mobile-responsive-layout-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 # `mobile-responsive-layout` plan
 
 ## Wave `W01` - Foundation
@@ -109,13 +99,6 @@ user approves the compact Figma frames.
 
 ## Steps
 
-
-
-
-
-
-
 ## Parallelization
-
 
 ## Verification

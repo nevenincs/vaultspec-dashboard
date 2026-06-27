@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Render the empty/no-history sparse state with an approachable explanation
 
 ## Scope

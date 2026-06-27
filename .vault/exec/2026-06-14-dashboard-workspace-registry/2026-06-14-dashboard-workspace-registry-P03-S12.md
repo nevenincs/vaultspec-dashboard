@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Let warm scope cells belong to any registered reachable workspace while preserving per-scope delta clocks
 
 ## Scope

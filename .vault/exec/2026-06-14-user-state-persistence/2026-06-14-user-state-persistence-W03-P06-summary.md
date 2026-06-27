@@ -8,9 +8,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # `user-state-persistence` `W03.P06` summary
 
 Wave `W03` summary (Phases `W03.P06` endpoints, `W03.P07` conformance + e2e tests; Steps

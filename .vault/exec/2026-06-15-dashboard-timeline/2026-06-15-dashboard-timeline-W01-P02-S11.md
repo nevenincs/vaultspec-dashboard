@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Build the lineage error response through the shared envelope helper so the tiers block rides the error envelope
 
 ## Scope

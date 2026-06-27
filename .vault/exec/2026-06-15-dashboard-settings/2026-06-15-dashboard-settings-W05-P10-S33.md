@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Reconcile the theme controller to the unified model: localStorage as pre-paint cache, server as authority, cache-then-reconcile on load
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 Theme folds into the unified model with the no-FOUC guarantee preserved.
 
 ## Notes
-

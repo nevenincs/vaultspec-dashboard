@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Migrate the ~309 text usages to the Figma role-named type scale, guarding the text-title versus text-heading collision
 
 ## Scope

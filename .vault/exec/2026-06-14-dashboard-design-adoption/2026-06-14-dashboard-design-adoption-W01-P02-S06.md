@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Build the dark theme as a [data-theme=dark] remap of the semantic tier with warm-tinted near-black neutrals, as an equal peer to light
 
 ## Scope

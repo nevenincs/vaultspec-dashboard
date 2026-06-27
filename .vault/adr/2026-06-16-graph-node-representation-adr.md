@@ -12,8 +12,6 @@ related:
   - "[[2026-06-16-code-artifact-nodes-adr]]"
 ---
 
-
-
 # `graph-node-representation` adr: `node representation wire completeness and semantic gate formalization` | (**status:** `proposed`)
 
 ## Problem Statement

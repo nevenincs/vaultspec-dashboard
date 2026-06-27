@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-live-state-plan]]"
 ---
 
-
-
-
 # Add the scope-keyed live-connection slice holding streamConnected, lastSeq, and brokenLinkCount
 
 ## Scope

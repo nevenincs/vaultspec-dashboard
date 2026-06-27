@@ -10,7 +10,6 @@ related:
 
 # `mobile-responsive-layout` adr: `mobile responsive layout` | (**status:** `accepted`)
 
-
 ## Problem Statement
 
 The dashboard has no responsive behaviour. The shell is a fixed desktop grid

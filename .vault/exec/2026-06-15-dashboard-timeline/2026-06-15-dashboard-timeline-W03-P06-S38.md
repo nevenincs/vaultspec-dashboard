@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add HEB bundling along feature/lineage containment with a disparity filter as a hardening step
 
 ## Scope

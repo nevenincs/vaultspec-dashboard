@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Refactor the left aside into the ordered hosted-slot stack separated by soft 1px rules
 
 ## Scope

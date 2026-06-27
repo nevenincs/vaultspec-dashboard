@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # swap the mock engine for the live serve origin behind the env flag and verify contract shapes against the real API, requires the engine plan serve wave landed
 
 ## Scope
@@ -75,4 +72,3 @@ over these (loose-scoping stance):
 S50's smoke (constellation render, scrub, search round-trip) can verify
 render and search against the live origin but NOT scrub until the
 asof/diff divergence is reconciled - flagged before starting S50.
-

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Verify the settings dialog traps Tab, orders its controls, and restores focus on close
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # add sprite-layer tests for the class-to-treatment mapping and token reads
 
 ## Scope

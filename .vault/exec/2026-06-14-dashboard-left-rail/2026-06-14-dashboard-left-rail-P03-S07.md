@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Add an in-rail filter scoped to the active browser mode that narrows the already-fetched listing client-side
 
 ## Scope

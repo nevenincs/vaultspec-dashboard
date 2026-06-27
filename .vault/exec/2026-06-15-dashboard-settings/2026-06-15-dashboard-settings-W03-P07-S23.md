@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Add control-kit render tests across all four control kinds
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 The control kit's contract is covered.
 
 ## Notes
-

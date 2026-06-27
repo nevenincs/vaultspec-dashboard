@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-live-state-plan]]"
 ---
 
-
-
-
 # Implement the graph-sync hook: subscribe the live graph channel, invalidate the constellation, track connection and lastSeq
 
 ## Scope

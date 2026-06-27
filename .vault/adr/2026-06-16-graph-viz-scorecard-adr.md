@@ -11,8 +11,6 @@ related:
   - "[[2026-06-16-graph-layout-catalog-adr]]"
 ---
 
-
-
 # `graph-viz-scorecard` adr: `graph visualization quality scorecard harness` | (**status:** `proposed`)
 
 ## Problem Statement

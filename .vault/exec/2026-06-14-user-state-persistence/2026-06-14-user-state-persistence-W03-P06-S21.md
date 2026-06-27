@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # wire the new routes into the router and the bearer-gated API prefixes
 
 ## Scope

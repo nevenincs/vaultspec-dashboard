@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Extend mockEngine to serve the schema route and typed values byte-for-byte as the live engine
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 The mock serves the schema + typed errors identically to live.
 
 ## Notes
-

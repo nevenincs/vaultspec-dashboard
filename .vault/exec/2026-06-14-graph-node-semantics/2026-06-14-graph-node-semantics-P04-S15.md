@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # read the generated-by label from the exec id container path
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `stem_is_exec_record` reading the W##/P##/S## (and -summary) container path; the exec container signal assigns generated-by, winning over heuristics.
@@ -28,4 +24,3 @@ Added `stem_is_exec_record` reading the W##/P##/S## (and -summary) container pat
 {OUTLINE}
 
 ## Notes
-

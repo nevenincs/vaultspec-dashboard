@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the code tree browser from the binding CodeTree Kit primitive over the preserved code-selection store
 
 ## Scope

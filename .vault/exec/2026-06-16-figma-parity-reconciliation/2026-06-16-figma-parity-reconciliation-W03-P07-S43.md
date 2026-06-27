@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rewire the category color reads to literal-hex scene tokens resolvable by getComputedStyle
 
 ## Scope

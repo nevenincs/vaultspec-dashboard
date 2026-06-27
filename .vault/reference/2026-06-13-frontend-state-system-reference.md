@@ -11,8 +11,6 @@ related:
   - "[[2026-06-12-dashboard-gui-adr]]"
 ---
 
-
-
 # `frontend-state-system` reference: `frontend state system blueprint`
 
 The authoritative blueprint of the frontend's complete state system - the system that

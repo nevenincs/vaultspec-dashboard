@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Register the route and add it to CONTRACT_ROUTES, bearer-gated by the existing middleware
 
 ## Scope

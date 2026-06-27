@@ -8,8 +8,6 @@ related:
   - '[[2026-06-20-left-rail-top-adr]]'
 ---
 
-
-
 # `left-rail-top` research: `Left rail top: scope, search, and filter grounded reality`
 
 The left rail's top area — the project/worktree picker, the search bar, and the

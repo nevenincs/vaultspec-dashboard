@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Add the optional workspace= parameter to /map defaulting to the active workspace with unchanged single-workspace behaviour
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # build the inspector with metadata, content preview, evidence, correlated commits, and the per-tier edge list with unfold-on-selection per G2.b and G3.c
 
 ## Scope
@@ -51,4 +48,3 @@ exists). Rendering what IS available: metadata, evidence documents, code
 locations with resolution state, and correlated commits now including the
 correlating rule attribution (finding 028, with a mock fixture carrying
 it).
-

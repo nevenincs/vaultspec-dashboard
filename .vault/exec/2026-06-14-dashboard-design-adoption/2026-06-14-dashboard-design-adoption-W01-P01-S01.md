@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Author the intent-free OKLCH primitive lightness/chroma/hue ramps (neutral, accent, tier, and state hue families) as the base ramp tokens
 
 ## Scope

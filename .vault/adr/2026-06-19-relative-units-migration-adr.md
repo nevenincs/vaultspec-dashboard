@@ -8,8 +8,6 @@ related:
   - "[[2026-06-19-relative-units-migration-research]]"
 ---
 
-
-
 # `relative-units-migration` adr: `px-to-relative units migration` | (**status:** `accepted`)
 
 ## Problem Statement

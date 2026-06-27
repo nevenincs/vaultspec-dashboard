@@ -14,8 +14,6 @@ related:
   - "[[2026-06-15-dashboard-node-graph-stability-adr]]"
 ---
 
-
-
 # `resource-hardening` adr: `engine resource-safety + security hardening (performance-sweep wave)` | (**status:** `accepted`)
 
 ## Problem Statement

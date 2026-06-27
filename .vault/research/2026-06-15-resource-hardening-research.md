@@ -14,8 +14,6 @@ related:
   - '[[2026-06-15-dashboard-node-graph-stability-adr]]'
 ---
 
-
-
 # `resource-hardening` research: `resource exhaustion + memory-leak audit and hardened-backend campaign`
 
 The dashboard was reported to critically exhaust machine memory, GPU VRAM, and

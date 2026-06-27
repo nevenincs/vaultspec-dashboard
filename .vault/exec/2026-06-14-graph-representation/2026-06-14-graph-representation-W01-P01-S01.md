@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Add salience optional float and embedding to EngineNode with integration-seam note
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added optional `salience` (per-lens float) and `embedding` (number[]) to `EngineNode` with integration-seam notes naming the graph-node-salience and graph-node-semantics producers. Typecheck green.
@@ -28,4 +24,3 @@ Added optional `salience` (per-lens float) and `embedding` (number[]) to `Engine
 Added optional `salience` (per-lens float) and `embedding` (number[]) to `EngineNode` with integration-seam notes pointing at graph-node-salience and graph-node-semantics producers. Typecheck green.
 
 ## Notes
-

@@ -9,8 +9,6 @@ related:
   - "[[2026-06-22-action-surface-mapping-audit]]"
 ---
 
-
-
 # `action-surface-mapping` reference: `action coverage grid`
 
 The single source of truth for action-verb enrollment across the three planes — the

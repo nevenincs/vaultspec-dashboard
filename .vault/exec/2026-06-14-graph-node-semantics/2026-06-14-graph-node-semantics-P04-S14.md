@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # add a derivation-label function from relation, doc_type pair, and provenance
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `derivation_label` inferring grounds/authorizes/generated-by/aggregates/reviews/promoted-from from relation, endpoint doc types, and provenance; temporal/semantic edges carry no label.
@@ -28,4 +24,3 @@ Added `derivation_label` inferring grounds/authorizes/generated-by/aggregates/re
 {OUTLINE}
 
 ## Notes
-

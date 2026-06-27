@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Widen the wholesale scope reset to also clear the cached worktree set on a workspace swap
 
 ## Scope

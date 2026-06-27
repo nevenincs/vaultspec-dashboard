@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Add hierarchical edge bundling geometry along the feature containment
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `edgeBundling.ts`: hierarchical edge bundling control points routing context edges through cluster centroids (beta 0.85), with bezier sampling and centroid helpers.
 
 ## Notes
-

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # project rule nodes from the rules tree as authority law with active state
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `project_rules` projecting `.vaultspec/rules/rules/*.md` into rule species nodes (authority law, active/superseded lifecycle), never as vault documents.
@@ -28,4 +24,3 @@ Added `project_rules` projecting `.vaultspec/rules/rules/*.md` into rule species
 {OUTLINE}
 
 ## Notes
-

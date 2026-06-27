@@ -10,7 +10,6 @@ related:
   - '[[2026-06-17-management-engine-optimization-research]]'
 ---
 
-
 # `management-engine-optimization` plan
 
 ## Wave `W01` - live gates and baseline measurement
@@ -93,12 +92,6 @@ directly and must not use fakes, stubs, mocks, monkeypatches, skips, xfails, or 
 business logic as a passing signal.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

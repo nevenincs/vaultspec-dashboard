@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the list/row ARIA semantics and a single polite live region announcing the settled outcome (in-flight count, empty, degraded, loading) so a screen reader hears the state without sighted scanning, mirroring the SearchTab live-region pattern
 
 ## Scope

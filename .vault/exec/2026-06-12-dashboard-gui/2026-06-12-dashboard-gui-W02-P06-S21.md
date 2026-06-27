@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # render the initial feature constellation with engine-aggregated meta-edges per G3.a and G3.d
 
 ## Scope
@@ -68,4 +65,3 @@ payload mirroring contract §4) and the renderer-side `command` member on
 (topology rebuild) while nodes fade per G3.f; edge fading is a noted
 refinement. Pinned nodes are visually fixed by overriding layout output
 per frame rather than constraining the FA2 worker - a v1 simplification.
-

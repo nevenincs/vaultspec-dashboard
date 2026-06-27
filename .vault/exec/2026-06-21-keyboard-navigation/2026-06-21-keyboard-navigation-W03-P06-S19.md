@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Define the document/code viewer focus model (scrollable region focusable, internal controls in order)
 
 ## Scope

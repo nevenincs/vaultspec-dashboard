@@ -9,8 +9,6 @@ related:
   - "[[2026-06-22-global-context-actions-adr]]"
 ---
 
-
-
 # `background-context-menus` adr: `background context menus for the rail and timeline app-chrome escape hatches` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -97,5 +95,3 @@ because nested row markup can make `currentTarget` checks brittle.
   region-specific background verb without a new kind.
 
 ## Codification candidates
-
-

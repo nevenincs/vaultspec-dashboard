@@ -9,8 +9,6 @@ related:
   - "[[2026-06-13-dashboard-live-state-adr]]"
 ---
 
-
-
 # `dashboard-live-state` audit: `live and degradation state plane`
 
 ## Scope
@@ -105,5 +103,3 @@ lives in `stores/`, read by `app/degradation`, never hardwired) is well-supporte
 implementation and reinforces the platform ADR's `platform-owns-mechanism-not-vocabulary`
 candidate; both are recorded, not promoted, to revisit when a second feature exercises
 the live-connection state.
-
-

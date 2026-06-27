@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-code-tree-plan]]"
 ---
 
-
-
-
 # Add a stores query hook for /file-tree with lazy per-directory fetch and per-scope cache
 
 ## Scope

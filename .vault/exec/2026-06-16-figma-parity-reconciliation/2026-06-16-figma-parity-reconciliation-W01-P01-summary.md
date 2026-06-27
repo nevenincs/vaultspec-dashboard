@@ -8,9 +8,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # `figma-parity-reconciliation` `W01.P01` summary
 
 Phase W01.P01 closed the non-color DTCG token pipeline and adopted the binding Figma foundation across type, radius, elevation, and spacing. All ten Steps (S01 to S10) are closed. The four foundation families are now authored as DTCG sources and generate mechanically into the marked stylesheet region exactly as color already does, the Figma mirror carries them alongside color, Inter and JetBrains Mono are bound as the identity faces, and every divergent usage was reconciled to the Figma scale.

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # run the full lint gate and the engine and frontend test suites to green
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the stage minimap widget from its binding frame over the preserved scene viewport state
 
 ## Scope

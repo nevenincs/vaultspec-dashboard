@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-semantics-plan]]"
 ---
 
-
-
-
 # verify the additive wire delta is honored on success and error envelopes
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Verified the additive wire delta in conformance.rs: authority_class/aggregate on nodes, derivation alongside relation on the plan->adr edge, the derivation key on every edge, and the tiers block on the success envelope.
@@ -28,4 +24,3 @@ Verified the additive wire delta in conformance.rs: authority_class/aggregate on
 {OUTLINE}
 
 ## Notes
-

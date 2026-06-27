@@ -9,9 +9,6 @@ related:
   - "[[2026-06-18-document-edit-hardening-plan]]"
 ---
 
-
-
-
 # Live-verify a brokered set-body write succeeds against the pinned core and a missing-verb core degrades with a tiered advisory not an exit-2 passthrough
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Emit node selection intent on activating a plan row, calling the existing selectNode seam with the plan's stable node id so the stage and inspector reflect it, mirroring the SearchTab result-activation path
 
 ## Scope

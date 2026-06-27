@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # implement the session model for active workspace and scope and per-scope folder and feature-tag contexts and recents
 
 ## Scope

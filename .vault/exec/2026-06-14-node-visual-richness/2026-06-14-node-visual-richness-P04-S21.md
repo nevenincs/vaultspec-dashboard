@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # Extend the hover-bloom card with per-document-type content + category-accent strip (Figma 110:2), derived purely from the wire projection
 
 ## Scope

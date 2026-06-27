@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # implement the scope registry with lazy build and LRU working-set cap and eviction
 
 ## Scope

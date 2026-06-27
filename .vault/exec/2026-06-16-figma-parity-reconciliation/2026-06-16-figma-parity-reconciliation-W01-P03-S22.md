@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Validate the full Code Connect map parses with zero errors via figma connect parse, leaving publish as the human's gated step
 
 ## Scope

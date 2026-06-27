@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add the playhead slider role naming LIVE or the current ISO instant
 
 ## Scope

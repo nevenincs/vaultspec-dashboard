@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Enroll the right-rail list rows (plans/PRs/issues/commits) onto FocusZone roving with Enter to open
 
 ## Scope

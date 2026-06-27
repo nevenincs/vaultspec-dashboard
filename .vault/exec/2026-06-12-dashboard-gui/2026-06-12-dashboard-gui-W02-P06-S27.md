@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement node pinning, layout-fixed and always-labelled, with client-side persistence per G5.d
 
 ## Scope
@@ -46,4 +43,3 @@ eslint, vitest (132 passed), prettier; production build passes.
 The pin affordance is currently the seam event (field context paths) plus
 the store API the palette (S43) and inspector (S42) will call; a dedicated
 on-stage pin button rides the island chrome later if wanted.
-

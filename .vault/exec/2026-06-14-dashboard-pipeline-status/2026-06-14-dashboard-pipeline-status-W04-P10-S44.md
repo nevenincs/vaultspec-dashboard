@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add render tests asserting activating a plan row, an ADR row, and a step row each emit the expected selectNode intent through the selection seam
 
 ## Scope

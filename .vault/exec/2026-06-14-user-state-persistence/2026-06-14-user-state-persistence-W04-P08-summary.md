@@ -8,9 +8,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # `user-state-persistence` `W04.P08` summary
 
 Wave `W04` summary (Phases `W04.P08` client + queries, `W04.P09` restore + persistence,

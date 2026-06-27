@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Roundtrip-test registry persistence and corrupt-store recreation
 
 ## Scope

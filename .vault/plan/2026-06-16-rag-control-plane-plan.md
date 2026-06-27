@@ -10,19 +10,11 @@ related:
   - '[[2026-06-16-rag-control-plane-research]]'
 ---
 
-
-
-
-
-
-
-
 # `rag-control-plane` plan
 
 ### Phase `P01` - rag-client bounded HTTP control module
 
 Extend the rag-client crate with a bounded HTTP control client that reaches rag's management API verb-by-verb, each carrying a per-verb wall-clock budget plus a body cap and returning a typed RagError, mirroring the vectors.rs discipline; engine adds no rag semantics.
-
 
 Broker rag's full job-based control surface to the frontend through one tiers-honest `/ops/rag/*` namespace, with a semantic freshness epoch so downstream semantic builds invalidate correctly.
 
@@ -117,12 +109,6 @@ consuming only stores hooks. `P06` drives the whole loop against the live rag se
 Qdrant and closes the definition of done with the full engine and frontend gate green.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

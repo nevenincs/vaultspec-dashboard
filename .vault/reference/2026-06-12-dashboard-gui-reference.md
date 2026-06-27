@@ -9,10 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
 # `dashboard-gui` reference: `glyph family design`
 
-
 ## Summary
-

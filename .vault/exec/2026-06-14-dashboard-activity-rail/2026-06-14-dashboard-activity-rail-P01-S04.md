@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Verify the now tab keeps NowStrip, OpsPanel, and Inspector, the changes tab keeps ChangesOverview, and the search tab keeps SearchTab unchanged in membership
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # build the command palette fronting navigation, lenses, and ops verbs on the committed primitives per G2.a and G5.c
 
 ## Scope
@@ -44,4 +41,3 @@ passed), prettier.
 
 Search-from-palette routes to the S44 rail tab rather than duplicating the
 search surface inside the modal.
-

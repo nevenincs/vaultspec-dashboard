@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # render the status-stamp channel mapping class to one treatment under LOD discipline
 
 ## Scope

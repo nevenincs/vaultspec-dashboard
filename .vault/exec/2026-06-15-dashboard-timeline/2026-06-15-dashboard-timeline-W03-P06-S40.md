@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add ego-highlight plus dim-the-rest on node hover
 
 ## Scope

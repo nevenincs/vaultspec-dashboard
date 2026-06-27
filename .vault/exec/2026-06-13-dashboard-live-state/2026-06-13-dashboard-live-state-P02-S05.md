@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-live-state-plan]]"
 ---
 
-
-
-
 # Compose the live-connection slice into the surface-states hook
 
 ## Scope

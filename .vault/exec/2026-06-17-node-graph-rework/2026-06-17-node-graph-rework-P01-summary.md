@@ -8,9 +8,6 @@ related:
   - "[[2026-06-17-node-graph-rework-plan]]"
 ---
 
-
-
-
 # `node-graph-rework` `P01` summary
 
 Tier 1 (basics) is complete and verified live. All eight steps `P01.S01`-`P01.S08`

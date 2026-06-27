@@ -7,8 +7,6 @@ modified: '2026-06-16'
 related: []
 ---
 
-
-
 # `document-editor-backend` research: `vault-conformant document editor backend`
 
 This research scopes the **backend** for the dashboard's Markdown document

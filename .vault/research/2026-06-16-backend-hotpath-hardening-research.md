@@ -7,8 +7,6 @@ modified: '2026-06-22'
 related: []
 ---
 
-
-
 # `backend-hotpath-hardening` research: `backend hot-path data-plane findings`
 
 A discovery sweep over the backend data plane (`engine/crates/**` and

@@ -10,20 +10,11 @@ related:
   - '[[2026-06-14-dashboard-left-rail-research]]'
 ---
 
-
-
-
-
-
-
-
 # `dashboard-code-tree` plan
 
 ### Phase `P01` - Backend listing endpoint
 
 Add a read-only GET /file-tree endpoint returning one directory level at a time over the active scope: metadata only (no file bytes), repository-ignore-aware, hard-capped and cursor-paginated, carrying the tiers block and degrading honestly on a remote-ref or structural-absent scope. Mirrors the /vault-tree shape with directory nesting.
-
-
 
 - [x] `P01.S01` - Add the read-only GET /file-tree?scope=&path=&cursor= route returning one directory level beside the vault-tree handler; `engine/crates/vaultspec-api/src/routes/query.rs`.
 - [x] `P01.S02` - Return per child the repo-relative path, kind dir or file, has_children hint, and code:<path> node id, metadata only with no bytes; `engine/crates/vaultspec-api/src/routes/query.rs`.
@@ -59,17 +50,8 @@ Verify: bounded reads truncate and paginate honestly, gitignore exclusion and wo
 
 ## Description
 
-
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 
-
 ## Verification
-

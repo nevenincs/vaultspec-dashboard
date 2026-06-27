@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Verify the search palette mirrors the command palette focus contract
 
 ## Scope

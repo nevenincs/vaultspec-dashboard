@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the compact PipelineArc component rendering the research-to-adr-to-plan-to-execute-to-review-to-codify arc, positioning the current in-flight artifacts within it so the operator reads where in the pipeline the work sits
 
 ## Scope

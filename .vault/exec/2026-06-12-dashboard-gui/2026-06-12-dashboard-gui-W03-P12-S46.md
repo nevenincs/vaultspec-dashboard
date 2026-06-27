@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement the degradation matrix states with a debug switch making every state reachable, and tests per G8.a
 
 ## Scope
@@ -61,4 +58,3 @@ from event serving) - both covered by mock tests. Stream-lost remains,
 DECLARED PLAINLY, a UI overlay: it models a transport condition (a lost
 connection), not served content, and its end-to-end form is the stream
 consumer's reconnect detection, which stays the named follow-up above.
-

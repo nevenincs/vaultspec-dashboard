@@ -7,8 +7,6 @@ modified: '2026-06-22'
 related: []
 ---
 
-
-
 # `relative-units-migration` research: `px-to-relative units migration`
 
 This research scopes a campaign to eliminate every hardcoded pixel value from the

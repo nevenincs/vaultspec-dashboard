@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # build the worktree picker over the map endpoint with corpus-bearing worktrees primary and bare refs dimmed per G2.a
 
 ## Scope
@@ -44,4 +41,3 @@ passed), prettier.
 The mock serves one corpus-bearing worktree and one degraded bare ref;
 multi-repository landscapes render as a flat ordered list until real map
 data motivates grouping by repository.
-

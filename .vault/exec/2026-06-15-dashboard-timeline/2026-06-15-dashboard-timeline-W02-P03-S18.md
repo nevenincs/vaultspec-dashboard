@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add the LineageArc wire type carrying stable id, src, dst, relation, derivation, tier, and confidence
 
 ## Scope

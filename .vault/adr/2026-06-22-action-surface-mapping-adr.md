@@ -11,8 +11,6 @@ related:
   - "[[2026-06-15-dashboard-context-menus-adr]]"
 ---
 
-
-
 # `action-surface-mapping` adr: `converge by coverage delta, not blanket re-enrollment` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -126,5 +124,3 @@ than re-deciding per element.
   codify discipline.)*
 
 ## Codification candidates
-
-

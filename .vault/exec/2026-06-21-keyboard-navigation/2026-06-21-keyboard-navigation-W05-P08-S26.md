@@ -9,9 +9,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-plan]]"
 ---
 
-
-
-
 # Enroll the timeline controls (playhead step/nudge, range) onto the model with keyboard operation
 
 ## Scope
@@ -31,4 +28,3 @@ related:
 ## Notes
 
 - The remaining timeline piece — the per-mark aria-activedescendant CURSOR (S25, replacing the now-contained sr-only enumeration) — is NOT built and `Timeline.tsx` is actively concurrently edited, so it stays open to avoid collision. Region-level keyboard nav (viewport pan/zoom + playhead + minimap) is already in place.
-

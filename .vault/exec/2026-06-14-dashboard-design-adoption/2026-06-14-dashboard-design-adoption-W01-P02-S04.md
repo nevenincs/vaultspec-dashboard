@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Wire Tailwind v4 @theme static for the color namespace so every color token emits to :root even when not class-referenced (the scene getComputedStyle requirement)
 
 ## Scope

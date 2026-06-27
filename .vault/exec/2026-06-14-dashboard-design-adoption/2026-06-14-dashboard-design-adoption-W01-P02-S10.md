@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Verify the scene's three token-reading files resolve their colors from the rebuilt token layer via getComputedStyle
 
 ## Scope

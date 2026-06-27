@@ -10,8 +10,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-settings` adr: `engine-owned served settings schema with modal UI` | (**status:** `accepted`)
 
 ## Problem Statement

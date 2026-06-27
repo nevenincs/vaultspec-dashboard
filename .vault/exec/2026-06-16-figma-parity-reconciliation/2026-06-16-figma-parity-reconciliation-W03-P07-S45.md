@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rewrite the flat-grey edge mesh render faithful to the binding Hero frame connection treatment
 
 ## Scope

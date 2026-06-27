@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Pass active lens into useGraphSlice from Stage
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Stage reads `activeLens` and passes it into `useGraphSlice`; a lens switch is a re-query (the composition rule).
@@ -28,4 +24,3 @@ Stage reads `activeLens` and passes it into `useGraphSlice`; a lens switch is a 
 Stage reads `activeLens` and passes it into `useGraphSlice`; a lens switch is a re-query (the composition rule).
 
 ## Notes
-

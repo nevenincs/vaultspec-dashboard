@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Unit-test country labels, hull computation, and overlay toggling
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `overlays.test.ts`: country-label centroid placement, feature-node tag, position-skipping, per-feature hulls, degenerate single-member bubble, convex hull interior-exclusion. 8 tests green.
 
 ## Notes
-

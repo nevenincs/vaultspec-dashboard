@@ -11,8 +11,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `rag-control-plane` adr: `engine-brokered rag service control plane` | (**status:** `proposed`)
 
 ## Problem Statement

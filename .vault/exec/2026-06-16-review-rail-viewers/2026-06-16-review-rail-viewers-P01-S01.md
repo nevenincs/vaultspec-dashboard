@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Add a MAX_CONTENT_BYTES ceiling and a content reader resolving a doc:/code: node id to its repo-relative path
 
 ## Scope

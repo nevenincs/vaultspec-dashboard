@@ -9,9 +9,6 @@ related:
   - "[[2026-06-18-document-edit-hardening-plan]]"
 ---
 
-
-
-
 # Resolve the brokered core invocation to the project-pinned environment instead of an arbitrary PATH binary
 
 ## Scope

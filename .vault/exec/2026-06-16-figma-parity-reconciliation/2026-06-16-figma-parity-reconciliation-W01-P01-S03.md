@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Author the DTCG elevation source with the Figma three-level scale raised, overlay, and popover
 
 ## Scope

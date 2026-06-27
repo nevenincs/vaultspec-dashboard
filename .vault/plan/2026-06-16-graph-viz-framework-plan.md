@@ -15,7 +15,6 @@ related:
   - '[[2026-06-16-missing-backend-inventory-research]]'
 ---
 
-
 # `graph-viz-framework` plan
 
 ## Wave `W01` - graph-force-stability: incremental reheat, held-alphaTarget interaction, drag-to-pin
@@ -275,12 +274,6 @@ wire response carries the tiers block through the shared envelope. Scene work st
 through the stores layer, and the stores layer remains the sole wire client.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

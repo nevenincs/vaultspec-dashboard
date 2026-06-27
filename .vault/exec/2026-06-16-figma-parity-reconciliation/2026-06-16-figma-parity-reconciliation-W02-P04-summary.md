@@ -8,9 +8,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # `figma-parity-reconciliation` `W02.P04` summary
 
 P04 rebuilt the shell frame and the left-rail browser family onto the canonical

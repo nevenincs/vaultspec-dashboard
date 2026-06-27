@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Add a CPU UMAP-lite projection over embeddings with connectivity fallback for embeddingless nodes
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `semanticLayout.ts`: a torch-free deterministic linear DR projection (PCA via power iteration over the embedding covariance) with a connectivity-fallback ring for embeddingless nodes, drawn honestly aside.
 
 ## Notes
-

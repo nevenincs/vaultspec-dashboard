@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # run frontend typecheck and focused vitest coverage for timeline canvas integration
 
 ## Scope

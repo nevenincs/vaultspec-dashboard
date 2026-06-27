@@ -8,9 +8,6 @@ related:
   - "[[2026-06-17-management-engine-optimization-plan]]"
 ---
 
-
-
-
 # `management-engine-optimization` `W03.P06` summary
 
 Commit, historical query, and semantic embedding hotpaths now carry narrower locks,

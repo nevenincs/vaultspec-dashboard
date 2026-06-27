@@ -11,8 +11,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-rag-manager` adr: `rag server manager` | (**status:** `accepted`)
 
 ## Problem Statement

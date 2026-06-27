@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Emit node selection intent on activating an ADR row, calling selectNode with the ADR's stable node id
 
 ## Scope

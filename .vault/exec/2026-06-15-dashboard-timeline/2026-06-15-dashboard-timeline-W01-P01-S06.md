@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add a unit test asserting self-consistency: the returned edge set contains only edges among the returned nodes
 
 ## Scope

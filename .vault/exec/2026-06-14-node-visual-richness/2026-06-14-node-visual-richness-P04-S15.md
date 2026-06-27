@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # build the hover-card DOM-island variety reusing the node anchor and island styling
 
 ## Scope

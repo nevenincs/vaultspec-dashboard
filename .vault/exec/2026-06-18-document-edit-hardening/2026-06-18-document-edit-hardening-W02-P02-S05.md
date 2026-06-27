@@ -9,9 +9,6 @@ related:
   - "[[2026-06-18-document-edit-hardening-plan]]"
 ---
 
-
-
-
 # Author vault rename: validate target stem, atomic rename, rewrite incoming related references, refresh modified, run checks and refuse on ERROR, emit json envelope with old and new path id and blob, accept expected-blob-hash and dry-run
 
 ## Scope

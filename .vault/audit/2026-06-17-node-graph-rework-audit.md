@@ -8,8 +8,6 @@ related:
   - "[[2026-06-17-node-graph-rework-plan]]"
 ---
 
-
-
 # `node-graph-rework` audit: Tier 1-4 rework code review (PASS)
 
 ## Scope

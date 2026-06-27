@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # implement the design token layer, paper-warm light and dark themes, fixed tier hues and treatments, type scale, motion durations, in Tailwind CSS-first config per G7.a and G7.d
 
 ## Scope
@@ -46,4 +43,3 @@ mirror these token values by documented convention; the runtime
 CSS-variable bridge into the scene layer rides the commissioned
 visual-language pass (G7.c family delivery) where the textures change
 anyway. Flagged as a known follow-up, not silent drift.
-

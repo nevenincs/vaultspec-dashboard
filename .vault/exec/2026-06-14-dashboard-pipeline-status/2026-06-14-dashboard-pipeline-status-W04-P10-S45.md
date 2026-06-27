@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add a grayscale-safe gate test asserting the ProgressRing, StatusPill, and step check mark stay distinct by shape and text at 14px with hue removed
 
 ## Scope

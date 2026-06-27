@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # retain graph edges with tier styling and ego highlight while keeping them non-authoritative for layout
 
 ## Scope

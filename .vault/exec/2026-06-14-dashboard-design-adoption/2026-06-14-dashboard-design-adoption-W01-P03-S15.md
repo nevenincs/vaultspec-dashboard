@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Define motion tokens with prefers-reduced-motion instant-swap, ensuring keyboard-initiated actions never animate
 
 ## Scope

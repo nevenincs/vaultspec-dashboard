@@ -12,7 +12,6 @@ related:
   - '[[2026-06-12-vaultspec-engine-adr]]'
 ---
 
-
 # `constellation-live-delta` plan
 
 - [x] `S01` - Add a granularity tag to the diff entry so document deltas declare their species; `engine/crates/engine-graph/src/diff.rs`.

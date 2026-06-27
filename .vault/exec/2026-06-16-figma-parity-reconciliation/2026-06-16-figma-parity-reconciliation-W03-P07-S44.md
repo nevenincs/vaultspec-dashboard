@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rewrite the circle salience sizing to the engine-served degree-of-interest salience
 
 ## Scope

@@ -11,8 +11,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-command-palette` adr: `command palette` | (**status:** `accepted`)
 
 ## Problem Statement

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Implement GET /nodes/{id}/content: validate scope, guard path traversal, read bytes via read_from_worktree/read_from_ref, derive language_hint from extension
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"
 ---
 
-
-
-
 # Add a WorkTab render test asserting the empty state renders when the work pillar is available with no in-flight work
 
 ## Scope

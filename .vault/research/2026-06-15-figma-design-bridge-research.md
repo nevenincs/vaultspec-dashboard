@@ -10,8 +10,6 @@ related:
   - '[[2026-06-14-dashboard-iconography-adr]]'
 ---
 
-
-
 # `figma-design-bridge` research: `Figma cross-connection and design-source backport`
 
 This research investigates how Figma cross-associates designs with local React

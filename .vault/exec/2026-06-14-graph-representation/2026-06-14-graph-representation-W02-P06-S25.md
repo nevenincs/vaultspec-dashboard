@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Unit-test the UMAP projection, fallback positions, and the gate verdict
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Added `semanticLayout.test.ts`: projection, fallback ring, determinism, cluster separation, and the MEASURED gate verdict. 8 tests green.
 
 ## Notes
-

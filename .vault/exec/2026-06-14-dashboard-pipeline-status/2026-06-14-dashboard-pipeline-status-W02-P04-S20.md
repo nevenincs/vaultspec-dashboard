@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Render the plan row: the ProgressRing, the plan title, the tier badge (L1-L4) reading the real plan-tier facet, the current pipeline phase, and a freshness stamp from the doc-node dates, using only the shared :root token tier and the two sanctioned icon families
 
 ## Scope

@@ -7,8 +7,6 @@ modified: '2026-06-18'
 related: []
 ---
 
-
-
 # `document-edit-hardening` research: `document edit hardening + bidirectional state`
 
 This research grounds the edit-hardening campaign in LIVE reality. The

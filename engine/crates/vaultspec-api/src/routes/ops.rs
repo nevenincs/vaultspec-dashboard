@@ -888,9 +888,10 @@ const RAG_LIFECYCLE_HEALTH_TIMEOUT: Duration = Duration::from_millis(1500);
 /// the exit code and the human stdout. Unlike [`run_sibling`], a non-zero exit is
 /// NOT auto-mapped to 502 — the lifecycle handler interprets it against the
 /// machine-global running-predicate (an already-running `server start` exits 1 by
-/// design and must ATTACH, not error). `server start`/`stop` carry NO `--json`
-/// flag on rag 0.2.25, so this runner does not append one (the shared
-/// [`run_sibling`] does, which is why status/doctor/install keep it).
+/// design and must ATTACH, not error). This runner appends NO `--json` itself (the
+/// shared [`run_sibling`] does); the `server start` caller adds `--json` to its own
+/// arg list version-tolerantly (retrying without it when an older rag rejects the
+/// option), and reads both streams so that retry heuristic can scan the error text.
 struct LifecycleRun {
     code: Option<i32>,
     stdout: String,
@@ -1054,7 +1055,43 @@ fn rag_start_args(body: &RagControlBody) -> Result<Vec<String>, String> {
         args.push("--port".into());
         args.push(port.to_string());
     }
+    // Request the structured start outcome so a non-zero exit carries rag's stated
+    // reason (machine_owned / port_in_use / qdrant_missing). An older rag that
+    // predates the JSON-start contract rejects this option, which the spawn path
+    // detects and retries without it (version-tolerant — no cross-repo ordering).
+    args.push("--json".into());
     Ok(args)
+}
+
+/// Whether a non-zero `server start` exit is an OLDER rag rejecting the unknown
+/// `--json` option (it predates the JSON-start contract), so the caller retries the
+/// plain start. The PRIMARY signal is text-independent: typer/click exits 2 on a
+/// usage error (an unknown option), and the engine adds exactly one option rag might
+/// not know - `--json` - while validating its own port, so an exit-2 from this
+/// invocation IS the `--json` rejection with near-certainty. A usage error means no
+/// service started, so the plain retry is always safe. The unknown-option text scan
+/// is a belt-and-suspenders for a non-standard exit code. rag's own `--json` FAILURE
+/// envelopes exit 1 (not 2), so this never misfires on a real start failure.
+fn rag_rejected_json(run: &LifecycleRun) -> bool {
+    if run.code == Some(2) {
+        return true;
+    }
+    let lower = run.combined().to_ascii_lowercase();
+    lower.contains("no such option") && lower.contains("--json")
+}
+
+/// rag's authoritative `server start --json` FAILURE envelope, when present:
+/// `{ok:false, error, data}`. Returns `(error, data)` for an `ok:false` envelope
+/// carrying a string `error`; `None` for a success/non-envelope output (an older
+/// rag's human text), so the caller degrades to the inferred reason.
+fn rag_start_failure(stdout: &str) -> Option<(String, Value)> {
+    let parsed: Value = serde_json::from_str(stdout).ok()?;
+    if parsed.get("ok").and_then(Value::as_bool) == Some(false) {
+        let error = parsed.get("error")?.as_str()?.to_string();
+        let data = parsed.get("data").cloned().unwrap_or(Value::Null);
+        return Some((error, data));
+    }
+    None
 }
 
 async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControlBody) -> ApiResult {
@@ -1083,7 +1120,19 @@ async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControl
     }
     // Genuinely absent (crashed is treated as absent for start purposes): start
     // our own.
-    let run = run_rag_lifecycle_capture(state, &cell.root, &rag_invocation(), &args_ref).await?;
+    let mut run =
+        run_rag_lifecycle_capture(state, &cell.root, &rag_invocation(), &args_ref).await?;
+    // Version-tolerant `--json`: an older rag that predates the JSON-start contract
+    // rejects the unknown option, so retry the plain start once without it. This
+    // keeps the adoption safe against any rag version (no cross-repo release order).
+    if run.code != Some(0) && rag_rejected_json(&run) {
+        let plain: Vec<&str> = args_ref
+            .iter()
+            .copied()
+            .filter(|a| *a != "--json")
+            .collect();
+        run = run_rag_lifecycle_capture(state, &cell.root, &rag_invocation(), &plain).await?;
+    }
 
     // Exit 0 is the CLI's authoritative "started" (or "already running") — rag only
     // exits non-zero on a real failure. A COLD start then loads the GPU models,
@@ -1140,17 +1189,32 @@ async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControl
             // install. Surface a distinct `needs_install` status (best-effort
             // heuristic) so the UI can offer `server qdrant install` or a retry with
             // `--qdrant-auto-provision`.
-            let lower = run.combined().to_ascii_lowercase();
+            let combined = run.combined();
+            let lower = combined.to_ascii_lowercase();
             let needs_install = lower.contains("qdrant")
                 && (lower.contains("install") || lower.contains("provision"));
+            let mut envelope = json!({
+                "status": if needs_install { "needs_install" } else { "failed" },
+                "attached": false,
+                "exit_code": run.code,
+                "reason": reason,
+                "output": combined,
+            });
+            // Authoritative failure cause from rag's `--json` start envelope (when the
+            // running rag supports it): rag's STATED error + data (e.g. the
+            // `machine_owned` holder pid, the `port_in_use` port), surfaced alongside
+            // the inferred reason. Read stdout then stderr (rag may emit the envelope
+            // on either). Absent on an older rag, so this is purely additive.
+            if let Some((rag_error, rag_data)) =
+                rag_start_failure(&run.stdout).or_else(|| rag_start_failure(&run.stderr))
+            {
+                envelope["rag_error"] = json!(rag_error);
+                if !rag_data.is_null() {
+                    envelope["rag_data"] = rag_data;
+                }
+            }
             Ok(super::envelope(
-                json!({ "envelope": {
-                    "status": if needs_install { "needs_install" } else { "failed" },
-                    "attached": false,
-                    "exit_code": run.code,
-                    "reason": reason,
-                    "output": run.combined(),
-                }}),
+                json!({ "envelope": envelope }),
                 super::degraded_tiers(cell, &reason),
                 None,
             ))
@@ -4240,5 +4304,82 @@ mod tests {
         assert_eq!(value["status"], "failed");
         assert_eq!(value["data"]["refused"], true);
         assert_eq!(value["data"]["errors"][0], "unknown doc type");
+    }
+
+    // --- rag-affordance-adoption: version-tolerant --json start --------------
+
+    #[test]
+    fn rag_start_args_appends_json_after_the_validated_flags() {
+        let args = rag_start_args(&RagControlBody::default()).unwrap();
+        assert_eq!(args, ["server", "start", "--json"]);
+
+        let with_flags = rag_start_args(&RagControlBody {
+            local_only: Some(true),
+            port: Some(9000),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            with_flags,
+            [
+                "server",
+                "start",
+                "--local-only",
+                "--port",
+                "9000",
+                "--json"
+            ]
+        );
+        // The port bound still rejects a privileged port before --json is reached.
+        assert!(
+            rag_start_args(&RagControlBody {
+                port: Some(80),
+                ..Default::default()
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn rag_rejected_json_detects_an_older_rag_unknown_option() {
+        // PRIMARY signal: a typer usage error exits 2 -> retry without --json, even
+        // with no recognizable text.
+        let exit2 = LifecycleRun {
+            code: Some(2),
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+        assert!(rag_rejected_json(&exit2));
+        // Belt-and-suspenders: the unknown-option text on a non-standard exit code.
+        let by_text = LifecycleRun {
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "Error: No such option: --json".to_string(),
+        };
+        assert!(rag_rejected_json(&by_text));
+        // A genuine rag --json FAILURE exits 1 and does not name --json: NOT a
+        // rejection (rag's structured failures exit 1, never 2).
+        let genuine = LifecycleRun {
+            code: Some(1),
+            stdout: r#"{"ok": false, "error": "port_in_use"}"#.to_string(),
+            stderr: String::new(),
+        };
+        assert!(!rag_rejected_json(&genuine));
+    }
+
+    #[test]
+    fn rag_start_failure_lifts_the_structured_reason() {
+        // rag's --json failure envelope: the stated error + data are surfaced.
+        let envelope = r#"{"ok": false, "command": "service.start",
+            "error": "machine_owned", "message": "...",
+            "data": {"holder_pid": 4242}}"#;
+        let (error, data) =
+            rag_start_failure(envelope).expect("an ok:false envelope yields a reason");
+        assert_eq!(error, "machine_owned");
+        assert_eq!(data["holder_pid"], 4242);
+        // A success envelope or human text yields no failure reason (degrade to the
+        // inferred reason).
+        assert!(rag_start_failure(r#"{"ok": true, "command": "service.start"}"#).is_none());
+        assert!(rag_start_failure("Service start failed\nPort in use").is_none());
     }
 }

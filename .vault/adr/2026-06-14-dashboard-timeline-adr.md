@@ -306,4 +306,3 @@ already-codified design language; its constraints — time-travel honesty, the s
 clock, the single date-range writer, layer ownership, and semantic present-only — are each
 already captured by existing project rules or the inherited design-language and
 iconography ADRs, so no new durable cross-session constraint originates here.
-

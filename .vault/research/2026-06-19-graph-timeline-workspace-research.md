@@ -11,8 +11,6 @@ related:
   - '[[2026-06-16-figma-frontend-rewrite-adr]]'
 ---
 
-
-
 # `graph-timeline-workspace` research: `unified graph and timeline workspace`
 
 The product owner asked to treat the headline node graph and the bottom timeline

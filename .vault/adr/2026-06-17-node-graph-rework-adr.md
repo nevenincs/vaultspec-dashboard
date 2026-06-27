@@ -8,8 +8,6 @@ related:
   - "[[2026-06-17-node-graph-rework-research]]"
 ---
 
-
-
 # `node-graph-rework` adr: cosmos as a pure renderer over a revived d3-force layout, with a configurable circular canvas bound | (**status:** `accepted`)
 
 ## Problem Statement

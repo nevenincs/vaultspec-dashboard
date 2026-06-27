@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Route theme writes through the settings model while updating the pre-paint cache
 
 ## Scope

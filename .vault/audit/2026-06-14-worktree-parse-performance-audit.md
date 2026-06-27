@@ -9,8 +9,6 @@ related:
   - '[[2026-06-14-user-state-persistence-audit]]'
 ---
 
-
-
 # `worktree-parse-performance` audit: `live before/after verification of sub-5s parse`
 
 ## Scope
@@ -84,7 +82,6 @@ the **declared-tier core subprocess ~16 s** on the synchronous critical path. To
   rewrite.
 
 ## Codification candidates
-
 
 This audit corroborates the one candidate the ADR already named -
 `external-subprocess-off-the-parse-critical-path` (no external sibling subprocess may sit

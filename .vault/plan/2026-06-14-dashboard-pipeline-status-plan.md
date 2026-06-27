@@ -10,13 +10,6 @@ related:
   - '[[2026-06-14-dashboard-activity-rail-research]]'
 ---
 
-
-
-
-
-
-
-
 # `dashboard-pipeline-status` plan
 
 Build the right rail `work` tab content - the in-flight pipeline-status surface - as app chrome plus one stores selector, consuming the pipeline wire, degrading honestly, never touching the engine.

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Render a contained, copy-toned, retry-able error scoped to the timeline
 
 ## Scope

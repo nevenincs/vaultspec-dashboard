@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # test same-day density, deterministic ordering, finite positions, and bucket separation
 
 ## Scope

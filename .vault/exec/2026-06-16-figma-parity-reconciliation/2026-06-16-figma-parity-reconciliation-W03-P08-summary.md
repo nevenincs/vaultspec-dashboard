@@ -8,9 +8,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # `figma-parity-reconciliation` `W03.P08` summary
 
 Phase W03.P08 rebuilt the three node states (default, selected, filtered-out), the

@@ -10,8 +10,6 @@ related:
   - '[[2026-06-16-graph-node-representation-adr]]'
 ---
 
-
-
 # `node-graph-rework` research: cosmos space model + the dormant d3-force driver
 
 This grounds a from-scratch, pipeline-driven rework of the dashboard's headline

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Amend the contract reference section five with the chosen lineage wire shape
 
 ## Scope

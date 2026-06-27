@@ -10,20 +10,11 @@ related:
   - '[[2026-06-14-dashboard-left-rail-research]]'
 ---
 
-
-
-
-
-
-
-
 # `dashboard-left-rail` plan
 
 ### Phase `P01` - Rail composition frame
 
 Refactor the left aside into the ordered hosted-slot stack (workspace switcher then worktree switcher then browser region then in-rail filter), separated by soft 1px rules, preserving the collapse model and the single top-to-bottom focus order and applying attenuated-chrome tokens. EXECUTE THIS PLAN LAST: it hosts the workspace switcher and code mode the other two features build, and edits the same shared files.
-
-
 
 - [x] `P01.S01` - Refactor the left aside into the ordered hosted-slot stack separated by soft 1px rules; `frontend/src/app/AppShell.tsx`.
 - [x] `P01.S02` - Preserve the collapse model and the single top-to-bottom focus order across the slots; `frontend/src/app/AppShell.tsx`.
@@ -65,17 +56,8 @@ Verify: the ordered rail stack renders with collapse and focus order, per-scope 
 
 ## Description
 
-
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 
-
 ## Verification
-

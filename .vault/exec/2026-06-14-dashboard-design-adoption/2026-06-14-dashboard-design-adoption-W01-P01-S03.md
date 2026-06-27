@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Remap the existing chrome and scene var() consumers onto the new semantic role tokens, keeping every current --color-* custom property resolving so no consumer breaks
 
 ## Scope

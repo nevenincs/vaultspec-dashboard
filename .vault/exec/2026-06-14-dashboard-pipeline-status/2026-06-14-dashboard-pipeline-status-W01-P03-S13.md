@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Serve the bounded plan-container interior from the mock engine for a plan node, emitting the PlanInterior envelope with rolled-up completion, per-step checked flags, headings, exec-record bindings, and the truncated block when the fixture exceeds the ceiling
 
 ## Scope

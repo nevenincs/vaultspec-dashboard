@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Rebuild the node-canvas scene to consume the new token layer via getComputedStyle and sanctioned domain marks per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
 
 ## Scope

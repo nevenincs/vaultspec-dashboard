@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-vaultspec-engine-plan]]"
 ---
 
-
-
-
 # Bound commit-event node-ids: filter to graph-known nodes and cap with a truncation count, and record the bound in the contract reference
 
 ## Scope
@@ -40,4 +37,3 @@ divergence 5 is green, and the contract section 5 carries the recorded bound
 
 Persisted event rows are written already-bounded, so the SQLite range read
 reports `truncated_node_ids: 0`; the field is skipped on the wire when zero.
-

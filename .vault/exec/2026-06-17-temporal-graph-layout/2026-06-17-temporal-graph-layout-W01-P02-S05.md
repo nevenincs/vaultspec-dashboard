@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # route the Timeline segment to temporal graph mode while retaining playhead and time-travel state
 
 ## Scope

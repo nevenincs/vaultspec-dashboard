@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-management-engine-optimization-plan]]"
 ---
 
-
-
-
 # Reclassify pure UI spy tests away from backend gates
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Add a deterministic doc-type to pipeline-phase mapping (research/reference to research, adr to adr, plan to plan, exec to exec, audit to review, rule to codify)
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-18-document-edit-hardening-plan]]"
 ---
 
-
-
-
 # Verify the resolved core advertises the required write verbs at the write boundary and degrade the write tier with an honest advisory on a capability miss
 
 ## Scope

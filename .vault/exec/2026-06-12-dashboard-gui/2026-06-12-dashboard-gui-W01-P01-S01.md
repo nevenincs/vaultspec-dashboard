@@ -9,9 +9,6 @@ related:
   - "[[2026-06-12-dashboard-gui-plan]]"
 ---
 
-
-
-
 # replace per-frame edge re-tessellation with mesh-based edge rendering in the spike harness per the G6.b spike finding
 
 ## Scope
@@ -50,4 +47,3 @@ step lands the rendering change only. The line width is the GL line-list
 minimum (1px device pixel) versus the prior 0.5px stroke — visually
 acceptable for the spike, irrelevant to the gate (the production field gets
 its own tier treatments in W01.P03).
-

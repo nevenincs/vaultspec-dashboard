@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add a consumer fidelity test that feeds a representative pipeline-status sample and a plan-interior sample through engineClient.pipelineStatus and engineClient.planInterior and asserts the adapted shape, proving mock-to-live parity per mock-mirrors-live-wire-shape
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Build the enum or segmented control with roving keyboard movement and a grayscale-safe active cue
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 The enum/segmented control.
 
 ## Notes
-

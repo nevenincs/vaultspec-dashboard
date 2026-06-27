@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-code-tree-plan]]"
 ---
 
-
-
-
 # Join code-row selection bidirectionally to code: stage nodes mirroring the doc:<stem> join
 
 ## Scope

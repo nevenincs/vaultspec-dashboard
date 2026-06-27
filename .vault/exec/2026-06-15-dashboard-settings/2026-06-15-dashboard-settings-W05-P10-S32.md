@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Add the theme registry entry as a scope-ineligible global enum setting
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 Theme is an engine-owned setting (the flagship wired one).
 
 ## Notes
-

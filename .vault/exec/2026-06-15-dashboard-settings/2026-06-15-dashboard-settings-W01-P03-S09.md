@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Run the Rust gate (cargo fmt --check, clippy, tests) to exit 0
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 Engine wave green (fmt + clippy exit 0; 8 unit tests + conformance pass).
 
 ## Notes
-

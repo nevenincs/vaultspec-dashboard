@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
 
-
-
-
 # Build the RepresentationModePanel control emitting mode intent into the view store
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Built `RepresentationModePanel.tsx`: three role=switch mode controls (Lucide marks, tokens), writes `setRepresentationMode` into the view store; Stage issues the scene command (single scene owner). Never fetches.
 
 ## Notes
-

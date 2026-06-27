@@ -121,4 +121,3 @@ Representation mode now rests at its default; time-travel remains available only
 through the playhead.
 
 ## Codification candidates
-

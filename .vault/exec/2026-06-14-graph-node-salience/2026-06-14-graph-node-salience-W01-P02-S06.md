@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-salience-plan]]"
 ---
 
-
-
-
 # Implement the Personalized PageRank partial-vector basis: a shared hub basis combined per biased teleport vector so per-lens vectors are cheap
 
 ## Scope
@@ -20,7 +17,6 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Implemented the Jeh-Widom PartialVectorBasis: one precomputed PPR vector per authority-class hub, with combine() linearly blending them. Because PPR is linear in the teleport, a per-lens teleport (a convex blend of hubs) is a cheap combine, not a fresh power iteration. Linearity unit-proven.
@@ -28,4 +24,3 @@ Implemented the Jeh-Widom PartialVectorBasis: one precomputed PPR vector per aut
 Implemented the Jeh-Widom PartialVectorBasis: one precomputed PPR vector per authority-class hub, with combine() linearly blending them. Because PPR is linear in the teleport, a per-lens teleport (a convex blend of hubs) is a cheap combine, not a fresh power iteration. Linearity unit-proven.
 
 ## Notes
-

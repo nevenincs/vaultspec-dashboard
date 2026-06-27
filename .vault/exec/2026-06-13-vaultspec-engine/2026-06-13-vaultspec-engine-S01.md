@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-vaultspec-engine-plan]]"
 ---
 
-
-
-
 # Accept millisecond timestamps on as-of and diff inputs by resolving the latest commit at or before T on the scope ref, alongside the existing revision form
 
 ## Scope
@@ -42,4 +39,3 @@ form still works). The GUI time-travel smoke leg is unblocked.
 Digit-only tokens are the sole timestamp trigger; a non-numeric token that fails
 rev-parse propagates the original revision error untouched. A timestamp older
 than the root commit errors explicitly rather than returning an empty graph.
-

@@ -8,8 +8,6 @@ related:
   - "[[2026-06-21-keyboard-navigation-research]]"
 ---
 
-
-
 # `keyboard-navigation` adr: `two-tier region focus model with a shared FocusZone and F6 pane cycling` | (**status:** `accepted`)
 
 ## Problem Statement

@@ -10,7 +10,6 @@ related:
   - '[[2026-06-17-dashboard-state-centralization-research]]'
 ---
 
-
 # `dashboard-state-centralization` plan
 
 ## Description

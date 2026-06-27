@@ -7,8 +7,6 @@ modified: '2026-06-22'
 related: []
 ---
 
-
-
 # `figma-parity-reconciliation` research: `Figma design parity and reconciliation`
 
 A design agent is authoring a binding design system and the dashboard surfaces in the

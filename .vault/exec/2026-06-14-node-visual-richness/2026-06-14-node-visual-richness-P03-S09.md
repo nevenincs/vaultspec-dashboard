@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # author the status-mark family of severity-dot fill levels and the tier notch
 
 ## Scope

@@ -3,19 +3,18 @@ tags:
   - '#plan'
   - '#editor-dock-workspace'
 date: '2026-06-18'
-modified: '2026-06-22'
+modified: '2026-06-25'
 tier: L2
 related:
   - '[[2026-06-18-editor-dock-workspace-adr]]'
   - '[[2026-06-18-editor-dock-workspace-research]]'
 ---
+
 # `editor-dock-workspace` plan
 
 ### Phase `P01` - Dependency and theming foundation
 
 Add dockview as a frontend dependency and bind its --dv-* surface to the OKLCH token tier so the dock chrome is themed, not bespoke, before any workspace is built.
-
-
 
 - [x] `P01.S01` - Add dockview to frontend dependencies and import its base stylesheet once; `frontend/package.json`.
 - [x] `P01.S02` - Author the dockview theme remap binding every --dv-* variable to the OKLCH token tier for light, dark, and high-contrast; `frontend/src/app/styles.css`.
@@ -74,8 +73,8 @@ Persist and restore the serialized dock layout plus tab metadata in engine dashb
 
 Wire the workspace into the shell, run the full lint gate and vitest green, and verify behaviour against the mandate without regressing the open figma-frontend-rewrite surfaces.
 
-- [ ] `P07.S28` - Run the full lint gate for frontend and the engine change to exit zero; `frontend/`.
-- [ ] `P07.S29` - Run the vitest suite green and fix regressions from the viewerTarget retirement; `frontend/`.
+- [x] `P07.S28` - Run the full lint gate for frontend and the engine change to exit zero; `frontend/`.
+- [x] `P07.S29` - Run the vitest suite green and fix regressions from the viewerTarget retirement; `frontend/`.
 - [x] `P07.S30` - Verify behaviour against the mandate for provisional and permanent tabs, dock survival, persist and restore, edit and save, and code read-only in the live app; `frontend/`.
 - [x] `P07.S31` - Confirm no regression to the open figma-frontend-rewrite surfaces and reconcile the shared AppShell touch; `frontend/src/app/AppShell.tsx`.
 
@@ -99,12 +98,6 @@ and writes still route through `/ops/core/*` to `vaultspec-core`. The editor bac
 the edit verbs.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

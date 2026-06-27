@@ -11,7 +11,6 @@ related:
   - '[[2026-06-14-dashboard-design-language-research]]'
 ---
 
-
 # `dashboard-design-adoption` plan
 
 ## Wave `W01` - Foundation - the OKLCH token tier and icon dependency base
@@ -193,12 +192,6 @@ chrome never fetches and never reads the raw `tiers` block, and surfaces remain 
 views projecting over the one model via stores selectors.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

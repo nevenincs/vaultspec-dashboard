@@ -9,22 +9,13 @@ related:
   - '[[2026-06-16-backend-hotpath-hardening-research]]'
 ---
 
-
 <!-- RETIRED: S05 -->
-
-
-
-
-
-
 
 # `backend-hotpath-hardening` plan
 
 ### Phase `P01` - engine: memoize the vault-doc basename lookup per generation
 
 Replace the per-request .vault tree walk in the content route with a basename index cached on the ScopeCell, built once per graph generation like the sibling caches.
-
-
 
 - [x] `P01.S01` - Add a generation-keyed doc-basename index cache field + accessor on ScopeCell mirroring doc_views_cache; `engine/crates/vaultspec-api/src/app.rs`.
 - [x] `P01.S02` - Build the basename index once (the existing tree walk) and look up doc paths from it in resolve_node_path; `engine/crates/vaultspec-api/src/routes/content.rs`.
@@ -46,17 +37,8 @@ Run the engine and frontend gates and pass code review.
 
 ## Description
 
-
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 
-
 ## Verification
-

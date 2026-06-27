@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-salience-plan]]"
 ---
 
-
-
-
 # Implement the weight-sensitivity sweep computing top-k Kendall-tau stability under +/- weight perturbation per lens
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Implemented the weight-sensitivity sweep: kendall_tau rank correlation plus weight_sensitivity_sweep, which perturbs each weight by +/-perturb, recomposes the API (reusing normalized criteria), and measures worst-case top-k Kendall-tau and overlap vs baseline. SweepResult exposes the STABILITY_FLOOR.
 
 ## Notes
-

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Author the v1 registry entries including the initial extendable setting set
 
 ## Scope

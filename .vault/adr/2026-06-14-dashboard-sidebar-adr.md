@@ -11,8 +11,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-sidebar` adr: `sidebar surface` | (**status:** `accepted`)
 
 ## Problem Statement

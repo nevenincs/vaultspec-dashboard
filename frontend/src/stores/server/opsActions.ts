@@ -62,6 +62,8 @@ export const OPS_WHITELIST: readonly OpsWhitelistEntry[] = [
 const OPS_RAG_CONTROL_VERBS = new Set([
   "server-start",
   "server-stop",
+  "server-doctor",
+  "server-install",
   "reindex",
   "watcher-start",
   "watcher-stop",
@@ -221,9 +223,26 @@ function hasOnlyKeys(
 }
 
 function isOpsRagControlBodyForVerb(verb: string, body: unknown): boolean {
+  // `server-start` carries an optional bounded start-flag body (D5 arg
+  // pass-through): local_only / port / qdrant_auto_provision, validated again on
+  // the engine. Empty is also valid.
+  if (verb === "server-start") {
+    if (isEmptyOpsBody(body)) return true;
+    if (!isRecord(body)) return false;
+    if (!hasOnlyKeys(body, ["local_only", "port", "qdrant_auto_provision"]))
+      return false;
+    return (
+      (body.local_only === undefined || typeof body.local_only === "boolean") &&
+      (body.port === undefined ||
+        (typeof body.port === "number" && Number.isInteger(body.port))) &&
+      (body.qdrant_auto_provision === undefined ||
+        typeof body.qdrant_auto_provision === "boolean")
+    );
+  }
   if (
-    verb === "server-start" ||
     verb === "server-stop" ||
+    verb === "server-doctor" ||
+    verb === "server-install" ||
     verb === "watcher-start" ||
     verb === "watcher-stop"
   ) {

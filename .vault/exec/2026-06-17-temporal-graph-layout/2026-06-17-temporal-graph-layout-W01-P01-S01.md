@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # add a temporal graph slice adapter that maps lineage nodes and arcs into scene nodes and edges
 
 ## Scope

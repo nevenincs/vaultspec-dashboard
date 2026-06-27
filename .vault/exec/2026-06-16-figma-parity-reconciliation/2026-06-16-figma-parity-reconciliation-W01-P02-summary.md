@@ -8,9 +8,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # `figma-parity-reconciliation` `W01.P02` summary
 
 Phase W01.P02 froze and documented the preserved stores plus SceneController contract as the rewrite API surface, enriched the node-evidence projection to the GUI shape, added the bounded read-only historical text-diff engine route with tiers carriage, and mock-mirrored both new wire shapes with byte-for-byte conformance tests. All eight Steps (S11 to S18) are closed. The two preserved layers (the Rust engine and `frontend/src/stores/`) stay consumed unchanged except through the reviewed enrichment; the engine work stays read-and-infer with no vault writes and no ref mutation.

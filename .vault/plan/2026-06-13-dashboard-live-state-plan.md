@@ -10,13 +10,6 @@ related:
   - '[[2026-06-13-dashboard-live-state-research]]'
 ---
 
-
-
-
-
-
-
-
 # `dashboard-live-state` plan
 
 Complete the unwired live and degradation plane of the Data and State layer: model live-connection state, surface the stream-lost and structural-broken degradation truths, and make LIVE mode reactive by stream-driven invalidation.

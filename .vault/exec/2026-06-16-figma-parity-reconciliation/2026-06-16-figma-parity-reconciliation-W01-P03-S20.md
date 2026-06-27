@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Author or update the Code Connect config naming the live file and the connect directory
 
 ## Scope

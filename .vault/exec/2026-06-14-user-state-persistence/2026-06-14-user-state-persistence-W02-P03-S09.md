@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-user-state-persistence-plan]]"
 ---
 
-
-
-
 # extract the single-graph serve fields into a per-scope cell struct
 
 ## Scope

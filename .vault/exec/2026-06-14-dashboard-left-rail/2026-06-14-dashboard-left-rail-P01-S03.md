@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"
 ---
 
-
-
-
 # Apply attenuated-chrome tokens so the rail cedes attention to the stage
 
 ## Scope

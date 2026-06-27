@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-settings-plan]]"
 ---
 
-
-
-
 # Build the string text control
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 The string control.
 
 ## Notes
-

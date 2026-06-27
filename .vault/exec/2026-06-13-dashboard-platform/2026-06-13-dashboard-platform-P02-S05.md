@@ -9,9 +9,6 @@ related:
   - "[[2026-06-13-dashboard-platform-plan]]"
 ---
 
-
-
-
 # Mount the app-level boundary as the last line in the app root
 
 ## Scope

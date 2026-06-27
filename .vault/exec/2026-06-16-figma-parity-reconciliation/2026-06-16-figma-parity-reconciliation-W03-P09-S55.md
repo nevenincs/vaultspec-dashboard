@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the Zoom and Navigate canvas controls per the binding Controls frame over the preserved camera state
 
 ## Scope

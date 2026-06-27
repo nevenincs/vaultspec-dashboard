@@ -9,9 +9,6 @@ related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"
 ---
 
-
-
-
 # teach the representation dispatcher to upload temporal seed positions to the Cosmos field
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
 ---
 
-
-
-
 # Re-skin the search surface to consume only the new semantic tokens and sanctioned icons per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
 ---
 
-
-
-
 # Rebuild the left rail container and rail filter from the binding LeftRail Kit primitive over the preserved browser-mode store
 
 ## Scope

@@ -10,7 +10,6 @@ related:
   - '[[2026-06-13-dashboard-optimization-research]]'
 ---
 
-
 # `dashboard-optimization` audit: `campaign-verification`
 
 ## Scope

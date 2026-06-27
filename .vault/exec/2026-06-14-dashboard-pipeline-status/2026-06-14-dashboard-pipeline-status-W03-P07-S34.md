@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Emit step navigation intent on activating a step row, calling selectNode with the step's bound exec-record node id so selecting a step jumps to its exec record through the same selection seam
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-graph-node-salience-plan]]"
 ---
 
-
-
-
 # Add a sweep test asserting top-k ordering stays stable under bounded perturbation for both launch lenses, failing if a lens top-k flips
 
 ## Scope
@@ -20,10 +17,8 @@ related:
 
 ## Description
 
-
 ## Outcome
 
 Sweep test asserting top-k overlap stays above the stability floor under +/-30% weight perturbation for BOTH launch lenses, failing if a lens top-k flips. Both lenses pass; this is the artifact that turns the lens-derived weights from magic numbers into tested ones.
 
 ## Notes
-

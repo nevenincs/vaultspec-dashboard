@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Render the per-capability designed placeholders gated on the CAPABILITY-served constants so an ADR row without real status and a plan row without the step tree show a designed placeholder rather than a broken control
 
 ## Scope

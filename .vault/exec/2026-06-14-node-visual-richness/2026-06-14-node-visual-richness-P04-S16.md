@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # render the compact card projection from a stores node-detail hook
 
 ## Scope

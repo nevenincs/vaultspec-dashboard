@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Make arcs reachable from their endpoints, announcing the relation and endpoints
 
 ## Scope

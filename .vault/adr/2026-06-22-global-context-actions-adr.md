@@ -3,12 +3,10 @@ tags:
   - '#adr'
   - '#global-context-actions'
 date: '2026-06-22'
-modified: '2026-06-22'
+modified: '2026-06-23'
 related:
   - "[[2026-06-22-global-context-actions-research]]"
 ---
-
-
 
 # `global-context-actions` adr: `global context-menu tail and Refresh as a shared state control` | (**status:** `accepted`)
 
@@ -125,7 +123,6 @@ of the tail preserves the read-and-infer safety the dashboard relies on.
   "inspect" or "report issue") would use.
 
 ## Codification candidates
-
 
 - **Rule slug:** `context-menu-actions-are-layered`.
   **Rule:** A context-menu action belongs to exactly one of three layers — a bespoke

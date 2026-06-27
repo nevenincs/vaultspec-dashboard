@@ -9,8 +9,6 @@ related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
 ---
 
-
-
 # `dashboard-design-adoption` audit: `W01 P01-P03 OKLCH token foundation review`
 
 ## Scope
@@ -92,5 +90,3 @@ sequencing can account for the same-feature-ADR requirement.
   `warmth-lives-in-tokens-not-decoration` only after the surface waves have held them.
 
 ## Codification candidates
-
-

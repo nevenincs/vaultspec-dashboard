@@ -22,7 +22,17 @@ function keyEvent(key: string): {
 }
 
 describe("stopScrollKeyPropagation", () => {
-  it.each(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End", " "])(
+  it.each([
+    "ArrowUp",
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight",
+    "PageUp",
+    "PageDown",
+    "Home",
+    "End",
+    " ",
+  ])(
     "stops the scroll key %s from bubbling to the global dispatcher (so the browser scrolls natively)",
     (key) => {
       const { event, stop, prevent } = keyEvent(key);

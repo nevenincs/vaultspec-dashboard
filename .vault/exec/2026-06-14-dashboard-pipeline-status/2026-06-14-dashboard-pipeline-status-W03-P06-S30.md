@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-pipeline-status-plan]]"
 ---
 
-
-
-
 # Add the grayscale-safe step check mark reading checked/unchecked by shape (a filled vs hollow mark) with hue redundant, distinct at 14px per the iconography gate
 
 ## Scope

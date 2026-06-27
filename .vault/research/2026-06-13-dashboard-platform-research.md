@@ -10,8 +10,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-adr]]"
 ---
 
-
-
 # `dashboard-platform` research: `frontend runtime substrate`
 
 The previous cycle shipped a feature-complete GUI (the `dashboard-gui` plans of

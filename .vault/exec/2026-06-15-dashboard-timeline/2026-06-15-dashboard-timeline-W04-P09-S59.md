@@ -9,9 +9,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-plan]]"
 ---
 
-
-
-
 # Render the degraded-from-tiers state read pre-derived from the stores degradation layer
 
 ## Scope

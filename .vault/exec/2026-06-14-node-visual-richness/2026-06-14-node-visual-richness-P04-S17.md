@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-node-visual-richness-plan]]"
 ---
 
-
-
-
 # implement grow-from-glyph bloom with hover-dwell and a reduced-motion crossfade
 
 ## Scope

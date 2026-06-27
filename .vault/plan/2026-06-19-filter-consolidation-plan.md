@@ -3,20 +3,18 @@ tags:
   - '#plan'
   - '#filter-consolidation'
 date: '2026-06-19'
-modified: '2026-06-22'
+modified: '2026-06-25'
 tier: L2
 related:
   - '[[2026-06-19-filter-consolidation-adr]]'
   - '[[2026-06-19-filter-consolidation-research]]'
 ---
 
-
 # `filter-consolidation` plan
 
 ### Phase `P01` - audit every filtering edge across surfaces
 
 Enumerate, with file-level precision, every filter affordance and its state-write path across the four surfaces, so coercion is targeted and nothing is missed.
-
 
 Centralize all filtering onto one canonical surface (the left rail), make the graph, timeline, and right rail pure consumers, and codify the law.
 
@@ -53,7 +51,7 @@ Confirm the timeline and right rail host no facet filtering and add guard tests 
 
 Run the full lint gate and tests to green, then codify the single-filter-surface rule.
 
-- [ ] `P05.S14` - run the full frontend lint gate and test suite to green; `frontend/`.
+- [x] `P05.S14` - run the full frontend lint gate and test suite to green; `frontend/`.
 - [x] `P05.S15` - codify the rule filtering-has-one-canonical-surface; `.vaultspec/rules/rules/`.
 
 ## Description
@@ -73,12 +71,6 @@ distinct concept) are audited and fenced against regression. Grounded in the ADR
 and the rag-driven research in `related:`.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

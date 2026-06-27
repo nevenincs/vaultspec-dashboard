@@ -11,8 +11,6 @@ related:
   - "[[2026-06-15-dashboard-timeline-adr]]"
 ---
 
-
-
 # `filter-consolidation` adr: `one canonical filter surface; every other surface is a consumer` | (**status:** `accepted`)
 
 ## Problem Statement

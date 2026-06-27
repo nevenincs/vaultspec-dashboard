@@ -9,9 +9,6 @@ related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"
 ---
 
-
-
-
 # Run the feature-scoped lint, test, and vault-check gates to green
 
 ## Scope

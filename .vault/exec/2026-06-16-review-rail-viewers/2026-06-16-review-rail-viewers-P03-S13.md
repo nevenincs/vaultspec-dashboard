@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-review-rail-viewers-plan]]"
 ---
 
-
-
-
 # Build a useHighlighter hook owning a singleton createHighlighterCore with per-language and per-theme dynamic import lazy registration
 
 ## Scope
