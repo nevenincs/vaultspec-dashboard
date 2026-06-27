@@ -27,6 +27,7 @@ import {
   FolderPlus,
   Funnel,
   GitBranch,
+  Library,
   Maximize,
   Menu,
   Minus,
@@ -36,7 +37,7 @@ import {
   Search,
   TriangleAlert,
 } from "lucide-react";
-import { Books, Gear, Graph, TreeStructure } from "@phosphor-icons/react";
+import { Gear, Graph, TreeStructure } from "@phosphor-icons/react";
 
 // Structural chrome — Lucide. Re-exported under their binding Figma names.
 // The mobile additions (mobile-responsive-layout) mirror the Figma Icon-set
@@ -61,6 +62,9 @@ export {
   GitBranch,
 };
 export { Search as MagnifyingGlass };
+// The vault/browse mark is structural chrome → Lucide `Library` (one family with
+// the other chrome icons), re-exported under the binding name `Books`.
+export { Library as Books };
 
 // State-mode marks (state-mode-uniformity): the shared caution mark for the DEGRADED
 // mode (`TriangleAlert`) and the positive `Check` for the EMPTY/settled mode, sourced
@@ -71,5 +75,5 @@ export { TriangleAlert, Check };
 // Expressive / domain marks — Phosphor. `Hierarchy` is the connected-node graph
 // mark (Phosphor ships it as `Graph`; the binding board names the glyph
 // "Hierarchy", so the stable export keeps that name).
-export { Books, TreeStructure, Gear };
+export { TreeStructure, Gear };
 export { Graph as Hierarchy };
