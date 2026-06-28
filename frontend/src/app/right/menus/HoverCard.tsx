@@ -18,6 +18,7 @@
 import { ExternalLink } from "lucide-react";
 
 import { DocTypeMark } from "../../../scene/field/markComponents";
+import { docTypeLabel } from "../../../stores/server/docTypeVocabulary";
 import type { HoverCardModel } from "../../../stores/view/hoverCard";
 import { categoryTokenVar } from "../../../stores/view/hoverCardContent";
 
@@ -45,6 +46,12 @@ function stateTintClass(state: string | undefined): string {
 
 export function HoverCard({ model, onOpen }: HoverCardProps) {
   const accentVar = model.category ? categoryTokenVar(model.category) : undefined;
+  // The header glyph and the plain-language eyebrow both read the vault doc type
+  // (the marks are keyed by doc type, not the bare `document` kind); a synthesized
+  // feature node has no doc type, so it falls back to its species `kind`. The
+  // eyebrow word comes from the ONE canonical doc-type vocabulary.
+  const markKind = model.docType ?? model.kind;
+  const typeWord = model.docType ? docTypeLabel(model.docType) : undefined;
 
   return (
     <div
@@ -65,18 +72,30 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
         />
       )}
 
-      {/* Header: kind glyph in the category accent + title. */}
-      <div className="flex items-center gap-fg-1-5">
+      {/* Header: doc-type glyph in the category accent + a doc-type eyebrow over a
+          MULTILINE title (the title wraps to at most two lines rather than
+          truncating to one — the canvas label is the truncated form). */}
+      <div className="flex items-start gap-fg-1-5">
         <span
-          className="flex shrink-0 items-center"
+          className="mt-fg-0-5 flex shrink-0 items-center"
           style={accentVar ? { color: `var(${accentVar})` } : undefined}
           aria-hidden
         >
-          <DocTypeMark kind={model.kind} size={16} />
+          <DocTypeMark kind={markKind} size={16} />
         </span>
-        <h3 className="min-w-0 flex-1 truncate text-body-strong font-medium text-ink">
-          {model.title}
-        </h3>
+        <div className="min-w-0 flex-1">
+          {typeWord && (
+            <p
+              data-hover-doc-type
+              className="text-caption font-medium uppercase tracking-[0.025rem] text-ink-faint"
+            >
+              {typeWord}
+            </p>
+          )}
+          <h3 className="break-words text-body-strong font-medium text-ink line-clamp-2">
+            {model.title}
+          </h3>
+        </div>
         {onOpen && (
           <button
             type="button"
@@ -87,12 +106,25 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
             // wrapper so the transient hover card never steals the pointer; the
             // open affordance is the one interactive escape, so it re-enables
             // pointer events on itself (the bloom → open intent).
-            className="pointer-events-auto flex shrink-0 items-center rounded-fg-xs p-fg-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink"
+            className="pointer-events-auto mt-fg-0-5 flex shrink-0 items-center rounded-fg-xs p-fg-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink"
           >
             <ExternalLink size={14} strokeWidth={1.75} aria-hidden />
           </button>
         )}
       </div>
+
+      {/* Headline summary: the document's first prose line (node-detail
+          route-fill), wrapped to at most three lines. Present only for
+          content-bearing doc nodes — a feature node has no body, so the line is
+          simply omitted (honest absence). */}
+      {model.summary && (
+        <p
+          data-hover-summary
+          className="break-words text-caption text-ink-muted line-clamp-3"
+        >
+          {model.summary}
+        </p>
+      )}
 
       {/* Evidence groups: documents / code / commits, each bounded, headed, and
           tail-counted. Empty groups are not rendered (the fold omits them). */}

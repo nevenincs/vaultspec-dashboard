@@ -1,7 +1,11 @@
 import { nodeCategory, type NodeCategory } from "../../scene/field/categoryColor";
 import { normalizeNodeId } from "../nodeIds";
 import type { EngineNode, NodeEvidence } from "../server/engine";
-import { useNodeDetailView, useNodeEvidence } from "../server/queries";
+import {
+  useGraphNodeFromActiveSlice,
+  useNodeDetailView,
+  useNodeEvidence,
+} from "../server/queries";
 import { deriveEvidenceGroups, type EvidenceGroup } from "./hoverCardEvidence";
 import { normalizeSelectionScope } from "./selection";
 
@@ -11,9 +15,21 @@ export interface HoverCardModel {
   readonly id: string;
   /** GLYPH_KINDS species (adr / plan / audit / rule / feature / ...). */
   readonly kind: string;
+  /** The vault doc type (`research` / `adr` / `plan` / `exec` / `audit` /
+   *  `reference`) — the key the doc-type mark family and the canonical
+   *  `docTypeLabel` vocabulary resolve against. Absent on synthesized feature
+   *  nodes (which carry their species in `kind`). Drives BOTH the header glyph
+   *  (the marks are keyed by doc type, not the bare `document` kind) and the
+   *  plain-language eyebrow. */
+  readonly docType?: string;
   readonly title: string;
   /** The scene category the node belongs to; drives tokenized accent styling. */
   readonly category?: NodeCategory;
+  /** A one-line headline summary of the document (node-detail route-fill: the
+   *  doc body's first prose line). Present only for content-bearing DOC nodes;
+   *  synthesized feature/constellation nodes have no body, so it is absent there
+   *  (honest absence — the card simply omits the line). */
+  readonly summary?: string;
   /** Bounded, grouped evidence lines folded from enriched node evidence. */
   readonly evidence: EvidenceGroup[];
 }
@@ -54,12 +70,16 @@ export function deriveHoverCardLayerView(
 export function cardModelFromEvidence(
   node: EngineNode,
   evidence: NodeEvidence | undefined,
+  summary?: string,
 ): HoverCardModel {
+  const trimmed = summary?.trim();
   return {
     id: node.id,
     kind: node.kind,
+    docType: node.doc_type,
     title: node.title ?? node.id,
     category: nodeCategory(node.kind),
+    summary: trimmed ? trimmed : undefined,
     evidence: evidence ? deriveEvidenceGroups(evidence) : [],
   };
 }
@@ -68,13 +88,14 @@ export function deriveHoverCardView(
   requestedId: unknown,
   node: EngineNode | null,
   evidence: NodeEvidence | undefined,
+  summary?: string,
 ): HoverCardView {
   const nodeId = normalizeNodeId(requestedId);
   return {
     model:
       nodeId === null || node === null || node.id !== nodeId
         ? null
-        : cardModelFromEvidence(node, evidence),
+        : cardModelFromEvidence(node, evidence, summary),
   };
 }
 
@@ -88,5 +109,18 @@ export function useHoverCardView(id: unknown, scope: unknown): HoverCardView {
   const normalizedScope = normalizeSelectionScope(scope);
   const detail = useNodeDetailView(nodeId, normalizedScope);
   const evidence = useNodeEvidence(nodeId, normalizedScope);
-  return deriveHoverCardView(nodeId, detail.node, evidence.data);
+  // Identity source: the `/nodes/{id}` detail when the node is addressable (doc
+  // nodes — it carries the richer payload the evidence fold needs), else the
+  // in-memory active graph slice node. Constellation FEATURE nodes are NOT
+  // detail-addressable (the route 404s), so without the slice fallback their card
+  // model was null and no card rendered — only the scene's bare canvas label
+  // showed. Evidence is ADDITIVE and only present for addressable nodes; a feature
+  // node renders an identity-only card (it has no `/evidence`).
+  const sliceNode = useGraphNodeFromActiveSlice(nodeId, scope);
+  return deriveHoverCardView(
+    nodeId,
+    detail.node ?? sliceNode,
+    evidence.data,
+    detail.detail?.summary,
+  );
 }

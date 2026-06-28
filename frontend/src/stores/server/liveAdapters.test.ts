@@ -40,6 +40,8 @@ import {
   HISTORY_COMMIT_BODY_MAX_CHARS,
   HISTORY_COMMITS_MAX_ITEMS,
   HISTORY_STRING_MAX_CHARS,
+  adaptNodeDetail,
+  adaptNodeEvidence,
   mergeNumstat,
   metaEdgeToEdge,
   normalizeGitDiffStatus,
@@ -52,6 +54,7 @@ import {
   unwrapEnvelope,
 } from "./liveAdapters";
 import { SCOPE_ID_MAX_CHARS } from "./scopeIdentity";
+import { deriveEvidenceGroups } from "../view/hoverCardEvidence";
 
 const TIERS = {
   declared: { available: true },
@@ -2134,5 +2137,104 @@ describe("embeddingsByNodeId (node_id join contract, ADR D1)", () => {
     const byId = embeddingsByNodeId(dup);
     expect(byId.size).toBe(1);
     expect(byId.get("doc:x")).toEqual(vectorFor(2));
+  });
+});
+
+describe("adaptNodeDetail (live nested {detail:{bundle}} wire, hover-card summary)", () => {
+  // The shape `unwrapEnvelope` hands this adapter: the envelope's `data` flattened
+  // with the tiers block (the nested context bundle is preserved under `detail`).
+  const live = {
+    detail: {
+      bundle: {
+        node: {
+          id: "doc:foo-research",
+          kind: "document",
+          doc_type: "research",
+          title: "Foo",
+        },
+        edges_by_tier: {},
+        neighbors: [],
+        degree_by_tier: {},
+      },
+    },
+    summary: "The first prose line of the doc.",
+    tiers: TIERS,
+  };
+
+  it("flattens the nested context bundle to a top-level node + summary", () => {
+    const detail = adaptNodeDetail(live);
+    expect(detail.node.id).toBe("doc:foo-research");
+    expect(detail.node.doc_type).toBe("research");
+    expect(detail.summary).toBe("The first prose line of the doc.");
+    expect(detail.tiers).toEqual(TIERS);
+  });
+
+  it("omits the summary when the wire carries none (a feature node)", () => {
+    const detail = adaptNodeDetail({
+      detail: { bundle: { node: { id: "feature:x", kind: "feature", title: "X" } } },
+      summary: null,
+      tiers: TIERS,
+    });
+    expect(detail.node.id).toBe("feature:x");
+    expect(detail.summary).toBeUndefined();
+  });
+
+  it("passes an already-flat (mock/internal) body through unchanged", () => {
+    const flat = {
+      node: { id: "doc:bar", kind: "document", doc_type: "plan", title: "Bar" },
+      summary: "Bar summary.",
+      tiers: TIERS,
+    };
+    const detail = adaptNodeDetail(flat);
+    expect(detail.node.id).toBe("doc:bar");
+    expect(detail.summary).toBe("Bar summary.");
+  });
+
+  it("tolerates a malformed body with a degraded (empty-tiers, no-node) result", () => {
+    const detail = adaptNodeDetail(null);
+    expect(detail.node).toBeUndefined();
+    expect(detail.summary).toBeUndefined();
+    expect(detail.tiers).toEqual({});
+  });
+});
+
+describe("adaptNodeEvidence (live /nodes/{id}/evidence; serde-omitted empty arrays)", () => {
+  // The shape `unwrapEnvelope` hands this adapter: the evidence fields flattened to
+  // the top level with the tiers block a sibling. The engine serde OMITS an empty
+  // evidence array, so a node with no code locations arrives MISSING `code_locations`.
+  it("floors each omitted evidence array to [] (the crash the raw consumer hit)", () => {
+    // A doc node with documents + commits but NO code_locations key on the wire.
+    const evidence = adaptNodeEvidence({
+      documents: [{ path: ".vault/adr/x.md", doc_type: "adr" }],
+      commits: [{ sha: "abc1234", subject: "do a thing" }],
+      tiers: TIERS,
+    });
+    expect(evidence.documents).toHaveLength(1);
+    expect(evidence.commits).toHaveLength(1);
+    expect(evidence.code_locations).toEqual([]); // omitted on the wire → floored
+    expect(evidence.tiers).toEqual(TIERS);
+  });
+
+  it("yields three empty arrays + empty tiers for an absent/odd body", () => {
+    const evidence = adaptNodeEvidence(null);
+    expect(evidence.documents).toEqual([]);
+    expect(evidence.code_locations).toEqual([]);
+    expect(evidence.commits).toEqual([]);
+    expect(evidence.tiers).toEqual({});
+  });
+
+  it("the adapted evidence folds without throwing — the panel no longer crashes", () => {
+    // The exact regression: a payload MISSING `code_locations` must fold to bounded
+    // groups, never read `.length` of undefined (the stage-panel ErrorBoundary crash).
+    const evidence = adaptNodeEvidence({
+      documents: [{ path: ".vault/plan/p.md", doc_type: "plan" }],
+      tiers: TIERS,
+    });
+    const groups = deriveEvidenceGroups(evidence);
+    expect(groups.map((g) => g.heading)).toEqual(["documents"]); // only the present group
+    // And the pure fold is itself robust to a directly-omitted array (defensive floor).
+    expect(() =>
+      deriveEvidenceGroups({ documents: [], tiers: TIERS } as never),
+    ).not.toThrow();
   });
 });

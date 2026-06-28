@@ -54,10 +54,17 @@ function bound<T>(items: T[]): { kept: T[]; overflow: number } {
  * non-empty groups are returned. Pure: no fetch, no `tiers` read.
  */
 export function deriveEvidenceGroups(evidence: NodeEvidence): EvidenceGroup[] {
+  // Defensive floor (cheap insurance): a wire/caller that OMITS an evidence array
+  // must fold to an empty group, never crash the stage panel on `.length` of
+  // undefined. The engine.nodeEvidence boundary already normalizes the live wire;
+  // this keeps the pure fold robust regardless of caller.
+  const documents = evidence.documents ?? [];
+  const codeLocations = evidence.code_locations ?? [];
+  const commits = evidence.commits ?? [];
   const groups: EvidenceGroup[] = [];
 
-  if (evidence.documents.length > 0) {
-    const { kept, overflow } = bound(evidence.documents);
+  if (documents.length > 0) {
+    const { kept, overflow } = bound(documents);
     groups.push({
       heading: "documents",
       overflow,
@@ -69,8 +76,8 @@ export function deriveEvidenceGroups(evidence: NodeEvidence): EvidenceGroup[] {
     });
   }
 
-  if (evidence.code_locations.length > 0) {
-    const { kept, overflow } = bound(evidence.code_locations);
+  if (codeLocations.length > 0) {
+    const { kept, overflow } = bound(codeLocations);
     groups.push({
       heading: "code",
       overflow,
@@ -83,8 +90,8 @@ export function deriveEvidenceGroups(evidence: NodeEvidence): EvidenceGroup[] {
     });
   }
 
-  if (evidence.commits.length > 0) {
-    const { kept, overflow } = bound(evidence.commits);
+  if (commits.length > 0) {
+    const { kept, overflow } = bound(commits);
     groups.push({
       heading: "commits",
       overflow,
@@ -99,11 +106,12 @@ export function deriveEvidenceGroups(evidence: NodeEvidence): EvidenceGroup[] {
   return groups;
 }
 
-/** Whether the evidence carries anything at all. */
+/** Whether the evidence carries anything at all. Defensively floors each array so an
+ *  omitted wire field reports "no evidence" instead of crashing on `.length`. */
 export function hasEvidence(evidence: NodeEvidence): boolean {
   return (
-    evidence.documents.length > 0 ||
-    evidence.code_locations.length > 0 ||
-    evidence.commits.length > 0
+    (evidence.documents ?? []).length > 0 ||
+    (evidence.code_locations ?? []).length > 0 ||
+    (evidence.commits ?? []).length > 0
   );
 }
