@@ -7,11 +7,29 @@
 
 use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::{OnceLock, mpsc};
 use std::time::Duration;
 
 use serde::Deserialize;
+
+/// Kill the child and, on Unix, its whole process group. The child is spawned
+/// as a group leader (`process_group(0)`), so a grandchild that inherited the
+/// stdout pipe (e.g. a shell's `sleep`) is signalled too and the reader thread
+/// unblocks at the deadline instead of waiting for that grandchild to exit. On
+/// Windows `Child::kill` already terminates the subtree.
+fn terminate(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::{Signal, killpg};
+        use nix::unistd::Pid;
+        // The child is its own group leader (`process_group(0)`), so its pid is
+        // the pgid; signalling the group reaps the shell AND its grandchildren.
+        // An already-reaped group yields ESRCH, which is ignored.
+        let _ = killpg(Pid::from_raw(child.id() as i32), Signal::SIGKILL);
+    }
+    let _ = child.kill();
+}
 
 /// Default core stdout ceiling (robustness H1, 2026-06-13): a runaway core verb
 /// that streams unbounded stdout would OOM the engine during an index rebuild.
@@ -208,6 +226,17 @@ impl CoreRunner {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        // Put the child in its own process group (Unix) so a timeout kills the
+        // WHOLE tree, not just the direct child. A shell verb like `sh -c "..."`
+        // spawns its real work as a grandchild that inherits the stdout pipe;
+        // killing only the shell orphans the grandchild, which holds the pipe
+        // open and blocks the reader thread until it exits on its own. Killing
+        // the group reaps both, so the deadline frees the thread promptly.
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt as _;
+            cmd.process_group(0);
+        }
         let mut child = cmd.spawn()?;
 
         // Read stdout under the byte ceiling (robustness H1) on a worker thread,
@@ -233,15 +262,16 @@ impl CoreRunner {
         let stdout = match recv {
             Ok(Ok(buf)) => buf,
             Ok(Err(io_err)) => {
-                let _ = child.kill();
+                terminate(&mut child);
                 let _ = child.wait();
                 let _ = reader.join();
                 return Err(io_err.into());
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                // The child outran its deadline: kill it (no zombie, frees the
-                // pipe so the reader unblocks) and fail typed rather than hang.
-                let _ = child.kill();
+                // The child outran its deadline: kill the whole group (no zombie,
+                // frees the pipe so the reader unblocks) and fail typed rather
+                // than hang.
+                terminate(&mut child);
                 let _ = child.wait();
                 let _ = reader.join();
                 return Err(CoreError::Timeout {
@@ -252,7 +282,7 @@ impl CoreRunner {
                 // The reader thread ended (panicked) — that is WHY the channel
                 // disconnected — so the join returns immediately; kept for
                 // symmetry with the other exit arms (no orphaned thread).
-                let _ = child.kill();
+                terminate(&mut child);
                 let _ = child.wait();
                 let _ = reader.join();
                 return Err(CoreError::Failed {
@@ -265,7 +295,7 @@ impl CoreRunner {
         // Output exceeded the cap: kill the child (no zombie) and fail typed
         // rather than parse a truncated envelope.
         if stdout.len() as u64 >= cap {
-            let _ = child.kill();
+            terminate(&mut child);
             let _ = child.wait();
             return Err(CoreError::OutputTooLarge {
                 cap_mib: cap.div_ceil(1024 * 1024),

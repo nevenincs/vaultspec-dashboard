@@ -94,12 +94,24 @@ impl Ctx {
         // launch dir against a worktree root, so list the roots cheaply rather
         // than inspecting (status diff + ahead/behind walk) every worktree.
         let roots = ingest_git::worktrees::list_roots(&workspace)?;
-        let cleaned = clean_path(&root);
+        // On Windows the launch dir (from `current_dir()`, which preserves the 8.3
+        // short form) and git's worktree roots can disagree on short vs long form
+        // when the user name is long (`C:\Users\RUNNER~1\...`), so resolve both
+        // through `canonicalize` before matching. Non-Windows keeps the prior
+        // string normalization exactly.
+        let canon = |p: &std::path::Path| -> String {
+            #[cfg(windows)]
+            if let Ok(c) = std::fs::canonicalize(p) {
+                return clean_path(&c);
+            }
+            clean_path(p)
+        };
+        let cleaned = canon(&root);
         // The scope is the WORKTREE root, even when launched from deep inside it.
         let root = roots
             .into_iter()
             .find(|wt_path| {
-                let wt_path = clean_path(wt_path);
+                let wt_path = canon(wt_path);
                 cleaned == wt_path || cleaned.starts_with(&format!("{wt_path}/"))
             })
             .ok_or_else(|| CliError::BadScope(cleaned.clone()))?;

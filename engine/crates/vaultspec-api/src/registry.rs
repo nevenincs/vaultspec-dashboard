@@ -595,7 +595,21 @@ pub fn validate_scope_token(state: &AppState, token: &str) -> Result<std::path::
         let s = s.strip_prefix("//?/").unwrap_or(&s).to_string();
         s.trim_end_matches('/').to_string()
     };
-    let wanted = normalize(token);
+    // On Windows the same worktree can be named by its 8.3 short path
+    // (e.g. `C:/Users/RUNNER~1/...` for a long user name) or its long form, and a
+    // client and git may disagree on which. Resolve both sides through
+    // `canonicalize`, which collapses short names, case, and the `\\?\` prefix, so
+    // the membership check compares like with like. A path that does not exist (a
+    // genuinely invalid scope) falls back to plain normalization and still fails
+    // the check. On non-Windows this is exactly the prior string normalization.
+    let canon = |s: &str| -> String {
+        #[cfg(windows)]
+        if let Ok(c) = std::fs::canonicalize(s) {
+            return normalize(&c.to_string_lossy());
+        }
+        normalize(s)
+    };
+    let wanted = canon(token);
     let active_root = state.active_workspace_root();
     let workspace = ingest_git::workspace::Workspace::discover(&active_root)
         .map_err(|e| format!("workspace discovery failed: {e}"))?;
@@ -606,7 +620,7 @@ pub fn validate_scope_token(state: &AppState, token: &str) -> Result<std::path::
     let roots = ingest_git::worktrees::list_roots(&workspace)
         .map_err(|e| format!("worktree enumeration failed: {e}"))?;
     for path in roots {
-        if normalize(&crate::routes::scope_token(&path)) == wanted {
+        if canon(&crate::routes::scope_token(&path)) == wanted {
             if !path.join(".vault").is_dir() {
                 return Err(format!(
                     "scope `{token}` is a worktree of the active workspace but carries \
