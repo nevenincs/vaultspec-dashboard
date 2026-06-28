@@ -11,13 +11,11 @@
 use std::path::Path;
 
 use engine_model::{
-    CanonicalKey, Facet, Node, NodeId, NodeKind, Presence, ResolutionState, ScopeRef, Timestamp,
-    node_id,
+    CanonicalKey, Facet, Node, NodeId, NodeKind, Presence, ScopeRef, Timestamp, node_id,
 };
-use ingest_struct::extract::MentionKind;
 
-use crate::graph::{EdgeAttrs, LinkageGraph};
-use crate::index::{IndexError, Result, structural_edge_for};
+use crate::graph::LinkageGraph;
+use crate::index::{IndexError, Result};
 
 /// How a `t=<ts|sha>` token was interpreted (ADD-901): the response echoes
 /// this so a client never has to guess whether its token was read as a git
@@ -164,9 +162,7 @@ pub fn asof_graph_resolved_cached(
         .map_err(|e| IndexError::Git(e.to_string()))?;
     let tree = commit.tree().map_err(|e| IndexError::Git(e.to_string()))?;
 
-    // Inventory of every path in the committed tree — the resolution
-    // universe at T.
-    let mut inventory: Vec<String> = Vec::new();
+    // The `.vault/` documents in the committed tree — the node set at T.
     let mut vault_docs: Vec<String> = Vec::new();
     for entry in tree
         .traverse()
@@ -176,11 +172,9 @@ pub fn asof_graph_resolved_cached(
     {
         let path = entry.filepath.to_string();
         if path.starts_with(".vault/") && path.ends_with(".md") {
-            vault_docs.push(path.clone());
+            vault_docs.push(path);
         }
-        inventory.push(path);
     }
-    inventory.sort();
     vault_docs.sort();
 
     // Reuse the OPEN repo + already-resolved commit tree for the per-doc blob
@@ -222,6 +216,10 @@ pub fn asof_graph_resolved_cached(
                 created: crate::index::frontmatter_date(&body.text),
                 // Blob-true historical views carry no worktree mtime.
                 modified: None,
+                // `stamped` (frontmatter `modified:`) IS blob-true — read from the
+                // committed blob as it stood at T, so the timeline can filter by
+                // the authored stamp historically even though the mtime is absent.
+                stamped: crate::index::frontmatter_stamped(&body.text),
             }),
             feature_tags: crate::index::frontmatter_feature_tags(&body.text),
             // Status/tier facets are blob-true here too: both derive from
@@ -241,56 +239,16 @@ pub fn asof_graph_resolved_cached(
             }],
         });
 
-        // Tree-based resolution at T (v1 as-of semantics): wiki stems against
-        // the committed inventory. Step ids mark STALE because verifying them
-        // blob-true needs plan blob scans.
-        let mentions = ingest_struct::extract::extract(&body.text);
-        let mut by_id: std::collections::BTreeMap<
-            String,
-            (engine_model::Edge, u32, Option<String>),
-        > = std::collections::BTreeMap::new();
-        for mention in mentions {
-            let (state, target) = match &mention.kind {
-                MentionKind::WikiLink(stem) => {
-                    let filename = format!("{stem}.md");
-                    match inventory
-                        .iter()
-                        .find(|i| i.rsplit('/').next() == Some(filename.as_str()))
-                    {
-                        Some(found) => (ResolutionState::Resolved, Some(found.clone())),
-                        None => (ResolutionState::Broken, None),
-                    }
-                }
-                // v1 as-of bound: undecidable without plan blob scans -> stale.
-                MentionKind::StepId(_) => (ResolutionState::Stale, None),
-            };
-            let resolved = ingest_struct::resolve::ResolvedMention {
-                mention,
-                state,
-                target,
-            };
-            let resolved_target = resolved.target.clone();
-            let edge = structural_edge_for(&stem, &body.blob_hash, &resolved, scope, observed_at);
-            by_id
-                .entry(edge.id.0.clone())
-                .and_modify(|(_, c, _)| *c += 1)
-                .or_insert((edge, 1, resolved_target));
-        }
-        for (_, (edge, multiplicity, resolved_target)) in by_id {
-            crate::edges::ingest(
-                &mut graph,
-                edge,
-                EdgeAttrs {
-                    multiplicity,
-                    resolved_target,
-                    ..Default::default()
-                },
-            )?;
-        }
+        // STRICT reference-only graph (user ruling, 2026-06-28): in-body
+        // `[[wiki-link]]` MENTIONS are NOT graph fact — only `related:`
+        // frontmatter (the declared tier) defines the node graph. The historical
+        // view therefore mints document NODES blob-true at T but no structural
+        // body-mention edges, matching the live graph (the structural body-mention
+        // EDGE producer was retired).
     }
 
-    // index-node-exclusion ADR D1: drop any structural edge that resolved onto a
-    // skipped index document, so the historical view carries no dangling index edge.
+    // index-node-exclusion ADR D1: drop any edge that resolved onto a skipped
+    // index document, so the historical view carries no dangling index edge.
     graph.prune_edges_incident_to(&excluded_index_ids);
 
     // Release the shared gix handle NOW — before the declared-tier subprocess
@@ -384,15 +342,26 @@ mod tests {
         let scope = ScopeRef::Ref { name: "t1".into() };
         let graph = asof_graph_resolved(root, "t1", &scope, 0).unwrap().graph;
 
-        // Blob-true: the plan carries the T1 body and the T1 mention, resolved
-        // against the T1 tree where the old ADR exists.
-        assert_eq!(graph.node_count(), 2, "the plan and old ADR document nodes");
-        let edge = graph.edges().next().expect("structural edge at T1");
-        assert_eq!(edge.edge.state, Some(ResolutionState::Resolved));
+        // Blob-true: the as-of graph is the T1 corpus — the plan and the OLD ADR
+        // that existed at T1 — NOT the present tree (which deleted the old ADR and
+        // added a new one). Body `[[wiki-link]]` mentions are not graphed under the
+        // strict reference-only ruling, so the historical reading is proven by the
+        // NODE set: reading the present tree would surface `new-adr`, never the
+        // `old-adr` that only existed at T1.
+        assert_eq!(
+            graph.node_count(),
+            2,
+            "the plan and the T1 (old) ADR document nodes"
+        );
         assert!(
-            edge.edge.dst.0.contains("2026-06-12-old-adr"),
-            "the T1 mention, not the present one: {}",
-            edge.edge.dst.0
+            graph.nodes().any(|n| n.id.0.contains("2026-06-12-old-adr")),
+            "the T1 corpus carries the old ADR node, not the present one"
+        );
+        assert!(
+            graph
+                .nodes()
+                .all(|n| !n.id.0.contains("2026-06-12-new-adr")),
+            "the present tree's new ADR never leaks into the as-of view"
         );
     }
 

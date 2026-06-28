@@ -1,14 +1,17 @@
-//! Fixture-document pipeline test (W01.P04.S18): reader -> extractors ->
-//! resolver, end to end, covering structural mention kinds and resolution
-//! states.
+//! Fixture-document pipeline test (W01.P04.S18): reader -> extractor, covering
+//! the structural mention KINDS the body extractor recognizes.
+//!
+//! Mention RESOLUTION (and the structural body-mention graph edges it fed) was
+//! retired under the strict reference-only ruling (2026-06-28): only `related:`
+//! frontmatter defines the node graph. The body extractor is retained as the
+//! incremental-index change-detection telemetry source, so this test still
+//! exercises reader -> extract.
 
-use engine_model::ResolutionState;
 use ingest_struct::extract::{MentionKind, extract};
 use ingest_struct::reader::read_from_worktree;
-use ingest_struct::resolve::resolve;
 
 #[test]
-fn document_pipeline_extracts_and_resolves_against_the_fixture_tree() {
+fn document_pipeline_extracts_mention_kinds_from_the_body() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
@@ -35,17 +38,4 @@ fn document_pipeline_extracts_and_resolves_against_the_fixture_tree() {
     ];
     assert!(kinds.iter().all(|k| *k), "structural extractors fired");
     assert_eq!(mentions.len(), 2, "code paths and symbols are prose only");
-
-    let resolved = resolve(root, mentions);
-    let states: Vec<ResolutionState> = resolved.iter().map(|r| r.state).collect();
-    assert!(states.contains(&ResolutionState::Resolved));
-    assert!(states.contains(&ResolutionState::Broken));
-    // Broken mentions are retained in the output (D3.3).
-    assert_eq!(
-        resolved
-            .iter()
-            .filter(|r| r.state == ResolutionState::Broken)
-            .count(),
-        1
-    );
 }
