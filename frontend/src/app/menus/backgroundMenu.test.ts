@@ -33,7 +33,7 @@ describe("background entity normalizer", () => {
 });
 
 describe("backgroundMenu resolver", () => {
-  it("returns the four app-chrome escape hatches in order", () => {
+  it("returns the app-chrome escape hatches plus the graph + follow-mode toggles in order", () => {
     expect(
       backgroundMenu({ kind: "background", id: "bg", region: "left-rail" }).map(
         (a) => a.id,
@@ -43,7 +43,42 @@ describe("backgroundMenu resolver", () => {
       "app:settings",
       "app:keyboard-shortcuts",
       "window:reset-layout",
+      "window:graph",
+      "view:follow-mode",
     ]);
+  });
+
+  it("prepends the timeline Filter-by date-criterion group only for the timeline region (Issue #14)", () => {
+    const ids = backgroundMenu({
+      kind: "background",
+      id: "bg",
+      region: "timeline",
+    }).map((a) => a.id);
+    // The criterion group is authored ahead of the universal tail, in vocabulary order.
+    expect(ids.slice(0, 3)).toEqual([
+      "timeline:filter-by:created",
+      "timeline:filter-by:modified",
+      "timeline:filter-by:stamped",
+    ]);
+    expect(ids).toContain("app:command-palette");
+    // Created is the active/served criterion (current); the others are disabled-with-reason.
+    const actions = backgroundMenu({
+      kind: "background",
+      id: "bg",
+      region: "timeline",
+    });
+    expect(actions.find((a) => a.id === "timeline:filter-by:created")?.disabled).toBe(
+      true,
+    );
+    expect(
+      actions.find((a) => a.id === "timeline:filter-by:modified")?.disabledReason,
+    ).toBeTruthy();
+    // A non-timeline region carries no criterion group.
+    expect(
+      backgroundMenu({ kind: "background", id: "bg", region: "right-rail" }).map(
+        (a) => a.id,
+      ),
+    ).not.toContain("timeline:filter-by:created");
   });
 
   it("time-travel gates reset-layout (a layout mutation), not the navigations", () => {

@@ -23,19 +23,24 @@ import {
 import { X } from "lucide-react";
 
 import { useActiveScope } from "../../stores/server/queries";
+import { openContextMenu } from "../../stores/view/contextMenu";
+import { useShellGraphVisible } from "../../stores/view/shellLayout";
 import { pokeGraphRect, setWorkspaceContainer } from "./canvasPin";
 import { DocPanel } from "./DocPanel";
 import { vaultspecDockTheme } from "./dockTheme";
 import { GraphCanvasHost } from "./GraphCanvasHost";
 import { GraphPanel } from "./GraphPanel";
+import { WorkspaceGhost } from "./WorkspaceGhost";
 import { useWorkspacePersistence } from "./useWorkspacePersistence";
 import {
   activateDocTab,
   closeDocTab,
   deriveDockWorkspaceSyncPlan,
+  promoteDocTab,
   reorderDocTabs,
   useDockTabHeaderView,
   useDockWorkspaceTabsView,
+  useIsProvisionalDoc,
 } from "../../stores/view/tabs";
 import { guardUnsavedDiscardForDoc } from "../../stores/view/unsavedEditGuard";
 
@@ -63,20 +68,43 @@ function GraphTab(props: IDockviewPanelHeaderProps) {
 // it never activates or drags the tab. dockview's `.dv-tab` wrapper still owns
 // click-to-activate, drag-to-dock, and the tokenized active/inactive background.
 function DocTab({ api }: IDockviewPanelHeaderProps) {
-  const view = useDockTabHeaderView(api);
+  // The panel id IS the document node id (deriveDockWorkspaceSyncPlan), so the
+  // provisional lookup keys straight off it — drives the italic preview title (#15).
+  const provisional = useIsProvisionalDoc(api.id);
+  const view = useDockTabHeaderView(api, provisional);
+  const scope = useActiveScope();
   return (
-    <div className={view.rootClassName}>
+    <div
+      className={view.rootClassName}
+      onContextMenu={(e) => {
+        // Right-click the tab → the layered "doc-tab" context menu (#15:
+        // Keep Open / Reload / Close / Close Others / Close All Documents).
+        e.preventDefault();
+        e.stopPropagation();
+        openContextMenu(
+          { kind: "doc-tab", id: api.id, nodeId: api.id, scope },
+          { x: e.clientX, y: e.clientY },
+        );
+      }}
+    >
       {/* The title is keyboard-activatable so a keyboard user can SWITCH to a tab,
           not only close it (dockview's `.dv-tab` owns pointer click-to-activate but
           exposes no keyboard path — keyboard-navigation W03.P06.S18). Enter/Space
           activates the panel; the keys are stopped so they never reach the global
           keymap dispatcher. Pointer activation stays dockview's (no onClick here,
-          so a click still falls through to `.dv-tab`). */}
+          so a click still falls through to `.dv-tab`). A DOUBLE-CLICK on the title
+          PEGS a provisional (preview) tab to permanent (VS Code, #15) — openDocTab
+          promotes the provisional in place. */}
       <span
         className={view.titleClassName}
         role="button"
         tabIndex={0}
         aria-label={view.activateAriaLabel}
+        onDoubleClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          promoteDocTab(api.id);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -132,6 +160,14 @@ export function DockWorkspace() {
   // dockview to match the store, its echo events (active/remove) are ignored.
   const syncingRef = useRef(false);
   const tabs = useDockWorkspaceTabsView();
+  // The graph (with its tethered timeline) is a TOGGLEABLE panel (appshell-reframe
+  // #11): when hidden, its dockview panel is removed so the documents reflow to the
+  // full center width, and the app-lifetime canvas host hides (display:none — GL
+  // context preserved). A ref lets `onReady` seed the graph at the CURRENT
+  // visibility without re-binding the once-only ready callback.
+  const graphVisible = useShellGraphVisible();
+  const graphVisibleRef = useRef(graphVisible);
+  graphVisibleRef.current = graphVisible;
   // P06: persist + restore the open-tab set per scope through the durable session.
   // The restore seeds the tab slice; the reconcile effect below rebuilds panels.
   useWorkspacePersistence(useActiveScope());
@@ -139,15 +175,18 @@ export function DockWorkspace() {
   const onReady = useCallback((event: DockviewReadyEvent) => {
     const api = event.api;
     apiRef.current = api;
-    // The graph panel is always present and seeds the layout (full width until a
-    // document opens to its left).
-    api.addPanel({
-      id: GRAPH_PANEL_ID,
-      component: "graph",
-      tabComponent: "graphTab",
-      title: "Graph",
-    });
-    syncGraphGroupHeader(api);
+    // The graph panel seeds the layout (full width until a document opens to its
+    // left) — but only when the graph is visible; the graph-visibility effect
+    // below reconciles add/remove on later toggles.
+    if (graphVisibleRef.current) {
+      api.addPanel({
+        id: GRAPH_PANEL_ID,
+        component: "graph",
+        tabComponent: "graphTab",
+        title: "Graph",
+      });
+      syncGraphGroupHeader(api);
+    }
     // Any layout change re-measures the graph rect so the pinned canvas follows
     // (a split, a sash drag, a dock, a float), and syncs dockview's tab order
     // back into the slice after a user drag-reorder. Skipped during our own
@@ -171,6 +210,41 @@ export function DockWorkspace() {
       closeDocTab(panel.id);
     });
   }, []);
+
+  // Reconcile the GRAPH panel to `graphVisible` (the toggle). Adding/removing the
+  // placeholder panel is safe for the canvas: `GraphCanvasHost` (the real `<Stage/>`
+  // + WebGL context) is an app-lifetime SIBLING that never unmounts, so the panel
+  // is only the rect source — removing it hides the canvas (display:none via
+  // `setGraphVisible(false)` from `GraphPanel`'s cleanup), it is never destroyed
+  // (graph-canvas-is-portal-pinned-never-reparented). On re-show the graph re-docks
+  // to the RIGHT of the documents (or seeds the empty workspace at the root).
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    const hasGraph = api.getPanel(GRAPH_PANEL_ID) != null;
+    if (graphVisible === hasGraph) return;
+    syncingRef.current = true;
+    try {
+      if (graphVisible) {
+        const firstDoc = api.panels.find((panel) => panel.id !== GRAPH_PANEL_ID);
+        api.addPanel({
+          id: GRAPH_PANEL_ID,
+          component: "graph",
+          tabComponent: "graphTab",
+          title: "Graph",
+          ...(firstDoc
+            ? { position: { referencePanel: firstDoc.id, direction: "right" } }
+            : {}),
+        });
+      } else {
+        const panel = api.getPanel(GRAPH_PANEL_ID);
+        if (panel) api.removePanel(panel);
+      }
+      syncGraphGroupHeader(api);
+    } finally {
+      syncingRef.current = false;
+    }
+  }, [graphVisible]);
 
   // Reconcile dockview panels to the tab slice (the source of truth). Runs on any
   // openDocs/activeDocId change: add new doc panels (to the LEFT of the graph, or
@@ -215,6 +289,11 @@ export function DockWorkspace() {
     setWorkspaceContainer(el);
   }, []);
 
+  // Ghost / empty mode: the graph is toggled off AND no document is open, so the
+  // center has nothing to render (appshell-reframe #11). Show the honest empty
+  // state rather than a blank panel.
+  const showGhost = !graphVisible && tabs.openDocs.length === 0;
+
   return (
     <div ref={setRoot} className="relative h-full w-full bg-paper">
       {/* The pinned graph (canvas + chrome) floats over the graph panel's rect,
@@ -229,6 +308,11 @@ export function DockWorkspace() {
           theme={vaultspecDockTheme}
         />
       </div>
+      {showGhost && (
+        <div className="absolute inset-0 z-30">
+          <WorkspaceGhost />
+        </div>
+      )}
     </div>
   );
 }

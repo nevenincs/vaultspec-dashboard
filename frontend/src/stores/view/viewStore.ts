@@ -356,6 +356,9 @@ export interface ViewState {
   activateDoc: (nodeId: unknown) => void;
   /** Close a tab; if it was active, activate its nearest neighbour. */
   closeDoc: (nodeId: unknown) => void;
+  /** Close ALL document tabs (#15 "Close all documents"); latches the cleared
+   *  workspace and tears down any open editor. */
+  closeAllDocs: () => void;
   /** Reorder the open docs to match dockview's geometry (after a tab drag),
    *  reconciling by id; unknown ids are dropped and missing ones preserved. */
   reorderDocs: (orderedIds: unknown) => void;
@@ -407,6 +410,10 @@ export interface ViewState {
   rightRailWidth: number;
   /** Whether the bottom timeline region is mounted in the shell layout. */
   timelineVisible: boolean;
+  /** Whether the graph element is mounted in the shell layout. The timeline is
+   *  tethered to the graph (they are one panel), so hiding the graph also hides
+   *  the timeline; the documents pane then takes the full center width. */
+  graphVisible: boolean;
   /** Expanded timeline height in pixels. */
   timelineHeight: number;
   /** Whether the shell panel-controls flyout is open. */
@@ -415,9 +422,21 @@ export interface ViewState {
   setLeftRailWidth: (width: unknown) => void;
   setRightRailWidth: (width: unknown) => void;
   setTimelineVisible: (visible: unknown) => void;
+  setGraphVisible: (visible: unknown) => void;
   setTimelineHeight: (height: unknown) => void;
   setPanelFlyoutOpen: (open: unknown) => void;
   togglePanelFlyout: () => void;
+  /**
+   * FOLLOW MODE (follow-mode-selection-sync): when on (the default), the rail and
+   * graph SELECTION stay tethered bidirectionally — selecting a rail feature
+   * highlights + frames its nodes on the graph, and selecting a graph node selects
+   * + expands its feature entry in the rail. VIEW-LOCAL ONLY (a view-behavior
+   * toggle like hover, never a filter and never the wire). Opt-in, default ON,
+   * flipped by the shared `toggleFollowModeAction` from the context menu. Consumers
+   * gate their cross-surface selection projection on this. */
+  followMode: boolean;
+  setFollowMode: (on: unknown) => void;
+  toggleFollowMode: () => void;
   /** Restore the view-local shell layout (rail widths, timeline height, rail and
    *  timeline visibility) to their defaults. The collapse + active-tab state lives
    *  in dashboard-state, so the "reset layout" command resets that seam alongside
@@ -483,6 +502,17 @@ export function normalizeOpenDocs(openDocs: unknown): OpenDoc[] {
     normalized.push(
       changed ? { ...doc, nodeId, surface, provisional } : (doc as OpenDoc),
     );
+  }
+  // Provisional-last invariant (#15): the single preview tab always sits at the
+  // END of the strip (VS Code preview). Stable-partition so permanent tabs keep
+  // their relative order and the provisional follows; if that reorders the set the
+  // input was not canonical, so return the reordered array (not the input ref).
+  const provisional = normalized.filter((doc) => doc.provisional);
+  if (provisional.length > 0) {
+    const ordered = [...normalized.filter((doc) => !doc.provisional), ...provisional];
+    if (ordered.some((doc, index) => doc !== normalized[index])) {
+      return ordered;
+    }
   }
   return changed ? normalized : (openDocs as OpenDoc[]);
 }
@@ -601,8 +631,11 @@ export const useViewStore = create<ViewState>((set) => ({
   leftRailWidth: LEFT_RAIL_DEFAULT_WIDTH,
   rightRailWidth: RIGHT_RAIL_DEFAULT_WIDTH,
   timelineVisible: true,
+  graphVisible: true,
   timelineHeight: TIMELINE_DEFAULT_HEIGHT,
   panelFlyoutOpen: false,
+  // Follow mode is opt-in but ON by default (follow-mode-selection-sync).
+  followMode: true,
 
   setScope: (scope) => {
     const normalizedScope = normalizeViewStoreSessionString(scope);
@@ -810,6 +843,22 @@ export const useViewStore = create<ViewState>((set) => ({
           : {}),
       };
     }),
+  closeAllDocs: () =>
+    set((state) => {
+      if (state.openDocs.length === 0 && state.activeDocId === null) return state;
+      return {
+        openDocs: [],
+        activeDocId: null,
+        // Closing EVERY document is an intentional empty: latch workspaceCleared so
+        // the durable restore does not re-seed a tab (mirrors the last-close latch
+        // in closeDoc). Any open editor target is now stale — tear it down.
+        workspaceCleared: true,
+        editorTarget: null,
+        draftText: "",
+        baseBlobHash: "",
+        editorStatus: "idle" as const,
+      };
+    }),
   reorderDocs: (orderedIds) =>
     set((state) => {
       const byId = new Map(state.openDocs.map((d) => [d.nodeId, d]));
@@ -957,6 +1006,8 @@ export const useViewStore = create<ViewState>((set) => ({
     }),
   setTimelineVisible: (timelineVisible) =>
     set({ timelineVisible: normalizeShellLayoutVisible(timelineVisible) }),
+  setGraphVisible: (graphVisible) =>
+    set({ graphVisible: normalizeShellLayoutVisible(graphVisible) }),
   setTimelineHeight: (height) =>
     set({
       timelineHeight: normalizeShellLayoutPanelSize(
@@ -969,12 +1020,16 @@ export const useViewStore = create<ViewState>((set) => ({
     set({ panelFlyoutOpen: normalizeShellLayoutVisible(panelFlyoutOpen) }),
   togglePanelFlyout: () =>
     set((state) => ({ panelFlyoutOpen: !state.panelFlyoutOpen })),
+  setFollowMode: (followMode) =>
+    set({ followMode: normalizeShellLayoutVisible(followMode) }),
+  toggleFollowMode: () => set((state) => ({ followMode: !state.followMode })),
   resetShellLayout: () =>
     set({
       leftRailVisible: true,
       leftRailWidth: LEFT_RAIL_DEFAULT_WIDTH,
       rightRailWidth: RIGHT_RAIL_DEFAULT_WIDTH,
       timelineVisible: true,
+      graphVisible: true,
       timelineHeight: TIMELINE_DEFAULT_HEIGHT,
       panelFlyoutOpen: false,
     }),

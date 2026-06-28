@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  type KeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { CrashInjector, CrashZone } from "../platform/errors/CrashInjector";
 import { ErrorBoundary } from "../platform/errors/ErrorBoundary";
@@ -16,21 +10,14 @@ import {
   type BrowserMode,
 } from "../stores/view/browserMode";
 import {
-  deriveShellResizeHandleView,
-  resizeShellPanelByKey,
-  startShellResizePointerSession,
-  type ShellResizeAxis,
-  type ShellResizeHandleSide,
   toggleShellPanelFlyout as togglePanelFlyout,
   type ShellFrameView,
   useShellFrameView,
   useShellWindowActions,
 } from "../stores/view/shellLayout";
+import { ShellResizeHandle } from "./chrome/ShellResizeHandle";
 import { LeftRail } from "./left/LeftRail";
-import {
-  backgroundContextMenuHandler,
-  isTimelineBackgroundTarget,
-} from "./menus/backgroundContextMenu";
+import { backgroundContextMenuHandler } from "./menus/backgroundContextMenu";
 import { openContextMenu } from "../stores/view/contextMenu";
 import { setResetLayoutRunner } from "../stores/view/resetLayoutBridge";
 import {
@@ -42,6 +29,8 @@ import {
   useRightRailKeybindings,
 } from "./right/rightRailActions";
 import { useEditorKeybindings } from "../stores/view/editorKeybindings";
+import { useDocTabKeybindings } from "../stores/view/docTabKeybindings";
+import { useGraphToggleKeybindings } from "../stores/view/graphToggleKeybindings";
 import { useReloadKeybindings } from "../stores/view/reloadKeybindings";
 import { setSceneCommandRunner } from "../stores/view/sceneCommandBridge";
 import { KeyboardNav } from "./a11y/KeyboardNav";
@@ -65,9 +54,6 @@ import { IconRail } from "./shell/IconRail";
 import { CompactAppShell } from "./shell/CompactAppShell";
 import { getScene } from "./stage/Stage";
 import { DockWorkspace } from "./stage/DockWorkspace";
-import { Playhead } from "./timeline/Playhead";
-import { Timeline } from "./timeline/Timeline";
-import { handleNodeClick } from "./timeline/eventSelection";
 // The reader/code-viewer stack (react-markdown + Shiki) is heavy and only needed
 // Binding AppShell grid (figma-frontend-rewrite W02.P03 — board 117:2): three
 // fluid/fixed columns at full viewport height —
@@ -91,7 +77,6 @@ export function AppShell() {
     leftRailVisible,
     leftRailWidth,
     rightRailWidth,
-    timelineHeight,
     panelFlyoutOpen,
     timeTravel,
     leftCollapsed,
@@ -113,34 +98,6 @@ export function AppShell() {
     [browserModeIntent, leftCollapsed, leftRailVisible, shellActions],
   );
 
-  const startResize = (
-    axis: ShellResizeAxis,
-    startSize: number,
-    event: ReactPointerEvent<HTMLDivElement>,
-  ) => {
-    event.preventDefault();
-    startShellResizePointerSession({
-      axis,
-      startSize,
-      startClientX: event.clientX,
-      startClientY: event.clientY,
-      target: event.currentTarget.ownerDocument,
-    });
-  };
-
-  const resizeByKey = (
-    event: KeyboardEvent<HTMLDivElement>,
-    current: number,
-    axis: ShellResizeAxis,
-  ) => {
-    resizeShellPanelByKey({
-      axis,
-      current,
-      key: event.key,
-      preventDefault: () => event.preventDefault(),
-    });
-  };
-
   // Theme is an engine setting now (dashboard-settings W05): the bridge reconciles
   // the server value to the framework-free controller and persists changes. Called
   // once here so the reconcile runs regardless of rail collapse state.
@@ -161,9 +118,14 @@ export function AppShell() {
   useLeftRailKeybindings();
   useRightRailKeybindings();
   useEditorKeybindings();
+  useDocTabKeybindings();
   // The global Refresh chord (Mod+Shift+R), enrolled on the one keymap registry
   // alongside its palette command and context-menu global tail (global-context-actions).
   useReloadKeybindings();
+  // The graph-visibility toggle chord (Mod+Shift+G), enrolled on the one keymap
+  // registry alongside its palette command (window:graph) and background-menu entry
+  // (appshell-reframe #11), all under the one shared id.
+  useGraphToggleKeybindings();
   // Region traversal (keyboard-navigation W01.P02): F6/Shift+F6 cycle focus
   // between the major panels through the one keymap registry, and the focusin
   // tracker feeds per-region entry memory. Mounted once at the shell top.
@@ -253,16 +215,12 @@ export function AppShell() {
             >
               <LeftRail />
             </div>
-            <ResizeHandle
-              side="right"
-              onPointerDown={(event) => startResize("left", leftRailWidth, event)}
-              onKeyDown={(event) => resizeByKey(event, leftRailWidth, "left")}
-            />
+            <ShellResizeHandle side="right" axis="left" current={leftRailWidth} />
           </ErrorBoundary>
         )}
       </aside>
 
-      {/* ── Stage column (flex) — graph | timeline ────────────────── */}
+      {/* ── Center — documents | (graph + tethered timeline) ────────── */}
       <main
         ref={stageRef}
         id="stage"
@@ -270,59 +228,20 @@ export function AppShell() {
         data-focus-region="stage"
         className={shellFrame.stageColumnClassName}
       >
-        {/* Graph + documents area (editor-dock-workspace): the dock workspace
-            replaces the single-doc viewer overlay. The graph is a portal-pinned
-            canvas panel (default right, full width until a document opens) and
-            documents open as walkable/tabbable/movable/hot-dockable panels to its
-            left. Stage's canvas + SceneController seam are preserved unchanged —
-            GraphCanvasHost renders the whole Stage and dockview only manages an
-            empty placeholder, so docking never re-parents the canvas. */}
+        {/* The center is ONE ROW: the documents pane and the graph form side-by-side
+            dockview panels, and the timeline is tethered UNDER the graph as part of
+            the SAME panel (graph + timeline = one unit; appshell-reframe #11). The
+            graph is a TOGGLEABLE, portal-pinned canvas panel — GraphCanvasHost
+            renders the whole Stage and dockview only manages an empty placeholder, so
+            docking/toggling never re-parents the canvas. When the graph is hidden the
+            documents take the full width; when no document is open the graph takes the
+            full width; with neither, the dock workspace shows its ghost empty state. */}
         <div className={shellFrame.stageBodyClassName}>
           <ErrorBoundary region="stage">
             <CrashZone region="stage" />
             <DockWorkspace />
           </ErrorBoundary>
         </div>
-
-        {/* Bottom timeline — the lower SECTION of the unified graph+timeline element
-            (graph-timeline-workspace). Its own header is retired: navigation lives in
-            the shared stage top bar, and the ResizeHandle above is the fine-tunable
-            buffer between the two sections. The lineage surface fills the section.
-            Layer law: this region wires stores hooks and shared-state intent only —
-            no fetch, no raw `tiers`. A mark click flows into the ONE shared selection
-            + a bounded stage ego pulse through `handleNodeClick`. The playhead stays
-            (temporal navigation); the date-range brush is gone (filtering retired). */}
-        {shellFrame.showTimeline && (
-          <footer
-            className={shellFrame.timelineClassName}
-            style={shellFrame.timelineStyle}
-            data-focus-region="timeline"
-          >
-            <ResizeHandle
-              side="top"
-              onPointerDown={(event) => startResize("timeline", timelineHeight, event)}
-              onKeyDown={(event) => resizeByKey(event, timelineHeight, "timeline")}
-            />
-            <ErrorBoundary region="timeline">
-              <CrashZone region="timeline" />
-              <div
-                className={shellFrame.timelineBodyClassName}
-                onContextMenu={backgroundContextMenuHandler(
-                  "timeline",
-                  openContextMenu,
-                  isTimelineBackgroundTarget,
-                )}
-              >
-                <Timeline
-                  onNodeClick={(node, arcs) =>
-                    handleNodeClick(node, arcs, getScene().controller, scope)
-                  }
-                  overlay={<Playhead scope={scope} />}
-                />
-              </div>
-            </ErrorBoundary>
-          </footer>
-        )}
       </main>
 
       {/* ── Right pane — the activity rail ──────────────────────────── */}
@@ -330,11 +249,7 @@ export function AppShell() {
         {shellFrame.showRightRail && (
           <ErrorBoundary region="right-rail">
             <CrashZone region="right-rail" />
-            <ResizeHandle
-              side="left"
-              onPointerDown={(event) => startResize("right", rightRailWidth, event)}
-              onKeyDown={(event) => resizeByKey(event, rightRailWidth, "right")}
-            />
+            <ShellResizeHandle side="left" axis="right" current={rightRailWidth} />
             <ActivityRail shellFrame={shellFrame} />
           </ErrorBoundary>
         )}
@@ -387,40 +302,26 @@ export function AppShell() {
               onClick={() => shellActions.runPanelAction(shellActions.toggleRightRail)}
             />
             <PanelFlyoutItem
-              label={panelControls.timelineVisibilityLabel}
+              label={panelControls.graphVisibilityLabel}
               className={panelControls.itemClassName}
-              onClick={() => shellActions.runPanelAction(shellActions.toggleTimeline)}
+              onClick={() => shellActions.runPanelAction(shellActions.toggleGraph)}
             />
+            {/* The timeline is tethered to the graph; its toggle only applies while
+                the graph is shown, so hide the control when the graph is hidden
+                (no dead control — settings/controls honesty). */}
+            {shellFrame.showGraph && (
+              <PanelFlyoutItem
+                label={panelControls.timelineVisibilityLabel}
+                className={panelControls.itemClassName}
+                onClick={() => shellActions.runPanelAction(shellActions.toggleTimeline)}
+              />
+            )}
           </div>
         )}
       </Popover>
 
       <CrashInjector />
     </div>
-  );
-}
-
-function ResizeHandle({
-  side,
-  onPointerDown,
-  onKeyDown,
-}: {
-  side: ShellResizeHandleSide;
-  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
-  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
-}) {
-  const view = deriveShellResizeHandleView(side);
-
-  return (
-    <div
-      aria-label={view.label}
-      aria-orientation={view.orientation}
-      className={view.className}
-      role="separator"
-      tabIndex={0}
-      onPointerDown={onPointerDown}
-      onKeyDown={onKeyDown}
-    />
   );
 }
 

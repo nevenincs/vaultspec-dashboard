@@ -39,6 +39,8 @@ import {
   KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
   KEYBOARD_SHORTCUTS_TOGGLE_BINDING,
 } from "./keyboardShortcuts";
+import { GRAPH_TOGGLE_ACTION_ID } from "./chromeActions";
+import { deriveGraphToggleKeybindings } from "./graphToggleKeybindings";
 
 // Register the command providers and the right-rail resolvers under test (side effects).
 import "./commandProviders/leftRailCommandProvider";
@@ -47,6 +49,7 @@ import "./commandProviders/reloadCommandProvider";
 import "./commandProviders/windowCommandProvider";
 import "../../app/right/menus/commitMenu";
 import "../../app/right/menus/prMenu";
+import "../../app/stage/menus/docTabMenu";
 
 /** Verbs eligible for BOTH the keymap and the palette: their keymap action id MUST
  *  equal the palette command id (so accelerators derive). The keymap ids are the
@@ -64,6 +67,9 @@ const DUAL_PLANE_VERBS = [
   // converged onto one id so its accelerator derives across both planes + the background
   // context menu (background-context-menus drift fix).
   KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
+  // The graph-visibility toggle (appshell-reframe #11): keymap (Mod+Shift+G) +
+  // palette (window provider) + background context menu, one shared id.
+  GRAPH_TOGGLE_ACTION_ID,
 ];
 
 const noop = () => undefined;
@@ -78,6 +84,7 @@ function commandContext(): CommandContext {
       leftCollapsed: false,
       rightCollapsed: false,
       timelineVisible: true,
+      graphVisible: true,
     },
     intents: {
       collapseTree: noop,
@@ -87,14 +94,19 @@ function commandContext(): CommandContext {
       setTheme: noop,
       runOp: noop,
       closeDocument: noop,
+      closeAllDocuments: noop,
+      reloadActiveDocument: noop,
+      keepActiveDocumentOpen: noop,
       setGraphFrozen: noop,
       jumpToLive: noop,
       fitTimelineToCorpus: noop,
       setTimelineRangeDays: noop,
+      clearDateRange: noop,
       toggleLeftRail: noop,
       toggleLeftCollapsed: noop,
       toggleRightRail: noop,
       toggleTimeline: noop,
+      toggleGraph: noop,
       setRightTab: noop,
       resetLayout: noop,
       showKeyboardShortcuts: noop,
@@ -116,6 +128,7 @@ describe("action coverage grid guard", () => {
       ...deriveLeftRailKeybindings(),
       ...deriveRightRailKeybindings(),
       ...deriveReloadKeybindings(),
+      ...deriveGraphToggleKeybindings(),
       KEYBOARD_SHORTCUTS_TOGGLE_BINDING,
     ].map((b) => b.id),
   );
@@ -140,5 +153,9 @@ describe("action coverage grid guard", () => {
   it("the right-rail entity kinds each have a resolver (commit + pull-request)", () => {
     expect(hasResolver("commit")).toBe(true);
     expect(hasResolver("pull-request")).toBe(true);
+  });
+
+  it("the document-tab entity kind has a layered resolver (#15)", () => {
+    expect(hasResolver("doc-tab")).toBe(true);
   });
 });

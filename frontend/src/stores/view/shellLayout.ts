@@ -36,6 +36,7 @@ export interface ShellLayoutState {
   leftRailWidth: number;
   rightRailWidth: number;
   timelineVisible: boolean;
+  graphVisible: boolean;
   timelineHeight: number;
   panelFlyoutOpen: boolean;
 }
@@ -305,6 +306,8 @@ export interface ShellFrameView extends ShellLayoutState {
   leftRailContentClassName: string;
   stageColumnClassName: string;
   stageBodyClassName: string;
+  /** Whether the graph (and its tethered timeline) is mounted in the center. */
+  showGraph: boolean;
   showTimeline: boolean;
   timelineClassName: string;
   timelineStyle: { height: string };
@@ -329,6 +332,7 @@ export interface ShellPanelControlsView {
   leftCollapseLabel: string;
   rightRailVisibilityLabel: string;
   timelineVisibilityLabel: string;
+  graphVisibilityLabel: string;
 }
 
 export interface ShellWindowActions {
@@ -336,6 +340,7 @@ export interface ShellWindowActions {
   toggleLeftCollapsed: () => void;
   toggleRightRail: () => void;
   toggleTimeline: () => void;
+  toggleGraph: () => void;
   setRightTab: (tab: unknown) => void;
   resetLayout: () => void;
   closePanelFlyout: () => void;
@@ -393,6 +398,7 @@ export function deriveShellPanelControlsView(
     | "leftCollapsed"
     | "rightCollapsed"
     | "timelineVisible"
+    | "graphVisible"
   >,
 ): ShellPanelControlsView {
   return {
@@ -411,6 +417,7 @@ export function deriveShellPanelControlsView(
       ? "Show right rail"
       : "Hide right rail",
     timelineVisibilityLabel: input.timelineVisible ? "Hide timeline" : "Show timeline",
+    graphVisibilityLabel: input.graphVisible ? "Hide graph" : "Show graph",
   };
 }
 
@@ -433,7 +440,11 @@ export function deriveShellFrameView(
   const leftCollapsed = panelState.left_collapsed;
   const rightCollapsed = panelState.right_collapsed;
   const compact = viewportClass === "compact";
-  const showTimeline = shellLayout.timelineVisible;
+  // The timeline is tethered to the graph (they are one panel): it shows only when
+  // the graph is visible AND the timeline is toggled on. Hiding the graph hides the
+  // timeline with it (the documents pane then takes the full center width).
+  const showGraph = shellLayout.graphVisible;
+  const showTimeline = shellLayout.timelineVisible && showGraph;
   const frame = {
     ...shellLayout,
     panelState,
@@ -456,6 +467,7 @@ export function deriveShellFrameView(
     leftRailContentClassName: SHELL_LEFT_RAIL_CONTENT_CLASS,
     stageColumnClassName: SHELL_STAGE_COLUMN_CLASS,
     stageBodyClassName: SHELL_STAGE_BODY_CLASS,
+    showGraph,
     showTimeline,
     timelineClassName: SHELL_TIMELINE_CLASS,
     timelineStyle: { height: `${shellLayout.timelineHeight}px` },
@@ -488,10 +500,18 @@ export function useShellLayoutState(): ShellLayoutState {
       leftRailWidth: state.leftRailWidth,
       rightRailWidth: state.rightRailWidth,
       timelineVisible: state.timelineVisible,
+      graphVisible: state.graphVisible,
       timelineHeight: state.timelineHeight,
       panelFlyoutOpen: state.panelFlyoutOpen,
     })),
   );
+}
+
+/** Lightweight primitive selector for the graph-visibility signal (the dock
+ *  workspace reconciles the graph panel on this without pulling the whole frame
+ *  view). A primitive return is referentially stable (stable-selectors). */
+export function useShellGraphVisible(): boolean {
+  return useViewStore((state) => state.graphVisible);
 }
 
 export function useShellFrameView(scope: unknown): ShellFrameView {
@@ -505,7 +525,11 @@ export function useShellWindowActions(
   scope: unknown,
   shellFrame: Pick<
     ShellFrameView,
-    "leftRailVisible" | "leftCollapsed" | "rightCollapsed" | "timelineVisible"
+    | "leftRailVisible"
+    | "leftCollapsed"
+    | "rightCollapsed"
+    | "timelineVisible"
+    | "graphVisible"
   >,
 ): ShellWindowActions {
   const panelIntent = useShellPanelIntent(scope);
@@ -538,6 +562,7 @@ export function useShellWindowActions(
       toggleLeftCollapsed: () => setLeftCollapsed(!shellFrame.leftCollapsed),
       toggleRightRail: () => setRightCollapsed(!shellFrame.rightCollapsed),
       toggleTimeline: () => setShellTimelineVisible(!shellFrame.timelineVisible),
+      toggleGraph: () => setShellGraphVisible(!shellFrame.graphVisible),
       setRightTab: (tab) => {
         void panelIntent.setRightTab(normalizeRightRailTab(tab)).catch(ignore);
         void panelIntent.setRightCollapsed(false).catch(ignore);
@@ -561,6 +586,7 @@ export function useShellWindowActions(
       shellFrame.leftRailVisible,
       shellFrame.rightCollapsed,
       shellFrame.timelineVisible,
+      shellFrame.graphVisible,
     ],
   );
 }
@@ -579,6 +605,21 @@ export function setShellRightRailWidth(width: unknown): void {
 
 export function setShellTimelineVisible(visible: unknown): void {
   useViewStore.getState().setTimelineVisible(visible);
+}
+
+export function setShellGraphVisible(visible: unknown): void {
+  useViewStore.getState().setGraphVisible(visible);
+}
+
+/** Read the current graph visibility outside React (the shared toggle action's
+ *  label and the dispatcher-fired toggle read it without a hook). */
+export function getShellGraphVisible(): boolean {
+  return useViewStore.getState().graphVisible;
+}
+
+/** Flip the graph (and its tethered timeline) visibility. */
+export function toggleShellGraphVisible(): void {
+  setShellGraphVisible(!getShellGraphVisible());
 }
 
 export function setShellTimelineHeight(height: unknown): void {
