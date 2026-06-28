@@ -30,7 +30,7 @@ import type {
   ReactNode,
   KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { ChevronDown, ChevronRight } from "lucide-react";
 
@@ -44,11 +44,19 @@ import type { VaultTreeEntry } from "../../stores/server/engine";
 import {
   deriveVaultRailView,
   useActiveScope,
+  useDashboardSelectedNodeId,
   useVaultRailFacets,
   useVaultTreeSurface,
   type VaultDocTypeGroup,
   type VaultTreeFeatureGroup,
 } from "../../stores/server/queries";
+import { featureNodeIdFromTag } from "../../stores/server/liveAdapters";
+import {
+  followFeatureKeyForNode,
+  followModeEnabled,
+  selectFeatureAndFrame,
+  useFollowMode,
+} from "../../stores/view/selection";
 import {
   deriveAllVaultBrowserTreeKeys,
   deriveBrowserTreeExpansionItem,
@@ -184,6 +192,34 @@ export function TreeBrowser({
       disposeExpand();
     };
   }, [expandWholeTree, collapseAll]);
+  // Follow-mode REVERSE half (graph -> rail, follow-mode-selection-sync / Issue #13):
+  // when follow mode is on and the graph's canonical selected node changes, EXPAND
+  // that node's parent feature group (and the Features section) and make its row the
+  // active tab stop. Row highlight already tracks selection via `useHighlightedPath`;
+  // the new behaviour is auto-revealing the parent. The seam returns the canonical
+  // feature TAG for the node (a `doc:` node maps to its first feature tag); the rail
+  // owns the `feat:<tag>` key format. `expandAll` unions, so an already-open feature
+  // is never collapsed. No-op (null tag) when follow mode is off or the feature is
+  // unknown — the rail leaves its expansion untouched.
+  const followMode = useFollowMode();
+  const selectedNodeId = useDashboardSelectedNodeId(scope);
+  const nodeFeatureTags = useMemo(() => {
+    const map = new Map<string, readonly string[]>();
+    for (const entry of tree.data?.entries ?? []) {
+      map.set(pathToNodeId(entry.path), entry.feature_tags);
+    }
+    return map;
+  }, [tree.data?.entries]);
+  useEffect(() => {
+    if (!followMode || selectedNodeId === null) return;
+    const tag = followFeatureKeyForNode(
+      selectedNodeId,
+      nodeFeatureTags.get(selectedNodeId),
+    );
+    if (tag === null) return;
+    expandAll(["sec:features", `feat:${tag}`]);
+    setActiveKey(`feat:${tag}`);
+  }, [followMode, selectedNodeId, nodeFeatureTags, expandAll, setActiveKey]);
   // The whole tree is ONE tab stop with arrow / Home / End roving through the
   // shared FocusZone primitive (keyboard-navigation W02.P05.S14). It replaces the
   // prior bespoke render-time roving (registerNav / registerVisibleKey /
@@ -574,6 +610,14 @@ function folderCategory(docType: string): Category {
   return docTypeCategory(docType) ?? NEUTRAL_FOLDER_CATEGORY;
 }
 
+/** The feature's member document node ids — the `doc:<stem>` ids the rail holds in
+ *  its tree slice — for the follow-mode `frame-nodes` camera (Issue #13). */
+function featureMemberNodeIds(group: VaultTreeFeatureGroup): string[] {
+  return group.docTypes.flatMap((sub) =>
+    sub.entries.map((entry) => pathToNodeId(entry.path)),
+  );
+}
+
 // --- the feature folder row (Features section, level 1 → category sub-folders) -----
 
 interface FeatureFolderRowProps {
@@ -612,7 +656,21 @@ function FeatureFolderRow({
       expanded={open}
       count={group.count}
       bodyId={`vault-${folderKey}`}
-      onActivate={() => toggle(folderKey)}
+      onActivate={() => {
+        toggle(folderKey);
+        // Follow-mode FORWARD half (rail feature -> graph, follow-mode-selection-sync /
+        // Issue #13): selecting a feature row selects the feature and rings + frames its
+        // member nodes on the graph. The seam is follow-gated (no-op when off) and reaches
+        // the scene through the registered runSceneCommand bridge (the rail never imports
+        // the scene); the outer check just avoids the work when follow mode is off.
+        if (followModeEnabled()) {
+          void selectFeatureAndFrame(
+            featureNodeIdFromTag(group.feature),
+            featureMemberNodeIds(group),
+            scope,
+          );
+        }
+      }}
       folderMarker
       nav={nav}
       body={group.docTypes.map((sub) => (

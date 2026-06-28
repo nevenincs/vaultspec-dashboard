@@ -8,6 +8,7 @@ import { Maximize, RotateCcw, Trash2, XCircle } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { registerResolver } from "../../../platform/actions/registry";
+import { toggleFollowModeAction } from "../../../stores/view/chromeActions";
 import { clearMenuWorkingSet, focusMenuNode } from "../../../stores/view/menuActions";
 import { getScene } from "../Stage";
 
@@ -44,6 +45,10 @@ export function canvasMenu(): ActionDescriptor[] {
       run: clearMenuWorkingSet,
       disabledInTimeTravel: true,
     },
+    // Follow mode is the graph<->rail SELECTION tether, so it is natural on the
+    // graph's own right-click menu too (composed from the ONE shared builder under
+    // its shared id — unified-action-plane; also in the background menu).
+    toggleFollowModeAction(),
   ];
 }
 
