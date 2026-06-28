@@ -20,6 +20,8 @@ import {
   adaptIssues,
   adaptLineageSlice,
   adaptMap,
+  adaptNodeDetail,
+  adaptNodeEvidence,
   adaptPipeline,
   adaptPlanInterior,
   adaptPrs,
@@ -283,6 +285,18 @@ export interface VaultTreeResponse {
   entries: VaultTreeEntry[];
   tiers: TiersBlock;
 }
+
+// The rail narrows the vault tree CLIENT-SIDE (`narrowVaultRailEntries`), so it
+// must hold the COMPLETE listing or a feature whose documents fall beyond the
+// first page can never match (it would narrow the loaded slice to nothing — the
+// `node-facets-filter-on-the-engine` ceiling gate, manifest in the rail). The
+// route serves a memoized, filter-independent doc-row projection paginated at
+// `<= VAULT_TREE_PAGE_SIZE`/page, so `vaultTree` walks the cursor to completion.
+// The page is the route's sanctioned maximum; the page cap bounds the walk
+// (bounded-by-default-for-every-accumulator) so a pathological corpus cannot
+// spin the loop unboundedly.
+const VAULT_TREE_PAGE_SIZE = 2000;
+const VAULT_TREE_MAX_PAGES = 25;
 
 // --- §3 code (worktree) file tree (dashboard-code-tree ADR) ----------------------
 //
@@ -558,6 +572,11 @@ export interface GraphFilter {
    *  passes if it carries any requested condition. */
   health?: string[];
   date_range?: { from?: string; to?: string };
+  /** Which date field the `date_range` window filters by (Issue #14): `created`
+   *  (default), `modified`, or `stamped`. Omitted = `created` — so the value is
+   *  only ever sent for a non-default criterion (and only when the engine advertises
+   *  `date_bounds_by_field`, i.e. supports it), keeping an older engine unaffected. */
+  date_field?: "created" | "modified" | "stamped";
   text?: string;
 }
 
@@ -693,6 +712,16 @@ export interface FiltersVocabulary {
    *  the `dangling`/`orphaned` HEALTH facet, empty when the corpus is clean. */
   health?: string[];
   date_bounds?: { from?: string; to?: string };
+  /** Per-criterion corpus date spans (Issue #14): the timeline's left/right edges
+   *  for each selectable date field. A criterion is omitted when no node carries it
+   *  (honest degradation — the timeline keeps that criterion disabled). `date_bounds`
+   *  above remains the `created` span for back-compat. Present only on an engine that
+   *  serves it — its presence is the capability gate for enabling Modified/Stamped. */
+  date_bounds_by_field?: {
+    created?: { from?: string; to?: string };
+    modified?: { from?: string; to?: string };
+    stamped?: { from?: string; to?: string };
+  };
   tiers_block?: TiersBlock;
 }
 
@@ -733,6 +762,12 @@ export interface EmbeddingsResponse {
 export interface NodeDetail {
   node: EngineNode;
   interior?: GraphSlice;
+  /** A one-line headline summary of the document — the doc body's first prose
+   *  line, filled by the `/nodes/{id}` route (node_detail summary route-fill).
+   *  Present only for content-bearing DOC nodes; absent for synthesized
+   *  feature/constellation nodes (no body) — an honest absence the hover card
+   *  renders by omitting the summary line. */
+  summary?: string;
   tiers: TiersBlock;
 }
 
@@ -1632,7 +1667,25 @@ export class EngineClient {
   }
 
   async vaultTree(scope: string): Promise<VaultTreeResponse> {
-    return adaptVaultTree(await this.get("/vault-tree", { scope }));
+    // Walk the cursor to completion so the rail holds the WHOLE listing — the
+    // tree filters client-side, so a partial first page silently drops every
+    // feature whose documents sit beyond it (the rail's filter-shows-nothing
+    // bug). Each page is the route's max; the page cap bounds the walk.
+    const entries: unknown[] = [];
+    let tiers: unknown = {};
+    let cursor: string | undefined;
+    for (let page = 0; page < VAULT_TREE_MAX_PAGES; page += 1) {
+      const body = await this.get<{
+        entries?: unknown[];
+        tiers?: unknown;
+        next_cursor?: string;
+      }>("/vault-tree", { scope, page_size: VAULT_TREE_PAGE_SIZE, cursor });
+      if (Array.isArray(body.entries)) entries.push(...body.entries);
+      if (body.tiers !== undefined) tiers = body.tiers;
+      cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
+      if (cursor === undefined) break;
+    }
+    return adaptVaultTree({ entries, tiers });
   }
 
   /** One bounded, ignore-aware directory level of the worktree file tree
@@ -1723,8 +1776,10 @@ export class EngineClient {
     return adaptPipeline(await this.get("/pipeline", { scope }));
   }
 
-  node(id: string, scope?: string): Promise<NodeDetail> {
-    return this.get(`/nodes/${encodeURIComponent(id)}`, { scope });
+  async node(id: string, scope?: string): Promise<NodeDetail> {
+    return adaptNodeDetail(
+      await this.get(`/nodes/${encodeURIComponent(id)}`, { scope }),
+    );
   }
 
   /** The read-only, bounded content fetch (review-rail-viewers ADR): the bytes of
@@ -1747,8 +1802,15 @@ export class EngineClient {
     return this.get(`/nodes/${encodeURIComponent(id)}/neighbors`, params);
   }
 
-  nodeEvidence(id: string, scope?: string): Promise<NodeEvidence> {
-    return this.get(`/nodes/${encodeURIComponent(id)}/evidence`, { scope });
+  async nodeEvidence(id: string, scope?: string): Promise<NodeEvidence> {
+    // The /evidence route is consumed through its tolerant adapter (the same
+    // one-code-path discipline as every other /nodes route): the engine serde OMITS
+    // an empty evidence array, so adaptNodeEvidence floors documents/code_locations/
+    // commits to [] — otherwise the pure fold reads `.length` of undefined and crashes
+    // the stage panel on hover/select.
+    return adaptNodeEvidence(
+      await this.get(`/nodes/${encodeURIComponent(id)}/evidence`, { scope }),
+    );
   }
 
   /** The bounded plan-container interior of a plan node (dashboard-pipeline-wire
