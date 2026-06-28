@@ -5,11 +5,14 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+import { DEV_ALLOWED_HOSTS, DEV_PORTS } from "./dev-ports";
 import { engineDevPlugin } from "./vite-plugins/engine-dev";
 
 // The dev orchestrator (engineDevPlugin) may serve the engine on a non-default
-// port; the proxy target tracks the same env var so the two never disagree.
-const enginePort = process.env.VAULTSPEC_DEV_PORT ?? "8767";
+// port; the proxy target tracks the same canonical value so the two never
+// disagree. All dev/test ports live in ./dev-ports.ts (exact, non-default,
+// fail-fast).
+const enginePort = DEV_PORTS.engine;
 
 // Dev-mode token bootstrap (DF-6 amendment): the browser cannot read
 // service.json, so the dev proxy injects the Authorization header from
@@ -62,12 +65,32 @@ export default defineConfig(({ command }) => ({
     },
   },
   server: {
+    // Bind to all interfaces (0.0.0.0 + ::) so the dev dashboard is reachable
+    // from other machines on the same Tailscale network, not just localhost.
+    // `host: true` is the Vite equivalent of `--host`. Override with a specific
+    // address via VAULTSPEC_DEV_HOST if a narrower bind is wanted.
+    host: process.env.VAULTSPEC_DEV_HOST ?? true,
+    // Accept the Host header from machines reaching the dev server over the
+    // Tailscale network by hostname (DNS-rebinding guard). localhost is always
+    // allowed by Vite; the network hostnames live in ./dev-ports.ts and are
+    // env-extendable via VAULTSPEC_DEV_ALLOWED_HOSTS.
+    allowedHosts: DEV_ALLOWED_HOSTS,
+    // Pin the SPA dev server to an exact, non-default port and FAIL FAST if it
+    // is taken (strictPort) rather than silently drifting to the next free port
+    // and colliding with another project's server. See ./dev-ports.ts.
+    port: DEV_PORTS.spa,
+    strictPort: true,
     // Engine API proxy during development; in production the SPA and API
     // share the engine's single origin (contract §1).
     proxy: {
       "/api": {
         target: `http://127.0.0.1:${enginePort}`,
-        changeOrigin: false,
+        // Rewrite the forwarded Host to the loopback engine target. The engine's
+        // bearer_gate validates Host as a DNS-rebinding guard and only accepts
+        // 127.0.0.1/localhost/[::1]; a remote (Tailscale) client sends a foreign
+        // Host, so without changeOrigin the proxied request is rejected with 403.
+        // The engine itself stays loopback-bound — only Vite faces the network.
+        changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ""),
         configure: (proxy) => {
           proxy.on("proxyReq", (proxyReq) => {

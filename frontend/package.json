@@ -7,7 +7,7 @@
   "description": "vaultspec-dashboard SPA — decoupled web GUI served by the engine's serve mode (gui-spec §5)",
   "scripts": {
     "dev": "vite",
-    "graph:dev": "vite --host 127.0.0.1 --port 5175",
+    "graph:dev": "vite --host 127.0.0.1 --port 8775 --strictPort",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint src spike",
