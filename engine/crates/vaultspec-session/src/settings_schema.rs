@@ -378,6 +378,32 @@ fn build_registry() -> Vec<SettingDef> {
             unit: None,
             placeholder: None,
         },
+        // The date criterion the timeline orders and filters documents by. Three
+        // served criteria (the engine derives `dates.{created,modified,stamped}`):
+        // `created` (frontmatter `date:`, the safe default present on every view),
+        // `modified` (worktree mtime — absent on historical/as-of views), and
+        // `stamped` (frontmatter `modified:` CLI stamp). The frontend maps each
+        // token to a plain user-facing label; the engine serves the raw tokens.
+        SettingDef {
+            key: "timeline_date_criterion".to_string(),
+            value_type: SettingType::Enum {
+                members: vec![
+                    "created".to_string(),
+                    "modified".to_string(),
+                    "stamped".to_string(),
+                ],
+            },
+            default: "created".to_string(),
+            scope_eligible: true,
+            control: ControlKind::Segmented,
+            label: "Timeline date".to_string(),
+            description: "Which date the timeline orders and filters documents by.".to_string(),
+            group: "Graph".to_string(),
+            order: 5,
+            step: None,
+            unit: None,
+            placeholder: None,
+        },
         // The inferred-edge certainty floor, declared as a percent (0..100) so it
         // renders as a `%` slider; the client maps the percent to the 0..1 float
         // its per-tier confidence floors use. Global-only: it is the persisted

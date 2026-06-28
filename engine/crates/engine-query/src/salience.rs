@@ -1406,6 +1406,7 @@ mod tests {
             dates: Some(Dates {
                 created: Some("2026-06-14".into()),
                 modified: Some(1_000_000),
+                stamped: None,
             }),
             feature_tags: vec![feature.into()],
             status: None,

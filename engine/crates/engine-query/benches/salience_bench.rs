@@ -54,6 +54,7 @@ fn synthetic_graph(n: usize) -> (LinkageGraph, Vec<Node>) {
             dates: Some(Dates {
                 created: Some("2026-06-14".into()),
                 modified: Some(1_000_000 + i as i64),
+                stamped: None,
             }),
             feature_tags: vec![format!("f-{}", i % 64)],
             status: None,

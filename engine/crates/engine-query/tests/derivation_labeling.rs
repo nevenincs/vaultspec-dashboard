@@ -46,6 +46,7 @@ fn doc(stem: &str, doc_type: Option<&str>, created: &str) -> Node {
         dates: Some(Dates {
             created: Some(created.into()),
             modified: None,
+            stamped: None,
         }),
         feature_tags: vec!["feature-a".into()],
         status: None,

@@ -121,15 +121,34 @@ fn feature_query_matches(query: &FeatureQuery, tags: &[String]) -> bool {
     })
 }
 
-/// A blob-true creation-date window (`from`/`to` inclusive, ISO `yyyy-mm-dd`).
-/// Either bound is optional (open on that side). Compared LEXICALLY — ISO dates
-/// are well-ordered as strings, the same discipline the lineage range uses
-/// (`lineage::created_in_range`) — so no date parsing is needed.
+/// A blob-true date window (`from`/`to` inclusive, ISO `yyyy-mm-dd`). Either
+/// bound is optional (open on that side). Compared LEXICALLY — ISO dates are
+/// well-ordered as strings, the same discipline the lineage range uses
+/// (`lineage::created_in_range`) — so no date parsing is needed. Which date the
+/// window tests is the sibling [`Filter::date_field`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct DateRange {
     pub from: Option<String>,
     pub to: Option<String>,
+}
+
+/// Which date a `date_range` window filters by — the timeline CRITERION. All
+/// three compare as `yyyy-mm-dd`: `created`/`stamped` are frontmatter date
+/// strings, and `modified` is the worktree mtime converted to its UTC calendar
+/// day (`lineage::ms_to_date_key`), so the wire window stays uniform date-strings
+/// regardless of criterion. `created` (frontmatter `date:`) is the DEFAULT and
+/// the only criterion present blob-true on every view; `modified` (the mtime) is
+/// ABSENT on historical/as-of views — a node with no value for the chosen field
+/// is excluded (honest degradation); `stamped` (frontmatter `modified:` CLI
+/// stamp) is blob-true.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DateField {
+    #[default]
+    Created,
+    Modified,
+    Stamped,
 }
 
 /// The wire filter (contract §4). All facets optional; absent = no
@@ -191,6 +210,11 @@ pub struct Filter {
     /// window is set — it has no position to test, the same exclusion the lineage
     /// range applies.
     pub date_range: Option<DateRange>,
+    /// Which date the `date_range` window (and the timeline range slice) filters
+    /// by — `created` (default), `modified`, or `stamped`. See [`DateField`]. An
+    /// absent value defaults to `created`, so a client that never sets it sees the
+    /// unchanged created-only behaviour.
+    pub date_field: DateField,
 }
 
 /// The graph EDGE tiers a filter may name (declared/structural/temporal).
@@ -480,7 +504,10 @@ impl Filter {
         // its calendar date rather than being dropped at the `to` boundary.
         if let Some(range) = &self.date_range
             && !crate::lineage::created_in_range(
-                node.dates.as_ref().and_then(|d| d.created.as_deref()),
+                node.dates
+                    .as_ref()
+                    .and_then(|d| crate::lineage::date_key_for(d, self.date_field))
+                    .as_deref(),
                 range.from.as_deref(),
                 range.to.as_deref(),
             )
@@ -543,6 +570,42 @@ pub struct DateBounds {
     pub max: String,
 }
 
+/// Per-CRITERION corpus date spans — the timeline's left/right edges for each
+/// selectable [`DateField`]. Each is omitted (absent) when no node carries that
+/// field, so a client reading `date_bounds_by_field[<criterion>]` gets the honest
+/// span or nothing. `created`/`stamped` are frontmatter date strings; `modified`
+/// is the worktree mtime mapped to its UTC calendar day. The flat `date_bounds`
+/// remains the `created` span for back-compat.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DateBoundsByField {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<DateBounds>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified: Option<DateBounds>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stamped: Option<DateBounds>,
+}
+
+/// Min/max of one date CRITERION across the graph, each value normalized to its
+/// `yyyy-mm-dd` prefix so a time-suffixed `created`/`stamped` never skews the
+/// lexically-ordered span (consistent with `created_in_range`). `None` when no
+/// node carries that field.
+fn field_bounds(graph: &LinkageGraph, field: DateField) -> Option<DateBounds> {
+    graph
+        .nodes()
+        .filter_map(|n| {
+            n.dates
+                .as_ref()
+                .and_then(|d| crate::lineage::date_key_for(d, field))
+                .map(|s| crate::lineage::date_key(&s).to_string())
+        })
+        .fold(None::<(String, String)>, |acc, date| match acc {
+            None => Some((date.clone(), date)),
+            Some((min, max)) => Some((min.min(date.clone()), max.max(date))),
+        })
+        .map(|(min, max)| DateBounds { min, max })
+}
+
 /// The legal filter vocabulary actually present in a graph (contract §4
 /// `/filters`): data-driven, nothing hardcoded client-side. Carries the full
 /// §4 facet set — relation types, tiers, doc types, feature tags, node kinds,
@@ -574,9 +637,14 @@ pub struct Vocabulary {
     /// campaign): the `dangling`/`orphaned` facet a client renders, sorted, never
     /// hardcoded — empty when the corpus is clean.
     pub health: Vec<String>,
-    /// Inclusive corpus date span; `null` when no node carries a created date.
+    /// Inclusive corpus `created` date span; `null` when no node carries a created
+    /// date. Back-compat alias of `date_bounds_by_field.created`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date_bounds: Option<DateBounds>,
+    /// Per-criterion corpus date spans (created / modified / stamped) — the
+    /// timeline's edges for each selectable date field. Each criterion is omitted
+    /// when no node carries it (honest degradation).
+    pub date_bounds_by_field: DateBoundsByField,
     /// The corpus-view refs actually present in node facets (worktree paths
     /// or ref names) — the time/scope axis surfaced data-driven, never a
     /// hardcoded client list.
@@ -649,19 +717,15 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
     // value never skews the lexically-ordered span — consistent with the
     // date-range facet's `created_in_range` compare. The bounds a date-range
     // facet selects within.
-    let date_bounds = graph
-        .nodes()
-        .filter_map(|n| {
-            n.dates
-                .as_ref()
-                .and_then(|d| d.created.as_deref())
-                .map(|c| crate::lineage::date_key(c).to_string())
-        })
-        .fold(None::<(String, String)>, |acc, date| match acc {
-            None => Some((date.clone(), date)),
-            Some((min, max)) => Some((min.min(date.clone()), max.max(date))),
-        })
-        .map(|(min, max)| DateBounds { min, max });
+    // Per-criterion spans (created / modified / stamped) via the shared
+    // `field_bounds`. The flat `date_bounds` stays the `created` span (back-compat).
+    let created_bounds = field_bounds(graph, DateField::Created);
+    let date_bounds = created_bounds.clone();
+    let date_bounds_by_field = DateBoundsByField {
+        created: created_bounds,
+        modified: field_bounds(graph, DateField::Modified),
+        stamped: field_bounds(graph, DateField::Stamped),
+    };
     // Refs actually present in node facets: the scope/time axis, data-driven.
     let mut refs: Vec<String> = graph
         .nodes()
@@ -705,6 +769,7 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
         structural_states: STATE_NAMES.to_vec(),
         health,
         date_bounds,
+        date_bounds_by_field,
         refs,
     }
 }
@@ -754,6 +819,7 @@ mod tests {
                 dates: Some(Dates {
                     created: Some(created.to_string()),
                     modified: None,
+                    stamped: None,
                 }),
                 feature_tags: vec![feature.to_string()],
                 status: None,
@@ -1001,6 +1067,7 @@ mod tests {
             dates: created.map(|c| Dates {
                 created: Some(c.to_string()),
                 modified: None,
+                stamped: None,
             }),
             feature_tags: vec![],
             status: None,
@@ -1036,6 +1103,65 @@ mod tests {
             serde_json::from_str(r#"{"date_range": {"from": "2026-06-10"}}"#).unwrap();
         assert!(open.matches_node(&node(Some("2026-12-31"))));
         assert!(!open.matches_node(&node(Some("2026-06-09"))));
+    }
+
+    #[test]
+    fn date_field_selects_which_date_the_window_filters_by() {
+        // #14: the `date_field` criterion switches WHICH date the same
+        // `date_range` window tests — `created` (default) vs `stamped` (frontmatter
+        // `modified:`) — and `modified` (mtime) absent on a node is honestly
+        // excluded. ONE node, ONE window, three criteria → three outcomes.
+        use engine_model::{CanonicalKey, Dates, NodeKind, Presence, ScopeRef, node_id};
+        let node = Node {
+            id: node_id(&CanonicalKey::Document { stem: "x" }),
+            kind: NodeKind::Document,
+            key: "x".into(),
+            title: None,
+            doc_type: Some("adr".into()),
+            dates: Some(Dates {
+                created: Some("2026-01-01".into()), // before the window
+                modified: None,                     // mtime absent (e.g. as-of view)
+                stamped: Some("2026-06-10".into()), // inside the window
+            }),
+            feature_tags: vec![],
+            status: None,
+            tier: None,
+            facets: vec![engine_model::Facet {
+                scope: ScopeRef::Ref {
+                    name: "main".into(),
+                },
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: None,
+            }],
+        };
+        let window = r#""date_range": {"from": "2026-06-01", "to": "2026-06-30"}"#;
+        let by_created: Filter =
+            serde_json::from_str(&format!(r#"{{{window}, "date_field": "created"}}"#)).unwrap();
+        let by_stamped: Filter =
+            serde_json::from_str(&format!(r#"{{{window}, "date_field": "stamped"}}"#)).unwrap();
+        let by_modified: Filter =
+            serde_json::from_str(&format!(r#"{{{window}, "date_field": "modified"}}"#)).unwrap();
+        assert_eq!(
+            by_created.date_field,
+            DateField::Created,
+            "default-equivalent"
+        );
+        assert!(
+            !by_created.matches_node(&node),
+            "by created (2026-01-01) the node is OUT of the June window"
+        );
+        assert!(
+            by_stamped.matches_node(&node),
+            "by stamped (2026-06-10) the node is IN the June window"
+        );
+        assert!(
+            !by_modified.matches_node(&node),
+            "by modified (mtime absent) the node has no position — honest exclusion"
+        );
+        // Absent `date_field` defaults to created (back-compat).
+        let bare: Filter = serde_json::from_str(&format!(r#"{{{window}}}"#)).unwrap();
+        assert_eq!(bare.date_field, DateField::Created, "absent => created");
     }
 
     #[test]
