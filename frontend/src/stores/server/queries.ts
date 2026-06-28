@@ -1590,9 +1590,53 @@ export function useVaultRailFacets(scope: unknown): VaultRailFacets {
 export function useTimelineLineageFilterArg(scope: unknown): string | undefined {
   const dashboardState = useDashboardState(scope);
   const filters = dashboardState.data?.filters;
+  const { criterion, served } = useTimelineDateCriterion(scope);
+  // The active date criterion rides as the `date_field` facet so the timeline
+  // narrows by the SAME field the graph does (Issue #14). Only sent for a
+  // non-default criterion AND only when the engine advertises it (capability gate),
+  // so an older engine — which rejects unknown filter fields — never receives it.
+  const dateField = served && criterion !== "created" ? criterion : undefined;
   return useMemo(
-    () => (filters ? dashboardLineageFilterArg({ filters }) : undefined),
-    [filters],
+    () => (filters ? dashboardLineageFilterArg({ filters }, dateField) : undefined),
+    [filters, dateField],
+  );
+}
+
+export type TimelineDateCriterion = "created" | "modified" | "stamped";
+
+export interface TimelineDateCriterionView {
+  /** The active date field (`created` default). */
+  criterion: TimelineDateCriterion;
+  /** Whether the engine serves the `timeline_date_criterion` setting — the
+   *  capability gate for enabling Modified/Stamped + sending `date_field`. */
+  served: boolean;
+}
+
+export function deriveTimelineDateCriterion(
+  schema: SettingsSchema | undefined,
+  settings: SettingsState | undefined,
+  activeScope: unknown,
+): TimelineDateCriterionView {
+  const eff = resolveEffectiveSetting(
+    schema,
+    settings,
+    activeScope,
+    CONSUMED_SETTING_KEYS.timelineDateCriterion,
+  );
+  const value = eff?.value;
+  const criterion: TimelineDateCriterion =
+    value === "modified" || value === "stamped" ? value : "created";
+  return { criterion, served: eff !== null };
+}
+
+/** The active timeline date criterion, read from the engine-served
+ *  `timeline_date_criterion` setting (schema-driven persistence, Issue #14). */
+export function useTimelineDateCriterion(scope: unknown): TimelineDateCriterionView {
+  const schema = useSettingsSchema();
+  const settings = useSettings();
+  return useMemo(
+    () => deriveTimelineDateCriterion(schema.data, settings.data, scope),
+    [schema.data, settings.data, scope],
   );
 }
 
@@ -1889,6 +1933,9 @@ export interface FiltersVocabularyView {
   /** HEALTH validity vocabulary (dangling/orphaned, present-in-corpus). */
   health: string[];
   dateBounds: FiltersVocabulary["date_bounds"];
+  /** Per-criterion corpus spans (Issue #14): the timeline's edges for each date
+   *  field. Present only on an engine that serves it (the Modified/Stamped gate). */
+  dateBoundsByField: FiltersVocabulary["date_bounds_by_field"];
 }
 
 export function deriveFiltersVocabularyView(
@@ -1906,6 +1953,7 @@ export function deriveFiltersVocabularyView(
     planStates: vocabulary?.plan_states ?? [],
     health: vocabulary?.health ?? [],
     dateBounds: vocabulary?.date_bounds,
+    dateBoundsByField: vocabulary?.date_bounds_by_field,
   };
 }
 
@@ -2461,12 +2509,13 @@ export interface DashboardStageSceneView {
 
 export function deriveDashboardStageSceneView(
   state: DashboardState | undefined,
+  dateField?: TimelineDateCriterion,
 ): DashboardStageSceneView {
   const timeline = deriveDashboardTimelineModeView(state?.timeline_mode);
   return {
     selectedIds: state?.selected_ids ? [...state.selected_ids] : [],
     selectedNodeId: dashboardSelectionId(state),
-    graphQuery: state ? dashboardGraphQueryVariables(state) : null,
+    graphQuery: state ? dashboardGraphQueryVariables(state, dateField) : null,
     granularity: state?.graph_granularity ?? "feature",
     activeRepresentationMode: normalizeDashboardRepresentationMode(
       state?.representation_mode,
@@ -2486,9 +2535,13 @@ export function deriveDashboardStageSceneView(
  */
 export function useDashboardStageSceneView(scope: unknown): DashboardStageSceneView {
   const dashboardState = useDashboardState(scope);
+  const { criterion, served } = useTimelineDateCriterion(scope);
+  // The graph narrows its date_range window by the active criterion (Issue #14),
+  // gated to a non-default, engine-advertised value so an older engine is unaffected.
+  const dateField = served && criterion !== "created" ? criterion : undefined;
   return useMemo(
-    () => deriveDashboardStageSceneView(dashboardState.data),
-    [dashboardState.data],
+    () => deriveDashboardStageSceneView(dashboardState.data, dateField),
+    [dashboardState.data, dateField],
   );
 }
 
@@ -2608,6 +2661,36 @@ export function normalizeGraphSliceRequestIdentity(
   };
 }
 
+/** Bounded poll interval (ms) for a graph slice whose held tiers block reports a
+ *  tier still mid-build. Active ONLY while that holds; the predicate returns
+ *  false the moment the fold flips the tier to ready, so the poll self-clears
+ *  (bounded-by-default-for-every-accumulator). */
+const GRAPH_BUILDING_REFETCH_MS = 4_000;
+
+/**
+ * Whether a HELD graph slice's tiers block still names a tier mid-build (the
+ * engine's unavailable-while-building sentinel — a canonical tier marked
+ * unavailable with a reason that names a build). The tiers block is a per-fetch
+ * SNAPSHOT, and a declared fold's completion splices its edges via the no-refetch
+ * delta path (graphSync), so a "still building" tier would otherwise never clear
+ * from the held slice until an unrelated refetch — the stuck "Still loading
+ * links…" banner (Issue #4A). While this holds, the slice query is bounded-polled
+ * to re-read the tiers; once the fold flips the tier to ready it returns false and
+ * the poll stops. Mirrors `isBuildingReason` on the chrome side.
+ */
+function graphSliceHasBuildingTier(data: GraphSlice | undefined): boolean {
+  const tiers = data?.tiers;
+  if (!tiers) return false;
+  return CANONICAL_TIERS.some((tier) => {
+    const state = tiers[tier];
+    return (
+      state?.available === false &&
+      typeof state.reason === "string" &&
+      state.reason.toLowerCase().includes("building")
+    );
+  });
+}
+
 export function useGraphSlice(
   scope: unknown,
   filter?: unknown,
@@ -2649,6 +2732,16 @@ export function useGraphSlice(
     // previously-seen filter resolves instantly from cache. The scene's warm-start
     // (object constancy by id) animates the transition rather than re-exploding.
     placeholderData: keepPreviousData,
+    // Held-slice tiers lag (Issue #4A): the tiers block is a per-fetch snapshot and a
+    // declared fold's completion splices its edges via the no-refetch delta path, so a
+    // "still building" tier would otherwise leave the "Still loading links…" banner
+    // stuck until an unrelated refetch. Poll on a bounded interval ONLY while a held
+    // tier reads building; the moment the fold flips it to ready the predicate returns
+    // false and the poll stops (bounded-by-default-for-every-accumulator).
+    refetchInterval: (query) =>
+      graphSliceHasBuildingTier(query.state.data as GraphSlice | undefined)
+        ? GRAPH_BUILDING_REFETCH_MS
+        : false,
   });
   return enabled ? query : { ...query, data: undefined };
 }
@@ -3083,6 +3176,41 @@ export function useNodeDetailView(id: unknown, scope: unknown): NodeDetailView {
     query.isError,
     enabled,
   );
+}
+
+/**
+ * Resolve a node's IDENTITY from the IN-MEMORY active stage graph slice — the
+ * slice the Stage already holds — instead of the `/nodes/{id}` detail family.
+ * Constellation FEATURE nodes (id `feature:<tag>`) are synthesized aggregates the
+ * detail route 404s (see `isAddressableNode`), so `useNodeDetailView` returns a
+ * null node for them; their identity (id, kind, title, member_count) nonetheless
+ * already rides the graph slice. This selector reconstructs the SAME cached slice
+ * query the Stage issues (a cache hit — never a new fetch; TanStack dedupes on the
+ * shared key) and finds the node by id, so consumers like the hover card can show
+ * a feature node's identity without a doc-detail round-trip. Returns the raw slice
+ * node reference (stable between fetches) memoized on (nodeId, slice.data) per
+ * stable-selectors. Addressable doc nodes also resolve here, but their richer
+ * detail/evidence is sourced from the detail route by the caller.
+ */
+export function useGraphNodeFromActiveSlice(
+  id: unknown,
+  scope: unknown,
+): EngineNode | null {
+  const nodeId = normalizeNodeId(id);
+  const { graphQuery } = useDashboardStageSceneView(scope);
+  const slice = useGraphSlice(
+    graphQuery?.scope ?? null,
+    graphQuery?.filter,
+    graphQuery?.asOf,
+    graphQuery?.granularity,
+    graphQuery?.lens,
+    graphQuery?.focus,
+  );
+  const nodes = slice.data?.nodes;
+  return useMemo(() => {
+    if (nodeId === null || !nodes) return null;
+    return nodes.find((n) => n.id === nodeId) ?? null;
+  }, [nodeId, nodes]);
 }
 
 /** The lifecycle axis: every opened feature has the same internal grammar. */

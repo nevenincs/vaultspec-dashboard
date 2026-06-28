@@ -47,7 +47,7 @@ import { expandWorkingSet, useWorkingSet } from "../../stores/view/workingSet";
 import { useSurfaceStates } from "../degradation/useDegradation";
 import { HoverCardLayer } from "../islands/HoverCardLayer";
 import { IslandLayer } from "../islands/IslandLayer";
-import { TimeTravelChip } from "../timeline/Playhead";
+import { TimeTravelChip } from "../timeline/TimeTravelChip";
 import { useTimeTravel } from "../timeline/timeTravel";
 import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
 import { CategoryLegend } from "./CategoryLegend";

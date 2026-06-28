@@ -113,16 +113,21 @@ describe("filter-consolidation: one canonical filter surface", () => {
     ).toEqual([]);
   });
 
-  it("keeps the timeline a consumer of the canonical filter (unified-filter-plane D3)", () => {
-    // The timeline must narrow by the canonical filter, not ignore it. It consumes
-    // the serialized facet filter through `useTimelineLineageFilterArg` and feeds it
-    // to its lineage read — a regression that drops this makes the timeline show the
-    // whole corpus while the rail and graph narrow.
-    const timeline = FILES.find((f) => f.rel === "app/timeline/Timeline.tsx");
-    expect(timeline, "app/timeline/Timeline.tsx not found").toBeTruthy();
+  it("keeps the timeline wired to the canonical filter as the date_range writer (unified-filter-plane D3, Issue #14)", () => {
+    // The timeline is now a fixed two-handle date-range selector (Issue #14 rebuild):
+    // it does not read a lineage slice anymore, it WRITES the canonical `date_range`
+    // through the dashboard-state mutation seam (`setDateRange`), and the graph + rail
+    // consume that one record (`dashboardGraphFilter` folds date_range into
+    // /graph/query). The timeline is the sole date_range writer
+    // (filtering-has-one-canonical-surface). A regression that stops writing the
+    // canonical date_range desyncs the surfaces — fail the gate.
+    const timeline = FILES.find(
+      (f) => f.rel === "app/timeline/TimelineRangeSelector.tsx",
+    );
+    expect(timeline, "app/timeline/TimelineRangeSelector.tsx not found").toBeTruthy();
     expect(
-      /useTimelineLineageFilterArg/.test(timeline!.body),
-      "the timeline no longer consumes the canonical filter",
+      /setDateRange/.test(timeline!.body),
+      "the timeline no longer writes the canonical date_range filter",
     ).toBe(true);
   });
 });
