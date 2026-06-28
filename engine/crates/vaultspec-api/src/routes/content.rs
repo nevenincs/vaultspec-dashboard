@@ -257,6 +257,111 @@ fn read_bytes(
     }
 }
 
+/// Hard cap on the headline summary's character length: a one-line headline, not
+/// a paragraph. Beyond it the line is cut at a char boundary with an ellipsis; the
+/// hover card line-clamps further on its own width.
+const SUMMARY_MAX_CHARS: usize = 240;
+
+/// The lazy one-line headline summary for a `doc:` node — the document body's
+/// FIRST prose line. Reuses the same bounded, read-only path resolution + byte
+/// read the content route uses (`engine-read-and-infer`: it only reads worktree
+/// bytes), then strips the YAML frontmatter, ATX headings (the H1 title and any
+/// sub-headings before prose), blank lines, and template HTML-comment annotation
+/// blocks, returning the first real prose line. `None` for a non-`doc:` id, an
+/// unreadable/missing file, or a body with no prose — an HONEST absence the hover
+/// card renders by omitting the line. NEVER errors: a summary is a nicety, not a
+/// contract tier, so any failure degrades to `None` rather than failing the
+/// node-detail response.
+pub(crate) fn doc_summary(cell: &ScopeCell, id: &str) -> Option<String> {
+    // Doc nodes only: code/feature/commit/container nodes carry no doc-body prose
+    // worth a headline (the route-fill is scoped to documents).
+    if !id.starts_with("doc:") {
+        return None;
+    }
+    let target = resolve_node_path(&cell.doc_basename_index(), id).ok()?;
+    let rel_path = guard_within_root(&target.rel_path).ok()?;
+    let body = read_bytes(cell, &rel_path).ok()?;
+    first_prose_line(&body.text)
+}
+
+/// The first prose PARAGRAPH of a vault markdown body, collapsed to one headline
+/// line: skip a leading `--- … ---` YAML frontmatter block, ATX `#` headings, blank
+/// lines, and `<!-- … -->` annotation blocks (single- or multi-line); then collect
+/// the first run of consecutive prose lines (vault prose is hard-wrapped, so a
+/// single sentence spans several lines) into one space-joined, length-capped
+/// string. Collecting the paragraph rather than a single physical line keeps the
+/// headline from cutting off mid-sentence at a wrap boundary. `None` when nothing
+/// prose-like remains.
+fn first_prose_line(text: &str) -> Option<String> {
+    let mut lines = text.lines();
+    // Peek for a leading YAML frontmatter fence and consume through its close.
+    let mut first = lines.next();
+    if matches!(first, Some(l) if l.trim() == "---") {
+        for l in lines.by_ref() {
+            if l.trim() == "---" {
+                break;
+            }
+        }
+        first = lines.next();
+    }
+    let mut in_comment = false;
+    let mut paragraph: Vec<&str> = Vec::new();
+    // Re-thread the first post-frontmatter line back into the scan.
+    let rest = first.into_iter().chain(lines);
+    for raw in rest {
+        let line = raw.trim();
+        if line.is_empty() {
+            // A blank line closes the first prose paragraph; before any prose it is
+            // just leading whitespace to skip.
+            if paragraph.is_empty() {
+                continue;
+            }
+            break;
+        }
+        if in_comment {
+            if line.contains("-->") {
+                in_comment = false;
+            }
+            continue;
+        }
+        if line.starts_with("<!--") {
+            // A self-closing `<!-- … -->` is a single annotation line; an open one
+            // starts a block whose close we skip to.
+            if !line.contains("-->") {
+                in_comment = true;
+            }
+            continue;
+        }
+        // The H1 title and any leading sub-headings are not prose; a heading reached
+        // mid-collection closes the paragraph.
+        if line.starts_with('#') {
+            if paragraph.is_empty() {
+                continue;
+            }
+            break;
+        }
+        paragraph.push(line);
+    }
+    if paragraph.is_empty() {
+        return None;
+    }
+    Some(truncate_summary(&paragraph.join(" "), SUMMARY_MAX_CHARS))
+}
+
+/// Truncate at a char boundary with a trailing ellipsis when over the cap; the
+/// input is already trimmed.
+fn truncate_summary(s: &str, max_chars: usize) -> String {
+    let mut out = String::with_capacity(s.len().min(max_chars * 4));
+    for (i, c) in s.chars().enumerate() {
+        if i >= max_chars {
+            out.push('…');
+            break;
+        }
+        out.push(c);
+    }
+    out
+}
+
 /// `GET /nodes/{id}/content?scope=` — one document/file's bytes, bounded,
 /// read-only, through the shared envelope with the tiers block on success and
 /// error.
@@ -363,6 +468,49 @@ fn content_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn first_prose_line_skips_frontmatter_heading_and_comments() {
+        // A canonical vault doc: YAML frontmatter, an annotation comment, an H1
+        // title, blank lines, then the first prose paragraph (hard-wrapped over two
+        // lines, collapsed into one headline; the next paragraph is excluded).
+        let body = "---\ntags:\n  - '#adr'\n---\n\n<!-- a template annotation -->\n# foo decision: the headline\n\nThis is the first prose line\nworth a summary.\n\nA later paragraph that is excluded.\n";
+        assert_eq!(
+            first_prose_line(body).as_deref(),
+            Some("This is the first prose line worth a summary."),
+        );
+    }
+
+    #[test]
+    fn first_prose_line_skips_a_multi_line_comment_block() {
+        let body = "# title\n<!--\nmulti\nline\nannotation\n-->\nThe prose after the block.\n";
+        assert_eq!(
+            first_prose_line(body).as_deref(),
+            Some("The prose after the block."),
+        );
+    }
+
+    #[test]
+    fn first_prose_line_stops_the_paragraph_at_a_following_heading() {
+        let body = "Intro prose.\n## A section heading\nmore prose under it.\n";
+        assert_eq!(first_prose_line(body).as_deref(), Some("Intro prose."));
+    }
+
+    #[test]
+    fn first_prose_line_none_for_a_heading_only_body() {
+        assert_eq!(first_prose_line("# only a title\n\n"), None);
+    }
+
+    #[test]
+    fn truncate_summary_caps_at_a_char_boundary_with_an_ellipsis() {
+        let s = "x".repeat(300);
+        let out = truncate_summary(&s, SUMMARY_MAX_CHARS);
+        // 240 kept chars + the ellipsis.
+        assert_eq!(out.chars().count(), SUMMARY_MAX_CHARS + 1);
+        assert!(out.ends_with('…'));
+        // A short line is returned unchanged.
+        assert_eq!(truncate_summary("short", SUMMARY_MAX_CHARS), "short");
+    }
 
     #[test]
     fn resolve_code_node_strips_symbol_qualifier() {
