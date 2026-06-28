@@ -30,6 +30,7 @@ import {
   dashboardDocumentStateResetPatch,
   dashboardDocumentStateSeed,
   dashboardFiltersWithMinConfidence,
+  dashboardFiltersWithFacetCleared,
   dashboardFiltersWithFacetToggled,
   dashboardFiltersWithTier,
   dashboardFeatureDescentPatch,
@@ -729,6 +730,23 @@ describe("dashboard-state engine client (live engine)", () => {
         "x".repeat(DASHBOARD_FILTER_FACET_VALUE_MAX_CHARS + 1),
       ),
     ).toEqual({ filters: { doc_types: ["adr"], feature_tags: ["old"] } });
+
+    // Scoped clear (the legend's doc_types Reset): clears ONLY the named facet,
+    // leaving every other facet untouched — never the whole-record clobber.
+    expect(
+      dashboardFiltersWithFacetCleared(
+        { doc_types: ["adr", "plan"], statuses: ["accepted"], health: ["dangling"] },
+        " doc_types ",
+      ),
+    ).toEqual({ statuses: ["accepted"], health: ["dangling"] });
+    // An unknown facet name is inert (no facet removed).
+    expect(
+      dashboardFiltersWithFacetCleared({ doc_types: ["adr"] }, "not_a_facet"),
+    ).toEqual({ doc_types: ["adr"] });
+    // Clearing an already-absent facet is a no-op clone.
+    expect(
+      dashboardFiltersWithFacetCleared({ statuses: ["accepted"] }, "doc_types"),
+    ).toEqual({ statuses: ["accepted"] });
   });
 
   it("normalizes dashboard layout and lens enum values at the patch seam", () => {
