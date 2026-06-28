@@ -194,7 +194,7 @@ describe("MarkdownReader states (read from the tiers-derived view)", () => {
     expect(screen.getByText(/worktree not listable/)).toBeTruthy();
   });
 
-  it("renders the loading and error states", () => {
+  it("renders the loading state as a text-free skeleton and the error state as a sentence", () => {
     const loading: ContentView = {
       loading: true,
       errored: false,
@@ -206,12 +206,31 @@ describe("MarkdownReader states (read from the tiers-derived view)", () => {
       truncated: null,
       available: false,
     };
-    const { unmount } = render(<MarkdownReader content={loading} />);
-    expect(screen.getByText(/Loading document/)).toBeTruthy();
+    const { container, unmount } = render(<MarkdownReader content={loading} />);
+    // Loading is UI-ONLY (state-mode-uniformity ADR D2): a kit Skeleton, never
+    // on-screen "Loading…" text. The skeleton announces busy to AT and carries the
+    // human label ONLY in its `sr-only` span.
+    const skeleton = container.querySelector("[data-skeleton]");
+    expect(skeleton).toBeTruthy();
+    expect(skeleton!.getAttribute("role")).toBe("status");
+    expect(skeleton!.getAttribute("aria-busy")).toBe("true");
+    expect(skeleton!.querySelector(".sr-only")?.textContent).toMatch(
+      /Loading document/,
+    );
+    // The loading copy is NOT visible body text — it lives only in the sr-only label.
+    const visibleText = Array.from(container.querySelectorAll("*"))
+      .filter((el) => el.children.length === 0 && !el.closest(".sr-only"))
+      .map((el) => el.textContent ?? "")
+      .join(" ");
+    expect(visibleText).not.toMatch(/Loading document/);
     unmount();
 
+    // Error stays a plain sentence (only loading is skeletonized).
     const errored: ContentView = { ...loading, loading: false, errored: true };
-    render(<MarkdownReader content={errored} />);
+    const { container: erroredContainer } = render(
+      <MarkdownReader content={errored} />,
+    );
+    expect(erroredContainer.querySelector("[data-skeleton]")).toBeNull();
     expect(screen.getByText(/could not be loaded/)).toBeTruthy();
   });
 });

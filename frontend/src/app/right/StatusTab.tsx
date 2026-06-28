@@ -71,7 +71,7 @@ import {
   useRecentCommitsChrome,
   useStatusSectionOpen,
 } from "../../stores/view/statusTabChrome";
-import { openDocTab } from "../../stores/view/tabs";
+import { previewDocTab } from "../../stores/view/tabs";
 import { freshnessLabel } from "../presentation/freshness";
 import { ChangesOverview } from "./ChangesOverview";
 import { PlanStepTree } from "./PlanStepTree";
@@ -235,7 +235,9 @@ function PlanPill({
   const Chevron = expanded ? ChevronDown : ChevronRight;
 
   const openPlan = () => {
-    void openDocTab(row.nodeId, "markdown", scope).catch(() => undefined);
+    // Read-mode open: preview in the single provisional tab (#15), so browsing
+    // plans from the status rail reuses one preview tab rather than pinning each.
+    void previewDocTab(row.nodeId, "markdown", scope).catch(() => undefined);
   };
 
   // The plan list is ONE tab stop: the open (title) button roves, ArrowUp/Down
