@@ -353,6 +353,24 @@ pub(crate) fn declared_cache_key(scope_token: &str, head_sha: &str) -> String {
     engine_model::content_hash(format!("{scope_token}:{head_sha}").as_bytes())
 }
 
+/// Read the cached declared-graph JSON for the cell's CURRENT HEAD WITHOUT
+/// running the core subprocess (a pure store read). Returns `None` on a cache
+/// miss or when HEAD cannot be resolved, so a caller can fall back to the async
+/// fold (which may run the subprocess).
+///
+/// The rebuild path uses this to CARRY last-good declared edges across a routine
+/// re-index: when HEAD is unchanged, the cached declared graph at that sha is
+/// identical (declared ingest is replace-by-id idempotent over the structural
+/// graph), so folding it keeps the `declared` tier AVAILABLE instead of flapping
+/// to the `DECLARED_BUILDING` sentinel on every filesystem change — the source of
+/// the stuck "Still loading links…" banner and the declared building↔ready flap.
+pub(crate) fn cached_declared_json(cell: &ScopeCell) -> Option<String> {
+    let head_sha = engine_graph::asof::resolve_ref(&cell.root, "HEAD").ok()?;
+    let key = declared_cache_key(&crate::routes::scope_token(&cell.root), &head_sha);
+    let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
+    store.get_artifact(DECLARED_GRAPH_KIND, &key).ok().flatten()
+}
+
 /// Asynchronously fold the declared tier into a cell's live graph (perf ADR
 /// D1 — the dominant win: the slow `vaultspec-core vault graph` subprocess off
 /// the servable-parse critical path).
@@ -1034,6 +1052,67 @@ mod tests {
             *cell.declared_status.read().unwrap(),
             None,
             "declared tier flips to available from the cache (no subprocess ran)"
+        );
+    }
+
+    #[tokio::test]
+    async fn rebuild_carries_last_good_declared_instead_of_flapping_to_building() {
+        // Issue #4 / #1: on a routine re-index where declared was already available
+        // AND the declared graph for the CURRENT HEAD is cached (HEAD unchanged),
+        // `rebuild_and_swap` must FOLD those edges and keep the tier available — NOT
+        // collapse `declared_status` to the building sentinel, which is what left the
+        // "Still loading links…" banner flapping on every filesystem change. Runs
+        // under a tokio runtime so the async (serve) branch is taken, not the sync
+        // test fallback.
+        let dir = tempfile::tempdir().unwrap();
+        let (root, cell) = structural_cell(dir.path());
+        let structural_edges = cell.graph_arc().edge_count();
+
+        // Prior state: declared was available (a previous fold succeeded) and the
+        // declared graph for HEAD is cached (HEAD has not changed this re-index).
+        *cell.declared_status.write().unwrap() = None;
+        let head_sha = engine_graph::asof::resolve_ref(&root, "HEAD").unwrap();
+        seed_declared_cache(
+            &cell,
+            &root,
+            &head_sha,
+            "2026-06-14-reg-plan",
+            "2026-06-14-reg-adr",
+        );
+
+        // The re-index: a fresh structural rebuild + the carry-last-good declared fold.
+        cell.rebuild_and_swap().unwrap();
+
+        // The declared tier stayed AVAILABLE (no building sentinel), and its edges
+        // are present in the freshly-committed graph — no flap, no gap.
+        assert_eq!(
+            *cell.declared_status.read().unwrap(),
+            None,
+            "declared stays available across a routine re-index (carry last-good), \
+             never flapping to the building sentinel"
+        );
+        assert!(
+            cell.graph_arc().edge_count() > structural_edges,
+            "the cached declared edge is folded into the rebuilt graph (no gap)"
+        );
+    }
+
+    #[tokio::test]
+    async fn rebuild_reports_building_when_no_last_good_declared_is_cached() {
+        // The honest cold-build / new-HEAD path: with no cached declared graph to
+        // carry, `rebuild_and_swap` reports declared unavailable-while-building until
+        // the async fold lands — the legitimate "building" case the banner may show.
+        let dir = tempfile::tempdir().unwrap();
+        let (_root, cell) = structural_cell(dir.path());
+        // Prior available, but the cache is EMPTY (no seed) → nothing to carry.
+        *cell.declared_status.write().unwrap() = None;
+
+        cell.rebuild_and_swap().unwrap();
+
+        assert_eq!(
+            cell.declared_status.read().unwrap().as_deref(),
+            Some(engine_graph::index::DECLARED_BUILDING),
+            "with no cached declared graph, declared honestly reports building"
         );
     }
 
