@@ -11,7 +11,7 @@
 import type { ReactNode } from "react";
 
 import { type FacetDotTone, FacetRow } from "../kit/FacetRow";
-import { SearchField, SectionLabel } from "../kit";
+import { SearchField, SectionLabel, Skeleton, SkeletonRow } from "../kit";
 
 export interface FilterFacetOption {
   /** Stable facet value sent to the wire (e.g. "research", "dangling"). */
@@ -183,12 +183,23 @@ function CheckboxBody({ section }: { section: CheckboxSection }) {
         />
       )}
       {empty ? (
-        <p
-          className="px-fg-1-5 py-fg-0-5 text-meta text-ink-faint"
-          aria-busy={section.loading || undefined}
-        >
-          {section.loading ? "loading…" : (section.emptyLabel ?? "none in corpus")}
-        </p>
+        section.loading ? (
+          // Loading is UI-ONLY (state-mode-uniformity ADR D2): a text-free skeleton
+          // mimicking facet rows, the human label only in the kit `Skeleton`'s sr-only.
+          // The empty (not-loading) case stays a plain sentence.
+          <Skeleton
+            label="Loading filter options…"
+            className="px-fg-1-5 py-fg-0-5 gap-fg-1"
+          >
+            <SkeletonRow width="w-3/4" />
+            <SkeletonRow width="w-2/3" />
+            <SkeletonRow width="w-5/6" />
+          </Skeleton>
+        ) : (
+          <p className="px-fg-1-5 py-fg-0-5 text-meta text-ink-faint">
+            {section.emptyLabel ?? "none in corpus"}
+          </p>
+        )
       ) : (
         <ul role="list" className="flex flex-col gap-fg-0-5">
           {section.options.map((opt) => (

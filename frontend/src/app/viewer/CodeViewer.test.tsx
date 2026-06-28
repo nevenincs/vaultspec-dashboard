@@ -92,7 +92,7 @@ describe("CodeViewer", () => {
     expect(screen.getByText(/worktree not listable/)).toBeTruthy();
   });
 
-  it("renders the loading and error states", () => {
+  it("renders the loading state as a text-free skeleton and the error state as a sentence", () => {
     const loading: ContentView = {
       loading: true,
       errored: false,
@@ -104,11 +104,28 @@ describe("CodeViewer", () => {
       truncated: null,
       available: false,
     };
-    const { unmount } = render(<CodeViewer content={loading} />);
-    expect(screen.getByText(/Loading file/)).toBeTruthy();
+    const { container, unmount } = render(<CodeViewer content={loading} />);
+    // Loading is UI-ONLY (state-mode-uniformity ADR D2): a kit Skeleton, never
+    // on-screen "Loading…" text. The skeleton announces busy to AT and carries the
+    // human label ONLY in its `sr-only` span.
+    const skeleton = container.querySelector("[data-skeleton]");
+    expect(skeleton).toBeTruthy();
+    expect(skeleton!.getAttribute("role")).toBe("status");
+    expect(skeleton!.getAttribute("aria-busy")).toBe("true");
+    expect(skeleton!.querySelector(".sr-only")?.textContent).toMatch(/Loading file/);
+    // The loading copy is NOT visible body text — it lives only in the sr-only label.
+    const visibleText = Array.from(container.querySelectorAll("*"))
+      .filter((el) => el.children.length === 0 && !el.closest(".sr-only"))
+      .map((el) => el.textContent ?? "")
+      .join(" ");
+    expect(visibleText).not.toMatch(/Loading file/);
     unmount();
 
-    render(<CodeViewer content={{ ...loading, loading: false, errored: true }} />);
+    // Error stays a plain sentence (only loading is skeletonized).
+    const { container: errored } = render(
+      <CodeViewer content={{ ...loading, loading: false, errored: true }} />,
+    );
+    expect(errored.querySelector("[data-skeleton]")).toBeNull();
     expect(screen.getByText(/could not be loaded/)).toBeTruthy();
   });
 });

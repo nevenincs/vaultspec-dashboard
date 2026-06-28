@@ -17,6 +17,9 @@ import {
   ProgressBar,
   PropertyRow,
   SectionLabel,
+  Skeleton,
+  SkeletonBar,
+  SkeletonRow,
   StateBlock,
 } from "../kit";
 import { useActiveScope, useRagStatus } from "../../stores/server/queries";
@@ -442,8 +445,19 @@ function Diagnostics({ scope }: { scope: unknown }) {
             value={`${num(env.health.indexed_vectors_count)} / ${num(env.health.points_count)}`}
           />
         </>
+      ) : healthQuery.isPending ? (
+        // Loading is UI-ONLY (state-mode-uniformity ADR D2): a text-free skeleton
+        // mimicking the collection row + property rows, the human label only in the
+        // kit `Skeleton`'s sr-only — never on-screen "Reading…" text.
+        <Skeleton label="Reading Qdrant collection health…" className="gap-fg-0-5">
+          <SkeletonRow width="w-2/3" />
+          <SkeletonBar width="w-1/2" />
+          <SkeletonBar width="w-1/2" />
+        </Skeleton>
       ) : (
-        <p className="text-caption text-ink-faint">Reading Qdrant collection health…</p>
+        <p className="text-caption text-ink-faint">
+          Qdrant collection health unavailable.
+        </p>
       )}
     </div>
   );
