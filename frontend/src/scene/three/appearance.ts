@@ -13,10 +13,31 @@ import { appearanceDefaults, controlNumber } from "./graphControlSchema";
 // The base node diameter, used as the base world radius for relative node sizing.
 // (Originally COSMOS_POINT_SIZE from the retired CosmosField.)
 const BASE_POINT_SIZE = 4;
-/** Salience multiplier band: salience 0 → 1.0× base; salience 1 → this × base. Moved
- *  here from the retired nodeAppearance.ts (Phase B dead-module prune); nodeWorldRadius
- *  is its only consumer, and the schema's salienceRadiusMax registry entry mirrors it. */
+/** Prominence multiplier band: an unconnected node → 1.0× base; a node at/above the
+ *  reference connectedness → this × base. (Historically the salience band; node size is
+ *  now driven by CONNECTEDNESS — see nodeWorldRadius. Kept named for the schema's
+ *  salienceRadiusMax registry mirror and the unchanged size ceiling.) */
 export const SALIENCE_RADIUS_MAX = 2.6;
+/** Reference total degree that maps to FULL prominence (the log-mapping denominator):
+ *  a node with this many reference edges (in+out) reaches the top of the size band; more
+ *  connected nodes clamp there. Engine-served degree drives the size, this only bounds
+ *  the mapping (bounded-by-default) so a few mega-hubs can't dwarf the field. */
+const DEGREE_PROMINENCE_REF = controlNumber("nodeDegreeReference");
+/** Precomputed log denominator for the degree → prominence mapping. */
+const DEGREE_PROMINENCE_LOG_REF = Math.log2(1 + DEGREE_PROMINENCE_REF);
+
+/** Total connectedness of a node: the engine-served per-tier degree counts summed
+ *  (reference edges touching the node, in+out). Returns null when the wire carried no
+ *  degree block (a client-synthesized node) so the caller can fall back. The frontend
+ *  only READS the served degree (degreeByTier) and MAPS it to a radius; it never
+ *  recomputes connectedness (display-state-is-backend-served). */
+function nodeDegree(node: SceneNodeData): number | null {
+  const dbt = node.degreeByTier;
+  if (!dbt) return null;
+  let sum = 0;
+  for (const v of Object.values(dbt)) sum += typeof v === "number" ? v : 0;
+  return sum;
+}
 
 // Edge-state alpha multipliers — read FROM the canonical control registry
 // (graphControlSchema) so each has ONE definition (value-preserving: unknown-tier 0.6,
@@ -67,20 +88,36 @@ export interface AppearanceParams {
 // selectable mode). graph-backend-unification ADR D2: gradient edges are binding.
 export const APPEARANCE_DEFAULTS: AppearanceParams = appearanceDefaults();
 
-/** World-space node radius — BASE_POINT_SIZE scaled by the live appearance params
- *  (node module size + salience spread). */
+/** World-space node radius — BASE_POINT_SIZE scaled by the live appearance params.
+ *
+ *  Visual prominence scales with CONNECTEDNESS: a node's drawn radius (and therefore,
+ *  via the collide radii fed from this same function, its layout footprint) grows with
+ *  its engine-served total degree (reference edges in+out). The mapping is BOUNDED and
+ *  MONOTONIC — `log2(1+degree)` (diminishing returns so a doc with twice the edges isn't
+ *  twice the size) normalized by the reference degree and CLAMPED to the band — so a few
+ *  mega-hubs read as prominent without dwarfing the field. The spread AMOUNT is the
+ *  user-facing "Importance" control (`nodeSalienceScale`: 0 = uniform, up to the band
+ *  ceiling SALIENCE_RADIUS_MAX). Order: feature nodes size by member count (their
+ *  connectedness analog); document nodes by served degree; salience is the graceful
+ *  fallback when an origin serves a DOI scalar but no degree block; else the base. */
 export function nodeWorldRadius(
   node: SceneNodeData,
   params: AppearanceParams = APPEARANCE_DEFAULTS,
 ): number {
   const scale = params.nodeSizeScale;
+  if (node.kind === "feature" && node.memberCount && node.memberCount > 0) {
+    return BASE_POINT_SIZE * (1.4 + Math.log2(1 + node.memberCount) * 0.5) * scale;
+  }
+  const degree = nodeDegree(node);
+  if (degree !== null) {
+    const f = Math.min(1, Math.log2(1 + degree) / DEGREE_PROMINENCE_LOG_REF);
+    const spread = 1 + f * (SALIENCE_RADIUS_MAX - 1) * params.nodeSalienceScale;
+    return BASE_POINT_SIZE * spread * scale;
+  }
   if (typeof node.salience === "number") {
     const s = Math.max(0, Math.min(1, node.salience));
     const spread = 1 + s * (SALIENCE_RADIUS_MAX - 1) * params.nodeSalienceScale;
     return BASE_POINT_SIZE * spread * scale;
-  }
-  if (node.kind === "feature" && node.memberCount && node.memberCount > 0) {
-    return BASE_POINT_SIZE * (1.4 + Math.log2(1 + node.memberCount) * 0.5) * scale;
   }
   return BASE_POINT_SIZE * scale;
 }
@@ -168,6 +205,12 @@ export function inkColor(): number {
 
 export function inkMutedColor(): number {
   return cssColorNumber("--color-ink-muted", 0x6f675c);
+}
+
+/** Scene hairline rule — the slightly stronger border tone the canvas reads for chip /
+ *  pill outlines (distinct from the lighter DOM `--color-rule`). Literal-hex per theme. */
+export function sceneRuleColor(): number {
+  return cssColorNumber("--color-scene-rule", 0xd8d2ca);
 }
 
 // Graph emphasis (hover / selection) uses ONLY established palette tokens: categoryColor

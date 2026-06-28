@@ -151,6 +151,9 @@ export const D3_FORCE_DEFAULTS: D3ForceParams = simulationDefaults();
 const COLD_ALPHA = controlNumber("coldAlpha");
 /** Warm/reheat alpha for a re-energise that should not fully explode. */
 const WARM_ALPHA = controlNumber("warmReheatAlpha");
+/** Gentle live-retune alpha: a LOW kick (vs WARM_ALPHA) so a force/size slider
+ *  re-settles the layout IN PLACE instead of re-exploding it globally. */
+const GENTLE_REHEAT_ALPHA = controlNumber("gentleReheatAlpha");
 /** Pre-warm caps: settle off-screen but never block the main thread for long. */
 const PREWARM_MAX_TICKS = controlNumber("prewarmMaxTicks");
 const PREWARM_BUDGET_MS = controlNumber("prewarmBudgetMs");
@@ -425,6 +428,60 @@ export class D3ForceSolver {
     return ticks;
   }
 
+  /**
+   * Warm-REFLOW settle — a FILTER add/remove that must PRESERVE the survivors.
+   * Pins every carried (non-new) node at its seeded position so the changed force
+   * field cannot reshape it, then runs a bounded prewarm that relaxes ONLY the new
+   * nodes into the freed space. A pure removal (no new nodes) settles INSTANTLY with
+   * zero movement — the survivors hold their exact prior positions (issue #5: a
+   * filter toggle must not move already-settled nodes). `isNew(i)` is true for a node
+   * with no carried position (a node the filter just (re)introduced); every other
+   * node is a survivor and is pinned. The carried pins fold into the normal sleeping
+   * invariant via the settle's terminal sleepAll, so a later drag/reheat/setParams is
+   * unaffected (each clears pins through wakeAllFree). */
+  prewarmReflow(
+    isNew: (index: number) => boolean,
+    startAlpha = WARM_ALPHA,
+    maxTicks = PREWARM_MAX_TICKS,
+    budgetMs = PREWARM_BUDGET_MS,
+  ): number {
+    this.localMode = false;
+    this.wakeAllFree(); // clear any stale pins/drag; everything awake + unpinned
+    // Pin the carried survivors at their current (seeded) position; only the new
+    // nodes remain awake and free to integrate.
+    let movable = 0;
+    for (let i = 0; i < this.count; i++) {
+      if (isNew(i)) {
+        movable++;
+        continue;
+      }
+      const n = this.nodes[i];
+      this.restX[i] = n.x ?? 0;
+      this.restY[i] = n.y ?? 0;
+      n.fx = this.restX[i];
+      n.fy = this.restY[i];
+      n.vx = 0;
+      n.vy = 0;
+      this.awake[i] = 0;
+      this.awakeCount--;
+    }
+    if (movable === 0) {
+      // Pure removal / reorder: nothing to relax. The survivors are pinned at their
+      // carried positions and asleep ⇒ settled, zero movement.
+      return 0;
+    }
+    this.sim.alpha(startAlpha).alphaTarget(0);
+    const start = now();
+    let ticks = 0;
+    while (ticks < maxTicks) {
+      this.tick(); // global mode: pinned survivors stay fixed, new nodes integrate
+      ticks++;
+      if (this.awakeCount === 0) break; // sleepAll fired at alphaMin → settled
+      if (ticks % 16 === 0 && now() - start > budgetMs) break;
+    }
+    return ticks;
+  }
+
   /** Advance one tick. Pure d3 during the global settle; gated (sleeping) once a
    *  drag has put the field into local mode. */
   tick(): TickMetrics {
@@ -537,6 +594,19 @@ export class D3ForceSolver {
     this.sim.alpha(cold ? COLD_ALPHA : WARM_ALPHA).alphaTarget(0);
   }
 
+  /** Gentle, change-proportional re-energise for a LIVE retune (force/size sliders).
+   *  Like reheat() it returns to the global, unpinned settle so the changed forces can
+   *  act on every node — but it nudges alpha only to a LOW `alpha` (and never BELOW the
+   *  current temperature) instead of WARM_ALPHA, so the layout re-settles smoothly in
+   *  place rather than re-exploding. The caller scales `alpha` to the magnitude of the
+   *  change. (The deeper "rest state is a true fixed point" fix — alpha-annealing the
+   *  collide force — is a separate, higher-risk follow-up; this only tames the kick.) */
+  reheatGentle(alpha: number): void {
+    this.localMode = false;
+    this.wakeAllFree();
+    this.sim.alpha(Math.max(this.sim.alpha(), alpha)).alphaTarget(0);
+  }
+
   /** True once the field is at rest: nothing awake and nothing being dragged. */
   isSettled(): boolean {
     return this.dragIndex < 0 && this.awakeCount === 0;
@@ -625,8 +695,10 @@ export class D3ForceSolver {
     return { x: n.x as number, y: n.y as number };
   }
 
-  /** Re-tune the forces live (graph-lab knob set) and gently reheat. */
-  setParams(params: D3ForceParams): void {
+  /** Re-tune the forces live (graph-lab knob set) and reheat. Pass `reheatAlpha` for a
+   *  gentle, change-proportional kick (the slider path — re-settle in place); omit it to
+   *  fall back to the full warm reheat. */
+  setParams(params: D3ForceParams, reheatAlpha?: number): void {
     this.params = params;
     this.sim
       .velocityDecay(params.velocityDecay)
@@ -637,7 +709,8 @@ export class D3ForceSolver {
     this.sim.force("collide", this.collide());
     this.sim.force("x", forceX<D3Node>(0).strength(params.centerStrength));
     this.sim.force("y", forceY<D3Node>(0).strength(params.centerStrength));
-    this.reheat(false);
+    if (reheatAlpha !== undefined) this.reheatGentle(reheatAlpha);
+    else this.reheat(false);
   }
 
   getParams(): D3ForceParams {
@@ -655,7 +728,9 @@ export class D3ForceSolver {
       if (typeof r === "number" && Number.isFinite(r)) this.nodes[i].radius = r;
     }
     this.sim.force("collide", this.collide());
-    this.reheat(false);
+    // Node-size change re-spaces collision locally — re-settle gently in place, never a
+    // global re-explode (the old reheat(false) @0.5).
+    this.reheatGentle(GENTLE_REHEAT_ALPHA);
   }
 
   dispose(): void {

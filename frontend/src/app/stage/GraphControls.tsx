@@ -63,6 +63,7 @@ import {
   deriveGraphControlsTunePresentationView,
   setGraphControlsAppearanceParams,
   toggleGraphControlsAppearanceOpen,
+  toggleGraphControlsAutoframe,
   toggleGraphControlsLayoutOpen,
   toggleGraphReflowFilter,
   setGraphControlsFrozen,
@@ -73,6 +74,7 @@ import {
   type GraphControlsTuneParams,
   useGraphControlsAppearanceParams,
   useGraphControlsAppearanceOpen,
+  useGraphControlsAutoframe,
   useGraphControlsFrozen,
   useGraphControlsFrozenScope,
   useGraphControlsLayoutOpen,
@@ -146,7 +148,13 @@ export function GraphNavControls() {
   const zoomIn = zone.rove("zoom-in");
   const zoomOut = zone.rove("zoom-out");
   const fit = zone.rove("fit-to-view");
-  const reset = zone.rove("reset-view");
+  const autoframeRove = zone.rove("autoframe");
+  // Autoframe toggle (graph-autoframe): the 4th nav button. Keep the field synced to the
+  // store's flag (default ON) — dispatch on mount and on every change, mirroring FreezeRow.
+  const autoframe = useGraphControlsAutoframe();
+  useEffect(() => {
+    scene.controller.command({ kind: "set-autoframe", enabled: autoframe });
+  }, [autoframe, scene.controller]);
   return (
     <Card
       elevation="raised"
@@ -190,13 +198,19 @@ export function GraphNavControls() {
           <Maximize size={ICON_PX} aria-hidden />
         </IconButton>
         <IconButton
-          ref={reset.ref}
-          tabIndex={reset.tabIndex}
-          onKeyDown={reset.onKeyDown}
-          onFocus={() => setActiveNav("reset-view")}
-          label={navigationView.resetView.label}
-          title={navigationView.resetView.title}
-          onClick={() => scene.controller.command({ kind: "reset-view" })}
+          ref={autoframeRove.ref}
+          tabIndex={autoframeRove.tabIndex}
+          onKeyDown={autoframeRove.onKeyDown}
+          onFocus={() => setActiveNav("autoframe")}
+          active={autoframe}
+          aria-pressed={autoframe}
+          label={navigationView.autoframe.label}
+          title={
+            autoframe
+              ? navigationView.autoframe.titleOn
+              : navigationView.autoframe.titleOff
+          }
+          onClick={toggleGraphControlsAutoframe}
         >
           <Crosshair size={ICON_PX} aria-hidden />
         </IconButton>

@@ -47,7 +47,7 @@ import {
   type SceneController,
 } from "../sceneController";
 import { semanticLevel } from "../field/cameraCore";
-import { controlNumber } from "./graphControlSchema";
+import { controlNumber, specById } from "./graphControlSchema";
 import {
   accentColor,
   APPEARANCE_DEFAULTS,
@@ -60,6 +60,7 @@ import {
   inkMutedColor,
   nodeColorNumber,
   nodeWorldRadius,
+  sceneRuleColor,
 } from "./appearance";
 import { D3_FORCE_DEFAULTS, D3ForceSolver, type D3ForceParams } from "./d3ForceSolver";
 import { labelTextStyle } from "./labelStyle";
@@ -75,6 +76,9 @@ const PICK_RADIUS_PX = controlNumber("pickRadiusPx");
 /** Gentle restart alpha for a warm-started (mostly-carried-over) layout — low so
  *  persistent nodes barely move while new nodes settle in (object constancy). */
 const WARM_START_ALPHA = controlNumber("warmStartAlpha");
+/** Live-retune kick: the gentle re-energise for a force/size slider — re-settle in
+ *  place, never the old violent global 0.5 re-explode. */
+const GENTLE_REHEAT_ALPHA = controlNumber("gentleReheatAlpha");
 /** Cold-fit padding: the graph span is divided by this when framing (≈8% per edge). */
 const FIT_PADDING_FACTOR = controlNumber("fitPaddingFactor");
 /** Fractional inset of the minimap overview from the minimap canvas edges. */
@@ -85,6 +89,16 @@ const ZOOM_MIN = controlNumber("zoomMin");
 const ZOOM_MAX = controlNumber("zoomMax");
 const ZOOM_STEP_BUTTON = controlNumber("zoomStepButton");
 const ZOOM_STEP_WHEEL = controlNumber("zoomStepWheel");
+/** Trackpad pinch zoom sensitivity: factor = exp(-deltaY × this) per pinch wheel event. */
+const PINCH_ZOOM_SENSITIVITY = controlNumber("pinchZoomSensitivity");
+// Autoframe (graph-autoframe): poll the graph bounds on an INTERVAL (not every frame) and
+// ease the camera to the fit when the frame drifts beyond a deadband — never per-frame, so
+// it can't fight the settle or jitter. Local interaction-tuning constants (dimensionless /
+// ms), mirroring NODE_RECEDE_MIX etc.; not user-tunable look params.
+const AUTOFRAME_POLL_MS = 400; // bounds-poll cadence while autoframe is on
+const AUTOFRAME_EASE = 0.16; // per-frame lerp toward the target (smooth, not a snap)
+const AUTOFRAME_DEADBAND = 0.07; // min fractional frame change (center/zoom) to re-target
+const AUTOFRAME_SETTLE_EPS = 0.004; // within this fraction of target → snap + stop easing
 // Label LOD + ring treatment (read from the registry; one definition each).
 const LABEL_BUDGET = controlNumber("labelBudget");
 const DOC_LABEL_SALIENCE_FLOOR = controlNumber("documentLabelSalienceFloor");
@@ -99,15 +113,34 @@ const PULSE_RING_ALPHA = controlNumber("pulseRingAlpha");
 // only emphasis is this gentle node recede + a thin accent focus ring. No glow, no near-black.
 const NODE_RECEDE_MIX = 0.3; // gentle non-focus mix toward the canvas bg (subtle de-emphasis)
 const FOCUS_RING_WIDTH_PX = 2; // thin accent focus ring on the hovered hub
+// Max canvas label width before ellipsis (screen px at UI scale 1; multiplied by
+// uiScale at draw). The bare canvas label is ELIDED here so an over-long title can
+// never paint an unbounded line across the field — the FULL title lives in the DOM
+// HoverCard (binding graph-ui "Label … truncated with ellipsis, full title in the
+// HoverCard"). A fixed legibility threshold, not a user-tunable look param.
+const LABEL_MAX_WIDTH_PX = 200;
+// Interactive (hover/select/pin) labels render as a design PILL — a rounded, paper-filled
+// chip with a hairline scene-rule border, not naked text — so the focused label reads as a
+// deliberate design element above the field (ambient DOI labels stay plate-less). The text
+// is SANITIZED (whitespace collapsed, control chars stripped) and elided to a FIXED max
+// character length before the width fit, so a pathological title can never blow the chip
+// out. Screen-px at UI scale 1, multiplied by uiScale at draw.
+const LABEL_MAX_CHARS = 48; // fixed sanitized character cap for an interactive label
+const LABEL_PILL_PAD_X_PX = 7; // horizontal padding inside the pill
+const LABEL_PILL_PAD_Y_PX = 3; // vertical padding inside the pill
+const LABEL_PILL_GAP_PX = 6; // gap from the node body to the pill
 // Icon mode (graph-node-icons): the circle ↔ doc-type-icon cross-fade by on-screen
 // node size. Below LO the node is a plain dot (an icon would be sub-legible — the marks
 // are gated at 14px); above HI it is the full icon; between, the two cross-fade. The
 // icon quad is drawn a touch larger than the dot it replaces so the silhouette reads.
 // Local render constants (mirroring NODE_RECEDE_MIX / FOCUS_RING_WIDTH_PX above), not
 // schema knobs — they are fixed legibility thresholds, not user-tunable look params.
-const ICON_SIZE_MULT = 1.7; // icon half-extent vs node radius
-const ICON_FADE_LO_PX = 5; // node radius (screen px) where the icon begins to appear
-const ICON_FADE_HI_PX = 11; // ...and is fully shown (the dot has fully faded)
+// Icon-INSIDE-circle (graph-icon-inside-circle): the doc-type icon is drawn WITHIN the
+// filled disc as one composite mark, so its half-extent is a FRACTION of the node radius
+// (≈62% of the disc DIAMETER) — padded inside the rim, not larger than the disc.
+const ICON_SIZE_MULT = 0.62; // icon half-extent vs node radius (inside the disc, padded)
+const ICON_FADE_LO_PX = 6; // node radius (screen px) where the inner icon begins to appear
+const ICON_FADE_HI_PX = 12; // ...and is fully shown (legible inside the disc)
 // Bounded GL-context-restore retries (bounded-by-default): after this many failed rebuilds
 // on webglcontextrestored, the scene reports render-unavailable (recoverable:false).
 const MAX_GL_RESTORE_ATTEMPTS = 3;
@@ -126,10 +159,46 @@ function hexCss(n: number): string {
   return "#" + (n & 0xffffff).toString(16).padStart(6, "0");
 }
 
+/** Sanitize + fixed-length-elide a canvas label: collapse all whitespace runs (incl.
+ *  newlines/tabs) to single spaces, trim, and cap to a FIXED character length with a
+ *  trailing ellipsis. A pathological title (newlines, thousands of chars) can therefore
+ *  never paint an unbounded or broken line; the width fit (`fitLabel`) bounds the
+ *  remainder. The full title lives in the DOM HoverCard. */
+function sanitizeLabel(text: string): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  return clean.length > LABEL_MAX_CHARS
+    ? clean.slice(0, LABEL_MAX_CHARS - 1).trimEnd() + "…"
+    : clean;
+}
+
 /** Format a number as a GLSL float literal so an integer default (e.g. 240) compiles
  *  as `240.0`, not the bare int `240` that GLSL rejects where a float is required. */
 function glslFloat(n: number): string {
   return Number.isInteger(n) ? n.toFixed(1) : String(n);
+}
+
+/** Normalised magnitude of a live force-param change: the MAX over the changed numeric
+ *  knobs of |Δ| / (schema max − min), clamped to [0,1]. 0 ⇒ nothing actually changed
+ *  (skip the reheat). Drives the change-proportional gentle reheat so a tiny slider
+ *  nudge barely warms the layout while a large retune warms more. */
+function forceChangeFraction(
+  prev: D3ForceParams,
+  next: Partial<D3ForceParams>,
+): number {
+  let frac = 0;
+  for (const key of Object.keys(next) as (keyof D3ForceParams)[]) {
+    const nv = next[key];
+    const pv = prev[key];
+    if (typeof nv !== "number" || typeof pv !== "number" || nv === pv) continue;
+    const spec = specById(key);
+    const span =
+      spec && typeof spec.min === "number" && typeof spec.max === "number"
+        ? spec.max - spec.min
+        : 0;
+    const f = span > 0 ? Math.abs(nv - pv) / span : 1;
+    if (f > frac) frac = f;
+  }
+  return Math.min(1, frac);
 }
 
 // Settle is alpha-driven inside the solver: d3-force cools by alphaDecay each tick
@@ -162,14 +231,12 @@ varying float vAA;
 // zoom (Obsidian/Cytoscape scale-together), fixing the prior mismatch where nodes
 // scaled in world units but edges held a constant pixel width.
 uniform float uPxScale;          // UI-scale (root font / 16): the screen-px band tracks the DOM
-// Icon mode: when on, the circle FADES OUT as the node grows so its doc-type icon (the
-// sibling glyph mesh) fades IN — dots far out, icons close in. uIconMode 0 ≡ circles only.
-uniform float uIconMode;
-varying float vIconFade;
+// Icon mode: the disc is ALWAYS drawn at full opacity — the doc-type icon is drawn INSIDE
+// it (the sibling glyph mesh), so circle + icon read as ONE composite mark. The disc no
+// longer fades out for the icon (graph-icon-inside-circle); the icon's own size-LOD fade
+// lives in the glyph shader.
 const float NODE_MIN_PX = ${glslFloat(controlNumber("nodeMinPx"))}; // floor on screen — visible zoomed out (schema nodeMinPx)
 const float NODE_MAX_PX = ${glslFloat(controlNumber("nodeMaxPx"))}; // ceiling on screen — no balloon zoomed in (schema nodeMaxPx)
-const float ICON_FADE_LO = ${glslFloat(ICON_FADE_LO_PX)};
-const float ICON_FADE_HI = ${glslFloat(ICON_FADE_HI_PX)};
 
 void main() {
   vec2 uv = (vec2(mod(aIndex, uTexSize), floor(aIndex / uTexSize)) + 0.5) / uTexSize;
@@ -186,8 +253,6 @@ void main() {
   vEdge = length(position.xy); // 0 at centre → 1 at the rim
   // Analytic edge-AA band: ~1.5 screen px at the rim, from the CLAMPED on-screen px.
   vAA = pxC > 0.0 ? clamp(1.5 / pxC, 0.0, 0.5) : 0.01;
-  vIconFade =
-    uIconMode * smoothstep(ICON_FADE_LO * uPxScale, ICON_FADE_HI * uPxScale, pxC);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 0.0, 1.0);
 }
 `;
@@ -199,12 +264,9 @@ varying vec3 vColor;
 varying float vDim;
 varying float vEdge;
 varying float vAA;
-varying float vIconFade;
 
 void main() {
   float alpha = 1.0 - smoothstep(1.0 - vAA, 1.0, vEdge);
-  // Cross-fade: the circle recedes as its icon takes over (icon mode only; vIconFade 0 otherwise).
-  alpha *= (1.0 - vIconFade);
   if (alpha <= 0.0) discard;
   // Emphasis is COLOUR-ONLY at full opacity (never an opacity fade). A focus node keeps its
   // full category colour; a non-focus node (vDim > 0.5) mixes GENTLY toward uDimColor (the
@@ -330,6 +392,8 @@ const GLYPH_FRAGMENT = /* glsl */ `
 precision mediump float;
 uniform sampler2D uAtlas;
 uniform vec3 uDimColor;
+uniform vec3 uIconInkLight; // knockout colour for a dark/saturated disc (paper)
+uniform vec3 uIconInkDark; // ink colour for a light disc
 varying vec2 vUv;
 varying vec3 vColor;
 varying float vDim;
@@ -337,10 +401,14 @@ varying float vFade;
 
 void main() {
   float cov = texture2D(uAtlas, vUv).r;
-  float a = cov * vFade;
+  // The icon sits INSIDE the filled disc as one composite mark: pick a CONTRASTING ink by
+  // the disc colour's luminance — a paper knockout on a dark/saturated disc, dark ink on a
+  // light disc — so the glyph is legible on ANY category fill. A de-emphasised node fades
+  // its icon with the receding disc.
+  float a = cov * vFade * (vDim > 0.5 ? 0.4 : 1.0);
   if (a <= 0.01) discard;
-  // Same gentle de-emphasis recede as the circle, so a de-emphasised icon matches.
-  vec3 col = vDim > 0.5 ? mix(vColor, uDimColor, ${glslFloat(NODE_RECEDE_MIX)}) : vColor;
+  float lum = dot(vColor, vec3(0.299, 0.587, 0.114));
+  vec3 col = lum > 0.6 ? uIconInkDark : uIconInkLight;
   gl_FragColor = vec4(col, a);
 }
 `;
@@ -401,6 +469,10 @@ export class ThreeField implements SceneFieldRenderer {
   // interaction state
   private hoveredId: string | null = null;
   private selectedIds: ReadonlySet<string> = new Set();
+  // Visual-only feature META-HIGHLIGHT (#16): a SET of nodes shown with the hover-style
+  // soft emphasis (members keep full colour, non-members recede) but NO selection ring —
+  // distinct from `selectedIds`, which is enforced SINGLETON (the graph rings at most one).
+  private metaHighlightIds: ReadonlySet<string> = new Set();
   private pinnedIds: ReadonlySet<string> = new Set();
   private visibleNodeIds: ReadonlySet<string> | null = null;
 
@@ -434,6 +506,25 @@ export class ThreeField implements SceneFieldRenderer {
   // sim is held warm so its edges visibly pull neighbours along.
   private dragNodeIndex = -1;
   private dragActive = false;
+  // Two-finger touch gesture (trackpad/touch QoL): while two fingers are down the
+  // pointer-event pan is suppressed and the centroid drives pan + the spread drives
+  // pinch-zoom. Torn down when fewer than two touches remain.
+  private touchGesture = false;
+  private lastTouchCentroid: { x: number; y: number } | null = null;
+  private lastTouchDist = 0;
+  // Autoframe (graph-autoframe): when on (default), an interval polls the graph bounds and,
+  // when the fit drifts beyond the deadband, sets an eased camera target the render loop
+  // glides toward. Skipped while the user interacts; the timer is bounded + torn down.
+  private autoframe = true;
+  private autoframeTimer = 0;
+  private autoframeTarget: { x: number; y: number; zoom: number } | null = null;
+  private autoframedFrame: { x: number; y: number; zoom: number } | null = null;
+  // Arbitration with a one-shot USER selection-frame (graph-follow-mode #13): a
+  // `frame-nodes` selection-frame SUSPENDS whole-graph autoframe so it never yanks the
+  // camera back off the user's focused subset. Cleared on the next DATA change (set-data)
+  // or an explicit fit-all / autoframe re-enable — so autoframe resumes on load/data
+  // change, never over a selection write.
+  private autoframeSuspended = false;
 
   // --- minimap (overview navigator) ---------------------------------------
   // A chrome-hosted <canvas> the field draws a downscaled overview into (node dots
@@ -551,6 +642,9 @@ export class ThreeField implements SceneFieldRenderer {
       recoverable: true,
       ...(softwareFallback ? { reason: "software-fallback" } : {}),
     });
+    // Autoframe is ON by default — start its bounded bounds-poll (the Stage syncs the
+    // store's toggle state via set-autoframe; a paused store value flips it off).
+    if (this.autoframe) this.startAutoframeTimer();
   }
 
   private applyBackground(): void {
@@ -578,6 +672,7 @@ export class ThreeField implements SceneFieldRenderer {
 
   destroy(): void {
     if (this.raf) cancelAnimationFrame(this.raf);
+    this.stopAutoframeTimer();
     if (this.pulseTimer) clearTimeout(this.pulseTimer);
     this.pulseTimer = 0;
     this.scheduled = false;
@@ -703,8 +798,21 @@ export class ThreeField implements SceneFieldRenderer {
       case "set-data":
         this.setData(cmd.nodes, cmd.edges, cmd.reflow ?? false);
         break;
-      case "set-selected":
-        this.selectedIds = new Set(cmd.ids);
+      case "set-selected": {
+        // SINGLETON enforcement (#16): the graph rings AT MOST ONE node — a >1-id
+        // set-selected (the old feature-members multiselect the user rejected) collapses
+        // to a single id. A node click already selects exactly one; feature emphasis goes
+        // through `set-meta-highlight`, never a multi-id selection.
+        const first = cmd.ids.values().next().value;
+        this.selectedIds = first === undefined ? new Set() : new Set([first]);
+        this.applyEmphasis();
+        this.requestRender();
+        break;
+      }
+      case "set-meta-highlight":
+        // Visual-only feature highlight (#16): soft hover-style emphasis of the member set,
+        // NO selection ring. Empty set clears it.
+        this.metaHighlightIds = new Set(cmd.ids);
         this.applyEmphasis();
         this.requestRender();
         break;
@@ -726,14 +834,38 @@ export class ThreeField implements SceneFieldRenderer {
         if (cmd.active) this.resume();
         else this.running = false;
         break;
+      case "set-autoframe":
+        this.setAutoframe(cmd.enabled);
+        break;
       case "set-frozen":
+        // Freeze is a PAUSE, not a re-energise: freezing stops ticking in place, and
+        // unfreezing RESUMES an in-flight settle WITHOUT pumping new heat. A graph
+        // already at rest stays exactly put on unfreeze — a freeze toggle must never
+        // modify simulation state (issue #5). The old `resume()` here reheated to
+        // WARM_ALPHA + woke every node, re-exploding a settled layout on every toggle.
         this.frozen = cmd.frozen;
-        if (cmd.frozen) this.running = false;
-        else this.resume();
+        if (cmd.frozen) {
+          this.running = false;
+        } else if (this.solver && !this.solver.isSettled()) {
+          this.running = true;
+          this.wake();
+        }
         break;
       case "fit-to-view":
       case "reset-view":
+        // An explicit "fit all" is a whole-graph frame → clear any selection-frame
+        // suspension so autoframe resumes tracking the whole graph from here (#13).
+        this.autoframeSuspended = false;
         this.fitToView();
+        break;
+      case "frame-nodes":
+        // One-shot user selection-frame (follow-mode #13): fit the subset and SUSPEND
+        // whole-graph autoframe so it never re-fits over the user's focused frame, until
+        // the next data change / explicit fit / autoframe re-enable. A deliberate camera
+        // move, so it also cancels any in-flight autoframe ease.
+        this.autoframeTarget = null;
+        this.autoframeSuspended = true;
+        this.fitToNodes(cmd.ids);
         break;
       case "zoom-in":
         this.zoomBy(ZOOM_STEP_BUTTON);
@@ -790,6 +922,9 @@ export class ThreeField implements SceneFieldRenderer {
     reflow = false,
   ): void {
     if (!this.renderer) return;
+    // A data change resumes whole-graph autoframe: any prior selection-frame suspension
+    // is released so the new corpus reframes on load/filter (#13 arbitration).
+    this.autoframeSuspended = false;
 
     // Defense-in-depth: bound the node payload at the scene's OWN wire-ingestion boundary
     // (Rule 2). The stores adapter already clamps to MAX_CLIENT_GRAPH_NODES, but the scene
@@ -820,6 +955,7 @@ export class ThreeField implements SceneFieldRenderer {
 
     this.nodes = nodes;
     this.hoveredId = null;
+    this.metaHighlightIds = new Set(); // a data change clears a stale feature highlight (#16)
     this.visibleNodeIds = null;
     const n = nodes.length;
     if (n === 0) {
@@ -932,10 +1068,17 @@ export class ThreeField implements SceneFieldRenderer {
         return { x: centroid.x + Math.cos(a) * r, y: centroid.y + Math.sin(a) * r };
       });
     }
-    // Off-screen settle before the first paint: gentle when warm-started, full energy
-    // when cold. If prewarm hits its wall-clock budget the remainder finishes in the
-    // live loop; otherwise it freezes (idle GPU 0).
-    this.solver.prewarm(undefined, undefined, warm ? WARM_START_ALPHA : undefined);
+    // Off-screen settle before the first paint. A FILTER reflow (warm + reflow) PINS
+    // the carried survivors and relaxes ONLY the new nodes, so a filter add/remove
+    // never reshapes already-settled nodes (a pure removal moves nothing — issue #5:
+    // toggles must not modify simulation state). A warm data-update settles gently;
+    // a cold load runs full energy. If prewarm hits its wall-clock budget the
+    // remainder finishes in the live loop; otherwise it freezes (idle GPU 0).
+    if (warm && reflow) {
+      this.solver.prewarmReflow((i) => !prevPos.has(nodes[i].id), WARM_START_ALPHA);
+    } else {
+      this.solver.prewarm(undefined, undefined, warm ? WARM_START_ALPHA : undefined);
+    }
     this.solver.pack(this.cpuPositions);
     this.uploadPositions();
     // Fit the camera ONCE on a cold load; a warm update preserves the user's view.
@@ -1026,7 +1169,6 @@ export class ThreeField implements SceneFieldRenderer {
         uPixelsPerWorld: { value: this.pixelsPerWorld() },
         uDimColor: { value: [dim.r, dim.g, dim.b] },
         uPxScale: { value: uiScale() },
-        uIconMode: { value: this.appearance.nodeIcons ? 1 : 0 },
       },
       vertexShader: NODE_VERTEX,
       fragmentShader: NODE_FRAGMENT,
@@ -1042,6 +1184,14 @@ export class ThreeField implements SceneFieldRenderer {
     // Build the icon layer when icon mode is active (lazy: the atlas is built on first
     // enable and cached). Re-syncs aColor/aSize from the node attrs just computed.
     if (this.appearance.nodeIcons) this.buildGlyphs(nodes, texSize, aColor, aSize);
+  }
+
+  /** The two contrasting icon inks for the inside-disc glyph (graph-icon-inside-circle):
+   *  a PAPER knockout for a dark/saturated disc and a dark INK for a light disc — both
+   *  theme tokens, picked per node by the disc-colour luminance in the glyph shader. */
+  private iconInk(which: "light" | "dark"): [number, number, number] {
+    const c = new Color(which === "light" ? canvasBackground() : inkColor());
+    return [c.r, c.g, c.b];
   }
 
   /**
@@ -1104,6 +1254,8 @@ export class ThreeField implements SceneFieldRenderer {
         uAtlasCols: { value: atlas.cols },
         uAtlasRows: { value: atlas.rows },
         uDimColor: { value: [dim.r, dim.g, dim.b] },
+        uIconInkLight: { value: this.iconInk("light") },
+        uIconInkDark: { value: this.iconInk("dark") },
       },
       vertexShader: GLYPH_VERTEX,
       fragmentShader: GLYPH_FRAGMENT,
@@ -1274,6 +1426,17 @@ export class ThreeField implements SceneFieldRenderer {
       }
       return set;
     }
+    // Feature META-HIGHLIGHT (#16): lowest-precedence focus cohort — the highlighted
+    // member set is emphasised (non-members recede) with the SAME soft treatment as hover,
+    // but no ring (rings are keyed off selectedIds/hoveredId only). Only the members that
+    // are actually present contribute; an all-absent set yields no emphasis (returns null).
+    if (this.metaHighlightIds.size > 0) {
+      const set = new Set<string>();
+      for (const id of this.metaHighlightIds) {
+        if (this.idToIndex.has(id)) set.add(id);
+      }
+      return set.size > 0 ? set : null;
+    }
     return null;
   }
 
@@ -1365,11 +1528,18 @@ export class ThreeField implements SceneFieldRenderer {
     if (this.positionTex) this.positionTex.needsUpdate = true;
   }
 
-  /** Re-tune the force parameters live (graph-lab knob set) and gently reheat. */
+  /** Re-tune the force parameters live (graph-lab knob set) and reheat GENTLY +
+   *  PROPORTIONALLY: the kick is scaled to how far the changed knobs actually moved
+   *  (normalised by each control's schema range), so a small nudge re-settles softly in
+   *  place and only a large retune warms more — never the old violent global 0.5
+   *  re-explode. A no-op set (identical params) skips the reheat entirely. */
   setForceParams(params: Partial<D3ForceParams>): void {
+    const frac = forceChangeFraction(this.params, params);
     this.params = { ...this.params, ...params };
-    if (this.solver) {
-      this.solver.setParams(this.params);
+    if (this.solver && frac > 0) {
+      // A floor (0.3×) keeps even a tiny nudge perceptibly responsive; the full gentle
+      // alpha is reserved for a full-range change.
+      this.solver.setParams(this.params, GENTLE_REHEAT_ALPHA * Math.max(0.3, frac));
       this.running = true;
       this.wake();
     }
@@ -1449,7 +1619,8 @@ export class ThreeField implements SceneFieldRenderer {
 
     if (iconsChanged) {
       const on = this.appearance.nodeIcons;
-      if (this.nodeMaterial) this.nodeMaterial.uniforms.uIconMode.value = on ? 1 : 0;
+      // The disc is always drawn (no uIconMode fade now); icon mode only toggles whether the
+      // inside-disc glyph layer is present/visible.
       // Build the icon layer on first enable; thereafter just toggle its visibility.
       if (on && !this.glyphMesh && this.solver && this.nodeMesh) {
         const aColor = this.nodeMesh.geometry.getAttribute("aColor")
@@ -1517,12 +1688,28 @@ export class ThreeField implements SceneFieldRenderer {
       dirty = true;
     }
 
-    if (dirty) {
+    // Autoframe ease (graph-autoframe): glide the camera one step toward the polled fit
+    // target. Keeps the loop alive while easing so it animates smoothly even at GPU idle.
+    let easing = false;
+    if (this.autoframeTarget) {
+      easing = this.stepAutoframe();
+      dirty = true;
+    }
+
+    // Skip the GPU render while the canvas host is HIDDEN (graph toggled off → host
+    // display:none → 0×0, #11): the CPU sim above still advances so the layout settles
+    // off-screen, but zero GPU work is done. On re-show the ResizeObserver fires
+    // resize→requestRender and the next frame paints the current state (no blank). This
+    // makes "hidden == 0 GPU" hold even mid-settle, beyond the settled render-on-demand
+    // idle. Mirrors the autoframe hidden-pause guard.
+    const el = this.renderer?.domElement;
+    const hidden = !el || el.clientWidth === 0 || el.clientHeight === 0;
+    if (dirty && !hidden) {
       const t0 = performance.now();
       this.renderFrame();
       this.updatePerfLod(performance.now() - t0);
     }
-    if (this.running || this.needsRender) this.wake();
+    if (this.running || this.needsRender || easing) this.wake();
   };
 
   /**
@@ -1682,9 +1869,11 @@ export class ThreeField implements SceneFieldRenderer {
     // root font size in labelStyle) so canvas labels scale with the DOM under one
     // UI scale — never a hardcoded px. DOI by semantic level, plus always-on for
     // hovered/selected/pinned (labelVisible).
-    const featureFont = labelTextStyle("feature").font;
-    const docFont = labelTextStyle("document").font;
+    const featureStyle = labelTextStyle("feature");
+    const docStyle = labelTextStyle("document");
     const inkMuted = `#${inkMutedColor().toString(16).padStart(6, "0")}`;
+    const pillFill = `#${canvasBackground().toString(16).padStart(6, "0")}`;
+    const pillBorder = `#${sceneRuleColor().toString(16).padStart(6, "0")}`;
     ctx.textBaseline = "middle";
     // FPS-adaptive LOD: quarter the label clutter cap when frames are slow (updatePerfLod).
     let budget = this.perfDegraded
@@ -1697,22 +1886,116 @@ export class ThreeField implements SceneFieldRenderer {
       if (!p || p.x < -40 || p.x > this.width + 40 || p.y < 0 || p.y > this.height)
         continue;
       const r = Math.max(3 * s, nodeWorldRadius(node, this.appearance) * ppw);
-      const text = node.title ?? node.id;
       const isFeature = node.kind === "feature";
-      ctx.font = isFeature ? featureFont : docFont;
+      const style = isFeature ? featureStyle : docStyle;
+      ctx.font = style.font;
+      // The label text is SANITIZED (whitespace collapsed, control chars stripped) and
+      // elided to a FIXED character cap, then bounded to a screen width; the full title
+      // lives in the DOM HoverCard.
+      const text = this.fitLabel(
+        ctx,
+        sanitizeLabel(node.title ?? node.id),
+        LABEL_MAX_WIDTH_PX * s,
+      );
       // Label colour by focus membership while an emphasis is active (graph/Hover parity):
       // focus labels read in ink, context labels in the muted taupe. Off-emphasis, the
       // default feature=ink / document=ink-muted ramp applies.
-      if (focus) {
-        ctx.fillStyle = focus.has(node.id) ? ink : inkMuted;
+      const labelInk = focus
+        ? focus.has(node.id)
+          ? ink
+          : inkMuted
+        : isFeature
+          ? ink
+          : inkMuted;
+      // INTERACTIVE labels (hover / select / pin) render as a design PILL — a rounded
+      // paper chip with a hairline border, the deliberate focused label. AMBIENT DOI
+      // labels stay plate-less so the field is not cluttered with chips.
+      const interactive =
+        this.hoveredId === node.id ||
+        this.selectedIds.has(node.id) ||
+        this.pinnedIds.has(node.id);
+      const x = p.x + r + LABEL_PILL_GAP_PX * s;
+      if (interactive) {
+        this.drawLabelPill(
+          ctx,
+          x,
+          p.y,
+          text,
+          style.sizePx,
+          labelInk,
+          pillFill,
+          pillBorder,
+          s,
+        );
       } else {
-        ctx.fillStyle = isFeature ? ink : inkMuted;
+        ctx.fillStyle = labelInk;
+        ctx.globalAlpha = isFeature ? 1 : 0.9;
+        ctx.fillText(text, x, p.y);
+        ctx.globalAlpha = 1;
       }
-      ctx.globalAlpha = isFeature ? 1 : 0.9;
-      ctx.fillText(text, p.x + r + 4 * s, p.y);
       budget--;
     }
     ctx.globalAlpha = 1;
+  }
+
+  /** Draw an interactive label as a design PILL: a rounded, paper-filled chip with a
+   *  hairline scene-rule border and the ink text centred inside, left-anchored at `x` and
+   *  vertically centred on `y`. Padding/radius are UI-scaled. The chip's paper fill is
+   *  opaque so it occludes the edges/nodes behind the text, keeping the focused label
+   *  crisply legible above the field. */
+  private drawLabelPill(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    text: string,
+    fontPx: number,
+    inkCss: string,
+    fillCss: string,
+    borderCss: string,
+    s: number,
+  ): void {
+    const padX = LABEL_PILL_PAD_X_PX * s;
+    const padY = LABEL_PILL_PAD_Y_PX * s;
+    const tw = ctx.measureText(text).width;
+    const w = tw + padX * 2;
+    const h = fontPx + padY * 2;
+    const top = y - h / 2;
+    const radius = h / 2; // full pill
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.roundRect(x, top, w, h, radius);
+    ctx.fillStyle = fillCss;
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, s);
+    ctx.strokeStyle = borderCss;
+    ctx.stroke();
+    ctx.fillStyle = inkCss;
+    ctx.fillText(text, x + padX, y);
+  }
+
+  /** Elide a label to at most `maxWidth` screen px with a trailing ellipsis,
+   *  measured in the ctx's CURRENT font. Returns the text unchanged when it fits;
+   *  otherwise binary-searches the longest prefix that fits with the ellipsis
+   *  appended. One `measureText` for the common (fits) case; ~log2(len) extra only
+   *  for the long labels this exists to bound. */
+  private fitLabel(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+  ): string {
+    if (maxWidth <= 0 || ctx.measureText(text).width <= maxWidth) return text;
+    const ellipsis = "…";
+    let lo = 0;
+    let hi = text.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (ctx.measureText(text.slice(0, mid) + ellipsis).width <= maxWidth) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return lo > 0 ? text.slice(0, lo) + ellipsis : ellipsis;
   }
 
   private labelVisible(node: SceneNodeData, level: string): boolean {
@@ -1796,7 +2079,48 @@ export class ThreeField implements SceneFieldRenderer {
     this.frameBounds(b.minX, b.minY, b.maxX, b.maxY);
   }
 
-  private frameBounds(minX: number, minY: number, maxX: number, maxY: number): void {
+  /** One-shot frame to a SUBSET of nodes (follow-mode-selection-sync, #13): fit the camera
+   *  to the bounding box of the given ids — the rail feature-select frame for that feature's
+   *  members. Unknown/non-finite ids are skipped; an empty/all-unknown set is a NO-OP (the
+   *  camera holds). A single node frames with a sensible margin so it doesn't slam to max
+   *  zoom. Mirrors fitToView's fit math via frameBounds; the caller suspends autoframe so
+   *  this deliberate user move is not immediately re-fit to the whole graph. */
+  private fitToNodes(ids: ReadonlySet<string>): void {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let count = 0;
+    let maxR = 0;
+    for (const id of ids) {
+      const i = this.idToIndex.get(id);
+      if (i === undefined) continue;
+      const x = this.cpuPositions[i * 4];
+      const y = this.cpuPositions[i * 4 + 1];
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      const r = nodeWorldRadius(this.nodes[i], this.appearance);
+      if (r > maxR) maxR = r;
+      count++;
+    }
+    if (count === 0) return; // empty / all-unknown → no-op
+    // Pad by a node radius (+ a small margin) so a single/tight cluster frames with breathing
+    // room instead of zooming to the ceiling on a zero-span bbox.
+    const margin = Math.max(maxR * 3, 1);
+    this.frameBounds(minX - margin, minY - margin, maxX + margin, maxY + margin);
+  }
+
+  /** The camera {x, y, zoom} that fits the given bounds with the standard padding —
+   *  the pure fit math, shared by the one-shot frameBounds and the eased autoframe. */
+  private fitTargetForBounds(
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+  ): { x: number; y: number; zoom: number } {
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
     const spanX = Math.max(maxX - minX, 1);
@@ -1804,11 +2128,127 @@ export class ThreeField implements SceneFieldRenderer {
     const aspect = this.width / this.height;
     const zoomX = (this.viewHeight * aspect) / (spanX * FIT_PADDING_FACTOR);
     const zoomY = this.viewHeight / (spanY * FIT_PADDING_FACTOR);
-    this.camera.position.set(cx, cy, 10);
-    this.camera.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.min(zoomX, zoomY)));
+    const zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.min(zoomX, zoomY)));
+    return { x: cx, y: cy, zoom };
+  }
+
+  private frameBounds(minX: number, minY: number, maxX: number, maxY: number): void {
+    const t = this.fitTargetForBounds(minX, minY, maxX, maxY);
+    // A manual fit cancels any in-flight autoframe ease and records the new frame so the
+    // autoframe deadband measures drift from here (no immediate re-fit fighting the user).
+    this.autoframeTarget = null;
+    this.autoframedFrame = t;
+    this.camera.position.set(t.x, t.y, 10);
+    this.camera.zoom = t.zoom;
     this.camera.updateProjectionMatrix();
     this.emitCameraChange();
     this.requestRender();
+  }
+
+  // --- autoframe (graph-autoframe) -----------------------------------------
+
+  /** Toggle autoframe. ON starts the bounded bounds-poll interval; OFF clears it and any
+   *  in-flight ease, holding the camera for full manual control. */
+  private setAutoframe(enabled: boolean): void {
+    if (this.autoframe === enabled) {
+      if (enabled && this.autoframeTimer === 0) this.startAutoframeTimer();
+      return;
+    }
+    this.autoframe = enabled;
+    if (enabled) {
+      // Re-enabling autoframe is a fresh start — drop any selection-frame suspension so
+      // the toggle reasserts whole-graph framing (#13 arbitration).
+      this.autoframeSuspended = false;
+      this.startAutoframeTimer();
+    } else {
+      this.stopAutoframeTimer();
+      this.autoframeTarget = null;
+    }
+  }
+
+  private startAutoframeTimer(): void {
+    this.stopAutoframeTimer();
+    this.autoframeTimer = window.setInterval(
+      () => this.autoframePoll(),
+      AUTOFRAME_POLL_MS,
+    );
+  }
+
+  private stopAutoframeTimer(): void {
+    if (this.autoframeTimer) {
+      clearInterval(this.autoframeTimer);
+      this.autoframeTimer = 0;
+    }
+  }
+
+  /** True while the user is directly driving the camera/a node — autoframe never fights it. */
+  private isUserInteracting(): boolean {
+    return (
+      this.dragging || this.dragNodeIndex >= 0 || this.touchGesture || this.dragActive
+    );
+  }
+
+  /** Interval poll: when autoframe is on and the user is idle, compute the fit target and,
+   *  if the frame has drifted beyond the deadband (hysteresis — so a settled/unchanged
+   *  graph never re-eases and jitters), set the eased target the render loop glides toward. */
+  private autoframePoll(): void {
+    if (!this.autoframe || this.autoframeSuspended || !this.renderer) return;
+    if (this.isUserInteracting()) return;
+    // Don't poll/reframe a HIDDEN graph (#11): when the canvas host is display:none'd (the
+    // graph toggled off), its box collapses to 0×0 — skip until it is shown again. The
+    // interval keeps ticking but does no work; self-detected from the DOM, so no cross-layer
+    // visibility signal is needed (works for any hide mechanism fixer-3 uses).
+    const el = this.renderer.domElement;
+    if (el.clientWidth === 0 || el.clientHeight === 0) return;
+    const b = this.graphBounds();
+    if (!b) return;
+    const target = this.fitTargetForBounds(b.minX, b.minY, b.maxX, b.maxY);
+    const ref = this.autoframedFrame ?? {
+      x: this.camera.position.x,
+      y: this.camera.position.y,
+      zoom: this.camera.zoom,
+    };
+    // Fractional drift: center shift relative to the on-screen span + relative zoom change.
+    const worldHalfH = this.viewHeight / 2 / Math.max(target.zoom, 1e-6);
+    const centerDrift =
+      Math.hypot(target.x - ref.x, target.y - ref.y) / Math.max(worldHalfH, 1);
+    const zoomDrift = Math.abs(target.zoom - ref.zoom) / Math.max(ref.zoom, 1e-6);
+    if (Math.max(centerDrift, zoomDrift) < AUTOFRAME_DEADBAND) return;
+    this.autoframeTarget = target;
+    this.wake();
+  }
+
+  /** One eased step toward the autoframe target; called from the render loop. Returns true
+   *  while still easing (keeps the loop alive). Snaps + clears the target when within eps. */
+  private stepAutoframe(): boolean {
+    const t = this.autoframeTarget;
+    if (!t) return false;
+    // Never fight a user who grabbed the camera mid-ease — drop the target.
+    if (this.isUserInteracting()) {
+      this.autoframeTarget = null;
+      return false;
+    }
+    const cam = this.camera;
+    const dz = t.zoom - cam.zoom;
+    const dx = t.x - cam.position.x;
+    const dy = t.y - cam.position.y;
+    const worldHalfH = this.viewHeight / 2 / Math.max(t.zoom, 1e-6);
+    const posClose =
+      Math.hypot(dx, dy) / Math.max(worldHalfH, 1) < AUTOFRAME_SETTLE_EPS;
+    const zoomClose = Math.abs(dz) / Math.max(t.zoom, 1e-6) < AUTOFRAME_SETTLE_EPS;
+    if (posClose && zoomClose) {
+      cam.position.set(t.x, t.y, 10);
+      cam.zoom = t.zoom;
+      this.autoframedFrame = t;
+      this.autoframeTarget = null;
+    } else {
+      cam.position.x += dx * AUTOFRAME_EASE;
+      cam.position.y += dy * AUTOFRAME_EASE;
+      cam.zoom += dz * AUTOFRAME_EASE;
+    }
+    cam.updateProjectionMatrix();
+    this.emitCameraChange();
+    return this.autoframeTarget !== null;
   }
 
   private zoomBy(factor: number): void {
@@ -1819,6 +2259,40 @@ export class ThreeField implements SceneFieldRenderer {
     this.camera.updateProjectionMatrix();
     this.emitCameraChange();
     this.requestRender();
+  }
+
+  /** Pan the camera by a WORLD-space delta (already divided by pixelsPerWorld), then
+   *  refresh. The sign convention is the caller's: trackpad SCROLL moves the camera with
+   *  the scroll delta; a DRAG (pointer / two-finger) moves it opposite the finger so the
+   *  surface follows the hand. Respects nothing to clamp (panning is unbounded by design;
+   *  the autoframe / fit path re-centres). */
+  private panCamera(dxWorld: number, dyWorld: number): void {
+    this.camera.position.x += dxWorld;
+    this.camera.position.y += dyWorld;
+    this.camera.updateProjectionMatrix();
+    this.emitCameraChange();
+    this.requestRender();
+  }
+
+  /** Client (page) px → canvas-local screen px, mirroring eventToScreen for a raw point
+   *  (used for the touch centroid, which is computed from Touch.clientX/Y). */
+  private clientToScreen(cx: number, cy: number): [number, number] {
+    const rect = this.renderer?.domElement.getBoundingClientRect();
+    return [cx - (rect?.left ?? 0), cy - (rect?.top ?? 0)];
+  }
+
+  /** Centroid (client px) of the first two active touches. */
+  private touchCentroid(touches: TouchList): { x: number; y: number } {
+    const a = touches[0];
+    const b = touches[1];
+    return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+  }
+
+  /** Euclidean spread (client px) between the first two active touches. */
+  private touchDistance(touches: TouchList): number {
+    const a = touches[0];
+    const b = touches[1];
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
   }
 
   /** Zoom keeping the world point under (sx, sy) screen px stationary. */
@@ -2050,17 +2524,40 @@ export class ThreeField implements SceneFieldRenderer {
     el.addEventListener(
       "wheel",
       (ev: WheelEvent) => {
+        // Trackpad QoL (graph-trackpad-nav): the browser delivers a trackpad PINCH as a
+        // wheel event with `ctrlKey` set, and a two-finger SCROLL as a wheel event with
+        // deltaX/deltaY and no modifier. So:
+        //   • ctrl/⌘+wheel (pinch, or a deliberate zoom modifier) → ZOOM toward the cursor;
+        //   • a classic MOUSE WHEEL (axis-locked vertical notch — no deltaX, line-mode or a
+        //     coarse |deltaY|) → ZOOM, so mouse users are NOT regressed;
+        //   • everything else (fine, often-horizontal two-finger trackpad scroll) → PAN.
+        // preventDefault stops the page/panel from scrolling under the canvas.
         ev.preventDefault();
         const [sx, sy] = this.eventToScreen(ev);
-        this.zoomAtScreen(
-          ev.deltaY < 0 ? ZOOM_STEP_WHEEL : 1 / ZOOM_STEP_WHEEL,
-          sx,
-          sy,
-        );
+        const pinch = ev.ctrlKey || ev.metaKey;
+        const mouseWheel =
+          !pinch &&
+          ev.deltaX === 0 &&
+          (ev.deltaMode !== 0 || Math.abs(ev.deltaY) >= 100);
+        if (pinch) {
+          this.zoomAtScreen(Math.exp(-ev.deltaY * PINCH_ZOOM_SENSITIVITY), sx, sy);
+        } else if (mouseWheel) {
+          this.zoomAtScreen(
+            ev.deltaY < 0 ? ZOOM_STEP_WHEEL : 1 / ZOOM_STEP_WHEEL,
+            sx,
+            sy,
+          );
+        } else {
+          // Two-finger scroll → pan (scroll sense: the camera follows the scroll delta).
+          const ppw = this.pixelsPerWorld();
+          this.panCamera(ev.deltaX / ppw, -ev.deltaY / ppw);
+        }
       },
       { passive: false },
     );
     el.addEventListener("pointerdown", (ev: PointerEvent) => {
+      // A two-finger touch gesture owns pan/zoom; ignore the per-finger pointer stream.
+      if (this.touchGesture) return;
       this.dragMoved = false;
       this.lastX = ev.clientX;
       this.lastY = ev.clientY;
@@ -2078,6 +2575,7 @@ export class ThreeField implements SceneFieldRenderer {
       }
     });
     el.addEventListener("pointermove", (ev: PointerEvent) => {
+      if (this.touchGesture) return; // two-finger gesture owns the camera
       const [sx, sy] = this.eventToScreen(ev);
       if (this.dragNodeIndex >= 0) {
         this.dragMoved = true;
@@ -2144,5 +2642,56 @@ export class ThreeField implements SceneFieldRenderer {
     el.addEventListener("pointerleave", () => {
       if (this.dragNodeIndex < 0) this.setHovered(null);
     });
+
+    // Real touch devices (graph-trackpad-nav): a TWO-FINGER gesture pans by the centroid
+    // delta (drag sense — the surface follows the fingers) and pinch-zooms by the spread
+    // ratio toward the centroid. Single-finger touch still flows through the pointer
+    // handlers above (tap = select, one-finger drag = pan). The gesture suppresses the
+    // pointer pan via `touchGesture` so the two never fight.
+    el.addEventListener(
+      "touchstart",
+      (ev: TouchEvent) => {
+        if (ev.touches.length !== 2) return;
+        ev.preventDefault();
+        this.touchGesture = true;
+        this.dragging = false; // cancel any single-finger pan already begun
+        this.endNodeDrag();
+        this.lastTouchCentroid = this.touchCentroid(ev.touches);
+        this.lastTouchDist = this.touchDistance(ev.touches);
+      },
+      { passive: false },
+    );
+    el.addEventListener(
+      "touchmove",
+      (ev: TouchEvent) => {
+        if (!this.touchGesture || ev.touches.length < 2) return;
+        ev.preventDefault();
+        const centroid = this.touchCentroid(ev.touches);
+        const dist = this.touchDistance(ev.touches);
+        if (this.lastTouchCentroid) {
+          const ppw = this.pixelsPerWorld();
+          const dcx = centroid.x - this.lastTouchCentroid.x;
+          const dcy = centroid.y - this.lastTouchCentroid.y;
+          // Drag sense: surface follows the fingers (camera moves opposite).
+          this.panCamera(-dcx / ppw, dcy / ppw);
+        }
+        if (this.lastTouchDist > 0 && dist > 0) {
+          const [sx, sy] = this.clientToScreen(centroid.x, centroid.y);
+          this.zoomAtScreen(dist / this.lastTouchDist, sx, sy);
+        }
+        this.lastTouchCentroid = centroid;
+        this.lastTouchDist = dist;
+      },
+      { passive: false },
+    );
+    const endTouch = (ev: TouchEvent) => {
+      if (ev.touches.length < 2) {
+        this.touchGesture = false;
+        this.lastTouchCentroid = null;
+        this.lastTouchDist = 0;
+      }
+    };
+    el.addEventListener("touchend", endTouch);
+    el.addEventListener("touchcancel", endTouch);
   }
 }
