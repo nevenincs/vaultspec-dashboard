@@ -3847,7 +3847,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_body_is_forwarded_to_the_childs_stdin() {
+    async fn the_body_is_forwarded_to_the_child_stdin() {
         // W02: the new document body is written to the child's stdin and the
         // sibling reads it. The stub echoes stdin back under data.stdin; the
         // route forwards the envelope verbatim under data.envelope.

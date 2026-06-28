@@ -28,19 +28,28 @@ jobs:
   python:
     name: Python (ruff · ty · pytest)
     runs-on: ubuntu-latest
+    # The Python package (src/vaultspec_dashboard) is not currently present in
+    # the tree, so the lint/type/test steps below are gated on its existence:
+    # they run automatically if it returns, and otherwise no-op rather than
+    # failing on missing paths. The guard is `hashFiles('src/**/*.py') != ''`.
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync --locked --group dev
+      - if: hashFiles('src/**/*.py') != ''
+        run: uv sync --locked --group dev
       - name: Ruff lint
+        if: hashFiles('src/**/*.py') != ''
         run: uv run ruff check src tests
       - name: Ruff format check
+        if: hashFiles('src/**/*.py') != ''
         run: uv run ruff format --check src tests
       - name: Type check (ty)
+        if: hashFiles('src/**/*.py') != ''
         run: uv run python -m ty check src/vaultspec_dashboard
       - name: Unit tests
+        if: hashFiles('src/**/*.py') != ''
         run: uv run pytest tests src/vaultspec_dashboard -q -m unit
 
   frontend:
@@ -60,6 +69,24 @@ jobs:
         run: npm --prefix frontend run format:check
       - name: Type check (tsc)
         run: npm --prefix frontend run typecheck
+      # The frontend suite is online-live by design (no in-memory doubles): its
+      # vitest global setup spawns a REAL `vaultspec serve` and runs
+      # `vaultspec-core install` against a scratch vault. Provision both — the
+      # built engine binary and vaultspec-core on PATH — before vitest, or the
+      # whole suite errors at global setup.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+      - name: Build engine binary (live-engine test backend)
+        run: cargo build --bin vaultspec
+        working-directory: engine
+      - uses: astral-sh/setup-uv@v6
+      - name: Install vaultspec-core (live-engine declared-tier dependency)
+        shell: bash
+        run: |
+          uv tool install vaultspec-core
+          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
       - name: Unit tests (vitest)
         run: npm --prefix frontend run test
       - name: Unused code (knip — advisory)
@@ -102,9 +129,18 @@ jobs:
           printf '%s\n' '---' 'tags:' "  - '#adr'" "  - '#engine-conformance'" \
             "date: '2026-06-13'" '---' '' '# conformance adr' '' 'CI fixture.' \
             > .vault/adr/2026-06-13-conformance-adr.md
-          git add . && git commit -m "T1: adr"
+          # Commit at fixed PAST dates relative to now: the conformance test's
+          # graph/diff window is `corpusTs(now) - 14d .. now`, so the root commit
+          # must predate it (else the engine 400s "timestamp predates the root
+          # commit"). T1 at 30d ago anchors the root behind the window; T2 at 7d
+          # ago lands inside it so the diff carries a real delta.
+          T1_DATE="$(date -u -d '30 days ago' '+%Y-%m-%dT%H:%M:%S')"
+          T2_DATE="$(date -u -d '7 days ago' '+%Y-%m-%dT%H:%M:%S')"
+          git add .
+          GIT_AUTHOR_DATE="$T1_DATE" GIT_COMMITTER_DATE="$T1_DATE" git commit -m "T1: adr"
           printf 'update\n' >> .vault/adr/2026-06-13-conformance-adr.md
-          git add . && git commit -m "T2: update"
+          git add .
+          GIT_AUTHOR_DATE="$T2_DATE" GIT_COMMITTER_DATE="$T2_DATE" git commit -m "T2: update"
 
           # Start serve on an OS-assigned port; service.json carries the real
           # port + token (same pattern as conformance.rs start_serve).

@@ -38,5 +38,14 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Build
         run: cargo build --workspace
+      # The e2e + declared-tier integration tests spawn `vaultspec-core` from
+      # PATH (the engine shells out to it for the declared tier); install it so
+      # those tests run for real instead of failing with "program not found".
+      - uses: astral-sh/setup-uv@v6
+      - name: Install vaultspec-core (e2e + declared-tier dependency)
+        shell: bash
+        run: |
+          uv tool install vaultspec-core
+          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
       - name: Test (unit + integration + e2e + bench)
         run: cargo test --workspace

@@ -17,6 +17,7 @@ extend-exclude = [
   ".vault/data/**",
   "frontend/test-results/**",
   "frontend/design/**",
+  "output/**",
   "*.png",
   "*.svg",
 ]
@@ -32,3 +33,4 @@ extend-ignore-identifiers-re = ["\\b[0-9a-f]{7,64}\\b"]
   lod = "lod"                 # graphics: Level Of Detail (LOD sprites/edges)
   mis = "mis"                 # abbrev in the ops typed-miss handling
   unparseable = "unparseable" # intentional spelling in engine ingest/index
+  grap = "grap"               # truncated draft fixture ("graph"->"grap", max-len-4 control draft test)
