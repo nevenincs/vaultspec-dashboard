@@ -1988,6 +1988,38 @@ export function useFiltersVocabularyView(scope: unknown): FiltersVocabularyView 
   );
 }
 
+/** The tiers the timeline's dated-document axis depends on. The vault tree
+ *  deliberately scopes its content availability to `structural` only and leaves
+ *  temporal degradation to THIS surface (see `VAULT_TREE_CONTENT_TIERS`): the
+ *  timeline draws the temporal axis, so a structural- or temporal-tier outage is
+ *  the timeline's degraded condition. Semantic is search-only and never gates it. */
+const TIMELINE_CONTENT_TIERS = ["structural", "temporal"] as const;
+
+export interface TimelineAvailability {
+  /** A structural/temporal tier is unavailable on the served filters vocabulary, so
+   *  the timeline renders the uniform degraded state. Read from the tiers block (a
+   *  fresh error envelope's tiers winning over a stale held-success block), never
+   *  guessed from a transport error (degradation-is-read-from-tiers). */
+  degraded: boolean;
+}
+
+/** Derive the timeline's degraded state from the filters vocabulary's tiers block.
+ *  The corpus date bounds the timeline scrubs ride the `/filters` envelope, which
+ *  carries the per-tier availability block; when the structural/temporal tier is
+ *  down the bounds are unreliable, which is DEGRADED — distinct from a loaded-but-
+ *  empty corpus (no dated documents), which is EMPTY. */
+export function useTimelineAvailability(scope: unknown): TimelineAvailability {
+  const query = useFiltersVocabulary(scope);
+  const errorTiers = query.error instanceof EngineError ? query.error.tiers : undefined;
+  const tiers = errorTiers ?? query.data?.tiers_block;
+  return useMemo(
+    () => ({
+      degraded: readTierAvailability(tiers, TIMELINE_CONTENT_TIERS).degraded,
+    }),
+    [tiers],
+  );
+}
+
 export function dashboardStateSessionIdentity(
   session:
     | Pick<SessionState, "workspace" | "active_workspace" | "active_scope">

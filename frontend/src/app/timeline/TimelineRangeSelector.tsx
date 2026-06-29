@@ -24,6 +24,7 @@ import { Skeleton, SkeletonBar, StateBlock } from "../kit";
 import {
   useDashboardDateRangeView,
   useFiltersVocabularyView,
+  useTimelineAvailability,
   useTimelineDateCriterion,
 } from "../../stores/server/queries";
 import { useDashboardStateMutations } from "../../stores/server/dashboardState";
@@ -50,6 +51,7 @@ export interface TimelineRangeProps {
 
 export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps) {
   const vocabulary = useFiltersVocabularyView(scope);
+  const availability = useTimelineAvailability(scope);
   const { criterion } = useTimelineDateCriterion(scope);
   const trackRef = useRef<HTMLDivElement>(null);
   const activeHandle = useRef<"from" | "to" | null>(null);
@@ -75,15 +77,14 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
   const isNarrowed = rangeIsNarrowed(range.source, fromMs, toMs, lo, hi);
   const criterionLabel = timelineDateCriterionLabel(criterion).toUpperCase();
 
-  // State modes (state-mode-uniformity ADR W2; the rail state bodies are the
+  // State modes (state-mode-uniformity ADR D5/W2; the rail state bodies are the
   // reference template). All hooks above run unconditionally, so these early
   // returns are rules-of-hooks safe. The timeline is a thin date-range selector,
-  // so its non-typical states are compact: a text-free LOADING skeleton while the
-  // corpus bounds load, and an inline EMPTY notice when the corpus carries no
-  // dated documents to scrub. Degraded is intentionally not surfaced here — the
-  // filters vocabulary exposes no per-tier signal to read, and inferring it from a
-  // transport miss would violate degradation-is-read-from-tiers; a missing span
-  // simply resolves to the empty state.
+  // so its non-typical states are compact and rendered inline. Priority:
+  // LOADING (bounds in flight) -> DEGRADED (a structural/temporal tier is down, so
+  // the bounds are unreliable; read from the tiers block per
+  // degradation-is-read-from-tiers, never guessed from a transport error) ->
+  // EMPTY (loaded, but the corpus carries no dated documents to scrub) -> TYPICAL.
   const containerClassName =
     "flex h-full w-full items-center gap-fg-4 bg-paper px-fg-4 select-none";
   if (vocabulary.loading) {
@@ -97,6 +98,17 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
           <SkeletonBar height="h-1" className="flex-1" />
           <SkeletonBar width="w-12" height="h-3" />
         </Skeleton>
+      </div>
+    );
+  }
+  if (availability.degraded) {
+    return (
+      <div className={containerClassName} data-timeline data-timeline-degraded>
+        <StateBlock
+          mode="degraded"
+          layout="inline"
+          message="Timeline data is temporarily unavailable."
+        />
       </div>
     );
   }
