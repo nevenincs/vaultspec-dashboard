@@ -38,7 +38,7 @@ import { useRenderCapability } from "../../stores/view/renderCapability";
 import { bindPinsToScene } from "../../stores/view/pins";
 import {
   focusFromWalk,
-  openNodeIslandFromWalk,
+  openTabFromWalk,
   projectDashboardSelectionToScene,
   selectFromScene,
 } from "../../stores/view/selection";
@@ -161,7 +161,7 @@ export function Stage() {
       }).catch(() => undefined);
     },
     open: (id: unknown) => {
-      void openNodeIslandFromWalk(scene.controller, id, scope, (originated = true) => {
+      void openTabFromWalk(scene.controller, id, scope, (originated = true) => {
         sceneSelectionOriginatedRef.current = originated;
       }).catch(() => undefined);
     },
@@ -175,7 +175,7 @@ export function Stage() {
       }).catch(() => undefined);
     },
     open: (id: unknown) => {
-      void openNodeIslandFromWalk(scene.controller, id, scope, (originated = true) => {
+      void openTabFromWalk(scene.controller, id, scope, (originated = true) => {
         sceneSelectionOriginatedRef.current = originated;
       }).catch(() => undefined);
     },

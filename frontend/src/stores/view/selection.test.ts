@@ -9,7 +9,7 @@ import {
   normalizeOpenedNodeIslandIds,
   normalizeSelectionMetadataId,
   normalizeSelectionScope,
-  openNodeIslandFromWalk,
+  openTabFromWalk,
   projectDashboardSelectionToScene,
   pulseSelectionNodes,
   selectNodeAndPulse,
@@ -178,7 +178,7 @@ describe("selection seam", () => {
     let markedSceneOrigin = false;
 
     await expect(
-      openNodeIslandFromWalk(scene, documentNodeId, scope, (originated = true) => {
+      openTabFromWalk(scene, documentNodeId, scope, (originated = true) => {
         markedSceneOrigin = originated;
       }),
     ).resolves.toBe(true);
@@ -207,14 +207,9 @@ describe("selection seam", () => {
     let markedSceneOrigin = false;
 
     await expect(
-      openNodeIslandFromWalk(
-        scene,
-        ` ${documentNodeId} `,
-        scope,
-        (originated = true) => {
-          markedSceneOrigin = originated;
-        },
-      ),
+      openTabFromWalk(scene, ` ${documentNodeId} `, scope, (originated = true) => {
+        markedSceneOrigin = originated;
+      }),
     ).resolves.toBe(true);
 
     await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
@@ -234,7 +229,7 @@ describe("selection seam", () => {
   it("rejects invalid walked ids before focus or tab open", async () => {
     const { scene, commands } = captureScene();
 
-    await expect(openNodeIslandFromWalk(scene, "   ", scope)).resolves.toBe(false);
+    await expect(openTabFromWalk(scene, "   ", scope)).resolves.toBe(false);
 
     expect(useViewStore.getState().openDocs).toEqual([]);
     expect(commands).toEqual([]);
@@ -245,7 +240,7 @@ describe("selection seam", () => {
     let markedSceneOrigin = false;
 
     await expect(
-      openNodeIslandFromWalk(scene, documentNodeId, null, (originated = true) => {
+      openTabFromWalk(scene, documentNodeId, null, (originated = true) => {
         markedSceneOrigin = originated;
       }),
     ).resolves.toBe(false);

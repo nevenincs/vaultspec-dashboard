@@ -223,12 +223,19 @@ export function closeNodeIsland(id: unknown): void {
 /**
  * Keyboard graph-walk open (Enter): open the document as a #15 PROVISIONAL dock tab,
  * select through dashboard-state, and instantly re-center the camera. Converged onto
- * the dock tab (unified-selection D1) — it no longer opens the retired on-canvas island.
+ * the dock tab (unified-selection D1) — it no longer opens the retired on-canvas island,
+ * so the name reflects that the walk OPENS A TAB, not an island.
  * A `doc:`/`code:` node opens its tab; a synthesized `feature:` node has no document, so
  * it selects + re-centers only. The app layer calls this seam instead of pairing a raw
  * tab write with a separate selection/focus write.
+ *
+ * It deliberately does NOT compose the generic `previewDocTab` seam: the walk gates the
+ * tab-open AND the camera re-center on an ACCEPTED dashboard selection, so a node the
+ * backend rejects (e.g. an unresolved scope) neither opens a tab nor yanks the camera —
+ * whereas `previewDocTab` opens the tab unconditionally. That open-on-accepted-selection
+ * gate is the reason this stays a distinct seam rather than routing through activateEntity.
  */
-export async function openNodeIslandFromWalk(
+export async function openTabFromWalk(
   scene: SceneController,
   id: unknown,
   scope: unknown = useViewStore.getState().scope,
