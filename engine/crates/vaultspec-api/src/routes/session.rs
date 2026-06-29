@@ -56,39 +56,125 @@ fn active_scope_token(state: &AppState) -> String {
         .unwrap_or_else(|e| e.into_inner().clone())
 }
 
-/// Build the session `data` block from the shared user-state handle. Reads the
-/// active scope, that scope's folder/feature-tag context, and the recents — all
-/// inside ONE scoped guard, dropped before the caller envelopes the result.
+/// A scope/path token still resolves on disk. The backend must never surface a
+/// scope it cannot deliver — a removed worktree would otherwise strand the picker.
+/// Read-only `is_dir` stat over the forward-slash token (Windows resolves it).
+fn path_token_exists(token: &str) -> bool {
+    !token.is_empty() && std::path::Path::new(token).is_dir()
+}
+
+/// The validated session selections the backend will surface. PURE (no I/O, no
+/// lock) so the validate-before-surface policy is unit-testable with an injected
+/// existence predicate. `session_data` calls it with the real `path_token_exists`.
+struct ValidatedSelections {
+    active_workspace: Option<String>,
+    active_scope: String,
+    recent_scopes: Vec<(String, String)>,
+}
+
+/// Sanitize the persisted selections against deliverable reality:
+///  - `active_workspace`: kept only if it still names a REGISTERED root, else the
+///    deterministic `fallback_ws` (launch / first registered / none).
+///  - `active_scope`: kept only if it still resolves on disk, else cleared.
+///  - `recent_scopes`: drop any whose workspace is unregistered OR whose worktree
+///    no longer resolves on disk.
+fn validate_session_selections(
+    registered: &std::collections::HashSet<String>,
+    fallback_ws: Option<String>,
+    active_workspace_raw: Option<String>,
+    active_scope_raw: &str,
+    global_recents: Vec<(String, String)>,
+    exists: impl Fn(&str) -> bool,
+) -> ValidatedSelections {
+    let active_workspace = match active_workspace_raw {
+        Some(ws) if registered.contains(&ws) => Some(ws),
+        _ => fallback_ws,
+    };
+    let active_scope = if exists(active_scope_raw) {
+        active_scope_raw.to_string()
+    } else {
+        String::new()
+    };
+    let recent_scopes = global_recents
+        .into_iter()
+        .filter(|(ws, scope)| registered.contains(ws) && exists(scope))
+        .collect();
+    ValidatedSelections {
+        active_workspace,
+        active_scope,
+        recent_scopes,
+    }
+}
+
+/// Build the session `data` block from the shared user-state handle, VALIDATING
+/// every persisted selection against deliverable reality before surfacing it
+/// (the backend-underpins-the-frontend mandate). The user-state store is
+/// best-effort and can drift from disk (a worktree moves, a project is forgotten,
+/// the DB is hand-edited), so a raw read would hand the frontend a workspace /
+/// scope / recent it cannot actually deliver — and the frontend would then strand.
+/// Sanitization is cheap and read-only:
+///  - `active_workspace` is kept only if it still names a REGISTERED root; else it
+///    falls back to the launch root (or the first registered), else null.
+///  - `active_scope` is kept only if its path still exists on disk; else cleared,
+///    so the client resolves the active workspace's default instead of dangling.
+///  - `recent_scopes` drops any entry whose workspace is no longer registered OR
+///    whose worktree no longer exists on disk.
+///
+/// Filesystem stats run OUTSIDE the user-state lock (never block other writers),
+/// and are bounded (one active scope + at most `MAX_RECENTS` recents).
 fn session_data(state: &AppState) -> Value {
     let workspace = workspace_key(state);
-    let active_scope = active_scope_token(state);
-    // SCOPED guard: every user-state read happens here, and the guard drops at
-    // the close brace — never held across the `.await`-free envelope below, and
-    // never across any future `.await`.
-    let (scope_context, recents, active_workspace, global_recents) = {
+    let active_scope_raw = active_scope_token(state);
+    // SCOPED guard: every user-state read happens here; the guard drops at the
+    // close brace BEFORE any filesystem stat (so a slow/UNC stat never holds it).
+    let (scope_context, recents, active_workspace_raw, global_recents, registered_ids, fallback_ws) = {
         let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
+        let roots = us.list_roots().unwrap_or_default();
+        let registered_ids: std::collections::HashSet<String> =
+            roots.iter().map(|r| r.id.clone()).collect();
+        // The deterministic fallback workspace when the active one is stale: the
+        // launch root, else the first registered root, else none.
+        let fallback_ws = roots
+            .iter()
+            .find(|r| r.is_launch)
+            .or_else(|| roots.first())
+            .map(|r| r.id.clone());
         let context = us
-            .scope_context(&workspace, &active_scope)
+            .scope_context(&workspace, &active_scope_raw)
             .unwrap_or_default();
         let recents = us.recents(&workspace).unwrap_or_default();
-        // The active WORKSPACE id beside the active scope (dashboard-workspace-
-        // registry ADR): the registered root the dashboard is pointed at. The
-        // registry of WHICH roots exist lives on /workspaces; /session carries
-        // only the active selection.
-        let active_workspace = us.active_workspace().ok().flatten();
-        // The machine-global, cross-project recents as (workspace, scope) pairs —
-        // the unified "Recent" list spanning every registered project.
+        let active_workspace_raw = us.active_workspace().ok().flatten();
         let global_recents = us.global_recents().unwrap_or_default();
-        (context, recents, active_workspace, global_recents)
+        (
+            context,
+            recents,
+            active_workspace_raw,
+            global_recents,
+            registered_ids,
+            fallback_ws,
+        )
     };
+
+    // --- validate-before-surface (filesystem stats are OUTSIDE the lock) --------
+    let validated = validate_session_selections(
+        &registered_ids,
+        fallback_ws,
+        active_workspace_raw,
+        &active_scope_raw,
+        global_recents,
+        path_token_exists,
+    );
+    let recent_scopes: Vec<Value> = validated
+        .recent_scopes
+        .into_iter()
+        .map(|(ws, scope)| json!({ "workspace": ws, "scope": scope }))
+        .collect();
+
     json!({
         "workspace": workspace,
-        "active_scope": active_scope,
-        "active_workspace": active_workspace,
-        "recent_scopes": global_recents
-            .into_iter()
-            .map(|(workspace, scope)| json!({ "workspace": workspace, "scope": scope }))
-            .collect::<Vec<_>>(),
+        "active_scope": validated.active_scope,
+        "active_workspace": validated.active_workspace,
+        "recent_scopes": recent_scopes,
         "scope_context": {
             "folder": scope_context.active_folder,
             "feature_tags": scope_context.feature_tags,
@@ -505,4 +591,102 @@ pub async fn get_settings_schema(State(state): State<Arc<AppState>>) -> ApiResul
         super::query_tiers(&state.active_cell()),
         None,
     ))
+}
+
+#[cfg(test)]
+mod validate_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    fn registered(ids: &[&str]) -> HashSet<String> {
+        ids.iter().map(|s| s.to_string()).collect()
+    }
+    fn pair(ws: &str, scope: &str) -> (String, String) {
+        (ws.to_string(), scope.to_string())
+    }
+
+    #[test]
+    fn drops_recents_for_unregistered_workspace_or_missing_worktree() {
+        let reg = registered(&["wsA", "wsB"]);
+        // wsC is not registered (project forgotten); /gone is removed on disk.
+        let exists = |s: &str| s != "/gone";
+        let v = validate_session_selections(
+            &reg,
+            Some("wsA".into()),
+            Some("wsA".into()),
+            "wsA/main",
+            vec![
+                pair("wsA", "wsA/main"), // registered + exists -> kept
+                pair("wsC", "wsC/main"), // workspace forgotten -> dropped
+                pair("wsB", "/gone"),    // worktree removed -> dropped
+            ],
+            exists,
+        );
+        assert_eq!(v.recent_scopes, vec![pair("wsA", "wsA/main")]);
+    }
+
+    #[test]
+    fn active_workspace_falls_back_when_unregistered() {
+        let reg = registered(&["launch", "wsB"]);
+        // The persisted active workspace was forgotten -> fall back to launch.
+        let v = validate_session_selections(
+            &reg,
+            Some("launch".into()),
+            Some("ghost".into()),
+            "",
+            vec![],
+            |_| true,
+        );
+        assert_eq!(v.active_workspace.as_deref(), Some("launch"));
+        // A registered active workspace is kept as-is.
+        let v2 = validate_session_selections(
+            &reg,
+            Some("launch".into()),
+            Some("wsB".into()),
+            "",
+            vec![],
+            |_| true,
+        );
+        assert_eq!(v2.active_workspace.as_deref(), Some("wsB"));
+    }
+
+    #[test]
+    fn active_scope_cleared_when_missing_on_disk() {
+        let reg = registered(&["wsA"]);
+        // A removed worktree path -> cleared so the client resolves a default.
+        let v = validate_session_selections(
+            &reg,
+            Some("wsA".into()),
+            Some("wsA".into()),
+            "wsA/gone",
+            vec![],
+            |s| s != "wsA/gone",
+        );
+        assert_eq!(v.active_scope, "");
+        // An existing scope is kept.
+        let v2 = validate_session_selections(
+            &reg,
+            Some("wsA".into()),
+            Some("wsA".into()),
+            "wsA/main",
+            vec![],
+            |_| true,
+        );
+        assert_eq!(v2.active_scope, "wsA/main");
+    }
+
+    #[test]
+    fn empty_registry_yields_no_active_and_no_recents() {
+        let reg = registered(&[]);
+        let v = validate_session_selections(
+            &reg,
+            None,
+            Some("anything".into()),
+            "some/scope",
+            vec![pair("anything", "some/scope")],
+            |_| true,
+        );
+        assert_eq!(v.active_workspace, None);
+        assert!(v.recent_scopes.is_empty());
+    }
 }
