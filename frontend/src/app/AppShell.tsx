@@ -35,8 +35,6 @@ import { setSceneCommandRunner } from "../stores/view/sceneCommandBridge";
 import { KeyboardNav } from "./a11y/KeyboardNav";
 import { useRegionCycleKeybindings } from "./chrome/regionCycleKeybindings";
 import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
-import { IconButton } from "./kit";
-import { PanelRight } from "./kit/glyphs";
 import { ContextMenuHost } from "./menu/ContextMenuHost";
 import { UnsavedEditGuardHost } from "./chrome/UnsavedEditGuardHost";
 import { KeyboardShortcuts } from "./menu/KeyboardShortcuts";
@@ -252,27 +250,10 @@ export function AppShell() {
         )}
       </aside>
 
-      {/* ── Right-rail visibility toggle ─────────────────────────────── */}
-      {/* A single, direct window/pane control pinned to the top-right SCREEN
-          corner, mirroring the left rail's collapse toggle (WorktreePicker) at the
-          same height. It lives OUTSIDE the right-rail <aside> so it remains
-          reachable to RE-SHOW the rail after it hides (the rail collapses to width
-          0, taking its own chrome with it). It fires the same `toggleRightRail`
-          intent the palette's `window:right-rail` command does — one verb, no
-          duplicate menu. The former panel-controls flyout (which re-listed these
-          same toggles) is retired; graph/timeline visibility live in Cmd+K. */}
-      {/* top-7 (1.75rem) aligns the button's center with the left rail's collapse
-          toggle, which sits centered against the two-line worktree pill. */}
-      <div className="pointer-events-auto absolute right-2 top-7 z-20">
-        <IconButton
-          label={shellFrame.rightRailToggleLabel}
-          title={shellFrame.rightRailToggleLabel}
-          active={shellFrame.showRightRail}
-          onClick={shellActions.toggleRightRail}
-        >
-          <PanelRight size={16} aria-hidden />
-        </IconButton>
-      </div>
+      {/* The activity-rail (and graph) visibility toggles are NOT free-floating chrome
+          here: they live in the dock's top-right action cluster (DockWorkspace's
+          rightHeaderActionsComponent), which rides the top-right-most open panel and
+          is re-derived on every layout change. */}
 
       <CrashInjector />
     </div>

@@ -12,11 +12,11 @@
 // re-parents the canvas (P02). Layer law: `app/` chrome over the preserved
 // stores + SceneController contracts; no fetch, no raw tiers.
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  DockviewDefaultTab,
   DockviewReact,
   type DockviewApi,
+  type DockviewGroupPanel,
   type DockviewReadyEvent,
   type IDockviewHeaderActionsProps,
   type IDockviewPanelHeaderProps,
@@ -25,10 +25,14 @@ import { X } from "lucide-react";
 
 import { useActiveScope } from "../../stores/server/queries";
 import { openContextMenu } from "../../stores/view/contextMenu";
-import { useShellGraphVisible } from "../../stores/view/shellLayout";
+import {
+  useShellFrameView,
+  useShellGraphVisible,
+  useShellWindowActions,
+} from "../../stores/view/shellLayout";
 import { toggleGraphAction } from "../../stores/view/chromeActions";
 import { IconButton } from "../kit";
-import { Hierarchy } from "../kit/glyphs";
+import { Hierarchy, PanelRight } from "../kit/glyphs";
 import { pokeGraphRect, setWorkspaceContainer } from "./canvasPin";
 import { DocPanel } from "./DocPanel";
 import { vaultspecDockTheme } from "./dockTheme";
@@ -53,14 +57,14 @@ const GRAPH_PANEL_ID = "__graph__";
 
 const components = { graph: GraphPanel, doc: DocPanel };
 
-// The graph panel is structural, not a document: it is the portal-pinned canvas's
-// rect source and must always exist (graph-canvas-is-portal-pinned). The default
-// dockview tab renders a close (✕) action; closing the graph would drop the
-// placeholder rect with no restore path. A `hideClose` tab makes the graph tab
-// non-closable so the invariant holds — document tabs keep the default closable
-// tab.
-function GraphTab(props: IDockviewPanelHeaderProps) {
-  return <DockviewDefaultTab {...props} hideClose />;
+// The graph panel is structural, not a document, and carries no label or close in
+// its tab: the graph is the canvas, not a named document, and it is never closed
+// from a tab (graph-canvas-is-portal-pinned — dropping the placeholder would strand
+// the canvas; visibility is the shell `graphVisible` verb). Its tab renders empty so
+// the graph group's header reads as a thin toolbar that hosts the top-right action
+// cluster, rather than a noisy lone "Graph" tab.
+function GraphTab(_props: IDockviewPanelHeaderProps) {
+  return <span aria-hidden className="block h-full w-0" />;
 }
 
 // Document tab content. dockview's default tab renders at its own hardcoded 13px
@@ -148,39 +152,87 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
 
 const tabComponents = { graphTab: GraphTab, docTab: DocTab };
 
-// The graph-visibility toggle, rendered in every group header's RIGHT action slot
-// (dockview `rightHeaderActionsComponent`). This is the persistent REOPEN affordance:
-// the bare graph-alone view hides its group header (clean canvas), so hiding there is
-// the canvas overlay's job — but once documents are open, this tab-bar toggle both
-// hides and re-shows the graph. It COMPOSES the one shared `toggleGraphAction()`
-// builder (the same authoring Cmd+K's window:graph, the keymap, and the canvas
-// overlay use) so the label ("Graph: Hide" / "Graph: Show") and run come from one
-// source — no drift. Active = graph shown.
-function GraphHeaderAction(_props: IDockviewHeaderActionsProps) {
+// Which group occupies the dock's TOP-RIGHT corner right now — the rightmost group
+// (greatest right edge), breaking a stacked-column tie by the topmost. Measured from
+// live DOM rects so it is correct for any split/stack/float arrangement.
+function isTopRightGroup(
+  group: DockviewGroupPanel,
+  containerApi: DockviewApi,
+): boolean {
+  const groups = containerApi.groups;
+  if (groups.length <= 1) return true;
+  let host = groups[0]!;
+  let hostRect = host.element.getBoundingClientRect();
+  for (const candidate of groups) {
+    const rect = candidate.element.getBoundingClientRect();
+    if (
+      rect.right > hostRect.right + 1 ||
+      (Math.abs(rect.right - hostRect.right) <= 1 && rect.top < hostRect.top - 1)
+    ) {
+      host = candidate;
+      hostRect = rect;
+    }
+  }
+  return host.id === group.id;
+}
+
+// The ONE window-visibility action cluster (graph + activity rail), rendered through
+// dockview's `rightHeaderActionsComponent`. dockview renders this in EVERY group's
+// header, so to avoid a duplicated/multiplied toggle the cluster paints ONLY in the
+// dock's top-right-most group (every other group's instance returns null). The host
+// is re-derived on every layout change (`onDidLayoutChange`, which the TanStack-state-
+// driven panel reconcile and any user dock/split/move all fire), so the cluster always
+// rides the top-right corner of whatever panel is rightmost — stable, but aware of
+// what is open in the canvas. The graph verb composes the shared `toggleGraphAction()`
+// (one authoring with Cmd+K / keymap); the rail verb composes the shared shell window
+// action. No free-floating absolutely-positioned chrome, no second copy.
+function DockHeaderActions(props: IDockviewHeaderActionsProps) {
+  const scope = useActiveScope();
+  const shellFrame = useShellFrameView(scope);
+  const shellActions = useShellWindowActions(scope, shellFrame);
   const graphVisible = useShellGraphVisible();
-  const action = toggleGraphAction();
+  // Re-derive the host group whenever the dock layout changes (panels added/removed
+  // by the TanStack reconcile, or a user move/split/dock).
+  const [, bumpLayout] = useState(0);
+  useEffect(() => {
+    const disposable = props.containerApi.onDidLayoutChange(() =>
+      bumpLayout((tick) => tick + 1),
+    );
+    return () => disposable.dispose();
+  }, [props.containerApi]);
+
+  if (!isTopRightGroup(props.group, props.containerApi)) return null;
+
+  const graphAction = toggleGraphAction();
   return (
-    <div className="flex h-full items-center px-fg-1">
+    <div className="flex h-full items-center gap-fg-1 px-fg-1">
       <IconButton
-        label={action.label}
-        title={action.label}
+        label={graphAction.label}
+        title={graphAction.label}
         active={graphVisible}
-        onClick={action.run}
+        onClick={graphAction.run}
       >
         <Hierarchy size={16} aria-hidden />
+      </IconButton>
+      <IconButton
+        label={shellFrame.rightRailToggleLabel}
+        title={shellFrame.rightRailToggleLabel}
+        active={shellFrame.showRightRail}
+        onClick={shellActions.toggleRightRail}
+      >
+        <PanelRight size={16} aria-hidden />
       </IconButton>
     </div>
   );
 }
 
-// The graph is structural, not a document. When it is alone in its group it must
-// read as the bare canvas — NO tab row above it (a single "Graph" tab is visual
-// noise with no purpose). The tab header appears only once the user explicitly
-// tabs another panel into the graph's group. Hiding the header on the graph's own
-// group leaves any separate document group's tabs untouched.
+// Keep the graph group's header VISIBLE so it can host the top-right action cluster
+// even when the graph is alone (the cluster is the stable home of the graph + rail
+// toggles). The graph's own tab renders empty (see GraphTab), so a lone graph still
+// reads as a thin toolbar over the canvas rather than a noisy "Graph" tab row.
 function syncGraphGroupHeader(api: DockviewApi): void {
   const group = api.getPanel(GRAPH_PANEL_ID)?.group;
-  if (group) group.header.hidden = group.panels.length <= 1;
+  if (group) group.header.hidden = false;
 }
 
 export function DockWorkspace() {
@@ -333,7 +385,7 @@ export function DockWorkspace() {
         <DockviewReact
           components={components}
           tabComponents={tabComponents}
-          rightHeaderActionsComponent={GraphHeaderAction}
+          rightHeaderActionsComponent={DockHeaderActions}
           onReady={onReady}
           theme={vaultspecDockTheme}
         />
