@@ -20,6 +20,7 @@
 
 import { useRef } from "react";
 
+import { Skeleton, SkeletonBar, StateBlock } from "../kit";
 import {
   useDashboardDateRangeView,
   useFiltersVocabularyView,
@@ -73,6 +74,43 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
   const toMs = clampToSpan(range.toMs, lo, hi);
   const isNarrowed = rangeIsNarrowed(range.source, fromMs, toMs, lo, hi);
   const criterionLabel = timelineDateCriterionLabel(criterion).toUpperCase();
+
+  // State modes (state-mode-uniformity ADR W2; the rail state bodies are the
+  // reference template). All hooks above run unconditionally, so these early
+  // returns are rules-of-hooks safe. The timeline is a thin date-range selector,
+  // so its non-typical states are compact: a text-free LOADING skeleton while the
+  // corpus bounds load, and an inline EMPTY notice when the corpus carries no
+  // dated documents to scrub. Degraded is intentionally not surfaced here — the
+  // filters vocabulary exposes no per-tier signal to read, and inferring it from a
+  // transport miss would violate degradation-is-read-from-tiers; a missing span
+  // simply resolves to the empty state.
+  const containerClassName =
+    "flex h-full w-full items-center gap-fg-4 bg-paper px-fg-4 select-none";
+  if (vocabulary.loading) {
+    return (
+      <div className={containerClassName} data-timeline data-timeline-loading>
+        <Skeleton
+          label="Loading timeline range"
+          className="flex w-full items-center gap-fg-4"
+        >
+          <SkeletonBar width="w-16" height="h-3" />
+          <SkeletonBar height="h-1" className="flex-1" />
+          <SkeletonBar width="w-12" height="h-3" />
+        </Skeleton>
+      </div>
+    );
+  }
+  if (!hasSpan) {
+    return (
+      <div className={containerClassName} data-timeline data-timeline-empty>
+        <StateBlock
+          mode="empty"
+          layout="inline"
+          message="No dated documents to scrub in this view."
+        />
+      </div>
+    );
+  }
 
   const moveHandle = (which: "from" | "to", clientX: number) => {
     const el = trackRef.current;
