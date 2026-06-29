@@ -35,6 +35,7 @@ import type {
   HistoryResponse,
   HistoryTruncated,
   InteriorPhase,
+  InteriorRollup,
   InteriorStep,
   InteriorWave,
   Issue,
@@ -52,6 +53,7 @@ import type {
   PipelineResponse,
   PlanInterior,
   PlanInteriorResponse,
+  PlanSummary,
   PrChecks,
   PRsResponse,
   PullRequest,
@@ -1487,14 +1489,33 @@ export function codeNodeIdFromPath(path: string): string {
   return `code:${path}`;
 }
 
-/** A feature tag → its synthesized constellation node id (`feature:{tag}`). */
-export function featureNodeIdFromTag(tag: string): string {
-  return `feature:${tag}`;
+/** Canonicalize a feature tag to its IDENTITY form: strip a leading `#` (frontmatter
+ *  `tags:` carry it; engine-served `feature_tags` never do) and trim. This is the
+ *  matching/identity counterpart to the DISPLAY sanitizer `featureTagDisplayName`, so a
+ *  `#feature-raw` and a `feature-raw` resolve to the SAME node id and the SAME membership
+ *  key everywhere a feature is selected, filtered, or matched. Returns null for a blank
+ *  or non-string input. The identity is the raw (de-hashed) tag — NEVER the title-cased
+ *  display string (that conversion is lossy and one-way). */
+export function normalizeFeatureTag(tag: unknown): string | null {
+  if (typeof tag !== "string") return null;
+  // Trim FIRST so a leading-whitespace `  #tag  ` still de-hashes (the `^#+` anchor only
+  // bites at position 0), then strip the hash, then trim any gap after it.
+  const cleaned = tag.trim().replace(/^#+/, "").trim();
+  return cleaned.length > 0 ? cleaned : null;
 }
 
-/** Recover the feature tag from a synthesized feature node id, or null. */
+/** A feature tag → its synthesized constellation node id (`feature:{tag}`). The tag is
+ *  normalized first (de-hashed) so `#feature-raw` and `feature-raw` map to one id. */
+export function featureNodeIdFromTag(tag: string): string {
+  return `feature:${normalizeFeatureTag(tag) ?? tag}`;
+}
+
+/** Recover the feature tag from a synthesized feature node id, or null. The recovered
+ *  tag is normalized so a comparison against an engine-served `feature_tags` entry (which
+ *  is already de-hashed) is exact. */
 export function featureTagFromNodeId(id: string | null): string | null {
-  return id !== null && id.startsWith("feature:") ? id.slice("feature:".length) : null;
+  if (id === null || !id.startsWith("feature:")) return null;
+  return normalizeFeatureTag(id.slice("feature:".length));
 }
 
 /**
@@ -1929,6 +1950,39 @@ export function adaptPipeline(body: unknown): PipelineResponse {
 /** Default one interior step wire row. `done` defaults to false (an unmarked
  *  step is open, never wrongly shown complete); the optional action and exec
  *  binding are forwarded only when present. */
+/** A non-negative integer count, defaulting to 0 (tolerant of absent/garbage). */
+function nonNegInt(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : 0;
+}
+
+/** Tolerant done/total rollup; absent or sparse → a zero rollup. */
+function adaptInteriorRollup(value: unknown): InteriorRollup {
+  if (!isRec(value)) return { done: 0, total: 0 };
+  return { done: nonNegInt(value.done), total: nonNegInt(value.total) };
+}
+
+/** Tolerant per-plan summary; absent or sparse → zeros with no derived state. */
+function adaptPlanSummary(value: unknown): PlanSummary {
+  if (!isRec(value)) {
+    return {
+      wave_count: 0,
+      phase_count: 0,
+      step_count: 0,
+      done_count: 0,
+      plan_state: null,
+    };
+  }
+  return {
+    wave_count: nonNegInt(value.wave_count),
+    phase_count: nonNegInt(value.phase_count),
+    step_count: nonNegInt(value.step_count),
+    done_count: nonNegInt(value.done_count),
+    plan_state: typeof value.plan_state === "string" ? value.plan_state : null,
+  };
+}
+
 function adaptInteriorStep(value: unknown): InteriorStep | null {
   if (!isRec(value)) return null;
   const nodeId = normalizeNodeId(value.node_id);
@@ -1958,6 +2012,7 @@ function adaptInteriorPhase(value: unknown): InteriorPhase | null {
           .map(adaptInteriorStep)
           .filter((step): step is InteriorStep => step !== null)
       : [],
+    rollup: adaptInteriorRollup(value.rollup),
   };
 }
 
@@ -1975,6 +2030,7 @@ function adaptInteriorWave(value: unknown): InteriorWave | null {
           .map(adaptInteriorPhase)
           .filter((phase): phase is InteriorPhase => phase !== null)
       : [],
+    rollup: adaptInteriorRollup(value.rollup),
   };
 }
 
@@ -2005,6 +2061,7 @@ export function adaptPlanInterior(body: unknown): PlanInteriorResponse {
     waves: [],
     phases: [],
     steps: [],
+    summary: adaptPlanSummary(undefined),
     truncated: null,
   };
   if (!isRec(body)) return { interior: empty, tiers: {} };
@@ -2027,6 +2084,7 @@ export function adaptPlanInterior(body: unknown): PlanInteriorResponse {
             .map(adaptInteriorStep)
             .filter((step): step is InteriorStep => step !== null)
         : [],
+      summary: adaptPlanSummary(raw.summary),
       truncated: adaptInteriorTruncated(raw.truncated),
     },
     tiers: (body.tiers ?? {}) as TiersBlock,

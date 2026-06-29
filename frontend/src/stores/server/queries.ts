@@ -60,6 +60,7 @@ import type {
   OpsWriteResult,
   PipelineArtifact,
   PlanInterior,
+  PlanSummary,
   PRsResponse,
   PullRequest,
   SessionState,
@@ -2304,7 +2305,12 @@ export function useDashboardState(scope: unknown) {
   const enabled = request.scope !== null && session.isSuccess;
   const query = useQuery<DashboardState>({
     queryKey: engineKeys.dashboardState(request.scope ?? "", request.sessionIdentity),
-    queryFn: () => engineClient.dashboardState(request.scope!),
+    // Forward TanStack's AbortSignal so a query cancellation (unmount / clear /
+    // scope swap) aborts the in-flight fetch and TanStack OWNS the resulting
+    // cancellation — instead of leaving a dangling /dashboard-state fetch that the
+    // env teardown later aborts as an UNHANDLED rejection (the VaultBrowser render
+    // test's red). Mirrors the graph-query signal-threading already in this module.
+    queryFn: ({ signal }) => engineClient.dashboardState(request.scope!, signal),
     enabled,
   });
   return enabled ? query : { ...query, data: undefined };
@@ -7352,8 +7358,10 @@ export interface PlanInteriorView {
   steps: InteriorStepView[];
   /** Whether the flat L1 step bucket should be rendered. */
   hasUngroupedSteps: boolean;
-  /** The plan-level rolled-up completion across every step the interior carries. */
+  /** The plan-level rolled-up completion (from the engine summary, truncation-honest). */
   rollup: InteriorRollup;
+  /** The engine-served structural summary (counts + completion state), pre-truncation. */
+  summary: PlanSummary;
   /** Honest bounded-interior truncation when the engine capped the tree; null otherwise. */
   truncated: PlanInterior["truncated"];
   loadingMessage: string;
@@ -7363,10 +7371,15 @@ export interface PlanInteriorView {
   truncatedMessage: string | null;
 }
 
-/** Roll up a step list to a done/total fraction (a done step is `done: true`). */
-function rollupSteps(steps: InteriorStep[]): InteriorRollup {
-  return { done: steps.filter((s) => s.done).length, total: steps.length };
-}
+/** The inert zero summary for a collapsed/unserved interior — a stable reference
+ *  so a consumer memoizing on `view.summary` does not recompute every render. */
+const EMPTY_PLAN_SUMMARY: PlanSummary = {
+  wave_count: 0,
+  phase_count: 0,
+  step_count: 0,
+  done_count: 0,
+  plan_state: null,
+};
 
 function interiorStepView(step: InteriorStep): InteriorStepView {
   const targetNodeId = step.exec_node_id ?? null;
@@ -7384,19 +7397,13 @@ function interiorStepView(step: InteriorStep): InteriorStepView {
   };
 }
 
-/** Sum two rollups (phase → wave, wave → plan aggregation). */
-function sumRollups(rollups: InteriorRollup[]): InteriorRollup {
-  return rollups.reduce(
-    (acc, r) => ({ done: acc.done + r.done, total: acc.total + r.total }),
-    { done: 0, total: 0 },
-  );
-}
-
 /**
- * Derive the plan-interior view (W01.P02.S11): attach per-container rolled-up completion
- * bottom-up (steps → phase → wave → plan) and surface the truncated honesty block as a
- * designed state, never a silent partial result (graph-queries-are-bounded-by-default).
- * The tier-honest shape passes through: an L1 plan carries flat `steps`, an L2 plan
+ * Derive the plan-interior view (W01.P02.S11): the per-container rollups and the
+ * plan-level completion are READ FROM THE ENGINE (computed pre-truncation), never
+ * re-counted client-side over a possibly-truncated tree
+ * (`display-state-is-backend-served-not-frontend-derived`). The truncated honesty
+ * block surfaces as a designed state (graph-queries-are-bounded-by-default). The
+ * tier-honest shape passes through: an L1 plan carries flat `steps`, an L2 plan
  * `phases`, an L3/L4 plan `waves` — exactly as the wire serves it.
  */
 export function derivePlanInteriorView(
@@ -7413,6 +7420,7 @@ export function derivePlanInteriorView(
       steps: [],
       hasUngroupedSteps: false,
       rollup: { done: 0, total: 0 },
+      summary: EMPTY_PLAN_SUMMARY,
       truncated: null,
       loadingMessage: "loading steps...",
       placeholderMessage: "step tree pending - the plan interior is not yet served.",
@@ -7421,30 +7429,28 @@ export function derivePlanInteriorView(
       truncatedMessage: null,
     };
   }
+  // Per-container rollups are served by the engine (computed over the full step
+  // subtree pre-truncation) — pass them through, never re-count the served slice.
   const phases: InteriorPhaseView[] = interior.phases.map((p) => ({
     ...p,
     steps: p.steps.map(interiorStepView),
-    rollup: rollupSteps(p.steps),
+    rollup: p.rollup,
   }));
-  const waves: InteriorWaveView[] = interior.waves.map((w) => {
-    const phaseViews = w.phases.map((p) => ({
+  const waves: InteriorWaveView[] = interior.waves.map((w) => ({
+    ...w,
+    phases: w.phases.map((p) => ({
       ...p,
       steps: p.steps.map(interiorStepView),
-      rollup: rollupSteps(p.steps),
-    }));
-    return {
-      ...w,
-      phases: phaseViews,
-      rollup: sumRollups(phaseViews.map((p) => p.rollup)),
-    };
-  });
+      rollup: p.rollup,
+    })),
+    rollup: w.rollup,
+  }));
   const steps: InteriorStepView[] = interior.steps.map(interiorStepView);
-  // Plan-level rollup spans whichever container shape the tier serves.
-  const planRollup = sumRollups([
-    ...waves.map((w) => w.rollup),
-    ...phases.map((p) => p.rollup),
-    rollupSteps(steps),
-  ]);
+  // Plan-level rollup comes from the engine summary (truncation-honest totals).
+  const planRollup: InteriorRollup = {
+    done: interior.summary.done_count,
+    total: interior.summary.step_count,
+  };
   const truncated = interior.truncated ?? null;
   return {
     loading,
@@ -7455,6 +7461,7 @@ export function derivePlanInteriorView(
     steps,
     hasUngroupedSteps: steps.length > 0,
     rollup: planRollup,
+    summary: interior.summary,
     truncated,
     loadingMessage: "loading steps...",
     placeholderMessage: "step tree pending - the plan interior is not yet served.",
@@ -7479,6 +7486,65 @@ export function usePlanInteriorView(planId: unknown, scope: unknown): PlanInteri
     query.data?.interior,
     request.planId !== null && query.isPending,
   );
+}
+
+/** The completion tone of a plan, for the summary card's state badge + bar. The
+ *  classification stays engine-served (`plan_state`); this is presentation only. */
+export type PlanStateTone = "pending" | "active" | "complete";
+
+/** The interpreted plan-summary view the reader's plan card renders: the
+ *  user-facing state label + tone, the completion percentage, and the wave/phase/
+ *  step counts — all from the engine `PlanSummary` (no client re-counting). */
+export interface PlanSummaryView {
+  /** Whether the plan carries any steps (the card hides its bar/% when false). */
+  hasStructure: boolean;
+  /** User-facing state label (`ui-labels-are-user-facing`). */
+  stateLabel: string;
+  /** Presentation tone for the badge/bar, mapped from the served `plan_state`. */
+  tone: PlanStateTone;
+  /** Completion percentage over served counts; null when the plan has no steps. */
+  percent: number | null;
+  /** `"48%"` readout, or null when there is no step progress to show. */
+  percentLabel: string | null;
+  waveCount: number;
+  phaseCount: number;
+  stepCount: number;
+  doneCount: number;
+}
+
+const PLAN_STATE_PRESENTATION: Record<string, { label: string; tone: PlanStateTone }> =
+  {
+    "not-started": { label: "Not started", tone: "pending" },
+    "in-progress": { label: "In progress", tone: "active" },
+    finished: { label: "Finished", tone: "complete" },
+  };
+
+/**
+ * Map the engine `PlanSummary` to the reader card's presentation. The completion
+ * CLASS is engine-served (`plan_state`); this only chooses a user-facing label, a
+ * tone, and the display percentage (presentation math over served counts, mirroring
+ * `pipelineRowView`'s `progressPercent`). A plan with no steps falls back to the
+ * "Not started" presentation with no percentage.
+ */
+export function derivePlanSummaryView(summary: PlanSummary): PlanSummaryView {
+  const stepCount = summary.step_count;
+  const doneCount = summary.done_count;
+  const hasStructure = stepCount > 0;
+  const percent = hasStructure ? Math.round((doneCount / stepCount) * 100) : null;
+  const presentation =
+    (summary.plan_state ? PLAN_STATE_PRESENTATION[summary.plan_state] : undefined) ??
+    PLAN_STATE_PRESENTATION["not-started"];
+  return {
+    hasStructure,
+    stateLabel: presentation.label,
+    tone: presentation.tone,
+    percent,
+    percentLabel: percent === null ? null : `${percent}%`,
+    waveCount: summary.wave_count,
+    phaseCount: summary.phase_count,
+    stepCount,
+    doneCount,
+  };
 }
 
 /** The interpreted outcome of an ops dispatch, for the receipt copy. */

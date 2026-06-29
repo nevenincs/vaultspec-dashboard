@@ -1387,11 +1387,21 @@ export interface InteriorStep {
   exec_node_id?: string;
 }
 
+/** A done/total completion rollup over a container's full step subtree, served by
+ *  the engine (computed pre-truncation, so honest even when the interior is capped).
+ *  The client renders this — it never re-counts steps over a possibly-truncated tree
+ *  (`display-state-is-backend-served-not-frontend-derived`). */
+export interface InteriorRollup {
+  done: number;
+  total: number;
+}
+
 export interface InteriorPhase {
   node_id: string;
   id: string;
   heading?: string;
   steps: InteriorStep[];
+  rollup: InteriorRollup;
 }
 
 export interface InteriorWave {
@@ -1399,6 +1409,19 @@ export interface InteriorWave {
   id: string;
   heading?: string;
   phases: InteriorPhase[];
+  rollup: InteriorRollup;
+}
+
+/** The engine-derived per-plan structural summary (counts + completion state),
+ *  computed over the FULL plan tree pre-truncation. `plan_state` is the one
+ *  `not-started`/`in-progress`/`finished` authority (absent when the plan has no
+ *  steps). The reader's summary card reads these served values. */
+export interface PlanSummary {
+  wave_count: number;
+  phase_count: number;
+  step_count: number;
+  done_count: number;
+  plan_state?: string | null;
 }
 
 /** The bounded plan-container interior (GET /nodes/{id}/plan-interior data.interior). */
@@ -1407,6 +1430,7 @@ export interface PlanInterior {
   waves: InteriorWave[];
   phases: InteriorPhase[];
   steps: InteriorStep[];
+  summary: PlanSummary;
   truncated?: { total_nodes: number; returned_nodes: number; reason: string } | null;
 }
 
@@ -1783,8 +1807,8 @@ export class EngineClient {
     return adaptFilters(await this.get("/filters", { scope }));
   }
 
-  async dashboardState(scope: string): Promise<DashboardState> {
-    return adaptDashboardState(await this.get("/dashboard-state", { scope }));
+  async dashboardState(scope: string, signal?: AbortSignal): Promise<DashboardState> {
+    return adaptDashboardState(await this.get("/dashboard-state", { scope }, signal));
   }
 
   async patchDashboardState(body: DashboardStatePatch): Promise<DashboardState> {

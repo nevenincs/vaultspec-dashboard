@@ -1325,12 +1325,21 @@ describe("adaptPlanInterior + plan-interior consumer fidelity (W05.P12.S63)", ()
                     done: false,
                   },
                 ],
+                rollup: { done: 1, total: 2 },
               },
             ],
+            rollup: { done: 1, total: 2 },
           },
         ],
         phases: [],
         steps: [],
+        summary: {
+          wave_count: 1,
+          phase_count: 1,
+          step_count: 9001,
+          done_count: 1,
+          plan_state: "in-progress",
+        },
         truncated: {
           total_nodes: 9001,
           returned_nodes: 2000,
@@ -1353,6 +1362,17 @@ describe("adaptPlanInterior + plan-interior consumer fidelity (W05.P12.S63)", ()
       exec_node_id: "doc:2026-06-14-x-W01-P01-S01",
     });
     expect(steps[1].done).toBe(false);
+    // The engine-served rollups + summary fold through (the summary counts the
+    // TRUE pre-truncation total, not the 2 steps the truncated tree serialized).
+    expect(adapted.interior.waves[0].rollup).toEqual({ done: 1, total: 2 });
+    expect(adapted.interior.waves[0].phases[0].rollup).toEqual({ done: 1, total: 2 });
+    expect(adapted.interior.summary).toEqual({
+      wave_count: 1,
+      phase_count: 1,
+      step_count: 9001,
+      done_count: 1,
+      plan_state: "in-progress",
+    });
     expect(adapted.interior.truncated).toEqual({
       total_nodes: 9001,
       returned_nodes: 2000,
@@ -1419,7 +1439,12 @@ describe("adaptPlanInterior + plan-interior consumer fidelity (W05.P12.S63)", ()
       },
     ]);
     expect(adapted.interior.phases).toEqual([
-      { node_id: "plan:flat-phase", id: "P99", steps: [] },
+      {
+        node_id: "plan:flat-phase",
+        id: "P99",
+        steps: [],
+        rollup: { done: 0, total: 0 },
+      },
     ]);
     expect(adapted.interior.steps).toEqual([
       { node_id: "plan:flat-step", id: "S99", action: "Flat", done: false },

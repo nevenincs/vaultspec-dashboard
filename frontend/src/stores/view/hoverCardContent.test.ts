@@ -48,14 +48,23 @@ describe("deriveTypeContent — per-type field sourcing", () => {
           node_id: "n1",
           id: "P01",
           steps: [{ node_id: "s1", id: "S01", done: true }],
+          rollup: { done: 1, total: 1 },
         },
         {
           node_id: "n2",
           id: "P02",
           steps: [{ node_id: "s2", id: "S02", done: false }],
+          rollup: { done: 0, total: 1 },
         },
       ],
       steps: [],
+      summary: {
+        wave_count: 0,
+        phase_count: 2,
+        step_count: 2,
+        done_count: 1,
+        plan_state: "in-progress",
+      },
       truncated: null,
     };
     const content = deriveTypeContent(
@@ -156,12 +165,21 @@ describe("phasesLeftFromInterior", () => {
               node_id: "p1",
               id: "P01",
               steps: [{ node_id: "s", id: "S01", done: false }],
+              rollup: { done: 0, total: 1 },
             },
           ],
+          rollup: { done: 0, total: 1 },
         },
       ],
       phases: [],
       steps: [],
+      summary: {
+        wave_count: 1,
+        phase_count: 1,
+        step_count: 1,
+        done_count: 0,
+        plan_state: "not-started",
+      },
       truncated: null,
     };
     expect(phasesLeftFromInterior(interior)).toBe(1);
@@ -173,6 +191,13 @@ describe("phasesLeftFromInterior", () => {
       waves: [],
       phases: [],
       steps: [{ node_id: "s", id: "S01", done: false }],
+      summary: {
+        wave_count: 0,
+        phase_count: 0,
+        step_count: 1,
+        done_count: 0,
+        plan_state: "not-started",
+      },
       truncated: null,
     };
     expect(phasesLeftFromInterior(interior)).toBeUndefined();

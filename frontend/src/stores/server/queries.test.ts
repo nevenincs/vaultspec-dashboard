@@ -71,6 +71,7 @@ import {
   deriveNodeDetailView,
   derivePipelineStatusView,
   derivePlanInteriorView,
+  derivePlanSummaryView,
   derivePRsView,
   deriveSalienceSliceView,
   deriveSettingsDialogView,
@@ -263,6 +264,13 @@ function planInterior(): PlanInterior {
         done: false,
       },
     ],
+    summary: {
+      wave_count: 0,
+      phase_count: 0,
+      step_count: 1,
+      done_count: 0,
+      plan_state: "not-started",
+    },
     truncated: null,
   };
 }
@@ -6360,8 +6368,72 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
   });
 });
 
+describe("derivePlanSummaryView (plan card metadata from the engine summary)", () => {
+  it("maps the served state + counts to presentation, % over served counts", () => {
+    const view = derivePlanSummaryView({
+      wave_count: 3,
+      phase_count: 8,
+      step_count: 21,
+      done_count: 10,
+      plan_state: "in-progress",
+    });
+    expect(view.hasStructure).toBe(true);
+    expect(view.stateLabel).toBe("In progress");
+    expect(view.tone).toBe("active");
+    expect(view.percent).toBe(48); // round(10/21*100)
+    expect(view.percentLabel).toBe("48%");
+    expect(view).toMatchObject({
+      waveCount: 3,
+      phaseCount: 8,
+      stepCount: 21,
+      doneCount: 10,
+    });
+  });
+
+  it("derives the percentage from the TRUE counts even when the interior truncated", () => {
+    // The summary carries the pre-truncation totals, so the card % is honest where
+    // the old client-side count over the served slice would have been wrong.
+    const view = derivePlanSummaryView({
+      wave_count: 4,
+      phase_count: 40,
+      step_count: 9001,
+      done_count: 4500,
+      plan_state: "in-progress",
+    });
+    expect(view.percent).toBe(Math.round((4500 / 9001) * 100));
+    expect(view.stepCount).toBe(9001);
+  });
+
+  it("treats a finished plan and a no-step plan honestly", () => {
+    const finished = derivePlanSummaryView({
+      wave_count: 0,
+      phase_count: 2,
+      step_count: 6,
+      done_count: 6,
+      plan_state: "finished",
+    });
+    expect(finished.stateLabel).toBe("Finished");
+    expect(finished.tone).toBe("complete");
+    expect(finished.percentLabel).toBe("100%");
+
+    const empty = derivePlanSummaryView({
+      wave_count: 0,
+      phase_count: 0,
+      step_count: 0,
+      done_count: 0,
+      plan_state: null,
+    });
+    // No steps → no fake bar/percentage; falls back to the "Not started" label.
+    expect(empty.hasStructure).toBe(false);
+    expect(empty.percent).toBeNull();
+    expect(empty.percentLabel).toBeNull();
+    expect(empty.stateLabel).toBe("Not started");
+    expect(empty.tone).toBe("pending");
+  });
+});
+
 describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", () => {
-  it("rolls up completion bottom-up across the L3 wave/phase shape", () => {
+  it("passes through the engine-served rollups across the L3 wave/phase shape", () => {
     const interior: PlanInterior = {
       plan_node_id: "doc:x-plan",
       waves: [
@@ -6379,23 +6451,37 @@ describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", 
                 { node_id: "x#S02", id: "S02", done: false },
                 { node_id: "x#S03", id: "S03", done: true },
               ],
+              rollup: { done: 2, total: 3 },
             },
           ],
+          rollup: { done: 2, total: 3 },
         },
       ],
       phases: [],
       steps: [],
+      summary: {
+        wave_count: 1,
+        phase_count: 1,
+        step_count: 3,
+        done_count: 2,
+        plan_state: "in-progress",
+      },
       truncated: null,
     };
     const view = derivePlanInteriorView(interior, false);
+    // Rollups are READ FROM THE WIRE, not re-counted client-side.
     expect(view.waves[0].phases[0].rollup).toEqual({ done: 2, total: 3 });
     expect(view.waves[0].rollup).toEqual({ done: 2, total: 3 });
     expect(view.hasUngroupedSteps).toBe(false);
+    // The plan-level rollup comes from the engine summary.
     expect(view.rollup).toEqual({ done: 2, total: 3 });
     expect(view.truncated).toBeNull();
   });
 
-  it("rolls up the flat L1 step shape and surfaces honest truncation", () => {
+  it("takes the plan rollup from the engine summary, honest under truncation", () => {
+    // The interior serialized only 2 of 9001 steps, but the engine summary counts
+    // the TRUE pre-truncation totals — so the plan rollup is NOT the undercount the
+    // old client-side `rollupSteps(served)` would have produced ({1, 2}).
     const interior: PlanInterior = {
       plan_node_id: "doc:x-plan",
       waves: [],
@@ -6410,10 +6496,17 @@ describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", 
         },
         { node_id: "x#S02", id: "S02", done: false },
       ],
+      summary: {
+        wave_count: 0,
+        phase_count: 0,
+        step_count: 9001,
+        done_count: 4500,
+        plan_state: "in-progress",
+      },
       truncated: { total_nodes: 9001, returned_nodes: 2000, reason: "node ceiling" },
     };
     const view = derivePlanInteriorView(interior, false);
-    expect(view.rollup).toEqual({ done: 1, total: 2 });
+    expect(view.rollup).toEqual({ done: 4500, total: 9001 });
     expect(view.empty).toBe(false);
     expect(view.hasUngroupedSteps).toBe(true);
     expect(view.listAriaLabel).toBe("plan steps");
