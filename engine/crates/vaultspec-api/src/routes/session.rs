@@ -63,6 +63,35 @@ fn path_token_exists(token: &str) -> bool {
     !token.is_empty() && std::path::Path::new(token).is_dir()
 }
 
+/// Overall budget for the validate-before-surface filesystem stats. A dead UNC
+/// share can make `is_dir` block for seconds; bounding the whole batch keeps
+/// `/session` responsive. On timeout we FAIL OPEN (an unchecked path is treated as
+/// existing) rather than dropping a recent because of a transient stat stall.
+const SESSION_EXISTENCE_BUDGET: std::time::Duration = std::time::Duration::from_millis(800);
+
+/// Stat a bounded batch of non-empty path tokens with an overall deadline, on a
+/// detached worker so a stuck (dead-UNC) stat never blocks the response past the
+/// budget. Paths ABSENT from the returned map were not resolved in time; the
+/// caller fails open (treats them as existing). Empty tokens are never batched.
+fn existence_map(
+    paths: Vec<String>,
+    budget: std::time::Duration,
+) -> std::collections::HashMap<String, bool> {
+    if paths.is_empty() {
+        return std::collections::HashMap::new();
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut m = std::collections::HashMap::with_capacity(paths.len());
+        for p in &paths {
+            let exists = path_token_exists(p);
+            m.insert(p.clone(), exists);
+        }
+        let _ = tx.send(m);
+    });
+    rx.recv_timeout(budget).unwrap_or_default()
+}
+
 /// The validated session selections the backend will surface. PURE (no I/O, no
 /// lock) so the validate-before-surface policy is unit-testable with an injected
 /// existence predicate. `session_data` calls it with the real `path_token_exists`.
@@ -156,13 +185,24 @@ fn session_data(state: &AppState) -> Value {
     };
 
     // --- validate-before-surface (filesystem stats are OUTSIDE the lock) --------
+    // Resolve every path we will check ONCE, on a deadline-bounded worker, so a
+    // dead-UNC stat cannot stall the response. Unknown (timed-out) paths fail OPEN.
+    let mut to_check: Vec<String> = Vec::with_capacity(global_recents.len() + 1);
+    if !active_scope_raw.is_empty() {
+        to_check.push(active_scope_raw.clone());
+    }
+    for (_, scope) in &global_recents {
+        to_check.push(scope.clone());
+    }
+    let known = existence_map(to_check, SESSION_EXISTENCE_BUDGET);
+    let exists = |token: &str| !token.is_empty() && known.get(token).copied().unwrap_or(true);
     let validated = validate_session_selections(
         &registered_ids,
         fallback_ws,
         active_workspace_raw,
         &active_scope_raw,
         global_recents,
-        path_token_exists,
+        exists,
     );
     let recent_scopes: Vec<Value> = validated
         .recent_scopes

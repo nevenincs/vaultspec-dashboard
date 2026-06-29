@@ -122,6 +122,42 @@ fn inspect_all(descriptors: Vec<(PathBuf, bool)>) -> Result<Vec<WorktreeInfo>> {
     })
 }
 
+/// Like [`enumerate`] but RESILIENT to individual broken worktrees: a worktree
+/// whose workdir has moved or is no longer a git repo is SKIPPED, with the rest
+/// returned, rather than failing the WHOLE enumeration. The project-level open can
+/// still fail (a genuine reachability failure propagates); only per-worktree
+/// inspection errors are tolerated. `/map` uses this so one stale sibling worktree
+/// never 400s the entire project — which would strand the dashboard's picker on a
+/// project the operator cannot then escape.
+pub fn enumerate_lenient(workspace: &Workspace) -> Result<Vec<WorktreeInfo>> {
+    Ok(inspect_all_lenient(collect_descriptors(workspace)?))
+}
+
+/// Inspect each descriptor, DROPPING any that fail (a moved/broken worktree),
+/// keeping the inspectable ones. Mirrors `inspect_all`'s sequential/parallel split.
+fn inspect_all_lenient(descriptors: Vec<(PathBuf, bool)>) -> Vec<WorktreeInfo> {
+    if descriptors.len() <= 1 {
+        return descriptors
+            .into_iter()
+            .filter_map(|(p, is_main)| inspect_path(&p, is_main).ok())
+            .collect();
+    }
+    let threads = worktree_inspect_concurrency().min(descriptors.len());
+    match rayon::ThreadPoolBuilder::new().num_threads(threads).build() {
+        Ok(pool) => pool.install(|| {
+            descriptors
+                .into_par_iter()
+                .filter_map(|(p, is_main)| inspect_path(&p, is_main).ok())
+                .collect()
+        }),
+        // A thread-pool build failure falls back to sequential, still lenient.
+        Err(_) => descriptors
+            .into_iter()
+            .filter_map(|(p, is_main)| inspect_path(&p, is_main).ok())
+            .collect(),
+    }
+}
+
 /// The bound on how many worktrees are inspected concurrently. Each inspection
 /// can itself spawn up to the B5b status-thread limit, so the combined fan-out
 /// is `worktree_inspect_concurrency() * git_status_thread_limit()` threads —
@@ -350,6 +386,32 @@ mod tests {
 
         assert_eq!(wt.ahead, Some(1), "one commit ahead of origin");
         assert_eq!(wt.behind, Some(0), "origin has no commits we are missing");
+    }
+
+    // Adversarial hardening: one broken/unopenable worktree descriptor must NOT
+    // fail the whole enumeration on the lenient path — it is skipped, the valid
+    // worktrees returned. This is what keeps /map serving a project that has a
+    // single stale sibling worktree (instead of 400-ing and stranding the picker).
+    #[test]
+    fn inspect_all_lenient_skips_unopenable_descriptors() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        repo_with_commit(&main);
+        // A real directory that is NOT a git repo — `inspect_path` errors on it.
+        let bogus = dir.path().join("not-a-repo");
+        std::fs::create_dir_all(&bogus).unwrap();
+        let descriptors = vec![(main.clone(), true), (bogus.clone(), false)];
+
+        // Strict inspection fails on the bogus descriptor...
+        assert!(
+            inspect_all(descriptors.clone()).is_err(),
+            "strict inspect_all fails on an unopenable worktree"
+        );
+        // ...but the lenient path skips it and returns the main worktree.
+        let wts = inspect_all_lenient(descriptors);
+        assert_eq!(wts.len(), 1, "the broken descriptor is skipped, main kept");
+        assert!(wts[0].is_main, "the surviving worktree is the main one");
     }
 
     #[test]

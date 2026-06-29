@@ -290,6 +290,14 @@ pub fn forget_root(state: &AppState, id: &str) -> Result<(), (StatusCode, Json<V
         ));
     }
 
+    // Sanitize persisted state at the mutation that invalidates it: a forgotten
+    // project's cross-project recents must not linger (they would only ever be
+    // filtered out on read, but pruning here keeps the store honest). Best-effort.
+    {
+        let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = us.prune_global_recents_for_workspace(id);
+    }
+
     // Evict any warm scope cells under the forgotten workspace's root subtree.
     // The active scope cell is pinned and never evicted here.
     if let Some(prefix) = forgotten_path {

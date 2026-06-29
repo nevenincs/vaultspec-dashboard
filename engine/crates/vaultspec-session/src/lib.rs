@@ -137,6 +137,12 @@ impl UserState {
         self.store.clear_global_recents()
     }
 
+    /// Remove every machine-global recents entry belonging to `workspace` (used
+    /// when a project is forgotten). Returns the number removed.
+    pub fn prune_global_recents_for_workspace(&self, workspace: &str) -> Result<usize> {
+        self.store.prune_global_recents_for_workspace(workspace)
+    }
+
     // --- workspace-registry convenience delegators --------------------------
     //
     // The registry of WHICH project roots exist (dashboard-workspace-registry

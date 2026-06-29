@@ -88,7 +88,11 @@ pub async fn map(State(state): State<Arc<AppState>>, Query(params): Query<MapPar
     let workspace = ingest_git::workspace::Workspace::discover(&root)
         .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
     let config = ingest_git::branches::ClassifyConfig::default();
-    let worktrees: Vec<Value> = ingest_git::worktrees::enumerate(&workspace)
+    // RESILIENT enumeration (adversarial hardening): one stale/broken sibling
+    // worktree (its workdir moved or is no longer a git repo) is skipped rather than
+    // 400-ing the whole project — so /map still serves the project's valid worktrees
+    // and the picker is never stranded on an otherwise-usable project.
+    let worktrees: Vec<Value> = ingest_git::worktrees::enumerate_lenient(&workspace)
         .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?
         .into_iter()
         .map(|wt| {

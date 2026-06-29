@@ -220,6 +220,33 @@ impl Store {
         Ok(())
     }
 
+    /// Remove every machine-global recents entry belonging to `workspace`,
+    /// renumbering the survivors. Called when a project is FORGOTTEN so its recents
+    /// do not linger in the store (sanitizing persisted state at the mutation that
+    /// invalidates it). Returns the number of entries removed.
+    pub fn prune_global_recents_for_workspace(&self, workspace: &str) -> Result<usize> {
+        let current = self.global_recents()?;
+        let kept: Vec<(String, String)> = current
+            .iter()
+            .filter(|(w, _)| w != workspace)
+            .cloned()
+            .collect();
+        let removed = current.len() - kept.len();
+        if removed == 0 {
+            return Ok(0);
+        }
+        let tx = self.conn().unchecked_transaction()?;
+        tx.execute("DELETE FROM global_recents", [])?;
+        for (position, (w, s)) in kept.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO global_recents (position, workspace, scope) VALUES (?1, ?2, ?3)",
+                params![position as i64, w, s],
+            )?;
+        }
+        tx.commit()?;
+        Ok(removed)
+    }
+
     // --- workspace registry (dashboard-workspace-registry ADR) --------------
     //
     // The ordered set of registered project roots. Registering, selecting, and
@@ -510,6 +537,28 @@ mod tests {
         // Clear empties the whole list.
         store.clear_global_recents().unwrap();
         assert!(store.global_recents().unwrap().is_empty());
+    }
+
+    #[test]
+    fn prune_global_recents_for_workspace_removes_only_that_workspace() {
+        let (_dir, store) = temp_store();
+        store.push_global_recent("wsA", "main").unwrap();
+        store.push_global_recent("wsB", "feature").unwrap();
+        store.push_global_recent("wsA", "other").unwrap();
+        store.push_global_recent("wsC", "x").unwrap();
+
+        // Forgetting wsA prunes BOTH of its entries, keeping the rest in MRU order.
+        let removed = store.prune_global_recents_for_workspace("wsA").unwrap();
+        assert_eq!(removed, 2);
+        assert_eq!(
+            store.global_recents().unwrap(),
+            vec![
+                ("wsC".to_string(), "x".to_string()),
+                ("wsB".to_string(), "feature".to_string()),
+            ],
+        );
+        // Pruning a workspace with no entries is a no-op.
+        assert_eq!(store.prune_global_recents_for_workspace("wsZ").unwrap(), 0);
     }
 
     fn root(id: &str, label: &str, path: &str, is_launch: bool) -> WorkspaceRoot {
