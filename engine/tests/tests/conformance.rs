@@ -748,6 +748,10 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
         data["recents"].as_array().is_some(),
         "recents is an array (possibly empty)"
     );
+    assert!(
+        data["recent_scopes"].as_array().is_some(),
+        "recent_scopes is an array (possibly empty)"
+    );
 
     // --- GET /settings: shape + tiers ---------------------------------------
     let (status, settings) = http(port, "GET", "/settings", &token, None);
@@ -819,6 +823,76 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
         reread["data"]["scope_context"]["feature_tags"][0].as_str(),
         Some("conf-feature"),
         "GET after PUT reads the persisted feature tags back"
+    );
+
+    // --- PUT /session: an active_scope switch records a cross-project recent --
+    // Switching the active scope (the worktree/project navigation signal) records
+    // a (workspace, scope) entry on the machine-global recent_scopes list, the
+    // unified "recent" surface the dashboard renders across every project.
+    let (status, switched) = http(
+        port,
+        "PUT",
+        "/session",
+        &token,
+        Some(&format!(r#"{{"active_scope": "{scope}"}}"#)),
+    );
+    assert_eq!(status, 200, "PUT /session active_scope: {switched}");
+    let recent = &switched["data"]["recent_scopes"][0];
+    assert_eq!(
+        recent["scope"].as_str(),
+        Some(scope.as_str()),
+        "the switched scope is at the front of recent_scopes"
+    );
+    assert!(
+        recent["workspace"].as_str().is_some_and(|w| !w.is_empty()),
+        "each recent_scopes entry is attributed to a workspace: {recent}"
+    );
+    let recent_ws = recent["workspace"].as_str().unwrap().to_string();
+
+    // --- PUT /session: history CRUD — remove one entry ----------------------
+    let (status, removed) = http(
+        port,
+        "PUT",
+        "/session",
+        &token,
+        Some(&format!(
+            r#"{{"remove_recent_scope": {{"workspace": "{recent_ws}", "scope": "{scope}"}}}}"#
+        )),
+    );
+    assert_eq!(status, 200, "PUT /session remove_recent_scope: {removed}");
+    assert!(
+        removed["data"]["recent_scopes"]
+            .as_array()
+            .is_some_and(|entries| entries
+                .iter()
+                .all(|e| e["scope"].as_str() != Some(scope.as_str()))),
+        "the removed scope is gone from recent_scopes: {}",
+        removed["data"]["recent_scopes"]
+    );
+
+    // --- PUT /session: history CRUD — clear all -----------------------------
+    // Re-record one, then clear the whole list.
+    let _ = http(
+        port,
+        "PUT",
+        "/session",
+        &token,
+        Some(&format!(r#"{{"active_scope": "{scope}"}}"#)),
+    );
+    let (status, cleared) = http(
+        port,
+        "PUT",
+        "/session",
+        &token,
+        Some(r#"{"clear_recent_scopes": true}"#),
+    );
+    assert_eq!(status, 200, "PUT /session clear_recent_scopes: {cleared}");
+    assert!(
+        cleared["data"]["recent_scopes"]
+            .as_array()
+            .is_some_and(|entries| entries.is_empty()),
+        "clear_recent_scopes empties the list: {}",
+        cleared["data"]["recent_scopes"]
     );
 
     // --- PUT /settings: a global key, read it back --------------------------

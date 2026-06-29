@@ -10,6 +10,11 @@ import {
 } from "./commandRegistry";
 import { useDashboardFilterSidebarIntent } from "../server/dashboardFilterSidebarIntent";
 import { useDashboardFeatureFilterDraft } from "./dashboardFeatureFilter";
+import {
+  browseProjectsAction,
+  clearHistoryAction,
+  openProjectAction,
+} from "./projectActions";
 import { useThemeSettingIntent } from "../server/themeSettingIntent";
 import { useBrowserMode } from "./browserMode";
 import {
@@ -28,6 +33,7 @@ import {
 } from "./leftRailKeybindings";
 import {
   useActiveScope,
+  useClearRecents,
   useDashboardTimelineModeView,
   useFiltersVocabularyView,
 } from "../server/queries";
@@ -291,6 +297,21 @@ export function buildLeftRailCommands(
       run: effects.collapseTree,
     },
     { ...resetFiltersAction(effects.resetFilters), family: "filters" },
+  ];
+  return normalizedPaletteCommands(commands);
+}
+
+/** The "Project" command group (global project-management plane): open/register a
+ *  project, browse-or-switch the cross-project history, and clear that history.
+ *  All three share the "Project:" label prefix and ride the `app` family; Open and
+ *  Browse derive accelerators from their keymap ids. */
+export function buildProjectCommands(effects: {
+  clearProjectHistory: () => void;
+}): PaletteCommand[] {
+  const commands: unknown[] = [
+    { ...openProjectAction(), family: "app" },
+    { ...browseProjectsAction(), family: "app" },
+    { ...clearHistoryAction(effects.clearProjectHistory), family: "app" },
   ];
   return normalizedPaletteCommands(commands);
 }
@@ -767,6 +788,7 @@ export function useCommandPaletteCommandView(
   const runPaletteOp = useCommandPaletteOpsRunMutation().mutate;
   const resetFilters = useDashboardFilterSidebarIntent(scope).clearFilters;
   const clearFeatureFilter = useDashboardFeatureFilterDraft(scope).clear;
+  const clearProjectHistory = useClearRecents();
   const graphFrozen = useGraphControlsFrozen();
   const setThemePreference = useThemeSettingIntent().setThemePreference;
   const shellFrame = useShellFrameView(scope);
@@ -796,6 +818,7 @@ export function useCommandPaletteCommandView(
         },
         resetFilters: () => void resetFilters(),
         clearFeatureFilter: () => void clearFeatureFilter(),
+        clearProjectHistory: () => void clearProjectHistory(),
         focusRightRailSearch: () => focusRightRailSearch(rightPanelSetTab),
         setTheme: setThemePreference,
         runOp: (target, verb) => {
@@ -849,6 +872,7 @@ export function useCommandPaletteCommandView(
   }, [
     browserMode,
     clearFeatureFilter,
+    clearProjectHistory,
     dateBounds,
     graphFrozen,
     normalizedQuery,

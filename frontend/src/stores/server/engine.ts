@@ -1472,6 +1472,15 @@ export interface ScopeContextWire {
   workspace_layout?: string;
 }
 
+/** One entry of the machine-global, cross-project recents (GET /session
+ *  `recent_scopes`): a worktree `scope` the operator navigated to, attributed to
+ *  its registry `workspace` so the dashboard renders one unified "Recent" list
+ *  spanning every project the way every editor does. */
+export interface RecentScope {
+  workspace: string;
+  scope: string;
+}
+
 /** The current session: the "where am I and what am I looking at" the dashboard
  *  restores on load instead of recomputing a default (GET/PUT /session data). */
 export interface SessionState {
@@ -1482,7 +1491,13 @@ export interface SessionState {
    *  when none is selected yet. */
   active_workspace: string | null;
   scope_context: ScopeContextWire;
+  /** The active workspace's per-workspace recents (legacy, scope-only). */
   recents: string[];
+  /** The machine-global cross-project recents (most-recent-first), each entry
+   *  attributed to its workspace. The unified "Recent" list the picker renders.
+   *  Optional so minimal session fixtures need not construct it; the live adapter
+   *  always populates it, and consumers default to an empty list. */
+  recent_scopes?: RecentScope[];
   tiers: TiersBlock;
 }
 
@@ -1521,6 +1536,11 @@ export interface SessionUpdate {
   active_workspace?: string;
   add_workspace?: string;
   forget_workspace?: string;
+  /** History CRUD (cross-project recents): remove ONE `(workspace, scope)` entry
+   *  from the machine-global recents, or clear the whole list. Config deletes
+   *  only — they prune the recent history and never touch a repository. */
+  remove_recent_scope?: RecentScope;
+  clear_recent_scopes?: boolean;
 }
 
 /** User settings (GET/PUT /settings data): a flat `global` map plus a per-scope

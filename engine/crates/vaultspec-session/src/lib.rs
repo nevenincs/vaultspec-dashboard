@@ -115,6 +115,28 @@ impl UserState {
         self.store.recents(workspace)
     }
 
+    /// Push a (workspace, scope) pair onto the machine-global cross-project
+    /// recents (most-recent-first, deduped, bounded).
+    pub fn push_global_recent(&self, workspace: &str, scope: &str) -> Result<()> {
+        self.store.push_global_recent(workspace, scope)
+    }
+
+    /// The machine-global cross-project recents as `(workspace, scope)` pairs,
+    /// most-recent-first.
+    pub fn global_recents(&self) -> Result<Vec<(String, String)>> {
+        self.store.global_recents()
+    }
+
+    /// Remove one (workspace, scope) entry from the machine-global recents.
+    pub fn remove_global_recent(&self, workspace: &str, scope: &str) -> Result<()> {
+        self.store.remove_global_recent(workspace, scope)
+    }
+
+    /// Clear the entire machine-global recents list.
+    pub fn clear_global_recents(&self) -> Result<()> {
+        self.store.clear_global_recents()
+    }
+
     // --- workspace-registry convenience delegators --------------------------
     //
     // The registry of WHICH project roots exist (dashboard-workspace-registry

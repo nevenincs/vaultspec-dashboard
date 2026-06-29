@@ -85,6 +85,8 @@ import {
   deriveWorkspaceMapAvailability,
   deriveWorkspaceMapPickerPresentationView,
   deriveWorkspaceMapSurfaceState,
+  deriveWorktreePickerProjectRows,
+  deriveWorktreePickerRecentRows,
   canReadGitFileDiff,
   canReadGitHistoricalFileDiff,
   GIT_QUERY_KEY_PART_MAX_CHARS,
@@ -2592,6 +2594,102 @@ describe("left-rail root surface states", () => {
       emptyClassName: "px-fg-2 py-fg-1 text-label text-ink-faint",
       singleScopeLabel: "this is the only vault-bearing worktree.",
       singleScopeClassName: "px-fg-2 py-fg-0-5 text-caption text-ink-faint",
+    });
+  });
+
+  const projectRoot = (id: string, label: string, path: string, reachable = true) => ({
+    id,
+    label,
+    path,
+    is_launch: id === "ws-a",
+    reachable,
+    unreachable_reason: reachable ? null : "path is not a readable directory",
+  });
+
+  it("builds one cross-project Recent list, current first, attributed per project", () => {
+    const rows = deriveWorktreePickerRecentRows({
+      recentScopes: [
+        { workspace: "ws-b", scope: "/code/engine/main" },
+        { workspace: "ws-a", scope: "/code/dash/feature-x" },
+        { workspace: "ws-a", scope: "/code/dash/main" },
+      ],
+      roots: [
+        projectRoot("ws-a", "dashboard", "/code/dash"),
+        projectRoot("ws-b", "engine", "/code/engine"),
+      ],
+      activeWorkspace: "ws-a",
+      activeScope: "/code/dash/main",
+    });
+    // The current (ws-a, /code/dash/main) is prepended and marked current; the rest
+    // follow in MRU order, deduped by the (workspace, scope) pair.
+    expect(rows.map((r) => `${r.projectLabel}/${r.worktreeName}`)).toEqual([
+      "dashboard/main",
+      "engine/main",
+      "dashboard/feature-x",
+    ]);
+    expect(rows[0]).toMatchObject({ isActive: true, sameProject: true });
+    // A cross-project entry knows it is NOT the active project (so the row shows
+    // the project name) and is reached by a workspace swap, not a worktree switch.
+    expect(rows[1]).toMatchObject({
+      workspace: "ws-b",
+      worktreeName: "main",
+      projectLabel: "engine",
+      sameProject: false,
+      isActive: false,
+    });
+  });
+
+  it("marks a recent in an unreachable project non-selectable", () => {
+    const rows = deriveWorktreePickerRecentRows({
+      recentScopes: [{ workspace: "ws-b", scope: "/gone/main" }],
+      roots: [
+        projectRoot("ws-a", "dashboard", "/code/dash"),
+        projectRoot("ws-b", "engine", "/gone", false),
+      ],
+      activeWorkspace: "ws-a",
+      activeScope: "/code/dash/main",
+    });
+    const crossProject = rows.find((r) => r.workspace === "ws-b");
+    expect(crossProject?.selectable).toBe(false);
+  });
+
+  it("projects registered project rows with identity and active marker", () => {
+    const rows = deriveWorktreePickerProjectRows(
+      [
+        {
+          id: "ws-a",
+          label: "dashboard",
+          path: "/code/dashboard",
+          is_launch: true,
+          reachable: true,
+          unreachable_reason: null,
+        },
+        {
+          id: "ws-b",
+          label: "",
+          path: "/code/engine-worktrees/main",
+          is_launch: false,
+          reachable: false,
+          unreachable_reason: "path is not a readable directory",
+        },
+      ],
+      "ws-a",
+    );
+    expect(rows[0]).toMatchObject({
+      id: "ws-a",
+      label: "dashboard",
+      isActive: true,
+      selectable: true,
+      title: "/code/dashboard",
+    });
+    // empty label falls back to the path basename so two "main" worktrees stay
+    // distinguishable; an unreachable root is non-selectable with an honest title.
+    expect(rows[1]).toMatchObject({
+      id: "ws-b",
+      label: "main",
+      isActive: false,
+      selectable: false,
+      title: "/code/engine-worktrees/main — path is not a readable directory",
     });
   });
 

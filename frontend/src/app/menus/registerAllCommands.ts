@@ -6,6 +6,7 @@
 
 import "../../stores/view/commandProviders/windowCommandProvider";
 import "../../stores/view/commandProviders/leftRailCommandProvider";
+import "../../stores/view/commandProviders/projectCommandProvider";
 import "../../stores/view/commandProviders/graphCommandProvider";
 import "../../stores/view/commandProviders/timelineCommandProvider";
 import "../../stores/view/commandProviders/editorCommandProvider";

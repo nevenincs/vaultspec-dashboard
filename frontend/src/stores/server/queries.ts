@@ -69,9 +69,11 @@ import type {
   SettingUpdate,
   TierAvailability,
   TiersBlock,
+  RecentScope,
   VaultTreeEntry,
   VaultTreeResponse,
   WorkspaceRoot,
+  WorkspacesState,
 } from "./engine";
 import {
   CANONICAL_TIERS,
@@ -613,7 +615,12 @@ export interface WorkspaceMapPickerRowView {
 
 export interface WorkspaceMapPickerPresentationView {
   worktrees: MapWorktree[];
+  /** The FULL ordered worktree set of the ACTIVE project (the "All worktrees"
+   *  disclosure). The cross-project "Recent" section is derived separately from
+   *  the session recents, not from this `/map` projection. */
   rows: WorkspaceMapPickerRowView[];
+  /** Label for the active project's worktree disclosure. */
+  allLabel: string;
   pending: boolean;
   triggerLabel: string;
   triggerAriaLabel: string;
@@ -757,40 +764,43 @@ export function deriveWorkspaceMapPickerPresentationView({
   const headlineName = headlineWorktree ? worktreeName(headlineWorktree.path) : null;
   const availabilityReason = tierAvailabilityReason(availability);
 
+  const rows = worktrees.map((worktree) => {
+    const selectable = worktree.has_vault;
+    const isActive = worktree.id === activeScope;
+    const isPending = pending && worktree.id === pendingId;
+    const isDegraded = (worktree.degraded?.length ?? 0) > 0;
+    return {
+      worktree,
+      selectable,
+      isActive,
+      isPending,
+      isDegraded,
+      rowClassName: workspaceMapPickerRowClassName({ isActive, selectable }),
+      activeCueClassName: workspaceMapPickerActiveCueClassName(isActive),
+      nameLabel: worktreeName(worktree.path),
+      branchClassName: WORKSPACE_MAP_PICKER_BRANCH_CLASS,
+      badgeClassName: WORKSPACE_MAP_PICKER_BADGE_CLASS,
+      degradedIconClassName: WORKSPACE_MAP_PICKER_DEGRADED_ICON_CLASS,
+      pendingLabelClassName: WORKSPACE_MAP_PICKER_PENDING_LABEL_CLASS,
+      title: worktree.has_vault
+        ? worktree.path
+        : `${worktree.path} — no vault corpus, context only`,
+      ariaLabel: worktree.has_vault
+        ? `switch to ${worktreeName(worktree.path)}${worktree.is_default ? ", the default" : ""}${
+            isActive ? ", current scope" : ""
+          }`
+        : `${worktreeName(worktree.path)} — context only, no vault corpus to switch to`,
+      defaultLabel: worktree.is_default ? "·default" : null,
+      bareLabel: worktree.has_vault ? null : "·bare",
+      degradedTitle: worktree.degraded?.join(", ") ?? "",
+      pendingLabel: isPending ? "switching…" : null,
+    };
+  });
+
   return {
     worktrees,
-    rows: worktrees.map((worktree) => {
-      const selectable = worktree.has_vault;
-      const isActive = worktree.id === activeScope;
-      const isPending = pending && worktree.id === pendingId;
-      const isDegraded = (worktree.degraded?.length ?? 0) > 0;
-      return {
-        worktree,
-        selectable,
-        isActive,
-        isPending,
-        isDegraded,
-        rowClassName: workspaceMapPickerRowClassName({ isActive, selectable }),
-        activeCueClassName: workspaceMapPickerActiveCueClassName(isActive),
-        nameLabel: worktreeName(worktree.path),
-        branchClassName: WORKSPACE_MAP_PICKER_BRANCH_CLASS,
-        badgeClassName: WORKSPACE_MAP_PICKER_BADGE_CLASS,
-        degradedIconClassName: WORKSPACE_MAP_PICKER_DEGRADED_ICON_CLASS,
-        pendingLabelClassName: WORKSPACE_MAP_PICKER_PENDING_LABEL_CLASS,
-        title: worktree.has_vault
-          ? worktree.path
-          : `${worktree.path} — no vault corpus, context only`,
-        ariaLabel: worktree.has_vault
-          ? `switch to ${worktreeName(worktree.path)}${worktree.is_default ? ", the default" : ""}${
-              isActive ? ", current scope" : ""
-            }`
-          : `${worktreeName(worktree.path)} — context only, no vault corpus to switch to`,
-        defaultLabel: worktree.is_default ? "·default" : null,
-        bareLabel: worktree.has_vault ? null : "·bare",
-        degradedTitle: worktree.degraded?.join(", ") ?? "",
-        pendingLabel: isPending ? "switching…" : null,
-      };
-    }),
+    rows,
+    allLabel: "All worktrees",
     pending,
     triggerLabel: headlineName ?? "pick a worktree…",
     triggerAriaLabel: headlineName
@@ -898,6 +908,150 @@ export function deriveWorkspacesAvailability(
   return readTierAvailability(tiers, WORKSPACES_TIERS);
 }
 
+/** One registered-project row in the worktree picker's "Projects" section
+ *  (multi-project identity): the registered root's name + path, current marker,
+ *  and reachability. Selecting a non-active reachable root swaps the whole
+ *  workspace. Reuses the worktree-row class helpers so projects and worktrees
+ *  read identically (design-system-is-centralized). */
+export interface WorktreePickerProjectRowView {
+  id: string;
+  label: string;
+  path: string;
+  isActive: boolean;
+  selectable: boolean;
+  title: string;
+  ariaLabel: string;
+  rowClassName: string;
+  activeCueClassName: string;
+}
+
+/** Project name = the registered label, falling back to the path basename so two
+ *  projects whose worktrees are both "main" stay distinguishable. */
+export function workspaceRootName(root: Pick<WorkspaceRoot, "label" | "path">): string {
+  const label = root.label.trim();
+  return label.length > 0 ? label : worktreeName(root.path);
+}
+
+export function deriveWorktreePickerProjectRows(
+  roots: readonly WorkspaceRoot[],
+  activeWorkspace: string | null,
+): WorktreePickerProjectRowView[] {
+  return roots.map((root) => {
+    const isActive = root.id === activeWorkspace;
+    const name = workspaceRootName(root);
+    return {
+      id: root.id,
+      label: name,
+      path: root.path,
+      isActive,
+      selectable: root.reachable,
+      title: root.reachable
+        ? root.path
+        : `${root.path} — ${root.unreachable_reason ?? "unreachable"}`,
+      ariaLabel: root.reachable
+        ? `switch to project ${name}${isActive ? ", current project" : ""}`
+        : `${name} — unreachable: ${root.unreachable_reason ?? "path not reachable"}`,
+      rowClassName: workspaceMapPickerRowClassName({
+        isActive,
+        selectable: root.reachable,
+      }),
+      activeCueClassName: workspaceMapPickerActiveCueClassName(isActive),
+    };
+  });
+}
+
+/** One row of the dropdown's cross-project "Recent" section: a worktree the
+ *  operator navigated to, attributed to its project. Unlike a
+ *  `WorkspaceMapPickerRowView` (built from the active project's `/map`), a recent
+ *  may belong to ANOTHER registered project, so it is derived from the session's
+ *  machine-global `recent_scopes` joined with the registry roots. */
+export interface WorktreePickerRecentRowView {
+  /** Stable key: `${workspace} ${scope}`. */
+  key: string;
+  workspace: string;
+  scope: string;
+  /** The worktree display name (basename of the scope path). */
+  worktreeName: string;
+  /** The owning project's name (registry label, falling back to basename). */
+  projectLabel: string;
+  /** This entry is the current active (workspace, scope). */
+  isActive: boolean;
+  /** This entry belongs to the currently-active project. */
+  sameProject: boolean;
+  /** Reachable + switchable (its project root is reachable). */
+  selectable: boolean;
+  title: string;
+  ariaLabel: string;
+  rowClassName: string;
+  activeCueClassName: string;
+}
+
+/** How many cross-project recents the dropdown surfaces (a shortlist, not the
+ *  full bounded history the engine retains). */
+export const WORKTREE_PICKER_RECENT_LIMIT = 8;
+
+/**
+ * Derive the unified cross-project "Recent" rows from the session's machine-global
+ * `recent_scopes` (MRU pairs) joined with the registry roots for project naming.
+ * The CURRENT (active workspace, active scope) is always prepended and marked
+ * current, so the section is never empty and shows where you are at a glance.
+ * Deduped by the (workspace, scope) pair and bounded to a shortlist.
+ */
+export function deriveWorktreePickerRecentRows({
+  recentScopes,
+  roots,
+  activeWorkspace,
+  activeScope,
+  limit = WORKTREE_PICKER_RECENT_LIMIT,
+}: {
+  recentScopes: readonly RecentScope[];
+  roots: readonly WorkspaceRoot[];
+  activeWorkspace: string | null;
+  activeScope: string | null;
+  limit?: number;
+}): WorktreePickerRecentRowView[] {
+  const rootById = new Map(roots.map((root) => [root.id, root] as const));
+  const keyOf = (workspace: string, scope: string) => `${workspace} ${scope}`;
+  const seen = new Set<string>();
+  const ordered: Array<{ workspace: string; scope: string }> = [];
+  const push = (workspace: unknown, scope: unknown) => {
+    if (typeof workspace !== "string" || typeof scope !== "string") return;
+    if (workspace.length === 0 || scope.length === 0) return;
+    const key = keyOf(workspace, scope);
+    if (seen.has(key)) return;
+    seen.add(key);
+    ordered.push({ workspace, scope });
+  };
+  // The current location is always the first recent (marked current below).
+  if (activeWorkspace && activeScope) push(activeWorkspace, activeScope);
+  for (const entry of recentScopes) push(entry.workspace, entry.scope);
+
+  return ordered.slice(0, Math.max(0, limit)).map(({ workspace, scope }) => {
+    const root = rootById.get(workspace);
+    const projectLabel = root ? workspaceRootName(root) : worktreeName(workspace);
+    const name = worktreeName(scope);
+    const isActive = workspace === activeWorkspace && scope === activeScope;
+    const sameProject = workspace === activeWorkspace;
+    const selectable = root?.reachable ?? true;
+    return {
+      key: keyOf(workspace, scope),
+      workspace,
+      scope,
+      worktreeName: name,
+      projectLabel,
+      isActive,
+      sameProject,
+      selectable,
+      title: sameProject ? scope : `${name} — ${projectLabel}\n${scope}`,
+      ariaLabel: sameProject
+        ? `switch to ${name}${isActive ? ", current" : ""}`
+        : `switch to ${name} in project ${projectLabel}`,
+      rowClassName: workspaceMapPickerRowClassName({ isActive, selectable }),
+      activeCueClassName: workspaceMapPickerActiveCueClassName(isActive),
+    };
+  });
+}
+
 /** Stores hook: the workspace registry's degradation, read through the wire
  *  client so the picker consumes derived truth instead of the raw `tiers`
  *  block. */
@@ -979,6 +1133,77 @@ export function useSwapWorkspace() {
     return run;
   };
   return { swap, mutation: putSession };
+}
+
+/**
+ * Register a NEW project root from an operator-supplied absolute path
+ * (dashboard-workspace-registry ADR): the stores-layer orchestration the
+ * AddProjectDialog invokes. The engine `add_workspace` registers the path
+ * read-only (it discovers a git workspace and records ONE config row — never
+ * clones, inits, or mutates the repository); an invalid path is a tiered 400 the
+ * caller surfaces honestly. The engine does NOT echo the new root's id on the PUT,
+ * so the id is recovered by DIFFING the registry before/after the registration —
+ * a genuinely new root (re-adding an existing path is a no-op that adds none) is
+ * then SELECTED through the same wholesale `swap` the project switcher uses, so
+ * "add a project" opens it, matching the VS Code / Zed open-folder norm. Returns
+ * the added root (or null when the path was already registered / ambiguous).
+ */
+export function useAddWorkspace() {
+  const queryClient = useQueryClient();
+  const putSession = usePutSession();
+  const { swap } = useSwapWorkspace();
+  const add = async (path: unknown): Promise<WorkspaceRoot | null> => {
+    const normalized = normalizeStoreScope(path);
+    if (normalized === null) {
+      throw new Error("a project path is required");
+    }
+    const before = new Set(
+      (
+        queryClient.getQueryData<WorkspacesState>(engineKeys.workspaces())
+          ?.workspaces ?? []
+      ).map((root) => root.id),
+    );
+    await putSession.mutateAsync({ add_workspace: normalized });
+    // Re-read the registry to learn the newly-registered root's id (the PUT
+    // echoes only the session, not the registered id). `usePutSession` already
+    // invalidated the workspaces key, so this resolves the authoritative shape.
+    const after = await queryClient.fetchQuery({
+      queryKey: engineKeys.workspaces(),
+      queryFn: () => engineClient.workspaces(),
+    });
+    const added = after.workspaces.find((root) => !before.has(root.id)) ?? null;
+    if (added) await swap(added.id);
+    return added;
+  };
+  return { add, mutation: putSession };
+}
+
+/**
+ * Remove ONE entry from the machine-global cross-project recents (history CRUD):
+ * the stores-layer seam the project navigator invokes to prune a single recent.
+ * Rides the `PUT /session` config surface (`remove_recent_scope`), which
+ * invalidates the session key so the history re-reads. Fire-and-forget by default
+ * (a failed prune never blocks the UI), but returns the promise for callers that
+ * want to await.
+ */
+export function useRemoveRecent(): (entry: RecentScope) => Promise<unknown> {
+  const putSession = usePutSession();
+  return (entry: RecentScope) => {
+    const workspace = normalizeStoreScope(entry?.workspace);
+    const scope = normalizeStoreScope(entry?.scope);
+    if (workspace === null || scope === null) return Promise.resolve(undefined);
+    return putSession
+      .mutateAsync({ remove_recent_scope: { workspace, scope } })
+      .catch(() => undefined);
+  };
+}
+
+/** Clear the ENTIRE machine-global cross-project recents (history CRUD). Rides the
+ *  `PUT /session` config surface (`clear_recent_scopes`). */
+export function useClearRecents(): () => Promise<unknown> {
+  const putSession = usePutSession();
+  return () =>
+    putSession.mutateAsync({ clear_recent_scopes: true }).catch(() => undefined);
 }
 
 export type WorkspaceSwitchIntent = {

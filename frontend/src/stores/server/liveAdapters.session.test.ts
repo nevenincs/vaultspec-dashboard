@@ -181,8 +181,32 @@ describe("adaptSession (live session sample)", () => {
       active_workspace: null,
       scope_context: { folder: null, feature_tags: [] },
       recents: [],
+      recent_scopes: [],
       tiers: {},
     });
+  });
+
+  it("adapts the cross-project recent_scopes list, dropping malformed entries", () => {
+    const session = adaptSession({
+      workspace: "Y:/repo",
+      active_scope: "Y:/repo",
+      recent_scopes: [
+        { workspace: "ws-a", scope: "Y:/dash/main" },
+        { workspace: "ws-a", scope: "Y:/dash/main" }, // duplicate pair → deduped
+        { workspace: "ws-b", scope: "Y:/engine/main" },
+        { workspace: "", scope: "Y:/x" }, // empty workspace → dropped
+        { scope: "Y:/y" }, // missing workspace → dropped
+        "nope", // non-object → dropped
+      ],
+    });
+    expect(session.recent_scopes).toEqual([
+      { workspace: "ws-a", scope: "Y:/dash/main" },
+      { workspace: "ws-b", scope: "Y:/engine/main" },
+    ]);
+  });
+
+  it("defaults recent_scopes to an empty list when the wire omits it", () => {
+    expect(adaptSession({ workspace: "Y:/repo" }).recent_scopes).toEqual([]);
   });
 });
 

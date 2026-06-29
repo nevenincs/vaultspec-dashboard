@@ -65,7 +65,7 @@ fn session_data(state: &AppState) -> Value {
     // SCOPED guard: every user-state read happens here, and the guard drops at
     // the close brace — never held across the `.await`-free envelope below, and
     // never across any future `.await`.
-    let (scope_context, recents, active_workspace) = {
+    let (scope_context, recents, active_workspace, global_recents) = {
         let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
         let context = us
             .scope_context(&workspace, &active_scope)
@@ -76,12 +76,19 @@ fn session_data(state: &AppState) -> Value {
         // registry of WHICH roots exist lives on /workspaces; /session carries
         // only the active selection.
         let active_workspace = us.active_workspace().ok().flatten();
-        (context, recents, active_workspace)
+        // The machine-global, cross-project recents as (workspace, scope) pairs —
+        // the unified "Recent" list spanning every registered project.
+        let global_recents = us.global_recents().unwrap_or_default();
+        (context, recents, active_workspace, global_recents)
     };
     json!({
         "workspace": workspace,
         "active_scope": active_scope,
         "active_workspace": active_workspace,
+        "recent_scopes": global_recents
+            .into_iter()
+            .map(|(workspace, scope)| json!({ "workspace": workspace, "scope": scope }))
+            .collect::<Vec<_>>(),
         "scope_context": {
             "folder": scope_context.active_folder,
             "feature_tags": scope_context.feature_tags,
@@ -143,6 +150,24 @@ pub struct SessionUpdate {
     /// never touches disk; the last launch root is refused; warm cells evicted).
     #[serde(default)]
     pub forget_workspace: Option<String>,
+    /// Remove ONE entry from the machine-global, cross-project recents (history
+    /// CRUD). Config delete only — it prunes a recent the operator no longer
+    /// wants, never touching any repository.
+    #[serde(default)]
+    pub remove_recent_scope: Option<RecentScopeRef>,
+    /// Clear the ENTIRE machine-global recents list (history CRUD). A config
+    /// delete only.
+    #[serde(default)]
+    pub clear_recent_scopes: Option<bool>,
+}
+
+/// A reference to one cross-project recents entry (history CRUD remove).
+#[derive(Deserialize, Default)]
+pub struct RecentScopeRef {
+    #[serde(default)]
+    pub workspace: String,
+    #[serde(default)]
+    pub scope: String,
 }
 
 /// The scope-context part of a session update. `scope` names which scope the
@@ -289,6 +314,28 @@ pub async fn put_session(
         }
         if let Some(value) = update.push_recent.as_deref() {
             let _ = us.push_recent(&workspace, value);
+        }
+        // History CRUD (cross-project recents): clear-all and remove-one. Config
+        // deletes only — they prune the operator's recent list and never touch a
+        // repository. Clear runs before remove so a combined request is well-defined.
+        if update.clear_recent_scopes == Some(true) {
+            let _ = us.clear_global_recents();
+        }
+        if let Some(entry) = update.remove_recent_scope.as_ref()
+            && !entry.workspace.is_empty()
+            && !entry.scope.is_empty()
+        {
+            let _ = us.remove_global_recent(&entry.workspace, &entry.scope);
+        }
+        // Record the navigation on the machine-global, cross-project recents
+        // (dashboard-workspace-registry): a worktree switch and a project swap both
+        // persist an `active_scope`, so this single hook attributes every scope the
+        // operator lands on to the (now-)active registry workspace. The dashboard
+        // renders one unified "Recent" list from it, the way every editor does.
+        if let Some(scope) = update.active_scope.as_deref()
+            && let Some(ws) = us.active_workspace().ok().flatten()
+        {
+            let _ = us.push_global_recent(&ws, scope);
         }
     }
 

@@ -1,0 +1,88 @@
+// The add-project modal: a path-input prompt that registers a NEW project root
+// (dashboard-workspace-registry). A browser cannot open a native folder dialog and
+// the engine registers by an operator-supplied absolute path, so "add a project" is
+// a typed path. Dumb `app/` chrome (dashboard-layer-ownership): it drives the stores
+// `useAddWorkspace` mutation (the sole wire client), reads its draft through the
+// chrome view seam, and never touches the engine client, the raw view store, or the
+// raw `tiers` block. Reachable from the worktree dropdown's pinned item, the command
+// palette, and the keymap under the one shared `left-rail:add-project` id.
+
+import { useAddWorkspace } from "../../stores/server/queries";
+import {
+  resetAddProjectChrome,
+  setAddProjectError,
+  setAddProjectPath,
+  useAddProjectChrome,
+} from "../../stores/view/addProjectChrome";
+import { Dialog } from "../chrome/Dialog";
+import { Button } from "../kit";
+
+/** Surface the engine's honest refusal reason (an invalid path is a tiered 400
+ *  whose message names why), falling back to a plain message. Reads only the
+ *  thrown error's own `message` string — no wire/tiers access. */
+function addProjectErrorMessage(error: unknown): string {
+  const message = (error as { message?: unknown } | null)?.message;
+  return typeof message === "string" && message.trim().length > 0
+    ? message
+    : "Couldn’t add the project — check the path.";
+}
+
+export function AddProjectDialog() {
+  const { open, path, error } = useAddProjectChrome();
+  const { add, mutation } = useAddWorkspace();
+
+  const submit = () => {
+    const trimmed = path.trim();
+    if (trimmed.length === 0) {
+      setAddProjectError("Enter the absolute path to a project folder.");
+      return;
+    }
+    setAddProjectError(null);
+    void add(trimmed)
+      .then(() => resetAddProjectChrome())
+      .catch((err: unknown) => setAddProjectError(addProjectErrorMessage(err)));
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={resetAddProjectChrome}
+      title="Add a project"
+      description="Point the dashboard at a project folder. The path is registered read-only — nothing on disk is created or modified."
+    >
+      <div className="flex flex-col gap-fg-3 px-fg-4 pt-fg-3 pb-fg-4">
+        <label className="flex flex-col gap-fg-1 text-label text-ink-muted">
+          Project folder
+          <input
+            type="text"
+            value={path}
+            onChange={(event) => setAddProjectPath(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                submit();
+              }
+            }}
+            placeholder="/absolute/path/to/project"
+            aria-label="project folder path"
+            spellCheck={false}
+            className="rounded-fg-xs border border-rule bg-paper px-fg-2 py-fg-1 font-mono text-body text-ink outline-none focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          />
+        </label>
+        {error !== null && (
+          <p role="alert" className="text-label text-state-broken">
+            {error}
+          </p>
+        )}
+        <div className="flex items-center justify-end gap-fg-2 border-t border-rule pt-fg-3">
+          <Button variant="secondary" onClick={resetAddProjectChrome}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={submit} disabled={mutation.isPending}>
+            Add project
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}

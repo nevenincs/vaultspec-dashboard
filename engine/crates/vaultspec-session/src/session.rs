@@ -154,6 +154,72 @@ impl Store {
         Ok(out)
     }
 
+    /// Push a (workspace, scope) pair to the front of the machine-global recents:
+    /// most-recent-first, deduped (an existing copy is moved to the front),
+    /// bounded to `MAX_RECENTS`. This is the cross-project recents list — it spans
+    /// EVERY registered project, so the dashboard can render one unified "Recent"
+    /// list attributed per project. Renumbered from 0 on each push as one atomic
+    /// transaction (mirrors `push_recent`).
+    pub fn push_global_recent(&self, workspace: &str, scope: &str) -> Result<()> {
+        let mut current = self.global_recents()?;
+        current.retain(|(w, s)| !(w == workspace && s == scope));
+        current.insert(0, (workspace.to_string(), scope.to_string()));
+        current.truncate(MAX_RECENTS);
+
+        let tx = self.conn().unchecked_transaction()?;
+        tx.execute("DELETE FROM global_recents", [])?;
+        for (position, (w, s)) in current.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO global_recents (position, workspace, scope) VALUES (?1, ?2, ?3)",
+                params![position as i64, w, s],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// List the machine-global recents as `(workspace, scope)` pairs,
+    /// most-recent-first.
+    pub fn global_recents(&self) -> Result<Vec<(String, String)>> {
+        let mut stmt = self
+            .conn()
+            .prepare("SELECT workspace, scope FROM global_recents ORDER BY position ASC")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    /// Remove ONE (workspace, scope) entry from the machine-global recents and
+    /// renumber the survivors. A no-op when the pair is absent. The CRUD remove
+    /// side of the cross-project history, so the operator can prune a single
+    /// recent rather than only clearing the whole list.
+    pub fn remove_global_recent(&self, workspace: &str, scope: &str) -> Result<()> {
+        let current: Vec<(String, String)> = self
+            .global_recents()?
+            .into_iter()
+            .filter(|(w, s)| !(w == workspace && s == scope))
+            .collect();
+        let tx = self.conn().unchecked_transaction()?;
+        tx.execute("DELETE FROM global_recents", [])?;
+        for (position, (w, s)) in current.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO global_recents (position, workspace, scope) VALUES (?1, ?2, ?3)",
+                params![position as i64, w, s],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Clear the entire machine-global recents list (the CRUD clear side).
+    pub fn clear_global_recents(&self) -> Result<()> {
+        self.conn().execute("DELETE FROM global_recents", [])?;
+        Ok(())
+    }
+
     // --- workspace registry (dashboard-workspace-registry ADR) --------------
     //
     // The ordered set of registered project roots. Registering, selecting, and
@@ -375,6 +441,75 @@ mod tests {
         assert_eq!(recents.len(), MAX_RECENTS);
         // The most recent push is at the front.
         assert_eq!(recents[0], format!("v{}", MAX_RECENTS + 9));
+    }
+
+    #[test]
+    fn global_recents_span_workspaces_deduped_and_bounded() {
+        let (_dir, store) = temp_store();
+        store.push_global_recent("wsA", "main").unwrap();
+        store.push_global_recent("wsB", "feature").unwrap();
+        store.push_global_recent("wsA", "other").unwrap();
+        assert_eq!(
+            store.global_recents().unwrap(),
+            vec![
+                ("wsA".to_string(), "other".to_string()),
+                ("wsB".to_string(), "feature".to_string()),
+                ("wsA".to_string(), "main".to_string()),
+            ],
+            "cross-project recents are most-recent-first and span workspaces"
+        );
+        // Dedupe is on the (workspace, scope) PAIR: the same scope in a different
+        // workspace is a distinct entry, but re-navigating the same pair moves it
+        // to the front without a duplicate.
+        store.push_global_recent("wsB", "main").unwrap();
+        store.push_global_recent("wsA", "main").unwrap();
+        let recents = store.global_recents().unwrap();
+        assert_eq!(recents[0], ("wsA".to_string(), "main".to_string()));
+        assert_eq!(recents[1], ("wsB".to_string(), "main".to_string()));
+        assert_eq!(
+            recents
+                .iter()
+                .filter(|(w, s)| w == "wsA" && s == "main")
+                .count(),
+            1,
+            "the (wsA, main) pair is deduped to one entry"
+        );
+
+        // Bounded to MAX_RECENTS.
+        for i in 0..(MAX_RECENTS + 10) {
+            store.push_global_recent("wsA", &format!("v{i}")).unwrap();
+        }
+        let recents = store.global_recents().unwrap();
+        assert_eq!(recents.len(), MAX_RECENTS);
+        assert_eq!(
+            recents[0],
+            ("wsA".to_string(), format!("v{}", MAX_RECENTS + 9))
+        );
+    }
+
+    #[test]
+    fn global_recents_support_remove_and_clear() {
+        let (_dir, store) = temp_store();
+        store.push_global_recent("wsA", "main").unwrap();
+        store.push_global_recent("wsB", "feature").unwrap();
+        store.push_global_recent("wsA", "other").unwrap();
+
+        // Remove ONE pair; the survivors renumber and keep MRU order.
+        store.remove_global_recent("wsB", "feature").unwrap();
+        assert_eq!(
+            store.global_recents().unwrap(),
+            vec![
+                ("wsA".to_string(), "other".to_string()),
+                ("wsA".to_string(), "main".to_string()),
+            ],
+        );
+        // Removing an absent pair is a no-op.
+        store.remove_global_recent("wsZ", "nope").unwrap();
+        assert_eq!(store.global_recents().unwrap().len(), 2);
+
+        // Clear empties the whole list.
+        store.clear_global_recents().unwrap();
+        assert!(store.global_recents().unwrap().is_empty());
     }
 
     fn root(id: &str, label: &str, path: &str, is_launch: bool) -> WorkspaceRoot {

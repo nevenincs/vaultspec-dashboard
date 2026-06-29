@@ -18,6 +18,7 @@ import { ShellResizeHandle } from "./chrome/ShellResizeHandle";
 import { LeftRail } from "./left/LeftRail";
 import { backgroundContextMenuHandler } from "./menus/backgroundContextMenu";
 import { openContextMenu } from "../stores/view/contextMenu";
+import { useProjectKeybindings } from "../stores/view/projectActions";
 import { setResetLayoutRunner } from "../stores/view/resetLayoutBridge";
 import {
   LEFT_RAIL_KEYMAP_CONTEXT,
@@ -42,6 +43,8 @@ import { KeyboardShortcuts } from "./menu/KeyboardShortcuts";
 import "./menus/registerAll";
 // Register every per-surface command-palette provider once at app load.
 import "./menus/registerAllCommands";
+import { AddProjectDialog } from "./left/AddProjectDialog";
+import { ProjectNavigator } from "./left/ProjectNavigator";
 import { CommandPalette } from "./palette/CommandPalette";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { useSettingsEffects } from "./settings/settingsEffects";
@@ -111,6 +114,7 @@ export function AppShell() {
   // shell top so the bindings are present for the rails' lifetime (the surface
   // contexts gate which bindings fire when each rail region is focused).
   useLeftRailKeybindings();
+  useProjectKeybindings();
   useRightRailKeybindings();
   useEditorKeybindings();
   useDocTabKeybindings();
@@ -158,6 +162,8 @@ export function AppShell() {
       <div className="relative flex h-screen min-h-0 flex-col overflow-hidden bg-paper text-ink">
         <CommandPalette />
         <SettingsDialog />
+        <AddProjectDialog />
+        <ProjectNavigator />
         <UnsavedEditGuardHost />
         <ContextMenuHost timeTravel={timeTravel} />
         <KeyboardShortcuts />
@@ -189,6 +195,8 @@ export function AppShell() {
       </a>
       <CommandPalette />
       <SettingsDialog />
+      <AddProjectDialog />
+      <ProjectNavigator />
       <UnsavedEditGuardHost />
       <ContextMenuHost timeTravel={timeTravel} />
       <KeyboardShortcuts />

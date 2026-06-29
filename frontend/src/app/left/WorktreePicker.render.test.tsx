@@ -112,6 +112,32 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
     expect(screen.queryByText(/mapping worktrees/i, { ignore: ".sr-only" })).toBeNull();
   });
 
+  it("retires the dead folder-add header button (relocated into the dropdown)", async () => {
+    renderPicker();
+    await screen.findByRole("button", { name: /worktree scope/i });
+    // The old no-op "open or add a project" header IconButton is gone; the
+    // rail-collapse toggle remains.
+    expect(screen.queryByRole("button", { name: /open or add a project/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /collapse left rail/i })).toBeTruthy();
+  });
+
+  it("pins an 'Add a project…' row as the first item of the dropdown", async () => {
+    renderPicker({ defaultExpanded: true });
+    const list = await screen.findByRole("list", { name: /worktree scopes/i });
+    const addRow = list.querySelector("[data-worktree-add-project]");
+    expect(addRow).toBeTruthy();
+    expect(addRow?.textContent).toMatch(/add a project/i);
+    // It is the FIRST focusable row in the list (the relocated folder-add affordance).
+    expect(list.querySelector("button")).toBe(addRow);
+  });
+
+  it("hides the Projects section when a single project is registered", async () => {
+    renderPicker({ defaultExpanded: true });
+    await screen.findByRole("list", { name: /worktree scopes/i });
+    // The fixture registers one workspace root, so the multi-project chooser is absent.
+    expect(screen.queryByText("Projects")).toBeNull();
+  });
+
   it("collapses with Escape, returning focus to the trigger", async () => {
     renderPicker({ defaultExpanded: true });
     const trigger = await screen.findByRole("button", { name: /worktree scope/i });

@@ -28,6 +28,11 @@ import {
   deriveLeftRailKeybindings,
 } from "./leftRailKeybindings";
 import {
+  PROJECT_BROWSE_ACTION_ID,
+  PROJECT_OPEN_ACTION_ID,
+  deriveProjectKeybindings,
+} from "./projectActions";
+import {
   RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
   deriveRightRailKeybindings,
 } from "./rightRailKeybindings";
@@ -44,6 +49,7 @@ import { deriveGraphToggleKeybindings } from "./graphToggleKeybindings";
 
 // Register the command providers and the right-rail resolvers under test (side effects).
 import "./commandProviders/leftRailCommandProvider";
+import "./commandProviders/projectCommandProvider";
 import "./commandProviders/rightRailCommandProvider";
 import "./commandProviders/reloadCommandProvider";
 import "./commandProviders/windowCommandProvider";
@@ -56,6 +62,11 @@ import "../../app/stage/menus/docTabMenu";
  *  source-of-truth constants; the palette providers must emit commands under them. */
 const DUAL_PLANE_VERBS = [
   LEFT_RAIL_NEW_DOC_ACTION_ID,
+  // The "Project" command group: Open (Mod+Alt+O) and Browse-or-Switch (Mod+Alt+P)
+  // are keymap + palette under one shared id (the single projectCommandProvider).
+  // Clear History is palette-only, so it is not a dual-plane verb.
+  PROJECT_OPEN_ACTION_ID,
+  PROJECT_BROWSE_ACTION_ID,
   LEFT_RAIL_FOCUS_FILTER_ACTION_ID,
   LEFT_RAIL_CLEAR_FILTER_ACTION_ID,
   LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
@@ -90,6 +101,7 @@ function commandContext(): CommandContext {
       collapseTree: noop,
       resetFilters: noop,
       clearFeatureFilter: noop,
+      clearProjectHistory: noop,
       focusRightRailSearch: noop,
       setTheme: noop,
       runOp: noop,
@@ -126,6 +138,7 @@ describe("action coverage grid guard", () => {
   const keymapIds = new Set(
     [
       ...deriveLeftRailKeybindings(),
+      ...deriveProjectKeybindings(),
       ...deriveRightRailKeybindings(),
       ...deriveReloadKeybindings(),
       ...deriveGraphToggleKeybindings(),

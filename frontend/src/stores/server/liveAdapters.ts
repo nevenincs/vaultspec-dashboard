@@ -55,6 +55,7 @@ import type {
   PrChecks,
   PRsResponse,
   PullRequest,
+  RecentScope,
   ScopeContextWire,
   SearchResponse,
   SessionState,
@@ -1554,6 +1555,28 @@ function normalizeSessionStringList(value: unknown): string[] {
   return out;
 }
 
+/** Tolerant adapter for the machine-global `recent_scopes` list: an array of
+ *  `{workspace, scope}` pairs, dropping malformed entries, deduping by the pair,
+ *  and bounding the list. A sparse or older session shape (no `recent_scopes`)
+ *  defaults to an empty list rather than throwing. */
+function normalizeRecentScopes(value: unknown): RecentScope[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: RecentScope[] = [];
+  for (const entry of value) {
+    if (!isRec(entry)) continue;
+    const workspace = normalizeSessionString(entry.workspace);
+    const scope = normalizeSessionString(entry.scope);
+    if (workspace === undefined || scope === undefined) continue;
+    const key = `${workspace} ${scope}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ workspace, scope });
+    if (out.length >= SESSION_STRING_LIST_MAX_ITEMS) break;
+  }
+  return out;
+}
+
 /** Default a scope-context wire shape, tolerating an absent or partial object:
  *  an absent `folder` becomes null (no folder selected), absent `feature_tags`
  *  becomes []. */
@@ -1582,6 +1605,7 @@ export function adaptSession(body: unknown): SessionState {
       active_workspace: null,
       scope_context: { folder: null, feature_tags: [] },
       recents: [],
+      recent_scopes: [],
       tiers: {},
     };
   }
@@ -1593,6 +1617,7 @@ export function adaptSession(body: unknown): SessionState {
     active_workspace: normalizeSessionString(body.active_workspace) ?? null,
     scope_context: adaptScopeContext(body.scope_context),
     recents: normalizeSessionStringList(body.recents),
+    recent_scopes: normalizeRecentScopes(body.recent_scopes),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }

@@ -104,6 +104,8 @@ export interface CommandIntents {
   resetFilters: () => void;
   /** Clear the left-rail feature-filter draft (scope-bound). */
   clearFeatureFilter: () => void;
+  /** Clear the machine-global cross-project recents (the project history). */
+  clearProjectHistory: () => void;
   /** Focus the right-rail search (switches to the search tab, then focuses). */
   focusRightRailSearch: () => void;
   /** Pin the theme preference through the engine-owned setting. */

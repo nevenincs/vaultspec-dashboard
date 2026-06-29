@@ -4,15 +4,26 @@ import { useShallow } from "zustand/react/shallow";
 
 import {
   deriveWorkspaceMapPickerPresentationView,
+  deriveWorktreePickerProjectRows,
+  deriveWorktreePickerRecentRows,
   isSessionMutationRejected,
   isSupersededScopeSwitch,
   type WorkspaceMapPickerRowView,
   type WorkspaceMapPickerPresentationView,
   type WorkspaceMapSurfaceState,
+  type WorktreePickerProjectRowView,
+  type WorktreePickerRecentRowView,
   useActivateWorktreeScope,
   useActiveScope,
+  useActiveWorkspace,
+  useClearRecents,
+  useRemoveRecent,
+  useSession,
+  useSwapWorkspace,
   useWorkspaceMapSurface,
+  useWorkspaceRoots,
 } from "../server/queries";
+import type { RecentScope } from "../server/engine";
 import { useShellPanelIntent } from "../server/panelStateIntent";
 
 // Worktree picker chrome state. The accepted scope/workspace is still session
@@ -218,11 +229,122 @@ export function useWorktreePickerChrome(): WorktreePickerChromeView {
   );
 }
 
+const EMPTY_RECENT_SCOPES: readonly RecentScope[] = [];
+
+/** The cross-project history model + actions, shared by the worktree picker's
+ *  Recent section AND the standalone project navigator popup. One seam owns the
+ *  history derivation, the switch lifecycle, and the CRUD mutations so both
+ *  surfaces behave identically (and the same switch chrome drives pending/error). */
+export interface ProjectHistoryView {
+  recentRows: WorktreePickerRecentRowView[];
+  /** Activate a recent: same-project → worktree switch; cross-project → workspace
+   *  swap to that (project, scope). */
+  activateRecent: (
+    recent: WorktreePickerRecentRowView,
+    onAccepted?: () => void,
+  ) => void;
+  /** Remove ONE entry from the history (CRUD). */
+  removeRecent: (recent: WorktreePickerRecentRowView) => void;
+  /** Clear the WHOLE history (CRUD). */
+  clearRecents: () => void;
+  /** The durable worktree-switch lifecycle (also used by the picker's /map rows). */
+  runScopeSwitch: (id: string, branch: unknown) => void;
+}
+
+export function useProjectHistory(): ProjectHistoryView {
+  const session = useSession();
+  const recentScopes = session.data?.recent_scopes ?? EMPTY_RECENT_SCOPES;
+  const roots = useWorkspaceRoots();
+  const activeWorkspace = useActiveWorkspace();
+  const activeScope = useActiveScope();
+  const { swap } = useSwapWorkspace();
+  const activateWorktreeScope = useActivateWorktreeScope();
+  const removeRecentMut = useRemoveRecent();
+  const clearRecentsMut = useClearRecents();
+
+  const recentRows = useMemo(
+    () =>
+      deriveWorktreePickerRecentRows({
+        recentScopes,
+        roots,
+        activeWorkspace,
+        activeScope,
+      }),
+    [recentScopes, roots, activeWorkspace, activeScope],
+  );
+
+  // The durable worktree-switch lifecycle, shared by a /map row click and a
+  // same-project recent: the engine records the global recent on the active_scope
+  // PUT, so the picker fires no recents write of its own.
+  const runScopeSwitch = useCallback(
+    (id: string, branch: unknown) => {
+      const switchPromise = activateWorktreeScope(id);
+      beginWorktreeSwitch(id);
+      void switchPromise
+        .then(() => {
+          completeWorktreeSwitch(id);
+        })
+        .catch((err: unknown) => {
+          if (isSupersededScopeSwitch(err)) {
+            cancelWorktreeSwitch(id);
+            return;
+          }
+          failWorktreeSwitch(
+            id,
+            branch,
+            isSessionMutationRejected(err) ? "selection-rejected" : "persist-failed",
+          );
+        });
+    },
+    [activateWorktreeScope],
+  );
+
+  const activateRecent = useCallback(
+    (recent: WorktreePickerRecentRowView, onAccepted?: () => void) => {
+      if (!recent.selectable) return;
+      onAccepted?.();
+      if (recent.sameProject) {
+        runScopeSwitch(recent.scope, recent.worktreeName);
+      } else {
+        // A cross-project recent: swap the workspace AND land on the recent's scope.
+        void swap(recent.workspace, recent.scope).catch(() => undefined);
+      }
+    },
+    [runScopeSwitch, swap],
+  );
+
+  const removeRecent = useCallback(
+    (recent: WorktreePickerRecentRowView) => {
+      void removeRecentMut({ workspace: recent.workspace, scope: recent.scope });
+    },
+    [removeRecentMut],
+  );
+  const clearRecents = useCallback(() => {
+    void clearRecentsMut();
+  }, [clearRecentsMut]);
+
+  return { recentRows, activateRecent, removeRecent, clearRecents, runScopeSwitch };
+}
+
 export interface WorktreePickerView extends WorktreePickerChromeView {
   state: WorkspaceMapSurfaceState;
   pickerView: WorkspaceMapPickerPresentationView;
+  /** The unified cross-project "Recent" rows (machine-global, attributed per
+   *  project), the active location first. */
+  recentRows: WorktreePickerRecentRowView[];
+  /** The registered project roots (multi-project identity), or empty when a
+   *  single project is registered (the section then hides). */
+  projectRows: WorktreePickerProjectRowView[];
   retry: () => void;
   activateRow: (row: unknown, onAccepted?: () => void) => void;
+  /** Activate a cross-project recent: a same-project entry is a worktree switch,
+   *  a different-project entry is a workspace swap to that (project, scope). */
+  activateRecent: (
+    recent: WorktreePickerRecentRowView,
+    onAccepted?: () => void,
+  ) => void;
+  /** Switch to a different registered PROJECT (workspace-level wholesale reset). */
+  swapProject: (id: unknown, onAccepted?: () => void) => void;
   collapseLeftRail: () => void;
 }
 
@@ -234,9 +356,15 @@ export interface WorktreePickerView extends WorktreePickerChromeView {
 export function useWorktreePickerView(): WorktreePickerView {
   const { map, availability, state } = useWorkspaceMapSurface();
   const activeScope = useActiveScope();
-  const activateWorktreeScope = useActivateWorktreeScope();
   const panelIntent = useShellPanelIntent(activeScope);
   const chrome = useWorktreePickerChrome();
+  // The cross-project history (Recent section) + the durable switch lifecycle are
+  // owned by the shared `useProjectHistory` seam (also used by the navigator). The
+  // registry roots drive the "Projects" section (multi-project identity).
+  const { recentRows, activateRecent, runScopeSwitch } = useProjectHistory();
+  const roots = useWorkspaceRoots();
+  const activeWorkspace = useActiveWorkspace();
+  const { swap } = useSwapWorkspace();
   const pickerView = useMemo(
     () =>
       deriveWorkspaceMapPickerPresentationView({
@@ -247,31 +375,28 @@ export function useWorktreePickerView(): WorktreePickerView {
       }),
     [activeScope, availability, chrome.pendingId, map.data],
   );
+  const projectRows = useMemo(
+    () => deriveWorktreePickerProjectRows(roots, activeWorkspace),
+    [roots, activeWorkspace],
+  );
 
   const activateRow = useCallback(
     (row: unknown, onAccepted?: () => void) => {
       const intent = normalizeWorktreePickerActivationIntent(row);
       if (intent === null) return;
-      const switchPromise = activateWorktreeScope(intent.id);
-      beginWorktreeSwitch(intent.id);
       onAccepted?.();
-      void switchPromise
-        .then(() => {
-          completeWorktreeSwitch(intent.id);
-        })
-        .catch((err: unknown) => {
-          if (isSupersededScopeSwitch(err)) {
-            cancelWorktreeSwitch(intent.id);
-            return;
-          }
-          failWorktreeSwitch(
-            intent.id,
-            intent.branch,
-            isSessionMutationRejected(err) ? "selection-rejected" : "persist-failed",
-          );
-        });
+      runScopeSwitch(intent.id, intent.branch);
     },
-    [activateWorktreeScope],
+    [runScopeSwitch],
+  );
+  const swapProject = useCallback(
+    (id: unknown, onAccepted?: () => void) => {
+      const normalized = normalizeWorktreePickerSwitchId(id);
+      if (normalized === null || normalized === activeWorkspace) return;
+      onAccepted?.();
+      void swap(normalized).catch(() => undefined);
+    },
+    [swap, activeWorkspace],
   );
   const collapseLeftRail = useCallback(() => {
     void panelIntent.setLeftCollapsed(true).catch(() => undefined);
@@ -281,8 +406,12 @@ export function useWorktreePickerView(): WorktreePickerView {
     ...chrome,
     state,
     pickerView,
+    recentRows,
+    projectRows,
     retry: map.retry,
     activateRow,
+    activateRecent,
+    swapProject,
     collapseLeftRail,
   };
 }

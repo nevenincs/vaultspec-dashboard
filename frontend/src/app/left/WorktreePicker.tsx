@@ -17,6 +17,7 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronDown,
+  Folder,
   GitBranch,
   TriangleAlert,
 } from "lucide-react";
@@ -36,13 +37,17 @@ import {
 } from "../kit";
 import type { WorktreeEntity } from "../../platform/actions/entity";
 import type { MapWorktree } from "../../stores/server/engine";
-import { type WorkspaceMapPickerRowView } from "../../stores/server/queries";
+import {
+  type WorkspaceMapPickerRowView,
+  type WorktreePickerProjectRowView,
+  type WorktreePickerRecentRowView,
+} from "../../stores/server/queries";
+import { openAddProjectDialog } from "../../stores/view/addProjectChrome";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { guardUnsavedDiscard } from "../../stores/view/unsavedEditGuard";
 import {
   setWorktreePickerExpanded,
   toggleWorktreePickerExpanded,
-  worktreePickerFirstRowFocusTarget,
   useWorktreePickerView,
 } from "../../stores/view/worktreePickerChrome";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
@@ -61,20 +66,29 @@ function worktreeEntity(worktree: MapWorktree): WorktreeEntity {
   };
 }
 
+// FocusZone roving keys for the non-worktree command rows (the worktree rows rove
+// under section-prefixed keys derived from their id, so every key in the dropdown
+// is unique even when a worktree appears in both the Recent and All sections).
+const ADD_PROJECT_KEY = "add-project";
+const ALL_TOGGLE_KEY = "all-toggle";
+
 // --- icon sizing (token-aligned, not arbitrary px) -------------------------------
 // Warning marks read one density step smaller than identity icons.
 const WARN_PX = 12;
 // Git-status glyphs (branch, ahead/behind) read one step below the name.
 const GIT_GLYPH_PX = 12;
 
-// The git-status pill: the trigger is a bordered card carrying the worktree name
-// over a git-status line (branch + dirty + ahead/behind), opening the switcher
-// dropdown. Token-driven, no raw px (no-hardcoded-px), composed from the shared
-// surface/ink/state tiers (design-system-is-centralized).
+// The worktree trigger: a typographical element, NOT a button — the worktree
+// name reads as a prominent, decorative title (no border, no background, no
+// hover state change) over a git-status line (branch + dirty + ahead/behind),
+// opening the switcher dropdown. The chevron is the only affordance that this
+// title is also a selector. Token-driven, no raw px (no-hardcoded-px), composed
+// from the shared type/ink/state tiers (design-system-is-centralized). The
+// focus-visible ring stays for keyboard a11y (it is not a hover affordance).
 const PILL_CLASS =
-  "group flex min-w-0 flex-1 flex-col gap-fg-0-5 rounded-fg-md border border-rule bg-paper px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+  "group flex min-w-0 flex-1 flex-col gap-fg-0-5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 const PILL_NAME_ROW_CLASS = "flex items-center gap-fg-1";
-const PILL_NAME_CLASS = "min-w-0 flex-1 truncate text-title font-medium text-ink";
+const PILL_NAME_CLASS = "min-w-0 flex-1 truncate text-display text-ink";
 const PILL_CHEVRON_CLASS =
   "shrink-0 text-ink-faint transition-transform duration-ui-fast";
 const PILL_STATUS_ROW_CLASS =
@@ -89,6 +103,15 @@ const PILL_COUNT_CLASS = "flex shrink-0 items-center gap-fg-0-5 tabular-nums";
 const DROPDOWN_CARD_CLASS =
   "absolute left-0 right-0 top-full z-30 mt-fg-1 max-h-[18rem] overflow-y-auto rounded-fg-lg border border-rule bg-paper-raised p-fg-1 shadow-fg-popover animate-slide-in-down";
 
+// Section eyebrow inside the dropdown (Recent / All worktrees / Projects).
+const DROPDOWN_SECTION_LABEL_CLASS =
+  "px-fg-2 pt-fg-1-5 pb-fg-0-5 text-caption uppercase tracking-wide text-ink-faint";
+// The pinned "Add a project…" command row and the "All worktrees" disclosure share
+// the worktree-row affordance idiom (selectable, hover, focus ring) so the dropdown
+// reads as one surface (design-system-is-centralized).
+const DROPDOWN_COMMAND_ROW_CLASS =
+  "flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left text-ink-muted transition-colors duration-ui-fast hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+
 export interface WorktreePickerProps {
   /** Test seam: force the open state so the expanded list renders without a
    *  pointer/keyboard round-trip; runtime chrome lives in the view store seam. */
@@ -99,13 +122,23 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
   const {
     state,
     pickerView,
+    recentRows,
+    projectRows,
     retry,
     activateRow,
+    activateRecent,
+    swapProject,
     expanded,
     switchError,
     switchErrorClassName,
     collapseLeftRail,
   } = useWorktreePickerView();
+
+  // The "All worktrees" disclosure. Tri-state: null = the data-driven default
+  // (open when there are no real recents beyond the active worktree, so a fresh
+  // session shows the full list; collapsed once recents accrue), a boolean once
+  // the user toggles it.
+  const [allOpenOverride, setAllOpenOverride] = useState<boolean | null>(null);
 
   // Roving focus across the expanded list (ADR keyboard contract): arrow keys
   // move between rows following the corpus-first order, Enter/Space activates the
@@ -215,6 +248,243 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
       }
     };
 
+  // A worktree row, rendered for both the Recent and the All-worktrees sections
+  // under a section-prefixed FocusZone key (the same worktree can appear in both).
+  const renderWorktreeRow = (row: WorkspaceMapPickerRowView, rowKey: string) => {
+    const { worktree } = row;
+    const item = zone.rove(rowKey);
+    return (
+      <li key={rowKey}>
+        <button
+          ref={item.ref}
+          tabIndex={item.tabIndex}
+          type="button"
+          aria-disabled={!row.selectable}
+          aria-current={row.isActive ? "true" : undefined}
+          title={row.title}
+          aria-label={row.ariaLabel}
+          onFocus={() => setActiveRow(rowKey)}
+          onClick={() => selectWorktree(row)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            openContextMenu(worktreeEntity(worktree), { x: e.clientX, y: e.clientY });
+          }}
+          onKeyDown={(e) => {
+            if (
+              handleKeyboardContextMenu(e, (anchor) =>
+                openContextMenu(worktreeEntity(worktree), anchor),
+              )
+            ) {
+              return;
+            }
+            onRowKeyDown(row, item.onKeyDown)(e);
+          }}
+          className={row.rowClassName}
+        >
+          {/* Grayscale-safe active cue: a leading accent bar plus fill + weight,
+              so the active worktree reads without relying on hue. */}
+          <span aria-hidden className={row.activeCueClassName} />
+          <span className={row.branchClassName}>{row.nameLabel}</span>
+          {row.defaultLabel && (
+            <span className={row.badgeClassName}>{row.defaultLabel}</span>
+          )}
+          {row.bareLabel && <span className={row.badgeClassName}>{row.bareLabel}</span>}
+          {row.isDegraded && (
+            <span
+              className={row.degradedIconClassName}
+              title={row.degradedTitle}
+              aria-hidden
+            >
+              <TriangleAlert size={WARN_PX} />
+            </span>
+          )}
+          {row.pendingLabel && (
+            <span className={row.pendingLabelClassName}>{row.pendingLabel}</span>
+          )}
+        </button>
+      </li>
+    );
+  };
+
+  // A registered-project row (multi-project identity): selecting a non-active,
+  // reachable project swaps the whole workspace. The unsaved-edit guard mirrors a
+  // worktree switch (both wholesale-reset the view store).
+  const renderProjectRow = (project: WorktreePickerProjectRowView) => {
+    const rowKey = `project:${project.id}`;
+    const item = zone.rove(rowKey);
+    const choose = () => guardUnsavedDiscard(() => swapProject(project.id));
+    return (
+      <li key={rowKey}>
+        <button
+          ref={item.ref}
+          tabIndex={item.tabIndex}
+          type="button"
+          aria-disabled={!project.selectable}
+          aria-current={project.isActive ? "true" : undefined}
+          title={project.title}
+          aria-label={project.ariaLabel}
+          onFocus={() => setActiveRow(rowKey)}
+          onClick={choose}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              choose();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              collapse(true);
+            } else {
+              item.onKeyDown(e);
+            }
+          }}
+          className={project.rowClassName}
+        >
+          <span aria-hidden className={project.activeCueClassName} />
+          <Folder size={GIT_GLYPH_PX} aria-hidden className="shrink-0 text-ink-faint" />
+          <span className="min-w-0 flex-1 truncate">{project.label}</span>
+        </button>
+      </li>
+    );
+  };
+
+  // A cross-project "Recent" row: a worktree the user navigated to, possibly in
+  // ANOTHER project (so it carries a project label and switches via activateRecent,
+  // not the /map row path).
+  const renderRecentRow = (recent: WorktreePickerRecentRowView) => {
+    const rowKey = `recent:${recent.key}`;
+    const item = zone.rove(rowKey);
+    const choose = () => guardUnsavedDiscard(() => activateRecent(recent));
+    return (
+      <li key={rowKey}>
+        <button
+          ref={item.ref}
+          tabIndex={item.tabIndex}
+          type="button"
+          aria-disabled={!recent.selectable}
+          aria-current={recent.isActive ? "true" : undefined}
+          title={recent.title}
+          aria-label={recent.ariaLabel}
+          onFocus={() => setActiveRow(rowKey)}
+          onClick={choose}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              choose();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              collapse(true);
+            } else {
+              item.onKeyDown(e);
+            }
+          }}
+          className={recent.rowClassName}
+        >
+          <span aria-hidden className={recent.activeCueClassName} />
+          <span className="min-w-0 truncate">{recent.worktreeName}</span>
+          {/* A cross-project recent names its project so two "main" worktrees stay
+              distinguishable; a same-project recent needs no project suffix. */}
+          {!recent.sameProject && (
+            <span className="ml-auto min-w-0 shrink truncate text-caption text-ink-faint">
+              {recent.projectLabel}
+            </span>
+          )}
+        </button>
+      </li>
+    );
+  };
+
+  const hasWorktrees = pickerView.rows.length > 0;
+  const showProjects = projectRows.length > 1;
+  // Section eyebrows read only when there is more than one section to separate.
+  const showSectionLabels = (recentRows.length > 0 && hasWorktrees) || showProjects;
+  // Default the active project's worktree disclosure open when there are no real
+  // recents beyond the current location, so a fresh session shows the full list.
+  const allOpen = allOpenOverride ?? recentRows.length <= 1;
+  const openAddProject = (viaKeyboard: boolean) => {
+    collapse(viaKeyboard);
+    openAddProjectDialog();
+  };
+
+  // The pinned "Add a project…" command row — always the first focusable item.
+  const renderAddProjectRow = () => {
+    const item = zone.rove(ADD_PROJECT_KEY);
+    return (
+      <li>
+        <button
+          ref={item.ref}
+          tabIndex={item.tabIndex}
+          type="button"
+          data-worktree-add-project
+          onFocus={() => setActiveRow(ADD_PROJECT_KEY)}
+          onClick={() => openAddProject(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              openAddProject(true);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              collapse(true);
+            } else {
+              item.onKeyDown(e);
+            }
+          }}
+          className={DROPDOWN_COMMAND_ROW_CLASS}
+        >
+          <FolderPlus size={GIT_GLYPH_PX} aria-hidden className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate">Add a project…</span>
+        </button>
+      </li>
+    );
+  };
+
+  // The "All worktrees" disclosure toggle (only rendered when there are worktrees
+  // beyond the Recent section).
+  const renderAllToggleRow = () => {
+    const item = zone.rove(ALL_TOGGLE_KEY);
+    return (
+      <li>
+        <button
+          ref={item.ref}
+          tabIndex={item.tabIndex}
+          type="button"
+          aria-expanded={allOpen}
+          data-worktree-all-toggle
+          onFocus={() => setActiveRow(ALL_TOGGLE_KEY)}
+          onClick={() => setAllOpenOverride(!allOpen)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              setAllOpenOverride(!allOpen);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              collapse(true);
+            } else {
+              item.onKeyDown(e);
+            }
+          }}
+          className={DROPDOWN_COMMAND_ROW_CLASS}
+        >
+          <ChevronDown
+            size={GIT_GLYPH_PX}
+            aria-hidden
+            className={`shrink-0 transition-transform duration-ui-fast ${
+              allOpen ? "" : "-rotate-90"
+            }`}
+          />
+          <span className="min-w-0 flex-1 truncate">{pickerView.allLabel}</span>
+          <span className="shrink-0 tabular-nums text-ink-faint">{rows.length}</span>
+        </button>
+      </li>
+    );
+  };
+
   return (
     <div
       className="text-label"
@@ -228,10 +498,11 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
       }}
     >
       {/* The header row (binding `LeftRail` 238:600 / 686:2519): the project/worktree
-          name as a PLAIN Inter-Medium title (no pill, no leading glyph) that opens the
-          chooser, then the TWO trailing IconButtons the binding frame carries — the
-          folder-add and the rail-collapse toggle. The title holds the dropdown a11y
-          wiring; the dropdown list below is unchanged. */}
+          name as a prominent, decorative title (no border, no background, no hover
+          change — a typographical element, not a button) that opens the chooser via
+          its trailing chevron, then the single rail-collapse toggle. The dead
+          folder-add IconButton was retired: "Add a project" now lives as the pinned
+          first item of the dropdown (and a Cmd+K command), not a header glyph. */}
       <div
         className="relative flex items-center justify-between gap-fg-1 py-fg-1"
         data-worktree-picker-header
@@ -251,11 +522,10 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
               e.preventDefault();
               setWorktreePickerExpanded(true, true);
               requestAnimationFrame(() => {
-                const first = worktreePickerFirstRowFocusTarget(rows);
-                if (first) {
-                  setActiveRow(first);
-                  zone.focusItem(first);
-                }
+                // Dive onto the pinned "Add a project…" row — the first focusable
+                // item in the dropdown — then arrows rove down through the rest.
+                setActiveRow(ADD_PROJECT_KEY);
+                zone.focusItem(ADD_PROJECT_KEY);
               });
             }
           }}
@@ -313,13 +583,6 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           )}
         </button>
         <IconButton
-          label="open or add a project"
-          title="open or add a project"
-          onClick={() => toggle(false)}
-        >
-          <FolderPlus size={16} aria-hidden />
-        </IconButton>
-        <IconButton
           label="collapse left rail"
           title="collapse left rail"
           onClick={collapseLeftRail}
@@ -353,6 +616,10 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
               className="space-y-fg-0-5"
               aria-label={pickerView.listAriaLabel}
             >
+              {/* Pinned: register a new project root (path-input dialog). Always
+                  the first focusable item — the relocated folder-add affordance. */}
+              {renderAddProjectRow()}
+
               {pickerView.emptyLabel ? (
                 // Empty: an approachable empty state — a workspace resolving to no
                 // selectable corpus-bearing worktree is a real condition, not a fault.
@@ -360,69 +627,43 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
                   {pickerView.emptyLabel}
                 </li>
               ) : null}
-              {rows.map((row) => {
-                const { worktree } = row;
-                const item = zone.rove(worktree.id);
-                return (
-                  <li key={worktree.id}>
-                    <button
-                      ref={item.ref}
-                      tabIndex={item.tabIndex}
-                      type="button"
-                      aria-disabled={!row.selectable}
-                      aria-current={row.isActive ? "true" : undefined}
-                      title={row.title}
-                      aria-label={row.ariaLabel}
-                      onFocus={() => setActiveRow(worktree.id)}
-                      onClick={() => selectWorktree(row)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        openContextMenu(worktreeEntity(worktree), {
-                          x: e.clientX,
-                          y: e.clientY,
-                        });
-                      }}
-                      onKeyDown={(e) => {
-                        if (
-                          handleKeyboardContextMenu(e, (anchor) =>
-                            openContextMenu(worktreeEntity(worktree), anchor),
-                          )
-                        ) {
-                          return;
-                        }
-                        onRowKeyDown(row, item.onKeyDown)(e);
-                      }}
-                      className={row.rowClassName}
-                    >
-                      {/* Grayscale-safe active cue: a leading accent bar plus fill +
-                      weight, so the active worktree reads without relying on hue
-                      (the base-language grayscale-safe gate). */}
-                      <span aria-hidden className={row.activeCueClassName} />
-                      <span className={row.branchClassName}>{row.nameLabel}</span>
-                      {row.defaultLabel && (
-                        <span className={row.badgeClassName}>{row.defaultLabel}</span>
-                      )}
-                      {row.bareLabel && (
-                        <span className={row.badgeClassName}>{row.bareLabel}</span>
-                      )}
-                      {row.isDegraded && (
-                        <span
-                          className={row.degradedIconClassName}
-                          title={row.degradedTitle}
-                          aria-hidden
-                        >
-                          <TriangleAlert size={WARN_PX} />
-                        </span>
-                      )}
-                      {row.pendingLabel && (
-                        <span className={row.pendingLabelClassName}>
-                          {row.pendingLabel}
-                        </span>
-                      )}
-                    </button>
+
+              {/* Recent — the unified cross-project list (the active location
+                  first), spanning every registered project the way every editor
+                  does; where the user has actually been, not the whole map. */}
+              {recentRows.length > 0 && (
+                <>
+                  {showSectionLabels && (
+                    <li className={DROPDOWN_SECTION_LABEL_CLASS} aria-hidden>
+                      Recent
+                    </li>
+                  )}
+                  {recentRows.map((recent) => renderRecentRow(recent))}
+                </>
+              )}
+
+              {/* All worktrees of the ACTIVE project — a disclosure revealing the
+                  full auto-parsed set. */}
+              {hasWorktrees && (
+                <>
+                  {renderAllToggleRow()}
+                  {allOpen &&
+                    rows.map((row) => renderWorktreeRow(row, `all:${row.worktree.id}`))}
+                </>
+              )}
+
+              {/* Projects — switch between registered project roots, so multiple
+                  "main" folders are identifiable and the add-project flow is
+                  reversible (only shown when more than one project is registered). */}
+              {showProjects && (
+                <>
+                  <li className={DROPDOWN_SECTION_LABEL_CLASS} aria-hidden>
+                    Projects
                   </li>
-                );
-              })}
+                  {projectRows.map((project) => renderProjectRow(project))}
+                </>
+              )}
+
               {pickerView.singleScopeLabel && (
                 <li className={pickerView.singleScopeClassName} data-worktree-single>
                   {pickerView.singleScopeLabel}

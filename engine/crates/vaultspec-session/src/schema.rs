@@ -55,6 +55,18 @@ CREATE TABLE IF NOT EXISTS recents (
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_recents_value ON recents (workspace, value);
 
+-- Cross-project recents: a single machine-global MRU of the (workspace, scope)
+-- pairs the operator has navigated to, ordered by a monotonic position and
+-- deduped by (workspace, scope) on write. Unlike recents (keyed per workspace),
+-- this list spans EVERY registered project so the dashboard can show one unified
+-- recent list the way every editor does, each entry attributed to its project.
+CREATE TABLE IF NOT EXISTS global_recents (
+    position   INTEGER NOT NULL,
+    workspace  TEXT NOT NULL,
+    scope      TEXT NOT NULL,
+    PRIMARY KEY (position)
+) WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS settings (
     scope      TEXT NOT NULL,
     key        TEXT NOT NULL,
@@ -126,8 +138,14 @@ mod tests {
         ensure_schema(&conn).unwrap();
         // Running twice must not error (IF NOT EXISTS).
         ensure_schema(&conn).unwrap();
-        // All four tables exist.
-        for table in ["session", "recents", "settings", "workspace_registry"] {
+        // All five tables exist.
+        for table in [
+            "session",
+            "recents",
+            "global_recents",
+            "settings",
+            "workspace_registry",
+        ] {
             let n: i64 = conn
                 .query_row(
                     "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1",

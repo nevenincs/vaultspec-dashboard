@@ -35,6 +35,7 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
       collapseTree: noop,
       resetFilters: noop,
       clearFeatureFilter: noop,
+      clearProjectHistory: noop,
       focusRightRailSearch: noop,
       setTheme: noop,
       runOp: noop,
