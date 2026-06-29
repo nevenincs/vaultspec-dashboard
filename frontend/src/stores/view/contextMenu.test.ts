@@ -367,7 +367,7 @@ describe("context-menu slice", () => {
       id: "focus",
       index: 0,
       label: "Focus",
-      className: "border-l-accent bg-accent-subtle text-ink",
+      className: "bg-accent-subtle font-medium text-ink",
       selected: true,
       armed: false,
       disabled: false,
@@ -383,7 +383,7 @@ describe("context-menu slice", () => {
     expect(live.rowGroups[0]!.rows[1]).toMatchObject({
       id: "disabled",
       disabled: true,
-      className: "cursor-default border-l-transparent text-ink-faint",
+      className: "cursor-not-allowed text-ink-faint/60",
     });
     expect(live.runnableIndices).toEqual([0, 2]);
 
@@ -449,13 +449,13 @@ describe("context-menu slice", () => {
 
   it("projects context-menu row classes from selected and disabled state", () => {
     expect(contextMenuActionRowClassName({ selected: true, disabled: false })).toBe(
-      "border-l-accent bg-accent-subtle text-ink",
+      "bg-accent-subtle font-medium text-ink",
     );
     expect(contextMenuActionRowClassName({ selected: false, disabled: true })).toBe(
-      "cursor-default border-l-transparent text-ink-faint",
+      "cursor-not-allowed text-ink-faint/60",
     );
     expect(contextMenuActionRowClassName({ selected: false, disabled: false })).toBe(
-      "border-l-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink",
+      "text-ink-muted hover:bg-paper-sunken hover:text-ink",
     );
   });
 

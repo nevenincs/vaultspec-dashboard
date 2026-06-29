@@ -422,10 +422,10 @@ export function contextMenuActionRowClassName(state: {
   selected: boolean;
   disabled: boolean;
 }): string {
-  if (state.disabled) return "cursor-default border-l-transparent text-ink-faint";
+  if (state.disabled) return "cursor-not-allowed text-ink-faint/60";
   return state.selected
-    ? "border-l-accent bg-accent-subtle text-ink"
-    : "border-l-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink";
+    ? "bg-accent-subtle font-medium text-ink"
+    : "text-ink-muted hover:bg-paper-sunken hover:text-ink";
 }
 
 export function contextMenuActionLabel(

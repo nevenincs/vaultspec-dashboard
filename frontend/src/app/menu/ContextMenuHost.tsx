@@ -210,7 +210,7 @@ export function ContextMenuHost({
           top: position ? position.y : anchor.y,
           visibility: placed ? "visible" : "hidden",
         }}
-        className="flex max-h-[min(24rem,calc(100vh-1rem))] w-56 max-w-[calc(100vw-1rem)] flex-col overflow-y-auto rounded-fg-lg border border-rule bg-paper-raised py-fg-1 text-body shadow-fg-popover animate-fade-in"
+        className="flex max-h-[min(24rem,calc(100vh-1rem))] w-56 max-w-[calc(100vw-1rem)] flex-col overflow-y-auto rounded-fg-lg border border-rule bg-paper-raised p-fg-1 text-body shadow-fg-popover animate-fade-in"
       >
         {ordered.length === 0 && (
           <div className="px-fg-3 py-fg-2 text-center text-label text-ink-faint">
@@ -218,11 +218,16 @@ export function ContextMenuHost({
           </div>
         )}
         {rowGroups.map((group, gi) => (
-          <div key={group.section} role="presentation">
+          <div
+            key={group.section}
+            role="presentation"
+            className="flex flex-col gap-fg-0-5"
+          >
             {gi > 0 && (
-              // Inset divider (figma 17:1306): a left-padded hairline, not a
-              // full-bleed rule, so the separator reads as a soft section break.
-              <div role="separator" className="py-fg-1 pl-fg-2 pr-fg-1">
+              // Inset divider: a symmetrically-inset hairline, padded from the
+              // edges to match the inset rounded selection rects, so the
+              // separator reads as a soft section break.
+              <div role="separator" className="py-fg-0-5 px-fg-1">
                 <div className="h-px bg-rule" />
               </div>
             )}
@@ -248,7 +253,7 @@ export function ContextMenuHost({
                     if (!row.disabled) setContextMenuCursor(row.index);
                     activate(action);
                   }}
-                  className={`flex w-full items-center gap-fg-2 border-l-2 px-fg-3 py-fg-1-5 text-left transition-colors duration-ui-fast ${row.className}`}
+                  className={`flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ${row.className}`}
                 >
                   {Mark ? (
                     <Mark aria-hidden size={14} className={row.iconClassName} />
