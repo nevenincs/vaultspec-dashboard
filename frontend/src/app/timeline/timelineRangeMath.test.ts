@@ -59,18 +59,23 @@ describe("timelineRange helpers", () => {
     expect(ratioAtClientX(0, 0, 0)).toBe(0); // zero width → 0
   });
 
-  it("nextRangeForHandle clamps so start never crosses end", () => {
-    // dragging the FROM handle past the end pins it to the end day
+  it("nextRangeForHandle keeps the handles at least one day apart (never overlap)", () => {
+    // dragging the FROM handle past the end pins it one day SHORT of the end, never onto it
     expect(nextRangeForHandle("from", JUN30 + 86_400_000, JUN1, JUN30)).toEqual({
-      from: "2026-06-30",
+      from: "2026-06-29",
       to: "2026-06-30",
     });
-    // dragging the TO handle before the start pins it to the start day
+    // dragging the TO handle before the start pins it one day AFTER the start
     expect(nextRangeForHandle("to", JUN1 - 86_400_000, JUN1, JUN30)).toEqual({
       from: "2026-06-01",
-      to: "2026-06-01",
+      to: "2026-06-02",
     });
-    // a normal from-drag inside the span
+    // dragging FROM right up to the end day still leaves the one-day gap
+    expect(nextRangeForHandle("from", JUN30, JUN1, JUN30)).toEqual({
+      from: "2026-06-29",
+      to: "2026-06-30",
+    });
+    // a normal from-drag inside the span is unaffected (well clear of the end)
     expect(nextRangeForHandle("from", Date.parse("2026-06-10"), JUN1, JUN30)).toEqual({
       from: "2026-06-10",
       to: "2026-06-30",

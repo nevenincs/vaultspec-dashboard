@@ -327,21 +327,6 @@ describe("view store", () => {
     expect(useFilterSidebarStore.getState().open).toBe(false);
   });
 
-  it("stores shell panel flyout state and closes it on wholesale swaps", () => {
-    const store = useViewStore.getState();
-    store.setPanelFlyoutOpen(false);
-
-    store.togglePanelFlyout();
-    expect(useViewStore.getState().panelFlyoutOpen).toBe(true);
-
-    store.setScope("panel-flyout-reset-scope");
-    expect(useViewStore.getState().panelFlyoutOpen).toBe(false);
-
-    useViewStore.getState().setPanelFlyoutOpen(true);
-    useViewStore.getState().swapWorkspace("/project-b/.git", "/project-b/main");
-    expect(useViewStore.getState().panelFlyoutOpen).toBe(false);
-  });
-
   it("restores the shell layout to defaults on reset", () => {
     const store = useViewStore.getState();
     store.setLeftRailVisible(false);
@@ -349,7 +334,6 @@ describe("view store", () => {
     store.setLeftRailWidth(LEFT_RAIL_MAX_WIDTH);
     store.setRightRailWidth(RIGHT_RAIL_MAX_WIDTH);
     store.setTimelineHeight(TIMELINE_MAX_HEIGHT);
-    store.setPanelFlyoutOpen(true);
 
     useViewStore.getState().resetShellLayout();
 
@@ -359,7 +343,6 @@ describe("view store", () => {
       leftRailWidth: LEFT_RAIL_DEFAULT_WIDTH,
       rightRailWidth: RIGHT_RAIL_DEFAULT_WIDTH,
       timelineHeight: TIMELINE_DEFAULT_HEIGHT,
-      panelFlyoutOpen: false,
     });
   });
 
@@ -404,7 +387,6 @@ describe("view store", () => {
 
     store.setLeftRailVisible("false");
     store.setTimelineVisible({ visible: true });
-    store.setPanelFlyoutOpen("open");
     store.setLeftRailWidth(Number.NaN);
     store.setRightRailWidth("320");
     store.setTimelineHeight(Number.POSITIVE_INFINITY);
@@ -412,7 +394,6 @@ describe("view store", () => {
     expect(useViewStore.getState()).toMatchObject({
       leftRailVisible: false,
       timelineVisible: false,
-      panelFlyoutOpen: false,
       leftRailWidth: LEFT_RAIL_MIN_WIDTH,
       rightRailWidth: RIGHT_RAIL_MIN_WIDTH,
       timelineHeight: TIMELINE_MIN_HEIGHT,
@@ -521,7 +502,6 @@ describe("view store", () => {
     store.setLeftRailWidth(333);
     store.setRightRailWidth(277);
     store.setTimelineHeight(188);
-    store.setPanelFlyoutOpen(true);
     toggleCreateDocDialog();
     setCreateDocFeature("previous-feature");
     setGraphControlsSettingsOpen(true);
@@ -539,7 +519,6 @@ describe("view store", () => {
       leftRailWidth: 333,
       rightRailWidth: 277,
       timelineHeight: 188,
-      panelFlyoutOpen: false,
       activeFolder: null,
       featureContexts: [],
       selection: null,
@@ -567,7 +546,6 @@ describe("view store", () => {
     useViewStore.getState().setLeftRailWidth(312);
     useViewStore.getState().setRightRailWidth(318);
     useViewStore.getState().setTimelineHeight(222);
-    useViewStore.getState().setPanelFlyoutOpen(true);
     useViewStore.getState().addToWorkingSet("doc:workspace-old");
     useViewStore
       .getState()
@@ -589,7 +567,6 @@ describe("view store", () => {
       leftRailWidth: 312,
       rightRailWidth: 318,
       timelineHeight: 222,
-      panelFlyoutOpen: false,
       activeFolder: null,
       featureContexts: [],
       workingSet: [],

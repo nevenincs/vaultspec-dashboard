@@ -32,7 +32,7 @@ import {
   useFiltersVocabularyView,
 } from "../server/queries";
 import { openKeyboardShortcuts } from "./keyboardShortcuts";
-import { showKeyboardShortcutsAction } from "./chromeActions";
+import { showKeyboardShortcutsAction, toggleGraphAction } from "./chromeActions";
 import { useCommandPaletteOpsRunMutation } from "./opsRun";
 import { requestCloseDocumentEditor } from "./unsavedEditGuard";
 import { closeAllDocTabs, promoteDocTab, reloadDocTab } from "./tabs";
@@ -175,10 +175,13 @@ export function commandPaletteRightRailCommandId(tab: unknown): string | null {
 }
 
 export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
+  // Every window/pane verb reads as "<Element>: <Action>" (Title Case, the
+  // label-casing-convention) so each is found by searching the element name in
+  // Cmd+K — "Left rail: Hide", "Timeline: Show", alongside "Graph: Fit to View".
   const commands: unknown[] = [
     {
       id: "window:left-rail",
-      label: w.leftRailVisible ? "hide left rail" : "show left rail",
+      label: w.leftRailVisible ? "Left rail: Hide" : "Left rail: Show",
       family: "window",
       run: w.toggleLeftRail,
     },
@@ -188,7 +191,7 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
   if (w.leftRailVisible) {
     commands.push({
       id: "window:left-collapse",
-      label: w.leftCollapsed ? "expand left rail" : "collapse left rail",
+      label: w.leftCollapsed ? "Left rail: Expand" : "Left rail: Collapse",
       family: "window",
       run: w.toggleLeftCollapsed,
     });
@@ -196,16 +199,16 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
   commands.push(
     {
       id: "window:right-rail",
-      label: w.rightCollapsed ? "show right rail" : "hide right rail",
+      label: w.rightCollapsed ? "Right rail: Show" : "Right rail: Hide",
       family: "window",
       run: w.toggleRightRail,
     },
-    {
-      id: "window:graph",
-      label: w.graphVisible ? "hide graph" : "show graph",
-      family: "window",
-      run: w.toggleGraph,
-    },
+    // Graph visibility COMPOSES the one shared `toggleGraphAction()` builder (the
+    // SAME authoring the keymap, the background menu, and the canvas/dock toggles
+    // use) under the single id `window:graph` — the palette no longer hand-writes a
+    // second, drift-prone copy (unified-action-plane). It rides the window family
+    // like the other window/pane verbs.
+    { ...toggleGraphAction(), family: "window" as const },
   );
   // The timeline is tethered to the graph (one panel); its toggle only applies
   // while the graph is shown, so it is offered as a command only then (no dead
@@ -213,7 +216,7 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
   if (w.graphVisible) {
     commands.push({
       id: "window:timeline",
-      label: w.timelineVisible ? "hide timeline" : "show timeline",
+      label: w.timelineVisible ? "Timeline: Hide" : "Timeline: Show",
       family: "window",
       run: w.toggleTimeline,
     });
@@ -227,7 +230,7 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
         : [
             {
               id: commandId,
-              label: `activity rail: ${label.toLowerCase()}`,
+              label: `Activity rail: ${label}`,
               family: "window" as const,
               run: () => w.setRightTab(tab),
             },
@@ -238,7 +241,7 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
       // background menu composes resetLayoutAction over the same id+behavior via the
       // reset-layout bridge. One id (`window:reset-layout`), one behavior.
       id: "window:reset-layout",
-      label: "reset layout",
+      label: "Reset Layout",
       family: "window",
       run: w.resetLayout,
     },

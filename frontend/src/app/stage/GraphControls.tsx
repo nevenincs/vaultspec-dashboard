@@ -48,6 +48,8 @@ import {
   Slider,
   Switch,
 } from "../kit";
+import { Hierarchy } from "../kit/glyphs";
+import { setShellGraphVisible } from "../../stores/view/shellLayout";
 import {
   useActiveScope,
   useDashboardGraphControlsView,
@@ -623,9 +625,24 @@ export function GraphSettingsPanel() {
       open={open}
       onDismiss={close}
       escapeTarget={document}
-      className="pointer-events-auto absolute right-fg-2 top-fg-2 z-30 flex items-center"
+      className="pointer-events-auto absolute right-fg-2 top-fg-2 z-30 flex items-center gap-fg-1"
       data-graph-settings
     >
+      {/* Hide-graph (window/pane visibility) lives in the graph's top-right overlay
+          cluster — the only persistent spot reachable in the bare-canvas default
+          view (graph-canvas-is-portal-pinned: when the graph hides, the canvas host
+          and all these overlays hide with it, so this only ever HIDES). It fires the
+          same shell graphVisible verb the dock tab-bar toggle and Cmd+K window:graph
+          do; reopening happens from the tab bar (docs open) or the empty-state
+          "Show graph" button (ui-labels-are-user-facing: "hide graph"). */}
+      <IconButton
+        label="Graph: Hide"
+        title="Graph: Hide"
+        onClick={() => setShellGraphVisible(false)}
+        data-graph-hide
+      >
+        <Hierarchy size={ICON_PX} aria-hidden />
+      </IconButton>
       <span data-popover-trigger>
         <IconButton
           label={tuneView.title}

@@ -38,7 +38,6 @@ export interface ShellLayoutState {
   timelineVisible: boolean;
   graphVisible: boolean;
   timelineHeight: number;
-  panelFlyoutOpen: boolean;
 }
 
 export const LEFT_RAIL_COLLAPSED_WIDTH = 48;
@@ -314,25 +313,11 @@ export interface ShellFrameView extends ShellLayoutState {
   timelineBodyClassName: string;
   rightRailClassName: string;
   showRightRail: boolean;
-  panelFlyoutRootClassName: string;
-  panelFlyoutRootStyle: { left: number };
-  panelFlyoutButtonWrapperClassName: string;
-  panelControls: ShellPanelControlsView;
+  /** Accessible label for the layout-level right-rail visibility toggle, named for
+   *  its inverse ("hide" vs "show") like every other window/pane control. */
+  rightRailToggleLabel: string;
   activityRailClassName: string;
   activityPanelClassName: string;
-}
-
-export interface ShellPanelControlsView {
-  flyoutButtonLabel: string;
-  flyoutMenuLabel: string;
-  flyoutMenuClassName: string;
-  itemClassName: string;
-  leftRailVisibilityLabel: string;
-  showLeftCollapseControl: boolean;
-  leftCollapseLabel: string;
-  rightRailVisibilityLabel: string;
-  timelineVisibilityLabel: string;
-  graphVisibilityLabel: string;
 }
 
 export interface ShellWindowActions {
@@ -343,8 +328,6 @@ export interface ShellWindowActions {
   toggleGraph: () => void;
   setRightTab: (tab: unknown) => void;
   resetLayout: () => void;
-  closePanelFlyout: () => void;
-  runPanelAction: (action: () => void) => void;
 }
 
 export type ShellResizeHandleSide = "left" | "right" | "top";
@@ -366,12 +349,6 @@ const SHELL_TIMELINE_CLASS =
 const SHELL_TIMELINE_BODY_CLASS = "relative min-h-0 min-w-0 flex-1";
 const SHELL_RIGHT_RAIL_BASE_CLASS = "relative flex min-h-0 flex-col overflow-hidden";
 const SHELL_RIGHT_RAIL_OPEN_CLASS = `${SHELL_RIGHT_RAIL_BASE_CLASS} border-l border-rule`;
-const SHELL_PANEL_FLYOUT_ROOT_CLASS = "pointer-events-none absolute top-2 z-20";
-const SHELL_PANEL_FLYOUT_BUTTON_WRAPPER_CLASS = "pointer-events-auto";
-const SHELL_PANEL_FLYOUT_MENU_CLASS =
-  "pointer-events-auto mt-fg-2 w-52 rounded-fg-md border border-rule bg-paper-raised p-fg-1 shadow-fg-raised";
-const SHELL_PANEL_FLYOUT_ITEM_CLASS =
-  "flex w-full items-center rounded-fg-sm px-fg-2 py-fg-1-5 text-left text-label text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 const SHELL_ACTIVITY_RAIL_CLASS =
   "flex min-h-0 flex-1 flex-col gap-fg-2 overflow-y-auto p-fg-2";
 const SHELL_ACTIVITY_PANEL_CLASS = "min-h-0 flex-1";
@@ -389,37 +366,6 @@ const SHELL_RESIZE_HANDLE_LABEL: Record<ShellResizeHandleSide, string> = {
   left: "Resize right rail",
   top: "Resize timeline",
 };
-
-export function deriveShellPanelControlsView(
-  input: Pick<
-    ShellFrameView,
-    | "panelFlyoutOpen"
-    | "leftRailVisible"
-    | "leftCollapsed"
-    | "rightCollapsed"
-    | "timelineVisible"
-    | "graphVisible"
-  >,
-): ShellPanelControlsView {
-  return {
-    flyoutButtonLabel: input.panelFlyoutOpen
-      ? "Close panel controls"
-      : "Open panel controls",
-    flyoutMenuLabel: "panel controls",
-    flyoutMenuClassName: SHELL_PANEL_FLYOUT_MENU_CLASS,
-    itemClassName: SHELL_PANEL_FLYOUT_ITEM_CLASS,
-    leftRailVisibilityLabel: input.leftRailVisible
-      ? "Hide left rail"
-      : "Show left rail",
-    showLeftCollapseControl: input.leftRailVisible,
-    leftCollapseLabel: input.leftCollapsed ? "Expand left rail" : "Collapse left rail",
-    rightRailVisibilityLabel: input.rightCollapsed
-      ? "Show right rail"
-      : "Hide right rail",
-    timelineVisibilityLabel: input.timelineVisible ? "Hide timeline" : "Show timeline",
-    graphVisibilityLabel: input.graphVisible ? "Hide graph" : "Show graph",
-  };
-}
 
 export function deriveShellResizeHandleView(
   side: ShellResizeHandleSide,
@@ -476,21 +422,11 @@ export function deriveShellFrameView(
       ? SHELL_RIGHT_RAIL_BASE_CLASS
       : SHELL_RIGHT_RAIL_OPEN_CLASS,
     showRightRail: !rightCollapsed,
-    panelFlyoutRootClassName: SHELL_PANEL_FLYOUT_ROOT_CLASS,
-    panelFlyoutRootStyle: {
-      left:
-        shellLayout.leftRailVisible && !leftCollapsed
-          ? Math.max(8, shellLayout.leftRailWidth - 38)
-          : 8,
-    },
-    panelFlyoutButtonWrapperClassName: SHELL_PANEL_FLYOUT_BUTTON_WRAPPER_CLASS,
+    rightRailToggleLabel: rightCollapsed ? "Right rail: Show" : "Right rail: Hide",
     activityRailClassName: SHELL_ACTIVITY_RAIL_CLASS,
     activityPanelClassName: SHELL_ACTIVITY_PANEL_CLASS,
   };
-  return {
-    ...frame,
-    panelControls: deriveShellPanelControlsView(frame),
-  };
+  return frame;
 }
 
 export function useShellLayoutState(): ShellLayoutState {
@@ -502,7 +438,6 @@ export function useShellLayoutState(): ShellLayoutState {
       timelineVisible: state.timelineVisible,
       graphVisible: state.graphVisible,
       timelineHeight: state.timelineHeight,
-      panelFlyoutOpen: state.panelFlyoutOpen,
     })),
   );
 }
@@ -546,16 +481,6 @@ export function useShellWindowActions(
     },
     [panelIntent],
   );
-  const closePanelFlyout = useCallback(() => {
-    setShellPanelFlyoutOpen(false);
-  }, []);
-  const runPanelAction = useCallback(
-    (action: () => void) => {
-      action();
-      closePanelFlyout();
-    },
-    [closePanelFlyout],
-  );
   return useMemo(
     () => ({
       toggleLeftRail: () => setShellLeftRailVisible(!shellFrame.leftRailVisible),
@@ -573,13 +498,9 @@ export function useShellWindowActions(
         void panelIntent.setRightCollapsed(false).catch(ignore);
         void panelIntent.setRightTab(DEFAULT_RIGHT_RAIL_TAB).catch(ignore);
       },
-      closePanelFlyout,
-      runPanelAction,
     }),
     [
-      closePanelFlyout,
       panelIntent,
-      runPanelAction,
       setLeftCollapsed,
       setRightCollapsed,
       shellFrame.leftCollapsed,
@@ -624,14 +545,6 @@ export function toggleShellGraphVisible(): void {
 
 export function setShellTimelineHeight(height: unknown): void {
   useViewStore.getState().setTimelineHeight(height);
-}
-
-export function setShellPanelFlyoutOpen(open: unknown): void {
-  useViewStore.getState().setPanelFlyoutOpen(open);
-}
-
-export function toggleShellPanelFlyout(): void {
-  useViewStore.getState().togglePanelFlyout();
 }
 
 export function resetShellLayout(): void {

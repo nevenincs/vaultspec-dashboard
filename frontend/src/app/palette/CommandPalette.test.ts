@@ -141,11 +141,11 @@ describe("buildWindowCommands (window-management parity)", () => {
   it("names the inverse action from current visibility state", () => {
     const shown = buildWindowCommands(windowSources());
     expect(shown.find((c) => c.id === "window:left-rail")?.label).toBe(
-      "hide left rail",
+      "Left rail: Hide",
     );
-    expect(shown.find((c) => c.id === "window:timeline")?.label).toBe("hide timeline");
+    expect(shown.find((c) => c.id === "window:timeline")?.label).toBe("Timeline: Hide");
     expect(shown.find((c) => c.id === "window:right-rail")?.label).toBe(
-      "hide right rail",
+      "Right rail: Hide",
     );
     const hidden = buildWindowCommands(
       windowSources({
@@ -156,11 +156,13 @@ describe("buildWindowCommands (window-management parity)", () => {
       }),
     );
     expect(hidden.find((c) => c.id === "window:left-rail")?.label).toBe(
-      "show left rail",
+      "Left rail: Show",
     );
-    expect(hidden.find((c) => c.id === "window:timeline")?.label).toBe("show timeline");
+    expect(hidden.find((c) => c.id === "window:timeline")?.label).toBe(
+      "Timeline: Show",
+    );
     expect(hidden.find((c) => c.id === "window:right-rail")?.label).toBe(
-      "show right rail",
+      "Right rail: Show",
     );
   });
 

@@ -8,13 +8,17 @@
 // date_range writer — filtering-has-one-canonical-surface). The active criterion
 // (created/modified/stamped) also rides as the `date_field` facet so the corpus
 // narrows by the chosen field; the criterion is the engine-served
-// `timeline_date_criterion` setting, chosen from the "Filter by" context menu.
+// `timeline_date_criterion` setting, chosen from the "Filter by" context menu. Only
+// `created` is served today, so the criterion is NOT echoed in the strip — a static
+// one-value label is non-informational and non-interactive. When the engine serves
+// more than one date field, surface the criterion here as a selector (the "Filter by"
+// menu is the selection plane until then).
 //
 // Presentation matches the binding TimelineRange State= set (1005:4203, Typical
 // variant cloned from the prior canonical frame 993:4204): a single low row — small
-// day+month readout (no year) · a thin scrubber track with two small handles · the
-// small UPPERCASE criterion label — all token/rem, no display fonts. The Loading /
-// Degraded / Empty variants mirror the same set's State= axis.
+// day+month readout (no year) · a thin scrubber track with two small handles — all
+// token/rem, no display fonts. The Loading / Degraded / Empty variants mirror the
+// same set's State= axis.
 // One shared core serves the desktop footer and the compact mobile pane (the `variant`
 // only enlarges the touch targets on compact).
 //
@@ -32,10 +36,8 @@ import {
   useTimelineDateCriterion,
 } from "../../stores/server/queries";
 import { useDashboardStateMutations } from "../../stores/server/dashboardState";
-import { timelineDateCriterionLabel } from "./timelineDateCriterion";
 import {
   clampToSpan,
-  dayISO,
   dayMonth,
   nextRangeForHandle,
   parseISO,
@@ -79,7 +81,6 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
   const fromMs = clampToSpan(range.fromMs, lo, hi);
   const toMs = clampToSpan(range.toMs, lo, hi);
   const isNarrowed = rangeIsNarrowed(range.source, fromMs, toMs, lo, hi);
-  const criterionLabel = timelineDateCriterionLabel(criterion).toUpperCase();
 
   // State modes (state-mode-uniformity ADR D5/W2; the rail state bodies are the
   // reference template). All hooks above run unconditionally, so these early
@@ -89,8 +90,12 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
   // the bounds are unreliable; read from the tiers block per
   // degradation-is-read-from-tiers, never guessed from a transport error) ->
   // EMPTY (loaded, but the corpus carries no dated documents to scrub) -> TYPICAL.
+  // Single-row height derived from the binding TimelineRange State= set (1005:4203):
+  // every state variant is a 44px-tall row (2.75rem, value-preserving — no spacing
+  // token sits at 2.75rem) with its content vertically centered, so the strip
+  // occupies the least space rather than filling a fixed panel height.
   const containerClassName =
-    "flex h-full w-full items-center gap-fg-4 bg-paper px-fg-4 select-none";
+    "flex h-[2.75rem] w-full items-center gap-fg-4 bg-paper px-fg-4 select-none";
   if (vocabulary.loading) {
     return (
       <div className={containerClassName} data-timeline data-timeline-loading>
@@ -141,9 +146,10 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
     );
   };
 
-  // Double-click anywhere on the track resets the date filter (Issue #14: retain
+  // Double-click anywhere on the strip resets the timeline (Issue #14: retain
   // double-click = filter reset). Clears ONLY the date_range facet through the
-  // canonical seam — never a whole-record clobber.
+  // canonical seam — never a whole-record clobber — which widens the handles back to
+  // the full corpus span.
   const resetRange = () => void mutations.setDateRange({});
 
   const handleSize = variant === "compact" ? "size-[1.25rem]" : "size-[0.875rem]";
@@ -180,14 +186,10 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
         lo,
         hi,
       );
+      // Through the same one-step-gap helper as pointer drags, so arrow-key nudges
+      // can never push the handles onto each other either.
       void mutations.setDateRange(
-        rangeWritePayload(
-          which === "from"
-            ? { from: dayISO(Math.min(next, toMs)), to: dayISO(toMs) }
-            : { from: dayISO(fromMs), to: dayISO(Math.max(next, fromMs)) },
-          lo,
-          hi,
-        ),
+        rangeWritePayload(nextRangeForHandle(which, next, fromMs, toMs), lo, hi),
       );
     },
   });
@@ -198,7 +200,8 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
 
   return (
     <div
-      className="flex h-full w-full items-center gap-fg-4 bg-paper px-fg-4 select-none"
+      className="flex h-[2.75rem] w-full items-center gap-fg-4 bg-paper px-fg-4 select-none"
+      onDoubleClick={resetRange}
       data-timeline
       data-timeline-range
     >
@@ -215,7 +218,6 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
         <div
           ref={trackRef}
           className="relative h-1 w-full rounded-fg-pill bg-paper-sunken"
-          onDoubleClick={resetRange}
           data-timeline-range-track
         >
           <div
@@ -247,12 +249,6 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
           Clear
         </button>
       )}
-      <span
-        className="shrink-0 text-caption uppercase tracking-wide text-ink-faint"
-        data-timeline-criterion
-      >
-        {criterionLabel}
-      </span>
     </div>
   );
 }

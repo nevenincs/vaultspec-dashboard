@@ -7,7 +7,6 @@ import {
   appShellGridColumns,
   boundedShellPanelSize,
   deriveShellFrameView,
-  deriveShellPanelControlsView,
   deriveShellResizeHandleView,
   normalizeRightRailTab,
   RIGHT_RAIL_TABS,
@@ -33,7 +32,6 @@ describe("shell layout frame view", () => {
     timelineVisible: true,
     graphVisible: true,
     timelineHeight: 180,
-    panelFlyoutOpen: false,
   };
   const shellChrome: DashboardShellChromeView = {
     panelState: {
@@ -265,52 +263,26 @@ describe("shell layout frame view", () => {
       rightRailClassName:
         "relative flex min-h-0 flex-col overflow-hidden border-l border-rule",
       showRightRail: true,
-      panelFlyoutRootClassName: "pointer-events-none absolute top-2 z-20",
-      panelFlyoutRootStyle: { left: 262 },
-      panelFlyoutButtonWrapperClassName: "pointer-events-auto",
+      rightRailToggleLabel: "Right rail: Hide",
       activityRailClassName:
         "flex min-h-0 flex-1 flex-col gap-fg-2 overflow-y-auto p-fg-2",
       activityPanelClassName: "min-h-0 flex-1",
-      panelControls: {
-        flyoutButtonLabel: "Open panel controls",
-        flyoutMenuLabel: "panel controls",
-        flyoutMenuClassName:
-          "pointer-events-auto mt-fg-2 w-52 rounded-fg-md border border-rule bg-paper-raised p-fg-1 shadow-fg-raised",
-        itemClassName:
-          "flex w-full items-center rounded-fg-sm px-fg-2 py-fg-1-5 text-left text-label text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
-        leftRailVisibilityLabel: "Hide left rail",
-        showLeftCollapseControl: true,
-        leftCollapseLabel: "Collapse left rail",
-        rightRailVisibilityLabel: "Hide right rail",
-        timelineVisibilityLabel: "Hide timeline",
-      },
     });
   });
 
-  it("projects panel-control labels from shell frame state", () => {
-    expect(
-      deriveShellPanelControlsView({
-        panelFlyoutOpen: true,
-        leftRailVisible: false,
-        leftCollapsed: true,
-        rightCollapsed: true,
-        timelineVisible: false,
-        graphVisible: false,
-      }),
-    ).toEqual({
-      flyoutButtonLabel: "Close panel controls",
-      flyoutMenuLabel: "panel controls",
-      flyoutMenuClassName:
-        "pointer-events-auto mt-fg-2 w-52 rounded-fg-md border border-rule bg-paper-raised p-fg-1 shadow-fg-raised",
-      itemClassName:
-        "flex w-full items-center rounded-fg-sm px-fg-2 py-fg-1-5 text-left text-label text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
-      leftRailVisibilityLabel: "Show left rail",
-      showLeftCollapseControl: false,
-      leftCollapseLabel: "Expand left rail",
-      rightRailVisibilityLabel: "Show right rail",
-      timelineVisibilityLabel: "Show timeline",
-      graphVisibilityLabel: "Show graph",
+  it("names the right-rail toggle for its inverse (hide when shown, show when hidden)", () => {
+    expect(deriveShellFrameView(shellLayout, shellChrome).rightRailToggleLabel).toBe(
+      "Right rail: Hide",
+    );
+    const collapsed = deriveShellFrameView(shellLayout, {
+      ...shellChrome,
+      panelState: {
+        left_collapsed: false,
+        right_collapsed: true,
+        right_tab: "status",
+      },
     });
+    expect(collapsed.rightRailToggleLabel).toBe("Right rail: Show");
   });
 
   it("applies dashboard collapse state while preserving visual dimensions", () => {

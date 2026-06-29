@@ -22,7 +22,6 @@ import { CrashZone } from "../../platform/errors/CrashInjector";
 import { useActiveScope } from "../../stores/server/queries";
 import { useShellFrameView } from "../../stores/view/shellLayout";
 import { openContextMenu } from "../../stores/view/contextMenu";
-import { ShellResizeHandle } from "../chrome/ShellResizeHandle";
 import {
   backgroundContextMenuHandler,
   isTimelineBackgroundTarget,
@@ -33,8 +32,7 @@ import { setGraphVisible, trackGraphRect } from "./canvasPin";
 export function GraphPanel(_props: IDockviewPanelProps) {
   const scope = useActiveScope();
   const shellFrame = useShellFrameView(scope);
-  const { showTimeline, timelineHeight, timelineClassName, timelineBodyClassName } =
-    shellFrame;
+  const { showTimeline, timelineClassName, timelineBodyClassName } = shellFrame;
   // The graph rect is the TOP sub-div only (the timeline sits below it in the same
   // panel), so the pinned canvas tracks the graph area, not the whole panel.
   const graphRectRef = useRef<HTMLDivElement>(null);
@@ -59,17 +57,13 @@ export function GraphPanel(_props: IDockviewPanelProps) {
       />
 
       {/* The tethered timeline — the lower SECTION of the one graph+timeline panel
-          (graph-timeline-workspace). Issue #14: the timeline is now a fixed two-handle
+          (graph-timeline-workspace). Issue #14: the timeline is now a thin two-handle
           date-range selector that writes the canonical `date_range`; it is
-          self-contained (reads its own scope) and takes no props. The handle above is
-          the fine-tunable buffer between the two sections. */}
+          self-contained (reads its own scope) and takes no props. The section sizes to
+          its single-row content (no fixed height, no resize) so it occupies the least
+          space and the graph above takes the rest. */}
       {showTimeline && (
-        <div
-          className={timelineClassName}
-          style={{ height: `${timelineHeight}px` }}
-          data-focus-region="timeline"
-        >
-          <ShellResizeHandle side="top" axis="timeline" current={timelineHeight} />
+        <div className={timelineClassName} data-focus-region="timeline">
           <ErrorBoundary region="timeline">
             <CrashZone region="timeline" />
             <div

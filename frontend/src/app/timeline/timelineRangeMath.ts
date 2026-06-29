@@ -83,9 +83,16 @@ export function ratioAtClientX(clientX: number, left: number, width: number): nu
   return Math.min(1, Math.max(0, (clientX - left) / width));
 }
 
+/** The minimum gap between the two handles: ONE day. The date_range wire form is
+ *  day-precision (`dayISO`), so a one-day floor keeps the start and end on DISTINCT
+ *  days — the handles can never coincide or cross (the dragged edge stops at least one
+ *  step short of the other: `from ≤ to − 1 day`, `to ≥ from + 1 day`). */
+export const MIN_RANGE_MS = 86_400_000;
+
 /** The next date_range when dragging the `from` (start) or `to` (end) handle to a
- *  new instant — each handle is clamped so the start never crosses the end. The
- *  bounds are emitted as yyyy-mm-dd day strings (the canonical wire form). */
+ *  new instant — each handle is clamped so it stays at least `MIN_RANGE_MS` (one step)
+ *  short of the opposite handle, so the two never overlap. The bounds are emitted as
+ *  yyyy-mm-dd day strings (the canonical wire form). */
 export function nextRangeForHandle(
   which: "from" | "to",
   ms: number,
@@ -93,8 +100,8 @@ export function nextRangeForHandle(
   toMs: number,
 ): { from: string; to: string } {
   return which === "from"
-    ? { from: dayISO(Math.min(ms, toMs)), to: dayISO(toMs) }
-    : { from: dayISO(fromMs), to: dayISO(Math.max(ms, fromMs)) };
+    ? { from: dayISO(Math.min(ms, toMs - MIN_RANGE_MS)), to: dayISO(toMs) }
+    : { from: dayISO(fromMs), to: dayISO(Math.max(ms, fromMs + MIN_RANGE_MS)) };
 }
 
 /** Whether the committed range narrows the corpus (a real filter is active). */

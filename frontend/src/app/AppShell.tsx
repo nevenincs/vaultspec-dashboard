@@ -10,7 +10,6 @@ import {
   type BrowserMode,
 } from "../stores/view/browserMode";
 import {
-  toggleShellPanelFlyout as togglePanelFlyout,
   type ShellFrameView,
   useShellFrameView,
   useShellWindowActions,
@@ -36,8 +35,8 @@ import { setSceneCommandRunner } from "../stores/view/sceneCommandBridge";
 import { KeyboardNav } from "./a11y/KeyboardNav";
 import { useRegionCycleKeybindings } from "./chrome/regionCycleKeybindings";
 import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
-import { IconButton, Popover } from "./kit";
-import { PanelLeft } from "./kit/glyphs";
+import { IconButton } from "./kit";
+import { PanelRight } from "./kit/glyphs";
 import { ContextMenuHost } from "./menu/ContextMenuHost";
 import { UnsavedEditGuardHost } from "./chrome/UnsavedEditGuardHost";
 import { KeyboardShortcuts } from "./menu/KeyboardShortcuts";
@@ -77,11 +76,9 @@ export function AppShell() {
     leftRailVisible,
     leftRailWidth,
     rightRailWidth,
-    panelFlyoutOpen,
     timeTravel,
     leftCollapsed,
     gridColumns,
-    panelControls,
   } = shellFrame;
   const browserMode = useBrowserMode();
   const browserModeIntent = useBrowserModeIntent();
@@ -255,89 +252,30 @@ export function AppShell() {
         )}
       </aside>
 
-      {/* ── Single panel flyout ─────────────────────────────────────── */}
-      {/* Anchor the panel-controls toggle to the EXPANDED rail's top-right corner
-          so it never bleeds over the left-aligned worktree/project header
-          (board 244:750 keeps the rail header clean). When the rail is collapsed
-          or hidden it falls back to the stage's top-left, where there is no
-          content to collide with. */}
-      <Popover
-        open={panelFlyoutOpen}
-        onDismiss={shellActions.closePanelFlyout}
-        className={shellFrame.panelFlyoutRootClassName}
-        style={shellFrame.panelFlyoutRootStyle}
-      >
-        <span className={shellFrame.panelFlyoutButtonWrapperClassName}>
-          <IconButton
-            label={panelControls.flyoutButtonLabel}
-            active={panelFlyoutOpen}
-            onClick={togglePanelFlyout}
-          >
-            <PanelLeft size={16} />
-          </IconButton>
-        </span>
-        {panelFlyoutOpen && (
-          <div
-            className={panelControls.flyoutMenuClassName}
-            role="menu"
-            aria-label={panelControls.flyoutMenuLabel}
-          >
-            <PanelFlyoutItem
-              label={panelControls.leftRailVisibilityLabel}
-              className={panelControls.itemClassName}
-              onClick={() => shellActions.runPanelAction(shellActions.toggleLeftRail)}
-            />
-            {panelControls.showLeftCollapseControl && (
-              <PanelFlyoutItem
-                label={panelControls.leftCollapseLabel}
-                className={panelControls.itemClassName}
-                onClick={() =>
-                  shellActions.runPanelAction(shellActions.toggleLeftCollapsed)
-                }
-              />
-            )}
-            <PanelFlyoutItem
-              label={panelControls.rightRailVisibilityLabel}
-              className={panelControls.itemClassName}
-              onClick={() => shellActions.runPanelAction(shellActions.toggleRightRail)}
-            />
-            <PanelFlyoutItem
-              label={panelControls.graphVisibilityLabel}
-              className={panelControls.itemClassName}
-              onClick={() => shellActions.runPanelAction(shellActions.toggleGraph)}
-            />
-            {/* The timeline is tethered to the graph; its toggle only applies while
-                the graph is shown, so hide the control when the graph is hidden
-                (no dead control — settings/controls honesty). */}
-            {shellFrame.showGraph && (
-              <PanelFlyoutItem
-                label={panelControls.timelineVisibilityLabel}
-                className={panelControls.itemClassName}
-                onClick={() => shellActions.runPanelAction(shellActions.toggleTimeline)}
-              />
-            )}
-          </div>
-        )}
-      </Popover>
+      {/* ── Right-rail visibility toggle ─────────────────────────────── */}
+      {/* A single, direct window/pane control pinned to the top-right SCREEN
+          corner, mirroring the left rail's collapse toggle (WorktreePicker) at the
+          same height. It lives OUTSIDE the right-rail <aside> so it remains
+          reachable to RE-SHOW the rail after it hides (the rail collapses to width
+          0, taking its own chrome with it). It fires the same `toggleRightRail`
+          intent the palette's `window:right-rail` command does — one verb, no
+          duplicate menu. The former panel-controls flyout (which re-listed these
+          same toggles) is retired; graph/timeline visibility live in Cmd+K. */}
+      {/* top-7 (1.75rem) aligns the button's center with the left rail's collapse
+          toggle, which sits centered against the two-line worktree pill. */}
+      <div className="pointer-events-auto absolute right-2 top-7 z-20">
+        <IconButton
+          label={shellFrame.rightRailToggleLabel}
+          title={shellFrame.rightRailToggleLabel}
+          active={shellFrame.showRightRail}
+          onClick={shellActions.toggleRightRail}
+        >
+          <PanelRight size={16} aria-hidden />
+        </IconButton>
+      </div>
 
       <CrashInjector />
     </div>
-  );
-}
-
-function PanelFlyoutItem({
-  label,
-  className,
-  onClick,
-}: {
-  label: string;
-  className: string;
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" role="menuitem" className={className} onClick={onClick}>
-      {label}
-    </button>
   );
 }
 

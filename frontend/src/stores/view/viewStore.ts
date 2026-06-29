@@ -416,16 +416,12 @@ export interface ViewState {
   graphVisible: boolean;
   /** Expanded timeline height in pixels. */
   timelineHeight: number;
-  /** Whether the shell panel-controls flyout is open. */
-  panelFlyoutOpen: boolean;
   setLeftRailVisible: (visible: unknown) => void;
   setLeftRailWidth: (width: unknown) => void;
   setRightRailWidth: (width: unknown) => void;
   setTimelineVisible: (visible: unknown) => void;
   setGraphVisible: (visible: unknown) => void;
   setTimelineHeight: (height: unknown) => void;
-  setPanelFlyoutOpen: (open: unknown) => void;
-  togglePanelFlyout: () => void;
   /**
    * FOLLOW MODE (follow-mode-selection-sync): when on (the default), the rail and
    * graph SELECTION stay tethered bidirectionally — selecting a rail feature
@@ -605,7 +601,6 @@ function corpusLocalViewState(scope: unknown) {
     draftText: "",
     baseBlobHash: "",
     editorStatus: "idle" as const,
-    panelFlyoutOpen: false,
   };
 }
 
@@ -633,7 +628,6 @@ export const useViewStore = create<ViewState>((set) => ({
   timelineVisible: true,
   graphVisible: true,
   timelineHeight: TIMELINE_DEFAULT_HEIGHT,
-  panelFlyoutOpen: false,
   // Follow mode is opt-in but ON by default (follow-mode-selection-sync).
   followMode: true,
 
@@ -1016,10 +1010,6 @@ export const useViewStore = create<ViewState>((set) => ({
         TIMELINE_MAX_HEIGHT,
       ),
     }),
-  setPanelFlyoutOpen: (panelFlyoutOpen) =>
-    set({ panelFlyoutOpen: normalizeShellLayoutVisible(panelFlyoutOpen) }),
-  togglePanelFlyout: () =>
-    set((state) => ({ panelFlyoutOpen: !state.panelFlyoutOpen })),
   setFollowMode: (followMode) =>
     set({ followMode: normalizeShellLayoutVisible(followMode) }),
   toggleFollowMode: () => set((state) => ({ followMode: !state.followMode })),
@@ -1031,6 +1021,5 @@ export const useViewStore = create<ViewState>((set) => ({
       timelineVisible: true,
       graphVisible: true,
       timelineHeight: TIMELINE_DEFAULT_HEIGHT,
-      panelFlyoutOpen: false,
     }),
 }));

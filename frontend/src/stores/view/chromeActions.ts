@@ -105,7 +105,10 @@ export const GRAPH_TOGGLE_ACTION_ID = "window:graph";
 export function toggleGraphAction(): ActionDescriptor {
   return withAccelerator({
     id: GRAPH_TOGGLE_ACTION_ID,
-    label: getShellGraphVisible() ? "Hide Graph" : "Show Graph",
+    // "Graph: <verb>" so the visibility toggle is found by searching the element
+    // name in Cmd+K, alongside the other "Graph: …" verbs (label-casing-convention,
+    // Title-Case "Category: Command"); the verb names the resulting action.
+    label: getShellGraphVisible() ? "Graph: Hide" : "Graph: Show",
     section: "transform",
     icon: Network,
     run: toggleShellGraphVisible,

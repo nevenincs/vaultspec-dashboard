@@ -42,7 +42,7 @@
 // a literal hex (design-system-is-centralized, warmth-lives-in-tokens), and every
 // size is relative (no-hardcoded-px-in-dom-styling).
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useDashboardFilterSidebarIntent } from "../../stores/server/dashboardFilterSidebarIntent";
 import { docTypeLabel } from "../../stores/server/docTypeVocabulary";
@@ -92,7 +92,14 @@ function LegendMark({ category }: { category: Category }) {
   );
 }
 
-const CARD_POSITION = "pointer-events-auto absolute left-fg-2 top-fg-2 z-10";
+// The legend region clears the canvas's TOP-RIGHT control cluster (the hide-graph
+// glyph + the ≡ Graph-controls trigger, each a `size-7` IconButton at `right-fg-2`
+// with a `gap-fg-1` between them) plus a comfortable gap, so the legend's available
+// width is the canvas MINUS that cluster — the legend can never grow under the
+// buttons. The region spans that available width; the card is `w-fit max-w-full`
+// inside it, so it shrinks to content and is clamped to the cleared span.
+const LEGEND_REGION_POSITION =
+  "pointer-events-none absolute left-fg-2 right-[5rem] top-fg-2 z-10 flex";
 
 export function CategoryLegend() {
   const scope = useActiveScope();
@@ -105,7 +112,36 @@ export function CategoryLegend() {
   // COMPACT drops the labels (icons only); EXPANDED shows icon + label. The legend
   // is the same horizontal row either way — only the labels toggle. Local view
   // chrome (no shared/persisted state, so the graph-controls seam is untouched).
-  const [compact, setCompact] = useState(false);
+  //
+  // Two compact sources: the user's manual chevron (`userCompact`) and an automatic
+  // minify (`autoCompact`) ENFORCED when the expanded row can't fit the available
+  // width left of the canvas controls (the reported overlap/overflow). Either wins.
+  const [userCompact, setUserCompact] = useState(false);
+  const [autoCompact, setAutoCompact] = useState(false);
+  const compact = userCompact || autoCompact;
+  // Measure-then-minify: the region is the available width; the card's `scrollWidth`
+  // (read while EXPANDED, then cached) is the width the expanded row needs. When the
+  // need exceeds the region, enforce compact — and re-expand once the space returns.
+  const regionRef = useRef<HTMLDivElement | null>(null);
+  const expandedNeedRef = useRef(0);
+  useLayoutEffect(() => {
+    const region = regionRef.current;
+    if (!region || typeof ResizeObserver === "undefined") return;
+    const evaluate = () => {
+      const card = region.querySelector<HTMLElement>("[data-category-legend]");
+      if (!card) return;
+      // The expanded width is only measurable while the labels show; cache it so a
+      // later compact render still knows what the expanded row would need.
+      if (!compact) expandedNeedRef.current = card.scrollWidth;
+      const need = expandedNeedRef.current;
+      if (need <= 0) return;
+      setAutoCompact(need > region.clientWidth);
+    };
+    const observer = new ResizeObserver(evaluate);
+    observer.observe(region);
+    evaluate();
+    return () => observer.disconnect();
+  }, [compact, filterActive]);
   // The legend's controls rove through the one shared FocusZone as a toolbar
   // (every-composite-navigates-through-the-one-focuszone): the row is ONE tab stop
   // and arrows move between the chevron, the category toggles, and Reset.
@@ -125,86 +161,88 @@ export function CategoryLegend() {
   const ToggleChevron = compact ? ChevronRight : ChevronLeft;
 
   return (
-    <Card
-      elevation="raised"
-      padded={false}
-      className={`${CARD_POSITION} flex w-fit max-w-[calc(100%-1rem)] flex-wrap items-center gap-fg-1-5 px-fg-2 py-fg-1-5`}
-      role="toolbar"
-      aria-label="category filters"
-      data-category-legend
-      data-category-legend-mode={compact ? "compact" : "expanded"}
-    >
-      {/* Arrow-only toggle — no label, no funnel. Collapses to icons / expands to
-          labels; the category icons stay visible in both modes. */}
-      <button
-        ref={toggle.ref}
-        tabIndex={toggle.tabIndex}
-        onKeyDown={toggle.onKeyDown}
-        onFocus={() => setActiveItem("toggle")}
-        type="button"
-        onClick={() => setCompact((value) => !value)}
-        aria-expanded={!compact}
-        aria-label={compact ? "Show category labels" : "Hide category labels"}
-        title={compact ? "Show category labels" : "Hide category labels"}
-        data-category-legend-toggle
-        className="flex shrink-0 items-center rounded-fg-xs px-fg-1 py-fg-0-5 text-ink-muted outline-none transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+    <div ref={regionRef} className={LEGEND_REGION_POSITION} data-category-legend-region>
+      <Card
+        elevation="raised"
+        padded={false}
+        className="pointer-events-auto flex w-fit max-w-full flex-nowrap items-center gap-fg-1-5 overflow-hidden px-fg-2 py-fg-1-5"
+        role="toolbar"
+        aria-label="category filters"
+        data-category-legend
+        data-category-legend-mode={compact ? "compact" : "expanded"}
       >
-        <ToggleChevron aria-hidden size={LEGEND_ICON_PX} />
-      </button>
-      <Divider orientation="vertical" className="h-[1.25em] self-stretch" />
-      {LEGEND.map(({ category, label }) => {
-        const token = categoryToken(category);
-        const selected = activeDocTypes.has(token);
-        // Multi-select inclusion: with no selection every category is shown; once a
-        // selection exists, only its members stay full-opacity (the rest dim).
-        const included = !filterActive || selected;
-        const item = zone.rove(token);
-        // SELECTED → accent pill (kit pill geometry + bound accent tokens) so on/off
-        // reads at a glance; UNSELECTED → the resting mark(+label) appearance, dimmed
-        // when another category is selected. The icon is present in BOTH modes; the
-        // label span is dropped in compact.
-        const className = selected
-          ? "flex shrink-0 items-center gap-fg-1 rounded-fg-pill border border-accent bg-accent-subtle px-fg-2 py-fg-0-5 text-caption font-medium text-accent-text outline-none transition-[opacity,background-color] duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          : `flex shrink-0 items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 text-caption text-ink-muted outline-none transition-[opacity,background-color] duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-              included ? "opacity-100" : "opacity-40"
-            }`;
-        return (
-          <button
-            ref={item.ref}
-            tabIndex={item.tabIndex}
-            onKeyDown={item.onKeyDown}
-            onFocus={() => setActiveItem(token)}
-            type="button"
-            key={label}
-            onClick={() => void toggleFacet("doc_types", token)}
-            aria-pressed={selected}
-            title={`Filter by ${label}`}
-            data-category-legend-item={token}
-            className={className}
-          >
-            <LegendMark category={category} />
-            {!compact ? <span>{label}</span> : null}
-          </button>
-        );
-      })}
-      {filterActive ? (
-        <>
-          <Divider orientation="vertical" className="h-[1.25em] self-stretch" />
-          <button
-            ref={reset.ref}
-            tabIndex={reset.tabIndex}
-            onKeyDown={reset.onKeyDown}
-            onFocus={() => setActiveItem("reset")}
-            type="button"
-            onClick={() => void clearFacet("doc_types")}
-            title="Reset category filters"
-            data-category-legend-reset
-            className="flex shrink-0 items-center rounded-fg-xs px-fg-1 py-fg-0-5 text-caption font-medium text-ink-muted outline-none transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          >
-            Reset
-          </button>
-        </>
-      ) : null}
-    </Card>
+        {/* Arrow-only toggle — no label, no funnel. Collapses to icons / expands to
+          labels; the category icons stay visible in both modes. */}
+        <button
+          ref={toggle.ref}
+          tabIndex={toggle.tabIndex}
+          onKeyDown={toggle.onKeyDown}
+          onFocus={() => setActiveItem("toggle")}
+          type="button"
+          onClick={() => setUserCompact((value) => !value)}
+          aria-expanded={!compact}
+          aria-label={compact ? "Show category labels" : "Hide category labels"}
+          title={compact ? "Show category labels" : "Hide category labels"}
+          data-category-legend-toggle
+          className="flex shrink-0 items-center rounded-fg-xs px-fg-1 py-fg-0-5 text-ink-muted outline-none transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        >
+          <ToggleChevron aria-hidden size={LEGEND_ICON_PX} />
+        </button>
+        <Divider orientation="vertical" className="h-[1.25em] self-stretch" />
+        {LEGEND.map(({ category, label }) => {
+          const token = categoryToken(category);
+          const selected = activeDocTypes.has(token);
+          // Multi-select inclusion: with no selection every category is shown; once a
+          // selection exists, only its members stay full-opacity (the rest dim).
+          const included = !filterActive || selected;
+          const item = zone.rove(token);
+          // SELECTED → accent pill (kit pill geometry + bound accent tokens) so on/off
+          // reads at a glance; UNSELECTED → the resting mark(+label) appearance, dimmed
+          // when another category is selected. The icon is present in BOTH modes; the
+          // label span is dropped in compact.
+          const className = selected
+            ? "flex shrink-0 items-center gap-fg-1 rounded-fg-pill border border-accent bg-accent-subtle px-fg-2 py-fg-0-5 text-caption font-medium text-accent-text outline-none transition-[opacity,background-color] duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            : `flex shrink-0 items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 text-caption text-ink-muted outline-none transition-[opacity,background-color] duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                included ? "opacity-100" : "opacity-40"
+              }`;
+          return (
+            <button
+              ref={item.ref}
+              tabIndex={item.tabIndex}
+              onKeyDown={item.onKeyDown}
+              onFocus={() => setActiveItem(token)}
+              type="button"
+              key={label}
+              onClick={() => void toggleFacet("doc_types", token)}
+              aria-pressed={selected}
+              title={`Filter by ${label}`}
+              data-category-legend-item={token}
+              className={className}
+            >
+              <LegendMark category={category} />
+              {!compact ? <span>{label}</span> : null}
+            </button>
+          );
+        })}
+        {filterActive ? (
+          <>
+            <Divider orientation="vertical" className="h-[1.25em] self-stretch" />
+            <button
+              ref={reset.ref}
+              tabIndex={reset.tabIndex}
+              onKeyDown={reset.onKeyDown}
+              onFocus={() => setActiveItem("reset")}
+              type="button"
+              onClick={() => void clearFacet("doc_types")}
+              title="Reset category filters"
+              data-category-legend-reset
+              className="flex shrink-0 items-center rounded-fg-xs px-fg-1 py-fg-0-5 text-caption font-medium text-ink-muted outline-none transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            >
+              Reset
+            </button>
+          </>
+        ) : null}
+      </Card>
+    </div>
   );
 }

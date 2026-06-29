@@ -18,6 +18,7 @@ import {
   DockviewReact,
   type DockviewApi,
   type DockviewReadyEvent,
+  type IDockviewHeaderActionsProps,
   type IDockviewPanelHeaderProps,
 } from "dockview";
 import { X } from "lucide-react";
@@ -25,6 +26,9 @@ import { X } from "lucide-react";
 import { useActiveScope } from "../../stores/server/queries";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { useShellGraphVisible } from "../../stores/view/shellLayout";
+import { toggleGraphAction } from "../../stores/view/chromeActions";
+import { IconButton } from "../kit";
+import { Hierarchy } from "../kit/glyphs";
 import { pokeGraphRect, setWorkspaceContainer } from "./canvasPin";
 import { DocPanel } from "./DocPanel";
 import { vaultspecDockTheme } from "./dockTheme";
@@ -143,6 +147,31 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
 }
 
 const tabComponents = { graphTab: GraphTab, docTab: DocTab };
+
+// The graph-visibility toggle, rendered in every group header's RIGHT action slot
+// (dockview `rightHeaderActionsComponent`). This is the persistent REOPEN affordance:
+// the bare graph-alone view hides its group header (clean canvas), so hiding there is
+// the canvas overlay's job — but once documents are open, this tab-bar toggle both
+// hides and re-shows the graph. It COMPOSES the one shared `toggleGraphAction()`
+// builder (the same authoring Cmd+K's window:graph, the keymap, and the canvas
+// overlay use) so the label ("Graph: Hide" / "Graph: Show") and run come from one
+// source — no drift. Active = graph shown.
+function GraphHeaderAction(_props: IDockviewHeaderActionsProps) {
+  const graphVisible = useShellGraphVisible();
+  const action = toggleGraphAction();
+  return (
+    <div className="flex h-full items-center px-fg-1">
+      <IconButton
+        label={action.label}
+        title={action.label}
+        active={graphVisible}
+        onClick={action.run}
+      >
+        <Hierarchy size={16} aria-hidden />
+      </IconButton>
+    </div>
+  );
+}
 
 // The graph is structural, not a document. When it is alone in its group it must
 // read as the bare canvas — NO tab row above it (a single "Graph" tab is visual
@@ -304,6 +333,7 @@ export function DockWorkspace() {
         <DockviewReact
           components={components}
           tabComponents={tabComponents}
+          rightHeaderActionsComponent={GraphHeaderAction}
           onReady={onReady}
           theme={vaultspecDockTheme}
         />
