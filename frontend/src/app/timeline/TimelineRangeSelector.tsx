@@ -1,3 +1,5 @@
+// @figma TimelineRange · SlhonORmySdoSMTQgDWw3w · 1005:4203
+//
 // The timeline (Issue #14): a thin, minimal two-handle date-range FILTER strip that
 // lives at the bottom of the graph. No scroll, no playhead, no lineage dots. The left
 // edge is the OLDEST vault document and the right the LATEST (by the active date
@@ -8,9 +10,11 @@
 // narrows by the chosen field; the criterion is the engine-served
 // `timeline_date_criterion` setting, chosen from the "Filter by" context menu.
 //
-// Presentation matches the approved binding design (Figma node 981:4323): a single low
-// row — small day+month readout (no year) · a thin scrubber track with two small
-// handles · the small UPPERCASE criterion label — all token/rem, no display fonts.
+// Presentation matches the binding TimelineRange State= set (1005:4203, Typical
+// variant cloned from the prior canonical frame 993:4204): a single low row — small
+// day+month readout (no year) · a thin scrubber track with two small handles · the
+// small UPPERCASE criterion label — all token/rem, no display fonts. The Loading /
+// Degraded / Empty variants mirror the same set's State= axis.
 // One shared core serves the desktop footer and the compact mobile pane (the `variant`
 // only enlarges the touch targets on compact).
 //
