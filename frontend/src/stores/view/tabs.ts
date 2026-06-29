@@ -285,6 +285,17 @@ export function useDockDocPanelView(
   );
 }
 
+/** The viewer surface for an addressable graph/document node id, or null for a node
+ *  that has NO document (a synthesized `feature:` convergence node descends the slice
+ *  instead of opening a tab). `doc:` -> markdown reader, `code:` -> code viewer.
+ *  Shared by the graph select/open bridges so the surface rule lives in one place. */
+export function docSurfaceForNodeId(id: unknown): ViewerSurface | null {
+  if (typeof id !== "string") return null;
+  if (id.startsWith("doc:")) return "markdown";
+  if (id.startsWith("code:")) return "code";
+  return null;
+}
+
 /**
  * Preview a document in the single provisional tab (single-click). Replaces the
  * existing provisional tab in place and focuses the node on the graph. The

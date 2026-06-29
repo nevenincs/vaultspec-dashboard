@@ -5,9 +5,10 @@
 import type { SceneEvent } from "../../scene/sceneController";
 import type { RepresentationMode } from "../../scene/field/representationLayout";
 import type { EntityDescriptor } from "../../platform/actions/entity";
+import { activateEntity } from "./activateEntity";
 import { openContextMenu, type MenuAnchor } from "./contextMenu";
 import { nodeEntityView } from "./nodeEntity";
-import { openGraphNodeFromScene, setHoveredNodeId } from "./selection";
+import { setHoveredNodeId } from "./selection";
 import { setRenderCapability } from "./renderCapability";
 import { expandWorkingSet } from "./workingSet";
 
@@ -72,12 +73,19 @@ export function handleStageSceneEvent(
   }
 
   if (event.kind === "open") {
-    void openGraphNodeFromScene(
-      event.id,
-      context.scope,
-      context.stageSceneIntent,
-      context.markSceneOriginated,
-    ).catch(() => undefined);
+    // DOUBLE-CLICK routes through the ONE canonical activate seam: selection + a
+    // PERMANENT dock tab (VS Code double-click pegs; the `select` bridge does the
+    // provisional preview). `frame:false` — the node is already on screen where the
+    // user double-clicked, so the camera must not yank. A synthesized `feature:` node
+    // has no document → it DESCENDS via the supplied intent (no tab). This RETIRES the
+    // dead on-canvas island open (openGraphNodeFromScene/openNode). The selection is
+    // scene-originated, so the dashboard→scene projection skips the focus bounce.
+    context.markSceneOriginated?.(true);
+    void activateEntity(event.id, context.scope, {
+      permanent: true,
+      frame: false,
+      featureDescent: context.stageSceneIntent,
+    }).catch(() => undefined);
     return;
   }
 

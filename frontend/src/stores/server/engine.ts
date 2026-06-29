@@ -269,7 +269,11 @@ export interface VaultTreeEntry {
   path: string;
   doc_type: string;
   feature_tags: string[];
-  dates: { created?: string; modified?: string };
+  // All day-granular ISO strings ("YYYY-MM-DD") AFTER adaptation, so the rail's
+  // date narrow compares them directly with the `date_range` bounds by the active
+  // `date_field` criterion (Issue #38). `modified` arrives on the wire as epoch
+  // millis and is normalized to this form by `adaptVaultTreeDates`.
+  dates: { created?: string; modified?: string; stamped?: string };
   /** ADR H1 status (dashboard-pipeline-wire W01), when the entry is an ADR. */
   status?: string;
   /** Plan tier (dashboard-pipeline-wire W01), when the entry is a plan. */

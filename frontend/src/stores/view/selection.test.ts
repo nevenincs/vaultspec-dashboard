@@ -9,8 +9,6 @@ import {
   normalizeOpenedNodeIslandIds,
   normalizeSelectionMetadataId,
   normalizeSelectionScope,
-  openGraphNodeFromScene,
-  openNodeIsland,
   openNodeIslandFromWalk,
   projectDashboardSelectionToScene,
   pulseSelectionNodes,
@@ -62,7 +60,7 @@ describe("selection seam", () => {
   beforeEach(() => {
     useViewStore.getState().selectEntity(null);
     useViewStore.getState().setScope(null);
-    useViewStore.setState({ openedIds: [] });
+    useViewStore.setState({ openedIds: [], openDocs: [], activeDocId: null });
   });
 
   it("keeps hover as transient view-local state", () => {
@@ -144,17 +142,6 @@ describe("selection seam", () => {
     expect(markedSceneOrigin).toBe(true);
   });
 
-  it("opens an island through the canonical dashboard selection seam", async () => {
-    useViewStore.getState().setScope(null);
-
-    await expect(openNodeIsland(documentNodeId, scope)).resolves.toBe(true);
-
-    const state = await createLiveClient().dashboardState(scope);
-    expect(state.selected_ids).toEqual([documentNodeId]);
-    expect(useViewStore.getState().openedIds).toContain(documentNodeId);
-    expect(useViewStore.getState().selection).toBeNull();
-  });
-
   it("normalizes malformed opened-island reads at the seam boundary", () => {
     const raw = [
       "",
@@ -177,42 +164,16 @@ describe("selection seam", () => {
     expect(isNodeIslandOpen("doc:old")).toBe(false);
   });
 
-  it("does not open local island chrome without an accepted dashboard selection", async () => {
-    useViewStore.getState().setScope(null);
-
-    await expect(openNodeIsland(documentNodeId)).resolves.toBe(false);
-
-    expect(useViewStore.getState().openedIds).not.toContain(documentNodeId);
-    expect(useViewStore.getState().selection).toBeNull();
-  });
-
-  it("does not open local island chrome for malformed runtime scope values", async () => {
-    useViewStore.getState().setScope(null);
-    await createLiveClient().patchDashboardState({ scope, selected_ids: [] });
-
-    await expect(openNodeIsland(documentNodeId, { scope })).resolves.toBe(false);
-
-    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
-      selected_ids: [],
-    });
-    expect(useViewStore.getState().openedIds).toEqual([]);
-  });
-
-  it("normalizes public island open/close ids at the seam", async () => {
-    useViewStore.getState().setScope(null);
-    await createLiveClient().patchDashboardState({ scope, selected_ids: [] });
-
-    await expect(openNodeIsland(` ${documentNodeId} `, scope)).resolves.toBe(true);
-    expect(useViewStore.getState().openedIds).toEqual([documentNodeId]);
+  it("closes opened-island chrome by normalized id through the close seam", () => {
+    // The island OPEN path is retired (opens are #15 dock tabs now); the CLOSE seam
+    // remains and still normalizes its id for any residually-open island chrome.
+    useViewStore.setState({ openedIds: [documentNodeId] });
 
     closeNodeIsland(` ${documentNodeId} `);
     expect(useViewStore.getState().openedIds).toEqual([]);
-
-    await expect(openNodeIsland({ id: documentNodeId }, scope)).resolves.toBe(false);
-    expect(useViewStore.getState().openedIds).toEqual([]);
   });
 
-  it("opens a walked island through one focus and dashboard selection seam", async () => {
+  it("walk-opens the document as a provisional dock tab through one focus + selection seam", async () => {
     const { scene, commands } = captureScene();
     let markedSceneOrigin = false;
 
@@ -224,7 +185,13 @@ describe("selection seam", () => {
 
     const state = await createLiveClient().dashboardState(scope);
     expect(state.selected_ids).toEqual([documentNodeId]);
-    expect(useViewStore.getState().openedIds).toContain(documentNodeId);
+    // Converged onto the #15 dock tab (unified-selection D1): the walk opens a
+    // PROVISIONAL tab, not the retired on-canvas island.
+    expect(
+      useViewStore
+        .getState()
+        .openDocs.some((d) => d.nodeId === documentNodeId && d.provisional === true),
+    ).toBe(true);
     expect(useViewStore.getState().selection).toBeNull();
     expect(markedSceneOrigin).toBe(true);
     expect(commands).toContainEqual({
@@ -234,7 +201,7 @@ describe("selection seam", () => {
     });
   });
 
-  it("normalizes walked island ids before local state and scene focus", async () => {
+  it("normalizes walked ids before opening the tab and focusing the scene", async () => {
     const { scene, commands } = captureScene();
     useViewStore.getState().setScope(null);
     let markedSceneOrigin = false;
@@ -253,8 +220,9 @@ describe("selection seam", () => {
     await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
       selected_ids: [documentNodeId],
     });
-    expect(useViewStore.getState().openedIds).toContain(documentNodeId);
-    expect(useViewStore.getState().openedIds).not.toContain(` ${documentNodeId} `);
+    const openIds = useViewStore.getState().openDocs.map((d) => d.nodeId);
+    expect(openIds).toContain(documentNodeId);
+    expect(openIds).not.toContain(` ${documentNodeId} `);
     expect(markedSceneOrigin).toBe(true);
     expect(commands).toContainEqual({
       kind: "focus-node",
@@ -263,16 +231,16 @@ describe("selection seam", () => {
     });
   });
 
-  it("rejects invalid walked island ids before focus or local state", async () => {
+  it("rejects invalid walked ids before focus or tab open", async () => {
     const { scene, commands } = captureScene();
 
     await expect(openNodeIslandFromWalk(scene, "   ", scope)).resolves.toBe(false);
 
-    expect(useViewStore.getState().openedIds).toEqual([]);
+    expect(useViewStore.getState().openDocs).toEqual([]);
     expect(commands).toEqual([]);
   });
 
-  it("does not open or focus a walked island without an accepted dashboard selection", async () => {
+  it("does not open or focus a walked node without an accepted dashboard selection", async () => {
     const { scene, commands } = captureScene();
     let markedSceneOrigin = false;
 
@@ -282,29 +250,12 @@ describe("selection seam", () => {
       }),
     ).resolves.toBe(false);
 
-    expect(useViewStore.getState().openedIds).not.toContain(documentNodeId);
+    expect(
+      useViewStore.getState().openDocs.some((d) => d.nodeId === documentNodeId),
+    ).toBe(false);
     expect(useViewStore.getState().selection).toBeNull();
     expect(markedSceneOrigin).toBe(false);
     expect(commands).toEqual([]);
-  });
-
-  it("does not descend feature nodes for malformed runtime scope values", async () => {
-    const descended: string[] = [];
-
-    await expect(
-      openGraphNodeFromScene(
-        "feature:state-management",
-        { scope },
-        {
-          descendFeatureTag: (featureTag) => {
-            if (typeof featureTag === "string") descended.push(featureTag);
-            return Promise.resolve(null);
-          },
-        },
-      ),
-    ).resolves.toBe(false);
-
-    expect(descended).toEqual([]);
   });
 
   it("normalizes event and edge metadata locally", () => {

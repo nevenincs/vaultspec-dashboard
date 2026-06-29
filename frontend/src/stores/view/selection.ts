@@ -208,47 +208,10 @@ export function selectFromScene(
     });
 }
 
-/** Open a node island and select the same node through the canonical dashboard seam. */
-export async function openNodeIsland(
-  id: unknown,
-  scope: unknown = useViewStore.getState().scope,
-  mark?: SceneOriginMarker,
-): Promise<boolean> {
-  const nodeId = normalizeNodeId(id);
-  if (nodeId === null) return false;
-  const accepted = mark
-    ? await selectFromScene(nodeId, scope, mark)
-    : await selectNode(nodeId, scope);
-  if (!accepted) return false;
-  useViewStore.getState().openNode(nodeId);
-  return true;
-}
-
-interface FeatureDescentIntent {
-  descendFeatureTag: (featureTag: unknown) => Promise<unknown>;
-}
-
-/**
- * Open a graph node from the scene event stream. Synthesized feature nodes do not
- * own an island; opening one descends the dashboard slice to that feature tag.
- */
-export async function openGraphNodeFromScene(
-  id: unknown,
-  scope: unknown,
-  featureDescentIntent: FeatureDescentIntent,
-  mark?: SceneOriginMarker,
-): Promise<boolean> {
-  const nodeId = normalizeNodeId(id);
-  if (nodeId === null) return false;
-  const normalizedScope = normalizeSelectionScope(scope);
-  const featureTag = featureTagFromNodeId(nodeId);
-  if (featureTag !== null) {
-    if (normalizedScope === null) return false;
-    await featureDescentIntent.descendFeatureTag(featureTag);
-    return true;
-  }
-  return openNodeIsland(nodeId, normalizedScope, mark);
-}
+// The on-canvas island OPEN path (`openNodeIsland` / `openGraphNodeFromScene`) is
+// RETIRED (unified-selection D1): opening a node now opens a #15 dock tab through the
+// canonical `activateEntity` seam, which every surface routes through. The island
+// CLOSE seam below stays for any residually-open island chrome.
 
 /** Close a node island through the named island intent seam. */
 export function closeNodeIsland(id: unknown): void {
@@ -258,9 +221,12 @@ export function closeNodeIsland(id: unknown): void {
 }
 
 /**
- * Keyboard graph-walk open: open the DOM island, select through dashboard-state,
- * and instantly re-center the camera. The app layer calls this seam instead of
- * pairing a raw `openNode` write with a separate selection/focus write.
+ * Keyboard graph-walk open (Enter): open the document as a #15 PROVISIONAL dock tab,
+ * select through dashboard-state, and instantly re-center the camera. Converged onto
+ * the dock tab (unified-selection D1) — it no longer opens the retired on-canvas island.
+ * A `doc:`/`code:` node opens its tab; a synthesized `feature:` node has no document, so
+ * it selects + re-centers only. The app layer calls this seam instead of pairing a raw
+ * tab write with a separate selection/focus write.
  */
 export async function openNodeIslandFromWalk(
   scene: SceneController,
@@ -277,7 +243,12 @@ export async function openNodeIslandFromWalk(
       markSceneOriginated(mark, false);
       return false;
     }
-    useViewStore.getState().openNode(nodeId);
+    const surface = nodeId.startsWith("code:")
+      ? "code"
+      : nodeId.startsWith("doc:")
+        ? "markdown"
+        : null;
+    if (surface) useViewStore.getState().openDoc(nodeId, surface, false);
     scene.command({ kind: "focus-node", id: nodeId, animate: false });
     return true;
   } catch (error) {

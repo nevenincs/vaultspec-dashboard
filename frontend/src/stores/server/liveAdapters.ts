@@ -938,16 +938,37 @@ function normalizeVaultTreeStringList(value: unknown): string[] {
   return out;
 }
 
+/** Normalize a served vault-tree date to a comparable, day-granular ISO string
+ *  ("YYYY-MM-DD"). The engine serves `created`/`stamped` as ISO date strings but
+ *  `modified` as EPOCH MILLIS (a number), so a string is reduced to its day part
+ *  and a finite number is coerced through `Date` to the same ISO day. This makes
+ *  every entry date directly comparable with the timeline's `date_range` bounds
+ *  (also `YYYY-MM-DD`), keyed by the active `date_field` criterion — without this,
+ *  the old string-only normalizer DROPPED the numeric `modified`, and the rail's
+ *  date narrow then excluded EVERY entry whenever a range was active (Issue #38). */
+function normalizeVaultTreeDate(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return undefined;
+    return trimmed.length >= 10 ? trimmed.slice(0, 10) : trimmed;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString().slice(0, 10);
+  }
+  return undefined;
+}
+
 function adaptVaultTreeDates(value: unknown): VaultTreeEntry["dates"] {
   if (!isRec(value)) return {};
-  return {
-    ...(normalizeVaultTreeString(value.created) !== undefined
-      ? { created: normalizeVaultTreeString(value.created) }
-      : {}),
-    ...(normalizeVaultTreeString(value.modified) !== undefined
-      ? { modified: normalizeVaultTreeString(value.modified) }
-      : {}),
-  };
+  const out: VaultTreeEntry["dates"] = {};
+  const created = normalizeVaultTreeDate(value.created);
+  const modified = normalizeVaultTreeDate(value.modified);
+  const stamped = normalizeVaultTreeDate(value.stamped);
+  if (created !== undefined) out.created = created;
+  if (modified !== undefined) out.modified = modified;
+  if (stamped !== undefined) out.stamped = stamped;
+  return out;
 }
 
 function normalizeVaultTreeProgress(

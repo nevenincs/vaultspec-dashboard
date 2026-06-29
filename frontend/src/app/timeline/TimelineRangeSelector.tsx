@@ -36,6 +36,7 @@ import {
   ratioAtClientX,
   msAtRatio,
   rangeIsNarrowed,
+  rangeWritePayload,
   spanRatio,
 } from "./timelineRangeMath";
 
@@ -79,7 +80,11 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
     const rect = el.getBoundingClientRect();
     if (rect.width <= 0) return;
     const ms = msAtRatio(ratioAtClientX(clientX, rect.left, rect.width), lo, hi);
-    void mutations.setDateRange(nextRangeForHandle(which, ms, fromMs, toMs));
+    // Clear the date filter when the drag covers the whole corpus, so widening fully
+    // is reversible (undated docs would otherwise stay hidden — filtering regression).
+    void mutations.setDateRange(
+      rangeWritePayload(nextRangeForHandle(which, ms, fromMs, toMs), lo, hi),
+    );
   };
 
   // Double-click anywhere on the track resets the date filter (Issue #14: retain
@@ -122,9 +127,13 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
         hi,
       );
       void mutations.setDateRange(
-        which === "from"
-          ? { from: dayISO(Math.min(next, toMs)), to: dayISO(toMs) }
-          : { from: dayISO(fromMs), to: dayISO(Math.max(next, fromMs)) },
+        rangeWritePayload(
+          which === "from"
+            ? { from: dayISO(Math.min(next, toMs)), to: dayISO(toMs) }
+            : { from: dayISO(fromMs), to: dayISO(Math.max(next, fromMs)) },
+          lo,
+          hi,
+        ),
       );
     },
   });

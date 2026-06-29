@@ -107,3 +107,24 @@ export function rangeIsNarrowed(
 ): boolean {
   return source === "dashboard" && (fromMs > lo || toMs < hi);
 }
+
+/**
+ * The date_range write payload for a dragged range over the corpus `[lo, hi]`. When
+ * the range covers the WHOLE corpus, returns `{}` (clear) rather than an explicit
+ * full-span — because the engine's date predicate EXCLUDES undated documents whenever
+ * any range is set, so an explicit full-span would permanently hide undated rail/graph
+ * items even after widening. Clearing on full coverage keeps the widen reversible
+ * (Issue #14 filtering regression: "items don't come back when the range widens").
+ */
+export function rangeWritePayload(
+  next: { from: string; to: string },
+  lo: number,
+  hi: number,
+): { from: string; to: string } | Record<string, never> {
+  const from = Date.parse(next.from);
+  const to = Date.parse(next.to);
+  if (Number.isFinite(from) && Number.isFinite(to) && from <= lo && to >= hi) {
+    return {};
+  }
+  return next;
+}

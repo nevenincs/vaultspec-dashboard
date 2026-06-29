@@ -44,7 +44,7 @@ import {
 import { useUnifiedSearchController } from "../../stores/server/searchController";
 import { deriveSearchPillViews } from "../../stores/server/searchPill";
 import { useActiveScope, useContentView } from "../../stores/server/queries";
-import { openNodeIsland } from "../../stores/view/selection";
+import { activateEntity } from "../../stores/view/activateEntity";
 import { useViewportClass } from "../../stores/view/viewportClass";
 import { Kbd, Skeleton, SkeletonRow, StateBlock } from "../kit";
 import { CodeViewer } from "../viewer/CodeViewer";
@@ -178,7 +178,12 @@ export function SearchPaletteSurface() {
     // The ONE standardized open verb (command-palette-planes ADR): a result opens
     // through the canonical selection seam, exactly like the context-menu Open and
     // the graph click-through.
-    void openNodeIsland(selectedNodeId, scope).catch(() => undefined);
+    // Off-canvas open (search) → the ONE canonical activate seam: PERMANENT dock tab
+    // + frame:true (materialize + center the graph on the node).
+    void activateEntity(selectedNodeId, scope, {
+      permanent: true,
+      frame: true,
+    }).catch(() => undefined);
     close();
   }, [selectedNodeId, scope, close]);
 
@@ -247,7 +252,10 @@ export function SearchPaletteSurface() {
                   type="button"
                   onClick={() => {
                     if (!pill.nodeId) return;
-                    void openNodeIsland(pill.nodeId, scope).catch(() => undefined);
+                    void activateEntity(pill.nodeId, scope, {
+                      permanent: true,
+                      frame: true,
+                    }).catch(() => undefined);
                     close();
                   }}
                   className="block w-full text-left"

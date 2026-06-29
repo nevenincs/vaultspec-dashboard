@@ -101,7 +101,6 @@ const AUTOFRAME_DEADBAND = 0.07; // min fractional frame change (center/zoom) to
 const AUTOFRAME_SETTLE_EPS = 0.004; // within this fraction of target → snap + stop easing
 // Label LOD + ring treatment (read from the registry; one definition each).
 const LABEL_BUDGET = controlNumber("labelBudget");
-const DOC_LABEL_SALIENCE_FLOOR = controlNumber("documentLabelSalienceFloor");
 const PULSE_RING_WIDTH = controlNumber("pulseRingWidth");
 const PULSE_RING_ALPHA = controlNumber("pulseRingAlpha");
 // Hover/selection emphasis — SUBTLE + theme-palette only (user goal): keep the
@@ -138,9 +137,15 @@ const LABEL_PILL_GAP_PX = 6; // gap from the node body to the pill
 // Icon-INSIDE-circle (graph-icon-inside-circle): the doc-type icon is drawn WITHIN the
 // filled disc as one composite mark, so its half-extent is a FRACTION of the node radius
 // (≈62% of the disc DIAMETER) — padded inside the rim, not larger than the disc.
-const ICON_SIZE_MULT = 0.62; // icon half-extent vs node radius (inside the disc, padded)
-const ICON_FADE_LO_PX = 6; // node radius (screen px) where the inner icon begins to appear
-const ICON_FADE_HI_PX = 12; // ...and is fully shown (legible inside the disc)
+const ICON_SIZE_MULT = 0.7; // icon half-extent vs node radius (~70% diameter, inside the disc)
+// Icon LOD fade: the inner icon fades in by ON-SCREEN node radius. Tuned LOW so icon mode
+// is actually VISIBLE at normal zoom — a 1214-node graph fit to the viewport clamps every
+// node to ~1.5–4px on screen, so the old 6/12px thresholds meant the icon NEVER appeared
+// until the user zoomed deep into a cluster (the "icon mode does nothing" regression #39).
+// At these values a node fully shows its icon by ~4px (the fit-zoom hub size) and fades out
+// only for sub-legible specks below ~2px.
+const ICON_FADE_LO_PX = 2; // node radius (screen px) where the inner icon begins to appear
+const ICON_FADE_HI_PX = 4; // ...and is fully shown
 // Bounded GL-context-restore retries (bounded-by-default): after this many failed rebuilds
 // on webglcontextrestored, the scene reports render-unavailable (recoverable:false).
 const MAX_GL_RESTORE_ATTEMPTS = 3;
@@ -525,6 +530,12 @@ export class ThreeField implements SceneFieldRenderer {
   // or an explicit fit-all / autoframe re-enable — so autoframe resumes on load/data
   // change, never over a selection write.
   private autoframeSuspended = false;
+  // Off-slice focus (graph-follow-mode #42): a `focus-node` for a node NOT currently
+  // mounted (a rail/activity-rail/search open whose ego-expand materializes it a fetch
+  // later) is REMEMBERED as a single pending id and centered when it next arrives in a
+  // set-data/merge. Cleared on arrival, or when a newer explicit focus/fit/selection
+  // supersedes it. Bounded to ONE id.
+  private pendingFocusId: string | null = null;
 
   // --- minimap (overview navigator) ---------------------------------------
   // A chrome-hosted <canvas> the field draws a downscaled overview into (node dots
@@ -1083,6 +1094,11 @@ export class ThreeField implements SceneFieldRenderer {
     this.uploadPositions();
     // Fit the camera ONCE on a cold load; a warm update preserves the user's view.
     if (!warm) this.fitToView();
+    // Off-slice focus arrival (#42): a pending focus target the ego-expand just
+    // materialized now has a position — center on it (focusNode clears the pending id).
+    if (this.pendingFocusId !== null && this.idToIndex.has(this.pendingFocusId)) {
+      this.focusNode(this.pendingFocusId);
+    }
     this.running = !this.solver.isSettled();
     this.requestRender();
     if (this.running) this.wake();
@@ -1796,7 +1812,6 @@ export class ThreeField implements SceneFieldRenderer {
     ctx.clearRect(0, 0, this.width, this.height);
     if (this.nodes.length === 0) return;
 
-    const level = semanticLevel(this.camera.zoom);
     const ink = `#${inkColor().toString(16).padStart(6, "0")}`;
     const accent = `#${accentColor().toString(16).padStart(6, "0")}`;
     const highlight = `#${highlightColor().toString(16).padStart(6, "0")}`;
@@ -1864,11 +1879,11 @@ export class ThreeField implements SceneFieldRenderer {
     }
 
     // Labels — typography from the CENTRALIZED design tokens (binding Figma
-    // "graph/Label — Feature | Document"): feature = Label/12 · ink, document =
-    // Meta/11 · ink-muted, plate-less. Sizes are rem-relative (resolved against the
-    // root font size in labelStyle) so canvas labels scale with the DOM under one
-    // UI scale — never a hardcoded px. DOI by semantic level, plus always-on for
-    // hovered/selected/pinned (labelVisible).
+    // "graph/Label — Feature | Document"): feature = Label/12, document = Meta/11. Sizes
+    // are rem-relative (resolved against the root font size in labelStyle) so canvas labels
+    // scale with the DOM under one UI scale — never a hardcoded px. Labels appear ONLY on
+    // interaction (hover / select / pin, per labelVisible) and render as a design PILL
+    // (drawLabelPill) — there are no ambient always-on labels.
     const featureStyle = labelTextStyle("feature");
     const docStyle = labelTextStyle("document");
     const inkMuted = `#${inkMutedColor().toString(16).padStart(6, "0")}`;
@@ -1881,7 +1896,7 @@ export class ThreeField implements SceneFieldRenderer {
       : LABEL_BUDGET; // clutter cap
     for (let i = 0; i < this.nodes.length && budget > 0; i++) {
       const node = this.nodes[i];
-      if (!this.labelVisible(node, level)) continue;
+      if (!this.labelVisible(node)) continue;
       const p = this.worldToScreen(i);
       if (!p || p.x < -40 || p.x > this.width + 40 || p.y < 0 || p.y > this.height)
         continue;
@@ -1907,32 +1922,21 @@ export class ThreeField implements SceneFieldRenderer {
         : isFeature
           ? ink
           : inkMuted;
-      // INTERACTIVE labels (hover / select / pin) render as a design PILL — a rounded
-      // paper chip with a hairline border, the deliberate focused label. AMBIENT DOI
-      // labels stay plate-less so the field is not cluttered with chips.
-      const interactive =
-        this.hoveredId === node.id ||
-        this.selectedIds.has(node.id) ||
-        this.pinnedIds.has(node.id);
+      // Every visible label is an interaction (hover / select / pin) and renders as the
+      // design PILL — a rounded paper chip with a hairline border. There are no ambient
+      // plate-less labels any more (the field never paints naked text without a hover).
       const x = p.x + r + LABEL_PILL_GAP_PX * s;
-      if (interactive) {
-        this.drawLabelPill(
-          ctx,
-          x,
-          p.y,
-          text,
-          style.sizePx,
-          labelInk,
-          pillFill,
-          pillBorder,
-          s,
-        );
-      } else {
-        ctx.fillStyle = labelInk;
-        ctx.globalAlpha = isFeature ? 1 : 0.9;
-        ctx.fillText(text, x, p.y);
-        ctx.globalAlpha = 1;
-      }
+      this.drawLabelPill(
+        ctx,
+        x,
+        p.y,
+        text,
+        style.sizePx,
+        labelInk,
+        pillFill,
+        pillBorder,
+        s,
+      );
       budget--;
     }
     ctx.globalAlpha = 1;
@@ -1998,14 +2002,18 @@ export class ThreeField implements SceneFieldRenderer {
     return lo > 0 ? text.slice(0, lo) + ellipsis : ellipsis;
   }
 
-  private labelVisible(node: SceneNodeData, level: string): boolean {
-    if (this.selectedIds.has(node.id)) return true;
-    if (this.hoveredId === node.id) return true;
-    if (this.pinnedIds.has(node.id)) return true;
+  private labelVisible(node: SceneNodeData): boolean {
+    // Labels appear ONLY on a real interaction — hover, selection, or pin — and render as
+    // the design PILL (drawLabelPill). There are NO ambient/always-on labels: the field no
+    // longer paints naked text on every feature or high-salience document (the user's
+    // "nodes displaying hover information without any hover" + "overflowing black text"
+    // complaint). A filtered-out node is never labelled.
     if (this.visibleNodeIds && !this.visibleNodeIds.has(node.id)) return false;
-    if (node.kind === "feature") return true; // features always anchor the field
-    if (level === "document") return (node.salience ?? 0) >= DOC_LABEL_SALIENCE_FLOOR;
-    return false;
+    return (
+      this.hoveredId === node.id ||
+      this.selectedIds.has(node.id) ||
+      this.pinnedIds.has(node.id)
+    );
   }
 
   // --- camera --------------------------------------------------------------
@@ -2136,8 +2144,12 @@ export class ThreeField implements SceneFieldRenderer {
     const t = this.fitTargetForBounds(minX, minY, maxX, maxY);
     // A manual fit cancels any in-flight autoframe ease and records the new frame so the
     // autoframe deadband measures drift from here (no immediate re-fit fighting the user).
+    // It also supersedes a pending off-slice focus (#42) — an explicit fit/frame is a newer
+    // camera intent. (The warm set-data arrival path skips fitToView, so the pending focus
+    // there still survives to its arrival check.)
     this.autoframeTarget = null;
     this.autoframedFrame = t;
+    this.pendingFocusId = null;
     this.camera.position.set(t.x, t.y, 10);
     this.camera.zoom = t.zoom;
     this.camera.updateProjectionMatrix();
@@ -2313,12 +2325,19 @@ export class ThreeField implements SceneFieldRenderer {
 
   private focusNode(id: string): void {
     const i = this.idToIndex.get(id);
-    if (i === undefined) return;
+    if (i === undefined) {
+      // Off-slice target (#42): not mounted yet — remember it (bounded to one) and center
+      // it when it next arrives via set-data (the ego-expand materializes it a fetch later).
+      this.pendingFocusId = id;
+      return;
+    }
     const x = this.cpuPositions[i * 4];
     const y = this.cpuPositions[i * 4 + 1];
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     this.camera.position.set(x, y, 10);
     this.camera.updateProjectionMatrix();
+    // A successful explicit focus supersedes any older pending off-slice target.
+    this.pendingFocusId = null;
     this.emitCameraChange();
     this.requestRender();
   }

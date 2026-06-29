@@ -1,11 +1,26 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { DEFAULT_REPRESENTATION_MODE } from "../../scene/field/representationLayout";
 import { usePinStore } from "./pins";
-import { stageContextMenuIntent } from "./stageSceneEvents";
+import { handleStageSceneEvent, stageContextMenuIntent } from "./stageSceneEvents";
 import { useViewStore } from "./viewStore";
 
+const OPEN_CONTEXT = {
+  scope: "scope-a",
+  activeRepresentationMode: DEFAULT_REPRESENTATION_MODE,
+  stageSceneIntent: {
+    descendFeatureTag: async () => undefined,
+    setRepresentationMode: async () => undefined,
+  },
+};
+
 beforeEach(() => {
-  useViewStore.setState({ openedIds: [], workingSet: [] });
+  useViewStore.setState({
+    openedIds: [],
+    workingSet: [],
+    openDocs: [],
+    activeDocId: null,
+  });
   usePinStore.setState({ pinnedIds: [] });
 });
 
@@ -83,5 +98,28 @@ describe("stage scene-event bridge", () => {
       anchor: { x: 8, y: 13 },
       entity: { kind: "canvas", id: "canvas" },
     });
+  });
+
+  it("an OPEN event (double-click) on a doc node opens it as a PERMANENT tab (#15)", () => {
+    handleStageSceneEvent({ kind: "open", id: "doc:beta" }, OPEN_CONTEXT);
+    // Double-click = the VS Code PERMANENT open (single-click preview is the select bridge).
+    expect(useViewStore.getState().openDocs).toEqual([
+      { nodeId: "doc:beta", surface: "markdown", provisional: false },
+    ]);
+  });
+
+  it("an OPEN event on a code node opens it permanently with the code surface", () => {
+    handleStageSceneEvent({ kind: "open", id: "code:src/main.rs" }, OPEN_CONTEXT);
+    expect(useViewStore.getState().openDocs).toEqual([
+      { nodeId: "code:src/main.rs", surface: "code", provisional: false },
+    ]);
+  });
+
+  it("an OPEN event on a synthesized feature node opens NO document tab (it descends)", () => {
+    handleStageSceneEvent(
+      { kind: "open", id: "feature:graph-node-salience" },
+      OPEN_CONTEXT,
+    );
+    expect(useViewStore.getState().openDocs).toEqual([]);
   });
 });

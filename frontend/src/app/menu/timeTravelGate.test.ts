@@ -20,7 +20,7 @@ describe("time-travel gate across surfaces", () => {
     {
       name: "graph node",
       entity: { kind: "node", id: "n1" },
-      gated: "node:open-island",
+      gated: "node:open",
     },
     {
       name: "worktree",

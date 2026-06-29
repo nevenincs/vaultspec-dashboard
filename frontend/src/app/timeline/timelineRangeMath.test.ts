@@ -9,6 +9,7 @@ import {
   nextRangeForHandle,
   parseISO,
   rangeIsNarrowed,
+  rangeWritePayload,
   ratioAtClientX,
   spanRatio,
 } from "./timelineRangeMath";
@@ -84,5 +85,24 @@ describe("timelineRange helpers", () => {
     expect(
       rangeIsNarrowed("fallback", Date.parse("2026-06-10"), JUN30, JUN1, JUN30),
     ).toBe(false); // not a committed dashboard range
+  });
+
+  it("rangeWritePayload clears on full coverage, keeps a real narrow (regression)", () => {
+    // Full coverage → clear ({}), so widening the timeline fully is reversible and
+    // never leaves undated rail/graph docs permanently hidden.
+    expect(
+      rangeWritePayload({ from: "2026-06-01", to: "2026-06-30" }, JUN1, JUN30),
+    ).toEqual({});
+    // Beyond the edges still clears.
+    expect(
+      rangeWritePayload({ from: "2026-05-20", to: "2026-07-10" }, JUN1, JUN30),
+    ).toEqual({});
+    // A genuine narrow is preserved.
+    expect(
+      rangeWritePayload({ from: "2026-06-10", to: "2026-06-30" }, JUN1, JUN30),
+    ).toEqual({ from: "2026-06-10", to: "2026-06-30" });
+    expect(
+      rangeWritePayload({ from: "2026-06-01", to: "2026-06-20" }, JUN1, JUN30),
+    ).toEqual({ from: "2026-06-01", to: "2026-06-20" });
   });
 });

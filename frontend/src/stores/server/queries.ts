@@ -1478,6 +1478,9 @@ export interface VaultRailFacets {
   statuses: string[];
   featureTags: string[];
   dateRange: { from?: string; to?: string };
+  /** The active date criterion the `date_range` applies to (Issue #14/#38) — the
+   *  SAME field the timeline and the engine narrow by. "created" is the default. */
+  dateField: "created" | "modified" | "stamped";
 }
 
 /** Apply the canonical facet filters to the vault listing (D5): the rail tree
@@ -1490,7 +1493,7 @@ export function narrowVaultRailEntries(
   entries: readonly VaultTreeEntry[],
   facets: VaultRailFacets,
 ): VaultTreeEntry[] {
-  const { featureQuery, docTypes, statuses, featureTags } = facets;
+  const { featureQuery, docTypes, statuses, featureTags, dateField } = facets;
   const { from, to } = facets.dateRange;
   return entries.filter((entry) => {
     if (featureQuery) {
@@ -1514,10 +1517,16 @@ export function narrowVaultRailEntries(
       return false;
     }
     if (from || to) {
-      const modified = entry.dates.modified;
-      if (!modified) return false;
-      if (from && modified < from) return false;
-      if (to && modified > to) return false;
+      // Compare the entry's ACTIVE-criterion date (created/modified/stamped) — the
+      // SAME field the timeline + engine narrow by — against the day-granular ISO
+      // bounds (Issue #38). Both sides are normalized to "YYYY-MM-DD", so a string
+      // compare is chronological. An entry is excluded only when it lacks THAT
+      // field (it cannot fall in range), never because a different/absent field is
+      // missing — and after adaptation every entry carries all three dates.
+      const value = entry.dates[dateField];
+      if (value === undefined) return false;
+      if (from && value < from) return false;
+      if (to && value > to) return false;
     }
     return true;
   });
@@ -1567,6 +1576,11 @@ export function deriveVaultRailView(
  *  filtering-has-one-canonical-surface). */
 export function useVaultRailFacets(scope: unknown): VaultRailFacets {
   const dashboardState = useDashboardState(scope);
+  // The rail narrows by the SAME date field the timeline + engine use: the active
+  // criterion when the engine advertises it (capability gate), else the "created"
+  // default the engine applies (Issue #14/#38). A primitive — stable-selector safe.
+  const { criterion, served } = useTimelineDateCriterion(scope);
+  const dateField = served ? criterion : "created";
   return useMemo(() => {
     const filters = dashboardState.data?.filters;
     return {
@@ -1575,8 +1589,9 @@ export function useVaultRailFacets(scope: unknown): VaultRailFacets {
       statuses: filters?.statuses ?? [],
       featureTags: filters?.feature_tags ?? [],
       dateRange: dashboardState.data?.date_range ?? {},
+      dateField,
     };
-  }, [dashboardState.data]);
+  }, [dashboardState.data, dateField]);
 }
 
 /** The canonical facet filter serialized for the timeline's lineage read

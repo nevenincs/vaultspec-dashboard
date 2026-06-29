@@ -71,7 +71,7 @@ import {
   useRecentCommitsChrome,
   useStatusSectionOpen,
 } from "../../stores/view/statusTabChrome";
-import { previewDocTab } from "../../stores/view/tabs";
+import { activateEntity } from "../../stores/view/activateEntity";
 import { freshnessLabel } from "../presentation/freshness";
 import { ChangesOverview } from "./ChangesOverview";
 import { PlanStepTree } from "./PlanStepTree";
@@ -100,8 +100,8 @@ interface SectionCardProps {
   id: StatusSectionId;
   title: string;
   count?: number;
-  /** Resting open/closed state; sections default open (the everything-expanded
-   *  light rail). */
+  /** Resting open/closed state when the user has no saved preference. Sections
+   *  default COLLAPSED (the user opens what they want; the choice persists). */
   defaultOpen?: boolean;
   /** Roving-nav header wiring (the rail's section headers are ONE tab stop). */
   headerRef?: Ref<HTMLButtonElement>;
@@ -113,7 +113,7 @@ function SectionCard({
   id,
   title,
   count,
-  defaultOpen = true,
+  defaultOpen = false,
   headerRef,
   headerProps,
   children,
@@ -235,9 +235,13 @@ function PlanPill({
   const Chevron = expanded ? ChevronDown : ChevronRight;
 
   const openPlan = () => {
-    // Read-mode open: preview in the single provisional tab (#15), so browsing
-    // plans from the status rail reuses one preview tab rather than pinning each.
-    void previewDocTab(row.nodeId, "markdown", scope).catch(() => undefined);
+    // Read-mode open through the ONE `activateEntity` seam with `frame: true`: the
+    // activity rail is off-canvas, so opening a plan PREVIEWS it in the single
+    // provisional tab (#15) AND materializes + CENTERS the graph on that plan node
+    // (the missing (c); unified-selection plane).
+    void activateEntity(row.nodeId, scope, { permanent: false, frame: true }).catch(
+      () => undefined,
+    );
   };
 
   // The plan list is ONE tab stop: the open (title) button roves, ArrowUp/Down

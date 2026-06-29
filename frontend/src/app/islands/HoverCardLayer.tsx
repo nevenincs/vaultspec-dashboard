@@ -32,10 +32,10 @@ import {
 } from "../../stores/view/hoverCard";
 import {
   useDwelledHoverNodeId,
-  openNodeIsland,
   useHoveredNodeId,
   useOpenedNodeIslands,
 } from "../../stores/view/selection";
+import { activateEntity } from "../../stores/view/activateEntity";
 import { islandStyle, useNodeAnchor } from "../../stores/view/islandAnchors";
 import { HoverCard } from "../right/menus/HoverCard";
 
@@ -70,7 +70,12 @@ function HoverCardIsland({
         <HoverCard
           model={hoverCard.model}
           onOpen={(openId) => {
-            void openNodeIsland(openId, scope).catch(() => undefined);
+            // Bloom → open: the hover card's one interactive escape opens the node as a
+            // #15 dock tab through the canonical seam (same as a double-click/open).
+            // On-canvas (the node is the hovered, rendered node), so no camera frame.
+            void activateEntity(openId, scope, { permanent: true, frame: false }).catch(
+              () => undefined,
+            );
           }}
         />
       </div>
