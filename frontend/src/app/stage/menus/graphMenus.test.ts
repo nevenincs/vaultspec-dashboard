@@ -26,7 +26,7 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  useViewStore.setState({ openedIds: [] });
+  useViewStore.setState({ openedIds: [], openDocs: [], activeDocId: null });
   usePinStore.setState({ pinnedIds: [] });
   await createLiveClient()
     .patchDashboardState({ scope, selected_ids: [] })
@@ -57,7 +57,7 @@ describe("graphNodeMenu (canonical node resolver)", () => {
   it("offers focus / open-island / pin / expand-ego / copies by default", () => {
     expect(byId(graphNodeMenu(base))).toEqual([
       "node:focus",
-      "node:open-island",
+      "node:open",
       "node:pin",
       "node:expand-ego",
       "node:copy-id",
@@ -101,14 +101,14 @@ describe("graphNodeMenu (canonical node resolver)", () => {
       graphNodeMenu({ ...base, isOpen: true, isPinned: true, inWorkingSet: true }),
     );
     expect(open).toContain("node:close-island");
-    expect(open).not.toContain("node:open-island");
+    expect(open).not.toContain("node:open");
     expect(open).toContain("node:unpin");
     expect(open).toContain("node:collapse-ego");
   });
 
   it("gates every view-mutating action in time-travel; leaves focus/copy free", () => {
     const a = graphNodeMenu(base);
-    expect(find(a, "node:open-island").disabledInTimeTravel).toBe(true);
+    expect(find(a, "node:open").disabledInTimeTravel).toBe(true);
     expect(find(a, "node:pin").disabledInTimeTravel).toBe(true);
     expect(find(a, "node:expand-ego").disabledInTimeTravel).toBe(true);
     expect(find(a, "node:focus").disabledInTimeTravel).toBeUndefined();
@@ -129,7 +129,7 @@ describe("graphNodeMenu (canonical node resolver)", () => {
     expect(graphNodeMenu(null)).toEqual([]);
   });
 
-  it("open-island opens local chrome and writes canonical dashboard selection", async () => {
+  it("open opens the document as a PERMANENT dock tab and writes canonical selection", async () => {
     const action = find(
       graphNodeMenu({
         kind: "node",
@@ -137,14 +137,19 @@ describe("graphNodeMenu (canonical node resolver)", () => {
         title: "Document",
         scope,
       }),
-      "node:open-island",
+      "node:open",
     );
 
     action.run?.();
 
+    // Routes through the canonical activateEntity seam: a permanent #15 dock tab (not
+    // the retired island LRU) plus the canonical dashboard selection.
     await eventuallySelected(documentNodeId);
-    expect(useViewStore.getState().openedIds).toContain(documentNodeId);
-    expect(useViewStore.getState().selection).toBeNull();
+    const openDocs = useViewStore.getState().openDocs;
+    expect(openDocs.map((doc) => doc.nodeId)).toContain(documentNodeId);
+    expect(openDocs.find((doc) => doc.nodeId === documentNodeId)?.provisional).toBe(
+      false,
+    );
   });
 
   it("close-island closes local chrome through the island seam", () => {
@@ -250,6 +255,9 @@ describe("canvasMenu", () => {
       "canvas:reset",
       "canvas:clear-selection",
       "canvas:clear-working-set",
+      // The graph<->rail follow-mode tether, composed from the one shared builder
+      // under its shared id (unified-action-plane), is natural on the canvas menu too.
+      "view:follow-mode",
     ]);
   });
 

@@ -44,7 +44,9 @@ import type {
   LineagePhase,
   LineageSlice,
   MapResponse,
+  NodeDetail,
   NodeEmbedding,
+  NodeEvidence,
   PipelineArtifact,
   PipelinePhase,
   PipelineResponse,
@@ -748,11 +750,24 @@ export function adaptFilters(body: unknown): FiltersVocabulary {
   // `{from, to}`) so the corpus-span consumers (the timeline fit-all/fit-feature
   // controls and the minimap scrubber) work against the live origin, not only the
   // mock. Absent when no node carries a created date (the field is skipped live).
+  const mapBounds = (raw: unknown): { from?: string; to?: string } | undefined =>
+    isRec(raw)
+      ? {
+          from: (raw.min ?? raw.from) as string | undefined,
+          to: (raw.max ?? raw.to) as string | undefined,
+        }
+      : undefined;
   const rawBounds = isRec(v.date_bounds) ? v.date_bounds : undefined;
-  const dateBounds = rawBounds
+  const dateBounds = mapBounds(rawBounds);
+  // Per-criterion corpus spans (Issue #14): each {min,max} mapped to {from,to}, the
+  // same shape as the flat `date_bounds`. A criterion absent from the live vocabulary
+  // stays absent here — its presence is the capability gate for that date field.
+  const rawByField = isRec(v.date_bounds_by_field) ? v.date_bounds_by_field : undefined;
+  const dateBoundsByField = rawByField
     ? {
-        from: (rawBounds.min ?? rawBounds.from) as string | undefined,
-        to: (rawBounds.max ?? rawBounds.to) as string | undefined,
+        created: mapBounds(rawByField.created),
+        modified: mapBounds(rawByField.modified),
+        stamped: mapBounds(rawByField.stamped),
       }
     : undefined;
   return {
@@ -770,6 +785,7 @@ export function adaptFilters(body: unknown): FiltersVocabulary {
     plan_states: list("plan_states"),
     health: list("health"),
     date_bounds: dateBounds,
+    date_bounds_by_field: dateBoundsByField,
     tiers_block: (body.tiers ?? undefined) as TiersBlock | undefined,
   };
 }
@@ -922,16 +938,37 @@ function normalizeVaultTreeStringList(value: unknown): string[] {
   return out;
 }
 
+/** Normalize a served vault-tree date to a comparable, day-granular ISO string
+ *  ("YYYY-MM-DD"). The engine serves `created`/`stamped` as ISO date strings but
+ *  `modified` as EPOCH MILLIS (a number), so a string is reduced to its day part
+ *  and a finite number is coerced through `Date` to the same ISO day. This makes
+ *  every entry date directly comparable with the timeline's `date_range` bounds
+ *  (also `YYYY-MM-DD`), keyed by the active `date_field` criterion — without this,
+ *  the old string-only normalizer DROPPED the numeric `modified`, and the rail's
+ *  date narrow then excluded EVERY entry whenever a range was active (Issue #38). */
+function normalizeVaultTreeDate(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return undefined;
+    return trimmed.length >= 10 ? trimmed.slice(0, 10) : trimmed;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString().slice(0, 10);
+  }
+  return undefined;
+}
+
 function adaptVaultTreeDates(value: unknown): VaultTreeEntry["dates"] {
   if (!isRec(value)) return {};
-  return {
-    ...(normalizeVaultTreeString(value.created) !== undefined
-      ? { created: normalizeVaultTreeString(value.created) }
-      : {}),
-    ...(normalizeVaultTreeString(value.modified) !== undefined
-      ? { modified: normalizeVaultTreeString(value.modified) }
-      : {}),
-  };
+  const out: VaultTreeEntry["dates"] = {};
+  const created = normalizeVaultTreeDate(value.created);
+  const modified = normalizeVaultTreeDate(value.modified);
+  const stamped = normalizeVaultTreeDate(value.stamped);
+  if (created !== undefined) out.created = created;
+  if (modified !== undefined) out.modified = modified;
+  if (stamped !== undefined) out.stamped = stamped;
+  return out;
 }
 
 function normalizeVaultTreeProgress(
@@ -1125,6 +1162,80 @@ export function adaptContent(body: unknown): ContentResponse {
     text,
     truncated: adaptContentTruncated(body.truncated),
     tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
+// --- §4 node detail: flatten the {detail:{bundle}} wire ----------------------------
+//
+// The live `/nodes/{id}` route serves `{data:{detail:{bundle:{node, edges_by_tier,
+// neighbors, degree_by_tier}}, summary?}, tiers}` (the orchestration-era context
+// bundle, unchanged since the first serve-mode front door). The internal
+// `NodeDetail` shape the stores layer consumes is FLAT — `{node, summary?, tiers}` —
+// so this adapter bridges the nested wire into it (the tolerant one-code-path
+// discipline of `adaptContent`): a mock/already-flat body whose `node` is at the
+// top level passes through unchanged. Without this bridge `useNodeDetailView` reads
+// `data.node` off the nested body, finds `undefined`, and degrades EVERY node to
+// `unavailable` — the latent mock-mirrors-live divergence the injected-literal tests
+// never exercised. `summary` is the lazy first-prose-line the route fills for doc
+// nodes (absent for synthesized feature nodes); the hover card renders it when
+// present and omits it otherwise.
+
+/** Live `/nodes/{id}` → the internal flat `NodeDetail`. TOLERANT: an absent/odd
+ *  shape yields an empty tiers block and an undefined node, so the consuming view
+ *  reads degraded state from the tiers truth rather than a thrown adapter. */
+export function adaptNodeDetail(body: unknown): NodeDetail {
+  const rec = isRec(body) ? body : {};
+  const detail = isRec(rec.detail) ? rec.detail : undefined;
+  const bundle = detail && isRec(detail.bundle) ? detail.bundle : undefined;
+  // Flat (mock / test fixture) node wins; else the nested context-bundle node.
+  const node = (isRec(rec.node) ? rec.node : undefined) ?? bundle?.node;
+  const summary =
+    typeof rec.summary === "string"
+      ? rec.summary
+      : detail && typeof detail.summary === "string"
+        ? detail.summary
+        : undefined;
+  const result: NodeDetail = {
+    // A 200 always carries a node; an absent one keeps `data.node` falsy so the
+    // view degrades honestly rather than rendering an empty-id card.
+    node: node as EngineNode,
+    tiers: (rec.tiers ?? {}) as TiersBlock,
+  };
+  if (summary !== undefined) result.summary = summary;
+  if (isRec(rec.interior)) result.interior = rec.interior as unknown as GraphSlice;
+  return result;
+}
+
+// --- §4 node evidence: floor the three evidence arrays -----------------------------
+//
+// The live `/nodes/{id}/evidence` route serves the evidence fields directly under
+// `data` (flattened to the top level by `unwrapEnvelope`, with the `tiers` block a
+// sibling). It was the ONE `/nodes` endpoint consumed RAW — every sibling
+// (`adaptNodeDetail`/`adaptContent`/...) has a tolerant adapter and this did not. The
+// engine serde OMITS an empty evidence array, so a node with no code locations (or no
+// commits/documents) arrives MISSING that key; the pure evidence fold
+// (`deriveEvidenceGroups`/`hasEvidence`) then read `.length` of `undefined` and crashed
+// the whole graph (stage) panel on every hover/select. This adapter is the boundary
+// fix (mock-mirrors-live, one-code-path): floor all three arrays so EVERY evidence
+// consumer is protected, not just the hover card.
+
+/** Live `/nodes/{id}/evidence` → the internal `NodeEvidence`. TOLERANT (the
+ *  one-code-path discipline of `adaptNodeDetail`/`adaptContent`): each of the three
+ *  evidence arrays is floored to `[]` when the wire omits it (the engine serde skips
+ *  empty arrays), and an absent/odd body yields three empty arrays plus an empty tiers
+ *  block — so the consumer reads degraded state from the `tiers` truth rather than a
+ *  thrown adapter, and the evidence fold never reads `.length` of undefined. */
+export function adaptNodeEvidence(body: unknown): NodeEvidence {
+  const rec = isRec(body) ? body : {};
+  return {
+    documents: Array.isArray(rec.documents)
+      ? (rec.documents as NodeEvidence["documents"])
+      : [],
+    code_locations: Array.isArray(rec.code_locations)
+      ? (rec.code_locations as NodeEvidence["code_locations"])
+      : [],
+    commits: Array.isArray(rec.commits) ? (rec.commits as NodeEvidence["commits"]) : [],
+    tiers: (rec.tiers ?? {}) as TiersBlock,
   };
 }
 

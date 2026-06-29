@@ -7,7 +7,12 @@ import { buildEditorCommands } from "../commandPaletteCommands";
 import { registerCommandProvider, type CommandContext } from "../commandRegistry";
 
 export function editorCommandProvider(ctx: CommandContext): readonly unknown[] {
-  return buildEditorCommands(ctx.intents.closeDocument);
+  return buildEditorCommands({
+    closeDoc: ctx.intents.closeDocument,
+    closeAllDocs: ctx.intents.closeAllDocuments,
+    reloadDoc: ctx.intents.reloadActiveDocument,
+    keepOpen: ctx.intents.keepActiveDocumentOpen,
+  });
 }
 
 registerCommandProvider("editor", editorCommandProvider);

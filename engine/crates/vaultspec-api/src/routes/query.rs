@@ -1019,8 +1019,12 @@ pub async fn node_detail(
             format!("unknown node `{id}`"),
         )
     })?;
+    // Lazy headline summary (node-visual-richness hover card): the doc body's first
+    // prose line, read on-demand for `doc:` nodes only — never stored in the graph,
+    // never blocks the detail when absent (a feature node, an unreadable body).
+    let summary = super::content::doc_summary(&cell, &id);
     Ok(super::envelope(
-        json!({"detail": detail}),
+        json!({"detail": detail, "summary": summary}),
         rag_tiers(&cell),
         None,
     ))

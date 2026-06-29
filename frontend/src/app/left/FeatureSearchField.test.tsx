@@ -54,14 +54,34 @@ describe("FeatureSearchField (feature autofill)", () => {
     expect(commit).toHaveBeenCalledWith("dashboard-left-rail");
   });
 
-  it("narrows suggestions by the display string and the raw tag", () => {
-    draftValue = "Left Rail"; // matches only the display name
+  it("narrows suggestions by the display string and the raw tag as the user types", () => {
+    // The draft echoes the typed text; setValue mirrors the real hook so the
+    // controlled field updates as the user types.
+    setValue.mockImplementation((v: unknown) => {
+      draftValue = typeof v === "string" ? v : "";
+    });
     render(createElement(FeatureSearchField));
-    fireEvent.focus(screen.getByLabelText("filter the vault by feature"));
+    const input = screen.getByLabelText("filter the vault by feature");
+    fireEvent.focus(input);
+    // Typing is what narrows the list — a keystroke marks the query as edited.
+    fireEvent.change(input, { target: { value: "Left Rail" } });
 
     expect(screen.getByText("dashboard-left-rail")).toBeTruthy();
     expect(screen.queryByText("dashboard-gui")).toBeNull();
     expect(screen.queryByText("timeline")).toBeNull();
+  });
+
+  it("browses the FULL vocabulary on focus even when a filter is applied (#6.1)", () => {
+    // The field echoes an already-applied/committed feature filter. Re-focusing to
+    // pick a DIFFERENT feature must show every candidate — the applied filter must
+    // never constrain the dropdown (it narrows the rail tree, not this list).
+    draftValue = "dashboard-left-rail";
+    render(createElement(FeatureSearchField));
+    fireEvent.focus(screen.getByLabelText("filter the vault by feature"));
+
+    expect(screen.getByText("dashboard-left-rail")).toBeTruthy();
+    expect(screen.getByText("dashboard-gui")).toBeTruthy();
+    expect(screen.getByText("timeline")).toBeTruthy();
   });
 
   it("commits the active suggestion on Enter after ArrowDown", () => {

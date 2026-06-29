@@ -13,11 +13,13 @@ import { useMemo, useSyncExternalStore } from "react";
 
 import {
   deriveMarkdownHeaderView,
+  engineKeys,
   useActiveScope,
   useContentView,
   type ContentView,
   type MarkdownHeaderView,
 } from "../server/queries";
+import { queryClient } from "../server/queryClient";
 import { normalizeNodeId } from "../nodeIds";
 import { normalizeSelectionScope, selectNode } from "./selection";
 import {
@@ -42,7 +44,10 @@ export interface DockWorkspacePanelSpec {
   component: "doc";
   title: string;
   params: { nodeId: string; surface: ViewerSurface };
-  position: { referencePanel: string; direction: "left" | "within" };
+  /** Where to dock the new panel. Absent when nothing is present to reference
+   *  (the graph is hidden and no document is open yet) — the panel then seeds the
+   *  empty workspace at the root, taking the full center width. */
+  position?: { referencePanel: string; direction: "left" | "within" };
 }
 
 export interface DockWorkspaceSyncPlan {
@@ -120,14 +125,25 @@ export function deriveDockWorkspaceSyncPlan(
 
   for (const doc of normalizedOpenDocs) {
     if (present.has(doc.nodeId)) continue;
-    const referencePanel = availableDocPanels[0] ?? graphPanelId;
-    const direction = referencePanel === graphPanelId ? "left" : "within";
+    // Dock the first document to the LEFT of the graph; further documents tab into
+    // the existing document group. When the graph is hidden and no document is open
+    // yet, there is nothing to reference — the panel seeds the empty workspace at
+    // the root and takes the full center width (graph-hidden ⇒ docs full spread).
+    const referencePanel =
+      availableDocPanels[0] ?? (present.has(graphPanelId) ? graphPanelId : null);
     addPanels.push({
       id: doc.nodeId,
       component: "doc",
       title: dockTabTitle(doc.nodeId),
       params: { nodeId: doc.nodeId, surface: doc.surface },
-      position: { referencePanel, direction },
+      ...(referencePanel === null
+        ? {}
+        : {
+            position: {
+              referencePanel,
+              direction: referencePanel === graphPanelId ? "left" : "within",
+            },
+          }),
     });
     present.add(doc.nodeId);
     availableDocPanels.push(doc.nodeId);
@@ -141,12 +157,16 @@ const DOCK_TAB_ROOT_BASE_CLASS =
 const DOCK_TAB_ACTIVE_CLASS = "text-ink";
 const DOCK_TAB_INACTIVE_CLASS = "text-ink-faint";
 const DOCK_TAB_TITLE_CLASS = "max-w-[18ch] truncate";
+// A provisional (preview) tab renders its title in ITALIC (VS Code preview cue,
+// #15) — the one visual signal that the tab is not yet pegged.
+const DOCK_TAB_PROVISIONAL_TITLE_CLASS = "italic";
 const DOCK_TAB_CLOSE_BUTTON_CLASS =
   "-mr-fg-0-5 inline-flex size-3.5 shrink-0 items-center justify-center rounded-fg-xs text-ink-faint opacity-0 transition-[opacity,background-color,color] duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus group-hover:opacity-100";
 
 export function deriveDockTabHeaderView(
   active: boolean,
   title: string,
+  provisional = false,
 ): DockTabHeaderView {
   return {
     active,
@@ -154,7 +174,9 @@ export function deriveDockTabHeaderView(
     rootClassName: `${DOCK_TAB_ROOT_BASE_CLASS} ${
       active ? DOCK_TAB_ACTIVE_CLASS : DOCK_TAB_INACTIVE_CLASS
     }`,
-    titleClassName: DOCK_TAB_TITLE_CLASS,
+    titleClassName: provisional
+      ? `${DOCK_TAB_TITLE_CLASS} ${DOCK_TAB_PROVISIONAL_TITLE_CLASS}`
+      : DOCK_TAB_TITLE_CLASS,
     closeButtonClassName: DOCK_TAB_CLOSE_BUTTON_CLASS,
     closeAriaLabel: `Close ${title}`,
     activateAriaLabel: `Switch to ${title}`,
@@ -165,7 +187,10 @@ function dockTabHeaderSnapshot(api: DockTabHeaderApi): string {
   return `${api.isActive ? "1" : "0"}\u0000${api.title ?? ""}`;
 }
 
-export function useDockTabHeaderView(api: DockTabHeaderApi): DockTabHeaderView {
+export function useDockTabHeaderView(
+  api: DockTabHeaderApi,
+  provisional = false,
+): DockTabHeaderView {
   const snapshot = useSyncExternalStore(
     (onStoreChange) => {
       const active = api.onDidActiveChange(onStoreChange);
@@ -180,8 +205,43 @@ export function useDockTabHeaderView(api: DockTabHeaderApi): DockTabHeaderView {
   );
   return useMemo(() => {
     const [active, title] = snapshot.split("\u0000");
-    return deriveDockTabHeaderView(active === "1", title ?? "");
-  }, [snapshot]);
+    return deriveDockTabHeaderView(active === "1", title ?? "", provisional);
+  }, [snapshot, provisional]);
+}
+
+/** Whether a given doc tab is the single provisional (preview) tab — drives the
+ *  italic title. Selects the RAW openDocs slice and derives in useMemo so the
+ *  selector never returns a fresh ref (stable-selectors). */
+export function useIsProvisionalDoc(nodeId: unknown): boolean {
+  const normalized = normalizeNodeId(nodeId);
+  const openDocs = useViewStore((state) => state.openDocs);
+  return useMemo(
+    () =>
+      normalized !== null &&
+      openDocs.some((doc) => doc.nodeId === normalized && doc.provisional === true),
+    [openDocs, normalized],
+  );
+}
+
+/** Close ALL open document tabs (#15 "Close all documents"). Composes the store's
+ *  bulk-close op so the active id and workspace-cleared latch stay consistent. */
+export function closeAllDocTabs(): void {
+  useViewStore.getState().closeAllDocs();
+}
+
+/** Reload a document tab's content from the engine (#15 "Reload"): invalidate the
+ *  read-only content query for (scope, nodeId) so the viewer refetches the on-disk
+ *  body. The stores layer is the sole wire client (dashboard-layer-ownership). */
+export function reloadDocTab(
+  nodeId: unknown,
+  scope: unknown = useViewStore.getState().scope,
+): void {
+  const docNodeId = normalizeNodeId(nodeId);
+  const normalizedScope = normalizeViewStoreSessionString(scope);
+  if (docNodeId === null || normalizedScope === null) return;
+  void queryClient.invalidateQueries({
+    queryKey: engineKeys.content(normalizedScope, docNodeId),
+  });
 }
 
 export function deriveDockDocPanelView(
@@ -223,6 +283,17 @@ export function useDockDocPanelView(
     () => deriveDockDocPanelView(normalizedNodeId, normalizedSurface, scope, content),
     [normalizedNodeId, normalizedSurface, scope, content],
   );
+}
+
+/** The viewer surface for an addressable graph/document node id, or null for a node
+ *  that has NO document (a synthesized `feature:` convergence node descends the slice
+ *  instead of opening a tab). `doc:` -> markdown reader, `code:` -> code viewer.
+ *  Shared by the graph select/open bridges so the surface rule lives in one place. */
+export function docSurfaceForNodeId(id: unknown): ViewerSurface | null {
+  if (typeof id !== "string") return null;
+  if (id.startsWith("doc:")) return "markdown";
+  if (id.startsWith("code:")) return "code";
+  return null;
 }
 
 /**
@@ -277,6 +348,37 @@ export function activateDocTab(nodeId: unknown): void {
 /** Close a tab (a tab-close gesture or a dockview panel removal). */
 export function closeDocTab(nodeId: unknown): void {
   useViewStore.getState().closeDoc(nodeId);
+}
+
+/** Close the ACTIVE document tab (#15 keyboard "close tab"). No-op when none open. */
+export function closeActiveDocTab(): void {
+  const activeId = useViewStore.getState().activeDocId;
+  if (activeId !== null) closeDocTab(activeId);
+}
+
+/** Close every document tab EXCEPT the given one (#15 context menu "Close Others"). */
+export function closeOtherDocTabs(keepNodeId: unknown): void {
+  const keep = normalizeNodeId(keepNodeId);
+  if (keep === null) return;
+  const others = useViewStore
+    .getState()
+    .openDocs.filter((doc) => doc.nodeId !== keep)
+    .map((doc) => doc.nodeId);
+  for (const id of others) closeDocTab(id);
+}
+
+/** Activate the tab `direction` steps from the active one (#15 keyboard tab nav:
+ *  +1 next, -1 previous), WRAPPING around the strip. Reads the canonical
+ *  open-docs order so it honours the provisional-last invariant. No-op with <2 tabs. */
+export function activateAdjacentDocTab(direction: 1 | -1): void {
+  const state = useViewStore.getState();
+  const openDocs = normalizeOpenDocs(state.openDocs);
+  if (openDocs.length < 2) return;
+  const activeId = normalizeActiveDocId(openDocs, state.activeDocId);
+  const currentIndex = openDocs.findIndex((doc) => doc.nodeId === activeId);
+  if (currentIndex < 0) return;
+  const nextIndex = (currentIndex + direction + openDocs.length) % openDocs.length;
+  activateDocTab(openDocs[nextIndex].nodeId);
 }
 
 /**

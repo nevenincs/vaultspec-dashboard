@@ -42,7 +42,7 @@ describe("EngineClient", () => {
     const urls = calls.map((c) => c.url);
     expect(urls).toEqual([
       "/api/map",
-      "/api/vault-tree?scope=wt-1",
+      "/api/vault-tree?scope=wt-1&page_size=2000",
       "/api/graph/query",
       "/api/filters?scope=wt-1",
       "/api/nodes/feature%3Aa?scope=wt-1",
@@ -66,6 +66,46 @@ describe("EngineClient", () => {
       "/api/ops/rag/reindex",
       "/api/search",
     ]);
+  });
+
+  it("walks the vault-tree cursor to completion so the rail holds the whole listing", async () => {
+    // The rail narrows the vault tree client-side, so a partial first page would
+    // silently drop every feature whose documents sit beyond it (Issue #6: most
+    // feature selections emptied the rail). vaultTree must follow `next_cursor`
+    // until exhausted and concatenate every page's entries.
+    const pages = [
+      {
+        data: { entries: [{ stem: "a-S01", doc_type: "exec", feature_tags: ["a"] }] },
+        tiers: {},
+        next_cursor: "a-S01",
+      },
+      {
+        data: { entries: [{ stem: "b-S01", doc_type: "exec", feature_tags: ["b"] }] },
+        tiers: {},
+      },
+    ];
+    const calls: { url: string }[] = [];
+    let page = 0;
+    const fetchImpl: FetchLike = (url) => {
+      calls.push({ url });
+      const body = pages[Math.min(page, pages.length - 1)];
+      page += 1;
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    };
+    const client = new EngineClient({ baseUrl: "/api", fetchImpl });
+
+    const tree = await client.vaultTree("wt-1");
+
+    expect(calls.map((c) => c.url)).toEqual([
+      "/api/vault-tree?scope=wt-1&page_size=2000",
+      "/api/vault-tree?scope=wt-1&page_size=2000&cursor=a-S01",
+    ]);
+    expect(tree.entries.map((e) => e.feature_tags[0])).toEqual(["a", "b"]);
   });
 
   it("builds the multiplexed stream URL with splice resume (§7)", () => {

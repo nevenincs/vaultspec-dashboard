@@ -31,7 +31,7 @@ import {
 import { useDocumentSearchController } from "../../stores/server/documentSearchController";
 import { deriveSearchPillViews } from "../../stores/server/searchPill";
 import { useActiveScope } from "../../stores/server/queries";
-import { openNodeIsland } from "../../stores/view/selection";
+import { activateEntity } from "../../stores/view/activateEntity";
 import { Skeleton, SkeletonRow, StateBlock } from "../kit";
 import { trapTabFocus } from "../chrome/focusTrap";
 import { useDismissOnEscape } from "../chrome/useDismissOnEscape";
@@ -66,7 +66,12 @@ export function DocumentSearchSurface() {
   const openNode = useCallback(
     (nodeId: string | null) => {
       if (!nodeId) return;
-      void openNodeIsland(nodeId, scope).catch(() => undefined);
+      // Off-canvas open (search) → the ONE canonical activate seam: PERMANENT dock tab
+      // + frame:true so the graph MATERIALIZES and CENTERS on the node (it may be off
+      // the current constellation slice). Retires the dead island open.
+      void activateEntity(nodeId, scope, { permanent: true, frame: true }).catch(
+        () => undefined,
+      );
       close();
     },
     [scope, close],

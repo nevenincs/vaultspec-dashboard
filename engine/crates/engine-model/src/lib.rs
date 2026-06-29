@@ -253,8 +253,18 @@ pub struct Node {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Dates {
+    /// Frontmatter `date:` — the authored creation date, a `yyyy-mm-dd` string.
     pub created: Option<String>,
+    /// Worktree modification time (ms epoch) — the filesystem mtime, NOT the
+    /// authored stamp. Absent on blob-true/as-of historical views.
     pub modified: Option<Timestamp>,
+    /// Frontmatter `modified:` — the CLI-maintained last-modified STAMP, a
+    /// `yyyy-mm-dd` string (distinct from the `modified` mtime above). Read from
+    /// the document frontmatter exactly like `created`, so it is present on
+    /// historical (blob-true) views as it stood at T. `#[serde(default)]` keeps
+    /// older serialized `Dates` (pre-`stamped`) forward-deserializable.
+    #[serde(default)]
+    pub stamped: Option<String>,
 }
 
 #[cfg(test)]

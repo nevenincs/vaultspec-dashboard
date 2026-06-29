@@ -54,6 +54,17 @@ pub enum SettingType {
     /// defaults for any absent or unknown id. So the engine's job is to keep the
     /// persisted value well-formed and bounded, not to know the controls.
     GraphControls { max_entries: usize },
+    /// A sparse SECTION-FOLD map: which collapsible UI sections the user keeps
+    /// OPEN, wire-encoded as a JSON object string `{section_id: open_bool}`. The
+    /// same bounded, frontend-owned-vocabulary map boundary as `Keybindings` /
+    /// `GraphControls`, applied to per-section disclosure/fold state (e.g. the
+    /// activity rail's sections): the engine validates structure (an object of
+    /// booleans) and bounds the map at `max_entries` (bounded-by-default), but
+    /// does NOT own the section vocabulary — the frontend owns which section ids
+    /// exist and each section's default open/closed, falling back to that default
+    /// for any absent or unknown id. So the engine's job is to keep the persisted
+    /// value well-formed and bounded, not to know the sections.
+    SectionFolds { max_entries: usize },
 }
 
 /// Per-chord byte ceiling inside a keybindings override map. A generous bound
@@ -86,6 +97,11 @@ pub enum ControlKind {
     /// the settings dialog — the dialog skips this control kind. The value is the
     /// sparse `control_id -> value` override map the overlay writes back.
     GraphControls,
+    /// A section-fold map. Persisted programmatically by the surface that owns the
+    /// collapsible sections (the activity rail), NOT edited in the settings dialog
+    /// — the dialog skips this control kind. The value is the sparse
+    /// `section_id -> open` map the surface writes back.
+    SectionFolds,
 }
 
 /// One declared setting. Owned (not `&'static`) so the registry can carry enum
@@ -180,6 +196,10 @@ pub const MAX_KEYBINDING_OVERRIDES: usize = 256;
 /// limit. Sized generously above the real force/appearance control count.
 pub const MAX_GRAPH_CONTROL_OVERRIDES: usize = 256;
 
+/// The cap on persisted section-fold entries (bounded-by-default). Sized
+/// generously above the real collapsible-section count of any one rail.
+pub const MAX_SECTION_FOLDS: usize = 64;
+
 /// Look up a declared setting by key.
 pub fn find(key: &str) -> Option<&'static SettingDef> {
     registry().iter().find(|d| d.key == key)
@@ -229,6 +249,7 @@ pub fn check_value(value_type: &SettingType, value: &str) -> Result<String, Stri
         },
         SettingType::Keybindings { max_entries } => check_keybindings(value, *max_entries),
         SettingType::GraphControls { max_entries } => check_graph_controls(value, *max_entries),
+        SettingType::SectionFolds { max_entries } => check_section_folds(value, *max_entries),
     }
 }
 
@@ -314,6 +335,28 @@ fn check_graph_controls(value: &str, max_entries: usize) -> Result<String, Strin
     serde_json::to_string(&normalized).map_err(|_| "could not normalize controls".to_string())
 }
 
+/// Validate a section-fold map: a JSON object of `section_id -> open` booleans,
+/// bounded at `max_entries`, each id non-empty. Returns the CANONICAL form
+/// (compact JSON, sorted keys) so storage is normalized regardless of the
+/// client's key order or whitespace. The section vocabulary and each section's
+/// default open/closed are the frontend's authority — this only keeps the
+/// persisted value well-formed (an object of booleans) and bounded.
+fn check_section_folds(value: &str, max_entries: usize) -> Result<String, String> {
+    use std::collections::BTreeMap;
+    let map: BTreeMap<String, bool> = serde_json::from_str(value)
+        .map_err(|_| "must be a JSON object of section-id to open booleans".to_string())?;
+    if map.len() > max_entries {
+        return Err(format!(
+            "at most {max_entries} section folds may be persisted"
+        ));
+    }
+    if map.keys().any(|id| id.is_empty()) {
+        return Err("a section id must not be empty".to_string());
+    }
+    // BTreeMap re-serializes with sorted keys and no insignificant whitespace.
+    serde_json::to_string(&map).map_err(|_| "could not normalize section folds".to_string())
+}
+
 fn invalid(key: &str, reason: String) -> ValidationError {
     ValidationError::InvalidValue {
         key: key.to_string(),
@@ -358,6 +401,30 @@ fn build_registry() -> Vec<SettingDef> {
             unit: None,
             placeholder: None,
         },
+        // The activity-rail collapsible-section OPEN state — the user's per-section
+        // fold preference, persisted as GLOBAL UX state the rail reads on load and
+        // writes on toggle (settings-are-schema-driven-from-one-registry; the
+        // DURABLE settings table, NOT localStorage and NOT the volatile
+        // dashboard-state). A bounded `{section_id: open}` map; the frontend owns
+        // the section vocabulary and each section's default (collapsed) for any
+        // absent id, so the engine just keeps it well-formed + bounded. Written
+        // programmatically by the rail, so the settings dialog skips this control.
+        SettingDef {
+            key: "right_rail_section_folds".to_string(),
+            value_type: SettingType::SectionFolds {
+                max_entries: MAX_SECTION_FOLDS,
+            },
+            default: "{}".to_string(),
+            scope_eligible: false,
+            control: ControlKind::SectionFolds,
+            label: "Activity rail section folds".to_string(),
+            description: "Which activity-rail sections are kept open.".to_string(),
+            group: "Appearance".to_string(),
+            order: 3,
+            step: None,
+            unit: None,
+            placeholder: None,
+        },
         SettingDef {
             key: "default_granularity".to_string(),
             value_type: SettingType::Enum {
@@ -374,6 +441,32 @@ fn build_registry() -> Vec<SettingDef> {
             description: "The graph detail level on load.".to_string(),
             group: "Graph".to_string(),
             order: 1,
+            step: None,
+            unit: None,
+            placeholder: None,
+        },
+        // The date criterion the timeline orders and filters documents by. Three
+        // served criteria (the engine derives `dates.{created,modified,stamped}`):
+        // `created` (frontmatter `date:`, the safe default present on every view),
+        // `modified` (worktree mtime — absent on historical/as-of views), and
+        // `stamped` (frontmatter `modified:` CLI stamp). The frontend maps each
+        // token to a plain user-facing label; the engine serves the raw tokens.
+        SettingDef {
+            key: "timeline_date_criterion".to_string(),
+            value_type: SettingType::Enum {
+                members: vec![
+                    "created".to_string(),
+                    "modified".to_string(),
+                    "stamped".to_string(),
+                ],
+            },
+            default: "created".to_string(),
+            scope_eligible: true,
+            control: ControlKind::Segmented,
+            label: "Timeline date".to_string(),
+            description: "Which date the timeline orders and filters documents by.".to_string(),
+            group: "Graph".to_string(),
+            order: 5,
             step: None,
             unit: None,
             placeholder: None,
@@ -695,6 +788,57 @@ mod tests {
     fn graph_controls_is_global_only() {
         assert_eq!(
             validate("graph_controls", "{}", true).unwrap_err().kind(),
+            "scope_not_allowed"
+        );
+    }
+
+    #[test]
+    fn section_folds_is_declared_global_with_the_section_folds_control() {
+        // #41: the activity-rail fold state is a declared GLOBAL setting in the one
+        // registry (settings-are-schema-driven), served + validated like every
+        // other — not localStorage. ControlKind::SectionFolds (dialog-skipped).
+        let def = find("right_rail_section_folds").expect("section-folds setting declared");
+        assert!(matches!(
+            def.value_type,
+            SettingType::SectionFolds { max_entries } if max_entries == MAX_SECTION_FOLDS
+        ));
+        assert_eq!(def.control, ControlKind::SectionFolds);
+        assert!(!def.scope_eligible, "fold state is global UX state");
+        assert_eq!(def.default, "{}", "no sections recorded by default");
+    }
+
+    #[test]
+    fn section_folds_accepts_a_bool_map_and_normalizes_sorted() {
+        let ty = SettingType::SectionFolds { max_entries: 16 };
+        assert_eq!(check_value(&ty, "{}").unwrap(), "{}");
+        // Sorted keys, no insignificant whitespace; booleans preserved.
+        assert_eq!(
+            check_value(&ty, "{ \"plans\": true, \"changes\": false }").unwrap(),
+            "{\"changes\":false,\"plans\":true}"
+        );
+    }
+
+    #[test]
+    fn section_folds_rejects_malformed_non_bool_oversized_or_empty_id() {
+        let ty = SettingType::SectionFolds { max_entries: 2 };
+        assert!(check_value(&ty, "not json").is_err());
+        assert!(check_value(&ty, "[true]").is_err());
+        // Non-bool values are rejected (object of booleans only).
+        assert!(check_value(&ty, "{\"a\": 1}").is_err());
+        assert!(check_value(&ty, "{\"a\": \"yes\"}").is_err());
+        assert!(check_value(&ty, "{\"a\": null}").is_err());
+        // Over the entry cap.
+        assert!(check_value(&ty, "{\"a\":true,\"b\":false,\"c\":true}").is_err());
+        // Empty section id.
+        assert!(check_value(&ty, "{\"\":true}").is_err());
+    }
+
+    #[test]
+    fn section_folds_is_global_only() {
+        assert_eq!(
+            validate("right_rail_section_folds", "{}", true)
+                .unwrap_err()
+                .kind(),
             "scope_not_allowed"
         );
     }

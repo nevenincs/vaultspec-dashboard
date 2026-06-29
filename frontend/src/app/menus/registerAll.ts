@@ -24,13 +24,11 @@ import "../right/menus/changeMenu";
 import "../right/menus/commitMenu";
 import "../right/menus/prMenu";
 
-// Timeline (also the canonical "event" resolver for the activity rail).
-import "../timeline/menus/eventMarkMenu";
-
 // Graph stage (the canonical "node" resolver, plus meta-edge / island / canvas).
 import "../stage/menus/graphNodeMenu";
 import "../stage/menus/metaEdgeMenu";
 import "../stage/menus/canvasMenu";
+import "../stage/menus/docTabMenu";
 import "../islands/menus/islandMenu";
 
 // Empty rail/timeline background (the app-chrome escape hatches), mirroring canvasMenu.

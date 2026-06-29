@@ -138,6 +138,7 @@ mod tests {
             dates: Some(Dates {
                 created: None,
                 modified: Some(0),
+                stamped: None,
             }),
             feature_tags: vec![],
             status: None,

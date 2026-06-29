@@ -2,11 +2,13 @@
 // SwiftShader software WebGL path, navigates to graph.html, drives the real
 // SceneController/ThreeField surface, and asserts frame-cadence plus interaction
 // latency budgets. Uses a distinct Vite port so it can run concurrently with the
-// adverse pass (port 5174).
+// adverse pass (see ./dev-ports.ts).
 
 import { defineConfig } from "@playwright/test";
 
-const PORT = 5176;
+import { DEV_PORTS } from "./dev-ports";
+
+const PORT = DEV_PORTS.perf;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({

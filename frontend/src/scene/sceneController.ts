@@ -234,6 +234,13 @@ export type SceneCommand =
   // the node on the canvas. ADDITIVE to the locked union (dashboard-node-redesign;
   // mirrors the set-pinned additive shape) — no existing member renamed/removed.
   | { kind: "set-selected"; ids: ReadonlySet<string> }
+  // Visual-only META-HIGHLIGHT (#16): soft, hover-style emphasis of a SET of nodes (a
+  // rail-selected feature's members) — they keep full colour while non-members recede,
+  // exactly like a hover cohort, but with NO selection ring. DISTINCT from `set-selected`
+  // (which rings, and the scene enforces SINGLETON): a feature select emits `frame-nodes`
+  // (camera) + this, NEVER a multi-id `set-selected`. An empty set clears the highlight.
+  // Additive to the locked union — no existing member renamed/removed.
+  | { kind: "set-meta-highlight"; ids: ReadonlySet<string> }
   // Transient cross-highlight (G2.b): lift the named nodes briefly — the
   // timeline's event-click pulse. Additive seam amendment at S36.
   | { kind: "pulse"; ids: ReadonlySet<string> }
@@ -242,6 +249,16 @@ export type SceneCommand =
   | { kind: "zoom-in" }
   | { kind: "zoom-out" }
   | { kind: "fit-to-view" }
+  // One-shot frame to a SUBSET of nodes (follow-mode-selection-sync): fit the
+  // camera to the bounding box of the given node ids — the rail FEATURE-select
+  // frame for that feature's members (distinct from `fit-to-view`, which frames the
+  // WHOLE graph). The renderer owns the fit math (`fitToNodes(ids)`); empty/unknown
+  // ids are a no-op. Being a deliberate user-initiated camera move, it MUST yield
+  // the continuous `set-autoframe` easing (so the subset frame is not immediately
+  // re-fit to the whole graph) until the next explicit fit/enable — same
+  // manual-camera intent a user drag asserts. ADDITIVE to the locked union; no
+  // existing member renamed or removed.
+  | { kind: "frame-nodes"; ids: ReadonlySet<string> }
   | { kind: "reset-view" }
   | { kind: "set-simulation-active"; active: boolean }
   // Three-native force tuning (replaces the retired set-cosmos-config): the
@@ -258,6 +275,11 @@ export type SceneCommand =
   // Freeze toggle: `frozen:true` pauses the field's simulation where it is;
   // `frozen:false` resumes without injecting new alpha.
   | { kind: "set-frozen"; frozen: boolean }
+  // Autoframe toggle (graph-autoframe): `enabled:true` (the default) makes the field
+  // continuously ease the camera to keep the whole graph framed as it changes (interval-
+  // polled + hysteresis-gated + skipped while the user is interacting); `enabled:false`
+  // holds the camera for full manual control.
+  | { kind: "set-autoframe"; enabled: boolean }
   | { kind: "set-bounds"; shape: GraphBoundsShape; size?: number }
   // --- graph-representation addenda (W03.P08) -------------------------------
   // Representation-mode switch (graph-representation ADR): connectivity (FA2,

@@ -11,10 +11,9 @@ use std::path::Path;
 
 use engine_model::{
     CanonicalKey, Edge, Facet, Node, NodeId, NodeKind, Presence, Provenance, RelationKind,
-    ResolutionState, ScopeRef, Tier, Timestamp, edge_id, node_id,
+    ScopeRef, Tier, Timestamp, edge_id, node_id,
 };
-use ingest_struct::extract::{ExtractedMention, MentionKind};
-use ingest_struct::resolve::Resolver;
+use ingest_struct::extract::ExtractedMention;
 use rayon::prelude::*;
 
 use crate::graph::{EdgeAttrs, LinkageGraph};
@@ -248,18 +247,14 @@ fn index_structural(
     let mut seen_stems: std::collections::BTreeMap<String, String> =
         std::collections::BTreeMap::new();
 
-    // Build the worktree resolver ONCE for the whole pass (perf ADR D1): one
-    // tree walk and one shared file-content cache amortized across every
-    // document, replacing the prior per-document walk + codebase re-read that
-    // made cold index ~O(N²).
-    let resolver = Resolver::new(root);
-    phase!("resolver-built");
-
-    // Pass 1 (serial): node upsert + extraction-cache get/put per document,
-    // collecting each document's mentions. The store is single-writer, so its
-    // get/put stays on the coordinating thread; node upsert mutates the graph,
-    // also serial. This pass does NOT resolve — resolution is the expensive,
-    // parallelizable work, deferred to the batch call below (perf ADR D2).
+    // Pass 1 (serial): node upsert + extraction-cache get/put per document. The
+    // store is single-writer, so its get/put stays on the coordinating thread;
+    // node upsert mutates the graph, also serial. The per-document `extract` +
+    // EXTRACT_KIND cache below is the incremental-index change-detection telemetry
+    // (`extracted`/`cache_hits`, surfaced by the `vaultspec index` CLI); the
+    // extracted body mentions are NOT graphed (strict reference-only ruling,
+    // 2026-06-28 — the structural body-mention EDGE producer was retired), so the
+    // cached extraction is no longer resolved into edges.
     let mut per_doc: Vec<(String, String, Vec<ExtractedMention>)> =
         Vec::with_capacity(extracted.len());
     // index-node-exclusion ADR D1: `.vault/index` feature-index documents are
@@ -315,6 +310,7 @@ fn index_structural(
             dates: Some(engine_model::Dates {
                 created: frontmatter_date(&text),
                 modified,
+                stamped: frontmatter_stamped(&text),
             }),
             feature_tags,
             // Status/tier query-time facets (dashboard-pipeline-wire W01.P02
@@ -370,46 +366,14 @@ fn index_structural(
     let live_extract_keys: Vec<String> = per_doc.iter().map(|(_, h, _)| h.clone()).collect();
     store.retain_artifacts(EXTRACT_KIND, &live_extract_keys)?;
 
-    // Resolve EVERY document's mentions in one parallel batch (perf ADR D2):
-    // distinct steps are resolved across CPU cores, the per-document
-    // result is byte-identical to the prior sequential `resolver.resolve(...)`
-    // (the resolve_batch parity invariant). Resolution always runs against the
-    // *current* tree (resolution state is live signal, not cacheable fact).
-    let mention_batches: Vec<Vec<ExtractedMention>> =
-        per_doc.iter().map(|(_, _, m)| m.clone()).collect();
-    let resolved_batches = resolver.resolve_batch(mention_batches);
-
-    // Pass 2 (serial): mint edges per document from the pre-resolved mentions.
-    // Edge ingestion mutates the graph, so it stays serial; it is cheap.
-    //
-    // Multiplicity aggregates at extraction granularity (audit W02P05-202 /
-    // W01P01-003): repeated same-target mentions in one document collapse to one
-    // edge carrying the count, ingested once — so re-ingestion replaces instead
-    // of inflating.
-    for ((stem, blob_hash, _), resolved_mentions) in per_doc.iter().zip(resolved_batches) {
-        let mut by_id: std::collections::BTreeMap<String, (Edge, u32, Option<String>)> =
-            std::collections::BTreeMap::new();
-        for resolved in resolved_mentions {
-            let target = resolved.target.clone();
-            let edge = structural_edge_for(stem, blob_hash, &resolved, scope, observed_at);
-            by_id
-                .entry(edge.id.0.clone())
-                .and_modify(|(_, count, _)| *count += 1)
-                .or_insert((edge, 1, target));
-        }
-        for (_, (edge, multiplicity, resolved_target)) in by_id {
-            stats.edges += 1;
-            crate::edges::ingest(
-                graph,
-                edge,
-                EdgeAttrs {
-                    multiplicity,
-                    resolved_target,
-                    ..Default::default()
-                },
-            )?;
-        }
-    }
+    // STRICT reference-only graph (user ruling, 2026-06-28): in-body
+    // `[[wiki-link]]` mentions are NOT graph fact — wiki-links live ONLY in
+    // `related:` frontmatter, served as declared `references` (+ the typed
+    // related-family kinds and the plan `Contains` hierarchy), which IS the node
+    // graph. The structural body-mention EDGE producer (resolve + mint +
+    // `structural_edge_for`) was therefore retired; the extraction above is kept
+    // only as the incremental-index change-detection telemetry, never resolved
+    // into edges.
 
     // Post-pass: bind each step plan-container node to its exec-record document
     // node where one exists (W03.P07.S37). Runs after every doc node is in the
@@ -479,6 +443,7 @@ pub(crate) fn project_rules(
             dates: Some(engine_model::Dates {
                 created: frontmatter_date(&text),
                 modified: None,
+                stamped: frontmatter_stamped(&text),
             }),
             feature_tags: vec![],
             // A rule carries neither an ADR status nor a plan tier — those are
@@ -670,8 +635,7 @@ pub fn ingest_declared_from_json(
         .map(|d| node_id(&CanonicalKey::Document { stem: &d.id }))
         .collect();
     let incident = |edge: &Edge| index_ids.contains(&edge.src) || index_ids.contains(&edge.dst);
-    // Declared edges carry core's authored kind/multiplicity/weight verbatim;
-    // core-derived edges ride the distinct `core-derived` relation at 0.8.
+    // Declared edges carry core's authored kind/multiplicity/weight verbatim.
     let mut count = 0;
     for d in parsed.declared {
         if incident(&d.edge) {
@@ -692,14 +656,22 @@ pub fn ingest_declared_from_json(
             count += 1;
         }
     }
-    for edge in parsed.core_derived {
-        if incident(&edge) {
-            continue;
-        }
-        if crate::edges::ingest(graph, edge, EdgeAttrs::default()).is_ok() {
-            count += 1;
-        }
-    }
+    // READ-AND-INFER EXCLUSION: core's `derived_edges` (`parsed.core_derived` —
+    // co-citation / similarity correlations core COMPUTES, NOT authored links)
+    // are NOT admitted into the served graph. The dashboard graph is strictly a
+    // reference-driven connectivity graph: every edge must trace to an authored
+    // document reference — a `related:` frontmatter cross-reference (declared) or
+    // a body `[[wiki-link]]` mention (structural). Computed similarity is not a
+    // reference, so it is rejected at this ingest gate — the single boundary where
+    // a core payload becomes served graph fact — exactly as ephemeral semantic
+    // (RAG) matches are rejected as graph fact (see `Tier` doc, engine-spec D3.5).
+    // This is a PERMANENT exclusion at ingest, not a per-request `relations`
+    // filter: the edges are never generated into the graph, never propagated to
+    // the constellation `meta_edges`, and never serialized onto the wire. The
+    // adapter (`ingest_core::graph_v2`) still parses `derived_edges` faithfully
+    // (mirroring core's payload); admitting them as graph fact is the policy this
+    // gate owns, and the policy is "no".
+    let _ = &parsed.core_derived;
     (count, None)
 }
 
@@ -975,54 +947,6 @@ fn is_step_leaf(leaf: &str) -> bool {
     }
 }
 
-/// Build the structural edge for one resolved mention. Shared with the
-/// blob-true as-of path so present and historical views mint identical
-/// edge identities for identical content.
-pub(crate) fn structural_edge_for(
-    src_stem: &str,
-    blob_hash: &str,
-    resolved: &ingest_struct::resolve::ResolvedMention,
-    scope: &ScopeRef,
-    observed_at: Timestamp,
-) -> Edge {
-    // Identity from the MENTION TEXT alone (audit W02P06-301): resolution
-    // output updates only `state` (and the resolved target attribute),
-    // never identity — a broken→resolved transition keeps the same edge id
-    // (D3.3 retained-edge-with-mutable-state; contract §2 animate-by-id).
-    // Step mentions key by canonical identifier alone (plan-stem
-    // qualification belongs to plan-container nodes minted from plans, not
-    // to mention targets).
-    let src = node_id(&CanonicalKey::Document { stem: src_stem });
-    let (dst, target_key): (NodeId, String) = match &resolved.mention.kind {
-        MentionKind::WikiLink(stem) => (node_id(&CanonicalKey::Document { stem }), stem.clone()),
-        MentionKind::StepId(s) => (NodeId::derive(&NodeKind::PlanContainer, s), s.clone()),
-    };
-    let confidence = match resolved.state {
-        ResolutionState::Resolved => ingest_struct::CONFIDENCE_RESOLVED,
-        ResolutionState::Stale => ingest_struct::CONFIDENCE_STALE,
-        ResolutionState::Broken => crate::edges::STRUCTURAL_BROKEN_CONFIDENCE,
-    };
-    let provenance = Provenance::DocumentBody {
-        blob_hash: blob_hash.to_string(),
-        span: resolved.mention.span,
-        target: target_key,
-    };
-    let relation = RelationKind::Mentions;
-    let id = edge_id(&src, &dst, &relation, Tier::Structural, &provenance);
-    Edge {
-        id,
-        src,
-        dst,
-        relation,
-        tier: Tier::Structural,
-        confidence,
-        state: Some(resolved.state),
-        provenance,
-        scope: scope.clone(),
-        observed_at,
-    }
-}
-
 /// Canonical, deterministic serialization of a graph — the D8.2
 /// re-derivability comparator (sorted nodes and edges by id).
 pub fn canonical_snapshot(graph: &LinkageGraph) -> String {
@@ -1128,6 +1052,21 @@ pub(crate) fn frontmatter_date(text: &str) -> Option<String> {
     let end = rest.find("\n---")?;
     rest[..end].lines().find_map(|line| {
         let value = line.trim().strip_prefix("date:")?.trim();
+        let value = value.trim_matches('\'').trim_matches('"');
+        (!value.is_empty()).then(|| value.to_string())
+    })
+}
+
+/// The frontmatter `modified:` value (`dates.stamped`) — the CLI-maintained
+/// last-modified STAMP (a `yyyy-mm-dd` string), distinct from the worktree mtime
+/// served as `dates.modified`. Read exactly like `frontmatter_date` so it is
+/// blob-true on historical views. The `modified:` prefix must not also match
+/// `date:`, so it is matched on its own key.
+pub(crate) fn frontmatter_stamped(text: &str) -> Option<String> {
+    let rest = text.strip_prefix("---")?;
+    let end = rest.find("\n---")?;
+    rest[..end].lines().find_map(|line| {
+        let value = line.trim().strip_prefix("modified:")?.trim();
         let value = value.trim_matches('\'').trim_matches('"');
         (!value.is_empty()).then(|| value.to_string())
     })
@@ -1420,8 +1359,6 @@ fn vault_documents(root: &Path) -> Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ingest_struct::extract::ExtractedMention;
-    use ingest_struct::resolve::ResolvedMention;
 
     fn scope() -> ScopeRef {
         ScopeRef::Ref {
@@ -1429,15 +1366,22 @@ mod tests {
         }
     }
 
-    fn mention(kind: MentionKind, state: ResolutionState, target: Option<&str>) -> ResolvedMention {
-        ResolvedMention {
-            mention: ExtractedMention {
-                kind,
-                span: (0, 10),
-            },
-            state,
-            target: target.map(str::to_string),
-        }
+    #[test]
+    fn frontmatter_stamped_reads_the_modified_key_distinct_from_date() {
+        // #14: `dates.stamped` is the frontmatter `modified:` CLI stamp, read like
+        // `date:` → `created`. A doc with both keys yields both, distinctly; a doc
+        // with only `date:` has no stamp (truthful absence), and the `modified:`
+        // key must not be confused with `date:`.
+        let both =
+            "---\ntags:\n  - '#adr'\ndate: '2026-06-13'\nmodified: '2026-06-20'\n---\n\n# x\n";
+        assert_eq!(frontmatter_date(both).as_deref(), Some("2026-06-13"));
+        assert_eq!(frontmatter_stamped(both).as_deref(), Some("2026-06-20"));
+        let date_only = "---\ntags:\n  - '#adr'\ndate: '2026-06-13'\n---\n\n# x\n";
+        assert_eq!(frontmatter_date(date_only).as_deref(), Some("2026-06-13"));
+        assert!(
+            frontmatter_stamped(date_only).is_none(),
+            "no `modified:` key → no stamp (truthful absence)"
+        );
     }
 
     #[test]
@@ -1682,29 +1626,6 @@ mod tests {
             doc_lifecycle(Some("adr"), bare_adr).is_none(),
             "no signal at all is honest absence"
         );
-    }
-
-    #[test]
-    fn resolution_transitions_never_change_edge_identity() {
-        // Audit W02P06-301: identity from mention text alone - a
-        // broken-to-resolved transition mutates state, never the edge id.
-        let (kind, resolved_target) = (MentionKind::StepId("W01.P02.S03".into()), "some-plan.md");
-        let broken = structural_edge_for(
-            "doc-a",
-            "blob1",
-            &mention(kind.clone(), ResolutionState::Broken, None),
-            &scope(),
-            0,
-        );
-        let healed = structural_edge_for(
-            "doc-a",
-            "blob1",
-            &mention(kind, ResolutionState::Resolved, Some(resolved_target)),
-            &scope(),
-            99,
-        );
-        assert_eq!(broken.id, healed.id, "identity survives resolution");
-        assert_ne!(broken.state, healed.state, "state carries the signal");
     }
 
     fn write_plan(root: &Path, name: &str, body: &str) {
@@ -1977,8 +1898,14 @@ tier: L3
         // cannot run there, so the declared tier must degrade TRUTHFULLY
         // (`declared_unavailable` set, zero declared edges) while the
         // structural pass — git object DB + working tree, no core — still
-        // produces edges. Regression guard for the wiring that was missing
-        // entirely (the graph was silently structural-only).
+        // produces NODES. Regression guard for the wiring that was missing
+        // entirely (the graph was silently declared-empty-yet-claimed).
+        //
+        // STRICT reference-only graph (user ruling, 2026-06-28): in-body
+        // `[[wiki-link]]` mentions are NOT graphed — only `related:` frontmatter
+        // (declared) defines edges. So a core-less worktree carries doc NODES but
+        // ZERO edges (the body mention below is deliberately not ingested), and
+        // the only edge source is the now-unavailable declared tier.
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
@@ -1992,10 +1919,15 @@ tier: L3
         let store = engine_store::Store::open(&root.join(".vault")).unwrap();
         let (graph, stats) = index_worktree(root, &scope(), &store, 0).unwrap();
 
-        // Structural tier survives without core.
+        // Structural pass mints document NODES without core; body-mention edges
+        // are not graphed (strict reference-only), so the core-less graph is edgeless.
         assert!(
-            graph.edge_count() >= 1 && stats.edges >= 1,
-            "structural mentions ingest without core"
+            graph.nodes().count() >= 1,
+            "structural pass mints document nodes without core"
+        );
+        assert_eq!(
+            stats.edges, 0,
+            "body-mention edges are not graphed (strict reference-only)"
         );
         // Declared tier degrades truthfully — never silently empty-yet-claimed.
         // The `declared_edges == 0` arm is unconditional. The `is_some()` arm
@@ -2013,12 +1945,17 @@ tier: L3
     }
 
     #[test]
-    fn structural_index_carries_edges_and_the_building_sentinel_without_a_subprocess() {
+    fn structural_index_carries_nodes_and_the_building_sentinel_without_a_subprocess() {
         // Perf ADR D1: the fast servable parse builds the structural tier ONLY,
         // never running the declared-tier core subprocess. It must carry the
-        // same structural edges index_worktree produces, zero declared edges,
+        // same document NODES index_worktree produces, zero declared edges,
         // and the DECLARED_BUILDING sentinel (the async fold is pending — a
         // truthful "not yet" state, NOT a failure reason).
+        //
+        // STRICT reference-only graph (user ruling, 2026-06-28): the structural
+        // pass no longer graphs in-body `[[wiki-link]]` mentions, so the fast
+        // parse carries nodes but ZERO edges until the declared (frontmatter)
+        // fold lands.
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
@@ -2033,8 +1970,12 @@ tier: L3
         let (graph, stats) = index_worktree_structural(root, &scope(), &store, 0).unwrap();
 
         assert!(
-            graph.edge_count() >= 1 && stats.edges >= 1,
-            "structural mentions ingest in the structural-only parse"
+            graph.nodes().count() >= 1,
+            "the structural-only parse mints document nodes"
+        );
+        assert_eq!(
+            stats.edges, 0,
+            "body-mention edges are not graphed (strict reference-only)"
         );
         assert_eq!(
             stats.declared_edges, 0,
@@ -2165,6 +2106,96 @@ tier: L3
                 .edges()
                 .all(|e| e.edge.src != index_id && e.edge.dst != index_id),
             "no declared edge incident to the index doc survives"
+        );
+    }
+
+    #[test]
+    fn core_derived_similarity_edges_are_never_ingested_into_the_graph() {
+        // Read-and-infer exclusion: core's `derived_edges` (computed co-citation /
+        // similarity correlations) are NOT references and must NEVER enter the
+        // served graph — only authored declared `edges` do. This guards the ingest
+        // gate so a future change cannot silently re-admit the ~90% similarity
+        // edge contamination the dashboard graph exists to exclude.
+        let mut graph = LinkageGraph::new();
+        let declared_json = serde_json::json!({
+            "nodes": [
+                {"id": "doc-a", "doc_type": "adr"},
+                {"id": "doc-b", "doc_type": "plan"},
+                {"id": "doc-c", "doc_type": "research"}
+            ],
+            // ONE authored reference (declared) — this MUST be ingested.
+            "edges": [
+                {"source": "doc-a", "target": "doc-b", "kind": "related"}
+            ],
+            // Computed similarity edges — these MUST be excluded.
+            "derived_edges": [
+                {"source": "doc-a", "target": "doc-c", "kind": "co_citation"},
+                {"source": "doc-b", "target": "doc-c", "kind": "similarity"}
+            ]
+        })
+        .to_string();
+
+        let (count, err) = ingest_declared_from_json(&mut graph, &declared_json, &scope(), 0);
+        assert!(err.is_none(), "payload parses");
+        assert_eq!(
+            count, 1,
+            "only the one authored declared reference is ingested"
+        );
+        assert_eq!(
+            graph.edge_count(),
+            1,
+            "the graph holds exactly the one reference edge"
+        );
+        assert!(
+            graph
+                .edges()
+                .all(|e| e.edge.relation != RelationKind::CoreDerived),
+            "no core-derived (computed similarity) edge enters the graph"
+        );
+        assert!(
+            graph
+                .edges()
+                .any(|e| e.edge.relation == RelationKind::References),
+            "the authored reference edge is present"
+        );
+    }
+
+    #[test]
+    fn in_body_wikilink_mentions_are_never_graphed_strict_reference_only() {
+        // STRICT reference-only graph (user ruling, 2026-06-28): in-body
+        // `[[wiki-link]]` mentions are FORBIDDEN as graph fact — wiki-links live
+        // only in `related:` frontmatter, which (via the declared tier) IS the
+        // node graph. A document whose BODY mentions another document must NOT mint
+        // a structural `mentions` edge. Guards the document-indexing drop so a
+        // future change cannot silently re-admit body-mention edges.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::create_dir_all(root.join(".vault/adr")).unwrap();
+        // The body carries a resolvable wiki-link to a real sibling document.
+        std::fs::write(
+            root.join(".vault/plan/2026-06-12-m-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#m'\n---\n\nBody mentions [[2026-06-12-m-adr]].\n",
+        )
+        .unwrap();
+        std::fs::write(root.join(".vault/adr/2026-06-12-m-adr.md"), "# adr\n").unwrap();
+        let store = engine_store::Store::open(&root.join(".vault")).unwrap();
+        let (graph, stats) = index_worktree_structural(root, &scope(), &store, 0).unwrap();
+
+        // Both documents become NODES, but the body mention mints NO edge.
+        assert!(
+            graph.nodes().count() >= 2,
+            "both documents are nodes in the structural graph"
+        );
+        assert_eq!(
+            stats.edges, 0,
+            "the body wiki-link mints no structural edge"
+        );
+        assert!(
+            graph
+                .edges()
+                .all(|e| e.edge.relation != RelationKind::Mentions),
+            "no in-body `mentions` edge enters the graph"
         );
     }
 

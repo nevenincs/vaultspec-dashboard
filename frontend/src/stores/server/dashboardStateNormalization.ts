@@ -263,7 +263,14 @@ export function cloneDashboardFilters(filters: unknown): DashboardFilters {
   const planStates = cloneStringArray(source.plan_states);
   const health = cloneStringArray(source.health);
   const text = normalizeDashboardTextFilter(source.text);
+  // Issue #14: preserve the engine-applied `date_field` criterion (created is the
+  // default and never stored; modified/stamped are the meaningful values).
+  const dateField =
+    source.date_field === "modified" || source.date_field === "stamped"
+      ? source.date_field
+      : undefined;
   if (tiers) next.tiers = tiers;
+  if (dateField) next.date_field = dateField;
   if (minConfidence) next.min_confidence = minConfidence;
   if (relations?.length) next.relations = relations;
   if (structuralState?.length) next.structural_state = structuralState;

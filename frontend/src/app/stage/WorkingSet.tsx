@@ -29,8 +29,12 @@ export function mergeSlices(
   const nodes = new Map<string, EngineNode>();
   const edges = new Map<string, EngineEdge>();
   for (const slice of [base, ...expansions]) {
-    for (const n of slice.nodes) nodes.set(n.id, n);
-    for (const e of slice.edges) edges.set(e.id, e);
+    // Guard a not-yet-resolved (loading) or empty expansion slice — an off-slice
+    // working-set ego materialize (activateEntity `frame:true`) folds the node's
+    // ego query in BEFORE it resolves, so `nodes`/`edges` can be undefined for a
+    // frame; a partial slice simply contributes nothing to the union (Issue #42).
+    for (const n of slice.nodes ?? []) nodes.set(n.id, n);
+    for (const e of slice.edges ?? []) edges.set(e.id, e);
   }
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
 }

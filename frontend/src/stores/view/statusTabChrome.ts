@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export type StatusSectionId =
   | "changes"
@@ -114,43 +115,86 @@ function cappedOpenRecentCommitHashes(hashes: unknown): string[] {
   return out;
 }
 
-export const useStatusTabChromeStore = create<StatusTabChromeState>((set) => ({
-  ...RESET_STATE,
-  toggleSection: (id, defaultOpen) =>
-    set((state) => {
-      const sectionId = normalizeStatusSectionId(id);
-      if (sectionId === null) return state;
-      const sections = normalizeStatusSections(state.sections);
-      const open = sections[sectionId] ?? normalizeStatusSectionOpen(defaultOpen);
-      return { sections: { ...sections, [sectionId]: !open } };
+// The activity-rail fold open/closed state PERSISTS across reloads (Issue #41): each
+// section's last open/close is saved to the user's UX state so it survives a reload,
+// and sections DEFAULT COLLAPSED (the caller passes `defaultOpen = false`). Persistence
+// uses the `persist` middleware over the existing store — only the durable UX prefs
+// (`sections` open-map + the expanded-commit hashes + the recent-commits limit) are
+// partialized; the transient action closures are not. (Backend/cross-device persistence
+// would move `sections` onto a served `right_rail_folds` setting — a fixer-1 SettingDef —
+// without changing this consumer; flagged as a follow-up.)
+export const useStatusTabChromeStore = create<StatusTabChromeState>()(
+  persist(
+    (set) => ({
+      ...RESET_STATE,
+      toggleSection: (id, defaultOpen) =>
+        set((state) => {
+          const sectionId = normalizeStatusSectionId(id);
+          if (sectionId === null) return state;
+          const sections = normalizeStatusSections(state.sections);
+          const open = sections[sectionId] ?? normalizeStatusSectionOpen(defaultOpen);
+          return { sections: { ...sections, [sectionId]: !open } };
+        }),
+      toggleRecentCommit: (hash) =>
+        set((state) => {
+          const normalizedHash = normalizeRecentCommitHash(hash);
+          if (normalizedHash === null) return state;
+          const openRecentCommitHashes = cappedOpenRecentCommitHashes(
+            state.openRecentCommitHashes,
+          );
+          const open = openRecentCommitHashes.includes(normalizedHash);
+          return {
+            openRecentCommitHashes: open
+              ? openRecentCommitHashes.filter(
+                  (candidate) => candidate !== normalizedHash,
+                )
+              : cappedOpenRecentCommitHashes([
+                  ...openRecentCommitHashes,
+                  normalizedHash,
+                ]),
+          };
+        }),
+      showMoreRecentCommits: (page, defaultLimit) =>
+        set((state) => {
+          const current = boundedPositiveCount(
+            state.recentCommitsLimit ?? defaultLimit,
+            defaultLimit,
+          );
+          const increment = boundedPositiveCount(page, defaultLimit);
+          return {
+            recentCommitsLimit: Math.min(RECENT_COMMITS_LIMIT_CAP, current + increment),
+          };
+        }),
+      reset: () => set(RESET_STATE),
     }),
-  toggleRecentCommit: (hash) =>
-    set((state) => {
-      const normalizedHash = normalizeRecentCommitHash(hash);
-      if (normalizedHash === null) return state;
-      const openRecentCommitHashes = cappedOpenRecentCommitHashes(
-        state.openRecentCommitHashes,
-      );
-      const open = openRecentCommitHashes.includes(normalizedHash);
-      return {
-        openRecentCommitHashes: open
-          ? openRecentCommitHashes.filter((candidate) => candidate !== normalizedHash)
-          : cappedOpenRecentCommitHashes([...openRecentCommitHashes, normalizedHash]),
-      };
-    }),
-  showMoreRecentCommits: (page, defaultLimit) =>
-    set((state) => {
-      const current = boundedPositiveCount(
-        state.recentCommitsLimit ?? defaultLimit,
-        defaultLimit,
-      );
-      const increment = boundedPositiveCount(page, defaultLimit);
-      return {
-        recentCommitsLimit: Math.min(RECENT_COMMITS_LIMIT_CAP, current + increment),
-      };
-    }),
-  reset: () => set(RESET_STATE),
-}));
+    {
+      name: "vaultspec:right-rail-folds",
+      partialize: (state) => ({
+        sections: normalizeStatusSections(state.sections),
+        openRecentCommitHashes: cappedOpenRecentCommitHashes(
+          state.openRecentCommitHashes,
+        ),
+        recentCommitsLimit: state.recentCommitsLimit,
+      }),
+      // Re-normalize the rehydrated UX prefs so a tampered/legacy payload can never
+      // poison the store (bounded-by-default; the open-map is keyed to known sections).
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<StatusTabChromeState>;
+        return {
+          ...current,
+          sections: normalizeStatusSections(saved.sections),
+          openRecentCommitHashes: cappedOpenRecentCommitHashes(
+            saved.openRecentCommitHashes,
+          ),
+          recentCommitsLimit:
+            typeof saved.recentCommitsLimit === "number"
+              ? saved.recentCommitsLimit
+              : null,
+        };
+      },
+    },
+  ),
+);
 
 export function useStatusSectionOpen(id: unknown, defaultOpen: unknown): boolean {
   const sectionId = normalizeStatusSectionId(id);

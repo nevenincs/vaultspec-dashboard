@@ -23,7 +23,7 @@ import {
   useCodeViewerScrollTop,
 } from "../../stores/view/codeViewer";
 import { useElementHeight } from "../chrome/useElementWidth";
-import { Badge, Button } from "../kit";
+import { Badge, Button, Skeleton, SkeletonBar } from "../kit";
 import { stopScrollKeyPropagation } from "./scrollRegion";
 import type { TokenLine } from "./useHighlighter";
 import { useTokenLines } from "./useHighlighter";
@@ -133,6 +133,12 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
   const view = deriveCodeViewerView(content);
   const { lines: tokenLines } = useTokenLines(view.text, view.languageHint);
 
+  // Loading is UI-ONLY (state-mode-uniformity ADR D2): a shimmer skeleton, never
+  // on-screen "Loading…" text. The human label lives only in the kit `Skeleton`'s
+  // sr-only. The empty / degraded / truncated / error states stay plain sentences.
+  if (view.state === "loading") {
+    return <CodeViewerSkeleton label={view.stateMessage ?? "Loading file..."} />;
+  }
   if (view.state !== "ready") {
     return (
       <ViewerState toneClass={view.stateToneClass}>{view.stateMessage}</ViewerState>
@@ -185,6 +191,33 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
         <span>{view.readOnlyLabel}</span>
       </footer>
     </div>
+  );
+}
+
+/** The loading skeleton's per-line widths — varied like real code lines, as
+ *  utility fractions so no hardcoded px enter the DOM (no-hardcoded-px). */
+const CODE_SKELETON_WIDTHS = [
+  "w-2/5",
+  "w-3/4",
+  "w-1/2",
+  "w-5/6",
+  "w-1/3",
+  "w-2/3",
+  "w-4/5",
+  "w-1/2",
+  "w-3/5",
+];
+
+/** Loading is UI-ONLY (state-mode-uniformity ADR D2): a left-aligned column of
+ *  shimmer bars mimicking code lines, the human label only in the kit `Skeleton`'s
+ *  sr-only. No visible "Loading…" text. */
+function CodeViewerSkeleton({ label }: { label: string }): ReactElement {
+  return (
+    <Skeleton label={label} className="h-full justify-start p-fg-6">
+      {CODE_SKELETON_WIDTHS.map((width, index) => (
+        <SkeletonBar key={index} width={width} height="h-3" />
+      ))}
+    </Skeleton>
   );
 }
 

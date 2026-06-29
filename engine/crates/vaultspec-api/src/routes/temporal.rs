@@ -367,13 +367,26 @@ pub async fn graph_lineage(
     // The slice stays bounded under the document node ceiling either way; a bad
     // filter facet surfaces as a client error through the shared envelope.
     let generation = cell.generation.load(std::sync::atomic::Ordering::SeqCst);
-    let (nodes, arcs, truncated) = if !include_arcs
-        && filter == engine_query::filter::Filter::default()
-    {
+    // The `date_field` criterion (created|modified|stamped) only changes WHICH
+    // date the range slice compares, never the member set, and the cached
+    // `lineage_nodes` carry all three dates — so a date_field-only request still
+    // rides the warm path. Compare against a default filter bearing this request's
+    // date_field, so any OTHER facet (which would change membership) still drops to
+    // the full projection.
+    let warm_eligible = filter
+        == engine_query::filter::Filter {
+            date_field: filter.date_field,
+            ..engine_query::filter::Filter::default()
+        };
+    let (nodes, arcs, truncated) = if !include_arcs && warm_eligible {
         // Warm path: range-slice the cached full node set. No graph scan.
         let all = cell.lineage_nodes();
-        let (nodes, truncated) =
-            engine_query::lineage::bound_range(&all, params.from.as_deref(), params.to.as_deref());
+        let (nodes, truncated) = engine_query::lineage::bound_range(
+            &all,
+            filter.date_field,
+            params.from.as_deref(),
+            params.to.as_deref(),
+        );
         (
             serde_json::to_value(&nodes).expect("lineage nodes serialize"),
             Value::Array(Vec::new()),

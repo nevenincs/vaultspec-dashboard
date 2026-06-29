@@ -5,6 +5,8 @@
 
 import { defineConfig } from "@playwright/test";
 
+import { DEV_PORTS } from "./dev-ports";
+
 export default defineConfig({
   testDir: "./e2e",
   // The adverse pass runs against the Vite dev server (dev affordances), not
@@ -12,7 +14,8 @@ export default defineConfig({
   testIgnore: /adverse\.spec\.ts/,
   timeout: 30_000,
   use: {
-    baseURL: process.env.VAULTSPEC_SERVE_ORIGIN ?? "http://127.0.0.1:8767",
+    baseURL:
+      process.env.VAULTSPEC_SERVE_ORIGIN ?? `http://127.0.0.1:${DEV_PORTS.engine}`,
     // System Chrome: no separate browser download for the local smoke.
     channel: "chrome",
     headless: true,

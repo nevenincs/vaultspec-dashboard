@@ -86,4 +86,30 @@ describe("HoverCard (binding graph/HoverCard 84:2)", () => {
     expect(screen.queryByText("documents")).toBeNull();
     expect(screen.getByText("Foo decision")).toBeTruthy();
   });
+
+  it("renders a plain-language doc-type eyebrow from the canonical vocabulary", () => {
+    const { container } = render(<HoverCard model={model({ docType: "plan" })} />);
+    const eyebrow = container.querySelector("[data-hover-doc-type]");
+    expect(eyebrow?.textContent).toBe("Plans");
+  });
+
+  it("omits the doc-type eyebrow for a node with no doc type (a feature node)", () => {
+    const { container } = render(
+      <HoverCard model={model({ kind: "feature", docType: undefined })} />,
+    );
+    expect(container.querySelector("[data-hover-doc-type]")).toBeNull();
+  });
+
+  it("renders the headline summary when present and omits it when absent", () => {
+    const { container: withSummary } = render(
+      <HoverCard model={model({ summary: "The first prose line of the doc." })} />,
+    );
+    expect(withSummary.querySelector("[data-hover-summary]")?.textContent).toBe(
+      "The first prose line of the doc.",
+    );
+
+    cleanup();
+    const { container: without } = render(<HoverCard model={model()} />);
+    expect(without.querySelector("[data-hover-summary]")).toBeNull();
+  });
 });

@@ -14,6 +14,7 @@ import {
 import { featureTagFromNodeId } from "../server/liveAdapters";
 import { useDashboardSelectedNodeId } from "../server/queries";
 import { normalizeStoreScope } from "../server/scopeIdentity";
+import { runSceneCommand } from "./sceneCommandBridge";
 import type { Selection } from "./viewStore";
 import { OPENED_IDS_CAP, useViewStore } from "./viewStore";
 
@@ -207,47 +208,10 @@ export function selectFromScene(
     });
 }
 
-/** Open a node island and select the same node through the canonical dashboard seam. */
-export async function openNodeIsland(
-  id: unknown,
-  scope: unknown = useViewStore.getState().scope,
-  mark?: SceneOriginMarker,
-): Promise<boolean> {
-  const nodeId = normalizeNodeId(id);
-  if (nodeId === null) return false;
-  const accepted = mark
-    ? await selectFromScene(nodeId, scope, mark)
-    : await selectNode(nodeId, scope);
-  if (!accepted) return false;
-  useViewStore.getState().openNode(nodeId);
-  return true;
-}
-
-interface FeatureDescentIntent {
-  descendFeatureTag: (featureTag: unknown) => Promise<unknown>;
-}
-
-/**
- * Open a graph node from the scene event stream. Synthesized feature nodes do not
- * own an island; opening one descends the dashboard slice to that feature tag.
- */
-export async function openGraphNodeFromScene(
-  id: unknown,
-  scope: unknown,
-  featureDescentIntent: FeatureDescentIntent,
-  mark?: SceneOriginMarker,
-): Promise<boolean> {
-  const nodeId = normalizeNodeId(id);
-  if (nodeId === null) return false;
-  const normalizedScope = normalizeSelectionScope(scope);
-  const featureTag = featureTagFromNodeId(nodeId);
-  if (featureTag !== null) {
-    if (normalizedScope === null) return false;
-    await featureDescentIntent.descendFeatureTag(featureTag);
-    return true;
-  }
-  return openNodeIsland(nodeId, normalizedScope, mark);
-}
+// The on-canvas island OPEN path (`openNodeIsland` / `openGraphNodeFromScene`) is
+// RETIRED (unified-selection D1): opening a node now opens a #15 dock tab through the
+// canonical `activateEntity` seam, which every surface routes through. The island
+// CLOSE seam below stays for any residually-open island chrome.
 
 /** Close a node island through the named island intent seam. */
 export function closeNodeIsland(id: unknown): void {
@@ -257,11 +221,21 @@ export function closeNodeIsland(id: unknown): void {
 }
 
 /**
- * Keyboard graph-walk open: open the DOM island, select through dashboard-state,
- * and instantly re-center the camera. The app layer calls this seam instead of
- * pairing a raw `openNode` write with a separate selection/focus write.
+ * Keyboard graph-walk open (Enter): open the document as a #15 PROVISIONAL dock tab,
+ * select through dashboard-state, and instantly re-center the camera. Converged onto
+ * the dock tab (unified-selection D1) — it no longer opens the retired on-canvas island,
+ * so the name reflects that the walk OPENS A TAB, not an island.
+ * A `doc:`/`code:` node opens its tab; a synthesized `feature:` node has no document, so
+ * it selects + re-centers only. The app layer calls this seam instead of pairing a raw
+ * tab write with a separate selection/focus write.
+ *
+ * It deliberately does NOT compose the generic `previewDocTab` seam: the walk gates the
+ * tab-open AND the camera re-center on an ACCEPTED dashboard selection, so a node the
+ * backend rejects (e.g. an unresolved scope) neither opens a tab nor yanks the camera —
+ * whereas `previewDocTab` opens the tab unconditionally. That open-on-accepted-selection
+ * gate is the reason this stays a distinct seam rather than routing through activateEntity.
  */
-export async function openNodeIslandFromWalk(
+export async function openTabFromWalk(
   scene: SceneController,
   id: unknown,
   scope: unknown = useViewStore.getState().scope,
@@ -276,7 +250,12 @@ export async function openNodeIslandFromWalk(
       markSceneOriginated(mark, false);
       return false;
     }
-    useViewStore.getState().openNode(nodeId);
+    const surface = nodeId.startsWith("code:")
+      ? "code"
+      : nodeId.startsWith("doc:")
+        ? "markdown"
+        : null;
+    if (surface) useViewStore.getState().openDoc(nodeId, surface, false);
     scene.command({ kind: "focus-node", id: nodeId, animate: false });
     return true;
   } catch (error) {
@@ -428,4 +407,97 @@ export function selectNodeAndPulse(
     if (selected) pulseSelectionNodes(scene, pulseIds);
     return selected;
   });
+}
+
+// --- follow mode (follow-mode-selection-sync) ----------------------------------
+//
+// Bidirectional rail<->graph SELECTION tethering (an EXTENSION of the existing
+// G2.b document-level join to FEATURES, gated behind a view-local toggle). SELECTION
+// ONLY — never the filter plane. This module owns the shared seam: the follow-mode
+// read, the rail-feature->graph compose (`selectFeatureAndFrame`), and the
+// graph-node->rail reverse helper (`followFeatureKeyForNode`). The rail wires its
+// expand/select to these; the scene implements the `frame-nodes` command.
+
+/** Read follow mode (view-local, default ON). Primitive → stable-selector safe. */
+export function useFollowMode(): boolean {
+  return useViewStore((state) => state.followMode);
+}
+
+/** Non-hook follow-mode read for the imperative seams + action handlers. */
+export function followModeEnabled(): boolean {
+  return useViewStore.getState().followMode;
+}
+
+/** Flip follow mode (view-local). Fired by the shared toggle action. */
+export function toggleFollowMode(): void {
+  useViewStore.getState().toggleFollowMode();
+}
+
+/** Set follow mode explicitly (view-local). */
+export function setFollowMode(on: boolean): void {
+  useViewStore.getState().setFollowMode(on);
+}
+
+/**
+ * Rail FEATURE -> graph half of follow mode — a VISUAL-ONLY META-SELECTION (Issue
+ * #16, correcting #13). It does NOT touch the canonical node selection at all: it
+ * emits a hover-style soft highlight over the feature's member nodes
+ * (`set-meta-highlight`) plus a one-shot camera frame to them (`frame-nodes`), both
+ * through the registered `runSceneCommand` bridge (dashboard-layer-ownership: the
+ * rail never imports the scene). The graph's REAL node selection stays a SINGLETON,
+ * set only by actual node clicks — feature meta-selection never writes `selected_ids`.
+ *
+ * Why this replaced the #13 multiselect: writing `[feature:<tag>, ...members]` into
+ * `selected_ids` (a) "selected every node" (the user's explicit reject) and (b) the
+ * engine's `PATCH /dashboard-state` rejects any id not present in the current
+ * (filtered) graph — the synthetic `feature:<tag>` id and out-of-slice members 400
+ * on every feature click, breaking the rail/filter interaction. A scene-only visual
+ * highlight tells the engine selection guard nothing and leaves the filter plane
+ * untouched.
+ *
+ * No-op when follow mode is OFF or the feature has no member node ids. `memberIds`
+ * are the feature's node ids the rail holds from its tree/slice (de-duped + capped by
+ * the selection normalizer). `_featureNodeId` and `_scope` are accepted for call-site
+ * stability with the rail but unused now (no selection write). SELECTION is never
+ * touched; FILTER is never touched.
+ */
+export function selectFeatureAndFrame(
+  _featureNodeId: unknown,
+  memberIds: readonly unknown[],
+  _scope: unknown = useViewStore.getState().scope,
+): boolean {
+  if (!followModeEnabled()) return false;
+  const members = normalizeDashboardSelectedIds(memberIds);
+  if (members.length === 0) return false;
+  const ids = new Set(members);
+  // Visual meta-highlight (hover-style, NO selection rings) + camera frame. Both are
+  // pure scene emphasis; neither writes dashboard-state, so the engine's
+  // selected_ids⊆graph guard is never tripped and filtering is unaffected.
+  runSceneCommand({ kind: "set-meta-highlight", ids });
+  runSceneCommand({ kind: "frame-nodes", ids });
+  return true;
+}
+
+/**
+ * Graph node -> rail half of follow mode: the canonical FEATURE TAG the rail should
+ * EXPAND + select for a freshly-selected graph node. A `feature:<tag>` node maps to
+ * its own tag; a `doc:` node maps to its FIRST feature tag (the rail groups a
+ * document under its primary feature). The rail owns the actual expand/setActiveKey
+ * with its own key format; this hands it the canonical tag to resolve. Returns null
+ * when follow mode is OFF, the id is null, or no feature is known — the rail then
+ * leaves its expansion untouched. SELECTION/navigation only.
+ */
+export function followFeatureKeyForNode(
+  id: unknown,
+  featureTags?: readonly unknown[],
+): string | null {
+  if (!followModeEnabled()) return null;
+  const nodeId = normalizeNodeId(id);
+  if (nodeId === null) return null;
+  const fromId = featureTagFromNodeId(nodeId);
+  if (fromId !== null) return fromId;
+  const first = (featureTags ?? []).find(
+    (tag) => typeof tag === "string" && tag.length > 0,
+  );
+  return typeof first === "string" ? first : null;
 }

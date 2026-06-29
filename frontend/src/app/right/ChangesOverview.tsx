@@ -43,7 +43,7 @@ import {
   toggleStatusSection,
   useStatusSectionOpen,
 } from "../../stores/view/statusTabChrome";
-import { openDocTab } from "../../stores/view/tabs";
+import { previewDocTab } from "../../stores/view/tabs";
 import type { ButtonHTMLAttributes, Ref } from "react";
 
 import { FoldSection, SectionLabel, Skeleton, SkeletonRow, StateBlock } from "../kit";
@@ -61,7 +61,9 @@ const CHANGES_DEFAULT_OPEN = false;
  *  A click opens the code viewer (source) or the markdown reader (vault doc). */
 function ChangeRow({ row, scope }: { row: GitChangeRow; scope: unknown }) {
   const open = () => {
-    void openDocTab(row.nodeId, row.surface, scope).catch(() => undefined);
+    // Read-mode open: preview in the single provisional tab (VS Code preview),
+    // so browsing changed files never spawns ever-growing permanent tabs (#15).
+    void previewDocTab(row.nodeId, row.surface, scope).catch(() => undefined);
   };
   return (
     <li>

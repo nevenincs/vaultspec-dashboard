@@ -27,8 +27,8 @@ import {
   type MarkdownReaderEditorialView,
   type MarkdownReaderView,
 } from "../../stores/server/queries";
-import { openDocTab } from "../../stores/view/tabs";
-import { StatusDot, categoryColorVar } from "../kit";
+import { previewDocTab } from "../../stores/view/tabs";
+import { Skeleton, SkeletonBar, StatusDot, categoryColorVar } from "../kit";
 import { remarkWikiLink, wikiLinkNodeId, WIKI_LINK_SCHEME } from "./remarkWikiLink";
 import { stopScrollKeyPropagation } from "./scrollRegion";
 import { useHighlightedHast } from "./useHighlighter";
@@ -213,7 +213,7 @@ function ReaderFooter({
     return null;
   }
   return (
-    <footer className="flex flex-col gap-fg-4 px-[4.5rem] pb-[1.875rem] pt-[1.375rem]">
+    <footer className="flex flex-col gap-fg-4 px-fg-4 pb-[1.875rem] pt-[1.375rem] @lg:px-fg-8 @3xl:px-[3rem] @5xl:px-[4.5rem]">
       <div className="h-px w-full bg-rule" />
       {editorial.footerTags.length > 0 && (
         <div className="flex items-center gap-fg-3">
@@ -239,7 +239,9 @@ function ReaderFooter({
                 key={related.nodeId}
                 type="button"
                 onClick={() => {
-                  void openDocTab(related.nodeId, "markdown", scope).catch(
+                  // Read-mode wiki-link navigation: preview in the single
+                  // provisional tab (#15), not an ever-growing pinned tab.
+                  void previewDocTab(related.nodeId, "markdown", scope).catch(
                     () => undefined,
                   );
                 }}
@@ -275,7 +277,9 @@ function MarkdownBody({
             <button
               type="button"
               onClick={() => {
-                void openDocTab(nodeId, "markdown", scope).catch(() => undefined);
+                // Read-mode wiki-link navigation: preview in the single
+                // provisional tab (#15), not an ever-growing pinned tab.
+                void previewDocTab(nodeId, "markdown", scope).catch(() => undefined);
               }}
               className="text-accent-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             >
@@ -299,7 +303,7 @@ function MarkdownBody({
     [scope],
   );
   return (
-    <div className="px-[4.5rem] pb-[0.625rem] pt-[1.875rem]">
+    <div className="px-fg-4 pb-[0.625rem] pt-[1.875rem] @lg:px-fg-8 @3xl:px-[3rem] @5xl:px-[4.5rem]">
       <DocHeaderBlock editorial={view.editorial} />
       <div className="my-fg-4 h-px w-full bg-rule" />
       <article className="vs-markdown">
@@ -331,6 +335,13 @@ export function MarkdownReader({
 }): ReactElement {
   const markdownView = useMemo(() => deriveMarkdownReaderView(content), [content]);
 
+  // Loading is UI-ONLY (state-mode-uniformity ADR D2): a shimmer skeleton mimicking
+  // the reader's rhythm, never on-screen "Loading…" text — the human label lives
+  // only in the kit `Skeleton`'s sr-only. Empty / degraded / error stay plain
+  // sentences.
+  if (markdownView.state === "loading") {
+    return <ReaderSkeleton label={markdownView.stateMessage ?? "Loading document…"} />;
+  }
   if (markdownView.state !== "ready") {
     return (
       <ReaderState className={markdownView.stateToneClass}>
@@ -339,10 +350,14 @@ export function MarkdownReader({
     );
   }
 
+  // #17 responsive reader padding: the `@container` on the root makes the
+  // horizontal body inset query the reader's OWN pane width (not the viewport),
+  // so it tightens on a narrow pane (mobile, or a narrow desktop pane with the
+  // graph open) and only relaxes to the comfortable editorial inset when wide.
   return (
-    <div className="flex h-full flex-col bg-paper text-ink">
+    <div className="@container flex h-full flex-col bg-paper text-ink">
       {markdownView.truncated && (
-        <div className="reader-meta border-b border-rule bg-paper-sunken px-[4.5rem] py-fg-1 text-ink-muted">
+        <div className="reader-meta border-b border-rule bg-paper-sunken px-fg-4 py-fg-1 text-ink-muted @lg:px-fg-8 @3xl:px-[3rem] @5xl:px-[4.5rem]">
           {markdownView.truncationMessage}
         </div>
       )}
@@ -363,6 +378,22 @@ export function MarkdownReader({
         <ReaderFooter editorial={markdownView.editorial} scope={scope} />
       </div>
     </div>
+  );
+}
+
+/** Loading is UI-ONLY (state-mode-uniformity ADR D2): a shimmer skeleton standing in
+ *  for the reader's title + lead-paragraph rhythm, the human label only in the kit
+ *  `Skeleton`'s sr-only. No visible "Loading…" text. */
+function ReaderSkeleton({ label }: { label: string }): ReactElement {
+  return (
+    <Skeleton label={label} className="h-full justify-start gap-fg-3 p-fg-6">
+      <SkeletonBar width="w-2/5" height="h-4" />
+      <SkeletonBar width="w-full" />
+      <SkeletonBar width="w-11/12" />
+      <SkeletonBar width="w-5/6" />
+      <SkeletonBar width="w-full" />
+      <SkeletonBar width="w-3/4" />
+    </Skeleton>
   );
 }
 

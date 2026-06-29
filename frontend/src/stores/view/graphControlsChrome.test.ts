@@ -171,9 +171,11 @@ describe("graph controls chrome view seam", () => {
         label: "Fit to View",
         title: "Fit all nodes into the viewport",
       },
-      resetView: {
-        label: "Reset View",
-        title: "Reset the camera to the origin",
+      autoframe: {
+        label: "Autoframe",
+        titleOn: "Autoframe is on — the view follows the graph; click to turn off",
+        titleOff:
+          "Autoframe is off — click to keep the whole graph framed automatically",
       },
     });
   });
@@ -210,6 +212,24 @@ describe("graph controls chrome view seam", () => {
     setGraphReflowFilter(true);
     resetGraphControlsChrome();
     expect(useGraphControlsChromeStore.getState().reflowFilter).toBe(false);
+  });
+
+  it("defaults autoframe ON and sets/toggles/normalizes/resets it", () => {
+    // Default ON (graph-autoframe): the 4th nav button starts engaged.
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(true);
+
+    useGraphControlsChromeStore.getState().setAutoframe(false);
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(false);
+
+    useGraphControlsChromeStore.getState().toggleAutoframe();
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(true);
+
+    // Only a real boolean true enables it (non-boolean truthy normalizes to false).
+    useGraphControlsChromeStore.getState().setAutoframe("true");
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(false);
+
+    resetGraphControlsChrome();
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(true);
   });
 
   it("derives plain-language reflow toggle copy for each state", () => {

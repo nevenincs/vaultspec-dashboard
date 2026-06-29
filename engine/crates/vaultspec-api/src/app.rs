@@ -729,12 +729,15 @@ impl ScopeCell {
     /// also used at startup).
     ///
     /// Builds the STRUCTURAL tier only and commits it immediately (perf ADR
-    /// D1): the worktree is interactive in roughly the structural-parse time,
-    /// with `declared_status` set to the building sentinel so the tiers block
-    /// reports `declared` unavailable-while-building. The slow declared-tier
-    /// core subprocess is folded in asynchronously by
-    /// [`crate::registry::spawn_declared_fold`], called by the caller after a
-    /// successful rebuild.
+    /// D1): the worktree is interactive in roughly the structural-parse time.
+    /// `declared_status` is set to the building sentinel ONLY when there is no
+    /// last-good declared graph to carry — on a routine re-index where declared
+    /// was already available and the cached declared graph for the current HEAD
+    /// is reusable, those edges are folded synchronously so the tier stays
+    /// available rather than flapping to unavailable-while-building (Issue #4 /
+    /// #1). The slow declared-tier core subprocess is otherwise folded in
+    /// asynchronously by [`crate::registry::spawn_declared_fold`], called by the
+    /// caller after a successful rebuild.
     ///
     /// SYNC FALLBACK: when no tokio runtime is current (unit tests calling this
     /// directly), there is no async fold to defer to, so the declared tier is
@@ -772,9 +775,36 @@ impl ScopeCell {
                 Err(reason) => Some(reason),
             }
         } else {
-            // Async path: serve the structural graph now; the fold flips this to
-            // None (available) or a real reason once it lands.
-            stats.declared_unavailable
+            // Carry last-good declared across a routine re-index (Issue #4 / #1):
+            // if the declared tier was AVAILABLE before this rebuild AND the
+            // declared graph for the CURRENT HEAD is already cached (HEAD unchanged
+            // ⇒ core's authored vault graph is identical), fold those edges into the
+            // fresh structural graph NOW so the served graph stays complete and the
+            // declared tier does NOT flap to the building sentinel on every FS
+            // change. The async fold the caller spawns still runs — re-confirming,
+            // or handling a genuine HEAD change via the subprocess on a cache miss.
+            // Only a cold build or a new HEAD (no cached declared) reports
+            // unavailable-while-building until that fold lands.
+            let prior_available = self
+                .declared_status
+                .read()
+                .map(|status| status.is_none())
+                .unwrap_or(false);
+            match prior_available
+                .then(|| crate::registry::cached_declared_json(self))
+                .flatten()
+            {
+                Some(json) => {
+                    let (_, unavailable) = engine_graph::index::ingest_declared_from_json(
+                        &mut fresh,
+                        &json,
+                        &self.scope,
+                        now_ms(),
+                    );
+                    unavailable
+                }
+                None => stats.declared_unavailable,
+            }
         };
 
         if let Ok(mut status) = self.declared_status.write() {
@@ -1197,30 +1227,46 @@ mod tests {
     }
 
     #[test]
-    fn rebuild_swap_prunes_removed_mentions_and_emits_diffs() {
-        // Audit gates W02P06-302/303: the watcher path is rebuild+swap at
-        // scope granularity — an EDIT THAT REMOVES A MENTION must prune
-        // the stale edge, and the old→new diff must carry the removal. The
-        // per-scope clock now lives on the active cell (W02.P04.S12).
+    fn rebuild_swap_converges_the_graph_and_emits_diffs() {
+        // Audit gates W02P06-302/303: the watcher path is rebuild+swap at scope
+        // granularity — a filesystem edit must converge the live graph to a cold
+        // rebuild and emit the change as diff deltas on the per-scope clock
+        // (W02.P04.S12).
+        //
+        // STRICT reference-only graph (user ruling, 2026-06-28): in-body
+        // `[[wiki-link]]` mentions are no longer graphed — the only edges are
+        // `related:` frontmatter references via the declared tier, which is absent
+        // in this core-less fixture. So the rebuild+swap convergence + diff
+        // emission is exercised at the NODE level: a new document on disk is a node
+        // delta the watcher must emit and converge.
         let (dir, state) = fixture_state();
         // build_state already cold-indexed the launch cell, so the live graph
-        // holds the initial adds. Assert that starting state directly.
+        // holds the initial node. Assert that starting state directly.
         let cell = state.active_cell();
-        let edges_before = cell.graph_arc().edge_count();
-        assert_eq!(edges_before, 2, "two wiki mentions");
+        assert_eq!(
+            cell.graph_arc().node_count(),
+            1,
+            "the single plan document node"
+        );
+        assert_eq!(
+            cell.graph_arc().edge_count(),
+            0,
+            "in-body wiki-link mentions are not graphed (strict reference-only)"
+        );
 
-        // Edit: one wiki mention disappears.
+        // Edit: a new document appears on disk.
+        std::fs::create_dir_all(dir.path().join(".vault/adr")).unwrap();
         std::fs::write(
-            dir.path().join(".vault/plan/2026-06-12-w-plan.md"),
-            "---\ntags:\n  - '#plan'\n  - '#w'\n---\n\nOnly [[2026-06-12-w-adr]] remains.\n",
+            dir.path().join(".vault/adr/2026-06-12-w-adr.md"),
+            "---\ntags:\n  - '#adr'\n  - '#w'\n---\n\n# w adr\n",
         )
         .unwrap();
         let emitted = cell.rebuild_and_swap().unwrap();
-        assert!(emitted > 0, "edit emits deltas");
+        assert!(emitted > 0, "the edit emits deltas");
         assert_eq!(
-            cell.graph_arc().edge_count(),
-            1,
-            "stale edge pruned: live graph converges to the cold rebuild"
+            cell.graph_arc().node_count(),
+            2,
+            "the new document node is added: the live graph converges to the cold rebuild"
         );
 
         // The clock is monotonic across rebuilds and the ring holds both

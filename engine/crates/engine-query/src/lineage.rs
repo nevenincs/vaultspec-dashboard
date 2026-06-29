@@ -29,10 +29,10 @@
 use std::collections::HashSet;
 
 use engine_graph::{LinkageGraph, StoredEdge, degree_by_tier};
-use engine_model::{Dates, Node, ScopeRef};
+use engine_model::{Dates, Node, ScopeRef, Timestamp};
 use serde::Serialize;
 
-use crate::filter::{Filter, FilterError};
+use crate::filter::{DateField, Filter, FilterError};
 use crate::pipeline::{PipelineLanePhase, phase_for_doc_type};
 
 /// The document node ceiling every lineage read is bounded by (W01.P01.S04,
@@ -175,6 +175,40 @@ pub fn date_key(s: &str) -> &str {
     s.get(..10).unwrap_or(s)
 }
 
+/// Convert an epoch-millisecond timestamp (the worktree mtime served as
+/// `dates.modified`) to its UTC calendar day as a `yyyy-mm-dd` string, so the
+/// `modified` timeline criterion compares on the SAME lexical date axis as the
+/// `created`/`stamped` frontmatter date strings (no date crate needed).
+/// Days-to-civil (Howard Hinnant's algorithm), correct for any epoch day.
+pub fn ms_to_date_key(ms: Timestamp) -> String {
+    let days = ms.div_euclid(86_400_000); // epoch days (floor; handles pre-1970)
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// The comparable `yyyy-mm-dd` key for a node's chosen timeline criterion
+/// ([`DateField`]): `created`/`stamped` are frontmatter date strings (used
+/// verbatim — `created_in_range` normalizes the prefix), `modified` is the
+/// worktree mtime mapped to its UTC calendar day. `None` when the node carries no
+/// value for that field (e.g. `modified` on a blob-true/as-of view) — the
+/// honest-degradation case `created_in_range` then excludes.
+pub fn date_key_for(dates: &Dates, field: DateField) -> Option<String> {
+    match field {
+        DateField::Created => dates.created.clone(),
+        DateField::Stamped => dates.stamped.clone(),
+        DateField::Modified => dates.modified.map(ms_to_date_key),
+    }
+}
+
 /// True when a blob-true `created` date falls within `[from, to]` inclusive.
 /// ISO `yyyy-mm-dd` strings compare lexically (no date parsing); both `created`
 /// and the bounds are normalized to their date prefix ([`date_key`]) so a
@@ -203,11 +237,17 @@ pub fn created_in_range(created: Option<&str>, from: Option<&str>, to: Option<&s
     true
 }
 
-/// Whether a collected lineage node is in `[from, to]`. Reads only the
-/// already-derived `LineageNode`, so the per-request range slice never re-touches
-/// the graph; delegates the boundary logic to [`created_in_range`].
-fn node_in_range(node: &LineageNode, from: Option<&str>, to: Option<&str>) -> bool {
-    created_in_range(node.dates.created.as_deref(), from, to)
+/// Whether a collected lineage node is in `[from, to]` on the chosen criterion
+/// `field`. Reads only the already-derived `LineageNode`, so the per-request
+/// range slice never re-touches the graph; delegates the boundary logic to
+/// [`created_in_range`] over the field's [`date_key_for`] value.
+fn node_in_range(
+    node: &LineageNode,
+    field: DateField,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> bool {
+    created_in_range(date_key_for(&node.dates, field).as_deref(), from, to)
 }
 
 /// Project one in-range, in-scope document node into a lineage node, or `None`
@@ -224,6 +264,7 @@ fn lineage_node(graph: &LinkageGraph, node: &Node) -> Option<LineageNode> {
         dates: node.dates.clone().unwrap_or(Dates {
             created: None,
             modified: None,
+            stamped: None,
         }),
         title: node.title.clone(),
         degree,
@@ -298,12 +339,13 @@ pub fn lineage_nodes(
 /// deterministic (a dense day's dot stacking stays stable across scrubs).
 pub fn bound_range(
     all: &[LineageNode],
+    field: DateField,
     from: Option<&str>,
     to: Option<&str>,
 ) -> (Vec<LineageNode>, Option<LineageTruncated>) {
     let mut nodes: Vec<LineageNode> = all
         .iter()
-        .filter(|n| node_in_range(n, from, to))
+        .filter(|n| node_in_range(n, field, from, to))
         .cloned()
         .collect();
     let total_nodes = nodes.len();
@@ -378,8 +420,9 @@ pub fn lineage(
     include_arcs: bool,
 ) -> Result<LineageSlice, FilterError> {
     let filter = filter.validated()?;
+    let date_field = filter.date_field;
     let all = collect_lineage_nodes(graph, scope, &filter);
-    let (nodes, truncated) = bound_range(&all, from, to);
+    let (nodes, truncated) = bound_range(&all, date_field, from, to);
     let arcs = if include_arcs {
         // Self-consistency (S03/S06): the kept (post-cap) node ids drive the arc
         // retain, so no arc dangles to a dropped or out-of-range node.
@@ -411,6 +454,50 @@ mod tests {
         }
     }
 
+    #[test]
+    fn ms_to_date_key_maps_epoch_ms_to_utc_calendar_day() {
+        // #14: the `modified` mtime (epoch ms) must map to the SAME yyyy-mm-dd axis
+        // the created/stamped strings use. Known epoch instants (days-to-civil).
+        assert_eq!(ms_to_date_key(0), "1970-01-01", "epoch");
+        assert_eq!(ms_to_date_key(86_400_000), "1970-01-02", "one day");
+        // 1e12 ms = 1_000_000_000 s = 2001-09-09T01:46:40Z.
+        assert_eq!(ms_to_date_key(1_000_000_000_000), "2001-09-09");
+        // 1.7e12 ms = 1_700_000_000 s = 2023-11-14T22:13:20Z.
+        assert_eq!(ms_to_date_key(1_700_000_000_000), "2023-11-14");
+    }
+
+    #[test]
+    fn date_key_for_extracts_the_chosen_criterion() {
+        // #14: created/stamped are frontmatter strings; modified is the mtime mapped
+        // to its calendar day; an absent field yields None (honest degradation).
+        let dates = Dates {
+            created: Some("2026-01-02".into()),
+            modified: Some(1_700_000_000_000),
+            stamped: Some("2026-03-04".into()),
+        };
+        assert_eq!(
+            date_key_for(&dates, DateField::Created).as_deref(),
+            Some("2026-01-02")
+        );
+        assert_eq!(
+            date_key_for(&dates, DateField::Stamped).as_deref(),
+            Some("2026-03-04")
+        );
+        assert_eq!(
+            date_key_for(&dates, DateField::Modified).as_deref(),
+            Some("2023-11-14")
+        );
+        let none = Dates {
+            created: None,
+            modified: None,
+            stamped: None,
+        };
+        assert!(
+            date_key_for(&none, DateField::Modified).is_none(),
+            "absent mtime → None"
+        );
+    }
+
     fn doc(stem: &str, doc_type: &str, created: &str) -> Node {
         Node {
             id: node_id(&CanonicalKey::Document { stem }),
@@ -421,6 +508,7 @@ mod tests {
             dates: Some(Dates {
                 created: Some(created.into()),
                 modified: None,
+                stamped: None,
             }),
             feature_tags: vec!["x".into()],
             status: None,
@@ -512,6 +600,7 @@ mod tests {
         undated.dates = Some(Dates {
             created: None,
             modified: None,
+            stamped: None,
         });
         g.upsert_node(undated);
 
@@ -767,6 +856,7 @@ mod tests {
         undated.dates = Some(Dates {
             created: None,
             modified: None,
+            stamped: None,
         });
         g.upsert_node(undated);
 
@@ -788,7 +878,7 @@ mod tests {
             (Some("2026-06-13"), None),
             (None, Some("2026-06-11")),
         ] {
-            let (sliced, _) = bound_range(&full, from, to);
+            let (sliced, _) = bound_range(&full, DateField::Created, from, to);
             let fresh = lineage(&g, &scope(), from, to, Filter::default(), false).unwrap();
             assert_eq!(
                 sliced, fresh.nodes,
@@ -814,7 +904,7 @@ mod tests {
             g.upsert_node(doc(&format!("plan-{i:06}"), "plan", "2026-06-10"));
         }
         let full = lineage_nodes(&g, &scope(), Filter::default()).unwrap();
-        let (sliced, truncated) = bound_range(&full, None, None);
+        let (sliced, truncated) = bound_range(&full, DateField::Created, None, None);
         assert_eq!(
             sliced.len(),
             MAX_DOCUMENT_NODES,
@@ -827,7 +917,7 @@ mod tests {
         let mut small = LinkageGraph::new();
         small.upsert_node(doc("a-plan", "plan", "2026-06-10"));
         let small_full = lineage_nodes(&small, &scope(), Filter::default()).unwrap();
-        let (_, small_trunc) = bound_range(&small_full, None, None);
+        let (_, small_trunc) = bound_range(&small_full, DateField::Created, None, None);
         assert!(small_trunc.is_none(), "a small slice is not truncated");
     }
 }

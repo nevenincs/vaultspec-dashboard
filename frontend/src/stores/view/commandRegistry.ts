@@ -89,6 +89,7 @@ export interface CommandShellContext {
   leftCollapsed: boolean;
   rightCollapsed: boolean;
   timelineVisible: boolean;
+  graphVisible: boolean;
 }
 
 /** The runtime effect intents the providers fire. Hook-bound effects (scope-bound
@@ -111,19 +112,28 @@ export interface CommandIntents {
   runOp: (target: "core" | "rag", verb: string) => void;
   /** Close the open document editor (store-only no-op when none is open). */
   closeDocument: () => void;
+  /** Close ALL open document tabs (#15). */
+  closeAllDocuments: () => void;
+  /** Reload the active document tab's content from the engine (#15). */
+  reloadActiveDocument: () => void;
+  /** Peg the active provisional (preview) tab to permanent (#15 "Keep Open"). */
+  keepActiveDocumentOpen: () => void;
   /** Set the graph layout frozen flag (scope-bound). */
   setGraphFrozen: (frozen: boolean) => void;
-  /** Dock the timeline playhead back to LIVE. */
+  /** Dock the timeline playhead back to LIVE (time-travel exit; legacy). */
   jumpToLive: () => void;
-  /** Fit the timeline to the whole corpus. */
+  /** Fit the timeline to the whole corpus (legacy). */
   fitTimelineToCorpus: () => void;
-  /** Set the timeline navigation window to the last N days. */
+  /** Set the canonical date_range to the last N days (Issue #14 range preset). */
   setTimelineRangeDays: (days: number) => void;
+  /** Clear the canonical date_range filter (Issue #14). */
+  clearDateRange: () => void;
   /** Shell window-management intents (toggle rails/timeline, switch tab, reset). */
   toggleLeftRail: () => void;
   toggleLeftCollapsed: () => void;
   toggleRightRail: () => void;
   toggleTimeline: () => void;
+  toggleGraph: () => void;
   setRightTab: (tab: unknown) => void;
   resetLayout: () => void;
   showKeyboardShortcuts: () => void;

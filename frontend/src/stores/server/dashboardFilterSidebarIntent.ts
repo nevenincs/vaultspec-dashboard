@@ -5,6 +5,9 @@ import { normalizeStoreScope } from "./scopeIdentity";
 
 export interface DashboardFilterSidebarIntent {
   toggleFacet: (facet: unknown, value: unknown) => Promise<unknown>;
+  /** Clear ONE facet (e.g. the legend's `doc_types` Reset) without disturbing
+   *  the other flyout facets — the canonical scoped-clear seam. */
+  clearFacet: (facet: unknown) => Promise<unknown>;
   clearFilters: () => Promise<unknown>;
 }
 
@@ -21,8 +24,10 @@ export function useDashboardFilterSidebarIntent(
   const normalizedScope = normalizeDashboardFilterSidebarScope(scope);
   const mutations = useDashboardStateMutations(normalizedScope);
   const toggleFilterFacetRef = useRef(mutations.toggleFilterFacet);
+  const clearFilterFacetRef = useRef(mutations.clearFilterFacet);
   const setFiltersRef = useRef(mutations.setFilters);
   toggleFilterFacetRef.current = mutations.toggleFilterFacet;
+  clearFilterFacetRef.current = mutations.clearFilterFacet;
   setFiltersRef.current = mutations.setFilters;
 
   const toggleFacet = useCallback(
@@ -32,11 +37,21 @@ export function useDashboardFilterSidebarIntent(
         : toggleFilterFacetRef.current(facet, value),
     [normalizedScope],
   );
+  const clearFacet = useCallback(
+    (facet: unknown) =>
+      normalizedScope === null
+        ? Promise.resolve(null)
+        : clearFilterFacetRef.current(facet),
+    [normalizedScope],
+  );
   const clearFilters = useCallback(
     () =>
       normalizedScope === null ? Promise.resolve(null) : setFiltersRef.current({}),
     [normalizedScope],
   );
 
-  return useMemo(() => ({ toggleFacet, clearFilters }), [clearFilters, toggleFacet]);
+  return useMemo(
+    () => ({ toggleFacet, clearFacet, clearFilters }),
+    [clearFacet, clearFilters, toggleFacet],
+  );
 }

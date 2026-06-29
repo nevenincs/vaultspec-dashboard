@@ -32,11 +32,11 @@ async function eventuallyOpenedAndSelected(id: string): Promise<void> {
   for (let i = 0; i < 20; i += 1) {
     const state = await createLiveClient().dashboardState(scope);
     lastSelection = state.selected_ids;
-    lastOpened = useViewStore.getState().openedIds;
-    if (
-      state.selected_ids[0] === id &&
-      useViewStore.getState().openedIds.includes(id)
-    ) {
+    // The shared menu "Open" now opens a #15 dock tab (not the retired island), so the
+    // open lands in openDocs (unified-selection D1).
+    const openIds = useViewStore.getState().openDocs.map((d) => d.nodeId);
+    lastOpened = openIds;
+    if (state.selected_ids[0] === id && openIds.includes(id)) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
@@ -48,7 +48,13 @@ async function eventuallyOpenedAndSelected(id: string): Promise<void> {
 
 describe("menu action seams", () => {
   beforeEach(() => {
-    useViewStore.setState({ openedIds: [], workingSet: [], selection: null });
+    useViewStore.setState({
+      openedIds: [],
+      openDocs: [],
+      activeDocId: null,
+      workingSet: [],
+      selection: null,
+    });
     usePinStore.setState({ pinnedIds: [] });
   });
 

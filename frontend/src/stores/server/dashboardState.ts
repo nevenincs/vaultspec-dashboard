@@ -465,6 +465,23 @@ export function dashboardFiltersWithFacetToggled(
   return next;
 }
 
+/** Clear ONE multi-select facet wholesale from the filter record (the legend's
+ *  doc_types Reset), leaving every OTHER facet — the flyout's statuses / health /
+ *  date_range / feature_query — untouched. One atomic write → one re-query,
+ *  through the canonical seam; never a private/canvas-local mask and never the
+ *  whole-record `setFilters({})` clobber (one-filter-authority-every-corpus-view-
+ *  consumes-it). */
+export function dashboardFiltersWithFacetCleared(
+  filters: unknown,
+  facet: unknown,
+): DashboardFilters {
+  const next = cloneDashboardFilters(filters);
+  const normalizedFacet = normalizeDashboardFilterFacet(facet);
+  if (normalizedFacet === null) return next;
+  delete next[normalizedFacet];
+  return next;
+}
+
 export function normalizeDashboardFeatureTag(featureTag: unknown): string | null {
   return normalizeDashboardFilterFacetValue(featureTag);
 }
@@ -622,6 +639,15 @@ export function useDashboardStateMutations(scope: unknown) {
         filtersPatch(dashboardFiltersWithFacetToggled(filters, facet, value)),
       );
     },
+    clearFilterFacet: (facet: unknown) => {
+      const filters =
+        normalizedScope === null
+          ? {}
+          : cachedDashboardFilters(client, normalizedScope, sessionIdentity);
+      return mutation.mutateAsync(
+        filtersPatch(dashboardFiltersWithFacetCleared(filters, facet)),
+      );
+    },
     setDateRange: (dateRange: unknown) =>
       mutation.mutateAsync(dateRangePatch(dateRange)),
     setFiltersAndDateRange: (filters: unknown, dateRange: unknown) =>
@@ -681,13 +707,32 @@ function cloneDateRange(range: unknown): DashboardDateRange {
 // the bounded cache, NOT by moving filtering off the engine. The client membership
 // narrows only what it can fully see: client-added nodes (ego expansions, pins) and the
 // legend category mask.
-export function dashboardGraphFilter(state: DashboardState): GraphFilter {
+export type DashboardDateField = "created" | "modified" | "stamped";
+
+/** The active date criterion rides as the engine-applied `date_field` facet
+ *  (node-facets-filter-on-the-engine) so the graph narrows the `date_range` window
+ *  by the chosen field. Only set for a NON-default criterion (created is the engine
+ *  default) AND only when the engine advertises support — so an older engine, which
+ *  rejects unknown filter fields, never receives it (Issue #14). */
+function applyDateField(
+  filter: GraphFilter,
+  dateField: DashboardDateField | undefined,
+): void {
+  if (dateField && dateField !== "created") filter.date_field = dateField;
+  else delete filter.date_field;
+}
+
+export function dashboardGraphFilter(
+  state: DashboardState,
+  dateField?: DashboardDateField,
+): GraphFilter {
   const filter = cloneDashboardFilters(state.filters);
   if (hasDashboardDateRange(state.date_range)) {
     filter.date_range = cloneDateRange(state.date_range);
   } else {
     delete filter.date_range;
   }
+  applyDateField(filter, dateField);
   return filter;
 }
 
@@ -703,10 +748,15 @@ export function dashboardGraphFilter(state: DashboardState): GraphFilter {
 // and never carries `date_range`, so an empty result means "no active facet" and
 // returns `undefined` — the lineage read stays the unfiltered full set and shares
 // one cache entry instead of a distinct `{}` key.
+// The date range stays excluded (the timeline owns the date axis), but the active
+// `date_field` criterion DOES ride so the timeline narrows by the same field the
+// graph does (Issue #14) — gated to a non-default, engine-advertised criterion.
 export function dashboardLineageFilterArg(
   state: Pick<DashboardState, "filters">,
+  dateField?: DashboardDateField,
 ): string | undefined {
   const filter = cloneDashboardFilters(state.filters);
+  applyDateField(filter, dateField);
   return Object.keys(filter).length > 0 ? JSON.stringify(filter) : undefined;
 }
 
@@ -720,10 +770,11 @@ export function dashboardGraphAsOf(
 
 export function dashboardGraphQueryVariables(
   state: DashboardState,
+  dateField?: DashboardDateField,
 ): DashboardGraphQueryVariables {
   return {
     scope: state.scope,
-    filter: dashboardGraphFilter(state),
+    filter: dashboardGraphFilter(state, dateField),
     asOf: dashboardGraphAsOf(state),
     granularity: state.graph_granularity,
     lens: state.salience_lens,

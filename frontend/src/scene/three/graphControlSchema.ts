@@ -310,6 +310,19 @@ export const GRAPH_CONTROL_SCHEMA = [
       "Warm-START energy (threeField re-set-data that carries most node positions over): LOWER than warmReheatAlpha so carried nodes barely move while new nodes settle (object constancy). Two warm paths → two values, intentional.",
   },
   {
+    id: "gentleReheatAlpha",
+    label: "Gentle reheat alpha",
+    group: "simulation",
+    type: "number",
+    min: 0.02,
+    max: 0.5,
+    step: 0.01,
+    default: 0.15,
+    exposure: [],
+    description:
+      "Live-retune re-energise (solver.setParams / setRadii from a force or node-size slider): a LOW, change-proportional kick so the layout re-settles smoothly IN PLACE instead of the violent global re-explode the old warmReheatAlpha (0.5) caused on every slider nudge. DISTINCT from warmReheatAlpha (explicit resume) and warmStartAlpha (data warm-start).",
+  },
+  {
     id: "prewarmMaxTicks",
     label: "Prewarm max ticks",
     group: "simulation",
@@ -353,7 +366,7 @@ export const GRAPH_CONTROL_SCHEMA = [
   },
   {
     id: "nodeSalienceScale",
-    label: "Salience spread",
+    label: "Importance spread",
     uiLabel: "Importance",
     group: "visualisation",
     type: "number",
@@ -362,7 +375,8 @@ export const GRAPH_CONTROL_SCHEMA = [
     step: 0.05,
     default: 1,
     exposure: ["ui", "lab"],
-    description: "How strongly salience inflates a node; 0 = uniform size.",
+    description:
+      "How strongly a node's connectedness (its number of links) inflates its size; 0 = every node the same size, higher = more-connected nodes stand out more.",
   },
   {
     id: "edgeWidthMin",
@@ -468,6 +482,19 @@ export const GRAPH_CONTROL_SCHEMA = [
     default: 2.6,
     exposure: [],
     description: "Salience 1 inflates a node up to this × the base radius.",
+  },
+  {
+    id: "nodeDegreeReference",
+    label: "Node degree reference",
+    group: "visualisation",
+    type: "number",
+    min: 8,
+    max: 400,
+    step: 1,
+    default: 100,
+    exposure: [],
+    description:
+      "Reference connectedness (total reference edges in+out) that maps a node to FULL prominence; the degree→size log mapping is normalized by this and clamped, so more-connected nodes are larger without a few mega-hubs dwarfing the field.",
   },
   {
     id: "featureLevelScale",
@@ -759,6 +786,19 @@ export const GRAPH_CONTROL_SCHEMA = [
     default: 1.1,
     exposure: [],
     description: "Multiplicative zoom factor per mouse-wheel notch.",
+  },
+  {
+    id: "pinchZoomSensitivity",
+    label: "Pinch zoom sensitivity",
+    group: "navigation",
+    type: "number",
+    min: 0.002,
+    max: 0.05,
+    step: 0.001,
+    default: 0.01,
+    exposure: [],
+    description:
+      "Trackpad pinch zoom sensitivity: the per-event factor is exp(-deltaY × this), so a higher value zooms faster per pinch.",
   },
   {
     id: "fitPaddingFactor",

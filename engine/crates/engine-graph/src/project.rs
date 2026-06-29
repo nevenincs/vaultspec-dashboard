@@ -79,9 +79,21 @@ pub(crate) fn compute_meta_edges(graph: &LinkageGraph) -> Vec<MetaEdge> {
                 if src_feature == dst_feature {
                     continue;
                 }
-                let entry = agg
-                    .entry((src_feature.clone(), dst_feature.clone()))
-                    .or_default();
+                // A constellation ribbon is UNDIRECTED: a reference A->B and a
+                // reference B->A describe the same feature-pair relationship, so
+                // they aggregate into ONE meta-edge. Keying on the directed
+                // (src, dst) pair emitted two meta-edges per bidirectional pair,
+                // which the client (synthesizing distinct ids from the endpoint
+                // pair) rendered as two parallel ribbons over the same nodes —
+                // graph edge over-draw. Canonicalize to the unordered (lo, hi)
+                // pair so both directions sum into one ribbon with the combined
+                // count and tier breakdown.
+                let (lo, hi) = if src_feature <= dst_feature {
+                    (src_feature, dst_feature)
+                } else {
+                    (dst_feature, src_feature)
+                };
+                let entry = agg.entry((lo.clone(), hi.clone())).or_default();
                 entry.0 += 1;
                 *entry.1.entry(stored.edge.tier.as_str()).or_default() += 1;
             }

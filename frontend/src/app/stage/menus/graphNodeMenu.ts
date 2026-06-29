@@ -19,12 +19,12 @@ import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionContext, ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
 import { featureTagFromNodeId } from "../../../stores/server/liveAdapters";
+import { activateEntity } from "../../../stores/view/activateEntity";
 import {
   closeMenuNodeIsland,
   collapseMenuWorkingSet,
   expandMenuWorkingSet,
   focusMenuNode,
-  openMenuNodeIsland,
   toggleMenuPinnedNode,
 } from "../../../stores/view/menuActions";
 import {
@@ -59,11 +59,18 @@ export function graphNodeMenu(
           disabledInTimeTravel: true,
         }
       : {
-          id: "node:open-island",
-          label: "Open island",
+          id: "node:open",
+          label: "Open",
           section: "navigate",
           icon: Maximize2,
-          run: () => openMenuNodeIsland(normalizedEntity.id, normalizedEntity),
+          // The context-menu Open routes through the ONE canonical activate seam: a
+          // PERMANENT dock tab (frame:false — the node is already on the canvas the
+          // user right-clicked). Retires the on-canvas island as the default open.
+          run: () =>
+            void activateEntity(normalizedEntity.id, normalizedEntity.scope, {
+              permanent: true,
+              frame: false,
+            }).catch(() => undefined),
           disabledInTimeTravel: true,
         },
     normalizedEntity.isPinned

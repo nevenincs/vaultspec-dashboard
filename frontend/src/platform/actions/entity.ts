@@ -158,6 +158,19 @@ export interface BackgroundEntity {
   region?: BackgroundRegion;
 }
 
+/** Dock: an open DOCUMENT TAB header (#15). The id IS the document node id; the
+ *  target-relative tab verbs (keep-open / reload / close / close-others / close-all)
+ *  resolve off it. */
+export interface DocTabEntity {
+  kind: "doc-tab";
+  id: string;
+  /** The document node id (equals `id`; carried explicitly for parity with other
+   *  node-bearing entities). */
+  nodeId?: string;
+  /** The active dashboard scope at the surface that published this entity. */
+  scope?: string | null;
+}
+
 /** Every right-clickable entity across the four regions. */
 export type EntityDescriptor =
   | WorkspaceEntity
@@ -174,7 +187,8 @@ export type EntityDescriptor =
   | MetaEdgeEntity
   | IslandEntity
   | CanvasEntity
-  | BackgroundEntity;
+  | BackgroundEntity
+  | DocTabEntity;
 
 /** The entity `kind` discriminant - the registry key. */
 export type EntityKind = EntityDescriptor["kind"];
@@ -195,6 +209,7 @@ export const ENTITY_KINDS: readonly EntityKind[] = [
   "island",
   "canvas",
   "background",
+  "doc-tab",
 ];
 
 const ENTITY_KIND_SET = new Set<string>(ENTITY_KINDS);
@@ -422,6 +437,16 @@ export function normalizeEntityDescriptor(entity: unknown): EntityDescriptor | n
     }
     case "island": {
       const normalized: IslandEntity = { kind, id };
+      assignDefined(
+        normalized,
+        "scope",
+        normalizeOptionalNullableScopeId(entity.scope),
+      );
+      return normalized;
+    }
+    case "doc-tab": {
+      const normalized: DocTabEntity = { kind, id };
+      assignDefined(normalized, "nodeId", normalizeOptionalNodeId(entity.nodeId));
       assignDefined(
         normalized,
         "scope",

@@ -7,7 +7,9 @@
 
 import { defineConfig } from "@playwright/test";
 
-const PORT = 5174;
+import { DEV_PORTS } from "./dev-ports";
+
+const PORT = DEV_PORTS.adverse;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({

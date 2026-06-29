@@ -311,16 +311,26 @@ fn typed_client_expectations_hold_over_live_serve() {
         conf["status_class"], "affirmed",
         "in-flight -> affirmed treatment class"
     );
+    // Constellation meta-edges (cross-feature ribbons) AGGREGATE document-document
+    // edges. STRICT reference-only graph (user ruling, 2026-06-28): the only graph
+    // edges are authored `related:` FRONTMATTER references, served by the DECLARED
+    // tier. This conformance fixture is a bare `.vault/` worktree with NO
+    // `.vaultspec/`, so core's declared tier cannot run here (the graph is
+    // structural-NODE-only, edgeless), and the former cross-feature ribbon came
+    // from an in-body `[[wiki-link]]` mention — now forbidden as graph fact. So
+    // meta_edges is correctly EMPTY in this core-less fixture; the wire SHAPE
+    // contract still holds (an array) and any entry present addresses feature NODE
+    // IDS. Non-empty cross-feature ribbon synthesis from reference edges is covered
+    // by the engine-query unit test `feature_granularity_returns_meta_edges_not_doc_edges`.
     let metas = constellation["data"]["meta_edges"]
         .as_array()
-        .expect("meta_edges");
-    assert!(!metas.is_empty(), "cross-feature meta-edges present");
+        .expect("meta_edges is an array (shape contract)");
     assert!(
         metas.iter().all(
             |m| m["src"].as_str().is_some_and(|s| s.starts_with("feature:"))
                 && m["dst"].as_str().is_some_and(|s| s.starts_with("feature:"))
         ),
-        "meta-edges address feature NODE IDS, not bare tags"
+        "any meta-edge present addresses feature NODE IDS, not bare tags"
     );
 
     // --- S50: the constellation rides the single monotonic delta clock --------
@@ -486,22 +496,21 @@ fn typed_client_expectations_hold_over_live_serve() {
         "an exec record carries no status_class (honest absence): {exec_node}"
     );
 
-    // The edge gains a `derivation` label, distinct from the §4 `relation`,
-    // carried alongside it. The plan -> adr wiki-link is `authorizes`.
-    let plan_adr_edge = docs["data"]["edges"]
+    // STRICT reference-only graph (user ruling, 2026-06-28): the served graph
+    // carries ONLY authored `related:` FRONTMATTER references (declared tier). This
+    // conformance fixture is a bare `.vault/` worktree with NO `.vaultspec/`, so the
+    // declared tier cannot run, and its documents' cross-references are all in-body
+    // `[[wiki-link]]` MENTIONS — now forbidden as graph fact. So the served edge set
+    // is EMPTY: the plan body's `see [[conf-adr]]` mention that once produced a
+    // plan -> adr structural edge is no longer graphed. (Edge `derivation` labeling
+    // rides on reference edges and is covered by the engine-query `derivation_labeling`
+    // unit test.)
+    let edges = docs["data"]["edges"]
         .as_array()
-        .unwrap()
-        .iter()
-        .find(|e| e["src"] == "doc:2026-06-13-conf-plan" && e["dst"] == "doc:2026-06-13-conf-adr")
-        .expect("plan -> adr edge")
-        .clone();
+        .expect("edges array (shape contract)");
     assert!(
-        plan_adr_edge["relation"].is_string(),
-        "the §4 relation is still present"
-    );
-    assert_eq!(
-        plan_adr_edge["derivation"], "authorizes",
-        "the additive derivation label rides alongside the §4 relation"
+        edges.is_empty(),
+        "in-body wiki-link mentions are NOT served as graph edges (strict reference-only): {docs}"
     );
     // Every edge carries the `derivation` key (null when no pipeline shape) —
     // the field is unconditionally part of the additive §4 edge view.

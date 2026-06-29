@@ -84,45 +84,60 @@ describe("buildSettingsCommands", () => {
 });
 
 describe("buildTimelineCommands / buildEditorCommands", () => {
-  it("timeline enrolls jump-to-now, fit-to-corpus, and the range presets", () => {
-    let jumped = 0;
-    let fitted = 0;
+  it("timeline enrolls the date-range presets and clear (Issue #14)", () => {
+    let cleared = 0;
     const days: number[] = [];
     const commands = buildTimelineCommands({
-      jumpToLive: () => {
-        jumped += 1;
-      },
-      fitToCorpus: () => {
-        fitted += 1;
-      },
       setRangeDays: (d) => days.push(d),
+      clearDateRange: () => {
+        cleared += 1;
+      },
     });
     expect(commands.map((c) => c.id)).toEqual([
-      "timeline:jump-to-now",
-      "timeline:fit-to-corpus",
       "timeline:range-1d",
       "timeline:range-7d",
       "timeline:range-30d",
       "timeline:range-90d",
+      "timeline:clear-date-range",
     ]);
-    expect(commands.every((c) => c.family === "navigate")).toBe(true);
-    commands.find((c) => c.id === "timeline:jump-to-now")?.run();
-    commands.find((c) => c.id === "timeline:fit-to-corpus")?.run();
+    expect(commands.every((c) => c.family === "filters")).toBe(true);
     commands.find((c) => c.id === "timeline:range-30d")?.run();
-    expect(jumped).toBe(1);
-    expect(fitted).toBe(1);
+    commands.find((c) => c.id === "timeline:clear-date-range")?.run();
     expect(days).toEqual([30]);
+    expect(cleared).toBe(1);
   });
 
-  it("editor close-document fires the injected effect", () => {
+  it("editor commands fire the injected effects (close / close-all / reload / keep-open)", () => {
     let closed = 0;
-    const commands = buildEditorCommands(() => {
-      closed += 1;
+    let closedAll = 0;
+    let reloaded = 0;
+    let kept = 0;
+    const commands = buildEditorCommands({
+      closeDoc: () => {
+        closed += 1;
+      },
+      closeAllDocs: () => {
+        closedAll += 1;
+      },
+      reloadDoc: () => {
+        reloaded += 1;
+      },
+      keepOpen: () => {
+        kept += 1;
+      },
     });
-    expect(commands.map((c) => c.id)).toEqual(["editor:close-document"]);
-    expect(commands[0]?.family).toBe("app");
+    expect(commands.map((c) => c.id)).toEqual([
+      "editor:close-document",
+      "editor:close-all-documents",
+      "editor:reload-document",
+      "editor:keep-document-open",
+    ]);
+    expect(commands.every((c) => c.family === "app")).toBe(true);
     commands[0]?.run();
-    expect(closed).toBe(1);
+    commands[1]?.run();
+    commands[2]?.run();
+    commands[3]?.run();
+    expect([closed, closedAll, reloaded, kept]).toEqual([1, 1, 1, 1]);
   });
 });
 

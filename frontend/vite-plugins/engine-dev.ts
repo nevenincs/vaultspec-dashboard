@@ -1,8 +1,11 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync, rmSync, watch, type FSWatcher } from "node:fs";
+import { Socket } from "node:net";
 import { resolve } from "node:path";
 
 import type { Plugin, ViteDevServer } from "vite";
+
+import { DEV_PORTS } from "../dev-ports";
 
 // Robust local dev orchestrator for the live UX survey.
 //
@@ -48,9 +51,8 @@ function warn(message: string): void {
 }
 
 function resolvePort(): number {
-  const raw = process.env.VAULTSPEC_DEV_PORT;
-  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 8767;
+  // Canonical engine dev port (./dev-ports.ts honours VAULTSPEC_DEV_PORT).
+  return DEV_PORTS.engine;
 }
 
 function resolveMode(): EngineMode {
@@ -161,15 +163,38 @@ export function engineDevPlugin(): Plugin {
   // lost the bind) makes a fresh `serve` fail to bind and pile up — the exact
   // 10-engines-on-one-port failure seen under heavy concurrency. If nothing
   // HEALTHY answers but service.json names a pid, clear it before binding.
-  async function clearStalePort(repo: string): Promise<void> {
-    if (await isHealthy(port)) return;
+  // Returns true if it killed a stale vaultspec pid (our territory), false if
+  // there was nothing of ours to clear.
+  async function clearStalePort(repo: string): Promise<boolean> {
+    if (await isHealthy(port)) return false;
     const stale = readService(repo);
     if (stale) {
       warn(
         `port ${port} has a stale (unhealthy) engine pid ${stale.pid} — clearing it`,
       );
       killPid(stale.pid);
+      return true;
     }
+    return false;
+  }
+
+  // Fail-fast preflight: is the engine port already accepting connections from
+  // SOMETHING? A quick TCP connect — true means occupied. Used to abort the dev
+  // boot when a FOREIGN process (another project's server) squats our locked
+  // port, instead of respawn-looping the engine against an unbindable port.
+  function portOccupied(p: number): Promise<boolean> {
+    return new Promise((resolveOccupied) => {
+      const socket = new Socket();
+      const finish = (occupied: boolean): void => {
+        socket.destroy();
+        resolveOccupied(occupied);
+      };
+      socket.setTimeout(500);
+      socket.once("connect", () => finish(true));
+      socket.once("timeout", () => finish(false));
+      socket.once("error", () => finish(false));
+      socket.connect(p, "127.0.0.1");
+    });
   }
 
   // Schedule a bounded respawn. Shared by the exit and spawn-error paths so a
@@ -367,7 +392,17 @@ export function engineDevPlugin(): Plugin {
       if (alreadyUp) {
         log(`adopting the engine already serving on :${port}`);
       } else {
-        await clearStalePort(repoRoot);
+        const cleared = await clearStalePort(repoRoot);
+        // Fail fast on a FOREIGN occupant: nothing of ours was cleared, no
+        // healthy vaultspec engine answered, yet the port is taken. Aborting the
+        // dev boot (rather than respawn-looping an unbindable engine) surfaces
+        // the collision immediately — the locked-port / fail-fast contract.
+        if (!cleared && (await portOccupied(port))) {
+          throw new Error(
+            `[engine] port ${port} is held by a non-vaultspec process. Free it, ` +
+              `or set VAULTSPEC_DEV_PORT to an open port, then restart the dev server.`,
+          );
+        }
         if (!existsSync(binaryPath(repoRoot))) buildEngine(repoRoot);
         startEngine(repoRoot);
         if (await waitHealthy(port, HEALTH_TIMEOUT_MS)) {

@@ -1,14 +1,15 @@
-// Circle salience sizing — the engine-served degree-of-interest encoding
-// (graph/Hero 85:2, graph/Node-items 83:2; figma-parity-reconciliation
-// W03.P07.S44).
+// Circle sizing — visual prominence scales with CONNECTEDNESS (Issue #8).
 //
-// The binding canvas sizes each category circle by the node's SALIENCE: the
-// engine-served degree-of-interest scalar in [0,1] (a CPU projection over
-// personalized PageRank, betweenness, k-core, recency, and lifecycle, attached
-// to the graph node payload — graph-compute-is-cpu). Size is the importance
-// field made visible; it is monotonic in salience for EVERY species and capped at
-// the documented band. Salience ALSO orders the DOI label cull. The member-count
-// rule is the honest fallback only when the origin does not serve salience.
+// The binding canvas sizes each category circle by the node's connectedness: the
+// engine-served total degree (reference edges in+out, summed across `degreeByTier`).
+// More-connected nodes read as more prominent. The mapping is BOUNDED and MONOTONIC
+// (a log of degree, normalized by a reference degree and clamped to the band) so a
+// few mega-hubs don't dwarf the field. Degree is engine-served; the frontend only
+// MAPS it to a radius (display-state-is-backend-served). Ordering: feature nodes by
+// member count (their connectedness analog); document nodes by degree; SALIENCE is
+// the graceful fallback when an origin serves a degree-of-interest scalar but no
+// degree block; else the base. Salience ALSO still orders the DOI label cull (labels
+// are a separate concern from size).
 //
 // These are pure-function assertions over the sizing source (`nodeWorldRadius` in
 // appearance.ts, plus `labelPriority`/`ambientLabelFloor` in nodeVisualEncoding.ts);
@@ -34,8 +35,53 @@ const node = (over: Partial<SceneNodeData>): SceneNodeData => ({
   ...over,
 });
 
-describe("salience -> circle size (engine-served degree-of-interest)", () => {
-  it("grows the circle monotonically with salience for any species", () => {
+describe("connectedness -> circle size (engine-served degree)", () => {
+  const deg = (d: number, over: Partial<SceneNodeData> = {}): number =>
+    nodeWorldRadius(node({ degreeByTier: { structural: d }, ...over }));
+
+  it("grows the circle monotonically with total degree (more connected = larger)", () => {
+    const leaf = deg(0);
+    const mid = deg(5);
+    const hub = deg(80);
+    expect(mid).toBeGreaterThan(leaf);
+    expect(hub).toBeGreaterThan(mid);
+  });
+
+  it("sums degree across tiers (in+out reference edges)", () => {
+    const oneTier = nodeWorldRadius(node({ degreeByTier: { structural: 10 } }));
+    const split = nodeWorldRadius(
+      node({ degreeByTier: { structural: 6, declared: 4 } }),
+    );
+    expect(split).toBeCloseTo(oneTier, 5); // 6 + 4 == 10 → same radius
+  });
+
+  it("seats an unconnected node at the base and caps the band at the maximum", () => {
+    const base = nodeWorldRadius(node({})); // no degree, no salience
+    expect(deg(0)).toBeCloseTo(base, 5);
+    // A node at/above the reference connectedness reaches the documented ceiling.
+    const saturated = deg(100000); // far above the reference degree → clamped
+    expect(saturated / base).toBeCloseTo(SALIENCE_RADIUS_MAX, 5);
+  });
+
+  it("is bounded — a 2× more-connected node is LESS than 2× larger (log mapping)", () => {
+    const base = nodeWorldRadius(node({}));
+    const a = deg(8) - base;
+    const b = deg(16) - base;
+    expect(b).toBeGreaterThan(a); // still monotonic
+    expect(b).toBeLessThan(a * 2); // sub-linear: hubs don't dwarf the field
+  });
+
+  it("sizes feature-convergence nodes by member count (their connectedness analog)", () => {
+    const baseDoc = nodeWorldRadius(node({ kind: "document" }));
+    const bigFeature = nodeWorldRadius(node({ kind: "feature", memberCount: 40 }));
+    expect(bigFeature).toBeGreaterThan(baseDoc);
+  });
+});
+
+describe("salience -> circle size (graceful fallback when no degree is served)", () => {
+  // A node the wire carries with a degree-of-interest scalar but NO degree block
+  // (e.g. a client-synthesized node) still sizes by salience, the prior encoding.
+  it("grows monotonically with salience when degree is absent", () => {
     const low = nodeWorldRadius(node({ salience: 0.1 }));
     const mid = nodeWorldRadius(node({ salience: 0.5 }));
     const high = nodeWorldRadius(node({ salience: 0.95 }));
@@ -43,40 +89,26 @@ describe("salience -> circle size (engine-served degree-of-interest)", () => {
     expect(high).toBeGreaterThan(mid);
   });
 
-  it("caps the salience radius band at the documented maximum", () => {
+  it("caps the fallback radius band at the documented maximum", () => {
     const base = nodeWorldRadius(node({ salience: 0 }));
     const top = nodeWorldRadius(node({ salience: 1 }));
     expect(top / base).toBeCloseTo(SALIENCE_RADIUS_MAX, 5);
   });
 
   it("clamps an out-of-range salience to the [0,1] band", () => {
-    // A degree-of-interest value the engine could in theory emit slightly out of
-    // band must not blow the circle past the documented cap, nor shrink it below
-    // the base. (Defensive: salience is engine-served and should be in [0,1].)
     const atZero = nodeWorldRadius(node({ salience: 0 }));
     const atOne = nodeWorldRadius(node({ salience: 1 }));
     expect(nodeWorldRadius(node({ salience: -0.5 }))).toBe(atZero);
     expect(nodeWorldRadius(node({ salience: 1.5 }))).toBe(atOne);
   });
 
-  it("lets salience drive size for non-feature species too (supersedes member-count)", () => {
-    // A high-salience ADR reads larger than a low-salience feature node: salience
-    // is the size signal, not the species — the importance field is what scales.
-    const bigAdr = nodeWorldRadius(node({ kind: "adr", salience: 0.95 }));
-    const smallFeature = nodeWorldRadius(
-      node({ kind: "feature", salience: 0.1, memberCount: 5 }),
+  it("served degree takes precedence over salience for the same node", () => {
+    // A well-connected but low-salience node still reads large — connectedness wins.
+    const connectedLowSalience = nodeWorldRadius(
+      node({ degreeByTier: { structural: 200 }, salience: 0.05 }),
     );
-    expect(bigAdr).toBeGreaterThan(smallFeature);
-  });
-
-  it("falls back to the member-count rule only when salience is absent", () => {
-    const baseAdr = nodeWorldRadius(node({ kind: "adr" }));
-    const bigFeature = nodeWorldRadius(node({ kind: "feature", memberCount: 40 }));
-    // Without salience, a many-member feature is larger than a base species; every
-    // non-feature species without salience keeps the base radius (shape carries
-    // type, not size).
-    expect(bigFeature).toBeGreaterThan(baseAdr);
-    expect(nodeWorldRadius(node({ kind: "exec" }))).toBe(baseAdr);
+    const isolatedHighSalience = nodeWorldRadius(node({ salience: 0.95 }));
+    expect(connectedLowSalience).toBeGreaterThan(isolatedHighSalience);
   });
 });
 

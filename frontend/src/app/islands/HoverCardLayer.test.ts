@@ -9,7 +9,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import type { EngineNode, NodeEvidence } from "../../stores/server/engine";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
-import { openNodeIsland } from "../../stores/view/selection";
+import { activateEntity } from "../../stores/view/activateEntity";
 import { useViewStore } from "../../stores/view/viewStore";
 import {
   cardModelFromEvidence,
@@ -31,8 +31,8 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  // Reset opened islands between cases (the store is a singleton).
-  useViewStore.setState({ openedIds: [] });
+  // Reset opened islands + dock tabs between cases (the store is a singleton).
+  useViewStore.setState({ openedIds: [], openDocs: [], activeDocId: null });
   await createLiveClient()
     .patchDashboardState({ scope, selected_ids: [], hovered_id: null })
     .catch(() => undefined);
@@ -62,11 +62,18 @@ describe("deriveHoverCardLayerView — dwell gate + open suppression (P04.S15)",
   });
 });
 
-describe("openNodeIsland — canonical open intent", () => {
-  it("opens the island and writes dashboard-state selection", async () => {
-    await openNodeIsland(documentNodeId, scope);
+describe("hover-card open — canonical dock-tab activation", () => {
+  it("opens the document as a dock tab and writes dashboard-state selection", async () => {
+    // The hover-card open routes through the canonical activateEntity seam (D1): it
+    // opens the #15 dock tab (permanent — same as a double-click/open) instead of the
+    // retired on-canvas island, and writes the canonical selection.
+    await activateEntity(documentNodeId, scope, { permanent: true, frame: false });
 
-    expect(useViewStore.getState().openedIds).toContain(documentNodeId);
+    expect(
+      useViewStore
+        .getState()
+        .openDocs.some((d) => d.nodeId === documentNodeId && d.provisional === false),
+    ).toBe(true);
     await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
       selected_ids: [documentNodeId],
     });

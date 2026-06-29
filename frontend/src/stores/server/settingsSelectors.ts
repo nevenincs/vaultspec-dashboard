@@ -32,6 +32,7 @@ export const CONSUMED_SETTING_KEYS = {
   labelFilter: "label_filter",
   keybindings: "keybindings",
   graphControls: "graph_controls",
+  timelineDateCriterion: "timeline_date_criterion",
 } as const;
 
 export type ConsumedSettingKey =

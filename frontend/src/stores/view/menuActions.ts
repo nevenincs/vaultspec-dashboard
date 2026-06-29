@@ -1,4 +1,5 @@
-import { selectNode, openNodeIsland, closeNodeIsland } from "./selection";
+import { selectNode, closeNodeIsland } from "./selection";
+import { activateEntity } from "./activateEntity";
 import { togglePinnedNode } from "./pins";
 import { clearWorkingSet, collapseWorkingSet, expandWorkingSet } from "./workingSet";
 import { normalizeStoreScope } from "../server/scopeIdentity";
@@ -20,10 +21,15 @@ export function focusMenuNode(nodeId: unknown, entity?: ScopedMenuEntity): void 
   void request.catch(() => undefined);
 }
 
+// The shared "Open" verb for a result entity (the openEntityAction chain →
+// searchResultMenu et al.): open the entity as a #15 dock tab through the ONE canonical
+// activation seam (unified-selection). A result open is off-canvas, so it materializes
+// + frames the node on the graph (c), and an explicit Open pegs a PERMANENT tab.
 export function openMenuNodeIsland(id: unknown, entity?: ScopedMenuEntity): void {
   const scope = entity ? menuEntityScope(entity) : undefined;
-  const request = scope === undefined ? openNodeIsland(id) : openNodeIsland(id, scope);
-  void request.catch(() => undefined);
+  void activateEntity(id, scope, { permanent: true, frame: true }).catch(
+    () => undefined,
+  );
 }
 
 export function closeMenuNodeIsland(id: unknown): void {

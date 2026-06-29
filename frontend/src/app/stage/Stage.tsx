@@ -38,16 +38,18 @@ import { useRenderCapability } from "../../stores/view/renderCapability";
 import { bindPinsToScene } from "../../stores/view/pins";
 import {
   focusFromWalk,
-  openNodeIslandFromWalk,
+  openTabFromWalk,
   projectDashboardSelectionToScene,
   selectFromScene,
 } from "../../stores/view/selection";
+import { activateEntity } from "../../stores/view/activateEntity";
 import { handleStageSceneEvent } from "../../stores/view/stageSceneEvents";
+import { docSurfaceForNodeId } from "../../stores/view/tabs";
 import { expandWorkingSet, useWorkingSet } from "../../stores/view/workingSet";
 import { useSurfaceStates } from "../degradation/useDegradation";
 import { HoverCardLayer } from "../islands/HoverCardLayer";
 import { IslandLayer } from "../islands/IslandLayer";
-import { TimeTravelChip } from "../timeline/Playhead";
+import { TimeTravelChip } from "../timeline/TimeTravelChip";
 import { useTimeTravel } from "../timeline/timeTravel";
 import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
 import { CategoryLegend } from "./CategoryLegend";
@@ -68,9 +70,26 @@ export function useSceneSelectionBridge(
   useEffect(() => {
     const offEvents = scene.controller.on((event) => {
       if (event.kind !== "select") return;
-      void selectFromScene(event.id, scope, (originated = true) => {
+      // A scene click ORIGINATES selection here → mark it scene-originated so the
+      // dashboard→scene projection skips the focus bounce (no camera yank on a node
+      // already on screen).
+      const mark = (originated = true) => {
         sceneSelectionOriginatedRef.current = originated;
-      }).catch(() => undefined);
+      };
+      mark();
+      // SINGLE-CLICK routes an addressable doc/code node through the ONE canonical
+      // activate seam (selection + a PROVISIONAL preview tab, frame:false = no
+      // recenter) — VS Code single-click preview; double-click pegs via the `open`
+      // event. A synthesized `feature:` node owns no document, so it just gets the
+      // canonical selection write (no tab, no descent — descent is the double-click).
+      if (docSurfaceForNodeId(event.id) !== null) {
+        void activateEntity(event.id, scope, {
+          permanent: false,
+          frame: false,
+        }).catch(() => undefined);
+      } else {
+        void selectFromScene(event.id, scope, mark).catch(() => undefined);
+      }
     });
     return offEvents;
   }, [scope, sceneSelectionOriginatedRef]);
@@ -142,7 +161,7 @@ export function Stage() {
       }).catch(() => undefined);
     },
     open: (id: unknown) => {
-      void openNodeIslandFromWalk(scene.controller, id, scope, (originated = true) => {
+      void openTabFromWalk(scene.controller, id, scope, (originated = true) => {
         sceneSelectionOriginatedRef.current = originated;
       }).catch(() => undefined);
     },
@@ -156,7 +175,7 @@ export function Stage() {
       }).catch(() => undefined);
     },
     open: (id: unknown) => {
-      void openNodeIslandFromWalk(scene.controller, id, scope, (originated = true) => {
+      void openTabFromWalk(scene.controller, id, scope, (originated = true) => {
         sceneSelectionOriginatedRef.current = originated;
       }).catch(() => undefined);
     },

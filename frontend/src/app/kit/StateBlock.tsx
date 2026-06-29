@@ -1,4 +1,4 @@
-// @figma StateBlock · SlhonORmySdoSMTQgDWw3w · 515:1000
+// @figma StateBlock · SlhonORmySdoSMTQgDWw3w · 1013:4066
 // Shared degraded / empty state block (state-mode-uniformity ADR D1/D3). The two
 // non-loading, non-typical modes render as a SHARED glyph (sanctioned families) in a
 // themed tone plus ONE plain user-facing sentence — never the raw tier/branch reason,

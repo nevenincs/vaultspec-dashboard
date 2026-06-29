@@ -35,6 +35,8 @@ import { openKeyboardShortcuts } from "./keyboardShortcuts";
 import { showKeyboardShortcutsAction } from "./chromeActions";
 import { useCommandPaletteOpsRunMutation } from "./opsRun";
 import { requestCloseDocumentEditor } from "./unsavedEditGuard";
+import { closeAllDocTabs, promoteDocTab, reloadDocTab } from "./tabs";
+import { useViewStore } from "./viewStore";
 import {
   graphFitToView,
   graphResetView,
@@ -52,16 +54,9 @@ import {
   getKeybinding,
 } from "../../platform/keymap/registry";
 import { chordToKeycaps } from "../../platform/keymap/chord";
-import {
-  orderedTimelineDateInputRange,
-  timelineCorpusFitKey,
-  timelineViewSnapshot,
-} from "./timeline";
-import {
-  fitTimelineNavigationToDateRange,
-  fitTimelineScopeToCorpus,
-  movePlayhead,
-} from "./timelineIntent";
+import { timelineCorpusFitKey, timelineViewSnapshot } from "./timeline";
+import { fitTimelineScopeToCorpus, movePlayhead } from "./timelineIntent";
+import { dateRangePatch, patchDashboardState } from "../server/dashboardState";
 import {
   RIGHT_RAIL_TABS,
   type RailTabId,
@@ -155,10 +150,12 @@ export interface WindowCommandSources {
   leftCollapsed: boolean;
   rightCollapsed: boolean;
   timelineVisible: boolean;
+  graphVisible: boolean;
   toggleLeftRail: () => void;
   toggleLeftCollapsed: () => void;
   toggleRightRail: () => void;
   toggleTimeline: () => void;
+  toggleGraph: () => void;
   setRightTab: (tab: unknown) => void;
   resetLayout: () => void;
   /** Retained on the shared CommandIntents contract; the window command builder now
@@ -204,11 +201,24 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
       run: w.toggleRightRail,
     },
     {
+      id: "window:graph",
+      label: w.graphVisible ? "hide graph" : "show graph",
+      family: "window",
+      run: w.toggleGraph,
+    },
+  );
+  // The timeline is tethered to the graph (one panel); its toggle only applies
+  // while the graph is shown, so it is offered as a command only then (no dead
+  // command when the graph — and its timeline — are hidden).
+  if (w.graphVisible) {
+    commands.push({
       id: "window:timeline",
       label: w.timelineVisible ? "hide timeline" : "show timeline",
       family: "window",
       run: w.toggleTimeline,
-    },
+    });
+  }
+  commands.push(
     ...RIGHT_RAIL_TABS.flatMap(({ id, label }) => {
       const commandId = commandPaletteRightRailCommandId(id);
       const tab = normalizeCommandPaletteRightRailTab(id);
@@ -287,15 +297,15 @@ export function buildLeftRailCommands(
 // from a feature/node context menu with the same arm-to-confirm + time-travel guard.
 
 /**
- * Timeline commands on the palette. Jump-to-now docks the playhead back to LIVE
- * (the same intent the timeline's Home key fires) — a navigate verb reachable
- * without the timeline focused. The effect is injected by the selector so the
- * builder stays a pure projection.
+ * Timeline commands on the palette (Issue #14 rebuild). The timeline is now a fixed
+ * date-range selector, so the scroll/playhead verbs (jump-to-now, fit-to-corpus) are
+ * gone; what remains are the date_range writers — the last-N-days presets and a clear
+ * — which write the canonical `date_range` and narrow the rail + graph in lock-step.
+ * The effects are injected by the selector so the builder stays a pure projection.
  */
 export interface TimelineCommandEffects {
-  jumpToLive: () => void;
-  fitToCorpus: () => void;
   setRangeDays: (days: number) => void;
+  clearDateRange: () => void;
 }
 
 const TIMELINE_RANGE_PRESETS: { days: number; label: string }[] = [
@@ -309,24 +319,18 @@ export function buildTimelineCommands(
   effects: TimelineCommandEffects,
 ): PaletteCommand[] {
   const commands: unknown[] = [
-    {
-      id: "timeline:jump-to-now",
-      label: "Jump Playhead to Now",
-      family: "navigate",
-      run: effects.jumpToLive,
-    },
-    {
-      id: "timeline:fit-to-corpus",
-      label: "Timeline: Fit All to View",
-      family: "navigate",
-      run: effects.fitToCorpus,
-    },
     ...TIMELINE_RANGE_PRESETS.map((preset) => ({
       id: `timeline:range-${preset.days}d`,
       label: `Timeline: Last ${preset.label}`,
-      family: "navigate",
+      family: "filters",
       run: () => effects.setRangeDays(preset.days),
     })),
+    {
+      id: "timeline:clear-date-range",
+      label: "Timeline: Clear Date Range",
+      family: "filters",
+      run: effects.clearDateRange,
+    },
   ];
   return normalizedPaletteCommands(commands);
 }
@@ -337,13 +341,36 @@ export function buildTimelineCommands(
  * without the editor focused. Save/edit-mode are component-coupled (they need the
  * live draft + the write mutation) and are enrolled at the editor surface, not here.
  */
-export function buildEditorCommands(closeDoc: () => void): PaletteCommand[] {
+export function buildEditorCommands(intents: {
+  closeDoc: () => void;
+  closeAllDocs: () => void;
+  reloadDoc: () => void;
+  keepOpen: () => void;
+}): PaletteCommand[] {
   const commands: unknown[] = [
     {
       id: "editor:close-document",
       label: "Close Document",
       family: "app",
-      run: closeDoc,
+      run: intents.closeDoc,
+    },
+    {
+      id: "editor:close-all-documents",
+      label: "Close All Documents",
+      family: "app",
+      run: intents.closeAllDocs,
+    },
+    {
+      id: "editor:reload-document",
+      label: "Reload Document",
+      family: "app",
+      run: intents.reloadDoc,
+    },
+    {
+      id: "editor:keep-document-open",
+      label: "Keep Document Open",
+      family: "app",
+      run: intents.keepOpen,
     },
   ];
   return normalizedPaletteCommands(commands);
@@ -757,6 +784,7 @@ export function useCommandPaletteCommandView(
         leftCollapsed: shellFrame.leftCollapsed,
         rightCollapsed: shellFrame.rightCollapsed,
         timelineVisible: shellFrame.timelineVisible,
+        graphVisible: shellFrame.graphVisible,
       },
       intents: {
         collapseTree: () => {
@@ -771,6 +799,15 @@ export function useCommandPaletteCommandView(
           runPaletteOp({ target, verb });
         },
         closeDocument: () => requestCloseDocumentEditor(),
+        closeAllDocuments: () => closeAllDocTabs(),
+        reloadActiveDocument: () => {
+          const activeId = useViewStore.getState().activeDocId;
+          if (activeId !== null) reloadDocTab(activeId, scope);
+        },
+        keepActiveDocumentOpen: () => {
+          const activeId = useViewStore.getState().activeDocId;
+          if (activeId !== null) promoteDocTab(activeId);
+        },
         setGraphFrozen: (frozen) => setGraphFrozen(frozen, scope),
         jumpToLive: () => movePlayhead("live", scope),
         fitTimelineToCorpus: () => {
@@ -783,17 +820,20 @@ export function useCommandPaletteCommandView(
           );
         },
         setTimelineRangeDays: (days) => {
-          const width = timelineViewSnapshot().viewportWidth;
+          // Issue #14: a range preset writes the canonical date_range directly — the
+          // last N days up to today — narrowing the rail + graph in lock-step. The
+          // timeline is the sole date_range writer (filtering-has-one-canonical-surface).
           const now = Date.now();
           const toStr = new Date(now).toISOString().slice(0, 10);
           const fromStr = new Date(now - days * 86_400_000).toISOString().slice(0, 10);
-          const range = orderedTimelineDateInputRange(fromStr, toStr);
-          if (range) fitTimelineNavigationToDateRange(range, width);
+          void patchDashboardState(scope, dateRangePatch({ from: fromStr, to: toStr }));
         },
+        clearDateRange: () => void patchDashboardState(scope, dateRangePatch({})),
         toggleLeftRail: shellActions.toggleLeftRail,
         toggleLeftCollapsed: shellActions.toggleLeftCollapsed,
         toggleRightRail: shellActions.toggleRightRail,
         toggleTimeline: shellActions.toggleTimeline,
+        toggleGraph: shellActions.toggleGraph,
         setRightTab: shellActions.setRightTab,
         resetLayout: shellActions.resetLayout,
         showKeyboardShortcuts: openKeyboardShortcuts,

@@ -9,7 +9,6 @@
 pub mod extract;
 pub mod plan_structure;
 pub mod reader;
-pub mod resolve;
 
 /// Fixed structural confidence bands (engine-spec §3, D3.2).
 pub const CONFIDENCE_RESOLVED: f32 = 0.9;

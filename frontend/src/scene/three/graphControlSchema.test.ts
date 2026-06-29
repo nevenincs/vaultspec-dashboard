@@ -43,6 +43,7 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   // --- simulation: energy schedule (internal) ---
   coldAlpha: 1,
   warmReheatAlpha: 0.5,
+  gentleReheatAlpha: 0.15,
   warmStartAlpha: 0.3,
   prewarmMaxTicks: 300,
   prewarmBudgetMs: 260,
@@ -77,6 +78,7 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   edgeDimMix: 0.6,
   edgeDimAlpha: 0.2,
   pulseRingAlpha: 0.85,
+  nodeDegreeReference: 100,
   // --- navigation ---
   zoomMin: 0.02,
   zoomMax: 50,
@@ -88,6 +90,7 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   minimapHeight: 100,
   dragThresholdPx: 2,
   pickRadiusPx: 14,
+  pinchZoomSensitivity: 0.01,
 };
 
 // Friendly UI labels for the ui-exposed entries — the redesign's binding plain-language

@@ -95,10 +95,14 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
   it("offers the per-scope override target for a scope-eligible setting only", async () => {
     renderDialog();
     await screen.findByText("Default granularity");
-    // The scope-eligible setting (default_granularity) exposes the
-    // [Global | This scope] target; global-only ones (theme, reduce_motion) do not.
+    // Scope-eligible settings (e.g. default_granularity, timeline_date_criterion)
+    // expose the [Global | This scope] target; global-only ones (theme, reduce_motion)
+    // do not. Derive the expected count from the served schema so adding another
+    // scope-eligible setting can't silently drift this assertion.
+    const schema = await createLiveClient().settingsSchema();
+    const scopeEligibleCount = schema.settings.filter((s) => s.scope_eligible).length;
     const applyToGroups = screen.getAllByRole("radiogroup", { name: "apply to" });
-    expect(applyToGroups.length).toBe(1);
+    expect(applyToGroups.length).toBe(scopeEligibleCount);
   });
 
   it("uses the restored active scope when no explicit view-store scope is picked", async () => {
@@ -107,7 +111,11 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     queryClient.clear();
     renderDialog();
     await screen.findByText("Default granularity");
-    expect(screen.getAllByRole("radiogroup", { name: "apply to" })).toHaveLength(1);
+    const schema = await createLiveClient().settingsSchema();
+    const scopeEligibleCount = schema.settings.filter((s) => s.scope_eligible).length;
+    expect(screen.getAllByRole("radiogroup", { name: "apply to" })).toHaveLength(
+      scopeEligibleCount,
+    );
   });
 
   it("persists a scope override when the target is 'This scope'", async () => {
@@ -198,9 +206,13 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
 
     renderDialog();
     await screen.findByText("Default granularity");
+    // default_granularity is the first scope-eligible row (declared before
+    // timeline_date_criterion), so target its [Global | This scope] radios by index.
     await waitFor(() => {
       expect(
-        screen.getByRole("radio", { name: "This scope" }).getAttribute("aria-checked"),
+        screen
+          .getAllByRole("radio", { name: "This scope" })[0]
+          .getAttribute("aria-checked"),
       ).toBe("true");
     });
 
@@ -208,7 +220,9 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("radio", { name: "Global" }).getAttribute("aria-checked"),
+        screen
+          .getAllByRole("radio", { name: "Global" })[0]
+          .getAttribute("aria-checked"),
       ).toBe("true");
     });
   });

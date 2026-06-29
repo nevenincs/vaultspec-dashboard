@@ -24,7 +24,7 @@
 import { CornerDownLeft, Search } from "lucide-react";
 import { useCallback, useEffect, useId, useRef } from "react";
 
-import { Kbd } from "../kit";
+import { Kbd, Skeleton, SkeletonRow } from "../kit";
 import { useConfirmable } from "../../platform/dispatch/useAction";
 import {
   closeCommandPalette,
@@ -312,15 +312,17 @@ function CommandPaletteSurface() {
             </li>
           ))}
           {presentation.navLoading && (
-            <li
-              role="presentation"
-              className="flex items-center gap-fg-2 px-fg-4 py-fg-2 text-label text-ink-faint"
-            >
-              <span
-                aria-hidden
-                className="size-2 rounded-full bg-state-live animate-pulse-live"
-              />
-              {presentation.navLoadingMessage}
+            // Loading is UI-ONLY (state-mode-uniformity ADR D2): a text-free skeleton
+            // standing in for result rows, the human search message only in the kit
+            // `Skeleton`'s sr-only — never on-screen "Searching…" text.
+            <li role="presentation" className="px-fg-4 py-fg-2">
+              <Skeleton
+                label={presentation.navLoadingMessage ?? "Searching…"}
+                className="gap-fg-1-5"
+              >
+                <SkeletonRow width="w-3/4" />
+                <SkeletonRow width="w-1/2" />
+              </Skeleton>
             </li>
           )}
         </ul>

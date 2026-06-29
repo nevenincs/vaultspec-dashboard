@@ -31,6 +31,7 @@ describe("shell layout frame view", () => {
     leftRailWidth: 300,
     rightRailWidth: 320,
     timelineVisible: true,
+    graphVisible: true,
     timelineHeight: 180,
     panelFlyoutOpen: false,
   };
@@ -294,6 +295,7 @@ describe("shell layout frame view", () => {
         leftCollapsed: true,
         rightCollapsed: true,
         timelineVisible: false,
+        graphVisible: false,
       }),
     ).toEqual({
       flyoutButtonLabel: "Close panel controls",
@@ -307,6 +309,7 @@ describe("shell layout frame view", () => {
       leftCollapseLabel: "Expand left rail",
       rightRailVisibilityLabel: "Show right rail",
       timelineVisibilityLabel: "Show timeline",
+      graphVisibilityLabel: "Show graph",
     });
   });
 

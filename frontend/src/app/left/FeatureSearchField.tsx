@@ -10,6 +10,11 @@
 // and applies it. Plain text is a substring feature search, `dashboard-*` is a glob,
 // and `/pattern/` is an advanced regex (parsed in stores/featureQuery).
 //
+// The dropdown is a "find a feature" affordance driven ONLY by what the user is
+// actively typing — it is NEVER constrained by the already-applied filter the field
+// echoes (Issue #6.1). A bare (re)focus browses the FULL vocabulary so you can switch
+// features; the applied filter narrows the rail tree, not the candidate list.
+//
 // The autocomplete keys (Arrow/Enter/Escape) are Class-B widget interaction and stay
 // in this component — they are NOT routed through the keymap registry
 // (keyboard-shortcuts-bind-through-the-one-keymap-registry). Read-only navigation
@@ -32,10 +37,16 @@ export function FeatureSearchField() {
 
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  // Whether the user has typed since the field last gained focus. A bare (re)focus
+  // is a browse intent and lists the FULL vocabulary (so an applied filter the field
+  // echoes never constrains the candidates — Issue #6.1); each keystroke then narrows
+  // the suggestions by the typed text. The applied filter drives the rail tree, never
+  // this list.
+  const [edited, setEdited] = useState(false);
 
   const suggestions = useMemo(
-    () => featureTagSuggestions(draft.value, vocabulary.featureTags),
-    [draft.value, vocabulary.featureTags],
+    () => featureTagSuggestions(edited ? draft.value : "", vocabulary.featureTags),
+    [edited, draft.value, vocabulary.featureTags],
   );
   const showList = open && suggestions.length > 0;
   const activeOptionId =
@@ -45,12 +56,14 @@ export function FeatureSearchField() {
     draft.commit(tag);
     setOpen(false);
     setActiveIndex(-1);
+    setEdited(false);
     inputRef.current?.focus();
   };
 
   const handleChange = (value: string) => {
     draft.setValue(value);
     setOpen(true);
+    setEdited(true);
     setActiveIndex(-1);
   };
 
@@ -107,7 +120,14 @@ export function FeatureSearchField() {
         value={draft.value}
         onChange={handleChange}
         onClear={draft.clear}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          // A fresh focus is a browse intent: reset to the full candidate list and
+          // select the echoed filter so the next keystroke replaces it rather than
+          // appending to the applied value.
+          setOpen(true);
+          setEdited(false);
+          inputRef.current?.select();
+        }}
         onKeyDown={handleKeyDown}
         inputRef={inputRef}
         placeholder="Filter by feature…"

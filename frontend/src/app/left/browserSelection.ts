@@ -13,7 +13,7 @@ import {
 } from "../../stores/server/liveAdapters";
 import { useDashboardSelectedNodeId } from "../../stores/server/queries";
 import { normalizeStoreScope } from "../../stores/server/scopeIdentity";
-import { openDocTab, previewDocTab } from "../../stores/view/tabs";
+import { activateEntity } from "../../stores/view/activateEntity";
 
 export {
   useScopeContextSelection,
@@ -93,29 +93,42 @@ export function useDashboardBrowserSelection(scope: unknown): {
   return {
     // VS Code semantics (editor-dock-workspace): a single click PREVIEWS the
     // document in the single provisional tab (which the next preview replaces in
-    // place); an open (double-click / Enter) makes it a PERMANENT tab. Both also
-    // focus the node on the graph (the tab seam selects).
+    // place); an open (double-click / Enter) makes it a PERMANENT tab. Routed
+    // through the ONE `activateEntity` seam with `frame: true`, so a rail open also
+    // MATERIALIZES (ego-expand) + CENTERS the graph on the node — the left rail is
+    // off-canvas, so the graph must reveal + frame the document (unified-selection
+    // plane; the missing (c)).
     handleEntryClick: (entry) => {
       if (normalizedScope === null) return;
-      void previewDocTab(pathToNodeId(entry.path), "markdown", normalizedScope).catch(
-        () => undefined,
-      );
+      void activateEntity(pathToNodeId(entry.path), normalizedScope, {
+        permanent: false,
+        frame: true,
+      }).catch(() => undefined);
     },
     handleEntryOpen: (entry) => {
       if (normalizedScope === null) return;
-      void openDocTab(pathToNodeId(entry.path), "markdown", normalizedScope).catch(
-        () => undefined,
-      );
+      void activateEntity(pathToNodeId(entry.path), normalizedScope, {
+        permanent: true,
+        frame: true,
+      }).catch(() => undefined);
     },
     handleCodeEntryClick: (entry) => {
       if (normalizedScope === null) return;
       const id = entry.node_id || codePathToNodeId(entry.path);
-      void previewDocTab(id, "code", normalizedScope).catch(() => undefined);
+      void activateEntity(id, normalizedScope, {
+        permanent: false,
+        frame: true,
+        surface: "code",
+      }).catch(() => undefined);
     },
     handleCodeEntryOpen: (entry) => {
       if (normalizedScope === null) return;
       const id = entry.node_id || codePathToNodeId(entry.path);
-      void openDocTab(id, "code", normalizedScope).catch(() => undefined);
+      void activateEntity(id, normalizedScope, {
+        permanent: true,
+        frame: true,
+        surface: "code",
+      }).catch(() => undefined);
     },
   };
 }

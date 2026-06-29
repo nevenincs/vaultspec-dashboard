@@ -7,12 +7,21 @@
 // registry (palette-command-accelerators-derive-from-the-keymap-registry), never hand-typed;
 // a verb with no bound chord simply renders without one.
 
-import { Command, Keyboard, RotateCcw, Settings } from "lucide-react";
+import {
+  Command,
+  Crosshair,
+  Keyboard,
+  Network,
+  RotateCcw,
+  Settings,
+} from "lucide-react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
 import { chordToKeycaps } from "../../platform/keymap/chord";
 import { effectiveChord, getKeybinding } from "../../platform/keymap/registry";
 import { COMMAND_PALETTE_ACTION_ID, openCommandPalette } from "./commandPalette";
+import { followModeEnabled, toggleFollowMode } from "./selection";
+import { getShellGraphVisible, toggleShellGraphVisible } from "./shellLayout";
 import {
   KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
   openKeyboardShortcuts,
@@ -82,6 +91,42 @@ export function resetLayoutAction(): ActionDescriptor {
     icon: RotateCcw,
     run: runResetLayout,
     disabledInTimeTravel: true,
+  });
+}
+
+export const GRAPH_TOGGLE_ACTION_ID = "window:graph";
+
+/** Toggle the GRAPH (with its tethered timeline) in the center (appshell-reframe
+ *  #11). ONE shared builder composed by the keymap, the command palette
+ *  (`buildWindowCommands`), and the background context menu under the single id
+ *  `window:graph` (unified-action-plane), so the chord, the legend, and the menu
+ *  entry cannot drift; the label reflects the resulting action so it reads the
+ *  current state. A layout toggle, not a mutation — not time-travel gated. */
+export function toggleGraphAction(): ActionDescriptor {
+  return withAccelerator({
+    id: GRAPH_TOGGLE_ACTION_ID,
+    label: getShellGraphVisible() ? "Hide Graph" : "Show Graph",
+    section: "transform",
+    icon: Network,
+    run: toggleShellGraphVisible,
+  });
+}
+
+export const FOLLOW_MODE_TOGGLE_ACTION_ID = "view:follow-mode";
+
+/** Toggle FOLLOW MODE (follow-mode-selection-sync): the bidirectional rail<->graph
+ *  SELECTION tether (opt-in, default ON). ONE shared builder composed by the
+ *  background menu (and reachable from the palette) under one shared id
+ *  (unified-action-plane); the label reflects the resulting action so the current
+ *  state reads from the verb. A view-local toggle, never a filter — not time-travel
+ *  gated. */
+export function toggleFollowModeAction(): ActionDescriptor {
+  return withAccelerator({
+    id: FOLLOW_MODE_TOGGLE_ACTION_ID,
+    label: followModeEnabled() ? "Turn Off Follow Mode" : "Turn On Follow Mode",
+    section: "transform",
+    icon: Crosshair,
+    run: toggleFollowMode,
   });
 }
 

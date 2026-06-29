@@ -26,6 +26,7 @@ fn document(i: usize) -> Node {
         dates: Some(Dates {
             created: Some(format!("2026-06-{:02}", 1 + (i % 20))),
             modified: Some(1_000_000 + i as i64),
+            stamped: None,
         }),
         feature_tags: vec![format!("feature-{}", i % 8)],
         status: (i % 4 == 1).then_some("accepted".into()),

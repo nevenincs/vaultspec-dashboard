@@ -371,7 +371,8 @@ export function deriveGraphControlsAppearancePresentationView(): GraphControlsAp
       },
       nodeSalienceScale: {
         label: salience.uiLabel ?? salience.label,
-        title: "How strongly a node's importance drives its size (0 = uniform)",
+        title:
+          "How strongly a node's connectedness (its number of links) drives its size; 0 = every node the same size",
         min: salience.min,
         max: salience.max,
         step: salience.step,
@@ -477,7 +478,9 @@ export interface GraphControlsNavigationView {
   zoomIn: GraphControlsNavigationButtonView;
   zoomOut: GraphControlsNavigationButtonView;
   fitToView: GraphControlsNavigationButtonView;
-  resetView: GraphControlsNavigationButtonView;
+  /** The 4th nav button is an AUTOFRAME TOGGLE (default on), not a second fit button:
+   *  when on, the view continuously eases to keep the whole graph framed as it changes. */
+  autoframe: { label: string; titleOn: string; titleOff: string };
 }
 
 export function deriveGraphControlsNavigationView(): GraphControlsNavigationView {
@@ -493,9 +496,10 @@ export function deriveGraphControlsNavigationView(): GraphControlsNavigationView
       label: "Fit to View",
       title: "Fit all nodes into the viewport",
     },
-    resetView: {
-      label: "Reset View",
-      title: "Reset the camera to the origin",
+    autoframe: {
+      label: "Autoframe",
+      titleOn: "Autoframe is on — the view follows the graph; click to turn off",
+      titleOff: "Autoframe is off — click to keep the whole graph framed automatically",
     },
   };
 }
@@ -513,6 +517,10 @@ interface GraphControlsChromeState {
   // `frozen`) never a persisted graph_controls override (the setting persists only
   // number/enum controls).
   reflowFilter: boolean;
+  // Autoframe (graph-autoframe): when on (the DEFAULT), the field continuously eases the
+  // camera to keep the whole graph framed as it settles/filters. A canvas-behaviour flag
+  // (sibling of `frozen`/`reflowFilter`), never a persisted graph_controls override.
+  autoframeEnabled: boolean;
   tuneParams: GraphControlsTuneParams;
   appearanceParams: GraphControlsAppearanceParams;
   setSettingsOpen: (open: unknown) => void;
@@ -524,6 +532,8 @@ interface GraphControlsChromeState {
   setFrozen: (frozen: unknown, scope: unknown) => void;
   setReflowFilter: (on: unknown) => void;
   toggleReflowFilter: () => void;
+  setAutoframe: (on: unknown) => void;
+  toggleAutoframe: () => void;
   setTuneParams: (params: unknown) => void;
   patchTuneParams: (patch: unknown) => void;
   setAppearanceParams: (params: unknown) => void;
@@ -538,6 +548,7 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
   frozen: false,
   frozenScope: null,
   reflowFilter: false,
+  autoframeEnabled: true,
   tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
   appearanceParams: normalizeGraphControlsAppearanceParams(
     GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
@@ -559,6 +570,9 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
     }),
   setReflowFilter: (on) => set({ reflowFilter: normalizeGraphControlsOpen(on) }),
   toggleReflowFilter: () => set((state) => ({ reflowFilter: !state.reflowFilter })),
+  setAutoframe: (on) => set({ autoframeEnabled: normalizeGraphControlsOpen(on) }),
+  toggleAutoframe: () =>
+    set((state) => ({ autoframeEnabled: !state.autoframeEnabled })),
   setTuneParams: (tuneParams) =>
     set({ tuneParams: normalizeGraphControlsTuneParams(tuneParams) }),
   patchTuneParams: (patch) =>
@@ -599,6 +613,7 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
       frozen: false,
       frozenScope: null,
       reflowFilter: false,
+      autoframeEnabled: true,
       tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
       appearanceParams: normalizeGraphControlsAppearanceParams(
         GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
@@ -608,6 +623,16 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
 
 export function useGraphControlsSettingsOpen(): boolean {
   return useGraphControlsChromeStore((state) => state.settingsOpen);
+}
+
+/** Whether autoframe is on (default true) — the 4th nav button's toggle state. */
+export function useGraphControlsAutoframe(): boolean {
+  return useGraphControlsChromeStore((state) => state.autoframeEnabled);
+}
+
+/** Toggle autoframe from outside React (the nav button's click handler). */
+export function toggleGraphControlsAutoframe(): void {
+  useGraphControlsChromeStore.getState().toggleAutoframe();
 }
 
 export function useGraphControlsLayoutOpen(): boolean {
