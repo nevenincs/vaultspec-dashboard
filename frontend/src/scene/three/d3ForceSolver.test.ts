@@ -469,6 +469,73 @@ describe("D3ForceSolver — isSettled & activeCount lifecycle", () => {
   });
 });
 
+// ---- 8. Additive update — prewarmReflow pins survivors ---------------------
+
+describe("D3ForceSolver — additive update pins survivors (settled layout is authoritative)", () => {
+  it("a no-new-node update runs ZERO ticks and moves nothing", () => {
+    // The field's `setData` now routes EVERY warm path (ego expansion, live delta,
+    // same-scope re-fetch) through prewarmReflow. A re-fetch whose id set is unchanged
+    // has no new nodes, so the layout is authoritative: zero ticks, zero movement.
+    const solver = makeSolver(40, ringEdges(40));
+    solver.prewarm();
+    const before = positions(solver);
+
+    const ticks = solver.prewarmReflow(() => false); // nothing is new
+    expect(ticks).toBe(0);
+    expect(solver.isSettled()).toBe(true);
+
+    const after = positions(solver);
+    for (let i = 0; i < 40; i++) {
+      expect(displacement(before, after, i)).toBeLessThan(1e-3);
+    }
+    // Survivors end pinned-and-asleep (the asleep ⇔ pinned invariant holds).
+    const nodes = (solver as any).nodes as { fx: number | null; fy: number | null }[];
+    for (let i = 0; i < 40; i++) {
+      expect(nodes[i].fx).not.toBeNull();
+      expect(nodes[i].fy).not.toBeNull();
+    }
+  });
+
+  it("an additive update relaxes ONLY the new nodes while survivors stay frozen", () => {
+    const n = 60;
+    const solver = makeSolver(n, ringEdges(n));
+    solver.prewarm();
+
+    // Simulate an ego-expansion: the last 10 nodes are "new" and seeded far off the
+    // settled layout; the first 50 are carried survivors. prewarmReflow must pin the
+    // survivors and relax only the new nodes back into the graph.
+    const nodes = (solver as any).nodes as {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+    }[];
+    for (let i = 50; i < n; i++) {
+      nodes[i].x += 500;
+      nodes[i].y += 500;
+      nodes[i].vx = 0;
+      nodes[i].vy = 0;
+    }
+    const before = positions(solver);
+
+    const ticks = solver.prewarmReflow((i) => i >= 50);
+    expect(ticks).toBeGreaterThan(0); // there were movable (new) nodes to relax
+    const after = positions(solver);
+
+    // Survivors (0..49) did NOT move — the settled layout is authoritative.
+    for (let i = 0; i < 50; i++) {
+      expect(displacement(before, after, i)).toBeLessThan(1e-3);
+    }
+    // At least one new node actually relaxed back toward the graph (the mechanism works).
+    let newMoved = 0;
+    for (let i = 50; i < n; i++) {
+      newMoved = Math.max(newMoved, displacement(before, after, i));
+    }
+    expect(newMoved).toBeGreaterThan(1);
+    expect(solver.isSettled()).toBe(true);
+  });
+});
+
 // ---- bonus: getParams / setParams round-trip -------------------------------
 
 describe("D3ForceSolver — params plumbing", () => {

@@ -1079,16 +1079,21 @@ export class ThreeField implements SceneFieldRenderer {
         return { x: centroid.x + Math.cos(a) * r, y: centroid.y + Math.sin(a) * r };
       });
     }
-    // Off-screen settle before the first paint. A FILTER reflow (warm + reflow) PINS
-    // the carried survivors and relaxes ONLY the new nodes, so a filter add/remove
-    // never reshapes already-settled nodes (a pure removal moves nothing — issue #5:
-    // toggles must not modify simulation state). A warm data-update settles gently;
-    // a cold load runs full energy. If prewarm hits its wall-clock budget the
-    // remainder finishes in the live loop; otherwise it freezes (idle GPU 0).
-    if (warm && reflow) {
+    // Off-screen settle before the first paint. The SETTLED LAYOUT IS AUTHORITATIVE: every
+    // WARM path — a filter reflow, an ego expansion, a live delta, a same-scope re-fetch —
+    // PINS the carried survivors and relaxes ONLY the genuinely-new nodes, so an additive
+    // change never re-simulates an already-settled node (the graph is static unless a node
+    // is explicitly dragged). A same-id-set update has no new nodes and so does ZERO ticks
+    // and moves nothing. This is the prewarmReflow discipline that was previously wired only
+    // to the filter `reflow` path; unifying it here removes the old plain-warm `prewarm` that
+    // `wakeAllFree()`d the whole graph and let the frozen-not-converged layout drift on every
+    // expansion/delta. A cold load (disjoint corpus — first load, scope/lens switch) runs
+    // full energy + a one-time fit. If prewarm hits its wall-clock budget the remainder
+    // finishes in the live loop; otherwise it freezes (idle GPU 0).
+    if (warm) {
       this.solver.prewarmReflow((i) => !prevPos.has(nodes[i].id), WARM_START_ALPHA);
     } else {
-      this.solver.prewarm(undefined, undefined, warm ? WARM_START_ALPHA : undefined);
+      this.solver.prewarm();
     }
     this.solver.pack(this.cpuPositions);
     this.uploadPositions();
