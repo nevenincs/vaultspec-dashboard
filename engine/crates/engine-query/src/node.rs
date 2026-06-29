@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use engine_graph::{ContextBundle, LinkageGraph, context};
-use engine_model::{Edge, Node, NodeId, Provenance, Tier};
+use engine_model::{Edge, Node, NodeId, Progress, Provenance, Tier};
 use serde::Serialize;
 
 /// Node detail: the context bundle is the interior-structure carrier in
@@ -47,7 +47,18 @@ pub struct InteriorStep {
     pub exec_node_id: Option<String>,
 }
 
-/// One interior phase entity with its ordered steps.
+/// A done/total completion rollup over a container's FULL step subtree. Computed
+/// structurally (every contained step, including any dropped past the interior
+/// node ceiling), so a truncated interior still reports honest per-wave/per-phase
+/// progress and the client never re-derives counts over a partial tree
+/// (`display-state-is-backend-served-not-frontend-derived`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct InteriorRollup {
+    pub done: u32,
+    pub total: u32,
+}
+
+/// One interior phase entity with its ordered steps and a full-subtree rollup.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InteriorPhase {
     pub node_id: String,
@@ -55,9 +66,10 @@ pub struct InteriorPhase {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub heading: Option<String>,
     pub steps: Vec<InteriorStep>,
+    pub rollup: InteriorRollup,
 }
 
-/// One interior wave entity with its ordered phases.
+/// One interior wave entity with its ordered phases and a full-subtree rollup.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InteriorWave {
     pub node_id: String,
@@ -65,6 +77,7 @@ pub struct InteriorWave {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub heading: Option<String>,
     pub phases: Vec<InteriorPhase>,
+    pub rollup: InteriorRollup,
 }
 
 /// Honest truncation block (W03.P08.S42), mirroring the graph-query shape.
@@ -73,6 +86,27 @@ pub struct InteriorTruncated {
     pub total_nodes: usize,
     pub returned_nodes: usize,
     pub reason: String,
+}
+
+/// A per-plan structural summary (counts + derived completion state), computed
+/// over the FULL plan tree pre-truncation. The reader's plan-summary card and any
+/// metadata surface read these served values rather than counting a (possibly
+/// truncated) interior client-side.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PlanSummary {
+    /// Total wave (`W##`) containers anywhere in the plan.
+    pub wave_count: u32,
+    /// Total phase (`P##`) containers anywhere in the plan.
+    pub phase_count: u32,
+    /// Total step (`S##`) containers anywhere in the plan.
+    pub step_count: u32,
+    /// Completed steps (`lifecycle.state == "complete"`).
+    pub done_count: u32,
+    /// The derived completion class (`not-started`/`in-progress`/`finished`) from
+    /// the structural step progress, via the one `plan_completion_from_progress`
+    /// authority. `None` when the plan has no steps (no progress-bearing facet).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_state: Option<String>,
 }
 
 /// The bounded interior of a plan node (W03.P08.S40): the ordered
@@ -86,6 +120,8 @@ pub struct PlanInterior {
     pub waves: Vec<InteriorWave>,
     pub phases: Vec<InteriorPhase>,
     pub steps: Vec<InteriorStep>,
+    /// Structural counts + derived state over the full plan (pre-truncation).
+    pub summary: PlanSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub truncated: Option<InteriorTruncated>,
 }
@@ -112,6 +148,48 @@ fn exec_binding(graph: &LinkageGraph, step_id: &NodeId) -> Option<String> {
 /// The canonical leaf id of a plan-container key (`{stem}/W01/P02/S03` -> `S03`).
 fn leaf_id(key: &str) -> &str {
     key.rsplit('/').next().unwrap_or(key)
+}
+
+/// The done/total step rollup over a container's FULL subtree, walked
+/// structurally (NOT through the node-ceiling budget), so a kept wave/phase still
+/// reports honest progress even when some of its steps were dropped past the cap.
+/// Counts every leaf step (`S##`) reachable through `Contains`, recursing through
+/// intermediate containers.
+fn step_rollup(graph: &LinkageGraph, parent: &NodeId) -> InteriorRollup {
+    let mut roll = InteriorRollup { done: 0, total: 0 };
+    for child in contained_children(graph, parent) {
+        if leaf_id(&child.key).starts_with('S') {
+            roll.total += 1;
+            if container_done(child) {
+                roll.done += 1;
+            }
+        } else {
+            let sub = step_rollup(graph, &child.id);
+            roll.done += sub.done;
+            roll.total += sub.total;
+        }
+    }
+    roll
+}
+
+/// Structural counts over the FULL plan tree (pre-truncation): waves, phases,
+/// steps, and completed steps, tallied by canonical-id prefix. Used to build the
+/// served `PlanSummary` so no surface re-counts a (possibly truncated) interior.
+fn tally_counts(graph: &LinkageGraph, parent: &NodeId, summary: &mut PlanSummary) {
+    for child in contained_children(graph, parent) {
+        match leaf_id(&child.key).chars().next() {
+            Some('W') => summary.wave_count += 1,
+            Some('P') => summary.phase_count += 1,
+            Some('S') => {
+                summary.step_count += 1;
+                if container_done(child) {
+                    summary.done_count += 1;
+                }
+            }
+            _ => {}
+        }
+        tally_counts(graph, &child.id, summary);
+    }
 }
 
 /// Children of a container reached over `Contains` edges (src -> dst), as their
@@ -141,11 +219,28 @@ pub fn plan_interior(graph: &LinkageGraph, id: &NodeId) -> Option<PlanInterior> 
         remaining: MAX_PLAN_INTERIOR_NODES,
         total: 0,
     };
+    // Structural summary over the FULL tree, tallied before projection so the
+    // counts are honest regardless of the node ceiling.
+    let mut summary = PlanSummary {
+        wave_count: 0,
+        phase_count: 0,
+        step_count: 0,
+        done_count: 0,
+        plan_state: None,
+    };
+    tally_counts(graph, id, &mut summary);
+    summary.plan_state = crate::filter::plan_completion_from_progress(&Progress {
+        done: summary.done_count,
+        total: summary.step_count,
+    })
+    .map(str::to_string);
+
     let mut interior = PlanInterior {
         plan_node_id: id.0.clone(),
         waves: Vec::new(),
         phases: Vec::new(),
         steps: Vec::new(),
+        summary,
         truncated: None,
     };
 
@@ -242,6 +337,7 @@ fn project_phase(graph: &LinkageGraph, node: &Node, budget: &mut Budget) -> Opti
         node_id: node.id.0.clone(),
         id: leaf_id(&node.key).to_string(),
         heading: node.title.clone(),
+        rollup: step_rollup(graph, &node.id),
         steps,
     })
 }
@@ -272,6 +368,7 @@ fn project_wave(graph: &LinkageGraph, node: &Node, budget: &mut Budget) -> Optio
         node_id: node.id.0.clone(),
         id: leaf_id(&node.key).to_string(),
         heading: node.title.clone(),
+        rollup: step_rollup(graph, &node.id),
         phases,
     })
 }
@@ -848,6 +945,22 @@ mod tests {
         assert!(phase.steps[0].done, "S01 closed");
         assert!(!phase.steps[1].done, "S02 open");
 
+        // Per-container rollups are the full-subtree done/total.
+        assert_eq!(phase.rollup, InteriorRollup { done: 1, total: 2 });
+        assert_eq!(wave.rollup, InteriorRollup { done: 1, total: 2 });
+        // The structural summary counts the whole plan + derives the completion
+        // class from the one `plan_completion_from_progress` authority.
+        assert_eq!(
+            interior.summary,
+            PlanSummary {
+                wave_count: 1,
+                phase_count: 1,
+                step_count: 2,
+                done_count: 1,
+                plan_state: Some("in-progress".into()),
+            }
+        );
+
         // A non-plan node has no interior (truthful None).
         assert!(plan_interior(&g, &s1).is_none());
         assert!(plan_interior(&g, &NodeId("doc:nope".into())).is_none());
@@ -898,6 +1011,29 @@ mod tests {
             interior.phases[0].steps.len(),
             MAX_PLAN_INTERIOR_NODES - 1,
             "phase keeps cap-minus-one steps; no orphan beyond the cap"
+        );
+        // The rollup and summary are HONEST PRE-TRUNCATION: the kept phase's
+        // rollup totals every step (not just the cap-minus-one it serialized),
+        // and the summary step_count is the true total — so a client reading
+        // these never undercounts a truncated interior.
+        assert_eq!(
+            interior.phases[0].rollup,
+            InteriorRollup {
+                done: 0,
+                total: n_steps as u32,
+            },
+            "phase rollup totals the full step subtree, not the truncated slice"
+        );
+        assert_eq!(
+            interior.summary,
+            PlanSummary {
+                wave_count: 0,
+                phase_count: 1,
+                step_count: n_steps as u32,
+                done_count: 0,
+                plan_state: Some("not-started".into()),
+            },
+            "summary counts are the true pre-truncation totals"
         );
     }
 

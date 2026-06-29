@@ -1534,6 +1534,16 @@ mod tests {
         assert_eq!(steps[0]["id"], "S01");
         assert_eq!(steps[0]["done"], true);
         assert_eq!(steps[1]["done"], false);
+        // The wave carries a full-subtree rollup, and the plan a structural
+        // summary with the derived completion state — served, not client-derived.
+        assert_eq!(waves[0]["rollup"]["done"], 1);
+        assert_eq!(waves[0]["rollup"]["total"], 2);
+        let summary = &interior["summary"];
+        assert_eq!(summary["wave_count"], 1);
+        assert_eq!(summary["phase_count"], 1);
+        assert_eq!(summary["step_count"], 2);
+        assert_eq!(summary["done_count"], 1);
+        assert_eq!(summary["plan_state"], "in-progress");
         assert!(
             body["tiers"]["semantic"]["available"].is_boolean(),
             "tiers block on success"

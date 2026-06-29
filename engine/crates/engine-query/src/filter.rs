@@ -250,7 +250,11 @@ const PLAN_STATE_NAMES: &[&str] = &["not-started", "in-progress", "finished"];
 /// (it is the plan TIER for a tiered plan, an ADR status for an ADR, a severity for
 /// an audit, …), so plan completion is read from PROGRESS only. `total == 0` (no
 /// checkboxes / not a progress-bearing facet) → `None` so the facet excludes it.
-fn plan_completion_from_progress(p: &Progress) -> Option<&'static str> {
+///
+/// `pub(crate)` so the plan-interior projection (`node.rs`) derives a plan's served
+/// `summary.plan_state` from this ONE authority rather than re-classifying — keeping
+/// the per-plan summary state consistent with the `plan_states` filter facet.
+pub(crate) fn plan_completion_from_progress(p: &Progress) -> Option<&'static str> {
     if p.total == 0 {
         None
     } else if p.done >= p.total {
