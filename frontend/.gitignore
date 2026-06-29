@@ -2,3 +2,6 @@ node_modules
 dist
 tsconfig.tsbuildinfo
 .playwright-mcp
+
+# Local live-verify scratch scripts (never committed)
+verify-*.cjs
