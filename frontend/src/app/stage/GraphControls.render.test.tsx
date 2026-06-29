@@ -93,18 +93,21 @@ function openSettings() {
 }
 
 describe("GraphNavControls — Navigate (camera commands)", () => {
-  it("emits the four camera SceneCommands", () => {
+  it("emits the four navigation SceneCommands (zoom in/out, fit, autoframe)", () => {
     const spy = vi.spyOn(getScene().controller, "command");
     renderGraphControls();
 
+    // The vertical nav cluster (binding NavControls/Vertical 260:839): zoom in /
+    // zoom out · fit to view · Autoframe toggle. The redesign replaced the old
+    // one-shot "Reset View" with the Autoframe toggle (emits set-autoframe).
     fireEvent.click(screen.getByRole("button", { name: "Zoom In" }));
     fireEvent.click(screen.getByRole("button", { name: "Zoom Out" }));
     fireEvent.click(screen.getByRole("button", { name: "Fit to View" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reset View" }));
+    fireEvent.click(screen.getByRole("button", { name: "Autoframe" }));
 
     const kinds = spy.mock.calls.map((c) => (c[0] as { kind: string }).kind);
     expect(kinds).toEqual(
-      expect.arrayContaining(["zoom-in", "zoom-out", "fit-to-view", "reset-view"]),
+      expect.arrayContaining(["zoom-in", "zoom-out", "fit-to-view", "set-autoframe"]),
     );
   });
 });

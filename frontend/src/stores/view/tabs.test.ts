@@ -439,8 +439,8 @@ describe("dock workspace projection", () => {
     expect(normalized).toEqual({
       openDocs: [
         { nodeId: "doc:a", surface: "markdown", provisional: false },
-        { nodeId: "code:src/app.ts", surface: "code", provisional: true },
         { nodeId: "doc:b", surface: "markdown", provisional: false },
+        { nodeId: "code:src/app.ts", surface: "code", provisional: true },
       ],
       activeDocId: "code:src/app.ts",
     });
@@ -455,8 +455,8 @@ describe("dock workspace projection", () => {
     expect(plan.removeIds).toEqual(["doc:stale"]);
     expect(plan.addPanels.map((panel) => panel.id)).toEqual([
       "doc:a",
-      "code:src/app.ts",
       "doc:b",
+      "code:src/app.ts",
     ]);
     expect(plan.activeDocId).toBe("code:src/app.ts");
   });
