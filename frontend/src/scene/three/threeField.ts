@@ -79,8 +79,12 @@ const WARM_START_ALPHA = controlNumber("warmStartAlpha");
 /** Live-retune kick: the gentle re-energise for a force/size slider — re-settle in
  *  place, never the old violent global 0.5 re-explode. */
 const GENTLE_REHEAT_ALPHA = controlNumber("gentleReheatAlpha");
-/** Cold-fit padding: the graph span is divided by this when framing (≈8% per edge). */
-const FIT_PADDING_FACTOR = controlNumber("fitPaddingFactor");
+/** Fit padding: a fixed, UI-scaled pixel margin reserved on EVERY edge when framing, so
+ *  the framed graph never touches the canvas rim. A true pixel gap (zoom-independent),
+ *  unlike a fractional factor whose apparent margin shrinks as the graph span grows; the
+ *  framed bounds already cover node BODIES (graphBounds/fitToNodes expand by node radius),
+ *  so this is clear space beyond the outermost node bodies. */
+const FIT_PADDING_PX = controlNumber("fitPaddingPx");
 /** Fractional inset of the minimap overview from the minimap canvas edges. */
 const MINIMAP_INSET = controlNumber("minimapInset");
 // Camera zoom band + step factors. This is the LIVE field clamp (cameraCore's
@@ -2061,8 +2065,11 @@ export class ThreeField implements SceneFieldRenderer {
     );
   }
 
-  /** Axis-aligned bounding box over all live node positions, or null when there are
-   *  no finite positions yet. Shared by fitToView (cold framing) and the minimap. */
+  /** Axis-aligned bounding box over all live node BODIES (each centre expanded by its
+   *  world radius), or null when there are no finite positions yet. Expanding by the node
+   *  radius — not just the centre — is what lets the fit guarantee every node's body is
+   *  inside the canvas; framing bare centres half-clips a peripheral node by its radius.
+   *  Shared by fitToView (cold framing) and the minimap. */
   private graphBounds(): {
     minX: number;
     minY: number;
@@ -2078,10 +2085,12 @@ export class ThreeField implements SceneFieldRenderer {
       const x = this.cpuPositions[i * 4];
       const y = this.cpuPositions[i * 4 + 1];
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
+      const r =
+        i < this.nodes.length ? nodeWorldRadius(this.nodes[i], this.appearance) : 0;
+      if (x - r < minX) minX = x - r;
+      if (x + r > maxX) maxX = x + r;
+      if (y - r < minY) minY = y - r;
+      if (y + r > maxY) maxY = y + r;
     }
     return minX > maxX ? null : { minX, minY, maxX, maxY };
   }
@@ -2138,10 +2147,19 @@ export class ThreeField implements SceneFieldRenderer {
     const cy = (minY + maxY) / 2;
     const spanX = Math.max(maxX - minX, 1);
     const spanY = Math.max(maxY - minY, 1);
-    const aspect = this.width / this.height;
-    const zoomX = (this.viewHeight * aspect) / (spanX * FIT_PADDING_FACTOR);
-    const zoomY = this.viewHeight / (spanY * FIT_PADDING_FACTOR);
-    const zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.min(zoomX, zoomY)));
+    // Reserve a fixed, UI-scaled pixel margin on every edge: the graph fits into the
+    // canvas MINUS 2×pad on each axis, so there is always a visible gap between the framed
+    // node bodies and the canvas rim. Pixels-per-world is isotropic here (pixelsPerWorld()),
+    // so the SAME ppw fits both axes; the tighter axis wins. zoom solves
+    // ppw = (height / viewHeight) × zoom.
+    const padPx = FIT_PADDING_PX * uiScale();
+    const usableW = Math.max(1, this.width - 2 * padPx);
+    const usableH = Math.max(1, this.height - 2 * padPx);
+    const ppw = Math.min(usableW / spanX, usableH / spanY);
+    const zoom = Math.max(
+      ZOOM_MIN,
+      Math.min(ZOOM_MAX, (ppw * this.viewHeight) / this.height),
+    );
     return { x: cx, y: cy, zoom };
   }
 
