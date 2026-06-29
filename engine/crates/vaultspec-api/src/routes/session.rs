@@ -239,8 +239,21 @@ pub async fn put_session(
                 format!("workspace `{ws}` is not a registered project root"),
             ));
         }
-        let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
-        let _ = us.set_active_workspace(ws, now);
+        {
+            let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
+            let _ = us.set_active_workspace(ws, now);
+        }
+        // A bare project swap (active_workspace WITHOUT an explicit active_scope) must
+        // never leave the active scope dangling on the OLD project — a (workspace,
+        // scope) mismatch is what stranded the picker. Clear the active scope so the
+        // client resolves the NEW project's default worktree; the explicit-scope swap
+        // path below is untouched. Persisted clear lands in the scoped guard.
+        if update.active_scope.is_none() {
+            *state
+                .active_scope
+                .write()
+                .unwrap_or_else(|e| e.into_inner()) = String::new();
+        }
     }
 
     // Bound the opaque workspace-layout blob at ingress (bounded-by-default),
@@ -281,6 +294,10 @@ pub async fn put_session(
         let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(scope) = update.active_scope.as_deref() {
             let _ = us.set_active_scope(&workspace, scope, now);
+        } else if update.active_workspace.is_some() {
+            // Persist the bare-project-swap scope clear (mirrors the in-memory clear
+            // above), so a reload doesn't restore the OLD project's scope.
+            let _ = us.set_active_scope(&workspace, "", now);
         }
         if let Some(ctx) = update.scope_context.as_ref() {
             // The context's own `scope` field selects which scope it applies to;

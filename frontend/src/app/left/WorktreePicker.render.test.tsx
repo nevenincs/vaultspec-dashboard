@@ -96,20 +96,17 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
     expect(screen.getByRole("list", { name: /worktree scopes/i })).toBeTruthy();
   });
 
-  it("paints loading as a UI-only skeleton with no visible loading text", () => {
-    // First synchronous frame before the live map query resolves: the picker is in
-    // its loading state. Per state-mode-uniformity (ADR D2/D4) loading is UI-ONLY —
-    // the shared skeleton renders and the human label lives only in `sr-only`, never
-    // as on-screen copy.
+  it("never hides the control while the map is loading (always pickable)", () => {
+    // First synchronous frame before the live /map query resolves. The picker MUST
+    // NOT early-return a skeleton/error that hides the whole control — the trigger
+    // (and thus the dropdown's project switcher + Add a project) must always be
+    // reachable so the operator can always pick/add a project, even when the active
+    // project's worktrees are unavailable (the never-strand invariant).
     queryClient.clear();
-    const { container } = renderPicker();
-    const skeleton = container.querySelector("[data-skeleton]");
-    expect(skeleton).toBeTruthy();
-    // The loading sentence is the screen-reader label, never visible text.
-    const srLabel = skeleton!.querySelector(".sr-only");
-    expect(srLabel?.textContent).toMatch(/mapping worktrees/i);
-    // No on-screen paragraph carries the loading copy.
-    expect(screen.queryByText(/mapping worktrees/i, { ignore: ".sr-only" })).toBeNull();
+    renderPicker();
+    expect(
+      screen.getByRole("button", { name: /worktree scope|choose a worktree/i }),
+    ).toBeTruthy();
   });
 
   it("retires the dead folder-add header button (relocated into the dropdown)", async () => {

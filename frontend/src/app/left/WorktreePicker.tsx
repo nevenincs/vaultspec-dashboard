@@ -26,15 +26,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import { useFocusZone } from "../chrome/useFocusZone";
 
-import {
-  FolderPlus,
-  IconButton,
-  PanelLeft,
-  Popover,
-  Skeleton,
-  SkeletonRow,
-  StateBlock,
-} from "../kit";
+import { FolderPlus, IconButton, PanelLeft, Popover } from "../kit";
 import type { WorktreeEntity } from "../../platform/actions/entity";
 import type { MapWorktree } from "../../stores/server/engine";
 import {
@@ -161,43 +153,16 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
     if (defaultExpanded) setWorktreePickerExpanded(true, true);
   }, [defaultExpanded]);
 
-  if (state === "loading") {
-    // LOADING (state-mode-uniformity ADR D2/D4): the shared UI-only skeleton —
-    // no on-screen "loading…" text; the label is screen-reader-only.
-    return (
-      <Skeleton label={pickerView.loadingLabel} className="px-fg-1 py-fg-1">
-        <SkeletonRow width="w-3/4" />
-        <SkeletonRow width="w-1/2" />
-      </Skeleton>
-    );
-  }
-
-  if (state === "error") {
-    // Error: a genuine /map failure — contained and non-alarming, scoped to the
-    // control, distinct from a tiers-reported degradation. A tiers-bearing failure
-    // (a backend tier reported down) is degradation, so it falls through to the
-    // designed degraded banner below; only a tiers-less transport fault renders
-    // this error state (degradation-is-read-from-tiers). The 8s error-state
-    // refetch (useWorkspaceMap) self-heals the picker after engine startup
-    // without a page reload, so the retry is a manual nudge, not the only path.
-    return (
-      <div className={pickerView.errorRootClassName} data-worktree-error>
-        <StateBlock
-          mode="degraded"
-          layout="inline"
-          message={pickerView.errorLabel ?? "couldn’t load worktrees."}
-        />
-        <button
-          type="button"
-          onClick={retry}
-          aria-label={pickerView.retryAriaLabel}
-          className={pickerView.retryButtonClassName}
-        >
-          {pickerView.retryLabel}
-        </button>
-      </div>
-    );
-  }
+  // CRITICAL "always able to pick a folder" invariant: the picker NEVER early-returns
+  // a loading/error block that hides the whole control. A `/map` failure (e.g. a
+  // registered project whose worktree moved — a tiers-less 400) only makes THIS
+  // project's worktree LIST unavailable; the dropdown's project switcher (Projects,
+  // from the independent `/workspaces` query) and "Add a project" stay reachable so
+  // the operator can always escape a broken project. Only the "All worktrees" section
+  // reflects the map's loading/error sub-state, with a friendly note (never the raw
+  // engine/git message).
+  const mapLoading = state === "loading";
+  const mapError = state === "error";
 
   const { rows } = pickerView;
   // The active worktree's git status feeds the pill (branch + dirty + ahead/behind).
@@ -398,8 +363,11 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
 
   const hasWorktrees = pickerView.rows.length > 0;
   const showProjects = projectRows.length > 1;
+  // The "this project's worktrees" area is shown whenever it has content OR the map
+  // is loading/errored (so we can render a friendly sub-state note in its place).
+  const showWorktreeArea = hasWorktrees || mapLoading || mapError;
   // Section eyebrows read only when there is more than one section to separate.
-  const showSectionLabels = (recentRows.length > 0 && hasWorktrees) || showProjects;
+  const showSectionLabels = (recentRows.length > 0 && showWorktreeArea) || showProjects;
   // Default the active project's worktree disclosure open when there are no real
   // recents beyond the current location, so a fresh session shows the full list.
   const allOpen = allOpenOverride ?? recentRows.length <= 1;
@@ -620,9 +588,11 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
                   the first focusable item — the relocated folder-add affordance. */}
               {renderAddProjectRow()}
 
-              {pickerView.emptyLabel ? (
+              {pickerView.emptyLabel && !mapError && !mapLoading ? (
                 // Empty: an approachable empty state — a workspace resolving to no
                 // selectable corpus-bearing worktree is a real condition, not a fault.
+                // Suppressed while the map is loading/errored (the worktree-area note
+                // below speaks for that state instead).
                 <li className={pickerView.emptyClassName} data-worktree-empty>
                   {pickerView.emptyLabel}
                 </li>
@@ -642,15 +612,43 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
                 </>
               )}
 
-              {/* All worktrees of the ACTIVE project — a disclosure revealing the
-                  full auto-parsed set. */}
-              {hasWorktrees && (
-                <>
-                  {renderAllToggleRow()}
-                  {allOpen &&
-                    rows.map((row) => renderWorktreeRow(row, `all:${row.worktree.id}`))}
-                </>
-              )}
+              {/* This project's worktrees — a disclosure over the full set. When the
+                  active project's /map is loading or failed (e.g. a moved worktree),
+                  the LIST is unavailable but the project switcher below stays usable;
+                  we show a friendly sub-state here, never the raw engine message. */}
+              {showWorktreeArea &&
+                (hasWorktrees ? (
+                  <>
+                    {renderAllToggleRow()}
+                    {allOpen &&
+                      rows.map((row) =>
+                        renderWorktreeRow(row, `all:${row.worktree.id}`),
+                      )}
+                  </>
+                ) : mapLoading ? (
+                  <li
+                    className="px-fg-2 py-fg-0-5 text-caption text-ink-faint"
+                    data-worktree-loading
+                  >
+                    Loading worktrees…
+                  </li>
+                ) : (
+                  <li
+                    className="flex items-center justify-between gap-fg-1 px-fg-2 py-fg-0-5 text-caption text-ink-faint"
+                    data-worktree-error
+                  >
+                    <span className="min-w-0 truncate">
+                      This project’s worktrees couldn’t be loaded.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={retry}
+                      className="shrink-0 rounded-fg-xs underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                    >
+                      Retry
+                    </button>
+                  </li>
+                ))}
 
               {/* Projects — switch between registered project roots, so multiple
                   "main" folders are identifiable and the add-project flow is

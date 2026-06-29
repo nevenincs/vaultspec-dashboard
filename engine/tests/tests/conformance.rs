@@ -895,6 +895,38 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
         cleared["data"]["recent_scopes"]
     );
 
+    // --- PUT /session: a bare project swap CLEARS the active scope -----------
+    // Setting active_workspace WITHOUT an active_scope must never leave the scope
+    // dangling on the old project (the (workspace, scope) mismatch that stranded the
+    // picker). The engine clears it so the client resolves the new project's default.
+    let active_ws = cleared["data"]["active_workspace"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    if !active_ws.is_empty() {
+        let (status, swapped) = http(
+            port,
+            "PUT",
+            "/session",
+            &token,
+            Some(&format!(r#"{{"active_workspace": "{active_ws}"}}"#)),
+        );
+        assert_eq!(status, 200, "bare workspace swap: {swapped}");
+        assert_eq!(
+            swapped["data"]["active_scope"].as_str(),
+            Some(""),
+            "a bare project swap clears active_scope so it cannot dangle on the old project"
+        );
+        // Restore the active scope for the remaining assertions.
+        let _ = http(
+            port,
+            "PUT",
+            "/session",
+            &token,
+            Some(&format!(r#"{{"active_scope": "{scope}"}}"#)),
+        );
+    }
+
     // --- PUT /settings: a global key, read it back --------------------------
     let (status, set) = http(
         port,

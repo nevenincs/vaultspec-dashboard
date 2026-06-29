@@ -87,6 +87,7 @@ import {
   deriveWorkspaceMapSurfaceState,
   deriveWorktreePickerProjectRows,
   deriveWorktreePickerRecentRows,
+  workspaceRootName,
   canReadGitFileDiff,
   canReadGitHistoricalFileDiff,
   GIT_QUERY_KEY_PART_MAX_CHARS,
@@ -2682,15 +2683,33 @@ describe("left-rail root surface states", () => {
       selectable: true,
       title: "/code/dashboard",
     });
-    // empty label falls back to the path basename so two "main" worktrees stay
-    // distinguishable; an unreachable root is non-selectable with an honest title.
+    // A `<repo>-worktrees/main` root derives the REPO identity ("engine"), so four
+    // projects that are each `.../<repo>-worktrees/main` don't all read "main".
+    // An unreachable root is non-selectable with an honest title.
     expect(rows[1]).toMatchObject({
       id: "ws-b",
-      label: "main",
+      label: "engine",
       isActive: false,
       selectable: false,
       title: "/code/engine-worktrees/main — path is not a readable directory",
     });
+  });
+
+  it("derives unique project names from <repo>-worktrees/<branch> layouts", () => {
+    // The engine auto-labels a root with its path basename; pass an explicit label
+    // only to exercise the custom-label-wins branch.
+    const name = (path: string, label?: string) =>
+      workspaceRootName({ path, label: label ?? path.split("/").pop() ?? "" });
+    // Four `.../<repo>-worktrees/main` roots that the engine all auto-labelled
+    // "main" must read as their distinct repo identities, never four "main"s.
+    expect(name("Y:/code/vaultspec-dashboard-worktrees/main")).toBe(
+      "vaultspec-dashboard",
+    );
+    expect(name("Y:/code/aeat-worktrees/main")).toBe("aeat");
+    expect(name("Y:/code/vaultspec-core-worktrees/main")).toBe("vaultspec-core");
+    // A non-main branch keeps the branch suffix; a custom label still wins.
+    expect(name("Y:/code/app-worktrees/feature-x")).toBe("app · feature-x");
+    expect(name("Y:/code/app-worktrees/main", "My App")).toBe("My App");
   });
 
   it("keeps vault-tree transport failure distinct from tiered degradation", () => {

@@ -925,11 +925,27 @@ export interface WorktreePickerProjectRowView {
   activeCueClassName: string;
 }
 
-/** Project name = the registered label, falling back to the path basename so two
- *  projects whose worktrees are both "main" stay distinguishable. */
+/** A distinguishing, human project name. The engine auto-labels a root with its
+ *  path basename, so a machine full of `…/<repo>-worktrees/main` worktrees would
+ *  ALL read "main" — useless. So we derive the REPO identity from the path: the
+ *  parent dir minus a `-worktrees` suffix is the unique, meaningful name
+ *  (`vaultspec-core-worktrees/main` → "vaultspec-core"). A genuinely custom label
+ *  (one the operator set, differing from the basename) still wins. */
 export function workspaceRootName(root: Pick<WorkspaceRoot, "label" | "path">): string {
+  const segments = root.path.split(/[\\/]+/).filter(Boolean);
+  const base = segments[segments.length - 1] ?? "";
+  const parent = segments[segments.length - 2] ?? "";
   const label = root.label.trim();
-  return label.length > 0 ? label : worktreeName(root.path);
+  // A custom label (not just the auto basename) is authoritative.
+  if (label.length > 0 && label.toLowerCase() !== base.toLowerCase()) return label;
+  // The dominant `<repo>-worktrees/<branch>` layout: identity is the repo name.
+  if (/-worktrees$/i.test(parent)) {
+    const repo = parent.replace(/-worktrees$/i, "");
+    return /^(main|master)$/i.test(base) ? repo : `${repo} · ${base}`;
+  }
+  // A generic branch-y basename with a meaningful parent: qualify with the parent.
+  if (/^(main|master)$/i.test(base) && parent) return `${parent} · ${base}`;
+  return base || label || root.path;
 }
 
 export function deriveWorktreePickerProjectRows(

@@ -17,14 +17,26 @@ import {
 import { Dialog } from "../chrome/Dialog";
 import { Button } from "../kit";
 
-/** Surface the engine's honest refusal reason (an invalid path is a tiered 400
- *  whose message names why), falling back to a plain message. Reads only the
- *  thrown error's own `message` string — no wire/tiers access. */
+/** A FRIENDLY, user-facing refusal — never the raw engine/git message (the UI must
+ *  not surface internal errors). The thrown error's text is inspected only to pick
+ *  the right friendly variant, never rendered. */
 function addProjectErrorMessage(error: unknown): string {
-  const message = (error as { message?: unknown } | null)?.message;
-  return typeof message === "string" && message.trim().length > 0
-    ? message
-    : "Couldn’t add the project — check the path.";
+  const raw = (
+    typeof (error as { message?: unknown } | null)?.message === "string"
+      ? (error as { message: string }).message
+      : ""
+  ).toLowerCase();
+  if (
+    /not a (readable )?directory|no such file|does not exist|readable directory/.test(
+      raw,
+    )
+  ) {
+    return "That folder couldn’t be found. Check the path and try again.";
+  }
+  if (/git|repository|worktree/.test(raw)) {
+    return "That folder isn’t a git project. Pick a folder that contains a git repository.";
+  }
+  return "Couldn’t add that project. Make sure it’s a folder containing a git repository.";
 }
 
 export function AddProjectDialog() {
