@@ -927,6 +927,43 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
         );
     }
 
+    // --- Registry adversarial: dedup on alias + honest refusal --------------
+    // The launch root is auto-registered; registering it again via a trailing-slash
+    // ALIAS must DEDUP (canonical git common-dir id), not mint a second entry, and a
+    // bogus path must be REFUSED with a 400, never crash or add junk.
+    let (_, ws0) = http(port, "GET", "/workspaces", &token, None);
+    let count0 = ws0["data"]["workspaces"].as_array().map_or(0, |a| a.len());
+    assert!(count0 >= 1, "the launch root is auto-registered: {ws0}");
+    let (st_alias, _) = http(
+        port,
+        "PUT",
+        "/session",
+        &token,
+        Some(&format!(r#"{{"add_workspace": "{scope}/"}}"#)),
+    );
+    assert_eq!(
+        st_alias, 200,
+        "registering an aliased path succeeds (upsert)"
+    );
+    let (st_bad, bad) = http(
+        port,
+        "PUT",
+        "/session",
+        &token,
+        Some(r#"{"add_workspace": "Z:/__definitely_not_a_git_repo__"}"#),
+    );
+    assert_eq!(st_bad, 400, "a bogus path is refused, not crashed");
+    assert!(
+        bad["error"].is_string(),
+        "the refusal carries an error: {bad}"
+    );
+    let (_, ws1) = http(port, "GET", "/workspaces", &token, None);
+    let count1 = ws1["data"]["workspaces"].as_array().map_or(0, |a| a.len());
+    assert_eq!(
+        count1, count0,
+        "alias-register deduped and bad-register added no junk: {count0} -> {count1}"
+    );
+
     // --- PUT /settings: a global key, read it back --------------------------
     let (status, set) = http(
         port,
