@@ -28,7 +28,14 @@ import {
   type MarkdownReaderView,
 } from "../../stores/server/queries";
 import { previewDocTab } from "../../stores/view/tabs";
-import { Skeleton, SkeletonBar, StatusDot, categoryColorVar } from "../kit";
+import {
+  Skeleton,
+  SkeletonBar,
+  StatusDot,
+  StepCheckMark,
+  categoryColorVar,
+} from "../kit";
+import { PlanSummaryCard } from "./PlanSummaryCard";
 import { remarkWikiLink, wikiLinkNodeId, WIKI_LINK_SCHEME } from "./remarkWikiLink";
 import { stopScrollKeyPropagation } from "./scrollRegion";
 import { useHighlightedHast } from "./useHighlighter";
@@ -134,6 +141,17 @@ const COMPONENTS: Components = {
         {text}
       </code>
     );
+  },
+  // GFM task-list checkbox → the shared plan-step mark (filled disc + check when
+  // done, hollow ring when open), so a plan's steps read identically in the reader
+  // body and the right-rail step tree (design-system-is-centralized). The reader is
+  // read-only, so the native (disabled) checkbox is replaced outright; the done-row
+  // treatment is a CSS rule keyed on this mark's `data-done` (see styles.css).
+  input({ type, checked }) {
+    if (type === "checkbox") {
+      return <StepCheckMark done={checked === true} />;
+    }
+    return <input type={type} checked={checked} readOnly />;
   },
 };
 
@@ -262,10 +280,16 @@ function ReaderFooter({
 function MarkdownBody({
   view,
   scope,
+  nodeId,
 }: {
   view: MarkdownReaderView;
   scope: string | null;
+  nodeId: string | null;
 }): ReactElement {
+  // A plan document carries the "plan" eyebrow category; the summary card mounts
+  // for it (self-fetching the engine plan-interior summary) when the host supplied
+  // the plan node id.
+  const isPlan = view.editorial.eyebrow?.category === "plan";
   const components = useMemo<Components>(
     () => ({
       ...COMPONENTS,
@@ -305,6 +329,11 @@ function MarkdownBody({
   return (
     <div className="px-fg-4 pb-[0.625rem] pt-[1.875rem] @lg:px-fg-8 @3xl:px-[3rem] @5xl:px-[4.5rem]">
       <DocHeaderBlock editorial={view.editorial} />
+      {isPlan && nodeId !== null && (
+        <div className="mt-fg-3">
+          <PlanSummaryCard nodeId={nodeId} scope={scope} />
+        </div>
+      )}
       <div className="my-fg-4 h-px w-full bg-rule" />
       <article className="vs-markdown">
         <Markdown
@@ -329,9 +358,14 @@ function MarkdownBody({
 export function MarkdownReader({
   content,
   scope = null,
+  nodeId = null,
 }: {
   content: ContentView;
   scope?: string | null;
+  /** The document's graph node id. Supplied for plan documents so the summary
+   *  card can fetch the engine plan-interior summary; null for callers that do
+   *  not address by node (the card simply does not mount). */
+  nodeId?: string | null;
 }): ReactElement {
   const markdownView = useMemo(() => deriveMarkdownReaderView(content), [content]);
 
@@ -374,7 +408,7 @@ export function MarkdownReader({
         // browser scrolls the document natively (review HIGH).
         onKeyDown={stopScrollKeyPropagation}
       >
-        <MarkdownBody view={markdownView} scope={scope} />
+        <MarkdownBody view={markdownView} scope={scope} nodeId={nodeId} />
         <ReaderFooter editorial={markdownView.editorial} scope={scope} />
       </div>
     </div>

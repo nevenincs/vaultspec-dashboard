@@ -17,7 +17,7 @@ import {
   type PlanInteriorView,
 } from "../../stores/server/queries";
 import { useDashboardNodeSelection } from "../../stores/view/selection";
-import { Skeleton, SkeletonRow } from "../kit";
+import { Skeleton, SkeletonRow, StepCheckMark } from "../kit";
 import { useFocusZone, type FocusZoneItemProps } from "../chrome/useFocusZone";
 
 /** Roving navigation threaded to each selectable step so the whole step tree is
@@ -27,48 +27,7 @@ interface StepNav {
   setActive: (key: string) => void;
 }
 
-const GATE_PX = 14;
 const SMALL_PX = 13;
-
-interface StepCheckMarkProps {
-  done: boolean;
-}
-
-function StepCheckMark({ done }: StepCheckMarkProps) {
-  return (
-    <span
-      role="img"
-      aria-label={done ? "complete" : "open"}
-      data-step-check
-      data-done={done}
-      className={`inline-flex shrink-0 items-center justify-center ${
-        done ? "text-state-complete" : "text-ink-faint"
-      }`}
-    >
-      <svg width={GATE_PX} height={GATE_PX} viewBox="0 0 14 14" aria-hidden>
-        <circle
-          cx={7}
-          cy={7}
-          r={5.5}
-          // Filled disc vs hollow ring is the grayscale-by-shape identity.
-          fill={done ? "currentColor" : "none"}
-          stroke="currentColor"
-          strokeWidth={done ? 0 : 1.4}
-        />
-        {done && (
-          <path
-            d="M4.3 7.2 6.1 9 9.7 5"
-            fill="none"
-            stroke="var(--color-paper-raised)"
-            strokeWidth={1.4}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        )}
-      </svg>
-    </span>
-  );
-}
 
 function RollupFraction({ rollup }: { rollup: InteriorRollup }) {
   return (

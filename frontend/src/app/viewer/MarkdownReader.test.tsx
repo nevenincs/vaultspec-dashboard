@@ -102,13 +102,21 @@ describe("MarkdownReader body", () => {
     expect(target?.surface).toBe("markdown");
   });
 
-  it("renders GFM task-list checkboxes (the plan step structure)", () => {
-    render(<MarkdownReader content={available(DOC)} />);
-    const checkboxes = screen.getAllByRole("checkbox");
-    expect(checkboxes.length).toBe(2);
-    expect((checkboxes[0] as HTMLInputElement).checked).toBe(true);
-    expect((checkboxes[1] as HTMLInputElement).checked).toBe(false);
-    // The step text renders alongside the checkboxes.
+  it("renders GFM task-list steps with the shared check mark (no native checkbox)", () => {
+    const { container } = render(<MarkdownReader content={available(DOC)} />);
+    // The native (disabled) checkbox is replaced by the shared StepCheckMark, so the
+    // reader and the right-rail step tree show a step identically.
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    const marks = container.querySelectorAll("[data-step-check]");
+    expect(marks.length).toBe(2);
+    // The done step carries `data-done="true"` (filled disc + check); the pending
+    // step `data-done="false"` (hollow ring). The done-row treatment keys on this.
+    expect(screen.getByRole("img", { name: "complete" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "open" })).toBeTruthy();
+    expect(
+      container.querySelectorAll('[data-step-check][data-done="true"]').length,
+    ).toBe(1);
+    // The step text renders alongside the marks.
     expect(screen.getByText(/a finished step/)).toBeTruthy();
     expect(screen.getByText(/a pending step/)).toBeTruthy();
   });

@@ -17,6 +17,8 @@ export { Chip, Badge } from "./Chip";
 export type { ChipProps, BadgeProps, BadgeTone } from "./Chip";
 export { StatusDot } from "./StatusDot";
 export type { StatusDotProps } from "./StatusDot";
+export { StepCheckMark } from "./StepCheckMark";
+export type { StepCheckMarkProps } from "./StepCheckMark";
 
 // Inputs (S04)
 export { SearchField } from "./SearchField";

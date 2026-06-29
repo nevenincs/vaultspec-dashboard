@@ -17,6 +17,13 @@ const emptyView: PlanInteriorView = {
   steps: [],
   hasUngroupedSteps: false,
   rollup: { done: 0, total: 0 },
+  summary: {
+    wave_count: 0,
+    phase_count: 0,
+    step_count: 0,
+    done_count: 0,
+    plan_state: null,
+  },
   truncated: null,
   loadingMessage: "loading steps...",
   placeholderMessage: "step tree pending - the plan interior is not yet served.",

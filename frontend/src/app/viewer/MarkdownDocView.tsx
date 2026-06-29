@@ -218,7 +218,7 @@ export function MarkdownDocView({
           canEdit={documentEditor.canEdit}
         />
         <div className="min-h-0 flex-1">
-          <MarkdownReader content={content} scope={scope} />
+          <MarkdownReader content={content} scope={scope} nodeId={nodeId} />
         </div>
       </div>
     );

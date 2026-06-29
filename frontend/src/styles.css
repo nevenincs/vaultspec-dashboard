@@ -709,16 +709,30 @@
   .vs-markdown li strong {
     color: var(--color-ink);
   }
-  /* GFM task lists (the plan checkbox/step structure) render flush, no marker. */
-  .vs-markdown li:has(> input[type="checkbox"]) {
+  /* GFM task lists (the plan checkbox/step structure) render flush, no marker. The
+     reader replaces the native checkbox with the shared StepCheckMark (filled disc +
+     check / hollow ring), so these rules key on remark-gfm's `task-list-item` class,
+     not the (now-absent) input. */
+  .vs-markdown li.task-list-item {
     padding-inline-start: 0;
     color: var(--color-ink);
   }
-  .vs-markdown li:has(> input[type="checkbox"])::before {
+  .vs-markdown li.task-list-item::before {
     content: none;
   }
-  .vs-markdown li > input[type="checkbox"] {
+  .vs-markdown li.task-list-item [data-step-check] {
     margin-inline-end: var(--spacing-fg-1-5);
+    /* Nudge the mark onto the text baseline (naturally font-relative → em). */
+    vertical-align: -0.15em;
+  }
+  /* A completed step reads as done at a glance: the row mutes and strikes through,
+     while the filled check keeps its state-complete color. Keyed on the shared
+     mark's `data-done`, so the reader and the right-rail step tree share one done
+     vocabulary (design-system-is-centralized). */
+  .vs-markdown li.task-list-item:has([data-step-check][data-done="true"]) {
+    color: var(--color-ink-faint);
+    text-decoration: line-through;
+    text-decoration-color: var(--color-ink-faint);
   }
   .vs-markdown blockquote {
     /* Reader/Quote — serif italic, leading accent bar (board 265:888: 3px accent
@@ -1095,6 +1109,28 @@
      to the tier, flips per theme) rather than a bespoke literal shadow. */
   --dv-floating-titlebar-background-color: var(--color-paper-sunken);
   --dv-floating-box-shadow: var(--shadow-fg-overlay);
+}
+
+/* The graph category legend rides the dock-header's prefix-actions slot (the free
+   space left of the empty graph tab). Let that slot shrink and clip under flex
+   pressure so a wide legend never forces the header to overflow — the legend's own
+   measure-then-compact logic minifies to fit; this just bounds the container. */
+.dockview-theme-vaultspec .dv-pre-actions-container {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Collapse the graph group's empty placeholder tab. The graph is the canvas, not a
+   named document, so its tab carries no label (GraphTab renders an empty span) — but
+   dockview still paints the `.dv-tab` chrome (a lighter `paper` rectangle + the tab
+   surface) which reads as a stray separator between the legend and the void. Zero it
+   out so the graph header is a seamless toolbar. Scoped to the graph tab only (via
+   the `[data-graph-tab]` marker), so real document tabs are untouched. */
+.dockview-theme-vaultspec .dv-tab:has([data-graph-tab]) {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  background-color: transparent;
 }
 
 /* ============================================================================
