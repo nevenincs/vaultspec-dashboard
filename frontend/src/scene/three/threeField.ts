@@ -838,6 +838,10 @@ export class ThreeField implements SceneFieldRenderer {
       case "set-visibility":
         this.visibleNodeIds = new Set(cmd.visibleNodeIds);
         this.applyVisibility(cmd.visibleNodeIds, cmd.visibleEdgeIds);
+        // A filter visibility change is a STATE change: when autoframe is on, re-frame to the
+        // now-visible subset (graphBounds is visibility-aware), even if a prior manual nav had
+        // disengaged it.
+        this.reengageAutoframe();
         this.requestRender();
         break;
       case "focus-node":
@@ -937,9 +941,6 @@ export class ThreeField implements SceneFieldRenderer {
     reflow = false,
   ): void {
     if (!this.renderer) return;
-    // A data change resumes whole-graph autoframe: any prior selection-frame suspension
-    // is released so the new corpus reframes on load/filter (#13 arbitration).
-    this.autoframeSuspended = false;
 
     // Defense-in-depth: bound the node payload at the scene's OWN wire-ingestion boundary
     // (Rule 2). The stores adapter already clamps to MAX_CLIENT_GRAPH_NODES, but the scene
@@ -1109,6 +1110,12 @@ export class ThreeField implements SceneFieldRenderer {
       this.focusNode(this.pendingFocusId);
     }
     this.running = !this.solver.isSettled();
+    // A data change (new corpus, filter reflow, ego expansion, live delta) is a STATE change:
+    // when autoframe is on, re-engage it so the new corpus reframes on load/filter — releasing
+    // any prior selection-frame or manual-nav suspension (#13 arbitration). The cold path
+    // already framed via fitToView above; this prompt poll handles the warm path and its
+    // deadband no-ops an unchanged frame.
+    this.reengageAutoframe();
     this.requestRender();
     if (this.running) this.wake();
   }
@@ -1567,6 +1574,10 @@ export class ThreeField implements SceneFieldRenderer {
       this.solver.setParams(this.params, GENTLE_REHEAT_ALPHA * Math.max(0.3, frac));
       this.running = true;
       this.wake();
+      // A force-param (simulation) change reshapes the layout: when autoframe is on, bind to
+      // it (re-engage even if a prior manual nav had disengaged). The running loop's poll then
+      // tracks the bounds as the layout re-settles.
+      this.reengageAutoframe();
     }
   }
 
@@ -1661,6 +1672,11 @@ export class ThreeField implements SceneFieldRenderer {
       }
       if (this.glyphMesh) this.glyphMesh.visible = on;
     }
+
+    // A node-SIZE (display) change alters each node's body radius, so the framed bounds
+    // change (graphBounds expands by radius): when autoframe is on, bind to it and re-frame.
+    // Edge/icon-only changes do not move bounds, so they do not re-engage.
+    if (sizeChanged) this.reengageAutoframe();
 
     this.requestRender();
   }
@@ -2082,6 +2098,16 @@ export class ThreeField implements SceneFieldRenderer {
     let maxX = -Infinity;
     let maxY = -Infinity;
     for (let i = 0; i < this.solver.count; i++) {
+      // Visibility-aware: when a filter mask is active, frame only the VISIBLE subset so a
+      // filter change tightens the fit to what is shown (a hidden node never holds the frame
+      // open). With no mask (visibleNodeIds null) every node counts, as before.
+      if (
+        this.visibleNodeIds &&
+        i < this.nodes.length &&
+        !this.visibleNodeIds.has(this.nodes[i].id)
+      ) {
+        continue;
+      }
       const x = this.cpuPositions[i * 4];
       const y = this.cpuPositions[i * 4 + 1];
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
@@ -2191,10 +2217,11 @@ export class ThreeField implements SceneFieldRenderer {
     }
     this.autoframe = enabled;
     if (enabled) {
-      // Re-enabling autoframe is a fresh start — drop any selection-frame suspension so
-      // the toggle reasserts whole-graph framing (#13 arbitration).
-      this.autoframeSuspended = false;
+      // Re-enabling autoframe is a fresh start — drop any selection-frame / manual-nav
+      // suspension so the toggle reasserts whole-graph framing (#13 arbitration), and frame
+      // immediately (reengageAutoframe polls now) rather than waiting for the next poll tick.
       this.startAutoframeTimer();
+      this.reengageAutoframe();
     } else {
       this.stopAutoframeTimer();
       this.autoframeTarget = null;
@@ -2221,6 +2248,34 @@ export class ThreeField implements SceneFieldRenderer {
     return (
       this.dragging || this.dragNodeIndex >= 0 || this.touchGesture || this.dragActive
     );
+  }
+
+  /** The user took manual CAMERA control (pan / zoom / wheel / pinch / minimap): DISENGAGE
+   *  autoframe — drop any in-flight ease and suspend re-framing — so it never yanks the view
+   *  back. Autoframe stays in its ON mode (the toggle is unchanged) but holds off until a
+   *  STATE change (filter/visibility/appearance/force) or an explicit fit/toggle re-engages
+   *  it (`reengageAutoframe`). A no-op when autoframe is already off. */
+  private disengageAutoframeForUserNav(): void {
+    if (!this.autoframe || this.autoframeSuspended) return;
+    this.autoframeSuspended = true;
+    this.autoframeTarget = null;
+  }
+
+  /** A graph STATE change happened (new data, filter/visibility, appearance, force params):
+   *  if autoframe is ON, RE-ENGAGE it — clear the user-nav/selection suspension and
+   *  re-evaluate the fit immediately so the camera binds to the new graph without waiting for
+   *  the next poll tick. The poll's deadband still guards an unchanged frame, so a state
+   *  change that does not move the bounds costs nothing. A no-op when autoframe is off. */
+  private reengageAutoframe(): void {
+    if (!this.autoframe) return;
+    this.autoframeSuspended = false;
+    // Measure the poll's drift from the CURRENT camera, not the last auto-fit: a manual nav
+    // moved the camera without updating `autoframedFrame`, so without this the poll would
+    // compare the bounds-fit against the stale frame, see no drift, and leave the camera at
+    // the user's manual position — failing to re-frame. Nulling it makes the poll re-fit from
+    // wherever the camera now is.
+    this.autoframedFrame = null;
+    this.autoframePoll();
   }
 
   /** Interval poll: when autoframe is on and the user is idle, compute the fit target and,
@@ -2287,6 +2342,7 @@ export class ThreeField implements SceneFieldRenderer {
   }
 
   private zoomBy(factor: number): void {
+    this.disengageAutoframeForUserNav();
     this.camera.zoom = Math.max(
       ZOOM_MIN,
       Math.min(ZOOM_MAX, this.camera.zoom * factor),
@@ -2302,6 +2358,7 @@ export class ThreeField implements SceneFieldRenderer {
    *  surface follows the hand. Respects nothing to clamp (panning is unbounded by design;
    *  the autoframe / fit path re-centres). */
   private panCamera(dxWorld: number, dyWorld: number): void {
+    this.disengageAutoframeForUserNav();
     this.camera.position.x += dxWorld;
     this.camera.position.y += dyWorld;
     this.camera.updateProjectionMatrix();
@@ -2332,6 +2389,7 @@ export class ThreeField implements SceneFieldRenderer {
 
   /** Zoom keeping the world point under (sx, sy) screen px stationary. */
   private zoomAtScreen(factor: number, sx: number, sy: number): void {
+    this.disengageAutoframeForUserNav();
     const before = this.screenToWorld(sx, sy);
     this.camera.zoom = Math.max(
       ZOOM_MIN,
@@ -2421,6 +2479,14 @@ export class ThreeField implements SceneFieldRenderer {
     ctx.fillStyle = hexCss(inkMutedColor());
     ctx.globalAlpha = 0.7;
     for (let i = 0; i < count; i++) {
+      // Match the visibility-aware bounds: a filtered-out node is not drawn on the overview.
+      if (
+        this.visibleNodeIds &&
+        i < this.nodes.length &&
+        !this.visibleNodeIds.has(this.nodes[i].id)
+      ) {
+        continue;
+      }
       const x = this.cpuPositions[i * 4];
       const y = this.cpuPositions[i * 4 + 1];
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
@@ -2464,6 +2530,8 @@ export class ThreeField implements SceneFieldRenderer {
     const panTo = (ev: PointerEvent): void => {
       const world = toWorld(ev);
       if (!world) return;
+      // Minimap pan is manual navigation → disengage autoframe (idempotent).
+      this.disengageAutoframeForUserNav();
       this.camera.position.set(world.x, world.y, 10);
       this.camera.updateProjectionMatrix();
       this.emitCameraChange();
@@ -2632,6 +2700,9 @@ export class ThreeField implements SceneFieldRenderer {
         if (Math.abs(dx) + Math.abs(dy) > 2) this.dragMoved = true;
         this.lastX = ev.clientX;
         this.lastY = ev.clientY;
+        // A camera pan is manual navigation: disengage autoframe so it does not yank the
+        // view back when the drag ends (idempotent — suspends once).
+        this.disengageAutoframeForUserNav();
         const ppw = this.pixelsPerWorld();
         this.camera.position.x -= dx / ppw;
         this.camera.position.y += dy / ppw;
