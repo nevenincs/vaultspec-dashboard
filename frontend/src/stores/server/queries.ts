@@ -2844,22 +2844,17 @@ export interface DashboardGraphControlsView {
   representationMode: DashboardState["representation_mode"];
   graphBounds: DashboardGraphBounds;
   freezeAvailable: boolean;
-  /** The active graph granularity + salience lens — the read-back the View
-   *  section's Detail / Emphasis toggles render their active segment from, so the
-   *  control can never drift from the served dashboard-state. */
+  /** The active graph granularity — the read-back the View section's Features /
+   *  Documents toggle renders its active segment from, so the control can never
+   *  drift from the served dashboard-state. */
   granularity: GraphGranularity;
-  lens: SalienceLens;
 }
 
 export function deriveDashboardGraphControlsView(
   state:
     | Pick<
         DashboardState,
-        | "graph_bounds"
-        | "representation_mode"
-        | "timeline_mode"
-        | "graph_granularity"
-        | "salience_lens"
+        "graph_bounds" | "representation_mode" | "timeline_mode" | "graph_granularity"
       >
     | undefined,
 ): DashboardGraphControlsView {
@@ -2873,7 +2868,6 @@ export function deriveDashboardGraphControlsView(
     graphBounds: normalizeDashboardGraphBounds(state?.graph_bounds),
     freezeAvailable: representationMode === "connectivity" && !timeline.timeTravel,
     granularity: normalizeDashboardGraphGranularity(state?.graph_granularity),
-    lens: normalizeDashboardSalienceLens(state?.salience_lens),
   };
 }
 

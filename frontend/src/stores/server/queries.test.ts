@@ -1632,7 +1632,6 @@ describe("deriveDashboardGraphControlsView (stage graph controls)", () => {
         representation_mode: "connectivity",
         timeline_mode: { kind: "live" },
         graph_granularity: "feature",
-        salience_lens: "design",
       }),
     ).toEqual({
       graphBounds: { shape: "rect", size: 1800 },
@@ -1645,7 +1644,6 @@ describe("deriveDashboardGraphControlsView (stage graph controls)", () => {
       representationMode: "connectivity",
       freezeAvailable: true,
       granularity: "feature",
-      lens: "design",
     });
   });
 
@@ -1662,7 +1660,6 @@ describe("deriveDashboardGraphControlsView (stage graph controls)", () => {
         representation_mode: "lineage",
         timeline_mode: { kind: "live" },
         graph_granularity: "document",
-        salience_lens: "status",
       }).freezeAvailable,
     ).toBe(false);
 
@@ -1672,7 +1669,6 @@ describe("deriveDashboardGraphControlsView (stage graph controls)", () => {
         representation_mode: "connectivity",
         timeline_mode: { kind: "time-travel", at: 42 },
         graph_granularity: "document",
-        salience_lens: "status",
       }).freezeAvailable,
     ).toBe(false);
   });
@@ -1684,7 +1680,6 @@ describe("deriveDashboardGraphControlsView (stage graph controls)", () => {
         representation_mode: "connectivity",
         timeline_mode: { kind: "live" },
         graph_granularity: "document",
-        salience_lens: "status",
       }).graphBounds,
     ).toEqual({ shape: "rect", size: 0 });
 
@@ -1694,7 +1689,6 @@ describe("deriveDashboardGraphControlsView (stage graph controls)", () => {
         representation_mode: "connectivity",
         timeline_mode: { kind: "live" },
         graph_granularity: "document",
-        salience_lens: "status",
       }).graphBounds,
     ).toEqual({ shape: "free", size: 0 });
   });

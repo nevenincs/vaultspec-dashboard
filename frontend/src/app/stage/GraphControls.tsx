@@ -589,56 +589,42 @@ function FoldableCategory({
 }
 
 // ---------------------------------------------------------------------------
-// ViewSection — the two DASHBOARD-STATE graph switches: Detail (the feature-
-// constellation overview ⇄ the per-document graph, `graph_granularity`) and
-// Emphasis (which signal drives node salience, `salience_lens`). Unlike the
-// layout/appearance knobs these are NOT scene-command/canvas-local: each writes
-// dashboard-state through the stage-controls intent, which re-keys the graph slice
-// query (a real re-fetch), and reads its active segment back from the served state
-// — so the control can never drift from what the graph is actually showing
-// (display-state-is-backend-served; views-are-projections-of-one-model). Detail is
-// a pure view flip: it never touches the corpus filter (one-filter-authority).
+// ViewSection — the ONE dashboard-state graph switch: whether the graph nodes are
+// FEATURES (each node a cluster of related documents — the high-level map) or
+// DOCUMENTS (each node a single vault file — the full graph), i.e.
+// `graph_granularity`. Unlike the layout/appearance knobs this is NOT a scene
+// command / canvas-local flag: it writes dashboard-state through the stage-controls
+// intent, which re-keys the graph slice query (a real re-fetch), and reads its
+// active segment back from the served state — so the control can never drift from
+// what the graph is actually showing (display-state-is-backend-served;
+// views-are-projections-of-one-model). It is a pure view flip: it never touches the
+// corpus filter (one-filter-authority). The salience-lens ("Emphasis") switch was
+// removed — it changed nothing visible (feature nodes carry no salience; document
+// node size is driven by connectedness, not the lens).
 // ---------------------------------------------------------------------------
 
 function ViewSection() {
   const scope = useActiveScope();
-  const { granularity, lens } = useDashboardGraphControlsView(scope);
+  const { granularity } = useDashboardGraphControlsView(scope);
   const controls = useDashboardStageControlsIntent(scope);
   const view = deriveGraphControlsViewPresentationView();
 
   return (
-    <section className="flex w-full flex-col gap-fg-2" data-graph-view-section>
+    <section className="flex w-full flex-col gap-fg-1-5" data-graph-view-section>
       <SectionLabel>{view.heading}</SectionLabel>
-      <div className="flex w-full flex-col gap-fg-1">
-        <span className="text-label text-ink-muted">{view.detailLabel}</span>
-        <SegmentedToggle
-          ariaLabel={view.detailAriaLabel}
-          value={granularity}
-          onChange={(v) => void controls.setGranularity(v).catch(() => undefined)}
-          fullWidth
-        >
-          {view.detailOptions.map((option) => (
-            <Segment key={option.value} value={option.value} title={option.title}>
-              {option.label}
-            </Segment>
-          ))}
-        </SegmentedToggle>
-      </div>
-      <div className="flex w-full flex-col gap-fg-1">
-        <span className="text-label text-ink-muted">{view.emphasisLabel}</span>
-        <SegmentedToggle
-          ariaLabel={view.emphasisAriaLabel}
-          value={lens}
-          onChange={(v) => void controls.setLens(v).catch(() => undefined)}
-          fullWidth
-        >
-          {view.emphasisOptions.map((option) => (
-            <Segment key={option.value} value={option.value} title={option.title}>
-              {option.label}
-            </Segment>
-          ))}
-        </SegmentedToggle>
-      </div>
+      <SegmentedToggle
+        ariaLabel={view.detailAriaLabel}
+        value={granularity}
+        onChange={(v) => void controls.setGranularity(v).catch(() => undefined)}
+        fullWidth
+      >
+        {view.detailOptions.map((option) => (
+          <Segment key={option.value} value={option.value} title={option.title}>
+            {option.label}
+          </Segment>
+        ))}
+      </SegmentedToggle>
+      <p className="text-caption text-ink-faint">{view.caption}</p>
     </section>
   );
 }

@@ -249,37 +249,24 @@ export const STATE_MARK_DEFS = {
 
 export type StateKey = keyof typeof STATE_MARK_DEFS;
 
-// --- AUTHORED IN-FAMILY: the node-feature species mark (S35) ------------------
+// --- ADOPTED: the node-feature species mark (Phosphor CirclesThree) -----------
 //
-// The deliberately-asymmetric compound species mark — the constellation's
-// center-of-gravity glyph. Redline geometry from the retired family, carried
-// onto the 256 grid (×~10.67 from the 24 grid):
-//   * three dot SIZES (not three equal dots) in a SCALENE triangle, the
-//     LARGEST low-left — breaks facial symmetry so it never reads as a face.
-//   * the binding loop left OPEN with a ~70° gap at the upper-left (a sketched
-//     lasso, not a closed head).
-//   * ONE detail-weight thread between the two SMALLER dots, steeply diagonal,
-//     with clear air around each dot so it never fuses into a bar (a near-
-//     vertical fused thread reads as an exclamation mark — avoided).
-// Collision guards: vs state:active (active is a SINGLE solid disc, this is a
-// MULTI-dot open cluster) and vs the state-active ring (this mark's open lasso
-// has a deliberate gap and unequal interior, never a clean closed ring).
+// The feature node represents a CLUSTER of related documents that converge on one
+// feature tag, so its glyph is Phosphor's `CirclesThree` (regular weight, adopted
+// verbatim) — three grouped rings that read as "a cluster" at a glance. This
+// REPLACES the prior hand-authored multi-dot/lasso mark: features now use a real
+// design-system Phosphor icon like every other doc-type species, not a bespoke
+// glyph (icons-come-from-the-two-sanctioned-families — Phosphor is the domain-mark
+// family). Its hollow rings render via the winding-rule fill, and it stays distinct
+// from the solid `state:active` disc and the other doc-type silhouettes under the
+// 14px grayscale gate (asserted in `markGate.test.ts`).
 
 export const NODE_FEATURE_MARK = {
   id: "feature",
-  provenance: "authored" as const,
-  body:
-    // open binding lasso: an arc with a ~70° gap at the upper-left
-    '<path fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round" ' +
-    'd="M84,72 A76,76 0 1 1 72,92"/>' +
-    // detail-weight thread between the two SMALLER dots (upper + right),
-    // steeply diagonal, stopping short of each dot (clear air)
-    '<path fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" ' +
-    'd="M150,96 173,148"/>' +
-    // three dots, three sizes, scalene — largest LOW-LEFT
-    '<circle cx="96" cy="168" r="26" fill="currentColor"/>' + // largest, low-left
-    '<circle cx="140" cy="82" r="18" fill="currentColor"/>' + // mid, upper
-    '<circle cx="182" cy="160" r="13" fill="currentColor"/>', // smallest, right
+  provenance: "adopted" as const,
+  body: p(
+    "M172,76a44,44,0,1,0-44,44A44.05,44.05,0,0,0,172,76Zm-44,28a28,28,0,1,1,28-28A28,28,0,0,1,128,104Zm60,24a44,44,0,1,0,44,44A44.05,44.05,0,0,0,188,128Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,188,200ZM68,128a44,44,0,1,0,44,44A44.05,44.05,0,0,0,68,128Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,68,200Z",
+  ),
 };
 
 // --- AUTHORED IN-FAMILY: the status-stamp mark families (node-visual-richness) -
@@ -454,7 +441,8 @@ export const STATUS_TIER_MARK_DEFS = {
 /**
  * The full doc-type + event + feature silhouette inventory, keyed by the
  * GLYPH_KINDS species the field resolves a node kind to (plus the event keys).
- * `feature` is the authored node-feature mark; every other doc-type is adopted.
+ * `feature` is Phosphor's CirclesThree (a cluster of related docs); every other
+ * doc-type is likewise an adopted Phosphor silhouette.
  */
 export const DOC_TYPE_MARK_DEFS: Record<string, MarkDef> = {
   feature: NODE_FEATURE_MARK,

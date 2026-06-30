@@ -402,16 +402,20 @@ export function formatGraphControlsAppearanceValue(
   return value.toFixed(decimalsForStep(numericSpec(key).step));
 }
 
-// --- "View" controls (graph-granularity + salience-lens switch) ----------------
-// The two dashboard-state graph switches the panel exposes: DETAIL (the feature-
-// constellation overview ⇄ the per-document graph, `graph_granularity`) and
-// EMPHASIS (which signal drives node salience, `salience_lens`). Unlike the
-// layout/appearance knobs these write DASHBOARD-STATE (a re-query of the graph
+// --- "Show" control (graph-granularity switch) ---------------------------------
+// The one dashboard-state graph switch the panel exposes: whether the graph nodes
+// are FEATURES (each node a cluster of related documents — the high-level map) or
+// DOCUMENTS (each node a single vault file — the full graph). Unlike the
+// layout/appearance knobs this writes DASHBOARD-STATE (a re-query of the graph
 // slice), not the canvas-local field params — so the section reads its active
 // segment back from the served state and writes through the stage-controls intent.
 // Every string here is plain user-facing language (ui-labels-are-user-facing): the
-// wire keeps `feature`/`document` and `status`/`design`; the screen reads
-// Overview / Documents and Status / Design.
+// wire keeps `feature`/`document`; the screen reads Features / Documents.
+//
+// (The salience-LENS switch was dropped: the lens only re-orders DOI label culling,
+// while node size is driven by connectedness/member-count — never the lens — so
+// status↔design produced no visible change. A non-capability is removed, not shipped
+// as a dead control.)
 
 export interface GraphControlsSegmentOptionView {
   value: string;
@@ -421,45 +425,30 @@ export interface GraphControlsSegmentOptionView {
 
 export interface GraphControlsViewPresentationView {
   heading: string;
-  detailLabel: string;
   detailAriaLabel: string;
   detailOptions: readonly GraphControlsSegmentOptionView[];
-  emphasisLabel: string;
-  emphasisAriaLabel: string;
-  emphasisOptions: readonly GraphControlsSegmentOptionView[];
+  /** One-line caption under the toggle explaining what the two views show. */
+  caption: string;
 }
 
 export function deriveGraphControlsViewPresentationView(): GraphControlsViewPresentationView {
   return {
-    heading: "View",
-    detailLabel: "Detail",
-    detailAriaLabel: "Graph detail",
+    heading: "Show",
+    detailAriaLabel: "Graph node level",
     detailOptions: [
       {
         value: "feature",
-        label: "Overview",
-        title: "Show the high-level overview — documents grouped into features",
+        label: "Features",
+        title: "Each node is a feature — a cluster of related documents",
       },
       {
         value: "document",
         label: "Documents",
-        title: "Show every document as its own node",
+        title: "Each node is a single vault document",
       },
     ],
-    emphasisLabel: "Emphasis",
-    emphasisAriaLabel: "Node emphasis",
-    emphasisOptions: [
-      {
-        value: "status",
-        label: "Status",
-        title: "Size nodes by their status signal",
-      },
-      {
-        value: "design",
-        label: "Design",
-        title: "Size nodes by their design signal",
-      },
-    ],
+    caption:
+      "Features groups related documents into clusters; Documents shows every file.",
   };
 }
 

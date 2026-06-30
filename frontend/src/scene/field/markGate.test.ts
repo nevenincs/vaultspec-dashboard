@@ -123,33 +123,21 @@ describe("the lifecycle state set passes the 14px grayscale gate (S34)", () => {
   });
 });
 
-describe("the node-feature mark honors its collision constraints (S35)", () => {
+describe("the node-feature mark honors its collision constraints", () => {
   it("does not collide with state:active (the documented redline)", () => {
-    // The redline: active is a SINGLE solid disc; node-feature is a MULTI-dot
-    // open asymmetric cluster. Their silhouettes must stay well apart at 14px.
+    // The redline: active is a SINGLE solid disc; node-feature is the adopted
+    // Phosphor CirclesThree (three grouped HOLLOW rings). Their silhouettes must
+    // stay well apart at 14px.
     const d = silhouetteDistance(
       silhouetteOf(NODE_FEATURE_MARK),
       silhouetteOf(STATE_MARK_DEFS.active),
     );
     expect(d).toBeGreaterThanOrEqual(GATE_FLOOR);
   });
-
-  it("is asymmetric — its silhouette is not left-right mirror-symmetric", () => {
-    // The deliberate asymmetry (scalene dot cluster, largest low-left, open
-    // lasso gap upper-left) is the mark's identity. A horizontally mirrored
-    // silhouette must differ from the original, or the asymmetry is lost.
-    const sil = silhouetteOf(NODE_FEATURE_MARK);
-    let mirrorDiff = 0;
-    const n = sil.size;
-    for (let y = 0; y < n; y++) {
-      for (let x = 0; x < n; x++) {
-        const a = sil.cells[y * n + x];
-        const b = sil.cells[y * n + (n - 1 - x)];
-        if (a !== b) mirrorDiff++;
-      }
-    }
-    expect(mirrorDiff).toBeGreaterThan(0);
-  });
+  // (The prior "is asymmetric" assertion was specific to the retired hand-authored
+  //  scalene-cluster mark. The feature glyph is now an adopted symmetric Phosphor
+  //  icon; its distinctness from the other species is covered by the doc-type
+  //  family gate below.)
 });
 
 describe("the adopted doc-type marks pass the 14px grayscale gate (S33)", () => {
