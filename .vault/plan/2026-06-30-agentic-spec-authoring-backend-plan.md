@@ -32,255 +32,551 @@ related:
 
 ## Epic intent
 
-Project-management association: vaultspec dashboard roadmap entry agentic-spec-authoring-backend, tracked by this L4 plan and its generated Step execution records until an external board is opened. The epic delivers a Rust authoring backend that mediates human and LangGraph collaborators through semantic sessions, proposals, approvals, leases, streams, apply receipts, rollback records, and backend-served review projections while keeping vaultspec-core hidden behind the materialization adapter.
+Project-management association: vaultspec dashboard roadmap entry agentic-spec-authoring-backend, tracked by this L4 plan and its generated Step execution records until an external board is opened. The epic delivers a Rust authoring backend that mediates human and LangGraph collaborators through semantic sessions, proposals, approvals, leases, durable streams, apply receipts, rollback records, and backend-served review projections while keeping vaultspec-core hidden behind the materialization adapter.
 
-## Wave `W01` - Contracts and backend boundary
+## Wave `W01` - Authoring boundary and contract
 
-Establish the authoring backend as a fenced Rust domain beside the existing route families, with semantic endpoint families, shared envelopes, and typed product state before any durable mutation is introduced.
+Establish the fenced Rust authoring backend, shared wire grammar, semantic command vocabulary, and V1 schema contract before any durable mutation path is enabled.
 
-### Phase `W01.P01` - Boundary grounding and module skeleton
+### Phase `W01.P01` - Fenced module and route ownership
 
-Create the authoring backend shell and prove it is a semantic collaborator boundary rather than a thin core proxy.
+Create the authoring module boundary and route ownership map beside the existing Axum route families.
 
-- [ ] `W01.P01.S01` - Ground boundary, API, and existing route ownership requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W01.P01.S02` - Add the authoring module shell, route registration seam, and disabled feature gate; `engine/crates/vaultspec-api/src/authoring/`.
-- [ ] `W01.P01.S03` - Add route contract tests for shared envelopes, tiers blocks, bearer gating, and disabled-state responses; `engine/crates/vaultspec-api/src/routes/`.
-- [ ] `W01.P01.S04` - Run boundary code review and record the phase audit; `.vault/audit/`.
-- [ ] `W01.P01.S05` - Verify the authoring route shell returns tiered backend-served snapshots through tests and manual HTTP smoke checks; `engine/crates/vaultspec-api/src/routes/`.
+- [ ] `W01.P01.S01` - Ground Fenced module and route ownership requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W01.P01.S02` - Implement the authoring module shell, feature gate, route registration seam, and ownership map; `engine/crates/vaultspec-api/src/authoring/`.
+- [ ] `W01.P01.S03` - Add route shell tests for disabled-state behavior, bearer gating, and shared route registration; `engine/crates/vaultspec-api/src/routes/`.
+- [ ] `W01.P01.S04` - Run Fenced module and route ownership code review and record the phase audit; `.vault/audit/`.
+- [ ] `W01.P01.S05` - Verify the authoring module is reachable only through the intended route family and disabled-safe responses; `engine/crates/vaultspec-api/src/routes/`.
 
-### Phase `W01.P02` - Domain model and transition vocabulary
+### Phase `W01.P02` - Shared envelope and disabled-state contract
 
-Define the typed objects and lifecycle transitions that every endpoint, projection, and agent tool must share.
+Make authoring success, failure, disabled-state, and recovery responses conform to the dashboard wire contract.
 
-- [ ] `W01.P02.S06` - Ground document identity, changeset, approval, review-state, and provenance requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W01.P02.S07` - Implement typed actor, document, proposal, changeset, approval, chunk, lease, event, and receipt models; `engine/crates/vaultspec-api/src/authoring/model.rs`.
-- [ ] `W01.P02.S08` - Add transition validation tests for invalid states, terminal states, and action eligibility; `engine/crates/vaultspec-api/src/authoring/model.rs`.
-- [ ] `W01.P02.S09` - Run domain model code review and record the phase audit; `.vault/audit/`.
-- [ ] `W01.P02.S10` - Verify illegal transitions are rejected and valid snapshots serialize through tests and manual JSON fixture review; `engine/crates/vaultspec-api/src/authoring/model.rs`.
+- [ ] `W01.P02.S06` - Ground Shared envelope and disabled-state contract requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W01.P02.S07` - Implement authoring response helpers for snapshots, command receipts, typed errors, degraded tiers, and disabled-state payloads; `engine/crates/vaultspec-api/src/authoring/response.rs`.
+- [ ] `W01.P02.S08` - Add response grammar tests for success, validation failure, unauthorized, degraded, replayed, and disabled responses; `engine/crates/vaultspec-api/src/authoring/response.rs`.
+- [ ] `W01.P02.S09` - Run Shared envelope and disabled-state contract code review and record the phase audit; `.vault/audit/`.
+- [ ] `W01.P02.S10` - Verify every non-raw authoring response carries the shared envelope and tiers block; `engine/crates/vaultspec-api/src/authoring/response.rs`.
 
-### Phase `W01.P03` - Endpoint and tool contract schemas
+### Phase `W01.P03` - Command vocabulary and aggregate identifiers
 
-Encode the V1 semantic contract that the frontend stores and LangGraph tools will both consume.
+Define the shared lifecycle terms, aggregate identifiers, and semantic command names consumed by routes, repositories, frontend stores, and agents.
 
-- [ ] `W01.P03.S11` - Ground session, document, proposal, review, apply, rollback, lease, and stream endpoint family requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W01.P03.S12` - Implement request and response DTOs for V1 authoring command and snapshot families; `engine/crates/vaultspec-api/src/authoring/api.rs`.
-- [ ] `W01.P03.S13` - Add schema fixture tests for frontend-safe envelopes, idempotency fields, and agent-compatible command payloads; `engine/crates/vaultspec-api/src/authoring/api.rs`.
-- [ ] `W01.P03.S14` - Run API schema code review and record the phase audit; `.vault/audit/`.
-- [ ] `W01.P03.S15` - Verify every mutating command schema carries scoped idempotency and every snapshot schema carries tiers through tests and manual fixture inspection; `engine/crates/vaultspec-api/src/authoring/api.rs`.
+- [ ] `W01.P03.S11` - Ground Command vocabulary and aggregate identifiers requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W01.P03.S12` - Implement typed aggregate identifiers, command names, lifecycle enums, actor references, document references, and receipt references; `engine/crates/vaultspec-api/src/authoring/model.rs`.
+- [ ] `W01.P03.S13` - Add model tests for stable serialization, invalid identifiers, terminal states, and action eligibility; `engine/crates/vaultspec-api/src/authoring/model.rs`.
+- [ ] `W01.P03.S14` - Run Command vocabulary and aggregate identifiers code review and record the phase audit; `.vault/audit/`.
+- [ ] `W01.P03.S15` - Verify frontend and agent fixtures can serialize the same command vocabulary without core-shaped verbs; `engine/crates/vaultspec-api/src/authoring/model.rs`.
 
-## Wave `W02` - Durable store and approval projections
+### Phase `W01.P04` - V1 DTO schema and route fixtures
 
-Persist sessions, proposals, changesets, approvals, idempotency records, and review-station projections as product state so reconnects, retries, and pending human decisions survive process restarts.
+Encode versioned request, response, event, and route fixtures for every semantic endpoint family.
 
-### Phase `W02.P04` - Authoring store substrate
+- [ ] `W01.P04.S16` - Ground V1 DTO schema and route fixtures requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W01.P04.S17` - Implement V1 DTOs and route fixtures for sessions, documents, proposals, reviews, apply, rollback, leases, streams, and recovery; `engine/crates/vaultspec-api/src/authoring/api.rs`.
+- [ ] `W01.P04.S18` - Add schema fixture tests for versioning, idempotency fields, unknown-field rejection, tiers, and route-family negative cases; `engine/crates/vaultspec-api/src/authoring/api.rs`.
+- [ ] `W01.P04.S19` - Run V1 DTO schema and route fixtures code review and record the phase audit; `.vault/audit/`.
+- [ ] `W01.P04.S20` - Verify every endpoint family has a versioned DTO fixture and a negative contract case; `engine/crates/vaultspec-api/src/authoring/api.rs`.
 
-Introduce the durable authoring store with migrations, retention classes, and repository boundaries before workflow state is written.
+## Wave `W02` - Durable store infrastructure
 
-- [ ] `W02.P04.S16` - Ground durable store, retention, migration, and fail-loud versioning requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W02.P04.S17` - Implement the authoring store connection, migration runner, retention classes, and repository trait boundary; `engine/crates/vaultspec-api/src/authoring/store/`.
-- [ ] `W02.P04.S18` - Add real store tests for migration, schema mismatch, retention caps, and restart recovery; `engine/crates/vaultspec-api/src/authoring/store/`.
-- [ ] `W02.P04.S19` - Run authoring store code review and record the phase audit; `.vault/audit/`.
-- [ ] `W02.P04.S20` - Verify store state survives process restart and schema mismatch fails loud via tests and manual database inspection; `engine/crates/vaultspec-api/src/authoring/store/`.
+Introduce the non-derivable authoring store, migrations, repository boundaries, idempotency records, retention policy, and outbox primitive.
 
-### Phase `W02.P05` - Changeset ledger and idempotency
+### Phase `W02.P05` - Physical store binding and migrations
 
-Make proposal mutations append-only, retry-safe, and reconstructable from product records rather than transient agent state.
+Bind the durable authoring store with fail-loud migrations and version checks.
 
-- [ ] `W02.P05.S21` - Ground changeset ledger, atomic change format, and idempotency replay requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W02.P05.S22` - Implement append-only changeset, proposal revision, command outcome, and idempotency repositories; `engine/crates/vaultspec-api/src/authoring/ledger.rs`.
-- [ ] `W02.P05.S23` - Add real retry tests for duplicate command suppression, command outcome replay, and ordered proposal history; `engine/crates/vaultspec-api/src/authoring/ledger.rs`.
-- [ ] `W02.P05.S24` - Run ledger code review and record the phase audit; `.vault/audit/`.
-- [ ] `W02.P05.S25` - Verify repeated frontend and agent commands return the recorded outcome without duplicate side effects via tests and manual API replay; `engine/crates/vaultspec-api/src/authoring/ledger.rs`.
+- [ ] `W02.P05.S21` - Ground Physical store binding and migrations requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W02.P05.S22` - Implement authoring store connection management, migration runner, schema metadata, and fail-loud version checks; `engine/crates/vaultspec-api/src/authoring/store/`.
+- [ ] `W02.P05.S23` - Add real store tests for migration ordering, clean open, version mismatch, and corrupted migration metadata; `engine/crates/vaultspec-api/src/authoring/store/`.
+- [ ] `W02.P05.S24` - Run Physical store binding and migrations code review and record the phase audit; `.vault/audit/`.
+- [ ] `W02.P05.S25` - Verify store state survives restart and schema mismatch fails loud through tests and manual database inspection; `engine/crates/vaultspec-api/src/authoring/store/`.
 
-### Phase `W02.P06` - Approval gates and review station projections
+### Phase `W02.P06` - Repository traits and unit of work
 
-Persist human-review state and serve action eligibility, counts, queue items, and approval decisions from the backend.
+Centralize repository contracts and transaction boundaries for product state mutations.
 
-- [ ] `W02.P06.S26` - Ground approval gate, review-station, and backend-served display-state requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W02.P06.S27` - Implement approval, claim, release, reject, request-changes, and review-queue projection handlers; `engine/crates/vaultspec-api/src/authoring/review.rs`.
-- [ ] `W02.P06.S28` - Add workflow tests for pending approvals, claimed items, stale decisions, and backend-served action eligibility; `engine/crates/vaultspec-api/src/authoring/review.rs`.
-- [ ] `W02.P06.S29` - Run review-state code review and record the phase audit; `.vault/audit/`.
-- [ ] `W02.P06.S30` - Verify rejected and approved proposals surface correct review states through tests and manual review-queue API checks; `engine/crates/vaultspec-api/src/authoring/review.rs`.
+- [ ] `W02.P06.S26` - Ground Repository traits and unit of work requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W02.P06.S27` - Implement repository traits, transaction helpers, unit-of-work boundaries, and rollback-on-error behavior; `engine/crates/vaultspec-api/src/authoring/store/unit_of_work.rs`.
+- [ ] `W02.P06.S28` - Add transaction tests for committed commands, rolled-back failures, nested repository use, and concurrent writers; `engine/crates/vaultspec-api/src/authoring/store/unit_of_work.rs`.
+- [ ] `W02.P06.S29` - Run Repository traits and unit of work code review and record the phase audit; `.vault/audit/`.
+- [ ] `W02.P06.S30` - Verify every mutating command can run inside one explicit unit of work; `engine/crates/vaultspec-api/src/authoring/store/unit_of_work.rs`.
 
-## Wave `W03` - Document identity, chunks, and collaboration control
+### Phase `W02.P07` - Idempotency outcome repository
 
-Give humans and agents stable document references, bounded chunk surfaces, leases, conflicts, and live room snapshots so direct editing and delegated editing share one backend-served state model.
+Persist scoped command outcomes so frontend and agent retries replay without duplicate side effects.
 
-### Phase `W03.P07` - Document identity and bounded chunks
+- [ ] `W02.P07.S31` - Ground Idempotency outcome repository requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W02.P07.S32` - Implement scoped idempotency keys, command outcome records, in-flight state records, and replay lookup helpers; `engine/crates/vaultspec-api/src/authoring/store/idempotency.rs`.
+- [ ] `W02.P07.S33` - Add idempotency tests for duplicate create, duplicate apply, in-flight replay, conflicting scope, and expired outcome records; `engine/crates/vaultspec-api/src/authoring/store/idempotency.rs`.
+- [ ] `W02.P07.S34` - Run Idempotency outcome repository code review and record the phase audit; `.vault/audit/`.
+- [ ] `W02.P07.S35` - Verify repeated frontend and agent commands return the recorded outcome without duplicating product records; `engine/crates/vaultspec-api/src/authoring/store/idempotency.rs`.
 
-Make document references, chunk anchors, revision snapshots, and whole-document previews stable enough for both wholesale and atomic edits.
+### Phase `W02.P08` - Retention compaction and backup classes
 
-- [ ] `W03.P07.S31` - Ground document identity, chunking, wholesale edit, and atomic patch requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P07.S32` - Implement stable document references, revision metadata, bounded chunk reads, and preview snapshot builders; `engine/crates/vaultspec-api/src/authoring/documents.rs`.
-- [ ] `W03.P07.S33` - Add tests for rename stability, chunk bound enforcement, snapshot recovery, and whole-document draft replacement; `engine/crates/vaultspec-api/src/authoring/documents.rs`.
-- [ ] `W03.P07.S34` - Run document identity code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P07.S35` - Verify snapshots and chunks remain stable across proposal revisions via tests and manual document API checks; `engine/crates/vaultspec-api/src/authoring/documents.rs`.
+Define retention classes, compaction rules, backup export, and protected record behavior for non-derivable authoring state.
 
-### Phase `W03.P08` - Leases, locks, conflicts, and rebases
+- [ ] `W02.P08.S36` - Ground Retention compaction and backup classes requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W02.P08.S37` - Implement retention classes, compaction markers, backup export metadata, protected preimage rules, and status reporting; `engine/crates/vaultspec-api/src/authoring/store/retention.rs`.
+- [ ] `W02.P08.S38` - Add retention tests for pending approvals, applied preimages, rejected transcripts, compaction limitations, and backup export coverage; `engine/crates/vaultspec-api/src/authoring/store/retention.rs`.
+- [ ] `W02.P08.S39` - Run Retention compaction and backup classes code review and record the phase audit; `.vault/audit/`.
+- [ ] `W02.P08.S40` - Verify compaction cannot silently delete pending approvals, apply receipts, or rollback preimages; `engine/crates/vaultspec-api/src/authoring/store/retention.rs`.
 
-Coordinate direct human edits and delegated agent edits with advisory leases, conflict records, rebase commands, and supersession behavior.
+### Phase `W02.P09` - Outbox primitive and sequence allocation
 
-- [ ] `W03.P08.S36` - Ground concurrency lease, conflict detection, and rebase requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P08.S37` - Implement lease acquire, renew, release, conflict recording, supersede, and rebase command handlers; `engine/crates/vaultspec-api/src/authoring/concurrency.rs`.
-- [ ] `W03.P08.S38` - Add concurrent workflow tests for lease expiry, overlapping edits, rebase success, and conflict surfacing; `engine/crates/vaultspec-api/src/authoring/concurrency.rs`.
-- [ ] `W03.P08.S39` - Run concurrency code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P08.S40` - Verify two editors receive deterministic lease and conflict outcomes through tests and manual concurrent API checks; `engine/crates/vaultspec-api/src/authoring/concurrency.rs`.
+Create the transactional outbox primitive and durable sequence allocation before event publishing is wired.
 
-### Phase `W03.P09` - Live editing room snapshots
+- [ ] `W02.P09.S41` - Ground Outbox primitive and sequence allocation requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W02.P09.S42` - Implement outbox records, sequence allocation, publication state, restart recovery, and duplicate publication guards; `engine/crates/vaultspec-api/src/authoring/store/outbox.rs`.
+- [ ] `W02.P09.S43` - Add outbox primitive tests for commit atomicity, sequence monotonicity, worker restart, and duplicate suppression; `engine/crates/vaultspec-api/src/authoring/store/outbox.rs`.
+- [ ] `W02.P09.S44` - Run Outbox primitive and sequence allocation code review and record the phase audit; `.vault/audit/`.
+- [ ] `W02.P09.S45` - Verify durable event records commit with product state and survive restart before publication; `engine/crates/vaultspec-api/src/authoring/store/outbox.rs`.
 
-Expose recoverable room snapshots for active sessions, actor presence, draft previews, pending actions, and latest durable sequence.
+## Wave `W03` - Document identity and context
 
-- [ ] `W03.P09.S41` - Ground live room, recovery snapshot, and frontend store cursor requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P09.S42` - Implement session snapshots, active actor state, draft preview state, and latest authoring sequence projections; `engine/crates/vaultspec-api/src/authoring/session.rs`.
-- [ ] `W03.P09.S43` - Add recovery tests for refresh, reconnect, cancelled sessions, and joined active runs; `engine/crates/vaultspec-api/src/authoring/session.rs`.
-- [ ] `W03.P09.S44` - Run live room code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P09.S45` - Verify a refreshed client can reconstruct room state from snapshots and sequence cursors via tests and manual browser refresh checks; `engine/crates/vaultspec-api/src/authoring/session.rs`.
+Make document references, revision snapshots, bounded chunks, proposal material, previews, validation digests, and stale-input detection stable for human and agent editing.
 
-## Wave `W04` - Agent integration, streams, and policy
+### Phase `W03.P10` - Document reference resolver
 
-Wire LangGraph through semantic backend commands, publish recoverable durable events, and enforce provenance and authorization before agents can create, alter, or request application of proposals.
+Resolve existing and provisional vault documents through stable references without exposing core internals.
 
-### Phase `W04.P10` - LangGraph adapter and tool aliases
+- [ ] `W03.P10.S46` - Ground Document reference resolver requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W03.P10.S47` - Implement document_ref resolution, provisional create targets, duplicate stem handling, missing target handling, and ref snapshot lookup; `engine/crates/vaultspec-api/src/authoring/documents.rs`.
+- [ ] `W03.P10.S48` - Add resolver tests for duplicate stems, renames, provisional creates, missing documents, ref scopes, and bounded listings; `engine/crates/vaultspec-api/src/authoring/documents.rs`.
+- [ ] `W03.P10.S49` - Run Document reference resolver code review and record the phase audit; `.vault/audit/`.
+- [ ] `W03.P10.S50` - Verify document references remain stable across rename and provisional-create scenarios; `engine/crates/vaultspec-api/src/authoring/documents.rs`.
 
-Connect LangGraph threads, runs, interrupts, and tool calls to Vaultspec-owned product records without exposing core or checkpoint state as product history.
+### Phase `W03.P11` - Revision snapshots and preimages
 
-- [ ] `W04.P10.S46` - Ground LangGraph thread, run, checkpoint, interrupt, and tool-call requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W04.P10.S47` - Implement the LangGraph adapter boundary and semantic tool aliases for context, proposal, validation, approval, cancel, and apply requests; `engine/crates/vaultspec-api/src/authoring/langgraph.rs`.
-- [ ] `W04.P10.S48` - Add adapter contract tests for interrupt-id resumes, tool-call idempotency, checkpoint reference storage, and product-state copying; `engine/crates/vaultspec-api/src/authoring/langgraph.rs`.
-- [ ] `W04.P10.S49` - Run LangGraph adapter code review and record the phase audit; `.vault/audit/`.
-- [ ] `W04.P10.S50` - Verify agent tool calls create only backend product records and resume by interrupt id via tests and manual LangGraph fixture replay; `engine/crates/vaultspec-api/src/authoring/langgraph.rs`.
+Capture revision metadata, before-state preimages, and snapshot recovery inputs for previews, apply, and rollback.
 
-### Phase `W04.P11` - Durable events and stream recovery
+- [ ] `W03.P11.S51` - Ground Revision snapshots and preimages requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W03.P11.S52` - Implement revision metadata reads, target snapshots, preimage capture, snapshot hashes, and recovery payloads; `engine/crates/vaultspec-api/src/authoring/snapshots.rs`.
+- [ ] `W03.P11.S53` - Add snapshot tests for unchanged revision, stale base, missing preimage, hash mismatch, and restart recovery; `engine/crates/vaultspec-api/src/authoring/snapshots.rs`.
+- [ ] `W03.P11.S54` - Run Revision snapshots and preimages code review and record the phase audit; `.vault/audit/`.
+- [ ] `W03.P11.S55` - Verify apply and rollback inputs can recover exact preimages through tests and manual snapshot inspection; `engine/crates/vaultspec-api/src/authoring/snapshots.rs`.
 
-Publish authoring lifecycle events through a transactional outbox while keeping token and trace streams bounded and non-authoritative.
+### Phase `W03.P12` - Chunk index and bounded chunk API
 
-- [ ] `W04.P11.S51` - Ground outbox, durable lifecycle event, token stream, and replay cursor requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W04.P11.S52` - Implement authoring outbox records, schema versions, stream publication, replay, and snapshot-plus-next-sequence recovery; `engine/crates/vaultspec-api/src/authoring/events.rs`.
-- [ ] `W04.P11.S53` - Add stream recovery tests for outbox commit atomicity, replay gaps, bounded token retention, and duplicate publication suppression; `engine/crates/vaultspec-api/src/authoring/events.rs`.
-- [ ] `W04.P11.S54` - Run event stream code review and record the phase audit; `.vault/audit/`.
-- [ ] `W04.P11.S55` - Verify clients recover lifecycle truth after stream loss through tests and manual SSE replay checks; `engine/crates/vaultspec-api/src/authoring/events.rs`.
+Serve versioned chunks, anchors, context windows, and evidence references under explicit bounds.
 
-### Phase `W04.P12` - Security provenance and policy enforcement
+- [ ] `W03.P12.S56` - Ground Chunk index and bounded chunk API requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W03.P12.S57` - Implement chunker versioning, chunk index rebuild policy, bounded chunk reads, anchor lookup, and truncation metadata; `engine/crates/vaultspec-api/src/authoring/chunks.rs`.
+- [ ] `W03.P12.S58` - Add chunk tests for cap enforcement, UTF-8 boundaries, anchor drift, version changes, and missing anchor recovery; `engine/crates/vaultspec-api/src/authoring/chunks.rs`.
+- [ ] `W03.P12.S59` - Run Chunk index and bounded chunk API code review and record the phase audit; `.vault/audit/`.
+- [ ] `W03.P12.S60` - Verify large documents return bounded chunks and honest evidence references through tests and manual API checks; `engine/crates/vaultspec-api/src/authoring/chunks.rs`.
 
-Require every human and agent mutation to carry actor provenance, bounded scope, authorization checks, and audit-safe redaction.
+### Phase `W03.P13` - Proposal operation payloads and previews
 
-- [ ] `W04.P12.S56` - Ground security, provenance, authorization drift, and audit redaction requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W04.P12.S57` - Implement actor identity validation, policy checks, scope guards, provenance records, and safe error redaction; `engine/crates/vaultspec-api/src/authoring/security.rs`.
-- [ ] `W04.P12.S58` - Add authorization tests for forbidden scopes, stale actors, dangerous tools, redacted errors, and audit record completeness; `engine/crates/vaultspec-api/src/authoring/security.rs`.
-- [ ] `W04.P12.S59` - Run security provenance code review and record the phase audit; `.vault/audit/`.
-- [ ] `W04.P12.S60` - Verify unauthorized humans and agents cannot mutate state and authorized records carry provenance via tests and manual negative API checks; `engine/crates/vaultspec-api/src/authoring/security.rs`.
+Represent whole-document and atomic operations with materialized previews and reviewable diffs.
 
-## Wave `W05` - Materialization, frontend integration, and release acceptance
+- [ ] `W03.P13.S61` - Ground Proposal operation payloads and previews requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W03.P13.S62` - Implement proposal operation payloads, whole-document drafts, atomic patches, materialized preview builders, and review diff projections; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
+- [ ] `W03.P13.S63` - Add operation tests for full replacement, create, delete, atomic hunk, preview recovery, semantic diff, and invalid range cases; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
+- [ ] `W03.P13.S64` - Run Proposal operation payloads and previews code review and record the phase audit; `.vault/audit/`.
+- [ ] `W03.P13.S65` - Verify reviewers can inspect proposal material before apply through tests and manual diff fixture review; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
 
-Apply approved authoring work through the core adapter, support rollback and multiagent composition, surface review workflows in the dashboard, and close the epic with end-to-end verification.
+### Phase `W03.P14` - Validation digest and stale-input detection
 
-### Phase `W05.P13` - Apply materialization and rollback
+Persist validation digests and detect stale bases, stale approvals, changed chunks, and invalid metadata before review or apply.
 
-Materialize only approved proposals through the core adapter and preserve receipts, preimages, partial outcomes, and rollback availability.
+- [ ] `W03.P14.S66` - Ground Validation digest and stale-input detection requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W03.P14.S67` - Implement validation digests, stale-input checks, validation status records, warning states, and blocking error records; `engine/crates/vaultspec-api/src/authoring/validation.rs`.
+- [ ] `W03.P14.S68` - Add validation tests for valid proposals, invalid frontmatter, stale chunks, changed base revision, warning-only status, and blocking failures; `engine/crates/vaultspec-api/src/authoring/validation.rs`.
+- [ ] `W03.P14.S69` - Run Validation digest and stale-input detection code review and record the phase audit; `.vault/audit/`.
+- [ ] `W03.P14.S70` - Verify stale or invalid proposals cannot become approval-ready without a fresh validation digest; `engine/crates/vaultspec-api/src/authoring/validation.rs`.
 
-- [ ] `W05.P13.S61` - Ground apply materialization, rollback, core abstraction, and receipt requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W05.P13.S62` - Implement approved-proposal apply jobs, core adapter calls, materialization receipts, preimage capture, and rollback proposal creation; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
-- [ ] `W05.P13.S63` - Add apply and rollback tests for approved-only gates, partial failures, receipt recovery, and preimage retention; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
-- [ ] `W05.P13.S64` - Run apply and rollback code review and record the phase audit; `.vault/audit/`.
-- [ ] `W05.P13.S65` - Verify approved changes materialize through core and rejected changes never do via tests and manual vault file checks; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+## Wave `W04` - Changeset ledger and projections
 
-### Phase `W05.P14` - Multiagent composition and scheduling
+Build the append-only changeset aggregate, transition engine, proposal commands, and backend projection rebuilders that serve review and activity truth.
 
-Coordinate multiple agent runs that propose, rewrite, supersede, or compose changes against shared documents and review queues.
+### Phase `W04.P15` - Changeset aggregate and child operations
 
-- [ ] `W05.P14.S66` - Ground multiagent composition, proposal merge, cancellation, and scheduling requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W05.P14.S67` - Implement composition policies, run ownership records, proposal merge commands, supersession rules, and cancellation propagation; `engine/crates/vaultspec-api/src/authoring/composition.rs`.
-- [ ] `W05.P14.S68` - Add multiagent tests for competing proposals, compatible merges, superseded runs, cancellation, and review queue preservation; `engine/crates/vaultspec-api/src/authoring/composition.rs`.
-- [ ] `W05.P14.S69` - Run multiagent composition code review and record the phase audit; `.vault/audit/`.
-- [ ] `W05.P14.S70` - Verify concurrent agents cannot overwrite each other without explicit composition decisions via tests and manual multi-run API checks; `engine/crates/vaultspec-api/src/authoring/composition.rs`.
+Persist changesets as append-only aggregates with explicit child operations and target ordering.
 
-### Phase `W05.P15` - Frontend stores and epic acceptance
+- [ ] `W04.P15.S71` - Ground Changeset aggregate and child operations requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W04.P15.S72` - Implement changeset aggregate records, child operation records, target ordering, revision linkage, and audit-friendly identifiers; `engine/crates/vaultspec-api/src/authoring/ledger.rs`.
+- [ ] `W04.P15.S73` - Add ledger tests for append-only revisions, child ordering, duplicate child rejection, multi-document changes, and history reconstruction; `engine/crates/vaultspec-api/src/authoring/ledger.rs`.
+- [ ] `W04.P15.S74` - Run Changeset aggregate and child operations code review and record the phase audit; `.vault/audit/`.
+- [ ] `W04.P15.S75` - Verify changeset history reconstructs proposal state without LangGraph checkpoints or frontend memory; `engine/crates/vaultspec-api/src/authoring/ledger.rs`.
 
-Expose the authoring backend through the dashboard stores and review station, then prove the whole approval-driven workflow end to end.
+### Phase `W04.P16` - Transition engine and terminal-state validation
 
-- [ ] `W05.P15.S71` - Ground frontend store, review station, direct editing, and end-to-end acceptance requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W05.P15.S72` - Implement authoring wire clients, query keys, mutations, replay cursors, and backend-served projection consumers; `frontend/src/stores/server/authoring.ts`.
-- [ ] `W05.P15.S73` - Implement review station surfaces, proposal diff views, approval actions, lease indicators, and recovery states; `frontend/src/app/authoring/`.
-- [ ] `W05.P15.S74` - Add end-to-end workflow tests for human edit, agent proposal, approval, rejection, apply, rollback, conflict, and reconnect paths; `frontend/e2e/authoring.spec.ts`.
-- [ ] `W05.P15.S75` - Run final code review, documentation audit, and release readiness audit for the epic; `.vault/audit/`.
-- [ ] `W05.P15.S76` - Verify the dashboard and LangGraph agent both complete the approval-driven document authoring workflow through automated tests and manual acceptance checks; `frontend/e2e/authoring.spec.ts`.
+Centralize legal lifecycle transitions and terminal-state guards for sessions, proposals, approvals, applies, and rollbacks.
+
+- [ ] `W04.P16.S76` - Ground Transition engine and terminal-state validation requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W04.P16.S77` - Implement lifecycle transition rules, terminal-state validation, stale-state guards, and action eligibility helpers; `engine/crates/vaultspec-api/src/authoring/transitions.rs`.
+- [ ] `W04.P16.S78` - Add transition tests for illegal moves, terminal refusal, stale approval, cancelled run, rejected proposal, and rollback terminal states; `engine/crates/vaultspec-api/src/authoring/transitions.rs`.
+- [ ] `W04.P16.S79` - Run Transition engine and terminal-state validation code review and record the phase audit; `.vault/audit/`.
+- [ ] `W04.P16.S80` - Verify every command uses the shared transition engine through tests and manual transition table review; `engine/crates/vaultspec-api/src/authoring/transitions.rs`.
+
+### Phase `W04.P17` - Proposal command handlers
+
+Create, append, replace, validate, submit, supersede, and cancel proposals through backend-owned commands.
+
+- [ ] `W04.P17.S81` - Ground Proposal command handlers requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W04.P17.S82` - Implement proposal creation, material append, draft replacement, validate, submit, supersede, cancel, and snapshot handlers; `engine/crates/vaultspec-api/src/authoring/proposal.rs`.
+- [ ] `W04.P17.S83` - Add command tests for ordered revisions, replayed writes, validation gates, terminal refusal, supersession, and cancellation; `engine/crates/vaultspec-api/src/authoring/proposal.rs`.
+- [ ] `W04.P17.S84` - Run Proposal command handlers code review and record the phase audit; `.vault/audit/`.
+- [ ] `W04.P17.S85` - Verify proposal lifecycle transitions are idempotent and backend-owned through tests and manual command replay; `engine/crates/vaultspec-api/src/authoring/proposal.rs`.
+
+### Phase `W04.P18` - Projection rebuilders and eligibility state
+
+Serve counts, per-document activity, conflict reasons, validation status, rollback availability, and action eligibility from backend projections.
+
+- [ ] `W04.P18.S86` - Ground Projection rebuilders and eligibility state requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W04.P18.S87` - Implement projection rebuilders for review counts, per-document activity, action eligibility, conflicts, validation state, and rollback availability; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
+- [ ] `W04.P18.S88` - Add projection tests for rebuild after restart, stale data, eligibility reasons, conflict state, rollback availability, and bounded projection reads; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
+- [ ] `W04.P18.S89` - Run Projection rebuilders and eligibility state code review and record the phase audit; `.vault/audit/`.
+- [ ] `W04.P18.S90` - Verify frontend-visible status and eligibility are backend-served and rebuildable through tests and manual projection checks; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
+
+## Wave `W05` - Actors, policy, approval, and review
+
+Make actor identity, delegated scopes, authorization, approval policy, permission requests, review decisions, queue claims, and provenance explicit backend state.
+
+### Phase `W05.P19` - Actor model and delegated scopes
+
+Model human actors, agent actors, service identities, delegated scopes, and stable provenance keys.
+
+- [ ] `W05.P19.S91` - Ground Actor model and delegated scopes requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W05.P19.S92` - Implement actor records, service identities, delegated scopes, stable provenance keys, and actor display metadata; `engine/crates/vaultspec-api/src/authoring/actors.rs`.
+- [ ] `W05.P19.S93` - Add actor tests for human identity, agent identity, delegated scope, missing actor, stale actor, and provenance key stability; `engine/crates/vaultspec-api/src/authoring/actors.rs`.
+- [ ] `W05.P19.S94` - Run Actor model and delegated scopes code review and record the phase audit; `.vault/audit/`.
+- [ ] `W05.P19.S95` - Verify every mutation can be attributed to a stable actor and delegated scope; `engine/crates/vaultspec-api/src/authoring/actors.rs`.
+
+### Phase `W05.P20` - Authorization engine and scope guards
+
+Enforce policy before any human or agent command mutates authoring state or requests apply.
+
+- [ ] `W05.P20.S96` - Ground Authorization engine and scope guards requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W05.P20.S97` - Implement authorization checks, scope guards, dangerous-tool guards, policy failures, and safe error redaction; `engine/crates/vaultspec-api/src/authoring/security.rs`.
+- [ ] `W05.P20.S98` - Add authorization tests for forbidden document scope, forbidden tool, stale actor, unauthorized apply, redacted error, and allowed delegated command; `engine/crates/vaultspec-api/src/authoring/security.rs`.
+- [ ] `W05.P20.S99` - Run Authorization engine and scope guards code review and record the phase audit; `.vault/audit/`.
+- [ ] `W05.P20.S100` - Verify unauthorized humans and agents cannot mutate state through tests and manual negative API checks; `engine/crates/vaultspec-api/src/authoring/security.rs`.
+
+### Phase `W05.P21` - Approval policy matrix
+
+Represent approval requirements, freshness rules, reviewer eligibility, and tool permission gates as backend policy data.
+
+- [ ] `W05.P21.S101` - Ground Approval policy matrix requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W05.P21.S102` - Implement approval policy matrix, freshness checks, reviewer eligibility, tool permission gates, and policy reason projection; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
+- [ ] `W05.P21.S103` - Add policy tests for reviewer eligibility, stale validation, dangerous tool request, self-approval refusal, and request-changes loops; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
+- [ ] `W05.P21.S104` - Run Approval policy matrix code review and record the phase audit; `.vault/audit/`.
+- [ ] `W05.P21.S105` - Verify approval decisions are governed by backend policy rather than frontend inference; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
+
+### Phase `W05.P22` - Tool permission request flow
+
+Make dangerous or scoped agent tools produce durable permission requests and stable review decisions.
+
+- [ ] `W05.P22.S106` - Ground Tool permission request flow requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W05.P22.S107` - Implement tool permission request creation, claim, decision, expiry, replay, and audit record handling; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
+- [ ] `W05.P22.S108` - Add permission tests for approved tool, rejected tool, expired request, replayed decision, and multiple simultaneous requests; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
+- [ ] `W05.P22.S109` - Run Tool permission request flow code review and record the phase audit; `.vault/audit/`.
+- [ ] `W05.P22.S110` - Verify agent tools cannot proceed past permission gates without durable human decisions; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
+
+### Phase `W05.P23` - Changeset approval requests and decisions
+
+Persist approval requests, reviewer decisions, request-changes responses, stale invalidation, and approval-state reads.
+
+- [ ] `W05.P23.S111` - Ground Changeset approval requests and decisions requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W05.P23.S112` - Implement approval request, approve, reject, request-changes, edit response, stale invalidation, and approval snapshot handlers; `engine/crates/vaultspec-api/src/authoring/approvals.rs`.
+- [ ] `W05.P23.S113` - Add approval tests for approved proposal, rejected proposal, request-changes, stale revision, replayed decision, and conflicting reviewer action; `engine/crates/vaultspec-api/src/authoring/approvals.rs`.
+- [ ] `W05.P23.S114` - Run Changeset approval requests and decisions code review and record the phase audit; `.vault/audit/`.
+- [ ] `W05.P23.S115` - Verify approved and rejected proposals surface correct durable approval state through tests and manual review API checks; `engine/crates/vaultspec-api/src/authoring/approvals.rs`.
+
+### Phase `W05.P24` - Review station queues and provenance audit
+
+Serve review queues, claims, clarification, reviewer edits, audit records, redaction, and bounded provenance queries.
+
+- [ ] `W05.P24.S116` - Ground Review station queues and provenance audit requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W05.P24.S117` - Implement review queue projections, claim handling, clarification responses, reviewer edits, audit records, redaction, and provenance queries; `engine/crates/vaultspec-api/src/authoring/review.rs`.
+- [ ] `W05.P24.S118` - Add review station tests for pending queues, claims, release, clarification, reviewer edits, redacted audit records, and bounded query results; `engine/crates/vaultspec-api/src/authoring/review.rs`.
+- [ ] `W05.P24.S119` - Run Review station queues and provenance audit code review and record the phase audit; `.vault/audit/`.
+- [ ] `W05.P24.S120` - Verify review station state and provenance are backend-served through tests and manual queue checks; `engine/crates/vaultspec-api/src/authoring/review.rs`.
+
+## Wave `W06` - Collaboration and composition
+
+Coordinate sessions, prompt turns, advisory leases, conflicts, rebases, supersession, agent work units, and composed candidate generation.
+
+### Phase `W06.P25` - Sessions prompt turns and recovery snapshots
+
+Persist sessions, prompt turns, run ownership, active state, cancellation state, and recovery snapshots.
+
+- [ ] `W06.P25.S121` - Ground Sessions prompt turns and recovery snapshots requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W06.P25.S122` - Implement session creation, prompt turns, run ownership, cancellation, active state, and recovery snapshot handlers; `engine/crates/vaultspec-api/src/authoring/session.rs`.
+- [ ] `W06.P25.S123` - Add session tests for create, resume, cancelled run, joined active run, restart recovery, and bounded session listings; `engine/crates/vaultspec-api/src/authoring/session.rs`.
+- [ ] `W06.P25.S124` - Run Sessions prompt turns and recovery snapshots code review and record the phase audit; `.vault/audit/`.
+- [ ] `W06.P25.S125` - Verify refreshed clients recover session and run state from backend snapshots; `engine/crates/vaultspec-api/src/authoring/session.rs`.
+
+### Phase `W06.P26` - Advisory leases and fencing tokens
+
+Coordinate active editing with scoped advisory leases, renewals, expirations, releases, and fencing tokens.
+
+- [ ] `W06.P26.S126` - Ground Advisory leases and fencing tokens requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W06.P26.S127` - Implement acquire, renew, release, expire, list, and fencing-token validation for scoped authoring leases; `engine/crates/vaultspec-api/src/authoring/leases.rs`.
+- [ ] `W06.P26.S128` - Add lease tests for renewal, expiry, bad scope, concurrent acquisition, stale fencing token, and release by non-owner; `engine/crates/vaultspec-api/src/authoring/leases.rs`.
+- [ ] `W06.P26.S129` - Run Advisory leases and fencing tokens code review and record the phase audit; `.vault/audit/`.
+- [ ] `W06.P26.S130` - Verify two editors receive deterministic lease and fencing outcomes through tests and manual concurrent API checks; `engine/crates/vaultspec-api/src/authoring/leases.rs`.
+
+### Phase `W06.P27` - Base-revision conflict detection
+
+Detect stale bases, overlapping operations, anchor drift, policy conflicts, and conflicted review states.
+
+- [ ] `W06.P27.S131` - Ground Base-revision conflict detection requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W06.P27.S132` - Implement base revision checks, overlap detection, anchor drift detection, policy conflict checks, and conflict reason projection; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
+- [ ] `W06.P27.S133` - Add conflict tests for stale base, overlapping hunks, stale whole-document draft, anchor drift, policy conflict, and no-conflict paths; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
+- [ ] `W06.P27.S134` - Run Base-revision conflict detection code review and record the phase audit; `.vault/audit/`.
+- [ ] `W06.P27.S135` - Verify conflicts are deterministic and reviewable through tests and manual concurrent edit checks; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
+
+### Phase `W06.P28` - Explicit rebase and supersession commands
+
+Provide explicit user-visible flows for rebase, supersede, cancel, and replacement proposal creation.
+
+- [ ] `W06.P28.S136` - Ground Explicit rebase and supersession commands requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W06.P28.S137` - Implement rebase commands, supersession commands, replacement proposal creation, stale input checks, and conflict carry-forward; `engine/crates/vaultspec-api/src/authoring/rebase.rs`.
+- [ ] `W06.P28.S138` - Add rebase tests for successful rebase, failed rebase, superseded proposal, cancelled original, and replayed rebase request; `engine/crates/vaultspec-api/src/authoring/rebase.rs`.
+- [ ] `W06.P28.S139` - Run Explicit rebase and supersession commands code review and record the phase audit; `.vault/audit/`.
+- [ ] `W06.P28.S140` - Verify stale proposals only advance through explicit rebase or supersession decisions; `engine/crates/vaultspec-api/src/authoring/rebase.rs`.
+
+### Phase `W06.P29` - Agent work units and composition projection
+
+Track agent work units, target scopes, composition candidates, compatible merges, and competing proposals.
+
+- [ ] `W06.P29.S141` - Ground Agent work units and composition projection requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W06.P29.S142` - Implement agent work unit records, target-scope metadata, composition projection, compatible merge candidates, and competing proposal state; `engine/crates/vaultspec-api/src/authoring/composition.rs`.
+- [ ] `W06.P29.S143` - Add composition tests for competing agents, compatible merges, superseded work units, cancelled runs, and review queue preservation; `engine/crates/vaultspec-api/src/authoring/composition.rs`.
+- [ ] `W06.P29.S144` - Run Agent work units and composition projection code review and record the phase audit; `.vault/audit/`.
+- [ ] `W06.P29.S145` - Verify concurrent agents cannot overwrite each other without explicit composition decisions; `engine/crates/vaultspec-api/src/authoring/composition.rs`.
+
+## Wave `W07` - LangGraph and streams
+
+Connect LangGraph execution through semantic tools, replay-safe interrupts, durable lifecycle events, recoverable streams, and bounded generation transcript retention.
+
+### Phase `W07.P30` - LangGraph runtime mapping
+
+Map LangGraph threads, runs, checkpoints, and interrupt references to Vaultspec-owned product records.
+
+- [ ] `W07.P30.S146` - Ground LangGraph runtime mapping requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W07.P30.S147` - Implement LangGraph runtime adapter, thread mapping, run mapping, checkpoint reference storage, and runtime error mapping; `engine/crates/vaultspec-api/src/authoring/langgraph.rs`.
+- [ ] `W07.P30.S148` - Add runtime mapping tests for unavailable runtime, thread creation, run references, checkpoint references, and redacted runtime errors; `engine/crates/vaultspec-api/src/authoring/langgraph.rs`.
+- [ ] `W07.P30.S149` - Run LangGraph runtime mapping code review and record the phase audit; `.vault/audit/`.
+- [ ] `W07.P30.S150` - Verify LangGraph checkpoints are references and never the only product history; `engine/crates/vaultspec-api/src/authoring/langgraph.rs`.
+
+### Phase `W07.P31` - Semantic agent tool aliases
+
+Expose context, search, propose, validate, request approval, cancel, and request apply as semantic tools over backend commands.
+
+- [ ] `W07.P31.S151` - Ground Semantic agent tool aliases requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W07.P31.S152` - Implement the semantic agent tool catalog, tool schemas, bounded scope validation, and command dispatch aliases; `engine/crates/vaultspec-api/src/authoring/tools.rs`.
+- [ ] `W07.P31.S153` - Add tool tests for read context, search, propose, validate, approval request, cancel, apply request, and rejected core-shaped verb; `engine/crates/vaultspec-api/src/authoring/tools.rs`.
+- [ ] `W07.P31.S154` - Run Semantic agent tool aliases code review and record the phase audit; `.vault/audit/`.
+- [ ] `W07.P31.S155` - Verify agents can call semantic tools but cannot invoke direct core writes; `engine/crates/vaultspec-api/src/authoring/tools.rs`.
+
+### Phase `W07.P32` - Interrupt resume and tool-call records
+
+Normalize interrupts, permission requests, changeset approvals, and replay-safe tool-call records by stable IDs.
+
+- [ ] `W07.P32.S156` - Ground Interrupt resume and tool-call records requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W07.P32.S157` - Implement interrupt normalization, resume-by-interrupt-id commands, tool-call records, decision payloads, and replay handling; `engine/crates/vaultspec-api/src/authoring/interrupts.rs`.
+- [ ] `W07.P32.S158` - Add interrupt tests for multiple interrupts, stable resume IDs, replayed tool call, rejected permission, approved proposal, and stale decision; `engine/crates/vaultspec-api/src/authoring/interrupts.rs`.
+- [ ] `W07.P32.S159` - Run Interrupt resume and tool-call records code review and record the phase audit; `.vault/audit/`.
+- [ ] `W07.P32.S160` - Verify human decisions resume the intended interrupt by stable ID through tests and manual LangGraph fixture replay; `engine/crates/vaultspec-api/src/authoring/interrupts.rs`.
+
+### Phase `W07.P33` - Durable lifecycle events and projector feed
+
+Define event schemas and feed projection rebuilders from durable lifecycle transitions rather than token streams.
+
+- [ ] `W07.P33.S161` - Ground Durable lifecycle events and projector feed requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W07.P33.S162` - Implement durable lifecycle event schemas, projector feed records, event versioning, and transition-to-event mapping; `engine/crates/vaultspec-api/src/authoring/events.rs`.
+- [ ] `W07.P33.S163` - Add event tests for session created, proposal updated, validation changed, approval resolved, apply recorded, rollback created, and version rejection; `engine/crates/vaultspec-api/src/authoring/events.rs`.
+- [ ] `W07.P33.S164` - Run Durable lifecycle events and projector feed code review and record the phase audit; `.vault/audit/`.
+- [ ] `W07.P33.S165` - Verify lifecycle projections rebuild from durable events and not transient generation chunks; `engine/crates/vaultspec-api/src/authoring/events.rs`.
+
+### Phase `W07.P34` - Stream replay and generation retention
+
+Serve SSE replay, snapshot-plus-next-sequence recovery, bounded generation streams, and transcript compaction.
+
+- [ ] `W07.P34.S166` - Ground Stream replay and generation retention requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W07.P34.S167` - Implement stream subscriptions, last-sequence replay, gap events, snapshot recovery, bounded generation channels, and transcript compaction hooks; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
+- [ ] `W07.P34.S168` - Add stream tests for replay, gaps, snapshot recovery, token retention caps, compacted transcripts, and frontend cursor restoration; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
+- [ ] `W07.P34.S169` - Run Stream replay and generation retention code review and record the phase audit; `.vault/audit/`.
+- [ ] `W07.P34.S170` - Verify clients recover lifecycle truth after stream loss while token gaps remain non-authoritative; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
+
+## Wave `W08` - Apply and rollback
+
+Materialize only approved work through the private core adapter, retain receipts and compensation state, and generate reviewable rollback proposals.
+
+### Phase `W08.P35` - Core adapter capability registry
+
+Wrap vaultspec-core as a private bounded adapter with explicit capability mapping, caps, timeouts, and tiered failures.
+
+- [ ] `W08.P35.S171` - Ground Core adapter capability registry requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W08.P35.S172` - Implement core capability registry, argument builders, bounded subprocess calls, timeout handling, output caps, and safe error mapping; `engine/crates/vaultspec-api/src/authoring/core_adapter.rs`.
+- [ ] `W08.P35.S173` - Add core adapter tests for validation, apply, timeout, output cap, error redaction, missing core, and forbidden direct verb exposure; `engine/crates/vaultspec-api/src/authoring/core_adapter.rs`.
+- [ ] `W08.P35.S174` - Run Core adapter capability registry code review and record the phase audit; `.vault/audit/`.
+- [ ] `W08.P35.S175` - Verify collaborators cannot see or invoke core-shaped writes through tests and manual route checks; `engine/crates/vaultspec-api/src/authoring/core_adapter.rs`.
+
+### Phase `W08.P36` - Apply job state machine and receipts
+
+Run approved proposal materialization as durable jobs with approval freshness checks, per-child receipts, and recovery.
+
+- [ ] `W08.P36.S176` - Ground Apply job state machine and receipts requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W08.P36.S177` - Implement apply job states, approval freshness checks, staged execution, per-child receipts, post-write hashes, progress, and recovery handlers; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [ ] `W08.P36.S178` - Add apply tests for approved-only gates, stale approval, rejected proposal, partial failure, restart recovery, and idempotent apply request; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [ ] `W08.P36.S179` - Run Apply job state machine and receipts code review and record the phase audit; `.vault/audit/`.
+- [ ] `W08.P36.S180` - Verify approved changes materialize once and rejected or stale changes never materialize; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+
+### Phase `W08.P37` - Staged multi-document apply and compensation
+
+Handle multi-document apply with staged execution, compensation projections, watcher convergence, and repair state.
+
+- [ ] `W08.P37.S181` - Ground Staged multi-document apply and compensation requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W08.P37.S182` - Implement staged multi-document apply, compensation records, watcher convergence checks, repair state projection, and partial materialization receipts; `engine/crates/vaultspec-api/src/authoring/compensation.rs`.
+- [ ] `W08.P37.S183` - Add compensation tests for second-document failure, convergence timeout, repair-required state, compensation unavailable state, and receipt recovery; `engine/crates/vaultspec-api/src/authoring/compensation.rs`.
+- [ ] `W08.P37.S184` - Run Staged multi-document apply and compensation code review and record the phase audit; `.vault/audit/`.
+- [ ] `W08.P37.S185` - Verify partial materialization is visible, recoverable, and never hidden as success; `engine/crates/vaultspec-api/src/authoring/compensation.rs`.
+
+### Phase `W08.P38` - Rollback generator and eligibility
+
+Generate reviewable rollback proposals from retained preimages and explicit unavailable-reason records.
+
+- [ ] `W08.P38.S186` - Ground Rollback generator and eligibility requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W08.P38.S187` - Implement rollback proposal generation, operation-specific inverse logic, eligibility projection, unavailable reasons, and manual repair proposal hooks; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
+- [ ] `W08.P38.S188` - Add rollback tests for available preimage, missing preimage, delete inverse, rename inverse, approval gate, repeated request, and manual repair fallback; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
+- [ ] `W08.P38.S189` - Run Rollback generator and eligibility code review and record the phase audit; `.vault/audit/`.
+- [ ] `W08.P38.S190` - Verify rollback is reviewable and unavailable rollback is explicit through tests and manual rollback API checks; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
+
+## Wave `W09` - Integration and acceptance
+
+Prove backend routes, frontend stores, LangGraph fixtures, recovery, security negatives, manual workflows, and final release gates against the whole authoring system.
+
+### Phase `W09.P39` - Backend route vertical slices
+
+Exercise all endpoint families through real routes, real store, and private adapter boundaries.
+
+- [ ] `W09.P39.S191` - Ground Backend route vertical slices requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W09.P39.S192` - Implement backend vertical-slice tests for sessions, documents, proposals, reviews, leases, streams, apply, rollback, and recovery; `engine/crates/vaultspec-api/tests/authoring_vertical_slices.rs`.
+- [ ] `W09.P39.S193` - Add end-to-end backend scenarios for human edit, agent proposal, approval, rejection, conflict, apply, rollback, and reconnect; `engine/crates/vaultspec-api/tests/authoring_vertical_slices.rs`.
+- [ ] `W09.P39.S194` - Run Backend route vertical slices code review and record the phase audit; `.vault/audit/`.
+- [ ] `W09.P39.S195` - Verify every endpoint family works through real backend routes and real product state; `engine/crates/vaultspec-api/tests/authoring_vertical_slices.rs`.
+
+### Phase `W09.P40` - Frontend store and review station contract
+
+Wire dashboard stores and review surfaces to backend-served projections without frontend-derived truth.
+
+- [ ] `W09.P40.S196` - Ground Frontend store and review station contract requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W09.P40.S197` - Implement authoring wire clients, query keys, mutations, replay cursors, review queue consumers, and degraded response handling; `frontend/src/stores/server/authoring.ts`.
+- [ ] `W09.P40.S198` - Add frontend store tests for snapshots, commands, idempotency replay, stream cursor recovery, review queues, and degraded responses; `frontend/src/stores/server/authoring.test.ts`.
+- [ ] `W09.P40.S199` - Run Frontend store and review station contract code review and record the phase audit; `.vault/audit/`.
+- [ ] `W09.P40.S200` - Verify frontend stores consume backend-served authoring projections through tests and manual browser state checks; `frontend/src/stores/server/authoring.test.ts`.
+
+### Phase `W09.P41` - LangGraph agent fixture against backend commands
+
+Run a LangGraph-backed fixture against semantic backend tools and approval interrupts.
+
+- [ ] `W09.P41.S201` - Ground LangGraph agent fixture against backend commands requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W09.P41.S202` - Implement a LangGraph authoring fixture that creates proposals, pauses for approval, resumes, and requests apply through backend commands; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
+- [ ] `W09.P41.S203` - Add fixture tests for proposal creation, permission interrupt, approval interrupt, resume by interrupt ID, rejected tool, and cancelled run; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
+- [ ] `W09.P41.S204` - Run LangGraph agent fixture against backend commands code review and record the phase audit; `.vault/audit/`.
+- [ ] `W09.P41.S205` - Verify a LangGraph agent can complete the backend approval workflow without direct core access; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
+
+### Phase `W09.P42` - Restart replay reconnect and security negatives
+
+Prove restart recovery, event replay, browser reconnect, duplicate retry, and unauthorized command behavior across the whole system.
+
+- [ ] `W09.P42.S206` - Ground Restart replay reconnect and security negatives requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W09.P42.S207` - Implement acceptance scenarios for restart, replay, reconnect, duplicate retry, unauthorized actor, forbidden scope, and forbidden tool flows; `frontend/e2e/authoring.spec.ts`.
+- [ ] `W09.P42.S208` - Add end-to-end tests covering dashboard recovery, stream gap recovery, backend restart, security negatives, and multi-client conflict recovery; `frontend/e2e/authoring.spec.ts`.
+- [ ] `W09.P42.S209` - Run Restart replay reconnect and security negatives code review and record the phase audit; `.vault/audit/`.
+- [ ] `W09.P42.S210` - Verify recovery and security-negative scenarios pass through automated tests and manual acceptance checks; `frontend/e2e/authoring.spec.ts`.
+
+### Phase `W09.P43` - Final gate audit and release readiness
+
+Close the epic with full backend, frontend, vault, documentation, operational, and review gates.
+
+- [ ] `W09.P43.S211` - Ground Final gate audit and release readiness requirements into the phase checklist; `.vault/adr/`.
+- [ ] `W09.P43.S212` - Update release documentation, operator notes, implementation evidence, and final audit materials for the authoring backend; `.vault/audit/`.
+- [ ] `W09.P43.S213` - Run Rust tests, frontend typecheck, frontend tests, frontend build, vault checks, manual acceptance, documentation audit, and code review; `.`.
+- [ ] `W09.P43.S214` - Run Final gate audit and release readiness code review and record the phase audit; `.vault/audit/`.
+- [ ] `W09.P43.S215` - Verify the epic is complete only when all automated gates pass and manual acceptance evidence is recorded; `.`.
 
 ## Description
 
 This is one principal feature plan for the documentation authoring backend. The
-accepted ADRs are separate decisions because they settle different architectural
-questions, but they belong to the same feature cluster: a Rust backend surface
-that lets frontend users and LangGraph agents collaborate on vault documents
-through backend-owned sessions, proposals, approvals, leases, streams, apply
-receipts, rollback records, and review projections.
+accepted ADRs are separate architecture decisions because they settle different
+state, workflow, security, and integration questions, but they all belong to the
+same implementation feature: a Rust authoring backend that lets frontend users
+and LangGraph agents collaborate on vault documents through backend-owned
+sessions, proposals, approvals, leases, durable streams, apply receipts,
+rollback records, and review projections.
 
-The plan keeps vaultspec-core behind the materialization adapter. Frontend
-stores and LangGraph tools both call the semantic authoring API. Agents may
-draft, validate, propose, request review, and request apply, but they do not
-write vault documents directly and they do not expose core-shaped verbs to
-collaborators.
+The plan deliberately keeps vaultspec-core behind the materialization adapter.
+Frontend stores and LangGraph tools both call the semantic authoring API.
+Agents may read context, search, draft, validate, propose, request permission,
+request review, cancel, and request apply, but they do not write vault documents
+directly and they do not expose core-shaped verbs to collaborators.
 
-The endpoint contract is organized around semantic families rather than exact
-route spelling at this stage: sessions and runs, document snapshots and chunks,
-proposal commands, review commands, apply commands, rollback commands, lease
-commands, durable event replay, and recovery snapshots. Every mutating family
-carries scoped idempotency. Every snapshot and recovery response carries the
-shared tiers block. Backend projections, not frontend inference, serve review
-counts, action eligibility, conflict reasons, apply receipts, and rollback
-availability.
+The earlier 5-wave draft was too compressed for execution. This version splits
+the backend into explicit subsystem boundaries: authoring contract, durable
+store, document identity, changeset ledger, policy and review, collaboration,
+LangGraph and streams, apply and rollback, then integration and acceptance.
+Executing agents may add detail inside a phase through execution records, but
+new subsystem boundaries require an explicit plan amendment.
 
 ## Steps
 
-The structural plan above is the executable rollout: 5 Waves, 15 Phases, and 76
-Steps. Each Phase begins with ADR grounding and closes with code review or audit
-plus a concrete verification Step. Step execution records should be scaffolded
-from this plan after approval.
+The structural rollout above is the executable plan: 9 Waves, 43 Phases, and
+215 Steps. Every Phase begins with a grounding Step and closes with code review
+or audit plus a concrete verification Step. Step execution records should be
+scaffolded from this plan only after approval.
 
 ## Parallelization
 
-Waves are sequenced by dependency. W01 must land first because it defines the
-authoring boundary, typed vocabulary, and shared DTO contract. W02 depends on
-that vocabulary and creates durable product state. W03 depends on the store and
-ledger so document identity, chunks, leases, conflicts, and live room snapshots
-can persist. W04 depends on W02 and W03 because LangGraph tools, outbox events,
-and policy enforcement must operate over real product records. W05 is last
-because apply, rollback, multiagent composition, frontend review surfaces, and
-end-to-end acceptance depend on the complete backend contract.
+Waves are sequenced by dependency. W01 fixes the authoring contract. W02 creates
+the durable store foundation. W03 depends on W01 and W02 because document
+identity, chunks, operations, and validation need both schemas and persistence.
+W04 depends on W03 because the ledger and projections operate over stable
+document and operation records. W05 depends on W04 so policy and review act on
+real lifecycle state. W06 depends on W03 through W05 because collaboration needs
+stable documents, approvals, and policy. W07 depends on W05 and W06 because
+LangGraph tools and interrupts must respect product state, approvals, and
+collaboration control. W08 depends on W04 through W07 because apply and rollback
+require approved, validated, auditable proposals. W09 is the final integration
+and acceptance wave.
 
-Within W01, P01 and P02 can be developed in parallel once the boundary checklist
-is agreed, while P03 should wait for the model names to stabilize. Within W02,
-P04 is the hard gate; P05 and P06 can proceed in parallel after the repository
-boundary exists. Within W03, P07 should land before P08 and P09 because leases
-and room snapshots need stable document references. Within W04, P10 and P12 can
-start from the shared API contract, while P11 should wait for store and event
-repositories. Within W05, P13 and P14 can proceed in parallel after W04, and
-P15 remains the final integration and acceptance phase.
+Within a wave, phases may run in parallel only when their store tables,
+transition rules, and command handlers do not overlap. Grounding Steps must
+complete before implementation in each phase. Review and verification Steps are
+phase-local gates and must close before downstream waves consume that phase.
 
 ## Verification
 
 The plan is complete when every Step is closed and the project-management
 association reports the epic complete.
 
-- Backend contract tests verify that authoring responses use shared envelopes,
-  carry tiers, enforce bearer and policy checks, and expose semantic command
-  families rather than core-shaped writes.
-- Store tests verify migrations, schema mismatch failure, process-restart
-  recovery, retention classes, append-only ledgers, and idempotent command
-  replay against the real store implementation.
-- Collaboration tests verify two direct or delegated editors receive
-  deterministic leases, conflicts, rebases, recovery snapshots, and durable
-  event replay.
-- LangGraph adapter tests verify threads, runs, interrupts, tool calls, and
-  checkpoint references create backend product records and resume by stable
-  interrupt identifiers.
-- Apply and rollback tests verify approved changes materialize through the core
-  adapter, rejected changes never materialize, receipts survive recovery, and
-  rollback availability is explicit.
-- Frontend and end-to-end tests verify human edits, agent proposals, review
-  approval, rejection, request-changes, apply, rollback, conflict, reconnect,
-  and multiagent flows through the dashboard stores and review station.
-- Manual acceptance verifies the dashboard and a LangGraph agent can complete
-  the approval-driven document authoring workflow against the running backend.
+- Contract tests verify semantic endpoint families, shared envelopes, tiers,
+  versioned DTOs, disabled-state responses, and rejection of core-shaped verbs.
+- Store tests verify migrations, transaction boundaries, idempotency replay,
+  retention, backup metadata, outbox sequence allocation, and restart recovery
+  against the real store implementation.
+- Document and ledger tests verify stable document references, snapshots,
+  preimages, bounded chunks, proposal operations, validation digests,
+  append-only changesets, transitions, and backend projection rebuilds.
+- Policy and review tests verify actor provenance, scope guards, approval
+  policy, tool permission requests, changeset decisions, review queues,
+  reviewer claims, redaction, and bounded audit queries.
+- Collaboration tests verify sessions, prompt turns, leases, fencing tokens,
+  stale bases, conflicts, rebases, supersession, agent work units, and composed
+  candidates.
+- LangGraph and stream tests verify thread and run mapping, semantic tools,
+  interrupt resume by stable ID, durable lifecycle events, SSE replay,
+  snapshot recovery, bounded token retention, and transcript compaction.
+- Apply and rollback tests verify private core adapter boundaries, approval
+  freshness, per-child receipts, staged multi-document apply, compensation
+  state, rollback proposal generation, and explicit unavailable reasons.
+- Integration tests verify all backend route families, frontend store
+  consumption, review station behavior, LangGraph fixtures, restart recovery,
+  reconnect recovery, replay, duplicate retry, and security-negative flows.
 - The final gate includes Rust tests, frontend typecheck, frontend tests,
-  frontend build, vault checks, and a vaultspec-code-review audit with no
-  unresolved HIGH findings.
+  frontend build, vault checks, manual acceptance, documentation audit, and
+  vaultspec-code-review signoff with no unresolved HIGH findings.
