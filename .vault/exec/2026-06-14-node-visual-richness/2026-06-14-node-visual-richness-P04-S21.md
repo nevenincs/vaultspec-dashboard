@@ -62,9 +62,9 @@ backend route on their own — flagged here for a future decision):
   (summed incident degree) instead. A dedicated supersedes count would need a
   graph-derived field.
 - exec parent-plan title: the node detail's `interior` is populated only for plan
-  nodes, so the parent plan is not reachable from the hover detail; the "in plan —
-  {title}" line is omitted. Would need either an edge lookup in the host or a
-  parent-plan field on the exec node projection.
+  nodes, so the parent plan is not reachable from the hover detail; the parent-plan
+  title line (an "in plan — …" caption) is omitted. Would need either an edge lookup
+  in the host or a parent-plan field on the exec node projection.
 - research / audit findings counts: not carried on the node wire; omitted. A
   findings count would need an engine projection.
 - audit verdict: the wire carries a graded SEVERITY (high/critical/medium/low),
