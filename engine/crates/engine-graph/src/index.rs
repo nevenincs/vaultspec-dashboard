@@ -161,24 +161,34 @@ fn index_documents(
 ) -> Result<IndexStats> {
     let mut stats = index_structural(graph, root, scope, store, observed_at, force_extract)?;
 
-    // Declared tier: ingest core's authored graph at HEAD (the engine's stated
-    // core capability — "ingests core's vault graph"). Structural mentions
-    // above are only one tier; without this the linkage graph carries no
+    // Declared tier: ingest core's authored graph from the WORKING TREE (the
+    // engine's stated core capability — "ingests core's vault graph"). Structural
+    // mentions above are only one tier; without this the linkage graph carries no
     // declared cross-references at all.
     //
-    // READ-AND-INFER (D1.2, CRITICAL): we MUST use `--ref HEAD`, never the
-    // working-tree mode. Plain `vaultspec-core vault graph` mutates the target
-    // vault — it runs core's index refresh, which stamps `modified:`
-    // frontmatter onto un-migrated docs and rewrites `.gitignore` — so reading
-    // a corpus would silently corrupt it (adversarial finding, 2026-06-13).
-    // `--ref HEAD` reads the git object DB read-only (no checkout, no cache, no
-    // write), at the cost of reflecting the committed state rather than
-    // uncommitted working-tree edits — the correct trade for a read-and-infer
-    // engine. The structural tier above still reflects the working tree via
-    // read-only file reads.
+    // PRESENT-VIEW CONSISTENCY (graph-worktree-edge-consistency ADR, Option A):
+    // the structural tier above sources its NODES from a working-tree file walk
+    // (`index_structural` → `vault_documents`), so the declared cross-reference
+    // EDGES must come from the SAME working-tree snapshot — otherwise an
+    // uncommitted document appears as a node with no edges (its `related:` links
+    // live only in the working tree, not yet at HEAD). We therefore pass `None`
+    // (working tree), not `Some("HEAD")`.
+    //
+    // READ-AND-INFER (D1.2) is PRESERVED: the original `--ref HEAD` pin guarded
+    // against a 2026-06-13 finding that working-tree `vault graph` ran core's
+    // index refresh (stamping `modified:`, rewriting `.gitignore`). That premise
+    // was re-verified against the installed core (0.1.36) and no longer holds —
+    // `vault graph` mutates ZERO `.vault/` documents (the `modified:` stamp is
+    // owned by `vault check --fix` / `vault repair`, gated behind `fix=True`,
+    // never by `graph`). Its only side effect is a conditional, fingerprint-
+    // guarded, gitignored cache write under `.vault/data/.graph-cache/` — the
+    // same engine-owned `.vault/data/` auxiliary cache zone, accepted as
+    // in-contract. Historical / as-of views still read an explicit committed sha:
+    // `ingest_core_graph` keeps its `git_ref` parameter and `asof.rs` passes the
+    // pinned sha, so only the PRESENT view reads the working tree.
     let timing = std::env::var_os("VAULTSPEC_INDEX_TIMING").is_some();
     let t_start = std::time::Instant::now();
-    let (declared, unavailable) = ingest_core_graph(graph, root, scope, observed_at, Some("HEAD"));
+    let (declared, unavailable) = ingest_core_graph(graph, root, scope, observed_at, None);
     stats.declared_edges += declared;
     stats.declared_unavailable = unavailable;
     if timing {
@@ -548,9 +558,11 @@ pub(crate) fn ingest_core_graph(
     git_ref: Option<&str>,
 ) -> (usize, Option<String>) {
     // Split into the subprocess fetch and the parse/ingest so the async
-    // declared fold (perf ADR D1) can cache the raw JSON by HEAD sha between
-    // them. This combined path keeps the synchronous full `index_worktree`
-    // (CLI / re-derivability test) behaviorally UNCHANGED: fetch, then ingest.
+    // declared fold (perf ADR D1) can cache the raw JSON between them — keyed on
+    // the working-tree corpus fingerprint for the present view, the commit sha for
+    // an as-of build (graph-worktree-edge-consistency ADR). This combined path keeps
+    // the synchronous full `index_worktree` (CLI / re-derivability test)
+    // behaviorally UNCHANGED: fetch, then ingest.
     let json = match fetch_core_graph_json(root, git_ref) {
         Ok(json) => json,
         Err(reason) => return (0, Some(reason)),
@@ -565,8 +577,13 @@ const GRAPH_SCHEMA: &str = "vaultspec.vault.graph.v2";
 /// raw `data` payload as a JSON STRING (the cacheable unit, perf ADR D1).
 ///
 /// `git_ref` selects the corpus exactly as [`ingest_core_graph`] documents:
-/// `Some("HEAD")` is the read-and-infer-safe object-DB read (D1.2, CRITICAL —
-/// never the vault-mutating working-tree mode); `None` reads the working tree.
+/// `None` reads the WORKING TREE — the present view (graph-worktree-edge-consistency
+/// ADR): core 0.1.36 `vault graph` mutates no `.vault/` document (its only side
+/// effect is a gitignored, re-derivable `.graph-cache` write under `.vault/data/`),
+/// so a working-tree read is read-and-infer-safe. `Some(sha)` reads the git object
+/// DB at that ref (blob-true) for HISTORICAL / as-of views. Both are read-only with
+/// respect to the corpus; the present view uses `None` so a node and its declared
+/// edges share one snapshot, while time travel pins an explicit committed sha.
 ///
 /// On failure returns a LEAK-FREE reason (no build-machine paths, no core
 /// stderr) safe to surface as the declared-tier degradation reason — the full
@@ -601,14 +618,48 @@ pub fn fetch_core_graph_json(
 /// Parse a raw core graph-v2 `data` JSON string and ingest its declared +
 /// core-derived edges into `graph`. The CPU-side counterpart to
 /// [`fetch_core_graph_json`] (perf ADR D1): the async fold caches the JSON by
-/// HEAD sha, then calls this to fold the declared tier into a clone of the
-/// live structural graph.
+/// the working-tree corpus fingerprint (present view) or commit sha (as-of), then
+/// calls this to fold the declared tier into a clone of the live structural graph.
 ///
 /// Returns `(declared_edges_ingested, unavailable_reason)` — `None` on
 /// success, `Some(reason)` if the JSON was unparseable. Ingesting into the
 /// structural graph is idempotent (replace-by-id), so the folded
 /// clone(structural)+declared graph is byte-identical to a synchronous
 /// structural+declared build (D8.2 convergence).
+/// A content fingerprint over the working-tree corpus as captured in the
+/// structural graph: the sorted `(doc stem, content hash)` pairs of the scope's
+/// document nodes (each doc node's facet carries the working-tree blob hash, set
+/// during structural ingest). Two identical working trees yield the same
+/// fingerprint (stable across restarts), and ANY add, remove, or edit of a
+/// `.vault/` document — including a `related:` frontmatter change — alters a
+/// content hash and therefore the fingerprint.
+///
+/// This is the PRESENT-VIEW declared-graph cache key
+/// (graph-worktree-edge-consistency ADR, Option A), replacing the worktree HEAD
+/// sha. HEAD is invariant under uncommitted edits, so a HEAD-keyed cache re-served
+/// stale edges after an uncommitted `related:` change; keying on the corpus
+/// content makes such an edit miss the cache so the declared tier re-reads the
+/// working tree. The as-of / historical declared cache stays keyed on its explicit
+/// commit sha (a committed snapshot does not change), so only the present view uses
+/// this fingerprint.
+pub fn worktree_corpus_fingerprint(graph: &LinkageGraph, scope: &ScopeRef) -> String {
+    let mut parts: Vec<String> = graph
+        .nodes()
+        .filter(|n| n.id.0.starts_with("doc:"))
+        .map(|n| {
+            let content = n
+                .facets
+                .iter()
+                .find(|f| &f.scope == scope)
+                .and_then(|f| f.content_hash.clone())
+                .unwrap_or_default();
+            format!("{}\u{1f}{content}", n.key)
+        })
+        .collect();
+    parts.sort();
+    engine_model::id::content_hash(parts.join("\n").as_bytes())
+}
+
 pub fn ingest_declared_from_json(
     graph: &mut LinkageGraph,
     json: &str,
@@ -1364,6 +1415,58 @@ mod tests {
         ScopeRef::Ref {
             name: "main".into(),
         }
+    }
+
+    #[test]
+    fn worktree_corpus_fingerprint_changes_on_edit_and_is_stable_otherwise() {
+        // graph-worktree-edge-consistency ADR (the cache-key trap): the present-view
+        // declared cache keys on this corpus fingerprint, NOT the HEAD sha — so a
+        // `.vault/` edit (a doc's new content hash, e.g. an uncommitted `related:`
+        // change) MUST change the fingerprint so the fold misses the cache and
+        // re-reads the working tree; an unchanged corpus MUST yield the same
+        // fingerprint (cache hit, stable across restarts). A HEAD-sha key fails the
+        // first property — an uncommitted edit leaves HEAD unchanged — which is the
+        // bug this fingerprint exists to fix.
+        let mk = |stem: &str, hash: &str| Node {
+            id: node_id(&CanonicalKey::Document { stem }),
+            kind: NodeKind::Document,
+            key: stem.into(),
+            title: None,
+            doc_type: Some("adr".into()),
+            dates: None,
+            feature_tags: vec![],
+            status: None,
+            tier: None,
+            facets: vec![Facet {
+                scope: scope(),
+                presence: Presence::Exists,
+                content_hash: Some(hash.into()),
+                lifecycle: None,
+            }],
+        };
+        let build = |docs: &[(&str, &str)]| {
+            let mut g = LinkageGraph::new();
+            for (stem, hash) in docs {
+                g.upsert_node(mk(stem, hash));
+            }
+            worktree_corpus_fingerprint(&g, &scope())
+        };
+        let base = build(&[("a-adr", "h1"), ("b-adr", "h2")]);
+        assert_eq!(
+            base,
+            build(&[("a-adr", "h1"), ("b-adr", "h2")]),
+            "an unchanged corpus yields a stable fingerprint (cache hit, restart-stable)"
+        );
+        assert_ne!(
+            base,
+            build(&[("a-adr", "h1"), ("b-adr", "h2-edited")]),
+            "a content edit (e.g. a `related:` change) must change the fingerprint"
+        );
+        assert_ne!(
+            base,
+            build(&[("a-adr", "h1"), ("b-adr", "h2"), ("c-adr", "h3")]),
+            "a new (uncommitted) document must change the fingerprint"
+        );
     }
 
     #[test]

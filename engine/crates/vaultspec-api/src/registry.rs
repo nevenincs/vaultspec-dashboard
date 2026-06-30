@@ -324,15 +324,17 @@ fn spawn_watcher(cell: &Arc<ScopeCell>) {
 }
 
 /// Engine-store artifact kind for the cached raw core graph JSON, keyed by the
-/// worktree HEAD sha (perf ADR D1). The declared graph at a commit is immutable,
-/// so a rebuild at an unchanged HEAD is a cache hit that skips the ~16s core
-/// subprocess entirely. Lives in the re-derivable `.vault/data/engine-data/`
-/// zone — fully deletable, rebuildable on the next miss.
+/// working-tree corpus FINGERPRINT for the present view and the commit SHA for an
+/// as-of build (perf ADR D1 + graph-worktree-edge-consistency ADR). The declared
+/// graph for a fixed corpus state is stable, so a rebuild over an unchanged corpus
+/// (same fingerprint) is a cache hit that skips the ~16s core subprocess entirely.
+/// Lives in the re-derivable `.vault/data/engine-data/` zone — fully deletable,
+/// rebuildable on the next miss.
 pub(crate) const DECLARED_GRAPH_KIND: &str = "declared-graph-v2";
 
 /// How many declared-graph snapshot generations to retain. Each generation is a
-/// full-graph JSON payload (megabytes) minted on every HEAD change; the cache is
-/// re-derivable, so we keep only a small recent window (the live HEAD plus a few
+/// full-graph JSON payload (megabytes) minted on every corpus change; the cache is
+/// re-derivable, so we keep only a small recent window (the live corpus plus a few
 /// for fast repeat-switch / near-HEAD time travel) and evict the rest. Without
 /// this bound the snapshots accumulated unbounded (166 MB / 34 generations
 /// observed in the field for a ~740-doc corpus).
@@ -345,28 +347,33 @@ const DECLARED_GRAPH_KEEP: usize = 4;
 /// days of recent history is ample.
 const TEMPORAL_EVENT_RETENTION_MS: i64 = 90 * 24 * 60 * 60 * 1000;
 
-/// Cache key for the declared graph: the worktree HEAD sha qualified by the
-/// scope token, so two scopes at the same commit never alias each other's
-/// cached JSON (defensive — the JSON is scope-independent, but the qualified
-/// key documents the `(scope, HEAD sha)` ADR contract).
-pub(crate) fn declared_cache_key(scope_token: &str, head_sha: &str) -> String {
-    engine_model::content_hash(format!("{scope_token}:{head_sha}").as_bytes())
+/// Cache key for the declared graph: the corpus key qualified by the scope token,
+/// so two scopes never alias each other's cached JSON (defensive — the JSON is
+/// scope-independent, but the qualified key documents the per-scope contract). The
+/// `corpus_key` is a working-tree CONTENT FINGERPRINT for the present view
+/// (graph-worktree-edge-consistency ADR — an uncommitted edit must miss the cache)
+/// and an explicit COMMIT SHA for an as-of / historical build (a committed snapshot
+/// does not change). The two key spaces are distinct hex strings, so present-view
+/// and as-of artifacts coexist in one store, pruned by recency.
+pub(crate) fn declared_cache_key(scope_token: &str, corpus_key: &str) -> String {
+    engine_model::content_hash(format!("{scope_token}:{corpus_key}").as_bytes())
 }
 
-/// Read the cached declared-graph JSON for the cell's CURRENT HEAD WITHOUT
-/// running the core subprocess (a pure store read). Returns `None` on a cache
-/// miss or when HEAD cannot be resolved, so a caller can fall back to the async
+/// Read the cached declared-graph JSON for the cell's CURRENT working-tree corpus
+/// (identified by `fingerprint`) WITHOUT running the core subprocess (a pure store
+/// read). Returns `None` on a cache miss, so a caller can fall back to the async
 /// fold (which may run the subprocess).
 ///
 /// The rebuild path uses this to CARRY last-good declared edges across a routine
-/// re-index: when HEAD is unchanged, the cached declared graph at that sha is
-/// identical (declared ingest is replace-by-id idempotent over the structural
-/// graph), so folding it keeps the `declared` tier AVAILABLE instead of flapping
-/// to the `DECLARED_BUILDING` sentinel on every filesystem change — the source of
-/// the stuck "Still loading links…" banner and the declared building↔ready flap.
-pub(crate) fn cached_declared_json(cell: &ScopeCell) -> Option<String> {
-    let head_sha = engine_graph::asof::resolve_ref(&cell.root, "HEAD").ok()?;
-    let key = declared_cache_key(&crate::routes::scope_token(&cell.root), &head_sha);
+/// re-index: when the corpus is unchanged (same fingerprint), the cached declared
+/// graph is identical (declared ingest is replace-by-id idempotent over the
+/// structural graph), so folding it keeps the `declared` tier AVAILABLE instead of
+/// flapping to the `DECLARED_BUILDING` sentinel on every filesystem change — the
+/// source of the stuck "Still loading links…" banner and the declared building↔ready
+/// flap. A genuine `.vault/` edit changes the fingerprint, so this misses and the
+/// async fold re-reads the working tree (the consistency the ADR requires).
+pub(crate) fn cached_declared_json(cell: &ScopeCell, fingerprint: &str) -> Option<String> {
+    let key = declared_cache_key(&crate::routes::scope_token(&cell.root), fingerprint);
     let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
     store.get_artifact(DECLARED_GRAPH_KIND, &key).ok().flatten()
 }
@@ -375,10 +382,11 @@ pub(crate) fn cached_declared_json(cell: &ScopeCell) -> Option<String> {
 /// D1 — the dominant win: the slow `vaultspec-core vault graph` subprocess off
 /// the servable-parse critical path).
 ///
-/// The structural graph is already committed and servable; this task resolves
-/// the worktree HEAD sha, gets the declared graph JSON (cache hit → no
-/// subprocess; miss → run the subprocess and cache the JSON by HEAD sha),
-/// clones the cell's CURRENT graph, ingests the declared edges into the clone,
+/// The structural graph is already committed and servable; this task fingerprints
+/// the cell's working-tree corpus, gets the declared graph JSON (cache hit → no
+/// subprocess; miss → run the working-tree subprocess and cache the JSON by that
+/// corpus fingerprint), clones the cell's CURRENT graph, ingests the declared edges
+/// into the clone,
 /// and `commit_graph`s the folded graph — emitting declared deltas on the
 /// cell's per-scope monotonic clock. `declared_status` flips to `None`
 /// (declared AVAILABLE) on success, or `Some(reason)` if core was unreachable
@@ -456,7 +464,7 @@ fn spawn_claimed_fold(cell: &Arc<ScopeCell>) {
     });
 }
 
-/// The blocking body of the declared fold (perf ADR D1): HEAD-sha resolve →
+/// The blocking body of the declared fold (perf ADR D1): corpus-fingerprint →
 /// cache-or-subprocess JSON → clone-and-fold → commit. Runs on a blocking
 /// thread; the completion guard releases the coalescing slot and re-spawns a
 /// fold if a rebuild raced this one (the trailing-edge close, review HIGH).
@@ -496,74 +504,68 @@ fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
     }
     let _guard = FoldGuard { cell: weak.clone() };
 
-    // Resolve the worktree HEAD sha (read-and-infer: object-DB read, no
-    // checkout). A failure here (detached/empty repo, gix error) means we
-    // cannot key the cache — fall through to an uncached subprocess read so the
-    // declared tier still lands; only the cache speed-up is lost.
-    let head_sha = engine_graph::asof::resolve_ref(&cell.root, "HEAD").ok();
+    // Fingerprint the cell's CURRENT working-tree corpus from the committed
+    // structural graph (present-view consistency, graph-worktree-edge-consistency
+    // ADR Option A): the declared cache is keyed on the corpus CONTENT, not the
+    // HEAD sha — an uncommitted `.vault/` edit changes the fingerprint so the fold
+    // re-reads the working tree, where a HEAD-keyed cache would have re-served stale
+    // edges. The fingerprint is always computable from the in-memory graph (no repo
+    // round-trip, no failure path).
+    let fingerprint =
+        engine_graph::index::worktree_corpus_fingerprint(&cell.graph_arc(), &cell.scope);
 
     // Get the declared graph JSON: cache hit (no subprocess) or miss
-    // (subprocess, then cache the JSON by HEAD sha).
-    let json: Result<String, String> = match &head_sha {
-        Some(sha) => {
-            let key = declared_cache_key(&crate::routes::scope_token(&cell.root), sha);
-            let cached = {
-                let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
-                store.get_artifact(DECLARED_GRAPH_KIND, &key).ok().flatten()
-            };
-            match cached {
-                Some(json) => Ok(json),
-                None => {
-                    // Cache miss: run the subprocess (read-and-infer `--ref
-                    // HEAD`), then persist the JSON by HEAD sha for instant
-                    // repeat-switch / restart at this commit.
-                    let fetched =
-                        engine_graph::index::fetch_core_graph_json(&cell.root, Some("HEAD"));
-                    if let Ok(json) = &fetched {
-                        let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
-                        if let Err(e) = store.put_artifact(
-                            DECLARED_GRAPH_KIND,
-                            &key,
-                            json,
-                            crate::app::now_ms(),
-                        ) {
-                            eprintln!("vaultspec serve: caching declared graph failed: {e}");
-                        }
-                        // Bound the snapshot cache: keep only the most recent
-                        // generations, evicting older full-graph payloads so the
-                        // cache cannot grow without limit across HEAD changes.
-                        if let Err(e) = store
-                            .prune_artifacts_keep_newest(DECLARED_GRAPH_KIND, DECLARED_GRAPH_KEEP)
-                        {
-                            eprintln!("vaultspec serve: pruning declared-graph cache failed: {e}");
-                        }
-                        // While we hold the write lock, bound the other growing
-                        // stores and reclaim the freed pages (B5,
-                        // resource-hardening): evict expired semantic-cache rows,
-                        // age out temporal events past the retention window, then
-                        // return freed pages to the OS and collapse the WAL. All
-                        // best-effort + logged — a contended reclaim retries on
-                        // the next HEAD-change fold.
-                        let now = crate::app::now_ms();
-                        if let Err(e) = store.evict_expired_semantic(now) {
-                            eprintln!(
-                                "vaultspec serve: evicting expired semantic cache failed: {e}"
-                            );
-                        }
-                        if let Err(e) = store.prune_events_before(now - TEMPORAL_EVENT_RETENTION_MS)
-                        {
-                            eprintln!("vaultspec serve: pruning temporal events failed: {e}");
-                        }
-                        if let Err(e) = store.reclaim() {
-                            eprintln!("vaultspec serve: reclaiming sqlite free pages failed: {e}");
-                        }
+    // (subprocess, then cache the JSON by the corpus fingerprint).
+    let json: Result<String, String> = {
+        let key = declared_cache_key(&crate::routes::scope_token(&cell.root), &fingerprint);
+        let cached = {
+            let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
+            store.get_artifact(DECLARED_GRAPH_KIND, &key).ok().flatten()
+        };
+        match cached {
+            Some(json) => Ok(json),
+            None => {
+                // Cache miss: run the subprocess against the WORKING TREE
+                // (read-and-infer — core 0.1.36 `vault graph` mutates no `.vault/`
+                // document), then persist the JSON by the corpus fingerprint for
+                // instant repeat-switch / restart at this corpus state.
+                let fetched = engine_graph::index::fetch_core_graph_json(&cell.root, None);
+                if let Ok(json) = &fetched {
+                    let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Err(e) =
+                        store.put_artifact(DECLARED_GRAPH_KIND, &key, json, crate::app::now_ms())
+                    {
+                        eprintln!("vaultspec serve: caching declared graph failed: {e}");
                     }
-                    fetched
+                    // Bound the snapshot cache: keep only the most recent
+                    // generations, evicting older full-graph payloads so the
+                    // cache cannot grow without limit across corpus changes.
+                    if let Err(e) =
+                        store.prune_artifacts_keep_newest(DECLARED_GRAPH_KIND, DECLARED_GRAPH_KEEP)
+                    {
+                        eprintln!("vaultspec serve: pruning declared-graph cache failed: {e}");
+                    }
+                    // While we hold the write lock, bound the other growing
+                    // stores and reclaim the freed pages (B5,
+                    // resource-hardening): evict expired semantic-cache rows,
+                    // age out temporal events past the retention window, then
+                    // return freed pages to the OS and collapse the WAL. All
+                    // best-effort + logged — a contended reclaim retries on
+                    // the next HEAD-change fold.
+                    let now = crate::app::now_ms();
+                    if let Err(e) = store.evict_expired_semantic(now) {
+                        eprintln!("vaultspec serve: evicting expired semantic cache failed: {e}");
+                    }
+                    if let Err(e) = store.prune_events_before(now - TEMPORAL_EVENT_RETENTION_MS) {
+                        eprintln!("vaultspec serve: pruning temporal events failed: {e}");
+                    }
+                    if let Err(e) = store.reclaim() {
+                        eprintln!("vaultspec serve: reclaiming sqlite free pages failed: {e}");
+                    }
                 }
+                fetched
             }
         }
-        // No HEAD sha: uncached subprocess read (declared tier still lands).
-        None => engine_graph::index::fetch_core_graph_json(&cell.root, Some("HEAD")),
     };
 
     // Clone the cell's CURRENT structural graph and fold the declared edges into
@@ -1018,25 +1020,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn declared_fold_ingests_from_the_head_sha_cache_without_a_subprocess() {
-        // Perf ADR D1: the declared graph at a commit is immutable, so the fold
-        // caches the raw core JSON by HEAD sha and a build at the same HEAD is a
-        // cache HIT that skips the ~16s subprocess. We prove the hit by
-        // PRE-SEEDING the cache with valid graph-v2 JSON: core is unavailable in
-        // the test env (the temp dir is not a vaultspec workspace), so the
-        // declared tier can ONLY become available via the cache. If the fold ran
-        // the subprocess instead, it would fail and declared_status would carry a
-        // failure reason — never None.
+    async fn declared_fold_ingests_from_the_corpus_fingerprint_cache_without_a_subprocess() {
+        // Perf ADR D1 + graph-worktree-edge-consistency ADR: the declared graph for
+        // a given working-tree corpus is stable, so the fold caches the raw core
+        // JSON by the corpus FINGERPRINT (not the HEAD sha — an uncommitted edit
+        // leaves HEAD unchanged) and a fold over the same corpus is a cache HIT that
+        // skips the ~16s subprocess. We prove the hit by PRE-SEEDING the cache with
+        // valid graph-v2 JSON: core is unavailable in the test env (the temp dir is
+        // not a vaultspec workspace), so the declared tier can ONLY become available
+        // via the cache. If the fold ran the subprocess instead, it would fail and
+        // declared_status would carry a failure reason — never None.
         let dir = tempfile::tempdir().unwrap();
-        let (root, cell) = structural_cell(dir.path());
+        let (_root, cell) = structural_cell(dir.path());
 
         // The structural commit carries no declared edges yet.
         let structural_edges = cell.graph_arc().edge_count();
 
-        // Seed the cache under the EXACT key the fold computes: HEAD sha,
-        // scope-qualified.
-        let head_sha = engine_graph::asof::resolve_ref(&root, "HEAD").unwrap();
-        let key = declared_cache_key(&crate::routes::scope_token(&root), &head_sha);
+        // Seed the cache under the EXACT key the fold computes: the corpus
+        // fingerprint of the cell's current graph, scope-qualified.
+        let fingerprint =
+            engine_graph::index::worktree_corpus_fingerprint(&cell.graph_arc(), &cell.scope);
+        let key = declared_cache_key(&crate::routes::scope_token(&cell.root), &fingerprint);
         {
             let store = cell.store.lock().unwrap();
             store
@@ -1072,27 +1076,22 @@ mod tests {
     #[tokio::test]
     async fn rebuild_carries_last_good_declared_instead_of_flapping_to_building() {
         // Issue #4 / #1: on a routine re-index where declared was already available
-        // AND the declared graph for the CURRENT HEAD is cached (HEAD unchanged),
-        // `rebuild_and_swap` must FOLD those edges and keep the tier available — NOT
+        // AND the declared graph for the CURRENT corpus is cached (no `.vault/` change,
+        // so the corpus fingerprint is unchanged), `rebuild_and_swap` must FOLD those
+        // edges and keep the tier available — NOT
         // collapse `declared_status` to the building sentinel, which is what left the
         // "Still loading links…" banner flapping on every filesystem change. Runs
         // under a tokio runtime so the async (serve) branch is taken, not the sync
         // test fallback.
         let dir = tempfile::tempdir().unwrap();
-        let (root, cell) = structural_cell(dir.path());
+        let (_root, cell) = structural_cell(dir.path());
         let structural_edges = cell.graph_arc().edge_count();
 
         // Prior state: declared was available (a previous fold succeeded) and the
-        // declared graph for HEAD is cached (HEAD has not changed this re-index).
+        // declared graph for the CURRENT corpus is cached (no `.vault/` change this
+        // re-index, so the corpus fingerprint is unchanged).
         *cell.declared_status.write().unwrap() = None;
-        let head_sha = engine_graph::asof::resolve_ref(&root, "HEAD").unwrap();
-        seed_declared_cache(
-            &cell,
-            &root,
-            &head_sha,
-            "2026-06-14-reg-plan",
-            "2026-06-14-reg-adr",
-        );
+        seed_declared_cache(&cell, "2026-06-14-reg-plan", "2026-06-14-reg-adr");
 
         // The re-index: a fresh structural rebuild + the carry-last-good declared fold.
         cell.rebuild_and_swap().unwrap();
@@ -1130,16 +1129,14 @@ mod tests {
         );
     }
 
-    /// Seed the declared-graph cache for a given HEAD sha with a JSON payload
-    /// declaring one edge from `src` to `dst`, so the fold at that HEAD hits the
-    /// cache (no subprocess) and folds that specific edge.
-    fn seed_declared_cache(
-        cell: &ScopeCell,
-        root: &std::path::Path,
-        head_sha: &str,
-        src: &str,
-        dst: &str,
-    ) {
+    /// Seed the declared-graph cache for the cell's CURRENT working-tree corpus
+    /// (keyed on the corpus fingerprint the fold computes, not a HEAD sha — see the
+    /// graph-worktree-edge-consistency ADR) with a JSON payload declaring one edge
+    /// from `src` to `dst`, so the fold over that same corpus state hits the cache
+    /// (no subprocess) and folds that specific edge. Call this AFTER committing the
+    /// structural graph for the corpus state being seeded, so the fingerprint
+    /// matches what the fold will compute.
+    fn seed_declared_cache(cell: &ScopeCell, src: &str, dst: &str) {
         let json = serde_json::json!({
             "nodes": [
                 {"id": src, "doc_type": "plan"},
@@ -1148,7 +1145,9 @@ mod tests {
             "edges": [ {"source": src, "target": dst, "kind": "related"} ]
         })
         .to_string();
-        let key = declared_cache_key(&crate::routes::scope_token(root), head_sha);
+        let fingerprint =
+            engine_graph::index::worktree_corpus_fingerprint(&cell.graph_arc(), &cell.scope);
+        let key = declared_cache_key(&crate::routes::scope_token(&cell.root), &fingerprint);
         let store = cell.store.lock().unwrap();
         store
             .put_artifact(DECLARED_GRAPH_KIND, &key, &json, crate::app::now_ms())
@@ -1172,15 +1171,10 @@ mod tests {
         let (root, cell) = structural_cell(dir.path());
         let structural_edges = cell.graph_arc().edge_count();
 
-        // HEAD-A and its cached declared JSON (edge into `...-a-adr`).
+        // HEAD-A (the corpus state F1 nominally folds at). Under fingerprint
+        // keying the fold over the eventual HEAD-B corpus is what lands, so we seed
+        // HEAD-B's declared cache below (after the structural re-commit), not A's.
         let head_a = engine_graph::asof::resolve_ref(&root, "HEAD").unwrap();
-        seed_declared_cache(
-            &cell,
-            &root,
-            &head_a,
-            "2026-06-14-reg-plan",
-            "2026-06-14-a-adr",
-        );
 
         // Simulate F1 in flight: claim the slot WITHOUT running the body yet.
         assert!(
@@ -1202,13 +1196,6 @@ mod tests {
         git(&root, &["commit", "-m", "head-b"]);
         let head_b = engine_graph::asof::resolve_ref(&root, "HEAD").unwrap();
         assert_ne!(head_a, head_b, "HEAD actually advanced to B");
-        seed_declared_cache(
-            &cell,
-            &root,
-            &head_b,
-            "2026-06-14-reg-plan",
-            "2026-06-14-b-adr",
-        );
         // Re-commit the structural graph at HEAD-B (what the watcher's
         // rebuild_and_swap does), so the cell's CURRENT graph is HEAD-B's.
         {
@@ -1224,6 +1211,10 @@ mod tests {
             };
             cell.commit_graph(structural_b);
         }
+        // Seed HEAD-B's declared cache NOW — after the re-commit, so the seed is
+        // keyed on HEAD-B's corpus fingerprint, exactly what the fold computes from
+        // the current graph (edge into `...-b-adr`).
+        seed_declared_cache(&cell, "2026-06-14-reg-plan", "2026-06-14-b-adr");
 
         spawn_declared_fold(&cell);
         assert!(
@@ -1292,10 +1283,12 @@ mod tests {
     }
 
     #[test]
-    fn declared_cache_key_is_deterministic_and_separates_scope_and_sha() {
-        // The cache key is a pure function of (scope token, HEAD sha): stable for
-        // the same inputs, distinct when either changes — so a rebuild at the
-        // same HEAD hits, and two scopes (or two commits) never alias.
+    fn declared_cache_key_is_deterministic_and_separates_scope_and_corpus_key() {
+        // The cache key is a pure function of (scope token, corpus key — a
+        // working-tree fingerprint for the present view or a commit sha for an
+        // as-of build): stable for the same inputs, distinct when either changes —
+        // so a rebuild over an unchanged corpus hits, and two scopes (or two corpus
+        // states) never alias.
         let k = declared_cache_key("/ws/main", "abc123");
         assert_eq!(k, declared_cache_key("/ws/main", "abc123"), "stable");
         assert_ne!(
@@ -1306,7 +1299,7 @@ mod tests {
         assert_ne!(
             k,
             declared_cache_key("/ws/main", "def456"),
-            "different HEAD sha, different key"
+            "different corpus key, different key"
         );
     }
 }

@@ -507,12 +507,22 @@ impl ScopeCell {
                 return Ok(hit.1);
             }
         }
-        // Reuse the serve-layer declared-graph cache (the live rebuild persists
-        // core's `vault graph` JSON by sha): an as-of build for a recently-indexed
-        // sha — the common time-travel target, retained in that bounded cache —
-        // then ingests the cached declared tier instead of re-running the ~16s
-        // core subprocess. An older/uncached sha returns None and falls back to
-        // the subprocess. Read off the store under its own short lock.
+        // Look up an as-of declared-graph snapshot for THIS committed sha in the
+        // shared declared cache, keyed by the sha (NOT the working-tree corpus
+        // fingerprint the present-view fold now uses — graph-worktree-edge-consistency
+        // ADR). The sha key space is deliberately distinct: it guarantees an as-of /
+        // historical view can NEVER pick up the present-view fold's working-tree
+        // edges (which may include uncommitted `related:` links absent at this sha) —
+        // the key separation is load-bearing for time-travel correctness.
+        //
+        // NOTE (follow-up, audit MEDIUM-1): no production path currently WRITES a
+        // sha-keyed declared entry (the present-view fold writes only under the
+        // corpus fingerprint), so this lookup currently always misses and the build
+        // falls back to the `--ref sha` subprocess below. The in-memory `asof_cache`
+        // LRU still serves repeat same-sha time travel within a session, so the lost
+        // on-disk reuse only costs a re-fetch across restart/eviction; restoring it
+        // (persisting the `--ref sha` JSON under the sha key) is a tracked perf
+        // follow-up. Read off the store under its own short lock.
         let declared = {
             let key =
                 crate::registry::declared_cache_key(&crate::routes::scope_token(&self.root), sha);
@@ -759,10 +769,11 @@ impl ScopeCell {
         // No async runtime ⇒ no deferred fold; ingest declared synchronously so
         // the served graph is complete in non-serve (test) contexts. Under
         // `serve` a runtime is always current, so this branch never runs there.
-        // Uses the SAME fetch+ingest seam the async fold uses (read-and-infer
-        // `--ref HEAD`), so the sync and async declared graphs converge.
+        // Uses the SAME fetch+ingest seam the async fold uses — the WORKING TREE
+        // (graph-worktree-edge-consistency ADR: present-view edges share the nodes'
+        // snapshot), so the sync and async declared graphs converge.
         let declared_status = if tokio::runtime::Handle::try_current().is_err() {
-            match engine_graph::index::fetch_core_graph_json(&self.root, Some("HEAD")) {
+            match engine_graph::index::fetch_core_graph_json(&self.root, None) {
                 Ok(json) => {
                     let (_, unavailable) = engine_graph::index::ingest_declared_from_json(
                         &mut fresh,
@@ -777,21 +788,23 @@ impl ScopeCell {
         } else {
             // Carry last-good declared across a routine re-index (Issue #4 / #1):
             // if the declared tier was AVAILABLE before this rebuild AND the
-            // declared graph for the CURRENT HEAD is already cached (HEAD unchanged
-            // ⇒ core's authored vault graph is identical), fold those edges into the
-            // fresh structural graph NOW so the served graph stays complete and the
-            // declared tier does NOT flap to the building sentinel on every FS
-            // change. The async fold the caller spawns still runs — re-confirming,
-            // or handling a genuine HEAD change via the subprocess on a cache miss.
-            // Only a cold build or a new HEAD (no cached declared) reports
-            // unavailable-while-building until that fold lands.
+            // declared graph for the FRESH corpus state is already cached (corpus
+            // unchanged ⇒ core's authored vault graph is identical), fold those edges
+            // into the fresh structural graph NOW so the served graph stays complete
+            // and the declared tier does NOT flap to the building sentinel on every FS
+            // change. The cache is keyed on the working-tree corpus FINGERPRINT (not
+            // the HEAD sha), computed from the freshly-built structural graph — so a
+            // genuine `.vault/` edit misses, and the async fold the caller spawns
+            // re-reads the working tree. Only a cold build or a changed corpus (no
+            // cached declared) reports unavailable-while-building until that fold lands.
             let prior_available = self
                 .declared_status
                 .read()
                 .map(|status| status.is_none())
                 .unwrap_or(false);
+            let fingerprint = engine_graph::index::worktree_corpus_fingerprint(&fresh, &self.scope);
             match prior_available
-                .then(|| crate::registry::cached_declared_json(self))
+                .then(|| crate::registry::cached_declared_json(self, &fingerprint))
                 .flatten()
             {
                 Some(json) => {
