@@ -52,6 +52,7 @@ import {
   useActiveScope,
   useDashboardGraphControlsView,
 } from "../../stores/server/queries";
+import { useDashboardStageControlsIntent } from "../../stores/server/dashboardStageControlsIntent";
 import {
   GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
   GRAPH_CONTROLS_TUNE_DEFAULTS,
@@ -61,6 +62,7 @@ import {
   deriveGraphControlsReflowToggleView,
   deriveGraphControlsSettingsPopoverView,
   deriveGraphControlsTunePresentationView,
+  deriveGraphControlsViewPresentationView,
   setGraphControlsAppearanceParams,
   toggleGraphControlsAppearanceOpen,
   toggleGraphControlsAutoframe,
@@ -587,6 +589,61 @@ function FoldableCategory({
 }
 
 // ---------------------------------------------------------------------------
+// ViewSection — the two DASHBOARD-STATE graph switches: Detail (the feature-
+// constellation overview ⇄ the per-document graph, `graph_granularity`) and
+// Emphasis (which signal drives node salience, `salience_lens`). Unlike the
+// layout/appearance knobs these are NOT scene-command/canvas-local: each writes
+// dashboard-state through the stage-controls intent, which re-keys the graph slice
+// query (a real re-fetch), and reads its active segment back from the served state
+// — so the control can never drift from what the graph is actually showing
+// (display-state-is-backend-served; views-are-projections-of-one-model). Detail is
+// a pure view flip: it never touches the corpus filter (one-filter-authority).
+// ---------------------------------------------------------------------------
+
+function ViewSection() {
+  const scope = useActiveScope();
+  const { granularity, lens } = useDashboardGraphControlsView(scope);
+  const controls = useDashboardStageControlsIntent(scope);
+  const view = deriveGraphControlsViewPresentationView();
+
+  return (
+    <section className="flex w-full flex-col gap-fg-2" data-graph-view-section>
+      <SectionLabel>{view.heading}</SectionLabel>
+      <div className="flex w-full flex-col gap-fg-1">
+        <span className="text-label text-ink-muted">{view.detailLabel}</span>
+        <SegmentedToggle
+          ariaLabel={view.detailAriaLabel}
+          value={granularity}
+          onChange={(v) => void controls.setGranularity(v).catch(() => undefined)}
+          fullWidth
+        >
+          {view.detailOptions.map((option) => (
+            <Segment key={option.value} value={option.value} title={option.title}>
+              {option.label}
+            </Segment>
+          ))}
+        </SegmentedToggle>
+      </div>
+      <div className="flex w-full flex-col gap-fg-1">
+        <span className="text-label text-ink-muted">{view.emphasisLabel}</span>
+        <SegmentedToggle
+          ariaLabel={view.emphasisAriaLabel}
+          value={lens}
+          onChange={(v) => void controls.setLens(v).catch(() => undefined)}
+          fullWidth
+        >
+          {view.emphasisOptions.map((option) => (
+            <Segment key={option.value} value={option.value} title={option.title}>
+              {option.label}
+            </Segment>
+          ))}
+        </SegmentedToggle>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // GraphSettingsPanel — the top-right trigger (binding `graph-settings-trigger`)
 // that drops the "Graph controls" panel. Collapsed by default so the field is never
 // occluded; opening / closing (toggle / Escape / outside pointer) flows through the
@@ -651,6 +708,8 @@ export function GraphSettingsPanel() {
           data-popover-panel
         >
           <p className="text-body font-medium text-ink">{tuneView.title}</p>
+          <ViewSection />
+          <Divider />
           <LayoutSection />
           <Divider />
           <AppearanceSection />

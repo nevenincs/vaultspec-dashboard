@@ -10,6 +10,7 @@ import {
   deriveGraphControlsReflowToggleView,
   deriveGraphControlsSettingsPopoverView,
   deriveGraphControlsTunePresentationView,
+  deriveGraphControlsViewPresentationView,
   formatGraphControlsAppearanceValue,
   formatGraphControlsBoundSize,
   formatGraphControlsTuneValue,
@@ -396,5 +397,24 @@ describe("graph controls appearance seam (set-appearance-params)", () => {
     expect(normalizeGraphControlsAppearanceParams(null)).toEqual(
       GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
     );
+  });
+});
+
+describe("graph controls View seam (granularity + lens switch presentation)", () => {
+  it("projects plain-language Detail (granularity) + Emphasis (lens) options", () => {
+    const view = deriveGraphControlsViewPresentationView();
+    expect(view.heading).toBe("View");
+    expect(view.detailLabel).toBe("Detail");
+    expect(view.emphasisLabel).toBe("Emphasis");
+    // The OPTION VALUES are the wire enums; the LABELS are plain language
+    // (ui-labels-are-user-facing) — the wire keeps feature/document, the screen
+    // reads Overview/Documents.
+    expect(view.detailOptions.map((o) => o.value)).toEqual(["feature", "document"]);
+    expect(view.detailOptions.map((o) => o.label)).toEqual(["Overview", "Documents"]);
+    expect(view.emphasisOptions.map((o) => o.value)).toEqual(["status", "design"]);
+    expect(view.emphasisOptions.map((o) => o.label)).toEqual(["Status", "Design"]);
+    // Every option carries an explanatory tooltip.
+    expect(view.detailOptions.every((o) => o.title.length > 0)).toBe(true);
+    expect(view.emphasisOptions.every((o) => o.title.length > 0)).toBe(true);
   });
 });

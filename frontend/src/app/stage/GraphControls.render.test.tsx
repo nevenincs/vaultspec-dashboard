@@ -218,6 +218,60 @@ describe("GraphSettingsPanel — appearance (set-appearance-params)", () => {
   });
 });
 
+describe("GraphSettingsPanel — View (granularity + lens switch)", () => {
+  it("renders the Detail (granularity) + Emphasis (lens) segmented toggles", () => {
+    renderGraphControls();
+    openSettings();
+    // Plain-language labels, distinct per control (no name collision across the two
+    // toggles): Overview/Documents for granularity, Status/Design for the lens.
+    expect(screen.getByRole("radio", { name: "Overview" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Documents" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Status" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Design" })).toBeTruthy();
+  });
+
+  it("switching Detail writes graph_granularity and the active segment reflects the served state", async () => {
+    renderGraphControls();
+    openSettings();
+    // The reset patch seeds document granularity, so Documents starts active once
+    // the served dashboard-state loads.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("radio", { name: "Documents" }).getAttribute("aria-checked"),
+      ).toBe("true"),
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Overview" }));
+    // The click writes graph_granularity=feature through the stage-controls intent;
+    // the graph slice re-keys and the active segment flips once the served state
+    // round-trips (display-state-is-backend-served — read back, not optimistic-only).
+    await waitFor(() =>
+      expect(
+        screen.getByRole("radio", { name: "Overview" }).getAttribute("aria-checked"),
+      ).toBe("true"),
+    );
+    const state = await createLiveClient().dashboardState(scope);
+    expect(state?.graph_granularity).toBe("feature");
+  });
+
+  it("switching Emphasis writes salience_lens and the active segment reflects the served state", async () => {
+    renderGraphControls();
+    openSettings();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("radio", { name: "Status" }).getAttribute("aria-checked"),
+      ).toBe("true"),
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Design" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("radio", { name: "Design" }).getAttribute("aria-checked"),
+      ).toBe("true"),
+    );
+    const state = await createLiveClient().dashboardState(scope);
+    expect(state?.salience_lens).toBe("design");
+  });
+});
+
 describe("GraphSettingsPanel — Freeze toggle", () => {
   it("unfreezes the scene when the active scope changes", async () => {
     const spy = vi.spyOn(getScene().controller, "command");

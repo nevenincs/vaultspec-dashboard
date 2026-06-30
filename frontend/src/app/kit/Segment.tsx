@@ -17,9 +17,11 @@ export interface SegmentProps {
   children: ReactNode;
   /** Disable this segment independently of the group. */
   disabled?: boolean;
+  /** Optional native tooltip describing what this segment selects. */
+  title?: string;
 }
 
-export function Segment({ value, children, disabled }: SegmentProps) {
+export function Segment({ value, children, disabled, title }: SegmentProps) {
   const {
     value: selected,
     selectSegment,
@@ -61,6 +63,7 @@ export function Segment({ value, children, disabled }: SegmentProps) {
       role="radio"
       aria-checked={active}
       disabled={isDisabled}
+      title={title}
       // Roving tabindex: only the active segment is in the Tab order; arrows move
       // between segments (the segmented-control a11y pattern).
       tabIndex={active ? 0 : -1}

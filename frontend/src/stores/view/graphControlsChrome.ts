@@ -402,6 +402,67 @@ export function formatGraphControlsAppearanceValue(
   return value.toFixed(decimalsForStep(numericSpec(key).step));
 }
 
+// --- "View" controls (graph-granularity + salience-lens switch) ----------------
+// The two dashboard-state graph switches the panel exposes: DETAIL (the feature-
+// constellation overview ⇄ the per-document graph, `graph_granularity`) and
+// EMPHASIS (which signal drives node salience, `salience_lens`). Unlike the
+// layout/appearance knobs these write DASHBOARD-STATE (a re-query of the graph
+// slice), not the canvas-local field params — so the section reads its active
+// segment back from the served state and writes through the stage-controls intent.
+// Every string here is plain user-facing language (ui-labels-are-user-facing): the
+// wire keeps `feature`/`document` and `status`/`design`; the screen reads
+// Overview / Documents and Status / Design.
+
+export interface GraphControlsSegmentOptionView {
+  value: string;
+  label: string;
+  title: string;
+}
+
+export interface GraphControlsViewPresentationView {
+  heading: string;
+  detailLabel: string;
+  detailAriaLabel: string;
+  detailOptions: readonly GraphControlsSegmentOptionView[];
+  emphasisLabel: string;
+  emphasisAriaLabel: string;
+  emphasisOptions: readonly GraphControlsSegmentOptionView[];
+}
+
+export function deriveGraphControlsViewPresentationView(): GraphControlsViewPresentationView {
+  return {
+    heading: "View",
+    detailLabel: "Detail",
+    detailAriaLabel: "Graph detail",
+    detailOptions: [
+      {
+        value: "feature",
+        label: "Overview",
+        title: "Show the high-level overview — documents grouped into features",
+      },
+      {
+        value: "document",
+        label: "Documents",
+        title: "Show every document as its own node",
+      },
+    ],
+    emphasisLabel: "Emphasis",
+    emphasisAriaLabel: "Node emphasis",
+    emphasisOptions: [
+      {
+        value: "status",
+        label: "Status",
+        title: "Size nodes by their status signal",
+      },
+      {
+        value: "design",
+        label: "Design",
+        title: "Size nodes by their design signal",
+      },
+    ],
+  };
+}
+
 export interface GraphControlsSettingsPopoverView {
   active: boolean;
   ariaExpanded: boolean;

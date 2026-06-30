@@ -6,6 +6,7 @@ import { createElement, type ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
 import {
+  normalizeDashboardStageControlsGranularity,
   normalizeDashboardStageControlsLens,
   normalizeDashboardStageControlsRepresentationMode,
   normalizeDashboardStageControlsScope,
@@ -41,6 +42,12 @@ describe("useDashboardStageControlsIntent", () => {
     expect(normalizeDashboardStageControlsLens(" design ")).toBe("design");
     expect(normalizeDashboardStageControlsLens("unknown")).toBeNull();
     expect(normalizeDashboardStageControlsLens({ lens: "design" })).toBeNull();
+    expect(normalizeDashboardStageControlsGranularity(" feature ")).toBe("feature");
+    expect(normalizeDashboardStageControlsGranularity("document")).toBe("document");
+    expect(normalizeDashboardStageControlsGranularity("unknown")).toBeNull();
+    expect(
+      normalizeDashboardStageControlsGranularity({ granularity: "feature" }),
+    ).toBeNull();
   });
 
   it("is inert without a scope", async () => {
@@ -52,6 +59,7 @@ describe("useDashboardStageControlsIntent", () => {
     expect(result.current.pending).toBe(false);
     await expect(result.current.setRepresentationMode("semantic")).resolves.toBeNull();
     await expect(result.current.setLens("design")).resolves.toBeNull();
+    await expect(result.current.setGranularity("feature")).resolves.toBeNull();
   });
 
   it("keeps stage-control intent callbacks stable across unchanged-scope rerenders", () => {
@@ -64,12 +72,14 @@ describe("useDashboardStageControlsIntent", () => {
     const firstIntent = result.current;
     const firstSetRepresentationMode = result.current.setRepresentationMode;
     const firstSetLens = result.current.setLens;
+    const firstSetGranularity = result.current.setGranularity;
 
     rerender({ scope: "scope-a" });
 
     expect(result.current).toBe(firstIntent);
     expect(result.current.setRepresentationMode).toBe(firstSetRepresentationMode);
     expect(result.current.setLens).toBe(firstSetLens);
+    expect(result.current.setGranularity).toBe(firstSetGranularity);
   });
 
   it("is inert for malformed runtime scope values", async () => {
@@ -96,5 +106,9 @@ describe("useDashboardStageControlsIntent", () => {
     await expect(result.current.setRepresentationMode("unknown")).resolves.toBeNull();
     await expect(result.current.setLens({ lens: "design" })).resolves.toBeNull();
     await expect(result.current.setLens("unknown")).resolves.toBeNull();
+    await expect(
+      result.current.setGranularity({ granularity: "feature" }),
+    ).resolves.toBeNull();
+    await expect(result.current.setGranularity("unknown")).resolves.toBeNull();
   });
 });
