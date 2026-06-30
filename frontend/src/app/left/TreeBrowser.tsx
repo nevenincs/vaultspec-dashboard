@@ -39,7 +39,12 @@ import { RailSection } from "../chrome/RailSection";
 import { useFocusZone, type FocusZoneItemProps } from "../chrome/useFocusZone";
 import { DocTypeMark } from "../../scene/field/markComponents";
 import { RailDegradedNotice, RailMessage, RailSkeleton } from "./railStates";
-import type { VaultDocEntity } from "../../platform/actions/entity";
+import type {
+  VaultCategoryEntity,
+  VaultDocEntity,
+  VaultFeatureEntity,
+  VaultSectionEntity,
+} from "../../platform/actions/entity";
 import type { VaultTreeEntry } from "../../stores/server/engine";
 import {
   deriveVaultRailView,
@@ -50,16 +55,20 @@ import {
   type VaultDocTypeGroup,
   type VaultTreeFeatureGroup,
 } from "../../stores/server/queries";
-import { featureNodeIdFromTag } from "../../stores/server/liveAdapters";
+import {
+  featureNodeIdFromTag,
+  featureTagFromNodeId,
+  normalizeFeatureTag,
+} from "../../stores/server/liveAdapters";
 import {
   followFeatureKeyForNode,
-  followModeEnabled,
-  selectFeatureAndFrame,
+  selectFeature,
   useFollowMode,
 } from "../../stores/view/selection";
 import {
   deriveAllVaultBrowserTreeKeys,
   deriveBrowserTreeExpansionItem,
+  publishVaultBrowserTreeKeys,
   useBrowserTreeExpansion,
 } from "../../stores/view/browserTreeExpansion";
 import {
@@ -78,10 +87,15 @@ import {
   useDashboardBrowserSelection,
   useHighlightedPath,
 } from "./browserSelection";
-// Self-registering left-rail context-menu resolver (W03.P07): importing the
-// module runs its `registerResolver("vault-doc", …)` side effect once. The rows
-// are the SAME vault documents, so they share the vault-doc menu.
+// Self-registering left-rail context-menu resolvers: importing each module runs its
+// `registerResolver(...)` side effect once. The tree contributes a resolver for EVERY
+// row level — the document leaf (vault-doc), the feature folder (vault-feature), the
+// category folder (vault-category), and the section header (vault-section) — so the
+// whole rail opens a real menu, not just the leaves (context-menu-actions-are-layered).
 import "./menus/vaultDocMenu";
+import "./menus/vaultFeatureMenu";
+import "./menus/vaultCategoryMenu";
+import "./menus/vaultSectionMenu";
 import {
   CHEVRON_PX,
   docDateLabel,
@@ -149,6 +163,53 @@ function vaultDocEntity(entry: VaultTreeEntry, scope: string | null): VaultDocEn
   };
 }
 
+/** Build the vault-feature context-menu entity for a feature folder row. The feature
+ *  resolves to its constellation node id (when present) so the menu can focus it. */
+function vaultFeatureEntity(
+  feature: string,
+  scope: string | null,
+  expanded: boolean,
+): VaultFeatureEntity {
+  return {
+    kind: "vault-feature",
+    id: `vault-feature:${feature}`,
+    feature,
+    scope,
+    nodeId: featureNodeIdFromTag(feature),
+    expansionKey: `feat:${feature}`,
+    expanded,
+  };
+}
+
+/** Build the vault-category context-menu entity for a category folder row. `feature`
+ *  is the parent feature tag for a Features-section sub-folder, undefined for a
+ *  top-level Documents-section category. `expansionKey` IS the folder's toggle key. */
+function vaultCategoryEntity(
+  expansionKey: string,
+  docType: string,
+  feature: string | undefined,
+  scope: string | null,
+  expanded: boolean,
+): VaultCategoryEntity {
+  return {
+    kind: "vault-category",
+    id: `vault-category:${expansionKey}`,
+    docType,
+    ...(feature ? { feature } : {}),
+    scope,
+    expansionKey,
+    expanded,
+  };
+}
+
+/** Build the vault-section context-menu entity for a section header. */
+function vaultSectionEntity(
+  section: "features" | "documents",
+  scope: string | null,
+): VaultSectionEntity {
+  return { kind: "vault-section", id: `vault-section:${section}`, section, scope };
+}
+
 export function TreeBrowser({
   onEntryClick,
   onEntryOpen,
@@ -168,8 +229,10 @@ export function TreeBrowser({
   // `feat:<feature>`, feature category sub-folders `featcat:<feature>:<docType>`,
   // and Documents-section category folders `type:<docType>`. The browser-tree store
   // owns this so a scope/workspace swap clears disclosure state in ONE reset path.
-  // Sections start COLLAPSED (the tested a11y contract; binding sections are
-  // collapsible). A fresh key is absent from the expanded set.
+  // Every row — including the two top-level sections — starts COLLAPSED and the
+  // user's open/closed choice PERSISTS across reloads (parity with the activity
+  // rail's persisted folds; the store is persisted, the default seed is empty). A
+  // fresh key is absent from the expanded set.
   const { expanded, toggle, activeKey, setActiveKey, expandAll, collapseAll } =
     useBrowserTreeExpansion(scope, "vault");
   // The full expandable-key set tracks the latest rendered tree (a ref, not state,
@@ -203,6 +266,12 @@ export function TreeBrowser({
   // unknown — the rail leaves its expansion untouched.
   const followMode = useFollowMode();
   const selectedNodeId = useDashboardSelectedNodeId(scope);
+  // The canonically-selected FEATURE tag (feature-selection-global-state): when the one
+  // shared selection is a `feature:<tag>` id, its rail folder row reads as SELECTED — the
+  // same accent treatment a selected document leaf gets. Derived (de-hashed) from the ONE
+  // global selection so the rail, the graph spotlight, and the inspector all agree. null
+  // when a document/code node (or nothing) is selected.
+  const selectedFeatureTag = featureTagFromNodeId(selectedNodeId);
   const nodeFeatureTags = useMemo(() => {
     const map = new Map<string, readonly string[]>();
     for (const entry of tree.data?.entries ?? []) {
@@ -244,6 +313,31 @@ export function TreeBrowser({
     setActiveKey,
   };
 
+  // The rail view and its full collapsible-key set are derived once per entries/
+  // facets change (memoized above the loading/error early returns so the hook order
+  // is stable). The key set feeds two consumers: the in-component expand-all keymap
+  // thunk (via `treeKeysRef`) and the section context-menu's "expand all" verb (via
+  // the published store seam) — ONE derivation, two readers (no drift).
+  const view = useMemo(
+    () => deriveVaultRailView(tree.data?.entries ?? [], facets),
+    [tree.data?.entries, facets],
+  );
+  const allTreeKeys = useMemo(
+    () =>
+      deriveAllVaultBrowserTreeKeys({
+        features: view.featureGroups.map((group) => ({
+          feature: group.feature,
+          docTypes: group.docTypes.map((sub) => sub.docType),
+        })),
+        docTypes: view.docTypeGroups.map((group) => group.docType),
+      }),
+    [view],
+  );
+  treeKeysRef.current = allTreeKeys;
+  useEffect(() => {
+    publishVaultBrowserTreeKeys(scope, allTreeKeys);
+  }, [scope, allTreeKeys]);
+
   if (state === "loading") {
     // LOADING mode (binding `LeftRail` State=Loading): the shared designed skeleton.
     return <RailSkeleton label="Loading the vault…" />;
@@ -269,22 +363,11 @@ export function TreeBrowser({
     );
   }
 
-  const view = deriveVaultRailView(tree.data?.entries ?? [], facets);
   const empty = view.featureCount === 0 && view.docTypeCount === 0;
-  // Latest full expandable-key set (the two sections + every feature + every
-  // feature category sub-folder + every Documents category folder) for the
-  // expand-all verb; document rows are leaves and never expand.
-  treeKeysRef.current = deriveAllVaultBrowserTreeKeys({
-    features: view.featureGroups.map((group) => ({
-      feature: group.feature,
-      docTypes: group.docTypes.map((sub) => sub.docType),
-    })),
-    docTypes: view.docTypeGroups.map((group) => group.docType),
-  });
 
   return (
     <nav
-      className="flex flex-col gap-fg-1 text-label"
+      className="flex flex-col gap-fg-4 text-label"
       aria-label={ariaLabel}
       data-tree-browser={ariaLabel === "tree browser" ? "" : undefined}
       data-vault-browser={ariaLabel === "vault browser" ? "" : undefined}
@@ -312,6 +395,7 @@ export function TreeBrowser({
             title="Features"
             count={view.featureCount}
             sectionKey="sec:features"
+            entity={vaultSectionEntity("features", scope)}
             expanded={expanded}
             toggle={toggle}
             nav={rowNav}
@@ -324,6 +408,7 @@ export function TreeBrowser({
                 toggle={toggle}
                 scope={scope}
                 highlight={highlight}
+                selectedFeatureTag={selectedFeatureTag}
                 onClick={clickHandler}
                 onOpen={openHandler}
                 nav={rowNav}
@@ -336,6 +421,7 @@ export function TreeBrowser({
             title="Documents"
             count={view.docTypeCount}
             sectionKey="sec:documents"
+            entity={vaultSectionEntity("documents", scope)}
             expanded={expanded}
             toggle={toggle}
             nav={rowNav}
@@ -408,8 +494,10 @@ interface VaultTreeRowProps {
   onActivate: () => void;
   /** Open in the reader (leaf: double-click / Enter). */
   onOpen?: () => void;
-  /** Context-menu entity (leaves only). */
-  entity?: VaultDocEntity;
+  /** Context-menu entity for the row: a document leaf (vault-doc), a feature folder
+   *  (vault-feature), or a category folder (vault-category). Section headers wire
+   *  their own menu in `Section`, not through this shell. */
+  entity?: VaultDocEntity | VaultFeatureEntity | VaultCategoryEntity;
   /** Marks the row's wrapper for `[data-vault-folder]` selectors. */
   folderMarker?: boolean;
   nav: RowNav;
@@ -459,7 +547,7 @@ function VaultTreeRow({
     <button
       ref={ref}
       type="button"
-      title={entity?.path ?? label}
+      title={(entity && "path" in entity ? entity.path : undefined) ?? label}
       aria-expanded={expandable ? expanded : undefined}
       aria-controls={expandable ? bodyId : undefined}
       aria-current={!expandable && highlighted ? "page" : undefined}
@@ -557,6 +645,8 @@ interface SectionProps {
   title: string;
   count: number;
   sectionKey: string;
+  /** The section context-menu entity (expand-all / collapse-all / new document). */
+  entity: VaultSectionEntity;
   expanded: ReadonlySet<string>;
   toggle: (key: string) => void;
   nav: RowNav;
@@ -572,6 +662,7 @@ function Section({
   title,
   count,
   sectionKey,
+  entity,
   expanded,
   toggle,
   nav,
@@ -593,7 +684,21 @@ function Section({
       headerProps={{
         tabIndex,
         onFocus: () => nav.setActiveKey(sectionKey),
-        onKeyDown,
+        // The section header opens its own menu (expand/collapse-all + new doc) on
+        // right-click and on the ContextMenu/Shift+F10 keys; the roving keydown runs
+        // only when those keyboard entry points did not consume the event.
+        onContextMenu: (e) => {
+          e.preventDefault();
+          openContextMenu(entity, { x: e.clientX, y: e.clientY });
+        },
+        onKeyDown: (e) => {
+          if (
+            handleKeyboardContextMenu(e, (anchor) => openContextMenu(entity, anchor))
+          ) {
+            return;
+          }
+          onKeyDown(e);
+        },
       }}
       labelProps={{ "data-vault-section": title.toLowerCase() }}
       data-vault-section-header
@@ -610,14 +715,6 @@ function folderCategory(docType: string): Category {
   return docTypeCategory(docType) ?? NEUTRAL_FOLDER_CATEGORY;
 }
 
-/** The feature's member document node ids — the `doc:<stem>` ids the rail holds in
- *  its tree slice — for the follow-mode `frame-nodes` camera (Issue #13). */
-function featureMemberNodeIds(group: VaultTreeFeatureGroup): string[] {
-  return group.docTypes.flatMap((sub) =>
-    sub.entries.map((entry) => pathToNodeId(entry.path)),
-  );
-}
-
 // --- the feature folder row (Features section, level 1 → category sub-folders) -----
 
 interface FeatureFolderRowProps {
@@ -626,6 +723,9 @@ interface FeatureFolderRowProps {
   toggle: (key: string) => void;
   scope: string | null;
   highlight: string | null;
+  /** The canonically-selected feature tag (de-hashed), or null. This row reads as
+   *  SELECTED when it matches. */
+  selectedFeatureTag: string | null;
   onClick: (entry: VaultTreeEntry) => void;
   onOpen: (entry: VaultTreeEntry) => void;
   nav: RowNav;
@@ -639,6 +739,7 @@ function FeatureFolderRow({
   toggle,
   scope,
   highlight,
+  selectedFeatureTag,
   onClick,
   onOpen,
   nav,
@@ -655,29 +756,28 @@ function FeatureFolderRow({
       expandable
       expanded={open}
       count={group.count}
+      highlighted={normalizeFeatureTag(group.feature) === selectedFeatureTag}
       bodyId={`vault-${folderKey}`}
       onActivate={() => {
         toggle(folderKey);
-        // Follow-mode FORWARD half (rail feature -> graph, follow-mode-selection-sync /
-        // Issue #13): selecting a feature row selects the feature and rings + frames its
-        // member nodes on the graph. The seam is follow-gated (no-op when off) and reaches
-        // the scene through the registered runSceneCommand bridge (the rail never imports
-        // the scene); the outer check just avoids the work when follow mode is off.
-        if (followModeEnabled()) {
-          void selectFeatureAndFrame(
-            featureNodeIdFromTag(group.feature),
-            featureMemberNodeIds(group),
-            scope,
-          );
-        }
+        // FORWARD half (rail feature -> graph): selecting a feature row writes the ONE
+        // canonical selection `selected_ids = [feature:<tag>]` (feature-selection-global-
+        // state). That global state drives EVERY surface — this row's accent highlight, the
+        // graph's durable cluster spotlight (and follow-gated camera frame), the inspector —
+        // and survives data refreshes because the spotlight is re-derived from it. Always
+        // writes the selection (it is the global authority); follow mode only gates the
+        // camera frame in the scene projection.
+        void selectFeature(group.feature, scope);
       }}
       folderMarker
+      entity={vaultFeatureEntity(group.feature, scope, open)}
       nav={nav}
       body={group.docTypes.map((sub) => (
         <CategoryFolderRow
           key={sub.docType}
           folderKey={`featcat:${group.feature}:${sub.docType}`}
           docType={sub.docType}
+          feature={group.feature}
           count={sub.entries.length}
           entries={sub.entries}
           level={2}
@@ -699,6 +799,10 @@ function FeatureFolderRow({
 interface CategoryFolderRowProps {
   folderKey: string;
   docType: string;
+  /** The parent feature tag for a Features-section sub-folder; absent for a
+   *  top-level Documents-section category folder. Threads into the context-menu
+   *  entity so "New document…" pre-fills the feature for a sub-folder. */
+  feature?: string;
   count: number;
   entries: VaultTreeEntry[];
   /** Tree level: 1 = Documents-section category folder, 2 = Features sub-folder. */
@@ -718,6 +822,7 @@ interface CategoryFolderRowProps {
 function CategoryFolderRow({
   folderKey,
   docType,
+  feature,
   count,
   entries,
   level,
@@ -743,6 +848,7 @@ function CategoryFolderRow({
       bodyId={`vault-${folderKey}`}
       onActivate={() => toggle(folderKey)}
       folderMarker={level === 1}
+      entity={vaultCategoryEntity(folderKey, docType, feature, scope, open)}
       nav={nav}
       body={
         <ul className="flex flex-col gap-fg-1 py-fg-1">

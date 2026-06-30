@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 import { normalizeViewStoreSessionString } from "./scopeIdentity";
 
@@ -212,25 +213,33 @@ export function deriveCodeBrowserTreeRowView(
 }
 
 /**
- * The default expanded set for a freshly-keyed tree. The binding Vault tab
- * (Figma 238:600) shows its two top-level sections OPEN, so a vault key seeds
- * `sec:features` + `sec:documents` open; the code tree has no default-open rows.
- * Seeded when `setKey` establishes a NEW key (a scope/mode swap), so a deliberate
- * user collapse persists until the scope changes — figma-is-the-binding-source-of-
- * truth. Direct reset/toggle keep the empty default.
+ * The default expanded set for a freshly-keyed tree: EMPTY — every tree (vault and
+ * code) starts FULLY COLLAPSED, including the two top-level Vault sections. This
+ * mirrors the activity rail, whose folds default collapsed and persist the user's
+ * choice (statusTabChrome); the user opens what they want and the choice sticks. It
+ * is a user-directed divergence from the binding Vault tab (Figma 238:600), which
+ * shows the two sections open. Seeded when `setKey` establishes a NEW key (a
+ * scope/mode swap); a deliberate user expand then persists (this store is persisted)
+ * until the scope changes.
  */
-function defaultExpandedKeysForTreeKey(key: string): string[] {
-  return key.endsWith(":vault") ? [...VAULT_BROWSER_TREE_SECTION_KEYS] : [];
+function defaultExpandedKeysForTreeKey(_key: string): string[] {
+  return [];
 }
 
 interface BrowserTreeExpansionState {
   key: string;
   expandedKeys: string[];
   activeKey: string | null;
+  /** Every collapsible key for the CURRENT tree key, published by the mounted tree
+   *  (TreeBrowser). The "expand all" verb needs the full key set, but a pure
+   *  context-menu resolver cannot derive it — so the tree publishes it here and the
+   *  section resolver expands against it through the imperative seam below. */
+  knownKeys: string[];
   setKey: (key: unknown) => void;
   toggle: (key: unknown, id: unknown) => void;
   expandKeys: (key: unknown, ids: unknown) => void;
   collapseAll: (key: unknown) => void;
+  setKnownKeys: (key: unknown, ids: unknown) => void;
   setActiveKey: (key: unknown, id: unknown) => void;
   reset: () => void;
 }
@@ -267,78 +276,164 @@ export function normalizeBrowserTreeActiveKey(value: unknown): string | null {
   return value === null ? null : normalizeBrowserTreeItemKey(value);
 }
 
-export const useBrowserTreeExpansionStore = create<BrowserTreeExpansionState>(
-  (set) => ({
-    key: DEFAULT_BROWSER_TREE_KEY,
-    expandedKeys: [],
-    activeKey: null,
-    setKey: (key) =>
-      set((state) => {
-        const normalizedKey = normalizeBrowserTreeExpansionKey(key);
-        if (normalizedKey === null) return state;
-        return state.key === normalizedKey
-          ? state
-          : {
-              key: normalizedKey,
-              expandedKeys: defaultExpandedKeysForTreeKey(normalizedKey),
-              activeKey: null,
-            };
+// The browser-tree disclosure state PERSISTS across reloads (parity with the activity
+// rail's persisted folds, statusTabChrome): a section/folder the user opened — or left
+// collapsed — survives a reload, so the left rail carries real user state instead of
+// resetting to a default on every load. Only the durable prefs are partialized (the
+// active tree `key` + its `expandedKeys`); the transient `knownKeys` (republished by the
+// mounted tree) and `activeKey` (roving focus) are not. The expanded set is re-bounded on
+// rehydrate so a tampered/legacy payload can never exceed the cap
+// (bounded-by-default-for-every-accumulator).
+export const useBrowserTreeExpansionStore = create<BrowserTreeExpansionState>()(
+  persist(
+    (set) => ({
+      key: DEFAULT_BROWSER_TREE_KEY,
+      expandedKeys: [],
+      activeKey: null,
+      knownKeys: [],
+      setKey: (key) =>
+        set((state) => {
+          const normalizedKey = normalizeBrowserTreeExpansionKey(key);
+          if (normalizedKey === null) return state;
+          return state.key === normalizedKey
+            ? state
+            : {
+                key: normalizedKey,
+                expandedKeys: defaultExpandedKeysForTreeKey(normalizedKey),
+                // The prior tree's keys never apply to a new scope/mode; the freshly
+                // mounted tree republishes them on its first render.
+                knownKeys: [],
+                activeKey: null,
+              };
+        }),
+      toggle: (key, id) =>
+        set((state) => {
+          const normalizedKey = normalizeBrowserTreeExpansionKey(key);
+          const itemKey = normalizeBrowserTreeItemKey(id);
+          if (normalizedKey === null || itemKey === null) return state;
+          const current = state.key === normalizedKey ? state.expandedKeys : [];
+          const next = current.includes(itemKey)
+            ? current.filter((entry) => entry !== itemKey)
+            : [...current, itemKey];
+          return {
+            key: normalizedKey,
+            expandedKeys:
+              next.length > BROWSER_TREE_EXPANDED_KEYS_CAP
+                ? next.slice(next.length - BROWSER_TREE_EXPANDED_KEYS_CAP)
+                : next,
+          };
+        }),
+      expandKeys: (key, ids) =>
+        set((state) => {
+          const normalizedKey = normalizeBrowserTreeExpansionKey(key);
+          if (normalizedKey === null) return state;
+          const incoming = boundExpandedKeys(ids);
+          const current = state.key === normalizedKey ? state.expandedKeys : [];
+          const merged = boundExpandedKeys([...current, ...incoming]);
+          return { key: normalizedKey, expandedKeys: merged };
+        }),
+      collapseAll: (key) =>
+        set((state) => {
+          const normalizedKey = normalizeBrowserTreeExpansionKey(key);
+          if (normalizedKey === null) return state;
+          if (state.key === normalizedKey && state.expandedKeys.length === 0) {
+            return state;
+          }
+          return { key: normalizedKey, expandedKeys: [] };
+        }),
+      setKnownKeys: (key, ids) =>
+        set((state) => {
+          const normalizedKey = normalizeBrowserTreeExpansionKey(key);
+          if (normalizedKey === null) return state;
+          const next = boundExpandedKeys(ids);
+          // Only the active tree key carries known keys; ignore a stale publish from a
+          // tree that has since been re-keyed (scope/mode swap).
+          if (state.key !== normalizedKey) return state;
+          if (
+            state.knownKeys.length === next.length &&
+            state.knownKeys.every((entry, index) => entry === next[index])
+          ) {
+            return state;
+          }
+          return { knownKeys: next };
+        }),
+      setActiveKey: (key, activeKey) =>
+        set((state) => {
+          const normalizedKey = normalizeBrowserTreeExpansionKey(key);
+          if (normalizedKey === null) return state;
+          const normalizedActiveKey = normalizeBrowserTreeActiveKey(activeKey);
+          return state.key === normalizedKey
+            ? { activeKey: normalizedActiveKey }
+            : { key: normalizedKey, expandedKeys: [], activeKey: normalizedActiveKey };
+        }),
+      reset: () =>
+        set({
+          key: DEFAULT_BROWSER_TREE_KEY,
+          expandedKeys: [],
+          knownKeys: [],
+          activeKey: null,
+        }),
+    }),
+    {
+      name: "vaultspec:left-rail-tree",
+      // Only durable prefs persist: the active tree key + its expanded set. The
+      // transient knownKeys (republished by the mounted tree) and the roving activeKey
+      // are recomputed at mount, never restored.
+      partialize: (state) => ({
+        key: state.key,
+        expandedKeys: boundExpandedKeys(state.expandedKeys),
       }),
-    toggle: (key, id) =>
-      set((state) => {
-        const normalizedKey = normalizeBrowserTreeExpansionKey(key);
-        const itemKey = normalizeBrowserTreeItemKey(id);
-        if (normalizedKey === null || itemKey === null) return state;
-        const current = state.key === normalizedKey ? state.expandedKeys : [];
-        const next = current.includes(itemKey)
-          ? current.filter((entry) => entry !== itemKey)
-          : [...current, itemKey];
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<BrowserTreeExpansionState>;
+        const key = normalizeBrowserTreeExpansionKey(saved.key) ?? current.key;
         return {
-          key: normalizedKey,
-          expandedKeys:
-            next.length > BROWSER_TREE_EXPANDED_KEYS_CAP
-              ? next.slice(next.length - BROWSER_TREE_EXPANDED_KEYS_CAP)
-              : next,
+          ...current,
+          key,
+          expandedKeys: boundExpandedKeys(saved.expandedKeys),
         };
-      }),
-    expandKeys: (key, ids) =>
-      set((state) => {
-        const normalizedKey = normalizeBrowserTreeExpansionKey(key);
-        if (normalizedKey === null) return state;
-        const incoming = boundExpandedKeys(ids);
-        const current = state.key === normalizedKey ? state.expandedKeys : [];
-        const merged = boundExpandedKeys([...current, ...incoming]);
-        return { key: normalizedKey, expandedKeys: merged };
-      }),
-    collapseAll: (key) =>
-      set((state) => {
-        const normalizedKey = normalizeBrowserTreeExpansionKey(key);
-        if (normalizedKey === null) return state;
-        if (state.key === normalizedKey && state.expandedKeys.length === 0) {
-          return state;
-        }
-        return { key: normalizedKey, expandedKeys: [] };
-      }),
-    setActiveKey: (key, activeKey) =>
-      set((state) => {
-        const normalizedKey = normalizeBrowserTreeExpansionKey(key);
-        if (normalizedKey === null) return state;
-        const normalizedActiveKey = normalizeBrowserTreeActiveKey(activeKey);
-        return state.key === normalizedKey
-          ? { activeKey: normalizedActiveKey }
-          : { key: normalizedKey, expandedKeys: [], activeKey: normalizedActiveKey };
-      }),
-    reset: () =>
-      set({
-        key: DEFAULT_BROWSER_TREE_KEY,
-        expandedKeys: [],
-        activeKey: null,
-      }),
-  }),
+      },
+    },
+  ),
 );
 
 export function resetBrowserTreeExpansion(): void {
   useBrowserTreeExpansionStore.getState().reset();
+}
+
+// --- imperative vault-tree seam (for the section/folder context-menu resolvers) ---
+// A pure `(entity, ctx) => ActionDescriptor[]` resolver cannot use the React hook, so
+// the vault-tree folder/section menus drive expansion through these module functions.
+// Each resolves the tree key from the entity's scope (the active scope) and routes to
+// the same store actions the hook uses, so there is ONE expansion authority.
+
+/** Publish the mounted vault tree's full collapsible key set for "expand all". */
+export function publishVaultBrowserTreeKeys(scope: unknown, keys: unknown): void {
+  useBrowserTreeExpansionStore
+    .getState()
+    .setKnownKeys(browserTreeExpansionKey(scope, "vault"), keys);
+}
+
+/** Toggle one vault-tree folder open/closed by its expansion key. */
+export function toggleVaultBrowserTreeItem(scope: unknown, itemKey: unknown): void {
+  useBrowserTreeExpansionStore
+    .getState()
+    .toggle(browserTreeExpansionKey(scope, "vault"), itemKey);
+}
+
+/** Collapse the whole vault tree for a scope. */
+export function collapseVaultBrowserTree(scope: unknown): void {
+  useBrowserTreeExpansionStore
+    .getState()
+    .collapseAll(browserTreeExpansionKey(scope, "vault"));
+}
+
+/** Expand every collapsible vault-tree folder for a scope, over the published key
+ *  set. A no-op when no tree for this scope has published its keys yet. */
+export function expandAllVaultBrowserTree(scope: unknown): void {
+  const treeKey = browserTreeExpansionKey(scope, "vault");
+  const state = useBrowserTreeExpansionStore.getState();
+  if (state.key !== treeKey || state.knownKeys.length === 0) return;
+  state.expandKeys(treeKey, state.knownKeys);
 }
 
 export function useBrowserTreeExpansion(

@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   backgroundContextMenuHandler,
+  isRailBackgroundTarget,
   isTimelineBackgroundTarget,
 } from "./backgroundContextMenu";
 
@@ -70,6 +71,28 @@ describe("isTimelineBackgroundTarget", () => {
 
   it("treats a null / closest-less target as not background", () => {
     expect(isTimelineBackgroundTarget({ target: null } as unknown as MouseEvent)).toBe(
+      false,
+    );
+  });
+});
+
+describe("isRailBackgroundTarget", () => {
+  // The rail predicate is background when NO interactive ancestor (button / input /
+  // option / etc.) is found via closest() — so empty rail padding opens the chrome
+  // menu while a row (a <button>) keeps its own resolver.
+  const target = (matched: object | null) =>
+    ({ target: { closest: () => matched } }) as unknown as MouseEvent;
+
+  it("treats empty rail space (no interactive ancestor) as background", () => {
+    expect(isRailBackgroundTarget(target(null))).toBe(true);
+  });
+
+  it("does NOT treat a row/control (interactive ancestor) as background", () => {
+    expect(isRailBackgroundTarget(target({ tag: "button" }))).toBe(false);
+  });
+
+  it("treats a null / closest-less target as not background", () => {
+    expect(isRailBackgroundTarget({ target: null } as unknown as MouseEvent)).toBe(
       false,
     );
   });

@@ -11,10 +11,13 @@ import {
   patchDashboardState,
   selectionPatch,
 } from "../server/dashboardState";
-import { featureTagFromNodeId } from "../server/liveAdapters";
+import {
+  featureNodeIdFromTag,
+  featureTagFromNodeId,
+  normalizeFeatureTag,
+} from "../server/liveAdapters";
 import { useDashboardSelectedNodeId } from "../server/queries";
 import { normalizeStoreScope } from "../server/scopeIdentity";
-import { runSceneCommand } from "./sceneCommandBridge";
 import type { Selection } from "./viewStore";
 import { OPENED_IDS_CAP, useViewStore } from "./viewStore";
 
@@ -365,6 +368,26 @@ export function projectDashboardSelectionToScene(
   selectedNodeId: string | null,
   sceneOriginatedRef: SceneOriginRef,
 ): void {
+  // A SELECTED FEATURE (feature-selection-global-state) draws NO node ring; it spotlights
+  // its member CLUSTER through the durable `set-feature-spotlight` seam (the scene re-derives
+  // the cohort across data reloads). The camera frame is ONE-SHOT and follow-gated — a rail
+  // feature-select frames the cluster only when follow mode is on; an on-canvas feature click
+  // (scene-originated) never yanks the camera.
+  const featureTag = featureTagFromNodeId(selectedNodeId);
+  if (featureTag !== null) {
+    const originated = sceneOriginatedRef.current;
+    sceneOriginatedRef.current = false;
+    scene.command({ kind: "set-selected", ids: new Set() });
+    scene.command({
+      kind: "set-feature-spotlight",
+      tag: featureTag,
+      frame: !originated && followModeEnabled(),
+    });
+    return;
+  }
+  // A non-feature (document/code node) or cleared selection: drop any feature spotlight and
+  // fall back to the canonical singleton ring + focus.
+  scene.command({ kind: "set-feature-spotlight", tag: null });
   scene.command({
     kind: "set-selected",
     ids: new Set(normalizeDashboardSelectedIds(selectedIds)),
@@ -439,43 +462,28 @@ export function setFollowMode(on: boolean): void {
 }
 
 /**
- * Rail FEATURE -> graph half of follow mode — a VISUAL-ONLY META-SELECTION (Issue
- * #16, correcting #13). It does NOT touch the canonical node selection at all: it
- * emits a hover-style soft highlight over the feature's member nodes
- * (`set-meta-highlight`) plus a one-shot camera frame to them (`frame-nodes`), both
- * through the registered `runSceneCommand` bridge (dashboard-layer-ownership: the
- * rail never imports the scene). The graph's REAL node selection stays a SINGLETON,
- * set only by actual node clicks — feature meta-selection never writes `selected_ids`.
+ * Select a FEATURE as the canonical singleton selection (feature-selection-global-state).
+ * Writes `selected_ids = [feature:<tag>]` through the ONE selection seam — so the selected
+ * feature is backend-persisted, TanStack-cached, and subscribed by EVERY surface: the rail
+ * row highlight, the durable graph cluster spotlight (`projectDashboardSelectionToScene`
+ * routes a `feature:` id to `set-feature-spotlight`), and the inspector. It SURVIVES data
+ * refreshes / SSE deltas by construction (the spotlight is re-derived from canonical state),
+ * replacing the prior scene-only one-shot meta-highlight that was wiped on every reload.
  *
- * Why this replaced the #13 multiselect: writing `[feature:<tag>, ...members]` into
- * `selected_ids` (a) "selected every node" (the user's explicit reject) and (b) the
- * engine's `PATCH /dashboard-state` rejects any id not present in the current
- * (filtered) graph — the synthetic `feature:<tag>` id and out-of-slice members 400
- * on every feature click, breaking the rail/filter interaction. A scene-only visual
- * highlight tells the engine selection guard nothing and leaves the filter plane
- * untouched.
- *
- * No-op when follow mode is OFF or the feature has no member node ids. `memberIds`
- * are the feature's node ids the rail holds from its tree/slice (de-duped + capped by
- * the selection normalizer). `_featureNodeId` and `_scope` are accepted for call-site
- * stability with the rail but unused now (no selection write). SELECTION is never
- * touched; FILTER is never touched.
+ * This reverses the #16 scene-only decision now that the canonical write is correct: a LONE
+ * `feature:<tag>` does NOT 400 — the engine's `validate_node_id` accepts it whenever the tag
+ * exists in the current graph (engine `state.rs`). #16's 400s came from ALSO writing the
+ * out-of-slice MEMBER ids into `selected_ids`; this writes only the single feature id, so the
+ * guard passes and the filter plane is untouched. The tag is normalized (de-hashed) so a
+ * `#feature-raw` and a `feature-raw` select the SAME feature. No-op for a blank tag.
  */
-export function selectFeatureAndFrame(
-  _featureNodeId: unknown,
-  memberIds: readonly unknown[],
-  _scope: unknown = useViewStore.getState().scope,
-): boolean {
-  if (!followModeEnabled()) return false;
-  const members = normalizeDashboardSelectedIds(memberIds);
-  if (members.length === 0) return false;
-  const ids = new Set(members);
-  // Visual meta-highlight (hover-style, NO selection rings) + camera frame. Both are
-  // pure scene emphasis; neither writes dashboard-state, so the engine's
-  // selected_ids⊆graph guard is never tripped and filtering is unaffected.
-  runSceneCommand({ kind: "set-meta-highlight", ids });
-  runSceneCommand({ kind: "frame-nodes", ids });
-  return true;
+export function selectFeature(
+  featureTag: unknown,
+  scope: unknown = useViewStore.getState().scope,
+): Promise<boolean> {
+  const tag = normalizeFeatureTag(featureTag);
+  if (tag === null) return Promise.resolve(false);
+  return selectNode(featureNodeIdFromTag(tag), scope);
 }
 
 /**

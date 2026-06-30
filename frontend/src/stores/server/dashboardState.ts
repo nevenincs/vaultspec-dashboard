@@ -21,6 +21,8 @@ import { dashboardStateSessionIdentity, engineKeys, useSession } from "./queries
 import { queryClient } from "./queryClient";
 import type { GraphSettingsDefaults } from "./settingsSelectors";
 import { normalizeStoreScope } from "./scopeIdentity";
+import { parseFeatureQueryInput } from "../featureQuery";
+import { normalizeFeatureTag } from "./liveAdapters";
 import {
   cloneDashboardFilters,
   DEFAULT_DASHBOARD_GRAPH_BOUNDS,
@@ -454,7 +456,14 @@ export function dashboardFiltersWithFacetToggled(
 ): DashboardFilters {
   const next = cloneDashboardFilters(filters);
   const normalizedFacet = normalizeDashboardFilterFacet(facet);
-  const normalizedValue = normalizeDashboardFilterFacetValue(value);
+  // The feature_tags facet is identity-bearing: its value must be de-hashed so a
+  // `#feature-raw` toggle matches a node's engine-served `feature-raw` tag (the engine
+  // strips `#` at ingest). Every other facet (doc_types/statuses/…) carries no `#`
+  // semantics and stays the generic trim-only normalization.
+  const normalizedValue =
+    normalizedFacet === "feature_tags"
+      ? normalizeDashboardFeatureTag(value)
+      : normalizeDashboardFilterFacetValue(value);
   if (normalizedFacet === null || normalizedValue === null) return next;
   const current = next[normalizedFacet] ?? [];
   const values = current.includes(normalizedValue)
@@ -483,7 +492,59 @@ export function dashboardFiltersWithFacetCleared(
 }
 
 export function normalizeDashboardFeatureTag(featureTag: unknown): string | null {
-  return normalizeDashboardFilterFacetValue(featureTag);
+  // De-hash to the canonical identity tag (NOT the generic facet value normalizer,
+  // which leaves a leading `#` intact and would never match a node's `feature_tags`),
+  // then apply the same bound every facet value carries (bounded-by-default).
+  const tag = normalizeFeatureTag(featureTag);
+  return tag !== null && tag.length <= DASHBOARD_FILTER_FACET_VALUE_MAX_CHARS
+    ? tag
+    : null;
+}
+
+// --- imperative filter seam (one-filter-authority, callable outside a hook) -------
+// The context-menu resolvers are pure `(entity, ctx) => ActionDescriptor[]` functions,
+// so they cannot use the `useDashboardStateMutations` hook. These mirror that hook's
+// facet-toggle and feature-query writes EXACTLY — read the cached filters, apply the
+// SAME pure builder, and patch through the SAME `patchDashboardState` engine seam +
+// cache update — so a rail folder verb writes the ONE canonical `dashboardState.filters`
+// the rail, graph, and timeline all consume (one-filter-authority-every-corpus-view-
+// consumes-it). They are filter writes (a `run` store intent per unified-action-plane),
+// never a private mask and never a second filtering authority.
+
+/** Toggle one multi-select facet value on the canonical filter (the legend's
+ *  `toggleFilterFacet` write path, imperative). */
+export function toggleDashboardFilterFacet(
+  scope: unknown,
+  facet: unknown,
+  value: unknown,
+): Promise<DashboardState | null> {
+  const normalizedScope = normalizeDashboardStateWriteScope(scope);
+  if (normalizedScope === null) return Promise.resolve(null);
+  const sessionIdentity = cachedDashboardStateSessionIdentity(queryClient);
+  const filters = cachedDashboardFilters(queryClient, normalizedScope, sessionIdentity);
+  return patchDashboardState(
+    normalizedScope,
+    filtersPatch(dashboardFiltersWithFacetToggled(filters, facet, value)),
+  );
+}
+
+/** Set the canonical feature-query filter from a raw feature term (the rail
+ *  feature-search commit, imperative). Parses the term into the wire `{value,mode}`
+ *  exactly as the search bar does, so "Filter to this feature" === picking it there. */
+export function setDashboardFeatureFilter(
+  scope: unknown,
+  featureTerm: unknown,
+): Promise<DashboardState | null> {
+  const normalizedScope = normalizeDashboardStateWriteScope(scope);
+  if (normalizedScope === null) return Promise.resolve(null);
+  const sessionIdentity = cachedDashboardStateSessionIdentity(queryClient);
+  const filters = cachedDashboardFilters(queryClient, normalizedScope, sessionIdentity);
+  return patchDashboardState(
+    normalizedScope,
+    filtersPatch(
+      dashboardFiltersWithFeatureQuery(filters, parseFeatureQueryInput(featureTerm)),
+    ),
+  );
 }
 
 function dashboardStateFilters(state: unknown): DashboardFilters {

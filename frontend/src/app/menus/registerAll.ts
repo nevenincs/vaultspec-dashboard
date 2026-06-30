@@ -10,10 +10,15 @@
 // activity rail; the "node" kind is served by the graph node resolver once W04
 // lands. Side-effect imports only.
 
-// Left rail.
+// Left rail. The vault tree contributes a resolver for EVERY row level — the
+// feature folder, the category folder, and the section header — alongside the
+// document leaf, so the whole rail (not just the leaves) opens a real menu.
 import "../left/menus/workspaceMenu";
 import "../left/menus/worktreeMenu";
 import "../left/menus/vaultDocMenu";
+import "../left/menus/vaultFeatureMenu";
+import "../left/menus/vaultCategoryMenu";
+import "../left/menus/vaultSectionMenu";
 import "../left/menus/codeFileMenu";
 
 // Right rail. (The "node" kind is served by the graph node resolver below -

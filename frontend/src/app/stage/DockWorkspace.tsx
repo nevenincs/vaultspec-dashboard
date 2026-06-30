@@ -34,6 +34,7 @@ import { toggleGraphAction } from "../../stores/view/chromeActions";
 import { IconButton } from "../kit";
 import { Hierarchy, PanelRight } from "../kit/glyphs";
 import { pokeGraphRect, setWorkspaceContainer } from "./canvasPin";
+import { CategoryLegend } from "./CategoryLegend";
 import { DocPanel } from "./DocPanel";
 import { vaultspecDockTheme } from "./dockTheme";
 import { GraphCanvasHost } from "./GraphCanvasHost";
@@ -64,7 +65,11 @@ const components = { graph: GraphPanel, doc: DocPanel };
 // the graph group's header reads as a thin toolbar that hosts the top-right action
 // cluster, rather than a noisy lone "Graph" tab.
 function GraphTab(_props: IDockviewPanelHeaderProps) {
-  return <span aria-hidden className="block h-full w-0" />;
+  // `data-graph-tab` lets the stylesheet collapse the wrapping `.dv-tab` to nothing
+  // (transparent, zero width/padding) so the graph group's header reads as a clean
+  // toolbar — the legend on the left, the visibility toggles on the right — with no
+  // stray lighter tab rectangle between them.
+  return <span aria-hidden data-graph-tab className="block h-full w-0" />;
 }
 
 // Document tab content. dockview's default tab renders at its own hardcoded 13px
@@ -226,6 +231,30 @@ function DockHeaderActions(props: IDockviewHeaderActionsProps) {
   );
 }
 
+// The graph category-filter legend, hosted in the LEFT of the graph group's header
+// row (dockview's `prefixHeaderActionsComponent` — the free space left of the empty
+// graph tab, sharing the header with the right-side visibility toggles). dockview
+// renders this in EVERY group's header, so it paints ONLY in the group that owns the
+// graph panel (every other group's instance returns null); the host group is
+// re-derived on each layout change so the legend always rides the graph's header
+// wherever the graph is docked. When the graph is hidden there is no graph panel, so
+// nothing renders. The legend authors the canonical `doc_types` filter facet
+// (unified-filter-plane) — it is not re-implemented here, only placed.
+function DockGraphLegend(props: IDockviewHeaderActionsProps) {
+  const [, bumpLayout] = useState(0);
+  useEffect(() => {
+    const disposable = props.containerApi.onDidLayoutChange(() =>
+      bumpLayout((tick) => tick + 1),
+    );
+    return () => disposable.dispose();
+  }, [props.containerApi]);
+
+  const graphGroupId = props.containerApi.getPanel(GRAPH_PANEL_ID)?.group?.id;
+  if (!graphGroupId || graphGroupId !== props.group.id) return null;
+
+  return <CategoryLegend />;
+}
+
 // Keep the graph group's header VISIBLE so it can host the top-right action cluster
 // even when the graph is alone (the cluster is the stable home of the graph + rail
 // toggles). The graph's own tab renders empty (see GraphTab), so a lone graph still
@@ -385,6 +414,7 @@ export function DockWorkspace() {
         <DockviewReact
           components={components}
           tabComponents={tabComponents}
+          prefixHeaderActionsComponent={DockGraphLegend}
           rightHeaderActionsComponent={DockHeaderActions}
           onReady={onReady}
           theme={vaultspecDockTheme}

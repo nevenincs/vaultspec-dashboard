@@ -9,7 +9,7 @@ import { setSceneCommandRunner } from "./sceneCommandBridge";
 import {
   followFeatureKeyForNode,
   followModeEnabled,
-  selectFeatureAndFrame,
+  selectFeature,
   setFollowMode,
   toggleFollowMode,
 } from "./selection";
@@ -76,32 +76,17 @@ describe("followFeatureKeyForNode (graph node -> rail feature key)", () => {
   });
 });
 
-describe("selectFeatureAndFrame meta-selection (rail feature -> graph, Issue #16)", () => {
-  it("is a no-op (no scene command) when follow mode is OFF", () => {
-    setFollowMode(false);
-    const ok = selectFeatureAndFrame("feature:x", ["doc:a", "doc:b"], "s");
-    expect(ok).toBe(false);
+describe("selectFeature canonical selection (rail feature -> global state)", () => {
+  // selectFeature now writes the ONE canonical selection (`selected_ids = [feature:<tag>]`)
+  // instead of a scene-only meta-highlight (feature-selection-global-state, reversing #16).
+  // The durable cluster spotlight + follow-gated frame are DERIVED from that selection by
+  // `projectDashboardSelectionToScene` (covered in selection.test.ts), so this seam itself
+  // emits no scene command. A blank tag is a no-op; follow mode no longer gates the SELECTION
+  // (it is the global authority) — only the camera frame in the scene projection.
+  it("no-ops (no selection write) for a blank/unnormalizable tag", async () => {
+    expect(await selectFeature("")).toBe(false);
+    expect(await selectFeature("#")).toBe(false);
+    expect(await selectFeature(null)).toBe(false);
     expect(sceneCommands).toEqual([]);
-  });
-
-  it("is a no-op when the feature has no member node ids", () => {
-    setFollowMode(true);
-    const ok = selectFeatureAndFrame("feature:x", [], "s");
-    expect(ok).toBe(false);
-    expect(sceneCommands).toEqual([]);
-  });
-
-  it("emits a VISUAL meta-highlight + frame (NO selection write) when on", () => {
-    setFollowMode(true);
-    const ok = selectFeatureAndFrame("feature:x", ["doc:a", "doc:b"], "s");
-    expect(ok).toBe(true);
-    // Exactly the two scene-visual commands; the meta-highlight + camera frame carry
-    // the member set, and NOTHING writes the canonical selection (no set-selected).
-    const kinds = sceneCommands.map((c) => (c as { kind: string }).kind);
-    expect(kinds).toEqual(["set-meta-highlight", "frame-nodes"]);
-    expect(kinds).not.toContain("set-selected");
-    for (const c of sceneCommands) {
-      expect([...(c as { ids: Set<string> }).ids]).toEqual(["doc:a", "doc:b"]);
-    }
   });
 });

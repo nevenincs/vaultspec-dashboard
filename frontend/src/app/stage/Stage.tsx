@@ -52,7 +52,6 @@ import { IslandLayer } from "../islands/IslandLayer";
 import { TimeTravelChip } from "../timeline/TimeTravelChip";
 import { useTimeTravel } from "../timeline/timeTravel";
 import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
-import { CategoryLegend } from "./CategoryLegend";
 import { MinimapWidget } from "./MinimapWidget";
 import { CANVAS_KEYMAP_CONTEXT, useGraphWalkKeybindings } from "./graphWalkKeybindings";
 import { GraphNavControls, GraphSettingsPanel } from "./GraphControls";
@@ -390,20 +389,19 @@ export function Stage() {
         // neighbour/feature-cycle bindings (keymap W03.P09).
         data-keymap-context={CANVAS_KEYMAP_CONTEXT}
       />
-      {/* Graph overlays (binding graph/Hero 213:505): the top bar is RETIRED, so
-          every graph affordance is a canvas overlay and the field reads as the whole
-          surface. The category legend keys the node-fill encoding (top-left); the
-          vertical camera cluster zooms / fits / recenters (bottom-left); the graph
-          settings panel drops the Sim + Display controls from a top-right trigger.
-          The binding graph/Hero has EXACTLY these overlays — create-doc, timeline
-          navigation, and the working-set chip trail were all removed from the graph
-          (they are not in the binding design; their features and data flow are
-          preserved, their UX home decided elsewhere). The remaining
-          mounts are transient runtime layers, not chrome: the time-travel chip (a
-          mode indicator), the hover-bloom card and opened-island layer (node hover/
-          open interactions), and the designed canvas states (which the binding DOES
-          define: loading / empty / degraded). */}
-      <CategoryLegend />
+      {/* Graph overlays (binding graph/Hero 213:505): every remaining graph affordance
+          is a canvas overlay and the field reads as the whole surface. The category
+          legend (the node-fill key + canonical doc-type filter) has moved OUT of the
+          canvas into the graph dock-header's left (DockWorkspace's prefix-actions slot),
+          sharing that header with the visibility toggles; the vertical camera cluster
+          zooms / fits / recenters (bottom-left); the graph settings panel drops the Sim
+          + Display controls from a top-right trigger. create-doc, timeline navigation,
+          and the working-set chip trail were all removed from the graph (not in the
+          binding design; their features and data flow are preserved, their UX home
+          decided elsewhere). The remaining mounts are transient runtime layers, not
+          chrome: the time-travel chip (a mode indicator), the hover-bloom card and
+          opened-island layer (node hover/open interactions), and the designed canvas
+          states (which the binding DOES define: loading / empty / degraded). */}
       <GraphNavControls />
       <GraphSettingsPanel />
       {/* The overview minimap is a DOCKED card bottom-right (binding graph/Hero

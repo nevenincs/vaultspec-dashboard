@@ -10,7 +10,10 @@ import { describe, expect, it } from "vitest";
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { WORKTREE_ACTIVATE_SCOPE_ACTION } from "../../../stores/server/worktreeActions";
 import { codeFileMenu } from "./codeFileMenu";
+import { vaultCategoryMenu } from "./vaultCategoryMenu";
 import { vaultDocMenu } from "./vaultDocMenu";
+import { vaultFeatureMenu } from "./vaultFeatureMenu";
+import { vaultSectionMenu } from "./vaultSectionMenu";
 import { workspaceMenu } from "./workspaceMenu";
 import { worktreeMenu } from "./worktreeMenu";
 
@@ -222,6 +225,176 @@ describe("vaultDocMenu", () => {
     );
     expect(action?.disabledInTimeTravel).toBeUndefined();
     expect(typeof action?.run).toBe("function");
+  });
+});
+
+describe("vaultFeatureMenu", () => {
+  it("offers focus, expand, filter, new-document, autofix, copy-tag, and archive", () => {
+    const actions = vaultFeatureMenu({
+      kind: "vault-feature",
+      id: "vault-feature:my-feature",
+      feature: " my-feature ",
+      scope: "scope-a",
+      nodeId: " feature:my-feature ",
+      expansionKey: " feat:my-feature ",
+      expanded: false,
+    });
+    expect(ids(actions)).toEqual([
+      "vault-feature:focus",
+      "vault-feature:toggle",
+      "vault-feature:filter",
+      "left-rail:new-document",
+      "vault-feature:autofix",
+      "vault-feature:copy-tag",
+      "vault-feature:archive",
+    ]);
+    expect(byId(actions, "vault-feature:focus")?.section).toBe("navigate");
+    expect(byId(actions, "vault-feature:toggle")?.label).toBe("Expand feature");
+    expect(byId(actions, "vault-feature:filter")?.section).toBe("navigate");
+    expect(byId(actions, "vault-feature:filter")?.run).toBeTypeOf("function");
+    expect(byId(actions, "vault-feature:filter")?.disabledInTimeTravel).toBeUndefined();
+    expect(byId(actions, "left-rail:new-document")?.section).toBe("transform");
+    expect(byId(actions, "vault-feature:copy-tag")?.section).toBe("copy");
+  });
+
+  it("toggle reads Collapse when the folder is expanded", () => {
+    const action = byId(
+      vaultFeatureMenu({
+        kind: "vault-feature",
+        id: "vault-feature:f",
+        feature: "f",
+        expansionKey: "feat:f",
+        expanded: true,
+      }),
+      "vault-feature:toggle",
+    );
+    expect(action?.label).toBe("Collapse feature");
+    expect(action?.disabledInTimeTravel).toBeUndefined();
+  });
+
+  it("focus is disabled-with-reason when the feature has no graph node yet", () => {
+    const action = byId(
+      vaultFeatureMenu({ kind: "vault-feature", id: "vault-feature:f", feature: "f" }),
+      "vault-feature:focus",
+    );
+    expect(action?.disabled).toBe(true);
+    expect(action?.disabledReason).toBe("no graph node for this feature yet");
+    expect(action?.run).toBeUndefined();
+  });
+
+  it("omits the toggle when no expansion key is carried", () => {
+    const actions = vaultFeatureMenu({
+      kind: "vault-feature",
+      id: "vault-feature:f",
+      feature: "f",
+      nodeId: "feature:f",
+    });
+    expect(byId(actions, "vault-feature:toggle")).toBeUndefined();
+  });
+
+  it("autofix and archive are confirm-guarded, time-travel-gated feature mutations", () => {
+    const actions = vaultFeatureMenu({
+      kind: "vault-feature",
+      id: "vault-feature:f",
+      feature: "f",
+      scope: "scope-a",
+    });
+    const autofix = byId(actions, "vault-feature:autofix");
+    expect(autofix?.section).toBe("transform");
+    expect(autofix?.confirm).toBe(true);
+    expect(autofix?.disabledInTimeTravel).toBe(true);
+    const archive = byId(actions, "vault-feature:archive");
+    expect(archive?.section).toBe("danger");
+    expect(archive?.confirm).toBe(true);
+    expect(archive?.disabledInTimeTravel).toBe(true);
+  });
+
+  it("rejects non-vault-feature entities at resolver ingress", () => {
+    expect(vaultFeatureMenu({ kind: "vault-doc", id: "doc:x" })).toEqual([]);
+    expect(vaultFeatureMenu(null)).toEqual([]);
+  });
+});
+
+describe("vaultCategoryMenu", () => {
+  it("a feature sub-folder offers expand, filter, new-document, and copy category", () => {
+    const actions = vaultCategoryMenu({
+      kind: "vault-category",
+      id: "vault-category:featcat:f:adr",
+      docType: "adr",
+      feature: "f",
+      scope: "scope-a",
+      expansionKey: "featcat:f:adr",
+      expanded: false,
+    });
+    expect(ids(actions)).toEqual([
+      "vault-category:toggle",
+      "vault-category:filter",
+      "left-rail:new-document",
+      "vault-category:copy-category",
+    ]);
+    expect(byId(actions, "vault-category:toggle")?.label).toBe("Expand category");
+    expect(byId(actions, "vault-category:filter")?.label).toBe("Filter to this type");
+    expect(byId(actions, "vault-category:filter")?.section).toBe("navigate");
+    expect(byId(actions, "vault-category:copy-category")?.section).toBe("copy");
+  });
+
+  it("omits the toggle when no expansion key is carried, keeps filter + new-doc + copy", () => {
+    const actions = vaultCategoryMenu({
+      kind: "vault-category",
+      id: "vault-category:type:plan",
+      docType: "plan",
+    });
+    expect(ids(actions)).toEqual([
+      "vault-category:filter",
+      "left-rail:new-document",
+      "vault-category:copy-category",
+    ]);
+  });
+
+  it("none of the category verbs are mutating (no time-travel gate)", () => {
+    const actions = vaultCategoryMenu({
+      kind: "vault-category",
+      id: "vault-category:type:adr",
+      docType: "adr",
+      expansionKey: "type:adr",
+      expanded: true,
+    });
+    for (const action of actions) {
+      expect(action.disabledInTimeTravel).toBeUndefined();
+    }
+    expect(byId(actions, "vault-category:toggle")?.label).toBe("Collapse category");
+  });
+
+  it("rejects non-vault-category entities at resolver ingress", () => {
+    expect(vaultCategoryMenu({ kind: "vault-doc", id: "doc:x" })).toEqual([]);
+    expect(vaultCategoryMenu(null)).toEqual([]);
+  });
+});
+
+describe("vaultSectionMenu", () => {
+  it("offers expand-all, collapse-all (shared keymap verbs), and new document", () => {
+    const actions = vaultSectionMenu({
+      kind: "vault-section",
+      id: "vault-section:features",
+      section: "features",
+      scope: "scope-a",
+    });
+    expect(ids(actions)).toEqual([
+      "left-rail:expand-tree",
+      "left-rail:collapse-tree",
+      "left-rail:new-document",
+    ]);
+    expect(byId(actions, "left-rail:expand-tree")?.section).toBe("navigate");
+    expect(byId(actions, "left-rail:collapse-tree")?.section).toBe("navigate");
+    expect(byId(actions, "left-rail:new-document")?.section).toBe("transform");
+  });
+
+  it("rejects an unknown section name and non-section entities at ingress", () => {
+    expect(
+      vaultSectionMenu({ kind: "vault-section", id: "x", section: "bogus" }),
+    ).toEqual([]);
+    expect(vaultSectionMenu({ kind: "vault-doc", id: "doc:x" })).toEqual([]);
+    expect(vaultSectionMenu(null)).toEqual([]);
   });
 });
 

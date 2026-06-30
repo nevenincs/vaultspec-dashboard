@@ -3,10 +3,12 @@
 // Vault tab surface adoption (binding `LeftRail` 238:600): the vault browser
 // rendered against the REAL engine over the fixture vault — no mock transport, no
 // injected backend conditions. The Vault tab is TWO collapsible sections (Features
-// + Documents) that start EXPANDED by default to match the binding (Figma 238:600
-// SectionHeader is open); collapsing a section hides its folder rows, and expanding
-// a folder reveals its document rows. These cover the expanded default, the
-// one-tab-stop roving a11y contract, the disclosure cascade, and selection.
+// + Documents) that start COLLAPSED by default (parity with the activity rail's
+// persisted folds — a user-directed divergence from the binding's open sections),
+// and whose open/closed choice persists across reloads. Expanding a section reveals
+// its folder rows, and expanding a folder reveals its document rows. These cover the
+// collapsed default, the one-tab-stop roving a11y contract, the disclosure cascade,
+// and selection.
 //
 // The four-honest-states selection logic (loading / empty / degraded / error) lives
 // in the PURE `deriveVaultTreeAvailability` selector, tested over explicit
@@ -20,6 +22,7 @@ import { createElement } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { queryClient } from "../../stores/server/queryClient";
+import { useBrowserTreeExpansionStore } from "../../stores/view/browserTreeExpansion";
 import { useViewStore } from "../../stores/view/viewStore";
 import { liveScope } from "../../testing/liveClient";
 import { VaultBrowser } from "./VaultBrowser";
@@ -40,12 +43,25 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     scope = await liveScope();
   });
   beforeEach(() => {
+    // Start every test from a clean, fully-collapsed disclosure state so the
+    // persisted (localStorage-backed) tree store cannot leak expansion between tests
+    // — the collapsed default is the contract under test.
+    localStorage.clear();
+    useBrowserTreeExpansionStore.getState().reset();
     // Pin the active scope synchronously so useActiveScope resolves without the
     // map/session round-trip; the vault-tree query then runs against the engine.
     useViewStore.getState().setScope(scope);
   });
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
+    // DRAIN before clearing: the rail mounts a BACKGROUND dashboard-state query the
+    // tests never await (they only wait for the vault-tree to render). If a
+    // dashboard-state fetch is still in flight at file teardown, the shared liveSetup
+    // `happyDOM.abort()` drain aborts it AFTER its query/observer is gone, orphaning the
+    // benign AbortError into an UNHANDLED rejection that fails the run. Waiting for
+    // isFetching()===0 lets the (local, fast) live engine settle every fetch first, so
+    // nothing is left for the teardown abort to orphan — no masking, no swallowed errors.
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
     queryClient.clear();
     useViewStore.getState().setScope(null);
   });
@@ -67,7 +83,25 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     return navButtons().filter((b) => b.tabIndex === 0);
   }
 
-  it("renders both sections expanded by default under a labelled landmark", async () => {
+  // Sections default COLLAPSED; open the named section and wait for its body so its
+  // folder rows mount before a test inspects them.
+  async function expandSection(name: "features" | "documents"): Promise<HTMLElement> {
+    const header = await waitFor(() => {
+      const button = screen.getAllByRole("button").find((b) => {
+        const label = b.querySelector("[data-vault-section]");
+        return label?.getAttribute("data-vault-section") === name;
+      });
+      expect(button).toBeTruthy();
+      return button!;
+    });
+    if (header.getAttribute("aria-expanded") === "false") {
+      fireEvent.click(header);
+    }
+    await waitFor(() => expect(header.getAttribute("aria-expanded")).toBe("true"));
+    return header;
+  }
+
+  it("renders both sections collapsed by default under a labelled landmark", async () => {
     renderBrowser();
     const nav = await screen.findByRole("navigation", { name: "vault browser" });
     expect(nav).toBeTruthy();
@@ -75,16 +109,23 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
       const sections = document.querySelectorAll("[data-vault-section]");
       expect(sections.length).toBe(2);
     });
-    // Sections default OPEN (binding 238:600) → their folder rows ARE mounted, and
-    // both section headers read expanded.
+    // Sections default COLLAPSED → both section headers read NOT expanded and no
+    // folder rows are mounted yet.
+    const sectionHeaders = screen
+      .getAllByRole("button")
+      .filter((b) => b.querySelector("[data-vault-section]"));
+    expect(sectionHeaders).toHaveLength(2);
+    expect(
+      sectionHeaders.every((b) => b.getAttribute("aria-expanded") === "false"),
+    ).toBe(true);
+    expect(document.querySelectorAll("[data-vault-folder]").length).toBe(0);
+    // Expanding a section mounts its folder rows.
+    await expandSection("documents");
     await waitFor(() => {
       expect(document.querySelectorAll("[data-vault-folder]").length).toBeGreaterThan(
         0,
       );
     });
-    expect(
-      screen.getAllByRole("button", { expanded: true }).length,
-    ).toBeGreaterThanOrEqual(2);
   });
 
   it("is ONE tab-stop: exactly one navigable element has tabIndex 0 at a time", async () => {
@@ -100,15 +141,9 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
   it("collapses then re-expands a section, and expands a folder to reveal document rows", async () => {
     renderBrowser();
     await screen.findByRole("navigation", { name: "vault browser" });
-    // Sections default open → a section header reads expanded:true.
-    const section = await waitFor(() => {
-      const button = screen
-        .getAllByRole("button", { expanded: true })
-        .find((b) => b.querySelector("[data-vault-section]"));
-      expect(button).toBeTruthy();
-      return button!;
-    });
-    // Collapse it, then re-expand — the disclosure toggle round-trips.
+    // Open the Documents section (collapsed by default), then round-trip its
+    // disclosure: collapse → re-expand.
+    const section = await expandSection("documents");
     fireEvent.click(section);
     expect(section.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(section);
@@ -166,7 +201,8 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     // with a centralized category icon, never a folder glyph or a dot.
     renderBrowser();
     await screen.findByRole("navigation", { name: "vault browser" });
-    // The first Features feature folder (default-open sections → folders mounted).
+    // Open the Features section (collapsed by default) so its feature folder rows mount.
+    await expandSection("features");
     const featureFolder = await waitFor(() => {
       const button = screen
         .getAllByRole("button", { expanded: false })
@@ -198,15 +234,8 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
   it("groups the Documents section by category and never surfaces an index row", async () => {
     renderBrowser();
     await screen.findByRole("navigation", { name: "vault browser" });
-    // Locate the Documents section header (the second labelled section).
-    const documentsHeader = await waitFor(() => {
-      const button = screen.getAllByRole("button").find((b) => {
-        const label = b.querySelector("[data-vault-section]");
-        return label?.getAttribute("data-vault-section") === "documents";
-      });
-      expect(button).toBeTruthy();
-      return button!;
-    });
+    // Open the Documents section (collapsed by default) to mount its category folders.
+    const documentsHeader = await expandSection("documents");
     // Its body's folder rows are category folders (each with a category icon), and an
     // `index` group is never one of them (ADR D5).
     const body = document.getElementById(
@@ -227,13 +256,10 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
   it("clicking a document row drives the shared selection (doc:<stem>)", async () => {
     renderBrowser();
     await screen.findByRole("navigation", { name: "vault browser" });
-    // Sections default open → folder rows are already visible. Expand a
-    // Documents-section category folder, which reveals its documents directly.
+    // Open the Documents section (collapsed by default), then expand a category
+    // folder, which reveals its documents directly.
+    const documentsHeader = await expandSection("documents");
     const folder = await waitFor(() => {
-      const documentsHeader = screen.getAllByRole("button").find((b) => {
-        const label = b.querySelector("[data-vault-section]");
-        return label?.getAttribute("data-vault-section") === "documents";
-      })!;
       const body = document.getElementById(
         documentsHeader.getAttribute("aria-controls")!,
       );
@@ -267,11 +293,9 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     // divergence this guards against.
     renderBrowser();
     await screen.findByRole("navigation", { name: "vault browser" });
+    // Open the Documents section (collapsed by default) to reach a category folder.
+    const documentsHeader = await expandSection("documents");
     const folder = await waitFor(() => {
-      const documentsHeader = screen.getAllByRole("button").find((b) => {
-        const label = b.querySelector("[data-vault-section]");
-        return label?.getAttribute("data-vault-section") === "documents";
-      })!;
       const body = document.getElementById(
         documentsHeader.getAttribute("aria-controls")!,
       );

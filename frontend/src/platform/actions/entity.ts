@@ -51,6 +51,53 @@ export interface CodeFileEntity {
   nodeId?: string;
 }
 
+/** Left rail: a FEATURE folder row in the vault tree (Features section). The verbs
+ *  are target-relative to the feature: focus its node, expand/collapse the folder,
+ *  create a document in it, autofix/archive it, copy its tag. */
+export interface VaultFeatureEntity {
+  kind: "vault-feature";
+  id: string;
+  /** The raw feature tag (the selection-join identity, e.g. `dashboard-left-rail`). */
+  feature: string;
+  /** The active dashboard scope at the surface that published this entity. */
+  scope?: string | null;
+  /** The feature's linked graph node id, when it resolves to one. */
+  nodeId?: string;
+  /** The folder's expansion key (`feat:<tag>`) so the menu can toggle it. */
+  expansionKey?: string;
+  /** Whether the folder is currently expanded (drives the expand/collapse label). */
+  expanded?: boolean;
+}
+
+/** Left rail: a CATEGORY (doc-type) folder row in the vault tree — a feature
+ *  sub-folder (Features section) or a top-level category (Documents section). */
+export interface VaultCategoryEntity {
+  kind: "vault-category";
+  id: string;
+  /** The doc-type token the folder groups (e.g. `adr`, `plan`). */
+  docType: string;
+  /** The parent feature tag when this is a feature sub-folder; absent in the
+   *  Documents section (a top-level category folder). */
+  feature?: string;
+  /** The active dashboard scope at the surface that published this entity. */
+  scope?: string | null;
+  /** The folder's expansion key (`type:<docType>` or `featcat:<feature>:<docType>`). */
+  expansionKey?: string;
+  /** Whether the folder is currently expanded (drives the expand/collapse label). */
+  expanded?: boolean;
+}
+
+/** Left rail: a top-level SECTION header (Features / Documents) in the vault tree.
+ *  Its verbs operate on the whole tree (expand-all / collapse-all) plus new-document. */
+export interface VaultSectionEntity {
+  kind: "vault-section";
+  id: string;
+  /** Which section header was clicked. */
+  section: "features" | "documents";
+  /** The active dashboard scope at the surface that published this entity. */
+  scope?: string | null;
+}
+
 /** Right rail / graph: a graph node (inspector subject or stage node). */
 export interface NodeEntity {
   kind: "node";
@@ -177,6 +224,9 @@ export type EntityDescriptor =
   | WorktreeEntity
   | VaultDocEntity
   | CodeFileEntity
+  | VaultFeatureEntity
+  | VaultCategoryEntity
+  | VaultSectionEntity
   | NodeEntity
   | EdgeEntity
   | EventEntity
@@ -198,6 +248,9 @@ export const ENTITY_KINDS: readonly EntityKind[] = [
   "worktree",
   "vault-doc",
   "code-file",
+  "vault-feature",
+  "vault-category",
+  "vault-section",
   "node",
   "edge",
   "event",
@@ -214,6 +267,7 @@ export const ENTITY_KINDS: readonly EntityKind[] = [
 
 const ENTITY_KIND_SET = new Set<string>(ENTITY_KINDS);
 const BACKGROUND_REGIONS = new Set<string>(["left-rail", "right-rail", "timeline"]);
+const VAULT_SECTION_NAMES = new Set<string>(["features", "documents"]);
 export const ENTITY_DESCRIPTOR_ID_MAX_CHARS = 2048;
 export const ENTITY_DESCRIPTOR_PATH_MAX_CHARS = 2048;
 export const ENTITY_DESCRIPTOR_TEXT_MAX_CHARS = 512;
@@ -349,6 +403,57 @@ export function normalizeEntityDescriptor(entity: unknown): EntityDescriptor | n
         normalizeOptionalNullableScopeId(entity.scope),
       );
       assignDefined(normalized, "nodeId", normalizeOptionalNodeId(entity.nodeId));
+      return normalized;
+    }
+    case "vault-feature": {
+      const feature = normalizeRequiredText(entity.feature);
+      if (feature === null) return null;
+      const normalized: VaultFeatureEntity = { kind, id, feature };
+      assignDefined(
+        normalized,
+        "scope",
+        normalizeOptionalNullableScopeId(entity.scope),
+      );
+      assignDefined(normalized, "nodeId", normalizeOptionalNodeId(entity.nodeId));
+      assignDefined(
+        normalized,
+        "expansionKey",
+        normalizeOptionalText(entity.expansionKey),
+      );
+      assignDefined(normalized, "expanded", normalizeOptionalBoolean(entity.expanded));
+      return normalized;
+    }
+    case "vault-category": {
+      const docType = normalizeRequiredText(entity.docType);
+      if (docType === null) return null;
+      const normalized: VaultCategoryEntity = { kind, id, docType };
+      assignDefined(normalized, "feature", normalizeOptionalText(entity.feature));
+      assignDefined(
+        normalized,
+        "scope",
+        normalizeOptionalNullableScopeId(entity.scope),
+      );
+      assignDefined(
+        normalized,
+        "expansionKey",
+        normalizeOptionalText(entity.expansionKey),
+      );
+      assignDefined(normalized, "expanded", normalizeOptionalBoolean(entity.expanded));
+      return normalized;
+    }
+    case "vault-section": {
+      const section = typeof entity.section === "string" ? entity.section.trim() : "";
+      if (!VAULT_SECTION_NAMES.has(section)) return null;
+      const normalized: VaultSectionEntity = {
+        kind,
+        id,
+        section: section as VaultSectionEntity["section"],
+      };
+      assignDefined(
+        normalized,
+        "scope",
+        normalizeOptionalNullableScopeId(entity.scope),
+      );
       return normalized;
     }
     case "node": {

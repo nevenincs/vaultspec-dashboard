@@ -49,3 +49,20 @@ export function isTimelineBackgroundTarget(event: MouseEvent): boolean {
   if (target === null || typeof target.closest !== "function") return false;
   return target.closest(TIMELINE_NON_BACKGROUND_SELECTOR) === null;
 }
+
+/** The selector for rail elements that own their own menu/gesture/role (every row is a
+ *  `<button>`; the filter field is an `<input>`; the worktree dropdown rows are
+ *  listbox options). A right-click OUTSIDE all of these — the rail's own padding, the
+ *  gaps between slots, the empty area below a short tree — is a rail-background click,
+ *  so the chrome escape-hatch menu opens there while a row's own resolver always wins
+ *  on a deeper target. The default `target === currentTarget` predicate only fired on
+ *  the bare rail element, which the rail's filled child slots almost never expose;
+ *  this predicate reaches the whole filled rail (context-menu-actions-are-layered). */
+const RAIL_NON_BACKGROUND_SELECTOR =
+  "button,a,input,textarea,select,[role='menuitem'],[role='option'],[role='slider'],[contenteditable='true']";
+
+export function isRailBackgroundTarget(event: MouseEvent): boolean {
+  const target = event.target as Element | null;
+  if (target === null || typeof target.closest !== "function") return false;
+  return target.closest(RAIL_NON_BACKGROUND_SELECTOR) === null;
+}

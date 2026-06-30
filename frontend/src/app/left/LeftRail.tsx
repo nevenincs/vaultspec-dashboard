@@ -25,7 +25,10 @@ import {
   useFilterSidebarOpen,
 } from "../../stores/view/filterSidebar";
 import { useViewportClass } from "../../stores/view/viewportClass";
-import { backgroundContextMenuHandler } from "../menus/backgroundContextMenu";
+import {
+  backgroundContextMenuHandler,
+  isRailBackgroundTarget,
+} from "../menus/backgroundContextMenu";
 import { Divider } from "../kit";
 import { FilterSidebar } from "../stage/FilterSidebar";
 import { BrowserRegion } from "./BrowserRegion";
@@ -48,7 +51,11 @@ export function LeftRail() {
       <nav
         aria-label="scope rail"
         data-left-rail
-        onContextMenu={backgroundContextMenuHandler("left-rail", openContextMenu)}
+        onContextMenu={backgroundContextMenuHandler(
+          "left-rail",
+          openContextMenu,
+          isRailBackgroundTarget,
+        )}
         className="flex min-h-0 flex-1 flex-col px-fg-3 pt-fg-2 text-ink-muted"
       >
         <div className="flex min-h-0 flex-1 flex-col" data-rail-slot="browser">

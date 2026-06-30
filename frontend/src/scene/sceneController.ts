@@ -241,6 +241,15 @@ export type SceneCommand =
   // (camera) + this, NEVER a multi-id `set-selected`. An empty set clears the highlight.
   // Additive to the locked union — no existing member renamed/removed.
   | { kind: "set-meta-highlight"; ids: ReadonlySet<string> }
+  // DURABLE feature-cluster spotlight (feature-selection-global-state): the canonical
+  // selection authority projects a SELECTED FEATURE here by its TAG (not a frozen id
+  // set). The scene derives the member cohort from live `node.feature_tags` each render
+  // and re-applies it on every `set-data`, so the spotlight SURVIVES data refreshes /
+  // SSE deltas / filter changes / lens switches — unlike `set-meta-highlight`, which is
+  // a one-shot id set cleared on the next data change. `tag: null` clears it. `frame`
+  // (default false) requests a ONE-SHOT camera frame to the cohort on a genuine change
+  // (the rail feature-select frame, follow-gated); the durable re-apply never re-frames.
+  | { kind: "set-feature-spotlight"; tag: string | null; frame?: boolean }
   // Transient cross-highlight (G2.b): lift the named nodes briefly — the
   // timeline's event-click pulse. Additive seam amendment at S36.
   | { kind: "pulse"; ids: ReadonlySet<string> }

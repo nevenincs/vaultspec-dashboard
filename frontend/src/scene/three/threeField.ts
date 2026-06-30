@@ -482,6 +482,10 @@ export class ThreeField implements SceneFieldRenderer {
   // soft emphasis (members keep full colour, non-members recede) but NO selection ring —
   // distinct from `selectedIds`, which is enforced SINGLETON (the graph rings at most one).
   private metaHighlightIds: ReadonlySet<string> = new Set();
+  // DURABLE feature-cluster spotlight: the SELECTED FEATURE tag (feature-selection-global-
+  // state). Stored as a tag — NOT a frozen id set — so the member cohort is re-derived from
+  // `featureCohort` on every `setData`, surviving data refreshes. `null` = no feature spotlit.
+  private spotlightFeatureTag: string | null = null;
   private pinnedIds: ReadonlySet<string> = new Set();
   private visibleNodeIds: ReadonlySet<string> | null = null;
 
@@ -831,6 +835,27 @@ export class ThreeField implements SceneFieldRenderer {
         this.applyEmphasis();
         this.requestRender();
         break;
+      case "set-feature-spotlight": {
+        // DURABLE feature-cluster spotlight (feature-selection-global-state): store the
+        // selected feature TAG and emphasise its cohort (non-members recede), persisting
+        // across data reloads because `emphasisSet` re-derives membership from the live
+        // `featureCohort`. A genuine change with `frame` requested fires a ONE-SHOT camera
+        // frame to the cohort (the follow-gated rail-select frame); the durable re-apply on
+        // `setData` never re-frames, so a refresh keeps the spotlight without yanking.
+        const changed = cmd.tag !== this.spotlightFeatureTag;
+        this.spotlightFeatureTag = cmd.tag;
+        this.applyEmphasis();
+        if (cmd.tag !== null && changed && cmd.frame) {
+          const members = this.featureCohort.get(cmd.tag);
+          if (members && members.size > 0) {
+            this.autoframeTarget = null;
+            this.autoframeSuspended = true;
+            this.fitToNodes(members);
+          }
+        }
+        this.requestRender();
+        break;
+      }
       case "set-pinned":
         this.pinnedIds = new Set(cmd.ids);
         this.requestRender();
@@ -1116,6 +1141,11 @@ export class ThreeField implements SceneFieldRenderer {
     // already framed via fitToView above; this prompt poll handles the warm path and its
     // deadband no-ops an unchanged frame.
     this.reengageAutoframe();
+    // Re-apply emphasis against the freshly-rebuilt geometry so a DURABLE focus survives
+    // the data reload: the feature-cluster spotlight (re-derived from the rebuilt
+    // `featureCohort`) and any active node selection re-dim their non-members instead of
+    // resetting to a flat, un-spotlit graph (the aDim attribute is recreated at 0 here).
+    this.applyEmphasis();
     this.requestRender();
     if (this.running) this.wake();
   }
@@ -1450,6 +1480,21 @@ export class ThreeField implements SceneFieldRenderer {
         for (const id of this.featureCohort.get(tag) ?? []) set.add(id);
       }
       return set;
+    }
+    // DURABLE feature-cluster spotlight (feature-selection-global-state): a selected
+    // feature emphasises its member cohort — derived LIVE from `featureCohort` (rebuilt
+    // every setData) plus the feature node itself when rendered — so the spotlight is
+    // re-derived (never lost) across a data reload. Sits ABOVE the generic selected-ids
+    // branch so a `feature:<tag>` id can never fall through and dim the whole graph. An
+    // all-absent cohort yields no emphasis (returns null) rather than dimming everything.
+    if (this.spotlightFeatureTag) {
+      const set = new Set<string>();
+      for (const id of this.featureCohort.get(this.spotlightFeatureTag) ?? []) {
+        if (this.idToIndex.has(id)) set.add(id);
+      }
+      const featureNodeId = `feature:${this.spotlightFeatureTag}`;
+      if (this.idToIndex.has(featureNodeId)) set.add(featureNodeId);
+      return set.size > 0 ? set : null;
     }
     if (this.selectedIds.size > 0) {
       const set = new Set<string>(this.selectedIds);

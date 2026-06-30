@@ -71,7 +71,9 @@ import {
   patchDashboardTimelineMode,
   representationModePatch,
   selectionPatch,
+  setDashboardFeatureFilter,
   timelineModePatch,
+  toggleDashboardFilterFacet,
   updateDashboardStateCache,
   useDashboardStateMutations,
 } from "./dashboardState";
@@ -108,6 +110,25 @@ afterEach(async () => {
       .catch(() => undefined);
     cleanupScope = null;
   }
+});
+
+describe("imperative filter seam (context-menu folder verbs)", () => {
+  // The happy path (engine patch + cache update) is the same already-covered
+  // `patchDashboardState` + pure facet builders; here we pin the scope guard so an
+  // invalid scope never reaches the engine — a no-op resolving to null.
+  it("toggleDashboardFilterFacet no-ops to null for an unwritable scope", async () => {
+    await expect(toggleDashboardFilterFacet(null, "doc_types", "adr")).resolves.toBe(
+      null,
+    );
+    await expect(toggleDashboardFilterFacet("   ", "doc_types", "adr")).resolves.toBe(
+      null,
+    );
+  });
+
+  it("setDashboardFeatureFilter no-ops to null for an unwritable scope", async () => {
+    await expect(setDashboardFeatureFilter(null, "my-feature")).resolves.toBe(null);
+    await expect(setDashboardFeatureFilter("   ", "my-feature")).resolves.toBe(null);
+  });
 });
 
 describe("dashboardLineageFilterArg (timeline lineage filter, unified-filter-plane D3)", () => {
@@ -677,6 +698,11 @@ describe("dashboard-state engine client (live engine)", () => {
     ).toBeNull();
     expect(normalizeDashboardFilterFacetValue("   ")).toBeNull();
     expect(normalizeDashboardFeatureTag(" architecture ")).toBe("architecture");
+    // De-hash: a `#feature-raw` (frontmatter form) and a `feature-raw` (engine-served
+    // form) MUST normalize to one identity, or the filter never matches a node's tag.
+    expect(normalizeDashboardFeatureTag("#feature-raw")).toBe("feature-raw");
+    expect(normalizeDashboardFeatureTag("  #feature-raw  ")).toBe("feature-raw");
+    expect(normalizeDashboardFeatureTag("#")).toBeNull();
     expect(
       normalizeDashboardFeatureTag(
         "x".repeat(DASHBOARD_FILTER_FACET_VALUE_MAX_CHARS + 1),

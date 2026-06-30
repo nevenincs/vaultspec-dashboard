@@ -22,6 +22,7 @@ import {
   selectNode,
   selectNodes,
   SELECTION_METADATA_ID_MAX_CHARS,
+  setFollowMode,
   setHoveredNodeId,
 } from "./selection";
 import { useViewStore } from "./viewStore";
@@ -420,6 +421,60 @@ describe("selection seam", () => {
     });
     expect(commands.filter((command) => command.kind === "focus-node")).toEqual([]);
     expect(sceneOriginatedRef.current).toBe(false);
+  });
+
+  it("projects a SELECTED FEATURE as a durable cluster spotlight, no node ring", () => {
+    setFollowMode(true);
+    const { scene, commands } = captureScene();
+    const sceneOriginatedRef = { current: false };
+
+    projectDashboardSelectionToScene(
+      scene,
+      ["feature:dashboard-gui"],
+      "feature:dashboard-gui",
+      sceneOriginatedRef,
+    );
+
+    // The feature spotlights its cluster by TAG (durable) and frames it (follow on,
+    // not scene-originated); it draws NO node ring (set-selected is cleared to empty).
+    expect(commands).toContainEqual({
+      kind: "set-feature-spotlight",
+      tag: "dashboard-gui",
+      frame: true,
+    });
+    expect(commands).toContainEqual({ kind: "set-selected", ids: new Set() });
+    expect(commands.filter((c) => c.kind === "focus-node")).toEqual([]);
+    expect(sceneOriginatedRef.current).toBe(false);
+  });
+
+  it("does not frame the feature cluster when follow mode is OFF", () => {
+    setFollowMode(false);
+    const { scene, commands } = captureScene();
+    const sceneOriginatedRef = { current: false };
+
+    projectDashboardSelectionToScene(
+      scene,
+      ["feature:dashboard-gui"],
+      "feature:dashboard-gui",
+      sceneOriginatedRef,
+    );
+
+    expect(commands).toContainEqual({
+      kind: "set-feature-spotlight",
+      tag: "dashboard-gui",
+      frame: false,
+    });
+    setFollowMode(true);
+  });
+
+  it("clears a feature spotlight when a document is selected", () => {
+    const { scene, commands } = captureScene();
+    const sceneOriginatedRef = { current: false };
+
+    projectDashboardSelectionToScene(scene, ["doc:x"], "doc:x", sceneOriginatedRef);
+
+    expect(commands).toContainEqual({ kind: "set-feature-spotlight", tag: null });
+    expect(commands).toContainEqual({ kind: "set-selected", ids: new Set(["doc:x"]) });
   });
 
   it("pulses bounded selection node sets through the selection scene seam", () => {

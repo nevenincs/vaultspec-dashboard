@@ -9,7 +9,11 @@ import {
   BROWSER_TREE_KEY_MAX_CHARS,
   browserTreeExpansionKey,
   canWriteBrowserTreeExpansionScope,
+  collapseVaultBrowserTree,
   deriveAllVaultBrowserTreeKeys,
+  expandAllVaultBrowserTree,
+  publishVaultBrowserTreeKeys,
+  toggleVaultBrowserTreeItem,
   deriveBrowserTreeExpansionItem,
   deriveBrowserTreeKeyboardTarget,
   deriveBrowserTreeRovingKey,
@@ -90,6 +94,55 @@ describe("browser tree expand/collapse all", () => {
     const key = browserTreeExpansionKey(null, "vault");
     useBrowserTreeExpansionStore.getState().expandKeys(key, ["ok", "", 5, null]);
     expect(useBrowserTreeExpansionStore.getState().expandedKeys).toEqual(["ok"]);
+  });
+});
+
+describe("imperative vault-tree seam (folder/section context menus)", () => {
+  beforeEach(() => useBrowserTreeExpansionStore.getState().reset());
+
+  it("toggles one folder open then closed by its expansion key", () => {
+    const vaultKey = browserTreeExpansionKey(null, "vault");
+    useBrowserTreeExpansionStore.getState().setKey(vaultKey);
+    toggleVaultBrowserTreeItem(null, "feat:alpha");
+    expect(useBrowserTreeExpansionStore.getState().expandedKeys).toContain(
+      "feat:alpha",
+    );
+    toggleVaultBrowserTreeItem(null, "feat:alpha");
+    expect(useBrowserTreeExpansionStore.getState().expandedKeys).not.toContain(
+      "feat:alpha",
+    );
+  });
+
+  it("publish-then-expand-all expands every known key; collapse clears them", () => {
+    const vaultKey = browserTreeExpansionKey(null, "vault");
+    useBrowserTreeExpansionStore.getState().setKey(vaultKey);
+    publishVaultBrowserTreeKeys(null, ["sec:features", "feat:alpha", "type:adr"]);
+    expect(useBrowserTreeExpansionStore.getState().knownKeys).toEqual([
+      "sec:features",
+      "feat:alpha",
+      "type:adr",
+    ]);
+    expandAllVaultBrowserTree(null);
+    expect(new Set(useBrowserTreeExpansionStore.getState().expandedKeys)).toEqual(
+      new Set(["sec:features", "feat:alpha", "type:adr"]),
+    );
+    collapseVaultBrowserTree(null);
+    expect(useBrowserTreeExpansionStore.getState().expandedKeys).toEqual([]);
+  });
+
+  it("expand-all is a no-op when no keys have been published", () => {
+    const vaultKey = browserTreeExpansionKey(null, "vault");
+    useBrowserTreeExpansionStore.getState().setKey(vaultKey);
+    expandAllVaultBrowserTree(null);
+    expect(useBrowserTreeExpansionStore.getState().expandedKeys).toEqual([]);
+  });
+
+  it("ignores a published key set that targets a different (stale) tree key", () => {
+    const vaultKey = browserTreeExpansionKey(null, "vault");
+    useBrowserTreeExpansionStore.getState().setKey(vaultKey);
+    // A publish for a DIFFERENT scope must not poison the mounted tree's known keys.
+    publishVaultBrowserTreeKeys("scope-a", ["feat:beta"]);
+    expect(useBrowserTreeExpansionStore.getState().knownKeys).toEqual([]);
   });
 });
 

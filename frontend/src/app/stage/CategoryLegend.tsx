@@ -1,6 +1,11 @@
 // Category legend (binding Figma `graph/Hero` 213:505 Legend 99:2): the key to the
-// node-fill encoding, docked top-left of the canvas as a single raised card. Each
-// item leads with the SAME centralized category GLYPH the left-rail tree uses —
+// node-fill encoding, hosted in the LEFT of the graph panel's dock-header row (the
+// dockview prefix-actions slot — the free space left of the empty graph tab, with
+// the graph + activity-rail visibility toggles riding the same header's right). It
+// is mounted by `DockWorkspace`'s `prefixHeaderActionsComponent` and rendered only
+// in the graph group's header; it is no longer a free-floating canvas overlay, so
+// its size is managed by the header row rather than absolute canvas positioning.
+// Each item leads with the SAME centralized category GLYPH the left-rail tree uses —
 // the shared `DocTypeMark` silhouette tinted by the bound scene/category color (the
 // SAME color the graph nodes paint with) — over a plain-language label, so the
 // legend, the tree, and the nodes all read as one icon + color schema.
@@ -38,9 +43,9 @@
 // corpus-view-consumes-it). It is shown only when a doc-type filter is active.
 //
 // figma-frontend-rewrite / graph-overlay redesign: the legend composes the
-// centralized kit `Card` + bound category/accent tokens — never a hand-drawn pill or
-// a literal hex (design-system-is-centralized, warmth-lives-in-tokens), and every
-// size is relative (no-hardcoded-px-in-dom-styling).
+// centralized kit marks/dividers + bound category/accent tokens — never a hand-drawn
+// pill or a literal hex (design-system-is-centralized, warmth-lives-in-tokens), and
+// every size is relative (no-hardcoded-px-in-dom-styling).
 
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -50,7 +55,6 @@ import { useActiveScope, useVaultRailFacets } from "../../stores/server/queries"
 import { DocTypeMark } from "../../scene/field/markComponents";
 import { useFocusZone } from "../chrome/useFocusZone";
 import {
-  Card,
   ChevronLeft,
   ChevronRight,
   Divider,
@@ -62,6 +66,10 @@ import type { Category } from "../kit";
 // The leading category GLYPH reads at the caption size — the same shared mark and
 // color schema as the left-rail tree (each doc type its own mark).
 const LEGEND_ICON_PX = 14;
+// Breathing gap (px) reserved between the legend's expanded width and the header's
+// right-actions cluster when deciding to auto-compact — a measurement constant used
+// only in arithmetic, never as a DOM size (no-hardcoded-px-in-dom-styling).
+const LEGEND_HEADER_GAP = 16;
 
 /** The legend vocabulary in the canonical pipeline reading order (terminology-
  *  standardization ADR D2): Research · Decisions · Plans · Steps · Audits ·
@@ -92,14 +100,13 @@ function LegendMark({ category }: { category: Category }) {
   );
 }
 
-// The legend region clears the canvas's TOP-RIGHT control cluster (the hide-graph
-// glyph + the ≡ Graph-controls trigger, each a `size-7` IconButton at `right-fg-2`
-// with a `gap-fg-1` between them) plus a comfortable gap, so the legend's available
-// width is the canvas MINUS that cluster — the legend can never grow under the
-// buttons. The region spans that available width; the card is `w-fit max-w-full`
-// inside it, so it shrinks to content and is clamped to the cleared span.
+// The legend fills the LEFT of the graph dock-header row and is left-aligned and
+// vertically centered in it; it shrinks to its content and is clamped to the header
+// (the toolbar row inside is `w-fit max-w-full`, the region clips any overflow). The
+// symmetric inline padding keeps the legend off the rail edge on the left and gives
+// it breathing room before the header's free space / toggles on the right.
 const LEGEND_REGION_POSITION =
-  "pointer-events-none absolute left-fg-2 right-[5rem] top-fg-2 z-10 flex";
+  "flex h-full min-w-0 max-w-full items-center overflow-hidden px-fg-2";
 
 export function CategoryLegend() {
   const scope = useActiveScope();
@@ -119,14 +126,19 @@ export function CategoryLegend() {
   const [userCompact, setUserCompact] = useState(false);
   const [autoCompact, setAutoCompact] = useState(false);
   const compact = userCompact || autoCompact;
-  // Measure-then-minify: the region is the available width; the card's `scrollWidth`
-  // (read while EXPANDED, then cached) is the width the expanded row needs. When the
-  // need exceeds the region, enforce compact — and re-expand once the space returns.
+  // Measure-then-minify: the available width is the graph dock-header MINUS its
+  // right-actions cluster (the graph + activity-rail visibility toggles) and a small
+  // gap; the card's `scrollWidth` (read while EXPANDED, then cached) is the width the
+  // expanded row needs. When the need exceeds the available space, enforce compact —
+  // and re-expand once the space returns. The header chrome is dockview's stable
+  // `.dv-tabs-and-actions-container` / `.dv-right-actions-container`; when it is
+  // absent (a bare unit render with no dock host) we fall back to the region width.
   const regionRef = useRef<HTMLDivElement | null>(null);
   const expandedNeedRef = useRef(0);
   useLayoutEffect(() => {
     const region = regionRef.current;
     if (!region || typeof ResizeObserver === "undefined") return;
+    const header = region.closest<HTMLElement>(".dv-tabs-and-actions-container");
     const evaluate = () => {
       const card = region.querySelector<HTMLElement>("[data-category-legend]");
       if (!card) return;
@@ -135,10 +147,17 @@ export function CategoryLegend() {
       if (!compact) expandedNeedRef.current = card.scrollWidth;
       const need = expandedNeedRef.current;
       if (need <= 0) return;
-      setAutoCompact(need > region.clientWidth);
+      const rightActions = header?.querySelector<HTMLElement>(
+        ".dv-right-actions-container",
+      );
+      const available = header
+        ? header.clientWidth - (rightActions?.offsetWidth ?? 0) - LEGEND_HEADER_GAP
+        : region.clientWidth;
+      setAutoCompact(need > available);
     };
     const observer = new ResizeObserver(evaluate);
     observer.observe(region);
+    if (header) observer.observe(header);
     evaluate();
     return () => observer.disconnect();
   }, [compact, filterActive]);
@@ -154,7 +173,6 @@ export function CategoryLegend() {
   });
 
   const toggle = zone.rove("toggle");
-  const reset = zone.rove("reset");
   // Arrow only: ChevronLeft collapses the expanded row to icons; ChevronRight
   // expands the compact row back out to labels (the chevron points the way the row
   // will move).
@@ -162,10 +180,11 @@ export function CategoryLegend() {
 
   return (
     <div ref={regionRef} className={LEGEND_REGION_POSITION} data-category-legend-region>
-      <Card
-        elevation="raised"
-        padded={false}
-        className="pointer-events-auto flex w-fit max-w-full flex-nowrap items-center gap-fg-1-5 overflow-hidden px-fg-2 py-fg-1-5"
+      {/* Inline header toolbar row — no raised card surface: the legend now reads as
+          part of the opaque dock-header bar rather than a floating panel over the
+          canvas. */}
+      <div
+        className="flex w-fit max-w-full flex-nowrap items-center gap-fg-1-5 overflow-hidden"
         role="toolbar"
         aria-label="category filters"
         data-category-legend
@@ -184,7 +203,7 @@ export function CategoryLegend() {
           aria-label={compact ? "Show category labels" : "Hide category labels"}
           title={compact ? "Show category labels" : "Hide category labels"}
           data-category-legend-toggle
-          className="flex shrink-0 items-center rounded-fg-xs px-fg-1 py-fg-0-5 text-ink-muted outline-none transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="flex shrink-0 items-center rounded-fg-xs px-fg-1 py-fg-0-5 text-ink-muted outline-none transition-colors duration-ui-fast ease-settle hover:bg-paper-raised focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
           <ToggleChevron aria-hidden size={LEGEND_ICON_PX} />
         </button>
@@ -202,7 +221,7 @@ export function CategoryLegend() {
           // label span is dropped in compact.
           const className = selected
             ? "flex shrink-0 items-center gap-fg-1 rounded-fg-pill border border-accent bg-accent-subtle px-fg-2 py-fg-0-5 text-caption font-medium text-accent-text outline-none transition-[opacity,background-color] duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-            : `flex shrink-0 items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 text-caption text-ink-muted outline-none transition-[opacity,background-color] duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+            : `flex shrink-0 items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 text-caption text-ink-muted outline-none transition-[opacity,background-color] duration-ui-fast ease-settle hover:bg-paper-raised focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                 included ? "opacity-100" : "opacity-40"
               }`;
           return (
@@ -224,25 +243,35 @@ export function CategoryLegend() {
             </button>
           );
         })}
-        {filterActive ? (
-          <>
-            <Divider orientation="vertical" className="h-[1.25em] self-stretch" />
-            <button
-              ref={reset.ref}
-              tabIndex={reset.tabIndex}
-              onKeyDown={reset.onKeyDown}
-              onFocus={() => setActiveItem("reset")}
-              type="button"
-              onClick={() => void clearFacet("doc_types")}
-              title="Reset category filters"
-              data-category-legend-reset
-              className="flex shrink-0 items-center rounded-fg-xs px-fg-1 py-fg-0-5 text-caption font-medium text-ink-muted outline-none transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-            >
-              Reset
-            </button>
-          </>
-        ) : null}
-      </Card>
+        {filterActive
+          ? // Reset is enrolled in the FocusZone order ONLY when it renders (it is
+            // conditional on an active filter). Calling `zone.rove("reset")` here —
+            // not unconditionally at the top — keeps the roving order matching the
+            // VISIBLE controls, so arrowing off the toggle never lands on a phantom
+            // (unrendered) Reset and stalls (every-composite-navigates-through-the-one-focuszone).
+            (() => {
+              const reset = zone.rove("reset");
+              return (
+                <>
+                  <Divider orientation="vertical" className="h-[1.25em] self-stretch" />
+                  <button
+                    ref={reset.ref}
+                    tabIndex={reset.tabIndex}
+                    onKeyDown={reset.onKeyDown}
+                    onFocus={() => setActiveItem("reset")}
+                    type="button"
+                    onClick={() => void clearFacet("doc_types")}
+                    title="Reset category filters"
+                    data-category-legend-reset
+                    className="flex shrink-0 items-center rounded-fg-xs px-fg-1 py-fg-0-5 text-caption font-medium text-ink-muted outline-none transition-colors duration-ui-fast ease-settle hover:bg-paper-raised focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                  >
+                    Reset
+                  </button>
+                </>
+              );
+            })()
+          : null}
+      </div>
     </div>
   );
 }
