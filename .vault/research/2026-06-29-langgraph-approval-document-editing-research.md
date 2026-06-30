@@ -1,0 +1,32 @@
+---
+tags:
+  - '#research'
+  - '#langgraph-approval-document-editing'
+date: '2026-06-29'
+modified: '2026-06-29'
+related: []
+---
+
+# `langgraph-approval-document-editing` research: LangGraph approval-driven document authoring
+
+This research covers current LangGraph and LangChain runtime mechanics needed for a Rust product backend that serves LangGraph agents performing approval-driven document authoring and editing.
+
+## Findings
+
+LangGraph Agent Server models deployed graphs as assistants, durable conversations as threads, and executions as runs. Assistants are configuration instances over a graph, threads hold state and interrupts, and runs execute an assistant against a thread. Thread creation supports caller-supplied IDs, metadata, TTL, and duplicate handling. Run creation accepts `input` or a `command` with `update`, `resume`, and `goto`, plus checkpoint selection, stream modes, multitask strategy, missing-thread policy, durability, and disconnect behavior. Relevant official sources: https://docs.langchain.com/langsmith/agent-server, https://docs.langchain.com/langsmith/assistants, https://docs.langchain.com/langsmith/agent-server-api/threads/create-thread, https://docs.langchain.com/langsmith/agent-server-api/thread-runs/create-run-stream-output.
+
+Checkpointers persist thread-scoped graph state as checkpoints for continuity, human-in-the-loop workflows, time travel, and fault tolerance. Stores persist application-defined data outside graph state for cross-thread memory. For a product backend, LangGraph checkpoints should keep runnable agent state, messages, interrupt metadata, and lightweight product object references, while Rust remains authoritative for documents, revisions, proposals, approval records, locks, policy decisions, identity, authorization, and audit receipts. Relevant official source: https://docs.langchain.com/oss/python/langgraph/persistence.
+
+Interrupts are durable pause points. `interrupt(value)` accepts JSON-serializable payloads, saves graph state through the persistence layer, surfaces the payload to the caller or thread state, and waits until resumed. Resume is a new invocation with `Command(resume=...)`; the resume value becomes the return value of `interrupt()` in the paused node. Multiple simultaneous interrupts should be resumed with a map keyed by interrupt ID. Relevant official sources: https://docs.langchain.com/oss/python/langgraph/interrupts, https://docs.langchain.com/oss/python/langgraph/graph-api, https://docs.langchain.com/oss/python/langgraph/event-streaming.
+
+Streaming is central to the backend API. OSS stream modes include `updates`, `values`, `messages`, `custom`, `checkpoints`, `tasks`, and `debug`; Agent Server run streaming adds modes such as `messages-tuple` and `events`, plus `stream_subgraphs` and `stream_resumable`. LangSmith Deployment also has an event streaming API with typed projections for messages, state, tool calls, subgraphs, output, custom extensions, and interrupt status. Relevant official sources: https://docs.langchain.com/oss/python/langgraph/streaming, https://docs.langchain.com/langsmith/streaming, https://docs.langchain.com/langsmith/event-streaming.
+
+Tools are callable functions with typed inputs and outputs that models decide to invoke. Tool calls include a tool name, structured args, and an ID linking the call to its result. Approval workflows can either wrap risky tools with LangChain `HumanInTheLoopMiddleware`, configured by `interrupt_on` and allowed decisions, or explicitly call `interrupt()` inside a review node/tool. Relevant official sources: https://docs.langchain.com/oss/python/langchain/tools, https://docs.langchain.com/oss/python/langchain/human-in-the-loop, https://docs.langchain.com/oss/python/langchain/frontend/tool-calling, https://docs.langchain.com/oss/python/langchain/frontend/human-in-the-loop.
+
+Idempotency is mandatory around interrupts. LangGraph re-runs the node containing an interrupt when resuming, so side effects before `interrupt()` must be idempotent, side effects should preferably be after approval, and non-idempotent work should be split into separate nodes. The Rust backend should require idempotency keys for tool requests, proposal creation, approval submission, apply operations, and event publication. Relevant official source: https://docs.langchain.com/oss/python/langgraph/interrupts.
+
+Reference projects: `langchain-ai/agent-inbox` is the main open-source approval inbox and defines a portable interrupt schema with `action_request`, `config`, and `description`, and responses `accept`, `ignore`, `response`, and `edit`: https://github.com/langchain-ai/agent-inbox. `langchain-ai/agent-inbox-langgraph-example` is a minimal LangGraph example, now archived but still useful for flow shape: https://github.com/langchain-ai/agent-inbox-langgraph-example. `langchain-ai/social-media-agent` is a more complete human-in-the-loop content workflow for sourcing, curating, and scheduling posts: https://github.com/langchain-ai/social-media-agent. `langchain-ai/executive-ai-assistant` is an archived ambient-agent example that connects Agent Inbox to an email-assistant workflow: https://github.com/langchain-ai/executive-ai-assistant.
+
+Backend endpoint implications: expose agent-readable tools for document lookup, draft/proposal creation, diff rendering, approval request creation, approval status lookup, proposal apply, and cancellation. Expose product API endpoints for creating/loading agent sessions, starting runs, streaming run events, listing pending approvals, reading proposal diffs, approving/editing/rejecting/responding to approvals, resuming interrupted runs, cancelling runs, and reconciling orphaned approvals. Use stable IDs across the system: `document_id`, `revision_id`, `proposal_id`, `approval_id`, `thread_id`, `run_id`, `checkpoint_id`, `interrupt_id`, `tool_call_id`, and idempotency keys.
+
+Failure modes: duplicate side effects from node replay, lost client stream requiring resumable stream or run join, stale document base revision at approval time, multiple interrupts mapped to the wrong resume value, concurrent runs on the same thread colliding under the wrong multitask strategy, approvals submitted after run cancellation or timeout, tool outputs applied without matching approved intent, checkpoint store retention not matching product audit retention, and authorization drift between LangGraph runtime context and Rust product permissions.
