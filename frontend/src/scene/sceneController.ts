@@ -308,7 +308,15 @@ export type SceneCommand =
       kind: "set-overlays";
       featureCountries: boolean;
       featureHulls: boolean;
-    };
+    }
+  // Theme refresh (themes-are-oklch-generated-from-a-token-tier): the field reads its
+  // colours (node/edge/glyph hues, canvas background, dim/recede targets) as literal-hex
+  // scene tokens via getComputedStyle and BAKES them into GL buffers/uniforms at build
+  // time, so a `[data-theme]` flip leaves the GL field showing stale colours (labels +
+  // minimap already re-read per frame). The app layer enrolls the graph in the
+  // theme-change signal (`themeController.subscribe`) and dispatches this command so the
+  // field re-reads every token and re-renders, with the d3-force layout preserved.
+  | { kind: "refresh-theme" };
 
 // RL-5c folded at lock time (W01.P01.S04): `expand` (keyboard E / context
 // menu, distinct from open) and `pin` are part of the locked union — a
@@ -483,6 +491,7 @@ export class SceneController {
       case "set-bounds":
       case "set-force-params":
       case "set-appearance-params":
+      case "refresh-theme":
         // Renderer concerns — forwarded below.
         break;
     }

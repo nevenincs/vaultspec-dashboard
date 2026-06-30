@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
+import { getThemeController } from "../../platform/theme/themeController";
 import { createDashboardScene } from "../../scene/field/fieldAssembly";
 import { graphDeltasToApplyCommand } from "../../scene/sceneMapping";
 import { useDashboardStageSceneIntent } from "../../stores/server/dashboardStageSceneIntent";
@@ -94,8 +95,26 @@ export function useSceneSelectionBridge(
   }, [scope, sceneSelectionOriginatedRef]);
 }
 
+/** Enroll the GPU field in the theme-change global signal. The field reads its colours as
+ *  literal-hex scene tokens via getComputedStyle and BAKES them into GL buffers/uniforms at
+ *  build time, so a `[data-theme]` flip does not reach them (only the per-frame label +
+ *  minimap reads re-theme on their own). The framework-free `themeController` is the single
+ *  observable theme signal — its `subscribe` fires on a manual theme pin AND on an OS
+ *  "system" flip — so on every resolved-theme change we dispatch the scene's refresh-theme
+ *  command, which re-reads every token and repaints with the layout preserved. */
+export function useSceneThemeRefresh(): void {
+  useEffect(
+    () =>
+      getThemeController().subscribe(() => {
+        scene.controller.command({ kind: "refresh-theme" });
+      }),
+    [],
+  );
+}
+
 export function Stage() {
   const hostRef = useRef<HTMLDivElement>(null);
+  useSceneThemeRefresh();
   // Restore the persisted session on load: the scope cold-start persist (S29)
   // and the scope+folder context seed (S30) both fire from this single owner,
   // since Stage mounts once per app lifetime.

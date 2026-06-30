@@ -135,6 +135,23 @@ describe("SceneController", () => {
     });
   });
 
+  it("forwards refresh-theme to the field so the GL colours re-read on a theme change", () => {
+    // The field bakes its colours (literal-hex scene tokens) into GL buffers/uniforms at
+    // build time, so a [data-theme] flip must be pushed to it as a command. The app layer
+    // enrolls in the theme-change signal and dispatches refresh-theme; the controller
+    // forwards it to the renderer (which rebuilds its GL resources from the cached layout).
+    const commands: unknown[] = [];
+    const fake = {
+      mount: () => {},
+      resize: () => {},
+      destroy: () => {},
+      command: (cmd: unknown) => commands.push(cmd),
+    };
+    const scene = new SceneController(fake);
+    scene.command({ kind: "refresh-theme" });
+    expect(commands).toContainEqual({ kind: "refresh-theme" });
+  });
+
   it("hover intent routes through the preserved hover event, carrying id or null (S51)", () => {
     const scene = new SceneController();
     const hovered: (string | null)[] = [];

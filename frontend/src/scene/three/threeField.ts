@@ -953,9 +953,31 @@ export class ThreeField implements SceneFieldRenderer {
         // from the graph-controls sliders.
         this.setAppearanceParams(cmd.params);
         break;
+      case "refresh-theme":
+        this.refreshTheme();
+        break;
       default:
         break;
     }
+  }
+
+  /** Re-read every theme-dependent colour after a `[data-theme]` flip and repaint.
+   *
+   *  The GL field bakes its colours — node/edge category hues, the canvas-background
+   *  recede target, the ink-muted edge dim, and the per-disc glyph inks — into instanced
+   *  buffer attributes and shader uniforms at build time (the literal-hex scene-token
+   *  contract is a getComputedStyle read, not a live `var()` binding), so a theme change
+   *  does NOT reach them; only the per-frame label + minimap reads re-theme on their own.
+   *  Rebuilding the GL resources from the cached marks re-runs `buildNodes`/`buildEdges`/
+   *  `buildGlyphs`, which re-read all tokens fresh, while the d3-force layout
+   *  (`cpuPositions`) and selection/edge emphasis are preserved (no re-layout, no camera
+   *  move). We then re-apply the renderer clear colour and request one frame. Theme flips
+   *  are rare and user/OS-initiated, so a one-shot GL rebuild is the robust choice over
+   *  threading a colour-only update through every bake site. */
+  private refreshTheme(): void {
+    this.rebuildGLResources();
+    this.applyBackground();
+    this.requestRender();
   }
 
   // --- data ----------------------------------------------------------------
