@@ -38,7 +38,7 @@ read-and-infer) after a 2026-06-13 adversarial finding that plain working-tree
 rewriting `.gitignore`, i.e. silently mutating the corpus it was meant only to read.
 HEAD reads the git object DB read-only, at the cost of reflecting committed rather
 than present state. The research re-verified this premise against the **currently
-installed** core (`0.1.36`) and found it **no longer holds**: a full before/after
+installed** core (`0.1.34`) and found it **no longer holds**: a full before/after
 snapshot (mtime + content hash) of all 1336 `.vault/*.md` files around an isolated
 working-tree `vault graph` run showed **zero document mutations**. `modified:` stamping
 is now owned exclusively by `vault check --fix` / `vault repair` (gated behind
@@ -72,7 +72,7 @@ working-tree graph — rejected, heavy and risky to avoid a mutation core no lon
 ## Constraints
 
 - **Read-and-infer is absolute.** The fix must cause no `.vault/` document mutation.
-  Working-tree `vault graph` satisfies this in `0.1.36` (verified). The decision treats
+  Working-tree `vault graph` satisfies this in `0.1.34` (verified). The decision treats
   the gitignored `.graph-cache` write as **in-contract** — it is re-derivable auxiliary
   cache under `.vault/data/`, the same zone the engine's own SQLite inference cache
   occupies under the `engine-read-and-infer` discipline. This assessment is the one
@@ -87,7 +87,7 @@ working-tree graph — rejected, heavy and risky to avoid a mutation core no lon
   `ingest_core_graph` ref selector is already an `Option` parameter (the as-of path
   already passes explicit refs); the per-generation projection caches, the bounded
   coalescing watcher, and the commit/generation clock are all long-settled. Core
-  `0.1.36` is the installed, pinned version; the behaviour relied upon (document-read-only
+  `0.1.34` is the installed, pinned version; the behaviour relied upon (document-read-only
   working-tree graph) is verified against it, not assumed.
 - **Historical views must not change.** The as-of and lineage routes remain strictly
   `--ref` with an explicit commit sha (committed, blob-true). Only the present view moves to the working tree.

@@ -200,7 +200,7 @@ and faithfully implements the accepted ADR's Option A.
   `ingest_declared_from_json` doc, the `..._separates_scope_and_sha` test) still
   described the cache as HEAD-sha-keyed. RESOLVED (swept to corpus-fingerprint / commit-sha).
 - **R2-MEDIUM-C** — no core-version guard for the working-tree read: the no-mutation
-  guarantee rests on core ≥ 0.1.36, unenforced; an older (working-tree-mutating) or a
+  guarantee rests on core ≥ 0.1.34, unenforced; an older (working-tree-mutating) or a
   future-regressed core would silently stamp `modified:` on every edit. Mitigated by
   `resolve_core_invocation` preferring the uv-pinned project core. DEFERRED (tracked) —
   see the revision log; ties to the ADR's recorded `vault graph --no-cache` upstream ask.
@@ -209,26 +209,42 @@ and faithfully implements the accepted ADR's Option A.
 
 Resolved before commit (doc-accuracy, load-bearing per review-revision-precedence):
 - R2-MEDIUM-A: rewrote the `fetch_core_graph_json` doc (`index.rs`) — `None` = read-only
-  working-tree present view (core 0.1.36 mutates no `.vault/` doc), `Some(sha)` =
+  working-tree present view (core 0.1.34 mutates no `.vault/` doc), `Some(sha)` =
   blob-true historical.
 - R2-MEDIUM-B: swept every stale "HEAD sha" cache comment to "corpus fingerprint (present)
   / commit sha (as-of)" across `index.rs` and `registry.rs`; renamed the cache-key test.
-- MEDIUM-1 (comment half): corrected the false as-of cache-reuse comment in `app.rs` — the
-  read currently has no production writer (the fold writes only fingerprint-keyed), so it
-  always misses and falls back to the `--ref sha` subprocess; the sha/fingerprint key
-  separation is load-bearing (it stops a historical view from picking up working-tree
-  edges). Re-verified green: fmt + clippy clean; engine-graph 38, vaultspec-api 150,
-  conformance 3, e2e 6 pass.
+- MEDIUM-1 (comment half): corrected the false as-of cache-reuse comment in `app.rs`.
+- VERSION FACT: the research/ADR/comments cited core `0.1.36`; the installed core is
+  actually `0.1.34`. Re-verified the no-mutation property directly on 0.1.34 (full
+  before/after mtime+size snapshot of all 1341 `.vault/*.md` + git-status: zero change),
+  and corrected every `0.1.36` reference to `0.1.34` across the research, ADR, rule, and
+  code comments. The read-only finding is empirical (snapshot-verified), independent of
+  the mislabeled version number.
 
-Deferred as tracked follow-ups (non-blocking, documented in code + here):
-- MEDIUM-1 (perf half): restore on-disk as-of declared reuse by persisting the `--ref sha`
-  JSON under the sha key (today only the in-memory `asof_cache` serves repeat same-sha;
-  on-disk reuse is lost across restart/eviction — a perf cost, not a correctness one).
-- MEDIUM-2: the fingerprint-key vs fetched-JSON skew (key from the in-memory graph at
-  `registry.rs:512`, JSON from core's independent FS read at `:529`). Bounded and
-  self-correcting (requires a sub-debounce edit plus an exact byte-revert within the
-  keep-4 window). Accepted as documented; a hardening (validate the fetched JSON's doc set
-  against the key fingerprint before persisting) is the future close.
-- R2-MEDIUM-C: a core-version/capability floor for the working-tree read (or the
-  `vault graph --no-cache` upstream flag), so a sub-0.1.36 core falls back to `Some("HEAD")`
-  rather than silently mutating.
+Second revision round — ALL deferred items now RESOLVED (mandate: exhaust every known
+surface). Re-verified green end to end: fmt + clippy clean; ingest-core 15 (incl new
+`semver_parse_and_readonly_floor`), engine-graph 38, vaultspec-api 150, conformance 3,
+e2e 6; live present view 18 nodes / 289 edges, as-of HEAD 0.
+- R2-MEDIUM-C (RESOLVED): added a core-version FLOOR. `ingest-core::runner` gained
+  `core_version()` (memoized `--version` probe), `parse_semver`, and
+  `supports_readonly_worktree_graph()` (≥ `MIN_READONLY_WORKTREE_GRAPH` = the verified
+  0.1.34). `engine-graph::index::present_view_git_ref()` returns `None` (working tree) only
+  on a verified core, else fail-safe `Some("HEAD")` (logged once) — a sub-floor/unknown
+  core can never be pointed at the working tree, so it can never silently mutate. Wired into
+  `index_documents`, the async fold, and the sync rebuild fallback.
+- MEDIUM-1 (perf half, RESOLVED): restored on-disk as-of declared reuse. The as-of path
+  now fetches the `--ref sha` JSON on a miss and persists it under a SEPARATE cache kind
+  (`DECLARED_GRAPH_ASOF_KIND`, sha-keyed) — distinct kind so present-view and as-of caches
+  never evict each other; key separation still stops a historical view from picking up
+  working-tree edges.
+- MEDIUM-2 (RESOLVED, concurrent-rebuild case): added a TOCTOU guard in
+  `declared_fold_blocking` — after the miss-path fetch, re-derive the corpus key and persist
+  ONLY if it still equals the key we fetched under, so a concurrent `commit_graph` can no
+  longer cache JSON under a stale key (the edges still fold into the live graph; only the
+  cache write is skipped, and the next stable fold caches correctly). The irreducible
+  sub-debounce residual (a `.vault/` edit + exact byte-revert inside the watcher debounce,
+  before any rebuild) is documented and accepted as bounded.
+- Fallback-mode keying: in HEAD-fallback the present-view cache key is the fingerprint
+  joined to the HEAD sha
+  so BOTH a content edit and a commit invalidate it (the working-tree fingerprint alone
+  would not move on a commit).

@@ -332,13 +332,22 @@ fn spawn_watcher(cell: &Arc<ScopeCell>) {
 /// rebuildable on the next miss.
 pub(crate) const DECLARED_GRAPH_KIND: &str = "declared-graph-v2";
 
+/// Engine-store artifact kind for the cached HISTORICAL (as-of) declared graph JSON,
+/// keyed by the committed sha. Kept in a SEPARATE kind from the present-view
+/// (`DECLARED_GRAPH_KIND`) cache so the two never evict each other under the per-kind
+/// keep-window: a burst of time-travel must not flush the live present-view snapshot,
+/// and vice versa (audit MEDIUM-1 — the as-of on-disk reuse was lost when the
+/// present-view cache moved to fingerprint keys; this restores it without coupling the
+/// two caches' eviction). Same `.vault/data/engine-data/` re-derivable zone.
+pub(crate) const DECLARED_GRAPH_ASOF_KIND: &str = "declared-graph-v2-asof";
+
 /// How many declared-graph snapshot generations to retain. Each generation is a
 /// full-graph JSON payload (megabytes) minted on every corpus change; the cache is
 /// re-derivable, so we keep only a small recent window (the live corpus plus a few
 /// for fast repeat-switch / near-HEAD time travel) and evict the rest. Without
 /// this bound the snapshots accumulated unbounded (166 MB / 34 generations
 /// observed in the field for a ~740-doc corpus).
-const DECLARED_GRAPH_KEEP: usize = 4;
+pub(crate) const DECLARED_GRAPH_KEEP: usize = 4;
 
 /// Rolling retention window for the temporal event log (B5, resource-hardening):
 /// on each HEAD-change fold, events older than this are pruned so the append-only
@@ -359,6 +368,31 @@ pub(crate) fn declared_cache_key(scope_token: &str, corpus_key: &str) -> String 
     engine_model::content_hash(format!("{scope_token}:{corpus_key}").as_bytes())
 }
 
+/// The present-view declared `(git_ref, cache key material)` for a corpus state,
+/// gated on the core-version floor (graph-worktree-edge-consistency ADR + the
+/// version-guard hardening). On a verified read-only core: read the WORKING TREE
+/// (`None`), keyed on the corpus content fingerprint — so an uncommitted edit misses
+/// the cache and re-reads. On an older/unknown core: fail-safe to committed `HEAD`,
+/// keyed on `fingerprint@<head sha>` so BOTH a content edit AND a commit invalidate
+/// the cache in that degraded mode (the working-tree fingerprint alone would not move
+/// on a commit). Computed from a graph snapshot so the rebuild (over `fresh`) and the
+/// fold (over the committed graph) derive the SAME key for an unchanged corpus.
+pub(crate) fn present_view_corpus(
+    graph: &engine_graph::LinkageGraph,
+    root: &std::path::Path,
+    scope: &ScopeRef,
+) -> (Option<&'static str>, String) {
+    let git_ref = engine_graph::index::present_view_git_ref();
+    let fingerprint = engine_graph::index::worktree_corpus_fingerprint(graph, scope);
+    match git_ref {
+        None => (None, fingerprint),
+        Some(reference) => {
+            let sha = engine_graph::asof::resolve_ref(root, "HEAD").unwrap_or_default();
+            (Some(reference), format!("{fingerprint}@{sha}"))
+        }
+    }
+}
+
 /// Read the cached declared-graph JSON for the cell's CURRENT working-tree corpus
 /// (identified by `fingerprint`) WITHOUT running the core subprocess (a pure store
 /// read). Returns `None` on a cache miss, so a caller can fall back to the async
@@ -372,8 +406,8 @@ pub(crate) fn declared_cache_key(scope_token: &str, corpus_key: &str) -> String 
 /// source of the stuck "Still loading links…" banner and the declared building↔ready
 /// flap. A genuine `.vault/` edit changes the fingerprint, so this misses and the
 /// async fold re-reads the working tree (the consistency the ADR requires).
-pub(crate) fn cached_declared_json(cell: &ScopeCell, fingerprint: &str) -> Option<String> {
-    let key = declared_cache_key(&crate::routes::scope_token(&cell.root), fingerprint);
+pub(crate) fn cached_declared_json(cell: &ScopeCell, corpus_key: &str) -> Option<String> {
+    let key = declared_cache_key(&crate::routes::scope_token(&cell.root), corpus_key);
     let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
     store.get_artifact(DECLARED_GRAPH_KIND, &key).ok().flatten()
 }
@@ -504,20 +538,19 @@ fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
     }
     let _guard = FoldGuard { cell: weak.clone() };
 
-    // Fingerprint the cell's CURRENT working-tree corpus from the committed
-    // structural graph (present-view consistency, graph-worktree-edge-consistency
-    // ADR Option A): the declared cache is keyed on the corpus CONTENT, not the
-    // HEAD sha — an uncommitted `.vault/` edit changes the fingerprint so the fold
-    // re-reads the working tree, where a HEAD-keyed cache would have re-served stale
-    // edges. The fingerprint is always computable from the in-memory graph (no repo
-    // round-trip, no failure path).
-    let fingerprint =
-        engine_graph::index::worktree_corpus_fingerprint(&cell.graph_arc(), &cell.scope);
+    // Resolve the present-view declared source for the cell's CURRENT corpus
+    // (present-view consistency, graph-worktree-edge-consistency ADR Option A +
+    // version guard): the working tree keyed on the corpus CONTENT fingerprint on a
+    // verified read-only core, else a fail-safe committed-HEAD read keyed on
+    // `fingerprint@<sha>`. Keying on content (not the HEAD sha) is what makes an
+    // uncommitted `.vault/` edit miss the cache and re-read; the key is always
+    // computable from the in-memory graph (no failure path).
+    let (git_ref, corpus_key) = present_view_corpus(&cell.graph_arc(), &cell.root, &cell.scope);
 
     // Get the declared graph JSON: cache hit (no subprocess) or miss
-    // (subprocess, then cache the JSON by the corpus fingerprint).
+    // (subprocess, then cache the JSON by the corpus key).
     let json: Result<String, String> = {
-        let key = declared_cache_key(&crate::routes::scope_token(&cell.root), &fingerprint);
+        let key = declared_cache_key(&crate::routes::scope_token(&cell.root), &corpus_key);
         let cached = {
             let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
             store.get_artifact(DECLARED_GRAPH_KIND, &key).ok().flatten()
@@ -525,12 +558,22 @@ fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
         match cached {
             Some(json) => Ok(json),
             None => {
-                // Cache miss: run the subprocess against the WORKING TREE
-                // (read-and-infer — core 0.1.36 `vault graph` mutates no `.vault/`
-                // document), then persist the JSON by the corpus fingerprint for
-                // instant repeat-switch / restart at this corpus state.
-                let fetched = engine_graph::index::fetch_core_graph_json(&cell.root, None);
-                if let Ok(json) = &fetched {
+                // Cache miss: run the subprocess at the gated ref (working tree on a
+                // verified read-only core — `vault graph` mutates no `.vault/`
+                // document — else committed HEAD), then persist the JSON by the
+                // corpus key for instant repeat-switch / restart at this corpus state.
+                let fetched = engine_graph::index::fetch_core_graph_json(&cell.root, git_ref);
+                // TOCTOU guard (audit MEDIUM-2): only persist if the corpus is STILL
+                // the one we keyed on. A concurrent rebuild (`commit_graph` is not
+                // gated by `declared_fold_active`) between the key computation and
+                // this fetch could otherwise cache JSON under a now-stale key, so an
+                // exact corpus revisit within the keep-window could fold the wrong
+                // edges. On a mismatch we skip the WRITE only — the fetched edges
+                // still fold into the live graph below, and the next stable fold
+                // caches under the correct key.
+                let (_, still_key) =
+                    present_view_corpus(&cell.graph_arc(), &cell.root, &cell.scope);
+                if let (Ok(json), true) = (&fetched, still_key == corpus_key) {
                     let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
                     if let Err(e) =
                         store.put_artifact(DECLARED_GRAPH_KIND, &key, json, crate::app::now_ms())

@@ -52,7 +52,7 @@ with a dense `related:` frontmatter cross-referencing the others):
   document date, every committed date is ~100% edged; `2026-06-29` is the lone
   outlier at 11/31 edged — the uncommitted agentic ADRs are the un-edged remainder.
 
-`vaultspec-core` installed version: `0.1.36`.
+`vaultspec-core` installed version: `0.1.34`.
 
 ## Why HEAD was chosen — and why that premise is now obsolete
 
@@ -69,7 +69,7 @@ present declared tier to be HEAD. The HEAD pin is an engine implementation choic
 forced by core's then-mutating working-tree mode, not a contract requirement — and
 it is the exact seam where the present-view inconsistency lives.
 
-**That forcing premise no longer holds in core `0.1.36`.** Verified empirically with
+**That forcing premise no longer holds in core `0.1.34`.** Verified empirically with
 a full before/after snapshot (mtime + content hash) of all 1336 `.vault/*.md` files
 around an isolated working-tree `vault graph` run: **zero `.vault/` documents
 changed** — no `modified:` stamping, no `.gitignore` rewrite. `modified:`-stamping
@@ -135,7 +135,7 @@ boundary for a doc that had a typed kind.
   `vault graph` (drop `--ref HEAD` for the live view, keep `--ref` with an explicit commit sha for
   historical/as-of).** Fully consistent (nodes and edges from one working-tree
   snapshot), simplest engine change (the ref selector is already a parameter), and
-  preserves edge-id stability. Now viable because core `0.1.36` working-tree mode is
+  preserves edge-id stability. Now viable because core `0.1.34` working-tree mode is
   document-read-only. Residual concerns: the gitignored `.graph-cache` write (in the
   engine-owned `.vault/data/` cache zone — arguably already in-contract), and the
   HEAD-sha cache-key trap above, which must be re-keyed on content. **Recommended.**
@@ -158,7 +158,7 @@ boundary for a doc that had a typed kind.
 - **Option D — read a working-tree graph via a temp copy / stash / scratch
   worktree.** Not recommended: reintroduces per-rebuild checkout cost, risks
   concurrent-edit corruption, and creates worktree sprawl — all to avoid a mutation
-  that core `0.1.36` no longer performs.
+  that core `0.1.34` no longer performs.
 
 ## Minimal upstream ask (optional hardening)
 
@@ -177,7 +177,7 @@ working tree, historical views unchanged on `--ref` with an explicit commit sha 
 mandatory cache re-key (content fingerprint rather than HEAD sha) so working-tree
 edits actually refresh edges. Treat the `--no-cache` upstream flag as optional
 hardening, not a blocker, since working-tree `vault graph` is already
-document-read-only in `0.1.36`. Edge-id stability guarantees no SSE churn across the
+document-read-only in `0.1.34`. Edge-id stability guarantees no SSE churn across the
 commit boundary; the only fidelity care is matching core's relation-kind mapping,
 which Option A gets for free (it consumes core's own classified edges) and which is
 the chief cost of the Option-B/E alternatives.
@@ -197,7 +197,7 @@ the chief cost of the Option-B/E alternatives.
 `vault add` for every doc type was initially blocked: an in-flight, uncommitted
 `.vaultspec/` source-layout restructure (flattening ``.vaultspec/rules/` per-category subdirs`
 to flattened `.vaultspec/` subdirs) moved the deployed template mirror to
-`.vaultspec/templates/`, while installed core `0.1.36` resolves templates from
+`.vaultspec/templates/`, while installed core `0.1.34` resolves templates from
 `.vaultspec/rules/templates/`. Byte-identical template copies were restored to the
 core-expected location to unblock the pipeline; this is independent of the graph
 defect and should be reconciled with that restructure (or by re-running the core

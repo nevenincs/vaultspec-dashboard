@@ -177,18 +177,23 @@ fn index_documents(
     // READ-AND-INFER (D1.2) is PRESERVED: the original `--ref HEAD` pin guarded
     // against a 2026-06-13 finding that working-tree `vault graph` ran core's
     // index refresh (stamping `modified:`, rewriting `.gitignore`). That premise
-    // was re-verified against the installed core (0.1.36) and no longer holds —
+    // was re-verified against the installed core (0.1.34) and no longer holds —
     // `vault graph` mutates ZERO `.vault/` documents (the `modified:` stamp is
     // owned by `vault check --fix` / `vault repair`, gated behind `fix=True`,
     // never by `graph`). Its only side effect is a conditional, fingerprint-
     // guarded, gitignored cache write under `.vault/data/.graph-cache/` — the
     // same engine-owned `.vault/data/` auxiliary cache zone, accepted as
-    // in-contract. Historical / as-of views still read an explicit committed sha:
-    // `ingest_core_graph` keeps its `git_ref` parameter and `asof.rs` passes the
-    // pinned sha, so only the PRESENT view reads the working tree.
+    // in-contract. The working-tree read is GATED on a core-version floor
+    // (`present_view_git_ref`): a core at/above the verified read-only version
+    // reads the working tree (`None`); an older/unknown core falls back to the
+    // committed `HEAD` so it can never silently mutate the corpus. Historical /
+    // as-of views always read an explicit committed sha (`ingest_core_graph` keeps
+    // its `git_ref` parameter and `asof.rs` passes the pinned sha), so only the
+    // PRESENT view reads the working tree.
     let timing = std::env::var_os("VAULTSPEC_INDEX_TIMING").is_some();
     let t_start = std::time::Instant::now();
-    let (declared, unavailable) = ingest_core_graph(graph, root, scope, observed_at, None);
+    let (declared, unavailable) =
+        ingest_core_graph(graph, root, scope, observed_at, present_view_git_ref());
     stats.declared_edges += declared;
     stats.declared_unavailable = unavailable;
     if timing {
@@ -578,7 +583,7 @@ const GRAPH_SCHEMA: &str = "vaultspec.vault.graph.v2";
 ///
 /// `git_ref` selects the corpus exactly as [`ingest_core_graph`] documents:
 /// `None` reads the WORKING TREE — the present view (graph-worktree-edge-consistency
-/// ADR): core 0.1.36 `vault graph` mutates no `.vault/` document (its only side
+/// ADR): core 0.1.34 `vault graph` mutates no `.vault/` document (its only side
 /// effect is a gitignored, re-derivable `.graph-cache` write under `.vault/data/`),
 /// so a working-tree read is read-and-infer-safe. `Some(sha)` reads the git object
 /// DB at that ref (blob-true) for HISTORICAL / as-of views. Both are read-only with
@@ -642,6 +647,32 @@ pub fn fetch_core_graph_json(
 /// working tree. The as-of / historical declared cache stays keyed on its explicit
 /// commit sha (a committed snapshot does not change), so only the present view uses
 /// this fingerprint.
+/// The git ref the PRESENT-VIEW declared ingest reads (graph-worktree-edge-consistency
+/// ADR + its version-guard hardening). `None` (working tree) when the resolved core's
+/// `vault graph` is verified document-read-only, so a node and its `related:` edges
+/// share one working-tree snapshot; `Some("HEAD")` (committed, object-DB read) when the
+/// core is older/unknown — a fail-safe fallback so a core that might still run the
+/// mutating index refresh is never pointed at the working tree. The fallback trades
+/// present-view consistency for the absolute no-mutation guarantee; it is logged once.
+/// Historical / as-of reads are unaffected (they always pass an explicit committed sha).
+pub fn present_view_git_ref() -> Option<&'static str> {
+    if ingest_core::runner::supports_readonly_worktree_graph() {
+        None
+    } else {
+        static WARNED: std::sync::Once = std::sync::Once::new();
+        WARNED.call_once(|| {
+            eprintln!(
+                "vaultspec: core version is below the verified read-only `vault graph` \
+                 floor (or could not be determined); reading present-view declared edges \
+                 from committed HEAD instead of the working tree, so uncommitted \
+                 cross-references will not graph until committed. Upgrade vaultspec-core \
+                 to restore present-view consistency."
+            );
+        });
+        Some("HEAD")
+    }
+}
+
 pub fn worktree_corpus_fingerprint(graph: &LinkageGraph, scope: &ScopeRef) -> String {
     let mut parts: Vec<String> = graph
         .nodes()

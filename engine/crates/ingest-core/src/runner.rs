@@ -404,6 +404,70 @@ fn resolve_core_invocation() -> Vec<String> {
     if which("uv") { uv_run } else { bare }
 }
 
+/// The minimum core version whose working-tree `vault graph` is verified
+/// DOCUMENT-READ-ONLY — it mutates no `.vault/` document (graph-worktree-edge-consistency
+/// ADR; the `modified:` stamp and `.gitignore` rewrite the 2026-06-13 finding hit belong
+/// to `vault check --fix` / `vault repair`, never to `graph`). The present-view
+/// working-tree declared read is gated on this floor; an older or unknown core falls
+/// back to the committed `HEAD` read so a regressed/old core can never silently mutate
+/// the corpus on every edit. Verified empirically against the installed 0.1.34.
+pub const MIN_READONLY_WORKTREE_GRAPH: (u64, u64, u64) = (0, 1, 34);
+
+/// The resolved core's `MAJOR.MINOR.PATCH` version, memoized. `None` when the version
+/// cannot be obtained or parsed (treated conservatively as "unknown"). Probes the SAME
+/// invocation [`CoreRunner::detect`] resolves, so the version reflects the core the
+/// engine actually brokers.
+pub fn core_version() -> Option<(u64, u64, u64)> {
+    static VERSION: OnceLock<Option<(u64, u64, u64)>> = OnceLock::new();
+    *VERSION.get_or_init(|| {
+        let invocation = CoreRunner::detect().invocation;
+        let (program, leading) = invocation.split_first()?;
+        let out = Command::new(program)
+            .args(leading)
+            .arg("--version")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        parse_semver(&String::from_utf8_lossy(&out.stdout))
+    })
+}
+
+/// Parse the first `MAJOR.MINOR.PATCH` triple from version output, tolerant of a
+/// leading program name / `version` prefix (e.g. `vaultspec-core 0.1.34`, `v0.1.34`)
+/// and a pre-release/build suffix on the patch (e.g. `0.1.34-rc1`).
+fn parse_semver(s: &str) -> Option<(u64, u64, u64)> {
+    for token in s.split(|c: char| c.is_whitespace() || c == ',') {
+        let core = token.trim().trim_start_matches('v');
+        let mut parts = core.split('.');
+        // A token without three dot-separated parts is not a version — skip it
+        // (e.g. a leading program name like `vaultspec-core`) rather than aborting
+        // the whole scan.
+        let (Some(a), Some(b), Some(c)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        let patch_num: String = c.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+        if let (Ok(a), Ok(b), Ok(p)) =
+            (a.parse::<u64>(), b.parse::<u64>(), patch_num.parse::<u64>())
+        {
+            return Some((a, b, p));
+        }
+    }
+    None
+}
+
+/// Whether the resolved core's working-tree `vault graph` is verified
+/// document-read-only (version ≥ [`MIN_READONLY_WORKTREE_GRAPH`]). An unknown or older
+/// version returns `false` so the caller falls back to the committed `HEAD` read —
+/// fail-safe: never issue a working-tree read against a core that might mutate.
+pub fn supports_readonly_worktree_graph() -> bool {
+    core_version().is_some_and(|v| v >= MIN_READONLY_WORKTREE_GRAPH)
+}
+
 fn which(program: &str) -> bool {
     let Some(paths) = std::env::var_os("PATH") else {
         return false;
@@ -421,6 +485,23 @@ fn which(program: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn semver_parse_and_readonly_floor() {
+        // The version gate is the fail-safe for the present-view working-tree read
+        // (graph-worktree-edge-consistency ADR): only a core at or above the verified
+        // read-only floor may issue it; anything older/unparseable falls back to HEAD.
+        assert_eq!(parse_semver("0.1.34\n"), Some((0, 1, 34)));
+        assert_eq!(parse_semver("vaultspec-core 0.1.36"), Some((0, 1, 36)));
+        assert_eq!(parse_semver("v0.1.34-rc1"), Some((0, 1, 34)));
+        assert_eq!(parse_semver("not a version"), None);
+        // The installed-and-verified version is exactly the floor → supported.
+        assert!((0, 1, 34) >= MIN_READONLY_WORKTREE_GRAPH);
+        // A pre-floor core is NOT trusted for the working-tree read (falls back).
+        assert!((0, 1, 33) < MIN_READONLY_WORKTREE_GRAPH);
+        // A later core is trusted.
+        assert!((0, 2, 0) >= MIN_READONLY_WORKTREE_GRAPH);
+    }
 
     #[test]
     fn pinned_parse_accepts_supported_schema() {

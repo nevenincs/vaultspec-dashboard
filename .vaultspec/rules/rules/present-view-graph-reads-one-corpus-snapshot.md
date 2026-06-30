@@ -27,7 +27,7 @@ sourced nodes from a working-tree file walk but declared edges from `vault graph
 HEAD`, so a freshly-authored, uncommitted document had a node but none of its `related:`
 edges — defeating the dashboard's purpose of showing in-progress authoring. The original
 HEAD pin existed only to dodge a since-fixed core mutation (working-tree `vault graph` no
-longer stamps `modified:`/rewrites `.gitignore` in core ≥ 0.1.36; that work belongs to
+longer stamps `modified:`/rewrites `.gitignore` in core ≥ 0.1.34; that work belongs to
 `vault check --fix`), so the read-and-infer boundary is preserved by reading the working
 tree read-only. The second, mechanical half of the bug was the cache key: the declared
 fold cached by HEAD sha, which an uncommitted edit does not change, so even after switching
