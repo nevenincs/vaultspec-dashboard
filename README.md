@@ -32,9 +32,9 @@ are in place; the dashboard UI itself is not implemented yet.
 ## Development
 
 ```bash
-uv sync --all-groups          # install runtime + dev dependencies
-just dev lint all             # ruff, ty, taplo, markdown linters
-just dev test all             # pytest
+uv sync --all-groups          # install the uv dev toolchain (vaultspec-core, rag, ...)
+just dev lint all             # taplo, markdown, clippy, eslint, prettier, tsc
+just dev test all             # cargo test + vitest
 just ci                       # full pipeline: lint -> audit -> vault check -> test
 ```
 

@@ -10,7 +10,7 @@
 [tools]
 just = "latest" # the task-runner front door for every quality gate
 node = "22"     # frontend SPA — satisfies package.json engines (>=22.12)
-python = "3.13" # dashboard package + vaultspec tooling (requires-python >=3.13)
+python = "3.13" # uv dev toolchain: vaultspec-core, rag, markdown + pre-commit tools
 uv = "latest"   # Python env + dependency manager (the only sanctioned path)
 
 # Cross-language dev gates, provisioned from crates.io so `mise install` gives

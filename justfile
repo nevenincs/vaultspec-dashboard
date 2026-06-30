@@ -6,23 +6,10 @@ set windows-shell := ["pwsh.exe", "-NoProfile", "-c"]
 
 default:
   @echo "Available commands:"
-  @echo "  prod [args...]    Run the vaultspec-dashboard Python CLI (pure 1:1 mirror)"
   @echo "  dev <target>      Development toolchain (deps, lint, fix, audit, test, build, etc.)"
   @echo "  ci                Full CI pipeline: lint → vault check → test"
   @echo ""
   @echo "Run 'just <command> --help' for more details."
-
-# ===========================================================================
-#  prod  - pure 1:1 mirror of the vaultspec-dashboard Python CLI
-# ===========================================================================
-
-prod *args='':
-  @{{ if args == "--help" { "just _prod-help" } else if args == "-h" { "just _prod-help" } else if args == "help" { "just _prod-help" } else { "uv run vaultspec-dashboard " + args } }}
-
-_prod-help:
-  @echo "Usage: just prod [args...]"
-  @echo ""
-  @echo "Runs the vaultspec-dashboard Python CLI (pure 1:1 mirror)."
 
 # ===========================================================================
 #  dev  - development toolchain (linters, formatters, tests, builds)
@@ -36,11 +23,11 @@ _dev-help:
   @echo ""
   @echo "Targets:"
   @echo "  deps      dependency management (sync, upgrade, lock)"
-  @echo "  lint      read-only static analysis (ruff, ty, taplo, markdownlint, ...)"
-  @echo "  fix       auto-fix everything fixable (python, toml, markdown, vault)"
-  @echo "  audit     supply-chain / security checks (uv audit)"
-  @echo "  test      pytest"
-  @echo "  build     uv build"
+  @echo "  lint      read-only static analysis (taplo, markdownlint, clippy, eslint, ...)"
+  @echo "  fix       auto-fix everything fixable (toml, markdown, vault, rust, frontend)"
+  @echo "  audit     supply-chain / security checks (uv audit, cargo-deny, npm audit)"
+  @echo "  test      rust + frontend (vitest)"
+  @echo "  build     rust + frontend"
   @echo "  serve     live dev survey: engine + Vite HMR, auto-rebuild + auto-refresh"
   @echo "  clean     reclaim dev artifact sprawl (cargo target, dead worktrees, tmp)"
   @echo "  tokens    regenerate the DTCG color CSS and check parity/drift"
@@ -118,9 +105,6 @@ _dev-lint-help:
   @echo "Usage: just dev lint <target>"
   @echo ""
   @echo "Targets:"
-  @echo "  python    Run Ruff on Python source"
-  @echo "  type      Run Ty (type checker) on Python source"
-  @echo "  pyright   Supplementary Python type check (advisory; ty is the gate)"
   @echo "  toml      Run Taplo TOML linter"
   @echo "  markdown  Run Markdown linting and formatting checks"
   @echo "  rust      Run cargo fmt --check and clippy on the engine workspace"
@@ -128,18 +112,6 @@ _dev-lint-help:
   @echo "  typos     Run repo-wide source spell check (typos)"
   @echo "  knip      Scan the SPA for unused files/exports/deps (advisory)"
   @echo "  all       Run all blocking linters (typos included; knip is advisory)"
-
-_dev-lint-python:
-  uv run ruff check src tests
-  uv run ruff format --check src tests
-
-_dev-lint-type:
-  uv run python -m ty check src/vaultspec_dashboard
-
-# Advisory: a second type-checking lens for development/editors. `ty` (above)
-# is the enforced gate; pyright is not part of `lint all`, pre-commit, or CI.
-_dev-lint-pyright:
-  uv run pyright src/vaultspec_dashboard
 
 _dev-lint-toml:
   @{{ if os() == "windows" { \
@@ -182,8 +154,6 @@ _dev-lint-knip:
   npx --yes knip@5 --directory frontend
 
 _dev-lint-all:
-  just _dev-lint-python
-  just _dev-lint-type
   just _dev-lint-toml
   just _dev-lint-markdown
   just _dev-lint-rust
@@ -199,17 +169,12 @@ _dev-fix-help:
   @echo "Usage: just dev fix <target>"
   @echo ""
   @echo "Targets:"
-  @echo "  python    Auto-fix and format Python source"
   @echo "  toml      Auto-format TOML files"
   @echo "  markdown  Auto-format Markdown files"
   @echo "  vault     Auto-fix vault issues"
   @echo "  rust      Auto-format the engine workspace (cargo fmt)"
   @echo "  frontend  Auto-format the SPA (prettier)"
   @echo "  all       Run all fixers"
-
-_dev-fix-python:
-  uv run ruff format src tests
-  uv run ruff check --fix src tests
 
 _dev-fix-toml:
   @{{ if os() == "windows" { \
@@ -233,7 +198,6 @@ _dev-fix-frontend:
   npm --prefix frontend run format
 
 _dev-fix-all:
-  just _dev-fix-python
   just _dev-fix-toml
   just _dev-fix-markdown
   just _dev-fix-vault
@@ -286,15 +250,11 @@ _dev-test-help:
   @echo "Usage: just dev test <target>"
   @echo ""
   @echo "Targets:"
-  @echo "  python    Run pytest on Python source"
   @echo "  rust      Run cargo test on the engine workspace (incl. e2e)"
   @echo "  bench     Run the cold-index benchmark with baseline output"
   @echo "  frontend  Run vitest on the SPA"
   @echo "  e2e       Install the browser + run Playwright e2e (needs the engine)"
   @echo "  all       Run all tests"
-
-_dev-test-python:
-  uv run pytest tests src/vaultspec_dashboard -x -q --tb=short -m "unit"
 
 _dev-test-rust:
   cargo test --manifest-path engine/Cargo.toml --workspace
@@ -313,7 +273,6 @@ _dev-test-e2e:
   npm --prefix frontend run e2e
 
 _dev-test-all:
-  just _dev-test-python
   just _dev-test-rust
   just _dev-test-frontend
 
@@ -337,13 +296,9 @@ _dev-build-help:
   @echo "Usage: just dev build <target>"
   @echo ""
   @echo "Targets:"
-  @echo "  python    Build Python package"
   @echo "  rust      Build the engine workspace (release)"
   @echo "  frontend  Build the SPA production bundle"
   @echo "  all       Run all builds"
-
-_dev-build-python:
-  uv build
 
 _dev-build-rust:
   cargo build --manifest-path engine/Cargo.toml --workspace --release
@@ -352,7 +307,6 @@ _dev-build-frontend:
   npm --prefix frontend run build
 
 _dev-build-all:
-  just _dev-build-python
   just _dev-build-rust
   just _dev-build-frontend
 

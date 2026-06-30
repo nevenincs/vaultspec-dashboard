@@ -3,20 +3,6 @@ default_stages:
 repos:
 - repo: local
   hooks:
-  - id: ruff-check
-    name: Lint Python code (Ruff)
-    entry: uv run --no-sync ruff check
-    language: system
-    types:
-    - python
-    pass_filenames: true
-  - id: ruff-format-check
-    name: Check Python formatting (Ruff)
-    entry: uv run --no-sync ruff format --check
-    language: system
-    types:
-    - python
-    pass_filenames: true
   - id: taplo-lint
     name: Lint TOML files (Taplo)
     entry: taplo lint
@@ -24,13 +10,6 @@ repos:
     types:
     - toml
     pass_filenames: true
-  - id: ty
-    name: Type-check Python codebase (Ty)
-    entry: uv run --no-sync python -m ty check src/vaultspec_dashboard
-    language: system
-    types:
-    - python
-    pass_filenames: false
   - id: mdformat-check
     name: Check Markdown formatting (mdformat)
     entry: uv run --no-sync mdformat --check
