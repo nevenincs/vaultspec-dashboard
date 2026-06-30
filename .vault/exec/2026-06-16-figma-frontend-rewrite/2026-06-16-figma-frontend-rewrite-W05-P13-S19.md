@@ -9,9 +9,6 @@ related:
   - "[[2026-06-16-figma-frontend-rewrite-plan]]"
 ---
 
-
-
-
 # Compare each assembled surface against its Figma board screenshot and fix every residual divergence until identical
 
 ## Scope

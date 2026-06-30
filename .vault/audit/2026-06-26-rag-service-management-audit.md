@@ -8,8 +8,6 @@ related:
   - "[[2026-06-26-rag-service-management-plan]]"
 ---
 
-
-
 # `rag-service-management` audit: `review and live verification against rag 0.2.25`
 
 ## Scope
@@ -92,5 +90,3 @@ None new — the three durable rules were codified during the cycle
 (`rag-is-a-machine-singleton-the-dashboard-attaches-never-owns`,
 `rag-data-rides-the-codified-contract-not-the-qdrant-shape`,
 `dashboard-does-not-override-rag-status-dir`).
-
-
