@@ -3,5 +3,6 @@ dist
 tsconfig.tsbuildinfo
 .playwright-mcp
 
-# Local live-verify scratch scripts (never committed)
+# Local live-verify scratch scripts + screenshots (never committed)
 verify-*.cjs
+verify-*.png
