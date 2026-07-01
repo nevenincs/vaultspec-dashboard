@@ -157,7 +157,7 @@ describe("graph controls chrome view seam", () => {
     });
     expect(deriveGraphControlsFreezeToggleView(false, false)).toEqual({
       label: "Freeze Layout",
-      title: "Freeze is available in the Network layout",
+      title: "Freezing pauses the live layout — it's off while you're viewing history",
     });
   });
 
@@ -234,8 +234,12 @@ describe("graph controls chrome view seam", () => {
   });
 
   it("derives plain-language reflow toggle copy for each state", () => {
-    expect(deriveGraphControlsReflowToggleView(false).label).toBe("Reflow on filter");
-    expect(deriveGraphControlsReflowToggleView(true).label).toBe("Reflow on filter");
+    expect(deriveGraphControlsReflowToggleView(false).label).toBe(
+      "Rearrange when filtering",
+    );
+    expect(deriveGraphControlsReflowToggleView(true).label).toBe(
+      "Rearrange when filtering",
+    );
     // The title explains the OTHER mode it switches to (no jargon).
     expect(deriveGraphControlsReflowToggleView(false).title).toContain("remove");
     expect(deriveGraphControlsReflowToggleView(true).title).toContain("dim");

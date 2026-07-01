@@ -493,7 +493,7 @@ export function deriveGraphControlsFreezeToggleView(
       ? frozen
         ? "Resume the layout"
         : "Freeze the layout in place"
-      : "Freeze is available in the Network layout",
+      : "Freezing pauses the live layout — it's off while you're viewing history",
   };
 }
 
@@ -502,14 +502,15 @@ export interface GraphControlsReflowToggleView {
   title: string;
 }
 
-/** Plain-language copy for the reflow-filter toggle row (ui-labels-are-user-facing:
- *  no "simulation"/"topology" jargon). The title explains the OTHER mode it switches
- *  to, so the user knows what the toggle does in either state. */
+/** Plain-language copy for the filter-behaviour toggle row (ui-labels-are-user-facing:
+ *  "reflow" is engineering jargon — the label reads "Rearrange when filtering"). The
+ *  title explains the OTHER mode it switches to, so the user knows what the toggle
+ *  does in either state. */
 export function deriveGraphControlsReflowToggleView(
   reflow: boolean,
 ): GraphControlsReflowToggleView {
   return {
-    label: "Reflow on filter",
+    label: "Rearrange when filtering",
     title: reflow
       ? "Filtered-out nodes are removed and the graph re-forms around what's left — turn off to dim them in place instead"
       : "Filtered-out nodes are dimmed in place — turn on to remove them so the graph re-forms around what's left",
