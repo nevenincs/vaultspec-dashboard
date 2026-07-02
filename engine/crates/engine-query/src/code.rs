@@ -22,6 +22,14 @@ use serde_json::{Value, json};
 
 use crate::graph::{GraphSlice, edge_view, node_view};
 
+/// The language wire token for a file path. Re-exported from `engine-model` (the
+/// single source of truth) so the code corpus's language classification cannot
+/// drift from `ingest-code`'s (codebase-graphing review CGR-007): this crate no
+/// longer hand-mirrors the extension map, it shares the one in the dependency
+/// sink. Kept at this path so existing `engine_query::code::language_token`
+/// callers are unaffected.
+pub use engine_model::language_token;
+
 /// Code-corpus narrowing (ADR D5): the code corpus's own request grammar.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CodeNarrow {
@@ -30,20 +38,6 @@ pub struct CodeNarrow {
     /// Keep only files in these languages (wire tokens: `rust`, `typescript`,
     /// `javascript`, `python`). Empty = all.
     pub languages: Vec<String>,
-}
-
-/// The language wire token for a file path. Mirrors `ingest-code`'s `Lang`
-/// classification by extension — duplicated as a five-line map rather than
-/// pulling the tree-sitter dependency chain into the query crate.
-pub fn language_token(path: &str) -> Option<&'static str> {
-    let ext = path.rsplit('.').next()?;
-    match ext {
-        "rs" => Some("rust"),
-        "ts" | "mts" | "cts" | "tsx" => Some("typescript"),
-        "js" | "mjs" | "cjs" | "jsx" => Some("javascript"),
-        "py" => Some("python"),
-        _ => None,
-    }
 }
 
 fn narrow_keeps(narrow: &CodeNarrow, key: &str, is_file: bool) -> bool {
@@ -92,6 +86,69 @@ fn module_key_of_file(path: &str) -> String {
         Some(i) => path[..i].to_string(),
         None => ".".to_string(),
     }
+}
+
+/// The TOP-LEVEL module a node belongs to: the first path segment (CGR-005 viz
+/// wire). This is the color-identity + legend grouping key — every node under
+/// `engine/...` shares the module `engine`. A root-level file (no separator)
+/// belongs to the root module `.`.
+fn top_level_module(key: &str) -> String {
+    match key.split_once('/') {
+        // A nested key (a file or a submodule) → its first path segment.
+        Some((first, _)) => first.to_string(),
+        // A slash-less key is ALREADY a top-level identity: a top-level module
+        // directory (`app`), the root module (`.`), or a root-level file.
+        None => key.to_string(),
+    }
+}
+
+/// Directory depth of a node key (the viz lightness ramp): the root module is
+/// depth 0, and each path separator is one level deeper.
+fn path_depth(key: &str) -> u64 {
+    if key == "." {
+        0
+    } else {
+        key.matches('/').count() as u64
+    }
+}
+
+/// Per-generation hue assignment (CGR-005 viz wire, `display-state-is-backend-served`):
+/// rank the TOP-LEVEL modules by file member count (ties broken by name for
+/// determinism) and hand the top seven the categorical hue indexes `0..=6`;
+/// every other module gets `null` (the long-tail neutral hue). Computed over the
+/// FULL graph — never the narrowed slice — so a filtered view serves the SAME
+/// hue for a given module (color identity is stable under narrowing). It rides
+/// the code corpus's per-generation memo (`CodeGraphCell`) on the hot path,
+/// exactly like `member_counts`.
+fn module_hues(graph: &LinkageGraph) -> BTreeMap<String, u8> {
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for n in graph.nodes() {
+        if n.kind == NodeKind::CodeArtifact {
+            *counts.entry(top_level_module(&n.key)).or_default() += 1;
+        }
+    }
+    let mut ranked: Vec<(String, usize)> = counts.into_iter().collect();
+    // Highest member count first; alphabetical tie-break keeps it deterministic.
+    ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    ranked
+        .into_iter()
+        .take(7)
+        .enumerate()
+        .map(|(i, (module, _))| (module, i as u8))
+        .collect()
+}
+
+/// Attach the served module-identity fields (CGR-005) to a code node view:
+/// `module` (top-level identity, doubling as a `dir_prefix` narrow for the
+/// legend), `module_hue` (`0..=6` or null), and `depth`.
+fn annotate_module_identity(view: &mut Value, key: &str, hues: &BTreeMap<String, u8>) {
+    let module = top_level_module(key);
+    view["module_hue"] = match hues.get(&module) {
+        Some(h) => Value::from(*h),
+        None => Value::Null,
+    };
+    view["depth"] = Value::from(path_depth(key));
+    view["module"] = Value::String(module);
 }
 
 /// Aggregate file-level `imports` edges into module-level meta-edges,
@@ -150,6 +207,7 @@ pub fn code_graph_query(
 
     if feature_class_granularity {
         let counts = member_counts(graph);
+        let hues = module_hues(graph);
         let mut nodes: Vec<Value> = graph
             .nodes()
             .filter(|n| n.kind == NodeKind::CodeModule)
@@ -158,6 +216,7 @@ pub fn code_graph_query(
                 let mut view = node_view(graph, scope, n);
                 view["member_count"] =
                     Value::from(counts.get(n.id.0.as_str()).copied().unwrap_or(0));
+                annotate_module_identity(&mut view, &n.key, &hues);
                 view
             })
             .collect();
@@ -198,6 +257,7 @@ pub fn code_graph_query(
     edges.sort_by(|a, b| a.id.0.cmp(&b.id.0));
 
     let counts = member_counts(graph);
+    let hues = module_hues(graph);
     let nodes = kept_nodes
         .iter()
         .map(|n| {
@@ -213,6 +273,7 @@ pub fn code_graph_query(
                         Value::from(counts.get(n.id.0.as_str()).copied().unwrap_or(0));
                 }
             }
+            annotate_module_identity(&mut view, &n.key, &hues);
             view
         })
         .collect();
@@ -447,6 +508,72 @@ mod tests {
             .filter(|id| id.starts_with("code:"))
             .collect();
         assert_eq!(file_ids, vec!["code:lib/c.py"]);
+    }
+
+    #[test]
+    fn serves_module_identity_hue_and_depth_per_node() {
+        // CGR-005 viz wire: top-level module identity, a per-generation hue
+        // index (top-7 by member count), and directory depth on every code node.
+        let g = demo_graph();
+        // Rollup: module nodes carry module/module_hue/depth. Both `app` and
+        // `lib` have 2 files; the tie breaks alphabetically → app=0, lib=1.
+        let rollup = code_graph_query(&g, &scope(), true, &CodeNarrow::default());
+        let app = rollup
+            .nodes
+            .iter()
+            .find(|n| n["id"] == "code-mod:app")
+            .unwrap();
+        assert_eq!(app["module"], Value::from("app"));
+        assert_eq!(app["module_hue"], Value::from(0));
+        assert_eq!(app["depth"], Value::from(0));
+        let lib = rollup
+            .nodes
+            .iter()
+            .find(|n| n["id"] == "code-mod:lib")
+            .unwrap();
+        assert_eq!(lib["module_hue"], Value::from(1));
+
+        // File granularity: files carry the SAME top-level identity + a depth.
+        let files = code_graph_query(&g, &scope(), false, &CodeNarrow::default());
+        let a = files
+            .nodes
+            .iter()
+            .find(|n| n["id"] == "code:app/a.ts")
+            .unwrap();
+        assert_eq!(a["module"], Value::from("app"));
+        assert_eq!(a["module_hue"], Value::from(0));
+        assert_eq!(a["depth"], Value::from(1));
+    }
+
+    #[test]
+    fn module_hue_is_null_beyond_the_top_seven_modules() {
+        // Eight distinct top-level modules; the smallest (by member count, then
+        // name) falls outside the top-7 palette and serves a null hue.
+        let mut g = LinkageGraph::new();
+        // Seven modules with two files each, one module with a single file.
+        let mods = ["a", "b", "c", "d", "e", "f", "g"];
+        for m in mods {
+            for i in 0..2 {
+                g.upsert_node(file_node(&format!("{m}/f{i}.rs")));
+            }
+            g.upsert_node(module_node(m));
+        }
+        g.upsert_node(file_node("z/only.rs"));
+        g.upsert_node(module_node("z"));
+
+        let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default());
+        let z = slice
+            .nodes
+            .iter()
+            .find(|n| n["id"] == "code:z/only.rs")
+            .unwrap();
+        assert_eq!(z["module_hue"], Value::Null, "long-tail module is null");
+        let a = slice
+            .nodes
+            .iter()
+            .find(|n| n["id"] == "code:a/f0.rs")
+            .unwrap();
+        assert!(a["module_hue"].is_u64(), "a top-7 module has a hue index");
     }
 
     #[test]

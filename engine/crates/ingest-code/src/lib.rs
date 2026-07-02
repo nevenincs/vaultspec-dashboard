@@ -135,7 +135,7 @@ pub fn extract_code_graph(root: &Path, caps: &WalkCaps) -> std::io::Result<CodeG
         });
     }
 
-    let (nodes, edges) = modules::mint(&facts, &scope, now_ms());
+    let (nodes, edges) = modules::mint(&facts, &scope, now_ms(), index.crate_names_by_src_root());
     Ok(CodeGraphData {
         nodes,
         edges,

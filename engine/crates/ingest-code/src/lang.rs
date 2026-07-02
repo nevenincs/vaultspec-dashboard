@@ -90,6 +90,25 @@ mod tests {
     }
 
     #[test]
+    fn as_str_agrees_with_the_shared_engine_model_token_map() {
+        // CGR-007 drift guard: `Lang::as_str` (the ingest side) and
+        // `engine_model::language_token` (consumed by the query projection) are
+        // two views of ONE classification. This asserts they never disagree for
+        // any extension the ingest walk admits, so the two crates cannot drift.
+        for ext in [
+            "rs", "ts", "mts", "cts", "tsx", "js", "mjs", "cjs", "jsx", "py",
+        ] {
+            let path = format!("dir/file.{ext}");
+            let via_lang = Lang::from_path(Path::new(&path)).map(|l| l.as_str());
+            let via_model = engine_model::language_token(&path);
+            assert_eq!(via_lang, via_model, "token drift for .{ext}");
+        }
+        // A non-source extension is `None` on both sides.
+        assert_eq!(Lang::from_path(Path::new("x.md")), None);
+        assert_eq!(engine_model::language_token("x.md"), None);
+    }
+
+    #[test]
     fn every_language_query_parses_against_its_grammar() {
         // A malformed .scm is a build defect, not a runtime surprise: compile
         // every query against its grammar here so the gate catches it.

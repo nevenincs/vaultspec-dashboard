@@ -8,7 +8,7 @@
 //! generation-memoized projection at query time, mirroring the vault
 //! constellation's `meta_edges`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use engine_model::{
     CanonicalKey, Edge, Facet, Node, NodeId, NodeKind, Presence, Provenance, RelationKind,
@@ -60,12 +60,77 @@ fn last_segment(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
+/// Package-aware title for a FILE node (CGR-003): entry files are titled by
+/// their MODULE identity — the containing directory, or the crate name for a
+/// Rust crate root — so every package's entry file reads as its package instead
+/// of an interchangeable "__init__.py" / "index.ts" / "mod.rs" / "lib.rs". The
+/// full path stays in the node `key` for hover truth; non-entry files keep their
+/// bare filename. `crate_names` maps a crate src root (POSIX, repo-relative) to
+/// its `[package] name` (from `ResolveIndex`).
+fn file_title(rel_path: &str, crate_names: &HashMap<String, String>) -> String {
+    let file = last_segment(rel_path);
+    let dir = parent_posix(rel_path);
+    let dir_leaf = last_segment(&dir);
+    // The containing directory's name, falling back to the bare filename for an
+    // entry file that sits at the repository root (no parent to name it by).
+    let containing = || {
+        if dir_leaf.is_empty() {
+            file.to_string()
+        } else {
+            dir_leaf.to_string()
+        }
+    };
+    match file {
+        "__init__.py" | "index.ts" | "index.tsx" | "index.js" | "index.jsx" | "index.mjs"
+        | "index.cjs" | "mod.rs" => containing(),
+        // A crate root is titled by the crate's real (hyphenated) package name;
+        // absent the manifest, fall back to the containing directory.
+        "lib.rs" | "main.rs" => crate_names.get(&dir).cloned().unwrap_or_else(containing),
+        _ => file.to_string(),
+    }
+}
+
+/// The repo/scope basename, for titling the ROOT module (CGR-004): the literal
+/// key "." is an internal token and must never surface (`ui-labels-are-user-facing`).
+fn scope_basename(scope: &ScopeRef) -> String {
+    let raw = match scope {
+        ScopeRef::Worktree { path } => path.as_str(),
+        ScopeRef::Ref { name } => name.as_str(),
+    };
+    let trimmed = raw.trim_end_matches('/');
+    let leaf = trimmed.rsplit('/').next().unwrap_or(trimmed);
+    if leaf.is_empty() {
+        raw.to_string()
+    } else {
+        leaf.to_string()
+    }
+}
+
+/// Disambiguated title for a MODULE node (CGR-004): the repository ROOT module
+/// is titled by the scope basename (never the literal "."); a directory module
+/// is titled `leaf/` when its leaf is unique repo-wide, else by its full key
+/// (with a trailing `/`) so the many `src`/`tests`/`utils` directories never
+/// collapse into indistinguishable labels. `leaf_counts` is the repo-wide leaf
+/// frequency over the module set.
+fn module_title(dir: &str, leaf_counts: &BTreeMap<&str, usize>, scope: &ScopeRef) -> String {
+    if dir == ROOT_MODULE_KEY {
+        return scope_basename(scope);
+    }
+    let leaf = last_segment(dir);
+    if leaf_counts.get(leaf).copied().unwrap_or(0) > 1 {
+        format!("{dir}/")
+    } else {
+        format!("{leaf}/")
+    }
+}
+
 /// Mint the stored code graph from per-file facts. Deterministic: sorted
 /// inputs produce identically-ordered nodes and edges (stable ids regardless).
 pub fn mint(
     files: &[FileFact],
     scope: &ScopeRef,
     observed_at: Timestamp,
+    crate_names: &HashMap<String, String>,
 ) -> (Vec<Node>, Vec<CodeEdge>) {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
@@ -79,7 +144,7 @@ pub fn mint(
             }),
             kind: NodeKind::CodeArtifact,
             key: f.rel_path.clone(),
-            title: Some(last_segment(&f.rel_path).to_string()),
+            title: Some(file_title(&f.rel_path, crate_names)),
             doc_type: None,
             dates: None,
             feature_tags: Vec::new(),
@@ -104,12 +169,20 @@ pub fn mint(
             .push(f);
     }
     let module_keys: BTreeSet<String> = module_files.keys().cloned().collect();
+    // Repo-wide leaf frequency, so a colliding module leaf (many `src`) is
+    // titled by its full key instead of an indistinguishable label (CGR-004).
+    let mut leaf_counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for dir in &module_keys {
+        if dir != ROOT_MODULE_KEY {
+            *leaf_counts.entry(last_segment(dir)).or_default() += 1;
+        }
+    }
     for dir in &module_keys {
         nodes.push(Node {
             id: node_id(&CanonicalKey::CodeModule { dir }),
             kind: NodeKind::CodeModule,
             key: dir.clone(),
-            title: Some(last_segment(dir).to_string()),
+            title: Some(module_title(dir, &leaf_counts, scope)),
             doc_type: None,
             dates: None,
             feature_tags: Vec::new(),
@@ -276,7 +349,7 @@ mod tests {
             fact("src/sub/b.rs", &[]),
             fact("main.py", &[("src/a.rs", (5, 9))]),
         ];
-        let (nodes, edges) = mint(&files, &scope(), 42);
+        let (nodes, edges) = mint(&files, &scope(), 42, &HashMap::new());
 
         let node_ids: Vec<&str> = nodes.iter().map(|n| n.id.0.as_str()).collect();
         assert_eq!(
@@ -320,6 +393,73 @@ mod tests {
         assert_eq!(dup.edge.tier, Tier::Structural);
     }
 
+    fn title_of<'a>(nodes: &'a [Node], id: &str) -> &'a str {
+        nodes
+            .iter()
+            .find(|n| n.id.0 == id)
+            .and_then(|n| n.title.as_deref())
+            .unwrap_or_else(|| panic!("no node {id}"))
+    }
+
+    #[test]
+    fn entry_files_are_titled_by_package_and_modules_are_disambiguated() {
+        // CGR-003 (entry-file titling, all four languages + crate name) and
+        // CGR-004 (leaf collision → full key, root module → scope basename).
+        let mut crate_names = HashMap::new();
+        crate_names.insert(
+            "engine/crates/engine-model/src".to_string(),
+            "engine-model".to_string(),
+        );
+        let files = vec![
+            fact("pkg/__init__.py", &[]),
+            fact("frontend/src/stores/index.ts", &[]),
+            fact("app/util/mod.rs", &[]),
+            fact("engine/crates/engine-model/src/lib.rs", &[]),
+            fact("app/util/helper.rs", &[]), // a plain file keeps its filename
+            fact("build.rs", &[]),           // a root-level file mints the `.` module
+        ];
+        let (nodes, _) = mint(&files, &scope(), 1, &crate_names);
+
+        // Entry files → their MODULE identity, not the bare entry filename.
+        assert_eq!(title_of(&nodes, "code:pkg/__init__.py"), "pkg");
+        assert_eq!(
+            title_of(&nodes, "code:frontend/src/stores/index.ts"),
+            "stores"
+        );
+        assert_eq!(title_of(&nodes, "code:app/util/mod.rs"), "util");
+        // A crate root → the crate's real (hyphenated) package name.
+        assert_eq!(
+            title_of(&nodes, "code:engine/crates/engine-model/src/lib.rs"),
+            "engine-model"
+        );
+        // A non-entry file keeps its bare filename.
+        assert_eq!(title_of(&nodes, "code:app/util/helper.rs"), "helper.rs");
+
+        // Root module → scope basename (never the literal "."). Scope is Y:/repo.
+        assert_eq!(title_of(&nodes, "code-mod:."), "repo");
+        // Unique leaf → `leaf/`.
+        assert_eq!(title_of(&nodes, "code-mod:pkg"), "pkg/");
+        assert_eq!(title_of(&nodes, "code-mod:app/util"), "util/");
+    }
+
+    #[test]
+    fn colliding_module_leaves_are_titled_by_full_key() {
+        // Two different `src` directories must not both render as "src/".
+        let files = vec![
+            fact("engine/crates/a/src/lib.rs", &[]),
+            fact("engine/crates/b/src/lib.rs", &[]),
+        ];
+        let (nodes, _) = mint(&files, &scope(), 1, &HashMap::new());
+        assert_eq!(
+            title_of(&nodes, "code-mod:engine/crates/a/src"),
+            "engine/crates/a/src/"
+        );
+        assert_eq!(
+            title_of(&nodes, "code-mod:engine/crates/b/src"),
+            "engine/crates/b/src/"
+        );
+    }
+
     #[test]
     fn edge_ids_are_stable_across_reruns_and_content_changes() {
         // Provenance stable keys exclude the volatile blob hash and span: an
@@ -327,8 +467,8 @@ mod tests {
         let a1 = fact("a.py", &[("b.py", (0, 4))]);
         let mut a2 = fact("a.py", &[("b.py", (100, 140))]);
         a2.content_hash = "different".into();
-        let (_, e1) = mint(&[a1], &scope(), 1);
-        let (_, e2) = mint(&[a2], &scope(), 2);
+        let (_, e1) = mint(&[a1], &scope(), 1, &HashMap::new());
+        let (_, e2) = mint(&[a2], &scope(), 2, &HashMap::new());
         let i1 = e1
             .iter()
             .find(|e| e.edge.relation == RelationKind::Imports)

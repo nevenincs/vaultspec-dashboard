@@ -31,6 +31,11 @@ pub struct ResolveIndex {
     /// Rust crate name (underscore-normalized) → crate src root (POSIX,
     /// repo-relative, e.g. `engine/crates/engine-model/src`).
     rust_crates: HashMap<String, String>,
+    /// Crate src root (POSIX, repo-relative) → the ORIGINAL `[package] name`
+    /// (hyphens preserved), for entry-file titling: a crate's `lib.rs`/`main.rs`
+    /// is titled by its crate name (CGR-003), which wants the real published
+    /// name, not the underscore-normalized resolution key.
+    crate_names_by_src_root: HashMap<String, String>,
 }
 
 impl ResolveIndex {
@@ -39,6 +44,7 @@ impl ResolveIndex {
     /// we need don't justify a TOML dependency).
     pub fn build(root: &Path, files: &[String], cargo_manifests: &[String]) -> ResolveIndex {
         let mut rust_crates = HashMap::new();
+        let mut crate_names_by_src_root = HashMap::new();
         for manifest in cargo_manifests {
             let Ok(text) = std::fs::read_to_string(root.join(manifest)) else {
                 continue;
@@ -50,13 +56,22 @@ impl ResolveIndex {
                 } else {
                     format!("{dir}/src")
                 };
-                rust_crates.insert(name.replace('-', "_"), src);
+                rust_crates.insert(name.replace('-', "_"), src.clone());
+                crate_names_by_src_root.insert(src, name);
             }
         }
         ResolveIndex {
             files: files.iter().cloned().collect(),
             rust_crates,
+            crate_names_by_src_root,
         }
+    }
+
+    /// Crate src root (POSIX, repo-relative) → the ORIGINAL `[package] name`,
+    /// for entry-file titling (CGR-003): a `lib.rs`/`main.rs` at `<root>/lib.rs`
+    /// is titled by the crate whose src root is `<root>`.
+    pub fn crate_names_by_src_root(&self) -> &HashMap<String, String> {
+        &self.crate_names_by_src_root
     }
 
     fn exists(&self, path: &str) -> bool {
@@ -73,13 +88,13 @@ impl ResolveIndex {
                 .map(|path| self.resolve_rust_use(src_file, &path))
                 .collect(),
             ImportSpec::PyModule { module, names } => {
-                vec![self.resolve_py_absolute(src_file, module, names)]
+                self.resolve_py_absolute(src_file, module, names)
             }
             ImportSpec::PyRelative {
                 dots,
                 module,
                 names,
-            } => vec![self.resolve_py_relative(src_file, *dots, module.as_deref(), names)],
+            } => self.resolve_py_relative(src_file, *dots, module.as_deref(), names),
             // Defensive: a spec extracted for one language resolved as another
             // never happens through the public API (specs travel with their
             // file), but keep the match total.
@@ -269,7 +284,12 @@ impl ResolveIndex {
 
     // -------------------------------------------------------------- Python
 
-    fn resolve_py_absolute(&self, src_file: &str, module: &str, names: &[String]) -> Resolution {
+    fn resolve_py_absolute(
+        &self,
+        src_file: &str,
+        module: &str,
+        names: &[String],
+    ) -> Vec<Resolution> {
         let dotted = module.replace('.', "/");
         // Candidate roots, nearest first: the importing file's ancestor
         // package dirs (deepest → root), then the conventional `src` layout.
@@ -291,8 +311,11 @@ impl ResolveIndex {
             } else {
                 format!("{root}/{dotted}")
             };
-            if let Some(hit) = self.probe_py_base(&base, names) {
-                return Resolution::Internal(hit);
+            let hits = self.probe_py_base(&base, names);
+            if !hits.is_empty() {
+                // The nearest root that resolves ANY name wins; every resolved
+                // name from that root mints an edge (CGR-005 multi-name).
+                return hits.into_iter().map(Resolution::Internal).collect();
             }
             // Track whether the module's top-level package exists anywhere we
             // probed: `import numpy` should read external, not unresolved.
@@ -309,9 +332,9 @@ impl ResolveIndex {
             }
         }
         if saw_candidate {
-            Resolution::Unresolved
+            vec![Resolution::Unresolved]
         } else {
-            Resolution::External
+            vec![Resolution::External]
         }
     }
 
@@ -321,12 +344,12 @@ impl ResolveIndex {
         dots: usize,
         module: Option<&str>,
         names: &[String],
-    ) -> Resolution {
+    ) -> Vec<Resolution> {
         // One dot = the current package dir; each further dot pops one level.
         let mut dir = parent_posix(src_file);
         for _ in 1..dots {
             if dir.is_empty() {
-                return Resolution::Unresolved;
+                return vec![Resolution::Unresolved];
             }
             dir = parent_posix(&dir);
         }
@@ -341,28 +364,48 @@ impl ResolveIndex {
             }
             None => dir.clone(),
         };
-        match self.probe_py_base(&base, names) {
-            Some(hit) => Resolution::Internal(hit),
-            None => Resolution::Unresolved,
+        let hits = self.probe_py_base(&base, names);
+        if hits.is_empty() {
+            vec![Resolution::Unresolved]
+        } else {
+            hits.into_iter().map(Resolution::Internal).collect()
         }
     }
 
-    /// Probe a dotted-module base: the module file itself, its package
-    /// `__init__.py`, and (for `from X import name`) each name as a submodule.
-    fn probe_py_base(&self, base: &str, names: &[String]) -> Option<String> {
+    /// Probe a dotted-module base, returning ONE target file per resolved name
+    /// (CGR-005): each `from X import a, b` name that is itself a submodule
+    /// resolves to its OWN file, and the pure-symbol names (plus a plain
+    /// `import X`, which carries no names) fold onto the module base file ONCE.
+    /// This mirrors the Rust brace expansion, which already yields one
+    /// resolution per expanded path — so `from pkg import a, b` no longer drops
+    /// the `b` edge. Order-preserving and de-duplicated.
+    fn probe_py_base(&self, base: &str, names: &[String]) -> Vec<String> {
+        let mut hits: Vec<String> = Vec::new();
+        // A plain `import X` (no names) resolves to the module base itself.
+        let mut needs_base = names.is_empty();
         for name in names {
-            for candidate in [
+            let submodule = [
                 format!("{base}/{name}.py"),
                 format!("{base}/{name}/__init__.py"),
-            ] {
-                if self.exists(&candidate) {
-                    return Some(candidate);
-                }
+            ]
+            .into_iter()
+            .find(|candidate| self.exists(candidate));
+            match submodule {
+                Some(hit) if !hits.contains(&hit) => hits.push(hit),
+                Some(_) => {}
+                // A pure symbol (not a submodule): its edge lands on the base.
+                None => needs_base = true,
             }
         }
-        [format!("{base}.py"), format!("{base}/__init__.py")]
-            .into_iter()
-            .find(|candidate| self.exists(candidate))
+        if needs_base
+            && let Some(base_file) = [format!("{base}.py"), format!("{base}/__init__.py")]
+                .into_iter()
+                .find(|candidate| self.exists(candidate))
+            && !hits.contains(&base_file)
+        {
+            hits.push(base_file);
+        }
+        hits
     }
 }
 
@@ -507,6 +550,13 @@ mod tests {
             rust_crates: crates
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            // Titling map is keyed by src root → name; the resolution tests only
+            // exercise the resolver, so mirror the crate list with the (normalized)
+            // key as a stand-in name. Titling is covered in `modules.rs` tests.
+            crate_names_by_src_root: crates
+                .iter()
+                .map(|(k, v)| (v.to_string(), k.to_string()))
                 .collect(),
         }
     }
@@ -745,6 +795,68 @@ mod tests {
                 }
             ),
             vec![Resolution::Unresolved]
+        );
+    }
+
+    #[test]
+    fn python_multi_name_from_import_resolves_every_submodule() {
+        // CGR-005: `from pkg import a, b` must mint an edge to EACH submodule,
+        // not just the first — the prior first-hit-wins dropped the `b` edge.
+        let idx = index(
+            &[
+                "pkg/__init__.py",
+                "pkg/core.py",
+                "pkg/helpers.py",
+                "pkg/sub/__init__.py",
+            ],
+            &[],
+        );
+        // Both names are submodules → one Internal per name (order preserved).
+        assert_eq!(
+            idx.resolve(
+                "app/main.py",
+                Lang::Python,
+                &ImportSpec::PyModule {
+                    module: "pkg".into(),
+                    names: vec!["core".into(), "helpers".into()],
+                }
+            ),
+            vec![
+                Resolution::Internal("pkg/core.py".into()),
+                Resolution::Internal("pkg/helpers.py".into()),
+            ]
+        );
+        // A submodule name plus a pure-symbol name: the submodule resolves to
+        // its own file, the symbol folds onto the package base ONCE.
+        assert_eq!(
+            idx.resolve(
+                "app/main.py",
+                Lang::Python,
+                &ImportSpec::PyModule {
+                    module: "pkg".into(),
+                    names: vec!["core".into(), "SomeSymbol".into()],
+                }
+            ),
+            vec![
+                Resolution::Internal("pkg/core.py".into()),
+                Resolution::Internal("pkg/__init__.py".into()),
+            ]
+        );
+        // Relative `from . import a, b` (dots=1) resolves every submodule too.
+        assert_eq!(
+            idx.resolve(
+                "pkg/sub/deep.py",
+                Lang::Python,
+                &ImportSpec::PyRelative {
+                    dots: 2,
+                    module: None,
+                    names: vec!["core".into(), "helpers".into()],
+                }
+            ),
+            vec![
+                Resolution::Internal("pkg/core.py".into()),
+                Resolution::Internal("pkg/helpers.py".into()),
+            ]
         );
     }
 

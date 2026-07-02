@@ -10,6 +10,26 @@ pub mod id;
 
 pub use id::{CanonicalKey, content_hash, edge_id, node_id};
 
+/// The language wire token for a source-file PATH, classified by extension.
+///
+/// The single source of truth for the code corpus's language facet: the ingest
+/// crate's `Lang::as_str` is guarded consistent with it, and the query
+/// projection (`engine-query::code`) consumes it directly, so the two can never
+/// drift (codebase-graphing review CGR-007 closed the hand-mirrored duplicate).
+/// It lives in this dependency-sink crate precisely so the query crate can share
+/// it WITHOUT pulling the tree-sitter grammar chain that `ingest-code` carries.
+/// `None` means "not a source file the code corpus parses".
+pub fn language_token(path: &str) -> Option<&'static str> {
+    let ext = path.rsplit('.').next()?;
+    match ext {
+        "rs" => Some("rust"),
+        "ts" | "mts" | "cts" | "tsx" => Some("typescript"),
+        "js" | "mjs" | "cjs" | "jsx" => Some("javascript"),
+        "py" => Some("python"),
+        _ => None,
+    }
+}
+
 /// Stable node identity: kind + canonical key (contract §2).
 ///
 /// Never positional, never regenerated; the GUI caches and animates by id.
