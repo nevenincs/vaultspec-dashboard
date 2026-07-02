@@ -16,8 +16,10 @@
 //       disconnection invariant);
 //     - `setCorpus(mode)` writes `dashboardState.corpus`, the graph-query
 //       identity — the cache key changes, TanStack refetches the other corpus,
-//       and because the two corpora share NO node id the scene takes its cold
-//       path (a full re-explode + refit): the canvas wiped clean and reloaded;
+//       and the Stage stamps the freshly-fetched slice's set-data with the
+//       seam's explicit `reset` cold contract (full prewarm + one-time fit):
+//       the canvas wiped clean and reloaded by intent, not by the id-overlap
+//       heuristic happening to see disjoint corpus id namespaces;
 //     - `putSettings(graph_corpus)` is the durable, user-settings-backed
 //       persistence (scope-eligible: a worktree remembers its last view mode).
 //

@@ -17,6 +17,9 @@
 //       moves nothing (the prewarmReflow authority guarantee);
 //   (d) the alphaMin freeze fires — isSettled() holds with nothing awake, and a
 //       subsequent tick moves nothing (the load-bearing stability mechanism).
+//   (e) a zero-movable reflow on a FRESH solver clamps alpha to the settled floor,
+//       so the next reheatGentle stays gentle (settle-on-swap audit,
+//       stale-alpha-one-after-same-id-reflow).
 //
 // White-box: solver internals (awake/awakeCount/localMode/nodes) are TS-private and
 // read via `(solver as any).<field>`, matching d3ForceSolver.test.ts.
@@ -222,5 +225,29 @@ describe("D3ForceSolver settle-probe — (d) the alphaMin freeze fires", () => {
     for (let t = 0; t < 20; t++) solver.tick();
     expect(maxMove(before, positions(solver))).toBeLessThan(EPSILON);
     expect((solver as any).awakeCount).toBe(0);
+  });
+});
+
+// ---- (e) zero-movable reflow on a fresh solver clamps alpha ------------------
+
+describe("D3ForceSolver settle-probe — (e) movable===0 reflow clamps alpha", () => {
+  it("leaves a fresh instance at the settled floor so the next gentle reheat stays gentle", () => {
+    // Production path: threeField.setData constructs a NEW solver per swap, seeds the
+    // carried positions, and prewarmReflow is the FIRST energy call on the instance.
+    // With nothing movable it must clamp alpha to <= alphaMin — otherwise the sim
+    // still holds d3's constructor alpha 1 and the next reheatGentle
+    // (max(current, kick)) reads that 1 as the current temperature and cold-explodes
+    // instead of nudging (the guard-(c) shape pre-runs prewarm(), which hid this).
+    const n = 30;
+    const solver = makeSolver(n, ringEdges(n));
+    solver.seed((i) => ({ x: (i % 6) * 20, y: Math.floor(i / 6) * 20 }));
+
+    const ticks = solver.prewarmReflow(() => false); // nothing is new
+    expect(ticks).toBe(0);
+    expect(solver.isSettled()).toBe(true);
+    expect(solver.alpha()).toBeLessThanOrEqual(0.005);
+
+    solver.reheatGentle(0.15);
+    expect(solver.alpha()).toBeCloseTo(0.15, 5); // the kick, never the cold 1
   });
 });

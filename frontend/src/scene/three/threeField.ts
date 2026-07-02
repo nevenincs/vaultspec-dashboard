@@ -64,6 +64,7 @@ import {
   sceneRuleColor,
 } from "./appearance";
 import { D3_FORCE_DEFAULTS, D3ForceSolver, type D3ForceParams } from "./d3ForceSolver";
+import { classifySwap } from "./swapClassifier";
 import { labelTextStyle } from "./labelStyle";
 import { rootFontPx, uiScale } from "./uiScale";
 import { buildGlyphAtlas, glyphKeyForNode, type GlyphAtlas } from "./glyphAtlas";
@@ -80,6 +81,11 @@ const WARM_START_ALPHA = controlNumber("warmStartAlpha");
 /** Live-retune kick: the gentle re-energise for a force/size slider — re-settle in
  *  place, never the old violent global 0.5 re-explode. */
 const GENTLE_REHEAT_ALPHA = controlNumber("gentleReheatAlpha");
+/** Cold-start alpha + prewarm caps, schema-read here for the set-data energy
+ *  dispatch (proportional warm ramp toward cold; frozen swaps prep zero ticks). */
+const COLD_START_ALPHA = controlNumber("coldAlpha");
+const PREWARM_MAX_TICKS = controlNumber("prewarmMaxTicks");
+const PREWARM_BUDGET_MS = controlNumber("prewarmBudgetMs");
 /** Fit padding: a fixed, UI-scaled pixel margin reserved on EVERY edge when framing, so
  *  the framed graph never touches the canvas rim. A true pixel gap (zoom-independent),
  *  unlike a fractional factor whose apparent margin shrinks as the graph span grows; the
@@ -852,7 +858,13 @@ export class ThreeField implements SceneFieldRenderer {
   command(cmd: SceneCommand): void {
     switch (cmd.kind) {
       case "set-data":
-        this.setData(cmd.nodes, cmd.edges, cmd.reflow ?? false);
+        this.setData(
+          cmd.nodes,
+          cmd.edges,
+          cmd.reflow ?? false,
+          false,
+          cmd.reset ?? false,
+        );
         break;
       case "set-selected": {
         // SINGLETON enforcement (#16): the graph rings AT MOST ONE node — a >1-id
@@ -1052,6 +1064,7 @@ export class ThreeField implements SceneFieldRenderer {
     edges: SceneEdgeData[],
     reflow = false,
     deltaDriven = false,
+    reset = false,
   ): void {
     if (!this.renderer) return;
 
@@ -1079,6 +1092,14 @@ export class ThreeField implements SceneFieldRenderer {
       const y = this.cpuPositions[idx * 4 + 1];
       if (Number.isFinite(x) && Number.isFinite(y)) prevPos.set(id, { x, y });
     }
+    // Capture the OUTGOING layout's settle state, temperature, and edge set before
+    // teardown: the pin-authoritative warm path is only valid over a SETTLED prior
+    // layout with an unchanged local topology, and both facts are gone after
+    // disposeGraph (settle-on-swap audit — mid-settle captures are a resume point,
+    // never an authoritative rest to pin).
+    const priorSettled = this.solver ? this.solver.isSettled() : true;
+    const priorAlpha = this.solver ? this.solver.alpha() : 0;
+    const prevBuiltEdges = this.builtEdges;
 
     this.disposeGraph();
 
@@ -1152,33 +1173,42 @@ export class ThreeField implements SceneFieldRenderer {
     // Warm-start: carry persisting nodes' positions over by id and seed each NEW node
     // next to a persisting neighbour (or near the carried centroid), so the solver
     // resumes the prior layout. WARM only when the carried set still DOMINATES (>= half
-    // the nodes) — an expansion or live update — with gentle alpha + NO camera refit so
-    // persistent nodes barely move and the user's view is preserved. COLD otherwise
-    // (first load, scope/lens switch, or a big partial-overlap change) — full off-screen
-    // prewarm + a one-time camera fit. The >=half gate matters: a partial-overlap that
-    // shares just a few ids must NOT warm, or its many new nodes under-settle at the low
-    // warm alpha into an off-screen clump with no refit (review: warm-start threshold).
-    let carried = 0;
-    let cx = 0;
-    let cy = 0;
-    for (const node of nodes) {
-      const p = prevPos.get(node.id);
-      if (p) {
-        carried++;
-        cx += p.x;
-        cy += p.y;
-      }
-    }
-    // A FILTER-driven reflow (set-data carrying `reflow`) warm-starts whenever ANY node
-    // carries over: a removal drops the filtered-out nodes and the carried survivors
-    // re-form in place; a re-add seeds the returning nodes by their carried neighbours.
-    // It deliberately bypasses the >=half cold gate (a filter that hides most nodes must
-    // NOT re-explode + refit) and preserves the user's camera. A pure data update keeps
-    // the >=half object-constancy gate.
-    const warm = reflow
-      ? nodes.length > 0 && carried > 0
-      : nodes.length > 0 && carried >= 0.5 * nodes.length;
+    // the nodes) — an expansion or live update — with NO camera refit so persistent
+    // nodes barely move and the user's view is preserved; a FILTER reflow warms on ANY
+    // carried id (a filter that hides most nodes must never re-explode + refit). COLD
+    // otherwise (first load, a big partial-overlap change) — full off-screen prewarm +
+    // a one-time camera fit — and ALWAYS on `reset` (a corpus switch's explicit cold
+    // contract, no longer left to incidental id-disjointness). The classifier also
+    // enforces the two warm-path preconditions the id-overlap gate cannot see
+    // (settle-on-swap audit): survivors pin ONLY over a settled prior layout, and
+    // changed-edge endpoints join the movable set so a same-id/different-edge swap
+    // (relations facet, timeline as-of, live edge deltas) re-relaxes instead of
+    // freezing the OLD topology's arrangement; the relax alpha ramps with the movable
+    // fraction so a many-new swap cannot under-settle at the gentle warm energy.
+    const swap = classifySwap({
+      nodeIds: nodes.map((node) => node.id),
+      carriedIds: new Set(prevPos.keys()),
+      prevEdges: prevBuiltEdges.map((e) => ({ src: e.srcId, dst: e.dstId })),
+      nextEdges: this.builtEdges.map((e) => ({ src: e.srcId, dst: e.dstId })),
+      reflow,
+      reset,
+      priorSettled,
+      warmStartAlpha: WARM_START_ALPHA,
+      coldAlpha: COLD_START_ALPHA,
+    });
+    const warm = swap.warm;
     if (warm) {
+      let carried = 0;
+      let cx = 0;
+      let cy = 0;
+      for (const node of nodes) {
+        const p = prevPos.get(node.id);
+        if (p) {
+          carried++;
+          cx += p.x;
+          cy += p.y;
+        }
+      }
       const centroid = { x: cx / carried, y: cy / carried };
       this.solver.seed((i) => {
         const node = nodes[i];
@@ -1197,21 +1227,35 @@ export class ThreeField implements SceneFieldRenderer {
         return { x: centroid.x + Math.cos(a) * r, y: centroid.y + Math.sin(a) * r };
       });
     }
-    // Off-screen settle before the first paint. The SETTLED LAYOUT IS AUTHORITATIVE: every
-    // WARM path — a filter reflow, an ego expansion, a live delta, a same-scope re-fetch —
-    // PINS the carried survivors and relaxes ONLY the genuinely-new nodes, so an additive
-    // change never re-simulates an already-settled node (the graph is static unless a node
-    // is explicitly dragged). A same-id-set update has no new nodes and so does ZERO ticks
-    // and moves nothing. This is the prewarmReflow discipline that was previously wired only
-    // to the filter `reflow` path; unifying it here removes the old plain-warm `prewarm` that
-    // `wakeAllFree()`d the whole graph and let the frozen-not-converged layout drift on every
-    // expansion/delta. A cold load (disjoint corpus — first load, scope/lens switch) runs
-    // full energy + a one-time fit. If prewarm hits its wall-clock budget the remainder
-    // finishes in the live loop; otherwise it freezes (idle GPU 0).
-    if (warm) {
-      this.solver.prewarmReflow((i) => !prevPos.has(nodes[i].id), WARM_START_ALPHA);
+    // Off-screen settle before the first paint. The SETTLED LAYOUT IS AUTHORITATIVE:
+    // a warm path over a settled prior layout — a filter reflow, an ego expansion, a
+    // live delta, a same-scope re-fetch — PINS the carried survivors and relaxes only
+    // the movable nodes (genuinely-new + changed-edge endpoints), so an additive
+    // change never re-simulates an already-settled node (the graph is static unless a
+    // node is explicitly dragged); a same-id-AND-same-edge update has nothing movable
+    // and does ZERO ticks. Authority holds ONLY for rest: a swap landing while the
+    // prior layout was still relaxing carries mid-settle positions, so it CONTINUES
+    // the settle globally (seeded, unpinned, at the hotter of the carried temperature
+    // and the proportional alpha) instead of pinning a half-converged tangle. A cold
+    // load runs full energy + a one-time fit. A FROZEN sim preps the energy state
+    // with zero ticks — the swap displays, and unfreeze resumes the pending settle —
+    // so a background set-data can never tick through the user's freeze. If prewarm
+    // hits its wall-clock budget the remainder finishes in the live loop; otherwise
+    // it freezes (idle GPU 0).
+    if (warm && !swap.continueSettle) {
+      this.solver.prewarmReflow(
+        (i) => swap.movableIds.has(nodes[i].id),
+        swap.startAlpha,
+        this.frozen ? 0 : undefined,
+      );
+    } else if (warm) {
+      this.solver.prewarm(
+        this.frozen ? 0 : PREWARM_MAX_TICKS,
+        PREWARM_BUDGET_MS,
+        Math.max(swap.startAlpha, Math.min(priorAlpha, COLD_START_ALPHA)),
+      );
     } else {
-      this.solver.prewarm();
+      this.solver.prewarm(this.frozen ? 0 : PREWARM_MAX_TICKS, PREWARM_BUDGET_MS);
     }
     this.solver.pack(this.cpuPositions);
     this.uploadPositions();
@@ -1222,7 +1266,9 @@ export class ThreeField implements SceneFieldRenderer {
     if (this.pendingFocusId !== null && this.idToIndex.has(this.pendingFocusId)) {
       this.focusNode(this.pendingFocusId);
     }
-    this.running = !this.solver.isSettled();
+    // A frozen sim never resumes ticking from a data swap (the pending settle waits
+    // for unfreeze); otherwise run until the solver actually reaches rest.
+    this.running = !this.frozen && !this.solver.isSettled();
     // A genuine state change (new corpus, filter reflow, ego expansion, explicit user
     // action) re-engages autoframe when it is on, so the new corpus reframes on
     // load/filter — releasing any prior selection-frame or manual-nav suspension (#13

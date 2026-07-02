@@ -476,7 +476,11 @@ export class D3ForceSolver {
     }
     if (movable === 0) {
       // Pure removal / reorder: nothing to relax. The survivors are pinned at their
-      // carried positions and asleep ⇒ settled, zero movement.
+      // carried positions and asleep ⇒ settled, zero movement. Clamp alpha to the
+      // settled temperature: a FRESH solver otherwise still holds d3's constructor
+      // alpha 1, and the next reheatGentle (max(current, kick)) would read that 1 as
+      // the current temperature and cold-explode instead of nudging.
+      this.sim.alpha(Math.min(this.sim.alpha(), this.params.alphaMin)).alphaTarget(0);
       return 0;
     }
     this.sim.alpha(startAlpha).alphaTarget(0);

@@ -116,6 +116,16 @@ export interface SceneNodeData {
    * W01.P01.S04 lock discipline. The sigma.js fallback ignores it harmlessly.
    */
   salience?: number;
+  /**
+   * CODE corpus module identity (codebase-graphing CGR-002): the owning top-level
+   * `module` key, the 0..6 `moduleHue` ordered-palette index (or null for a
+   * long-tail module → the neutral `code` hue), and the path `depth`. Backend-
+   * served; drive the module-hue colour + depth gradient in `appearance.ts` and the
+   * code-corpus legend. Absent on vault nodes (the category colour applies instead).
+   */
+  module?: string;
+  moduleHue?: number | null;
+  depth?: number;
   temporal?: { bucket: string };
   /**
    * Per-node semantic embedding vector (graph-representation ADR §4 amendment):
@@ -232,11 +242,19 @@ export type SceneCommand =
   // the survivors — and never refits the camera, instead of the cold re-explode a
   // large drop would otherwise take. Powers the reflow filter mode (graph-controls
   // toggle); omit it and set-data behaves exactly as before.
+  //
+  // `reset` is the ADDITIVE explicit COLD contract (default undefined ≡ false): a
+  // `reset:true` set-data is a corpus identity change (the vault|code view-mode
+  // switch), so the field always takes the cold path — full prewarm + one-time
+  // camera fit — by INTENT rather than by the id-overlap heuristic happening to see
+  // disjoint id namespaces (settle-on-swap audit: the wipe+reload contract is
+  // stated, not emergent). `reset` wins over `reflow`.
   | {
       kind: "set-data";
       nodes: SceneNodeData[];
       edges: SceneEdgeData[];
       reflow?: boolean;
+      reset?: boolean;
     }
   | { kind: "apply-deltas"; deltas: SceneDelta[]; seq: number }
   // `animate` is an ADDITIVE optional flag on the locked seam (default undefined ≡

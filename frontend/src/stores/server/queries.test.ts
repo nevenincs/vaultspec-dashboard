@@ -4551,6 +4551,32 @@ describe("the lens-keyed graph query cache", () => {
     });
   });
 
+  it("pins the code-corpus identity to canonical defaults for engine-ignored fields", () => {
+    // The code corpus carries no vault Filter grammar, lens, as_of or focus (the
+    // queryFn sends none of them), so they must not re-key the query either — a
+    // left-rail filter toggle would otherwise re-fetch a byte-identical code slice
+    // and its set-data could interrupt an in-flight settle (settle-on-swap audit).
+    expect(
+      normalizeGraphSliceRequestIdentity(
+        " wt-1 ",
+        { text: " graph " },
+        " HEAD ",
+        "feature",
+        "design",
+        " doc:plan ",
+        "code",
+      ),
+    ).toEqual({
+      scope: "wt-1",
+      filter: {},
+      asOf: undefined,
+      granularity: "feature",
+      lens: "status",
+      focus: null,
+      corpus: "code",
+    });
+  });
+
   it("does not expose cached graph data when no scope is selected", () => {
     const client = testQueryClient();
     client.setQueryData(engineKeys.graph(""), graphSlice());

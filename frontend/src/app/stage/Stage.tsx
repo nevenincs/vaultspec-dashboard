@@ -298,10 +298,25 @@ export function Stage() {
     liveTimeline,
     slice.data?.last_seq ?? null,
   );
+  // A corpus identity change (vault|code view-mode switch) rides the seam's explicit
+  // `reset` cold contract: the NEXT freshly-fetched slice cold-reloads (full prewarm +
+  // one-time fit) by intent, not by the id-overlap heuristic happening to see disjoint
+  // namespaces. During the keepPreviousData window the held slice still belongs to the
+  // OLD corpus — pushing it under the new identity would cold-explode stale data — so
+  // that placeholder delivery is skipped; the canvas keeps the old view until the new
+  // corpus's data lands.
+  const pushedCorpusRef = useRef<string | undefined>(undefined);
+  const corpus = graphQuery?.corpus ?? "vault";
   useEffect(() => {
     if (!displaySlice || !scope || !liveTimeline) return;
-    scene.controller.command(stageSetDataCommand(displaySlice, { reflow }));
-  }, [displaySlice, scope, liveTimeline, reflow]);
+    const held = pushedCorpusRef.current;
+    const corpusChanged = held !== undefined && held !== corpus;
+    if (slice.isPlaceholderData && corpusChanged) return;
+    pushedCorpusRef.current = corpus;
+    scene.controller.command(
+      stageSetDataCommand(displaySlice, { reflow, reset: corpusChanged }),
+    );
+  }, [displaySlice, scope, liveTimeline, reflow, corpus, slice.isPlaceholderData]);
 
   // Representation mode -> scene (graph-representation ADR): a mode switch
   // re-lays-out the current set with id-keyed object constancy (no re-query). The

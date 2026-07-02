@@ -8,16 +8,18 @@ import { normalizeGraphOverlays } from "./graphOverlays";
 
 export function stageSetDataCommand(
   slice: unknown,
-  opts?: { reflow?: boolean },
+  opts?: { reflow?: boolean; reset?: boolean },
 ): SceneCommand {
   const mapped = sliceToScene(slice);
   return {
     kind: "set-data",
     nodes: mapped.nodes,
     edges: mapped.edges,
-    // Only carry the flag when set (reflow mode) so a normal set-data stays
-    // byte-identical to before — additive seam, existing callers unaffected.
+    // Only carry the flags when set so a normal set-data stays byte-identical to
+    // before — additive seam, existing callers unaffected. `reset` is the corpus
+    // switch's explicit cold contract; `reflow` the filter-reflow warm hint.
     ...(opts?.reflow ? { reflow: true } : {}),
+    ...(opts?.reset ? { reset: true } : {}),
   };
 }
 

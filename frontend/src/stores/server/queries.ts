@@ -3022,6 +3022,24 @@ export function normalizeGraphSliceRequestIdentity(
   focus: unknown,
   corpus?: unknown,
 ): GraphSliceRequestIdentity {
+  const normalizedCorpus = normalizeDashboardGraphCorpus(corpus);
+  // The code corpus carries no vault Filter grammar, no salience lens, no as_of and
+  // no focus (ADR D1/D5 — the queryFn sends none of them), so none of those may be
+  // part of the request IDENTITY either: pin them to their canonical defaults so a
+  // left-rail filter toggle cannot re-key and re-fetch a byte-identical code slice
+  // (settle-on-swap audit — the spurious re-deliveries that interrupted in-flight
+  // settles and froze the layout mid-convergence).
+  if (normalizedCorpus === "code") {
+    return {
+      scope: normalizeGraphSliceScope(scope),
+      filter: normalizeGraphSliceFilter(undefined),
+      asOf: undefined,
+      granularity: normalizeDashboardGraphGranularity(granularity),
+      lens: normalizeDashboardSalienceLens(undefined),
+      focus: normalizeNodeId(undefined),
+      corpus: normalizedCorpus,
+    };
+  }
   return {
     scope: normalizeGraphSliceScope(scope),
     filter: normalizeGraphSliceFilter(filter),
@@ -3029,7 +3047,7 @@ export function normalizeGraphSliceRequestIdentity(
     granularity: normalizeDashboardGraphGranularity(granularity),
     lens: normalizeDashboardSalienceLens(lens),
     focus: normalizeNodeId(focus),
-    corpus: normalizeDashboardGraphCorpus(corpus),
+    corpus: normalizedCorpus,
   };
 }
 
