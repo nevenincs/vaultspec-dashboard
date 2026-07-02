@@ -39,7 +39,12 @@ export function commitMenu(entity: unknown, ctx?: ActionContext): ActionDescript
   const at = normalizedEntity.ts;
   const scope =
     typeof ctx?.scope === "string" && ctx.scope.length > 0 ? ctx.scope : null;
-  if (typeof at === "number" && Number.isFinite(at) && scope !== null) {
+  // The code corpus has no git-history axis (present view only — the engine
+  // rejects `as_of` on it), so the time-travel entry disables honestly in code
+  // mode instead of scrubbing a VAULT historical slice under a code canvas
+  // (code-timeline-range ADR).
+  const codeCorpus = ctx?.corpus === "code";
+  if (typeof at === "number" && Number.isFinite(at) && scope !== null && !codeCorpus) {
     actions.push({
       id: "commit:view-at-commit",
       label: "View corpus at this commit",
@@ -54,7 +59,11 @@ export function commitMenu(entity: unknown, ctx?: ActionContext): ActionDescript
       section: "navigate",
       icon: History,
       disabled: true,
-      disabledReason: at === undefined ? "no commit time" : "no active scope",
+      disabledReason: codeCorpus
+        ? "only the vault view has commit history"
+        : at === undefined
+          ? "no commit time"
+          : "no active scope",
     });
   }
 

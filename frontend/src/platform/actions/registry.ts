@@ -33,6 +33,11 @@ export interface ActionContext {
    *  derived-state consumer, without reaching into a store — exactly as
    *  `selectedNodeId` is threaded from the host. */
   scope?: string | null;
+  /** The active graph corpus (`vault` | `code`), threaded like `scope` so a
+   *  resolver can honestly disable a vault-only capability while code is
+   *  active (the commit row's time-travel entry — the code corpus has no
+   *  git-history axis; code-timeline-range ADR). Absent ≡ vault. */
+  corpus?: "vault" | "code";
 }
 
 /** A pure resolver: the menu for one entity kind. */

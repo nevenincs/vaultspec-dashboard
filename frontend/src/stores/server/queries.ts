@@ -202,7 +202,8 @@ export const engineKeys = {
   // corpus's levels never survive (mirrors the vault-tree cache discipline).
   fileTree: (scope: string, path?: string, cursor?: string) =>
     [...engineKeys.all, "file-tree", scope, path ?? "", cursor ?? ""] as const,
-  filters: (scope: string) => [...engineKeys.all, "filters", scope] as const,
+  filters: (scope: string, corpus?: GraphCorpus) =>
+    [...engineKeys.all, "filters", scope, corpus ?? "vault"] as const,
   dashboardState: (scope: string, backendSessionIdentity: string) =>
     [...engineKeys.all, "dashboard-state", scope, backendSessionIdentity] as const,
   graph: (
@@ -2223,20 +2224,28 @@ export function useFileTreeRootSurface(scope: unknown): FileTreeRootSurfaceView 
 
 export interface FiltersVocabularyRequestIdentity {
   scope: string | null;
+  /** The corpus whose facet vocabulary is served (codebase-graphing ADR D5 —
+   *  `/filters` serves the ACTIVE corpus only; the code corpus carries its own
+   *  mtime date span per the code-timeline-range ADR). */
+  corpus: GraphCorpus;
 }
 
 export function normalizeFiltersVocabularyRequestIdentity(
   scope: unknown,
+  corpus?: unknown,
 ): FiltersVocabularyRequestIdentity {
-  return { scope: normalizeGraphSliceScope(scope) };
+  return {
+    scope: normalizeGraphSliceScope(scope),
+    corpus: normalizeDashboardGraphCorpus(corpus),
+  };
 }
 
-export function useFiltersVocabulary(scope: unknown) {
-  const request = normalizeFiltersVocabularyRequestIdentity(scope);
+export function useFiltersVocabulary(scope: unknown, corpus?: unknown) {
+  const request = normalizeFiltersVocabularyRequestIdentity(scope, corpus);
   const enabled = request.scope !== null;
   const query = useQuery({
-    queryKey: engineKeys.filters(request.scope ?? ""),
-    queryFn: () => engineClient.filters(request.scope!),
+    queryKey: engineKeys.filters(request.scope ?? "", request.corpus),
+    queryFn: () => engineClient.filters(request.scope!, request.corpus),
     enabled,
   });
   return enabled ? query : { ...query, data: undefined };
@@ -2286,9 +2295,12 @@ export function deriveFiltersVocabularyView(
  * facet lists and loading semantics once so palette/sidebar chrome does not
  * branch on raw query flags or repeat optional field fallbacks.
  */
-export function useFiltersVocabularyView(scope: unknown): FiltersVocabularyView {
-  const request = normalizeFiltersVocabularyRequestIdentity(scope);
-  const query = useFiltersVocabulary(scope);
+export function useFiltersVocabularyView(
+  scope: unknown,
+  corpus?: unknown,
+): FiltersVocabularyView {
+  const request = normalizeFiltersVocabularyRequestIdentity(scope, corpus);
+  const query = useFiltersVocabulary(scope, corpus);
   const loading = request.scope !== null && query.isPending;
   const awaitingScope = request.scope === null;
   return useMemo(
@@ -2317,8 +2329,11 @@ export interface TimelineAvailability {
  *  carries the per-tier availability block; when the structural/temporal tier is
  *  down the bounds are unreliable, which is DEGRADED — distinct from a loaded-but-
  *  empty corpus (no dated documents), which is EMPTY. */
-export function useTimelineAvailability(scope: unknown): TimelineAvailability {
-  const query = useFiltersVocabulary(scope);
+export function useTimelineAvailability(
+  scope: unknown,
+  corpus?: unknown,
+): TimelineAvailability {
+  const query = useFiltersVocabulary(scope, corpus);
   const errorTiers = query.error instanceof EngineError ? query.error.tiers : undefined;
   const tiers = errorTiers ?? query.data?.tiers_block;
   return useMemo(
@@ -3028,11 +3043,16 @@ export function normalizeGraphSliceRequestIdentity(
   // part of the request IDENTITY either: pin them to their canonical defaults so a
   // left-rail filter toggle cannot re-key and re-fetch a byte-identical code slice
   // (settle-on-swap audit — the spurious re-deliveries that interrupted in-flight
-  // settles and froze the layout mid-convergence).
+  // settles and froze the layout mid-convergence). The ONE facet that does carry
+  // over is the timeline's `date_range` (code-timeline-range ADR): it stays in the
+  // identity so a range change re-keys and re-narrows the code slice by mtime.
   if (normalizedCorpus === "code") {
+    const dateRange = normalizeGraphSliceFilter(filter).date_range;
+    const codeFilter = normalizeGraphSliceFilter(undefined);
+    if (dateRange) codeFilter.date_range = dateRange;
     return {
       scope: normalizeGraphSliceScope(scope),
-      filter: normalizeGraphSliceFilter(undefined),
+      filter: codeFilter,
       asOf: undefined,
       granularity: normalizeDashboardGraphGranularity(granularity),
       lens: normalizeDashboardSalienceLens(undefined),
@@ -3114,13 +3134,22 @@ export function useGraphSlice(
     queryFn: () =>
       // The code corpus is a DISCONNECTED dataset (ADR D1/D5): it carries no vault
       // Filter grammar, no salience lens, and no as_of (present view only) — the
-      // engine rejects those on the code corpus as typed errors. Send only the
-      // fields the code corpus accepts; the vault path is unchanged.
+      // engine rejects those on the code corpus as typed errors. The ONE shared
+      // facet is the timeline `date_range` (code-timeline-range ADR), always sent
+      // with its pinned `modified` criterion — the only date a code file carries.
       isCode
         ? engineClient.graphQuery({
             scope: request.scope!,
             granularity: request.granularity,
             corpus: "code",
+            ...(request.filter.date_range
+              ? {
+                  filter: {
+                    date_range: request.filter.date_range,
+                    date_field: "modified" as const,
+                  },
+                }
+              : {}),
           })
         : engineClient.graphQuery({
             scope: request.scope!,

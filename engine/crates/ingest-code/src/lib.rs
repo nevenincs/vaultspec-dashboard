@@ -132,6 +132,7 @@ pub fn extract_code_graph(root: &Path, caps: &WalkCaps) -> std::io::Result<CodeG
             rel_path: file.rel_path.clone(),
             content_hash,
             imports,
+            mtime_ms: file.mtime_ms,
         });
     }
 

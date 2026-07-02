@@ -21,6 +21,7 @@ import { logger } from "../../platform/logger/logger";
 import {
   useActiveScope,
   useDashboardSelectedNodeId,
+  useDashboardState,
 } from "../../stores/server/queries";
 import {
   armContextMenuItem,
@@ -48,7 +49,11 @@ export function ContextMenuHost({
 } = {}) {
   const scope = useActiveScope();
   const selectedNodeId = useDashboardSelectedNodeId(scope);
-  const menu = useContextMenuResolvedView(timeTravel, selectedNodeId, scope);
+  // The active graph corpus rides the resolver context like scope does, so a
+  // vault-only verb (the commit row's time-travel entry) disables honestly in
+  // code mode (code-timeline-range ADR).
+  const corpus = useDashboardState(scope).data?.corpus;
+  const menu = useContextMenuResolvedView(timeTravel, selectedNodeId, scope, corpus);
   const {
     open,
     entity,

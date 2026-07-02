@@ -594,7 +594,7 @@ pub struct DateBoundsByField {
 /// `yyyy-mm-dd` prefix so a time-suffixed `created`/`stamped` never skews the
 /// lexically-ordered span (consistent with `created_in_range`). `None` when no
 /// node carries that field.
-fn field_bounds(graph: &LinkageGraph, field: DateField) -> Option<DateBounds> {
+pub(crate) fn field_bounds(graph: &LinkageGraph, field: DateField) -> Option<DateBounds> {
     graph
         .nodes()
         .filter_map(|n| {

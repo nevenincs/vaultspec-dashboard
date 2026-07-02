@@ -496,21 +496,42 @@ async fn code_corpus_query(
             "the code corpus serves the present view only (`as_of` does not apply)".to_string(),
         ));
     }
-    // The vault Filter grammar does not apply to the code corpus (ADR D5):
-    // a non-default vault filter is a typed validation error, never silently
-    // ignored. Code narrowing rides `dir_prefix` / `languages`.
-    if body.filter.clone().unwrap_or_default() != engine_query::filter::Filter::default() {
+    // The vault Filter grammar does not apply to the code corpus (ADR D5) —
+    // EXCEPT the shared timeline facet (code-timeline-range ADR): a filter
+    // whose ONLY populated facets are `date_range` + `date_field: "modified"`
+    // narrows the code corpus by worktree-mtime day. Any other populated facet
+    // stays a typed validation error, never silently ignored; structural
+    // narrowing rides `dir_prefix` / `languages`.
+    let filter = body.filter.clone().unwrap_or_default();
+    let date_range = filter.date_range.clone();
+    let date_field = filter.date_field;
+    let mut residual = filter;
+    residual.date_range = None;
+    residual.date_field = engine_query::filter::DateField::default();
+    if residual != engine_query::filter::Filter::default() {
         return Err(super::api_error(
             state,
             StatusCode::BAD_REQUEST,
             "vault filter facets do not apply to the code corpus; narrow with \
-             `dir_prefix` / `languages`"
+             `dir_prefix` / `languages` (only `date_range` + `date_field: \"modified\"` \
+             carry over)"
+                .to_string(),
+        ));
+    }
+    if date_range.is_some() && date_field != engine_query::filter::DateField::Modified {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            "the code corpus dates by worktree mtime: a code `date_range` requires \
+             `date_field: \"modified\"` (`created`/`stamped` are vault-document criteria)"
                 .to_string(),
         ));
     }
     let narrow = engine_query::code::CodeNarrow {
         dir_prefix: body.dir_prefix.clone(),
         languages: body.languages.clone().unwrap_or_default(),
+        date_from: date_range.as_ref().and_then(|r| r.from.clone()),
+        date_to: date_range.as_ref().and_then(|r| r.to.clone()),
     };
     // Extraction is blocking CPU/IO work (tree walk; full parse on a miss) —
     // off the async runtime, mirroring the declared-fold discipline.

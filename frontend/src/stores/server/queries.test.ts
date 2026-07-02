@@ -2852,6 +2852,11 @@ describe("left-rail root surface states", () => {
     expect(normalizeVaultTreeRequestIdentity(["scope-a"] as unknown).scope).toBeNull();
     expect(normalizeFiltersVocabularyRequestIdentity(" scope-a ")).toEqual({
       scope: "scope-a",
+      corpus: "vault",
+    });
+    expect(normalizeFiltersVocabularyRequestIdentity(" scope-a ", "code")).toEqual({
+      scope: "scope-a",
+      corpus: "code",
     });
     expect(
       normalizeFiltersVocabularyRequestIdentity({ scope: "scope-a" } as unknown).scope,
@@ -4571,6 +4576,33 @@ describe("the lens-keyed graph query cache", () => {
       filter: {},
       asOf: undefined,
       granularity: "feature",
+      lens: "status",
+      focus: null,
+      corpus: "code",
+    });
+  });
+
+  it("carries ONLY the timeline date_range into the code-corpus identity", () => {
+    // code-timeline-range ADR: the range facet is the one shared narrow, so a
+    // timeline change re-keys the code slice while every other facet stays pinned.
+    expect(
+      normalizeGraphSliceRequestIdentity(
+        "wt-1",
+        {
+          text: "ignored",
+          date_range: { from: "2026-06-01", to: "2026-06-30" },
+        },
+        undefined,
+        "document",
+        undefined,
+        undefined,
+        "code",
+      ),
+    ).toEqual({
+      scope: "wt-1",
+      filter: { date_range: { from: "2026-06-01", to: "2026-06-30" } },
+      asOf: undefined,
+      granularity: "document",
       lens: "status",
       focus: null,
       corpus: "code",

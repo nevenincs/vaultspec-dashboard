@@ -32,6 +32,11 @@ pub struct FileFact {
     /// Resolved internal import targets (repo-relative paths), one entry per
     /// import statement (duplicates aggregate into multiplicity).
     pub imports: Vec<ImportFact>,
+    /// Worktree mtime (ms since epoch), already statted by the walk for the
+    /// source-tree fingerprint; 0 = unknown. Becomes the node's
+    /// `dates.modified` so the timeline range can narrow the code corpus
+    /// (code-timeline-range ADR).
+    pub mtime_ms: Timestamp,
 }
 
 pub struct ImportFact {
@@ -146,7 +151,16 @@ pub fn mint(
             key: f.rel_path.clone(),
             title: Some(file_title(&f.rel_path, crate_names)),
             doc_type: None,
-            dates: None,
+            // The only date a code file honestly carries: its worktree mtime
+            // (code-timeline-range ADR — `created`/`stamped` are vault-document
+            // concepts). 0 = the walk could not stat a time → no dates, which
+            // the date-range narrow treats as out-of-range (mirrors the vault's
+            // missing-date exclusion).
+            dates: (f.mtime_ms > 0).then_some(engine_model::Dates {
+                created: None,
+                modified: Some(f.mtime_ms),
+                stamped: None,
+            }),
             feature_tags: Vec::new(),
             status: None,
             tier: None,
@@ -336,6 +350,7 @@ mod tests {
                     span: *span,
                 })
                 .collect(),
+            mtime_ms: 1_750_000_000_000, // 2025-06-15 UTC — an arbitrary fixed stat time
         }
     }
 

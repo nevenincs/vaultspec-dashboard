@@ -38,6 +38,56 @@ pub struct CodeNarrow {
     /// Keep only files in these languages (wire tokens: `rust`, `typescript`,
     /// `javascript`, `python`). Empty = all.
     pub languages: Vec<String>,
+    /// Inclusive `yyyy-mm-dd` day-key bounds on a FILE's worktree mtime
+    /// (`dates.modified`) — the timeline range facet, shared with the vault
+    /// grammar (code-timeline-range ADR). Either bound open; both `None` = no
+    /// date narrowing. A file with no mtime is excluded once a bound is set
+    /// (mirrors the vault's missing-date exclusion); a MODULE passes while at
+    /// least one descendant file passes, so the containment hierarchy above
+    /// in-range content never orphans.
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
+}
+
+/// Whether the narrow carries a date bound at all (the fast path skips the
+/// in-range precomputation entirely).
+fn has_date_narrow(narrow: &CodeNarrow) -> bool {
+    narrow.date_from.is_some() || narrow.date_to.is_some()
+}
+
+/// The in-range membership for a date-narrowed query: file KEYS whose mtime day
+/// falls inside the bounds, plus every ancestor module key of an in-range file
+/// (including the root module). One bounded pass over the held graph.
+fn date_in_range_keys(
+    graph: &LinkageGraph,
+    narrow: &CodeNarrow,
+) -> (HashSet<String>, HashSet<String>) {
+    let from = narrow.date_from.as_deref();
+    let to = narrow.date_to.as_deref();
+    let mut files: HashSet<String> = HashSet::new();
+    let mut modules: HashSet<String> = HashSet::new();
+    for n in graph.nodes() {
+        if n.kind != NodeKind::CodeArtifact {
+            continue;
+        }
+        let day = n
+            .dates
+            .as_ref()
+            .and_then(|d| d.modified.map(crate::lineage::ms_to_date_key));
+        if !crate::lineage::created_in_range(day.as_deref(), from, to) {
+            continue;
+        }
+        files.insert(n.key.clone());
+        // Every ancestor directory of an in-range file is an in-range module,
+        // so the containment chain above surviving content survives with it.
+        let mut dir = n.key.as_str();
+        while let Some(i) = dir.rfind('/') {
+            dir = &dir[..i];
+            modules.insert(dir.to_string());
+        }
+        modules.insert(".".to_string());
+    }
+    (files, modules)
 }
 
 fn narrow_keeps(narrow: &CodeNarrow, key: &str, is_file: bool) -> bool {
@@ -201,9 +251,26 @@ pub fn code_graph_query(
     feature_class_granularity: bool,
     narrow: &CodeNarrow,
 ) -> GraphSlice {
-    let filter = crate::filter::Filter::default()
+    // Echo the applied date facet on the slice's filter block (the response is
+    // honest about what narrowed it); the code date criterion is always the
+    // worktree mtime (`modified`) — the only date a code file carries.
+    let mut filter = crate::filter::Filter::default();
+    if has_date_narrow(narrow) {
+        filter.date_range = Some(crate::filter::DateRange {
+            from: narrow.date_from.clone(),
+            to: narrow.date_to.clone(),
+        });
+        filter.date_field = crate::filter::DateField::Modified;
+    }
+    let filter = filter
         .validated()
-        .expect("the default filter is always valid");
+        .expect("a bare date-range filter is always valid");
+    let date_narrow = has_date_narrow(narrow);
+    let (in_range_files, in_range_modules) = if date_narrow {
+        date_in_range_keys(graph, narrow)
+    } else {
+        (HashSet::new(), HashSet::new())
+    };
 
     if feature_class_granularity {
         let counts = member_counts(graph);
@@ -212,6 +279,7 @@ pub fn code_graph_query(
             .nodes()
             .filter(|n| n.kind == NodeKind::CodeModule)
             .filter(|n| narrow_keeps(narrow, &n.key, false))
+            .filter(|n| !date_narrow || in_range_modules.contains(&n.key))
             .map(|n| {
                 let mut view = node_view(graph, scope, n);
                 view["member_count"] =
@@ -237,12 +305,20 @@ pub fn code_graph_query(
         };
     }
 
-    // File granularity: file + module nodes, endpoint-pruned raw edges.
+    // File granularity: file + module nodes, endpoint-pruned raw edges. Under a
+    // date narrow, a file passes by its own mtime day and a module passes while
+    // it still shelters in-range descendant content.
     let mut kept_nodes: Vec<_> = graph
         .nodes()
         .filter(|n| match n.kind {
-            NodeKind::CodeArtifact => narrow_keeps(narrow, &n.key, true),
-            NodeKind::CodeModule => narrow_keeps(narrow, &n.key, false),
+            NodeKind::CodeArtifact => {
+                narrow_keeps(narrow, &n.key, true)
+                    && (!date_narrow || in_range_files.contains(&n.key))
+            }
+            NodeKind::CodeModule => {
+                narrow_keeps(narrow, &n.key, false)
+                    && (!date_narrow || in_range_modules.contains(&n.key))
+            }
             _ => false,
         })
         .collect();
@@ -288,8 +364,14 @@ pub fn code_graph_query(
 }
 
 /// The code corpus's facet vocabulary (ADR D5: `/filters` serves the ACTIVE
-/// corpus's vocabulary only): the distinct language tokens present and the
-/// module directory keys, both sorted.
+/// corpus's vocabulary only): the distinct language tokens present, the module
+/// directory keys, and the corpus date span (code-timeline-range ADR) — the
+/// min/max worktree-mtime day over the file nodes, in the SAME
+/// `date_bounds` / `date_bounds_by_field` shape the vault vocabulary serves, so
+/// the timeline strip fits to the active corpus with one reader. Only the
+/// `modified` criterion exists for code (`created`/`stamped` are
+/// vault-document concepts) and both spans are omitted when no file carries an
+/// mtime (honest degradation).
 pub fn code_filter_vocabulary(graph: &LinkageGraph) -> Value {
     let mut languages: Vec<&'static str> = graph
         .nodes()
@@ -305,7 +387,16 @@ pub fn code_filter_vocabulary(graph: &LinkageGraph) -> Value {
         .map(|n| n.key.as_str())
         .collect();
     dirs.sort_unstable();
-    json!({ "languages": languages, "dirs": dirs })
+    let modified = crate::filter::field_bounds(graph, crate::filter::DateField::Modified);
+    let mut vocabulary = json!({ "languages": languages, "dirs": dirs });
+    if let Some(bounds) = modified {
+        let bounds = serde_json::to_value(&bounds).expect("date bounds serialize");
+        // The flat span mirrors the by-field one: `modified` IS the code
+        // corpus's only date axis (no created-span back-compat to preserve).
+        vocabulary["date_bounds"] = bounds.clone();
+        vocabulary["date_bounds_by_field"] = json!({ "modified": bounds });
+    }
+    vocabulary
 }
 
 #[cfg(test)]
@@ -473,7 +564,7 @@ mod tests {
         // Narrow to app/: lib files drop, so cross-module imports drop too.
         let narrow = CodeNarrow {
             dir_prefix: Some("app".into()),
-            languages: vec![],
+            ..CodeNarrow::default()
         };
         let slice = code_graph_query(&g, &scope(), false, &narrow);
         let ids: Vec<&str> = slice
@@ -497,8 +588,8 @@ mod tests {
     fn language_narrow_drops_other_languages_and_their_edges() {
         let g = demo_graph();
         let narrow = CodeNarrow {
-            dir_prefix: None,
             languages: vec!["python".into()],
+            ..CodeNarrow::default()
         };
         let slice = code_graph_query(&g, &scope(), false, &narrow);
         let file_ids: Vec<&str> = slice
@@ -582,5 +673,125 @@ mod tests {
         let v = code_filter_vocabulary(&g);
         assert_eq!(v["languages"], json!(["python", "rust", "typescript"]));
         assert_eq!(v["dirs"], json!(["app", "lib"]));
+        // demo_graph mints undated files → the date spans are honestly absent.
+        assert!(v.get("date_bounds").is_none());
+        assert!(v.get("date_bounds_by_field").is_none());
+    }
+
+    // ---- code-timeline-range ADR: mtime date narrowing ----------------------
+
+    fn dated_file_node(path: &str, mtime_ms: i64) -> Node {
+        let mut n = file_node(path);
+        n.dates = Some(engine_model::Dates {
+            created: None,
+            modified: Some(mtime_ms),
+            stamped: None,
+        });
+        n
+    }
+
+    /// Two files a day apart plus one undated file, in nested dirs, with an
+    /// import between the dated pair.
+    fn dated_graph() -> (LinkageGraph, String, String) {
+        const DAY_MS: i64 = 86_400_000;
+        let t_old = 1_750_000_000_000; // an arbitrary fixed day
+        let t_new = t_old + 3 * DAY_MS;
+        let mut g = LinkageGraph::new();
+        g.upsert_node(dated_file_node("app/deep/old.ts", t_old));
+        g.upsert_node(dated_file_node("app/new.ts", t_new));
+        g.upsert_node(file_node("lib/undated.py"));
+        for m in ["app", "app/deep", "lib"] {
+            g.upsert_node(module_node(m));
+        }
+        for (m, f) in [
+            ("app/deep", "app/deep/old.ts"),
+            ("app", "app/new.ts"),
+            ("lib", "lib/undated.py"),
+        ] {
+            engine_graph::edges::ingest(&mut g, contains_edge(m, f), EdgeAttrs::default()).unwrap();
+        }
+        engine_graph::edges::ingest(
+            &mut g,
+            import_edge("app/new.ts", "app/deep/old.ts"),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+        let old_day = crate::lineage::ms_to_date_key(t_old);
+        let new_day = crate::lineage::ms_to_date_key(t_new);
+        (g, old_day, new_day)
+    }
+
+    #[test]
+    fn date_narrow_keeps_in_range_files_and_their_ancestor_modules() {
+        let (g, old_day, _new_day) = dated_graph();
+        // Range = exactly the old file's day: the new file and the UNDATED file
+        // drop; the old file plus its full ancestor module chain survive, and
+        // the import edge drops with its lost endpoint.
+        let narrow = CodeNarrow {
+            date_from: Some(old_day.clone()),
+            date_to: Some(old_day),
+            ..CodeNarrow::default()
+        };
+        let slice = code_graph_query(&g, &scope(), false, &narrow);
+        let ids: Vec<&str> = slice
+            .nodes
+            .iter()
+            .filter_map(|n| n["id"].as_str())
+            .collect();
+        assert_eq!(
+            ids,
+            vec!["code-mod:app", "code-mod:app/deep", "code:app/deep/old.ts"]
+        );
+        // Only the surviving containment edge remains (module → old file).
+        assert_eq!(slice.edges.len(), 1);
+        // The applied facet is echoed honestly on the slice's filter block.
+        assert!(slice.filter.date_range.is_some());
+    }
+
+    #[test]
+    fn date_narrow_open_from_keeps_everything_dated_after_it() {
+        let (g, old_day, new_day) = dated_graph();
+        // from = the day AFTER old: only the new file (and `app`) survive; the
+        // undated file is excluded once any bound is set (mirrors the vault).
+        assert!(old_day < new_day);
+        let narrow = CodeNarrow {
+            date_from: Some(new_day),
+            ..CodeNarrow::default()
+        };
+        let slice = code_graph_query(&g, &scope(), false, &narrow);
+        let ids: Vec<&str> = slice
+            .nodes
+            .iter()
+            .filter_map(|n| n["id"].as_str())
+            .collect();
+        assert_eq!(ids, vec!["code-mod:app", "code:app/new.ts"]);
+    }
+
+    #[test]
+    fn date_narrow_applies_to_the_module_rollup() {
+        let (g, old_day, _new_day) = dated_graph();
+        let narrow = CodeNarrow {
+            date_from: Some(old_day.clone()),
+            date_to: Some(old_day),
+            ..CodeNarrow::default()
+        };
+        let slice = code_graph_query(&g, &scope(), true, &narrow);
+        let ids: Vec<&str> = slice
+            .nodes
+            .iter()
+            .filter_map(|n| n["id"].as_str())
+            .collect();
+        assert_eq!(ids, vec!["code-mod:app", "code-mod:app/deep"]);
+    }
+
+    #[test]
+    fn vocabulary_serves_the_modified_date_span_when_files_carry_mtimes() {
+        let (g, old_day, new_day) = dated_graph();
+        let v = code_filter_vocabulary(&g);
+        assert_eq!(v["date_bounds"], json!({ "min": old_day, "max": new_day }));
+        assert_eq!(
+            v["date_bounds_by_field"],
+            json!({ "modified": { "min": old_day, "max": new_day } })
+        );
     }
 }

@@ -1853,8 +1853,13 @@ export class EngineClient {
     );
   }
 
-  async filters(scope: string): Promise<FiltersVocabulary> {
-    return adaptFilters(await this.get("/filters", { scope }));
+  async filters(scope: string, corpus?: "vault" | "code"): Promise<FiltersVocabulary> {
+    // The vocabulary is per-corpus (codebase-graphing ADR D5): the code corpus
+    // serves languages/dirs plus its mtime date span (code-timeline-range ADR).
+    // The vault request stays byte-identical (no corpus param).
+    return adaptFilters(
+      await this.get("/filters", corpus === "code" ? { scope, corpus } : { scope }),
+    );
   }
 
   async dashboardState(scope: string, signal?: AbortSignal): Promise<DashboardState> {

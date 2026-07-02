@@ -34,11 +34,13 @@ import { useRef } from "react";
 import { Segment, SegmentedToggle, Skeleton, SkeletonBar, StateBlock } from "../kit";
 import {
   useDashboardDateRangeView,
+  useDashboardState,
   useFiltersVocabularyView,
   useTimelineAvailability,
   useTimelineDateCriterion,
 } from "../../stores/server/queries";
 import { useDashboardStateMutations } from "../../stores/server/dashboardState";
+import { normalizeDashboardGraphCorpus } from "../../stores/server/dashboardStateNormalization";
 import { setTimelineDateCriterion } from "../../stores/server/timelineDateCriterionIntent";
 import {
   TIMELINE_DATE_CRITERIA,
@@ -64,9 +66,19 @@ export interface TimelineRangeProps {
 }
 
 export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps) {
-  const vocabulary = useFiltersVocabularyView(scope);
-  const availability = useTimelineAvailability(scope);
-  const { criterion, served } = useTimelineDateCriterion(scope);
+  // The strip narrows the ACTIVE corpus (code-timeline-range ADR): its edge
+  // bounds, degradation truth, and date criterion all follow the served graph
+  // corpus, so in code mode the span is the code files' mtime span — never the
+  // vault span rendered over code nodes.
+  const corpus = normalizeDashboardGraphCorpus(useDashboardState(scope).data?.corpus);
+  const isCode = corpus === "code";
+  const vocabulary = useFiltersVocabularyView(scope, corpus);
+  const availability = useTimelineAvailability(scope, corpus);
+  const { criterion: vaultCriterion, served } = useTimelineDateCriterion(scope);
+  // Code files carry exactly one date (their worktree modified time), so the
+  // criterion is pinned to Modified in code mode whatever the persisted vault
+  // criterion setting says — the label always names the field actually matched.
+  const criterion = isCode ? "modified" : vaultCriterion;
   const trackRef = useRef<HTMLDivElement>(null);
   const activeHandle = useRef<"from" | "to" | null>(null);
 
@@ -135,7 +147,11 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
         <StateBlock
           mode="empty"
           layout="inline"
-          message="No dated documents to scrub in this view."
+          message={
+            isCode
+              ? "No dated files to scrub in this view."
+              : "No dated documents to scrub in this view."
+          }
         />
       </div>
     );
@@ -264,15 +280,19 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
         className="shrink-0"
       >
         {TIMELINE_DATE_CRITERIA.map((c) => {
-          const gated = c.id !== "created" && !served;
+          // Code mode pins the criterion to Modified — the only date a code file
+          // carries — so the other criteria disable with the honest reason
+          // instead of silently matching a different field than their label.
+          const gated = isCode ? c.id !== "modified" : c.id !== "created" && !served;
+          const gatedReason = isCode
+            ? "Code files date by modified time only"
+            : c.unavailableReason;
           return (
             <Segment
               key={c.id}
               value={c.id}
               disabled={gated}
-              title={
-                gated ? c.unavailableReason : `Range by ${c.label.toLowerCase()} date`
-              }
+              title={gated ? gatedReason : `Range by ${c.label.toLowerCase()} date`}
             >
               {c.label}
             </Segment>

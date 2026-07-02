@@ -292,6 +292,59 @@ async fn corpus_mismatched_requests_are_typed_errors_with_tiers() {
     assert!(body["tiers"].is_object());
 }
 
+/// code-timeline-range ADR: `date_range` + `date_field: "modified"` is the ONE
+/// vault-filter facet pair that carries over to the code corpus, narrowing by
+/// worktree-mtime day; any other criterion stays a typed error.
+#[tokio::test]
+async fn code_date_range_narrows_by_worktree_mtime() {
+    let (_dir, state) = fixture_state();
+    let token = state.bearer.clone();
+    let scope = served_scope(&state);
+    let router = build_router(state);
+
+    // Wide-open from-bound: every freshly-written fixture file is in range.
+    let (status, body) = post(
+        router.clone(),
+        "/graph/query",
+        &token,
+        json!({"scope": scope, "corpus": "code", "granularity": "document",
+               "filter": {"date_range": {"from": "1970-01-01"}, "date_field": "modified"}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(!node_ids(&body["data"]).is_empty());
+    // The applied facet is echoed honestly on the response filter block.
+    assert_eq!(body["data"]["filter"]["date_field"], "modified");
+    assert_eq!(
+        body["data"]["filter"]["date_range"]["from"], "1970-01-01",
+        "{body}"
+    );
+
+    // Far-future from-bound: nothing was modified there yet.
+    let (status, body) = post(
+        router.clone(),
+        "/graph/query",
+        &token,
+        json!({"scope": scope, "corpus": "code", "granularity": "document",
+               "filter": {"date_range": {"from": "2999-01-01"}, "date_field": "modified"}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(node_ids(&body["data"]).is_empty());
+
+    // A code date_range without the modified criterion is a typed error.
+    let (status, body) = post(
+        router,
+        "/graph/query",
+        &token,
+        json!({"scope": scope, "corpus": "code",
+               "filter": {"date_range": {"from": "1970-01-01"}}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(body["tiers"].is_object());
+}
+
 #[tokio::test]
 async fn filters_serves_the_code_vocabulary_per_corpus() {
     let (_dir, state) = fixture_state();
@@ -310,6 +363,13 @@ async fn filters_serves_the_code_vocabulary_per_corpus() {
     assert_eq!(vocab["languages"], json!(["rust", "typescript"]));
     assert_eq!(vocab["dirs"], json!(["src", "web"]));
     assert_eq!(body["data"]["corpus"], "code");
+    // code-timeline-range ADR: the code corpus advertises its mtime span in the
+    // same date-bounds shape the vault serves, so the timeline strip fits to it.
+    assert!(
+        vocab["date_bounds_by_field"]["modified"]["min"].is_string(),
+        "{vocab}"
+    );
+    assert!(vocab["date_bounds"]["max"].is_string());
 
     // The vault vocabulary stays the vault vocabulary (no code facets).
     let (status, body) = get(router, &format!("/filters?scope={scope}"), &token).await;

@@ -20,8 +20,13 @@ import { useEffect, useRef } from "react";
 
 import type { SceneGraphModel } from "../../scene/graphModel";
 import { DeltaLog } from "../../scene/deltaLog";
-import { useDashboardTimelineModeView } from "../../stores/server/queries";
+import {
+  useDashboardState,
+  useDashboardTimelineModeView,
+} from "../../stores/server/queries";
+import { normalizeDashboardGraphCorpus } from "../../stores/server/dashboardStateNormalization";
 import { normalizeTimelineScope } from "../../stores/view/timeline";
+import { movePlayhead } from "../../stores/view/timelineIntent";
 import {
   timeTravelSource,
   type TimeTravelSource,
@@ -218,6 +223,16 @@ export function useTimeTravel(scope: unknown, scene: SceneController): void {
   const normalizedScope = normalizeTimelineScope(scope);
   const timeline = useDashboardTimelineModeView(normalizedScope);
   const mode = timeline.mode;
+  // The code corpus has no git-history axis (present view only — the engine
+  // rejects `as_of` on it, and `/graph/asof`/`/graph/diff` resolve the VAULT
+  // graph): a scrub while code is active would push a vault historical slice
+  // onto the code canvas. Fence it here at the one scrub driver: refuse to
+  // scrub and heal a historical mode back to live, which also covers a corpus
+  // switch landing mid-scrub (code-timeline-range ADR).
+  const corpus = normalizeDashboardGraphCorpus(
+    useDashboardState(normalizedScope).data?.corpus,
+  );
+  const codeCorpus = corpus === "code";
   const driver = useRef<TimeTravelDriver | null>(null);
 
   useEffect(() => {
@@ -228,9 +243,13 @@ export function useTimeTravel(scope: unknown, scene: SceneController): void {
 
   useEffect(() => {
     if (isTimeTravel(mode)) {
+      if (codeCorpus) {
+        movePlayhead("live", normalizedScope);
+        return;
+      }
       void driver.current?.scrubTo(mode.at);
     } else {
       scene.command({ kind: "set-time", at: "live" });
     }
-  }, [mode, scene]);
+  }, [mode, scene, codeCorpus, normalizedScope]);
 }
