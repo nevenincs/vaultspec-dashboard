@@ -12,12 +12,16 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { createElement } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { dashboardDocumentStateResetPatch } from "../../stores/server/dashboardState";
 import { queryClient } from "../../stores/server/queryClient";
 import { useBrowserTreeExpansionStore } from "../../stores/view/browserTreeExpansion";
 import { selectNode, setFollowMode } from "../../stores/view/selection";
-import { requestSelectionReveal } from "../../stores/view/selectionReveal";
+import {
+  requestSelectionReveal,
+  useSelectionRevealStore,
+} from "../../stores/view/selectionReveal";
 import { useViewStore } from "../../stores/view/viewStore";
-import { liveScope } from "../../testing/liveClient";
+import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { pathToNodeId } from "./browserSelection";
 import { VaultBrowser } from "./VaultBrowser";
 
@@ -58,17 +62,43 @@ describe("TreeBrowser reveal-on-selection scroll (GS-003, live engine)", () => {
   beforeAll(async () => {
     scope = await liveScope();
   });
-  beforeEach(() => {
+  beforeEach(async () => {
     localStorage.clear();
     useBrowserTreeExpansionStore.getState().reset();
+    // Reset the process-shared client singletons this test mutates, so it starts from a
+    // known baseline regardless of a prior file: the reveal signal and follow mode.
+    useSelectionRevealStore.setState({ target: null });
+    setFollowMode(true);
     useViewStore.getState().setScope(scope);
+    // Start from the shared engine's DEFAULT dashboard-state (selected_ids cleared), so
+    // this test's selection assertions are deterministic regardless of a prior file.
+    await createLiveClient()
+      .patchDashboardState(dashboardDocumentStateResetPatch(scope))
+      .catch(() => undefined);
   });
   afterEach(async () => {
     cleanup();
-    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    // fileParallelism:false → all files share ONE mutable live engine, run sequentially.
+    // This test PATCHes the shared dashboard-state (selectNode/reveal), so drain BOTH
+    // fetches AND mutations (an in-flight PATCH would be orphaned by the shared-engine
+    // teardown abort and time out the NEXT file's patch), then RESET the dashboard-state
+    // back to default so the next file starts clean.
+    await waitFor(() => {
+      expect(queryClient.isFetching()).toBe(0);
+      expect(queryClient.isMutating()).toBe(0);
+    });
     queryClient.clear();
+    await createLiveClient()
+      .patchDashboardState(dashboardDocumentStateResetPatch(scope))
+      .catch(() => undefined);
+    // Restore every process-shared client singleton this test mutated to its default, so
+    // the shared engine + client stores are indistinguishable from before it ran:
+    //   • the reveal signal (requestSelectionReveal set a {nodeId,nonce} target),
+    //   • follow mode (toggled OFF mid-test),
+    //   • the active scope.
+    useSelectionRevealStore.setState({ target: null });
+    setFollowMode(true);
     useViewStore.getState().setScope(null);
-    setFollowMode(true); // restore the view-local default so it can't leak across files
     vi.restoreAllMocks();
   });
 
