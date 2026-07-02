@@ -15,6 +15,7 @@ import type { ReactElement, ReactNode } from "react";
 import { useRef } from "react";
 
 import { deriveCodeViewerView, type ContentView } from "../../stores/server/queries";
+import { dispatchCopy } from "../../platform/actions/clipboardActions";
 import {
   deriveCodeLineRowStyle,
   deriveCodeLineWindow,
@@ -150,7 +151,9 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
     ? view.languageHint.charAt(0).toUpperCase() + view.languageHint.slice(1)
     : "Text";
   const onCopy = () => {
-    void navigator.clipboard?.writeText(view.text).catch(() => undefined);
+    // Route through the copy verb so the execCommand fallback reaches this button
+    // too (a bare navigator.clipboard write is a silent no-op on http origins).
+    void dispatchCopy({ text: view.text });
   };
 
   return (

@@ -18,6 +18,8 @@ import type { Root } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import Markdown, { defaultUrlTransform } from "react-markdown";
+
+import { dispatchCopy } from "../../platform/actions/clipboardActions";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -98,7 +100,9 @@ function CodeFence({
   // Mirror the CodeViewer's Copy affordance (a direct clipboard write); the prior
   // bare <span> rendered an actionable-looking "Copy" that did nothing (dead control).
   const onCopy = () => {
-    void navigator.clipboard?.writeText(code).catch(() => undefined);
+    // Route through the copy verb so the execCommand fallback reaches this button
+    // too (a bare navigator.clipboard write is a silent no-op on http origins).
+    void dispatchCopy({ text: code });
   };
   return (
     <div className="vs-code-fence">
