@@ -20,11 +20,15 @@
 import { cssColorNumber } from "./tokenReads";
 
 /** The sanctioned node categories (Figma graph/Node-items 83:2), plus `reference`
- *  (terminology-standardization ADR D3). `code` and `index` are NOT scene node
- *  categories: `code` artefacts and `.vault/index` feature-index documents are never
- *  knowledge-graph nodes (code excluded at the engine projection, index dropped at
- *  ingest), so neither is ever painted on the canvas. The Files/search surface keeps
- *  its own `code` colour token; this scene module no longer references it. */
+ *  (terminology-standardization ADR D3) and `code` (codebase-graphing ADR D7).
+ *  `index` is NOT a scene node category: `.vault/index` feature-index documents are
+ *  metanodes dropped at ingest, never a knowledge-graph node.
+ *
+ *  `code` IS a category — but ONLY for the disconnected CODE corpus (ADR D7): the
+ *  vault graph still never paints a code node (the adapter/engine exclude it), so
+ *  `code` and the vault categories never appear in the same slice. It reuses the
+ *  design system's existing `--color-scene-category-code` token (the same colour
+ *  the Files/search surface uses) — same schema, no new colour. */
 export type NodeCategory =
   | "feature"
   | "research"
@@ -32,7 +36,8 @@ export type NodeCategory =
   | "plan"
   | "exec"
   | "audit"
-  | "reference";
+  | "reference"
+  | "code";
 
 /**
  * Map a node's `kind` (doc type, or `feature`/`code`) onto a category. The vault
@@ -64,6 +69,7 @@ export function nodeCategory(kind: string): NodeCategory {
     case "exec":
     case "audit":
     case "reference":
+    case "code":
       return kind;
     case "summary":
       return "exec";
@@ -73,6 +79,13 @@ export function nodeCategory(kind: string): NodeCategory {
     // category so the species still paints a legend colour.
     case "plan-container":
       return "plan";
+    // The CODE corpus's node species (codebase-graphing ADR D7): a source file
+    // (`code-artifact`) and a module rollup (`code-mod`, `code-module`) both paint
+    // the one `code` category colour; the file/module distinction is carried by
+    // the domain MARK, not a second hue.
+    case "code-artifact":
+    case "code-module":
+      return "code";
     default:
       return "reference";
   }
@@ -94,6 +107,8 @@ const CATEGORY_FALLBACK: Record<NodeCategory, number> = {
   exec: 0xb5703f,
   audit: 0x3f9aa6,
   reference: 0x9d5e86,
+  // codebase-graphing ADR D7: mirrors `--color-scene-category-code` light/:root.
+  code: 0xb05a6b,
 };
 
 /**
