@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use engine_graph::diff::DiffOp;
+use engine_graph::diff::{DiffOp, DiffTruncated, MAX_DIFF_DELTAS};
 use engine_graph::{LinkageGraph, MetaEdge, degree_by_tier, lifecycle_in_scope, meta_edges};
 use engine_model::{Edge, EdgeId, Node, NodeId, NodeKind, Progress, RelationKind, ScopeRef};
 use rayon::prelude::*;
@@ -840,17 +840,25 @@ fn graph_query_inner(
 /// FEATURE granularity (feature-convergence nodes + meta-edges) and diffs them
 /// by stable id into `granularity: "feature"` entries
 /// (`{op, granularity, node?|edge?, t, seq}` — the same wire shape as the
-/// document deltas), advancing `seq` from `seq_start`. Returns the entries and
-/// the last seq used. The engine owns this aggregation (contract §4: the GUI
-/// never derives the constellation from document edges); meta-edge identity is
-/// the endpoint pair, stable across re-derivation (provenance-stable keys).
+/// document deltas), advancing `seq` from `seq_start`. Returns the entries, the
+/// last seq used, and an optional truncation block. The engine owns this
+/// aggregation (contract §4: the GUI never derives the constellation from
+/// document edges); meta-edge identity is the endpoint pair, stable across
+/// re-derivation (provenance-stable keys).
+///
+/// Bounded the SAME way the document diff is (GIR-014, sharing
+/// [`MAX_DIFF_DELTAS`] / [`DiffTruncated`] with `engine_graph::diff`): a diff
+/// whose feature-node + meta-edge delta count exceeds the ceiling DEGRADES TO
+/// KEYFRAME-ONLY — empty `entries` plus a truncation block — because a partial
+/// mutation log is not self-consistent. Both diff granularities therefore share
+/// ONE bounding contract, and the client answers either with a re-keyframe.
 pub fn feature_delta(
     old: &LinkageGraph,
     new: &LinkageGraph,
     scope: &ScopeRef,
     t: i64,
     seq_start: u64,
-) -> (Vec<Value>, u64) {
+) -> (Vec<Value>, u64, Option<DiffTruncated>) {
     fn project(
         g: &LinkageGraph,
         scope: &ScopeRef,
@@ -881,7 +889,16 @@ pub fn feature_delta(
 
     let mut entries: Vec<Value> = Vec::new();
     let mut seq = seq_start;
+    // `total` counts EVERY changed element so the truncation block reports the
+    // true size; `entries` is capped at the ceiling so allocation stays bounded
+    // even for an over-ceiling diff that will be discarded (mirrors the document
+    // `diff`; bounded-by-default-for-every-accumulator).
+    let mut total: usize = 0;
     let mut push = |op: DiffOp, node: Option<&Value>, edge: Option<&Value>| {
+        total += 1;
+        if entries.len() >= MAX_DIFF_DELTAS {
+            return;
+        }
         let mut entry = serde_json::Map::new();
         entry.insert(
             "op".into(),
@@ -927,8 +944,27 @@ pub fn feature_delta(
         }
     }
 
+    // Over the ceiling: degrade to KEYFRAME-ONLY (GIR-014), the same contract the
+    // document diff uses — a partial feature/meta-edge mutation log is not
+    // self-consistent, so emit no deltas plus an honest truncation block and let
+    // the client re-keyframe via `/graph/asof`.
+    if total > MAX_DIFF_DELTAS {
+        return (
+            Vec::new(),
+            seq_start,
+            Some(DiffTruncated {
+                total_deltas: total,
+                returned_deltas: 0,
+                reason: format!(
+                    "feature diff delta ceiling ({MAX_DIFF_DELTAS}): a partial mutation \
+                     log is not self-consistent — the client re-keyframes via /graph/asof"
+                ),
+            }),
+        );
+    }
+
     let last_seq = seq.saturating_sub(1).max(seq_start);
-    (entries, last_seq)
+    (entries, last_seq, None)
 }
 
 #[cfg(test)]
@@ -1808,8 +1844,12 @@ mod tests {
         // changes.
         let new = fixture();
 
-        let (entries, last_seq) = feature_delta(&old, &new, &scope(), 100, 5);
+        let (entries, last_seq, truncated) = feature_delta(&old, &new, &scope(), 100, 5);
 
+        assert!(
+            truncated.is_none(),
+            "an in-bounds feature diff is not truncated"
+        );
         assert!(!entries.is_empty(), "constellation changed: deltas emitted");
         // Every entry rides the FEATURE species and the shared clock from 5.
         assert!(entries.iter().all(|e| e["granularity"] == "feature"));
@@ -1830,5 +1870,43 @@ mod tests {
             }),
             "the new cross-feature meta-edge appears as a tagged add: {entries:?}"
         );
+    }
+
+    #[test]
+    fn over_ceiling_feature_delta_degrades_to_keyframe_only() {
+        // GIR-014: a feature diff whose feature-node/meta-edge delta count exceeds
+        // MAX_DIFF_DELTAS degrades to keyframe-only (empty entries + honest
+        // truncation), the SAME contract as the document diff. One distinct
+        // feature tag per doc → one feature-convergence node → one add delta.
+        let old = LinkageGraph::new();
+        let mut new = LinkageGraph::new();
+        let over = MAX_DIFF_DELTAS + 1;
+        for i in 0..over {
+            new.upsert_node(doc(&format!("d{i:06}-plan"), &format!("feat-{i:06}")));
+        }
+        let (entries, _last_seq, truncated) = feature_delta(&old, &new, &scope(), 7, 0);
+        assert!(
+            entries.is_empty(),
+            "an over-ceiling feature diff emits no deltas (keyframe-only)"
+        );
+        let truncated = truncated.expect("over-ceiling feature diff carries truncation");
+        assert_eq!(
+            truncated.total_deltas, over,
+            "the TRUE delta count is reported"
+        );
+        assert_eq!(truncated.returned_deltas, 0);
+    }
+
+    #[test]
+    fn at_ceiling_feature_delta_ships_every_delta() {
+        // Exactly at the ceiling is in-bounds: all feature deltas ship, no truncation.
+        let old = LinkageGraph::new();
+        let mut new = LinkageGraph::new();
+        for i in 0..MAX_DIFF_DELTAS {
+            new.upsert_node(doc(&format!("d{i:06}-plan"), &format!("feat-{i:06}")));
+        }
+        let (entries, _last_seq, truncated) = feature_delta(&old, &new, &scope(), 7, 0);
+        assert_eq!(entries.len(), MAX_DIFF_DELTAS);
+        assert!(truncated.is_none());
     }
 }

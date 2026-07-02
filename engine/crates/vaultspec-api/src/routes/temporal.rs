@@ -547,14 +547,18 @@ pub async fn graph_diff(
             )
         }
         engine_query::graph::Granularity::Feature => {
-            // The feature projection is feature-count-bounded already (the
-            // constellation species aggregates documents into convergence nodes),
-            // so it carries no `truncated` block. NOTE: `feature_delta` lives in
-            // engine-query and is not itself delta-capped; the document path is the
-            // unbounded HIGH this fix targets.
-            let (entries, last_seq) =
+            // The feature diff is bounded the SAME way as the document diff
+            // (GIR-014): an over-ceiling feature-node/meta-edge delta count
+            // degrades to keyframe-only with an honest `truncated` block. Both
+            // granularities share ONE bounding contract, and the client answers
+            // either with a re-keyframe.
+            let (entries, last_seq, truncated) =
                 engine_query::graph::feature_delta(from_graph, to_graph, &scope, t, 0);
-            (Value::Array(entries), last_seq, Value::Null)
+            (
+                Value::Array(entries),
+                last_seq,
+                serde_json::to_value(&truncated).expect("truncated serializes"),
+            )
         }
     };
     Ok(super::envelope(

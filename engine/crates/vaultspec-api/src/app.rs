@@ -877,7 +877,14 @@ impl ScopeCell {
         // are not blocked by graph-scale projection work.
         let doc_log = engine_graph::diff::diff(&old, &fresh, t, 0);
         let feat_seq_start = doc_log.entries.len() as u64;
-        let (feat_entries, _) =
+        // GIR-014: `feature_delta` now returns a truncation block (third tuple
+        // member); on the LIVE broadcast path it is intentionally ignored. Both
+        // the document diff (`diff`) and the feature diff degrade to keyframe-only
+        // on a pathological over-ceiling single commit — but the commit still
+        // swaps the graph and bumps the generation below, so live clients recover
+        // via generation-invalidation refetch (the delta stream is an
+        // optimization; the generation bump is the backstop), never a silent gap.
+        let (feat_entries, _, _) =
             engine_query::graph::feature_delta(&old, &fresh, &self.scope, t, feat_seq_start);
 
         // Unify both species as (seq, payload) for the resume buffer + the
