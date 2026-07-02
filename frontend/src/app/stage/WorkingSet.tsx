@@ -21,10 +21,18 @@ import {
 
 interface WorkingSetProps {
   selectedId?: string | null;
+  /** The canonical filter visibility membership (the SAME visibleNodeIds truth GS-004
+   *  uses on the canvas). A chip whose node is not in this set renders DIMMED with a
+   *  "hidden by filter" affordance, so the trail is honest about filter-hidden nodes
+   *  (GS-006). Omit / null when no filter membership is available → no dimming. */
+  visibleNodeIds?: ReadonlySet<string> | null;
 }
 
-export function WorkingSet({ selectedId: canonicalSelectedId }: WorkingSetProps = {}) {
-  const view = useWorkingSetView();
+export function WorkingSet({
+  selectedId: canonicalSelectedId,
+  visibleNodeIds = null,
+}: WorkingSetProps = {}) {
+  const view = useWorkingSetView(visibleNodeIds);
   useWorkingSetKeybindings(canonicalSelectedId ?? null);
 
   // The trail hides entirely when the working set is empty: the constellation
@@ -41,7 +49,13 @@ export function WorkingSet({ selectedId: canonicalSelectedId }: WorkingSetProps 
         {view.countLabel}
       </span>
       {view.rows.map((row) => (
-        <span key={row.id} className={row.rootClassName}>
+        <span
+          key={row.id}
+          className={row.rootClassName}
+          data-working-set-hidden={row.hidden ? "" : undefined}
+          title={row.hiddenHint}
+          aria-label={row.hidden ? `${row.label} — ${row.hiddenHint}` : undefined}
+        >
           {row.label}
           <button
             type="button"
