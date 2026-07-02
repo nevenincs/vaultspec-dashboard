@@ -39,6 +39,18 @@ import { graphDeltaToScene, sliceToScene } from "../../scene/sceneMapping";
 /** Loaded-range margin behind the requested T (local backward scrub room). */
 export const KEYFRAME_BACK_MARGIN_MS = 14 * 24 * 3600_000;
 
+/**
+ * Client-side ceiling on ingested diff deltas (GIR-011,
+ * bounded-by-default-for-every-accumulator). The server bounds `/graph/diff`
+ * (GIR-010), but the ingest clamps DEFENSIVELY too — exactly as the keyframe path
+ * clamps to `MAX_CLIENT_GRAPH_NODES` and the live-splice path to
+ * `GRAPH_FEATURE_DELTAS_CAP`. An over-ceiling or server-truncated diff is answered
+ * by a re-keyframe (the next scrub re-fetches), never by applying a partial,
+ * non-self-consistent log. Kept in step with `MAX_DELTA_LOG_ENTRIES` /
+ * `MAX_DIFF_DELTAS`.
+ */
+export const MAX_CLIENT_DIFF_DELTAS = 20_000;
+
 // --- time-travel honesty: read off the ONE shared mode (S61) -------------------
 //
 // Time-travel honesty (ADR "Time-travel mode") is driven from a SINGLE truth:
@@ -147,9 +159,18 @@ export class TimeTravelDriver {
     const diff = await this.source.diff(this.scope, anchor, now);
     // A newer scrub superseded this load; let it win.
     if (this.loadingFor !== t) return;
-    const diffDeltas = diff.deltas
+    const mappedDeltas = diff.deltas
       .map(mapDelta)
       .filter((delta): delta is SceneDelta => delta !== null);
+    // Bound the ingest (GIR-011): clamp to MAX_CLIENT_DIFF_DELTAS and note when
+    // the diff is incomplete — either the server degraded an over-ceiling diff to
+    // keyframe-only (`diff.truncated`) or the batch itself exceeded the client
+    // clamp. An incomplete diff is a re-keyframe case, not a partial log to apply.
+    const overCap = mappedDeltas.length > MAX_CLIENT_DIFF_DELTAS;
+    const diffDeltas = overCap
+      ? mappedDeltas.slice(0, MAX_CLIENT_DIFF_DELTAS)
+      : mappedDeltas;
+    const incompleteDiff = diff.truncated != null || overCap;
     // Normalize wire fields: `t` is echoed as a string when the caller passed
     // a ms-timestamp; `last_seq` is null on historical views (engine does not
     // yet carry the seq position at the snapshot — S50 gap). Derive a
@@ -166,7 +187,14 @@ export class TimeTravelDriver {
       seq: keyframeSeq,
     });
     const result = this.log.append(diffDeltas);
-    this.loaded = { from: anchor, to: result.gap ? anchor : now };
+    // Only claim the full [anchor, now] range when the diff is complete AND
+    // spliced cleanly. A gap, an over-cap batch, or a server-truncated diff means
+    // only the keyframe instant is trusted — collapse the loaded range to `anchor`
+    // so `hasRange` is false for any later T and the next scrub re-keyframes
+    // (mirrors the existing `result.gap ? anchor : now` idiom). The current scrub
+    // still renders the best-available replay below.
+    const loadedTo = result.gap || incompleteDiff ? anchor : now;
+    this.loaded = { from: anchor, to: loadedTo };
     this.loadingFor = null;
     this.pushAt(t, this.log.replayTo(t));
   }

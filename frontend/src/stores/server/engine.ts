@@ -1026,10 +1026,28 @@ export interface GraphDeltaEntry {
   granularity?: "document" | "feature";
 }
 
+/**
+ * Honest truncation for an over-ceiling diff (GIR-010, mirrors the graph-query /
+ * lineage / ego `truncated` shape). `returned_deltas` is always 0: the server
+ * degrades an over-ceiling diff to keyframe-only rather than ship a partial,
+ * non-self-consistent mutation log.
+ */
+export interface GraphDiffTruncated {
+  total_deltas: number;
+  returned_deltas: number;
+  reason: string;
+}
+
 export interface GraphDiffResponse {
   deltas: GraphDeltaEntry[];
   last_seq: number;
   tiers: TiersBlock;
+  /**
+   * Present (with `deltas` empty) when the server bounded an over-ceiling diff to
+   * keyframe-only. The client answers by re-keyframing, never by applying a
+   * partial log. Absent/null on an in-bounds diff.
+   */
+  truncated?: GraphDiffTruncated | null;
 }
 
 export interface GraphAsofResponse extends GraphSlice {

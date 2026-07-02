@@ -11,6 +11,18 @@
 import { SceneGraphModel } from "./graphModel";
 import type { SceneDelta, SceneEdgeData, SceneNodeData } from "./sceneController";
 
+/**
+ * Ceiling on the retained delta log (GIR-011,
+ * bounded-by-default-for-every-accumulator): `deltas` is a retained list, so it
+ * carries an explicit bound at the point it accumulates. A log longer than this
+ * is a re-keyframe case, not a growing accumulator — appending past the ceiling
+ * flips the log gapped (→ `needsKeyframe`) and refuses the rest, exactly like a
+ * sequence gap, so the owner re-keyframes instead of retaining an unbounded list.
+ * Kept at keyframe scale, mirroring the server's `MAX_DIFF_DELTAS` and the
+ * ingest's `MAX_CLIENT_DIFF_DELTAS`.
+ */
+export const MAX_DELTA_LOG_ENTRIES = 20_000;
+
 export interface Keyframe {
   nodes: readonly SceneNodeData[];
   edges: readonly SceneEdgeData[];
@@ -96,6 +108,14 @@ export class DeltaLog {
         continue;
       }
       if (delta.seq > last + 1) {
+        this.gapped = true;
+        return { accepted, duplicates, gap: true };
+      }
+      // Accumulator ceiling (bounded-by-default-for-every-accumulator): a log
+      // that would grow past MAX_DELTA_LOG_ENTRIES is treated as a gap — refuse
+      // the rest and flip `needsKeyframe` so the owner re-keyframes rather than
+      // retain an unbounded list.
+      if (this.deltas.length >= MAX_DELTA_LOG_ENTRIES) {
         this.gapped = true;
         return { accepted, duplicates, gap: true };
       }
