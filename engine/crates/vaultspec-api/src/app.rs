@@ -877,15 +877,22 @@ impl ScopeCell {
         // are not blocked by graph-scale projection work.
         let doc_log = engine_graph::diff::diff(&old, &fresh, t, 0);
         let feat_seq_start = doc_log.entries.len() as u64;
-        // GIR-014: `feature_delta` now returns a truncation block (third tuple
-        // member); on the LIVE broadcast path it is intentionally ignored. Both
-        // the document diff (`diff`) and the feature diff degrade to keyframe-only
-        // on a pathological over-ceiling single commit — but the commit still
-        // swaps the graph and bumps the generation below, so live clients recover
-        // via generation-invalidation refetch (the delta stream is an
-        // optimization; the generation bump is the backstop), never a silent gap.
-        let (feat_entries, _, _) =
+        // GIR-014/GIR-015: both diffs are delta-ceiling bounded and degrade to
+        // keyframe-only (empty entries + a truncation block) on a pathological
+        // over-ceiling single commit. When that happens the deltas are DROPPED from
+        // this broadcast — but the SIGNAL must NOT be. The client's ONLY live
+        // invalidation trigger is stream-chunk processing (`useGraphLiveSync`): a
+        // non-"feature" chunk sets `sawDocumentDelta`, which fires the debounced
+        // constellation refetch. An over-ceiling commit that emitted ZERO chunks
+        // would advance nothing and the client would silently miss the change until
+        // the next commit/reconnect — the server-side generation bump below is NOT
+        // a client backstop (the client never reads it). So a degraded commit
+        // broadcasts one synthetic "rekeyframe" marker chunk (below) that rides the
+        // seq clock + resume ring and triggers that refetch. Invariant: degradation
+        // may drop the DELTAS, never the SIGNAL.
+        let (feat_entries, _, feat_truncated) =
             engine_query::graph::feature_delta(&old, &fresh, &self.scope, t, feat_seq_start);
+        let degraded = doc_log.truncated.is_some() || feat_truncated.is_some();
 
         // Unify both species as (seq, payload) for the resume buffer + the
         // live channel; the document entries serialize to the same wire shape.
@@ -909,6 +916,24 @@ impl ScopeCell {
                 Some(_) => payloads.push(entry),
                 None => eprintln!("vaultspec serve: dropping feature delta with no seq: {entry}"),
             }
+        }
+        // GIR-015: a degraded commit dropped its deltas above; broadcast ONE
+        // synthetic non-"feature" marker so the client re-keyframes. Its `seq` is
+        // assigned by the broadcast loop below (like every other payload), so it
+        // rides the resume ring with a valid contiguous seq — the clock advances
+        // by exactly one and the next commit stays gapless; a `since=` resume
+        // replays it as a harmless extra refetch. Non-"feature" granularity routes
+        // it through the client's `sawDocumentDelta` → `invalidateConstellation`.
+        if degraded {
+            payloads.push(serde_json::json!({
+                "op": "rekeyframe",
+                "granularity": "rekeyframe",
+                "t": t,
+                "reason": format!(
+                    "diff exceeded the delta ceiling ({}); re-keyframe",
+                    engine_graph::diff::MAX_DIFF_DELTAS
+                ),
+            }));
         }
 
         let emitted = payloads.len();
@@ -1322,6 +1347,90 @@ mod tests {
         let ring = cell.ring.lock().unwrap();
         let seqs: Vec<u64> = ring.iter().map(|(seq, _)| *seq).collect();
         assert!(seqs.windows(2).all(|w| w[1] > w[0]));
+    }
+
+    #[test]
+    fn over_ceiling_commit_broadcasts_a_rekeyframe_marker_not_a_delta_flood() {
+        // GIR-015: a commit whose diff exceeds the delta ceiling degrades to
+        // keyframe-only — the deltas are DROPPED, but ONE synthetic non-"feature"
+        // "rekeyframe" marker MUST ride the seq clock + resume ring so the client
+        // re-keyframes. Without it the live clock would freeze (emitted=0) and
+        // clients would silently miss the change until the next commit/reconnect.
+        use engine_model::{CanonicalKey, Facet, Node, NodeKind, Presence, node_id};
+
+        let (_dir, state) = fixture_state();
+        let cell = state.active_cell();
+        let before = cell.ring.lock().unwrap().len();
+
+        // A fresh graph with more nodes than the delta ceiling: the document diff
+        // (old 1 node → fresh N nodes) exceeds MAX_DIFF_DELTAS and DEGRADES to
+        // keyframe-only. The feature diff stays IN-BOUNDS: the fixture's single
+        // pre-existing `#w` feature node is removed (the fresh nodes are tagless),
+        // so one legitimate feature-remove delta rides ALONGSIDE the marker. The
+        // contract is one MARKER on a degraded commit, not one total payload — the
+        // dropped 20k-doc-delta flood is what must never be broadcast.
+        let mut fresh = LinkageGraph::new();
+        let over = engine_graph::diff::MAX_DIFF_DELTAS + 1;
+        for i in 0..over {
+            let stem = format!("d{i:06}");
+            fresh.upsert_node(Node {
+                id: node_id(&CanonicalKey::Document {
+                    stem: stem.as_str(),
+                }),
+                kind: NodeKind::Document,
+                key: stem.clone(),
+                title: None,
+                doc_type: None,
+                dates: None,
+                feature_tags: vec![],
+                status: None,
+                tier: None,
+                facets: vec![Facet {
+                    scope: ScopeRef::Ref {
+                        name: "main".into(),
+                    },
+                    presence: Presence::Exists,
+                    content_hash: Some("h".into()),
+                    lifecycle: None,
+                }],
+            });
+        }
+
+        let emitted = cell.commit_graph(fresh);
+        // The over-ceiling DOCUMENT delta flood (>MAX_DIFF_DELTAS changes) is
+        // DROPPED, not broadcast: the emitted set is only the small in-bounds
+        // feature delta(s) plus the single marker — never the flood.
+        assert!(
+            emitted < engine_graph::diff::MAX_DIFF_DELTAS,
+            "the over-ceiling document delta flood is dropped (emitted={emitted})"
+        );
+
+        let ring = cell.ring.lock().unwrap();
+        // Exactly ONE re-keyframe marker rides the resume ring on a degraded commit
+        // (the code pushes it once). Any in-bounds deltas from the non-degraded
+        // feature species ride alongside it but are NOT markers.
+        let marker_count = ring
+            .iter()
+            .skip(before)
+            .filter(|(_, payload)| payload["granularity"] == "rekeyframe")
+            .count();
+        assert_eq!(
+            marker_count, 1,
+            "exactly one re-keyframe marker is broadcast on a degraded commit"
+        );
+        let marker = ring
+            .iter()
+            .skip(before)
+            .map(|(_, payload)| payload)
+            .find(|payload| payload["granularity"] == "rekeyframe")
+            .expect("the re-keyframe marker is present in the ring");
+        assert_eq!(marker["op"], "rekeyframe");
+        assert!(
+            marker["seq"].as_u64().is_some(),
+            "the marker carries a valid contiguous seq (clock advanced by one)"
+        );
+        // The graph still converged to the fresh corpus (the swap is unconditional).
+        assert_eq!(cell.graph_arc().node_count(), over);
     }
 
     #[test]
