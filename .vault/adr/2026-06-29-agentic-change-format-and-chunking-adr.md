@@ -1,33 +1,34 @@
 ---
 tags:
-  - '#adr'
-  - '#agentic-spec-authoring-backend'
+  - "#adr"
+  - "#agentic-spec-authoring-backend"
 date: '2026-06-29'
-modified: '2026-06-30'
 related:
   - "[[2026-06-29-agentic-spec-authoring-backend-research]]"
   - "[[2026-06-29-langgraph-approval-document-editing-research]]"
   - "[[2026-06-29-zed-acp-document-authoring-research]]"
   - "[[2026-06-16-document-editor-backend-adr]]"
   - "[[2026-06-18-document-edit-hardening-adr]]"
-  - '[[2026-06-29-agentic-authoring-boundary-adr]]'
-  - '[[2026-06-29-agentic-authoring-state-store-adr]]'
-  - '[[2026-06-29-agentic-changeset-ledger-adr]]'
-  - '[[2026-06-29-agentic-concurrency-leases-conflicts-adr]]'
-  - '[[2026-06-29-agentic-approval-gates-review-state-adr]]'
-  - '[[2026-06-29-agentic-langgraph-integration-adr]]'
-  - '[[2026-06-29-agentic-streaming-events-outbox-adr]]'
-  - '[[2026-06-29-agentic-apply-materialization-adr]]'
-  - '[[2026-06-29-agentic-rollback-history-adr]]'
-  - '[[2026-06-29-agentic-security-provenance-adr]]'
-  - '[[2026-06-29-agentic-live-editing-room-adr]]'
-  - '[[2026-06-29-agentic-authoring-api-contract-adr]]'
-  - '[[2026-06-29-agentic-review-station-state-adr]]'
-  - '[[2026-06-29-agentic-document-chunk-management-adr]]'
-  - '[[2026-06-29-agentic-multiagent-composition-adr]]'
-  - '[[2026-06-29-agentic-document-identity-adr]]'
+  - "[[2026-06-29-agentic-authoring-boundary-adr]]"
+  - "[[2026-06-29-agentic-authoring-state-store-adr]]"
+  - "[[2026-06-29-agentic-changeset-ledger-adr]]"
+  - "[[2026-06-29-agentic-concurrency-leases-conflicts-adr]]"
+  - "[[2026-06-29-agentic-approval-gates-review-state-adr]]"
+  - "[[2026-06-29-agentic-langgraph-integration-adr]]"
+  - "[[2026-06-29-agentic-streaming-events-outbox-adr]]"
+  - "[[2026-06-29-agentic-apply-materialization-adr]]"
+  - "[[2026-06-29-agentic-rollback-history-adr]]"
+  - "[[2026-06-29-agentic-security-provenance-adr]]"
+  - "[[2026-06-29-agentic-live-editing-room-adr]]"
+  - "[[2026-06-29-agentic-authoring-api-contract-adr]]"
+  - "[[2026-06-29-agentic-review-station-state-adr]]"
+  - "[[2026-06-29-agentic-document-chunk-management-adr]]"
+  - "[[2026-06-29-agentic-multiagent-composition-adr]]"
+  - "[[2026-06-29-agentic-document-identity-adr]]"
+supersedes:
+  - '2026-06-29-agentic-document-chunk-management-adr'
+modified: '2026-07-02'
 ---
-
 # `agentic-change-format-and-chunking` adr: `hybrid proposal changes with section-scoped snapshots` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -82,6 +83,23 @@ Diffs are derived review artifacts. Apply uses the semantic operation and
 validated materialized target through the backend's internal `vaultspec-core`
 adapter. Rollback creates a new changeset from the stored preimage or inverse
 semantic operation; it never erases the original event history.
+
+**Chunk identity and bounded context (absorbed from the superseded
+document-chunk-management ADR, 2026-07-02; DEFERRED as a served API).** When the
+chunk surface is built, `document_chunk` identity is the tuple of document
+reference, revision token, chunker version, byte or structural range, and content
+hash; a chunk record carries content kind, structural path, bounded text,
+neighbor references, and source hash; chunk listings are paginated and byte
+capped; a new document revision invalidates current chunks while historical chunk
+references retained as proposal provenance stay resolvable or degrade to
+hash-only evidence with an explicit unavailability reason; chunk retention
+follows document/proposal retention, never the bounded token-stream policy; and
+agents read context through bounded chunk APIs, never arbitrary filesystem
+reads. In V1, however, no chunk API ships (architecture review finding ASA-003):
+agents read bounded context through the existing document content routes, and
+`source chunk evidence` on a proposal operation is OPTIONAL provenance — an
+operation without chunk evidence is valid. The chunk API becomes buildable, under
+the contract above, when a retrieval consumer exists.
 
 ## Rationale
 

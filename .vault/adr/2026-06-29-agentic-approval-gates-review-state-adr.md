@@ -26,6 +26,7 @@ related:
   - '[[2026-06-29-agentic-document-chunk-management-adr]]'
   - '[[2026-06-29-agentic-multiagent-composition-adr]]'
   - '[[2026-06-29-agentic-document-identity-adr]]'
+  - '[[2026-07-02-agentic-operation-modes-adr]]'
 ---
 
 # `agentic-approval-gates-review-state` adr: `backend-owned approval gates and review state` | (**status:** `accepted`)
@@ -78,12 +79,14 @@ Approval policy is represented as data, not UI conditionals. Each policy entry
 classifies operation risk, required reviewer role/count, whether quorum is
 needed, whether tool permission is separate from final proposal approval, whether
 trusted automation may auto-apply, and which conditions make the approval stale.
-V1 may use a simple matrix: low-risk read/context tools can be tool-permitted,
+V1 uses a simple matrix: low-risk read/context tools can be tool-permitted,
 document proposals require one authorized human approval, destructive operations
 such as rename/archive/rollback require explicit human approval, and agent
-self-approval is forbidden. A separate system actor may auto-apply only when a
-recorded policy permits a specific non-destructive class and the audit trail
-records the policy decision.
+self-approval is forbidden (owned by the security-provenance ADR). Auto-apply —
+when and how a recorded policy lets a system actor approve without a human gate —
+is owned entirely by the agentic-operation-modes ADR (2026-07-02); this ADR
+supplies the policy-as-data representation modes are expressed in and does not
+restate the mode rules.
 
 An approval becomes stale when proposal material changes, a target base revision
 changes, validation changes from the reviewed result, policy changes, the run is

@@ -109,7 +109,7 @@ so stable cross-references are mandatory.
   **Rule:** LangGraph checkpoints, threads, runs, interrupts, and tool calls may
   reference Vaultspec authoring records, but proposal lifecycle, approval, apply,
   rollback, and audit truth must live in Vaultspec-owned state.
-- **Rule slug:** `agent-side-effects-require-idempotency-keys`.
-  **Rule:** Every agent-triggered proposal, approval, tool side effect, apply,
-  rollback, and event publication must carry an idempotency key and replay to the
-  recorded result.
+
+(The idempotency obligation this ADR's interrupt-replay analysis motivates is
+owned by the changeset-ledger ADR's `authoring-mutating-commands-are-idempotent`
+candidate; it is deliberately not restated as a second rule here.)

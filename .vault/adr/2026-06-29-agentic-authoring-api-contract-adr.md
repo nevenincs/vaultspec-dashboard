@@ -60,7 +60,9 @@ V1 exposes these semantic endpoint families:
 - session and run commands: create authoring session, read session snapshot,
   start prompt turn, cancel session/run, and resume an interrupted run;
 - document resources: read document snapshot, read revision snapshot, list
-  revision metadata, diff revisions, and read bounded document chunks;
+  revision metadata, and diff revisions (bounded chunk reads are the deferred
+  chunk contract owned by the change-format-and-chunking ADR; V1 serves bounded
+  document content, not a chunk API);
 - proposal commands: create proposal, append or replace draft material, submit
   for review, validate, rebase, supersede, cancel, and read proposal snapshot;
 - review commands: list review-station items, claim/release item, submit
@@ -96,8 +98,10 @@ but it preserves approval, idempotency, projection, and audit guarantees.
 
 - **Rule slug:** `authoring-api-exposes-semantic-commands`.
   **Rule:** Authoring endpoints and agent tools expose sessions, proposals,
-  reviews, leases, apply, rollback, chunks, and streams as semantic domain
-  commands; they never expose `vaultspec-core` verbs as the public contract.
-- **Rule slug:** `authoring-mutators-carry-idempotency`.
-  **Rule:** Every mutating authoring API command carries a scoped idempotency key
-  and replays to the recorded command outcome or in-flight state.
+  reviews, leases, apply, rollback, and streams as semantic domain commands;
+  they never expose `vaultspec-core` verbs as the public contract.
+
+(The idempotency-key obligation is owned by the changeset-ledger ADR's
+`authoring-mutating-commands-are-idempotent` candidate; this contract's request
+field/header and scope composition above are its API-surface realization, not a
+second rule.)

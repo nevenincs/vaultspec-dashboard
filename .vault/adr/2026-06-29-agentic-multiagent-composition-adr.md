@@ -26,9 +26,20 @@ related:
   - '[[2026-06-29-agentic-document-identity-adr]]'
 ---
 
-# `agentic-multiagent-composition` adr: `parallel agent work units and composition rules` | (**status:** `accepted`)
+# `agentic-multiagent-composition` adr: `parallel agent work units and composition rules` | (**status:** `proposed`)
 
 ## Problem Statement
+
+DEMOTED accepted → proposed on 2026-07-02 (architecture review finding ASA-003):
+this decision models parallel agent work units, a six-value composition
+projection, and composed-candidate generation ahead of any single-agent path
+existing. V1's concurrency requirement — concurrent proposals are allowed, apply
+serializes on base-revision checks, overlap becomes `conflicted` — is fully
+covered by the accepted concurrency-leases-conflicts ADR. The design below is
+retained as the candidate shape and returns to acceptance when the walking
+skeleton produces multi-agent evidence (two real agents whose work must compose);
+nothing here is load-bearing until then, and no implementation phase should
+build against it while proposed.
 
 The brief requires multiple concurrent agents and humans authoring, tweaking,
 rewriting, and proposing document changes. The existing ledger permits concurrent

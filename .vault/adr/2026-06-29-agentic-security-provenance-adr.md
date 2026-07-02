@@ -26,6 +26,7 @@ related:
   - '[[2026-06-29-agentic-document-chunk-management-adr]]'
   - '[[2026-06-29-agentic-multiagent-composition-adr]]'
   - '[[2026-06-29-agentic-document-identity-adr]]'
+  - '[[2026-07-02-agentic-operation-modes-adr]]'
 ---
 
 # `agentic-security-provenance` adr: `actor permissions and auditable agent provenance` | (**status:** `accepted`)
@@ -61,9 +62,11 @@ explicit: read context, propose, comment/respond, approve, apply, rebase,
 rollback, rename, archive, and administer policy.
 
 Agents may propose and request approval within delegated scope. They cannot
-approve or apply their own side-effecting proposals. Trusted automation can
-auto-apply only under an explicit recorded system policy, not by pretending to be
-a reviewer. Raw filesystem writes and terminal execution are outside the
+approve or apply their own side-effecting proposals — this ADR owns that ban.
+The conditions under which trusted automation may auto-apply (a system actor
+approving under a named, recorded, mode policy — never by pretending to be a
+reviewer) are owned by the agentic-operation-modes ADR (2026-07-02) and are not
+restated here. Raw filesystem writes and terminal execution are outside the
 authoring permission set; agents request semantic proposal operations.
 
 Audit events are append-only and record actor, effective actor, initiator,

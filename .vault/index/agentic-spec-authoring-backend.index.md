@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#agentic-spec-authoring-backend'
-date: '2026-06-30'
-modified: '2026-06-30'
+date: '2026-07-02'
+modified: '2026-07-02'
 related:
   - '[[2026-06-29-agentic-apply-materialization-adr]]'
   - '[[2026-06-29-agentic-approval-gates-review-state-adr]]'
@@ -24,7 +24,62 @@ related:
   - '[[2026-06-29-agentic-security-provenance-adr]]'
   - '[[2026-06-29-agentic-spec-authoring-backend-research]]'
   - '[[2026-06-29-agentic-streaming-events-outbox-adr]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P01-S01]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P01-S02]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P01-S03]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P01-S04]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P01-S05]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P02-S06]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P02-S07]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P02-S08]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P02-S09]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P02-S10]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P03-S11]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P03-S12]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P03-S13]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P03-S14]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P03-S15]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P04-S16]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P04-S17]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P04-S18]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P04-S19]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W01-P04-S20]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P05-S21]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P05-S22]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P05-S23]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P05-S24]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P05-S25]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P06-S26]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P06-S27]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P06-S28]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P06-S29]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P06-S30]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P07-S31]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P07-S32]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P07-S33]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P07-S34]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P07-S35]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P08-S36]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P08-S37]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P08-S38]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P08-S39]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P08-S40]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P09-S41]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P09-S42]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P09-S43]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P09-S44]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P09-S45]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W02-P09-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P10-S46]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P10-S47]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P10-S48]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P10-S49]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P10-S50]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P10-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-audit]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-plan]]'
+  - '[[2026-07-02-agentic-operation-modes-adr]]'
+  - '[[2026-07-02-agentic-spec-authoring-backend-audit]]'
 ---
 
 # `agentic-spec-authoring-backend` feature index
@@ -43,15 +98,76 @@ Auto-generated index of all documents tagged with `#agentic-spec-authoring-backe
 - `2026-06-29-agentic-change-format-and-chunking-adr` - `agentic-change-format-and-chunking` adr: `hybrid proposal changes with section-scoped snapshots` | (**status:** `accepted`)
 - `2026-06-29-agentic-changeset-ledger-adr` - `agentic-changeset-ledger` adr: `changeset identity, lifecycle, projections, and idempotency` | (**status:** `accepted`)
 - `2026-06-29-agentic-concurrency-leases-conflicts-adr` - `agentic-concurrency-leases-conflicts` adr: `revision-first concurrency with advisory leases` | (**status:** `accepted`)
-- `2026-06-29-agentic-document-chunk-management-adr` - `agentic-document-chunk-management` adr: `revision scoped document chunk management` | (**status:** `accepted`)
+- `2026-06-29-agentic-document-chunk-management-adr` - `agentic-document-chunk-management` adr: `revision scoped document chunk management` | (**status:** `superseded`)
 - `2026-06-29-agentic-document-identity-adr` - `agentic-document-identity` adr: `document identity and provisional targets` | (**status:** `accepted`)
 - `2026-06-29-agentic-langgraph-integration-adr` - `agentic-langgraph-integration` adr: `threads, runs, checkpoints, interrupts, and tool calls` | (**status:** `accepted`)
 - `2026-06-29-agentic-live-editing-room-adr` - `agentic-live-editing-room` adr: `defer CRDT and OT to a scoped editing-room substrate` | (**status:** `accepted`)
-- `2026-06-29-agentic-multiagent-composition-adr` - `agentic-multiagent-composition` adr: `parallel agent work units and composition rules` | (**status:** `accepted`)
+- `2026-06-29-agentic-multiagent-composition-adr` - `agentic-multiagent-composition` adr: `parallel agent work units and composition rules` | (**status:** `proposed`)
 - `2026-06-29-agentic-review-station-state-adr` - `agentic-review-station-state` adr: `review station queue state and assignment model` | (**status:** `accepted`)
 - `2026-06-29-agentic-rollback-history-adr` - `agentic-rollback-history` adr: `rollback as a new auditable changeset` | (**status:** `accepted`)
 - `2026-06-29-agentic-security-provenance-adr` - `agentic-security-provenance` adr: `actor permissions and auditable agent provenance` | (**status:** `accepted`)
 - `2026-06-29-agentic-streaming-events-outbox-adr` - `agentic-streaming-events-outbox` adr: `durable authoring events and replayable streams` | (**status:** `accepted`)
+- `2026-07-02-agentic-operation-modes-adr` - `agentic-operation-modes` adr: `authoring operation modes and the unified write path` | (**status:** `proposed`)
+
+### audit
+
+- `2026-06-30-agentic-spec-authoring-backend-audit` - `agentic-spec-authoring-backend` audit: `W01 P01 authoring route shell review`
+- `2026-07-02-agentic-spec-authoring-backend-audit` - `agentic-spec-authoring-backend` audit: `architecture review toward hardened superseding ADRs`
+
+### exec
+
+- `2026-06-30-agentic-spec-authoring-backend-W01-P01-S01` - Ground Fenced module and route ownership requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W01-P01-S02` - Implement the authoring module shell, feature gate, route registration seam, and ownership map
+- `2026-06-30-agentic-spec-authoring-backend-W01-P01-S03` - Add route shell tests for disabled-state behavior, bearer gating, and shared route registration
+- `2026-06-30-agentic-spec-authoring-backend-W01-P01-S04` - Run Fenced module and route ownership code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W01-P01-S05` - Verify the authoring module is reachable only through the intended route family and disabled-safe responses
+- `2026-06-30-agentic-spec-authoring-backend-W01-P02-S06` - Ground Shared envelope and disabled-state contract requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W01-P02-S07` - Implement authoring response helpers for snapshots, command receipts, typed errors, degraded tiers, and disabled-state payloads
+- `2026-06-30-agentic-spec-authoring-backend-W01-P02-S08` - Add response grammar tests for success, validation failure, unauthorized, degraded, replayed, and disabled responses
+- `2026-06-30-agentic-spec-authoring-backend-W01-P02-S09` - Run Shared envelope and disabled-state contract code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W01-P02-S10` - Verify every non-raw authoring response carries the shared envelope and tiers block
+- `2026-06-30-agentic-spec-authoring-backend-W01-P03-S11` - Ground Command vocabulary and aggregate identifiers requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W01-P03-S12` - Implement typed aggregate identifiers, command names, lifecycle enums, actor references, document references, and receipt references
+- `2026-06-30-agentic-spec-authoring-backend-W01-P03-S13` - Add model tests for stable serialization, invalid identifiers, terminal states, and action eligibility
+- `2026-06-30-agentic-spec-authoring-backend-W01-P03-S14` - Run Command vocabulary and aggregate identifiers code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W01-P03-S15` - Verify frontend and agent fixtures can serialize the same command vocabulary without core-shaped verbs
+- `2026-06-30-agentic-spec-authoring-backend-W01-P04-S16` - Ground V1 DTO schema and route fixtures requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W01-P04-S17` - Implement V1 DTOs and route fixtures for sessions, documents, proposals, reviews, apply, rollback, leases, streams, and recovery
+- `2026-06-30-agentic-spec-authoring-backend-W01-P04-S18` - Add schema fixture tests for versioning, idempotency fields, unknown-field rejection, tiers, and route-family negative cases
+- `2026-06-30-agentic-spec-authoring-backend-W01-P04-S19` - Run V1 DTO schema and route fixtures code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W01-P04-S20` - Verify every endpoint family has a versioned DTO fixture and a negative contract case
+- `2026-06-30-agentic-spec-authoring-backend-W02-P05-S21` - Ground Physical store binding and migrations requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W02-P05-S22` - Implement authoring store connection management, migration runner, schema metadata, and fail-loud version checks
+- `2026-06-30-agentic-spec-authoring-backend-W02-P05-S23` - Add real store tests for migration ordering, clean open, version mismatch, and corrupted migration metadata
+- `2026-06-30-agentic-spec-authoring-backend-W02-P05-S24` - Run Physical store binding and migrations code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W02-P05-S25` - Verify store state survives restart and schema mismatch fails loud through tests and manual database inspection
+- `2026-06-30-agentic-spec-authoring-backend-W02-P06-S26` - Ground Repository traits and unit of work requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W02-P06-S27` - Implement repository traits, transaction helpers, unit-of-work boundaries, and rollback-on-error behavior
+- `2026-06-30-agentic-spec-authoring-backend-W02-P06-S28` - Add transaction tests for committed commands, rolled-back failures, nested repository use, and concurrent writers
+- `2026-06-30-agentic-spec-authoring-backend-W02-P06-S29` - Run Repository traits and unit of work code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W02-P06-S30` - Verify every mutating command can run inside one explicit unit of work
+- `2026-06-30-agentic-spec-authoring-backend-W02-P07-S31` - Ground Idempotency outcome repository requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W02-P07-S32` - Implement scoped idempotency keys, command outcome records, in-flight state records, and replay lookup helpers
+- `2026-06-30-agentic-spec-authoring-backend-W02-P07-S33` - Add idempotency tests for duplicate create, duplicate apply, in-flight replay, conflicting scope, and expired outcome records
+- `2026-06-30-agentic-spec-authoring-backend-W02-P07-S34` - Run Idempotency outcome repository code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W02-P07-S35` - Verify repeated frontend and agent commands return the recorded outcome without duplicating product records
+- `2026-06-30-agentic-spec-authoring-backend-W02-P08-S36` - Ground Retention compaction and backup classes requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W02-P08-S37` - Implement retention classes, compaction markers, backup export metadata, protected preimage rules, and status reporting
+- `2026-06-30-agentic-spec-authoring-backend-W02-P08-S38` - Add retention tests for pending approvals, applied preimages, rejected transcripts, compaction limitations, and backup export coverage
+- `2026-06-30-agentic-spec-authoring-backend-W02-P08-S39` - Run Retention compaction and backup classes code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W02-P08-S40` - Verify compaction cannot silently delete pending approvals, apply receipts, or rollback preimages
+- `2026-06-30-agentic-spec-authoring-backend-W02-P09-S41` - Ground Outbox primitive and sequence allocation requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W02-P09-S42` - Implement outbox records, sequence allocation, publication state, restart recovery, and duplicate publication guards
+- `2026-06-30-agentic-spec-authoring-backend-W02-P09-S43` - Add outbox primitive tests for commit atomicity, sequence monotonicity, worker restart, and duplicate suppression
+- `2026-06-30-agentic-spec-authoring-backend-W02-P09-S44` - Run Outbox primitive and sequence allocation code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W02-P09-S45` - Verify durable event records commit with product state and survive restart before publication
+- `2026-06-30-agentic-spec-authoring-backend-W02-P09-summary` - `agentic-spec-authoring-backend` `W02.P09` summary
+- `2026-06-30-agentic-spec-authoring-backend-W03-P10-S46` - Ground Document reference resolver requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W03-P10-S47` - Implement document_ref resolution, provisional create targets, duplicate stem handling, missing target handling, and ref snapshot lookup
+- `2026-06-30-agentic-spec-authoring-backend-W03-P10-S48` - Add resolver tests for duplicate stems, renames, provisional creates, missing documents, ref scopes, and bounded listings
+- `2026-06-30-agentic-spec-authoring-backend-W03-P10-S49` - Run Document reference resolver code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W03-P10-S50` - Verify document references remain stable across rename and provisional-create scenarios
+- `2026-06-30-agentic-spec-authoring-backend-W03-P10-summary` - `agentic-spec-authoring-backend` `W03.P10` summary
 
 ### plan
 
