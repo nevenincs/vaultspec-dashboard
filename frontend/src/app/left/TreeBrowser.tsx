@@ -280,6 +280,15 @@ export function TreeBrowser({
     }
     return map;
   }, [tree.data?.entries]);
+  // node id -> its doc-type, so a reveal can expand the DOCUMENTS-section ancestor path
+  // (`sec:documents` + `type:<docType>`) that mounts the leaf independently of follow mode.
+  const nodeDocType = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of tree.data?.entries ?? []) {
+      map.set(pathToNodeId(entry.path), entry.doc_type);
+    }
+    return map;
+  }, [tree.data?.entries]);
   useEffect(() => {
     if (!followMode || selectedNodeId === null) return;
     const tag = followFeatureKeyForNode(
@@ -292,13 +301,15 @@ export function TreeBrowser({
   }, [followMode, selectedNodeId, nodeFeatureTags, expandAll, setActiveKey]);
   // Reveal-on-selection scroll (GS-003): an OFF-CANVAS selection (rail row, search hit,
   // menu Open — activateEntity `frame:true`) requests a reveal; scroll the selected
-  // document's row into view when it is off-viewport, so the row is not merely
-  // highlighted somewhere out of sight. The selected leaf is the sole `aria-current`
-  // row, so it is the scroll target. Gated on the reveal request — an ON-CANVAS click
-  // (`frame:false`) never requests one, so the rail never yanks under a canvas click
-  // (the same gate the camera focus bounce uses). `scrollIntoView({ block: "nearest" })`
-  // no-ops when the row is already visible. Deduped on the request nonce; re-runs when
-  // `expanded` changes so a row the follow-mode expand just mounted is then found.
+  // document's row into view so it is not merely highlighted somewhere out of sight. An
+  // ON-CANVAS click (`frame:false`) never requests one, so the rail never yanks under a
+  // canvas click — the same gate the camera focus bounce uses. Independent of follow
+  // mode: it expands the DOCUMENTS-section ancestor path (`sec:documents` + the doc's
+  // `type:<docType>` folder) so the leaf mounts even when follow mode left it collapsed,
+  // then scrolls the selected leaf (the sole `aria-current` row) into view on the next
+  // frame (after the expand commits). scrollIntoView({block:"nearest"}) no-ops when the
+  // row is already visible. Deduped on the request nonce, consumed up-front so re-expanding
+  // an already-expanded path can never feed an effect loop (expandKeys mints a fresh set).
   const revealTarget = useSelectionRevealTarget();
   const rootRef = useRef<HTMLElement | null>(null);
   const consumedRevealNonce = useRef(0);
@@ -306,13 +317,18 @@ export function TreeBrowser({
     if (revealTarget === null || revealTarget.nonce === consumedRevealNonce.current) {
       return;
     }
-    // Only reveal the row for the node the reveal targets AND that is now the selection.
+    // Reveal only the node the request targets AND that is now the current selection.
     if (revealTarget.nodeId !== selectedNodeId) return;
-    const row = rootRef.current?.querySelector('[aria-current="page"]');
-    if (!row) return; // selected leaf not mounted yet (collapsed) — a later render re-runs
     consumedRevealNonce.current = revealTarget.nonce;
-    row.scrollIntoView({ block: "nearest" });
-  }, [revealTarget, selectedNodeId, expanded]);
+    const docType = nodeDocType.get(revealTarget.nodeId);
+    if (docType) expandAll(["sec:documents", `type:${docType}`]);
+    const raf = requestAnimationFrame(() => {
+      rootRef.current
+        ?.querySelector('[aria-current="page"]')
+        ?.scrollIntoView({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [revealTarget, selectedNodeId, nodeDocType, expandAll]);
   // The whole tree is ONE tab stop with arrow / Home / End roving through the
   // shared FocusZone primitive (keyboard-navigation W02.P05.S14). It replaces the
   // prior bespoke render-time roving (registerNav / registerVisibleKey /

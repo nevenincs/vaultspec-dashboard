@@ -22,7 +22,7 @@ interface SelectionRevealState {
   request: (nodeId: string) => void;
 }
 
-const useSelectionRevealStore = create<SelectionRevealState>((set) => ({
+export const useSelectionRevealStore = create<SelectionRevealState>((set) => ({
   target: null,
   request: (nodeId) =>
     set((state) => ({
