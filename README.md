@@ -3,8 +3,8 @@
 [![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
 vaultspec-dashboard is the visual companion to
-[vaultspec-core](https://github.com/wgergely/vaultspec-core) and
-[vaultspec-rag](https://github.com/wgergely/vaultspec-rag). It brings vault
+[vaultspec-core](https://github.com/nevenincs/vaultspec-core) and
+[vaultspec-rag](https://github.com/nevenincs/vaultspec-rag). It brings vault
 health, document graphs, spec-driven workflow state, and semantic-search
 activity from both siblings together behind a single user interface.
 
@@ -26,8 +26,9 @@ activity from both siblings together behind a single user interface.
 
 ## Status
 
-Early scaffold. The project structure, tooling, and vaultspec governance rules
-are in place; the dashboard UI itself is not implemented yet.
+In development, not yet released. The project structure, tooling, and
+vaultspec governance rules are in place and the dashboard UI is taking shape;
+interfaces and commands may change without notice.
 
 ## Development
 
@@ -41,6 +42,19 @@ just ci                       # full pipeline: lint -> audit -> vault check -> t
 The dev dependency group includes vaultspec-rag, which installs a CUDA torch
 build from the `pytorch-cu130` index. Omit it with `uv sync` (no
 `--all-groups`) if you only need the runtime surface.
+
+## The vaultspec family
+
+vaultspec-dashboard is the visual layer of the vaultspec family - a set of
+tools built around one shared vault:
+
+- [vaultspec-core](https://github.com/nevenincs/vaultspec-core) - the hub: the
+  `Research → Decide → Plan → Code → Review` pipeline, the git-tracked
+  Markdown vault, and the CLI that drives them.
+- [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag) - semantic
+  search across the vault and the codebase.
+- vaultspec-a2a - agent-to-agent orchestration across your coding agents.
+  Early.
 
 ## License
 
