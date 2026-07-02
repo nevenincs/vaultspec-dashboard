@@ -80,6 +80,7 @@ related:
   - '[[2026-06-30-agentic-spec-authoring-backend-plan]]'
   - '[[2026-07-02-agentic-operation-modes-adr]]'
   - '[[2026-07-02-agentic-spec-authoring-backend-audit]]'
+  - '[[2026-07-02-agentic-spec-authoring-backend-reference]]'
 ---
 
 # `agentic-spec-authoring-backend` feature index
@@ -107,7 +108,7 @@ Auto-generated index of all documents tagged with `#agentic-spec-authoring-backe
 - `2026-06-29-agentic-rollback-history-adr` - `agentic-rollback-history` adr: `rollback as a new auditable changeset` | (**status:** `accepted`)
 - `2026-06-29-agentic-security-provenance-adr` - `agentic-security-provenance` adr: `actor permissions and auditable agent provenance` | (**status:** `accepted`)
 - `2026-06-29-agentic-streaming-events-outbox-adr` - `agentic-streaming-events-outbox` adr: `durable authoring events and replayable streams` | (**status:** `accepted`)
-- `2026-07-02-agentic-operation-modes-adr` - `agentic-operation-modes` adr: `authoring operation modes and the unified write path` | (**status:** `proposed`)
+- `2026-07-02-agentic-operation-modes-adr` - `agentic-operation-modes` adr: `authoring operation modes and the unified write path` | (**status:** `accepted`)
 
 ### audit
 
@@ -172,6 +173,10 @@ Auto-generated index of all documents tagged with `#agentic-spec-authoring-backe
 ### plan
 
 - `2026-06-30-agentic-spec-authoring-backend-plan` - `agentic-spec-authoring-backend` plan
+
+### reference
+
+- `2026-07-02-agentic-spec-authoring-backend-reference` - `agentic-spec-authoring-backend` reference: `walking-skeleton rollout order and schedule`
 
 ### research
 

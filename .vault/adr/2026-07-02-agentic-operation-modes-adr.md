@@ -14,7 +14,7 @@ related:
   - "[[2026-06-16-document-editor-backend-adr]]"
 ---
 
-# `agentic-operation-modes` adr: `authoring operation modes and the unified write path` | (**status:** `proposed`)
+# `agentic-operation-modes` adr: `authoring operation modes and the unified write path` | (**status:** `accepted`)
 
 ## Problem Statement
 
