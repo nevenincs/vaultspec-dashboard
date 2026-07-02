@@ -986,6 +986,7 @@ export class ThreeField implements SceneFieldRenderer {
     nodes: SceneNodeData[],
     edges: SceneEdgeData[],
     reflow = false,
+    deltaDriven = false,
   ): void {
     if (!this.renderer) return;
 
@@ -1157,12 +1158,18 @@ export class ThreeField implements SceneFieldRenderer {
       this.focusNode(this.pendingFocusId);
     }
     this.running = !this.solver.isSettled();
-    // A data change (new corpus, filter reflow, ego expansion, live delta) is a STATE change:
-    // when autoframe is on, re-engage it so the new corpus reframes on load/filter — releasing
-    // any prior selection-frame or manual-nav suspension (#13 arbitration). The cold path
-    // already framed via fitToView above; this prompt poll handles the warm path and its
-    // deadband no-ops an unchanged frame.
-    this.reengageAutoframe();
+    // A genuine state change (new corpus, filter reflow, ego expansion, explicit user
+    // action) re-engages autoframe when it is on, so the new corpus reframes on
+    // load/filter — releasing any prior selection-frame or manual-nav suspension (#13
+    // arbitration). The cold path already framed via fitToView above; this prompt poll
+    // handles the warm path and its deadband no-ops an unchanged frame.
+    //
+    // A DELTA-driven warm set-data (ambient SSE vault edits, folded in via applyDeltas) is
+    // NOT such a state change (GIR-012): re-engaging on it would clear a user's manual-nav
+    // suspension and yank the camera back to the whole-graph frame on any background edit.
+    // Skip re-engagement for deltas — an engaged (unsuspended) autoframe still tracks the
+    // new bounds via its interval poll, and a disengaged one stays where the user left it.
+    if (!deltaDriven) this.reengageAutoframe();
     // Re-apply emphasis against the freshly-rebuilt geometry so a DURABLE focus survives
     // the data reload: the feature-cluster spotlight (re-derived from the rebuilt
     // `featureCohort`) and any active node selection re-dim their non-members instead of
@@ -1188,7 +1195,9 @@ export class ThreeField implements SceneFieldRenderer {
         if (d.edge) edgeMap.set(d.edge.id, d.edge);
       }
     }
-    this.setData([...nodeMap.values()], [...edgeMap.values()]);
+    // reflow=false (normal warm gate), deltaDriven=true so an ambient delta never
+    // re-frames the camera (GIR-012).
+    this.setData([...nodeMap.values()], [...edgeMap.values()], false, true);
   }
 
   /** Transient cross-highlight (pulse): briefly ring the named nodes, then clear —
@@ -1476,6 +1485,16 @@ export class ThreeField implements SceneFieldRenderer {
     this.builtEdges = [];
     this.edgeData = [];
     this.edgeBaseAlpha = new Float32Array(0);
+    // Clear the id/adjacency/position structures so an EMPTY graph is empty everywhere
+    // (GIR-008): the n===0 set-data path returns early WITHOUT rebuilding these, so a
+    // leftover idToIndex + cpuPositions would let emitAnchors resolve a tracked id and
+    // focusNode centre on a ghost node over a blank canvas. The non-empty path rebuilds
+    // all four before use (idToIndex, neighbors, featureCohort, cpuPositions), so
+    // clearing here is safe for both paths.
+    this.idToIndex = new Map();
+    this.neighbors = new Map();
+    this.featureCohort = new Map();
+    this.cpuPositions = new Float32Array(0);
   }
 
   /** Tear down the glyph mesh + material (the cached atlas texture survives, reused on
