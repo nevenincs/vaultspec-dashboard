@@ -33,7 +33,7 @@ Gate the scene ring pass and emitAnchors on the visibleNodeIds mask so a filtere
 
 - [x] `P02.S02` - GS-004: gate the scene ring pass and emitAnchors on the visibleNodeIds mask so a filtered-out node shows no ghost ring or floating anchor; `frontend/src/scene/three/threeField.ts`.
 - [x] `P02.S04` - GS-006: dim/hint filter-hidden working-set chips, the chip trail is DOM chrome so GS-004's anchor gating doesn't reach it, gate on the same visibility mask; `frontend working-set chip component`.
-- [ ] `P02.S05` - GS-007: pre-existing INTERMITTENT flake, VaultBrowser.render.test.tsx intermittently aborts (AbortError on patchDashboardState / waitFor timeout) under the shared-engine test harness, confirmed independent of GS-003/GS-006 (flakes with OR without our files), test-infra, needs a robustness fix (assertion/timeout hardening or per-file engine-state reset), deferred to test-infra; `frontend/src/app/left/VaultBrowser.render.test.tsx`.
+- [x] `P02.S05` - GS-007: RESOLVED (ea9295f596 / TIH-007), the intermittent VaultBrowser flake was caused by a cross-test server-side selected_ids leak that let the GS-003 reveal reaction re-render the tree and detach a captured element, plus a happy-dom drain blind spot (AbortError), fixed via VaultBrowser beforeEach dashboard-state reset plus follow-off plus the liveSetup drain, verified 10/10 green, 0 AbortErrors; `frontend/src/app/left/VaultBrowser.render.test.tsx`.
 
 ### Phase `P03` - Mask-mode affordance retention decision
 
