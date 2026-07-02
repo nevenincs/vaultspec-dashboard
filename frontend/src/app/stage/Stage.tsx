@@ -143,6 +143,9 @@ export function Stage() {
     graphQuery?.granularity,
     graphQuery?.lens,
     graphQuery?.focus,
+    // The active graph corpus (codebase-graphing ADR D7): a corpus switch re-keys
+    // this slice query, so the canvas reloads with the other corpus's data.
+    graphQuery?.corpus,
   );
   // The active representation mode + overlay visibility (graph-representation
   // ADR): view state the chrome owns and emits to the scene. A mode switch
