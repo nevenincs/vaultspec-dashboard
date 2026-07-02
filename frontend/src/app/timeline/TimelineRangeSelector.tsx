@@ -13,8 +13,9 @@
 // created / modified / stamped), so the strip's edges track the ACTIVE criterion's
 // span — not a created-only fallback (TTR-008); the flat `dateBounds` (created) is the
 // fallback ONLY when a criterion is genuinely absent from the corpus. The criterion is
-// still selected from the "Filter by" menu; surfacing an on-strip criterion selector is
-// an optional future enhancement, not required for the edges to be criterion-honest.
+// selected either from the "Filter by" context menu OR the on-strip SegmentedToggle
+// below (TTR-008b) — both write the ONE engine-served `timeline_date_criterion` setting
+// through the same seam; Modified/Stamped stay disabled-with-reason until it is served.
 //
 // Presentation matches the binding TimelineRange State= set (1005:4203, Typical
 // variant cloned from the prior canonical frame 993:4204): a single low row — small
@@ -30,7 +31,7 @@
 
 import { useRef } from "react";
 
-import { Skeleton, SkeletonBar, StateBlock } from "../kit";
+import { Segment, SegmentedToggle, Skeleton, SkeletonBar, StateBlock } from "../kit";
 import {
   useDashboardDateRangeView,
   useFiltersVocabularyView,
@@ -38,6 +39,11 @@ import {
   useTimelineDateCriterion,
 } from "../../stores/server/queries";
 import { useDashboardStateMutations } from "../../stores/server/dashboardState";
+import { setTimelineDateCriterion } from "../../stores/server/timelineDateCriterionIntent";
+import {
+  TIMELINE_DATE_CRITERIA,
+  type TimelineDateCriterion,
+} from "./timelineDateCriterion";
 import {
   clampToSpan,
   dayMonth,
@@ -60,7 +66,7 @@ export interface TimelineRangeProps {
 export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps) {
   const vocabulary = useFiltersVocabularyView(scope);
   const availability = useTimelineAvailability(scope);
-  const { criterion } = useTimelineDateCriterion(scope);
+  const { criterion, served } = useTimelineDateCriterion(scope);
   const trackRef = useRef<HTMLDivElement>(null);
   const activeHandle = useRef<"from" | "to" | null>(null);
 
@@ -241,6 +247,38 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
           />
         </div>
       </div>
+
+      {/* On-strip date-criterion selector (TTR-008b): switches WHICH date field the
+          strip's edges + the `date_range` filter key off. Writes the one engine-served
+          `timeline_date_criterion` setting through the SAME seam the "Filter by" menu
+          uses — never a second writer (display-state-is-backend-served /
+          settings-are-schema-driven). Modified/Stamped disable with an honest reason
+          until the engine serves the setting; the per-criterion bounds (TTR-008) make
+          the edges follow the choice automatically. */}
+      <SegmentedToggle
+        value={criterion}
+        onChange={(next) =>
+          void setTimelineDateCriterion(next as TimelineDateCriterion)
+        }
+        ariaLabel="timeline date field"
+        className="shrink-0"
+      >
+        {TIMELINE_DATE_CRITERIA.map((c) => {
+          const gated = c.id !== "created" && !served;
+          return (
+            <Segment
+              key={c.id}
+              value={c.id}
+              disabled={gated}
+              title={
+                gated ? c.unavailableReason : `Range by ${c.label.toLowerCase()} date`
+              }
+            >
+              {c.label}
+            </Segment>
+          );
+        })}
+      </SegmentedToggle>
 
       {isNarrowed && (
         <button
