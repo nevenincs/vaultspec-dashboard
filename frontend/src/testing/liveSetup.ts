@@ -24,6 +24,25 @@ engineClient.useTransport(liveTransport);
 // TanStack already handles the cancelled-query rejection — so it can never bleed
 // across a worker. No-op outside happy-dom (node-env files expose no `happyDOM`); the
 // live engine is local + fast, so the drain is cheap.
-afterEach(() => {
-  (globalThis as { happyDOM?: { abort?: () => void } }).happyDOM?.abort?.();
+afterEach(async () => {
+  const happyDOM = (
+    globalThis as {
+      happyDOM?: { abort?: () => void; waitUntilComplete?: () => Promise<void> };
+    }
+  ).happyDOM;
+  // Let pending async tasks SETTLE before aborting the window (TIH-007c). A RAW
+  // `patchDashboardState` (dashboardState.ts — neither a TanStack query nor a mutation,
+  // so the per-suite `isFetching()===0` drain cannot see it) fired by a component effect
+  // routinely outlives a test; aborting the window mid-flight cancels that fetch and its
+  // AbortError surfaces in a LATER file. `waitUntilComplete` drains happy-dom's async
+  // task manager so the raw patch completes first — killing the AbortError class at the
+  // root. Bounded so a genuinely-persistent task (a live SSE stream, a poll interval)
+  // can never hang teardown; the abort below is the backstop for anything still live.
+  if (happyDOM?.waitUntilComplete) {
+    await Promise.race([
+      happyDOM.waitUntilComplete().catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, 1000)),
+    ]);
+  }
+  happyDOM?.abort?.();
 });

@@ -20,6 +20,8 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { awaitEngineQuiescent } from "./awaitEngineQuiescent";
+
 const FIXTURE_DIR = resolve(import.meta.dirname, "fixtures/live-vault");
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const BIN_NAME = process.platform === "win32" ? "vaultspec.exe" : "vaultspec";
@@ -183,6 +185,19 @@ export default async function setup(): Promise<() => void> {
     await new Promise((r) => setTimeout(r, 200));
   }
   if (!ready) throw new Error(`engine did not come up within 30s:\n${serveLog}`);
+
+  // Wait for the COLD ingest to settle before any test runs (TIH-003 / TIH-006): the
+  // engine answers /status the moment it binds, but its initial declared-fold graph
+  // rebuild is still in flight for a beat after. Publishing env now would let file 1
+  // start reading a mid-fold corpus. Block until the graph `generation` is stable.
+  try {
+    await awaitEngineQuiescent({ baseUrl, token });
+  } catch (err) {
+    throw new Error(
+      `engine came up but did not reach quiescence:\n${(err as Error).message}\n${serveLog}`,
+      { cause: err },
+    );
+  }
 
   process.env["ENGINE_BASE_URL"] = baseUrl;
   process.env["ENGINE_TOKEN"] = token;

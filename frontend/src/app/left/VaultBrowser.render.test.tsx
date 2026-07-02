@@ -21,10 +21,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { createElement } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { dashboardDocumentStateResetPatch } from "../../stores/server/dashboardState";
 import { queryClient } from "../../stores/server/queryClient";
 import { useBrowserTreeExpansionStore } from "../../stores/view/browserTreeExpansion";
+import { setFollowMode } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
-import { liveScope } from "../../testing/liveClient";
+import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { VaultBrowser } from "./VaultBrowser";
 import { ENGINE_WAIT } from "../../testing/timing";
 
@@ -43,7 +45,18 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
   beforeAll(async () => {
     scope = await liveScope();
   });
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Reset the SERVER dashboard-state to default (TIH-007a): an earlier suite persists
+    // `selected_ids` on the shared engine, and this suite's client-only cache reset
+    // can't clear it. If it leaked in, the follow-mode reveal-on-selection reaction
+    // would fire when that stale selection arrives and re-render the tree — detaching a
+    // test's captured collapsed folder so no leaf ever mounts (the GS-007 failure).
+    await createLiveClient().patchDashboardState(
+      dashboardDocumentStateResetPatch(scope),
+    );
+    // Follow mode OFF here (TIH-007b): this suite tests disclosure mechanics; the
+    // reveal-on-selection reaction has its own dedicated suite, so it must not fire here.
+    setFollowMode(false);
     // Start every test from a clean, fully-collapsed disclosure state so the
     // persisted (localStorage-backed) tree store cannot leak expansion between tests
     // — the collapsed default is the contract under test.
@@ -65,6 +78,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     await waitFor(() => expect(queryClient.isFetching()).toBe(0), ENGINE_WAIT);
     queryClient.clear();
     useViewStore.getState().setScope(null);
+    setFollowMode(true); // restore the view-local default so follow-mode-off can't leak
   });
 
   // Every navigable element in the rail's single roving-tabindex order: the two
