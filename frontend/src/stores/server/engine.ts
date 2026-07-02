@@ -424,6 +424,16 @@ export interface EngineNode {
    */
   member_count?: number;
   /**
+   * CODE corpus (codebase-graphing CGR-002): served on code file/module nodes to
+   * drive module-identity colouring. `module` is the owning top-level module key;
+   * `module_hue` is the 0..6 ordered-palette index assigned to the top-seven
+   * modules by member count (`null` for the long-tail); `depth` is the path-segment
+   * depth. Backend-served + memoized per generation; absent on vault nodes.
+   */
+  module?: string;
+  module_hue?: number | null;
+  depth?: number;
+  /**
    * The authority register the node answers in (graph-node-semantics ADR):
    * `design` (ADR), `roadmap` (plan/feature), `evidence` (exec), `judgment`
    * (audit), `law` (rule), `substrate` (research/reference), `manifest`

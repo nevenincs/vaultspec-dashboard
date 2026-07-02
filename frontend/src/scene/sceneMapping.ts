@@ -55,6 +55,10 @@ export function engineNodeToScene(node: EngineNode): SceneNodeData {
     dates: node.dates,
     // Feature-convergence sizing input (S02 / ADR D4.1); absent on documents.
     memberCount: node.member_count,
+    // CODE corpus module identity (CGR-002): owning module, 0..6 hue index, depth.
+    module: node.module,
+    moduleHue: node.module_hue,
+    depth: node.depth,
     // Per-lens salience (graph-node-salience) -> size + label priority; the
     // embedding feeds the semantic UMAP worker (graph-representation §4).
     salience: node.salience,

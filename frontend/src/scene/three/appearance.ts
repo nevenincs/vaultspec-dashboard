@@ -105,7 +105,17 @@ export function nodeWorldRadius(
   params: AppearanceParams = APPEARANCE_DEFAULTS,
 ): number {
   const scale = params.nodeSizeScale;
-  if (node.kind === "feature" && node.memberCount && node.memberCount > 0) {
+  // Feature-convergence nodes AND code-module (directory) rollups size by member
+  // count (CGR-002 P02.S07): a directory reads as a constellation anchor sized by
+  // how much it contains, not an identical circle to a file. Both species carry the
+  // served `member_count`; documents/files fall through to the degree branch below.
+  if (
+    (node.kind === "feature" ||
+      node.kind === "code-module" ||
+      node.kind === "code-mod") &&
+    node.memberCount &&
+    node.memberCount > 0
+  ) {
     return BASE_POINT_SIZE * (1.4 + Math.log2(1 + node.memberCount) * 0.5) * scale;
   }
   const degree = nodeDegree(node);
@@ -122,8 +132,70 @@ export function nodeWorldRadius(
   return BASE_POINT_SIZE * scale;
 }
 
-/** Node body fill — the seven-category hue through the scene token seam. */
+/** The seven categorical scene hues, in a FIXED order, reused as the code
+ *  MODULE-IDENTITY palette (CGR-002): a served `module_hue` 0..6 indexes these.
+ *  Zero new hex — the same literal-hex `--color-scene-category-*` tokens, so the
+ *  palette is theme-correct in all three modes for free. `module_hue === null`
+ *  (long-tail modules) is NOT in this palette; it paints the neutral `code` hue via
+ *  `nodeColorNumber`'s fallback. */
+const MODULE_HUE_CATEGORIES = [
+  "feature",
+  "research",
+  "adr",
+  "plan",
+  "exec",
+  "audit",
+  "reference",
+] as const;
+
+/** Module-identity hue for a served `module_hue` index, from the ordered
+ *  categorical palette. A mis-served/out-of-range index wraps into the palette so
+ *  it still paints a stable colour rather than the fallback. */
+export function categoryPaletteHue(index: number): number {
+  const n = MODULE_HUE_CATEGORIES.length;
+  const i = ((Math.trunc(index) % n) + n) % n;
+  return categoryColor(MODULE_HUE_CATEGORIES[i]);
+}
+
+/** Per-path-depth mix toward the canvas ground for the module DEPTH gradient
+ *  (CGR-002): top-of-module (depth 0) reads saturated; each level deeper recedes a
+ *  step toward the warm paper, CLAMPED to a legibility floor so a deep leaf never
+ *  dissolves. The CPU analogue of the shader's NODE_RECEDE_MIX (mix toward
+ *  `canvasBackground`). */
+const MODULE_DEPTH_MIX_PER_LEVEL = 0.12;
+const MODULE_DEPTH_MIX_MAX = 0.55;
+function moduleDepthMix(depth: number | undefined): number {
+  if (typeof depth !== "number" || !Number.isFinite(depth) || depth <= 0) return 0;
+  return Math.min(MODULE_DEPTH_MIX_MAX, depth * MODULE_DEPTH_MIX_PER_LEVEL);
+}
+
+/** Per-channel linear mix of two 0xRRGGBB colours: `t=0` → `color`, `t=1` →
+ *  `target`. The CPU-side twin of the shader node-recede mix; no new hex. */
+export function mixHexToward(color: number, target: number, t: number): number {
+  const u = Math.max(0, Math.min(1, t));
+  const cr = (color >> 16) & 0xff;
+  const cg = (color >> 8) & 0xff;
+  const cb = color & 0xff;
+  const r = Math.round(cr + (((target >> 16) & 0xff) - cr) * u);
+  const g = Math.round(cg + (((target >> 8) & 0xff) - cg) * u);
+  const b = Math.round(cb + ((target & 0xff) - cb) * u);
+  return (r << 16) | (g << 8) | b;
+}
+
+/** Node body fill. For a CODE node with a served module-hue index (CGR-002): the
+ *  MODULE's palette hue mixed toward the canvas ground by path DEPTH — hue carries
+ *  module identity, lightness carries depth (size still carries salience, one
+ *  channel per meaning). A long-tail code module (`moduleHue` null) or any vault
+ *  node falls through to the seven-category hue — which for code is the neutral
+ *  `code` swatch. */
 export function nodeColorNumber(node: SceneNodeData): number {
+  if (typeof node.moduleHue === "number") {
+    return mixHexToward(
+      categoryPaletteHue(node.moduleHue),
+      canvasBackground(),
+      moduleDepthMix(node.depth),
+    );
+  }
   return categoryColor(node.docType ?? node.kind);
 }
 

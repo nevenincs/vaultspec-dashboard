@@ -52,6 +52,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDashboardFilterSidebarIntent } from "../../stores/server/dashboardFilterSidebarIntent";
 import { docTypeLabel } from "../../stores/server/docTypeVocabulary";
 import { useActiveScope, useVaultRailFacets } from "../../stores/server/queries";
+import { useCodeModuleLegend } from "../../stores/view/codeModuleLegend";
 import { DocTypeMark } from "../../scene/field/markComponents";
 import { useFocusZone } from "../chrome/useFocusZone";
 import {
@@ -87,6 +88,20 @@ const LEGEND: { category: Category; label: string }[] = [
   { category: "reference", label: docTypeLabel("reference") },
 ];
 
+/** CODE corpus module-hue palette order (CGR-002 P02.S08): `module_hue` 0..6 maps
+ *  to these categories — the SAME ordered palette `appearance.ts`
+ *  `categoryPaletteHue` bakes into the node colours, so a legend swatch matches the
+ *  hue its module's nodes paint with. */
+const MODULE_HUE_CATEGORIES: Category[] = [
+  "feature",
+  "research",
+  "adr",
+  "plan",
+  "exec",
+  "audit",
+  "reference",
+];
+
 function LegendMark({ category }: { category: Category }) {
   return (
     <span
@@ -110,6 +125,10 @@ const LEGEND_REGION_POSITION =
 
 export function CategoryLegend() {
   const scope = useActiveScope();
+  // CODE corpus (CGR-002 P02.S08): the served slice's hued modules, rolled up
+  // client-side. Non-empty ⇒ the graph is the code corpus ⇒ swap the doc-type key
+  // for the module colour key below; empty ⇒ the vault doc-type legend (unchanged).
+  const codeModules = useCodeModuleLegend(scope);
   const { docTypes } = useVaultRailFacets(scope);
   const { toggleFacet, clearFacet } = useDashboardFilterSidebarIntent(scope);
   // The active `doc_types` inclusion set (stable raw slice, Set derived in useMemo
@@ -177,6 +196,72 @@ export function CategoryLegend() {
   // expands the compact row back out to labels (the chevron points the way the row
   // will move).
   const ToggleChevron = compact ? ChevronRight : ChevronLeft;
+
+  // CODE CORPUS legend (CGR-002 P02.S08): a MODULE colour key — one row per top
+  // module the engine hued, in the palette hue its nodes paint with. It is a colour
+  // KEY (display), not a filter toggle: code carries no `dir_prefix` facet on the
+  // wire, and the module hue is served per-node, so re-listing it here re-classifies
+  // nothing (display-state-is-backend-served). Same toolbar shell + chevron compact
+  // as the doc-type legend; the module rows are non-interactive.
+  if (codeModules.length > 0) {
+    return (
+      <div
+        ref={regionRef}
+        className={LEGEND_REGION_POSITION}
+        data-category-legend-region
+      >
+        <div
+          className="flex w-fit max-w-full flex-nowrap items-center gap-fg-1-5 overflow-hidden"
+          role="group"
+          aria-label="module colours"
+          data-category-legend
+          data-category-legend-corpus="code"
+          data-category-legend-mode={compact ? "compact" : "expanded"}
+        >
+          <button
+            ref={toggle.ref}
+            tabIndex={toggle.tabIndex}
+            onKeyDown={toggle.onKeyDown}
+            onFocus={() => setActiveItem("toggle")}
+            type="button"
+            onClick={() => setUserCompact((value) => !value)}
+            aria-expanded={!compact}
+            aria-label={compact ? "Show module labels" : "Hide module labels"}
+            title={compact ? "Show module labels" : "Hide module labels"}
+            data-category-legend-toggle
+            className="flex shrink-0 items-center rounded-fg-xs px-fg-1 py-fg-0-5 text-ink-muted outline-none transition-colors duration-ui-fast ease-settle hover:bg-paper-raised focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          >
+            <ToggleChevron aria-hidden size={LEGEND_ICON_PX} />
+          </button>
+          <Divider orientation="vertical" className="h-[1.25em] self-stretch" />
+          {codeModules.map(({ module, moduleHue }) => {
+            const category =
+              MODULE_HUE_CATEGORIES[moduleHue % MODULE_HUE_CATEGORIES.length];
+            return (
+              <span
+                key={module}
+                data-category-legend-item={module}
+                title={module}
+                className="flex shrink-0 items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 text-caption text-ink-muted"
+              >
+                <span
+                  aria-hidden
+                  data-module-swatch={category}
+                  className="inline-block shrink-0 rounded-full"
+                  style={{
+                    width: "0.75em",
+                    height: "0.75em",
+                    backgroundColor: categoryColorVar(category),
+                  }}
+                />
+                {!compact ? <span className="truncate">{module}</span> : null}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={regionRef} className={LEGEND_REGION_POSITION} data-category-legend-region>

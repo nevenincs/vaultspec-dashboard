@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
   docTypes: [] as string[],
   toggleFacet: vi.fn(),
   clearFacet: vi.fn(),
+  codeModules: [] as { module: string; moduleHue: number }[],
 }));
 
 vi.mock("../../stores/server/queries", () => ({
@@ -31,6 +32,11 @@ vi.mock("../../stores/server/queries", () => ({
     featureQuery: null,
     dateRange: {},
   }),
+}));
+// The code-module rollup hook (CGR-002 P02.S08): empty ⇒ the vault doc-type legend
+// (these tests); non-empty ⇒ the code module colour key (the code-branch test).
+vi.mock("../../stores/view/codeModuleLegend", () => ({
+  useCodeModuleLegend: () => h.codeModules,
 }));
 vi.mock("../../stores/server/dashboardFilterSidebarIntent", () => ({
   useDashboardFilterSidebarIntent: () => ({
@@ -68,6 +74,7 @@ function hasMark(token: string): boolean {
 afterEach(() => {
   cleanup();
   h.docTypes = [];
+  h.codeModules = [];
   h.toggleFacet.mockClear();
   h.clearFacet.mockClear();
 });
@@ -151,6 +158,27 @@ describe("CategoryLegend (canonical doc_types filter, unified-filter-plane D2)",
     fireEvent.click(resetBtn!);
     expect(h.clearFacet).toHaveBeenCalledWith("doc_types");
     // The scoped clear is used — never the whole-record clobber.
+    expect(h.toggleFacet).not.toHaveBeenCalled();
+  });
+
+  it("swaps to the MODULE colour key when the corpus is code (CGR-002 P02.S08)", () => {
+    h.codeModules = [
+      { module: "engine", moduleHue: 0 },
+      { module: "scene", moduleHue: 1 },
+      { module: "stores", moduleHue: 2 },
+    ];
+    render(createElement(CategoryLegend));
+    // The code legend marks its corpus and lists one row per hued module.
+    expect(document.querySelector("[data-category-legend-corpus='code']")).toBeTruthy();
+    expect(maybeItem("engine")).toBeTruthy();
+    expect(maybeItem("scene")).toBeTruthy();
+    expect(maybeItem("stores")).toBeTruthy();
+    // Each module carries a colour swatch (the palette hue its nodes paint with).
+    expect(item("engine").querySelector("[data-module-swatch]")).toBeTruthy();
+    // The doc-type items are gone — this is the module key, not the doc-type key.
+    expect(maybeItem("adr")).toBeNull();
+    // The module rows are a colour KEY, not filter toggles.
+    fireEvent.click(item("engine"));
     expect(h.toggleFacet).not.toHaveBeenCalled();
   });
 });
