@@ -6,7 +6,6 @@
 
 import { X } from "lucide-react";
 
-import type { EngineEdge, EngineNode } from "../../stores/server/engine";
 import {
   clearWorkingSet,
   collapseWorkingSet,
@@ -14,30 +13,9 @@ import {
   useWorkingSetView,
 } from "../../stores/view/workingSet";
 
-// --- pure slice merging (unit-tested) -------------------------------------------
-
-export interface WireSlice {
-  nodes: EngineNode[];
-  edges: EngineEdge[];
-}
-
-/** Union slices by stable id — the constellation plus every expansion. */
-export function mergeSlices(
-  base: WireSlice,
-  expansions: readonly WireSlice[],
-): WireSlice {
-  const nodes = new Map<string, EngineNode>();
-  const edges = new Map<string, EngineEdge>();
-  for (const slice of [base, ...expansions]) {
-    // Guard a not-yet-resolved (loading) or empty expansion slice — an off-slice
-    // working-set ego materialize (activateEntity `frame:true`) folds the node's
-    // ego query in BEFORE it resolves, so `nodes`/`edges` can be undefined for a
-    // frame; a partial slice simply contributes nothing to the union (Issue #42).
-    for (const n of slice.nodes ?? []) nodes.set(n.id, n);
-    for (const e of slice.edges ?? []) edges.set(e.id, e);
-  }
-  return { nodes: [...nodes.values()], edges: [...edges.values()] };
-}
+// The pure slice union (`mergeSlices`/`WireSlice`) and the merged/display composition
+// moved to the stores layer (`stores/view/displaySlice`) per dashboard-layer-ownership
+// (GIR-007): that derivation is over the wire model, not view chrome.
 
 // --- the chip trail ----------------------------------------------------------------
 

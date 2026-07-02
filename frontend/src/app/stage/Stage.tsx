@@ -4,7 +4,7 @@
 // client-flattened doc edges. React sends commands and subscribes to
 // events; the field owns every frame.
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { getThemeController } from "../../platform/theme/themeController";
 import { createDashboardScene } from "../../scene/field/fieldAssembly";
@@ -24,9 +24,6 @@ import {
   useRestoreSessionScope,
   useSeedSessionContext,
 } from "../../stores/server/sessionContext";
-import { useDashboardVisibilityCommand } from "../../stores/view/dashboardFilterChoices";
-import { filterSliceByMembership } from "../../stores/view/filters";
-import { useGraphReflowFilter } from "../../stores/view/graphControlsChrome";
 import {
   stageBoundsCommand,
   stageOverlaysCommand,
@@ -44,6 +41,7 @@ import {
   selectFromScene,
 } from "../../stores/view/selection";
 import { activateEntity } from "../../stores/view/activateEntity";
+import { useDisplaySlice } from "../../stores/view/displaySlice";
 import { handleStageSceneEvent } from "../../stores/view/stageSceneEvents";
 import { docSurfaceForNodeId } from "../../stores/view/tabs";
 import { expandWorkingSet, useWorkingSet } from "../../stores/view/workingSet";
@@ -57,7 +55,6 @@ import { MinimapWidget } from "./MinimapWidget";
 import { CANVAS_KEYMAP_CONTEXT, useGraphWalkKeybindings } from "./graphWalkKeybindings";
 import { GraphNavControls, GraphSettingsPanel } from "./GraphControls";
 import { useGraphControlsPersistenceSync } from "./graphControlsPersistence";
-import { mergeSlices } from "./WorkingSet";
 
 // One scene singleton per app lifetime: the object survives route remounts, but
 // its renderer is released on unmount (F#1) and rebuilt on remount.
@@ -260,37 +257,17 @@ export function Stage() {
     );
   }, [selectedIds, selectedNodeId]);
 
-  // Constellation + working-set expansions → seam command (keyframe path).
-  const expansionData = expansions
-    .map((q) => q.data)
-    .filter((d): d is NonNullable<typeof d> => d !== undefined);
-  // Content signature (P-LOW-5): `dataUpdatedAt` bumps on every successful
-  // (re)fetch, so a neighbors refetch returning DIFFERENT data for the same id
-  // recomputes `merged` even when the expansion count is unchanged — the old
-  // `expansionData.length` proxy missed same-count content changes.
-  const expansionSig = expansions.map((q) => q.dataUpdatedAt).join(",");
-  const merged = useMemo(
-    () => (slice.data ? mergeSlices(slice.data, [...expansionData]) : null),
-    [slice.data, expansionSig],
+  // Constellation + working-set expansions → merged/display slice (keyframe path).
+  // The slice union and the reflow-filter composition are stores-owned MODEL
+  // derivation (useDisplaySlice, GIR-007 / dashboard-layer-ownership); the stage
+  // just consumes them. The reflow set-data carries the `reflow` hint below so the
+  // field warm-starts (no cold re-explode / refit) on the topology change.
+  const { merged, displaySlice, reflow, visibilityCommand } = useDisplaySlice(
+    scope,
+    slice,
+    expansions,
   );
   useGraphAffordanceReconciliation(merged);
-  // Reflow filter mode (graph-controls toggle): ON = filtering REMOVES the
-  // filtered-out nodes/edges from the live simulation (true node removal/re-add) so
-  // the layout re-forms around the survivors; OFF (default) = the filter is a
-  // visibility MASK over the full set (stable positions). Both consume the SAME
-  // stores-owned filter membership (the visibility command), so the two modes can
-  // never drift — only how the scene receives it differs: reflow feeds a reduced
-  // set-data, hide feeds a mask. The reflow set-data carries the `reflow` hint so the
-  // field warm-starts (no cold re-explode / refit) on the topology change.
-  const reflow = useGraphReflowFilter();
-  const visibilityCommand = useDashboardVisibilityCommand(scope, merged);
-  const displaySlice = useMemo(
-    () =>
-      reflow && merged && visibilityCommand?.kind === "set-visibility"
-        ? filterSliceByMembership(merged, visibilityCommand)
-        : merged,
-    [reflow, merged, visibilityCommand],
-  );
   // Scene persistence follows the active workspace+scope; client-side pin/lens
   // store keys are owned by viewStore scope actions, including session restore.
   useEffect(() => {
