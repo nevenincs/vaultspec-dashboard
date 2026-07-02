@@ -42,6 +42,7 @@ import type {
   FileTreeResponse,
   GitFileDiff,
   GitOpResponse,
+  GraphCorpus,
   GraphFilter,
   GraphGranularity,
   GraphSlice,
@@ -101,6 +102,7 @@ import {
   dashboardLineageFilterArg,
   dashboardSelectionId,
   normalizeDashboardGraphBounds,
+  normalizeDashboardGraphCorpus,
   normalizeDashboardGraphGranularity,
   normalizeDashboardPanelState,
   normalizeDashboardRepresentationMode,
@@ -210,6 +212,7 @@ export const engineKeys = {
     granularity?: "document" | "feature",
     lens?: SalienceLens,
     focus?: string | null,
+    corpus?: GraphCorpus,
   ) =>
     [
       ...engineKeys.all,
@@ -224,6 +227,11 @@ export const engineKeys = {
       // entry. Defaulted so the omitted case is the status-lens, no-focus key.
       lens ?? DEFAULT_SALIENCE_LENS,
       focus ?? "none",
+      // The active corpus (codebase-graphing ADR D7): vault and code are
+      // DISCONNECTED datasets, so they must never share a cache entry — a corpus
+      // switch is a key change that refetches the other corpus and reloads the
+      // canvas. Defaulted to `vault` so the pre-corpus key is byte-identical.
+      corpus ?? "vault",
     ] as const,
   // The dedicated bounded embedding read (graph-semantic-embeddings ADR D2):
   // keyed by (scope, lens, focus) — the SAME DOI selection unit `/graph/query`
@@ -2979,6 +2987,7 @@ export interface GraphSliceRequestIdentity {
   granularity: GraphGranularity;
   lens: SalienceLens;
   focus: string | null;
+  corpus: GraphCorpus;
 }
 
 function graphSliceRecord(value: unknown): Record<string, unknown> {
@@ -3011,6 +3020,7 @@ export function normalizeGraphSliceRequestIdentity(
   granularity: unknown,
   lens: unknown,
   focus: unknown,
+  corpus?: unknown,
 ): GraphSliceRequestIdentity {
   return {
     scope: normalizeGraphSliceScope(scope),
@@ -3019,6 +3029,7 @@ export function normalizeGraphSliceRequestIdentity(
     granularity: normalizeDashboardGraphGranularity(granularity),
     lens: normalizeDashboardSalienceLens(lens),
     focus: normalizeNodeId(focus),
+    corpus: normalizeDashboardGraphCorpus(corpus),
   };
 }
 
@@ -3059,6 +3070,7 @@ export function useGraphSlice(
   granularity?: unknown,
   lens?: unknown,
   focus?: unknown,
+  corpus?: unknown,
 ) {
   const request = normalizeGraphSliceRequestIdentity(
     scope,
@@ -3067,7 +3079,9 @@ export function useGraphSlice(
     granularity,
     lens,
     focus,
+    corpus,
   );
+  const isCode = request.corpus === "code";
   const enabled = request.scope !== null;
   const query = useQuery({
     queryKey: engineKeys.graph(
@@ -3077,16 +3091,27 @@ export function useGraphSlice(
       request.granularity,
       request.lens,
       request.focus,
+      request.corpus,
     ),
     queryFn: () =>
-      engineClient.graphQuery({
-        scope: request.scope!,
-        filter: request.filter,
-        as_of: request.asOf,
-        granularity: request.granularity,
-        lens: request.lens,
-        focus: request.focus,
-      }),
+      // The code corpus is a DISCONNECTED dataset (ADR D1/D5): it carries no vault
+      // Filter grammar, no salience lens, and no as_of (present view only) — the
+      // engine rejects those on the code corpus as typed errors. Send only the
+      // fields the code corpus accepts; the vault path is unchanged.
+      isCode
+        ? engineClient.graphQuery({
+            scope: request.scope!,
+            granularity: request.granularity,
+            corpus: "code",
+          })
+        : engineClient.graphQuery({
+            scope: request.scope!,
+            filter: request.filter,
+            as_of: request.asOf,
+            granularity: request.granularity,
+            lens: request.lens,
+            focus: request.focus,
+          }),
     enabled,
     // Tier-1 filter changes (graph-filter-fetch-split ADR D1): hold the prior bounded
     // slice while the newly-filtered one loads, so a filter change never blanks and a
@@ -3128,6 +3153,9 @@ export function useSalienceGraphSlice(
     granularity,
     state?.salience_lens,
     state?.salience_focus ?? null,
+    // The active corpus (codebase-graphing ADR D7): read from canonical
+    // dashboard state so a corpus switch is a re-query keyed on (…, corpus).
+    state?.corpus,
   );
 }
 

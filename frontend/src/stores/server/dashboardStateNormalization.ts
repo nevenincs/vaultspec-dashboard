@@ -4,6 +4,7 @@ import type {
   DashboardPanelState,
   DashboardPanelTab,
   DashboardTimelineMode,
+  GraphCorpus,
   GraphGranularity,
   RepresentationMode,
   SalienceLens,
@@ -12,6 +13,7 @@ import {
   DASHBOARD_BOUND_SHAPES,
   DASHBOARD_PANEL_TABS,
   DEFAULT_SALIENCE_LENS,
+  GRAPH_CORPORA,
   GRAPH_GRANULARITIES,
   REPRESENTATION_MODES,
   SALIENCE_LENSES,
@@ -130,6 +132,12 @@ export function normalizeDashboardGraphGranularity(
     normalizeStringMember(granularity, GRAPH_GRANULARITIES) ??
     DOCUMENT_DASHBOARD_GRAPH_GRANULARITY
   );
+}
+
+// The active graph corpus / view mode (codebase-graphing ADR D7): vault is the
+// default so an absent or malformed value is the pre-corpus (vault) behaviour.
+export function normalizeDashboardGraphCorpus(corpus: unknown): GraphCorpus {
+  return normalizeStringMember(corpus, GRAPH_CORPORA) ?? "vault";
 }
 
 export function normalizeDashboardRepresentationMode(

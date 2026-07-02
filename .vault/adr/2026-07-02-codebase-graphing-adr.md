@@ -247,17 +247,45 @@ changes drive an incremental re-parse through the existing watcher/rebuild path 
 a bounded channel. Present-view and any future as-of key spaces stay distinct, so a
 code query can never serve a stale generation's slice.
 
-**D7 - Frontend switching: the active corpus is centralized dashboard state.** The
-active graph corpus (`vault` | `code`) is one field of the centralized
-backend-persisted dashboard state (per the dashboard-state-centralization model),
-written through one switch control; every surface reads the same snapshot. The scene
-renders whichever corpus is active. Vault-only affordances (the feature
-constellation, doc-type facets) and code-only affordances (language and directory
-facets) swap with the corpus. The existing frontend adapter exclusion of `code:`
-nodes stays in force for the VAULT corpus and does not apply to the code corpus -
-the exclusion is what keeps the vault graph clean, and the code corpus is a
-different dataset. Filters remain one authority PER corpus: the code corpus has its
-own filter record with its own facet vocabulary, never mixed with the vault filter.
+**D7 - Frontend switching: a user-settings-backed view mode drives a live
+dashboard-state corpus field.** AMENDED at frontend execution (2026-07-02): the
+active graph corpus (`vault` | `code`) is realized as TWO composed layers,
+mirroring the shipped `default_granularity` setting / `graph_granularity`
+dashboard-state precedent exactly - the durable USER SETTING is the source of
+truth, the dashboard-state field is the live driver:
+
+- A durable engine SETTING `graph_corpus` (`Enum{vault,code}`,
+  `ControlKind::Segmented`, `scope_eligible`) declared once in the settings
+  registry - the user-settings-backed persistence and the rail control's
+  vocabulary, rendered through the existing enum-control deriver (no new control
+  component).
+- A live `corpus` field on `DashboardState` (+ its patch) threaded into the
+  `engineKeys.graph(...)` TanStack cache key AND the `/graph/query` request body,
+  exactly as `graph_granularity` is. Flipping it changes the cache key, so
+  TanStack refetches the other corpus and the scene reloads - the corpus switch
+  is a cache-key change, not a shape change.
+- The left-rail toggle (composing the centralized kit `SegmentedToggle`, one tab
+  stop through the shared `FocusZone`) writes the durable setting; a
+  settings-effect seeds `DashboardState.corpus` from it on load and on change
+  (the `applyGraphSettingsDefaults` bridge), so the setting is the single source
+  of truth and the dashboard-state mirror owns the live re-query.
+
+The scene renders whichever corpus is active. The WIPE-AND-RELOAD the switch
+requires is produced by the disconnection invariant itself: the two corpora share
+NO node id (`doc:`/`feature:` vs `code:`/`code-mod:`), so a corpus swap's
+`set-data` carries a fully DISJOINT node set, which the field's warm/cold gate
+detects (`carried == 0`) and serves as the COLD path - a full re-explode plus a
+one-time camera fit, i.e. the canvas wiped clean and reloaded, with no bespoke
+reset command. The client working set (ego expansions) and pins are cleared on a
+corpus change so no stale vault node id leaks into the code display (the
+frontend half of the disconnection invariant). Vault-only affordances (the
+feature constellation, doc-type facets) and code-only affordances (language and
+directory facets) swap with the corpus. The existing frontend adapter exclusion
+of `code:` nodes stays in force for the VAULT corpus and is gated OFF for the
+code corpus (the adapter is told the active corpus) - the exclusion keeps the
+vault graph clean, and the code corpus is a different dataset. Filters remain one
+authority PER corpus: the code corpus has its own facet vocabulary, never mixed
+with the vault filter.
 
 **D8 - Bounds and safety: every accumulator bounded, extraction capped, tiers
 honest.** Every cache, channel, and retained collection in the code-graph path is

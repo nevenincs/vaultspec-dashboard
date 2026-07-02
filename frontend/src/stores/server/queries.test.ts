@@ -223,6 +223,7 @@ function dashboardState(scope: string): DashboardState {
     date_range: { from: "2026-06-01", to: "2026-06-30" },
     timeline_mode: { kind: "time-travel", at: 42 },
     graph_granularity: "document",
+    corpus: "vault",
     salience_lens: "design",
     salience_focus: "doc:cached",
     representation_mode: "lineage",
@@ -1744,6 +1745,7 @@ describe("deriveDashboardStageSceneView (Stage scene owner)", () => {
     date_range: { from: "2026-06-01", to: "2026-06-18" },
     timeline_mode: { kind: "time-travel", at: 42 },
     graph_granularity: "document",
+    corpus: "vault",
     salience_lens: "design",
     salience_focus: "node:a",
     representation_mode: "lineage",
@@ -1776,6 +1778,7 @@ describe("deriveDashboardStageSceneView (Stage scene owner)", () => {
         granularity: "document",
         lens: "design",
         focus: "node:a",
+        corpus: "vault",
       },
       granularity: "document",
       activeRepresentationMode: "lineage",
@@ -2354,6 +2357,7 @@ describe("deriveSettingsEffectsView (settings side effects)", () => {
       reduceMotion: true,
       graphDefaults: {
         defaultGranularity: "feature",
+        corpus: "vault",
         confidenceFloor: 60,
         labelFilter: "adr",
       },
@@ -3685,25 +3689,26 @@ describe("useGitFileDiff git availability boundary", () => {
 });
 
 describe("engineKeys", () => {
-  it("keys graph slices by the (scope, filter, as-of, granularity, lens, focus) tuple", () => {
+  it("keys graph slices by the (scope, filter, as-of, granularity, lens, focus, corpus) tuple", () => {
     const a = engineKeys.graph("wt-1", { tiers: { structural: false } }, 123);
     const b = engineKeys.graph("wt-1", { tiers: { structural: false } }, 123);
     const c = engineKeys.graph("wt-2", { tiers: { structural: false } }, 123);
     const d = engineKeys.graph("wt-1", { tiers: { structural: false } });
     expect(a).toEqual(b);
     expect(a).not.toEqual(c);
-    // Defaults (key tail is [..., asOf, granularity, lens, focus]): as-of "live",
-    // granularity "document", lens "status", focus "none" (the engine's defaults).
-    expect(d[d.length - 4]).toBe("live");
-    expect(d[d.length - 3]).toBe("document");
-    expect(d[d.length - 2]).toBe("status");
-    expect(d[d.length - 1]).toBe("none");
+    // Defaults (key tail is [..., asOf, granularity, lens, focus, corpus]): as-of
+    // "live", granularity "document", lens "status", focus "none", corpus "vault".
+    expect(d[d.length - 5]).toBe("live");
+    expect(d[d.length - 4]).toBe("document");
+    expect(d[d.length - 3]).toBe("status");
+    expect(d[d.length - 2]).toBe("none");
+    expect(d[d.length - 1]).toBe("vault");
     // Granularity is part of the cache identity: the constellation (feature)
     // and a document slice never collide in cache.
     const feature = engineKeys.graph("wt-1", undefined, undefined, "feature");
     const document = engineKeys.graph("wt-1", undefined, undefined, "document");
     expect(feature).not.toEqual(document);
-    expect(feature[feature.length - 3]).toBe("feature");
+    expect(feature[feature.length - 4]).toBe("feature");
     // Lens and focus are part of the cache identity (graph-node-salience): two
     // lenses or two focuses never collide in cache.
     const statusLens = engineKeys.graph(
@@ -3721,8 +3726,31 @@ describe("engineKeys", () => {
       "design",
     );
     expect(statusLens).not.toEqual(designLens);
-    // With focus appended as the key tail, the lens sits at length-2.
-    expect(designLens[designLens.length - 2]).toBe("design");
+    // With focus + corpus appended as the key tail, the lens sits at length-3.
+    expect(designLens[designLens.length - 3]).toBe("design");
+    // The corpus is part of the cache identity (codebase-graphing ADR D7): the
+    // vault and code corpora are disconnected datasets that never share a cache
+    // entry, so a corpus switch is a refetch that reloads the canvas.
+    const vaultCorpus = engineKeys.graph(
+      "wt-1",
+      undefined,
+      undefined,
+      "document",
+      "status",
+      null,
+      "vault",
+    );
+    const codeCorpus = engineKeys.graph(
+      "wt-1",
+      undefined,
+      undefined,
+      "document",
+      "status",
+      null,
+      "code",
+    );
+    expect(vaultCorpus).not.toEqual(codeCorpus);
+    expect(codeCorpus[codeCorpus.length - 1]).toBe("code");
   });
 
   it("keys graph diffs by scope, window, and filter", () => {
@@ -4500,6 +4528,7 @@ describe("the lens-keyed graph query cache", () => {
       granularity: "feature",
       lens: "design",
       focus: "doc:plan",
+      corpus: "vault",
     });
 
     expect(
@@ -4518,6 +4547,7 @@ describe("the lens-keyed graph query cache", () => {
       granularity: "document",
       lens: "status",
       focus: null,
+      corpus: "vault",
     });
   });
 

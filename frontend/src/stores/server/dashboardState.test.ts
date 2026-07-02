@@ -416,6 +416,7 @@ describe("dashboard-state engine client (live engine)", () => {
       granularity: "feature",
       lens: "design",
       focus: "doc:adr",
+      corpus: "vault",
     });
   });
 
@@ -628,6 +629,7 @@ describe("dashboard-state engine client (live engine)", () => {
       }),
     ).toEqual({
       defaultGranularity: "feature",
+      corpus: "vault",
       confidenceFloor: 100,
       labelFilter: "adr",
     });
@@ -639,6 +641,7 @@ describe("dashboard-state engine client (live engine)", () => {
       }),
     ).toEqual({
       defaultGranularity: DOCUMENT_DASHBOARD_GRAPH_GRANULARITY,
+      corpus: "vault",
       confidenceFloor: 0,
       labelFilter: "",
     });
@@ -650,6 +653,7 @@ describe("dashboard-state engine client (live engine)", () => {
       }),
     ).toEqual({
       graph_granularity: "feature",
+      corpus: "vault",
       filters: {
         text: "adr",
         min_confidence: { temporal: 0.6 },
@@ -657,6 +661,7 @@ describe("dashboard-state engine client (live engine)", () => {
     });
     expect(dashboardGraphSettingsDefaultsPatch({ confidenceFloor: -20 })).toEqual({
       graph_granularity: DOCUMENT_DASHBOARD_GRAPH_GRANULARITY,
+      corpus: "vault",
     });
   });
 

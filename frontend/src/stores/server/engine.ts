@@ -600,6 +600,12 @@ export type DashboardTimelineMode =
 export const GRAPH_GRANULARITIES = ["document", "feature"] as const;
 export type GraphGranularity = (typeof GRAPH_GRANULARITIES)[number];
 
+// The active graph corpus / view mode (codebase-graphing ADR D7): which dataset
+// the whole graph surface renders — the vault knowledge graph (default) or the
+// disconnected code graph. Mirrors the engine `GraphCorpus` wire enum.
+export const GRAPH_CORPORA = ["vault", "code"] as const;
+export type GraphCorpus = (typeof GRAPH_CORPORA)[number];
+
 export const REPRESENTATION_MODES = [
   "connectivity",
   "temporal",
@@ -633,6 +639,7 @@ export interface DashboardState extends DashboardSelection {
   date_range: DashboardDateRange;
   timeline_mode: DashboardTimelineMode;
   graph_granularity: GraphGranularity;
+  corpus: GraphCorpus;
   salience_lens: SalienceLens;
   salience_focus: string | null;
   representation_mode: RepresentationMode;
@@ -649,6 +656,7 @@ export interface DashboardStatePatch {
   date_range?: DashboardDateRange;
   timeline_mode?: DashboardTimelineMode;
   graph_granularity?: GraphGranularity;
+  corpus?: GraphCorpus;
   salience_lens?: SalienceLens;
   salience_focus?: string | null;
   representation_mode?: RepresentationMode;
@@ -1793,8 +1801,22 @@ export class EngineClient {
     lens?: SalienceLens;
     /** The DOI focus node id folded into the salience distance term. */
     focus?: string | null;
+    /** The active graph corpus (codebase-graphing ADR D5/D7): `vault` (default,
+     *  absent = byte-identical to the pre-corpus contract) or `code` — the
+     *  DISCONNECTED code graph. */
+    corpus?: GraphCorpus;
+    /** CODE-corpus narrowing (ADR D5): keep only nodes under this repo-relative
+     *  directory prefix. Rejected by the engine on the vault corpus. */
+    dir_prefix?: string;
+    /** CODE-corpus narrowing: language wire tokens. Rejected on the vault corpus. */
+    languages?: string[];
   }): Promise<GraphSlice> {
-    return adaptGraphSlice(await this.post("/graph/query", body));
+    // The code corpus is a DIFFERENT dataset (ADR D1): its `code:` / `code-mod:`
+    // nodes are legitimate here, so the adapter's vault-only code-node exclusion
+    // must NOT fire. Tell the adapter which corpus it is adapting.
+    return adaptGraphSlice(await this.post("/graph/query", body), {
+      corpus: body.corpus ?? "vault",
+    });
   }
 
   /**

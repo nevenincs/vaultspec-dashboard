@@ -6,6 +6,7 @@ import type {
   DashboardPanelState,
   DashboardState,
   DashboardStatePatch,
+  GraphCorpus,
   GraphFilter,
   GraphGranularity,
   SalienceLens,
@@ -30,6 +31,7 @@ import {
   normalizeDashboardConfidenceFloor,
   normalizeDashboardFilterTiers,
   normalizeDashboardGraphBounds,
+  normalizeDashboardGraphCorpus,
   normalizeDashboardGraphGranularity,
   normalizeDashboardMinConfidence,
   normalizeDashboardNodeId,
@@ -63,6 +65,7 @@ export {
   normalizeDashboardNodeId,
   normalizeDashboardFilterTiers,
   normalizeDashboardGraphBounds,
+  normalizeDashboardGraphCorpus,
   normalizeDashboardGraphGranularity,
   normalizeDashboardMinConfidence,
   normalizeDashboardPanelState,
@@ -104,6 +107,7 @@ export interface DashboardGraphQueryVariables {
   granularity: GraphGranularity;
   lens: SalienceLens;
   focus: string | null;
+  corpus: GraphCorpus;
 }
 
 export function selectionPatch(selected_ids: unknown): DashboardStateMutationPatch {
@@ -172,6 +176,14 @@ export function granularityPatch(
   return { graph_granularity: normalizeDashboardGraphGranularity(graph_granularity) };
 }
 
+// The active graph corpus / view mode (codebase-graphing ADR D7): the live
+// dashboard-state driver a corpus switch writes, so the graph query re-keys and
+// the canvas reloads. The durable `graph_corpus` SETTING is the source of truth;
+// this mirrors it into dashboard-state.
+export function corpusPatch(corpus: unknown): DashboardStateMutationPatch {
+  return { corpus: normalizeDashboardGraphCorpus(corpus) };
+}
+
 export function dashboardDocumentStateResetPatch(scope: string): DashboardStatePatch {
   return {
     scope,
@@ -201,6 +213,7 @@ export function dashboardDocumentStateSeed(
     date_range: normalizeDashboardDateRange(patch.date_range),
     timeline_mode: normalizeDashboardTimelineMode(patch.timeline_mode),
     graph_granularity: normalizeDashboardGraphGranularity(patch.graph_granularity),
+    corpus: normalizeDashboardGraphCorpus(patch.corpus),
     salience_lens: normalizeDashboardSalienceLens(patch.salience_lens),
     salience_focus: normalizeDashboardNodeId(patch.salience_focus),
     representation_mode: normalizeDashboardRepresentationMode(
@@ -569,10 +582,15 @@ export function dashboardFeatureDescentPatch(
 export function dashboardGraphDefaultsPatch(
   graph_granularity: unknown,
   filters?: DashboardFilters,
+  corpus?: unknown,
 ): DashboardStateMutationPatch {
   return {
     graph_granularity: normalizeDashboardGraphGranularity(graph_granularity),
     ...(filters ? { filters: cloneDashboardFilters(filters) } : {}),
+    // Seed the corpus / view mode on a fresh scope from the durable
+    // `graph_corpus` setting (codebase-graphing ADR D7). Omitted when not
+    // supplied so pre-corpus callers are unchanged (vault is the state default).
+    ...(corpus === undefined ? {} : { corpus: normalizeDashboardGraphCorpus(corpus) }),
   };
 }
 
@@ -590,6 +608,7 @@ export function normalizeDashboardGraphSettingsDefaults(
   const record = dashboardGraphSettingsDefaultsRecord(defaults);
   return {
     defaultGranularity: normalizeDashboardGraphGranularity(record.defaultGranularity),
+    corpus: normalizeDashboardGraphCorpus(record.corpus),
     confidenceFloor:
       typeof record.confidenceFloor === "number" &&
       Number.isFinite(record.confidenceFloor)
@@ -628,6 +647,7 @@ export function dashboardGraphSettingsDefaultsPatch(
   return dashboardGraphDefaultsPatch(
     normalizedDefaults.defaultGranularity,
     filtersChanged ? filters : undefined,
+    normalizedDefaults.corpus,
   );
 }
 
@@ -731,6 +751,7 @@ export function useDashboardStateMutations(scope: unknown) {
     setGraphBounds: (bounds: unknown) => mutation.mutateAsync(graphBoundsPatch(bounds)),
     setGranularity: (granularity: unknown) =>
       mutation.mutateAsync(granularityPatch(granularity)),
+    setCorpus: (corpus: unknown) => mutation.mutateAsync(corpusPatch(corpus)),
     descendFeature: (state: unknown, featureTag: unknown) =>
       mutation.mutateAsync(dashboardFeatureDescentPatch(state, featureTag)),
     descendFeatureTag: (featureTag: unknown) => {
@@ -840,5 +861,6 @@ export function dashboardGraphQueryVariables(
     granularity: state.graph_granularity,
     lens: state.salience_lens,
     focus: state.salience_focus,
+    corpus: normalizeDashboardGraphCorpus(state.corpus),
   };
 }

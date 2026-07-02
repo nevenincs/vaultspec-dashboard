@@ -30,6 +30,7 @@ import type {
   GitDiffLine,
   GitFileDiff,
   GitOpResponse,
+  GraphCorpus,
   GraphSlice,
   HistoryCommit,
   HistoryResponse,
@@ -79,6 +80,7 @@ import { normalizeWorkspaceLayoutBlob } from "../workspaceLayout";
 import {
   cloneDashboardFilters,
   normalizeDashboardGraphBounds,
+  normalizeDashboardGraphCorpus,
   normalizeDashboardGraphGranularity,
   normalizeDashboardNodeId,
   normalizeDashboardPanelState,
@@ -189,8 +191,16 @@ export function metaEdgeToEdge(meta: WireMetaEdge): EngineEdge {
 export const MAX_CLIENT_GRAPH_NODES = 20000;
 export const MAX_CLIENT_GRAPH_EDGES = 80000;
 
-export function adaptGraphSlice(body: unknown): GraphSlice {
+export function adaptGraphSlice(
+  body: unknown,
+  options?: { corpus?: GraphCorpus },
+): GraphSlice {
   if (!isRec(body)) return body as GraphSlice;
+  // The code corpus (codebase-graphing ADR D1/D7) is a DIFFERENT dataset whose
+  // `code:` / `code-mod:` nodes are the legitimate content — the vault-only
+  // code-node exclusion below must NOT fire when adapting it. On the vault
+  // corpus (default) the exclusion stays in force, keeping the vault graph clean.
+  const isCodeCorpus = options?.corpus === "code";
   const allNodes = Array.isArray(body.nodes) ? (body.nodes as EngineNode[]) : [];
   const allEdges = Array.isArray(body.edges) ? (body.edges as EngineEdge[]) : [];
   // G2 trust-boundary cap: clamp a hostile/buggy oversized payload BEFORE mapping, so
@@ -219,7 +229,7 @@ export function adaptGraphSlice(body: unknown): GraphSlice {
   // dropped node. An edge is kept only when BOTH endpoints survive.
   const droppedNodeIds = new Set<string>();
   const nodes = rawNodes.filter((node) => {
-    if (isExcludedGraphNode(node)) {
+    if (!isCodeCorpus && isExcludedGraphNode(node)) {
       droppedNodeIds.add(node.id);
       return false;
     }
@@ -271,7 +281,17 @@ function isExcludedGraphNode(node: EngineNode): boolean {
   if (node.doc_type === "index") return true;
   const kind = node.kind;
   if (kind === "code" || kind === "code-artifact") return true;
-  if (typeof node.id === "string" && node.id.startsWith("code:")) return true;
+  // The CODE corpus's module rollup node (codebase-graphing ADR D4/D7): the
+  // vault graph never mints one, so this is the belt-and-braces mirror of the
+  // engine's `is_displayable_node` CodeModule gate — dropped on the vault
+  // corpus, kept on the code corpus (the caller gates this whole function off).
+  if (kind === "code-module") return true;
+  if (
+    typeof node.id === "string" &&
+    (node.id.startsWith("code:") || node.id.startsWith("code-mod:"))
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -293,6 +313,7 @@ export function adaptDashboardState(body: unknown): DashboardState {
       date_range: {},
       timeline_mode: { kind: "live" },
       graph_granularity: "feature",
+      corpus: "vault",
       salience_lens: normalizeDashboardSalienceLens(undefined),
       salience_focus: null,
       representation_mode: "connectivity",
@@ -309,6 +330,7 @@ export function adaptDashboardState(body: unknown): DashboardState {
     date_range: normalizeDashboardDateRange(body.date_range),
     timeline_mode: normalizeDashboardTimelineMode(body.timeline_mode),
     graph_granularity: normalizeDashboardGraphGranularity(body.graph_granularity),
+    corpus: normalizeDashboardGraphCorpus(body.corpus),
     salience_lens: normalizeDashboardSalienceLens(body.salience_lens),
     salience_focus: normalizeDashboardNodeId(body.salience_focus),
     representation_mode: normalizeDashboardRepresentationMode(body.representation_mode),

@@ -570,6 +570,41 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
     expect(slice.nodes[1].member_count).toBe(67);
   });
 
+  it("drops code nodes on the VAULT corpus but keeps them on the CODE corpus (ADR D7)", () => {
+    // A slice carrying code-corpus nodes: the vault-corpus adapter (default)
+    // must exclude them (the vault graph stays clean); the code-corpus adapter
+    // must keep them — they are the legitimate content of a different dataset.
+    const codeSlice = {
+      nodes: [
+        { id: "code-mod:src", kind: "code-module", title: "src" },
+        { id: "code:src/main.rs", kind: "code-artifact", title: "main.rs" },
+      ],
+      edges: [
+        {
+          id: "e1",
+          src: "code:src/main.rs",
+          dst: "code-mod:src",
+          relation: "contains",
+          tier: "declared",
+        },
+      ],
+      meta_edges: [],
+      filter: {},
+      as_of: null,
+      tiers: TIERS,
+    };
+    // Default (vault) corpus: code nodes excluded, and the edge between them is
+    // pruned to keep the slice self-consistent.
+    const asVault = adaptGraphSlice(codeSlice);
+    expect(asVault.nodes).toHaveLength(0);
+    expect(asVault.edges).toHaveLength(0);
+    // Code corpus: the same nodes and edge survive.
+    const asCode = adaptGraphSlice(codeSlice, { corpus: "code" });
+    expect(asCode.nodes.map((n) => n.id)).toEqual(["code-mod:src", "code:src/main.rs"]);
+    expect(asCode.edges).toHaveLength(1);
+    expect(asCode.edges[0].src).toBe("code:src/main.rs");
+  });
+
   it("synthesizes a stable id, relation, and dominant tier for a meta-edge", () => {
     const edge = metaEdgeToEdge({
       src: "feature:a",

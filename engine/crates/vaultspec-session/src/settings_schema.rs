@@ -445,6 +445,29 @@ fn build_registry() -> Vec<SettingDef> {
             unit: None,
             placeholder: None,
         },
+        // The active graph corpus / view mode (codebase-graphing ADR D7): the
+        // WHOLE graph surface renders either the VAULT knowledge graph (the
+        // default) or the disconnected CODE graph. Durable, user-settings-backed,
+        // per-scope (a worktree remembers its last view mode); the left-rail
+        // toggle writes it, a settings-effect seeds the live dashboard-state
+        // `corpus` field from it, and the corpus swap re-queries + reloads the
+        // canvas. Segmented enum like `default_granularity`.
+        SettingDef {
+            key: "graph_corpus".to_string(),
+            value_type: SettingType::Enum {
+                members: vec!["vault".to_string(), "code".to_string()],
+            },
+            default: "vault".to_string(),
+            scope_eligible: true,
+            control: ControlKind::Segmented,
+            label: "Graph corpus".to_string(),
+            description: "Which dataset the graph maps: the vault or the codebase.".to_string(),
+            group: "Graph".to_string(),
+            order: 2,
+            step: None,
+            unit: None,
+            placeholder: None,
+        },
         // The date criterion the timeline orders and filters documents by. Three
         // served criteria (the engine derives `dates.{created,modified,stamped}`):
         // `created` (frontmatter `date:`, the safe default present on every view),
@@ -466,7 +489,7 @@ fn build_registry() -> Vec<SettingDef> {
             label: "Timeline date".to_string(),
             description: "Which date the timeline orders and filters documents by.".to_string(),
             group: "Graph".to_string(),
-            order: 5,
+            order: 6,
             step: None,
             unit: None,
             placeholder: None,
@@ -485,7 +508,7 @@ fn build_registry() -> Vec<SettingDef> {
             label: "Confidence floor".to_string(),
             description: "Hide inferred edges below this certainty.".to_string(),
             group: "Graph".to_string(),
-            order: 2,
+            order: 3,
             step: Some(1),
             unit: Some("%".to_string()),
             placeholder: None,
@@ -502,7 +525,7 @@ fn build_registry() -> Vec<SettingDef> {
             label: "Label filter".to_string(),
             description: "Only show nodes whose stem matches.".to_string(),
             group: "Graph".to_string(),
-            order: 3,
+            order: 4,
             step: None,
             unit: None,
             placeholder: Some("type a stem…".to_string()),
@@ -526,7 +549,7 @@ fn build_registry() -> Vec<SettingDef> {
             label: "Graph controls".to_string(),
             description: "Persisted force and appearance tuning for the graph.".to_string(),
             group: "Graph".to_string(),
-            order: 4,
+            order: 5,
             step: None,
             unit: None,
             placeholder: None,

@@ -16,6 +16,7 @@ import {
   type GraphControlOverrides,
 } from "../../scene/three/graphControlSchema";
 import type {
+  GraphCorpus,
   GraphGranularity,
   SettingDef,
   SettingsSchema,
@@ -28,6 +29,7 @@ export const CONSUMED_SETTING_KEYS = {
   theme: "theme",
   reduceMotion: "reduce_motion",
   defaultGranularity: "default_granularity",
+  graphCorpus: "graph_corpus",
   confidenceFloor: "confidence_floor",
   labelFilter: "label_filter",
   keybindings: "keybindings",
@@ -212,12 +214,17 @@ export function settingsProvenanceNote(
 
 export interface GraphSettingsDefaults {
   defaultGranularity: GraphGranularity;
+  corpus: GraphCorpus;
   confidenceFloor: number;
   labelFilter: string;
 }
 
 function isGraphGranularity(value: string): value is GraphGranularity {
   return value === "feature" || value === "document";
+}
+
+function isGraphCorpus(value: string): value is GraphCorpus {
+  return value === "vault" || value === "code";
 }
 
 /**
@@ -248,12 +255,23 @@ export function resolveGraphSettingsDefaults(
     activeScope,
     CONSUMED_SETTING_KEYS.labelFilter,
   );
+  // The active graph corpus / view mode (codebase-graphing ADR D7): consumed
+  // here so the durable `graph_corpus` setting seeds a fresh dashboard-state
+  // scope's `corpus` field (the setting is not a dead control). Tolerant of an
+  // older engine that does not serve it — corpus stays vault.
+  const corpus = resolveEffectiveSetting(
+    schema,
+    settings,
+    activeScope,
+    CONSUMED_SETTING_KEYS.graphCorpus,
+  );
   if (!granularity || !confidence || !label) return null;
   const confidenceFloor = Math.min(100, Math.max(0, decodeInt(confidence.value, 0)));
   return {
     defaultGranularity: isGraphGranularity(granularity.value)
       ? granularity.value
       : "document",
+    corpus: corpus && isGraphCorpus(corpus.value) ? corpus.value : "vault",
     confidenceFloor,
     labelFilter: label.value,
   };
