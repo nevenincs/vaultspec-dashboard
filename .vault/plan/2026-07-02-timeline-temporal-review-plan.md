@@ -106,8 +106,8 @@ Retire the zombie time-travel client machinery orphaned by the Issue #14 timelin
 
 <!-- One-line headline summary plan. -->
 
-- [ ] `P01.S01` - TTR-005: park the unreachable time-travel client machinery to spec (timeTravel driver, DeltaLog, TimeTravelChip, client asOf threading, menu/ops gating), keeping the engine /graph/asof + /graph/diff wire; `frontend/src/`.
-- [ ] `P01.S02` - TTR-006: retire the zombie keymap binding deriving movePlayhead intents from the retired scroll-strip store; `frontend/src/app/chrome/keyboardNavigation.ts`.
+- [x] `P01.S01` - TTR-005: park the unreachable time-travel client machinery to spec (timeTravel driver, DeltaLog, TimeTravelChip, client asOf threading, menu/ops gating), keeping the engine /graph/asof + /graph/diff wire; `frontend/src/`.
+- [x] `P01.S02` - TTR-006: retire the zombie keymap binding deriving movePlayhead intents from the retired scroll-strip store; `frontend/src/app/chrome/keyboardNavigation.ts`.
 
 ### Phase `P02` - Dead-code and criterion honesty
 

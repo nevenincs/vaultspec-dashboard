@@ -1448,6 +1448,65 @@ export function useActivateWorktreeScope(): (scope: unknown) => Promise<SessionS
   );
 }
 
+export interface TimelineBootHealInput {
+  scope: string | null;
+  stateLoaded: boolean;
+  isLive: boolean;
+  alreadyHealed: boolean;
+}
+
+/**
+ * Cold-start timeline healing (TTR-005): with time-travel ENTRY retired, the app
+ * must always resolve to a LIVE playhead. A scope whose backend-persisted
+ * `timeline_mode` is time-travel would otherwise load into a historical view with
+ * no exit (the entry affordances are gone). This derives whether to force live:
+ * the active scope's dashboard state has loaded, its persisted mode is NOT live,
+ * and this scope has not already been healed this session. `activateWorktreeScope`
+ * already heals on explicit worktree activation; this covers the cold-start
+ * restore path, which persists a scope but never resets the playhead.
+ */
+export function deriveTimelineBootHealIntent({
+  scope,
+  stateLoaded,
+  isLive,
+  alreadyHealed,
+}: TimelineBootHealInput): boolean {
+  if (scope === null) return false;
+  if (!stateLoaded) return false;
+  if (isLive) return false;
+  if (alreadyHealed) return false;
+  return true;
+}
+
+/**
+ * Force the dashboard playhead to LIVE once per scope on load (TTR-005). Mounted
+ * once by the Stage: after time-travel entry was retired every scope must boot
+ * live, so a persisted time-travel mode is healed to live exactly once — idempotent
+ * with `activateWorktreeScope` (which also lands live: whichever fires first wins,
+ * the other observes `live` and no-ops). One-shot per scope via a healed-set ref so
+ * the heal cannot race the session seed or re-fire when its own write settles.
+ */
+export function useHealTimelineModeToLiveOnBoot(): void {
+  const scope = useActiveScope();
+  const dashboardState = useDashboardState(scope);
+  const healedScopesRef = useRef<Set<string>>(new Set());
+
+  const stateLoaded = dashboardState.data !== undefined;
+  const isLive = (dashboardState.data?.timeline_mode?.kind ?? "live") === "live";
+
+  useEffect(() => {
+    const alreadyHealed = scope !== null && healedScopesRef.current.has(scope);
+    if (
+      scope === null ||
+      !deriveTimelineBootHealIntent({ scope, stateLoaded, isLive, alreadyHealed })
+    ) {
+      return;
+    }
+    healedScopesRef.current.add(scope);
+    movePlayhead("live", scope);
+  }, [scope, stateLoaded, isLive]);
+}
+
 export interface VaultTreeRequestIdentity {
   scope: string | null;
 }

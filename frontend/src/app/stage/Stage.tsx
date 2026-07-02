@@ -18,6 +18,7 @@ import {
   useDashboardStageSceneView,
   useGraphSlice,
   useGraphSliceAvailability,
+  useHealTimelineModeToLiveOnBoot,
   useNodeNeighborsBulk,
 } from "../../stores/server/queries";
 import {
@@ -48,8 +49,6 @@ import { expandWorkingSet, useWorkingSet } from "../../stores/view/workingSet";
 import { useSurfaceStates } from "../degradation/useDegradation";
 import { HoverCardLayer } from "../islands/HoverCardLayer";
 import { IslandLayer } from "../islands/IslandLayer";
-import { TimeTravelChip } from "../timeline/TimeTravelChip";
-import { useTimeTravel } from "../timeline/timeTravel";
 import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
 import { MinimapWidget } from "./MinimapWidget";
 import { CANVAS_KEYMAP_CONTEXT, useGraphWalkKeybindings } from "./graphWalkKeybindings";
@@ -117,6 +116,10 @@ export function Stage() {
   // since Stage mounts once per app lifetime.
   useRestoreSessionScope();
   useSeedSessionContext();
+  // With time-travel entry retired (TTR-005), heal any persisted time-travel mode
+  // to live on load so a returning scope never boots into a historical view with
+  // no exit.
+  useHealTimelineModeToLiveOnBoot();
   const scope = useActiveScope();
   const activeWorkspace = useActiveWorkspace();
   const stageView = useDashboardStageSceneView(scope);
@@ -275,9 +278,6 @@ export function Stage() {
     scene.field.setPersistenceScope(activeWorkspace, scope);
   }, [activeWorkspace, scope]);
 
-  // While time travelling the driver owns the stage's data (S34); the
-  // live keyframe path resumes — and re-pushes — on return to LIVE.
-  useTimeTravel(scope, scene.controller);
   // LIVE-mode reactivity (live-state D3 / constellation-live-delta S06):
   // subscribe with `since=keyframeSeq` when available so only new deltas
   // arrive; feature-granularity entries come back as `featureDeltas` for
@@ -404,7 +404,6 @@ export function Stage() {
           minimap 212:521) — it owns the bottom-right corner directly. The scene owns
           every pixel inside its canvas through the unchanged seam. */}
       <MinimapWidget />
-      <TimeTravelChip scope={scope} />
       {/* The hover-bloom card (third LOD rung) sits BELOW the opened islands so a
           card never paints over an opened interior; open-suppression keeps the
           two from ever targeting the same node anyway. */}

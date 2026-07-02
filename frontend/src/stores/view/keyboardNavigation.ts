@@ -13,8 +13,6 @@ import {
 } from "../server/queries";
 import { registerKeyAction, useKeymapDispatcher } from "./keymapDispatcher";
 import { normalizeSelectionScope, useDashboardNodeSelection } from "./selection";
-import { timelineViewSnapshot, timelineVisibleRange } from "./timeline";
-import { movePlayhead } from "./timelineIntent";
 
 export interface KeyboardNavigationView {
   selectedId: string | null;
@@ -23,14 +21,7 @@ export interface KeyboardNavigationView {
   announcement: string;
 }
 
-export interface KeyboardVisibleRange {
-  fromMs: number;
-  toMs: number;
-}
-
-export type KeyboardNavigationIntent =
-  | { kind: "select-node"; id: string }
-  | { kind: "move-playhead"; playhead: number | "live" };
+export type KeyboardNavigationIntent = { kind: "select-node"; id: string };
 
 export const KEYBOARD_NAVIGATION_ACTION_GROUP = "Navigation";
 
@@ -38,9 +29,7 @@ export type KeyboardNavigationActionId =
   | "nav:neighbor-previous"
   | "nav:neighbor-next"
   | "nav:feature-previous"
-  | "nav:feature-next"
-  | "timeline:playhead-previous"
-  | "timeline:playhead-next";
+  | "nav:feature-next";
 
 export interface KeyboardNavigationBinding extends KeybindingDef {
   key: string;
@@ -79,22 +68,6 @@ export const KEYBOARD_NAVIGATION_BINDINGS: readonly KeyboardNavigationBinding[] 
     context: "global",
     key: "ArrowDown",
   },
-  {
-    id: "timeline:playhead-previous",
-    defaultChord: "[",
-    label: "Step playhead backward",
-    group: KEYBOARD_NAVIGATION_ACTION_GROUP,
-    context: "global",
-    key: "[",
-  },
-  {
-    id: "timeline:playhead-next",
-    defaultChord: "]",
-    label: "Step playhead forward",
-    group: KEYBOARD_NAVIGATION_ACTION_GROUP,
-    context: "global",
-    key: "]",
-  },
 ];
 
 export function keyboardNavigationKeyForAction(id: string): string | null {
@@ -112,28 +85,9 @@ export function cycleKeyboardList<T>(
   return list[(index + dir + list.length) % list.length];
 }
 
-export function keyboardBracketStep(visibleSpanMs: number): number {
-  return Math.max(60_000, visibleSpanMs * 0.02);
-}
-
-export function steppedKeyboardPlayhead(
-  current: number | "live",
-  dir: 1 | -1,
-  range: KeyboardVisibleRange,
-  now: number,
-): number | "live" {
-  const base = current === "live" ? now : current;
-  const next = base + dir * keyboardBracketStep(range.toMs - range.fromMs);
-  if (next >= now) return "live";
-  return Math.max(range.fromMs, next);
-}
-
 export function deriveKeyboardNavigationKeyIntent(
   key: string,
   navigation: KeyboardNavigationView,
-  playhead: number | "live",
-  range: KeyboardVisibleRange,
-  now: number,
 ): KeyboardNavigationIntent | null {
   if (key === "ArrowLeft" || key === "ArrowRight") {
     const next = cycleKeyboardList(
@@ -151,12 +105,6 @@ export function deriveKeyboardNavigationKeyIntent(
     );
     return next ? { kind: "select-node", id: next } : null;
   }
-  if (key === "[" || key === "]") {
-    return {
-      kind: "move-playhead",
-      playhead: steppedKeyboardPlayhead(playhead, key === "]" ? 1 : -1, range, now),
-    };
-  }
   return null;
 }
 
@@ -165,30 +113,17 @@ export type KeyboardNodeSelectionIntent = (id: string) => Promise<unknown>;
 export function deriveKeyboardNavigationActionDescriptor(
   binding: KeyboardNavigationBinding,
   navigation: KeyboardNavigationView,
-  scope: unknown,
   selectDashboardNode: KeyboardNodeSelectionIntent,
-  now = Date.now(),
 ): ActionDescriptor | null {
   const key = keyboardNavigationKeyForAction(binding.id);
   if (key === null) return null;
-  const { playheadT, pxPerMs, scrollOffset, viewportWidth } = timelineViewSnapshot();
-  const intent = deriveKeyboardNavigationKeyIntent(
-    key,
-    navigation,
-    playheadT,
-    timelineVisibleRange(scrollOffset, viewportWidth, pxPerMs, 0),
-    now,
-  );
+  const intent = deriveKeyboardNavigationKeyIntent(key, navigation);
   if (intent === null) return null;
   return {
     id: binding.id,
     label: binding.label,
     run: () => {
-      if (intent.kind === "select-node") {
-        void selectDashboardNode(intent.id).catch(() => undefined);
-        return;
-      }
-      movePlayhead(intent.playhead, scope);
+      void selectDashboardNode(intent.id).catch(() => undefined);
     },
   };
 }
@@ -232,7 +167,6 @@ export function useKeyboardNavigationView(scope: unknown): KeyboardNavigationVie
 }
 
 export function useKeyboardNavigationKeybindings(
-  scope: unknown,
   navigation: KeyboardNavigationView,
   selectDashboardNode: KeyboardNodeSelectionIntent,
 ): void {
@@ -243,7 +177,6 @@ export function useKeyboardNavigationKeybindings(
         deriveKeyboardNavigationActionDescriptor(
           binding,
           navigation,
-          scope,
           selectDashboardNode,
         ),
       ),
@@ -252,7 +185,7 @@ export function useKeyboardNavigationKeybindings(
       for (const dispose of disposeActions) dispose();
       disposeBinding();
     };
-  }, [navigation, scope, selectDashboardNode]);
+  }, [navigation, selectDashboardNode]);
 }
 
 export function useKeyboardNavigationSurface(): KeyboardNavigationView {
@@ -261,6 +194,6 @@ export function useKeyboardNavigationSurface(): KeyboardNavigationView {
   const navigation = useKeyboardNavigationView(normalizedScope);
   const selectDashboardNode = useDashboardNodeSelection(normalizedScope);
   useKeymapDispatcher();
-  useKeyboardNavigationKeybindings(scope, navigation, selectDashboardNode);
+  useKeyboardNavigationKeybindings(navigation, selectDashboardNode);
   return navigation;
 }

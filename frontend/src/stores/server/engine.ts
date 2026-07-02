@@ -1054,7 +1054,7 @@ export interface GraphAsofResponse extends GraphSlice {
   /**
    * The requested timestamp echoed back. The engine returns the raw param as a
    * string when the caller passed a millisecond timestamp; callers must coerce
-   * to number before using as a timeline cursor (see timeTravel.ts scrubTo).
+   * to number before using as a timeline cursor.
    */
   t: string | number;
   /**
