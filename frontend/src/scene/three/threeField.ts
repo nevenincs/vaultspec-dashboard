@@ -1906,7 +1906,13 @@ export class ThreeField implements SceneFieldRenderer {
     const scale = this.camera.zoom;
     for (const id of ctrl.trackedNodeIds()) {
       const i = this.idToIndex.get(id);
-      const p = i === undefined ? null : this.worldToScreen(i);
+      // A filtered-out node hides its DOM anchor (opened island / hover card) — the
+      // same visibleNodeIds mask the ring + label passes honor (GS-004) — so an overlay
+      // never floats over a node the filter has hidden. Selection/tracking survives the
+      // filter (desirable); only the ghost anchor is suppressed, and it re-emits when the
+      // filter releases the node — no state change.
+      const masked = this.visibleNodeIds !== null && !this.visibleNodeIds.has(id);
+      const p = i === undefined || masked ? null : this.worldToScreen(i);
       if (!p || p.x < 0 || p.x > this.width || p.y < 0 || p.y > this.height) {
         ctrl.emitAnchor(id, null);
       } else {
@@ -1950,6 +1956,12 @@ export class ThreeField implements SceneFieldRenderer {
     // ring while hovered.
     for (let i = 0; i < this.nodes.length; i++) {
       const id = this.nodes[i].id;
+      // A filtered-out node draws no emphasis ring (GS-004): the same visibleNodeIds
+      // mask the label pass (labelVisible) and picking already honor, and the node body
+      // scales to zero via aHidden. Selection/pin survives the filter (desirable) — only
+      // the ghost ring over the hidden node is suppressed; it reappears when the filter
+      // releases the node, no state change.
+      if (this.visibleNodeIds && !this.visibleNodeIds.has(id)) continue;
       const selected = this.selectedIds.has(id);
       const hovered = this.hoveredId === id;
       const pinned = this.pinnedIds.has(id);
