@@ -35,6 +35,11 @@ pub enum NodeKind {
     Commit,
     /// Code artifact keyed by repo-relative path (+ optional symbol).
     CodeArtifact,
+    /// Code module: a source-bearing directory in the CODE corpus, keyed by
+    /// repo-relative directory path (codebase-graphing ADR D4). Minted only by
+    /// the code-graph ingest; the vault corpus never produces one, so the vault
+    /// wire contract is untouched by its existence.
+    CodeModule,
     /// A project rule keyed by its kebab-case slug (graph-node-semantics ADR):
     /// the codify pipeline's output, projected from the rules tree
     /// (`.vaultspec/rules/`, OUTSIDE `.vault/`). Authority class is law; it is
@@ -63,6 +68,10 @@ pub enum RelationKind {
     /// Core's `derived_edges`, ingested as a distinct relation at 0.8 —
     /// never mixed into declared (engine-spec §3).
     CoreDerived,
+    /// A file-level import in the CODE corpus (codebase-graphing ADR D4):
+    /// `src` imports `dst`, extracted syntactically against the working tree at
+    /// the structural tier. Never minted in the vault corpus.
+    Imports,
 }
 
 /// The three provenance tiers minted as graph fact (engine-spec §3, D3.1).
@@ -140,6 +149,11 @@ pub enum Provenance {
         rank: u32,
         score: f32,
     },
+    /// The working tree's own file/module layout named this relationship
+    /// (codebase-graphing ADR D4): containment and module membership in the
+    /// CODE corpus. `target` is the contained child's repo-relative path.
+    /// Never emitted in the vault corpus.
+    TreeLayout { target: String },
 }
 
 /// Milliseconds since the Unix epoch — the shipped epoch-ms representation the

@@ -20,6 +20,7 @@ engine-model = { path = "crates/engine-model" }
 engine-store = { path = "crates/engine-store" }
 engine-graph = { path = "crates/engine-graph" }
 engine-query = { path = "crates/engine-query" }
+ingest-code = { path = "crates/ingest-code" }
 ingest-core = { path = "crates/ingest-core" }
 ingest-git = { path = "crates/ingest-git" }
 ingest-struct = { path = "crates/ingest-struct" }

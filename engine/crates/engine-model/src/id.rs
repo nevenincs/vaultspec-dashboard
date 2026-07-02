@@ -33,6 +33,11 @@ pub enum CanonicalKey<'a> {
         path: &'a str,
         symbol: Option<&'a str>,
     },
+    /// Repo-relative directory path of a source-bearing directory — the CODE
+    /// corpus's module rollup node (codebase-graphing ADR D4). Composed only
+    /// from the directory path: no file census, no language set, no volatile
+    /// input, so re-extraction re-derives the same id.
+    CodeModule { dir: &'a str },
     /// Rule slug (kebab-case): the codify pipeline's output projected from the
     /// rules tree (graph-node-semantics ADR). Identity is the slug, stable
     /// across re-projection.
@@ -47,6 +52,7 @@ impl CanonicalKey<'_> {
             CanonicalKey::PlanContainer { .. } => NodeKind::PlanContainer,
             CanonicalKey::Commit { .. } => NodeKind::Commit,
             CanonicalKey::CodeArtifact { .. } => NodeKind::CodeArtifact,
+            CanonicalKey::CodeModule { .. } => NodeKind::CodeModule,
             CanonicalKey::Rule { .. } => NodeKind::Rule,
         }
     }
@@ -65,6 +71,7 @@ impl CanonicalKey<'_> {
                 Some(symbol) => format!("{path}#{symbol}"),
                 None => (*path).to_string(),
             },
+            CanonicalKey::CodeModule { dir } => (*dir).to_string(),
             CanonicalKey::Rule { slug } => (*slug).to_string(),
         }
     }
@@ -77,6 +84,7 @@ pub(crate) fn kind_prefix(kind: &NodeKind) -> &'static str {
         NodeKind::PlanContainer => "plan",
         NodeKind::Commit => "commit",
         NodeKind::CodeArtifact => "code",
+        NodeKind::CodeModule => "code-mod",
         NodeKind::Rule => "rule",
     }
 }
@@ -119,6 +127,7 @@ impl RelationKind {
             RelationKind::Resembles => "resembles",
             RelationKind::Contains => "contains",
             RelationKind::CoreDerived => "core-derived",
+            RelationKind::Imports => "imports",
         }
     }
 }
@@ -141,6 +150,7 @@ impl Provenance {
             // provenance as attribution only.
             Provenance::CommitCorrelation { sha, .. } => format!("commit:{sha}"),
             Provenance::RagMatch { query, .. } => format!("rag:{query}"),
+            Provenance::TreeLayout { target } => format!("tree:{target}"),
         }
     }
 }
@@ -251,10 +261,36 @@ mod tests {
                 }),
                 "code:src/main.rs",
             ),
+            (
+                node_id(&CanonicalKey::CodeModule { dir: "src/stores" }),
+                "code-mod:src/stores",
+            ),
         ];
         for (actual, expected) in cases {
             assert_eq!(actual.0, expected);
         }
+    }
+
+    #[test]
+    fn imports_relation_wire_name_is_pinned() {
+        // codebase-graphing ADR D4: the import edge's relation token. `as_str`
+        // must match the serde kebab-case encoding, like every other variant.
+        assert_eq!(RelationKind::Imports.as_str(), "imports");
+        let json = serde_json::to_string(&RelationKind::Imports).unwrap();
+        assert_eq!(json, "\"imports\"");
+    }
+
+    #[test]
+    fn code_module_kind_wire_name_is_pinned() {
+        // codebase-graphing ADR D4: the module rollup node kind. Wire id prefix
+        // `code-mod` and serde kebab-case kind token `code-module` are both
+        // contract-pinned; the vault corpus never mints this kind.
+        let json = serde_json::to_string(&NodeKind::CodeModule).unwrap();
+        assert_eq!(json, "\"code-module\"");
+        assert_eq!(
+            NodeId::derive(&NodeKind::CodeModule, "src/stores").0,
+            "code-mod:src/stores"
+        );
     }
 
     #[test]
