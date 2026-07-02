@@ -22,6 +22,7 @@ related:
   - '[[2026-07-02-codebase-graphing-W05-P06-S14]]'
   - '[[2026-07-02-codebase-graphing-W05-P06-S15]]'
   - '[[2026-07-02-codebase-graphing-adr]]'
+  - '[[2026-07-02-codebase-graphing-audit]]'
   - '[[2026-07-02-codebase-graphing-plan]]'
   - '[[2026-07-02-codebase-graphing-research]]'
 ---
@@ -35,6 +36,10 @@ Auto-generated index of all documents tagged with `#codebase-graphing`.
 ### adr
 
 - `2026-07-02-codebase-graphing-adr` - `codebase-graphing` adr: `a disconnected code graph corpus served beside the vault LinkageGraph` | (**status:** `accepted`)
+
+### audit
+
+- `2026-07-02-codebase-graphing-audit` - `codebase-graphing` audit: `backend execution code review`
 
 ### exec
 

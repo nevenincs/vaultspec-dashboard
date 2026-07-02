@@ -317,3 +317,22 @@ async fn filters_serves_the_code_vocabulary_per_corpus() {
     assert!(body["data"]["vocabulary"].get("languages").is_none());
     assert!(body["data"].get("corpus").is_none());
 }
+
+/// Review L2: the language classification is deliberately duplicated between
+/// `ingest-code` (extraction) and `engine-query` (faceting) to keep the
+/// tree-sitter dependency chain out of the query crate. This parity test is
+/// the drift fence: every extension either classifies identically on both
+/// sides or is unknown to both.
+#[test]
+fn language_classification_parity_between_ingest_and_query() {
+    use ingest_code::lang::Lang;
+    let cases = [
+        "a.rs", "a.ts", "a.mts", "a.cts", "a.tsx", "a.js", "a.mjs", "a.cjs", "a.jsx", "a.py",
+        "a.md", "a.toml", "a.json", "a",
+    ];
+    for path in cases {
+        let ingest = Lang::from_path(std::path::Path::new(path)).map(|l| l.as_str());
+        let query = engine_query::code::language_token(path);
+        assert_eq!(ingest, query, "classification drift for `{path}`");
+    }
+}

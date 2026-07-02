@@ -1006,6 +1006,17 @@ mod tests {
         }
     }
 
+    fn replayed(result: ProposalCommandResult) -> IdempotencyRecord {
+        match result {
+            ProposalCommandResult::Replayed { idempotency } => {
+                assert_eq!(idempotency.state, IdempotencyState::Recorded);
+                assert!(idempotency.outcome.is_some());
+                idempotency
+            }
+            other => panic!("expected replayed command result, got {other:?}"),
+        }
+    }
+
     fn latest_record(store: &mut Store, changeset_id: &ChangesetId) -> ChangesetAggregateRecord {
         store
             .with_unit_of_work(CommandKind::CreateProposal, |uow| {
@@ -1317,6 +1328,174 @@ mod tests {
             .unwrap(),
         );
         assert_eq!(submitted.status, ChangesetStatus::NeedsReview);
+    }
+
+    #[test]
+    fn lifecycle_command_replays_are_idempotent_and_backend_owned() {
+        let (dir, mut store) = temp_store();
+        let root = dir.path();
+        let reader = reader(root);
+        let review_id = changeset_id("changeset_replay_review");
+        let cancel_id = changeset_id("changeset_replay_cancel");
+        let supersede_id = changeset_id("changeset_replay_supersede");
+
+        accepted(
+            create_proposal(
+                &mut store,
+                &reader,
+                context("idem:create:review-replay", 100),
+                create_request(root, review_id.clone(), "child_1", valid_body("review")),
+            )
+            .unwrap(),
+        );
+        let validation_request = {
+            let latest = latest_record(&mut store, &review_id);
+            let (current_revisions, chunk_evidence) = validation_inputs(root, &latest);
+            ValidateProposalRequest {
+                changeset_id: review_id.clone(),
+                expected_revision: latest.changeset_revision,
+                summary: "validate replay".to_string(),
+                current_revisions,
+                chunk_evidence,
+            }
+        };
+        let validated = accepted(
+            validate_proposal(
+                &mut store,
+                context("idem:validate:replay", 101),
+                validation_request.clone(),
+            )
+            .unwrap(),
+        );
+        let validation_replay = replayed(
+            validate_proposal(
+                &mut store,
+                context("idem:validate:replay", 102),
+                validation_request,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            validation_replay.receipt_id.as_ref(),
+            Some(&validated.receipt_id)
+        );
+
+        let submit_request = SubmitProposalRequest {
+            changeset_id: review_id.clone(),
+            expected_revision: validated.changeset_revision,
+            validation_digest: validated.validation_digest.unwrap(),
+            summary: "submit replay".to_string(),
+        };
+        let submitted = accepted(
+            submit_for_review(
+                &mut store,
+                context("idem:submit:replay", 103),
+                submit_request.clone(),
+            )
+            .unwrap(),
+        );
+        let submit_replay = replayed(
+            submit_for_review(
+                &mut store,
+                context("idem:submit:replay", 104),
+                submit_request,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            submit_replay.receipt_id.as_ref(),
+            Some(&submitted.receipt_id)
+        );
+        assert_eq!(history(&mut store, &review_id).revisions.len(), 3);
+        assert_eq!(
+            latest_record(&mut store, &review_id).status,
+            ChangesetStatus::NeedsReview
+        );
+
+        let cancel_created = accepted(
+            create_proposal(
+                &mut store,
+                &reader,
+                context("idem:create:cancel-replay", 200),
+                create_request(root, cancel_id.clone(), "child_1", valid_body("cancel")),
+            )
+            .unwrap(),
+        );
+        let cancel_request = terminal_request(
+            cancel_id.clone(),
+            cancel_created.changeset_revision,
+            "cancel replay",
+        );
+        let cancelled = accepted(
+            cancel_proposal(
+                &mut store,
+                context("idem:cancel:replay", 201),
+                cancel_request.clone(),
+            )
+            .unwrap(),
+        );
+        let cancel_replay = replayed(
+            cancel_proposal(
+                &mut store,
+                context("idem:cancel:replay", 202),
+                cancel_request,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            cancel_replay.receipt_id.as_ref(),
+            Some(&cancelled.receipt_id)
+        );
+        assert_eq!(history(&mut store, &cancel_id).revisions.len(), 2);
+        assert_eq!(
+            latest_record(&mut store, &cancel_id).status,
+            ChangesetStatus::Cancelled
+        );
+
+        let supersede_created = accepted(
+            create_proposal(
+                &mut store,
+                &reader,
+                context("idem:create:supersede-replay", 300),
+                create_request(
+                    root,
+                    supersede_id.clone(),
+                    "child_1",
+                    valid_body("supersede"),
+                ),
+            )
+            .unwrap(),
+        );
+        let supersede_request = terminal_request(
+            supersede_id.clone(),
+            supersede_created.changeset_revision,
+            "supersede replay",
+        );
+        let superseded = accepted(
+            supersede_proposal(
+                &mut store,
+                context("idem:supersede:replay", 301),
+                supersede_request.clone(),
+            )
+            .unwrap(),
+        );
+        let supersede_replay = replayed(
+            supersede_proposal(
+                &mut store,
+                context("idem:supersede:replay", 302),
+                supersede_request,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            supersede_replay.receipt_id.as_ref(),
+            Some(&superseded.receipt_id)
+        );
+        assert_eq!(history(&mut store, &supersede_id).revisions.len(), 2);
+        assert_eq!(
+            latest_record(&mut store, &supersede_id).status,
+            ChangesetStatus::Superseded
+        );
     }
 
     #[test]

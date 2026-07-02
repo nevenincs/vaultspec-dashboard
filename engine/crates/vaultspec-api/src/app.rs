@@ -259,6 +259,13 @@ pub struct CodeGraphCell {
     /// serves these so truncation/accuracy is stated, never implied away.
     pub stats: RwLock<Option<ingest_code::ExtractionStats>>,
     rebuild_lock: Mutex<()>,
+    /// The DEFAULT (un-narrowed) module-rollup slice, memoized per code
+    /// generation (review M1; `derived-projections-memoize-on-the-graph-
+    /// generation`): the default rollup poll is the code corpus's hot path and
+    /// its aggregation + per-node projection are generation-stable. A NARROWED
+    /// query flows through the projection per request, exactly as a filtered
+    /// vault constellation does.
+    rollup_cache: Mutex<Option<(u64, Arc<engine_query::graph::GraphSlice>)>>,
 }
 
 /// Freshness-probe debounce: repeated code-corpus polls within this window
@@ -274,7 +281,33 @@ impl CodeGraphCell {
             last_probe_ms: std::sync::atomic::AtomicI64::new(0),
             stats: RwLock::new(None),
             rebuild_lock: Mutex::new(()),
+            rollup_cache: Mutex::new(None),
         }
+    }
+
+    /// The default module rollup, memoized on the code generation (review M1).
+    /// The caller passes a graph Arc it already holds so the projection runs
+    /// over exactly the generation it read.
+    pub fn default_rollup(
+        &self,
+        graph: &Arc<LinkageGraph>,
+        scope: &ScopeRef,
+    ) -> Arc<engine_query::graph::GraphSlice> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        let mut cache = self.rollup_cache.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_generation, cached)) = cache.as_ref()
+            && *cached_generation == generation
+        {
+            return cached.clone();
+        }
+        let fresh = Arc::new(engine_query::code::code_graph_query(
+            graph,
+            scope,
+            true,
+            &engine_query::code::CodeNarrow::default(),
+        ));
+        *cache = Some((generation, fresh.clone()));
+        fresh
     }
 
     pub fn graph_arc(&self) -> Arc<LinkageGraph> {
@@ -305,6 +338,18 @@ impl CodeGraphCell {
         // One rebuild at a time; a second query waits and then hits the
         // fingerprint fast path below.
         let _guard = self.rebuild_lock.lock().unwrap_or_else(|e| e.into_inner());
+        // Debounce re-check under the lock (review L3): a waiter whose holder
+        // just rebuilt serves the fresh graph without re-walking the tree.
+        if now.saturating_sub(self.last_probe_ms.load(Ordering::SeqCst))
+            < CODE_FRESHNESS_DEBOUNCE_MS
+            && self
+                .fingerprint
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_some()
+        {
+            return Ok(self.graph_arc());
+        }
         let caps = ingest_code::WalkCaps::default();
         let outcome =
             ingest_code::walk::walk_source_tree(root, &caps).map_err(|e| e.to_string())?;

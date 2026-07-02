@@ -230,9 +230,17 @@ default, and the per-corpus facet validation - not by a separate route.
 
 **D6 - Cache and refresh: source-tree fingerprint key, generation-keyed
 projections, incremental re-parse.** The extraction cache keys on a source-tree
-content fingerprint - path plus blob hash over the in-scope, non-ignored file set -
-mirroring `worktree_corpus_fingerprint`, so an uncommitted source edit misses the
-cache and re-parses while an unchanged tree hits it. Served slices are
+fingerprint over the in-scope, non-ignored file set, mirroring
+`worktree_corpus_fingerprint`'s discipline in a distinct key space, so an
+uncommitted source edit misses the cache and re-parses while an unchanged tree
+hits it. AMENDED at execution (review M2): the fingerprint composition is
+`(path, byte length, mtime)` per file — the build-system-standard fast key —
+rather than a content blob hash, because the freshness probe must cost one
+metadata walk, not a full re-read of every source file per query. The accepted
+trade-off: an edit that preserves BOTH size and mtime false-hits (editor
+tooling always advances mtime; the window is one 2-second debounce period);
+per-file content hashes are still computed at extraction and ride each node's
+facet for exact provenance. Served slices are
 generation-keyed projection-memoized over the code graph's own generation counter,
 exactly as the vault projections memoize on the `LinkageGraph` generation. File
 changes drive an incremental re-parse through the existing watcher/rebuild path over

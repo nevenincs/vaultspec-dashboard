@@ -97,12 +97,19 @@ fn simple_gitignore_names(dir: &Path) -> Vec<String> {
         .collect()
 }
 
+/// Hard ceiling on directory nesting (review L4, bounded-by-default): the
+/// recursion is per-directory, so a pathological deep chain must stop rather
+/// than exhaust the stack. Real source trees sit far below this.
+const MAX_WALK_DEPTH: usize = 64;
+
 /// Walk the source tree under `root`, depth-first in sorted order (stable
-/// output ⇒ stable fingerprints). Read-only; never follows directory symlinks.
+/// output ⇒ stable fingerprints). Read-only; never follows a symlink —
+/// directory or file (review L1: a file symlink could alias content outside
+/// the tree into the corpus).
 pub fn walk_source_tree(root: &Path, caps: &WalkCaps) -> std::io::Result<WalkOutcome> {
     let mut outcome = WalkOutcome::default();
     let mut ignore_stack = vec![simple_gitignore_names(root)];
-    walk_dir(root, root, caps, &mut ignore_stack, &mut outcome)?;
+    walk_dir(root, root, caps, &mut ignore_stack, &mut outcome, 0)?;
     Ok(outcome)
 }
 
@@ -112,7 +119,11 @@ fn walk_dir(
     caps: &WalkCaps,
     ignore_stack: &mut Vec<Vec<String>>,
     outcome: &mut WalkOutcome,
+    depth: usize,
 ) -> std::io::Result<()> {
+    if depth >= MAX_WALK_DEPTH {
+        return Ok(());
+    }
     let mut entries: Vec<_> = std::fs::read_dir(dir)?.filter_map(Result::ok).collect();
     entries.sort_by_key(|e| e.file_name());
 
@@ -135,8 +146,14 @@ fn walk_dir(
                 continue;
             }
             ignore_stack.push(simple_gitignore_names(&path));
-            walk_dir(root, &path, caps, ignore_stack, outcome)?;
+            walk_dir(root, &path, caps, ignore_stack, outcome, depth + 1)?;
             ignore_stack.pop();
+            continue;
+        }
+
+        // Never admit a file symlink (review L1): reading it would follow the
+        // link and pull bytes from outside the tree into the corpus.
+        if path.is_symlink() {
             continue;
         }
 

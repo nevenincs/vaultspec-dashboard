@@ -526,12 +526,22 @@ async fn code_corpus_query(
                     format!("code corpus extraction failed: {e}"),
                 )
             })?;
-    let mut slice = engine_query::code::code_graph_query(
-        &graph,
-        &cell.scope,
-        granularity == Granularity::Feature,
-        &narrow,
-    );
+    // The DEFAULT rollup poll (the hot path) is served from the per-generation
+    // memo (review M1, derived-projections-memoize-on-the-graph-generation);
+    // a narrowed query or the file granularity flows through the projection
+    // per request, mirroring the vault's filtered-constellation split.
+    let mut slice = if granularity == Granularity::Feature
+        && narrow == engine_query::code::CodeNarrow::default()
+    {
+        (*cell.code.default_rollup(&graph, &cell.scope)).clone()
+    } else {
+        engine_query::code::code_graph_query(
+            &graph,
+            &cell.scope,
+            granularity == Granularity::Feature,
+            &narrow,
+        )
+    };
     // The SAME unconditional ceiling as the vault corpus
     // (graph-queries-are-bounded-by-default).
     let truncated = bound_slice(&mut slice).map(|total| {
