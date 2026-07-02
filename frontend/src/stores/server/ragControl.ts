@@ -144,6 +144,10 @@ export interface RagStorageRollup {
   total_points: number;
   total_footprint_bytes: number;
   total_namespaces: number;
+  /** true when the survey returned fewer namespaces than `total_namespaces`
+   *  (bounded at the survey limit): the totals/counts are then a LOWER BOUND over
+   *  the returned slice, not exact machine totals (RCR-002). */
+  truncated: boolean;
   live_count: number;
   orphaned_count: number;
   namespaces: RagStorageNamespace[];

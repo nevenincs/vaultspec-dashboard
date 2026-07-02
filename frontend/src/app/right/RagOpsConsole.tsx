@@ -196,6 +196,10 @@ function IndexAndSize({ scope }: { scope: unknown }) {
   const index = record(env?.index);
   const qdrant = record(env?.qdrant);
   const storage = env?.storage;
+  // RCR-002: the summed storage totals cover only the returned (bounded) survey
+  // slice when rag reports more namespaces than it returned — render them as a
+  // lower bound rather than a silent undercount.
+  const partial = storage?.available === true && storage.truncated === true;
 
   const gpu =
     index?.cuda === true
@@ -218,10 +222,17 @@ function IndexAndSize({ scope }: { scope: unknown }) {
       <SectionLabel>Index &amp; size</SectionLabel>
       <PropertyRow label="vault documents" value={num(index?.vault_count)} />
       <PropertyRow label="code chunks" value={num(index?.code_count)} />
-      <PropertyRow label="points" value={num(storage?.total_points)} />
+      <PropertyRow
+        label="points"
+        value={partial ? `≥ ${num(storage?.total_points)}` : num(storage?.total_points)}
+      />
       <PropertyRow
         label="disk footprint"
-        value={humanBytes(storage?.total_footprint_bytes)}
+        value={
+          partial
+            ? `≥ ${humanBytes(storage?.total_footprint_bytes)}`
+            : humanBytes(storage?.total_footprint_bytes)
+        }
       />
       <PropertyRow label="gpu" value={gpu} />
       <PropertyRow label="qdrant" value={qdrantLabel.length > 0 ? qdrantLabel : "—"} />
@@ -232,6 +243,7 @@ function IndexAndSize({ scope }: { scope: unknown }) {
             <span
               className={storage.orphaned_count > 0 ? "text-state-broken" : undefined}
             >
+              {partial ? "≥ " : ""}
               {storage.live_count} live
               {storage.orphaned_count > 0
                 ? ` · ${storage.orphaned_count} orphaned`
@@ -239,6 +251,15 @@ function IndexAndSize({ scope }: { scope: unknown }) {
             </span>
           }
         />
+      )}
+      {/* RCR-002: a survey bounded below the machine's namespace count makes every
+          total above a LOWER BOUND (summed over the returned slice) — say so
+          instead of showing a silent undercount. */}
+      {partial && storage && (
+        <p className="text-meta text-ink-faint">
+          Totals cover the first {storage.namespaces.length} of{" "}
+          {storage.total_namespaces} namespaces — the real values are higher.
+        </p>
       )}
     </div>
   );
@@ -282,6 +303,17 @@ function Tenants({ scope }: { scope: unknown }) {
           typeof slot.idle_seconds === "number"
             ? Math.round(slot.idle_seconds)
             : undefined;
+        // RCR-005: Evict is disabled ONLY with a stated reason (never the
+        // permanently-disabled lie the unified-action-plane rule forbids) — an
+        // UNKNOWN ref count (rag omitted the field) or a LIVE lease. A
+        // confirmed-idle slot (ref 0) stays evictable. The reason rides the
+        // wrapper's tooltip so a disabled button still explains itself.
+        const evictBlockReason =
+          ref === undefined
+            ? "reference count unavailable — cannot confirm the tenant is idle"
+            : ref > 0
+              ? `in use by ${ref} consumer${ref === 1 ? "" : "s"}`
+              : undefined;
         return (
           <div key={`${root}-${i}`} className="flex items-center gap-fg-1">
             <span className="min-w-0 flex-1 truncate text-body text-ink" title={root}>
@@ -291,13 +323,15 @@ function Tenants({ scope }: { scope: unknown }) {
               {ref !== undefined ? `ref ${ref}` : ""}
               {idle !== undefined ? ` · idle ${idle}s` : ""}
             </span>
-            <Button
-              variant="ghost"
-              onClick={() => evict.mutate(root)}
-              disabled={evict.isPending || ref !== 0}
-            >
-              Evict
-            </Button>
+            <span title={evictBlockReason} className="shrink-0">
+              <Button
+                variant="ghost"
+                onClick={() => evict.mutate(root)}
+                disabled={evict.isPending || evictBlockReason !== undefined}
+              >
+                Evict
+              </Button>
+            </span>
           </div>
         );
       })}
