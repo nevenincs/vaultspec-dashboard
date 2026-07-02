@@ -370,6 +370,46 @@ function queuePanelStateWrite(
   return next;
 }
 
+// SRR-001 filter-write serialization. The whole `filters` record is ONE
+// top-level field the engine PATCH replaces wholesale, so two rapid toggles that
+// both read the SAME base filters lost-update each other (the second PATCH erases
+// the first, and the invalidate-refetch converges the cache to the already-wrong
+// server truth). Filters are the most-clicked shared intent, yet — unlike
+// `panel_state` (serialized here) and `timeline_mode` (seq-tokened) — they had no
+// guard. This mirrors the panel-state chain: serialize filter writes per scope
+// AND recompute the payload from the FRESHEST cache INSIDE the queued thunk, so
+// each serialized write builds on the prior write's committed result rather than
+// a stale snapshot captured at call time.
+const filterWriteChainsByScope = new Map<string, Promise<unknown>>();
+
+function queueFilterWrite<T>(scope: string, write: () => Promise<T>): Promise<T> {
+  const previous = filterWriteChainsByScope.get(scope) ?? Promise.resolve(undefined);
+  const next = previous.catch(() => undefined).then(() => write());
+  filterWriteChainsByScope.set(scope, next);
+  void next.finally(() => {
+    if (filterWriteChainsByScope.get(scope) === next) {
+      filterWriteChainsByScope.delete(scope);
+    }
+  });
+  return next;
+}
+
+/** Serialize one filter transform for a scope, reading the base filters INSIDE
+ *  the queued thunk (SRR-001) so concurrent facet writes cannot lost-update. */
+function serializedFilterWrite<T>(
+  scope: string,
+  client: QueryClient,
+  sessionIdentity: string,
+  transform: (filters: DashboardFilters) => DashboardFilters,
+  write: (patch: DashboardStateMutationPatch) => Promise<T>,
+): Promise<T> {
+  return queueFilterWrite(scope, () =>
+    write(
+      filtersPatch(transform(cachedDashboardFilters(client, scope, sessionIdentity))),
+    ),
+  );
+}
+
 export function dashboardFiltersWithText(
   filters: DashboardFilters,
   text: unknown,
@@ -534,10 +574,14 @@ export function toggleDashboardFilterFacet(
   const normalizedScope = normalizeDashboardStateWriteScope(scope);
   if (normalizedScope === null) return Promise.resolve(null);
   const sessionIdentity = cachedDashboardStateSessionIdentity(queryClient);
-  const filters = cachedDashboardFilters(queryClient, normalizedScope, sessionIdentity);
-  return patchDashboardState(
+  // Shares the SRR-001 serialized chain with the hook writers, so an imperative
+  // context-menu toggle and a rail/legend toggle cannot lost-update each other.
+  return serializedFilterWrite(
     normalizedScope,
-    filtersPatch(dashboardFiltersWithFacetToggled(filters, facet, value)),
+    queryClient,
+    sessionIdentity,
+    (filters) => dashboardFiltersWithFacetToggled(filters, facet, value),
+    (patch) => patchDashboardState(normalizedScope, patch),
   );
 }
 
@@ -551,12 +595,13 @@ export function setDashboardFeatureFilter(
   const normalizedScope = normalizeDashboardStateWriteScope(scope);
   if (normalizedScope === null) return Promise.resolve(null);
   const sessionIdentity = cachedDashboardStateSessionIdentity(queryClient);
-  const filters = cachedDashboardFilters(queryClient, normalizedScope, sessionIdentity);
-  return patchDashboardState(
+  return serializedFilterWrite(
     normalizedScope,
-    filtersPatch(
+    queryClient,
+    sessionIdentity,
+    (filters) =>
       dashboardFiltersWithFeatureQuery(filters, parseFeatureQueryInput(featureTerm)),
-    ),
+    (patch) => patchDashboardState(normalizedScope, patch),
   );
 }
 
@@ -693,42 +738,56 @@ export function useDashboardStateMutations(scope: unknown) {
     setSelection: (selectedIds: unknown) =>
       mutation.mutateAsync(selectionPatch(selectedIds)),
     setFilters: (filters: unknown) => mutation.mutateAsync(filtersPatch(filters)),
-    setTextFilter: (text: unknown) => {
-      const filters =
-        normalizedScope === null
-          ? {}
-          : cachedDashboardFilters(client, normalizedScope, sessionIdentity);
-      return mutation.mutateAsync(
-        filtersPatch(dashboardFiltersWithText(filters, text)),
-      );
-    },
-    setFeatureQuery: (query: unknown) => {
-      const filters =
-        normalizedScope === null
-          ? {}
-          : cachedDashboardFilters(client, normalizedScope, sessionIdentity);
-      return mutation.mutateAsync(
-        filtersPatch(dashboardFiltersWithFeatureQuery(filters, query)),
-      );
-    },
-    toggleFilterFacet: (facet: unknown, value: unknown) => {
-      const filters =
-        normalizedScope === null
-          ? {}
-          : cachedDashboardFilters(client, normalizedScope, sessionIdentity);
-      return mutation.mutateAsync(
-        filtersPatch(dashboardFiltersWithFacetToggled(filters, facet, value)),
-      );
-    },
-    clearFilterFacet: (facet: unknown) => {
-      const filters =
-        normalizedScope === null
-          ? {}
-          : cachedDashboardFilters(client, normalizedScope, sessionIdentity);
-      return mutation.mutateAsync(
-        filtersPatch(dashboardFiltersWithFacetCleared(filters, facet)),
-      );
-    },
+    // Filter writes serialize per scope and recompute from the freshest cache
+    // inside the queued thunk (SRR-001), so rapid facet toggles never
+    // lost-update. The null-scope path keeps the unguarded direct write (there is
+    // no scope to serialize on, and no cache to build from).
+    setTextFilter: (text: unknown) =>
+      normalizedScope === null
+        ? mutation.mutateAsync(filtersPatch(dashboardFiltersWithText({}, text)))
+        : serializedFilterWrite(
+            normalizedScope,
+            client,
+            sessionIdentity,
+            (filters) => dashboardFiltersWithText(filters, text),
+            (patch) => mutation.mutateAsync(patch),
+          ),
+    setFeatureQuery: (query: unknown) =>
+      normalizedScope === null
+        ? mutation.mutateAsync(
+            filtersPatch(dashboardFiltersWithFeatureQuery({}, query)),
+          )
+        : serializedFilterWrite(
+            normalizedScope,
+            client,
+            sessionIdentity,
+            (filters) => dashboardFiltersWithFeatureQuery(filters, query),
+            (patch) => mutation.mutateAsync(patch),
+          ),
+    toggleFilterFacet: (facet: unknown, value: unknown) =>
+      normalizedScope === null
+        ? mutation.mutateAsync(
+            filtersPatch(dashboardFiltersWithFacetToggled({}, facet, value)),
+          )
+        : serializedFilterWrite(
+            normalizedScope,
+            client,
+            sessionIdentity,
+            (filters) => dashboardFiltersWithFacetToggled(filters, facet, value),
+            (patch) => mutation.mutateAsync(patch),
+          ),
+    clearFilterFacet: (facet: unknown) =>
+      normalizedScope === null
+        ? mutation.mutateAsync(
+            filtersPatch(dashboardFiltersWithFacetCleared({}, facet)),
+          )
+        : serializedFilterWrite(
+            normalizedScope,
+            client,
+            sessionIdentity,
+            (filters) => dashboardFiltersWithFacetCleared(filters, facet),
+            (patch) => mutation.mutateAsync(patch),
+          ),
     setDateRange: (dateRange: unknown) =>
       mutation.mutateAsync(dateRangePatch(dateRange)),
     setFiltersAndDateRange: (filters: unknown, dateRange: unknown) =>

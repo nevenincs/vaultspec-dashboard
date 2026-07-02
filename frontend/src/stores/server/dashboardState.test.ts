@@ -1213,6 +1213,42 @@ describe("dashboard-state engine client (live engine)", () => {
     );
   });
 
+  it("serializes rapid filter toggles so neither facet lost-updates the other (SRR-001)", async () => {
+    const scope = await liveScope();
+    cleanupScope = scope;
+    await createLiveClient().patchDashboardState(
+      dashboardDocumentStateResetPatch(scope),
+    );
+
+    const qc = testQueryClient();
+    const { result } = renderHook(
+      () => ({
+        state: useDashboardState(scope),
+        mutations: useDashboardStateMutations(scope),
+      }),
+      { wrapper: wrapper(qc) },
+    );
+
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
+
+    // Two facet toggles fired inside ONE round-trip window on DIFFERENT facets.
+    // The engine replaces the whole `filters` record per PATCH, so without write
+    // serialization both reads see the empty base and the second PATCH erases the
+    // first (the lost update). Serialized + recomputed-from-freshest-cache, the
+    // second toggle builds on the first's committed result and BOTH persist.
+    await act(async () => {
+      await Promise.all([
+        result.current.mutations.toggleFilterFacet("doc_types", "adr"),
+        result.current.mutations.toggleFilterFacet("statuses", "accepted"),
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.state.data?.filters.doc_types).toEqual(["adr"]);
+      expect(result.current.state.data?.filters.statuses).toEqual(["accepted"]);
+    }, ENGINE_WAIT);
+  });
+
   it("derives graph query variables from the canonical dashboard state", async () => {
     const scope = await liveScope();
     cleanupScope = scope;
