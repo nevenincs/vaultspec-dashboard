@@ -79,6 +79,7 @@ import {
 } from "./dashboardState";
 import { engineKeys, useDashboardState } from "./queries";
 import { SEARCH_QUERY_MAX_CHARS } from "../searchQuery";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
@@ -925,9 +926,7 @@ describe("dashboard-state engine client (live engine)", () => {
       { wrapper: wrapper(qc) },
     );
 
-    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
 
     await act(async () => {
       await result.current.mutations.setSelection([node.id]);
@@ -951,11 +950,13 @@ describe("dashboard-state engine client (live engine)", () => {
       await result.current.mutations.setGraphBounds({ shape: "free", size: 100 });
     });
 
-    await waitFor(() =>
-      expect(result.current.state.data?.graph_bounds).toEqual({
-        shape: "free",
-        size: 0,
-      }),
+    await waitFor(
+      () =>
+        expect(result.current.state.data?.graph_bounds).toEqual({
+          shape: "free",
+          size: 0,
+        }),
+      ENGINE_WAIT,
     );
     const state = result.current.state.data;
     expect(state?.selected_ids).toEqual([node.id]);
@@ -1053,16 +1054,15 @@ describe("dashboard-state engine client (live engine)", () => {
       { wrapper: wrapper(qc) },
     );
 
-    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
 
     await act(async () => {
       await result.current.mutations.setTimelineMode({ kind: "live" });
     });
 
-    await waitFor(() =>
-      expect(result.current.state.data?.timeline_mode).toEqual({ kind: "live" }),
+    await waitFor(
+      () => expect(result.current.state.data?.timeline_mode).toEqual({ kind: "live" }),
+      ENGINE_WAIT,
     );
   });
 
@@ -1083,9 +1083,7 @@ describe("dashboard-state engine client (live engine)", () => {
       { wrapper: wrapper(qc) },
     );
 
-    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
 
     let compound!: DashboardState;
     await act(async () => {
@@ -1190,9 +1188,7 @@ describe("dashboard-state engine client (live engine)", () => {
       { wrapper: wrapper(qc) },
     );
 
-    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
 
     await act(async () => {
       await Promise.all([
@@ -1201,12 +1197,14 @@ describe("dashboard-state engine client (live engine)", () => {
       ]);
     });
 
-    await waitFor(() =>
-      expect(result.current.state.data?.panel_state).toEqual({
-        left_collapsed: true,
-        right_collapsed: false,
-        right_tab: "search",
-      }),
+    await waitFor(
+      () =>
+        expect(result.current.state.data?.panel_state).toEqual({
+          left_collapsed: true,
+          right_collapsed: false,
+          right_tab: "search",
+        }),
+      ENGINE_WAIT,
     );
   });
 

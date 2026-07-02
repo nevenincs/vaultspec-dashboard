@@ -182,6 +182,7 @@ import {
   useVaultTreeSurface,
   dashboardStateSessionIdentity,
 } from "./queries";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
@@ -3217,17 +3218,17 @@ describe("deriveGraphSliceAvailability (nav-controls descent, contract §2)", ()
       initialProps: { lens: "status" },
     });
 
-    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true), ENGINE_WAIT);
     expect(result.current.availability.loading).toBe(false);
     expect(graphRequests).toHaveLength(1);
 
     rerender({ lens: "status", filter: { doc_types: ["plan"] } });
-    await waitFor(() => expect(graphRequests).toHaveLength(2));
-    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true));
+    await waitFor(() => expect(graphRequests).toHaveLength(2), ENGINE_WAIT);
+    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true), ENGINE_WAIT);
 
     rerender({ lens: "design", filter: { doc_types: ["plan"] } });
-    await waitFor(() => expect(graphRequests).toHaveLength(3));
-    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true));
+    await waitFor(() => expect(graphRequests).toHaveLength(3), ENGINE_WAIT);
+    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true), ENGINE_WAIT);
   });
 
   it("forwards the canonical filter to the lineage wire on the same client path (unified-filter-plane D3)", async () => {
@@ -3249,12 +3250,12 @@ describe("deriveGraphSliceAvailability (nav-controls descent, contract §2)", ()
       { wrapper: wrapper(client), initialProps: undefined as string | undefined },
     );
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.loading).toBe(false), ENGINE_WAIT);
     expect(lineageRequests).toHaveLength(1);
     expect(lineageRequests[0]).not.toContain("filter=");
 
     rerender(JSON.stringify({ doc_types: ["plan"] }));
-    await waitFor(() => expect(lineageRequests).toHaveLength(2));
+    await waitFor(() => expect(lineageRequests).toHaveLength(2), ENGINE_WAIT);
     expect(lineageRequests[1]).toContain("filter=");
     expect(decodeURIComponent(lineageRequests[1]!)).toContain('"doc_types":["plan"]');
   });

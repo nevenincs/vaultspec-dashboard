@@ -19,6 +19,7 @@ import {
 } from "../../testing/menuQueryClient";
 import { openContextMenu, useContextMenuStore } from "../../stores/view/contextMenu";
 import { ContextMenuHost } from "./ContextMenuHost";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 // The host reads active scope / selected node id through TanStack query hooks.
 let testClient: QueryClient;
@@ -55,7 +56,7 @@ describe("menu seam transit", () => {
     const dispatchSpy = vi.spyOn(appDispatcher, "dispatch");
     render(<ContextMenuHost />, { wrapper: Providers });
     act(() => openContextMenu({ kind: "node", id: "n1" }, { x: 5, y: 5 }));
-    fireEvent.click(await screen.findByText("Mutate"));
+    fireEvent.click(await screen.findByText("Mutate", undefined, ENGINE_WAIT));
 
     // The terminal handler fired exactly once, with the action that transited
     // the seam (so it was logged/traced/guardable in one place).

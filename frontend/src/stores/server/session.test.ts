@@ -43,6 +43,7 @@ import {
   useSettings,
   useSwapWorkspace,
 } from "./queries";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
@@ -481,7 +482,7 @@ describe("restore-on-load (useActiveScope over the session hook)", () => {
 
     const qc = testQueryClient();
     const { result } = renderHook(() => useActiveScope(), { wrapper: wrapper(qc) });
-    await waitFor(() => expect(result.current).toBe(scope));
+    await waitFor(() => expect(result.current).toBe(scope), ENGINE_WAIT);
   });
 
   it("an explicit in-session pick (viewStore.scope) wins over the persisted scope", async () => {
@@ -489,7 +490,7 @@ describe("restore-on-load (useActiveScope over the session hook)", () => {
     // The user picked a scope this session — it must win the precedence.
     useViewStore.setState({ scope: "wt-pick" });
     const { result } = renderHook(() => useActiveScope(), { wrapper: wrapper(qc) });
-    await waitFor(() => expect(result.current).toBe("wt-pick"));
+    await waitFor(() => expect(result.current).toBe("wt-pick"), ENGINE_WAIT);
   });
 });
 
@@ -504,15 +505,19 @@ describe("selection persistence (usePutSession)", () => {
       () => ({ put: usePutSession(), session: useSession() }),
       { wrapper: wrapper(qc) },
     );
-    await waitFor(() => expect(result.current.session.isSuccess).toBe(true));
+    await waitFor(
+      () => expect(result.current.session.isSuccess).toBe(true),
+      ENGINE_WAIT,
+    );
 
     result.current.put.mutate({
       scope_context: { folder: "adr", feature_tags: [tag] },
     });
 
     // The mutation's onSuccess seeds the session cache; the read reflects it.
-    await waitFor(() =>
-      expect(result.current.session.data?.scope_context.folder).toBe("adr"),
+    await waitFor(
+      () => expect(result.current.session.data?.scope_context.folder).toBe("adr"),
+      ENGINE_WAIT,
     );
     expect(result.current.session.data?.scope_context.feature_tags).toEqual([tag]);
   });
@@ -523,7 +528,10 @@ describe("selection persistence (usePutSession)", () => {
       () => ({ settings: useSettings(), put: usePutSession() }),
       { wrapper: wrapper(qc) },
     );
-    await waitFor(() => expect(result.current.settings.isSuccess).toBe(true));
+    await waitFor(
+      () => expect(result.current.settings.isSuccess).toBe(true),
+      ENGINE_WAIT,
+    );
     expect(result.current.settings.data?.global).toBeTypeOf("object");
   });
 });

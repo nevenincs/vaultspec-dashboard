@@ -16,6 +16,7 @@ import {
   useDashboardBrowserSelection,
   useSelectFolderContext,
 } from "./browserSelection";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
@@ -130,7 +131,7 @@ describe("bidirectional selection (G2.b)", () => {
       await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
         selected_ids: [pathToNodeId(doc.path)],
       });
-    });
+    }, ENGINE_WAIT);
     qc.clear();
   });
 });
@@ -160,11 +161,13 @@ describe("folder context persistence", () => {
       activeFolder: null,
       featureContexts: [],
     });
-    await waitFor(() =>
-      expect(useViewStore.getState()).toMatchObject({
-        activeFolder: "adr",
-        featureContexts: [tag],
-      }),
+    await waitFor(
+      () =>
+        expect(useViewStore.getState()).toMatchObject({
+          activeFolder: "adr",
+          featureContexts: [tag],
+        }),
+      ENGINE_WAIT,
     );
     await expect(createLiveClient().session()).resolves.toMatchObject({
       scope_context: { folder: "adr", feature_tags: [tag] },
@@ -199,7 +202,10 @@ describe("folder context persistence", () => {
 
     act(() => result.current.select("adr", [pickedTag]));
 
-    await waitFor(() => expect(result.current.putSession.isSuccess).toBe(true));
+    await waitFor(
+      () => expect(result.current.putSession.isSuccess).toBe(true),
+      ENGINE_WAIT,
+    );
     expect(useViewStore.getState()).toMatchObject({
       scope: pickedScope,
       activeFolder: null,

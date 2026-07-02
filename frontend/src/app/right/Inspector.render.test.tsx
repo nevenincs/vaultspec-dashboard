@@ -29,6 +29,7 @@ import { selectNode } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { Inspector } from "./Inspector";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function renderInspector() {
   return render(
@@ -90,8 +91,10 @@ describe("Inspector state modes (state-mode-uniformity ADR)", () => {
     // synchronously on the next render.
     await selectNode(node.id, scope);
     const first = renderInspector();
-    await waitFor(() =>
-      expect(first.container.querySelector('[data-state-block="empty"]')).toBeNull(),
+    await waitFor(
+      () =>
+        expect(first.container.querySelector('[data-state-block="empty"]')).toBeNull(),
+      ENGINE_WAIT,
     );
     cleanup();
 

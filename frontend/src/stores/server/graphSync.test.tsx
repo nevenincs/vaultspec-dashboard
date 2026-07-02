@@ -23,6 +23,7 @@ import {
   useGraphLiveDeltaView,
   useGraphLiveSync,
 } from "./graphSync";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
@@ -516,8 +517,9 @@ describe("useGraphLiveSync", () => {
     client.setQueryData(key, [fc(11)]);
 
     // Not dropped — the cursor reset re-consumes from the rebuilt head.
-    await waitFor(() =>
-      expect(result.current.featureDeltas.map((d) => d.seq)).toEqual([11]),
+    await waitFor(
+      () => expect(result.current.featureDeltas.map((d) => d.seq)).toEqual([11]),
+      ENGINE_WAIT,
     );
     expect(result.current.gapCount).toBe(0);
   });
@@ -569,7 +571,7 @@ describe("useGraphLiveSync", () => {
     // since=10 replays NOTHING — chunks shrink to []. Without re-keyframing the
     // graph would silently stay stale; the hook re-anchors via a gap increment.
     client.setQueryData(key, []);
-    await waitFor(() => expect(result.current.gapCount).toBe(1));
+    await waitFor(() => expect(result.current.gapCount).toBe(1), ENGINE_WAIT);
   });
 
   it("does NOT refetch the constellation for a clean feature-only batch (MED-1)", () => {

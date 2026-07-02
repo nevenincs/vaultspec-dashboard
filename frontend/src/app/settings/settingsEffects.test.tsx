@@ -23,6 +23,7 @@ import { CONSUMED_SETTING_KEYS } from "../../stores/server/settingsSelectors";
 import { useViewStore } from "../../stores/view/viewStore";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { useSettingsEffects } from "./settingsEffects";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function Harness({ scope }: { scope: unknown }) {
   useSettingsEffects(scope);
@@ -63,7 +64,7 @@ describe("useSettingsEffects (consumed settings, live engine)", () => {
     renderEffects();
     await waitFor(() => {
       expect(document.documentElement.dataset.reduceMotion).toBe("true");
-    });
+    }, ENGINE_WAIT);
   });
 
   it("applies reduce_motion off when the setting is false", async () => {
@@ -74,7 +75,7 @@ describe("useSettingsEffects (consumed settings, live engine)", () => {
     renderEffects();
     await waitFor(() => {
       expect(document.documentElement.dataset.reduceMotion).toBe("false");
-    });
+    }, ENGINE_WAIT);
   });
 
   it("initializes fresh dashboard graph intent from schema settings once", async () => {
@@ -107,7 +108,7 @@ describe("useSettingsEffects (consumed settings, live engine)", () => {
         expect(state.graph_granularity).toBe("document");
         expect(state.filters.text).toBe("adr");
         expect(state.filters.min_confidence?.temporal).toBeCloseTo(0.6);
-      });
+      }, ENGINE_WAIT);
     } finally {
       await engineClient.putSettings({
         scope,
@@ -164,7 +165,7 @@ describe("useSettingsEffects (consumed settings, live engine)", () => {
         const state = await client.dashboardState(scope);
         expect(state.graph_granularity).toBe("feature");
         expect(state.filters.text).toBe("user-owned filter");
-      });
+      }, ENGINE_WAIT);
 
       const freshState = await client.patchDashboardState({
         scope,
@@ -181,7 +182,7 @@ describe("useSettingsEffects (consumed settings, live engine)", () => {
         expect(state.graph_granularity).toBe("document");
         expect(state.filters.text).toBe("adr");
         expect(state.filters.min_confidence?.temporal).toBeCloseTo(0.6);
-      });
+      }, ENGINE_WAIT);
     } finally {
       await engineClient.putSettings({
         scope,

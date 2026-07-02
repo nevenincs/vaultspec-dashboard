@@ -12,6 +12,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StatusHoverCard, type StatusCardModel } from "./HoverCard";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 const acceptedAdr: StatusCardModel = {
   id: "doc:2026-06-14-some-decision-adr",
@@ -111,6 +112,6 @@ describe("HoverCard — status chip, rollout, open affordance, reduced motion", 
     // It still blooms to full opacity after the mount tick (a real crossfade).
     await waitFor(() => {
       expect(card?.style.opacity).toBe("1");
-    });
+    }, ENGINE_WAIT);
   });
 });

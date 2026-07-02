@@ -24,6 +24,7 @@ import { useViewStore } from "../../stores/view/viewStore";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { pathToNodeId } from "./browserSelection";
 import { VaultBrowser } from "./VaultBrowser";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function renderBrowser() {
   return render(
@@ -43,9 +44,12 @@ async function expandDocumentsSection(): Promise<HTMLElement> {
     });
     expect(button).toBeTruthy();
     return button!;
-  });
+  }, ENGINE_WAIT);
   if (header.getAttribute("aria-expanded") === "false") fireEvent.click(header);
-  await waitFor(() => expect(header.getAttribute("aria-expanded")).toBe("true"));
+  await waitFor(
+    () => expect(header.getAttribute("aria-expanded")).toBe("true"),
+    ENGINE_WAIT,
+  );
   return header;
 }
 
@@ -86,7 +90,7 @@ describe("TreeBrowser reveal-on-selection scroll (GS-003, live engine)", () => {
     await waitFor(() => {
       expect(queryClient.isFetching()).toBe(0);
       expect(queryClient.isMutating()).toBe(0);
-    });
+    }, ENGINE_WAIT);
     queryClient.clear();
     await createLiveClient()
       .patchDashboardState(dashboardDocumentStateResetPatch(scope))
@@ -104,7 +108,7 @@ describe("TreeBrowser reveal-on-selection scroll (GS-003, live engine)", () => {
 
   it("scrolls a collapsed-away selected document into view (ancestor-expanded, follow mode OFF)", async () => {
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" });
+    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
 
     // Discover a REAL document path from the live vault: open the Documents section and
     // a category folder, then read a document row's `.vault/` title.
@@ -118,20 +122,20 @@ describe("TreeBrowser reveal-on-selection scroll (GS-003, live engine)", () => {
       );
       expect(button).toBeTruthy();
       return button!;
-    });
+    }, ENGINE_WAIT);
     fireEvent.click(folder);
     const path = await waitFor(() => {
       const row = docRows()[0];
       expect(row).toBeTruthy();
       return row.getAttribute("title")!;
-    });
+    }, ENGINE_WAIT);
     const nodeId = pathToNodeId(path);
 
     // Collapse everything and turn follow mode OFF: now NOTHING would re-mount that row
     // except the reveal reaction under test.
     setFollowMode(false);
     useBrowserTreeExpansionStore.getState().reset();
-    await waitFor(() => expect(docRows().length).toBe(0));
+    await waitFor(() => expect(docRows().length).toBe(0), ENGINE_WAIT);
 
     const scrollSpy = vi
       .spyOn(Element.prototype, "scrollIntoView")
@@ -148,9 +152,9 @@ describe("TreeBrowser reveal-on-selection scroll (GS-003, live engine)", () => {
       expect(current).toBeTruthy();
       expect(current!.getAttribute("title")).toBe(path);
       return current!;
-    });
+    }, ENGINE_WAIT);
     // …and it is scrolled into view.
-    await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
+    await waitFor(() => expect(scrollSpy).toHaveBeenCalled(), ENGINE_WAIT);
     expect(revealed.getAttribute("aria-current")).toBe("page");
   });
 });

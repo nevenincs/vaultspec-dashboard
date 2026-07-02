@@ -21,6 +21,7 @@ import { dashboardStateSessionIdentity, engineKeys } from "../../stores/server/q
 import { queryClient } from "../../stores/server/queryClient";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { FilterSidebar } from "./FilterSidebar";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 afterEach(() => {
   cleanup();
@@ -75,8 +76,8 @@ describe("FilterSidebar plan_states facet (live engine, populated path)", () => 
 
     // The Plan-status section + the `in-progress` option's plain label
     // ("In progress", ui-labels-are-user-facing) render from the live vocabulary.
-    expect(await screen.findByText("Plan status")).toBeTruthy();
-    expect(await screen.findByText("In progress")).toBeTruthy();
+    expect(await screen.findByText("Plan status", undefined, ENGINE_WAIT)).toBeTruthy();
+    expect(await screen.findByText("In progress", undefined, ENGINE_WAIT)).toBeTruthy();
   });
 
   it("honors a plan_states selection — the in-progress plan is kept, an absent state drops it", async () => {

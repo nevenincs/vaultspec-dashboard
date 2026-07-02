@@ -12,6 +12,7 @@ import { queryClient } from "../../stores/server/queryClient";
 import { DEFAULT_CHOICES } from "../../stores/view/filters";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { FilterSidebar } from "./FilterSidebar";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function vocabularyWithFeatureTags(featureTags: string[]): FiltersVocabulary {
   return {
@@ -116,7 +117,9 @@ describe("FilterSidebar advanced flyout (no FEATURE section)", () => {
     // The advanced flyout renders (panel title is always present); FEATURE filtering
     // is no longer here — there is no in-flyout feature search field, and category
     // (Type) + date (Edited) sections are gone (legend + timeline own those).
-    expect(await screen.findByText("Filter documents")).toBeTruthy();
+    expect(
+      await screen.findByText("Filter documents", undefined, ENGINE_WAIT),
+    ).toBeTruthy();
     expect(screen.queryByPlaceholderText("Search features…")).toBeNull();
     expect(screen.queryByText("delta-sync")).toBeNull();
   });

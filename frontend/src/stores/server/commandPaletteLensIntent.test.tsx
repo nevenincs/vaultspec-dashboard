@@ -15,6 +15,7 @@ import {
 } from "./commandPaletteLensIntent";
 import type { DashboardState } from "./engine";
 import { useDashboardState } from "./queries";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
@@ -121,9 +122,7 @@ describe("useCommandPaletteLensIntent", () => {
       { wrapper: wrapper(client) },
     );
 
-    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
 
     let applied!: DashboardState;
     await act(async () => {
@@ -161,14 +160,16 @@ describe("useCommandPaletteLensIntent", () => {
       from: "2026-06-01",
       to: "2026-06-30",
     });
-    await waitFor(() =>
-      expect(result.current.state.data).toMatchObject({
-        filters: {
-          feature_tags: ["state"],
-          text: "boundary",
-        },
-        date_range: { from: "2026-06-01", to: "2026-06-30" },
-      }),
+    await waitFor(
+      () =>
+        expect(result.current.state.data).toMatchObject({
+          filters: {
+            feature_tags: ["state"],
+            text: "boundary",
+          },
+          date_range: { from: "2026-06-01", to: "2026-06-30" },
+        }),
+      ENGINE_WAIT,
     );
   });
 
@@ -188,9 +189,7 @@ describe("useCommandPaletteLensIntent", () => {
       { wrapper: wrapper(client) },
     );
 
-    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
 
     let applied!: DashboardState;
     await act(async () => {
@@ -232,9 +231,7 @@ describe("useCommandPaletteLensIntent", () => {
       { wrapper: wrapper(client) },
     );
 
-    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
 
     let dropped!: unknown;
     await act(async () => {
@@ -263,9 +260,7 @@ describe("useCommandPaletteLensIntent", () => {
       { wrapper: wrapper(client) },
     );
 
-    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
 
     await act(async () => {
       await expect(

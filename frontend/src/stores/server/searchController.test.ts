@@ -56,6 +56,7 @@ import {
   SEARCH_RAG_LIFECYCLE_WORD_MAX_CHARS,
   useSearchController,
 } from "./searchController";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 const entry = (path: string, tags: string[] = []): VaultTreeEntry => ({
   path,
@@ -797,9 +798,7 @@ describe("useSearchController (real engine, live wiring)", () => {
     // After the window the settled term issues a request; the burst coalesces to
     // EXACTLY ONE (not one per keystroke) because the debounce drops the in-flight
     // intermediate terms.
-    await waitFor(() => expect(searchRequests).toBeGreaterThanOrEqual(1), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(searchRequests).toBeGreaterThanOrEqual(1), ENGINE_WAIT);
     expect(searchRequests).toBe(1);
 
     engineClient.useTransport(liveTransport);
@@ -826,7 +825,7 @@ describe("useSearchController (real engine, live wiring)", () => {
     rerender({ q: "alpha", target: "code" });
     expect(searchBodies).toEqual([]);
 
-    await waitFor(() => expect(searchBodies).toHaveLength(1), { timeout: 6000 });
+    await waitFor(() => expect(searchBodies).toHaveLength(1), ENGINE_WAIT);
     expect(JSON.parse(searchBodies[0])).toMatchObject({
       query: "alpha",
       target: "code",
@@ -852,7 +851,7 @@ describe("useSearchController (real engine, live wiring)", () => {
         expect(["results", "no-results", "semantic-offline", "error"]).toContain(
           result.current.state,
         ),
-      { timeout: 6000 },
+      ENGINE_WAIT,
     );
 
     rerender({ q: "alphabet" });
@@ -878,9 +877,7 @@ describe("useSearchController (real engine, live wiring)", () => {
       { wrapper, initialProps: { q: "alpha", activeScope: scope } },
     );
 
-    await waitFor(() => expect(filterRequests.length).toBeGreaterThan(0), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(filterRequests.length).toBeGreaterThan(0), ENGINE_WAIT);
     filterRequests.length = 0;
 
     const nextScope = `${scope}-not-yet-settled`;
@@ -909,7 +906,7 @@ describe("useSearchController (real engine, live wiring)", () => {
         expect(["results", "no-results", "semantic-offline", "error"]).toContain(
           result.current.state,
         ),
-      { timeout: 6000 },
+      ENGINE_WAIT,
     );
     for (const r of result.current.results) {
       expect(r.node_id).not.toBeNull();

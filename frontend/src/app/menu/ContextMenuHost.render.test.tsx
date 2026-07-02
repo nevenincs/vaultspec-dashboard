@@ -17,6 +17,7 @@ import {
 } from "../../testing/menuQueryClient";
 import { openContextMenu, useContextMenuStore } from "../../stores/view/contextMenu";
 import { ContextMenuHost } from "./ContextMenuHost";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 // The host reads the active scope / selected node id (the unified-action-plane
 // `ctx.selectedNodeId` thread) through TanStack query hooks, so the render must
@@ -74,7 +75,7 @@ function openNodeMenu() {
 describe("ContextMenuHost", () => {
   it("renders a labelled menu with the resolved items grouped into sections", async () => {
     openNodeMenu();
-    const menu = await screen.findByRole("menu");
+    const menu = await screen.findByRole("menu", undefined, ENGINE_WAIT);
     expect(menu.getAttribute("aria-label")).toBe("node actions");
     expect(screen.getByText("Focus Alpha")).toBeTruthy();
     expect(screen.getByText("Copy id")).toBeTruthy();
@@ -85,14 +86,14 @@ describe("ContextMenuHost", () => {
 
   it("runs a non-confirm item and closes the menu", async () => {
     openNodeMenu();
-    fireEvent.click(await screen.findByText("Focus Alpha"));
+    fireEvent.click(await screen.findByText("Focus Alpha", undefined, ENGINE_WAIT));
     expect(focus).toHaveBeenCalledTimes(1);
     expect(useContextMenuStore.getState().open).toBe(false);
   });
 
   it("arms a destructive item on first click and fires on the second", async () => {
     openNodeMenu();
-    fireEvent.click(await screen.findByText("Remove"));
+    fireEvent.click(await screen.findByText("Remove", undefined, ENGINE_WAIT));
     expect(remove).not.toHaveBeenCalled();
     const armed = (await screen.findAllByText("confirm Remove?"))[0]!.closest(
       '[role="menuitem"]',
@@ -123,7 +124,7 @@ describe("ContextMenuHost", () => {
     const view = render(<ContextMenuHost />, { wrapper: Providers });
     act(() => openContextMenu({ kind: "node", id: "n1" }, { x: 10, y: 10 }));
 
-    fireEvent.click(await screen.findByText("Remove"));
+    fireEvent.click(await screen.findByText("Remove", undefined, ENGINE_WAIT));
     expect(useContextMenuStore.getState().armedItemId).toBe("remove");
 
     view.rerender(<ContextMenuHost timeTravel />);
@@ -136,7 +137,9 @@ describe("ContextMenuHost", () => {
 
   it("renders a disabled item with its reason and does not run it", async () => {
     openNodeMenu();
-    const item = (await screen.findByText("Unavailable")).closest('[role="menuitem"]');
+    const item = (
+      await screen.findByText("Unavailable", undefined, ENGINE_WAIT)
+    ).closest('[role="menuitem"]');
     expect(item?.getAttribute("aria-disabled")).toBe("true");
     expect(item?.getAttribute("title")).toBe("nothing to do");
     fireEvent.click(item as HTMLElement);
@@ -146,7 +149,7 @@ describe("ContextMenuHost", () => {
 
   it("light-dismisses on an outside click", async () => {
     openNodeMenu();
-    await screen.findByRole("menu");
+    await screen.findByRole("menu", undefined, ENGINE_WAIT);
     const catcher = document.querySelector(".fixed.inset-0") as HTMLElement;
     fireEvent.mouseDown(catcher);
     expect(useContextMenuStore.getState().open).toBe(false);
@@ -154,14 +157,14 @@ describe("ContextMenuHost", () => {
 
   it("light-dismisses through the context-menu viewport lifecycle seam", async () => {
     openNodeMenu();
-    await screen.findByRole("menu");
+    await screen.findByRole("menu", undefined, ENGINE_WAIT);
     window.dispatchEvent(new Event("resize"));
     expect(useContextMenuStore.getState().open).toBe(false);
   });
 
   it("closes on Escape", async () => {
     openNodeMenu();
-    const menu = await screen.findByRole("menu");
+    const menu = await screen.findByRole("menu", undefined, ENGINE_WAIT);
     fireEvent.keyDown(menu, { key: "Escape" });
     expect(useContextMenuStore.getState().open).toBe(false);
   });

@@ -17,6 +17,7 @@ import {
   useHighlightedHast,
   useTokenLines,
 } from "./useHighlighter";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 afterEach(() => {
   cleanup();
@@ -106,7 +107,7 @@ describe("shared highlighter hooks", () => {
     await waitFor(() => {
       expect(first.result.current.loading).toBe(false);
       expect(second.result.current.loading).toBe(false);
-    });
+    }, ENGINE_WAIT);
 
     expect(first.result.current.languageId).toBe("rust");
     expect(second.result.current.hast).toBe(first.result.current.hast);
@@ -115,7 +116,7 @@ describe("shared highlighter hooks", () => {
   it("tokenizes line arrays through the same highlighter singleton", async () => {
     const { result } = renderHook(() => useTokenLines("const x: number = 1", "ts"));
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.loading).toBe(false), ENGINE_WAIT);
 
     expect(result.current.languageId).toBe("typescript");
     expect(
