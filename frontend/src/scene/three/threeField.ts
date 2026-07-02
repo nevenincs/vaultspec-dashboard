@@ -1628,13 +1628,26 @@ export class ThreeField implements SceneFieldRenderer {
     this.wake();
   }
 
-  /** Resume / warm re-energise (pause→resume, freeze→unfreeze). A settled graph
-   *  nudged warm re-cools and re-freezes on its own. */
+  /** Resume ticking after a pause — ENERGY-NEUTRAL (GIR-002). Resumes an in-flight
+   *  settle WITHOUT pumping new heat; a graph already at rest stays exactly put. An
+   *  explicit re-energise is reheatNow()'s job, never resume()'s. Mirrors the set-frozen
+   *  unfreeze path so pause/resume and freeze/unfreeze behave identically.
+   *
+   *  This is the accepted stability design, not a limitation (ADR "graph simulation
+   *  stability model", Option B): a settled layout is a frozen-yet-authoritative state
+   *  held still by pinning, so resuming must NOT re-inject energy — doing so would
+   *  displace an at-rest layout for no user action. Every energy-injecting path is a
+   *  deliberate, named entry point (set-data warm-start, setForceParams retune,
+   *  reheatNow restart); resume is not one of them. The reserved Option-A anneal (make
+   *  rest a true force-field fixed point) is revisited only under the recorded re-open
+   *  trigger: at-rest displacement or contact micro-buzz recurring after these valves
+   *  close. */
   private resume(): void {
     if (this.frozen || !this.solver) return;
-    this.solver.reheat(false);
-    this.running = true;
-    this.wake();
+    if (!this.solver.isSettled()) {
+      this.running = true;
+      this.wake();
+    }
   }
 
   reheatNow(): void {

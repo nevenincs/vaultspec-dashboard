@@ -551,7 +551,9 @@ describe("D3ForceSolver — params plumbing", () => {
 
     solver.setParams(params({ linkDistance: 60 }));
     expect(solver.getParams().linkDistance).toBe(60);
-    // setParams calls reheat(false) → the whole graph is awake again.
+    // setParams reheats GENTLY by default (reheatGentle @ GENTLE_REHEAT_ALPHA, not the
+    // old violent reheat(false) @ WARM_ALPHA — GIR-003). reheatGentle still unpins and
+    // wakes the whole graph and lifts alpha, so the layout is awake and no longer settled.
     expect(solver.isSettled()).toBe(false);
     expect((solver as any).awakeCount).toBe(20);
   });

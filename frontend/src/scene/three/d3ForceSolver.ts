@@ -23,10 +23,17 @@
 //                     let far components feel no repulsion and collapse together).
 //   • forceCollide  — circle non-overlap at the real node radius (+pad), the clean
 //                     "no two nodes touching" look; a soft constraint (strength<1,
-//                     1 iteration). NB collide is NOT alpha-scaled, so it never fully
-//                     cools — a dense graph "settles" only because the loop freezes
-//                     it at alphaMin (see tick()); a true fixed point would require
-//                     scaling collide by alpha (a known refinement).
+//                     1 iteration). collide is NOT alpha-scaled BY DESIGN: the layout
+//                     reaches rest by the loop FREEZING it at alphaMin (see tick()),
+//                     with sleeping nodes PINNED (not merely low-energy), rather than by
+//                     the force field relaxing to a true fixed point. This
+//                     freeze-at-alphaMin + pin-authoritative model is the accepted
+//                     stability design (ADR "graph simulation stability model", Option
+//                     B): the frozen layout IS authoritative. Alpha-annealing collide to
+//                     a true fixed point (Option A) is held in reserve behind one
+//                     recorded re-open trigger — if at-rest displacement or contact
+//                     micro-buzz recurs AFTER the energy valves are closed and the
+//                     guards are green.
 //   • forceX/forceY(0) — gentle positional gravity toward the origin. Chosen over
 //                     forceCenter: forceX/Y is a per-node spring that both centres
 //                     AND keeps the layout compact, and it never fights the other
@@ -114,9 +121,11 @@ export interface D3ForceParams {
   collideIterations: number;
   /** Atmospheric friction: velocity *= (1 - velocityDecay) each tick. */
   velocityDecay: number;
-  /** Per-tick cooling rate; default 0.0228 ≈ 300 ticks to settle. */
+  /** Per-tick cooling rate; default 0.05. With alphaMin 0.005 this settles in ~100
+   *  ticks from a cold start (alpha 1) and ~90 from a warm reheat (alpha 0.5). */
   alphaDecay: number;
-  /** Freeze threshold: the global settle is "done" once alpha drops below this. */
+  /** Freeze threshold: the global settle is "done" once alpha drops below this
+   *  (default 0.005). */
   alphaMin: number;
   /** Alpha held while dragging — energy for the WOKEN region only (sleeping nodes
    *  are pinned, so this does not move them). */
@@ -488,7 +497,12 @@ export class D3ForceSolver {
     const dragging = this.dragIndex >= 0;
 
     // Global cool-down guarantee: once cooled and not interacting, the whole graph
-    // sleeps — a definite stop even if a soft collide would otherwise micro-buzz.
+    // sleeps — a definite stop even if a soft collide would otherwise micro-buzz. This
+    // freeze-at-alphaMin stop is the accepted stability design, not a workaround (ADR
+    // "graph simulation stability model", Option B): the frozen layout is authoritative,
+    // held still by pinning. Annealing collide so rest is a true fixed point (Option A)
+    // is reserved for the recorded re-open trigger — micro-buzz recurring here after the
+    // energy valves close.
     if (!dragging && this.sim.alpha() < this.params.alphaMin && this.awakeCount > 0) {
       this.sleepAll();
       return { alpha: this.sim.alpha(), meanDisplacement: 0, awake: 0 };
@@ -599,8 +613,12 @@ export class D3ForceSolver {
    *  act on every node — but it nudges alpha only to a LOW `alpha` (and never BELOW the
    *  current temperature) instead of WARM_ALPHA, so the layout re-settles smoothly in
    *  place rather than re-exploding. The caller scales `alpha` to the magnitude of the
-   *  change. (The deeper "rest state is a true fixed point" fix — alpha-annealing the
-   *  collide force — is a separate, higher-risk follow-up; this only tames the kick.) */
+   *  change. A bounded, proportional kick over a freeze-at-alphaMin + pin-authoritative
+   *  layout is the accepted stability design (ADR "graph simulation stability model",
+   *  Option B): rest is a frozen-yet-authoritative state, not a force-field fixed point,
+   *  and that is intentional. Making rest a TRUE fixed point (alpha-annealed collide,
+   *  Option A) is held in reserve behind the recorded re-open trigger — at-rest
+   *  displacement or contact micro-buzz recurring AFTER the energy valves close. */
   reheatGentle(alpha: number): void {
     this.localMode = false;
     this.wakeAllFree();
@@ -632,6 +650,11 @@ export class D3ForceSolver {
    */
   setDrag(index: number, x: number, y: number): void {
     if (index < 0 || index >= this.count) return;
+    // Hand-off guard (GIR-004): a grab on a DIFFERENT node without an intervening
+    // clearDrag must release the prior drag first. Otherwise the previous node stays
+    // pinned to its stale cursor (fx/fy never cleared) and never re-settles; releasing it
+    // returns it to a free-awake node so its rest invariant holds unconditionally.
+    if (this.dragIndex >= 0 && this.dragIndex !== index) this.clearDrag();
     const n = this.nodes[index];
     if (this.dragIndex !== index) {
       if (!this.localMode) {
@@ -695,9 +718,10 @@ export class D3ForceSolver {
     return { x: n.x as number, y: n.y as number };
   }
 
-  /** Re-tune the forces live (graph-lab knob set) and reheat. Pass `reheatAlpha` for a
-   *  gentle, change-proportional kick (the slider path — re-settle in place); omit it to
-   *  fall back to the full warm reheat. */
+  /** Re-tune the forces live (graph-lab knob set) and reheat GENTLY. Pass `reheatAlpha`
+   *  for a change-proportional kick (the slider path — re-settle in place); omit it to
+   *  fall back to the default gentle reheat (GENTLE_REHEAT_ALPHA), NEVER a violent
+   *  WARM_ALPHA re-explode (GIR-003). */
   setParams(params: D3ForceParams, reheatAlpha?: number): void {
     this.params = params;
     this.sim
@@ -709,8 +733,7 @@ export class D3ForceSolver {
     this.sim.force("collide", this.collide());
     this.sim.force("x", forceX<D3Node>(0).strength(params.centerStrength));
     this.sim.force("y", forceY<D3Node>(0).strength(params.centerStrength));
-    if (reheatAlpha !== undefined) this.reheatGentle(reheatAlpha);
-    else this.reheat(false);
+    this.reheatGentle(reheatAlpha ?? GENTLE_REHEAT_ALPHA);
   }
 
   getParams(): D3ForceParams {
