@@ -938,10 +938,22 @@ pub async fn graph_embeddings(
     // the direct embedding scroll requires a RUNNING rag (a fresh-heartbeat-but-
     // dead service is honest absence, not a doomed scroll), and /health carries the
     // Qdrant version the D6 capability gate reads.
-    let probe = rag_client::client::probe_machine_state(
-        &vault_root,
-        std::time::Duration::from_millis(1500),
-    );
+    // Blocking /health probe — offload it off the async worker (RCR-001); a task
+    // join failure degrades the semantic tier (fail-closed), never a hang.
+    let probe = {
+        let vault_probe = vault_root.clone();
+        match tokio::task::spawn_blocking(move || {
+            rag_client::client::probe_machine_state(
+                &vault_probe,
+                std::time::Duration::from_millis(1500),
+            )
+        })
+        .await
+        {
+            Ok(p) => p,
+            Err(_) => return degraded_embeddings("rag probe task failed"),
+        }
+    };
     let (info, qdrant_version, schema_version) = match probe {
         rag_client::client::RagMachineState::Running { info, health } => {
             let schema_version = health.schema_version;
@@ -982,7 +994,16 @@ pub async fn graph_embeddings(
             bearer: info.service_token.clone(),
             timeout: rag_client::control::READ_BUDGET,
         };
-        match rag_client::control::readiness(&readiness_transport) {
+        // Blocking /readiness read — offload it (RCR-001); a join failure degrades.
+        let readiness_result = match tokio::task::spawn_blocking(move || {
+            rag_client::control::readiness(&readiness_transport)
+        })
+        .await
+        {
+            Ok(r) => r,
+            Err(_) => return degraded_embeddings("rag /readiness task failed"),
+        };
+        match readiness_result {
             Ok(readiness) => {
                 let facts = rag_client::vectors::extract_storage_schema_facts(&readiness);
                 // `advertised = true`: /health already promised the contract, so the
@@ -1015,7 +1036,13 @@ pub async fn graph_embeddings(
             bearer: info.service_token.clone(),
             timeout: rag_client::control::READ_BUDGET,
         };
-        rag_client::control::semantic_epoch(&control).unwrap_or(0)
+        // Blocking /jobs epoch read — offload it (RCR-001). A join failure OR a rag
+        // error both degrade to 0 ("unknown"), preserving the existing behaviour.
+        tokio::task::spawn_blocking(move || rag_client::control::semantic_epoch(&control))
+            .await
+            .ok()
+            .and_then(|r| r.ok())
+            .unwrap_or(0)
     };
     let semantic_epoch_ms = semantic_epoch_started.elapsed().as_millis() as u64;
     // Embeddings are scrolled DIRECTLY from Qdrant's HTTP port (ADR D1), not rag's
@@ -1048,35 +1075,49 @@ pub async fn graph_embeddings(
         }
         None => {
             let scroll_started = Instant::now();
-            let fresh =
-                match rag_client::vectors::read_embeddings(&transport, &collection, deadline) {
-                    Ok(vectors) => std::sync::Arc::new(vectors),
-                    Err(e) => {
-                        let failed_scroll_ms = scroll_started.elapsed().as_millis() as u64;
-                        // Qdrant was reachable through discovery but the scroll itself
-                        // failed (store down, timeout, shape-miss): semantic suggestions
-                        // are simply unavailable right now. Degrade the semantic tier (no
-                        // vectors), never a 500 — the stores layer reads availability from
-                        // tiers (ADR D7).
-                        let reason = rag_client::search::degradation_reason(&e);
-                        return Ok(super::envelope(
-                            json!({
-                                "embeddings": [],
-                                "generation": generation,
-                                "semantic_epoch": semantic_epoch,
-                                "truncated": Value::Null,
-                                "lens": lens.as_str(),
-                                "semantic_timing": {
-                                    "semantic_epoch_ms": semantic_epoch_ms,
-                                    "vector_cache_hit": false,
-                                    "vector_scroll_ms": failed_scroll_ms,
-                                },
-                            }),
-                            super::degraded_tiers(&cell, reason.as_str()),
-                            None,
-                        ));
-                    }
-                };
+            // The multi-page Qdrant scroll is the LONGEST blocking read in the rag
+            // path (its own multi-page wall-clock budget) — offload it off the async
+            // worker (RCR-001) so it cannot pin a runtime thread. A join failure and
+            // a scroll error both degrade the semantic tier (no vectors), never a 500.
+            let scroll_result = tokio::task::spawn_blocking(move || {
+                rag_client::vectors::read_embeddings(&transport, &collection, deadline)
+            })
+            .await;
+            let degraded_scroll = |cell: &ScopeCell, reason: &str, failed_scroll_ms: u64| {
+                // Qdrant was reachable through discovery but the scroll itself failed
+                // (store down, timeout, shape-miss, or the offload task): semantic
+                // suggestions are simply unavailable right now. Degrade the semantic
+                // tier (no vectors), never a 500 — the stores layer reads availability
+                // from tiers (ADR D7).
+                Ok(super::envelope(
+                    json!({
+                        "embeddings": [],
+                        "generation": generation,
+                        "semantic_epoch": semantic_epoch,
+                        "truncated": Value::Null,
+                        "lens": lens.as_str(),
+                        "semantic_timing": {
+                            "semantic_epoch_ms": semantic_epoch_ms,
+                            "vector_cache_hit": false,
+                            "vector_scroll_ms": failed_scroll_ms,
+                        },
+                    }),
+                    super::degraded_tiers(cell, reason),
+                    None,
+                ))
+            };
+            let fresh = match scroll_result {
+                Ok(Ok(vectors)) => std::sync::Arc::new(vectors),
+                Ok(Err(e)) => {
+                    let failed_scroll_ms = scroll_started.elapsed().as_millis() as u64;
+                    let reason = rag_client::search::degradation_reason(&e);
+                    return degraded_scroll(&cell, reason.as_str(), failed_scroll_ms);
+                }
+                Err(_) => {
+                    let failed_scroll_ms = scroll_started.elapsed().as_millis() as u64;
+                    return degraded_scroll(&cell, "vector scroll task failed", failed_scroll_ms);
+                }
+            };
             vector_scroll_ms = scroll_started.elapsed().as_millis() as u64;
             cell.store_embeddings(semantic_epoch, fresh.clone());
             fresh

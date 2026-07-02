@@ -84,17 +84,22 @@ const CORE_WRITE_WHITELIST: &[(&str, &[&str])] = &[
     ("rename", &["vault", "rename"]),
 ];
 
-/// The rag CLI whitelist is now PROCESS LIFECYCLE ONLY (rag-control-plane ADR
-/// D1, P02.S13): you cannot HTTP a service that is not running, so start / stop
-/// / status / doctor / install stay the bounded CLI subprocess runner. Every
-/// other rag verb — the reindex TRIGGER, job polling, watcher config, project
-/// management, and the observability reads — is brokered over rag's HTTP service
-/// through the `rag_client::control` module (the HTTP-brokered verbs below),
-/// because rag's runtime truth lives on the running service and a reindex is
-/// job-based (returns a `job_id`, polled via `/jobs`), never a blocking CLI call.
+/// The JSON-runner lifecycle whitelist: the process-lifecycle rag verbs that run
+/// through the shared bounded `--json` sibling runner (rag-control-plane ADR D1,
+/// P02.S13) — you cannot HTTP a service that is not running, so status / doctor /
+/// install stay CLI subprocess reads. `server-start` / `server-stop` are ALSO
+/// process lifecycle but are dispatched to their OWN dedicated capture handlers
+/// (`start_rag_service` / `stop_rag_service` — the machine-singleton
+/// attach-never-own discipline, with version-tolerant `--json` on start), so they
+/// intercept BEFORE this lookup and are deliberately NOT listed here (RCR-004: a
+/// dead row here would only ever fall through to `run_sibling`, which appends
+/// `--json` unconditionally — the exact rejection those handlers exist to manage).
+/// Every other rag verb — the reindex TRIGGER, job polling, watcher config,
+/// project management, and the observability reads — is brokered over rag's HTTP
+/// service through the `rag_client::control` module (the HTTP-brokered verbs
+/// below), because rag's runtime truth lives on the running service and a reindex
+/// is job-based (returns a `job_id`, polled via `/jobs`), never a blocking CLI call.
 const RAG_CLI_WHITELIST: &[(&str, &[&str])] = &[
-    ("server-start", &["server", "start"]),
-    ("server-stop", &["server", "stop"]),
     ("server-status", &["server", "status"]),
     ("server-doctor", &["server", "doctor"]),
     ("server-install", &["install"]),
@@ -1103,10 +1108,14 @@ async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControl
 
     let vault = cell.root.join(".vault");
     // Gate: a running machine service is managed, not restarted (the start flags
-    // are moot when we attach to an existing service).
-    if let rag_client::client::RagMachineState::Running { info, health } =
-        rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT)
-    {
+    // are moot when we attach to an existing service). The /health probe is
+    // blocking socket I/O — offload it (RCR-001).
+    let gate_probe = rag_offload(state, {
+        let vault = vault.clone();
+        move || rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT)
+    })
+    .await?;
+    if let rag_client::client::RagMachineState::Running { info, health } = gate_probe {
         return Ok(super::envelope(
             json!({ "envelope": {
                 "status": "already_running",
@@ -1140,13 +1149,18 @@ async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControl
     // downgrade a slow-but-successful start to "failed": trust exit 0 and harvest
     // pid/port best-effort without blocking on readiness.
     if run.code == Some(0) {
-        let (pid, port) =
-            match rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT) {
-                rag_client::client::RagMachineState::Running { info, health } => {
-                    (health.pid.or(info.pid), Some(info.port))
-                }
-                other => (None, other.service_info().map(|i| i.port)),
-            };
+        // Best-effort pid/port harvest — blocking /health probe, offload it (RCR-001).
+        let post_probe = rag_offload(state, {
+            let vault = vault.clone();
+            move || rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT)
+        })
+        .await?;
+        let (pid, port) = match post_probe {
+            rag_client::client::RagMachineState::Running { info, health } => {
+                (health.pid.or(info.pid), Some(info.port))
+            }
+            other => (None, other.service_info().map(|i| i.port)),
+        };
         return Ok(super::envelope(
             json!({ "envelope": {
                 "status": "started",
@@ -1946,6 +1960,27 @@ fn brokered_envelope(cell: &ScopeCell, result: rag_client::client::Result<Value>
     }
 }
 
+/// Offload a blocking rag transport call chain onto the blocking pool (RCR-001).
+/// The rag loopback transport is synchronous `std::net` I/O — bounded by a socket
+/// timeout + the `MAX_RAG_BODY` cap — but running it DIRECTLY on a Tokio async
+/// worker lets a burst of slow/stalled rag reads pin every worker and stall the
+/// whole engine (every route, not just rag) up to the largest in-flight budget.
+/// The closure OWNS its transport + args; a task join failure (a panic in the
+/// blocking call) surfaces as a 500 through the shared error helper. Mirrors the
+/// `spawn_blocking` discipline already used for the code-corpus + declared folds.
+async fn rag_offload<T: Send + 'static>(
+    state: &AppState,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, (StatusCode, Json<Value>)> {
+    tokio::task::spawn_blocking(f).await.map_err(|e| {
+        super::api_error(
+            state,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("rag read task failed: {e}"),
+        )
+    })
+}
+
 /// GET `/ops/rag/collection-health?collection=<name>` — Tier-2 Qdrant-native
 /// health (rag-service-management D6 / W02.P05). Reads Qdrant's documented
 /// `GET /collections/{name}` DIRECTLY on its loopback port, but GATED on the
@@ -1956,7 +1991,7 @@ fn brokered_envelope(cell: &ScopeCell, result: rag_client::client::Result<Value>
 /// single path segment (injection guard). Returns the optimizer/segment/
 /// indexed-vs-total health the operations console reads as the "needs repair"
 /// signal.
-fn rag_collection_health(
+async fn rag_collection_health(
     state: &AppState,
     cell: &ScopeCell,
     params: &HashMap<String, String>,
@@ -1979,11 +2014,13 @@ fn rag_collection_health(
             ));
         }
     };
-    // Qdrant health is only meaningful when rag is running (rag owns Qdrant).
-    let probe = rag_client::client::probe_machine_state(
-        &cell.root.join(".vault"),
-        RAG_LIFECYCLE_HEALTH_TIMEOUT,
-    );
+    // Qdrant health is only meaningful when rag is running (rag owns Qdrant). The
+    // /health probe is blocking socket I/O — offload it (RCR-001).
+    let vault = cell.root.join(".vault");
+    let probe = rag_offload(state, move || {
+        rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT)
+    })
+    .await?;
     let rag_client::client::RagMachineState::Running { info, health } = probe else {
         return Ok(super::envelope(
             json!({ "envelope": { "supported": false, "reason": "rag service is not running" } }),
@@ -2024,7 +2061,14 @@ fn rag_collection_health(
         bearer: None,
         timeout: rag_client::control::READ_BUDGET,
     };
-    let result = rag_client::vectors::read_collection_health(&transport, collection).map(|h| {
+    // Direct Qdrant collection read — blocking socket I/O, offload it (RCR-001).
+    // The cheap `.map` result shaping stays on the async thread.
+    let collection_owned = collection.to_string();
+    let health = rag_offload(state, move || {
+        rag_client::vectors::read_collection_health(&transport, &collection_owned)
+    })
+    .await?;
+    let result = health.map(|h| {
         json!({
             "supported": true,
             "qdrant_version": version,
@@ -2083,7 +2127,7 @@ pub async fn ops_rag_get(
     // (Qdrant's loopback port) gated on the Qdrant version, so it handles its own
     // discovery + transport rather than the standard rag-service one below.
     if verb == "collection-health" {
-        return rag_collection_health(&state, &cell, &params);
+        return rag_collection_health(&state, &cell, &params).await;
     }
 
     // Per-verb wall-clock budget (ADR honest difficulty: a fast `/jobs` poll and
@@ -2100,27 +2144,32 @@ pub async fn ops_rag_get(
         }
     };
 
-    let job_id = params.get("job_id").map(String::as_str);
+    let job_id = params.get("job_id").cloned();
     let limit = bounded_rag_read_u32(&params, "limit", MAX_RAG_JOBS_LIMIT);
     let lines = bounded_rag_read_u32(&params, "lines", MAX_RAG_LOG_LINES);
     let survey_limit = bounded_rag_read_u32(&params, "limit", MAX_RAG_SURVEY_LIMIT);
 
-    use rag_client::control;
-    let result = match verb.as_str() {
-        "service-state" => control::service_state(&transport, &project_root),
-        "jobs" => control::jobs(&transport, job_id, limit),
-        "watcher" => control::watcher_get(&transport, &project_root),
-        "projects" => control::projects(&transport),
-        "readiness" => control::readiness(&transport),
-        "logs" => control::logs(&transport, lines, job_id),
-        // Prometheus text is not JSON; forward it verbatim under a string field.
-        "metrics" => control::metrics(&transport).map(|text| json!({ "metrics": text })),
-        "storage-survey" => control::storage_survey(&transport, survey_limit),
-        // The Rust-aggregated size/state snapshot: fetch + derive, then serialize.
-        "ops-state" => control::fetch_rag_ops_state(&transport, &project_root)
-            .and_then(|state| serde_json::to_value(state).map_err(Into::into)),
-        _ => unreachable!("RAG_READ_VERBS membership is checked above"),
-    };
+    // Offload the blocking transport reads onto the blocking pool (RCR-001): the
+    // closure owns the transport + args so a slow/stalled read cannot pin a worker.
+    let result = rag_offload(&state, move || {
+        use rag_client::control;
+        match verb.as_str() {
+            "service-state" => control::service_state(&transport, &project_root),
+            "jobs" => control::jobs(&transport, job_id.as_deref(), limit),
+            "watcher" => control::watcher_get(&transport, &project_root),
+            "projects" => control::projects(&transport),
+            "readiness" => control::readiness(&transport),
+            "logs" => control::logs(&transport, lines, job_id.as_deref()),
+            // Prometheus text is not JSON; forward it verbatim under a string field.
+            "metrics" => control::metrics(&transport).map(|text| json!({ "metrics": text })),
+            "storage-survey" => control::storage_survey(&transport, survey_limit),
+            // The Rust-aggregated size/state snapshot: fetch + derive, then serialize.
+            "ops-state" => control::fetch_rag_ops_state(&transport, &project_root)
+                .and_then(|state| serde_json::to_value(state).map_err(Into::into)),
+            _ => unreachable!("RAG_READ_VERBS membership is checked above"),
+        }
+    })
+    .await?;
     Ok(brokered_envelope(&cell, result))
 }
 
@@ -2229,35 +2278,46 @@ pub async fn ops_rag(
                 ));
             }
         };
-        let result = match verb.as_str() {
+        // Offload the blocking control round-trip onto the blocking pool (RCR-001):
+        // the closure owns the transport + owned copies of the validated args, so a
+        // slow rag control call cannot pin an async worker — matters most for
+        // `/quality` (a 60s budget) that several concurrent panels can trigger.
+        let reindex_type = reindex_type.to_string();
+        let initiator_kind = initiator_kind.to_string();
+        let clean = body.clean.unwrap_or(false);
+        let debounce_ms = body.debounce_ms;
+        let cooldown_s = body.cooldown_s;
+        let project_root = project_root.clone();
+        let verb_owned = verb.clone();
+        let result = rag_offload(&state, move || match verb_owned.as_str() {
             "reindex" => control::reindex(
                 &transport,
                 &control::ReindexArgs {
                     project_root: &project_root,
-                    reindex_type,
-                    clean: body.clean.unwrap_or(false),
-                    initiator_kind,
+                    reindex_type: &reindex_type,
+                    clean,
+                    initiator_kind: &initiator_kind,
                 },
             ),
             "watcher-start" => control::watcher_start(&transport, &project_root),
             "watcher-stop" => control::watcher_stop(&transport, &project_root),
-            "watcher-reconfigure" => control::watcher_reconfigure(
-                &transport,
-                &project_root,
-                body.debounce_ms,
-                body.cooldown_s,
-            ),
+            "watcher-reconfigure" => {
+                control::watcher_reconfigure(&transport, &project_root, debounce_ms, cooldown_s)
+            }
             "project-evict" => control::projects_evict(&transport, &evict_root),
             "quality" => control::quality(&transport),
             _ => unreachable!("http_verb set guards the match"),
-        };
+        })
+        .await?;
         return Ok(brokered_envelope(&cell, result));
     }
 
     // Process-lifecycle verbs (a dead service cannot be reached over HTTP, ADR
     // D1). server-start/stop carry the machine-singleton attach-never-own
-    // discipline and NO `--json` (rag 0.2.25 rejects it on those verbs);
-    // status/doctor/install keep the shared JSON sibling runner.
+    // discipline through their dedicated capture handlers: start appends `--json`
+    // VERSION-TOLERANTLY (retrying without it when an older rag exits 2 rejecting
+    // the option, per `rag_rejected_json`), stop carries no `--json`.
+    // status/doctor/install keep the shared JSON sibling runner (RAG_CLI_WHITELIST).
     match verb.as_str() {
         "server-start" => start_rag_service(&state, &cell, &body).await,
         "server-stop" => stop_rag_service(&state, &cell).await,

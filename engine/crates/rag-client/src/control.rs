@@ -269,6 +269,13 @@ pub struct StorageRollup {
     pub total_footprint_bytes: u64,
     /// Namespaces rag reports in total (may exceed the returned/summarized list).
     pub total_namespaces: usize,
+    /// `true` when the survey returned FEWER namespaces than `total_namespaces`
+    /// (bounded at `RAG_OPS_SURVEY_LIMIT`): the `total_points` /
+    /// `total_footprint_bytes` / `live_count` / `orphaned_count` figures are then a
+    /// LOWER BOUND over the first `namespaces.len()` namespaces, not exact totals —
+    /// so a consumer must render them as partial (RCR-002 truncation honesty; the
+    /// bounded-slice corollary of display-state-is-backend-served).
+    pub truncated: bool,
     pub live_count: usize,
     pub orphaned_count: usize,
     /// The bounded namespace detail list (orphaned/unknown first).
@@ -282,6 +289,7 @@ impl StorageRollup {
             total_points: 0,
             total_footprint_bytes: 0,
             total_namespaces: 0,
+            truncated: false,
             live_count: 0,
             orphaned_count: 0,
             namespaces: Vec::new(),
@@ -370,6 +378,10 @@ pub fn derive_storage_rollup(survey: Option<&Value>) -> StorageRollup {
         total_points,
         total_footprint_bytes: total_footprint,
         total_namespaces,
+        // The totals/counts sum only the returned namespaces; when rag reports more
+        // than were returned (bounded at RAG_OPS_SURVEY_LIMIT), the figures are a
+        // lower bound and the consumer must say so (RCR-002).
+        truncated: total_namespaces > namespaces.len(),
         live_count: live,
         orphaned_count: orphaned,
         namespaces,
@@ -658,6 +670,34 @@ mod tests {
         assert_eq!(rollup.total_namespaces, 3);
         assert_eq!(rollup.namespaces.len(), 3);
         assert_eq!(rollup.namespaces[2].root, None);
+        assert!(
+            !rollup.truncated,
+            "total == returned, so the rollup is exact, not truncated"
+        );
+    }
+
+    #[test]
+    fn storage_rollup_marks_truncated_when_total_exceeds_returned() {
+        // rag reports more namespaces than it returned (bounded at the survey
+        // limit): the summed totals cover only the returned slice, so the rollup
+        // must flag itself truncated (RCR-002 honesty).
+        let survey = json!({
+            "namespaces": [
+                {"prefix": "raa_", "root": "/a", "status": "live",
+                 "points": 100, "footprint_bytes": 2048, "collections": ["raa_vault_docs"]},
+            ],
+            "total": 200, "returned": 1
+        });
+        let rollup = derive_storage_rollup(Some(&survey));
+        assert!(rollup.available);
+        assert_eq!(rollup.total_namespaces, 200);
+        assert_eq!(rollup.namespaces.len(), 1);
+        assert!(
+            rollup.truncated,
+            "total (200) > returned (1) → the summed totals are a lower bound"
+        );
+        // The summed figures are the (partial) first-slice totals, not the machine total.
+        assert_eq!(rollup.total_points, 100);
     }
 
     #[test]

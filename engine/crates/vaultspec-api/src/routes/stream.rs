@@ -31,10 +31,18 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
     // service (discovered but not serving) from a genuinely ABSENT one — the
     // distinction the lifecycle/console UI needs to decide attach-vs-start. The
     // per-response `tiers` block stays filesystem-only (query_tiers).
-    let rag = match rag_client::client::probe_machine_state(
-        &cell.root.join(".vault"),
-        std::time::Duration::from_millis(1500),
-    ) {
+    // `/status` is polled by the console, so its blocking /health probe must not
+    // pin an async runtime worker (RCR-001): offload it. A task join failure (a
+    // panic in the probe) degrades to honest absence rather than a hang.
+    let vault = cell.root.join(".vault");
+    let probe = tokio::task::spawn_blocking(move || {
+        rag_client::client::probe_machine_state(&vault, std::time::Duration::from_millis(1500))
+    })
+    .await
+    .unwrap_or_else(|_| rag_client::client::RagMachineState::Absent {
+        reason: "rag status probe task failed".to_string(),
+    });
+    let rag = match probe {
         rag_client::client::RagMachineState::Running { info, health } => json!({
             "available": true,
             "state": "running",
