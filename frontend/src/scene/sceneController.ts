@@ -193,6 +193,37 @@ export interface SceneDelta {
   seq: number;
 }
 
+/**
+ * Fold an ordered delta batch into a held node/edge set, keyed by stable id: a
+ * `remove` deletes by id, an `add`/`change` upserts by id. Returns fresh arrays;
+ * the inputs are not mutated.
+ *
+ * Shared by the field renderer's `applyDeltas` and the controller's held-model
+ * update so the two stay consistent (GIR-006). It mirrors the renderer's in-place
+ * fold exactly — a removed node's incident edges are dropped only by their own
+ * `remove` deltas, matching what the field actually draws — so the controller's
+ * nodeCount/edgeCount reflect the rendered graph after a live splice, not a stale
+ * pre-splice set.
+ */
+export function foldSceneDeltas(
+  nodes: readonly SceneNodeData[],
+  edges: readonly SceneEdgeData[],
+  deltas: readonly SceneDelta[],
+): { nodes: SceneNodeData[]; edges: SceneEdgeData[] } {
+  const nodeMap = new Map(nodes.map((n) => [n.id, n] as const));
+  const edgeMap = new Map(edges.map((e) => [e.id, e] as const));
+  for (const d of deltas) {
+    if (d.op === "remove") {
+      if (d.node) nodeMap.delete(d.node.id);
+      if (d.edge) edgeMap.delete(d.edge.id);
+    } else {
+      if (d.node) nodeMap.set(d.node.id, d.node);
+      if (d.edge) edgeMap.set(d.edge.id, d.edge);
+    }
+  }
+  return { nodes: [...nodeMap.values()], edges: [...edgeMap.values()] };
+}
+
 export type SceneCommand =
   // `reflow` is an ADDITIVE optional flag (default undefined ≡ false preserves the
   // existing behaviour): a `reflow:true` set-data is a FILTER-driven topology change
@@ -472,9 +503,16 @@ export class SceneController {
           featureHulls: cmd.featureHulls,
         };
         break;
-      case "apply-deltas":
-        // Delta log (RL-3) applied by the field renderer.
+      case "apply-deltas": {
+        // Fold the delta batch into the held model so nodeCount/edgeCount stay truthful
+        // after a live splice (GIR-006). The field renderer applies the same fold to its
+        // own set below via foldSceneDeltas, so the two never diverge. The incremental
+        // solver rebuild (layout) remains the field renderer's concern.
+        const folded = foldSceneDeltas(this.nodes, this.edges, cmd.deltas);
+        this.nodes = folded.nodes;
+        this.edges = folded.edges;
         break;
+      }
       case "set-selected":
       case "focus-node":
       case "set-visibility":

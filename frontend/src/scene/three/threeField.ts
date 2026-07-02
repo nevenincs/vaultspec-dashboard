@@ -39,6 +39,7 @@ import {
 } from "three";
 
 import {
+  foldSceneDeltas,
   type SceneCommand,
   type SceneDelta,
   type SceneEdgeData,
@@ -1184,20 +1185,12 @@ export class ThreeField implements SceneFieldRenderer {
    *  delta updates the graph in place without re-exploding the layout. */
   private applyDeltas(deltas: SceneDelta[]): void {
     if (!deltas || deltas.length === 0) return;
-    const nodeMap = new Map(this.nodes.map((n) => [n.id, n] as const));
-    const edgeMap = new Map(this.edgeData.map((e) => [e.id, e] as const));
-    for (const d of deltas) {
-      if (d.op === "remove") {
-        if (d.node) nodeMap.delete(d.node.id);
-        if (d.edge) edgeMap.delete(d.edge.id);
-      } else {
-        if (d.node) nodeMap.set(d.node.id, d.node);
-        if (d.edge) edgeMap.set(d.edge.id, d.edge);
-      }
-    }
+    // Fold via the shared helper so the field's set and the controller's held model
+    // (nodeCount/edgeCount) fold identically (GIR-006).
+    const { nodes, edges } = foldSceneDeltas(this.nodes, this.edgeData, deltas);
     // reflow=false (normal warm gate), deltaDriven=true so an ambient delta never
     // re-frames the camera (GIR-012).
-    this.setData([...nodeMap.values()], [...edgeMap.values()], false, true);
+    this.setData(nodes, edges, false, true);
   }
 
   /** Transient cross-highlight (pulse): briefly ring the named nodes, then clear —
