@@ -12,7 +12,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 
 import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { DEFAULT_CHOICES } from "../view/filters";
@@ -20,6 +28,7 @@ import { useLensStore } from "../view/lenses";
 import { usePinStore } from "../view/pins";
 import { useViewStore } from "../view/viewStore";
 import { EngineError } from "./engine";
+import type { SettingsState } from "./engine";
 import {
   deriveAcceptedScopeContextMirror,
   deriveDurableWorkspaceLayoutView,
@@ -64,6 +73,34 @@ const mark = () => `m${Date.now().toString(36)}-${seq++}`;
 // --- the typed client over the live wire ----------------------------------------
 
 describe("session/settings client (live engine)", () => {
+  // TIH-004 (write hygiene): the PUT /settings test below writes a non-default
+  // global theme + a scoped default_granularity to the shared engine; snapshot
+  // them before the suite and restore at teardown so a later suite never
+  // inherits these writes.
+  let settingsSnapshot: SettingsState;
+  let snapshotScope: string;
+  beforeAll(async () => {
+    const client = createLiveClient();
+    snapshotScope = await liveScope();
+    settingsSnapshot = await client.settings();
+  });
+  afterAll(async () => {
+    const client = createLiveClient();
+    await client
+      .putSettings({
+        key: "theme",
+        value: settingsSnapshot.global["theme"] ?? "system",
+      })
+      .catch(() => undefined);
+    await client
+      .putSettings({
+        scope: snapshotScope,
+        key: "default_granularity",
+        value:
+          settingsSnapshot.scoped[snapshotScope]?.["default_granularity"] ?? "feature",
+      })
+      .catch(() => undefined);
+  });
   it("GET /session returns the workspace, active scope, context shape, and recents", async () => {
     const scope = await liveScope();
     const session = await createLiveClient().session();

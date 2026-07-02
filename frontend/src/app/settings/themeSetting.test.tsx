@@ -10,9 +10,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
+import type { SettingsState } from "../../stores/server/engine";
 import { engineKeys } from "../../stores/server/queries";
 import { queryClient } from "../../stores/server/queryClient";
 import { CONSUMED_SETTING_KEYS } from "../../stores/server/settingsSelectors";
@@ -54,6 +55,22 @@ async function waitForThemeSchema() {
 }
 
 describe("theme migrated into the settings model (W05)", () => {
+  // TIH-004 (write hygiene): these tests persist theme changes (incl. the
+  // non-default "dark") to the shared engine settings store; snapshot the global
+  // theme before the suite and restore it at teardown so a later suite never
+  // inherits this suite's writes.
+  let settingsSnapshot: SettingsState;
+  beforeAll(async () => {
+    settingsSnapshot = await engineClient.settings();
+  });
+  afterAll(async () => {
+    await engineClient
+      .putSettings({
+        key: CONSUMED_SETTING_KEYS.theme,
+        value: settingsSnapshot.global[CONSUMED_SETTING_KEYS.theme] ?? "system",
+      })
+      .catch(() => undefined);
+  });
   afterEach(() => {
     cleanup();
     queryClient.clear();

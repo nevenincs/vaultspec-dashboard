@@ -18,9 +18,18 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
+import type { SettingsState } from "../../stores/server/engine";
 import { engineKeys } from "../../stores/server/queries";
 import { queryClient } from "../../stores/server/queryClient";
 import { useViewStore } from "../../stores/view/viewStore";
@@ -41,8 +50,32 @@ function renderDialog() {
 
 describe("SettingsDialog (schema-driven, live engine)", () => {
   let scope: string;
+  // TIH-004 (write hygiene): this suite writes non-default values to the shared
+  // engine settings store (label_filter global, default_granularity scoped);
+  // snapshot them before the suite and restore at teardown so a later suite
+  // never inherits this suite's writes.
+  let settingsSnapshot: SettingsState;
   beforeAll(async () => {
     scope = await liveScope();
+    settingsSnapshot = await engineClient.settings();
+  });
+  afterAll(async () => {
+    for (const key of ["theme", "label_filter"]) {
+      const defaults: Record<string, string> = {
+        theme: "system",
+        label_filter: "",
+      };
+      await engineClient
+        .putSettings({ key, value: settingsSnapshot.global[key] ?? defaults[key] })
+        .catch(() => undefined);
+    }
+    await engineClient
+      .putSettings({
+        scope,
+        key: "default_granularity",
+        value: settingsSnapshot.scoped[scope]?.["default_granularity"] ?? "feature",
+      })
+      .catch(() => undefined);
   });
   beforeEach(() => {
     useViewStore.getState().setScope(scope);

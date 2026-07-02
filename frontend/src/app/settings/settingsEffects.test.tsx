@@ -13,7 +13,15 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
 import { queryClient } from "../../stores/server/queryClient";
@@ -40,10 +48,47 @@ function renderEffects(scope: unknown = null) {
   );
 }
 
+// TIH-004 (write hygiene): the global settings store is shared across the whole
+// run, so this suite snapshots every key it mutates before touching it and
+// restores the snapshot at teardown — a later suite must never inherit this
+// suite's writes. `reduceMotion` (global) is the key the per-test `finally`
+// blocks below never covered; the scoped `defaultGranularity` + global
+// `confidenceFloor`/`labelFilter` are restored to their captured values too.
+const SETTINGS_DEFAULTS: Record<string, string> = {
+  [CONSUMED_SETTING_KEYS.reduceMotion]: "false",
+  [CONSUMED_SETTING_KEYS.confidenceFloor]: "0",
+  [CONSUMED_SETTING_KEYS.labelFilter]: "",
+};
+
 describe("useSettingsEffects (consumed settings, live engine)", () => {
   let scope: string;
+  let settingsSnapshot: Awaited<ReturnType<typeof engineClient.settings>>;
   beforeAll(async () => {
     scope = await liveScope();
+    settingsSnapshot = await engineClient.settings();
+  });
+  afterAll(async () => {
+    for (const key of [
+      CONSUMED_SETTING_KEYS.reduceMotion,
+      CONSUMED_SETTING_KEYS.confidenceFloor,
+      CONSUMED_SETTING_KEYS.labelFilter,
+    ]) {
+      await engineClient
+        .putSettings({
+          key,
+          value: settingsSnapshot.global[key] ?? SETTINGS_DEFAULTS[key],
+        })
+        .catch(() => undefined);
+    }
+    await engineClient
+      .putSettings({
+        scope,
+        key: CONSUMED_SETTING_KEYS.defaultGranularity,
+        value:
+          settingsSnapshot.scoped[scope]?.[CONSUMED_SETTING_KEYS.defaultGranularity] ??
+          "feature",
+      })
+      .catch(() => undefined);
   });
   beforeEach(() => {
     useViewStore.getState().setScope(scope);
