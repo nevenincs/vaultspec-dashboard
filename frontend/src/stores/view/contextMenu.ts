@@ -331,16 +331,19 @@ export function deriveContextMenuResolvedView(
   snapshot: ContextMenuSnapshot,
   timeTravel: unknown,
   selectedNodeId: unknown = null,
+  scope: unknown = null,
 ): ContextMenuResolvedView {
   const normalizedTimeTravel = normalizeContextMenuTimeTravel(timeTravel);
   const normalizedSelectedNodeId =
     typeof selectedNodeId === "string" && selectedNodeId.length > 0
       ? selectedNodeId
       : null;
+  const normalizedScope = typeof scope === "string" && scope.length > 0 ? scope : null;
   const actions = snapshot.entity
     ? resolveActions(snapshot.entity, {
         timeTravel: normalizedTimeTravel,
         selectedNodeId: normalizedSelectedNodeId,
+        scope: normalizedScope,
       })
     : [];
   const groups = groupContextMenuActions(actions);
@@ -578,6 +581,7 @@ export function useContextMenuState(): ContextMenuSnapshot {
 export function useContextMenuResolvedView(
   timeTravel: unknown,
   selectedNodeId: unknown = null,
+  scope: unknown = null,
 ): ContextMenuResolvedView {
   const snapshot = useContextMenuState();
   const normalizedTimeTravel = normalizeContextMenuTimeTravel(timeTravel);
@@ -585,14 +589,16 @@ export function useContextMenuResolvedView(
     typeof selectedNodeId === "string" && selectedNodeId.length > 0
       ? selectedNodeId
       : null;
+  const normalizedScope = typeof scope === "string" && scope.length > 0 ? scope : null;
   return useMemo(
     () =>
       deriveContextMenuResolvedView(
         snapshot,
         normalizedTimeTravel,
         normalizedSelectedNodeId,
+        normalizedScope,
       ),
-    [snapshot, normalizedTimeTravel, normalizedSelectedNodeId],
+    [snapshot, normalizedTimeTravel, normalizedSelectedNodeId, normalizedScope],
   );
 }
 

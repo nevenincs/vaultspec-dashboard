@@ -159,6 +159,10 @@ export interface CommitEntity {
   id: string;
   shortHash?: string;
   subject?: string;
+  /** Commit time in epoch ms (the served HistoryCommit `ts`). Present when the
+   *  row carries it — backs the "View corpus at this commit" time-travel entry
+   *  (TTR-005a), which scrubs the graph as-of this instant. */
+  ts?: number;
 }
 
 /** Right rail: a pull-request row (id = the PR number as a string). Carries the PR
@@ -524,6 +528,7 @@ export function normalizeEntityDescriptor(entity: unknown): EntityDescriptor | n
       const normalized: CommitEntity = { kind, id };
       assignDefined(normalized, "shortHash", normalizeOptionalText(entity.shortHash));
       assignDefined(normalized, "subject", normalizeOptionalText(entity.subject));
+      assignDefined(normalized, "ts", normalizeOptionalNumber(entity.ts));
       return normalized;
     }
     case "pull-request": {

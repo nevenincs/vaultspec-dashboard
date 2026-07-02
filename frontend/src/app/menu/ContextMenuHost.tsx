@@ -48,7 +48,7 @@ export function ContextMenuHost({
 } = {}) {
   const scope = useActiveScope();
   const selectedNodeId = useDashboardSelectedNodeId(scope);
-  const menu = useContextMenuResolvedView(timeTravel, selectedNodeId);
+  const menu = useContextMenuResolvedView(timeTravel, selectedNodeId, scope);
   const {
     open,
     entity,

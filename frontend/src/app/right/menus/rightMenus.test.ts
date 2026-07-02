@@ -220,37 +220,65 @@ describe("commitMenu", () => {
     id: "0123456789abcdef0123456789abcdef01234567",
     shortHash: "01234567",
     subject: "feat: a thing",
+    ts: 1_700_000_000_000,
   };
+  const ctx = { timeTravel: false, scope: "/repo" };
 
-  it("offers the three read-only copy verbs for a full commit", () => {
-    expect(byId(commitMenu(commit))).toEqual([
+  it("offers view-at-commit then the three read-only copy verbs for a full commit", () => {
+    expect(byId(commitMenu(commit, ctx))).toEqual([
+      "commit:view-at-commit",
       "commit:copy-hash",
       "commit:copy-short-hash",
       "commit:copy-subject",
     ]);
   });
 
-  it("carries only read-only copy verbs - none is time-travel gated", () => {
-    for (const action of commitMenu(commit)) {
-      expect(action.section).toBe("copy");
+  it("carries no git-mutating or time-travel-gated verb (only navigate/copy)", () => {
+    for (const action of commitMenu(commit, ctx)) {
+      expect(action.section === "navigate" || action.section === "copy").toBe(true);
       expect(action.disabledInTimeTravel).toBeUndefined();
     }
   });
 
+  it("view-at-commit is a runnable navigate verb when ts + scope are present", () => {
+    const view = find(commitMenu(commit, ctx), "commit:view-at-commit");
+    expect(view.section).toBe("navigate");
+    expect(view.disabled).toBeUndefined();
+    expect(typeof view.run).toBe("function");
+  });
+
+  it("disables view-at-commit with a reason when the commit carries no ts", () => {
+    const view = find(
+      commitMenu({ kind: "commit", id: "abc1230000" }, ctx),
+      "commit:view-at-commit",
+    );
+    expect(view.disabled).toBe(true);
+    expect(view.disabledReason).toBe("no commit time");
+    expect(view.run).toBeUndefined();
+  });
+
+  it("disables view-at-commit with a reason when there is no active scope", () => {
+    const view = find(commitMenu(commit), "commit:view-at-commit");
+    expect(view.disabled).toBe(true);
+    expect(view.disabledReason).toBe("no active scope");
+    expect(view.run).toBeUndefined();
+  });
+
   it("copies the full hash from the descriptor id via the copy dispatch lane", () => {
-    const copyHash = find(commitMenu(commit), "commit:copy-hash");
+    const copyHash = find(commitMenu(commit, ctx), "commit:copy-hash");
     expect(copyHash.dispatch).toBeDefined();
     expect(JSON.stringify(copyHash.dispatch)).toContain(commit.id);
   });
 
   it("omits short-hash and subject copies when those fields are absent", () => {
-    expect(byId(commitMenu({ kind: "commit", id: "abc1230000" }))).toEqual([
+    expect(byId(commitMenu({ kind: "commit", id: "abc1230000" }, ctx))).toEqual([
+      "commit:view-at-commit",
       "commit:copy-hash",
     ]);
   });
 
   it("returns nothing for a non-commit entity", () => {
-    expect(commitMenu({ kind: "change", id: "c1", path: "a.ts" })).toEqual([]);
+    expect(commitMenu({ kind: "change", id: "c1", path: "a.ts" }, ctx)).toEqual([]);
   });
 });
 

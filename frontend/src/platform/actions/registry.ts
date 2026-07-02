@@ -27,6 +27,12 @@ export interface ActionContext {
    *  selection (e.g. "relate this document to the focused node") as a pure
    *  derived-state consumer, without reaching into a store. */
   selectedNodeId?: string | null;
+  /** The active scope (workspace path), or null. Lets a resolver build an
+   *  action that writes shared dashboard state for the active scope (e.g. the
+   *  commit row's "View corpus at this commit" time-travel entry) as a pure
+   *  derived-state consumer, without reaching into a store — exactly as
+   *  `selectedNodeId` is threaded from the host. */
+  scope?: string | null;
 }
 
 /** A pure resolver: the menu for one entity kind. */

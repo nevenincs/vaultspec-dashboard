@@ -644,6 +644,7 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
                     id: commit.hash,
                     shortHash: commit.short_hash,
                     subject: commit.subject,
+                    ts: commit.ts,
                   },
                   { x: e.clientX, y: e.clientY },
                 );
