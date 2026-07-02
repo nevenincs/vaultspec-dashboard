@@ -65,7 +65,7 @@ import {
 } from "./appearance";
 import { D3_FORCE_DEFAULTS, D3ForceSolver, type D3ForceParams } from "./d3ForceSolver";
 import { labelTextStyle } from "./labelStyle";
-import { uiScale } from "./uiScale";
+import { rootFontPx, uiScale } from "./uiScale";
 import { buildGlyphAtlas, glyphKeyForNode, type GlyphAtlas } from "./glyphAtlas";
 
 // Pointer hit tolerance in screen px at the 16px rem basis; UI-scaled at use.
@@ -168,6 +168,21 @@ const PERF_RESTORE_MS = 22;
 function hexCss(n: number): string {
   return "#" + (n & 0xffffff).toString(16).padStart(6, "0");
 }
+
+/** Memoized 2D-overlay token→CSS derivations (SGR-006), keyed on theme epoch +
+ *  root font size. */
+type OverlayThemeDerived = {
+  epoch: number;
+  fontPx: number;
+  ink: string;
+  accent: string;
+  highlight: string;
+  inkMuted: string;
+  pillFill: string;
+  pillBorder: string;
+  featureStyle: ReturnType<typeof labelTextStyle>;
+  docStyle: ReturnType<typeof labelTextStyle>;
+};
 
 /** Sanitize + fixed-length-elide a canvas label: collapse all whitespace runs (incl.
  *  newlines/tabs) to single spaces, trim, and cap to a FIXED character length with a
@@ -500,11 +515,25 @@ export class ThreeField implements SceneFieldRenderer {
   private needsRender = false;
   private scheduled = false;
   private raf = 0;
+  // SGR-005 pointer-delta pick cache: the last hit test's screen point + result,
+  // valid only while nothing that affects a pick (positions, camera, data, size)
+  // has changed. `frame()` clears it on any dirty work and `setData` clears it on
+  // a node-set change, so a reuse is provably against an unchanged scene.
+  private lastPickSx = NaN;
+  private lastPickSy = NaN;
+  private lastPickId: string | null = null;
+  private pickCacheValid = false;
   // GL-context-restore attempt counter (bounded retry on webglcontextrestored).
   private glRestoreAttempts = 0;
   // FPS-adaptive LOD (perf hardening): EMA of render cost + a hysteresis-gated degraded flag.
   private frameMsEma = 0;
   private perfDegraded = false;
+  // SGR-006: the 2D overlay passes (drawLabels/renderMinimap) re-derive token→CSS
+  // hex strings + label text styles every frame, though they change only per THEME
+  // and per UI scale. `themeEpoch` bumps on `refresh-theme`; the cache re-derives
+  // when the epoch or the (cached) root font size changes — otherwise it is reused.
+  private themeEpoch = 0;
+  private overlayThemeCache: OverlayThemeDerived | null = null;
 
   private width = 1;
   private height = 1;
@@ -696,9 +725,16 @@ export class ThreeField implements SceneFieldRenderer {
     if (this.pulseTimer) clearTimeout(this.pulseTimer);
     this.pulseTimer = 0;
     this.scheduled = false;
+    // SGR-007 total teardown: disposeGraph() already tears down the node/edge
+    // meshes + materials + positionTex AND (via disposeGlyphs) the glyph mesh +
+    // material, so no retained mesh references the atlas texture disposed just
+    // below. Reset the atlas-failed latch too (mirroring rebuildGLResources), so a
+    // remount rebuilds the atlas cleanly through the normal set-data → buildGlyphs
+    // path rather than inheriting a stale "failed" flag.
     this.disposeGraph();
     this.glyphAtlas?.texture.dispose();
     this.glyphAtlas = null;
+    this.glyphAtlasFailed = false;
     this.detachMinimap?.();
     this.detachMinimap = null;
     this.minimapCanvas = null;
@@ -976,9 +1012,37 @@ export class ThreeField implements SceneFieldRenderer {
    *  are rare and user/OS-initiated, so a one-shot GL rebuild is the robust choice over
    *  threading a colour-only update through every bake site. */
   private refreshTheme(): void {
+    // SGR-006: a theme change invalidates the cached overlay CSS/style derivations.
+    this.themeEpoch += 1;
     this.rebuildGLResources();
     this.applyBackground();
     this.requestRender();
+  }
+
+  /** The 2D-overlay token→CSS derivations (ring/label/pill colours + per-role label
+   *  text styles), memoized per theme epoch and root font size (SGR-006). Recomputed
+   *  only when the theme flips (`refresh-theme`) or the UI scale changes; otherwise
+   *  the same object is reused across frames, avoiding per-frame getComputedStyle
+   *  reads, hex→string work, and label-style allocation. */
+  private overlayTheme(): OverlayThemeDerived {
+    const epoch = this.themeEpoch;
+    const fontPx = rootFontPx();
+    const cached = this.overlayThemeCache;
+    if (cached && cached.epoch === epoch && cached.fontPx === fontPx) return cached;
+    const derived = {
+      epoch,
+      fontPx,
+      ink: hexCss(inkColor()),
+      accent: hexCss(accentColor()),
+      highlight: hexCss(highlightColor()),
+      inkMuted: hexCss(inkMutedColor()),
+      pillFill: hexCss(canvasBackground()),
+      pillBorder: hexCss(sceneRuleColor()),
+      featureStyle: labelTextStyle("feature"),
+      docStyle: labelTextStyle("document"),
+    };
+    this.overlayThemeCache = derived;
+    return derived;
   }
 
   // --- data ----------------------------------------------------------------
@@ -1488,6 +1552,9 @@ export class ThreeField implements SceneFieldRenderer {
     this.neighbors = new Map();
     this.featureCohort = new Map();
     this.cpuPositions = new Float32Array(0);
+    // SGR-005: the node set + positions just changed, so any cached pick is stale
+    // — invalidate synchronously (a pick can run before the next frame clears it).
+    this.pickCacheValid = false;
   }
 
   /** Tear down the glyph mesh + material (the cached atlas texture survives, reused on
@@ -1829,6 +1896,11 @@ export class ThreeField implements SceneFieldRenderer {
       dirty = true;
     }
 
+    // SGR-005: any dirty frame may have moved node positions (tick+pack), the
+    // camera (autoframe ease), the data, or the viewport (resize sets needsRender)
+    // — all pick inputs — so the pointer-delta pick cache is no longer valid.
+    if (dirty) this.pickCacheValid = false;
+
     // Skip the GPU render while the canvas host is HIDDEN (graph toggled off → host
     // display:none → 0×0, #11): the CPU sim above still advances so the layout settles
     // off-screen, but zero GPU work is done. On re-show the ResizeObserver fires
@@ -1935,9 +2007,17 @@ export class ThreeField implements SceneFieldRenderer {
     ctx.clearRect(0, 0, this.width, this.height);
     if (this.nodes.length === 0) return;
 
-    const ink = `#${inkColor().toString(16).padStart(6, "0")}`;
-    const accent = `#${accentColor().toString(16).padStart(6, "0")}`;
-    const highlight = `#${highlightColor().toString(16).padStart(6, "0")}`;
+    // SGR-006: theme/scale-derived colours + label styles from the per-epoch cache.
+    const {
+      ink,
+      accent,
+      highlight,
+      inkMuted,
+      pillFill,
+      pillBorder,
+      featureStyle,
+      docStyle,
+    } = this.overlayTheme();
     const ppw = this.pixelsPerWorld();
     // Screen-px UI-scale: ring gaps, stroke widths, and label offsets track the DOM.
     const s = uiScale();
@@ -2013,11 +2093,6 @@ export class ThreeField implements SceneFieldRenderer {
     // scale with the DOM under one UI scale — never a hardcoded px. Labels appear ONLY on
     // interaction (hover / select / pin, per labelVisible) and render as a design PILL
     // (drawLabelPill) — there are no ambient always-on labels.
-    const featureStyle = labelTextStyle("feature");
-    const docStyle = labelTextStyle("document");
-    const inkMuted = `#${inkMutedColor().toString(16).padStart(6, "0")}`;
-    const pillFill = `#${canvasBackground().toString(16).padStart(6, "0")}`;
-    const pillBorder = `#${sceneRuleColor().toString(16).padStart(6, "0")}`;
     ctx.textBaseline = "middle";
     // FPS-adaptive LOD: quarter the label clutter cap when frames are slow (updatePerfLod).
     let budget = this.perfDegraded
@@ -2580,7 +2655,7 @@ export class ThreeField implements SceneFieldRenderer {
     const count = this.solver?.count ?? 0;
     const dot = Math.max(1, Math.min(2.5, scale * 6));
     const r = dot / 2;
-    ctx.fillStyle = hexCss(inkMutedColor());
+    ctx.fillStyle = this.overlayTheme().inkMuted; // SGR-006: cached per theme epoch
     ctx.globalAlpha = 0.7;
     for (let i = 0; i < count; i++) {
       // Match the visibility-aware bounds: a filtered-out node is not drawn on the overview.
@@ -2606,7 +2681,7 @@ export class ThreeField implements SceneFieldRenderer {
     const right = toX(this.camera.position.x + halfW);
     const top = toY(this.camera.position.y + halfH);
     const bottom = toY(this.camera.position.y - halfH);
-    ctx.strokeStyle = hexCss(accentColor());
+    ctx.strokeStyle = this.overlayTheme().accent; // SGR-006: cached per theme epoch
     ctx.lineWidth = 1;
     ctx.strokeRect(
       Math.round(left) + 0.5,
@@ -2680,25 +2755,58 @@ export class ThreeField implements SceneFieldRenderer {
   private pickNodeAtScreen(sx: number, sy: number): string | null {
     // cpuPositions is the live source of truth (pack() runs every tick), so the
     // hit test is always current — no GPU readback.
+    //
+    // SGR-005 pointer-delta gate: pointermove fires at device rate, so a hover
+    // hold re-scans O(N) for a sub-pixel jiggle. When the pick cache is still
+    // valid (no dirty frame / setData since the last pick) and the pointer moved
+    // <1px, reuse the last result — provably correct because nothing that affects
+    // a pick (positions, camera, data, viewport) has changed in that window.
+    if (
+      this.pickCacheValid &&
+      (sx - this.lastPickSx) ** 2 + (sy - this.lastPickSy) ** 2 < 1
+    ) {
+      return this.lastPickId;
+    }
+
     const ppw = this.pixelsPerWorld();
+    // SGR-004/005: hoist the per-node loop invariants OUT of the scan. `uiScale()`
+    // is a forced computed-style read (now cached, but still hoisted to one call),
+    // and the camera half-extents + viewport feed the INLINED `worldToScreen`
+    // projection (same math as the method) so the loop carries no invariant work.
+    const pickRadiusScreen = PICK_RADIUS_PX * uiScale();
+    const halfW = (this.camera.right - this.camera.left) / 2 / this.camera.zoom;
+    const halfH = (this.camera.top - this.camera.bottom) / 2 / this.camera.zoom;
+    const camX = this.camera.position.x;
+    const camY = this.camera.position.y;
+    const width = this.width;
+    const height = this.height;
+
     let best: string | null = null;
     let bestDistSq = Infinity;
     for (let i = 0; i < this.nodes.length; i++) {
       if (this.visibleNodeIds && !this.visibleNodeIds.has(this.nodes[i].id)) continue;
-      const p = this.worldToScreen(i);
-      if (!p) continue;
+      const wx = this.cpuPositions[i * 4];
+      const wy = this.cpuPositions[i * 4 + 1];
+      if (!Number.isFinite(wx) || !Number.isFinite(wy)) continue;
+      const px = ((wx - camX) / halfW / 2 + 0.5) * width;
+      const py = (1 - ((wy - camY) / halfH / 2 + 0.5)) * height;
       const radius = Math.max(
-        PICK_RADIUS_PX * uiScale(),
+        pickRadiusScreen,
         nodeWorldRadius(this.nodes[i], this.appearance) * ppw,
       );
-      const dx = p.x - sx;
-      const dy = p.y - sy;
+      const dx = px - sx;
+      const dy = py - sy;
       const distSq = dx * dx + dy * dy;
       if (distSq <= radius * radius && distSq < bestDistSq) {
         bestDistSq = distSq;
         best = this.nodes[i].id;
       }
     }
+
+    this.lastPickSx = sx;
+    this.lastPickSy = sy;
+    this.lastPickId = best;
+    this.pickCacheValid = true;
     return best;
   }
 

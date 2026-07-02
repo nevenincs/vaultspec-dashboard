@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from "vitest";
 
-import { REM_BASIS_PX, rootFontPx, uiScale } from "./uiScale";
+import { REM_BASIS_PX, invalidateRootFontPx, rootFontPx, uiScale } from "./uiScale";
 
 // The canvas UI-scale bridge (relative-units-migration): rem is undefined in WebGL
 // space, so the scene multiplies screen-px constants by uiScale() = rootFontPx/16 to
@@ -11,6 +11,9 @@ import { REM_BASIS_PX, rootFontPx, uiScale } from "./uiScale";
 function setRootFontSize(px: string | null): void {
   if (px === null) document.documentElement.style.removeProperty("font-size");
   else document.documentElement.style.fontSize = px;
+  // SGR-004: rootFontPx() is now cached; the settings echo (here, the test) must
+  // invalidate so the next read re-measures.
+  invalidateRootFontPx();
 }
 
 afterEach(() => setRootFontSize(null));
@@ -45,5 +48,19 @@ describe("scene UI-scale bridge", () => {
     const s = uiScale();
     expect(Number.isFinite(s)).toBe(true);
     expect(s).toBeGreaterThan(0);
+  });
+
+  it("caches the root font size until invalidated (SGR-004)", () => {
+    // A read caches the measured value; a raw DOM change is NOT observed until the
+    // cache is invalidated (the resize / settings-echo contract), then it re-measures.
+    document.documentElement.style.fontSize = "16px";
+    invalidateRootFontPx();
+    expect(rootFontPx()).toBe(16);
+    // Change the DOM WITHOUT invalidating: the cached value still serves.
+    document.documentElement.style.fontSize = "24px";
+    expect(rootFontPx()).toBe(16);
+    // Invalidate (the settings echo / resize) → the next read re-measures.
+    invalidateRootFontPx();
+    expect(rootFontPx()).toBe(24);
   });
 });
