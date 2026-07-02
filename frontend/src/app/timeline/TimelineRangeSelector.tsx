@@ -8,11 +8,13 @@
 // date_range writer — filtering-has-one-canonical-surface). The active criterion
 // (created/modified/stamped) also rides as the `date_field` facet so the corpus
 // narrows by the chosen field; the criterion is the engine-served
-// `timeline_date_criterion` setting, chosen from the "Filter by" context menu. Only
-// `created` is served today, so the criterion is NOT echoed in the strip — a static
-// one-value label is non-informational and non-interactive. When the engine serves
-// more than one date field, surface the criterion here as a selector (the "Filter by"
-// menu is the selection plane until then).
+// `timeline_date_criterion` setting, chosen from the "Filter by" context menu. The
+// engine serves the corpus span for ALL THREE fields (`date_bounds_by_field`:
+// created / modified / stamped), so the strip's edges track the ACTIVE criterion's
+// span — not a created-only fallback (TTR-008); the flat `dateBounds` (created) is the
+// fallback ONLY when a criterion is genuinely absent from the corpus. The criterion is
+// still selected from the "Filter by" menu; surfacing an on-strip criterion selector is
+// an optional future enhancement, not required for the edges to be criterion-honest.
 //
 // Presentation matches the binding TimelineRange State= set (1005:4203, Typical
 // variant cloned from the prior canonical frame 993:4204): a single low row — small

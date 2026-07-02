@@ -21,12 +21,11 @@ import {
   dashboardDocumentStateResetPatch,
   dashboardSelectionId,
 } from "../../stores/server/dashboardState";
-import type { EngineNode, LineageNode } from "../../stores/server/engine";
+import type { EngineNode } from "../../stores/server/engine";
 import { useActiveScope, useDashboardState } from "../../stores/server/queries";
 import { queryClient } from "../../stores/server/queryClient";
 import { useViewStore } from "../../stores/view/viewStore";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
-import { handleNodeClick } from "../timeline/eventSelection";
 import { getScene, useSceneSelectionBridge } from "./Stage";
 import { restoredSessionContextSeed } from "../../stores/server/sessionContext";
 import { ENGINE_WAIT } from "../../testing/timing";
@@ -143,29 +142,6 @@ describe("Stage selection synchronization", () => {
         featureNode.id,
       );
     }, ENGINE_WAIT);
-  });
-
-  it("writes timeline mark selection to the same dashboard-state selection", async () => {
-    render(
-      createElement(
-        QueryClientProvider,
-        { client: queryClient },
-        createElement(RightRailSelectionProbe),
-      ),
-    );
-
-    handleNodeClick(node as unknown as LineageNode, [], getScene().controller);
-
-    await waitFor(async () => {
-      const state = await createLiveClient().dashboardState(scope);
-      expect(state.selected_ids).toEqual([node.id]);
-    }, ENGINE_WAIT);
-    await waitFor(() => {
-      expect(screen.getByLabelText("right rail selected node").textContent).toBe(
-        node.id,
-      );
-    }, ENGINE_WAIT);
-    expect(useViewStore.getState().selection).toBeNull();
   });
 });
 

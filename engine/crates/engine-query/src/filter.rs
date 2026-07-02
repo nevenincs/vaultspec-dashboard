@@ -893,6 +893,115 @@ mod tests {
     }
 
     #[test]
+    fn vocabulary_serves_per_criterion_date_bounds_for_all_three_fields() {
+        // TTR-008 guard: the /filters vocabulary serves an HONEST per-criterion
+        // corpus span for created / modified / stamped — never a created-only
+        // value. The timeline strip's edges track the ACTIVE criterion, so each
+        // field's bounds must be served independently, and a field absent from
+        // every node is omitted (honest degradation), never faked to `created`.
+        use engine_model::{
+            CanonicalKey, Dates, Facet, Node, NodeKind, Presence, ScopeRef, Timestamp, node_id,
+        };
+
+        fn doc(
+            stem: &str,
+            created: Option<&str>,
+            modified: Option<Timestamp>,
+            stamped: Option<&str>,
+        ) -> Node {
+            Node {
+                id: node_id(&CanonicalKey::Document { stem }),
+                kind: NodeKind::Document,
+                key: stem.to_string(),
+                title: None,
+                doc_type: Some("adr".to_string()),
+                dates: Some(Dates {
+                    created: created.map(str::to_string),
+                    modified,
+                    stamped: stamped.map(str::to_string),
+                }),
+                feature_tags: vec!["alpha".to_string()],
+                status: None,
+                tier: None,
+                facets: vec![Facet {
+                    scope: ScopeRef::Worktree {
+                        path: "/wt/main".into(),
+                    },
+                    presence: Presence::Exists,
+                    content_hash: None,
+                    lifecycle: None,
+                }],
+            }
+        }
+
+        // Deliberately DISJOINT spans per field: created in June, modified far
+        // earlier (mtime epochs), stamped in July — so a created-only fallback
+        // would be caught immediately.
+        let (m_lo, m_hi): (Timestamp, Timestamp) = (1_700_000_000_000, 1_705_000_000_000);
+        let mut graph = LinkageGraph::new();
+        graph.upsert_node(doc(
+            "d1",
+            Some("2026-06-10"),
+            Some(m_lo),
+            Some("2026-07-02"),
+        ));
+        graph.upsert_node(doc(
+            "d2",
+            Some("2026-06-14"),
+            Some(m_hi),
+            Some("2026-07-01"),
+        ));
+
+        let vocab = vocabulary(&graph);
+        assert_eq!(
+            vocab.date_bounds_by_field.created,
+            Some(DateBounds {
+                min: "2026-06-10".into(),
+                max: "2026-06-14".into(),
+            }),
+        );
+        assert_eq!(
+            vocab.date_bounds_by_field.modified,
+            Some(DateBounds {
+                min: crate::lineage::ms_to_date_key(m_lo),
+                max: crate::lineage::ms_to_date_key(m_hi),
+            }),
+            "modified span served from the mtime field, independent of created",
+        );
+        assert_eq!(
+            vocab.date_bounds_by_field.stamped,
+            Some(DateBounds {
+                min: "2026-07-01".into(),
+                max: "2026-07-02".into(),
+            }),
+            "stamped span served independently of created",
+        );
+        // Flat back-compat alias stays the created span.
+        assert_eq!(vocab.date_bounds, vocab.date_bounds_by_field.created);
+
+        // A criterion absent from every node is OMITTED (serialized null), never
+        // faked to the created span.
+        let mut created_only = LinkageGraph::new();
+        created_only.upsert_node(doc("c1", Some("2026-06-10"), None, None));
+        let vocab2 = vocabulary(&created_only);
+        assert_eq!(
+            vocab2.date_bounds_by_field.created,
+            Some(DateBounds {
+                min: "2026-06-10".into(),
+                max: "2026-06-10".into(),
+            }),
+        );
+        assert_eq!(
+            vocab2.date_bounds_by_field.modified, None,
+            "absent modified omitted, not faked to created"
+        );
+        assert_eq!(
+            vocab2.date_bounds_by_field.stamped, None,
+            "absent stamped omitted, not faked to created"
+        );
+    }
+
+    #[test]
     fn status_and_plan_tier_facets_are_enumerated_sorted_and_deduped() {
         // W01.P03.S14: the status and plan-tier vocabulary is data-driven —
         // enumerated from the nodes actually present, sorted, deduped. A node
