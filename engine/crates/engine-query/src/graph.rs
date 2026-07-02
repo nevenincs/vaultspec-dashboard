@@ -253,7 +253,7 @@ pub fn bound_slice(slice: &mut GraphSlice) -> Option<usize> {
 /// ADR P01) when the type carries one. All are pure re-computable projections —
 /// they perturb no existing field and do NOT touch the node id (the §4 identity
 /// guarantee is preserved).
-fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> Value {
+pub(crate) fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> Value {
     let mut view = serde_json::to_value(node).expect("node serializes");
     view["degree_by_tier"] =
         serde_json::to_value(degree_by_tier(graph, &node.id)).expect("degrees serialize");

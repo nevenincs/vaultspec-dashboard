@@ -238,7 +238,10 @@ mod tests {
     #[test]
     fn tsx_and_javascript_share_the_query() {
         assert_eq!(
-            specs(Lang::Tsx, "import A from \"./a\";\nexport const x = <div/>;\n"),
+            specs(
+                Lang::Tsx,
+                "import A from \"./a\";\nexport const x = <div/>;\n"
+            ),
             vec![ImportSpec::JsModule("./a".into())]
         );
         assert_eq!(

@@ -2822,6 +2822,7 @@ dependencies = [
  "futures-core",
  "getrandom",
  "gix",
+ "ingest-code",
  "ingest-core",
  "ingest-git",
  "ingest-struct",

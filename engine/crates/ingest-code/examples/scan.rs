@@ -7,8 +7,8 @@ use ingest_code::{WalkCaps, extract_code_graph};
 fn main() {
     let root = std::env::args().nth(1).unwrap_or_else(|| ".".to_string());
     let started = std::time::Instant::now();
-    let data = extract_code_graph(std::path::Path::new(&root), &WalkCaps::default())
-        .expect("walk failed");
+    let data =
+        extract_code_graph(std::path::Path::new(&root), &WalkCaps::default()).expect("walk failed");
     let elapsed = started.elapsed();
 
     println!("stats: {:#?}", data.stats);
@@ -31,7 +31,10 @@ fn main() {
         .filter(|e| e.edge.relation == engine_model::RelationKind::Imports)
         .take(12)
     {
-        println!("  {} -> {} (x{})", e.edge.src.0, e.edge.dst.0, e.multiplicity);
+        println!(
+            "  {} -> {} (x{})",
+            e.edge.src.0, e.edge.dst.0, e.multiplicity
+        );
     }
     println!("\nsample modules:");
     for n in data

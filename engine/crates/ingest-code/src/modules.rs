@@ -131,7 +131,13 @@ pub fn mint(
         };
         CodeEdge {
             edge: Edge {
-                id: edge_id(&src, &dst, &RelationKind::Contains, Tier::Declared, &provenance),
+                id: edge_id(
+                    &src,
+                    &dst,
+                    &RelationKind::Contains,
+                    Tier::Declared,
+                    &provenance,
+                ),
                 src,
                 dst,
                 relation: RelationKind::Contains,
@@ -209,7 +215,13 @@ pub fn mint(
             };
             edges.push(CodeEdge {
                 edge: Edge {
-                    id: edge_id(&src, &dst, &RelationKind::Imports, Tier::Structural, &provenance),
+                    id: edge_id(
+                        &src,
+                        &dst,
+                        &RelationKind::Imports,
+                        Tier::Structural,
+                        &provenance,
+                    ),
                     src: src.clone(),
                     dst,
                     relation: RelationKind::Imports,
@@ -257,7 +269,10 @@ mod tests {
     #[test]
     fn mints_files_modules_containment_and_deduped_imports() {
         let files = vec![
-            fact("src/a.rs", &[("src/sub/b.rs", (0, 10)), ("src/sub/b.rs", (11, 20))]),
+            fact(
+                "src/a.rs",
+                &[("src/sub/b.rs", (0, 10)), ("src/sub/b.rs", (11, 20))],
+            ),
             fact("src/sub/b.rs", &[]),
             fact("main.py", &[("src/a.rs", (5, 9))]),
         ];
@@ -284,7 +299,10 @@ mod tests {
         assert!(contains.contains(&("code-mod:.", "code:main.py")));
         assert!(contains.contains(&("code-mod:src", "code:src/a.rs")));
         assert!(contains.contains(&("code-mod:src/sub", "code:src/sub/b.rs")));
-        assert!(contains.contains(&("code-mod:.", "code-mod:src")), "module hierarchy");
+        assert!(
+            contains.contains(&("code-mod:.", "code-mod:src")),
+            "module hierarchy"
+        );
         assert!(contains.contains(&("code-mod:src", "code-mod:src/sub")));
 
         let imports: Vec<&CodeEdge> = edges
@@ -311,8 +329,14 @@ mod tests {
         a2.content_hash = "different".into();
         let (_, e1) = mint(&[a1], &scope(), 1);
         let (_, e2) = mint(&[a2], &scope(), 2);
-        let i1 = e1.iter().find(|e| e.edge.relation == RelationKind::Imports).unwrap();
-        let i2 = e2.iter().find(|e| e.edge.relation == RelationKind::Imports).unwrap();
+        let i1 = e1
+            .iter()
+            .find(|e| e.edge.relation == RelationKind::Imports)
+            .unwrap();
+        let i2 = e2
+            .iter()
+            .find(|e| e.edge.relation == RelationKind::Imports)
+            .unwrap();
         assert_eq!(i1.edge.id, i2.edge.id);
     }
 }

@@ -116,6 +116,7 @@ pub(crate) const API_PREFIXES: &[&str] = &[
     "/issues",
     "/status",
     "/stream",
+    "/authoring",
     "/search",
     "/ops",
     "/health",

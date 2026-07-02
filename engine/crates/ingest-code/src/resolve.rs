@@ -116,7 +116,11 @@ impl ResolveIndex {
             candidates.push(format!("{base}.{ext}"));
         }
         for index in [
-            "index.ts", "index.tsx", "index.js", "index.jsx", "index.mjs",
+            "index.ts",
+            "index.tsx",
+            "index.js",
+            "index.jsx",
+            "index.mjs",
         ] {
             candidates.push(format!("{base}/{index}"));
         }
@@ -150,7 +154,9 @@ impl ResolveIndex {
                 Some(root) => self.probe_rust_segments(&root, rest),
                 None => Resolution::Unresolved,
             },
-            "self" => self.probe_rust_segments(rust_module_dir(src_file).trim_end_matches('/'), rest),
+            "self" => {
+                self.probe_rust_segments(rust_module_dir(src_file).trim_end_matches('/'), rest)
+            }
             "super" => {
                 // Each leading `super` pops one module level.
                 let mut dir = rust_module_dir(src_file);
@@ -184,7 +190,8 @@ impl ResolveIndex {
                 // A sibling top-level module of this crate? (2015-edition style
                 // or a re-export chain: `use walk::X` inside the same crate.)
                 if let Some(root) = self.crate_src_root(src_file) {
-                    let with_self: Vec<&str> = std::iter::once(other).chain(rest.iter().copied()).collect();
+                    let with_self: Vec<&str> =
+                        std::iter::once(other).chain(rest.iter().copied()).collect();
                     if let Resolution::Internal(p) = self.probe_rust_segments(&root, &with_self) {
                         return Resolution::Internal(p);
                     }
@@ -295,7 +302,9 @@ impl ResolveIndex {
             } else {
                 format!("{root}/{top}")
             };
-            if self.exists(&format!("{top_base}/__init__.py")) || self.exists(&format!("{top_base}.py")) {
+            if self.exists(&format!("{top_base}/__init__.py"))
+                || self.exists(&format!("{top_base}.py"))
+            {
                 saw_candidate = true;
             }
         }
@@ -324,7 +333,11 @@ impl ResolveIndex {
         let base = match module {
             Some(m) => {
                 let m = m.replace('.', "/");
-                if dir.is_empty() { m } else { format!("{dir}/{m}") }
+                if dir.is_empty() {
+                    m
+                } else {
+                    format!("{dir}/{m}")
+                }
             }
             None => dir.clone(),
         };
@@ -347,12 +360,9 @@ impl ResolveIndex {
                 }
             }
         }
-        for candidate in [format!("{base}.py"), format!("{base}/__init__.py")] {
-            if self.exists(&candidate) {
-                return Some(candidate);
-            }
-        }
-        None
+        [format!("{base}.py"), format!("{base}/__init__.py")]
+            .into_iter()
+            .find(|candidate| self.exists(candidate))
     }
 }
 
@@ -366,9 +376,7 @@ fn package_name(toml: &str) -> Option<String> {
             in_package = line == "[package]";
             continue;
         }
-        if in_package
-            && let Some(rest) = line.strip_prefix("name")
-        {
+        if in_package && let Some(rest) = line.strip_prefix("name") {
             let rest = rest.trim_start();
             if let Some(rest) = rest.strip_prefix('=') {
                 return Some(rest.trim().trim_matches('"').to_string());
@@ -447,7 +455,11 @@ fn rust_module_dir(src_file: &str) -> String {
     let dir = parent_posix(src_file);
     let anchored = matches!(stem, "mod.rs" | "lib.rs" | "main.rs");
     if anchored {
-        if dir.is_empty() { String::new() } else { format!("{dir}/") }
+        if dir.is_empty() {
+            String::new()
+        } else {
+            format!("{dir}/")
+        }
     } else {
         let stem = stem.trim_end_matches(".rs");
         if dir.is_empty() {
@@ -529,27 +541,49 @@ mod tests {
         let from = "engine/crates/ingest-code/src/walk.rs";
         // Cross-crate deep path → the module file.
         assert_eq!(
-            idx.resolve(from, Lang::Rust, &ImportSpec::RustUse("engine_model::id::CanonicalKey".into())),
-            vec![Resolution::Internal("engine/crates/engine-model/src/id.rs".into())]
+            idx.resolve(
+                from,
+                Lang::Rust,
+                &ImportSpec::RustUse("engine_model::id::CanonicalKey".into())
+            ),
+            vec![Resolution::Internal(
+                "engine/crates/engine-model/src/id.rs".into()
+            )]
         );
         // Cross-crate item at root → lib.rs.
         assert_eq!(
-            idx.resolve(from, Lang::Rust, &ImportSpec::RustUse("engine_model::Node".into())),
-            vec![Resolution::Internal("engine/crates/engine-model/src/lib.rs".into())]
+            idx.resolve(
+                from,
+                Lang::Rust,
+                &ImportSpec::RustUse("engine_model::Node".into())
+            ),
+            vec![Resolution::Internal(
+                "engine/crates/engine-model/src/lib.rs".into()
+            )]
         );
         // crate:: within the same crate.
         assert_eq!(
             idx.resolve(from, Lang::Rust, &ImportSpec::RustUse("crate::walk".into())),
-            vec![Resolution::Internal("engine/crates/ingest-code/src/walk.rs".into())]
+            vec![Resolution::Internal(
+                "engine/crates/ingest-code/src/walk.rs".into()
+            )]
         );
         // std is external.
         assert_eq!(
-            idx.resolve(from, Lang::Rust, &ImportSpec::RustUse("std::path::Path".into())),
+            idx.resolve(
+                from,
+                Lang::Rust,
+                &ImportSpec::RustUse("std::path::Path".into())
+            ),
             vec![Resolution::External]
         );
         // Unknown crate is external.
         assert_eq!(
-            idx.resolve(from, Lang::Rust, &ImportSpec::RustUse("serde::Serialize".into())),
+            idx.resolve(
+                from,
+                Lang::Rust,
+                &ImportSpec::RustUse("serde::Serialize".into())
+            ),
             vec![Resolution::External]
         );
     }
@@ -557,12 +591,7 @@ mod tests {
     #[test]
     fn rust_mod_and_super_resolution() {
         let idx = index(
-            &[
-                "src/lib.rs",
-                "src/a.rs",
-                "src/a/b.rs",
-                "src/a/c/mod.rs",
-            ],
+            &["src/lib.rs", "src/a.rs", "src/a/b.rs", "src/a/c/mod.rs"],
             &[("demo", "src")],
         );
         assert_eq!(
@@ -579,7 +608,11 @@ mod tests {
         );
         // super:: from a child module reaches its parent's siblings.
         assert_eq!(
-            idx.resolve("src/a/b.rs", Lang::Rust, &ImportSpec::RustUse("super::c::Thing".into())),
+            idx.resolve(
+                "src/a/b.rs",
+                Lang::Rust,
+                &ImportSpec::RustUse("super::c::Thing".into())
+            ),
             vec![Resolution::Internal("src/a/c/mod.rs".into())]
         );
     }
@@ -597,7 +630,11 @@ mod tests {
         );
         let from = "frontend/src/app/App.tsx";
         assert_eq!(
-            idx.resolve(from, Lang::Tsx, &ImportSpec::JsModule("../stores/graph".into())),
+            idx.resolve(
+                from,
+                Lang::Tsx,
+                &ImportSpec::JsModule("../stores/graph".into())
+            ),
             vec![Resolution::Internal("frontend/src/stores/graph.ts".into())]
         );
         // Directory import → index file.
@@ -607,7 +644,11 @@ mod tests {
         );
         // ESM .js suffix meaning a .ts source.
         assert_eq!(
-            idx.resolve(from, Lang::Tsx, &ImportSpec::JsModule("../stores/graph.js".into())),
+            idx.resolve(
+                from,
+                Lang::Tsx,
+                &ImportSpec::JsModule("../stores/graph.js".into())
+            ),
             vec![Resolution::Internal("frontend/src/stores/graph.ts".into())]
         );
         assert_eq!(
@@ -634,31 +675,75 @@ mod tests {
         );
         // Absolute via the src root.
         assert_eq!(
-            idx.resolve("tools/script.py", Lang::Python, &ImportSpec::PyModule { module: "pkg.core".into(), names: vec![] }),
+            idx.resolve(
+                "tools/script.py",
+                Lang::Python,
+                &ImportSpec::PyModule {
+                    module: "pkg.core".into(),
+                    names: vec![]
+                }
+            ),
             vec![Resolution::Internal("src/pkg/core.py".into())]
         );
         // from pkg import core → submodule probe wins over pkg/__init__.py.
         assert_eq!(
-            idx.resolve("tools/script.py", Lang::Python, &ImportSpec::PyModule { module: "pkg".into(), names: vec!["core".into()] }),
+            idx.resolve(
+                "tools/script.py",
+                Lang::Python,
+                &ImportSpec::PyModule {
+                    module: "pkg".into(),
+                    names: vec!["core".into()]
+                }
+            ),
             vec![Resolution::Internal("src/pkg/core.py".into())]
         );
         // Relative: from . import core (inside the package).
         assert_eq!(
-            idx.resolve("src/pkg/sub/deep.py", Lang::Python, &ImportSpec::PyRelative { dots: 2, module: None, names: vec!["core".into()] }),
+            idx.resolve(
+                "src/pkg/sub/deep.py",
+                Lang::Python,
+                &ImportSpec::PyRelative {
+                    dots: 2,
+                    module: None,
+                    names: vec!["core".into()]
+                }
+            ),
             vec![Resolution::Internal("src/pkg/core.py".into())]
         );
         assert_eq!(
-            idx.resolve("src/pkg/core.py", Lang::Python, &ImportSpec::PyRelative { dots: 1, module: Some("sub".into()), names: vec![] }),
+            idx.resolve(
+                "src/pkg/core.py",
+                Lang::Python,
+                &ImportSpec::PyRelative {
+                    dots: 1,
+                    module: Some("sub".into()),
+                    names: vec![]
+                }
+            ),
             vec![Resolution::Internal("src/pkg/sub/__init__.py".into())]
         );
         // numpy: no such package anywhere in the walk → external.
         assert_eq!(
-            idx.resolve("tools/script.py", Lang::Python, &ImportSpec::PyModule { module: "numpy".into(), names: vec![] }),
+            idx.resolve(
+                "tools/script.py",
+                Lang::Python,
+                &ImportSpec::PyModule {
+                    module: "numpy".into(),
+                    names: vec![]
+                }
+            ),
             vec![Resolution::External]
         );
         // pkg exists but pkg.nothing doesn't → unresolved, not external.
         assert_eq!(
-            idx.resolve("tools/script.py", Lang::Python, &ImportSpec::PyModule { module: "pkg.nothing".into(), names: vec![] }),
+            idx.resolve(
+                "tools/script.py",
+                Lang::Python,
+                &ImportSpec::PyModule {
+                    module: "pkg.nothing".into(),
+                    names: vec![]
+                }
+            ),
             vec![Resolution::Unresolved]
         );
     }

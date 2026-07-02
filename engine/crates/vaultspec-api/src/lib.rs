@@ -8,6 +8,7 @@
 //! No WebSocket in v1 (D7.1).
 
 pub mod app;
+mod authoring;
 pub mod registry;
 pub mod routes;
 
@@ -59,6 +60,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/issues",
     "/status",
     "/stream",
+    "/authoring/status",
     "/search",
     "/ops/core/{verb}",
     "/ops/core/{verb}/write",
@@ -151,6 +153,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/issues", get(routes::github::issues))
         .route("/status", get(routes::stream::status))
         .route("/stream", get(routes::stream::stream))
+        // Fenced agentic authoring backend shell (agentic-spec-authoring-
+        // backend W01.P01): a semantic, tiers-bearing status endpoint for the
+        // future product authoring domain. This is deliberately NOT an
+        // `/ops/core/*` alias and does not materialize documents.
+        .route("/authoring/status", get(authoring::routes::status))
         .route("/search", post(routes::ops::search))
         .route("/ops/core/{verb}", post(routes::ops::ops_core))
         // The core WRITE channel (W02): forward a whitelisted
@@ -1338,6 +1345,71 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn authoring_status_shell_is_semantic_disabled_and_tiered() {
+        // W01.P01: the authoring domain starts as a fenced product API shell,
+        // not a core-shaped write proxy. The initial route is intentionally a
+        // disabled status snapshot: clients can discover the feature boundary
+        // and ownership map without any durable authoring mutation existing yet.
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let (status, body) = get_with_token(router, "/authoring/status", Some(&token)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["data"]["feature"], authoring::FEATURE_TAG);
+        assert_eq!(body["data"]["enabled"], false);
+        assert_eq!(body["data"]["status"], "disabled");
+        assert_eq!(
+            body["data"]["route_family"], "/authoring",
+            "the collaborator-facing route family is semantic"
+        );
+        assert_eq!(
+            body["data"]["ownership"]["materialization"], "internal vaultspec-core adapter",
+            "core stays hidden behind the future adapter"
+        );
+        assert_eq!(
+            body["data"]["ownership"]["core_routes_are_authoring_contract"], false,
+            "authoring status must not expose /ops/core as the authoring API"
+        );
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "authoring status carries the tiers block"
+        );
+    }
+
+    #[tokio::test]
+    async fn authoring_api_misses_and_method_errors_are_tiered_json() {
+        // The `/authoring` prefix is an API boundary, not an SPA deep link.
+        // Unknown authoring paths and framework method errors must therefore be
+        // JSON API errors with tiers, not HTML fallback or tiers-less axum text.
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let (status, body) =
+            get_with_token(router.clone(), "/authoring/no-such-route", Some(&token)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|message| message.contains("unknown API path")),
+            "unknown authoring API paths must fail as API JSON: {body}"
+        );
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "unknown authoring API path carries tiers"
+        );
+
+        let (status, body) =
+            post_json_with_token(router, "/authoring/status", json!({}), Some(&token)).await;
+        assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED, "{body}");
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "method errors carry tiers"
+        );
+    }
+
+    #[tokio::test]
     async fn node_family_serves_from_the_live_graph() {
         let (_dir, state) = fixture_state();
         let token = state.bearer.clone();
@@ -1752,6 +1824,7 @@ mod tests {
             "/graph/query",
             "/events",
             "/stream",
+            "/authoring/status",
             "/search",
             "/ops/core/{verb}",
         ] {

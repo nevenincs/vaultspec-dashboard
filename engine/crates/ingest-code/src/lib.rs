@@ -167,7 +167,11 @@ mod tests {
         touch(root, "src/lib.rs", "mod util;\nuse crate::util::helper;\n");
         touch(root, "src/util.rs", "pub fn helper() {}\n");
         // TypeScript.
-        touch(root, "web/app.ts", "import { g } from \"./graph\";\nimport React from \"react\";\n");
+        touch(
+            root,
+            "web/app.ts",
+            "import { g } from \"./graph\";\nimport React from \"react\";\n",
+        );
         touch(root, "web/graph.ts", "export const g = 1;\n");
         // Python.
         touch(root, "py/pkg/__init__.py", "");
@@ -188,7 +192,10 @@ mod tests {
             .collect();
         assert!(imports.contains(&("code:src/lib.rs".into(), "code:src/util.rs".into())));
         assert!(imports.contains(&("code:web/app.ts".into(), "code:web/graph.ts".into())));
-        assert!(imports.contains(&("code:py/pkg/core.py".into(), "code:py/pkg/sibling.py".into())));
+        assert!(imports.contains(&(
+            "code:py/pkg/core.py".into(),
+            "code:py/pkg/sibling.py".into()
+        )));
         // `mod util;` + `use crate::util::helper` dedupe into ONE edge with
         // multiplicity 2; react/os are external.
         let rs = data
@@ -208,7 +215,10 @@ mod tests {
             .filter(|n| n.id.0.starts_with("code-mod:"))
             .map(|n| n.id.0.as_str())
             .collect();
-        assert_eq!(module_ids, vec!["code-mod:py/pkg", "code-mod:src", "code-mod:web"]);
+        assert_eq!(
+            module_ids,
+            vec!["code-mod:py/pkg", "code-mod:src", "code-mod:web"]
+        );
 
         // Fingerprint changes when a file is edited.
         let fp1 = data.fingerprint.clone();

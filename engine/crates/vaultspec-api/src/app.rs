@@ -231,6 +231,116 @@ pub struct ScopeCell {
     /// piggy-back on). Without it, a fold finishing after a final HEAD advance
     /// would serve the superseded commit's declared edges indefinitely.
     pub declared_fold_pending: AtomicBool,
+    /// The CODE corpus (codebase-graphing ADR D1): a SEPARATE `LinkageGraph`
+    /// instance with its own generation counter and extraction cache, served
+    /// beside the vault graph and never merged into it. The two datasets share
+    /// no node or edge; the frontend switches which corpus the graph surface
+    /// renders.
+    pub code: CodeGraphCell,
+}
+
+/// The disconnected code-corpus store (codebase-graphing ADR D1/D6): its own
+/// graph, generation, source-tree fingerprint, and honest extraction stats.
+/// Refresh is LAZY: a code-corpus query calls [`CodeGraphCell::ensure_fresh`]
+/// (on a blocking thread), which re-walks + fingerprints the source tree —
+/// debounced to at most one probe per [`CODE_FRESHNESS_DEBOUNCE_MS`] — and
+/// re-extracts only on a fingerprint miss. This keeps the vault watcher
+/// untouched (ADR D6 refinement: query-time freshness instead of watching the
+/// whole source tree) while an uncommitted source edit still refreshes the
+/// served graph on the next query.
+pub struct CodeGraphCell {
+    graph: RwLock<Arc<LinkageGraph>>,
+    /// Bumped AFTER the graph swap (both SeqCst): a reader observing G+1
+    /// necessarily observes the new graph — the vault commit discipline.
+    pub generation: AtomicU64,
+    fingerprint: Mutex<Option<String>>,
+    last_probe_ms: std::sync::atomic::AtomicI64,
+    /// Extraction honesty counters from the last rebuild (ADR D8): the route
+    /// serves these so truncation/accuracy is stated, never implied away.
+    pub stats: RwLock<Option<ingest_code::ExtractionStats>>,
+    rebuild_lock: Mutex<()>,
+}
+
+/// Freshness-probe debounce: repeated code-corpus polls within this window
+/// serve the held graph without re-walking the tree.
+pub const CODE_FRESHNESS_DEBOUNCE_MS: i64 = 2_000;
+
+impl CodeGraphCell {
+    fn new() -> Self {
+        CodeGraphCell {
+            graph: RwLock::new(Arc::new(LinkageGraph::new())),
+            generation: AtomicU64::new(0),
+            fingerprint: Mutex::new(None),
+            last_probe_ms: std::sync::atomic::AtomicI64::new(0),
+            stats: RwLock::new(None),
+            rebuild_lock: Mutex::new(()),
+        }
+    }
+
+    pub fn graph_arc(&self) -> Arc<LinkageGraph> {
+        self.graph.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn stats_snapshot(&self) -> Option<ingest_code::ExtractionStats> {
+        self.stats.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// Serve the code graph, re-extracting when the source tree changed.
+    /// BLOCKING (tree walk; full parse on a miss) — request paths call it via
+    /// `spawn_blocking`. Never errors into a stale lie: an IO failure surfaces
+    /// as `Err` and the route degrades honestly.
+    pub fn ensure_fresh(&self, root: &std::path::Path) -> Result<Arc<LinkageGraph>, String> {
+        let now = now_ms();
+        let extracted_once = self
+            .fingerprint
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some();
+        if extracted_once
+            && now.saturating_sub(self.last_probe_ms.load(Ordering::SeqCst))
+                < CODE_FRESHNESS_DEBOUNCE_MS
+        {
+            return Ok(self.graph_arc());
+        }
+        // One rebuild at a time; a second query waits and then hits the
+        // fingerprint fast path below.
+        let _guard = self.rebuild_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let caps = ingest_code::WalkCaps::default();
+        let outcome =
+            ingest_code::walk::walk_source_tree(root, &caps).map_err(|e| e.to_string())?;
+        let probe =
+            ingest_code::fingerprint::source_tree_fingerprint(&outcome.files, outcome.capped);
+        {
+            let held = self.fingerprint.lock().unwrap_or_else(|e| e.into_inner());
+            if held.as_deref() == Some(probe.as_str()) {
+                self.last_probe_ms.store(now, Ordering::SeqCst);
+                return Ok(self.graph_arc());
+            }
+        }
+        let data = ingest_code::extract_code_graph(root, &caps).map_err(|e| e.to_string())?;
+        let mut graph = LinkageGraph::new();
+        for node in data.nodes {
+            graph.upsert_node(node);
+        }
+        for ce in data.edges {
+            engine_graph::edges::ingest(
+                &mut graph,
+                ce.edge,
+                engine_graph::EdgeAttrs {
+                    multiplicity: ce.multiplicity,
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| format!("code edge rejected at the graph boundary: {e}"))?;
+        }
+        *self.stats.write().unwrap_or_else(|e| e.into_inner()) = Some(data.stats);
+        *self.fingerprint.lock().unwrap_or_else(|e| e.into_inner()) = Some(data.fingerprint);
+        // Swap happens-before the generation bump (both SeqCst).
+        *self.graph.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(graph);
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        self.last_probe_ms.store(now, Ordering::SeqCst);
+        Ok(self.graph_arc())
+    }
 }
 
 pub const RING_CAP: usize = 4096;
@@ -275,6 +385,7 @@ impl ScopeCell {
             declared_status: RwLock::new(None),
             declared_fold_active: AtomicBool::new(false),
             declared_fold_pending: AtomicBool::new(false),
+            code: CodeGraphCell::new(),
         }
     }
 

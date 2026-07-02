@@ -204,6 +204,19 @@ pub struct GraphQueryBody {
     /// warm-started PPR). Absent = no focus (DOI == a-priori importance).
     #[serde(default)]
     pub focus: Option<String>,
+    /// Which dataset to serve (codebase-graphing ADR D5): `vault` (default,
+    /// absent = byte-identical to the pre-corpus contract) or `code` — the
+    /// DISCONNECTED code corpus. Unknown values are a typed 400.
+    #[serde(default)]
+    pub corpus: Option<String>,
+    /// CODE-CORPUS narrowing (ADR D5): keep only nodes under this
+    /// repo-relative directory prefix. Ignored (validated away) on `vault`.
+    #[serde(default)]
+    pub dir_prefix: Option<String>,
+    /// CODE-CORPUS narrowing: language wire tokens (`rust`, `typescript`,
+    /// `javascript`, `python`). Ignored (validated away) on `vault`.
+    #[serde(default)]
+    pub languages: Option<Vec<String>>,
 }
 
 /// Parse the `lens` request parameter, defaulting to the status lens when
@@ -462,6 +475,115 @@ mod bound_tests {
     }
 }
 
+/// The code-corpus branch of `/graph/query` (codebase-graphing ADR D5): the
+/// DISCONNECTED code dataset served through the SAME envelope, field set, and
+/// unconditional node ceiling as the vault corpus. Granularity maps one-to-one:
+/// the feature-class token serves the MODULE ROLLUP (module nodes + aggregated
+/// import meta-edges — the constellation analogue), the document-class token
+/// serves FILE granularity. Freshness is lazy: a debounced source-tree
+/// fingerprint probe re-extracts only when the tree changed (ADR D6).
+async fn code_corpus_query(
+    state: &Arc<AppState>,
+    cell: &StdArc<ScopeCell>,
+    body: &GraphQueryBody,
+    granularity: Granularity,
+    lens: engine_query::salience::Lens,
+) -> ApiResult {
+    if body.as_of.is_some() {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            "the code corpus serves the present view only (`as_of` does not apply)".to_string(),
+        ));
+    }
+    // The vault Filter grammar does not apply to the code corpus (ADR D5):
+    // a non-default vault filter is a typed validation error, never silently
+    // ignored. Code narrowing rides `dir_prefix` / `languages`.
+    if body.filter.clone().unwrap_or_default() != engine_query::filter::Filter::default() {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            "vault filter facets do not apply to the code corpus; narrow with \
+             `dir_prefix` / `languages`"
+                .to_string(),
+        ));
+    }
+    let narrow = engine_query::code::CodeNarrow {
+        dir_prefix: body.dir_prefix.clone(),
+        languages: body.languages.clone().unwrap_or_default(),
+    };
+    // Extraction is blocking CPU/IO work (tree walk; full parse on a miss) —
+    // off the async runtime, mirroring the declared-fold discipline.
+    let blocking_cell = cell.clone();
+    let graph =
+        tokio::task::spawn_blocking(move || blocking_cell.code.ensure_fresh(&blocking_cell.root))
+            .await
+            .map_err(|e| super::api_error(state, StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .map_err(|e| {
+                super::api_error(
+                    state,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("code corpus extraction failed: {e}"),
+                )
+            })?;
+    let mut slice = engine_query::code::code_graph_query(
+        &graph,
+        &cell.scope,
+        granularity == Granularity::Feature,
+        &narrow,
+    );
+    // The SAME unconditional ceiling as the vault corpus
+    // (graph-queries-are-bounded-by-default).
+    let truncated = bound_slice(&mut slice).map(|total| {
+        json!({
+            "total_nodes": total,
+            "returned_nodes": MAX_GRAPH_NODES,
+            "reason": "graph node ceiling: narrow with dir_prefix/languages; the \
+                       module rollup is the smallest view",
+        })
+    });
+    // Honest extraction counters (ADR D8): truncation and resolver accuracy are
+    // STATED on the wire, never implied away. Hand-built json (the stats struct
+    // lives in ingest-code, which carries no serde).
+    let extraction = cell.code.stats_snapshot().map(|s| {
+        json!({
+            "files": s.files,
+            "capped": s.capped,
+            "skipped_too_large": s.skipped_too_large,
+            "parse_errors": s.parse_errors,
+            "imports_total": s.imports_total,
+            "imports_internal": s.imports_internal,
+            "imports_external": s.imports_external,
+            "imports_unresolved": s.imports_unresolved,
+        })
+    });
+    // Field-set parity with the vault response (shape conformance, ADR D5):
+    // every vault field is present; `corpus`/`extraction`/`code_generation` are
+    // additive. No delta clock rides the code corpus in v1 (last_seq: null,
+    // like historical views); salience is a vault-document model (never
+    // partial here — nothing was omitted, so the flag is honestly false).
+    Ok(super::envelope(
+        json!({
+            "nodes": slice.nodes,
+            "edges": slice.edges,
+            "meta_edges": slice.meta_edges,
+            "filter": slice.filter,
+            "as_of": Value::Null,
+            "resolved_sha": Value::Null,
+            "interpretation": Value::Null,
+            "last_seq": Value::Null,
+            "truncated": truncated,
+            "lens": lens.as_str(),
+            "salience_partial": false,
+            "corpus": "code",
+            "extraction": extraction,
+            "code_generation": cell.code.generation.load(std::sync::atomic::Ordering::SeqCst),
+        }),
+        rag_tiers(cell),
+        None,
+    ))
+}
+
 pub async fn graph_query_route(
     State(state): State<Arc<AppState>>,
     Json(body): Json<GraphQueryBody>,
@@ -469,6 +591,35 @@ pub async fn graph_query_route(
     let cell = validate_scope(&state, &body.scope)?;
     let granularity = parse_granularity(&state, body.granularity.as_deref())?;
     let lens = parse_lens(&state, body.lens.as_deref())?;
+    // CORPUS DISPATCH (codebase-graphing ADR D5): `code` serves the
+    // DISCONNECTED code dataset through this same route and envelope; the
+    // default (`vault` / absent) path below is byte-identical to the
+    // pre-corpus contract. The two corpora are kept disjoint at the STORE
+    // (ScopeCell.graph vs ScopeCell.code), not at the URL.
+    match body.corpus.as_deref() {
+        None | Some("vault") => {
+            // The code-only narrowing grammar must not silently no-op on the
+            // vault corpus (ADR D5: corpus-mismatched facets are a typed
+            // validation error, never ignored).
+            if body.dir_prefix.is_some() || body.languages.is_some() {
+                return Err(super::api_error(
+                    &state,
+                    StatusCode::BAD_REQUEST,
+                    "`dir_prefix`/`languages` are code-corpus facets; they do not \
+                     apply to the vault corpus"
+                        .to_string(),
+                ));
+            }
+        }
+        Some("code") => return code_corpus_query(&state, &cell, &body, granularity, lens).await,
+        Some(other) => {
+            return Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!("unknown corpus `{other}` (expected `vault` or `code`)"),
+            ));
+        }
+    }
     let filter = body.filter.unwrap_or_default();
 
     // The as_of branch carries the resolution facts the response must echo
@@ -987,11 +1138,56 @@ pub async fn pipeline(
 
 // --- GET /filters?scope= ----------------------------------------------------------
 
+#[derive(Deserialize)]
+pub struct FiltersParams {
+    pub scope: String,
+    /// Which corpus's facet vocabulary to serve (codebase-graphing ADR D5):
+    /// `vault` (default) or `code`. The route serves the ACTIVE corpus's
+    /// vocabulary only — never a mixed one.
+    #[serde(default)]
+    pub corpus: Option<String>,
+}
+
 pub async fn filters(
     State(state): State<Arc<AppState>>,
-    Query(params): Query<ScopeParam>,
+    Query(params): Query<FiltersParams>,
 ) -> ApiResult {
     let cell = validate_scope(&state, &params.scope)?;
+    match params.corpus.as_deref() {
+        None | Some("vault") => {}
+        Some("code") => {
+            // Serve the CODE corpus's own facet vocabulary (languages, module
+            // dirs) over a fresh-enough code graph; blocking work off-runtime.
+            let blocking_cell = cell.clone();
+            let graph = tokio::task::spawn_blocking(move || {
+                blocking_cell.code.ensure_fresh(&blocking_cell.root)
+            })
+            .await
+            .map_err(|e| {
+                super::api_error(&state, StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            })?
+            .map_err(|e| {
+                super::api_error(
+                    &state,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("code corpus extraction failed: {e}"),
+                )
+            })?;
+            let vocab = engine_query::code::code_filter_vocabulary(&graph);
+            return Ok(super::envelope(
+                json!({"vocabulary": vocab, "corpus": "code"}),
+                rag_tiers(&cell),
+                None,
+            ));
+        }
+        Some(other) => {
+            return Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!("unknown corpus `{other}` (expected `vault` or `code`)"),
+            ));
+        }
+    }
     // The vocabulary is generation-stable (it is a full-graph scan that only
     // changes on a rebuild), so it is memoized per generation on the cell
     // (cache-until-invalidated): a repeat `/filters` poll is a warm read, not a
