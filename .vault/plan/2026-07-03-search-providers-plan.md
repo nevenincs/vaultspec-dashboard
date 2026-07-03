@@ -61,7 +61,7 @@ The palette consumes the provider host and ships the designed compact list state
 Isolated pill tests, updated suites for the new degraded shape and deletions, and a live end-to-end check of the one Search plane (ADR D4, Verification).
 
 - [x] `P05.S15` - Add the isolated search-pill derivation test file covering species eyebrows, mechanism-free faces, and selected-state derivations; `frontend/src/stores/server/searchPill.test.ts`.
-- [ ] `P05.S16` - Update the existing suites for the new shapes: the search controller fallback fold, the document controller thin consumer, the palette guard and render tests, and the keymap coverage guards for the deleted action; `frontend/src/stores/server/*.test.ts + app/palette tests`.
+- [x] `P05.S16` - Update the existing suites for the new shapes: the search controller fallback fold, the document controller thin consumer, the palette guard and render tests, and the keymap coverage guards for the deleted action; `frontend/src/stores/server/*.test.ts + app/palette tests`.
 - [ ] `P05.S17` - Verify live end to end: drive the one Search plane against the dev serve with semantic and file hits interleaving, the degraded copy honest with rag stopped conceptually (tiers-simulated), and run the full lint gate; `live verification + just dev lint all`.
 
 ## Description
