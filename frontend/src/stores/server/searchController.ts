@@ -31,7 +31,6 @@ import type {
   SearchIndexState,
   SearchResult,
   TiersBlock,
-  VaultTreeEntry,
 } from "./engine";
 import { EngineError, readTierAvailability } from "./engine";
 import { docNodeIdFromStem, isRagRunning, stemFromPath } from "./liveAdapters";
@@ -41,7 +40,6 @@ import {
   useBackendSignalStream,
   useEngineSearch,
   useFiltersVocabulary,
-  useVaultTree,
   normalizeSearchRequestIdentity,
   type SearchRequestIdentity,
 } from "./queries";
@@ -67,46 +65,13 @@ export function pathToDocNodeId(path: string): string {
   return docNodeIdFromStem(stemFromPath(path));
 }
 
-// --- pure fallback matching (unit-tested) ------------------------------------------
-
-/**
- * Title/feature-tag match over the already-cached vault tree; earlier, tighter
- * matches score higher. The vault tree is the rail's already-cached tree (no
- * second fetch is forced — `useSearchController` reuses the cached scope tree).
- * Every fallback hit is clickable via its grammar-derived `doc:{stem}` id.
- */
-export const SEARCH_FALLBACK_RESULTS_MAX_ITEMS = 20;
-
-export function buildFallbackResults(
-  entries: readonly VaultTreeEntry[] | undefined,
-  query: unknown,
-): SearchResult[] {
-  const needle = normalizeSearchQuery(query).toLowerCase();
-  if (!needle || !entries) return [];
-  const results: SearchResult[] = [];
-  for (const entry of entries) {
-    const stem = pathStem(entry.path);
-    const haystack = `${stem} ${entry.feature_tags.join(" ")}`.toLowerCase();
-    const index = haystack.indexOf(needle);
-    if (index === -1) continue;
-    results.push({
-      // Earlier, tighter matches score higher; the band stays below 1 so a
-      // fallback score never masquerades as a semantic certainty (search ADR:
-      // "the fallback score band stays below semantic certainty").
-      score: Math.max(0.1, 0.9 - index / Math.max(1, haystack.length)),
-      source: stem,
-      excerpt: `${entry.doc_type} · #${entry.feature_tags.join(" #")}`,
-      node_id: pathToDocNodeId(entry.path),
-    });
-    if (results.length > SEARCH_FALLBACK_RESULTS_MAX_ITEMS) {
-      results.sort((a, b) => b.score - a.score);
-      results.pop();
-    }
-  }
-  return results
-    .sort((a, b) => b.score - a.score)
-    .slice(0, SEARCH_FALLBACK_RESULTS_MAX_ITEMS);
-}
+// The rag-down TEXT FALLBACK retired here (search-providers ADR D2 fold): a
+// semantic outage is no longer a mode with its own text-match results. The
+// `files(vault)` search provider — the ONE shared literal matcher over the
+// complete cached vault tree — now carries name matches whether or not rag is up,
+// so this controller stays PURELY semantic and only exports the tiers-gated
+// `semanticOffline` truth for the host to gate on. `pathStem`/`pathToDocNodeId`
+// above remain the stores-layer `doc:{stem}` grammar wrappers.
 
 // --- degradation seam (pure, tiers-gated, unit-tested) -----------------------------
 
@@ -515,8 +480,8 @@ export function deriveSearchPresentationView(
 /**
  * Interpret a search query's outcome into the controller view. Pure over the
  * inputs so the full state machine is unit-testable without a render: the tiers
- * gate decides `semantic-offline`, the fallback is served only for the vault
- * target, the code target degrades to an explicit no-fallback state, and a
+ * gate decides `semantic-offline` (now a PURELY semantic phase — the text
+ * fallback folded into the files(vault) search provider, ADR D2), and a
  * tiers-less transport fault is the `error` branch (held results stay visible
  * under the banner — a transient refetch failure must not blank a list the
  * operator was reading; TanStack retains `data` across an error and result ids
@@ -536,20 +501,15 @@ export function interpretSearch(input: {
     | undefined;
   error: unknown;
   isPending: boolean;
-  fallbackEntries: readonly VaultTreeEntry[] | undefined;
-  fallbackPending: boolean;
   filterVocabulary: FiltersVocabulary | undefined;
   retry: () => void;
 }): SearchControllerView {
   const {
     query,
-    target,
     enabled = true,
     data,
     error,
     isPending,
-    fallbackEntries,
-    fallbackPending,
     filterVocabulary,
     retry,
   } = input;
@@ -581,18 +541,18 @@ export function interpretSearch(input: {
     };
   }
 
-  // Semantic offline (tiers-gated): rag is down per the wire's tiers block.
+  // Semantic offline (tiers-gated): rag is down per the wire's tiers block. This
+  // controller now contributes NOTHING when offline (results empty) — the
+  // files(vault) provider carries name matches in the host merge (ADR D2 fold).
+  // The exported `semanticOffline` truth is what the host gates its degraded copy
+  // on; there is no per-target fallback distinction anymore.
   if (semanticOffline) {
-    const fallback =
-      target === "vault" ? buildFallbackResults(fallbackEntries, query) : [];
-    const noCodeFallback = target === "code";
-    const pending = target === "vault" && fallbackPending;
     return {
       state: "semantic-offline",
-      results: fallback,
+      results: [],
       semanticOffline: true,
-      noCodeFallback,
-      pending,
+      noCodeFallback: false,
+      pending: false,
       error: false,
       filterVocabulary,
       indexState,
@@ -727,11 +687,6 @@ export function useSearchController(
   );
   const semanticData = requestSettled ? semantic.data : undefined;
   const semanticError = requestSettled ? semantic.error : undefined;
-  const semanticOffline = isSemanticOffline(semanticError, semanticData?.tiers);
-
-  // The fallback reuses the rail's already-cached vault tree; fetch it only when
-  // the tiers gate says rag is down (no speculative fetch when search is live).
-  const tree = useVaultTree(semanticOffline && requestSettled ? activeScope : null);
 
   // The filter vocabulary forwarded intact (search ADR "Filter vocabulary"):
   // rag's own vocabulary surfaced as the data-driven legal facet set, scoped to
@@ -786,8 +741,6 @@ export function useSearchController(
     error: semanticError,
     isPending:
       activeSearch.query.trim().length > 0 && (!requestSettled || semantic.isPending),
-    fallbackEntries: requestSettled ? tree.data?.entries : undefined,
-    fallbackPending: requestSettled && tree.isPending,
     filterVocabulary: requestSettled ? filters.data : undefined,
     retry,
   });

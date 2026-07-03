@@ -20,9 +20,13 @@ import { rankLiteralMatches, STRONG_LITERAL_BAND } from "./literalMatch";
 import type { CodeFileEntry, SearchResult, VaultTreeEntry } from "./engine";
 import { docNodeIdFromStem, stemFromPath } from "./liveAdapters";
 import {
+  mergeSemanticEpoch,
   searchResultSpecies,
+  UNIFIED_SEARCH_RESULTS_MAX_ITEMS,
+  unifiedResultIdentity,
   useUnifiedSearchController,
   type SearchResultSpecies,
+  type SearchState,
 } from "./searchController";
 import { useCodeFiles, useVaultTree, useVaultTreeAvailability } from "./queries";
 
@@ -102,6 +106,12 @@ export interface SearchProviderResult {
   entries: SearchProviderEntry[];
   /** The provider's honest phase (tiers-gated for degradation). */
   state: SearchProviderState;
+  /** The served semantic-index epoch (rag-integration-hardening ADR D3) — set
+   *  ONLY by the semantic provider; a files provider has no freshness axis and
+   *  omits it. The host forwards it as the one shared epoch. */
+  semanticEpoch?: number | null | undefined;
+  /** Re-run this provider's backing query (the host's retry fans out to all). */
+  retry?: () => void;
 }
 
 /**
@@ -157,13 +167,21 @@ export function useSemanticProvider(
     else if (unified.semanticOffline) state = "degraded";
     else if (unified.pending && entries.length === 0) state = "loading";
     else state = "ready";
-    return { id: SEMANTIC_PROVIDER_ID, entries, state };
+    return {
+      id: SEMANTIC_PROVIDER_ID,
+      entries,
+      state,
+      semanticEpoch: unified.semanticEpoch,
+      retry: unified.retry,
+    };
   }, [
     unified.results,
     unified.state,
     unified.error,
     unified.semanticOffline,
     unified.pending,
+    unified.semanticEpoch,
+    unified.retry,
   ]);
 }
 
@@ -273,4 +291,89 @@ export function useFilesCodeProvider(
     else state = "ready";
     return { id: FILES_CODE_PROVIDER_ID, entries: providerEntries, state };
   }, [query, scope, entries, isPending]);
+}
+
+// ── The provider host ─────────────────────────────────────────────────────────────
+
+export interface SearchProvidersView {
+  /** The single interpreted phase the palette switches on. */
+  state: SearchState;
+  /** The merged, score-ranked, identity-deduped, bounded hits across all
+   *  providers — ONE interleaved list (species-tagged), never sectioned. */
+  entries: SearchProviderEntry[];
+  /** True when the semantic provider is tiers-offline; the files providers keep
+   *  serving name matches, so this drives the honest degraded copy, not a mode. */
+  semanticOffline: boolean;
+  /** A query is in flight with nothing merged to show yet. */
+  pending: boolean;
+  /** The semantic source failed with a genuine (non-degradation) transport error
+   *  AND no files provider produced anything — the retryable error state. */
+  error: boolean;
+  /** The shared served semantic epoch (from the semantic provider). */
+  semanticEpoch: number | null | undefined;
+  /** Re-run every provider's backing query. */
+  retry: () => void;
+}
+
+/**
+ * The one Search host (search-providers ADR D1): it composes the three registered
+ * providers and owns everything shared — the score-desc merge with best-rank
+ * identity dedupe (a hit found by both meaning and name renders ONCE at its best
+ * rank), the 40-item bound, the tiers-gated degradation collapse, and the shared
+ * semantic epoch — all lifted from the unified controller's proven machinery
+ * (`mergeUnifiedSearch` / `unifiedResultIdentity` / `mergeSemanticEpoch`). The
+ * rag-down text fallback is NOT a mode here: when the semantic provider is offline
+ * it contributes nothing and the files(vault) provider's name matches carry the
+ * result set, which is why the degraded state is a non-event, not a dead plane.
+ */
+export function useSearchProviders(
+  query: string,
+  scope: string | null,
+): SearchProvidersView {
+  const semantic = useSemanticProvider(query, scope);
+  const filesVault = useFilesVaultProvider(query, scope);
+  const filesCode = useFilesCodeProvider(query, scope);
+
+  return useMemo(() => {
+    const providers = [semantic, filesVault, filesCode];
+    // Merge: concat, sort by score desc (stable), dedupe by node identity keeping
+    // the FIRST (== highest-scored == best rank) occurrence, bound to 40.
+    const ranked = providers
+      .flatMap((p) => p.entries)
+      .sort((a, b) => b.result.score - a.result.score);
+    const seen = new Set<string>();
+    const entries: SearchProviderEntry[] = [];
+    for (const entry of ranked) {
+      const identity = unifiedResultIdentity(entry.result);
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      entries.push(entry);
+      if (entries.length >= UNIFIED_SEARCH_RESULTS_MAX_ITEMS) break;
+    }
+
+    const semanticOffline = semantic.state === "degraded";
+    const pending = providers.some((p) => p.state === "loading");
+    const allIdle = providers.every((p) => p.state === "idle");
+    // Error only when the semantic source genuinely failed and no files provider
+    // rescued the query — a files hit set makes the outage a non-event.
+    const error = semantic.state === "error" && entries.length === 0 && !pending;
+
+    let state: SearchState;
+    if (entries.length > 0) state = "results";
+    else if (pending) state = "loading";
+    else if (allIdle) state = "idle";
+    else if (error) state = "error";
+    else if (semanticOffline) state = "semantic-offline";
+    else state = "no-results";
+
+    const semanticEpoch = providers.reduce<number | null | undefined>(
+      (acc, p) => mergeSemanticEpoch(acc, p.semanticEpoch),
+      undefined,
+    );
+    const retry = () => {
+      for (const p of providers) p.retry?.();
+    };
+
+    return { state, entries, semanticOffline, pending, error, semanticEpoch, retry };
+  }, [semantic, filesVault, filesCode]);
 }

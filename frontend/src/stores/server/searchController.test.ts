@@ -28,7 +28,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { liveScope, liveTransport } from "../../testing/liveClient";
 import { SEARCH_QUERY_MAX_CHARS, normalizeSearchQuery } from "../searchQuery";
-import type { SearchResult, TiersBlock, VaultTreeEntry } from "./engine";
+import type { SearchResult, TiersBlock } from "./engine";
 import { EngineError, engineClient } from "./engine";
 import type { StreamChunk } from "./queries";
 import {
@@ -41,7 +41,6 @@ import {
 } from "./queries";
 import { queryClient } from "./queryClient";
 import {
-  buildFallbackResults,
   deriveSearchPresentationView,
   searchResultKeyboardFocusDelta,
   interpretSearch,
@@ -53,18 +52,10 @@ import {
   pathStem,
   pathToDocNodeId,
   SEARCH_DEBOUNCE_MS,
-  SEARCH_FALLBACK_RESULTS_MAX_ITEMS,
   SEARCH_RAG_LIFECYCLE_WORD_MAX_CHARS,
   useSearchController,
 } from "./searchController";
 import { ENGINE_WAIT } from "../../testing/timing";
-
-const entry = (path: string, tags: string[] = []): VaultTreeEntry => ({
-  path,
-  doc_type: "adr",
-  feature_tags: tags,
-  dates: {},
-});
 
 const noop = () => undefined;
 
@@ -98,57 +89,11 @@ describe("normalizeSearchQuery (shared search request identity)", () => {
   });
 });
 
-// --- pure fallback matching (relocated from the chrome layer) ----------------------
-
-describe("buildFallbackResults (text-match fallback, search ADR)", () => {
-  const entries = [
-    entry(".vault/adr/2026-06-12-auth-flow-adr.md", ["auth-flow"]),
-    entry(".vault/plan/2026-06-12-sync-service-plan.md", ["sync-service"]),
-  ];
-
-  it("matches stems and feature tags, clickable via derived doc node ids", () => {
-    const results = buildFallbackResults(entries, "auth");
-    expect(results).toHaveLength(1);
-    expect(results[0].node_id).toBe("doc:2026-06-12-auth-flow-adr");
-    expect(results[0].excerpt).toContain("#auth-flow");
-  });
-
-  it("scores STRICTLY below the semantic certainty band (never reads as a hit)", () => {
-    const results = buildFallbackResults(entries, "2026-06-12");
-    expect(results).toHaveLength(2);
-    for (const result of results) {
-      expect(result.score).toBeLessThan(1);
-      expect(result.score).toBeGreaterThan(0);
-    }
-  });
-
-  it("is empty without a query or entries", () => {
-    expect(buildFallbackResults(entries, "  ")).toEqual([]);
-    expect(buildFallbackResults(undefined, "auth")).toEqual([]);
-    expect(buildFallbackResults(entries, "no-such-thing")).toEqual([]);
-    expect(buildFallbackResults(entries, { query: "auth" })).toEqual([]);
-  });
-
-  it("uses the shared bounded search-query normalizer before fallback matching", () => {
-    const longQuery = ` auth ${"x".repeat(SEARCH_QUERY_MAX_CHARS)}`;
-    expect(buildFallbackResults(entries, " AUTH ")).toHaveLength(1);
-    expect(buildFallbackResults(entries, longQuery)).toEqual([]);
-  });
-
-  it("keeps fallback result collection bounded without dropping better later hits", () => {
-    const noisyEntries = [
-      ...Array.from({ length: SEARCH_FALLBACK_RESULTS_MAX_ITEMS + 8 }, (_, index) =>
-        entry(`.vault/adr/low-${index}-needle.md`, []),
-      ),
-      entry(".vault/adr/needle-best.md", []),
-    ];
-
-    const results = buildFallbackResults(noisyEntries, "needle");
-
-    expect(results).toHaveLength(SEARCH_FALLBACK_RESULTS_MAX_ITEMS);
-    expect(results[0].node_id).toBe("doc:needle-best");
-  });
-});
+// The rag-down text fallback (`buildFallbackResults`) retired with the ADR D2
+// fold: name matches now come from the files(vault) search provider through the
+// one shared literal matcher, covered by `literalMatch` + `searchProviders`
+// vectors. The tiers-gated `semanticOffline` truth this controller still exports
+// is exercised below.
 
 describe("node-id grammar (stores-owned, §2 identity)", () => {
   it("stems a vault path and forms its doc node id", () => {
@@ -318,8 +263,6 @@ const hit = (nodeId: string | null = "doc:x"): SearchResult => ({
 
 const base = {
   target: "vault" as const,
-  fallbackEntries: undefined,
-  fallbackPending: false,
   filterVocabulary: undefined,
   retry: noop,
 };
@@ -376,7 +319,10 @@ describe("interpretSearch (the explicit state machine)", () => {
     expect(v.semanticOffline).toBe(false);
   });
 
-  it("semantic-offline: tiers-gated, serves the vault text-match fallback", () => {
+  it("semantic-offline: tiers-gated, contributes NO results (files provider carries names)", () => {
+    // ADR D2 fold: the controller no longer serves a text fallback. When rag is
+    // offline it reports the tiers-gated `semanticOffline` truth and an EMPTY
+    // result set — the files(vault) provider carries name matches in the host.
     const v = interpretSearch({
       ...base,
       query: "auth",
@@ -385,15 +331,13 @@ describe("interpretSearch (the explicit state machine)", () => {
         tiers: { semantic: { available: false, reason: "rag down" } },
       }),
       isPending: false,
-      fallbackEntries: [entry(".vault/adr/2026-06-12-auth-flow-adr.md", ["auth-flow"])],
     });
     expect(v.state).toBe("semantic-offline");
     expect(v.semanticOffline).toBe(true);
-    expect(v.noCodeFallback).toBe(false);
-    expect(v.results[0].node_id).toBe("doc:2026-06-12-auth-flow-adr");
+    expect(v.results).toEqual([]);
   });
 
-  it("semantic-offline + code target: explicit no-fallback, never a misleading empty", () => {
+  it("semantic-offline is target-independent now the fallback folded away", () => {
     const v = interpretSearch({
       ...base,
       target: "code",
@@ -403,13 +347,9 @@ describe("interpretSearch (the explicit state machine)", () => {
         tiers: { semantic: { available: false } },
       }),
       isPending: false,
-      fallbackEntries: [entry(".vault/adr/2026-06-12-auth-flow-adr.md", ["auth-flow"])],
     });
     expect(v.state).toBe("semantic-offline");
-    expect(v.noCodeFallback).toBe(true);
-    // No corpus for code → empty results, but the state is offline (not
-    // no-results), so the view renders the explicit notice not a blank "no
-    // matches".
+    expect(v.semanticOffline).toBe(true);
     expect(v.results).toEqual([]);
   });
 
