@@ -269,6 +269,11 @@ export interface WorkspacesState {
 export interface VaultTreeEntry {
   path: string;
   doc_type: string;
+  /** The document's H1 title (engine-served on every vault-tree row); absent when
+   *  the document carries none. A match field for the files(vault) search
+   *  provider (search-providers ADR) — a document is findable by its title, not
+   *  just its stem. */
+  title?: string;
   feature_tags: string[];
   // All day-granular ISO strings ("YYYY-MM-DD") AFTER adaptation, so the rail's
   // date narrow compares them directly with the `date_range` bounds by the active

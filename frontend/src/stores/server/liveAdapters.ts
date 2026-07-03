@@ -1084,12 +1084,14 @@ function adaptVaultTreeEntry(value: unknown): VaultTreeEntry | null {
     path ?? `.vault/${docType === "document" ? "doc" : docType}/${stem}.md`;
   const status = normalizeVaultTreeString(value.status);
   const tier = normalizeVaultTreeString(value.tier);
+  const title = normalizeVaultTreeString(value.title);
   const progress = normalizeVaultTreeProgress(value.progress);
   return {
     path: entryPath,
     doc_type: docType,
     feature_tags: normalizeVaultTreeStringList(value.feature_tags),
     dates: adaptVaultTreeDates(value.dates),
+    ...(title !== undefined ? { title } : {}),
     ...(status !== undefined ? { status } : {}),
     ...(tier !== undefined ? { tier } : {}),
     ...(progress !== undefined ? { progress } : {}),
