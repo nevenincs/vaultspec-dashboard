@@ -34,6 +34,11 @@ import {
 } from "../kit";
 import { useActiveScope, useRagStatus } from "../../stores/server/queries";
 import {
+  toggleStatusSection,
+  useStatusSectionOpen,
+} from "../../stores/view/statusTabChrome";
+import {
+  type RagJob,
   interpretRagStartEnvelope,
   useRagCollectionHealth,
   useRagJobs,
@@ -565,14 +570,18 @@ function jobTitle(source: string | undefined): string {
 
 /** JOBS (Figma JobsSection 901:4206): recent reindex activity as raised job
  *  cards — title, phase chip, detail line, and a progress bar when rag reports
- *  progress — with a view-all affordance that widens the bounded read. */
-function JobsBody({ scope }: { scope: unknown }) {
-  // Bounded read either way: 6 recent by default, the engine's 50-clamp when
-  // widened. View-local presentation state only — not a corpus filter.
-  const [showAll, setShowAll] = useState(false);
-  const jobsQuery = useRagJobs(scope, showAll ? 50 : 6);
-  const jobs = useMemo(() => jobsQuery.data?.envelope?.jobs ?? [], [jobsQuery.data]);
-
+ *  progress — with a view-all affordance that widens the bounded read. The one
+ *  jobs query lives in the console body so the fold-header count and this list
+ *  always describe the same served slice. */
+function JobsBody({
+  jobs,
+  showAll,
+  onShowAll,
+}: {
+  jobs: RagJob[];
+  showAll: boolean;
+  onShowAll: () => void;
+}) {
   if (jobs.length === 0) {
     return <p className="py-fg-1 text-caption text-ink-faint">No recent jobs.</p>;
   }
@@ -622,7 +631,7 @@ function JobsBody({ scope }: { scope: unknown }) {
       })}
       {!showAll && (
         <div className="flex justify-center">
-          <Button variant="ghost" onClick={() => setShowAll(true)}>
+          <Button variant="ghost" onClick={onShowAll}>
             View all jobs →
           </Button>
         </div>
@@ -641,11 +650,17 @@ function JobsBody({ scope }: { scope: unknown }) {
 export function RagOpsConsoleBody() {
   const scope = useActiveScope();
   const status = useRagStatus();
-  const jobsQuery = useRagJobs(scope, 6);
-  const jobCount = jobsQuery.data?.envelope?.jobs?.length ?? 0;
-  const [statusOpen, setStatusOpen] = useState(true);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [jobsOpen, setJobsOpen] = useState(true);
+  // One bounded jobs read for the fold count AND the list: 6 recent by default,
+  // the engine's 50-clamp when widened. View-local presentation state only — not
+  // a corpus filter.
+  const [showAllJobs, setShowAllJobs] = useState(false);
+  const jobsQuery = useRagJobs(scope, showAllJobs ? 50 : 6);
+  const jobs = useMemo(() => jobsQuery.data?.envelope?.jobs ?? [], [jobsQuery.data]);
+  // Disclosure rides the rail's persisted store (the FoldSection idiom every
+  // right-rail section shares), so the folds survive remount and tab switches.
+  const statusOpen = useStatusSectionOpen("rag-ops:status", true);
+  const advancedOpen = useStatusSectionOpen("rag-ops:advanced", false);
+  const jobsOpen = useStatusSectionOpen("rag-ops:jobs", true);
 
   return (
     <div className="flex flex-col gap-fg-1-5">
@@ -655,7 +670,7 @@ export function RagOpsConsoleBody() {
           <Divider />
           <FoldSection
             open={statusOpen}
-            onToggle={() => setStatusOpen((v) => !v)}
+            onToggle={() => toggleStatusSection("rag-ops:status", true)}
             label={<SectionLabel>Status</SectionLabel>}
             bodyId="rag-ops-status"
           >
@@ -664,7 +679,7 @@ export function RagOpsConsoleBody() {
           <Divider />
           <FoldSection
             open={advancedOpen}
-            onToggle={() => setAdvancedOpen((v) => !v)}
+            onToggle={() => toggleStatusSection("rag-ops:advanced", false)}
             label={<SectionLabel>Advanced</SectionLabel>}
             bodyId="rag-ops-advanced"
             bodyClassName="pt-fg-1"
@@ -674,18 +689,22 @@ export function RagOpsConsoleBody() {
           <Divider />
           <FoldSection
             open={jobsOpen}
-            onToggle={() => setJobsOpen((v) => !v)}
+            onToggle={() => toggleStatusSection("rag-ops:jobs", true)}
             label={<SectionLabel>Jobs</SectionLabel>}
             trailing={
-              jobCount > 0 ? (
+              jobs.length > 0 ? (
                 <span className="shrink-0 text-meta tabular-nums text-ink-faint">
-                  {jobCount}
+                  {jobs.length}
                 </span>
               ) : undefined
             }
             bodyId="rag-ops-jobs"
           >
-            <JobsBody scope={scope} />
+            <JobsBody
+              jobs={jobs}
+              showAll={showAllJobs}
+              onShowAll={() => setShowAllJobs(true)}
+            />
           </FoldSection>
         </>
       ) : (

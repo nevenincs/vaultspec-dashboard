@@ -5497,6 +5497,10 @@ export const SEARCH_QUERY_TIMEOUT_MS = 12_000;
 // `engine/crates/vaultspec-api/src/routes/ops.rs`), mirrored here ONLY so the
 // ordering invariant is guard-testable on the frontend. This is not a wire value
 // the app reads — it is the number the client budget above must strictly exceed.
+// Two-sided anchor: the engine test
+// `search_budget_is_pinned_to_the_frontend_mirror_anchor` (ops.rs) pins the real
+// constant to this value, so a budget retune fails engine-side before this mirror
+// can go silently stale.
 export const ENGINE_SEARCH_BUDGET_MS = 10_000;
 
 // The app-chosen per-target result bound, sent as `max_results` in the POST

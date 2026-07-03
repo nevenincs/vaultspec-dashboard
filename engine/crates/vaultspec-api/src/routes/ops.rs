@@ -2839,6 +2839,17 @@ fn flatten_and_annotate(
 mod tests {
     use super::*;
 
+    // Two-sided D2 budget anchor: the frontend guards the client-outlives-engine
+    // ordering against its mirrored `ENGINE_SEARCH_BUDGET_MS`
+    // (`frontend/src/stores/server/queries.ts`), which cannot see this constant.
+    // Pinning the numeric value HERE makes a budget retune fail at the source of
+    // the change, so the mirror can never go silently stale — anyone changing
+    // `SEARCH_HTTP_BUDGET` / rag-client `READ_BUDGET` must visit both anchors.
+    #[test]
+    fn search_budget_is_pinned_to_the_frontend_mirror_anchor() {
+        assert_eq!(SEARCH_HTTP_BUDGET, Duration::from_secs(10));
+    }
+
     // rag's real FLAT HTTP `/search` envelope, captured live against rag 0.2.28
     // (`POST /search {query, type, project_root, top_k}`): results sit at the
     // TOP level (no `{ok, command, data}` wrapper), each item carrying rag's real
