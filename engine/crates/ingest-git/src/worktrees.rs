@@ -178,6 +178,40 @@ fn inspect_path(path: &Path, is_main: bool) -> Result<WorktreeInfo> {
     inspect(&repo, path.to_path_buf(), is_main)
 }
 
+/// Enumerate the repo-relative paths of every DIRTY or UNTRACKED entry in the
+/// worktree at `root` — the honest "uncommitted work" set (code-graph-heat ADR
+/// amendment: uncommitted files rank above everything committed on the recency
+/// axis, and this enumeration comes from git status, never inferred from
+/// mtimes). The boolean `WorktreeInfo::dirty` stays the cheap any-change probe;
+/// this is its bounded enumerating sibling: collection stops at `cap` entries
+/// (`bounded-by-default-for-every-accumulator`), a broken status entry is
+/// skipped rather than fatal, and the result is sorted + deduplicated for
+/// deterministic cache-key hashing. Same status configuration as `inspect`
+/// (untracked included, B5b-bounded diff parallelism).
+pub fn dirty_paths(root: &Path, cap: usize) -> Result<Vec<String>> {
+    let repo = gix::open(root).map_err(|e| GitError::Other(e.to_string()))?;
+    let status = repo
+        .status(gix::progress::Discard)
+        .map_err(|e| GitError::Other(e.to_string()))?
+        .index_worktree_options_mut(|opts| {
+            opts.thread_limit = git_status_thread_limit();
+        });
+    let iter = status
+        .into_iter(None)
+        .map_err(|e| GitError::Other(e.to_string()))?;
+    let mut paths: Vec<String> = Vec::new();
+    for item in iter {
+        let Ok(item) = item else { continue };
+        paths.push(item.location().to_string());
+        if paths.len() >= cap {
+            break;
+        }
+    }
+    paths.sort_unstable();
+    paths.dedup();
+    Ok(paths)
+}
+
 fn canonical(p: &Path) -> PathBuf {
     std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }

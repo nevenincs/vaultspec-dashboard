@@ -264,9 +264,35 @@ pub struct CodeGraphCell {
     /// generation`): the default rollup poll is the code corpus's hot path and
     /// its aggregation + per-node projection are generation-stable. A NARROWED
     /// query flows through the projection per request, exactly as a filtered
-    /// vault constellation does.
-    rollup_cache: Mutex<Option<(u64, Arc<engine_query::graph::GraphSlice>)>>,
+    /// vault constellation does. The recency Arc rides the key by POINTER
+    /// identity (the recency memo hands back the same Arc until its own key
+    /// changes), so a commit or dirty-set change invalidates the rollup even
+    /// at an unchanged parse generation.
+    #[allow(clippy::type_complexity)]
+    rollup_cache: Mutex<
+        Option<(
+            u64,
+            Option<Arc<engine_query::code::CodeRecency>>,
+            Arc<engine_query::graph::GraphSlice>,
+        )>,
+    >,
+    /// Per-file GIT recency for the heat ranking (code-graph-heat ADR
+    /// amendment), memoized on its OWN freshness key — `HEAD sha @ dirty-set
+    /// hash` — distinct from the parse generation (a commit moves HEAD without
+    /// changing the tree fingerprint; an edit moves the fingerprint without
+    /// changing HEAD). The `embeddings_cache` epoch-key precedent.
+    recency_cache: Mutex<Option<(String, Arc<engine_query::code::CodeRecency>)>>,
+    recency_probe_ms: std::sync::atomic::AtomicI64,
 }
+
+/// Commit-walk ceiling for the per-file recency fold — the event tier's
+/// established 5000-commit horizon. Files last touched beyond it join the
+/// oldest tie block honestly (rank 0), never a fabricated time.
+pub const CODE_RECENCY_MAX_COMMITS: usize = 5_000;
+
+/// Ceiling on the enumerated dirty/untracked path set fed to the recency key
+/// and ranking (`bounded-by-default-for-every-accumulator`).
+pub const CODE_DIRTY_PATHS_CAP: usize = 20_000;
 
 /// Freshness-probe debounce: repeated code-corpus polls within this window
 /// serve the held graph without re-walking the tree.
@@ -282,21 +308,31 @@ impl CodeGraphCell {
             stats: RwLock::new(None),
             rebuild_lock: Mutex::new(()),
             rollup_cache: Mutex::new(None),
+            recency_cache: Mutex::new(None),
+            recency_probe_ms: std::sync::atomic::AtomicI64::new(0),
         }
     }
 
-    /// The default module rollup, memoized on the code generation (review M1).
-    /// The caller passes a graph Arc it already holds so the projection runs
-    /// over exactly the generation it read.
+    /// The default module rollup, memoized on the code generation (review M1)
+    /// AND the recency snapshot (by Arc pointer identity — the recency memo
+    /// returns the same Arc until its own `HEAD@dirty` key changes). The
+    /// caller passes a graph Arc it already holds so the projection runs over
+    /// exactly the generation it read.
     pub fn default_rollup(
         &self,
         graph: &Arc<LinkageGraph>,
         scope: &ScopeRef,
+        recency: Option<&Arc<engine_query::code::CodeRecency>>,
     ) -> Arc<engine_query::graph::GraphSlice> {
         let generation = self.generation.load(Ordering::SeqCst);
         let mut cache = self.rollup_cache.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some((cached_generation, cached)) = cache.as_ref()
+        if let Some((cached_generation, cached_recency, cached)) = cache.as_ref()
             && *cached_generation == generation
+            && match (cached_recency, recency) {
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            }
         {
             return cached.clone();
         }
@@ -305,9 +341,72 @@ impl CodeGraphCell {
             scope,
             true,
             &engine_query::code::CodeNarrow::default(),
+            recency.map(Arc::as_ref),
         ));
-        *cache = Some((generation, fresh.clone()));
+        *cache = Some((generation, recency.cloned(), fresh.clone()));
         fresh
+    }
+
+    /// Per-file git recency for the heat ranking (code-graph-heat ADR
+    /// amendment): repo-relative path → last-commit committer time, folded
+    /// order-independently (max) from ONE bounded commit walk, plus the
+    /// dirty/untracked set from git status. Probes are debounced like the
+    /// extraction fingerprint; the fold re-runs only when `HEAD sha @
+    /// dirty-set hash` changes. `None` = not a git repository / unborn HEAD —
+    /// the query falls back to mtime ranking honestly. BLOCKING (a commit walk
+    /// + a status diff) — request paths call it via `spawn_blocking`.
+    pub fn ensure_recency(
+        &self,
+        root: &std::path::Path,
+    ) -> Option<Arc<engine_query::code::CodeRecency>> {
+        let now = now_ms();
+        if now.saturating_sub(self.recency_probe_ms.load(Ordering::SeqCst))
+            < CODE_FRESHNESS_DEBOUNCE_MS
+        {
+            return self
+                .recency_cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+                .map(|(_, held)| held.clone());
+        }
+        self.recency_probe_ms.store(now, Ordering::SeqCst);
+        let Ok(sha) = engine_graph::asof::resolve_ref(root, "HEAD") else {
+            *self.recency_cache.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            return None;
+        };
+        let dirty =
+            ingest_git::worktrees::dirty_paths(root, CODE_DIRTY_PATHS_CAP).unwrap_or_default();
+        let key = format!(
+            "{sha}@{}",
+            engine_model::content_hash(dirty.join("\n").as_bytes())
+        );
+        {
+            let cache = self.recency_cache.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some((held_key, held)) = cache.as_ref()
+                && *held_key == key
+            {
+                return Some(held.clone());
+            }
+        }
+        let workspace = ingest_git::workspace::Workspace::discover(root).ok()?;
+        let events = ingest_git::log::walk(&workspace, "HEAD", CODE_RECENCY_MAX_COMMITS).ok()?;
+        let mut last_commit_ms: std::collections::BTreeMap<String, i64> =
+            std::collections::BTreeMap::new();
+        for event in &events {
+            for path in &event.touched_paths {
+                let entry = last_commit_ms.entry(path.clone()).or_insert(event.ts);
+                if event.ts > *entry {
+                    *entry = event.ts;
+                }
+            }
+        }
+        let fresh = Arc::new(engine_query::code::CodeRecency {
+            last_commit_ms,
+            dirty: dirty.into_iter().collect(),
+        });
+        *self.recency_cache.lock().unwrap_or_else(|e| e.into_inner()) = Some((key, fresh.clone()));
+        Some(fresh)
     }
 
     pub fn graph_arc(&self) -> Arc<LinkageGraph> {

@@ -296,6 +296,82 @@ async fn corpus_mismatched_requests_are_typed_errors_with_tiers() {
     assert!(body["tiers"].is_object());
 }
 
+/// Run git in `dir` with a pinned identity + committer date (mirrors the asof
+/// test helper) so commit times are deterministic inputs to the recency fold.
+fn git_at(dir: &std::path::Path, epoch_secs: i64, args: &[&str]) {
+    let date = format!("@{epoch_secs} +0000");
+    let output = std::process::Command::new("git")
+        .current_dir(dir)
+        .args(args)
+        .env("GIT_AUTHOR_NAME", "f")
+        .env("GIT_AUTHOR_EMAIL", "f@t")
+        .env("GIT_COMMITTER_NAME", "f")
+        .env("GIT_COMMITTER_EMAIL", "f@t")
+        .env("GIT_AUTHOR_DATE", &date)
+        .env("GIT_COMMITTER_DATE", &date)
+        .output()
+        .expect("git runs");
+    assert!(
+        output.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// code-graph-heat ADR amendment, end to end over a REAL repository: the served
+/// recency rank rides COMMIT history (not worktree mtimes — every fixture file
+/// is written seconds apart, but the commits are days apart), dirty/untracked
+/// work ranks hottest, and an identical-commit block shares one tie rank.
+#[tokio::test]
+async fn git_recency_ranks_ride_commit_history_and_dirty_state() {
+    let (dir, state) = fixture_state();
+    let root = dir.path();
+    const DAY: i64 = 86_400;
+    let t0 = 1_700_000_000; // an arbitrary fixed epoch base
+    git_at(root, t0, &["init", "-b", "main", "."]);
+    git_at(root, t0, &["add", "."]);
+    git_at(root, t0, &["commit", "-m", "base"]); // src/* + web/* all tie at t0
+    std::fs::write(root.join("web/app.ts"), "import { g } from \"./graph\";\n").unwrap();
+    git_at(root, t0 + 3 * DAY, &["add", "web/app.ts"]);
+    git_at(root, t0 + 3 * DAY, &["commit", "-m", "touch app"]); // app.ts newest commit
+    // Untracked working-tree file: the hottest tier, from git status truth.
+    std::fs::write(root.join("web/scratch.ts"), "export const s = 1;\n").unwrap();
+
+    let token = state.bearer.clone();
+    let scope = served_scope(&state);
+    let router = build_router(state);
+    let (status, body) = post(
+        router,
+        "/graph/query",
+        &token,
+        json!({"scope": scope, "corpus": "code", "granularity": "document"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let rank = |id: &str| -> f64 {
+        body["data"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["id"] == id)
+            .unwrap_or_else(|| panic!("missing {id}"))["recency_rank"]
+            .as_f64()
+            .unwrap_or_else(|| panic!("{id} has no rank"))
+    };
+    // Untracked scratch file = hottest; the recommitted app.ts sits between;
+    // the t0 block (src/lib.rs, src/util.rs, web/graph.ts) shares ONE cold tie
+    // rank despite their mtimes differing from their commit time.
+    assert_eq!(rank("code:web/scratch.ts"), 1.0, "{body}");
+    assert!(rank("code:web/app.ts") > rank("code:src/lib.rs"), "{body}");
+    assert!(
+        rank("code:web/app.ts") < rank("code:web/scratch.ts"),
+        "{body}"
+    );
+    assert_eq!(rank("code:src/lib.rs"), rank("code:src/util.rs"), "{body}");
+    assert_eq!(rank("code:src/lib.rs"), rank("code:web/graph.ts"), "{body}");
+    assert_eq!(rank("code:src/lib.rs"), 0.0, "{body}");
+}
+
 /// code-timeline-range ADR: `date_range` + `date_field: "modified"` is the ONE
 /// vault-filter facet pair that carries over to the code corpus, narrowing by
 /// worktree-mtime day; any other criterion stays a typed error.

@@ -201,46 +201,85 @@ fn annotate_module_identity(view: &mut Value, key: &str, hues: &BTreeMap<String,
     view["module"] = Value::String(module);
 }
 
-/// Percentile RECENCY rank per code node key (code-graph-heat ADR): each dated
-/// file ranks by its worktree mtime among ALL dated files — 0 = oldest,
-/// 1 = newest, a single dated file ranks 1.0 — and a module carries the MAX
-/// over its descendant files ("hot content makes a hot container"). A rank,
-/// not a linear age: mtimes cluster (a checkout day, a campaign), and the
-/// percentile spreads the heat gradient evenly where a linear scale would
-/// collapse most nodes onto one end. Computed over the FULL graph — never the
-/// narrowed slice — so a node's heat is stable under narrowing (the
-/// `module_hues` discipline). An undated file is honestly absent (the client
-/// renders the cold end). Ties order by (mtime, key): deterministic.
-fn recency_ranks(graph: &LinkageGraph) -> BTreeMap<String, f64> {
-    let mut dated: Vec<(i64, &str)> = graph
+/// Per-file GIT recency, folded from the bounded commit walk + git status
+/// (code-graph-heat ADR amendment). Owned by the API cell (memoized on
+/// `HEAD sha @ dirty-set hash` — its own freshness axis, distinct from the
+/// parse generation) and threaded into the query; `None` when the scope is not
+/// a git repository (the honest mtime fallback applies).
+#[derive(Debug, Clone, Default)]
+pub struct CodeRecency {
+    /// Repo-relative path → committer time (ms) of the LAST commit touching it
+    /// within the bounded walk horizon. A file beyond the horizon is absent
+    /// (it ranks in the oldest tie block).
+    pub last_commit_ms: BTreeMap<String, i64>,
+    /// Dirty + untracked repo-relative paths (git status, never mtime
+    /// inference): uncommitted work ranks ABOVE everything committed.
+    pub dirty: HashSet<String>,
+}
+
+/// Percentile RECENCY rank per code node key (code-graph-heat ADR, amended):
+/// 0 = oldest, 1 = newest, a module carries the MAX over its descendant files
+/// ("hot content makes a hot container"). The effective ordering key is
+/// GIT-derived — a clean file orders by the committer time of the last commit
+/// touching it; a DIRTY/UNTRACKED file orders above every committed file, with
+/// the worktree mtime doing the fine ordering only inside that dirty set (the
+/// one place a real local edit makes mtime honest). Without git (`recency`
+/// None) the mtime orders everything, as before.
+///
+/// Ranks are TIE-AWARE: files with an equal effective key share one min-rank,
+/// so an identical-timestamp block (a checkout stamping hundreds of files in
+/// one second, a horizon of equally-unknown old files) paints ONE color
+/// instead of spreading an arbitrary gradient across meaningless
+/// micro-differences — the defect that fired the ADR's re-open trigger. A
+/// rank, not a linear age, so real distinct times still spread evenly.
+/// Computed over the FULL graph — never the narrowed slice — so a node's heat
+/// is stable under narrowing (the `module_hues` discipline).
+fn recency_ranks(graph: &LinkageGraph, recency: Option<&CodeRecency>) -> BTreeMap<String, f64> {
+    // Effective key: (tier, time) — tier 1 = uncommitted work, above all of
+    // tier 0. Without git, a file with no mtime is unknowable and omitted
+    // (client renders the cold end); with git, an unknown-to-history clean
+    // file honestly joins the oldest tie block at (0, 0).
+    let mut keyed: Vec<((u8, i64), &str)> = graph
         .nodes()
         .filter(|n| n.kind == NodeKind::CodeArtifact)
         .filter_map(|n| {
-            n.dates
-                .as_ref()
-                .and_then(|d| d.modified)
-                .map(|ms| (ms, n.key.as_str()))
+            let mtime = n.dates.as_ref().and_then(|d| d.modified);
+            let key = match recency {
+                Some(r) if r.dirty.contains(&n.key) => (1u8, mtime.unwrap_or(0)),
+                Some(r) => (0u8, r.last_commit_ms.get(&n.key).copied().unwrap_or(0)),
+                None => (0u8, mtime?),
+            };
+            Some((key, n.key.as_str()))
         })
         .collect();
-    dated.sort_unstable();
-    let count = dated.len();
+    keyed.sort_unstable();
+    let count = keyed.len();
     let mut ranks: BTreeMap<String, f64> = BTreeMap::new();
-    // Ascending mtime order, so an ancestor overwrite always raises its rank —
-    // the module ends at the max of its descendants (file keys are paths and
+    // Ascending order, so an ancestor overwrite always raises its rank — the
+    // module ends at the max of its descendants (file keys are paths and
     // module keys are dirs, so the one map never collides across kinds).
-    for (i, (_, key)) in dated.iter().enumerate() {
+    let mut i = 0;
+    while i < count {
+        let mut j = i;
+        while j < count && keyed[j].0 == keyed[i].0 {
+            j += 1;
+        }
+        // Min-rank for the whole tie group (equal times ⇒ equal color).
         let rank = if count <= 1 {
             1.0
         } else {
             ((i as f64 / (count - 1) as f64) * 1000.0).round() / 1000.0
         };
-        ranks.insert((*key).to_string(), rank);
-        let mut dir = *key;
-        while let Some(cut) = dir.rfind('/') {
-            dir = &dir[..cut];
-            ranks.insert(dir.to_string(), rank);
+        for (_, key) in &keyed[i..j] {
+            ranks.insert((*key).to_string(), rank);
+            let mut dir = *key;
+            while let Some(cut) = dir.rfind('/') {
+                dir = &dir[..cut];
+                ranks.insert(dir.to_string(), rank);
+            }
+            ranks.insert(".".to_string(), rank);
         }
-        ranks.insert(".".to_string(), rank);
+        i = j;
     }
     ranks
 }
@@ -301,6 +340,7 @@ pub fn code_graph_query(
     scope: &ScopeRef,
     feature_class_granularity: bool,
     narrow: &CodeNarrow,
+    recency: Option<&CodeRecency>,
 ) -> GraphSlice {
     // Echo the applied date facet on the slice's filter block (the response is
     // honest about what narrowed it); the code date criterion is always the
@@ -326,7 +366,7 @@ pub fn code_graph_query(
     if feature_class_granularity {
         let counts = member_counts(graph);
         let hues = module_hues(graph);
-        let ranks = recency_ranks(graph);
+        let ranks = recency_ranks(graph, recency);
         let mut nodes: Vec<Value> = graph
             .nodes()
             .filter(|n| n.kind == NodeKind::CodeModule)
@@ -387,7 +427,7 @@ pub fn code_graph_query(
 
     let counts = member_counts(graph);
     let hues = module_hues(graph);
-    let ranks = recency_ranks(graph);
+    let ranks = recency_ranks(graph, recency);
     let nodes = kept_nodes
         .iter()
         .map(|n| {
@@ -595,7 +635,7 @@ mod tests {
     #[test]
     fn rollup_serves_module_nodes_and_aggregated_meta_edges() {
         let g = demo_graph();
-        let slice = code_graph_query(&g, &scope(), true, &CodeNarrow::default());
+        let slice = code_graph_query(&g, &scope(), true, &CodeNarrow::default(), None);
         let ids: Vec<&str> = slice
             .nodes
             .iter()
@@ -621,7 +661,7 @@ mod tests {
             dir_prefix: Some("app".into()),
             ..CodeNarrow::default()
         };
-        let slice = code_graph_query(&g, &scope(), false, &narrow);
+        let slice = code_graph_query(&g, &scope(), false, &narrow, None);
         let ids: Vec<&str> = slice
             .nodes
             .iter()
@@ -646,7 +686,7 @@ mod tests {
             languages: vec!["python".into()],
             ..CodeNarrow::default()
         };
-        let slice = code_graph_query(&g, &scope(), false, &narrow);
+        let slice = code_graph_query(&g, &scope(), false, &narrow, None);
         let file_ids: Vec<&str> = slice
             .nodes
             .iter()
@@ -663,7 +703,7 @@ mod tests {
         let g = demo_graph();
         // Rollup: module nodes carry module/module_hue/depth. Both `app` and
         // `lib` have 2 files; the tie breaks alphabetically → app=0, lib=1.
-        let rollup = code_graph_query(&g, &scope(), true, &CodeNarrow::default());
+        let rollup = code_graph_query(&g, &scope(), true, &CodeNarrow::default(), None);
         let app = rollup
             .nodes
             .iter()
@@ -680,7 +720,7 @@ mod tests {
         assert_eq!(lib["module_hue"], Value::from(1));
 
         // File granularity: files carry the SAME top-level identity + a depth.
-        let files = code_graph_query(&g, &scope(), false, &CodeNarrow::default());
+        let files = code_graph_query(&g, &scope(), false, &CodeNarrow::default(), None);
         let a = files
             .nodes
             .iter()
@@ -707,7 +747,7 @@ mod tests {
         g.upsert_node(file_node("z/only.rs"));
         g.upsert_node(module_node("z"));
 
-        let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default());
+        let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default(), None);
         let z = slice
             .nodes
             .iter()
@@ -787,7 +827,7 @@ mod tests {
             date_to: Some(old_day),
             ..CodeNarrow::default()
         };
-        let slice = code_graph_query(&g, &scope(), false, &narrow);
+        let slice = code_graph_query(&g, &scope(), false, &narrow, None);
         let ids: Vec<&str> = slice
             .nodes
             .iter()
@@ -813,7 +853,7 @@ mod tests {
             date_from: Some(new_day),
             ..CodeNarrow::default()
         };
-        let slice = code_graph_query(&g, &scope(), false, &narrow);
+        let slice = code_graph_query(&g, &scope(), false, &narrow, None);
         let ids: Vec<&str> = slice
             .nodes
             .iter()
@@ -830,7 +870,7 @@ mod tests {
             date_to: Some(old_day),
             ..CodeNarrow::default()
         };
-        let slice = code_graph_query(&g, &scope(), true, &narrow);
+        let slice = code_graph_query(&g, &scope(), true, &narrow, None);
         let ids: Vec<&str> = slice
             .nodes
             .iter()
@@ -845,7 +885,7 @@ mod tests {
         // files; a module carries its descendants' max; an undated file (and a
         // module with only undated content) serves NO rank.
         let (g, _old_day, _new_day) = dated_graph();
-        let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default());
+        let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default(), None);
         let rank_of = |id: &str| {
             slice
                 .nodes
@@ -867,7 +907,7 @@ mod tests {
         assert_eq!(rank_of("code-mod:lib"), None);
 
         // The rollup serves the SAME module ranks (full-graph stability).
-        let rollup = code_graph_query(&g, &scope(), true, &CodeNarrow::default());
+        let rollup = code_graph_query(&g, &scope(), true, &CodeNarrow::default(), None);
         let app = rollup
             .nodes
             .iter()
@@ -886,7 +926,7 @@ mod tests {
             date_to: Some(old_day),
             ..CodeNarrow::default()
         };
-        let slice = code_graph_query(&g, &scope(), false, &narrow);
+        let slice = code_graph_query(&g, &scope(), false, &narrow, None);
         let old = slice
             .nodes
             .iter()
@@ -894,6 +934,84 @@ mod tests {
             .unwrap();
         // Still the full-corpus percentile (0.0), not 1.0-of-the-narrowed-set.
         assert_eq!(old["recency_rank"], json!(0.0));
+    }
+
+    // ---- code-graph-heat ADR amendment: git-derived composite ranking -------
+
+    fn rank_in<'a>(slice: &'a GraphSlice, id: &str) -> Option<&'a Value> {
+        slice
+            .nodes
+            .iter()
+            .find(|n| n["id"] == id)
+            .and_then(|n| n.get("recency_rank"))
+    }
+
+    #[test]
+    fn git_axis_supersedes_mtime_for_clean_files() {
+        // dated_graph's mtimes say new.ts is newest — but the GIT history says
+        // old.ts was committed last. The git axis must win for clean files, and
+        // a file git knows needs no mtime at all (undated.py ranks mid).
+        let (g, _old, _new) = dated_graph();
+        let recency = CodeRecency {
+            last_commit_ms: BTreeMap::from([
+                ("app/deep/old.ts".to_string(), 2_000_000_i64),
+                ("app/new.ts".to_string(), 1_000_000),
+                ("lib/undated.py".to_string(), 1_500_000),
+            ]),
+            dirty: HashSet::new(),
+        };
+        let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default(), Some(&recency));
+        assert_eq!(rank_in(&slice, "code:app/deep/old.ts"), Some(&json!(1.0)));
+        assert_eq!(rank_in(&slice, "code:app/new.ts"), Some(&json!(0.0)));
+        assert_eq!(rank_in(&slice, "code:lib/undated.py"), Some(&json!(0.5)));
+        // Module max follows the git axis too.
+        assert_eq!(rank_in(&slice, "code-mod:app/deep"), Some(&json!(1.0)));
+    }
+
+    #[test]
+    fn dirty_files_rank_above_every_committed_file() {
+        // The dirty/untracked set (git status, never mtime inference) is the
+        // hottest tier: a dirty file outranks even the most recently COMMITTED
+        // file, and mtime orders only within the dirty set.
+        let (g, _old, _new) = dated_graph();
+        let recency = CodeRecency {
+            last_commit_ms: BTreeMap::from([
+                ("app/new.ts".to_string(), 9_000_000_000_000_i64), // newest commit
+                ("app/deep/old.ts".to_string(), 1_000_000),
+            ]),
+            // old.ts (mtime-oldest, commit-oldest) is DIRTY → hottest anyway.
+            dirty: HashSet::from(["app/deep/old.ts".to_string()]),
+        };
+        let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default(), Some(&recency));
+        assert_eq!(rank_in(&slice, "code:app/deep/old.ts"), Some(&json!(1.0)));
+        assert!(
+            rank_in(&slice, "code:app/new.ts")
+                .unwrap()
+                .as_f64()
+                .unwrap()
+                < 1.0,
+            "committed stays below dirty"
+        );
+    }
+
+    #[test]
+    fn equal_effective_times_share_one_tie_rank() {
+        // The re-open-trigger defect: an identical-timestamp block must paint
+        // ONE color (shared min-rank), never an arbitrary spread. Two files
+        // with the same last-commit time tie at 0.0; the newer file ranks 1.0.
+        let (g, _old, _new) = dated_graph();
+        let recency = CodeRecency {
+            last_commit_ms: BTreeMap::from([
+                ("app/deep/old.ts".to_string(), 1_000_000_i64),
+                ("lib/undated.py".to_string(), 1_000_000),
+                ("app/new.ts".to_string(), 2_000_000),
+            ]),
+            dirty: HashSet::new(),
+        };
+        let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default(), Some(&recency));
+        assert_eq!(rank_in(&slice, "code:app/deep/old.ts"), Some(&json!(0.0)));
+        assert_eq!(rank_in(&slice, "code:lib/undated.py"), Some(&json!(0.0)));
+        assert_eq!(rank_in(&slice, "code:app/new.ts"), Some(&json!(1.0)));
     }
 
     #[test]

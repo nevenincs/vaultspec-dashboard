@@ -533,20 +533,24 @@ async fn code_corpus_query(
         date_from: date_range.as_ref().and_then(|r| r.from.clone()),
         date_to: date_range.as_ref().and_then(|r| r.to.clone()),
     };
-    // Extraction is blocking CPU/IO work (tree walk; full parse on a miss) —
-    // off the async runtime, mirroring the declared-fold discipline.
+    // Extraction is blocking CPU/IO work (tree walk; full parse on a miss),
+    // and so is the git recency fold (a bounded commit walk + status diff) —
+    // both off the async runtime, mirroring the declared-fold discipline.
     let blocking_cell = cell.clone();
-    let graph =
-        tokio::task::spawn_blocking(move || blocking_cell.code.ensure_fresh(&blocking_cell.root))
-            .await
-            .map_err(|e| super::api_error(state, StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-            .map_err(|e| {
-                super::api_error(
-                    state,
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("code corpus extraction failed: {e}"),
-                )
-            })?;
+    let (graph, recency) = tokio::task::spawn_blocking(move || {
+        let graph = blocking_cell.code.ensure_fresh(&blocking_cell.root)?;
+        let recency = blocking_cell.code.ensure_recency(&blocking_cell.root);
+        Ok::<_, String>((graph, recency))
+    })
+    .await
+    .map_err(|e| super::api_error(state, StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .map_err(|e| {
+        super::api_error(
+            state,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("code corpus extraction failed: {e}"),
+        )
+    })?;
     // The DEFAULT rollup poll (the hot path) is served from the per-generation
     // memo (review M1, derived-projections-memoize-on-the-graph-generation);
     // a narrowed query or the file granularity flows through the projection
@@ -554,13 +558,17 @@ async fn code_corpus_query(
     let mut slice = if granularity == Granularity::Feature
         && narrow == engine_query::code::CodeNarrow::default()
     {
-        (*cell.code.default_rollup(&graph, &cell.scope)).clone()
+        (*cell
+            .code
+            .default_rollup(&graph, &cell.scope, recency.as_ref()))
+        .clone()
     } else {
         engine_query::code::code_graph_query(
             &graph,
             &cell.scope,
             granularity == Granularity::Feature,
             &narrow,
+            recency.as_deref(),
         )
     };
     // The SAME unconditional ceiling as the vault corpus

@@ -151,3 +151,42 @@ GL machinery, no new token tier, no seam change.
   for documents with no further scene work.
 - A mode toggle costs one GL rebuild (the refresh-theme cost) — acceptable for a
   rare, deliberate switch.
+
+## Amendment (2026-07-03): git-derived recency supersedes the mtime source
+
+The recorded re-open trigger fired on first review: worktree mtimes proved
+misleading in exactly the predicted way — checkouts and tooling stamp large file
+sets within seconds, and a percentile over a degenerate distribution spreads
+arbitrary micro-differences across the whole cold→hot gradient (the "not
+normalized within any range" report). Two changes, per the user directive:
+
+- **The primary recency axis is GIT HISTORY, not the filesystem.** Each file's
+  effective time is the committer time of the LAST COMMIT that touched it,
+  folded from one bounded commit walk (the existing `ingest-git` gix walk that
+  already yields per-commit touched paths — reused, not re-implemented; capped
+  at the event tier's 5000-commit ceiling, order-independent max-fold). This is
+  stable across checkouts, branch switches, and machines.
+- **The fs mtime is demoted to the auxiliary signal it is honestly good for.**
+  DIRTY and UNTRACKED files — enumerated by gix status, never inferred from
+  mtime — rank ABOVE everything committed (uncommitted work is by definition
+  the newest), and WITHIN that dirty set the mtime does the fine ordering,
+  where a real local edit genuinely moved it. A clean file's mtime is ignored.
+- **Ranks are tie-aware.** Files with equal effective times share one rank
+  (min-rank over the tie group, normalized 0..1), so an identical-timestamp
+  block paints one color instead of an arbitrary gradient — this fixes the
+  visible symptom independently of the data source, and the non-git fallback
+  (a directory that is not a repository) keeps mtime ranking but gains the
+  same tie handling.
+
+Mechanics: the per-file git recency is a `CodeGraphCell` memo keyed on
+`(HEAD sha, dirty-set hash)` — its own freshness axis, distinct from the parse
+generation (a commit moves HEAD without changing the tree fingerprint; an edit
+moves the fingerprint without changing HEAD), mirroring the `embeddings_cache`
+epoch-key precedent and the `fingerprint@sha` present-view key. The wire shape
+(`recency_rank` 0..1), the scene ramp, the control, and the legend are all
+UNCHANGED — this amendment swaps only what the rank measures. The default
+module rollup memo gains the recency key alongside the generation.
+
+Recorded follow-ups, not in this amendment: first-commit time (file age) as a
+possible second lens input; aligning the timeline range's code criterion (still
+worktree mtime, honestly labeled Modified) onto the same git axis.
