@@ -8,12 +8,22 @@
 // transport error (degradation-is-read-from-tiers). Size/state come from the
 // engine's Rust-aggregated `ops-state`; the Tier-2 collection health is the
 // capability-gated "needs repair" signal.
+//
+// Structure mirrors the binding Figma component: an always-visible control
+// surface (identity row, machine-wide notice, the four-across lifecycle button
+// row), then divider-separated foldable STATUS (open), ADVANCED (closed), and
+// JOBS (open) sections. ADVANCED carries everything the design leaves behind the
+// collapsed twisty: engine/GPU identity, namespaces, tenants with per-slot evict,
+// data management, and the Tier-2 diagnostics.
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import {
   Badge,
   Button,
+  Card,
+  Divider,
+  FoldSection,
   ProgressBar,
   PropertyRow,
   SectionLabel,
@@ -66,14 +76,22 @@ function record(v: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+/** The lifecycle word's ink: running is the active state, crashed is stale
+ *  (discovered but not serving), absent is broken — word and tone agree. */
+function lifecycleInk(running: boolean, word: string): string {
+  return running
+    ? "text-state-active"
+    : word === "crashed"
+      ? "text-state-stale"
+      : "text-state-broken";
+}
+
 /**
- * The machine-service identity strip: the running-state dot + word, the resident
- * pid/port, and the machine-wide stop warning. The lifecycle word is
- * `running`/`crashed`/`absent` (sourced from the wire `state`); the dot is green
- * for running and warm-broken otherwise, the word disambiguating crashed vs
- * absent.
+ * The always-visible control surface (Figma ControlSurface 901:4148): the
+ * identity row — service name, state dot, lifecycle word, resident pid/port —
+ * the machine-wide notice, and the four-across lifecycle button row.
  */
-function MachineServiceStrip({ scope }: { scope: unknown }) {
+function ControlSurface({ scope }: { scope: unknown }) {
   const status = useRagStatus();
   const opsState = useRagOpsState(scope);
   const start = useRagServiceStart(scope);
@@ -94,8 +112,6 @@ function MachineServiceStrip({ scope }: { scope: unknown }) {
           .filter(Boolean)
           .join(" · ")
       : undefined;
-  // Green running; amber crashed (discovered but not serving); broken-red absent —
-  // the word disambiguates, the tone matches.
   const dotClass = status.running
     ? "bg-state-active"
     : word === "crashed"
@@ -114,13 +130,15 @@ function MachineServiceStrip({ scope }: { scope: unknown }) {
 
   return (
     <div className="flex flex-col gap-fg-1">
-      <div className="flex items-center gap-fg-1-5">
+      <div className="flex items-center gap-fg-1">
+        <span className="text-body font-medium text-ink">rag</span>
         <span
           className={`size-[0.5rem] shrink-0 rounded-full ${dotClass}`}
           aria-hidden
         />
-        <span className="text-body font-medium text-ink">rag</span>
-        <Badge>{word}</Badge>
+        <span className={`text-meta ${lifecycleInk(status.running, word)}`}>
+          {word}
+        </span>
         <span className="flex-1" />
         {pidPort !== undefined && (
           <span className="shrink-0 text-meta tabular-nums text-ink-faint">
@@ -129,9 +147,14 @@ function MachineServiceStrip({ scope }: { scope: unknown }) {
         )}
       </div>
       <p className="text-caption text-ink-faint">
-        Machine service — stop affects every consumer (CLI, MCP, other dashboards).
+        Machine service — changes affect all consumers.
       </p>
-      <div className="flex flex-wrap items-center gap-fg-1">
+      {/* The four-across lifecycle row (Figma buttons 901:4156): a grid so every
+          verb stretches to an equal column — the kit Button owns its own chrome
+          and takes no className. */}
+      <div
+        className={`grid gap-fg-1 ${status.running ? "grid-cols-4" : "grid-cols-3"}`}
+      >
         {status.running ? (
           <>
             <Button
@@ -188,17 +211,95 @@ function MachineServiceStrip({ scope }: { scope: unknown }) {
   );
 }
 
-/** INDEX & SIZE: the Rust-aggregated counts, disk footprint, GPU, and Qdrant
- *  identity, plus the live/orphaned namespace tally. */
-function IndexAndSize({ scope }: { scope: unknown }) {
+/** STATUS (Figma StatusSection 901:4166): the at-a-glance rollup — service word,
+ *  index counts, footprint, tenant occupancy, watcher — as plain property rows. */
+function StatusRows({ scope }: { scope: unknown }) {
+  const status = useRagStatus();
+  const opsState = useRagOpsState(scope);
+  const env = opsState.data?.envelope;
+  const index = record(env?.index);
+  const storage = env?.storage;
+  const tenants = record(env?.tenants);
+  const watcher = record(env?.watcher);
+  // RCR-002: the summed storage totals cover only the returned (bounded) survey
+  // slice when rag reports more namespaces than it returned — render them as a
+  // lower bound rather than a silent undercount.
+  const partial = storage?.available === true && storage.truncated === true;
+  const word = status.running ? "running" : (status.service ?? "absent");
+
+  const slotCount = Array.isArray(tenants?.projects)
+    ? (tenants.projects as unknown[]).length
+    : undefined;
+  const maxSlots =
+    typeof tenants?.max_projects === "number" ? tenants.max_projects : undefined;
+
+  return (
+    <div className="flex flex-col">
+      <PropertyRow
+        label="Service"
+        value={
+          <span className={`font-medium ${lifecycleInk(status.running, word)}`}>
+            {word}
+          </span>
+        }
+      />
+      <PropertyRow label="Vault documents" value={num(index?.vault_count)} />
+      <PropertyRow label="Code chunks" value={num(index?.code_count)} />
+      <PropertyRow
+        label="Points"
+        value={partial ? `≥ ${num(storage?.total_points)}` : num(storage?.total_points)}
+      />
+      <PropertyRow
+        label="Disk footprint"
+        value={
+          partial
+            ? `≥ ${humanBytes(storage?.total_footprint_bytes)}`
+            : humanBytes(storage?.total_footprint_bytes)
+        }
+      />
+      <PropertyRow
+        label="Tenants"
+        value={
+          slotCount !== undefined
+            ? `${slotCount}${maxSlots !== undefined ? ` / ${maxSlots} slots` : ""}`
+            : "—"
+        }
+      />
+      <PropertyRow
+        label="Watcher"
+        value={
+          watcher?.running === true ? (
+            <span className="font-medium text-state-active">on</span>
+          ) : (
+            "off"
+          )
+        }
+      />
+    </div>
+  );
+}
+
+/** ADVANCED: engine/GPU identity, namespaces (with the RCR-002 lower-bound
+ *  honesty), tenants with per-slot evict, data management, and the Tier-2
+ *  diagnostics — everything behind the design's collapsed twisty. */
+function AdvancedBody({ scope }: { scope: unknown }) {
+  return (
+    <div className="flex flex-col gap-fg-3">
+      <EngineIdentity scope={scope} />
+      <Tenants scope={scope} />
+      <DataManagement scope={scope} />
+      <Diagnostics scope={scope} />
+    </div>
+  );
+}
+
+/** The engine/GPU/Qdrant identity and namespace tally rows. */
+function EngineIdentity({ scope }: { scope: unknown }) {
   const opsState = useRagOpsState(scope);
   const env = opsState.data?.envelope;
   const index = record(env?.index);
   const qdrant = record(env?.qdrant);
   const storage = env?.storage;
-  // RCR-002: the summed storage totals cover only the returned (bounded) survey
-  // slice when rag reports more namespaces than it returned — render them as a
-  // lower bound rather than a silent undercount.
   const partial = storage?.available === true && storage.truncated === true;
 
   const gpu =
@@ -219,26 +320,11 @@ function IndexAndSize({ scope }: { scope: unknown }) {
 
   return (
     <div className="flex flex-col gap-fg-0-5">
-      <SectionLabel>Index &amp; size</SectionLabel>
-      <PropertyRow label="vault documents" value={num(index?.vault_count)} />
-      <PropertyRow label="code chunks" value={num(index?.code_count)} />
-      <PropertyRow
-        label="points"
-        value={partial ? `≥ ${num(storage?.total_points)}` : num(storage?.total_points)}
-      />
-      <PropertyRow
-        label="disk footprint"
-        value={
-          partial
-            ? `≥ ${humanBytes(storage?.total_footprint_bytes)}`
-            : humanBytes(storage?.total_footprint_bytes)
-        }
-      />
-      <PropertyRow label="gpu" value={gpu} />
-      <PropertyRow label="qdrant" value={qdrantLabel.length > 0 ? qdrantLabel : "—"} />
+      <PropertyRow label="GPU" value={gpu} />
+      <PropertyRow label="Qdrant" value={qdrantLabel.length > 0 ? qdrantLabel : "—"} />
       {storage?.available && (
         <PropertyRow
-          label="namespaces"
+          label="Namespaces"
           value={
             <span
               className={storage.orphaned_count > 0 ? "text-state-broken" : undefined}
@@ -265,7 +351,7 @@ function IndexAndSize({ scope }: { scope: unknown }) {
   );
 }
 
-/** TENANTS: the resident project registry — leased slots, ref counts, idle, with
+/** Tenants: the resident project registry — leased slots, ref counts, idle, with
  *  a per-slot Evict. */
 function Tenants({ scope }: { scope: unknown }) {
   const opsState = useRagOpsState(scope);
@@ -339,7 +425,7 @@ function Tenants({ scope }: { scope: unknown }) {
   );
 }
 
-/** DATA: per-tenant data management — reindex (with progress), clean rebuild,
+/** Data: per-tenant data management — reindex (with progress), clean rebuild,
  *  and watcher on/off. */
 function DataManagement({ scope }: { scope: unknown }) {
   const opsState = useRagOpsState(scope);
@@ -410,32 +496,7 @@ function DataManagement({ scope }: { scope: unknown }) {
   );
 }
 
-/** JOBS: the recent reindex job activity with per-job phase. */
-function Jobs({ scope }: { scope: unknown }) {
-  const jobsQuery = useRagJobs(scope, 6);
-  const jobs = useMemo(() => jobsQuery.data?.envelope?.jobs ?? [], [jobsQuery.data]);
-  if (jobs.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-fg-1">
-      <SectionLabel count={jobs.length}>Jobs</SectionLabel>
-      {jobs.map((job) => (
-        <div key={job.id} className="flex items-center gap-fg-1">
-          <span className="min-w-0 flex-1 truncate text-body text-ink">
-            {job.source === "code" ? "reindex code" : "reindex vault"}
-          </span>
-          <span className="shrink-0 text-meta tabular-nums text-ink-faint">
-            {str(job.result) ?? job.phase}
-          </span>
-          <Badge tone={job.phase === "running" ? "accent" : "neutral"}>
-            {job.phase}
-          </Badge>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** DIAGNOSTICS: the Tier-2 Qdrant-native collection health (capability-gated on
+/** Diagnostics: the Tier-2 Qdrant-native collection health (capability-gated on
  *  the Qdrant version) for the first live namespace — the "needs repair" signal —
  *  degrading honestly when the version is unsupported. */
 function Diagnostics({ scope }: { scope: unknown }) {
@@ -497,26 +558,135 @@ function Diagnostics({ scope }: { scope: unknown }) {
   );
 }
 
+/** A job's human title from its source discriminator. */
+function jobTitle(source: string | undefined): string {
+  return source === "code" || source === "codebase" ? "reindex code" : "reindex vault";
+}
+
+/** JOBS (Figma JobsSection 901:4206): recent reindex activity as raised job
+ *  cards — title, phase chip, detail line, and a progress bar when rag reports
+ *  progress — with a view-all affordance that widens the bounded read. */
+function JobsBody({ scope }: { scope: unknown }) {
+  // Bounded read either way: 6 recent by default, the engine's 50-clamp when
+  // widened. View-local presentation state only — not a corpus filter.
+  const [showAll, setShowAll] = useState(false);
+  const jobsQuery = useRagJobs(scope, showAll ? 50 : 6);
+  const jobs = useMemo(() => jobsQuery.data?.envelope?.jobs ?? [], [jobsQuery.data]);
+
+  if (jobs.length === 0) {
+    return <p className="py-fg-1 text-caption text-ink-faint">No recent jobs.</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-fg-1 py-fg-1">
+      {jobs.map((job) => {
+        const total =
+          typeof job.progress?.total === "number" ? job.progress.total : undefined;
+        const completed =
+          typeof job.progress?.completed === "number"
+            ? job.progress.completed
+            : undefined;
+        const detail = [
+          str(job.result) ?? (job.phase !== "running" ? job.phase : null),
+          completed !== undefined && total !== undefined
+            ? `${completed.toLocaleString()} / ${total.toLocaleString()}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        return (
+          <Card
+            key={job.id}
+            elevation="flat"
+            padded={false}
+            className="flex flex-col gap-fg-1 p-fg-1-5"
+          >
+            <div className="flex items-center justify-between gap-fg-1">
+              <span className="min-w-0 truncate text-body font-medium text-ink">
+                {jobTitle(job.source)}
+              </span>
+              <Badge tone={job.phase === "running" ? "accent" : "neutral"}>
+                {job.phase}
+              </Badge>
+            </div>
+            {detail.length > 0 && <p className="text-meta text-ink-muted">{detail}</p>}
+            {completed !== undefined && total !== undefined && total > 0 && (
+              <ProgressBar
+                value={Math.min(completed, total)}
+                max={total}
+                label={`${jobTitle(job.source)} progress`}
+              />
+            )}
+          </Card>
+        );
+      })}
+      {!showAll && (
+        <div className="flex justify-center">
+          <Button variant="ghost" onClick={() => setShowAll(true)}>
+            View all jobs →
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * The rag operations console body, mounted as the "RAG OPS" section of the
- * activity rail. When the machine service is not running it shows the lifecycle
- * strip plus a degraded placeholder; when running it shows the full size/state,
- * data-management, jobs, and diagnostics surface.
+ * activity rail. The control surface is always visible; when the machine service
+ * is not running the folds give way to a degraded placeholder; when running the
+ * STATUS and JOBS folds open by default and ADVANCED stays behind its twisty,
+ * mirroring the binding Figma component.
  */
 export function RagOpsConsoleBody() {
   const scope = useActiveScope();
   const status = useRagStatus();
+  const jobsQuery = useRagJobs(scope, 6);
+  const jobCount = jobsQuery.data?.envelope?.jobs?.length ?? 0;
+  const [statusOpen, setStatusOpen] = useState(true);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [jobsOpen, setJobsOpen] = useState(true);
 
   return (
-    <div className="flex flex-col gap-fg-3">
-      <MachineServiceStrip scope={scope} />
+    <div className="flex flex-col gap-fg-1-5">
+      <ControlSurface scope={scope} />
       {status.running ? (
         <>
-          <IndexAndSize scope={scope} />
-          <Tenants scope={scope} />
-          <DataManagement scope={scope} />
-          <Jobs scope={scope} />
-          <Diagnostics scope={scope} />
+          <Divider />
+          <FoldSection
+            open={statusOpen}
+            onToggle={() => setStatusOpen((v) => !v)}
+            label={<SectionLabel>Status</SectionLabel>}
+            bodyId="rag-ops-status"
+          >
+            <StatusRows scope={scope} />
+          </FoldSection>
+          <Divider />
+          <FoldSection
+            open={advancedOpen}
+            onToggle={() => setAdvancedOpen((v) => !v)}
+            label={<SectionLabel>Advanced</SectionLabel>}
+            bodyId="rag-ops-advanced"
+            bodyClassName="pt-fg-1"
+          >
+            <AdvancedBody scope={scope} />
+          </FoldSection>
+          <Divider />
+          <FoldSection
+            open={jobsOpen}
+            onToggle={() => setJobsOpen((v) => !v)}
+            label={<SectionLabel>Jobs</SectionLabel>}
+            trailing={
+              jobCount > 0 ? (
+                <span className="shrink-0 text-meta tabular-nums text-ink-faint">
+                  {jobCount}
+                </span>
+              ) : undefined
+            }
+            bodyId="rag-ops-jobs"
+          >
+            <JobsBody scope={scope} />
+          </FoldSection>
         </>
       ) : (
         <StateBlock
