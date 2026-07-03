@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#graph-representation'
-date: '2026-06-14'
-modified: '2026-06-15'
+date: '2026-07-03'
+modified: '2026-07-03'
 related:
   - '[[2026-06-14-graph-representation-W01-P01-S01]]'
   - '[[2026-06-14-graph-representation-W01-P01-S02]]'
@@ -64,6 +64,7 @@ related:
   - '[[2026-06-14-graph-representation-adr]]'
   - '[[2026-06-14-graph-representation-plan]]'
   - '[[2026-06-14-graph-representation-research]]'
+  - '[[2026-07-03-graph-representation-adr]]'
 ---
 
 # `graph-representation` feature index
@@ -75,6 +76,7 @@ Auto-generated index of all documents tagged with `#graph-representation`.
 ### adr
 
 - `2026-06-14-graph-representation-adr` - `graph-representation` adr: `graph representation: visualization principles and large-corpus algorithms` | (**status:** `accepted`)
+- `2026-07-03-graph-representation-adr` - `graph-representation` adr: `graph emphasis-state grammar and cluster-selection fence` | (**status:** `accepted`)
 
 ### exec
 

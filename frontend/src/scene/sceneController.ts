@@ -299,21 +299,15 @@ export type SceneCommand =
   // the node on the canvas. ADDITIVE to the locked union (dashboard-node-redesign;
   // mirrors the set-pinned additive shape) — no existing member renamed/removed.
   | { kind: "set-selected"; ids: ReadonlySet<string> }
-  // Visual-only META-HIGHLIGHT (#16): soft, hover-style emphasis of a SET of nodes (a
-  // rail-selected feature's members) — they keep full colour while non-members recede,
-  // exactly like a hover cohort, but with NO selection ring. DISTINCT from `set-selected`
-  // (which rings, and the scene enforces SINGLETON): a feature select emits `frame-nodes`
-  // (camera) + this, NEVER a multi-id `set-selected`. An empty set clears the highlight.
-  // Additive to the locked union — no existing member renamed/removed.
-  | { kind: "set-meta-highlight"; ids: ReadonlySet<string> }
   // DURABLE feature-cluster spotlight (feature-selection-global-state): the canonical
   // selection authority projects a SELECTED FEATURE here by its TAG (not a frozen id
   // set). The scene derives the member cohort from live `node.feature_tags` each render
   // and re-applies it on every `set-data`, so the spotlight SURVIVES data refreshes /
-  // SSE deltas / filter changes / lens switches — unlike `set-meta-highlight`, which is
-  // a one-shot id set cleared on the next data change. `tag: null` clears it. `frame`
+  // SSE deltas / filter changes / lens switches. `tag: null` clears it. `frame`
   // (default false) requests a ONE-SHOT camera frame to the cohort on a genuine change
   // (the rail feature-select frame, follow-gated); the durable re-apply never re-frames.
+  // (The prior one-shot `set-meta-highlight` id-set command this superseded was DELETED
+  // as a deliberate contract event — emphasis-state-grammar ADR 2026-07-03.)
   | { kind: "set-feature-spotlight"; tag: string | null; frame?: boolean }
   // Transient cross-highlight (G2.b): lift the named nodes briefly — the
   // timeline's event-click pulse. Additive seam amendment at S36.

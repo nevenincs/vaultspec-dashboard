@@ -22,6 +22,14 @@ related:
 > bounded top-DOI wire) and the edge-tier **data** are **retained**; only the canvas color
 > encoding of edges changed. This ADR's principle and data decisions remain authoritative.
 
+> **Amendment (2026-07-03, `2026-07-03-graph-representation-adr`).** The *cluster-overlay
+> v1 choice* — "BubbleSets hulls (v1) at document granularity" — is amended for the
+> **cluster-selection** case only: the SELECTED feature cluster draws a **convex padded
+> hull** (rounded n-gon perimeter fence), never a concave BubbleSets contour, per the
+> emphasis-state-grammar ADR. BubbleSets/GMap/KelpFusion remain the recorded direction
+> solely for a future *ambient multi-set membership* overlay, should one be promoted.
+> All other decisions here stand.
+
 ## Problem Statement
 
 The dashboard renders a knowledge vault as a node graph, and the easiest version of that —

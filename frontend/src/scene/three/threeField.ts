@@ -106,7 +106,7 @@ const PINCH_ZOOM_SENSITIVITY = controlNumber("pinchZoomSensitivity");
 // Autoframe (graph-autoframe): poll the graph bounds on an INTERVAL (not every frame) and
 // ease the camera to the fit when the frame drifts beyond a deadband — never per-frame, so
 // it can't fight the settle or jitter. Local interaction-tuning constants (dimensionless /
-// ms), mirroring NODE_RECEDE_MIX etc.; not user-tunable look params.
+// ms), mirroring NODE_RECEDE_HOVER etc.; not user-tunable look params.
 const AUTOFRAME_POLL_MS = 400; // bounds-poll cadence while autoframe is on
 const AUTOFRAME_EASE = 0.16; // per-frame lerp toward the target (smooth, not a snap)
 const AUTOFRAME_DEADBAND = 0.07; // min fractional frame change (center/zoom) to re-target
@@ -115,15 +115,30 @@ const AUTOFRAME_SETTLE_EPS = 0.004; // within this fraction of target → snap +
 const LABEL_BUDGET = controlNumber("labelBudget");
 const PULSE_RING_WIDTH = controlNumber("pulseRingWidth");
 const PULSE_RING_ALPHA = controlNumber("pulseRingAlpha");
-// Hover/selection emphasis — SUBTLE + theme-palette only (user goal): keep the
-// hover↔non-hover difference SMALL, every colour from the established Figma palette, no
-// black, no adhoc hex, gradient blends kept. De-emphasis is COLOUR-ONLY at full opacity: a
-// non-focus node mixes GENTLY toward the canvas background (node material uDimColor =
-// canvasBackground) so it recedes a touch without leaving its hue family; focus nodes keep
-// full category colour. Edges keep their category GRADIENT in every mode (no recolour); the
-// only emphasis is this gentle node recede + a thin accent focus ring. No glow, no near-black.
-const NODE_RECEDE_MIX = 0.3; // gentle non-focus mix toward the canvas bg (subtle de-emphasis)
+// Emphasis-state grammar (2026-07-03 graph-representation ADR): the three interaction
+// states differentiate by GRAMMAR, not hue. De-emphasis stays COLOUR-ONLY at full opacity
+// (a non-focus node mixes toward the canvas background, node material uDimColor =
+// canvasBackground; focus nodes keep full category colour; edges keep their category
+// GRADIENT in every mode, no recolour; no glow, no near-black) — but the recede DEPTH now
+// encodes the state: a transient hover recedes shallow, a durable selection (node ring or
+// feature-cluster spotlight) recedes deeper so it reads as the stronger state. The recede
+// is CONTINUOUS and eased (aDim carries the current mix fraction, tweened toward its
+// per-node target each frame) so every state change cross-fades instead of popping;
+// prefers-reduced-motion snaps instantly.
+const NODE_RECEDE_HOVER = 0.3; // shallow non-focus mix while a transient hover is active
+const NODE_RECEDE_SELECT = 0.5; // deeper non-focus mix under a durable selection/spotlight
+// Exponential-ease time constant for the emphasis cross-fade: ~95% settled in ~3τ ≈ 210ms
+// (the design motion window). Dimensionless attribute tween, not a user-tunable look param.
+const EMPHASIS_FADE_TAU_MS = 70;
 const FOCUS_RING_WIDTH_PX = 2; // thin accent focus ring on the hovered hub
+// Cluster-selection perimeter fence (emphasis-state-grammar ADR): the positive marker of
+// the durable feature-cluster selection — a convex padded hull (rounded n-gon) traced
+// around the visible cohort on the 2D overlay. Pad beyond the largest member's screen
+// radius; hairline accent stroke over a whisper fill; alpha rides the emphasis ease.
+const FENCE_PAD_PX = 12; // padding beyond the largest member radius (screen px at UI scale 1)
+const FENCE_STROKE_WIDTH_PX = 1.5; // fence perimeter stroke width
+const FENCE_STROKE_ALPHA = 0.85; // stroke opacity at full fence presence
+const FENCE_FILL_ALPHA = 0.06; // whisper interior fill (skipped under perf degradation)
 // Max canvas label width before ellipsis (screen px at UI scale 1; multiplied by
 // uiScale at draw). The bare canvas label is ELIDED here so an over-long title can
 // never paint an unbounded line across the field — the FULL title lives in the DOM
@@ -144,7 +159,7 @@ const LABEL_PILL_GAP_PX = 6; // gap from the node body to the pill
 // node size. Below LO the node is a plain dot (an icon would be sub-legible — the marks
 // are gated at 14px); above HI it is the full icon; between, the two cross-fade. The
 // icon quad is drawn a touch larger than the dot it replaces so the silhouette reads.
-// Local render constants (mirroring NODE_RECEDE_MIX / FOCUS_RING_WIDTH_PX above), not
+// Local render constants (mirroring NODE_RECEDE_HOVER / FOCUS_RING_WIDTH_PX above), not
 // schema knobs — they are fixed legibility thresholds, not user-tunable look params.
 // Icon-INSIDE-circle (graph-icon-inside-circle): the doc-type icon is drawn WITHIN the
 // filled disc as one composite mark, so its half-extent is a FRACTION of the node radius
@@ -174,6 +189,98 @@ const PERF_RESTORE_MS = 22;
 /** 0xRRGGBB int → a CSS "#rrggbb" string for canvas-2D (minimap) fills/strokes. */
 function hexCss(n: number): string {
   return "#" + (n & 0xffffff).toString(16).padStart(6, "0");
+}
+
+/** Reduced-motion gate for the emphasis cross-fade + fence ramp: snap instead of ease. */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+export type ScreenPt = { x: number; y: number };
+
+/** Andrew monotone-chain convex hull over screen points. Returns the hull with a
+ *  POSITIVE shoelace winding in raw coordinate arithmetic (the invariant
+ *  `traceRoundedOffset`'s outward normals + arc sweeps rely on); collinear inputs
+ *  degrade to their 2-point extent, a single point to itself. Exported for tests. */
+export function convexHull(points: ScreenPt[]): ScreenPt[] {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  const uniq: ScreenPt[] = [];
+  for (const p of sorted) {
+    const last = uniq[uniq.length - 1];
+    if (!last || Math.abs(last.x - p.x) > 1e-6 || Math.abs(last.y - p.y) > 1e-6) {
+      uniq.push(p);
+    }
+  }
+  if (uniq.length <= 2) return uniq;
+  const cross = (o: ScreenPt, a: ScreenPt, b: ScreenPt) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: ScreenPt[] = [];
+  for (const p of uniq) {
+    while (
+      lower.length >= 2 &&
+      cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0
+    ) {
+      lower.pop();
+    }
+    lower.push(p);
+  }
+  const upper: ScreenPt[] = [];
+  for (let i = uniq.length - 1; i >= 0; i--) {
+    const p = uniq[i];
+    while (
+      upper.length >= 2 &&
+      cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0
+    ) {
+      upper.pop();
+    }
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
+
+/** Trace the Minkowski offset of a convex hull by `pad` into the current path — the
+ *  rounded n-gon perimeter fence: each edge pushed outward along its normal, each
+ *  vertex joined by an arc of radius `pad` (a disc offset natively rounds the
+ *  corners; never concave by construction). Degenerates cleanly: one point → a
+ *  circle, two points → a capsule. Requires the positive-shoelace winding
+ *  `convexHull` returns, whose outward normal is (dy, -dx). Exported for tests. */
+export function traceRoundedOffset(
+  ctx: CanvasRenderingContext2D,
+  hull: ScreenPt[],
+  pad: number,
+): void {
+  if (hull.length === 0) return;
+  if (hull.length === 1) {
+    ctx.arc(hull[0].x, hull[0].y, pad, 0, Math.PI * 2);
+    return;
+  }
+  const k = hull.length;
+  const normals: ScreenPt[] = [];
+  for (let i = 0; i < k; i++) {
+    const a = hull[i];
+    const b = hull[(i + 1) % k];
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    normals.push({ x: (b.y - a.y) / len, y: -(b.x - a.x) / len });
+  }
+  for (let i = 0; i < k; i++) {
+    const a = hull[i];
+    const b = hull[(i + 1) % k];
+    const n = normals[i];
+    const n2 = normals[(i + 1) % k];
+    const sx = a.x + n.x * pad;
+    const sy = a.y + n.y * pad;
+    if (i === 0) ctx.moveTo(sx, sy);
+    else ctx.lineTo(sx, sy);
+    ctx.lineTo(b.x + n.x * pad, b.y + n.y * pad);
+    // Convex + positive winding ⇒ every vertex turn is a ≤π increasing-angle sweep,
+    // which is exactly canvas arc's default (anticlockwise=false) direction.
+    ctx.arc(b.x, b.y, pad, Math.atan2(n.y, n.x), Math.atan2(n2.y, n2.x), false);
+  }
 }
 
 /** Memoized 2D-overlay token→CSS derivations (SGR-006), keyed on theme epoch +
@@ -300,10 +407,10 @@ varying float vAA;
 void main() {
   float alpha = 1.0 - smoothstep(1.0 - vAA, 1.0, vEdge);
   if (alpha <= 0.0) discard;
-  // Emphasis is COLOUR-ONLY at full opacity (never an opacity fade). A focus node keeps its
-  // full category colour; a non-focus node (vDim > 0.5) mixes GENTLY toward uDimColor (the
-  // canvas background) so it recedes a touch — a small, subtle difference, no flat greyout.
-  vec3 col = vDim > 0.5 ? mix(vColor, uDimColor, ${glslFloat(NODE_RECEDE_MIX)}) : vColor;
+  // Emphasis is COLOUR-ONLY at full opacity (never an opacity fade). vDim carries the
+  // CURRENT eased recede fraction (0 = focus/full category colour; up to the hover or
+  // selection depth) — the CPU tween writes it per frame, so state changes cross-fade.
+  vec3 col = mix(vColor, uDimColor, clamp(vDim, 0.0, 1.0));
   gl_FragColor = vec4(col, alpha);
 }
 `;
@@ -436,8 +543,9 @@ void main() {
   // The icon sits INSIDE the filled disc as one composite mark: pick a CONTRASTING ink by
   // the disc colour's luminance — a paper knockout on a dark/saturated disc, dark ink on a
   // light disc — so the glyph is legible on ANY category fill. A de-emphasised node fades
-  // its icon with the receding disc.
-  float a = cov * vFade * (vDim > 0.5 ? 0.4 : 1.0);
+  // its icon with the receding disc — continuously, normalised by the deepest recede so a
+  // fully-receded selection-context icon sits at 0.4 and a hover-context icon stays softer.
+  float a = cov * vFade * mix(1.0, 0.4, clamp(vDim / ${glslFloat(NODE_RECEDE_SELECT)}, 0.0, 1.0));
   if (a <= 0.01) discard;
   float lum = dot(vColor, vec3(0.299, 0.587, 0.114));
   vec3 col = lum > 0.6 ? uIconInkDark : uIconInkLight;
@@ -501,16 +609,23 @@ export class ThreeField implements SceneFieldRenderer {
   // interaction state
   private hoveredId: string | null = null;
   private selectedIds: ReadonlySet<string> = new Set();
-  // Visual-only feature META-HIGHLIGHT (#16): a SET of nodes shown with the hover-style
-  // soft emphasis (members keep full colour, non-members recede) but NO selection ring —
-  // distinct from `selectedIds`, which is enforced SINGLETON (the graph rings at most one).
-  private metaHighlightIds: ReadonlySet<string> = new Set();
   // DURABLE feature-cluster spotlight: the SELECTED FEATURE tag (feature-selection-global-
   // state). Stored as a tag — NOT a frozen id set — so the member cohort is re-derived from
   // `featureCohort` on every `setData`, surviving data refreshes. `null` = no feature spotlit.
   private spotlightFeatureTag: string | null = null;
   private pinnedIds: ReadonlySet<string> = new Set();
   private visibleNodeIds: ReadonlySet<string> | null = null;
+  // Emphasis cross-fade (emphasis-state-grammar ADR): per-node recede TARGETS; the frame
+  // loop eases the displayed aDim toward them (EMPHASIS_FADE_TAU_MS) while `emphasisAnim`
+  // holds the loop awake. Bounded: one float per node, reallocated with the node set.
+  private dimTarget = new Float32Array(0);
+  private emphasisAnim = false;
+  private lastEmphasisTs = 0;
+  // Cluster-selection fence presence: eased 0..1 alpha on the same clock. `fenceTag` lags
+  // the spotlight tag on clear so the fence can fade OUT over the departing cohort.
+  private fenceAlpha = 0;
+  private fenceTargetAlpha = 0;
+  private fenceTag: string | null = null;
 
   private params: D3ForceParams = { ...D3_FORCE_DEFAULTS };
   private appearance: AppearanceParams = { ...APPEARANCE_DEFAULTS };
@@ -871,20 +986,13 @@ export class ThreeField implements SceneFieldRenderer {
         // SINGLETON enforcement (#16): the graph rings AT MOST ONE node — a >1-id
         // set-selected (the old feature-members multiselect the user rejected) collapses
         // to a single id. A node click already selects exactly one; feature emphasis goes
-        // through `set-meta-highlight`, never a multi-id selection.
+        // through `set-feature-spotlight`, never a multi-id selection.
         const first = cmd.ids.values().next().value;
         this.selectedIds = first === undefined ? new Set() : new Set([first]);
         this.applyEmphasis();
         this.requestRender();
         break;
       }
-      case "set-meta-highlight":
-        // Visual-only feature highlight (#16): soft hover-style emphasis of the member set,
-        // NO selection ring. Empty set clears it.
-        this.metaHighlightIds = new Set(cmd.ids);
-        this.applyEmphasis();
-        this.requestRender();
-        break;
       case "set-feature-spotlight": {
         // DURABLE feature-cluster spotlight (feature-selection-global-state): store the
         // selected feature TAG and emphasise its cohort (non-members recede), persisting
@@ -1106,7 +1214,6 @@ export class ThreeField implements SceneFieldRenderer {
 
     this.nodes = nodes;
     this.hoveredId = null;
-    this.metaHighlightIds = new Set(); // a data change clears a stale feature highlight (#16)
     this.visibleNodeIds = null;
     const n = nodes.length;
     if (n === 0) {
@@ -1430,7 +1537,7 @@ export class ThreeField implements SceneFieldRenderer {
     geom.instanceCount = n;
 
     // The node de-emphasis recede target is the canvas BACKGROUND (an established palette
-    // token, theme-adaptive): a non-focus node mixes gently toward it (NODE_RECEDE_MIX) so it
+    // token, theme-adaptive): a non-focus node mixes toward it (the eased aDim recede) so it
     // recedes into the paper a touch, at full alpha. No adhoc colour.
     const dim = new Color(canvasBackground());
     this.nodeMaterial = new ShaderMaterial({
@@ -1725,35 +1832,46 @@ export class ThreeField implements SceneFieldRenderer {
       }
       return set;
     }
-    // Feature META-HIGHLIGHT (#16): lowest-precedence focus cohort — the highlighted
-    // member set is emphasised (non-members recede) with the SAME soft treatment as hover,
-    // but no ring (rings are keyed off selectedIds/hoveredId only). Only the members that
-    // are actually present contribute; an all-absent set yields no emphasis (returns null).
-    if (this.metaHighlightIds.size > 0) {
-      const set = new Set<string>();
-      for (const id of this.metaHighlightIds) {
-        if (this.idToIndex.has(id)) set.add(id);
-      }
-      return set.size > 0 ? set : null;
-    }
     return null;
   }
 
   private applyEmphasis(): void {
     if (!this.nodeMesh) return;
     const active = this.emphasisSet();
-    // NODES — binary colour-recede (graph/Hover parity): 0 = full category colour (a focus
-    // node OR no emphasis), 1 = de-emphasised (recede toward the warm ground, FULL alpha).
-    // A focus node keeps full saturation; the hovered hub's pop is the ring + glow.
-    const nodeDim = this.nodeMesh.geometry.getAttribute("aDim");
-    const glyphDim = this.glyphMesh?.geometry.getAttribute("aDim");
-    for (let i = 0; i < this.nodes.length; i++) {
-      const dimmed = active && !active.has(this.nodes[i].id) ? 1 : 0;
-      nodeDim.setX(i, dimmed);
-      glyphDim?.setX(i, dimmed); // the icon recedes with its circle
+    // NODES — continuous colour-recede (emphasis-state-grammar ADR): each node's TARGET
+    // recede fraction is 0 for a focus node (or no emphasis) and otherwise the depth of
+    // the ACTIVE state — shallow for a transient hover, deeper for a durable selection /
+    // feature spotlight, so the durable state reads stronger. The frame loop eases the
+    // displayed aDim toward these targets (cross-fade, never a pop); reduced motion snaps.
+    // De-emphasis stays colour-only at FULL alpha; a focus node keeps full saturation.
+    const depth = this.hoveredId ? NODE_RECEDE_HOVER : NODE_RECEDE_SELECT;
+    if (this.dimTarget.length !== this.nodes.length) {
+      this.dimTarget = new Float32Array(this.nodes.length);
     }
-    nodeDim.needsUpdate = true;
-    if (glyphDim) glyphDim.needsUpdate = true;
+    for (let i = 0; i < this.nodes.length; i++) {
+      this.dimTarget[i] = active && !active.has(this.nodes[i].id) ? depth : 0;
+    }
+    // Fence presence target: rises while a feature spotlight is set; on clear the tag is
+    // RETAINED (fenceTag) so the fade-out still knows its cohort, released at alpha 0.
+    if (this.spotlightFeatureTag) this.fenceTag = this.spotlightFeatureTag;
+    this.fenceTargetAlpha = this.spotlightFeatureTag ? 1 : 0;
+    if (prefersReducedMotion()) {
+      const nodeDim = this.nodeMesh.geometry.getAttribute("aDim");
+      const glyphDim = this.glyphMesh?.geometry.getAttribute("aDim");
+      for (let i = 0; i < this.nodes.length; i++) {
+        nodeDim.setX(i, this.dimTarget[i]);
+        glyphDim?.setX(i, this.dimTarget[i]); // the icon recedes with its circle
+      }
+      nodeDim.needsUpdate = true;
+      if (glyphDim) glyphDim.needsUpdate = true;
+      this.fenceAlpha = this.fenceTargetAlpha;
+      if (this.fenceAlpha === 0) this.fenceTag = null;
+      this.emphasisAnim = false;
+      return;
+    }
+    if (!this.emphasisAnim) this.lastEmphasisTs = performance.now();
+    this.emphasisAnim = true;
+    this.requestRender();
 
     // EDGES keep their category GRADIENT colour + confidence width in EVERY mode (built once
     // in buildEdges, never recoloured on hover/selection) — user goal: theme palette only,
@@ -2034,6 +2152,13 @@ export class ThreeField implements SceneFieldRenderer {
       dirty = true;
     }
 
+    // Emphasis cross-fade (emphasis-state-grammar ADR): ease every node's displayed
+    // recede + the fence alpha toward their targets, holding the loop awake until settled.
+    if (this.emphasisAnim) {
+      this.stepEmphasisFade();
+      dirty = true;
+    }
+
     // SGR-005: any dirty frame may have moved node positions (tick+pack), the
     // camera (autoframe ease), the data, or the viewport (resize sets needsRender)
     // — all pick inputs — so the pointer-delta pick cache is no longer valid.
@@ -2052,8 +2177,48 @@ export class ThreeField implements SceneFieldRenderer {
       this.renderFrame();
       this.updatePerfLod(performance.now() - t0);
     }
-    if (this.running || this.needsRender || easing) this.wake();
+    if (this.running || this.needsRender || easing || this.emphasisAnim) this.wake();
   };
+
+  /** One exponential-ease step of the emphasis cross-fade: move every node's displayed
+   *  aDim (and the fence alpha) toward its target; snap + stop once everything is within
+   *  epsilon. dt is clamped so a background-tab stall can't teleport past the ease. */
+  private stepEmphasisFade(): void {
+    const nodeDim = this.nodeMesh?.geometry.getAttribute("aDim");
+    if (!nodeDim) {
+      this.emphasisAnim = false;
+      return;
+    }
+    const glyphDim = this.glyphMesh?.geometry.getAttribute("aDim");
+    const now = performance.now();
+    const dt = Math.min(100, Math.max(0, now - this.lastEmphasisTs));
+    this.lastEmphasisTs = now;
+    const k = 1 - Math.exp(-dt / EMPHASIS_FADE_TAU_MS);
+    const EPS = 0.004;
+    let maxErr = 0;
+    for (let i = 0; i < this.nodes.length; i++) {
+      const target = this.dimTarget[i] ?? 0;
+      const cur = nodeDim.getX(i);
+      let next = cur + (target - cur) * k;
+      const err = Math.abs(target - next);
+      if (err < EPS) next = target;
+      else if (err > maxErr) maxErr = err;
+      nodeDim.setX(i, next);
+      glyphDim?.setX(i, next); // the icon recedes with its circle
+    }
+    let fenceNext = this.fenceAlpha + (this.fenceTargetAlpha - this.fenceAlpha) * k;
+    const fenceErr = Math.abs(this.fenceTargetAlpha - fenceNext);
+    if (fenceErr < EPS) fenceNext = this.fenceTargetAlpha;
+    else if (fenceErr > maxErr) maxErr = fenceErr;
+    this.fenceAlpha = fenceNext;
+    nodeDim.needsUpdate = true;
+    if (glyphDim) glyphDim.needsUpdate = true;
+    if (maxErr < EPS) {
+      this.emphasisAnim = false;
+      // The fade-out has fully landed: release the lagging fence cohort tag.
+      if (this.fenceTargetAlpha === 0) this.fenceTag = null;
+    }
+  }
 
   /**
    * FPS-adaptive LOD (perf hardening #5). Tracks an EMA of render cost and, with hysteresis
@@ -2162,6 +2327,10 @@ export class ThreeField implements SceneFieldRenderer {
     // The active emphasis set (hover/selection) drives the focus/context split for the
     // glow + label colours below — recomputed once per draw.
     const focus = this.emphasisSet();
+
+    // Cluster-selection perimeter fence (emphasis-state-grammar ADR) — drawn FIRST so
+    // rings and labels layer above it.
+    this.drawFence(ctx, accent, s, ppw);
 
     // Emphasis rings (under labels). Three theme-token treatments kept visually
     // distinct so hover, selection, and pin never read the same:
@@ -2281,6 +2450,54 @@ export class ThreeField implements SceneFieldRenderer {
       );
       budget--;
     }
+    ctx.globalAlpha = 1;
+  }
+
+  /** Cluster-selection perimeter fence (emphasis-state-grammar ADR): the positive marker
+   *  of the durable feature-cluster selection — a convex padded hull (rounded n-gon)
+   *  traced around the spotlit cohort's on-screen positions, accent-token stroke over a
+   *  whisper fill, its alpha riding the shared emphasis ease (fade in on select, fade out
+   *  over the departing cohort on clear via the lagging `fenceTag`). Gates on the
+   *  visibleNodeIds mask exactly as rings/anchors do (GS-004): a filtered-out member
+   *  contributes no hull point and an all-hidden cohort draws no fence. Re-traced per
+   *  frame so it tracks the live layout; the interior fill is skipped under perf
+   *  degradation (the overlay pass is the FPS-sensitive path). */
+  private drawFence(
+    ctx: CanvasRenderingContext2D,
+    accentCss: string,
+    s: number,
+    ppw: number,
+  ): void {
+    if (this.fenceAlpha <= 0.01 || !this.fenceTag) return;
+    const ids = new Set(this.featureCohort.get(this.fenceTag) ?? []);
+    const featureNodeId = `feature:${this.fenceTag}`;
+    if (this.idToIndex.has(featureNodeId)) ids.add(featureNodeId);
+    const pts: ScreenPt[] = [];
+    let maxR = 0;
+    for (const id of ids) {
+      const i = this.idToIndex.get(id);
+      if (i === undefined) continue;
+      if (this.visibleNodeIds && !this.visibleNodeIds.has(id)) continue;
+      const p = this.worldToScreen(i);
+      if (!p) continue;
+      const r = Math.max(3 * s, nodeWorldRadius(this.nodes[i], this.appearance) * ppw);
+      if (r > maxR) maxR = r;
+      pts.push(p);
+    }
+    if (pts.length === 0) return;
+    const pad = maxR + FENCE_PAD_PX * s;
+    ctx.beginPath();
+    traceRoundedOffset(ctx, convexHull(pts), pad);
+    ctx.closePath();
+    if (!this.perfDegraded) {
+      ctx.globalAlpha = FENCE_FILL_ALPHA * this.fenceAlpha;
+      ctx.fillStyle = accentCss;
+      ctx.fill();
+    }
+    ctx.globalAlpha = FENCE_STROKE_ALPHA * this.fenceAlpha;
+    ctx.strokeStyle = accentCss;
+    ctx.lineWidth = FENCE_STROKE_WIDTH_PX * s;
+    ctx.stroke();
     ctx.globalAlpha = 1;
   }
 
