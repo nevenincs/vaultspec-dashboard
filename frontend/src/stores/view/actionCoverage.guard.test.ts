@@ -4,9 +4,8 @@
 // inline accelerator and the `?` legend derive correctly and cannot drift. It asserts:
 //   1. every dual-plane (keymap + palette) verb appears in the resolved palette command
 //      list under its SHARED keymap action-id constant (cross-plane id identity), and
-//   2. the campaign's delta verbs (focus/clear filter, right-rail focus-search) are
-//      present, and the right-rail entity kinds (commit, pull-request) each have a
-//      resolver.
+//   2. the campaign's delta verbs (focus/clear filter) are present, and the
+//      right-rail entity kinds (commit, pull-request) each have a resolver.
 // If a future change renames a verb on one plane but not the other, the shared-id
 // assertion fails here rather than silently breaking accelerator derivation.
 

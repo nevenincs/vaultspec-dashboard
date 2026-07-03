@@ -134,6 +134,7 @@ export function SearchPaletteSurface() {
     searchState: search.state,
     semanticOffline: search.semanticOffline,
     error: search.error,
+    incomplete: search.incomplete,
   });
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -280,6 +281,11 @@ export function SearchPaletteSurface() {
             />
           </div>
         )}
+        {presentation.incompleteNote && (
+          <div className="border-t border-rule px-fg-3 py-fg-1 text-caption text-ink-faint">
+            {presentation.incompleteNote}
+          </div>
+        )}
         <div id={liveRegionId} aria-live="polite" className="sr-only">
           {presentation.liveMessage}
         </div>
@@ -400,6 +406,15 @@ export function SearchPaletteSurface() {
               stateMode={presentation.stateMode}
               message={presentation.emptyMessage}
             />
+          </div>
+        )}
+
+        {/* Incomplete-listing note: a walk-capped provider means name matches may
+            miss files. Visible (and thus screen-reader accessible) plain-language
+            line, no mechanism words (search-providers ADR D1 / D8). */}
+        {presentation.incompleteNote && (
+          <div className="border-t border-rule px-fg-4 py-fg-1 text-caption text-ink-faint">
+            {presentation.incompleteNote}
           </div>
         )}
 

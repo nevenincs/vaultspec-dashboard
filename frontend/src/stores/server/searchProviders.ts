@@ -14,14 +14,16 @@
 // Layer law: pure contract types + pure helpers; no fetch, no React, no raw
 // `tiers` read here (the host and providers own those).
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { debounce } from "../../platform/timing";
 import { rankLiteralMatches, STRONG_LITERAL_BAND } from "./literalMatch";
 import type { CodeFileEntry, SearchResult, VaultTreeEntry } from "./engine";
 import { docNodeIdFromStem, stemFromPath } from "./liveAdapters";
 import {
   mergeSemanticEpoch,
   searchResultSpecies,
+  SEARCH_DEBOUNCE_MS,
   UNIFIED_SEARCH_RESULTS_MAX_ITEMS,
   unifiedResultIdentity,
   useUnifiedSearchController,
@@ -110,6 +112,11 @@ export interface SearchProviderResult {
    *  ONLY by the semantic provider; a files provider has no freshness axis and
    *  omits it. The host forwards it as the one shared epoch. */
   semanticEpoch?: number | null | undefined;
+  /** True when this provider's backing listing was TRUNCATED — the engine walk
+   *  cap or the client page-walk cap bounded it, so files beyond the cap are
+   *  absent and the name matches may be incomplete. The host aggregates this so
+   *  the palette can state it honestly (walk-cap truncation ADR D8 / D1). */
+  incomplete?: boolean;
   /** Re-run this provider's backing query (the host's retry fans out to all). */
   retry?: () => void;
 }
@@ -271,6 +278,10 @@ export function useFilesCodeProvider(
   const codeFiles = useCodeFiles(scope);
   const entries = codeFiles.data?.entries;
   const isPending = codeFiles.isPending;
+  // The listing is incomplete when the engine walk cap OR the client page-walk
+  // cap bounded it (`truncated` is non-null in either case) — the reader holds a
+  // partial set, so its name matches may miss files.
+  const incomplete = codeFiles.data?.truncated != null;
   return useMemo(() => {
     const ranked = rankLiteralMatches(
       query,
@@ -289,8 +300,8 @@ export function useFilesCodeProvider(
     if (scope === null || query.trim().length === 0) state = "idle";
     else if (isPending && entries === undefined) state = "loading";
     else state = "ready";
-    return { id: FILES_CODE_PROVIDER_ID, entries: providerEntries, state };
-  }, [query, scope, entries, isPending]);
+    return { id: FILES_CODE_PROVIDER_ID, entries: providerEntries, state, incomplete };
+  }, [query, scope, entries, isPending, incomplete]);
 }
 
 // ── The provider host ─────────────────────────────────────────────────────────────
@@ -309,6 +320,9 @@ export interface SearchProvidersView {
   /** The semantic source failed with a genuine (non-degradation) transport error
    *  AND no files provider produced anything — the retryable error state. */
   error: boolean;
+  /** True when ANY provider's backing listing was truncated (walk-capped), so the
+   *  name matches may be missing files — the palette states this honestly. */
+  incomplete: boolean;
   /** The shared served semantic epoch (from the semantic provider). */
   semanticEpoch: number | null | undefined;
   /** Re-run every provider's backing query. */
@@ -362,17 +376,55 @@ export function mergeSearchProviders(
     (acc, p) => mergeSemanticEpoch(acc, p.semanticEpoch),
     undefined,
   );
+  const incomplete = providers.some((p) => p.incomplete === true);
   const retry = () => {
     for (const p of providers) p.retry?.();
   };
 
-  return { state, entries, semanticOffline, pending, error, semanticEpoch, retry };
+  return {
+    state,
+    entries,
+    semanticOffline,
+    pending,
+    error,
+    incomplete,
+    semanticEpoch,
+    retry,
+  };
+}
+
+/**
+ * Debounce the keystroke stream onto a settled term for the literal providers
+ * (ADR D1: debounce is the HOST's job). Reuses the semantic path's one
+ * `SEARCH_DEBOUNCE_MS` constant — no second constant — and mirrors its policy: an
+ * empty query settles immediately (idle is not a request worth waiting on), a
+ * non-empty term debounces on the trailing edge. The semantic provider keeps its
+ * own internal debounce over the raw query, so all three settle in lock-step.
+ */
+function useDebouncedQuery(query: string): string {
+  const [settled, setSettled] = useState(query);
+  const setDebounced = useMemo(
+    () => debounce((value: string) => setSettled(value), SEARCH_DEBOUNCE_MS),
+    [],
+  );
+  useEffect(() => {
+    if (query.length === 0) {
+      setDebounced.cancel();
+      setSettled(query);
+    } else {
+      setDebounced(query);
+    }
+  }, [query, setDebounced]);
+  useEffect(() => () => setDebounced.cancel(), [setDebounced]);
+  return settled;
 }
 
 /**
  * The one Search host (search-providers ADR D1): it composes the three registered
  * providers — semantic FIRST — and delegates the shared merge/dedupe/bound/
- * degradation/epoch collapse to the pure `mergeSearchProviders`. The rag-down text
+ * degradation/epoch collapse to the pure `mergeSearchProviders`. The literal
+ * providers consume the host-debounced query (the semantic path debounces
+ * internally), so no source re-ranks on every raw keystroke. The rag-down text
  * fallback is NOT a mode here: when the semantic provider is offline it contributes
  * nothing and the files(vault) provider's name matches carry the result set.
  */
@@ -380,9 +432,10 @@ export function useSearchProviders(
   query: string,
   scope: string | null,
 ): SearchProvidersView {
+  const debouncedQuery = useDebouncedQuery(query);
   const semantic = useSemanticProvider(query, scope);
-  const filesVault = useFilesVaultProvider(query, scope);
-  const filesCode = useFilesCodeProvider(query, scope);
+  const filesVault = useFilesVaultProvider(debouncedQuery, scope);
+  const filesCode = useFilesCodeProvider(debouncedQuery, scope);
   return useMemo(
     () => mergeSearchProviders([semantic, filesVault, filesCode]),
     [semantic, filesVault, filesCode],

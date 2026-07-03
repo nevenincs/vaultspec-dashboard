@@ -42,7 +42,9 @@ function provider(
   id: string,
   state: SearchProviderState,
   entries: SearchProviderEntry[],
-  extra: Partial<Pick<SearchProviderResult, "semanticEpoch" | "retry">> = {},
+  extra: Partial<
+    Pick<SearchProviderResult, "semanticEpoch" | "retry" | "incomplete">
+  > = {},
 ): SearchProviderResult {
   return { id, state, entries, ...extra };
 }
@@ -146,6 +148,24 @@ describe("mergeSearchProviders (pure merge/dedupe/band/epoch)", () => {
       provider("files-code", "ready", more),
     ]);
     expect(view.entries).toHaveLength(40);
+  });
+
+  it("aggregates the incomplete (walk-capped) truth across providers", () => {
+    // No provider capped → complete.
+    const complete = mergeSearchProviders([
+      provider("semantic", "ready", []),
+      provider("files-code", "ready", [entry("code:a", 0.3, "weak-literal")]),
+    ]);
+    expect(complete.incomplete).toBe(false);
+    // A files provider whose listing was walk-capped → the merged view is
+    // incomplete, so the palette can state it.
+    const capped = mergeSearchProviders([
+      provider("semantic", "ready", []),
+      provider("files-code", "ready", [entry("code:a", 0.3, "weak-literal")], {
+        incomplete: true,
+      }),
+    ]);
+    expect(capped.incomplete).toBe(true);
   });
 
   it("is idle only when every provider is idle", () => {

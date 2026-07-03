@@ -22,14 +22,15 @@ export const COMMAND_PALETTE_KEYBINDING: KeybindingDef = {
   context: "global",
 };
 
-// The Cmd-K palette has THREE planes (command-palette-planes ADR), all modes of the
-// one overlay so "Command-K controls searching" holds:
+// The Cmd-K palette has THREE planes (command-palette-planes / search-providers
+// ADRs), all modes of the one overlay so "Command-K controls searching" holds:
 //   `command`  — the verb/navigation plane fed by the command-provider registry.
-//   `search`   — the rag-backed SEMANTIC search (meaning-ranked vault+code), with the
+//   `search`   — the one Search plane composing three providers (meaning + files by
+//                name, vault + code) into one ranked interleaved list, with the
 //                on-demand expanded reader split (figma SearchPalette 651:1771 / 652:1804).
-//   `document` — the LITERAL document finder over the vault tree (structural tier,
-//                rag-free), for "where is the thing named X". Stays available when the
-//                semantic tier is offline.
+//   `document` — the LITERAL document finder, a thin consumer of the files(vault)
+//                provider over the structural-tier vault tree, for "where is the
+//                thing named X". Stays available when the meaning source is offline.
 export type CommandPaletteMode = "command" | "search" | "document";
 
 export const SEARCH_PALETTE_ACTION_ID = "app:search";
@@ -88,6 +89,10 @@ export interface SearchPalettePresentationView {
   stateMode: SearchPaletteStateMode;
   emptyMessage: string | null;
   liveMessage: string;
+  /** A one-line footer note when a provider's listing was walk-capped, so name
+   *  matches may be missing files (search-providers ADR D1 / D8); null otherwise.
+   *  Rendered visibly AND in the live region (twin parity). */
+  incompleteNote: string | null;
   footerHints: {
     move: string;
     previousNext: string;
@@ -138,6 +143,7 @@ export function deriveSearchPalettePresentationView(context: {
   searchState: unknown;
   semanticOffline: unknown;
   error: unknown;
+  incomplete?: unknown;
 }): SearchPalettePresentationView {
   const query = normalizeCommandPaletteQuery(context.query);
   const expanded = normalizeSearchPaletteExpanded(context.expanded);
@@ -174,6 +180,13 @@ export function deriveSearchPalettePresentationView(context: {
             ? "Full search is unavailable — showing name matches only."
             : `No matches for “${query}”.`;
 
+  // A walk-capped provider listing: the name matches may be missing files. One
+  // plain-language line, no mechanism words (search-providers ADR D1 / D8).
+  const incompleteNote =
+    context.incomplete === true
+      ? "Some files may be missing from name matches — the repository is very large."
+      : null;
+
   return {
     safeCursor,
     selectedNodeId,
@@ -188,12 +201,17 @@ export function deriveSearchPalettePresentationView(context: {
     }`,
     stateMode,
     emptyMessage,
+    // Screen-reader twin parity (search-providers ADR D3): the degraded sentence
+    // is announced ONLY when it is also the VISIBLE state (no results); once files
+    // rescue with results the SR announces the normal count message, matching the
+    // visible list instead of stranding a degraded copy with no on-screen twin.
     liveMessage:
       context.error === true
         ? "search request failed"
-        : context.semanticOffline === true
+        : count === 0 && context.semanticOffline === true
           ? "Full search is unavailable — showing name matches only."
           : resultCountLabel,
+    incompleteNote,
     footerHints: {
       move: "move",
       previousNext: "previous / next",

@@ -297,6 +297,53 @@ describe("command palette store", () => {
       emptyMessage: "Full search is unavailable — showing name matches only.",
       liveMessage: "Full search is unavailable — showing name matches only.",
     });
+
+    // Twin parity when files RESCUE the query (review LOW-1): semantic offline but
+    // results present → no degraded StateBlock, and the SR live region announces
+    // the normal COUNT, not the degraded copy that would have no visible twin.
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "auth",
+        cursor: 0,
+        expanded: false,
+        pills: [{ nodeId: "doc:a" }, { nodeId: "code:b" }],
+        searchState: "results",
+        semanticOffline: true,
+        error: false,
+      }),
+    ).toMatchObject({
+      stateMode: null,
+      emptyMessage: null,
+      liveMessage: "2 results",
+    });
+
+    // A walk-capped provider surfaces the honest one-line incomplete note (review
+    // HIGH: truncated-not-surfaced); absent when every listing is complete.
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "auth",
+        cursor: 0,
+        expanded: false,
+        pills: [{ nodeId: "code:a" }],
+        searchState: "results",
+        semanticOffline: false,
+        error: false,
+        incomplete: true,
+      }).incompleteNote,
+    ).toBe(
+      "Some files may be missing from name matches — the repository is very large.",
+    );
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "auth",
+        cursor: 0,
+        expanded: false,
+        pills: [{ nodeId: "code:a" }],
+        searchState: "results",
+        semanticOffline: false,
+        error: false,
+      }).incompleteNote,
+    ).toBeNull();
   });
 
   it("normalizes corrupted palette state before open and toggle transitions", () => {

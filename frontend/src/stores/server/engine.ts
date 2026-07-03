@@ -1898,6 +1898,18 @@ export class EngineClient {
       cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
       if (cursor === undefined) break;
     }
+    // The CLIENT walk cap is ALSO truncation: if the page loop exhausted its
+    // bound while a cursor still remained, files beyond it never loaded — an
+    // incomplete listing exactly like the engine's own walk cap. Surface it (when
+    // the server did not already report truncation) so the provider and palette
+    // can be honest rather than silently partial.
+    if (truncated === null && cursor !== undefined) {
+      truncated = {
+        returned_files: entries.length,
+        reason:
+          "client page-walk cap: the listing stopped at its page ceiling; files beyond it are absent",
+      };
+    }
     return adaptCodeFiles({ entries, tiers, truncated });
   }
 
