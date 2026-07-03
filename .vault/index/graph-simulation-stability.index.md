@@ -15,6 +15,8 @@ related:
   - '[[2026-06-29-graph-simulation-stability-research]]'
   - '[[2026-07-02-graph-simulation-stability-audit]]'
   - '[[2026-07-03-graph-simulation-stability-adr]]'
+  - '[[2026-07-03-graph-simulation-stability-reference]]'
+  - '[[2026-07-03-graph-simulation-stability-research]]'
 ---
 
 # `graph-simulation-stability` feature index
@@ -43,6 +45,11 @@ Auto-generated index of all documents tagged with `#graph-simulation-stability`.
 
 - `2026-06-29-graph-simulation-stability-plan` - `graph-simulation-stability` plan
 
+### reference
+
+- `2026-07-03-graph-simulation-stability-reference` - `graph-simulation-stability` reference: `Obsidian-feel force sim discipline — Quartz, d3-force, ForceAtlas2 vs our solver`
+
 ### research
 
 - `2026-06-29-graph-simulation-stability-research` - `graph-simulation-stability` research: `graph stays static unless dragged: decoupling selection and additive set-data from the force solver`
+- `2026-07-03-graph-simulation-stability-research` - `graph-simulation-stability` research: `jitter root cause measurement`
