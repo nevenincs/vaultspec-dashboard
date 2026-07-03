@@ -10,16 +10,6 @@ related:
   - '[[2026-07-03-rag-integration-hardening-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 # `rag-integration-hardening` plan
 
 ### Phase `P01` - Engine search transport rides the resident service
@@ -35,7 +25,7 @@ Replace the per-query CLI spawn with the bounded rag-client HTTP search verb, po
 
 Forward rag's native index_state verbatim and annotate the shared semantic_epoch on every search success so downstream builds get one invalidation key (ADR D3).
 
-- [ ] `P02.S05` - Forward rag's index_state block verbatim on every /search success and annotate the response with the shared semantic_epoch from the short-TTL cached read the embeddings path uses, degrading to an honest absent marker without a second blocking round-trip; `engine/crates/vaultspec-api/src/routes/ops.rs + rag-client/src/control.rs`.
+- [x] `P02.S05` - Forward rag's index_state block verbatim on every /search success and annotate the response with the shared semantic_epoch from the short-TTL cached read the embeddings path uses, degrading to an honest absent marker without a second blocking round-trip; `engine/crates/vaultspec-api/src/routes/ops.rs + rag-client/src/control.rs`.
 - [ ] `P02.S06` - Cover the freshness annotation in engine tests: epoch present on success, honest absent marker on epoch-read failure, index_state forwarded untouched; `engine/crates/vaultspec-api/src/routes/ops.rs test mod`.
 
 ### Phase `P03` - Frontend timeout coherence and shape adoption

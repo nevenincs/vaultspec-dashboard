@@ -1060,19 +1060,32 @@ pub async fn graph_embeddings(
     // fails (rag service flaking) degrades to `0` (treated as "unknown"): the
     // Qdrant scroll below still serves whatever vectors exist.
     let semantic_epoch_started = Instant::now();
-    let semantic_epoch = {
-        let control = rag_client::client::LoopbackTransport {
-            port: info.port,
-            bearer: info.service_token.clone(),
-            timeout: rag_client::control::READ_BUDGET,
-        };
-        // Blocking /jobs epoch read — offload it (RCR-001). A join failure OR a rag
-        // error both degrade to 0 ("unknown"), preserving the existing behaviour.
-        tokio::task::spawn_blocking(move || rag_client::control::semantic_epoch(&control))
-            .await
-            .ok()
-            .and_then(|r| r.ok())
-            .unwrap_or(0)
+    // Read the epoch through the shared short-TTL cache (rag-integration-hardening
+    // D3): a warm window serves without a `/jobs` round-trip, and a successful read
+    // here warms the same slot the `/search` freshness annotation reads. A
+    // cold/expired slot pays the one bounded `/jobs` read (offloaded, RCR-001); a
+    // join failure OR a rag error yields no epoch — the vector key falls back to `0`
+    // ("unknown", the existing behaviour) and the slot stays cold so `/search`
+    // reports absent rather than a fabricated `0`. A successfully-read epoch (a
+    // legitimate `0` included) is cached.
+    let semantic_epoch = match state.semantic_epoch_cache.fresh() {
+        Some(epoch) => epoch,
+        None => {
+            let control = rag_client::client::LoopbackTransport {
+                port: info.port,
+                bearer: info.service_token.clone(),
+                timeout: rag_client::control::READ_BUDGET,
+            };
+            let read =
+                tokio::task::spawn_blocking(move || rag_client::control::semantic_epoch(&control))
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok());
+            if let Some(epoch) = read {
+                state.semantic_epoch_cache.store(epoch);
+            }
+            read.unwrap_or(0)
+        }
     };
     let semantic_epoch_ms = semantic_epoch_started.elapsed().as_millis() as u64;
     // Embeddings are scrolled DIRECTLY from Qdrant's HTTP port (ADR D1), not rag's

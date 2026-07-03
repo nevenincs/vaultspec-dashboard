@@ -1222,6 +1222,61 @@ impl ScopeCell {
 /// Workspace-level serve state: the warm scope registry, the single shared
 /// user-state handle, the bearer token, and the active scope. Per-scope serve
 /// state lives in [`ScopeCell`], resolved through the registry.
+/// The freshness window for the cached semantic epoch
+/// (rag-integration-hardening D3). rag's index epoch only advances when a
+/// reindex COMPLETES — a minutes-long operation — so serving an epoch up to a
+/// few seconds stale is negligible against the build it tracks, while the window
+/// collapses a burst of `/search` freshness annotations and `/graph/embeddings`
+/// polls onto a single `/jobs` round-trip.
+const SEMANTIC_EPOCH_TTL: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The value + read instant of a cached semantic epoch.
+struct CachedEpoch {
+    epoch: u64,
+    read_at: std::time::Instant,
+}
+
+/// A bounded, single-value, short-TTL cache of rag's machine-global semantic
+/// freshness epoch (rag-integration-hardening D3). The epoch is ONE fact for the
+/// resident service — the newest terminal reindex timestamp across its `/jobs`,
+/// derived by [`rag_client::control::semantic_epoch`] — so the whole cache is a
+/// single `(epoch, read_at)` slot, never a growing per-scope map
+/// (`every-accumulator-is-bounded`: one value plus a TTL bound). Both the
+/// `/graph/embeddings` vector-cache key and the `/search` freshness annotation
+/// read the epoch through this one seam, so the derivation lives in exactly one
+/// place and a warm read costs no round-trip.
+#[derive(Default)]
+pub struct SemanticEpochCache {
+    slot: Mutex<Option<CachedEpoch>>,
+}
+
+impl SemanticEpochCache {
+    /// The cached epoch IF it was read within [`SEMANTIC_EPOCH_TTL`], else `None`
+    /// (a cold or expired slot). A `None` is each caller's cue to refresh on its
+    /// own terms: `/graph/embeddings` does the one bounded `/jobs` read and
+    /// [`SemanticEpochCache::store`]s it; `/search` annotates an honest absent
+    /// marker rather than adding a second blocking round-trip on the search path.
+    pub fn fresh(&self) -> Option<u64> {
+        // Poison recovery (robustness H2): see `graph_arc`.
+        let slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        slot.as_ref()
+            .filter(|c| c.read_at.elapsed() < SEMANTIC_EPOCH_TTL)
+            .map(|c| c.epoch)
+    }
+
+    /// Store a freshly-read epoch, opening a new TTL window. Only a genuinely
+    /// read epoch is stored — a legitimate `0` ("nothing reindexed yet") included;
+    /// a FAILED read is never stored, so a rag flake leaves the slot cold and
+    /// `/search` reports absent rather than a fabricated `0`.
+    pub fn store(&self, epoch: u64) {
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        *slot = Some(CachedEpoch {
+            epoch,
+            read_at: std::time::Instant::now(),
+        });
+    }
+}
+
 pub struct AppState {
     /// The launch root of the workspace — used for worktree discovery so any
     /// vault-bearing worktree in this workspace is a selectable scope.
@@ -1245,6 +1300,12 @@ pub struct AppState {
     /// semantics; it exists so the dashboard has one backend-backed state
     /// authority during the browser session.
     pub dashboard_state: Mutex<crate::routes::state::DashboardStateSlot>,
+    /// Bounded short-TTL cache of rag's machine-global semantic-index freshness
+    /// epoch (rag-integration-hardening D3): the `/search` freshness annotation
+    /// and the `/graph/embeddings` vector-cache key read the epoch through this
+    /// one seam, so a warm read never pays a second `/jobs` round-trip and the
+    /// derivation is not duplicated. Single value plus a TTL — bounded at creation.
+    pub semantic_epoch_cache: SemanticEpochCache,
 }
 
 impl AppState {
@@ -1500,6 +1561,7 @@ pub fn build_state(root: PathBuf) -> Arc<AppState> {
         user_state,
         active_scope: RwLock::new(active_token.clone()),
         dashboard_state: Mutex::new(crate::routes::state::DashboardStateSlot::new()),
+        semantic_epoch_cache: SemanticEpochCache::default(),
     });
     // Eagerly build the launch scope's cell so `/status`, the tiers fallback,
     // and the active-cell resolve are always satisfiable. The cell is pinned

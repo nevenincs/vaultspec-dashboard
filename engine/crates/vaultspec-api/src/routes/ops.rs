@@ -2620,11 +2620,18 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
         }
     };
 
+    // The shared D4 freshness epoch rides the annotated envelope (D3). Served from
+    // the short-TTL cache ONLY — never a second blocking `/jobs` round-trip on the
+    // search path: a warm slot annotates the epoch, a cold/expired slot annotates
+    // an honest absent marker (null). The `/graph/embeddings` poll keeps the slot
+    // warm, so both planes share one invalidation key without taxing every search.
+    let semantic_epoch = state.semantic_epoch_cache.fresh();
+
     // Flatten rag's envelope to the contract §2 shape and annotate each hit
-    // with its engine node id (§8 value-add). A shape miss degrades the
-    // `semantic` tier truthfully — never a healthy-looking empty result and
-    // never a foreign envelope passed through unflattened.
-    match flatten_and_annotate(&rag_envelope) {
+    // with its engine node id (§8 value-add) plus the freshness epoch. A shape
+    // miss degrades the `semantic` tier truthfully — never a healthy-looking empty
+    // result and never a foreign envelope passed through unflattened.
+    match flatten_and_annotate(&rag_envelope, semantic_epoch) {
         Ok(data) => Ok(super::envelope(data, super::query_tiers(&cell), None)),
         Err(miss) => {
             let reason = miss.reason();
@@ -2712,14 +2719,21 @@ impl SearchShapeMiss {
     }
 }
 
-/// Annotate rag's FLAT search envelope (rag-integration-hardening D1): each hit
-/// in the top-level `results` list gains the engine's one value-add (`node_id`);
-/// every other field of the flat envelope (`request_id`, `summary`, `timing`,
-/// `index_state`, ...) passes through verbatim. rag's HTTP `/search` response is
-/// already flat — there is no nested `{ok, command, data}` wrapper to strip — so
-/// this annotates in place. A 2xx response missing the `results` list is a typed
-/// shape miss the caller degrades the `semantic` tier on.
-fn flatten_and_annotate(rag: &Value) -> Result<Value, SearchShapeMiss> {
+/// Annotate rag's FLAT search envelope (rag-integration-hardening D1/D3): each
+/// hit in the top-level `results` list gains the engine's node-id value-add, and
+/// the envelope gains the shared D4 `semantic_epoch`; every other field of the
+/// flat envelope (`request_id`, `summary`, `timing`, `index_state`, ...) — rag's
+/// native freshness block `index_state` included — passes through verbatim. rag's
+/// HTTP `/search` response is already flat (no nested `{ok, command, data}`
+/// wrapper to strip), so this annotates in place. `semantic_epoch` is `Some` when
+/// the shared cache served a warm epoch and `None` (annotated as an explicit
+/// `null` — freshness unknown, never a fabricated `0`) when the slot was
+/// cold/failed. A 2xx response missing the `results` list is a typed shape miss
+/// the caller degrades the `semantic` tier on.
+fn flatten_and_annotate(
+    rag: &Value,
+    semantic_epoch: Option<u64>,
+) -> Result<Value, SearchShapeMiss> {
     let results = rag
         .get("results")
         .and_then(Value::as_array)
@@ -2744,6 +2758,12 @@ fn flatten_and_annotate(rag: &Value) -> Result<Value, SearchShapeMiss> {
 
     let mut out = rag.clone();
     out["results"] = Value::Array(annotated);
+    // Engine value-add (D3): the shared D4 semantic epoch rides the annotated
+    // envelope so downstream builds key one invalidation across search AND
+    // embeddings. `None` (a cold/failed epoch read) annotates an explicit `null` —
+    // freshness unknown — never a fabricated `0`. rag's own `index_state` and every
+    // other flat field passed through verbatim in the `rag.clone()` above.
+    out["semantic_epoch"] = semantic_epoch.map(|e| json!(e)).unwrap_or(Value::Null);
     Ok(out)
 }
 
@@ -2792,7 +2812,7 @@ mod tests {
     #[test]
     fn annotates_rags_real_flat_shape() {
         let rag: Value = serde_json::from_str(RAG_REAL).unwrap();
-        let out = flatten_and_annotate(&rag).expect("real flat shape annotates");
+        let out = flatten_and_annotate(&rag, None).expect("real flat shape annotates");
 
         // The flat envelope's top-level context fields pass through verbatim —
         // there is nothing to flatten, only annotate in place.
@@ -2825,12 +2845,12 @@ mod tests {
         // A 2xx flat body with no `results` key at all is shape drift.
         let rag = json!({"request_id": "r-1", "summary": "x"});
         assert!(matches!(
-            flatten_and_annotate(&rag).unwrap_err(),
+            flatten_and_annotate(&rag, None).unwrap_err(),
             SearchShapeMiss::NoResults
         ));
         // A `results` that is not an array is the same shape drift.
         assert!(matches!(
-            flatten_and_annotate(&json!({"results": "not-an-array"})).unwrap_err(),
+            flatten_and_annotate(&json!({"results": "not-an-array"}), None).unwrap_err(),
             SearchShapeMiss::NoResults
         ));
     }
@@ -2839,10 +2859,13 @@ mod tests {
     fn an_empty_results_array_is_a_healthy_zero_match_not_a_miss() {
         // The empty-index / zero-hit case: rag answered 2xx with an empty
         // `results` list. That is a healthy success, never a shape miss.
-        let out = flatten_and_annotate(&json!({
-            "request_id": "r-2", "results": [],
-            "index_state": {"status": "available"}
-        }))
+        let out = flatten_and_annotate(
+            &json!({
+                "request_id": "r-2", "results": [],
+                "index_state": {"status": "available"}
+            }),
+            None,
+        )
         .expect("empty results is a healthy zero-match");
         assert_eq!(out["results"].as_array().unwrap().len(), 0);
         assert_eq!(out["index_state"]["status"], "available");
