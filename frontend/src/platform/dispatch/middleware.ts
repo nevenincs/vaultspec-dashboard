@@ -16,15 +16,34 @@ export const loggingMiddleware: Middleware = (action, next) => {
     `dispatch ${action.type}`,
     action.meta ? { meta: action.meta } : undefined,
   );
-  try {
-    return next(action);
-  } catch (error) {
+  const logFailure = (error: unknown) =>
     dispatchLog.error(
       `action "${action.type}" failed`,
       error instanceof Error ? error : { error },
     );
+  let result: unknown;
+  try {
+    result = next(action);
+  } catch (error) {
+    logFailure(error);
     throw error;
   }
+  // Every consequential handler (ops, copy) is ASYNC: `next` returns a promise
+  // whose REJECTION escapes the sync try/catch above, so the seam's
+  // "logged/traced/guardable" charter previously covered only the sync half
+  // (KAR-007). Attach a catch-log-RETHROW so an async failure is logged too,
+  // while callers still observe the rejection unchanged.
+  if (
+    result !== null &&
+    typeof result === "object" &&
+    typeof (result as { then?: unknown }).then === "function"
+  ) {
+    return (result as Promise<unknown>).catch((error: unknown) => {
+      logFailure(error);
+      throw error;
+    });
+  }
+  return result;
 };
 
 let traceCounter = 0;
