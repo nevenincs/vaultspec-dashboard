@@ -206,7 +206,18 @@ export interface ViewState {
    * session's `scope_context.feature_tags` on load.
    */
   featureContexts: string[];
-  /** Event/edge selection metadata that is not yet represented in dashboard-state. */
+  /**
+   * Supplementary edge/event selection metadata — VIEW-LOCAL BY DESIGN (SRR-004).
+   * The canonical NODE selection is shared corpus intent: it rides dashboard-state
+   * `selected_ids` (one record, one write seam) and is written through
+   * `patchDashboardState` on every selection. This slice carries only WHICH
+   * edge/event the current selection came from — a rendering concern (which edge to
+   * emphasize), not cross-surface corpus intent — so it stays local chrome, like
+   * `hoveredId` below. No second surface consumes it today; promoting it onto
+   * dashboard-state is warranted ONLY when one genuinely needs to read the selected
+   * edge/event from the shared record (architecture-boundaries: local view stores
+   * hold only local chrome).
+   */
   selection: Selection;
   /**
    * The transient hovered node id — VIEW-LOCAL ONLY (graph-perf 2026-06-18). Hover

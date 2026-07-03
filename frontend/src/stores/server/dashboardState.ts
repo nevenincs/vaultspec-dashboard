@@ -239,6 +239,20 @@ function cachedDashboardStateSessionIdentity(client: QueryClient): string {
   );
 }
 
+/**
+ * Land a PATCH response (already the full merged server state) into the cache.
+ *
+ * The immediate `invalidateQueries` after `setQueryData` is a DELIBERATE
+ * out-of-order convergence backstop, not a redundant fetch (SRR-003). Writes fan
+ * out concurrently — a rapid selection click, facet toggle, and panel resize can
+ * each PATCH in flight at once — and their responses may resolve out of order, so
+ * the last `setQueryData` to run can be a STALE earlier response. The refetch
+ * re-reads the authoritative current state and converges the cache regardless of
+ * resolution order. The cost is one extra `GET /dashboard-state` per intent write
+ * per observing surface; convergence correctness is worth it, and the per-scope
+ * write chains (panel_state / filters / timeline-mode below) already collapse the
+ * bursts that would otherwise multiply it.
+ */
 export function updateDashboardStateCache(
   state: DashboardState,
   client: QueryClient = queryClient,
