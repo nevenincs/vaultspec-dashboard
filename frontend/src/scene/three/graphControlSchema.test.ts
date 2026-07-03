@@ -27,7 +27,9 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   linkDistance: 40,
   linkStrength: 1,
   chargeDistanceMax: 0,
-  chargeTheta: 0.8,
+  // 0.5 = the Barnes-Hut accuracy sweet spot (graph-simulation-stability ADR
+  // amendment 2): a coarser criterion measured as two thirds of the live jitter.
+  chargeTheta: 0.5,
   centerStrength: 0.06,
   collidePadding: 3,
   collideStrength: 0.8,

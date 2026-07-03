@@ -194,3 +194,34 @@ Two refinements, both inside the anneal (no lifecycle change):
 
 The hard cap stays the outer bound; two new registry constants
 (`annealStallTicks`, `annealStallImprovement`) join the anneal set.
+
+## Amendment 2 (2026-07-03): jitter root cause — Barnes-Hut accuracy
+
+Live review after the ramp: the residual jitter is fundamental, present even on
+EDGELESS free-floating nodes — so not the springs, not the contacts, and not
+under-annealing. The measurement harness (recorded in the same-day
+`jitter root cause measurement` research) isolated it decisively:
+
+- Gravity alone is stable to 0.001; the many-body repulsion alone jitters at
+  0.49; exact n-body (theta 0) drops the baseline 0.26 to 0.09. TWO THIRDS of
+  the live jitter is Barnes-Hut APPROXIMATION NOISE — quadtree force estimates
+  jump discontinuously as nodes drift between cells, and the alpha-scaled
+  smooth forces fight those jumps every tick, at any temperature. The hard
+  `chargeDistanceMax` boundary is the secondary discontinuity and stops
+  mattering once theta is tight.
+- The reserved Option-A trigger (alpha-scaled collide) was PROTOTYPED AND
+  EXONERATED: measured identical to baseline; collide OFF makes jitter WORSE.
+  Option A stays reserved — this jitter is not the residue it addresses.
+- Sub-stepping (k ticks at alpha/k) was measured and REFUTED for this system:
+  per-frame jitter rises, because the error is per-evaluation approximation
+  noise, not integration stiffness — the XPBD/Vellum remedy does not transfer.
+
+**Decision: tighten the default Barnes-Hut criterion `chargeTheta` from 0.8 to
+0.5** — the classic accuracy sweet spot. One schema default (single source);
+~1.7× many-body cost (4.3 → 7.3 ms/tick at ~1200 nodes), paid only during the
+visible anneal/drag phases since rest is frozen; at the 5000-node ceiling the
+anneal may tick under 60 fps, accepted (the layout still converges, and the
+render LOD is independent). A permanent settle-probe guard pins the
+edgeless-node held-phase jitter so the field can never regress to a coarse,
+non-smooth force estimate unnoticed (deterministic seeding makes the
+measurement exact).

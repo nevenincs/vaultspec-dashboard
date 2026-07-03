@@ -118,7 +118,13 @@ export const GRAPH_CONTROL_SCHEMA = [
     min: 0.1,
     max: 1.5,
     step: 0.05,
-    default: 0.8,
+    // 0.5 = the classic Barnes-Hut accuracy sweet spot (graph-simulation-
+    // stability ADR amendment 2): a coarser criterion makes the many-body
+    // force field NON-SMOOTH — quadtree estimates jump as nodes cross cells —
+    // and that approximation noise measured as two thirds of the live jitter
+    // (even on edgeless nodes). ~1.7x many-body cost, paid only while the
+    // field actually ticks (anneal/drag); rest is frozen.
+    default: 0.5,
     exposure: ["lab"],
     description: "Quadtree accuracy; lower = more accurate, slower.",
   },

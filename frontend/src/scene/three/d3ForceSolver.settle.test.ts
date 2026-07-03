@@ -321,6 +321,42 @@ describe("D3ForceSolver settle-probe — (f) convergence-gated anneal", () => {
   });
 });
 
+// ---- (g) the many-body field is SMOOTH (Barnes-Hut accuracy guard) -----------
+
+describe("D3ForceSolver settle-probe — (g) smooth many-body field", () => {
+  it("edgeless free-floating nodes hold near-still at the anneal temperature", () => {
+    // graph-simulation-stability ADR amendment 2: two thirds of the live
+    // jitter was Barnes-Hut approximation noise (quadtree force estimates
+    // jumping as nodes cross cells) — visible as edgeless nodes jiggling with
+    // no spring or contact acting on them. The tightened default theta keeps
+    // the field smooth; this guard pins the measured floor so a coarser
+    // criterion can never regress unnoticed. Deterministic seeding makes the
+    // measurement exact, not statistical.
+    const ring = 60;
+    const isolated = 20;
+    const solver = makeSolver(ring + isolated, ringEdges(ring));
+    const sim = (solver as any).sim;
+    const nodes = (solver as any).nodes as { x?: number; y?: number }[];
+    sim.alpha(1).alphaTarget(0.3); // hold at the anneal temperature, no freeze
+    for (let t = 0; t < 300; t++) solver.tick();
+    let sum = 0;
+    for (let t = 0; t < 100; t++) {
+      const before = nodes.slice(ring).map((n) => ({ x: n.x ?? 0, y: n.y ?? 0 }));
+      solver.tick();
+      for (let i = 0; i < isolated; i++) {
+        sum += Math.hypot(
+          (nodes[ring + i].x ?? 0) - before[i].x,
+          (nodes[ring + i].y ?? 0) - before[i].y,
+        );
+      }
+    }
+    const heldJitter = sum / (100 * isolated);
+    // Measured 0.09 at theta 0.5 (0.26 at the old coarse default); 0.15 is the
+    // regression fence with headroom for force-recipe tuning.
+    expect(heldJitter).toBeLessThan(0.15);
+  });
+});
+
 // ---- (e) zero-movable reflow on a fresh solver clamps alpha ------------------
 
 describe("D3ForceSolver settle-probe — (e) movable===0 reflow clamps alpha", () => {
