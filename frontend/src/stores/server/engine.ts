@@ -2273,7 +2273,14 @@ export class EngineClient {
     },
     signal?: AbortSignal,
   ): Promise<SearchResponse> {
-    return adaptSearch(await this.post("/search", body, signal)) as SearchResponse;
+    // The engine's `SearchBody` reads the corpus target from the wire field
+    // `type` (`#[serde(rename = "type")]`, rag's own vocabulary), NOT `target`.
+    // Serialize it as `type` so the engine actually receives the corpus — a
+    // `target` key is silently dropped and the search defaults to the vault
+    // corpus (the code target then never reaches rag).
+    const { target, ...rest } = body;
+    const wire = target === undefined ? rest : { ...rest, type: target };
+    return adaptSearch(await this.post("/search", wire, signal)) as SearchResponse;
   }
 
   // --- session / settings (W04.P08.S25) ------------------------------------
