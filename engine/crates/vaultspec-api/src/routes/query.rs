@@ -478,10 +478,11 @@ mod bound_tests {
 /// The code-corpus branch of `/graph/query` (codebase-graphing ADR D5): the
 /// DISCONNECTED code dataset served through the SAME envelope, field set, and
 /// unconditional node ceiling as the vault corpus. Granularity maps one-to-one:
-/// the feature-class token serves the MODULE ROLLUP (module nodes + aggregated
-/// import meta-edges — the constellation analogue), the document-class token
-/// serves FILE granularity. Freshness is lazy: a debounced source-tree
-/// fingerprint probe re-extracts only when the tree changed (ADR D6).
+/// the feature-class token serves the PACKAGE ROLLUP (package entry FILES +
+/// aggregated import meta-edges — the constellation analogue; every node is a
+/// file, code-graph-files-only), the document-class token serves FILE
+/// granularity. Freshness is lazy: a debounced source-tree fingerprint probe
+/// re-extracts only when the tree changed (ADR D6).
 async fn code_corpus_query(
     state: &Arc<AppState>,
     cell: &StdArc<ScopeCell>,
@@ -578,7 +579,7 @@ async fn code_corpus_query(
             "total_nodes": total,
             "returned_nodes": MAX_GRAPH_NODES,
             "reason": "graph node ceiling: narrow with dir_prefix/languages; the \
-                       module rollup is the smallest view",
+                       package rollup is the smallest view",
         })
     });
     // Honest extraction counters (ADR D8): truncation and resolver accuracy are

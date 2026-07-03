@@ -1,18 +1,22 @@
-//! Node and edge minting for the code corpus (codebase-graphing ADR D3/D4).
+//! Node and edge minting for the code corpus (codebase-graphing ADR D3/D4,
+//! amended by the code-graph-files-only cutover).
 //!
-//! Stored graph fact: file nodes (`code:{path}`), module nodes
-//! (`code-mod:{dir}`) for every source-bearing directory, `contains` edges
-//! (module → direct child file; parent module → nearest descendant module),
-//! and deduplicated `imports` edges (file → file, multiplicity-counted).
-//! The module-level aggregated import view is NOT minted here — it is a
-//! generation-memoized projection at query time, mirroring the vault
-//! constellation's `meta_edges`.
+//! Stored graph fact: FILE nodes (`code:{path}`) only — a directory never
+//! becomes a node. Package structure is carried by file→file `contains` edges
+//! anchored on PACKAGE ENTRY FILES (`engine_model::PackageIndex`): a package's
+//! entry (`__init__.py` / `mod.rs` / `lib.rs` / `main.rs` / `index.*`)
+//! contains its member files, and a parent package's entry contains each child
+//! package's entry — the layout scaffold and the nesting hierarchy, with zero
+//! folder nodes. `imports` edges stay file→file (deduplicated,
+//! multiplicity-counted). The package-level aggregated import view is NOT
+//! minted here — it is a generation-memoized projection at query time,
+//! mirroring the vault constellation's `meta_edges`.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 
 use engine_model::{
-    CanonicalKey, Edge, Facet, Node, NodeId, NodeKind, Presence, Provenance, RelationKind,
-    ResolutionState, ScopeRef, Tier, Timestamp, edge_id, node_id,
+    CanonicalKey, Edge, Facet, Node, NodeId, NodeKind, PackageIndex, Presence, Provenance,
+    RelationKind, ResolutionState, ScopeRef, Tier, Timestamp, edge_id, node_id,
 };
 
 /// An edge plus its extraction-granularity multiplicity (the graph layer
@@ -45,15 +49,6 @@ pub struct ImportFact {
     pub span: (usize, usize),
 }
 
-/// The Rust "module key" for the repository root: module keys are
-/// repo-relative directory paths, and the root's is `.` (an empty key would
-/// vanish inside the `code-mod:{dir}` id form).
-pub const ROOT_MODULE_KEY: &str = ".";
-
-fn module_key(dir: &str) -> &str {
-    if dir.is_empty() { ROOT_MODULE_KEY } else { dir }
-}
-
 fn parent_posix(path: &str) -> String {
     match path.rfind('/') {
         Some(i) => path[..i].to_string(),
@@ -66,7 +61,7 @@ fn last_segment(path: &str) -> &str {
 }
 
 /// Package-aware title for a FILE node (CGR-003): entry files are titled by
-/// their MODULE identity — the containing directory, or the crate name for a
+/// their PACKAGE identity — the containing directory, or the crate name for a
 /// Rust crate root — so every package's entry file reads as its package instead
 /// of an interchangeable "__init__.py" / "index.ts" / "mod.rs" / "lib.rs". The
 /// full path stays in the node `key` for hover truth; non-entry files keep their
@@ -92,40 +87,6 @@ fn file_title(rel_path: &str, crate_names: &HashMap<String, String>) -> String {
         // absent the manifest, fall back to the containing directory.
         "lib.rs" | "main.rs" => crate_names.get(&dir).cloned().unwrap_or_else(containing),
         _ => file.to_string(),
-    }
-}
-
-/// The repo/scope basename, for titling the ROOT module (CGR-004): the literal
-/// key "." is an internal token and must never surface (`ui-labels-are-user-facing`).
-fn scope_basename(scope: &ScopeRef) -> String {
-    let raw = match scope {
-        ScopeRef::Worktree { path } => path.as_str(),
-        ScopeRef::Ref { name } => name.as_str(),
-    };
-    let trimmed = raw.trim_end_matches('/');
-    let leaf = trimmed.rsplit('/').next().unwrap_or(trimmed);
-    if leaf.is_empty() {
-        raw.to_string()
-    } else {
-        leaf.to_string()
-    }
-}
-
-/// Disambiguated title for a MODULE node (CGR-004): the repository ROOT module
-/// is titled by the scope basename (never the literal "."); a directory module
-/// is titled `leaf/` when its leaf is unique repo-wide, else by its full key
-/// (with a trailing `/`) so the many `src`/`tests`/`utils` directories never
-/// collapse into indistinguishable labels. `leaf_counts` is the repo-wide leaf
-/// frequency over the module set.
-fn module_title(dir: &str, leaf_counts: &BTreeMap<&str, usize>, scope: &ScopeRef) -> String {
-    if dir == ROOT_MODULE_KEY {
-        return scope_basename(scope);
-    }
-    let leaf = last_segment(dir);
-    if leaf_counts.get(leaf).copied().unwrap_or(0) > 1 {
-        format!("{dir}/")
-    } else {
-        format!("{leaf}/")
     }
 }
 
@@ -173,45 +134,13 @@ pub fn mint(
         });
     }
 
-    // ---------------------------------------------------------- module nodes
-    // A module is a directory that directly contains at least one source file.
-    let mut module_files: BTreeMap<String, Vec<&FileFact>> = BTreeMap::new();
-    for f in files {
-        module_files
-            .entry(module_key(&parent_posix(&f.rel_path)).to_string())
-            .or_default()
-            .push(f);
-    }
-    let module_keys: BTreeSet<String> = module_files.keys().cloned().collect();
-    // Repo-wide leaf frequency, so a colliding module leaf (many `src`) is
-    // titled by its full key instead of an indistinguishable label (CGR-004).
-    let mut leaf_counts: BTreeMap<&str, usize> = BTreeMap::new();
-    for dir in &module_keys {
-        if dir != ROOT_MODULE_KEY {
-            *leaf_counts.entry(last_segment(dir)).or_default() += 1;
-        }
-    }
-    for dir in &module_keys {
-        nodes.push(Node {
-            id: node_id(&CanonicalKey::CodeModule { dir }),
-            kind: NodeKind::CodeModule,
-            key: dir.clone(),
-            title: Some(module_title(dir, &leaf_counts, scope)),
-            doc_type: None,
-            dates: None,
-            feature_tags: Vec::new(),
-            status: None,
-            tier: None,
-            facets: vec![Facet {
-                scope: scope.clone(),
-                presence: Presence::Exists,
-                content_hash: None,
-                lifecycle: None,
-            }],
-        });
-    }
-
     // ------------------------------------------------------- contains edges
+    // Package containment, file→file (code-graph-files-only): the package's
+    // entry FILE contains its member files, and a parent package's entry
+    // contains each child package's entry. A standalone file (no packaged
+    // ancestor) contains nothing and is contained by nothing — its only
+    // structure is its imports.
+    let packages = PackageIndex::build(files.iter().map(|f| f.rel_path.as_str()));
     let contains = |src: NodeId, dst: NodeId, target: &str| -> CodeEdge {
         let provenance = Provenance::TreeLayout {
             target: target.to_string(),
@@ -238,37 +167,33 @@ pub fn mint(
             multiplicity: 1,
         }
     };
-    // Module → direct child files.
-    for (dir, children) in &module_files {
-        let module_id = node_id(&CanonicalKey::CodeModule { dir });
-        for f in children {
-            let file_id = node_id(&CanonicalKey::CodeArtifact {
-                path: &f.rel_path,
-                symbol: None,
-            });
-            edges.push(contains(module_id.clone(), file_id, &f.rel_path));
-        }
-    }
-    // Parent module → nearest descendant module (a connected module forest).
-    for dir in &module_keys {
-        if dir == ROOT_MODULE_KEY {
+    let file_node_id = |path: &str| node_id(&CanonicalKey::CodeArtifact { path, symbol: None });
+    // Package entry → member file (the entry itself links upward, below).
+    for f in files {
+        let Some(entry) = packages.package_entry(&f.rel_path) else {
+            continue;
+        };
+        if entry == f.rel_path {
             continue;
         }
-        let mut ancestor = parent_posix(dir);
-        let parent = loop {
-            let key = module_key(&ancestor).to_string();
-            if module_keys.contains(&key) {
-                break Some(key);
-            }
-            if ancestor.is_empty() {
-                break None;
-            }
-            ancestor = parent_posix(&ancestor);
-        };
-        if let Some(parent) = parent {
-            let src = node_id(&CanonicalKey::CodeModule { dir: &parent });
-            let dst = node_id(&CanonicalKey::CodeModule { dir });
-            edges.push(contains(src, dst, dir));
+        edges.push(contains(
+            file_node_id(entry),
+            file_node_id(&f.rel_path),
+            &f.rel_path,
+        ));
+    }
+    // Parent package entry → child package entry (the nesting hierarchy).
+    let package_dirs: Vec<&str> = packages.package_dirs().collect();
+    for dir in package_dirs {
+        let entry = packages
+            .entry_of_dir(dir)
+            .expect("every package dir holds its elected entry");
+        if let Some(parent_entry) = packages.parent_package_entry(dir) {
+            edges.push(contains(
+                file_node_id(parent_entry),
+                file_node_id(entry),
+                entry,
+            ));
         }
     }
 
@@ -355,7 +280,7 @@ mod tests {
     }
 
     #[test]
-    fn mints_files_modules_containment_and_deduped_imports() {
+    fn mints_only_file_nodes_and_deduped_imports() {
         let files = vec![
             fact(
                 "src/a.rs",
@@ -366,32 +291,20 @@ mod tests {
         ];
         let (nodes, edges) = mint(&files, &scope(), 42, &HashMap::new());
 
+        // Files only — no directory ever becomes a node (code-graph-files-only).
         let node_ids: Vec<&str> = nodes.iter().map(|n| n.id.0.as_str()).collect();
         assert_eq!(
             node_ids,
-            vec![
-                "code:src/a.rs",
-                "code:src/sub/b.rs",
-                "code:main.py",
-                "code-mod:.",
-                "code-mod:src",
-                "code-mod:src/sub",
-            ]
+            vec!["code:src/a.rs", "code:src/sub/b.rs", "code:main.py"]
         );
+        assert!(nodes.iter().all(|n| n.kind == NodeKind::CodeArtifact));
 
-        let contains: Vec<(&str, &str)> = edges
-            .iter()
-            .filter(|e| e.edge.relation == RelationKind::Contains)
-            .map(|e| (e.edge.src.0.as_str(), e.edge.dst.0.as_str()))
-            .collect();
-        assert!(contains.contains(&("code-mod:.", "code:main.py")));
-        assert!(contains.contains(&("code-mod:src", "code:src/a.rs")));
-        assert!(contains.contains(&("code-mod:src/sub", "code:src/sub/b.rs")));
+        // No package entry anywhere in this tree → no contains scaffold.
         assert!(
-            contains.contains(&("code-mod:.", "code-mod:src")),
-            "module hierarchy"
+            edges
+                .iter()
+                .all(|e| e.edge.relation != RelationKind::Contains)
         );
-        assert!(contains.contains(&("code-mod:src", "code-mod:src/sub")));
 
         let imports: Vec<&CodeEdge> = edges
             .iter()
@@ -408,6 +321,44 @@ mod tests {
         assert_eq!(dup.edge.tier, Tier::Structural);
     }
 
+    #[test]
+    fn contains_scaffold_anchors_on_package_entry_files() {
+        let files = vec![
+            fact("pkg/__init__.py", &[]),
+            fact("pkg/core.py", &[]),
+            fact("pkg/sub/__init__.py", &[]),
+            fact("pkg/sub/deep.py", &[]),
+            fact("pkg/loose/notes.py", &[]), // no entry in loose/ → folds to pkg
+            fact("tools/script.py", &[]),    // no packaged ancestor → standalone
+            fact("src/lib.rs", &[]),
+            fact("src/util.rs", &[]),
+        ];
+        let (nodes, edges) = mint(&files, &scope(), 1, &HashMap::new());
+        assert!(nodes.iter().all(|n| n.id.0.starts_with("code:")));
+
+        let contains: Vec<(&str, &str)> = edges
+            .iter()
+            .filter(|e| e.edge.relation == RelationKind::Contains)
+            .map(|e| (e.edge.src.0.as_str(), e.edge.dst.0.as_str()))
+            .collect();
+        // Entry → direct members.
+        assert!(contains.contains(&("code:pkg/__init__.py", "code:pkg/core.py")));
+        assert!(contains.contains(&("code:pkg/sub/__init__.py", "code:pkg/sub/deep.py")));
+        assert!(contains.contains(&("code:src/lib.rs", "code:src/util.rs")));
+        // A file in an entry-less directory folds up to the nearest package.
+        assert!(contains.contains(&("code:pkg/__init__.py", "code:pkg/loose/notes.py")));
+        // Parent package entry → child package entry (the nesting hierarchy).
+        assert!(contains.contains(&("code:pkg/__init__.py", "code:pkg/sub/__init__.py")));
+        // A standalone file is contained by nothing.
+        assert!(
+            contains
+                .iter()
+                .all(|(_, dst)| *dst != "code:tools/script.py")
+        );
+        // An entry file is never contained by its own package (only its parent's).
+        assert!(contains.iter().all(|(src, dst)| src != dst));
+    }
+
     fn title_of<'a>(nodes: &'a [Node], id: &str) -> &'a str {
         nodes
             .iter()
@@ -417,9 +368,9 @@ mod tests {
     }
 
     #[test]
-    fn entry_files_are_titled_by_package_and_modules_are_disambiguated() {
-        // CGR-003 (entry-file titling, all four languages + crate name) and
-        // CGR-004 (leaf collision → full key, root module → scope basename).
+    fn entry_files_are_titled_by_package() {
+        // CGR-003 (entry-file titling, all four languages + crate name): an
+        // entry file DISPLAYS as the package it defines; the path stays in `key`.
         let mut crate_names = HashMap::new();
         crate_names.insert(
             "engine/crates/engine-model/src".to_string(),
@@ -431,11 +382,10 @@ mod tests {
             fact("app/util/mod.rs", &[]),
             fact("engine/crates/engine-model/src/lib.rs", &[]),
             fact("app/util/helper.rs", &[]), // a plain file keeps its filename
-            fact("build.rs", &[]),           // a root-level file mints the `.` module
         ];
         let (nodes, _) = mint(&files, &scope(), 1, &crate_names);
 
-        // Entry files → their MODULE identity, not the bare entry filename.
+        // Entry files → their PACKAGE identity, not the bare entry filename.
         assert_eq!(title_of(&nodes, "code:pkg/__init__.py"), "pkg");
         assert_eq!(
             title_of(&nodes, "code:frontend/src/stores/index.ts"),
@@ -449,30 +399,6 @@ mod tests {
         );
         // A non-entry file keeps its bare filename.
         assert_eq!(title_of(&nodes, "code:app/util/helper.rs"), "helper.rs");
-
-        // Root module → scope basename (never the literal "."). Scope is Y:/repo.
-        assert_eq!(title_of(&nodes, "code-mod:."), "repo");
-        // Unique leaf → `leaf/`.
-        assert_eq!(title_of(&nodes, "code-mod:pkg"), "pkg/");
-        assert_eq!(title_of(&nodes, "code-mod:app/util"), "util/");
-    }
-
-    #[test]
-    fn colliding_module_leaves_are_titled_by_full_key() {
-        // Two different `src` directories must not both render as "src/".
-        let files = vec![
-            fact("engine/crates/a/src/lib.rs", &[]),
-            fact("engine/crates/b/src/lib.rs", &[]),
-        ];
-        let (nodes, _) = mint(&files, &scope(), 1, &HashMap::new());
-        assert_eq!(
-            title_of(&nodes, "code-mod:engine/crates/a/src"),
-            "engine/crates/a/src/"
-        );
-        assert_eq!(
-            title_of(&nodes, "code-mod:engine/crates/b/src"),
-            "engine/crates/b/src/"
-        );
     }
 
     #[test]

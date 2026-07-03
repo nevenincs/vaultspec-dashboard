@@ -127,10 +127,19 @@ export interface SceneNodeData {
   moduleHue?: number | null;
   depth?: number;
   /**
+   * CODE corpus package identity (code-graph-files-only): true on the one file
+   * that DISPLAYS as its package (`__init__.py` / `mod.rs` / `lib.rs` /
+   * `index.*`) — the anchor treatment in `appearance.ts`. Absent on vault
+   * nodes and on plain member files. Additive/optional on the locked RL-1
+   * node-data surface, mirroring the `module`/`moduleHue` redline.
+   */
+  packageEntry?: boolean;
+  /**
    * Engine-served recency percentile over the code corpus (code-graph-heat ADR):
-   * 0 = oldest worktree mtime, 1 = newest; a module carries its descendants'
-   * max. Drives the Recency node-color mode's theme-token heat ramp. Absent on
-   * undated files and on vault nodes (the cold end / category color applies).
+   * 0 = oldest worktree mtime, 1 = newest; a package-rollup representative
+   * carries its members' max. Drives the Recency node-color mode's theme-token
+   * heat ramp. Absent on undated files and on vault nodes (the cold end /
+   * category color applies).
    */
   recencyRank?: number;
   temporal?: { bucket: string };

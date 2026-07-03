@@ -197,12 +197,12 @@ impl DocumentViews {
 /// defense belt-and-braces the bounded-query rules use). The id/kind are
 /// untouched — this is a pure filter.
 pub fn is_displayable_node(node: &Node) -> bool {
-    // Both CODE-corpus kinds are fenced from the vault graph (codebase-graphing
+    // The CODE-corpus kind is fenced from the vault graph (codebase-graphing
     // ADR D1: the corpora never mix; the code corpus is served only through its
-    // own query path). Like the `index` branch, the `CodeModule` arm is a
-    // defensive net — no vault producer mints one — but the display boundary
-    // defends against any future producer.
-    if node.kind == NodeKind::CodeArtifact || node.kind == NodeKind::CodeModule {
+    // own query path). Files are the code corpus's ONLY node kind
+    // (code-graph-files-only): the former directory `CodeModule` kind is
+    // deleted from the model, so this one arm covers the whole fence.
+    if node.kind == NodeKind::CodeArtifact {
         return false;
     }
     if node.doc_type.as_deref() == Some("index") {

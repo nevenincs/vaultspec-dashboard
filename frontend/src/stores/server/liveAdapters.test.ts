@@ -576,14 +576,14 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
     // must keep them — they are the legitimate content of a different dataset.
     const codeSlice = {
       nodes: [
-        { id: "code-mod:src", kind: "code-module", title: "src" },
+        { id: "code:src/lib.rs", kind: "code-artifact", title: "demo" },
         { id: "code:src/main.rs", kind: "code-artifact", title: "main.rs" },
       ],
       edges: [
         {
           id: "e1",
-          src: "code:src/main.rs",
-          dst: "code-mod:src",
+          src: "code:src/lib.rs",
+          dst: "code:src/main.rs",
           relation: "contains",
           tier: "declared",
         },
@@ -600,9 +600,12 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
     expect(asVault.edges).toHaveLength(0);
     // Code corpus: the same nodes and edge survive.
     const asCode = adaptGraphSlice(codeSlice, { corpus: "code" });
-    expect(asCode.nodes.map((n) => n.id)).toEqual(["code-mod:src", "code:src/main.rs"]);
+    expect(asCode.nodes.map((n) => n.id)).toEqual([
+      "code:src/lib.rs",
+      "code:src/main.rs",
+    ]);
     expect(asCode.edges).toHaveLength(1);
-    expect(asCode.edges[0].src).toBe("code:src/main.rs");
+    expect(asCode.edges[0].src).toBe("code:src/lib.rs");
   });
 
   it("synthesizes a stable id, relation, and dominant tier for a meta-edge", () => {

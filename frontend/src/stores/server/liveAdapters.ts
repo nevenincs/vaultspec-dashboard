@@ -197,9 +197,10 @@ export function adaptGraphSlice(
 ): GraphSlice {
   if (!isRec(body)) return body as GraphSlice;
   // The code corpus (codebase-graphing ADR D1/D7) is a DIFFERENT dataset whose
-  // `code:` / `code-mod:` nodes are the legitimate content — the vault-only
-  // code-node exclusion below must NOT fire when adapting it. On the vault
-  // corpus (default) the exclusion stays in force, keeping the vault graph clean.
+  // `code:` file nodes are the legitimate content (code-graph-files-only: files
+  // are its ONLY node kind) — the vault-only code-node exclusion below must NOT
+  // fire when adapting it. On the vault corpus (default) the exclusion stays in
+  // force, keeping the vault graph clean.
   const isCodeCorpus = options?.corpus === "code";
   const allNodes = Array.isArray(body.nodes) ? (body.nodes as EngineNode[]) : [];
   const allEdges = Array.isArray(body.edges) ? (body.edges as EngineEdge[]) : [];
@@ -281,15 +282,7 @@ function isExcludedGraphNode(node: EngineNode): boolean {
   if (node.doc_type === "index") return true;
   const kind = node.kind;
   if (kind === "code" || kind === "code-artifact") return true;
-  // The CODE corpus's module rollup node (codebase-graphing ADR D4/D7): the
-  // vault graph never mints one, so this is the belt-and-braces mirror of the
-  // engine's `is_displayable_node` CodeModule gate — dropped on the vault
-  // corpus, kept on the code corpus (the caller gates this whole function off).
-  if (kind === "code-module") return true;
-  if (
-    typeof node.id === "string" &&
-    (node.id.startsWith("code:") || node.id.startsWith("code-mod:"))
-  ) {
+  if (typeof node.id === "string" && node.id.startsWith("code:")) {
     return true;
   }
   return false;

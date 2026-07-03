@@ -79,12 +79,11 @@ export function nodeCategory(kind: string): NodeCategory {
     // category so the species still paints a legend colour.
     case "plan-container":
       return "plan";
-    // The CODE corpus's node species (codebase-graphing ADR D7): a source file
-    // (`code-artifact`) and a module rollup (`code-mod`, `code-module`) both paint
-    // the one `code` category colour; the file/module distinction is carried by
-    // the domain MARK, not a second hue.
+    // The CODE corpus's one node species (codebase-graphing ADR D7,
+    // code-graph-files-only): a source FILE (`code-artifact`) paints the `code`
+    // category colour. Files are the corpus's only kind — a package is its
+    // entry file, distinguished by the anchor treatment, not a second hue.
     case "code-artifact":
-    case "code-module":
       return "code";
     default:
       return "reference";

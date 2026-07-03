@@ -98,7 +98,7 @@ fn node_ids(data: &Value) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn code_rollup_serves_modules_and_meta_edges_through_the_shared_envelope() {
+async fn code_rollup_serves_package_entry_files_and_meta_edges_through_the_shared_envelope() {
     let (_dir, state) = fixture_state();
     let token = state.bearer.clone();
     let scope = served_scope(&state);
@@ -114,14 +114,22 @@ async fn code_rollup_serves_modules_and_meta_edges_through_the_shared_envelope()
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(body["tiers"].is_object(), "tiers block rides the response");
     let data = &body["data"];
-    // Module rollup: the constellation analogue.
+    // Package rollup: the constellation analogue. Every node is a FILE
+    // (code-graph-files-only): the crate's entry `src/lib.rs` represents the
+    // `src` package; `web/` has no entry file, so its files stand alone.
     let ids = node_ids(data);
-    assert_eq!(ids, vec!["code-mod:src", "code-mod:web"], "{body}");
+    assert_eq!(
+        ids,
+        vec!["code:src/lib.rs", "code:web/app.ts", "code:web/graph.ts"],
+        "{body}"
+    );
     assert!(data["edges"].as_array().unwrap().is_empty());
     let meta = data["meta_edges"].as_array().unwrap();
-    // src/lib.rs → src/util.rs and app.ts → graph.ts are both INTRA-module,
-    // so the rollup carries no cross-module ribbon here — honest empty.
-    assert!(meta.is_empty(), "{body}");
+    // src/lib.rs → src/util.rs is INTRA-package and folds away; app.ts →
+    // graph.ts crosses two standalone representatives → one ribbon.
+    assert_eq!(meta.len(), 1, "{body}");
+    assert_eq!(meta[0]["src"], "code:web/app.ts");
+    assert_eq!(meta[0]["dst"], "code:web/graph.ts");
     // Field-set parity with the vault response + the additive corpus fields.
     for field in [
         "nodes",
@@ -144,15 +152,22 @@ async fn code_rollup_serves_modules_and_meta_edges_through_the_shared_envelope()
     assert_eq!(extraction["parse_errors"], 0);
     assert_eq!(extraction["imports_internal"], 2);
     assert_eq!(extraction["imports_external"], 1, "react");
-    // Module nodes carry the rollup member count.
-    let src_mod = data["nodes"]
+    // The package's entry file carries the rollup member count and displays
+    // as the package (crate name from the manifest).
+    let src_rep = data["nodes"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|n| n["id"] == "code-mod:src")
+        .find(|n| n["id"] == "code:src/lib.rs")
         .unwrap();
-    assert_eq!(src_mod["member_count"], 2);
-    assert_eq!(src_mod["kind"], "code-module");
+    assert_eq!(src_rep["member_count"], 2);
+    assert_eq!(src_rep["kind"], "code-artifact");
+    assert_eq!(src_rep["package_entry"], true);
+    assert_eq!(src_rep["package"], "src");
+    assert_eq!(
+        src_rep["title"], "demo",
+        "entry file displays as its package"
+    );
 }
 
 #[tokio::test]
@@ -166,24 +181,23 @@ async fn code_file_granularity_serves_imports_contains_and_language() {
         router,
         "/graph/query",
         &token,
-        json!({"scope": scope, "corpus": "code", "granularity": "document", "dir_prefix": "web"}),
+        json!({"scope": scope, "corpus": "code", "granularity": "document", "dir_prefix": "src"}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let data = &body["data"];
     let ids = node_ids(data);
-    assert_eq!(
-        ids,
-        vec!["code-mod:web", "code:web/app.ts", "code:web/graph.ts"],
-        "{body}"
-    );
+    // FILES only — a directory never becomes a node (code-graph-files-only).
+    assert_eq!(ids, vec!["code:src/lib.rs", "code:src/util.rs"], "{body}");
     let app_node = data["nodes"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|n| n["id"] == "code:web/app.ts")
+        .find(|n| n["id"] == "code:src/util.rs")
         .unwrap();
-    assert_eq!(app_node["language"], "typescript");
+    assert_eq!(app_node["language"], "rust");
+    assert_eq!(app_node["package"], "src");
+    assert_eq!(app_node["package_entry"], false);
     // code-graph-heat ADR: every freshly-written (dated) file serves a
     // percentile recency rank in [0, 1].
     let rank = app_node["recency_rank"].as_f64().expect("recency_rank");
@@ -223,9 +237,7 @@ async fn the_vault_default_is_unchanged_and_the_corpora_never_mix() {
     let data = &body["data"];
     assert!(data.get("corpus").is_none(), "vault response is unchanged");
     assert!(
-        node_ids(data)
-            .iter()
-            .all(|id| !id.starts_with("code:") && !id.starts_with("code-mod:")),
+        node_ids(data).iter().all(|id| !id.starts_with("code:")),
         "the vault corpus never serves a code node: {body}"
     );
 
@@ -240,7 +252,7 @@ async fn the_vault_default_is_unchanged_and_the_corpora_never_mix() {
     assert!(
         node_ids(&body["data"])
             .iter()
-            .all(|id| id.starts_with("code:") || id.starts_with("code-mod:")),
+            .all(|id| id.starts_with("code:")),
         "the code corpus never serves a vault node: {body}"
     );
 }

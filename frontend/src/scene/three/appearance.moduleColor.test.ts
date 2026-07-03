@@ -81,11 +81,24 @@ describe("nodeColorNumber (CGR-002 module colouring)", () => {
   });
 });
 
-describe("nodeWorldRadius (CGR-002 module-rollup sizing, P02.S07)", () => {
-  it("sizes a code-module rollup by member count, like a feature node", () => {
+describe("nodeWorldRadius (CGR-002 package-rollup sizing, code-graph-files-only)", () => {
+  it("sizes a package-rollup entry file by member count, like a feature node", () => {
     const feature = nodeWorldRadius(node({ kind: "feature", memberCount: 8 }));
-    const codeMod = nodeWorldRadius(node({ kind: "code-module", memberCount: 8 }));
-    expect(codeMod).toBe(feature);
-    expect(codeMod).toBeGreaterThan(nodeWorldRadius(node({ kind: "code-module" })));
+    const entry = nodeWorldRadius(
+      node({ kind: "code-artifact", packageEntry: true, memberCount: 8 }),
+    );
+    expect(entry).toBe(feature);
+  });
+
+  it("gives a package entry the anchor step at file granularity (no memberCount)", () => {
+    const entry = nodeWorldRadius(node({ kind: "code-artifact", packageEntry: true }));
+    const member = nodeWorldRadius(node({ kind: "code-artifact" }));
+    expect(entry).toBeGreaterThan(member);
+  });
+
+  it("a standalone file with member_count 1 is no anchor (degree/base sizing)", () => {
+    const standalone = nodeWorldRadius(node({ kind: "code-artifact", memberCount: 1 }));
+    const plain = nodeWorldRadius(node({ kind: "code-artifact" }));
+    expect(standalone).toBe(plain);
   });
 });

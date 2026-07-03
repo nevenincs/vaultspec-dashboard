@@ -36,13 +36,13 @@ fn main() {
             e.edge.src.0, e.edge.dst.0, e.multiplicity
         );
     }
-    println!("\nsample modules:");
-    for n in data
-        .nodes
+    println!("\nsample contains edges (package entry → member):");
+    for e in data
+        .edges
         .iter()
-        .filter(|n| n.id.0.starts_with("code-mod:"))
+        .filter(|e| e.edge.relation == engine_model::RelationKind::Contains)
         .take(12)
     {
-        println!("  {}", n.id.0);
+        println!("  {} -> {}", e.edge.src.0, e.edge.dst.0);
     }
 }

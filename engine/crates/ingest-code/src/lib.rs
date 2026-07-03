@@ -1,8 +1,9 @@
-//! Code-corpus ingestion (codebase-graphing ADR D2-D4): in-process
-//! tree-sitter extraction of file-level import edges, containment, and module
-//! rollup nodes from the working tree. Fully disconnected from the vault
-//! `LinkageGraph` corpus — this crate emits `code:` / `code-mod:` nodes and
-//! `imports` / `contains` edges only, and never reads `.vault/`.
+//! Code-corpus ingestion (codebase-graphing ADR D2-D4, code-graph-files-only):
+//! in-process tree-sitter extraction of file-level import edges and
+//! package-entry containment from the working tree. Fully disconnected from
+//! the vault `LinkageGraph` corpus — this crate emits `code:` FILE nodes only
+//! (never a directory node) with `imports` / `contains` (entry-file→member)
+//! edges, and never reads `.vault/`.
 //!
 //! A parse is a read: no subprocess, no toolchain, no build system, works on
 //! uncommitted working-tree bytes (`engine-read-and-infer`,
@@ -24,7 +25,7 @@ use rayon::prelude::*;
 
 use engine_model::{Node, ScopeRef, now_ms, scope_token};
 
-pub use modules::{CodeEdge, ROOT_MODULE_KEY};
+pub use modules::CodeEdge;
 pub use walk::WalkCaps;
 
 /// Honest extraction counters (ADR D8): served alongside the graph so the
@@ -208,17 +209,26 @@ mod tests {
         assert_eq!(data.stats.imports_external, 2, "react + os");
         assert_eq!(data.stats.imports_unresolved, 0);
 
-        // Modules: root (Cargo.toml dir has no source; `.` holds none) —
-        // actually no root-level source files, so no `.` module.
-        let module_ids: Vec<&str> = data
-            .nodes
+        // Files are the ONLY node kind (code-graph-files-only): no directory
+        // ever becomes a node. Package structure rides file→file contains
+        // edges anchored on the entry files.
+        assert!(data.nodes.iter().all(|n| n.id.0.starts_with("code:")));
+        let contains: Vec<(String, String)> = data
+            .edges
             .iter()
-            .filter(|n| n.id.0.starts_with("code-mod:"))
-            .map(|n| n.id.0.as_str())
+            .filter(|e| e.edge.relation == RelationKind::Contains)
+            .map(|e| (e.edge.src.0.clone(), e.edge.dst.0.clone()))
             .collect();
-        assert_eq!(
-            module_ids,
-            vec!["code-mod:py/pkg", "code-mod:src", "code-mod:web"]
+        assert!(contains.contains(&(
+            "code:py/pkg/__init__.py".into(),
+            "code:py/pkg/core.py".into()
+        )));
+        assert!(contains.contains(&("code:src/lib.rs".into(), "code:src/util.rs".into())));
+        // web/ has no entry file → its files are standalone (imports only).
+        assert!(
+            contains
+                .iter()
+                .all(|(_, dst)| !dst.starts_with("code:web/"))
         );
 
         // Fingerprint changes when a file is edited.

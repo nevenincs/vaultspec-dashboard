@@ -26,6 +26,12 @@ const DEGREE_PROMINENCE_REF = controlNumber("nodeDegreeReference");
 /** Precomputed log denominator for the degree → prominence mapping. */
 const DEGREE_PROMINENCE_LOG_REF = Math.log2(1 + DEGREE_PROMINENCE_REF);
 
+/** Fixed prominence multiplier for a package ENTRY file at file granularity
+ *  (code-graph-files-only): the visual "this node IS the package" channel.
+ *  Deliberately modest — nesting depth is carried by the depth recede and the
+ *  contains scaffold; the anchor only keeps an entry legible among its members. */
+const PACKAGE_ENTRY_ANCHOR = 1.25;
+
 /** Total connectedness of a node: the engine-served per-tier degree counts summed
  *  (reference edges touching the node, in+out). Returns null when the wire carried no
  *  degree block (a client-synthesized node) so the caller can fall back. The frontend
@@ -117,31 +123,36 @@ export function nodeWorldRadius(
   params: AppearanceParams = APPEARANCE_DEFAULTS,
 ): number {
   const scale = params.nodeSizeScale;
-  // Feature-convergence nodes AND code-module (directory) rollups size by member
-  // count (CGR-002 P02.S07): a directory reads as a constellation anchor sized by
-  // how much it contains, not an identical circle to a file. Both species carry the
-  // served `member_count`; documents/files fall through to the degree branch below.
+  // Feature-convergence nodes AND code package-rollup representatives size by
+  // member count (CGR-002 P02.S07, code-graph-files-only): the package's entry
+  // FILE reads as a constellation anchor sized by how much its package holds,
+  // not an identical circle to a plain file. Both species carry the served
+  // `member_count`; plain files fall through to the degree branch below (a
+  // standalone rollup file carries member_count 1 and is no anchor).
   if (
-    (node.kind === "feature" ||
-      node.kind === "code-module" ||
-      node.kind === "code-mod") &&
+    (node.kind === "feature" || node.packageEntry === true) &&
     node.memberCount &&
     node.memberCount > 0
   ) {
     return BASE_POINT_SIZE * (1.4 + Math.log2(1 + node.memberCount) * 0.5) * scale;
   }
+  // Package-entry ANCHOR treatment at file granularity (code-graph-files-only):
+  // the entry file displays as its package — a bounded fixed prominence step on
+  // top of whichever size branch fires, so a low-degree `__init__.py` still
+  // reads as the package's anchor without dwarfing real hubs.
+  const anchor = node.packageEntry === true ? PACKAGE_ENTRY_ANCHOR : 1;
   const degree = nodeDegree(node);
   if (degree !== null) {
     const f = Math.min(1, Math.log2(1 + degree) / DEGREE_PROMINENCE_LOG_REF);
     const spread = 1 + f * (SALIENCE_RADIUS_MAX - 1) * params.nodeSalienceScale;
-    return BASE_POINT_SIZE * spread * scale;
+    return BASE_POINT_SIZE * spread * anchor * scale;
   }
   if (typeof node.salience === "number") {
     const s = Math.max(0, Math.min(1, node.salience));
     const spread = 1 + s * (SALIENCE_RADIUS_MAX - 1) * params.nodeSalienceScale;
-    return BASE_POINT_SIZE * spread * scale;
+    return BASE_POINT_SIZE * spread * anchor * scale;
   }
-  return BASE_POINT_SIZE * scale;
+  return BASE_POINT_SIZE * anchor * scale;
 }
 
 /** The seven categorical scene hues, in a FIXED order, reused as the code

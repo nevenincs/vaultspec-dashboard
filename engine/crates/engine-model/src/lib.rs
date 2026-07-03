@@ -7,8 +7,10 @@
 use serde::{Deserialize, Serialize};
 
 pub mod id;
+pub mod packages;
 
 pub use id::{CanonicalKey, content_hash, edge_id, node_id};
+pub use packages::{PackageIndex, package_entry_rank};
 
 /// The language wire token for a source-file PATH, classified by extension.
 ///
@@ -53,13 +55,11 @@ pub enum NodeKind {
     PlanContainer,
     /// Commit keyed by SHA; inherently ref-scoped.
     Commit,
-    /// Code artifact keyed by repo-relative path (+ optional symbol).
+    /// Code artifact keyed by repo-relative path (+ optional symbol). The ONLY
+    /// node kind the code corpus mints (code-graph-files-only): a package is
+    /// represented by its entry FILE (`packages::PackageIndex`), never by a
+    /// directory node.
     CodeArtifact,
-    /// Code module: a source-bearing directory in the CODE corpus, keyed by
-    /// repo-relative directory path (codebase-graphing ADR D4). Minted only by
-    /// the code-graph ingest; the vault corpus never produces one, so the vault
-    /// wire contract is untouched by its existence.
-    CodeModule,
     /// A project rule keyed by its kebab-case slug (graph-node-semantics ADR):
     /// the codify pipeline's output, projected from the rules tree
     /// (`.vaultspec/rules/`, OUTSIDE `.vault/`). Authority class is law; it is

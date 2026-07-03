@@ -19,12 +19,10 @@ describe("nodeCategory — kind -> a scene category (index-node-exclusion ADR)",
   });
 
   it("maps the CODE corpus species onto the code category (codebase-graphing ADR D7)", () => {
-    // A source file and a module rollup both paint the one `code` colour; the
-    // file/module distinction is the mark, not a second hue. This category is
-    // reachable ONLY on the disconnected code corpus — the vault graph never
-    // emits a code node.
+    // A source file paints the one `code` colour — files are the corpus's ONLY
+    // node kind (code-graph-files-only). This category is reachable ONLY on
+    // the disconnected code corpus — the vault graph never emits a code node.
     expect(nodeCategory("code-artifact")).toBe("code");
-    expect(nodeCategory("code-module")).toBe("code");
     expect(nodeCategory("code")).toBe("code");
   });
 
@@ -89,7 +87,6 @@ describe("categoryColor — node body fill from the scene-category token seam", 
     expect(categoryColor("reference")).toBe(0x9d5e86);
     expect(categoryColor("code")).toBe(0xb05a6b);
     expect(categoryColor("code-artifact")).toBe(0xb05a6b);
-    expect(categoryColor("code-module")).toBe(0xb05a6b);
   });
 
   it("colours a folded kind with its mapped category hue", () => {

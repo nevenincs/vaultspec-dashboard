@@ -1,14 +1,24 @@
-//! Code-corpus query projections (codebase-graphing ADR D3/D5).
+//! Code-corpus query projections (codebase-graphing ADR D3/D5, amended by the
+//! code-graph-files-only cutover).
 //!
 //! Operates on the SEPARATE code `LinkageGraph` instance (never the vault
 //! graph — the disconnection invariant) and serves the SAME `GraphSlice`
 //! shape through the same `node_view`/`edge_view` projections, so the wire is
-//! byte-conformant with the vault corpus:
+//! byte-conformant with the vault corpus. Every served node is a FILE
+//! (`code:{path}`) — directories never become nodes:
 //!
-//! - Feature-class granularity → the MODULE ROLLUP: module nodes plus
-//!   aggregated import `meta_edges` (the code analogue of the constellation).
-//! - Document-class granularity → FILE granularity: file + module nodes with
-//!   raw `imports`/`contains` edges, endpoint-pruned to the kept set.
+//! - Feature-class granularity → the PACKAGE ROLLUP: one node per package,
+//!   REPRESENTED BY ITS ENTRY FILE (`engine_model::PackageIndex` — the
+//!   `__init__.py` / `mod.rs` / `lib.rs` / `index.*` that imports land on),
+//!   plus every standalone file, with aggregated import `meta_edges` between
+//!   representatives (the code analogue of the constellation).
+//! - Document-class granularity → FILE granularity: file nodes with raw
+//!   `imports`/`contains` (entry→member) edges, endpoint-pruned to the kept
+//!   set.
+//!
+//! Package NESTING is served as per-node metadata (`module`, `depth`,
+//! `package`, `package_entry`) for the scene's visual channels — hue, recede,
+//! anchor treatment — never as folder nodes.
 //!
 //! Narrowing is code-corpus-shaped (directory prefix, language) and lives
 //! OUTSIDE the vault `Filter` grammar (ADR D5: the vault filter shape is
@@ -17,7 +27,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use engine_graph::{LinkageGraph, MetaEdge};
-use engine_model::{NodeKind, RelationKind, ScopeRef};
+use engine_model::{Node, NodeKind, PackageIndex, RelationKind, ScopeRef};
 use serde_json::{Value, json};
 
 use crate::graph::{GraphSlice, edge_view, node_view};
@@ -42,9 +52,9 @@ pub struct CodeNarrow {
     /// (`dates.modified`) — the timeline range facet, shared with the vault
     /// grammar (code-timeline-range ADR). Either bound open; both `None` = no
     /// date narrowing. A file with no mtime is excluded once a bound is set
-    /// (mirrors the vault's missing-date exclusion); a MODULE passes while at
-    /// least one descendant file passes, so the containment hierarchy above
-    /// in-range content never orphans.
+    /// (mirrors the vault's missing-date exclusion); at the package rollup a
+    /// package passes while at least one member file passes, so the package
+    /// above in-range content never vanishes.
     pub date_from: Option<String>,
     pub date_to: Option<String>,
 }
@@ -55,56 +65,34 @@ fn has_date_narrow(narrow: &CodeNarrow) -> bool {
     narrow.date_from.is_some() || narrow.date_to.is_some()
 }
 
-/// The in-range membership for a date-narrowed query: file KEYS whose mtime day
-/// falls inside the bounds, plus every ancestor module key of an in-range file
-/// (including the root module). One bounded pass over the held graph.
-fn date_in_range_keys(
-    graph: &LinkageGraph,
-    narrow: &CodeNarrow,
-) -> (HashSet<String>, HashSet<String>) {
+/// The in-range membership for a date-narrowed query: file KEYS whose mtime
+/// day falls inside the bounds. One bounded pass over the held graph.
+fn date_in_range_keys(graph: &LinkageGraph, narrow: &CodeNarrow) -> HashSet<String> {
     let from = narrow.date_from.as_deref();
     let to = narrow.date_to.as_deref();
-    let mut files: HashSet<String> = HashSet::new();
-    let mut modules: HashSet<String> = HashSet::new();
-    for n in graph.nodes() {
-        if n.kind != NodeKind::CodeArtifact {
-            continue;
-        }
-        let day = n
-            .dates
-            .as_ref()
-            .and_then(|d| d.modified.map(crate::lineage::ms_to_date_key));
-        if !crate::lineage::created_in_range(day.as_deref(), from, to) {
-            continue;
-        }
-        files.insert(n.key.clone());
-        // Every ancestor directory of an in-range file is an in-range module,
-        // so the containment chain above surviving content survives with it.
-        let mut dir = n.key.as_str();
-        while let Some(i) = dir.rfind('/') {
-            dir = &dir[..i];
-            modules.insert(dir.to_string());
-        }
-        modules.insert(".".to_string());
-    }
-    (files, modules)
+    graph
+        .nodes()
+        .filter(|n| n.kind == NodeKind::CodeArtifact)
+        .filter(|n| {
+            let day = n
+                .dates
+                .as_ref()
+                .and_then(|d| d.modified.map(crate::lineage::ms_to_date_key));
+            crate::lineage::created_in_range(day.as_deref(), from, to)
+        })
+        .map(|n| n.key.clone())
+        .collect()
 }
 
-fn narrow_keeps(narrow: &CodeNarrow, key: &str, is_file: bool) -> bool {
-    if let Some(prefix) = &narrow.dir_prefix {
-        // The root module key `.` sits above every prefix.
-        let under = key == prefix
-            || key.starts_with(&format!("{prefix}/"))
-            || (!is_file && prefix.starts_with(&format!("{key}/")));
-        if !under && key != "." {
-            return false;
-        }
-        // The root module survives only when no prefix is set.
-        if key == "." {
-            return false;
-        }
+/// The structural (non-date) narrow for one FILE key.
+fn narrow_keeps(narrow: &CodeNarrow, key: &str) -> bool {
+    if let Some(prefix) = &narrow.dir_prefix
+        && key != prefix
+        && !key.starts_with(&format!("{prefix}/"))
+    {
+        return false;
     }
-    if is_file && !narrow.languages.is_empty() {
+    if !narrow.languages.is_empty() {
         let Some(lang) = language_token(key) else {
             return false;
         };
@@ -115,51 +103,21 @@ fn narrow_keeps(narrow: &CodeNarrow, key: &str, is_file: bool) -> bool {
     true
 }
 
-/// Direct file-child count per module (the rollup's `member_count`).
-fn member_counts(graph: &LinkageGraph) -> BTreeMap<String, usize> {
-    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-    for stored in graph.edges() {
-        if stored.edge.relation == RelationKind::Contains
-            && stored.edge.src.0.starts_with("code-mod:")
-            && stored.edge.dst.0.starts_with("code:")
-        {
-            *counts.entry(stored.edge.src.0.clone()).or_default() += 1;
-        }
-    }
-    counts
-}
-
-/// The module a file belongs to: its direct parent directory (a module by
-/// construction — `ingest-code` mints one for every source-bearing dir).
-fn module_key_of_file(path: &str) -> String {
-    match path.rfind('/') {
-        Some(i) => path[..i].to_string(),
-        None => ".".to_string(),
-    }
-}
-
 /// The TOP-LEVEL module a node belongs to: the first path segment (CGR-005 viz
 /// wire). This is the color-identity + legend grouping key — every node under
 /// `engine/...` shares the module `engine`. A root-level file (no separator)
-/// belongs to the root module `.`.
+/// is its own top-level identity.
 fn top_level_module(key: &str) -> String {
     match key.split_once('/') {
-        // A nested key (a file or a submodule) → its first path segment.
         Some((first, _)) => first.to_string(),
-        // A slash-less key is ALREADY a top-level identity: a top-level module
-        // directory (`app`), the root module (`.`), or a root-level file.
         None => key.to_string(),
     }
 }
 
-/// Directory depth of a node key (the viz lightness ramp): the root module is
-/// depth 0, and each path separator is one level deeper.
+/// Directory depth of a file key (the viz lightness ramp): a root-level file
+/// is depth 0, and each path separator is one level deeper.
 fn path_depth(key: &str) -> u64 {
-    if key == "." {
-        0
-    } else {
-        key.matches('/').count() as u64
-    }
+    key.matches('/').count() as u64
 }
 
 /// Per-generation hue assignment (CGR-005 viz wire, `display-state-is-backend-served`):
@@ -168,8 +126,7 @@ fn path_depth(key: &str) -> u64 {
 /// every other module gets `null` (the long-tail neutral hue). Computed over the
 /// FULL graph — never the narrowed slice — so a filtered view serves the SAME
 /// hue for a given module (color identity is stable under narrowing). It rides
-/// the code corpus's per-generation memo (`CodeGraphCell`) on the hot path,
-/// exactly like `member_counts`.
+/// the code corpus's per-generation memo (`CodeGraphCell`) on the hot path.
 fn module_hues(graph: &LinkageGraph) -> BTreeMap<String, u8> {
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();
     for n in graph.nodes() {
@@ -201,6 +158,19 @@ fn annotate_module_identity(view: &mut Value, key: &str, hues: &BTreeMap<String,
     view["module"] = Value::String(module);
 }
 
+/// Attach the served PACKAGE-identity fields (code-graph-files-only): the
+/// package directory this file belongs to (`package`, null for a standalone
+/// file; `""` names the repository root) and whether this file IS its
+/// package's entry — the node that DISPLAYS as the package (`package_entry`).
+/// The scene's nesting channels (anchor treatment, clustering) read these.
+fn annotate_package(view: &mut Value, key: &str, packages: &PackageIndex) {
+    view["package"] = match packages.package_root(key) {
+        Some(dir) => Value::String(dir.to_string()),
+        None => Value::Null,
+    };
+    view["package_entry"] = Value::from(packages.is_entry(key));
+}
+
 /// Per-file GIT recency, folded from the bounded commit walk + git status
 /// (code-graph-heat ADR amendment). Owned by the API cell (memoized on
 /// `HEAD sha @ dirty-set hash` — its own freshness axis, distinct from the
@@ -217,14 +187,13 @@ pub struct CodeRecency {
     pub dirty: HashSet<String>,
 }
 
-/// Percentile RECENCY rank per code node key (code-graph-heat ADR, amended):
-/// 0 = oldest, 1 = newest, a module carries the MAX over its descendant files
-/// ("hot content makes a hot container"). The effective ordering key is
-/// GIT-derived — a clean file orders by the committer time of the last commit
-/// touching it; a DIRTY/UNTRACKED file orders above every committed file, with
-/// the worktree mtime doing the fine ordering only inside that dirty set (the
-/// one place a real local edit makes mtime honest). Without git (`recency`
-/// None) the mtime orders everything, as before.
+/// Percentile RECENCY rank per FILE key (code-graph-heat ADR, amended):
+/// 0 = oldest, 1 = newest. The effective ordering key is GIT-derived — a clean
+/// file orders by the committer time of the last commit touching it; a
+/// DIRTY/UNTRACKED file orders above every committed file, with the worktree
+/// mtime doing the fine ordering only inside that dirty set (the one place a
+/// real local edit makes mtime honest). Without git (`recency` None) the mtime
+/// orders everything, as before.
 ///
 /// Ranks are TIE-AWARE: files with an equal effective key share one min-rank,
 /// so an identical-timestamp block (a checkout stamping hundreds of files in
@@ -233,7 +202,9 @@ pub struct CodeRecency {
 /// micro-differences — the defect that fired the ADR's re-open trigger. A
 /// rank, not a linear age, so real distinct times still spread evenly.
 /// Computed over the FULL graph — never the narrowed slice — so a node's heat
-/// is stable under narrowing (the `module_hues` discipline).
+/// is stable under narrowing (the `module_hues` discipline). The package
+/// rollup folds a representative's rank as the MAX over its member files
+/// ("hot content makes a hot package").
 fn recency_ranks(graph: &LinkageGraph, recency: Option<&CodeRecency>) -> BTreeMap<String, f64> {
     // Effective key: (tier, time) — tier 1 = uncommitted work, above all of
     // tier 0. Without git, a file with no mtime is unknowable and omitted
@@ -255,9 +226,6 @@ fn recency_ranks(graph: &LinkageGraph, recency: Option<&CodeRecency>) -> BTreeMa
     keyed.sort_unstable();
     let count = keyed.len();
     let mut ranks: BTreeMap<String, f64> = BTreeMap::new();
-    // Ascending order, so an ancestor overwrite always raises its rank — the
-    // module ends at the max of its descendants (file keys are paths and
-    // module keys are dirs, so the one map never collides across kinds).
     let mut i = 0;
     while i < count {
         let mut j = i;
@@ -272,12 +240,6 @@ fn recency_ranks(graph: &LinkageGraph, recency: Option<&CodeRecency>) -> BTreeMa
         };
         for (_, key) in &keyed[i..j] {
             ranks.insert((*key).to_string(), rank);
-            let mut dir = *key;
-            while let Some(cut) = dir.rfind('/') {
-                dir = &dir[..cut];
-                ranks.insert(dir.to_string(), rank);
-            }
-            ranks.insert(".".to_string(), rank);
         }
         i = j;
     }
@@ -291,28 +253,35 @@ fn annotate_recency(view: &mut Value, key: &str, ranks: &BTreeMap<String, f64>) 
     }
 }
 
-/// Aggregate file-level `imports` edges into module-level meta-edges,
+/// The rollup REPRESENTATIVE of a file: its package's entry file, or itself
+/// when it belongs to no package (a standalone file).
+fn representative<'a>(packages: &'a PackageIndex, key: &'a str) -> &'a str {
+    packages.package_entry(key).unwrap_or(key)
+}
+
+/// Aggregate file-level `imports` edges into package-level meta-edges,
 /// mirroring the constellation aggregation exactly: unordered canonical pair
-/// (one ribbon per module pair), multiplicity-weighted count, per-tier
-/// breakdown. `src_feature`/`dst_feature` carry the module KEYS (the field
+/// (one ribbon per representative pair), multiplicity-weighted count, per-tier
+/// breakdown. Endpoints are the representatives' FILE node ids;
+/// `src_feature`/`dst_feature` carry the representative file KEYS (the field
 /// names are the shared wire shape; the values are corpus-appropriate).
-pub fn code_meta_edges(graph: &LinkageGraph) -> Vec<MetaEdge> {
+pub fn code_meta_edges(graph: &LinkageGraph, packages: &PackageIndex) -> Vec<MetaEdge> {
     // Mirrors the constellation's `MetaAgg` accumulator shape.
-    type ModuleMetaAgg = (usize, BTreeMap<&'static str, usize>);
-    let mut agg: BTreeMap<(String, String), ModuleMetaAgg> = BTreeMap::new();
+    type PackageMetaAgg = (usize, BTreeMap<&'static str, usize>);
+    let mut agg: BTreeMap<(String, String), PackageMetaAgg> = BTreeMap::new();
     for stored in graph.edges() {
         if stored.edge.relation != RelationKind::Imports {
             continue;
         }
-        let src_mod = module_key_of_file(stored.edge.src.0.trim_start_matches("code:"));
-        let dst_mod = module_key_of_file(stored.edge.dst.0.trim_start_matches("code:"));
-        if src_mod == dst_mod {
+        let src_rep = representative(packages, stored.edge.src.0.trim_start_matches("code:"));
+        let dst_rep = representative(packages, stored.edge.dst.0.trim_start_matches("code:"));
+        if src_rep == dst_rep {
             continue;
         }
-        let (lo, hi) = if src_mod <= dst_mod {
-            (src_mod, dst_mod)
+        let (lo, hi) = if src_rep <= dst_rep {
+            (src_rep.to_string(), dst_rep.to_string())
         } else {
-            (dst_mod, src_mod)
+            (dst_rep.to_string(), src_rep.to_string())
         };
         let entry = agg.entry((lo, hi)).or_default();
         entry.0 += stored.attrs.multiplicity.max(1) as usize;
@@ -320,8 +289,8 @@ pub fn code_meta_edges(graph: &LinkageGraph) -> Vec<MetaEdge> {
     }
     agg.into_iter()
         .map(|((lo, hi), (count, breakdown_by_tier))| MetaEdge {
-            src: format!("code-mod:{lo}"),
-            dst: format!("code-mod:{hi}"),
+            src: format!("code:{lo}"),
+            dst: format!("code:{hi}"),
             src_feature: lo,
             dst_feature: hi,
             count,
@@ -331,10 +300,10 @@ pub fn code_meta_edges(graph: &LinkageGraph) -> Vec<MetaEdge> {
 }
 
 /// Query the code corpus. `feature_class_granularity == true` serves the
-/// module rollup (the constellation analogue); `false` serves file
-/// granularity. Both return the standard `GraphSlice`; the route applies the
-/// unconditional `bound_slice` ceiling exactly as it does for the vault
-/// corpus.
+/// package rollup (the constellation analogue); `false` serves file
+/// granularity. Both return the standard `GraphSlice` in which every node is a
+/// FILE; the route applies the unconditional `bound_slice` ceiling exactly as
+/// it does for the vault corpus.
 pub fn code_graph_query(
     graph: &LinkageGraph,
     scope: &ScopeRef,
@@ -357,36 +326,70 @@ pub fn code_graph_query(
         .validated()
         .expect("a bare date-range filter is always valid");
     let date_narrow = has_date_narrow(narrow);
-    let (in_range_files, in_range_modules) = if date_narrow {
+    let in_range = if date_narrow {
         date_in_range_keys(graph, narrow)
     } else {
-        (HashSet::new(), HashSet::new())
+        HashSet::new()
     };
+    let keep_file =
+        |key: &str| narrow_keeps(narrow, key) && (!date_narrow || in_range.contains(key));
+
+    let packages = PackageIndex::build(
+        graph
+            .nodes()
+            .filter(|n| n.kind == NodeKind::CodeArtifact)
+            .map(|n| n.key.as_str()),
+    );
+    let hues = module_hues(graph);
+    let ranks = recency_ranks(graph, recency);
 
     if feature_class_granularity {
-        let counts = member_counts(graph);
-        let hues = module_hues(graph);
-        let ranks = recency_ranks(graph, recency);
-        let mut nodes: Vec<Value> = graph
-            .nodes()
-            .filter(|n| n.kind == NodeKind::CodeModule)
-            .filter(|n| narrow_keeps(narrow, &n.key, false))
-            .filter(|n| !date_narrow || in_range_modules.contains(&n.key))
-            .map(|n| {
-                let mut view = node_view(graph, scope, n);
-                view["member_count"] =
-                    Value::from(counts.get(n.id.0.as_str()).copied().unwrap_or(0));
-                annotate_module_identity(&mut view, &n.key, &hues);
-                annotate_recency(&mut view, &n.key, &ranks);
-                view
-            })
-            .collect();
+        // PACKAGE ROLLUP: group every file under its representative — the
+        // package's entry file, or itself when standalone. A representative is
+        // served while ANY of its members passes the narrow; `member_count`
+        // and the folded recency are FULL-corpus stats (stable under
+        // narrowing, the `module_hues` discipline).
+        let mut members: BTreeMap<&str, Vec<&Node>> = BTreeMap::new();
+        for n in graph.nodes().filter(|n| n.kind == NodeKind::CodeArtifact) {
+            members
+                .entry(representative(&packages, &n.key))
+                .or_default()
+                .push(n);
+        }
+        let mut nodes: Vec<Value> = Vec::new();
+        for (rep, group) in &members {
+            if !group.iter().any(|n| keep_file(&n.key)) {
+                continue;
+            }
+            let Some(rep_node) = group.iter().find(|n| n.key == *rep) else {
+                // Defensive: the representative is a member of its own group by
+                // construction (an entry file belongs to the package it defines).
+                continue;
+            };
+            let mut view = node_view(graph, scope, rep_node);
+            view["member_count"] = Value::from(group.len());
+            if let Some(lang) = language_token(rep) {
+                view["language"] = Value::String(lang.to_string());
+            }
+            annotate_module_identity(&mut view, rep, &hues);
+            annotate_package(&mut view, rep, &packages);
+            // Hot content makes a hot package: the representative paints the
+            // MAX recency over its member files.
+            let max_rank = group
+                .iter()
+                .filter_map(|n| ranks.get(&n.key).copied())
+                .fold(None::<f64>, |acc, r| Some(acc.map_or(r, |a| a.max(r))));
+            if let Some(rank) = max_rank {
+                view["recency_rank"] = Value::from(rank);
+            }
+            nodes.push(view);
+        }
         nodes.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
         let kept: HashSet<&str> = nodes
             .iter()
             .filter_map(|n| n.get("id").and_then(Value::as_str))
             .collect();
-        let meta = code_meta_edges(graph)
+        let meta = code_meta_edges(graph, &packages)
             .into_iter()
             .filter(|m| kept.contains(m.src.as_str()) && kept.contains(m.dst.as_str()))
             .collect();
@@ -398,22 +401,11 @@ pub fn code_graph_query(
         };
     }
 
-    // File granularity: file + module nodes, endpoint-pruned raw edges. Under a
-    // date narrow, a file passes by its own mtime day and a module passes while
-    // it still shelters in-range descendant content.
+    // File granularity: FILE nodes only, endpoint-pruned raw edges (`imports`
+    // plus the file→file `contains` scaffold).
     let mut kept_nodes: Vec<_> = graph
         .nodes()
-        .filter(|n| match n.kind {
-            NodeKind::CodeArtifact => {
-                narrow_keeps(narrow, &n.key, true)
-                    && (!date_narrow || in_range_files.contains(&n.key))
-            }
-            NodeKind::CodeModule => {
-                narrow_keeps(narrow, &n.key, false)
-                    && (!date_narrow || in_range_modules.contains(&n.key))
-            }
-            _ => false,
-        })
+        .filter(|n| n.kind == NodeKind::CodeArtifact && keep_file(&n.key))
         .collect();
     kept_nodes.sort_by(|a, b| a.id.0.cmp(&b.id.0));
     let kept: HashSet<&str> = kept_nodes.iter().map(|n| n.id.0.as_str()).collect();
@@ -425,25 +417,15 @@ pub fn code_graph_query(
         .collect();
     edges.sort_by(|a, b| a.id.0.cmp(&b.id.0));
 
-    let counts = member_counts(graph);
-    let hues = module_hues(graph);
-    let ranks = recency_ranks(graph, recency);
     let nodes = kept_nodes
         .iter()
         .map(|n| {
             let mut view = node_view(graph, scope, n);
-            match n.kind {
-                NodeKind::CodeArtifact => {
-                    if let Some(lang) = language_token(&n.key) {
-                        view["language"] = Value::String(lang.to_string());
-                    }
-                }
-                _ => {
-                    view["member_count"] =
-                        Value::from(counts.get(n.id.0.as_str()).copied().unwrap_or(0));
-                }
+            if let Some(lang) = language_token(&n.key) {
+                view["language"] = Value::String(lang.to_string());
             }
             annotate_module_identity(&mut view, &n.key, &hues);
+            annotate_package(&mut view, &n.key, &packages);
             annotate_recency(&mut view, &n.key, &ranks);
             view
         })
@@ -459,9 +441,10 @@ pub fn code_graph_query(
 }
 
 /// The code corpus's facet vocabulary (ADR D5: `/filters` serves the ACTIVE
-/// corpus's vocabulary only): the distinct language tokens present, the module
-/// directory keys, and the corpus date span (code-timeline-range ADR) — the
-/// min/max worktree-mtime day over the file nodes, in the SAME
+/// corpus's vocabulary only): the distinct language tokens present, the
+/// source-bearing directory keys (for the `dir_prefix` narrow — a vocabulary
+/// of paths, NOT nodes), and the corpus date span (code-timeline-range ADR) —
+/// the min/max worktree-mtime day over the file nodes, in the SAME
 /// `date_bounds` / `date_bounds_by_field` shape the vault vocabulary serves, so
 /// the timeline strip fits to the active corpus with one reader. Only the
 /// `modified` criterion exists for code (`created`/`stamped` are
@@ -476,11 +459,12 @@ pub fn code_filter_vocabulary(graph: &LinkageGraph) -> Value {
         .into_iter()
         .collect();
     languages.sort_unstable();
-    let mut dirs: Vec<&str> = graph
+    let dirs: HashSet<&str> = graph
         .nodes()
-        .filter(|n| n.kind == NodeKind::CodeModule)
-        .map(|n| n.key.as_str())
+        .filter(|n| n.kind == NodeKind::CodeArtifact)
+        .filter_map(|n| n.key.rfind('/').map(|i| &n.key[..i]))
         .collect();
+    let mut dirs: Vec<&str> = dirs.into_iter().collect();
     dirs.sort_unstable();
     let modified = crate::filter::field_bounds(graph, crate::filter::DateField::Modified);
     let mut vocabulary = json!({ "languages": languages, "dirs": dirs });
@@ -529,26 +513,6 @@ mod tests {
         }
     }
 
-    fn module_node(dir: &str) -> Node {
-        Node {
-            id: node_id(&CanonicalKey::CodeModule { dir }),
-            kind: NodeKind::CodeModule,
-            key: dir.into(),
-            title: None,
-            doc_type: None,
-            dates: None,
-            feature_tags: vec![],
-            status: None,
-            tier: None,
-            facets: vec![Facet {
-                scope: scope(),
-                presence: Presence::Exists,
-                content_hash: None,
-                lifecycle: None,
-            }],
-        }
-    }
-
     fn import_edge(src: &str, dst: &str) -> Edge {
         let s = NodeId(format!("code:{src}"));
         let d = NodeId(format!("code:{dst}"));
@@ -577,8 +541,8 @@ mod tests {
         }
     }
 
-    fn contains_edge(src_mod: &str, dst_file: &str) -> Edge {
-        let s = NodeId(format!("code-mod:{src_mod}"));
+    fn contains_edge(src_file: &str, dst_file: &str) -> Edge {
+        let s = NodeId(format!("code:{src_file}"));
         let d = NodeId(format!("code:{dst_file}"));
         let provenance = Provenance::TreeLayout {
             target: dst_file.into(),
@@ -597,23 +561,23 @@ mod tests {
         }
     }
 
+    /// `app/` is a PACKAGE (entry `app/index.ts`, members a+b); `lib/` holds
+    /// two STANDALONE files (no entry file).
     fn demo_graph() -> LinkageGraph {
         let mut g = LinkageGraph::new();
-        for f in ["app/a.ts", "app/b.ts", "lib/c.py", "lib/d.rs"] {
+        for f in [
+            "app/index.ts",
+            "app/a.ts",
+            "app/b.ts",
+            "lib/c.py",
+            "lib/d.rs",
+        ] {
             g.upsert_node(file_node(f));
         }
-        for m in ["app", "lib"] {
-            g.upsert_node(module_node(m));
+        for (e, f) in [("app/index.ts", "app/a.ts"), ("app/index.ts", "app/b.ts")] {
+            engine_graph::edges::ingest(&mut g, contains_edge(e, f), EdgeAttrs::default()).unwrap();
         }
-        for (m, f) in [
-            ("app", "app/a.ts"),
-            ("app", "app/b.ts"),
-            ("lib", "lib/c.py"),
-            ("lib", "lib/d.rs"),
-        ] {
-            engine_graph::edges::ingest(&mut g, contains_edge(m, f), EdgeAttrs::default()).unwrap();
-        }
-        // a→b intra-module; a→c and b→d cross-module.
+        // a→b intra-package; a→c and b→d cross the package boundary.
         for (s, d, m) in [
             ("app/a.ts", "app/b.ts", 1u32),
             ("app/a.ts", "lib/c.py", 3),
@@ -633,7 +597,7 @@ mod tests {
     }
 
     #[test]
-    fn rollup_serves_module_nodes_and_aggregated_meta_edges() {
+    fn rollup_serves_package_entry_representatives_and_aggregated_meta_edges() {
         let g = demo_graph();
         let slice = code_graph_query(&g, &scope(), true, &CodeNarrow::default(), None);
         let ids: Vec<&str> = slice
@@ -641,22 +605,45 @@ mod tests {
             .iter()
             .filter_map(|n| n["id"].as_str())
             .collect();
-        assert_eq!(ids, vec!["code-mod:app", "code-mod:lib"]);
-        assert!(slice.edges.is_empty(), "rollup carries meta_edges only");
-        assert_eq!(slice.meta_edges.len(), 1, "one ribbon per module pair");
-        let m = &slice.meta_edges[0];
+        // Every rollup node is a FILE: the package's entry file for `app`,
+        // the standalone files themselves for `lib`.
         assert_eq!(
-            (m.src.as_str(), m.dst.as_str()),
-            ("code-mod:app", "code-mod:lib")
+            ids,
+            vec!["code:app/index.ts", "code:lib/c.py", "code:lib/d.rs"]
         );
-        assert_eq!(m.count, 4, "multiplicity-weighted: 3 (a→c) + 1 (b→d)");
-        assert_eq!(slice.nodes[0]["member_count"], Value::from(2));
+        assert!(slice.edges.is_empty(), "rollup carries meta_edges only");
+        // Cross-representative ribbons: app→c (x3) and app→d (x1); a→b is
+        // intra-package and folds away.
+        assert_eq!(slice.meta_edges.len(), 2);
+        let c = slice
+            .meta_edges
+            .iter()
+            .find(|m| m.dst == "code:lib/c.py")
+            .unwrap();
+        assert_eq!(c.src, "code:app/index.ts");
+        assert_eq!(c.count, 3, "multiplicity-weighted");
+        let entry = slice
+            .nodes
+            .iter()
+            .find(|n| n["id"] == "code:app/index.ts")
+            .unwrap();
+        assert_eq!(entry["member_count"], Value::from(3));
+        assert_eq!(entry["package_entry"], Value::from(true));
+        assert_eq!(entry["package"], Value::from("app"));
+        let standalone = slice
+            .nodes
+            .iter()
+            .find(|n| n["id"] == "code:lib/c.py")
+            .unwrap();
+        assert_eq!(standalone["member_count"], Value::from(1));
+        assert_eq!(standalone["package_entry"], Value::from(false));
+        assert_eq!(standalone["package"], Value::Null);
     }
 
     #[test]
     fn file_granularity_prunes_to_kept_endpoints_and_annotates_language() {
         let g = demo_graph();
-        // Narrow to app/: lib files drop, so cross-module imports drop too.
+        // Narrow to app/: lib files drop, so cross-package imports drop too.
         let narrow = CodeNarrow {
             dir_prefix: Some("app".into()),
             ..CodeNarrow::default()
@@ -667,14 +654,20 @@ mod tests {
             .iter()
             .filter_map(|n| n["id"].as_str())
             .collect();
-        assert_eq!(ids, vec!["code-mod:app", "code:app/a.ts", "code:app/b.ts"]);
+        assert_eq!(
+            ids,
+            vec!["code:app/a.ts", "code:app/b.ts", "code:app/index.ts"]
+        );
         let file = slice
             .nodes
             .iter()
             .find(|n| n["id"] == "code:app/a.ts")
             .unwrap();
         assert_eq!(file["language"], Value::from("typescript"));
-        // Kept edges: app's two contains + the intra-module a→b import.
+        assert_eq!(file["package"], Value::from("app"));
+        assert_eq!(file["package_entry"], Value::from(false));
+        // Kept edges: the two entry→member contains + the intra-package a→b
+        // import — all file→file.
         assert_eq!(slice.edges.len(), 3);
         assert!(slice.meta_edges.is_empty());
     }
@@ -691,7 +684,6 @@ mod tests {
             .nodes
             .iter()
             .filter_map(|n| n["id"].as_str())
-            .filter(|id| id.starts_with("code:"))
             .collect();
         assert_eq!(file_ids, vec!["code:lib/c.py"]);
     }
@@ -701,21 +693,21 @@ mod tests {
         // CGR-005 viz wire: top-level module identity, a per-generation hue
         // index (top-7 by member count), and directory depth on every code node.
         let g = demo_graph();
-        // Rollup: module nodes carry module/module_hue/depth. Both `app` and
-        // `lib` have 2 files; the tie breaks alphabetically → app=0, lib=1.
+        // Rollup: representatives carry module/module_hue/depth. `app` holds 3
+        // files, `lib` 2 → app=0, lib=1.
         let rollup = code_graph_query(&g, &scope(), true, &CodeNarrow::default(), None);
         let app = rollup
             .nodes
             .iter()
-            .find(|n| n["id"] == "code-mod:app")
+            .find(|n| n["id"] == "code:app/index.ts")
             .unwrap();
         assert_eq!(app["module"], Value::from("app"));
         assert_eq!(app["module_hue"], Value::from(0));
-        assert_eq!(app["depth"], Value::from(0));
+        assert_eq!(app["depth"], Value::from(1));
         let lib = rollup
             .nodes
             .iter()
-            .find(|n| n["id"] == "code-mod:lib")
+            .find(|n| n["id"] == "code:lib/c.py")
             .unwrap();
         assert_eq!(lib["module_hue"], Value::from(1));
 
@@ -742,10 +734,8 @@ mod tests {
             for i in 0..2 {
                 g.upsert_node(file_node(&format!("{m}/f{i}.rs")));
             }
-            g.upsert_node(module_node(m));
         }
         g.upsert_node(file_node("z/only.rs"));
-        g.upsert_node(module_node("z"));
 
         let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default(), None);
         let z = slice
@@ -763,10 +753,12 @@ mod tests {
     }
 
     #[test]
-    fn vocabulary_serves_languages_and_module_dirs() {
+    fn vocabulary_serves_languages_and_source_dirs() {
         let g = demo_graph();
         let v = code_filter_vocabulary(&g);
         assert_eq!(v["languages"], json!(["python", "rust", "typescript"]));
+        // `dirs` is the dir_prefix vocabulary — source-bearing directory PATHS,
+        // never nodes.
         assert_eq!(v["dirs"], json!(["app", "lib"]));
         // demo_graph mints undated files → the date spans are honestly absent.
         assert!(v.get("date_bounds").is_none());
@@ -785,29 +777,25 @@ mod tests {
         n
     }
 
-    /// Two files a day apart plus one undated file, in nested dirs, with an
-    /// import between the dated pair.
+    /// A package whose entry is OLD and whose member is NEW, plus an undated
+    /// standalone file, with an import between the dated pair.
     fn dated_graph() -> (LinkageGraph, String, String) {
         const DAY_MS: i64 = 86_400_000;
         let t_old = 1_750_000_000_000; // an arbitrary fixed day
         let t_new = t_old + 3 * DAY_MS;
         let mut g = LinkageGraph::new();
-        g.upsert_node(dated_file_node("app/deep/old.ts", t_old));
+        g.upsert_node(dated_file_node("app/index.ts", t_old));
         g.upsert_node(dated_file_node("app/new.ts", t_new));
         g.upsert_node(file_node("lib/undated.py"));
-        for m in ["app", "app/deep", "lib"] {
-            g.upsert_node(module_node(m));
-        }
-        for (m, f) in [
-            ("app/deep", "app/deep/old.ts"),
-            ("app", "app/new.ts"),
-            ("lib", "lib/undated.py"),
-        ] {
-            engine_graph::edges::ingest(&mut g, contains_edge(m, f), EdgeAttrs::default()).unwrap();
-        }
         engine_graph::edges::ingest(
             &mut g,
-            import_edge("app/new.ts", "app/deep/old.ts"),
+            contains_edge("app/index.ts", "app/new.ts"),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+        engine_graph::edges::ingest(
+            &mut g,
+            import_edge("app/new.ts", "app/index.ts"),
             EdgeAttrs::default(),
         )
         .unwrap();
@@ -817,11 +805,10 @@ mod tests {
     }
 
     #[test]
-    fn date_narrow_keeps_in_range_files_and_their_ancestor_modules() {
+    fn date_narrow_keeps_in_range_files_only() {
         let (g, old_day, _new_day) = dated_graph();
-        // Range = exactly the old file's day: the new file and the UNDATED file
-        // drop; the old file plus its full ancestor module chain survive, and
-        // the import edge drops with its lost endpoint.
+        // Range = exactly the entry's day: the new member and the UNDATED file
+        // drop; both edges lose an endpoint and drop with them.
         let narrow = CodeNarrow {
             date_from: Some(old_day.clone()),
             date_to: Some(old_day),
@@ -833,12 +820,8 @@ mod tests {
             .iter()
             .filter_map(|n| n["id"].as_str())
             .collect();
-        assert_eq!(
-            ids,
-            vec!["code-mod:app", "code-mod:app/deep", "code:app/deep/old.ts"]
-        );
-        // Only the surviving containment edge remains (module → old file).
-        assert_eq!(slice.edges.len(), 1);
+        assert_eq!(ids, vec!["code:app/index.ts"]);
+        assert!(slice.edges.is_empty());
         // The applied facet is echoed honestly on the slice's filter block.
         assert!(slice.filter.date_range.is_some());
     }
@@ -846,7 +829,7 @@ mod tests {
     #[test]
     fn date_narrow_open_from_keeps_everything_dated_after_it() {
         let (g, old_day, new_day) = dated_graph();
-        // from = the day AFTER old: only the new file (and `app`) survive; the
+        // from = the day AFTER the entry: only the new member survives; the
         // undated file is excluded once any bound is set (mirrors the vault).
         assert!(old_day < new_day);
         let narrow = CodeNarrow {
@@ -859,15 +842,18 @@ mod tests {
             .iter()
             .filter_map(|n| n["id"].as_str())
             .collect();
-        assert_eq!(ids, vec!["code-mod:app", "code:app/new.ts"]);
+        assert_eq!(ids, vec!["code:app/new.ts"]);
     }
 
     #[test]
-    fn date_narrow_applies_to_the_module_rollup() {
-        let (g, old_day, _new_day) = dated_graph();
+    fn date_narrow_keeps_a_package_while_any_member_is_in_range() {
+        let (g, _old_day, new_day) = dated_graph();
+        // Rollup narrowed to the NEW member's day: the package survives
+        // (any-member rule) even though its ENTRY file is out of range; the
+        // undated standalone drops.
         let narrow = CodeNarrow {
-            date_from: Some(old_day.clone()),
-            date_to: Some(old_day),
+            date_from: Some(new_day.clone()),
+            date_to: Some(new_day),
             ..CodeNarrow::default()
         };
         let slice = code_graph_query(&g, &scope(), true, &narrow, None);
@@ -876,17 +862,17 @@ mod tests {
             .iter()
             .filter_map(|n| n["id"].as_str())
             .collect();
-        assert_eq!(ids, vec!["code-mod:app", "code-mod:app/deep"]);
+        assert_eq!(ids, vec!["code:app/index.ts"]);
     }
 
     #[test]
-    fn recency_rank_is_a_percentile_with_module_max_and_honest_absence() {
+    fn recency_rank_is_a_percentile_with_package_max_and_honest_absence() {
         // code-graph-heat ADR: files rank by mtime percentile over ALL dated
-        // files; a module carries its descendants' max; an undated file (and a
-        // module with only undated content) serves NO rank.
+        // files; the package rollup folds the MAX over member files; an
+        // undated file serves NO rank.
         let (g, _old_day, _new_day) = dated_graph();
         let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default(), None);
-        let rank_of = |id: &str| {
+        let rank_of = |slice: &GraphSlice, id: &str| {
             slice
                 .nodes
                 .iter()
@@ -895,25 +881,17 @@ mod tests {
                 .get("recency_rank")
                 .cloned()
         };
-        // Two dated files: old = 0.0, new = 1.0.
-        assert_eq!(rank_of("code:app/deep/old.ts"), Some(json!(0.0)));
-        assert_eq!(rank_of("code:app/new.ts"), Some(json!(1.0)));
+        // Two dated files: entry (old) = 0.0, member (new) = 1.0.
+        assert_eq!(rank_of(&slice, "code:app/index.ts"), Some(json!(0.0)));
+        assert_eq!(rank_of(&slice, "code:app/new.ts"), Some(json!(1.0)));
         // The undated file has no position on the heat axis.
-        assert_eq!(rank_of("code:lib/undated.py"), None);
-        // Modules: `app/deep` shelters only the old file; `app` shelters both
-        // (max = the new file's 1.0); `lib` shelters nothing dated.
-        assert_eq!(rank_of("code-mod:app/deep"), Some(json!(0.0)));
-        assert_eq!(rank_of("code-mod:app"), Some(json!(1.0)));
-        assert_eq!(rank_of("code-mod:lib"), None);
+        assert_eq!(rank_of(&slice, "code:lib/undated.py"), None);
 
-        // The rollup serves the SAME module ranks (full-graph stability).
+        // The rollup representative paints the package MAX ("hot content makes
+        // a hot package"): the OLD entry carries the NEW member's 1.0.
         let rollup = code_graph_query(&g, &scope(), true, &CodeNarrow::default(), None);
-        let app = rollup
-            .nodes
-            .iter()
-            .find(|n| n["id"] == "code-mod:app")
-            .unwrap();
-        assert_eq!(app["recency_rank"], json!(1.0));
+        assert_eq!(rank_of(&rollup, "code:app/index.ts"), Some(json!(1.0)));
+        assert_eq!(rank_of(&rollup, "code:lib/undated.py"), None);
     }
 
     #[test]
@@ -930,7 +908,7 @@ mod tests {
         let old = slice
             .nodes
             .iter()
-            .find(|n| n["id"] == "code:app/deep/old.ts")
+            .find(|n| n["id"] == "code:app/index.ts")
             .unwrap();
         // Still the full-corpus percentile (0.0), not 1.0-of-the-narrowed-set.
         assert_eq!(old["recency_rank"], json!(0.0));
@@ -949,23 +927,21 @@ mod tests {
     #[test]
     fn git_axis_supersedes_mtime_for_clean_files() {
         // dated_graph's mtimes say new.ts is newest — but the GIT history says
-        // old.ts was committed last. The git axis must win for clean files, and
-        // a file git knows needs no mtime at all (undated.py ranks mid).
+        // the entry was committed last. The git axis must win for clean files,
+        // and a file git knows needs no mtime at all (undated.py ranks mid).
         let (g, _old, _new) = dated_graph();
         let recency = CodeRecency {
             last_commit_ms: BTreeMap::from([
-                ("app/deep/old.ts".to_string(), 2_000_000_i64),
+                ("app/index.ts".to_string(), 2_000_000_i64),
                 ("app/new.ts".to_string(), 1_000_000),
                 ("lib/undated.py".to_string(), 1_500_000),
             ]),
             dirty: HashSet::new(),
         };
         let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default(), Some(&recency));
-        assert_eq!(rank_in(&slice, "code:app/deep/old.ts"), Some(&json!(1.0)));
+        assert_eq!(rank_in(&slice, "code:app/index.ts"), Some(&json!(1.0)));
         assert_eq!(rank_in(&slice, "code:app/new.ts"), Some(&json!(0.0)));
         assert_eq!(rank_in(&slice, "code:lib/undated.py"), Some(&json!(0.5)));
-        // Module max follows the git axis too.
-        assert_eq!(rank_in(&slice, "code-mod:app/deep"), Some(&json!(1.0)));
     }
 
     #[test]
@@ -977,13 +953,13 @@ mod tests {
         let recency = CodeRecency {
             last_commit_ms: BTreeMap::from([
                 ("app/new.ts".to_string(), 9_000_000_000_000_i64), // newest commit
-                ("app/deep/old.ts".to_string(), 1_000_000),
+                ("app/index.ts".to_string(), 1_000_000),
             ]),
-            // old.ts (mtime-oldest, commit-oldest) is DIRTY → hottest anyway.
-            dirty: HashSet::from(["app/deep/old.ts".to_string()]),
+            // the entry (mtime-oldest, commit-oldest) is DIRTY → hottest anyway.
+            dirty: HashSet::from(["app/index.ts".to_string()]),
         };
         let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default(), Some(&recency));
-        assert_eq!(rank_in(&slice, "code:app/deep/old.ts"), Some(&json!(1.0)));
+        assert_eq!(rank_in(&slice, "code:app/index.ts"), Some(&json!(1.0)));
         assert!(
             rank_in(&slice, "code:app/new.ts")
                 .unwrap()
@@ -1002,14 +978,14 @@ mod tests {
         let (g, _old, _new) = dated_graph();
         let recency = CodeRecency {
             last_commit_ms: BTreeMap::from([
-                ("app/deep/old.ts".to_string(), 1_000_000_i64),
+                ("app/index.ts".to_string(), 1_000_000_i64),
                 ("lib/undated.py".to_string(), 1_000_000),
                 ("app/new.ts".to_string(), 2_000_000),
             ]),
             dirty: HashSet::new(),
         };
         let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default(), Some(&recency));
-        assert_eq!(rank_in(&slice, "code:app/deep/old.ts"), Some(&json!(0.0)));
+        assert_eq!(rank_in(&slice, "code:app/index.ts"), Some(&json!(0.0)));
         assert_eq!(rank_in(&slice, "code:lib/undated.py"), Some(&json!(0.0)));
         assert_eq!(rank_in(&slice, "code:app/new.ts"), Some(&json!(1.0)));
     }

@@ -418,13 +418,15 @@ export interface EngineNode {
   lifecycle?: { state: string; progress?: { done: number; total: number } };
   degree_by_tier?: Partial<Record<"declared" | "structural" | "temporal", number>>;
   /**
-   * Feature-convergence nodes only (constellation granularity, engine
-   * addendum S02): how many documents converge on the feature. Drives the
-   * center-of-gravity sizing (ADR D4.1); absent on document nodes.
+   * Aggregation anchors (constellation granularity, engine addendum S02): how
+   * many members converge on the node — documents for a feature convergence,
+   * member FILES for a code package-rollup representative
+   * (code-graph-files-only). Drives the center-of-gravity sizing (ADR D4.1);
+   * absent on document nodes and file-granularity code nodes.
    */
   member_count?: number;
   /**
-   * CODE corpus (codebase-graphing CGR-002): served on code file/module nodes to
+   * CODE corpus (codebase-graphing CGR-002): served on code file nodes to
    * drive module-identity colouring. `module` is the owning top-level module key;
    * `module_hue` is the 0..6 ordered-palette index assigned to the top-seven
    * modules by member count (`null` for the long-tail); `depth` is the path-segment
@@ -434,10 +436,20 @@ export interface EngineNode {
   module_hue?: number | null;
   depth?: number;
   /**
+   * CODE corpus package identity (code-graph-files-only): `package` is the
+   * directory of the package the file belongs to (`null` for a standalone
+   * file; `""` names the repository root); `package_entry` is true on the one
+   * file that DISPLAYS as its package (`__init__.py` / `mod.rs` / `lib.rs` /
+   * `index.*`) — the anchor the scene renders as the package.
+   */
+  package?: string | null;
+  package_entry?: boolean;
+  /**
    * Engine-served recency percentile over the code corpus (code-graph-heat ADR):
    * a dated file's worktree-mtime rank in [0, 1] (0 = oldest, 1 = newest); a
-   * module carries its descendants' max. Computed over the FULL pre-truncation
-   * set, stable under narrowing. Absent on undated files and vault nodes.
+   * package-rollup representative carries its members' max. Computed over the
+   * FULL pre-truncation set, stable under narrowing. Absent on undated files
+   * and vault nodes.
    */
   recency_rank?: number;
   /**
@@ -1828,8 +1840,8 @@ export class EngineClient {
     /** CODE-corpus narrowing: language wire tokens. Rejected on the vault corpus. */
     languages?: string[];
   }): Promise<GraphSlice> {
-    // The code corpus is a DIFFERENT dataset (ADR D1): its `code:` / `code-mod:`
-    // nodes are legitimate here, so the adapter's vault-only code-node exclusion
+    // The code corpus is a DIFFERENT dataset (ADR D1): its `code:` file nodes
+    // are legitimate here, so the adapter's vault-only code-node exclusion
     // must NOT fire. Tell the adapter which corpus it is adapting.
     return adaptGraphSlice(await this.post("/graph/query", body), {
       corpus: body.corpus ?? "vault",

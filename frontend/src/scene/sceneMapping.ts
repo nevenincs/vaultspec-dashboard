@@ -59,6 +59,9 @@ export function engineNodeToScene(node: EngineNode): SceneNodeData {
     module: node.module,
     moduleHue: node.module_hue,
     depth: node.depth,
+    // Package-entry files DISPLAY as their package (code-graph-files-only) ->
+    // the anchor treatment in appearance.ts.
+    packageEntry: node.package_entry === true ? true : undefined,
     // Engine-served recency percentile (code-graph-heat) -> the Recency
     // node-color heat ramp; absent on undated files and vault nodes.
     recencyRank: typeof node.recency_rank === "number" ? node.recency_rank : undefined,
