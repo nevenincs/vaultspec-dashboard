@@ -18,6 +18,7 @@ import {
   useDashboardStageSceneView,
   useGraphSlice,
   useGraphSliceAvailability,
+  useHealStaleSessionIntentOnBoot,
   useHealTimelineModeToLiveOnBoot,
   useNodeNeighborsBulk,
 } from "../../stores/server/queries";
@@ -141,6 +142,10 @@ export function Stage() {
   // to live on load so a returning scope never boots into a historical view with
   // no exit.
   useHealTimelineModeToLiveOnBoot();
+  // Session-intent lifetime (dashboard-state field lifetimes ADR): a stale scope's
+  // persisted selection clears once on boot so a days-old click never steers a
+  // fresh load; a mid-session reload resumes (view-local activity stamp, 8h).
+  useHealStaleSessionIntentOnBoot();
   const scope = useActiveScope();
   const activeWorkspace = useActiveWorkspace();
   const stageView = useDashboardStageSceneView(scope);

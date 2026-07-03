@@ -8,7 +8,9 @@ modified: '2026-07-03'
 related:
   - '[[2026-07-02-global-state-review-audit]]'
   - '[[2026-07-02-global-state-review-plan]]'
+  - '[[2026-07-03-global-state-review-adr]]'
   - '[[2026-07-03-global-state-review-audit]]'
+  - '[[2026-07-03-global-state-review-plan]]'
 ---
 
 # `global-state-review` feature index
@@ -16,6 +18,10 @@ related:
 Auto-generated index of all documents tagged with `#global-state-review`.
 
 ## Documents
+
+### adr
+
+- `2026-07-03-global-state-review-adr` - `global-state-review` adr: `dashboard-state field lifetimes: durable preference vs session intent` | (**status:** `accepted`)
 
 ### audit
 
@@ -25,3 +31,4 @@ Auto-generated index of all documents tagged with `#global-state-review`.
 ### plan
 
 - `2026-07-02-global-state-review-plan` - `global-state-review` plan
+- `2026-07-03-global-state-review-plan` - `global-state-review` plan

@@ -107,6 +107,8 @@ import {
   normalizeDashboardPanelState,
   normalizeDashboardRepresentationMode,
   normalizeDashboardSalienceLens,
+  patchDashboardState,
+  selectionPatch,
   type DashboardGraphQueryVariables,
 } from "./dashboardState";
 import { isFreshDashboardGraphDefaultsState } from "./dashboardDefaults";
@@ -142,6 +144,12 @@ import {
 } from "./settingsSelectors";
 import { filterChoicesFromDashboardState, type FilterChoices } from "../view/filters";
 import { setKeymapOverridesReader } from "../view/keymapDispatcher";
+import {
+  deriveSessionIntentBootHealIntent,
+  isSessionIntentStale,
+  readSessionIntentTouch,
+  stampSessionIntentTouch,
+} from "../view/sessionIntentFreshness";
 import { movePlayhead } from "../view/timelineIntent";
 import { normalizeNodeId, normalizeNodeIds } from "../nodeIds";
 import { normalizeSearchQuery } from "../searchQuery";
@@ -1514,6 +1522,60 @@ export function useHealTimelineModeToLiveOnBoot(): void {
     healedScopesRef.current.add(scope);
     movePlayhead("live", scope);
   }, [scope, stateLoaded, isLive]);
+}
+
+/**
+ * Stale-SESSION-INTENT boot heal (dashboard-state field lifetimes ADR,
+ * global-state-review 2026-07-03). Dashboard-state fields classify into durable
+ * preferences (filters, date range, granularity, corpus, panels — persist forever)
+ * and SESSION INTENT: the canonical selection, whose resumption value is real inside
+ * a working session and gone after a genuine absence — a days-old persisted
+ * selection otherwise silently re-drives the rail reveal, the cluster spotlight, and
+ * the camera on a fresh load (GSR-002). Once per scope per app lifetime: when the
+ * dashboard state has loaded and the scope's view-local activity stamp is stale
+ * (8h) or absent, clear the selection through the ONE canonical selection seam —
+ * every surface follows via the existing projection. The scope is then stamped, and
+ * re-stamped whenever the canonical selection changes while mounted, so an actively
+ * used tab keeps its scope fresh and a mid-session reload resumes. Mirrors the
+ * TTR-005 timeline heal's one-shot discipline (its stricter unconditional clear
+ * stays — a modal mode with no exit has no resumption value).
+ */
+export function useHealStaleSessionIntentOnBoot(): void {
+  const scope = useActiveScope();
+  const dashboardState = useDashboardState(scope);
+  const healedScopesRef = useRef<Set<string>>(new Set());
+
+  const stateLoaded = dashboardState.data !== undefined;
+  const hasSelection = (dashboardState.data?.selected_ids?.length ?? 0) > 0;
+  const selectedId = dashboardSelectionId(dashboardState.data);
+
+  useEffect(() => {
+    if (scope === null || !stateLoaded) return;
+    const alreadyHealed = healedScopesRef.current.has(scope);
+    if (!alreadyHealed) {
+      healedScopesRef.current.add(scope);
+      const stale = isSessionIntentStale(readSessionIntentTouch(scope), Date.now());
+      if (
+        deriveSessionIntentBootHealIntent({
+          scope,
+          stateLoaded,
+          hasSelection,
+          stale,
+          alreadyHealed,
+        })
+      ) {
+        void patchDashboardState(scope, selectionPatch([])).catch(() => undefined);
+      }
+    }
+    stampSessionIntentTouch(scope, Date.now());
+  }, [scope, stateLoaded, hasSelection]);
+
+  // Activity tracking: a selection CHANGE while mounted refreshes the scope's stamp,
+  // so a long-open, actively-used tab never reads as absent on its next reload.
+  useEffect(() => {
+    if (scope === null || selectedId === null) return;
+    stampSessionIntentTouch(scope, Date.now());
+  }, [scope, selectedId]);
 }
 
 export interface VaultTreeRequestIdentity {
