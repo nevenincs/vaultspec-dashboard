@@ -1061,10 +1061,18 @@
    The base dockview stylesheet is imported once from the workspace module
    (Vite JS-imported CSS), so this block only overrides variables.
    =========================================================================== */
+/* The ONE window-top chrome band height, shared by the dockview tab bar and the
+   left rail's collapse-toggle band so the two panel toggles align vertically
+   (worktree-switcher-identity). Defined on :root because the rail sits outside
+   the dockview theme scope. */
+:root {
+  --chrome-topband-height: 2.125rem;
+}
+
 .dockview-theme-vaultspec {
   --dv-group-view-background-color: var(--color-paper);
   --dv-tabs-and-actions-container-background-color: var(--color-paper-sunken);
-  --dv-tabs-and-actions-container-height: 2.125rem;
+  --dv-tabs-and-actions-container-height: var(--chrome-topband-height);
   /* Match the app's type ramp (label = 0.75rem) instead of dockview's hardcoded
      13px, so dock tabs read in the same font/size as every other tab strip
      (design-system-is-centralized). The custom DocTab content also uses the

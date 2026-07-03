@@ -84,8 +84,10 @@ const TRIGGER_CHEVRON_PX = 14;
 // stays for keyboard a11y (it is not a hover affordance).
 const PILL_CLASS =
   "group flex min-w-0 flex-1 flex-col gap-fg-0-5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
-const PILL_PROJECT_CLASS = "min-w-0 truncate text-caption text-ink-faint";
-const PILL_NAME_ROW_CLASS = "flex min-w-0 items-center gap-fg-1";
+// The first two identity lines keep clear of the absolutely-pinned collapse
+// toggle riding the header's right edge (the window-top chrome band below).
+const PILL_PROJECT_CLASS = "min-w-0 truncate pr-fg-8 text-caption text-ink-faint";
+const PILL_NAME_ROW_CLASS = "flex min-w-0 items-center gap-fg-1 pr-fg-8";
 const PILL_NAME_CLASS = "min-w-0 truncate text-display text-ink";
 const PILL_CHEVRON_CLASS =
   "shrink-0 text-ink-faint transition-transform duration-ui-fast";
@@ -495,7 +497,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           folder-add IconButton was retired: "Add a project" now lives as the pinned
           first item of the dropdown (and a Cmd+K command), not a header glyph. */}
       <div
-        className="relative flex items-center justify-between gap-fg-1 py-fg-1"
+        className="relative flex items-start justify-between gap-fg-1 py-fg-1"
         data-worktree-picker-header
       >
         <button
@@ -586,13 +588,25 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
             </span>
           )}
         </button>
-        <IconButton
-          label="collapse left rail"
-          title="collapse left rail"
-          onClick={collapseLeftRail}
+        {/* The rail-collapse toggle rides the SAME window-top chrome band as the
+            dock header's right-rail toggle (the shared --chrome-topband-height
+            token also driving the dockview tab bar), so the two panel toggles
+            align vertically instead of this one centering against the multi-line
+            identity block. `-top-fg-3` cancels the rail's `pt-fg-3` so the band
+            starts at the window top edge (LeftRail owns that padding; keep the
+            two in step). */}
+        <div
+          className="absolute right-0 -top-fg-3 flex h-[var(--chrome-topband-height)] items-center"
+          data-worktree-collapse-band
         >
-          <PanelLeft size={16} aria-hidden />
-        </IconButton>
+          <IconButton
+            label="collapse left rail"
+            title="collapse left rail"
+            onClick={collapseLeftRail}
+          >
+            <PanelLeft size={16} aria-hidden />
+          </IconButton>
+        </div>
 
         {/* The switcher dropdown: the shared kit Popover owns the light-dismiss
             wiring (Escape + outside pointer); `ignoreSelector` excludes the pill
