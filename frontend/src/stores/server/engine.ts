@@ -9,6 +9,7 @@
 // passing test IS the contract-shape verification — there is no mock double.
 
 import {
+  adaptCodeFiles,
   adaptContent,
   adaptDashboardState,
   adaptFileTree,
@@ -289,6 +290,48 @@ export interface VaultTreeResponse {
   entries: VaultTreeEntry[];
   tiers: TiersBlock;
 }
+
+// The complete code-file listing (search-providers ADR: the one contract event).
+// One minimal row per `code:` file node projected off the code corpus graph —
+// NOT the DOI-bounded graph slice — so the files(code) search provider narrows a
+// COMPLETE client-held listing (the complete-paginated-set rule), never a capped
+// slice that would silently miss files.
+export interface CodeFileEntry {
+  /** Repo-relative POSIX path — the node key and the display path. */
+  path: string;
+  /** The `code:{path}` graph node id, so a hit is directly navigable through
+   *  the shared open verb (no separate resolution). */
+  node_id: string;
+  /** The file's display title (a package-entry file shows its package name);
+   *  absent when the node carries none. */
+  title?: string;
+  /** Wire language token (`rust`/`typescript`/`javascript`/`python`), when the
+   *  path extension classifies; absent for an unclassified extension. */
+  lang?: string;
+}
+
+/** Honest walk-cap truncation (search-providers ADR / ADR D8): present only when
+ *  the ingest walk cap bounded the corpus, so the listing is NOT the complete
+ *  source tree. `null`/absent means the walk ran to completion. */
+export interface CodeFilesTruncation {
+  returned_files: number;
+  reason: string;
+}
+
+export interface CodeFilesResponse {
+  entries: CodeFileEntry[];
+  tiers: TiersBlock;
+  truncated: CodeFilesTruncation | null;
+}
+
+// The files(code) provider narrows the listing CLIENT-SIDE, so — exactly like the
+// vault tree — it must hold the COMPLETE set or a file beyond the first page can
+// never match. The route serves a memoized, filter-independent projection
+// paginated at `<= CODE_FILES_PAGE_SIZE`/page, so `codeFiles` walks the cursor to
+// completion. The page cap bounds the walk (bounded-by-default): 25 × 2000 =
+// 50,000 covers the engine's whole 50k source-file walk ceiling in one drain.
+const CODE_FILES_PAGE_SIZE = 2000;
+const CODE_FILES_MAX_PAGES = 25;
 
 // The rail narrows the vault tree CLIENT-SIDE (`narrowVaultRailEntries`), so it
 // must hold the COMPLETE listing or a feature whose documents fall beyond the
@@ -1825,6 +1868,32 @@ export class EngineClient {
       if (cursor === undefined) break;
     }
     return adaptVaultTree({ entries, tiers });
+  }
+
+  async codeFiles(scope: string): Promise<CodeFilesResponse> {
+    // Walk the cursor to completion so the files(code) provider holds the WHOLE
+    // listing — it narrows client-side, so a partial first page silently drops
+    // every file beyond it. Each page is the route's max; the page cap bounds
+    // the walk. The walk-cap `truncated` block is generation-stable (identical
+    // on every page), so the last-seen value is the honest whole-listing truth.
+    const entries: unknown[] = [];
+    let tiers: unknown = {};
+    let truncated: unknown = null;
+    let cursor: string | undefined;
+    for (let page = 0; page < CODE_FILES_MAX_PAGES; page += 1) {
+      const body = await this.get<{
+        entries?: unknown[];
+        tiers?: unknown;
+        truncated?: unknown;
+        next_cursor?: string;
+      }>("/code-files", { scope, page_size: CODE_FILES_PAGE_SIZE, cursor });
+      if (Array.isArray(body.entries)) entries.push(...body.entries);
+      if (body.tiers !== undefined) tiers = body.tiers;
+      if (body.truncated !== undefined) truncated = body.truncated;
+      cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
+      if (cursor === undefined) break;
+    }
+    return adaptCodeFiles({ entries, tiers, truncated });
   }
 
   /** One bounded, ignore-aware directory level of the worktree file tree

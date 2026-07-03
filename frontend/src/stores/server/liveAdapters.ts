@@ -14,6 +14,9 @@
 import { CANONICAL_TIERS } from "./engine";
 import type {
   ChangedFile,
+  CodeFileEntry,
+  CodeFilesResponse,
+  CodeFilesTruncation,
   ContentResponse,
   ContentTruncated,
   DashboardState,
@@ -1104,6 +1107,65 @@ export function adaptVaultTree(body: unknown): VaultTreeResponse {
   return { entries, tiers: (body.tiers ?? {}) as TiersBlock };
 }
 
+// --- /code-files: the complete code-file listing (search-providers ADR) ----------
+//
+// Tolerant adapter for the drained `/code-files` walk. Every field defaults to a
+// safe empty so a sparse or older shape NEVER throws: a row missing its `path` is
+// dropped (a code hit with no path is unnavigable), a missing `node_id` is
+// reconstructed from the path (the files-only `code:{path}` identity), and the
+// walk-cap `truncated` block is passed through only when it is a well-formed
+// honesty record (null otherwise — absence reads as completeness, never a guess).
+
+function adaptCodeFileEntry(value: unknown): CodeFileEntry | null {
+  if (!isRec(value)) return null;
+  const path = normalizeVaultTreeString(value.path);
+  if (path === undefined) return null;
+  const nodeId = normalizeVaultTreeString(value.node_id) ?? `code:${path}`;
+  const title = normalizeVaultTreeString(value.title);
+  const lang = normalizeVaultTreeString(value.lang);
+  return {
+    path,
+    node_id: nodeId,
+    ...(title !== undefined ? { title } : {}),
+    ...(lang !== undefined ? { lang } : {}),
+  };
+}
+
+function adaptCodeFilesTruncation(value: unknown): CodeFilesTruncation | null {
+  if (!isRec(value)) return null;
+  const returned = value.returned_files;
+  const reason = normalizeVaultTreeString(value.reason);
+  if (
+    typeof returned !== "number" ||
+    !Number.isFinite(returned) ||
+    reason === undefined
+  ) {
+    return null;
+  }
+  return { returned_files: Math.max(0, Math.floor(returned)), reason };
+}
+
+/** Live code-file rows → the internal complete listing. Fail-closed to an empty
+ *  listing (never a throw) when the shape is unrecognized, preserving any tiers
+ *  block so degradation truth still rides through. */
+export function adaptCodeFiles(body: unknown): CodeFilesResponse {
+  if (!isRec(body) || !Array.isArray(body.entries)) {
+    return {
+      entries: [],
+      tiers: (isRec(body) ? (body.tiers ?? {}) : {}) as TiersBlock,
+      truncated: null,
+    };
+  }
+  const entries = body.entries
+    .map(adaptCodeFileEntry)
+    .filter((entry): entry is CodeFileEntry => entry !== null);
+  return {
+    entries,
+    tiers: (body.tiers ?? {}) as TiersBlock,
+    truncated: adaptCodeFilesTruncation(body.truncated),
+  };
+}
+
 // --- §3 code (worktree) file tree (dashboard-code-tree ADR) ----------------------
 //
 // Tolerant adapter for `GET /file-tree`. The live `{data, tiers, next_cursor?}`
@@ -1186,6 +1248,81 @@ export function adaptFileTree(body: unknown): FileTreeResponse {
     path: normalizeFileTreeString(body.path) ?? "",
     truncated: adaptFileTreeTruncated(body.truncated),
     next_cursor: normalizeFileTreeString(body.next_cursor),
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
+// --- §3.6 complete code-file listing (search-providers ADR D1) -------------------
+//
+// Tolerant adapter for `GET /code-files`. The live `{data, tiers, next_cursor?}`
+// envelope is already unwrapped by `unwrapEnvelope` before this runs (with the
+// top-level `next_cursor` preserved onto the flat body); a body already in the
+// internal shape (the mock) passes through unchanged — the one-code-path
+// property. Every missing field defaults to a safe empty so a sparse or older
+// shape NEVER throws and the files(code) provider reads degraded state from the
+// `tiers` block (defaulted to an empty block when absent), never from a thrown
+// adapter. The `truncated` block is forwarded verbatim as null-or-object; it is
+// never fabricated.
+
+function normalizeCodeFilesString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+/** Adapt one wire row: a missing or blank `path` is malformed and dropped; a
+ *  missing or blank `node_id` falls back to the canonical `code:{path}` form so
+ *  an older engine version that omitted it still yields navigable entries. */
+function adaptCodeFilesEntry(value: unknown): CodeFileEntry | null {
+  if (!isRec(value)) return null;
+  const path = normalizeCodeFilesString(value.path);
+  if (path === undefined) return null;
+  const node_id = normalizeCodeFilesString(value.node_id) ?? `code:${path}`;
+  const title = normalizeCodeFilesString(value.title);
+  const lang = normalizeCodeFilesString(value.lang);
+  return {
+    path,
+    node_id,
+    ...(title !== undefined ? { title } : {}),
+    ...(lang !== undefined ? { lang } : {}),
+  };
+}
+
+/** Forward the honest walk-cap truncation block: a valid object with
+ *  `returned_files` (non-negative finite integer) and `reason` (non-blank)
+ *  passes through; any other shape collapses to null so a fabricated or
+ *  malformed block never reaches the provider. */
+function adaptCodeFilesTruncation(value: unknown): CodeFilesTruncation | null {
+  if (!isRec(value)) return null;
+  const returnedFiles =
+    typeof value.returned_files === "number" &&
+    Number.isFinite(value.returned_files) &&
+    value.returned_files >= 0
+      ? Math.floor(value.returned_files)
+      : undefined;
+  const reason = normalizeCodeFilesString(value.reason);
+  if (returnedFiles !== undefined && reason !== undefined) {
+    return { returned_files: returnedFiles, reason };
+  }
+  return null;
+}
+
+/** Live `/code-files` walked entries → the internal complete code-file listing.
+ *  TOLERANT: an absent `entries` array defaults to empty (the provider renders
+ *  its empty/degraded state from the tiers block), and `truncated` defaults to
+ *  null (walk ran to completion). `node_id` falls back to `code:{path}` so an
+ *  older engine version still yields navigable entries. */
+export function adaptCodeFiles(body: unknown): CodeFilesResponse {
+  if (!isRec(body)) {
+    return { entries: [], truncated: null, tiers: {} };
+  }
+  return {
+    entries: Array.isArray(body.entries)
+      ? body.entries
+          .map(adaptCodeFilesEntry)
+          .filter((entry): entry is CodeFileEntry => entry !== null)
+      : [],
+    truncated: adaptCodeFilesTruncation(body.truncated ?? null),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }
