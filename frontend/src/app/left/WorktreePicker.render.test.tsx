@@ -57,18 +57,18 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
     renderPicker();
     const trigger = await screen.findByRole(
       "button",
-      { name: /worktree scope/i },
+      { name: /current location/i },
       ENGINE_WAIT,
     );
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByRole("list", { name: /worktree scopes/i })).toBeTruthy();
+    expect(screen.getByRole("list", { name: /projects and worktrees/i })).toBeTruthy();
   });
 
   it("conveys the active scope by a non-color cue: aria-current plus weight", async () => {
     renderPicker({ defaultExpanded: true });
-    await screen.findByRole("list", { name: /worktree scopes/i }, ENGINE_WAIT);
+    await screen.findByRole("list", { name: /projects and worktrees/i }, ENGINE_WAIT);
     const activeRow = await waitFor(() => {
       const row = screen
         .getAllByRole("button")
@@ -85,14 +85,14 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
     renderPicker();
     const trigger = await screen.findByRole(
       "button",
-      { name: /worktree scope/i },
+      { name: /current location/i },
       ENGINE_WAIT,
     );
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     trigger.focus();
     fireEvent.keyDown(trigger, { key: "Enter" });
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByRole("list", { name: /worktree scopes/i })).toBeTruthy();
+    expect(screen.getByRole("list", { name: /projects and worktrees/i })).toBeTruthy();
   });
 
   it("does not collapse store-owned disclosure state on a default runtime mount", async () => {
@@ -101,12 +101,12 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
 
     const trigger = await screen.findByRole(
       "button",
-      { name: /worktree scope/i },
+      { name: /current location/i },
       ENGINE_WAIT,
     );
 
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByRole("list", { name: /worktree scopes/i })).toBeTruthy();
+    expect(screen.getByRole("list", { name: /projects and worktrees/i })).toBeTruthy();
   });
 
   it("never hides the control while the map is loading (always pickable)", () => {
@@ -118,13 +118,15 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
     queryClient.clear();
     renderPicker();
     expect(
-      screen.getByRole("button", { name: /worktree scope|choose a worktree/i }),
+      screen.getByRole("button", {
+        name: /current location|choose a project or worktree/i,
+      }),
     ).toBeTruthy();
   });
 
   it("retires the dead folder-add header button (relocated into the dropdown)", async () => {
     renderPicker();
-    await screen.findByRole("button", { name: /worktree scope/i }, ENGINE_WAIT);
+    await screen.findByRole("button", { name: /current location/i }, ENGINE_WAIT);
     // The old no-op "open or add a project" header IconButton is gone; the
     // rail-collapse toggle remains.
     expect(screen.queryByRole("button", { name: /open or add a project/i })).toBeNull();
@@ -135,7 +137,7 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
     renderPicker({ defaultExpanded: true });
     const list = await screen.findByRole(
       "list",
-      { name: /worktree scopes/i },
+      { name: /projects and worktrees/i },
       ENGINE_WAIT,
     );
     const addRow = list.querySelector("[data-worktree-add-project]");
@@ -147,7 +149,7 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
 
   it("hides the Projects section when a single project is registered", async () => {
     renderPicker({ defaultExpanded: true });
-    await screen.findByRole("list", { name: /worktree scopes/i }, ENGINE_WAIT);
+    await screen.findByRole("list", { name: /projects and worktrees/i }, ENGINE_WAIT);
     // The fixture registers one workspace root, so the multi-project chooser is absent.
     expect(screen.queryByText("Projects")).toBeNull();
   });
@@ -156,11 +158,11 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
     renderPicker({ defaultExpanded: true });
     const trigger = await screen.findByRole(
       "button",
-      { name: /worktree scope/i },
+      { name: /current location/i },
       ENGINE_WAIT,
     );
     const firstRow = (
-      await screen.findByRole("list", { name: /worktree scopes/i }, ENGINE_WAIT)
+      await screen.findByRole("list", { name: /projects and worktrees/i }, ENGINE_WAIT)
     ).querySelector("button") as HTMLButtonElement;
     firstRow.focus();
     fireEvent.keyDown(firstRow, { key: "Escape" });

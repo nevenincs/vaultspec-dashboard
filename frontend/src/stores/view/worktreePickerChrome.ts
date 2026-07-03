@@ -21,6 +21,7 @@ import {
   useSwapWorkspace,
   useWorkspaceMapSurface,
   useWorkspaceRoots,
+  workspaceRootName,
 } from "../server/queries";
 import type { RecentScope } from "../server/engine";
 import { useShellPanelIntent } from "../server/panelStateIntent";
@@ -377,6 +378,11 @@ export function useWorktreePickerView(): WorktreePickerView {
   const roots = useWorkspaceRoots();
   const activeWorkspace = useActiveWorkspace();
   const { swap } = useSwapWorkspace();
+  // The active PROJECT's display name (registry root via the distinguishing
+  // repo-identity derivation) — the trigger's identity line and the worktree
+  // disclosure label both read it.
+  const activeRoot = roots.find((root) => root.id === activeWorkspace);
+  const projectLabel = activeRoot ? workspaceRootName(activeRoot) : null;
   const pickerView = useMemo(
     () =>
       deriveWorkspaceMapPickerPresentationView({
@@ -384,8 +390,9 @@ export function useWorktreePickerView(): WorktreePickerView {
         activeScope,
         pendingId: chrome.pendingId,
         availability,
+        projectLabel,
       }),
-    [activeScope, availability, chrome.pendingId, map.data],
+    [activeScope, availability, chrome.pendingId, map.data, projectLabel],
   );
   const projectRows = useMemo(
     () => deriveWorktreePickerProjectRows(roots, activeWorkspace),
@@ -457,8 +464,8 @@ export function worktreeSwitchFailureMessage(
 ): string {
   const label = normalizeWorktreePickerSwitchLabel(branch) ?? "worktree";
   return kind === "selection-rejected"
-    ? `could not switch to ${label} - selection not saved`
-    : "could not persist the worktree switch";
+    ? `Couldn't switch to ${label} — the selection wasn't saved`
+    : "The worktree switch couldn't be saved";
 }
 
 export function failWorktreeSwitch(

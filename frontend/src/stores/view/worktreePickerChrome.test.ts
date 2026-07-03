@@ -42,7 +42,8 @@ function row(id: string): WorkspaceMapPickerRowView {
     ariaLabel: id,
     nameLabel: id,
     defaultLabel: null,
-    bareLabel: null,
+    branchLabel: null,
+    noVaultLabel: null,
     degradedTitle: "",
     isDegraded: false,
     pendingLabel: null,
@@ -133,7 +134,7 @@ describe("worktree picker chrome store", () => {
     failWorktreeSwitch("scope-b", "current", "persist-failed");
     expect(useWorktreePickerChromeStore.getState()).toMatchObject({
       pendingId: null,
-      switchError: "could not persist the worktree switch",
+      switchError: "The worktree switch couldn't be saved",
     });
   });
 
@@ -158,7 +159,7 @@ describe("worktree picker chrome store", () => {
     failWorktreeSwitch(" scope-b ", "branch-b", "selection-rejected");
     expect(useWorktreePickerChromeStore.getState()).toMatchObject({
       pendingId: null,
-      switchError: "could not switch to branch-b - selection not saved",
+      switchError: "Couldn't switch to branch-b — the selection wasn't saved",
     });
 
     resetWorktreePickerChrome();
@@ -258,16 +259,16 @@ describe("worktree picker chrome store", () => {
 
   it("projects switch failure copy behind the chrome seam", () => {
     expect(worktreeSwitchFailureMessage("feature/local", "selection-rejected")).toBe(
-      "could not switch to feature/local - selection not saved",
+      "Couldn't switch to feature/local — the selection wasn't saved",
     );
     expect(
       worktreeSwitchFailureMessage("  feature/local  ", "selection-rejected"),
-    ).toBe("could not switch to feature/local - selection not saved");
+    ).toBe("Couldn't switch to feature/local — the selection wasn't saved");
     expect(worktreeSwitchFailureMessage("feature/local", "persist-failed")).toBe(
-      "could not persist the worktree switch",
+      "The worktree switch couldn't be saved",
     );
     expect(worktreeSwitchFailureMessage(null, "selection-rejected")).toBe(
-      "could not switch to worktree - selection not saved",
+      "Couldn't switch to worktree — the selection wasn't saved",
     );
   });
 

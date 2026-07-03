@@ -630,9 +630,11 @@ export interface WorkspaceMapPickerRowView {
   isDegraded: boolean;
   rowClassName: string;
   activeCueClassName: string;
-  /** The worktree's display NAME (path basename) — shown in place of the branch
-   *  so repository status reads once per rail. */
+  /** The worktree's display NAME (path basename) — the row's primary ink. */
   nameLabel: string;
+  /** The checked-out branch when it adds identity beyond the name (null when it
+   *  matches the folder name — "main main" says nothing twice). */
+  branchLabel: string | null;
   branchClassName: string;
   badgeClassName: string;
   degradedIconClassName: string;
@@ -640,19 +642,28 @@ export interface WorkspaceMapPickerRowView {
   title: string;
   ariaLabel: string;
   defaultLabel: string | null;
-  bareLabel: string | null;
+  /** Quiet marker for a worktree with no vault to open (context-only row). */
+  noVaultLabel: string | null;
   degradedTitle: string;
   pendingLabel: string | null;
 }
 
 export interface WorkspaceMapPickerPresentationView {
   worktrees: MapWorktree[];
-  /** The FULL ordered worktree set of the ACTIVE project (the "All worktrees"
+  /** The FULL ordered worktree set of the ACTIVE project (the worktree
    *  disclosure). The cross-project "Recent" section is derived separately from
    *  the session recents, not from this `/map` projection. */
   rows: WorkspaceMapPickerRowView[];
-  /** Label for the active project's worktree disclosure. */
+  /** Label for the active project's worktree disclosure — names the project so
+   *  the count is never read machine-wide. */
   allLabel: string;
+  /** The active PROJECT's display name (threaded from the registry), or null
+   *  before the registry resolves — the trigger's identity line. */
+  projectLabel: string | null;
+  /** The pending-aware headline worktree (the switch target while switching,
+   *  else the active worktree) — drives the trigger's git line and path line so
+   *  the header never mixes target and outgoing state. */
+  headline: MapWorktree | null;
   pending: boolean;
   triggerLabel: string;
   triggerAriaLabel: string;
@@ -777,11 +788,14 @@ export function deriveWorkspaceMapPickerPresentationView({
   activeScope,
   pendingId,
   availability,
+  projectLabel = null,
 }: {
   map: MapResponse | undefined;
   activeScope: string | null;
   pendingId: string | null;
   availability: WorkspaceMapAvailability;
+  /** The active project's display name from the registry (identity line). */
+  projectLabel?: string | null;
 }): WorkspaceMapPickerPresentationView {
   const worktrees = orderWorkspaceMapWorktrees(
     map?.repositories.flatMap((repo) => repo.worktrees) ?? [],
@@ -801,6 +815,8 @@ export function deriveWorkspaceMapPickerPresentationView({
     const isActive = worktree.id === activeScope;
     const isPending = pending && worktree.id === pendingId;
     const isDegraded = (worktree.degraded?.length ?? 0) > 0;
+    const name = worktreeName(worktree.path);
+    const branch = worktree.branch.trim();
     return {
       worktree,
       selectable,
@@ -809,21 +825,22 @@ export function deriveWorkspaceMapPickerPresentationView({
       isDegraded,
       rowClassName: workspaceMapPickerRowClassName({ isActive, selectable }),
       activeCueClassName: workspaceMapPickerActiveCueClassName(isActive),
-      nameLabel: worktreeName(worktree.path),
+      nameLabel: name,
+      branchLabel: branch.length > 0 && branch !== name ? branch : null,
       branchClassName: WORKSPACE_MAP_PICKER_BRANCH_CLASS,
       badgeClassName: WORKSPACE_MAP_PICKER_BADGE_CLASS,
       degradedIconClassName: WORKSPACE_MAP_PICKER_DEGRADED_ICON_CLASS,
       pendingLabelClassName: WORKSPACE_MAP_PICKER_PENDING_LABEL_CLASS,
       title: worktree.has_vault
         ? worktree.path
-        : `${worktree.path} — no vault corpus, context only`,
+        : `${worktree.path} — no vault here; shown for context`,
       ariaLabel: worktree.has_vault
-        ? `switch to ${worktreeName(worktree.path)}${worktree.is_default ? ", the default" : ""}${
-            isActive ? ", current scope" : ""
-          }`
-        : `${worktreeName(worktree.path)} — context only, no vault corpus to switch to`,
+        ? `switch to ${name}${branch.length > 0 && branch !== name ? ` on branch ${branch}` : ""}${
+            worktree.is_default ? ", the default worktree" : ""
+          }${isActive ? ", the current worktree" : ""}`
+        : `${name} — no vault here, shown for context only`,
       defaultLabel: worktree.is_default ? "·default" : null,
-      bareLabel: worktree.has_vault ? null : "·bare",
+      noVaultLabel: worktree.has_vault ? null : "·no vault",
       degradedTitle: worktree.degraded?.join(", ") ?? "",
       pendingLabel: isPending ? "switching…" : null,
     };
@@ -832,40 +849,46 @@ export function deriveWorkspaceMapPickerPresentationView({
   return {
     worktrees,
     rows,
-    allLabel: "All worktrees",
+    allLabel: projectLabel
+      ? `Worktrees in ${projectLabel}`
+      : "This project's worktrees",
+    projectLabel,
+    headline: headlineWorktree ?? null,
     pending,
-    triggerLabel: headlineName ?? "pick a worktree…",
+    triggerLabel: headlineName ?? "Pick a worktree…",
     triggerAriaLabel: headlineName
-      ? `worktree scope: ${headlineName}${pending ? ", switching" : ""}`
-      : "choose a worktree scope",
+      ? `current location: ${projectLabel ? `${projectLabel} / ` : ""}${headlineName}${
+          pending ? ", switching" : ""
+        }`
+      : "choose a project or worktree",
     triggerClassName: WORKSPACE_MAP_PICKER_TRIGGER_CLASS,
     triggerLabelClassName: workspaceMapPickerTriggerLabelClassName(pending),
     triggerIconClassName: WORKSPACE_MAP_PICKER_TRIGGER_ICON_CLASS,
-    loadingLabel: "mapping worktrees…",
+    loadingLabel: "Loading worktrees…",
     loadingClassName: WORKSPACE_MAP_PICKER_LOADING_CLASS,
-    errorLabel: "workspace map unavailable",
+    errorLabel: "The worktree list couldn't be loaded",
     errorRootClassName: WORKSPACE_MAP_PICKER_ERROR_ROOT_CLASS,
     errorLabelClassName: WORKSPACE_MAP_PICKER_ERROR_LABEL_CLASS,
-    retryLabel: "retry",
-    retryAriaLabel: "retry loading the workspace map",
+    retryLabel: "Retry",
+    retryAriaLabel: "retry loading the worktree list",
     retryButtonClassName: WORKSPACE_MAP_PICKER_RETRY_BUTTON_CLASS,
     degradedLabel: availability.degraded
-      ? `the worktree map is partly unavailable right now${
+      ? `The worktree list is partly unavailable right now${
           availabilityReason ? ` — ${availabilityReason}` : ""
-        }. showing what loaded.`
+        }. Showing what loaded.`
       : null,
     degradedClassName: WORKSPACE_MAP_PICKER_DEGRADED_CLASS,
-    listAriaLabel: "worktree scopes",
+    listAriaLabel: "projects and worktrees",
     emptyLabel:
       worktrees.length === 0
-        ? "no worktrees mapped yet — point the engine at a repository to begin."
+        ? "No worktrees here yet — point the engine at a repository to begin."
         : selectableCount === 0
-          ? "no vault-bearing worktree to switch to here. listed refs are context only."
+          ? "None of these worktrees has a vault to open — they're shown for context."
           : null,
     emptyClassName: WORKSPACE_MAP_PICKER_EMPTY_CLASS,
     singleScopeLabel:
       selectableCount === 1 && worktrees.length === 1
-        ? "this is the only vault-bearing worktree."
+        ? "This is the only worktree with a vault."
         : null,
     singleScopeClassName: WORKSPACE_MAP_PICKER_SINGLE_SCOPE_CLASS,
   };
@@ -1022,6 +1045,10 @@ export interface WorktreePickerRecentRowView {
   worktreeName: string;
   /** The owning project's name (registry label, falling back to basename). */
   projectLabel: string;
+  /** The row's primary ink: a same-project entry is just the worktree name; a
+   *  cross-project entry LEADS with the project ("project / worktree") so the
+   *  distinguishing token carries the emphasis when basenames collide. */
+  label: string;
   /** This entry is the current active (workspace, scope). */
   isActive: boolean;
   /** This entry belongs to the currently-active project. */
@@ -1087,10 +1114,11 @@ export function deriveWorktreePickerRecentRows({
       scope,
       worktreeName: name,
       projectLabel,
+      label: sameProject ? name : `${projectLabel} / ${name}`,
       isActive,
       sameProject,
       selectable,
-      title: sameProject ? scope : `${name} — ${projectLabel}\n${scope}`,
+      title: sameProject ? scope : `${projectLabel} / ${name}\n${scope}`,
       ariaLabel: sameProject
         ? `switch to ${name}${isActive ? ", current" : ""}`
         : `switch to ${name} in project ${projectLabel}`,
@@ -2204,7 +2232,7 @@ const FILE_TREE_LEVEL_COPY = {
   loadingMessage: "reading the worktree…",
   errorTitle: "code tree unavailable",
   retryLabel: "try again",
-  emptyMessage: "no source files in this scope yet.",
+  emptyMessage: "No source files in this worktree yet.",
   childLoadingMessage: "…",
   childErrorMessage: "could not list this directory.",
   childLoadingClassName:
@@ -6848,99 +6876,6 @@ export function useCoreStatus(): CoreStatusView {
   return deriveCoreStatusView(status.data, status.error, status.isPending);
 }
 
-// --- location anchor (status-overview ADR: "Where are we?") -------------------------
-//
-// The "Where are we?" anchor composes EXISTING wire reads — the active scope (the
-// absolute worktree path, canonical token, forward slashes), the worktree it
-// belongs to from `/map` (branch + is_main), and the git rollup from `/status`
-// (branch + dirty/ahead/behind) — into ONE interpreted view so the Status tab
-// (dumb chrome) reads a single selector and never iterates `map.data.repositories`
-// or reads the raw `tiers` block (dashboard-layer-ownership). No new wire read.
-
-/** The interpreted location anchor the Status overview header renders. */
-export interface LocationAnchorView {
-  /** The absolute worktree path being browsed (canonical token, forward slashes). */
-  path: string | null;
-  /** Empty-state copy for consumers when no active scope is resolved. */
-  emptyLabel: string | null;
-  /** Render class for the empty location state. */
-  emptyClassName: string;
-  /** The current git branch (preferring the `/map` worktree, then the git rollup). */
-  branch: string | null;
-  /** True when the active scope is the repository's main/default worktree. */
-  isMain: boolean;
-  /** Worktree label shown for the repository default worktree. */
-  mainLabel: string | null;
-  mainClassName: string;
-  branchClassName: string;
-  pathClassName: string;
-  /** Working-tree dirty truth from the git rollup (false when unknown/clean). */
-  dirty: boolean;
-  /** Commits ahead of upstream; undefined = no upstream configured (not zero). */
-  ahead?: number;
-  /** Commits behind upstream; undefined = no upstream configured (not zero). */
-  behind?: number;
-}
-
-/**
- * Derive the location anchor from the active scope, the workspace map, and the git
- * status view. Pure projection over already-fetched reads: it matches the active
- * scope to its `/map` worktree (for branch + is_main) and falls back to the git
- * rollup's branch when the map has not resolved the worktree yet. The dirty /
- * ahead / behind chips come from the git rollup. Reads no raw `tiers` block.
- */
-export function deriveLocationAnchor(
-  scope: unknown,
-  map: MapResponse | undefined,
-  git: GitStatusView,
-): LocationAnchorView {
-  const normalizedScope = normalizeGraphSliceScope(scope);
-  let branch: string | null = git.git?.branch ?? null;
-  let isMain = false;
-  if (normalizedScope !== null && map) {
-    for (const repo of map.repositories) {
-      // The live engine's scope token IS the worktree path; match on either the
-      // path or the stable id so the anchor resolves on the live origin and the
-      // mock (whose worktree id and path differ) alike.
-      const wt = repo.worktrees.find(
-        (w) => w.path === normalizedScope || w.id === normalizedScope,
-      );
-      if (wt) {
-        branch = wt.branch || branch;
-        isMain = wt.is_default === true;
-        break;
-      }
-    }
-  }
-  return {
-    path: normalizedScope,
-    emptyLabel: normalizedScope === null ? "no scope — pick a worktree first" : null,
-    emptyClassName: "px-fg-1 text-label text-ink-faint",
-    branch,
-    isMain,
-    mainLabel: isMain ? "main" : null,
-    mainClassName: "shrink-0 font-medium text-ink",
-    branchClassName: "min-w-0 truncate font-medium text-accent-text",
-    pathClassName: "truncate font-mono text-caption text-ink-faint",
-    dirty: git.dirty,
-    ahead: git.git?.ahead,
-    behind: git.git?.behind,
-  };
-}
-
-/**
- * Stores hook: the interpreted location anchor for the Status overview header,
- * composing the active scope, `/map`, and `/status` git rollup so the rail (dumb
- * chrome) reads one selector. The active scope is passed in by the caller (it
- * already holds it via `useActiveScope`), keeping this hook a pure composition of
- * the two stores reads.
- */
-export function useLocationAnchor(scope: unknown): LocationAnchorView {
-  const map = useWorkspaceMap();
-  const git = useGitStatus();
-  return deriveLocationAnchor(scope, map.data, git);
-}
-
 // --- rag service status (dashboard-rag-manager ADR) ----------------------------------
 //
 // The rag rollup is app chrome; it reads rag readiness through this stores
@@ -8358,7 +8293,7 @@ export function deriveChangesOverviewView(
     degradedLabel: "repository state unavailable",
     errorTitle: "changes unavailable",
     retryLabel: "retry",
-    noScopeLabel: "no scope — pick a worktree first",
+    noScopeLabel: "No worktree selected — pick one in the left rail first.",
     filesSectionLabel: "Changed files — open diff or source",
     filesListAriaLabel: "changed files",
     documentsSectionLabel: "Changed documents — open reader",

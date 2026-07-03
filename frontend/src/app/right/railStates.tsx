@@ -2,8 +2,8 @@
 // state-mode kit (state-mode-uniformity ADR D4/D6), uniform with the left rail and the
 // canonical StateBlock/Skeleton: loading is a UI-only Skeleton (no text); degraded is the
 // shared TriangleAlert caution in the stale tone (was a bespoke dot); empty is the shared
-// glyph + one sentence (the positive Check for "nothing in flight"). The rail shares ONE
-// LocationStrip header across every state and swaps this body underneath it.
+// glyph + one sentence (the positive Check for "nothing in flight"). Location identity
+// lives only in the left rail's switcher trigger (worktree-switcher-identity ADR).
 //
 // No wire access, no node identity: dumb presentational components over a state the
 // stores selector already classified (dashboard-layer-ownership).
@@ -19,7 +19,7 @@ export function RailEmpty() {
       mode="empty"
       icon={Check}
       title="Nothing in flight"
-      message="No open plans, pull requests, or issues in this scope."
+      message="No open plans, pull requests, or issues in this worktree."
     />
   );
 }

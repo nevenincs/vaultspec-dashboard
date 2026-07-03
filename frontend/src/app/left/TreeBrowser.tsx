@@ -442,7 +442,7 @@ export function TreeBrowser({
           label={
             view.filteredToNothing
               ? "No documents match this filter."
-              : "No documents in this scope yet."
+              : "No documents in this worktree yet."
           }
         />
       ) : (

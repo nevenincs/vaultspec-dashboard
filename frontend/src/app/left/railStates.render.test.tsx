@@ -33,13 +33,13 @@ describe("left-rail designed modes (composed from the shared kit)", () => {
     render(
       createElement(RailMessage, {
         tone: "empty",
-        label: "No documents in this scope yet.",
+        label: "No documents in this worktree yet.",
       }),
     );
     const root = document.querySelector('[data-state-block="empty"]');
     expect(root).toBeTruthy();
     expect(root!.querySelector("svg")).toBeTruthy();
-    expect(screen.getByText("No documents in this scope yet.")).toBeTruthy();
+    expect(screen.getByText("No documents in this worktree yet.")).toBeTruthy();
   });
 
   it("DEGRADED (full) renders the caution glyph state with a plain sentence", () => {

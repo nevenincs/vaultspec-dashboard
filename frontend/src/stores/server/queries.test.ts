@@ -66,7 +66,6 @@ import {
   deriveHistoryView,
   deriveIssuesView,
   deriveInspectorNeighborTierView,
-  deriveLocationAnchor,
   deriveMarkdownHeaderView,
   deriveMarkdownReaderView,
   deriveNodeDetailView,
@@ -2577,7 +2576,11 @@ describe("left-rail root surface states", () => {
     });
 
     expect(view.triggerLabel).toBe("vault-b");
-    expect(view.triggerAriaLabel).toBe("worktree scope: vault-b, switching");
+    expect(view.triggerAriaLabel).toBe("current location: vault-b, switching");
+    // The pending-aware headline is the switch TARGET while switching, so the
+    // trigger's git/path lines never mix the target's name with the outgoing
+    // worktree's state.
+    expect(view.headline?.id).toBe("vault-b");
     expect(view.triggerClassName).toBe(
       "flex w-full items-center rounded-fg-xs py-fg-1 text-left transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
     );
@@ -2592,7 +2595,7 @@ describe("left-rail root surface states", () => {
       "rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
     );
     expect(view.degradedLabel).toBe(
-      "the worktree map is partly unavailable right now — worktree missing. showing what loaded.",
+      "The worktree list is partly unavailable right now — worktree missing. Showing what loaded.",
     );
     expect(view.degradedClassName).toBe(
       "mt-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted",
@@ -2614,7 +2617,7 @@ describe("left-rail root surface states", () => {
       degradedIconClassName: "flex shrink-0 items-center text-state-stale",
       pendingLabelClassName: "ml-auto shrink-0 text-caption text-ink-faint",
       defaultLabel: "·default",
-      ariaLabel: "switch to vault-a, the default, current scope",
+      ariaLabel: "switch to vault-a, the default worktree, the current worktree",
     });
     expect(view.rows[1]).toMatchObject({
       isPending: true,
@@ -2629,9 +2632,9 @@ describe("left-rail root surface states", () => {
       rowClassName:
         "flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus cursor-not-allowed text-ink-faint/60",
       activeCueClassName: "-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full bg-transparent",
-      bareLabel: "·bare",
+      noVaultLabel: "·no vault",
       degradedTitle: "structural",
-      ariaLabel: "bare-a — context only, no vault corpus to switch to",
+      ariaLabel: "bare-a — no vault here, shown for context only",
     });
   });
 
@@ -2644,10 +2647,9 @@ describe("left-rail root surface states", () => {
         availability: noDegradation,
       }),
     ).toMatchObject({
-      triggerLabel: "pick a worktree…",
-      triggerAriaLabel: "choose a worktree scope",
-      emptyLabel:
-        "no worktrees mapped yet — point the engine at a repository to begin.",
+      triggerLabel: "Pick a worktree…",
+      triggerAriaLabel: "choose a project or worktree",
+      emptyLabel: "No worktrees here yet — point the engine at a repository to begin.",
       singleScopeLabel: null,
     });
 
@@ -2673,7 +2675,7 @@ describe("left-rail root surface states", () => {
         "min-w-0 flex-1 truncate text-left text-body-strong text-ink",
       emptyLabel: null,
       emptyClassName: "px-fg-2 py-fg-1 text-label text-ink-faint",
-      singleScopeLabel: "this is the only vault-bearing worktree.",
+      singleScopeLabel: "This is the only worktree with a vault.",
       singleScopeClassName: "px-fg-2 py-fg-0-5 text-caption text-ink-faint",
     });
   });
@@ -2718,6 +2720,9 @@ describe("left-rail root surface states", () => {
       sameProject: false,
       isActive: false,
     });
+    // The row's primary ink LEADS with the project on a cross-project entry, so
+    // colliding basenames ("main" everywhere) stay distinguishable at a glance.
+    expect(rows.map((r) => r.label)).toEqual(["main", "engine / main", "feature-x"]);
   });
 
   it("marks a recent in an unreachable project non-selectable", () => {
@@ -3133,7 +3138,7 @@ describe("left-rail root surface states", () => {
       loadingMessage: "reading the worktree…",
       errorTitle: "code tree unavailable",
       retryLabel: "try again",
-      emptyMessage: "no source files in this scope yet.",
+      emptyMessage: "No source files in this worktree yet.",
       childLoadingMessage: "…",
       childErrorMessage: "could not list this directory.",
       truncationMessage: null,
@@ -3151,7 +3156,7 @@ describe("left-rail root surface states", () => {
       loadingMessage: "reading the worktree…",
       errorTitle: "code tree unavailable",
       retryLabel: "try again",
-      emptyMessage: "no source files in this scope yet.",
+      emptyMessage: "No source files in this worktree yet.",
       childLoadingMessage: "…",
       childErrorMessage: "could not list this directory.",
       truncationMessage: null,
@@ -3176,7 +3181,7 @@ describe("left-rail root surface states", () => {
       loadingMessage: "reading the worktree…",
       errorTitle: "code tree unavailable",
       retryLabel: "try again",
-      emptyMessage: "no source files in this scope yet.",
+      emptyMessage: "No source files in this worktree yet.",
       childLoadingMessage: "…",
       childErrorMessage: "could not list this directory.",
       truncationMessage: null,
@@ -3212,7 +3217,7 @@ describe("left-rail root surface states", () => {
       loadingMessage: "reading the worktree…",
       errorTitle: "code tree unavailable",
       retryLabel: "try again",
-      emptyMessage: "no source files in this scope yet.",
+      emptyMessage: "No source files in this worktree yet.",
       childLoadingMessage: "…",
       childErrorMessage: "could not list this directory.",
       truncationMessage: "more here (20) — expand a subdirectory to narrow.",
@@ -4984,82 +4989,6 @@ describe("deriveGitStatusView", () => {
   });
 });
 
-describe("deriveLocationAnchor", () => {
-  it("keeps location empty-state copy and branch resolution in stores", () => {
-    const git = deriveGitStatusView(
-      statusWith({ branch: "git-main", dirty: true, ahead: 2, behind: 1 }),
-      undefined,
-      false,
-    );
-
-    expect(deriveLocationAnchor(null, undefined, git)).toMatchObject({
-      path: null,
-      emptyLabel: "no scope — pick a worktree first",
-      emptyClassName: "px-fg-1 text-label text-ink-faint",
-      branch: "git-main",
-      mainLabel: null,
-      mainClassName: "shrink-0 font-medium text-ink",
-      branchClassName: "min-w-0 truncate font-medium text-accent-text",
-      pathClassName: "truncate font-mono text-caption text-ink-faint",
-      dirty: true,
-      ahead: 2,
-      behind: 1,
-    });
-
-    expect(
-      deriveLocationAnchor(
-        " scope-a ",
-        {
-          repositories: [
-            {
-              path: "/repo",
-              branches: [],
-              worktrees: [
-                {
-                  id: "scope-a",
-                  path: "/repo/main",
-                  branch: "map-main",
-                  has_vault: true,
-                  is_default: true,
-                },
-              ],
-            },
-          ],
-          tiers: {},
-        },
-        git,
-      ),
-    ).toMatchObject({
-      path: "scope-a",
-      emptyLabel: null,
-      branch: "map-main",
-      isMain: true,
-      mainLabel: "main",
-      dirty: true,
-    });
-  });
-
-  it("normalizes malformed location scopes to the no-scope anchor state", () => {
-    const git = deriveGitStatusView(
-      statusWith({ branch: "git-main", dirty: true, ahead: 2, behind: 1 }),
-      undefined,
-      false,
-    );
-
-    expect(
-      deriveLocationAnchor({ scope: "scope-a" }, { repositories: [], tiers: {} }, git),
-    ).toMatchObject({
-      path: null,
-      emptyLabel: "no scope — pick a worktree first",
-      branch: "git-main",
-      isMain: false,
-      dirty: true,
-      ahead: 2,
-      behind: 1,
-    });
-  });
-});
-
 describe("deriveChangedFilesView", () => {
   it("splits vault documents from source files and computes the summary once", () => {
     const files: ChangedFile[] = [
@@ -5229,7 +5158,9 @@ describe("deriveChangesOverviewView", () => {
       additions: "+6",
       deletions: "−1",
     });
-    expect(view.noScopeLabel).toBe("no scope — pick a worktree first");
+    expect(view.noScopeLabel).toBe(
+      "No worktree selected — pick one in the left rail first.",
+    );
     expect(view.filesSectionLabel).toBe("Changed files — open diff or source");
     expect(view.filesListAriaLabel).toBe("changed files");
     expect(view.documentsSectionLabel).toBe("Changed documents — open reader");
@@ -5309,7 +5240,7 @@ describe("deriveChangesOverviewView", () => {
       hasChanges: false,
       hasFiles: false,
       hasDocuments: false,
-      noScopeLabel: "no scope — pick a worktree first",
+      noScopeLabel: "No worktree selected — pick one in the left rail first.",
     });
   });
 
