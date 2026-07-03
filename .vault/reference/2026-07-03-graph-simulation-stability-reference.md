@@ -114,11 +114,11 @@ post-amendment value), Barnes-Hut only recommended above ~2000 nodes.
    before the freeze captures it. Minimal change: schema default 0.05 → 0.03. No ADR
    opinion binds this tunable.
 
-4. **Persisted layout base is decided but unimplemented.** The 2026-07-03 ADR plans
-   seeding from a bounded scene-local layout store (`setPersistenceScope` is a no-op
-   seam today); with it, a revisit opens at the converged seed and the anneal
-   stall-releases in frames instead of a ~10 s visible settle from the phyllotaxis
-   explosion.
+4. **Persisted layout base — CORRECTION: already implemented.** The audited ADR text
+   described `setPersistenceScope` as a no-op seam, but the live code has since landed
+   the bounded LRU `PositionCache` (W01.P02.S08): `persistSettledLayout` merges and
+   saves on every genuine settle transition and the cold path seeds from the cache.
+   No remaining action; a revisit already opens at the converged seed.
 
 5. **chargeTheta 0.5 is the codified sweet spot; 0.3–0.4 is the next lever.**
    Residual Barnes-Hut noise (~0.17 vs the exact-n-body 0.09 baseline) remains; going

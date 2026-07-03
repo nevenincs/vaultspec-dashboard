@@ -161,7 +161,11 @@ export const GRAPH_CONTROL_SCHEMA = [
     min: 0,
     max: 1,
     step: 0.05,
-    default: 0.8,
+    // 0.35 (was 0.8) — sim-smoothness reference audit: collide is never alpha-scaled,
+    // so at the anneal hold it over-corrects ~3.3x vs the decaying forces; every
+    // reference implementation ships no collide at all (d3 default, Quartz/Obsidian)
+    // or off (FA2 adjustSizes). 0.35 keeps overlap prevention at ~40% correction.
+    default: 0.35,
     exposure: ["lab"],
     description: "Non-overlap softness (<1 relaxes instead of buzzing).",
   },
@@ -197,7 +201,11 @@ export const GRAPH_CONTROL_SCHEMA = [
     min: 0.005,
     max: 0.2,
     step: 0.001,
-    default: 0.05,
+    // 0.03 (was 0.05) — sim-smoothness reference audit: 0.05 is 2.2x the d3/Quartz
+    // default (~0.0228), cutting the post-anneal tail to ~1.1s and freezing a
+    // less-balanced field. 0.03 lengthens the tail (~1.9s) while still settling
+    // faster than stock d3.
+    default: 0.03,
     exposure: ["lab"],
     description: "Cooling rate; higher = settles in fewer ticks.",
   },

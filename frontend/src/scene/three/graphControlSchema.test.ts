@@ -32,10 +32,15 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   chargeTheta: 0.5,
   centerStrength: 0.06,
   collidePadding: 3,
-  collideStrength: 0.8,
+  // 0.35 — deliberate retune (sim-smoothness reference audit): collide is never
+  // alpha-scaled, so 0.8 over-corrected ~3.3x during the anneal hold; references
+  // ship no collide at all.
+  collideStrength: 0.35,
   collideIterations: 1,
   velocityDecay: 0.5,
-  alphaDecay: 0.05,
+  // 0.03 — deliberate retune (sim-smoothness reference audit): 0.05 was 2.2x the
+  // d3/Quartz default, freezing a less-balanced field after too short a tail.
+  alphaDecay: 0.03,
   alphaMin: 0.005,
   dragAlpha: 0.3,
   wakeMove: 14,

@@ -130,6 +130,18 @@ const NODE_RECEDE_SELECT = 0.5; // deeper non-focus mix under a durable selectio
 // Exponential-ease time constant for the emphasis cross-fade: ~95% settled in ~3τ ≈ 210ms
 // (the design motion window). Dimensionless attribute tween, not a user-tunable look param.
 const EMPHASIS_FADE_TAU_MS = 70;
+// Render-time position smoothing (graph-simulation-stability reference — the Quartz
+// mechanism): the displayed position eases toward the physics position by this fraction
+// per frame while anything is in motion, time-averaging Barnes-Hut/anneal jitter before
+// it reaches the screen; the settle then GLIDES out over ~15 frames instead of popping.
+// Fixed legibility constants, not user-tunable look params.
+const DISPLAY_LERP_K = 0.12; // display → physics fraction per frame
+const DISPLAY_SNAP_EPS = 0.01; // world units: within this of truth → snap exact + stop
+// Fixed-timestep sim accumulator: the solver targets 60 ticks/s in wall-clock terms —
+// a slow renderer runs bounded catch-up ticks per frame so anneal/stall budgets and the
+// felt settle duration stop depending on the frame rate.
+const SIM_TICK_MS = 1000 / 60;
+const SIM_MAX_CATCHUP_TICKS = 3;
 const FOCUS_RING_WIDTH_PX = 2; // thin accent focus ring on the hovered hub
 // Cluster-selection perimeter fence (emphasis-state-grammar ADR): the positive marker of
 // the durable feature-cluster selection — a convex padded hull (rounded n-gon) traced
@@ -604,7 +616,15 @@ export class ThreeField implements SceneFieldRenderer {
   private idToIndex = new Map<string, number>();
   private neighbors = new Map<string, Set<string>>();
   private featureCohort = new Map<string, Set<string>>();
+  // DISPLAY positions: feeds the GPU texture, overlays, and picking. The frame loop
+  // eases this toward `simPositions` (render-time lerp) so solver jitter is
+  // time-averaged before it reaches the screen; snapped exact on settle/data swap.
   private cpuPositions = new Float32Array(0);
+  // PHYSICS-truth positions: the solver pack target. Warm-start carries, layout
+  // persistence, and the next data swap's seed all read THIS, never the eased display.
+  private simPositions = new Float32Array(0);
+  private displayEasing = false;
+  private lastSimTs = 0;
 
   // interaction state
   private hoveredId: string | null = null;
@@ -1208,8 +1228,10 @@ export class ThreeField implements SceneFieldRenderer {
     // live update; without this the graph re-explodes each time.
     const prevPos = new Map<string, { x: number; y: number }>();
     for (const [id, idx] of this.idToIndex) {
-      const x = this.cpuPositions[idx * 4];
-      const y = this.cpuPositions[idx * 4 + 1];
+      // Carry PHYSICS truth, never the eased display (a mid-glide swap must seed
+      // the next solver from where the nodes actually are, not where they render).
+      const x = this.simPositions[idx * 4];
+      const y = this.simPositions[idx * 4 + 1];
       if (Number.isFinite(x) && Number.isFinite(y)) prevPos.set(id, { x, y });
     }
     // Capture the OUTGOING layout's settle state, temperature, and edge set before
@@ -1273,9 +1295,11 @@ export class ThreeField implements SceneFieldRenderer {
     );
     const texSize = this.solver.texSize;
 
-    // The CPU positions ARE the texture's backing buffer: pack() writes into it and
-    // a single needsUpdate re-uploads — no per-frame copy and no GPU readback.
+    // The DISPLAY positions ARE the texture's backing buffer: a single needsUpdate
+    // re-uploads — no GPU readback. The solver packs into `simPositions` (physics
+    // truth); the frame loop eases the display toward it (render-time lerp).
     this.cpuPositions = new Float32Array(texSize * texSize * 4);
+    this.simPositions = new Float32Array(texSize * texSize * 4);
     this.positionTex = new DataTexture(
       this.cpuPositions,
       texSize,
@@ -1405,7 +1429,11 @@ export class ThreeField implements SceneFieldRenderer {
         startAlpha,
       );
     }
-    this.solver.pack(this.cpuPositions);
+    // A data swap SNAPS the display to physics truth (no cross-swap glide between
+    // unrelated geometries); the live loop's per-frame lerp takes over from here.
+    this.solver.pack(this.simPositions);
+    this.cpuPositions.set(this.simPositions);
+    this.displayEasing = false;
     this.uploadPositions();
     // Fit the camera ONCE on a cold load; a warm update preserves the user's view.
     if (!warm) this.fitToView();
@@ -1498,8 +1526,10 @@ export class ThreeField implements SceneFieldRenderer {
     if (!this.solver || this.idToIndex.size === 0) return;
     const merged = new Map<string, NodePosition>();
     for (const [id, idx] of this.idToIndex) {
-      const x = this.cpuPositions[idx * 4];
-      const y = this.cpuPositions[idx * 4 + 1];
+      // Persist PHYSICS truth: at the settle transition the display may still be
+      // mid-glide; the cache must hold the solver's converged positions.
+      const x = this.simPositions[idx * 4];
+      const y = this.simPositions[idx * 4 + 1];
       if (Number.isFinite(x) && Number.isFinite(y)) merged.set(id, { x, y });
     }
     const existing = this.positionCache.load(this.persistWorkspace, this.persistScope);
@@ -1791,6 +1821,8 @@ export class ThreeField implements SceneFieldRenderer {
     this.neighbors = new Map();
     this.featureCohort = new Map();
     this.cpuPositions = new Float32Array(0);
+    this.simPositions = new Float32Array(0);
+    this.displayEasing = false;
     // SGR-005: the node set + positions just changed, so any cached pick is stale
     // — invalidate synchronously (a pick can run before the next frame clears it).
     this.pickCacheValid = false;
@@ -2117,7 +2149,9 @@ export class ThreeField implements SceneFieldRenderer {
       out.alpha.push(+m.alpha.toFixed(5));
       out.meanDisplacement.push(+m.meanDisplacement.toFixed(4));
     }
-    this.solver.pack(this.cpuPositions);
+    this.solver.pack(this.simPositions);
+    this.cpuPositions.set(this.simPositions);
+    this.displayEasing = false;
     this.uploadPositions();
     this.requestRender();
     return out;
@@ -2134,6 +2168,8 @@ export class ThreeField implements SceneFieldRenderer {
   private setRunning(next: boolean): void {
     if (this.running === next) return;
     this.running = next;
+    // Fresh run → fresh accumulator epoch, so idle time never counts as catch-up.
+    if (next) this.lastSimTs = 0;
     this.controller?.emit({ kind: "sim-state", running: next });
   }
 
@@ -2149,18 +2185,42 @@ export class ThreeField implements SceneFieldRenderer {
     this.needsRender = false;
 
     if (this.solver && this.running) {
-      // One d3-force tick on the CPU, then mirror positions into the GPU texture.
+      // d3-force ticks on the CPU, then mirror positions into the GPU texture.
       // Freeze when the solver has cooled below alphaMin (and no drag holds it
       // warm) — a real convergence stop that idles the GPU to zero. The settle
       // TRANSITION persists the layout as the next cold load's base
       // (graph-simulation-stability ADR) — once per settle, never per frame.
-      this.solver.tick();
-      this.solver.pack(this.cpuPositions);
+      //
+      // Fixed-timestep accumulator (sim-smoothness reference): the sim targets a
+      // 60Hz tick rate in WALL-CLOCK terms. A slow renderer (long frames) runs
+      // bounded catch-up ticks so the anneal/stall budgets and the felt settle
+      // duration stop depending on the frame rate; the catch-up cap keeps a
+      // pathological stall from spiraling the CPU.
+      const now = performance.now();
+      const elapsed = this.lastSimTs > 0 ? now - this.lastSimTs : SIM_TICK_MS;
+      this.lastSimTs = now;
+      const ticks = Math.max(
+        1,
+        Math.min(SIM_MAX_CATCHUP_TICKS, Math.round(elapsed / SIM_TICK_MS)),
+      );
+      for (let t = 0; t < ticks; t++) {
+        this.solver.tick();
+        if (!this.dragActive && this.solver.isSettled()) break;
+      }
+      this.solver.pack(this.simPositions);
+      this.applyDisplayLerp();
       this.uploadPositions();
       if (!this.dragActive && this.solver.isSettled()) {
         this.setRunning(false);
         this.persistSettledLayout();
       }
+      dirty = true;
+    } else if (this.displayEasing) {
+      // Physics is at rest (settled or paused) but the DISPLAY is still gliding
+      // toward it (render-time lerp): finish the glide, then snap to exact physics
+      // truth — the frozen layout stays authoritative on screen too.
+      this.applyDisplayLerp();
+      this.uploadPositions();
       dirty = true;
     }
 
@@ -2197,8 +2257,57 @@ export class ThreeField implements SceneFieldRenderer {
       this.renderFrame();
       this.updatePerfLod(performance.now() - t0);
     }
-    if (this.running || this.needsRender || easing || this.emphasisAnim) this.wake();
+    if (
+      this.running ||
+      this.needsRender ||
+      easing ||
+      this.emphasisAnim ||
+      this.displayEasing
+    ) {
+      this.wake();
+    }
   };
+
+  /** Render-time position lerp (sim-smoothness reference — the Quartz mechanism):
+   *  ease the DISPLAY buffer (`cpuPositions`, feeding the GPU texture, overlays, and
+   *  picking) toward the physics truth (`simPositions`) each frame, time-averaging
+   *  solver jitter ~8x before it reaches the screen. The dragged node snaps (no
+   *  rubber-band under the cursor); prefers-reduced-motion snaps everything; once
+   *  every coordinate is within epsilon the display snaps to EXACT physics truth so
+   *  the frozen layout stays authoritative on screen. */
+  private applyDisplayLerp(): void {
+    const sim = this.simPositions;
+    const disp = this.cpuPositions;
+    if (sim.length === 0 || disp.length !== sim.length) return;
+    if (prefersReducedMotion()) {
+      disp.set(sim);
+      this.displayEasing = false;
+      return;
+    }
+    let maxErr = 0;
+    for (let i = 0; i < this.nodes.length; i++) {
+      const b = i * 4;
+      if (i === this.dragNodeIndex) {
+        disp[b] = sim[b];
+        disp[b + 1] = sim[b + 1];
+        continue;
+      }
+      for (let c = 0; c < 2; c++) {
+        const target = sim[b + c];
+        if (!Number.isFinite(target)) continue;
+        const cur = disp[b + c];
+        if (!Number.isFinite(cur)) {
+          disp[b + c] = target;
+          continue;
+        }
+        const next = cur + (target - cur) * DISPLAY_LERP_K;
+        const err = Math.abs(target - next);
+        if (err > maxErr) maxErr = err;
+        disp[b + c] = err < DISPLAY_SNAP_EPS ? target : next;
+      }
+    }
+    this.displayEasing = maxErr >= DISPLAY_SNAP_EPS;
+  }
 
   /** One exponential-ease step of the emphasis cross-fade: move every node's displayed
    *  aDim (and the fence alpha) toward its target; snap + stop once everything is within
