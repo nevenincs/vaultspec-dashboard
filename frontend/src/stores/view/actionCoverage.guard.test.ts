@@ -32,9 +32,7 @@ import {
   PROJECT_OPEN_ACTION_ID,
   deriveProjectKeybindings,
 } from "./projectActions";
-import {
-  deriveRightRailKeybindings,
-} from "./rightRailKeybindings";
+import { deriveRightRailKeybindings } from "./rightRailKeybindings";
 import {
   RELOAD_REFRESH_DATA_ACTION_ID,
   deriveReloadKeybindings,
