@@ -116,14 +116,16 @@ export function useSceneThemeRefresh(): void {
  *  to "play" when the cooling schedule settles the layout. One-way: scene → store;
  *  the button's click goes back through SceneController commands, never this mirror. */
 export function useSceneSimStateBridge(): void {
-  useEffect(
-    () =>
-      scene.controller.on((event) => {
-        if (event.kind !== "sim-state") return;
-        setGraphControlsSimRunning(event.running);
-      }),
-    [],
-  );
+  useEffect(() => {
+    // Seed from the controller's cached run state (GPR-001): a transition emitted
+    // while this bridge was unmounted (the field simulates even with the canvas
+    // hidden) would otherwise leave the mirror stale until the next transition.
+    setGraphControlsSimRunning(scene.controller.simRunning);
+    return scene.controller.on((event) => {
+      if (event.kind !== "sim-state") return;
+      setGraphControlsSimRunning(event.running);
+    });
+  }, []);
 }
 
 export function Stage() {

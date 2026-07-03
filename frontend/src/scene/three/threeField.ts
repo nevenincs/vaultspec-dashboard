@@ -203,12 +203,16 @@ function hexCss(n: number): string {
   return "#" + (n & 0xffffff).toString(16).padStart(6, "0");
 }
 
-/** Reduced-motion gate for the emphasis cross-fade + fence ramp: snap instead of ease. */
+/** Reduced-motion gate for the emphasis cross-fade, fence ramp, and display lerp:
+ *  snap instead of ease. The MediaQueryList is created ONCE at module load (GPR-002 —
+ *  `applyDisplayLerp` reads this per frame, and `matchMedia()` allocates a fresh MQL
+ *  per call); `.matches` is a live view, so no change listener is needed. */
+const reducedMotionQuery =
+  typeof window !== "undefined" && window.matchMedia
+    ? window.matchMedia("(prefers-reduced-motion: reduce)")
+    : null;
 function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-  );
+  return reducedMotionQuery?.matches ?? false;
 }
 
 export type ScreenPt = { x: number; y: number };
@@ -930,7 +934,11 @@ export class ThreeField implements SceneFieldRenderer {
         state: "ok",
         recoverable: true,
       });
-      this.setRunning(true);
+      // Resume ticking only when there is genuinely unfinished settling (GPR-004):
+      // a restore over a SETTLED graph otherwise emitted a spurious sim-state
+      // true→false flicker, ran a ghost tick over fully-pinned nodes, and re-wrote
+      // the persisted layout blob for nothing. The repaint alone suffices there.
+      this.setRunning(this.solver !== null && !this.frozen && !this.solver.isSettled());
       this.requestRender();
     } catch (err) {
       this.glRestoreAttempts += 1;

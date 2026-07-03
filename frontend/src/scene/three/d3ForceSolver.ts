@@ -121,8 +121,10 @@ export interface D3ForceParams {
   collideIterations: number;
   /** Atmospheric friction: velocity *= (1 - velocityDecay) each tick. */
   velocityDecay: number;
-  /** Per-tick cooling rate; default 0.05. With alphaMin 0.005 this settles in ~100
-   *  ticks from a cold start (alpha 1) and ~90 from a warm reheat (alpha 0.5). */
+  /** Per-tick cooling rate. The canonical default lives in the schema registry
+   *  (`graphControlSchema` — 0.03 after the 2026-07-03 sim-smoothness retune, giving
+   *  a longer post-anneal tail than the prior 0.05 so the freeze captures a
+   *  better-balanced field). */
   alphaDecay: number;
   /** Freeze threshold: the global settle is "done" once alpha drops below this
    *  (default 0.005). */

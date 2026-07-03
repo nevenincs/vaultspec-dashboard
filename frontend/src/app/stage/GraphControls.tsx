@@ -255,12 +255,12 @@ export function GraphSimControl() {
     scene.controller.command({ kind: "sim-play" });
   }
   return (
+    // A single self-labelling control — deliberately NOT role="toolbar" (GPR-005:
+    // a one-button toolbar is misleading ARIA and would double the label).
     <Card
       elevation="raised"
       padded={false}
       className="pointer-events-auto absolute left-fg-2 top-fg-2 z-10 p-fg-1"
-      role="toolbar"
-      aria-label={view.label}
       data-graph-sim-control
     >
       <IconButton

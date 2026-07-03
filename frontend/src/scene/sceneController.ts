@@ -609,11 +609,23 @@ export class SceneController {
     };
   }
 
+  // Last emitted sim run state (GPR-001): cached here so a bridge that (re)mounts
+  // can SEED its mirror instead of waiting for the next transition — a settle that
+  // fired while no listener was subscribed is otherwise lost and the play/pause
+  // chrome renders stale until the next genuine run-state change.
+  private _simRunning = false;
+
   /** Renderer-side dispatch — exposed for the spike and for tests. */
   emit(event: SceneEvent): void {
+    if (event.kind === "sim-state") this._simRunning = event.running;
     for (const listener of this.listeners) {
       listener(event);
     }
+  }
+
+  /** The last emitted sim run state — the mount-time seed for the chrome mirror. */
+  get simRunning(): boolean {
+    return this._simRunning;
   }
 
   /** Renderer-side registry read (RL-4) — the anchor driver's input. */
