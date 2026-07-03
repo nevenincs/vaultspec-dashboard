@@ -28,6 +28,7 @@ import { debounce } from "../../platform/timing";
 import type { SearchResultEntity } from "../../platform/actions/entity";
 import type {
   FiltersVocabulary,
+  SearchIndexState,
   SearchResult,
   TiersBlock,
   VaultTreeEntry,
@@ -243,6 +244,24 @@ export interface SearchControllerView {
   /** The engine-enumerated filter vocabulary forwarded intact (search ADR
    *  "Filter vocabulary") — the data-driven legal facets; never hardcoded. */
   filterVocabulary: FiltersVocabulary | undefined;
+  /**
+   * rag's freshness block for this corpus as SERVED (rag-integration-hardening
+   * ADR D3), forwarded raw for the consumer to render staleness from — never
+   * remapped here (presentation maps the served token to a label). The reference
+   * is passed through unchanged from the held `SearchResponse` so its identity is
+   * stable across renders (frontend-store-selectors: no fresh reference minted).
+   * `undefined` when the wire carried no `index_state` (idle / loading / a
+   * degraded or empty search).
+   */
+  indexState: SearchIndexState | undefined;
+  /**
+   * The shared D4 semantic-index epoch as served: a number when the engine's
+   * short-TTL cache was warm, `null` when it marked freshness unknown (honest
+   * known-unknown), `undefined` when the wire carried none. Consumers key caches
+   * on this value across the search and embeddings planes; `null` and `undefined`
+   * are distinct and never collapsed.
+   */
+  semanticEpoch: number | null | undefined;
   /** Re-run the semantic query (the error state's retry affordance). */
   retry: () => void;
 }
@@ -507,7 +526,14 @@ export function interpretSearch(input: {
   query: string;
   target: "vault" | "code";
   enabled?: boolean;
-  data: { results: SearchResult[]; tiers?: TiersBlock } | undefined;
+  data:
+    | {
+        results: SearchResult[];
+        tiers?: TiersBlock;
+        index_state?: SearchIndexState;
+        semantic_epoch?: number | null;
+      }
+    | undefined;
   error: unknown;
   isPending: boolean;
   fallbackEntries: readonly VaultTreeEntry[] | undefined;
@@ -532,6 +558,13 @@ export function interpretSearch(input: {
   const transportError = !semanticOffline && isTransportError(error);
   const hasQuery = query.trim().length > 0;
 
+  // Served freshness (ADR D3), forwarded RAW from the held response — the
+  // `index_state` reference is passed through unchanged (never cloned) so its
+  // identity is stable across renders, and the epoch is a primitive. Both ride
+  // every non-idle branch; idle is not an active search, so it reports neither.
+  const indexState = data?.index_state;
+  const semanticEpoch = data?.semantic_epoch;
+
   // Idle: empty query or scope-less controller, no request.
   if (!enabled || !hasQuery) {
     return {
@@ -542,6 +575,8 @@ export function interpretSearch(input: {
       pending: false,
       error: false,
       filterVocabulary,
+      indexState: undefined,
+      semanticEpoch: undefined,
       retry,
     };
   }
@@ -560,6 +595,8 @@ export function interpretSearch(input: {
       pending,
       error: false,
       filterVocabulary,
+      indexState,
+      semanticEpoch,
       retry,
     };
   }
@@ -577,6 +614,8 @@ export function interpretSearch(input: {
       pending: false,
       error: true,
       filterVocabulary,
+      indexState,
+      semanticEpoch,
       retry,
     };
   }
@@ -591,6 +630,8 @@ export function interpretSearch(input: {
       pending: true,
       error: false,
       filterVocabulary,
+      indexState,
+      semanticEpoch,
       retry,
     };
   }
@@ -604,6 +645,8 @@ export function interpretSearch(input: {
     pending: isPending && data === undefined,
     error: false,
     filterVocabulary,
+    indexState,
+    semanticEpoch,
     retry,
   };
 }
@@ -774,8 +817,34 @@ export interface UnifiedSearchView {
   pending: boolean;
   /** Both corpora failed with a genuine (non-degradation) transport error. */
   error: boolean;
+  /**
+   * The shared D4 semantic-index epoch as served (rag-integration-hardening ADR
+   * D3). Both corpora query the same engine at one generation, so the epoch is a
+   * single shared value across the search and embeddings planes; the merge
+   * forwards it raw (a number when warm, `null` when freshness is known-unknown,
+   * `undefined` when unserved) so the palette and downstream builds key one
+   * invalidation on it. Per-corpus `index_state` detail stays on the composed
+   * single-target controllers, which describe distinct corpora.
+   */
+  semanticEpoch: number | null | undefined;
   /** Re-run both corpus queries (the error state's retry affordance). */
   retry: () => void;
+}
+
+/**
+ * Collapse the two corpus epochs into the one shared value. Both corpora hit the
+ * same engine short-TTL epoch cache, so they agree in the common case; prefer a
+ * concrete number, then the honest known-unknown `null`, then unserved
+ * `undefined`. `null` and `undefined` are never collapsed.
+ */
+export function mergeSemanticEpoch(
+  a: number | null | undefined,
+  b: number | null | undefined,
+): number | null | undefined {
+  if (typeof a === "number") return a;
+  if (typeof b === "number") return b;
+  if (a === null || b === null) return null;
+  return undefined;
 }
 
 /**
@@ -835,6 +904,7 @@ export function mergeUnifiedSearch(
     semanticOffline,
     pending,
     error: bothError,
+    semanticEpoch: mergeSemanticEpoch(vault.semanticEpoch, code.semanticEpoch),
     retry,
   };
 }
