@@ -224,7 +224,7 @@ describe("command palette store", () => {
       showExpandedPanel: false,
       resultCountLabel: "",
       stateMode: null,
-      emptyMessage: "Search across your documents and code by meaning.",
+      emptyMessage: "Search across your documents and code.",
       liveMessage: "",
     });
 
@@ -259,7 +259,7 @@ describe("command palette store", () => {
       }),
     ).toMatchObject({
       stateMode: "degraded",
-      emptyMessage: "Semantic search is offline — showing title and text matches.",
+      emptyMessage: "Full search is unavailable — showing name matches only.",
       liveMessage: "search request failed",
     });
 
@@ -276,6 +276,26 @@ describe("command palette store", () => {
     ).toMatchObject({
       stateMode: "empty",
       emptyMessage: "No matches for “auth”.",
+    });
+
+    // Degraded WITHOUT a transport error (rag offline, files providers still
+    // serving): the plain-language copy states both truths — full search down,
+    // name matches only — and the screen-reader twin MATCHES the visible copy
+    // (search-providers ADR D3; no mechanism vocabulary).
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "auth",
+        cursor: 0,
+        expanded: false,
+        pills: [],
+        searchState: "semantic-offline",
+        semanticOffline: true,
+        error: false,
+      }),
+    ).toMatchObject({
+      stateMode: "degraded",
+      emptyMessage: "Full search is unavailable — showing name matches only.",
+      liveMessage: "Full search is unavailable — showing name matches only.",
     });
   });
 

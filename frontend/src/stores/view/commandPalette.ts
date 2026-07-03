@@ -167,11 +167,11 @@ export function deriveSearchPalettePresentationView(context: {
     count > 0
       ? null
       : query.length === 0
-        ? "Search across your documents and code by meaning."
+        ? "Search across your documents and code."
         : context.searchState === "loading"
           ? "Searching documents and code"
           : context.semanticOffline === true
-            ? "Semantic search is offline — showing title and text matches."
+            ? "Full search is unavailable — showing name matches only."
             : `No matches for “${query}”.`;
 
   return {
@@ -192,7 +192,7 @@ export function deriveSearchPalettePresentationView(context: {
       context.error === true
         ? "search request failed"
         : context.semanticOffline === true
-          ? "semantic search offline — showing title and text matches"
+          ? "Full search is unavailable — showing name matches only."
           : resultCountLabel,
     footerHints: {
       move: "move",
