@@ -2637,10 +2637,10 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
     }
 }
 
-/// A rag search hit in rag's real `search --json` shape (recorded 2026-06-13
-/// against a live rag service). The engine reads only the fields it needs to
-/// derive the click-through node id; every field of the original hit passes
-/// through to the client verbatim (the hit travels as its JSON `Value`).
+/// A rag search hit in rag's real HTTP `/search` result shape (verified live
+/// against rag 0.2.28). The engine reads only the fields it needs to derive the
+/// click-through node id; every field of the original hit passes through to the
+/// client verbatim (the hit travels as its JSON `Value`).
 ///
 /// The trap this shape documents: `source` is the search-type DISCRIMINATOR
 /// (`vault` for docs, `codebase` — historically `code` — for code), NOT a path.
@@ -2686,25 +2686,25 @@ fn hit_node_id(hit: &RagHitShape) -> Option<String> {
     }
 }
 
-/// A typed miss reading rag's search envelope: rag reported its own failure,
-/// or the response did not carry the `data.results` list the contract §8
-/// pass-through requires. Surfaced as a `semantic`-tier degradation so the
-/// client never reads a shape drift as a healthy empty result.
+/// A typed miss reading rag's flat search envelope: the 2xx response did not
+/// carry the top-level `results` list the contract §8 pass-through requires.
+/// A rag HTTP-level failure never reaches here — the loopback transport maps a
+/// non-2xx status to a typed error the handler degrades on before annotation.
+/// Surfaced as a `semantic`-tier degradation so the client never reads a shape
+/// drift as a healthy empty result.
 #[derive(Debug)]
 enum SearchShapeMiss {
-    RagError(String),
     NoResults,
 }
 
 impl SearchShapeMiss {
     fn reason(&self) -> String {
         match self {
-            SearchShapeMiss::RagError(m) => format!("rag search failed: {m}"),
             SearchShapeMiss::NoResults => {
-                // rag is up (it answered) but the payload carried no results
-                // list: most often the scope is not yet indexed, otherwise a
-                // genuine response-shape drift. An `ok:true` empty results
-                // list is NOT this case — it is a healthy zero-match success.
+                // rag answered 2xx but the body carried no `results` list: most
+                // often the scope is not yet indexed, otherwise a genuine
+                // response-shape drift. An empty `results` array is NOT this
+                // case — it is a healthy zero-match success.
                 "rag returned no results payload (scope unindexed, or response shape drift)"
                     .to_string()
             }
@@ -2712,24 +2712,15 @@ impl SearchShapeMiss {
     }
 }
 
-/// Flatten rag's search envelope to the contract §2 `data` payload: a flat
-/// `results` list where each hit keeps its original rag fields and gains the
-/// engine's one value-add (`node_id`). rag's own `query`/`search_type`/`via`
-/// context fields pass through. The nested foreign envelope is dropped.
+/// Annotate rag's FLAT search envelope (rag-integration-hardening D1): each hit
+/// in the top-level `results` list gains the engine's one value-add (`node_id`);
+/// every other field of the flat envelope (`request_id`, `summary`, `timing`,
+/// `index_state`, ...) passes through verbatim. rag's HTTP `/search` response is
+/// already flat — there is no nested `{ok, command, data}` wrapper to strip — so
+/// this annotates in place. A 2xx response missing the `results` list is a typed
+/// shape miss the caller degrades the `semantic` tier on.
 fn flatten_and_annotate(rag: &Value) -> Result<Value, SearchShapeMiss> {
-    // `ok: false` is rag reporting its own failure — surface it, never
-    // present it as a healthy empty result.
-    if rag.get("ok") == Some(&Value::Bool(false)) {
-        let msg = rag
-            .get("error")
-            .or_else(|| rag.get("message"))
-            .and_then(Value::as_str)
-            .unwrap_or("rag reported failure")
-            .to_string();
-        return Err(SearchShapeMiss::RagError(msg));
-    }
-    let data = rag.get("data").ok_or(SearchShapeMiss::NoResults)?;
-    let results = data
+    let results = rag
         .get("results")
         .and_then(Value::as_array)
         .ok_or(SearchShapeMiss::NoResults)?;
@@ -2751,7 +2742,7 @@ fn flatten_and_annotate(rag: &Value) -> Result<Value, SearchShapeMiss> {
         })
         .collect();
 
-    let mut out = data.clone();
+    let mut out = rag.clone();
     out["results"] = Value::Array(annotated);
     Ok(out)
 }
@@ -2760,78 +2751,101 @@ fn flatten_and_annotate(rag: &Value) -> Result<Value, SearchShapeMiss> {
 mod tests {
     use super::*;
 
-    // Recorded 2026-06-13 against a live rag service
-    // (`vaultspec-rag search --type vault --json`), trimmed to the
-    // annotation-relevant fields plus a synthetic code hit. `source` is the
-    // vault|code DISCRIMINATOR, never a path — the fixture exists to pin that.
-    const RAG_REAL: &str = r#"{
-        "ok": true, "command": "search",
-        "data": {
-            "query": "test", "search_type": "vault", "via": "service",
-            "results": [
-                {"id": "adr/2026-06-05-x-adr",
-                 "path": "adr/2026-06-05-x-adr.md",
-                 "score": 0.548, "source": "vault",
-                 "doc_type": "adr", "feature": "f", "date": "2026-06-05"},
-                {"path": "src/lib.rs", "score": 0.40, "source": "code",
-                 "function_name": "alpha", "language": "rust"},
-                {"path": "src/lib.rs", "score": 0.30, "source": "code"},
-                {"path": "src/main.rs", "score": 0.25, "source": "codebase",
-                 "class_name": "Server", "language": "rust"},
-                {"score": 0.10, "source": "unknown-future-kind"}
-            ]
-        }
-    }"#;
+    // rag's real FLAT HTTP `/search` envelope, captured live against rag 0.2.28
+    // (`POST /search {query, type, project_root, top_k}`): results sit at the
+    // TOP level (no `{ok, command, data}` wrapper), each item carrying rag's real
+    // field vocabulary, alongside the top-level `request_id`/`summary`/`timing`/
+    // `index_state` context. The vault path prefix, the `codebase` discriminator,
+    // and the null code symbols mirror the captured live shape; a `code`-source
+    // hit with a `function_name` and an unknown-discriminator hit are added to
+    // pin every annotation branch. `source` is the vault|codebase DISCRIMINATOR,
+    // never a path — the fixture exists to pin that.
+    const RAG_REAL: &str = r##"{
+        "request_id": "req-7f3c",
+        "summary": "5 results",
+        "timing": {"total_ms": 7, "embed_ms": 3, "search_ms": 4},
+        "index_state": {
+            "source": "vault", "indexed_count": 3173, "vault_count": 3173,
+            "code_count": 10507, "indexed_target_root": "Y:\\code\\proj",
+            "requested_target_root": "Y:\\code\\proj", "target_matches": true,
+            "status": "available"
+        },
+        "results": [
+            {"id": "adr/2026-06-05-x-adr",
+             "path": ".vault/adr/2026-06-05-x-adr.md",
+             "title": "x adr", "snippet": "# x adr",
+             "score": 0.548, "source": "vault",
+             "doc_type": "adr", "feature": "f", "date": "2026-06-05",
+             "line_start": null, "line_end": null},
+            {"id": "src/lib.rs:1-9:aa", "path": "src/lib.rs", "score": 0.40,
+             "source": "code", "function_name": "alpha", "language": "rust",
+             "line_start": 1, "line_end": 9},
+            {"id": "src/lib.rs:20-30:bb", "path": "src/lib.rs", "score": 0.30,
+             "source": "codebase", "language": "rust",
+             "function_name": null, "class_name": null},
+            {"id": "src/main.rs:5-40:cc", "path": "src/main.rs", "score": 0.25,
+             "source": "codebase", "class_name": "Server", "language": "rust"},
+            {"score": 0.10, "source": "unknown-future-kind"}
+        ]
+    }"##;
 
     #[test]
-    fn flattens_and_annotates_rags_real_shape() {
+    fn annotates_rags_real_flat_shape() {
         let rag: Value = serde_json::from_str(RAG_REAL).unwrap();
-        let out = flatten_and_annotate(&rag).expect("real shape flattens");
+        let out = flatten_and_annotate(&rag).expect("real flat shape annotates");
 
-        // §2 flat shape: results sit directly under data; rag's context
-        // fields pass through; no nested foreign `envelope`.
-        assert_eq!(out["query"], "test");
-        assert_eq!(out["search_type"], "vault");
+        // The flat envelope's top-level context fields pass through verbatim —
+        // there is nothing to flatten, only annotate in place.
+        assert_eq!(out["request_id"], "req-7f3c");
+        assert_eq!(out["summary"], "5 results");
+        assert_eq!(out["index_state"]["status"], "available");
+        assert_eq!(out["timing"]["total_ms"], 7);
         let results = out["results"].as_array().unwrap();
         assert_eq!(results.len(), 5, "every hit survives; none dropped");
 
-        // Vault hit → doc node from the PATH STEM, not the "vault"
-        // discriminator. rag fields pass through verbatim alongside node_id.
+        // Vault hit → doc node from the PATH STEM (last segment, `.md` stripped),
+        // not the "vault" discriminator. rag fields pass through alongside node_id.
         assert_eq!(results[0]["node_id"], "doc:2026-06-05-x-adr");
         assert_eq!(results[0]["doc_type"], "adr");
         assert_eq!(results[0]["score"], 0.548);
 
         // Code hit with a symbol → code-artifact id qualified by `#symbol`.
         assert_eq!(results[1]["node_id"], "code:src/lib.rs#alpha");
-        // Code hit without a symbol → bare path.
+        // The LIVE `codebase` discriminator with null symbols → bare path (the
+        // real captured code shape).
         assert_eq!(results[2]["node_id"], "code:src/lib.rs");
-        // The LIVE rag discriminator is `codebase` (not `code`); it must still
-        // click through, qualified by its class symbol.
+        // A `codebase` hit qualified by its class symbol still clicks through.
         assert_eq!(results[3]["node_id"], "code:src/main.rs#Server");
         // Unknown discriminator → explicit null (typed miss), never guessed.
         assert_eq!(results[4]["node_id"], Value::Null);
     }
 
     #[test]
-    fn rag_reported_failure_is_a_typed_miss() {
-        let rag = json!({"ok": false, "error": "index cold"});
-        let miss = flatten_and_annotate(&rag).unwrap_err();
-        assert!(miss.reason().contains("index cold"));
-        assert!(matches!(miss, SearchShapeMiss::RagError(_)));
-    }
-
-    #[test]
     fn missing_results_list_is_a_typed_miss_not_an_empty_success() {
-        let rag = json!({"ok": true, "data": {"query": "x"}});
+        // A 2xx flat body with no `results` key at all is shape drift.
+        let rag = json!({"request_id": "r-1", "summary": "x"});
         assert!(matches!(
             flatten_and_annotate(&rag).unwrap_err(),
             SearchShapeMiss::NoResults
         ));
-        // A response with no `data` at all is the same shape drift.
+        // A `results` that is not an array is the same shape drift.
         assert!(matches!(
-            flatten_and_annotate(&json!({"raw": "not json", "exit": 1})).unwrap_err(),
+            flatten_and_annotate(&json!({"results": "not-an-array"})).unwrap_err(),
             SearchShapeMiss::NoResults
         ));
+    }
+
+    #[test]
+    fn an_empty_results_array_is_a_healthy_zero_match_not_a_miss() {
+        // The empty-index / zero-hit case: rag answered 2xx with an empty
+        // `results` list. That is a healthy success, never a shape miss.
+        let out = flatten_and_annotate(&json!({
+            "request_id": "r-2", "results": [],
+            "index_state": {"status": "available"}
+        }))
+        .expect("empty results is a healthy zero-match");
+        assert_eq!(out["results"].as_array().unwrap().len(), 0);
+        assert_eq!(out["index_state"]["status"], "available");
     }
 
     #[test]
