@@ -104,6 +104,7 @@ pub(crate) const API_PREFIXES: &[&str] = &[
     "/map",
     "/workspaces",
     "/vault-tree",
+    "/code-files",
     "/file-tree",
     "/pipeline",
     "/dashboard-state",

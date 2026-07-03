@@ -184,6 +184,80 @@ pub async fn vault_tree(
     ))
 }
 
+// --- GET /code-files?scope= ---------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct CodeFilesParams {
+    pub scope: String,
+    #[serde(default)]
+    pub cursor: Option<String>,
+    #[serde(default)]
+    pub page_size: Option<usize>,
+}
+
+/// The COMPLETE code-file listing (search-providers ADR: the one contract
+/// event). Projects every `code:` FILE node off the code corpus `LinkageGraph`
+/// — never the DOI-bounded graph slice — so the `files (code)` search provider
+/// can hold the whole set client-side and narrow it (the complete-paginated-set
+/// rule). Twin of `/vault-tree`: the same cursor pagination and envelope, over a
+/// filter-independent projection memoized per code generation
+/// (`CodeGraphCell::code_file_rows`); the handler paginates the cached slice per
+/// request. Freshness is lazy like the code graph query: a debounced source-tree
+/// fingerprint probe re-extracts only when the tree changed (ADR D6), off the
+/// async runtime because the walk/parse is blocking.
+pub async fn code_files(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<CodeFilesParams>,
+) -> ApiResult {
+    let cell = validate_scope(&state, &params.scope)?;
+    // Extraction is blocking CPU/IO (tree walk; full parse on a fingerprint
+    // miss) — run it off the runtime, mirroring the code graph query. A failure
+    // surfaces honestly (5xx) rather than serving a stale or empty lie.
+    let blocking_cell = cell.clone();
+    let graph =
+        tokio::task::spawn_blocking(move || blocking_cell.code.ensure_fresh(&blocking_cell.root))
+            .await
+            .map_err(|e| {
+                super::api_error(&state, StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            })?
+            .map_err(|e| {
+                super::api_error(
+                    &state,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("code corpus extraction failed: {e}"),
+                )
+            })?;
+    // The complete path-sorted listing, served from the per-generation memo
+    // (the projection runs over exactly the graph Arc just read).
+    let entries = cell.code.code_file_rows(&graph);
+    // Cursor pagination on the unbounded listing, clamped exactly like
+    // `/vault-tree`: a client-supplied page_size cannot defeat the cursor cap.
+    let page_size = params.page_size.unwrap_or(500).min(2000);
+    let (page, next_cursor) = engine_query::envelope::paginate(
+        &entries,
+        |e| e["path"].as_str().unwrap_or_default(),
+        params.cursor.as_deref(),
+        page_size,
+    );
+    // Honest truncation (ADR D8 counters): the ingest walk cap bounds the corpus
+    // at its file ceiling, so when the walk was capped the listing is NOT the
+    // complete source tree — state it rather than imply completeness. Null when
+    // the walk ran to completion (the common case). This is walk-cap truncation
+    // only; it is orthogonal to the per-page cursor (`next_cursor`).
+    let truncated = cell.code.stats_snapshot().filter(|s| s.capped).map(|s| {
+        json!({
+            "returned_files": s.files,
+            "reason": "source-tree walk cap: ingest stopped at its file ceiling; \
+                       files beyond it are absent from this listing",
+        })
+    });
+    Ok(super::envelope(
+        json!({"entries": page, "truncated": truncated}),
+        rag_tiers(&cell),
+        next_cursor,
+    ))
+}
+
 // --- POST /graph/query ----------------------------------------------------------
 
 #[derive(Deserialize)]

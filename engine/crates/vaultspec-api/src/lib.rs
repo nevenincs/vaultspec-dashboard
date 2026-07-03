@@ -40,6 +40,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/map",
     "/workspaces",
     "/vault-tree",
+    "/code-files",
     "/file-tree",
     "/pipeline",
     "/dashboard-state",
@@ -98,6 +99,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // envelope. Registry mutation rides /session (config), never here.
         .route("/workspaces", get(routes::registry::list_workspaces))
         .route("/vault-tree", get(routes::query::vault_tree))
+        .route("/code-files", get(routes::query::code_files))
         // Read-only codebase file-tree listing (dashboard-code-tree ADR): one
         // bounded, ignore-aware directory level per call, metadata only, through
         // the shared envelope so every response carries the tiers block.
