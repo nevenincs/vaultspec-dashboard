@@ -135,6 +135,7 @@ import {
   normalizeSaveBodyArgs,
   normalizeSetFrontmatterArgs,
   normalizeVaultTreeRequestIdentity,
+  normalizeCodeFilesRequestIdentity,
   parseSseFrames,
   refreshAfterAcceptedScopeSwitch,
   refreshAfterAcceptedWorkspaceSwitch,
@@ -180,6 +181,7 @@ import {
   usePRsView,
   useReadTime,
   useSalienceSliceView,
+  useCodeFiles,
   useTimelineLineage,
   useTimelineLineageView,
   useVaultTree,
@@ -2870,6 +2872,50 @@ describe("left-rail root surface states", () => {
     });
 
     expect(result.current.data).toBeUndefined();
+  });
+
+  it("does not expose cached code-files data when no scope is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.codeFiles(""), {
+      entries: [],
+      tiers: {},
+      truncated: null,
+    });
+
+    const { result } = renderHook(() => useCodeFiles(null), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it("normalizes code-files request identity like the vault tree", () => {
+    expect(normalizeCodeFilesRequestIdentity(" scope-a ")).toEqual({
+      scope: "scope-a",
+    });
+    expect(normalizeCodeFilesRequestIdentity(["scope-a"] as unknown).scope).toBeNull();
+  });
+
+  it("useCodeFiles walks the code-files listing to completion over the live wire", async () => {
+    // The reader holds the COMPLETE listing (walked to completion), so the
+    // files(code) provider narrows the whole set. On the vault-only fixture the
+    // code corpus is empty (no source files), but the assertions are shape-safe
+    // whether empty or populated: an entries array the client drained, honest
+    // null truncation well below the walk ceiling, and every entry a navigable
+    // `code:{path}` node.
+    const scope = await liveScope();
+    const client = testQueryClient();
+    const { result } = renderHook(() => useCodeFiles(scope), {
+      wrapper: wrapper(client),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true), ENGINE_WAIT);
+    const data = result.current.data!;
+    expect(Array.isArray(data.entries)).toBe(true);
+    expect(data.truncated).toBeNull();
+    for (const entry of data.entries) {
+      expect(entry.node_id).toBe(`code:${entry.path}`);
+    }
   });
 
   it("normalizes vault-tree and filters vocabulary request identity", () => {

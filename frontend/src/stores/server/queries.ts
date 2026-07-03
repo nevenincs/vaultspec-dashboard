@@ -202,6 +202,11 @@ export const engineKeys = {
   // authoritative shape (dashboard-workspace-registry ADR).
   workspaces: () => [...engineKeys.all, "workspaces"] as const,
   vaultTree: (scope: string) => [...engineKeys.all, "vault-tree", scope] as const,
+  // The complete code-file listing (search-providers ADR), keyed on scope alone:
+  // one bounded cache entry per corpus, walked to completion by the client so the
+  // files(code) provider narrows the WHOLE set. A scope/workspace swap evicts it
+  // like the vault-tree cache (default gcTime bounds retention).
+  codeFiles: (scope: string) => [...engineKeys.all, "code-files", scope] as const,
   // The code (worktree) file tree is fetched ONE directory level per call
   // (dashboard-code-tree ADR): the key folds (scope, dir-path, cursor) so each
   // expanded directory — and each page of a paginated level — is its own cache
@@ -1594,6 +1599,31 @@ export function useVaultTree(scope: unknown) {
   const query = useQuery({
     queryKey: engineKeys.vaultTree(request.scope ?? ""),
     queryFn: () => engineClient.vaultTree(request.scope!),
+    enabled,
+  });
+  return withManualRetry(enabled ? query : { ...query, data: undefined });
+}
+
+export interface CodeFilesRequestIdentity {
+  scope: string | null;
+}
+
+export function normalizeCodeFilesRequestIdentity(
+  scope: unknown,
+): CodeFilesRequestIdentity {
+  return { scope: normalizeGraphSliceScope(scope) };
+}
+
+/** The complete code-file listing (search-providers ADR): the client walks the
+ *  cursor to completion, so the files(code) provider holds the WHOLE set to
+ *  narrow client-side (the complete-paginated-set rule). Bounded cache keyed on
+ *  scope, mirroring `useVaultTree`; default gcTime bounds retention. */
+export function useCodeFiles(scope: unknown) {
+  const request = normalizeCodeFilesRequestIdentity(scope);
+  const enabled = request.scope !== null;
+  const query = useQuery({
+    queryKey: engineKeys.codeFiles(request.scope ?? ""),
+    queryFn: () => engineClient.codeFiles(request.scope!),
     enabled,
   });
   return withManualRetry(enabled ? query : { ...query, data: undefined });
