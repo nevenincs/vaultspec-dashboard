@@ -289,13 +289,29 @@ export function TreeBrowser({
     }
     return map;
   }, [tree.data?.entries]);
+  // EVENT-gated on the selection CHANGING (cross-surface state review GSR-001): the
+  // expand is a one-shot reaction to a NEW selection, consumed via ref. Without the
+  // gate this effect re-asserted `expandAll` whenever ANY dependency identity changed
+  // — `nodeFeatureTags` is rebuilt on every tree refetch (SSE vault edits) — so a
+  // folder the user had just collapsed silently re-expanded ("expand/collapse double
+  // fires"). Consumed only on a successful expand (a tag unknown while the tree is
+  // still loading retries when the tags arrive); follow-off resets the gate so
+  // re-enabling follow re-reveals the current selection once.
+  const followExpandedForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!followMode || selectedNodeId === null) return;
+    if (!followMode) {
+      followExpandedForRef.current = null;
+      return;
+    }
+    if (selectedNodeId === null || followExpandedForRef.current === selectedNodeId) {
+      return;
+    }
     const tag = followFeatureKeyForNode(
       selectedNodeId,
       nodeFeatureTags.get(selectedNodeId),
     );
     if (tag === null) return;
+    followExpandedForRef.current = selectedNodeId;
     expandAll(["sec:features", `feat:${tag}`]);
     setActiveKey(`feat:${tag}`);
   }, [followMode, selectedNodeId, nodeFeatureTags, expandAll, setActiveKey]);
