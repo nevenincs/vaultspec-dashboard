@@ -60,6 +60,7 @@ import type {
   PullRequest,
   RecentScope,
   ScopeContextWire,
+  SearchIndexState,
   SearchResponse,
   SessionState,
   SettingControlKind,
@@ -809,11 +810,16 @@ export function adaptFilters(body: unknown): FiltersVocabulary {
 }
 
 /**
- * Live `/search` nests the rag envelope verbatim:
- * `{envelope: {ok, data: {results}}}`. Map result items tolerantly (the
- * rag item vocabulary: path/stem/source, score, excerpt/text) and derive
- * the graph node id from a stem when the engine annotation is absent —
- * the annotation gap is a flagged divergence, not silently papered.
+ * Live `/search` serves rag's FLAT annotated HTTP envelope (rag-integration-
+ * hardening D1): `results` sits at the TOP level (already unwrapped from the §2
+ * `{data, tiers}` wrapper by `unwrapEnvelope`), each item carrying rag's real
+ * per-hit vocabulary (path/stem/source, score, `snippet`/excerpt/text, and the
+ * species-specific metadata), plus the engine's `node_id` value-add. The
+ * envelope also carries rag's forwarded `index_state` freshness block and the
+ * engine-annotated `semantic_epoch`. Map result items tolerantly and derive the
+ * graph node id from a stem/path only when the engine annotation is absent — the
+ * annotation gap is a flagged divergence, not silently papered. There is ONE
+ * shape: the older nested CLI-subprocess envelope is retired (no bridge).
  */
 export const SEARCH_RESULTS_MAX_ITEMS = 256;
 export const SEARCH_RESULT_IDENTITY_MAX_CHARS = 2048;
@@ -847,6 +853,54 @@ function normalizeSearchResultLine(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   const n = Math.trunc(value);
   return n >= 0 ? n : undefined;
+}
+
+/** An `index_state` count field: a finite, non-negative integer, else undefined
+ *  (a malformed or absent count never poisons the freshness block). */
+function normalizeSearchCount(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const n = Math.trunc(value);
+  return n >= 0 ? n : undefined;
+}
+
+/**
+ * The shared D4 semantic epoch the engine annotates on a `/search` success
+ * (rag-integration-hardening D3). Three distinct served truths, preserved:
+ * a finite non-negative number is the warm epoch; an explicit `null` is the
+ * engine's HONEST absent marker (a cold/failed cache read — freshness unknown,
+ * never fabricated); anything else (field absent, non-number) is `undefined` —
+ * the wire carried no epoch at all (the degraded path emits none). `null` and
+ * `undefined` are NOT collapsed: one is "known-unknown", the other "not served".
+ */
+function normalizeSearchEpoch(
+  present: boolean,
+  value: unknown,
+): number | null | undefined {
+  if (!present) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const n = Math.trunc(value);
+  return n >= 0 ? n : undefined;
+}
+
+/** rag's `index_state` freshness block → the internal `SearchIndexState`,
+ *  forwarded verbatim (engine-read-and-infer — no engine staleness semantics),
+ *  every field normalized tolerantly and dropped when malformed/absent. Returns
+ *  undefined when no field survives (a sparse or absent block). */
+function adaptSearchIndexState(value: unknown): SearchIndexState | undefined {
+  if (!isRec(value)) return undefined;
+  const state = pickDefined({
+    source: normalizeSearchResultString(value.source),
+    indexed_count: normalizeSearchCount(value.indexed_count),
+    vault_count: normalizeSearchCount(value.vault_count),
+    code_count: normalizeSearchCount(value.code_count),
+    indexed_target_root: normalizeSearchResultString(value.indexed_target_root),
+    requested_target_root: normalizeSearchResultString(value.requested_target_root),
+    target_matches:
+      typeof value.target_matches === "boolean" ? value.target_matches : undefined,
+    status: normalizeSearchResultString(value.status),
+  });
+  return Object.keys(state).length > 0 ? state : undefined;
 }
 
 /** Drop `undefined` entries so only present fields ride the optional wire shape. */
@@ -909,10 +963,11 @@ function adaptSearchResult(item: unknown): SearchResponse["results"][number] | n
 
 export function adaptSearch(body: unknown): SearchResponse {
   if (!isRec(body)) return body as never;
-  if (Array.isArray(body.results)) return body as never; // internal/mock shape
-  const envelope = isRec(body.envelope) ? body.envelope : {};
-  const data = isRec(envelope.data) ? envelope.data : {};
-  const rawResults = Array.isArray(data.results) ? data.results : [];
+  // The flat annotated shape (rag-integration-hardening D1): `results` at the
+  // top level, adapted per hit. The old nested `{envelope:{data:{results}}}`
+  // CLI-subprocess shape is retired — search rides the resident HTTP service, so
+  // there is exactly one shape and no discriminating bridge.
+  const rawResults = Array.isArray(body.results) ? body.results : [];
   const results: SearchResponse["results"] = [];
   for (const item of rawResults) {
     const result = adaptSearchResult(item);
@@ -920,9 +975,17 @@ export function adaptSearch(body: unknown): SearchResponse {
     results.push(result);
     if (results.length >= SEARCH_RESULTS_MAX_ITEMS) break;
   }
+  // Freshness (D3): rag's `index_state` forwarded verbatim and the engine's
+  // annotated `semantic_epoch` passed through as served truth. Both are optional
+  // and only emitted when present, so a degraded/empty search (no freshness on
+  // the wire) carries neither rather than a fabricated block.
+  const indexState = adaptSearchIndexState(body.index_state);
+  const epoch = normalizeSearchEpoch("semantic_epoch" in body, body.semantic_epoch);
   return {
     results,
     tiers: (body.tiers ?? {}) as TiersBlock,
+    ...(indexState !== undefined ? { index_state: indexState } : {}),
+    ...(epoch !== undefined ? { semantic_epoch: epoch } : {}),
   };
 }
 

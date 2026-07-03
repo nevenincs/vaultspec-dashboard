@@ -43,7 +43,7 @@ Forward rag's native index_state verbatim and annotate the shared semantic_epoch
 Make the client search budget strictly outlive the engine budget, adopt the flat HTTP vocabulary in the tolerant adapter, bound the wire payload from the app, and surface freshness through the one search selector (ADR D2, D3, D5).
 
 - [x] `P03.S07` - Raise the client search budget strictly above the engine search budget plus transport margin and send the app-chosen max_results in the search body so the wire payload is app-bounded; `frontend/src/stores/server/queries.ts + engine.ts`.
-- [ ] `P03.S08` - Teach the tolerant search adapter the flat HTTP vocabulary (top-level results, snippet alongside excerpt and text, forwarded index_state and semantic_epoch) while keeping the node-id derivation grammar unchanged; `frontend/src/stores/server/liveAdapters.ts`.
+- [x] `P03.S08` - Teach the tolerant search adapter the flat HTTP vocabulary (top-level results, snippet alongside excerpt and text, forwarded index_state and semantic_epoch) while keeping the node-id derivation grammar unchanged; `frontend/src/stores/server/liveAdapters.ts`.
 - [ ] `P03.S09` - Surface semantic_epoch and index_state through the interpreted search selector so consumers key caches and render staleness from served truth, keeping a client-side abort mapped to the transport-error state; `frontend/src/stores/server/searchController.ts`.
 - [ ] `P03.S10` - Update the frontend search tests for the new budget ordering, the flat-shape adapter vectors, and the freshness fields on the interpreted selector; `frontend/src/stores/server/searchController.test.ts + liveAdapters.test.ts + queries.test.ts`.
 

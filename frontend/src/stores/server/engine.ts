@@ -1523,9 +1523,45 @@ export interface SearchResult {
   node_id: string | null;
 }
 
+/**
+ * rag's native per-search freshness block (rag-integration-hardening ADR D3),
+ * forwarded VERBATIM by the engine on every `/search` success — the engine adds
+ * no staleness semantics of its own (engine-read-and-infer). Every field is
+ * optional so a sparse or older rag shape never breaks adaptation; consumers
+ * read freshness from this served truth, presentation-mapped only.
+ */
+export interface SearchIndexState {
+  /** The corpus this block describes (`vault` | `codebase`). */
+  source?: string;
+  /** Points indexed for the requested target. */
+  indexed_count?: number;
+  vault_count?: number;
+  code_count?: number;
+  /** The root rag actually indexed, vs the root the engine requested. When they
+   *  disagree (`target_matches === false`) the served results are for a different
+   *  root than the one asked for — a staleness the consumer can surface. */
+  indexed_target_root?: string;
+  requested_target_root?: string;
+  target_matches?: boolean;
+  /** rag's own index status word (e.g. `available`, `indexing`). */
+  status?: string;
+}
+
 export interface SearchResponse {
   results: SearchResult[];
   tiers: TiersBlock;
+  /** rag's freshness block, forwarded verbatim (ADR D3). Absent when the wire
+   *  carried no `index_state` (e.g. a degraded or empty search). */
+  index_state?: SearchIndexState;
+  /**
+   * The shared D4 semantic-index epoch the engine annotates on every success:
+   * a number when the short-TTL cache was warm, `null` when it was cold (an
+   * HONEST absent marker — freshness unknown, never a fabricated `0`), and
+   * `undefined` when the field was absent from the wire entirely (the degraded
+   * path emits no epoch). Downstream builds key one invalidation across search
+   * and embeddings on this value.
+   */
+  semantic_epoch?: number | null;
 }
 
 // --- session / settings (user-state-persistence W04.P08.S25) -----------------------------
