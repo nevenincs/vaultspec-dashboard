@@ -51,7 +51,7 @@ Make the client search budget strictly outlive the engine budget, adopt the flat
 
 Exercise the real engine-to-rag-to-annotation-to-controller success chain in tests that skip honestly on rag-less machines (ADR D4).
 
-- [ ] `P04.S11` - Add the engine rag-gated live success test: discover the resident machine-global rag, drive a real query through /search, assert annotation and index_state on the live envelope, and skip with a stated reason when no service is discovered; `engine/crates/vaultspec-api/tests/`.
+- [x] `P04.S11` - Add the engine rag-gated live success test: discover the resident machine-global rag, drive a real query through /search, assert annotation and index_state on the live envelope, and skip with a stated reason when no service is discovered; `engine/crates/vaultspec-api/tests/`.
 - [ ] `P04.S12` - Add the frontend rag-gated live success test: gate on the served tiers reporting the semantic tier available, drive a real settled query through useSearchController, and skip with a stated reason otherwise; `frontend/src/stores/server/searchController.test.ts`.
 
 ### Phase `P05` - Lifecycle ride-alongs and coordination closeout
