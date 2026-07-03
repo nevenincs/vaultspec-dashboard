@@ -316,15 +316,65 @@ export interface SearchProvidersView {
 }
 
 /**
+ * Collapse the registered providers into one palette view (pure, unit-testable):
+ * the score-desc merge with best-rank identity dedupe (a hit found by both meaning
+ * and name renders ONCE at its best rank — first == highest-scored wins), the
+ * 40-item bound, the tiers-gated degradation collapse, and the shared semantic
+ * epoch — lifting `unifiedResultIdentity` / `mergeSemanticEpoch` /
+ * `UNIFIED_SEARCH_RESULTS_MAX_ITEMS` from the unified controller verbatim. The
+ * FIRST provider is treated as the semantic source for the degraded/error/epoch
+ * collapse (the host passes it first). A rag outage is a NON-EVENT: the semantic
+ * source contributes nothing and the files providers' name matches carry the set.
+ */
+export function mergeSearchProviders(
+  providers: readonly SearchProviderResult[],
+): SearchProvidersView {
+  const ranked = providers
+    .flatMap((p) => p.entries)
+    .sort((a, b) => b.result.score - a.result.score);
+  const seen = new Set<string>();
+  const entries: SearchProviderEntry[] = [];
+  for (const entry of ranked) {
+    const identity = unifiedResultIdentity(entry.result);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    entries.push(entry);
+    if (entries.length >= UNIFIED_SEARCH_RESULTS_MAX_ITEMS) break;
+  }
+
+  const semantic = providers[0];
+  const semanticOffline = semantic?.state === "degraded";
+  const pending = providers.some((p) => p.state === "loading");
+  const allIdle = providers.every((p) => p.state === "idle");
+  // Error only when the semantic source genuinely failed and no files provider
+  // rescued the query — a files hit set makes the outage a non-event.
+  const error = semantic?.state === "error" && entries.length === 0 && !pending;
+
+  let state: SearchState;
+  if (entries.length > 0) state = "results";
+  else if (pending) state = "loading";
+  else if (allIdle) state = "idle";
+  else if (error) state = "error";
+  else if (semanticOffline) state = "semantic-offline";
+  else state = "no-results";
+
+  const semanticEpoch = providers.reduce<number | null | undefined>(
+    (acc, p) => mergeSemanticEpoch(acc, p.semanticEpoch),
+    undefined,
+  );
+  const retry = () => {
+    for (const p of providers) p.retry?.();
+  };
+
+  return { state, entries, semanticOffline, pending, error, semanticEpoch, retry };
+}
+
+/**
  * The one Search host (search-providers ADR D1): it composes the three registered
- * providers and owns everything shared — the score-desc merge with best-rank
- * identity dedupe (a hit found by both meaning and name renders ONCE at its best
- * rank), the 40-item bound, the tiers-gated degradation collapse, and the shared
- * semantic epoch — all lifted from the unified controller's proven machinery
- * (`mergeUnifiedSearch` / `unifiedResultIdentity` / `mergeSemanticEpoch`). The
- * rag-down text fallback is NOT a mode here: when the semantic provider is offline
- * it contributes nothing and the files(vault) provider's name matches carry the
- * result set, which is why the degraded state is a non-event, not a dead plane.
+ * providers — semantic FIRST — and delegates the shared merge/dedupe/bound/
+ * degradation/epoch collapse to the pure `mergeSearchProviders`. The rag-down text
+ * fallback is NOT a mode here: when the semantic provider is offline it contributes
+ * nothing and the files(vault) provider's name matches carry the result set.
  */
 export function useSearchProviders(
   query: string,
@@ -333,47 +383,8 @@ export function useSearchProviders(
   const semantic = useSemanticProvider(query, scope);
   const filesVault = useFilesVaultProvider(query, scope);
   const filesCode = useFilesCodeProvider(query, scope);
-
-  return useMemo(() => {
-    const providers = [semantic, filesVault, filesCode];
-    // Merge: concat, sort by score desc (stable), dedupe by node identity keeping
-    // the FIRST (== highest-scored == best rank) occurrence, bound to 40.
-    const ranked = providers
-      .flatMap((p) => p.entries)
-      .sort((a, b) => b.result.score - a.result.score);
-    const seen = new Set<string>();
-    const entries: SearchProviderEntry[] = [];
-    for (const entry of ranked) {
-      const identity = unifiedResultIdentity(entry.result);
-      if (seen.has(identity)) continue;
-      seen.add(identity);
-      entries.push(entry);
-      if (entries.length >= UNIFIED_SEARCH_RESULTS_MAX_ITEMS) break;
-    }
-
-    const semanticOffline = semantic.state === "degraded";
-    const pending = providers.some((p) => p.state === "loading");
-    const allIdle = providers.every((p) => p.state === "idle");
-    // Error only when the semantic source genuinely failed and no files provider
-    // rescued the query — a files hit set makes the outage a non-event.
-    const error = semantic.state === "error" && entries.length === 0 && !pending;
-
-    let state: SearchState;
-    if (entries.length > 0) state = "results";
-    else if (pending) state = "loading";
-    else if (allIdle) state = "idle";
-    else if (error) state = "error";
-    else if (semanticOffline) state = "semantic-offline";
-    else state = "no-results";
-
-    const semanticEpoch = providers.reduce<number | null | undefined>(
-      (acc, p) => mergeSemanticEpoch(acc, p.semanticEpoch),
-      undefined,
-    );
-    const retry = () => {
-      for (const p of providers) p.retry?.();
-    };
-
-    return { state, entries, semanticOffline, pending, error, semanticEpoch, retry };
-  }, [semantic, filesVault, filesCode]);
+  return useMemo(
+    () => mergeSearchProviders([semantic, filesVault, filesCode]),
+    [semantic, filesVault, filesCode],
+  );
 }
