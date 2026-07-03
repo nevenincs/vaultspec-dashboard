@@ -12,11 +12,12 @@
 // split, then closes.
 //
 // Layer law (dashboard-layer-ownership / view-rewrite-preserves-the-contract): dumb
-// chrome. It consumes the stores `useUnifiedSearchController` (the sole wire client
-// for search) and `useContentView` (the sole wire client for node content), derives
-// the pill views through the stores `deriveSearchPillViews`, reads degradation only
-// through the controller's interpreted `semanticOffline`, and emits selection through
-// the scoped dashboard-selection seam. It fetches nothing itself and reads no raw
+// chrome. It consumes the stores `useSearchProviders` (the ONE Search host composing
+// the semantic + files(vault) + files(code) providers into one ranked interleaved
+// list) and `useContentView` (the sole wire client for node content), derives the
+// pill views through the stores `deriveSearchPillViews`, reads degradation only
+// through the host's interpreted `semanticOffline`, and emits selection through the
+// scoped dashboard-selection seam. It fetches nothing itself and reads no raw
 // `tiers` block. The editorial render REUSES the existing MarkdownReader / CodeViewer
 // viewers rather than authoring a bespoke long-form.
 
@@ -41,7 +42,7 @@ import {
   useSearchPaletteCursor,
   useSearchPaletteExpanded,
 } from "../../stores/view/commandPalette";
-import { useUnifiedSearchController } from "../../stores/server/searchController";
+import { useSearchProviders } from "../../stores/server/searchProviders";
 import { deriveSearchPillViews } from "../../stores/server/searchPill";
 import { useActiveScope, useContentView } from "../../stores/server/queries";
 import { activateEntity } from "../../stores/view/activateEntity";
@@ -114,10 +115,16 @@ export function SearchPaletteSurface() {
   const expanded = useSearchPaletteExpanded();
   const scope = useActiveScope();
 
-  const search = useUnifiedSearchController(query, scope);
+  const search = useSearchProviders(query, scope);
   const pills = useMemo(
-    () => deriveSearchPillViews(search.results, scope),
-    [search.results, scope],
+    // The host yields banded provider entries; the pill derivation reads the
+    // wire `result` each wraps (species/title/why are derived there).
+    () =>
+      deriveSearchPillViews(
+        search.entries.map((entry) => entry.result),
+        scope,
+      ),
+    [search.entries, scope],
   );
   const presentation = deriveSearchPalettePresentationView({
     query,
