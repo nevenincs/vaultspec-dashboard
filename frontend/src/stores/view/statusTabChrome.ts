@@ -15,12 +15,10 @@ export type StatusSectionId =
   | "open-issues"
   | "recent-prs"
   | "recent-commits"
-  // The machine-level rag operations console (rag-service-management ADR D7)
-  // and its three internal folds (binding RagOpsConsole 879:4125).
+  // The machine-level search-service console (rag-service-management ADR D7)
+  // and its single Details fold (2026-07-03 redesign).
   | "rag-ops"
-  | "rag-ops:status"
-  | "rag-ops:advanced"
-  | "rag-ops:jobs";
+  | "rag-ops:details";
 
 const STATUS_SECTION_IDS = [
   "changes",
@@ -34,9 +32,7 @@ const STATUS_SECTION_IDS = [
   "recent-prs",
   "recent-commits",
   "rag-ops",
-  "rag-ops:status",
-  "rag-ops:advanced",
-  "rag-ops:jobs",
+  "rag-ops:details",
 ] as const satisfies readonly StatusSectionId[];
 const STATUS_SECTION_ID_SET = new Set<string>(STATUS_SECTION_IDS);
 const DEFAULT_STATUS_SECTION_ID: StatusSectionId = "open-plans";

@@ -763,13 +763,14 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
           </SectionCard>
         </>
       )}
-      {/* The machine-level rag operations console is independent of corpus state
+      {/* The machine-level search-service console is independent of corpus state
           (it manages the one machine service), so it renders in every rail state,
-          collapsed by default. */}
+          collapsed by default. Plain-language title: the backing service name
+          stays internal vocabulary (labels-are-user-facing). */}
       <SectionCard
         {...headerNav("rag-ops")}
         id="rag-ops"
-        title="RAG OPS"
+        title="Search service"
         defaultOpen={false}
       >
         <RagOpsConsoleBody />
