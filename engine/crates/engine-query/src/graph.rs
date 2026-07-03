@@ -544,6 +544,43 @@ pub fn build_vault_tree_rows(graph: &LinkageGraph, scope: &ScopeRef) -> Vec<Valu
     rows
 }
 
+/// Build the path-sorted `/code-files` rows: one minimal row per `code:` FILE
+/// node projected off the code corpus's `LinkageGraph` (never the DOI-bounded
+/// graph projection), so a client can hold the COMPLETE code-file listing and
+/// narrow it (search-providers ADR: `files (code)` is a client narrow over a
+/// complete set, never the capped graph slice). Every admitted source file
+/// mints exactly one `code:{path}` node (files-only representation), so the row
+/// count equals the corpus's file count. The row is deliberately minimal —
+/// `path` (the node key), `node_id` (so a hit is directly navigable), `title`
+/// (the file's display title, honestly null when unset), and `lang` (the wire
+/// language token derived from the path extension via the one
+/// `engine_model::language_token` source of truth, null for an unclassified
+/// extension). Sorted by borrowed path — no per-comparison allocation — a
+/// filter-independent projection the API cell memoizes per code generation
+/// (mirroring `build_vault_tree_rows`); the handler paginates the slice per
+/// request.
+pub fn build_code_file_rows(graph: &LinkageGraph) -> Vec<Value> {
+    let mut rows: Vec<Value> = graph
+        .nodes()
+        .filter(|n| n.kind == NodeKind::CodeArtifact)
+        .map(|n| {
+            json!({
+                "path": n.key,
+                "node_id": n.id.0,
+                "title": n.title,
+                "lang": engine_model::language_token(&n.key),
+            })
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        a["path"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(b["path"].as_str().unwrap_or_default())
+    });
+    rows
+}
+
 /// Run the scoped query. `scope` narrows edges to one corpus view (the
 /// stateless per-request scope, contract §3); nodes pass if any facet
 /// matches the scope.
@@ -1704,6 +1741,70 @@ mod tests {
             rows.iter().all(|r| r["doc_type"] != "index"),
             "no row carries the index doc_type"
         );
+    }
+
+    /// A titled `code` artifact node — mirrors `code_artifact` but carries a
+    /// display title, so the projection's title pass-through is exercised.
+    fn titled_code_artifact(path: &str, title: &str) -> Node {
+        let mut n = code_artifact(path, "feature-a");
+        n.title = Some(title.into());
+        n
+    }
+
+    #[test]
+    fn code_file_rows_project_only_code_nodes_sorted_by_path() {
+        // The projection is the complete code-file listing: every `code:` FILE
+        // node, and NOTHING else (no `doc:` or `index` node bleeds in). Rows
+        // are path-sorted for cursor determinism.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-plan", "feature-a"));
+        g.upsert_node(index_doc("feature-a.index", "feature-a"));
+        g.upsert_node(code_artifact("src/zeta.rs", "feature-a"));
+        g.upsert_node(code_artifact("src/alpha.ts", "feature-a"));
+        let rows = build_code_file_rows(&g);
+        let paths: Vec<&str> = rows.iter().filter_map(|r| r["path"].as_str()).collect();
+        assert_eq!(
+            paths,
+            vec!["src/alpha.ts", "src/zeta.rs"],
+            "only code files, sorted by path"
+        );
+        // The node id rides each row so a hit is directly navigable.
+        assert_eq!(rows[0]["node_id"], "code:src/alpha.ts");
+        assert_eq!(rows[1]["node_id"], "code:src/zeta.rs");
+    }
+
+    #[test]
+    fn code_file_rows_derive_language_and_pass_title_honestly() {
+        // `lang` derives from the path extension via the one language_token
+        // source of truth; an unclassified extension serves a null lang. The
+        // title passes through, honestly null when the node carries none.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(titled_code_artifact("app/main.py", "main"));
+        g.upsert_node(code_artifact("docs/readme.md", "feature-a"));
+        let rows = build_code_file_rows(&g);
+        let py = rows.iter().find(|r| r["path"] == "app/main.py").unwrap();
+        assert_eq!(py["lang"], "python");
+        assert_eq!(py["title"], "main");
+        let md = rows.iter().find(|r| r["path"] == "docs/readme.md").unwrap();
+        assert_eq!(
+            md["lang"],
+            Value::Null,
+            "unclassified extension → null lang"
+        );
+        assert_eq!(
+            md["title"],
+            Value::Null,
+            "no title → null, never fabricated"
+        );
+    }
+
+    #[test]
+    fn code_file_rows_empty_on_a_graph_with_no_code() {
+        // A vault-only graph (no code corpus) projects zero rows — the honest
+        // empty listing, never a 5xx or a fabricated entry.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-plan", "feature-a"));
+        assert!(build_code_file_rows(&g).is_empty());
     }
 
     #[test]

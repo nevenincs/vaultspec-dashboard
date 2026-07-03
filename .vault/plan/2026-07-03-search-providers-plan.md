@@ -3,6 +3,7 @@ tags:
   - '#plan'
   - '#search-providers'
 date: '2026-07-03'
+modified: '2026-07-03'
 tier: L2
 related:
   - '[[2026-07-03-search-providers-adr]]'
@@ -25,7 +26,7 @@ related:
 
 The one contract event: a complete cursor-paginated code-file listing projected off the LinkageGraph with truncation honesty (ADR D1 files-code source, Constraints).
 
-- [ ] `P01.S01` - Add the build_code_file_rows projection over all code-prefixed LinkageGraph nodes with the minimal row shape (path, node_id, title, lang), memoized per graph generation beside the vault-tree rows cache, with unit tests over a small ingested fixture; `engine/crates/engine-query/src/graph.rs + vaultspec-api/src/app.rs`.
+- [x] `P01.S01` - Add the build_code_file_rows projection over all code-prefixed LinkageGraph nodes with the minimal row shape (path, node_id, title, lang), memoized per graph generation beside the vault-tree rows cache, with unit tests over a small ingested fixture; `engine/crates/engine-query/src/graph.rs + vaultspec-api/src/app.rs`.
 - [ ] `P01.S02` - Serve GET /code-files: cursor pagination at 2000 per page, the tiers envelope on success and error, and an honest truncated block when the ingest walk cap bounded the corpus, registered in the contract route table; `engine/crates/vaultspec-api/src/routes/ + lib.rs`.
 - [ ] `P01.S03` - Cover the new route with wire tests: full cursor walk to completion, page-boundary determinism, truncation honesty, and tier parity on a graphless cell; `engine/crates/vaultspec-api/tests/`.
 
