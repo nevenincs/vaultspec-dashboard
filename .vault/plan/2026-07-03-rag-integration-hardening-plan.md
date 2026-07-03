@@ -10,16 +10,6 @@ related:
   - '[[2026-07-03-rag-integration-hardening-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 # `rag-integration-hardening` plan
 
 ### Phase `P01` - Engine search transport rides the resident service
@@ -60,7 +50,7 @@ Close the audited residuals: version-tolerant --json on the shared-runner lifecy
 
 - [ ] `P05.S13` - Extend the version-tolerant --json retry (exit-2 usage-error detection, plain retry) from server-start to the shared-runner lifecycle verbs server-status, server-doctor, and server-install; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 - [ ] `P05.S14` - Run reprobe_rag_until_running under rag_offload so the bounded reprobe loop never pins a Tokio async worker; `engine/crates/vaultspec-api/src/routes/ops.rs`.
-- [ ] `P05.S15` - File the Tier-3 rag coordination note asking for machine-wide aggregate storage totals on /storage/survey and the vault-collection-name descriptor on /readiness (the blake2b sunset trigger), and close the open rag-console-review step that mandates it; `coordination note (rag sibling) + .vault/plan/2026-07-02-rag-console-review-plan.md`.
+- [x] `P05.S15` - File the Tier-3 rag coordination note asking for machine-wide aggregate storage totals on /storage/survey and the vault-collection-name descriptor on /readiness (the blake2b sunset trigger), and close the open rag-console-review step that mandates it; `coordination note (rag sibling) + .vault/plan/2026-07-02-rag-console-review-plan.md`.
 - [ ] `P05.S16` - Record the stop_failed tiers decision at the stop handler: the tiers block reports true current service state and the failure lives in the envelope status; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 
 ## Description
