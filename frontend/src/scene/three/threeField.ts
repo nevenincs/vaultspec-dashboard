@@ -64,6 +64,7 @@ import {
   sceneRuleColor,
 } from "./appearance";
 import { D3_FORCE_DEFAULTS, D3ForceSolver, type D3ForceParams } from "./d3ForceSolver";
+import { defaultPositionCache, type NodePosition } from "../positionCache";
 import { classifySwap } from "./swapClassifier";
 import { labelTextStyle } from "./labelStyle";
 import { rootFontPx, uiScale } from "./uiScale";
@@ -1242,20 +1243,49 @@ export class ThreeField implements SceneFieldRenderer {
     // so a background set-data can never tick through the user's freeze. If prewarm
     // hits its wall-clock budget the remainder finishes in the live loop; otherwise
     // it freezes (idle GPU 0).
+    let prewarmTicks: number;
     if (warm && !swap.continueSettle) {
-      this.solver.prewarmReflow(
+      prewarmTicks = this.solver.prewarmReflow(
         (i) => swap.movableIds.has(nodes[i].id),
         swap.startAlpha,
         this.frozen ? 0 : undefined,
       );
     } else if (warm) {
-      this.solver.prewarm(
+      prewarmTicks = this.solver.prewarm(
         this.frozen ? 0 : PREWARM_MAX_TICKS,
         PREWARM_BUDGET_MS,
         Math.max(swap.startAlpha, Math.min(priorAlpha, COLD_START_ALPHA)),
       );
     } else {
-      this.solver.prewarm(this.frozen ? 0 : PREWARM_MAX_TICKS, PREWARM_BUDGET_MS);
+      // Persisted-base seed (graph-simulation-stability ADR): a COLD load (no
+      // in-memory carry — first visit, corpus reset, scope switch) opens at the
+      // last SETTLED equilibrium for this scope when one is persisted. Matching
+      // ids seed their converged positions and the anneal merely relaxes the
+      // topology diff, at a carry-proportional alpha (all-persisted ≈ the
+      // gentle warm start; none ≈ the full cold explode). Node ids are
+      // corpus-prefixed, so one per-scope blob serves both corpora.
+      let persistedCarried = 0;
+      const persisted =
+        this.positionCache && this.persistWorkspace !== null
+          ? this.positionCache.load(this.persistWorkspace, this.persistScope)
+          : null;
+      if (persisted && persisted.size > 0) {
+        this.solver.seed((i) => {
+          const p = persisted.get(nodes[i].id) ?? null;
+          if (p) persistedCarried++;
+          return p;
+        });
+      }
+      const movableFraction = n > 0 ? (n - persistedCarried) / n : 1;
+      const startAlpha = Math.min(
+        COLD_START_ALPHA,
+        WARM_START_ALPHA + (COLD_START_ALPHA - WARM_START_ALPHA) * movableFraction,
+      );
+      prewarmTicks = this.solver.prewarm(
+        this.frozen ? 0 : PREWARM_MAX_TICKS,
+        PREWARM_BUDGET_MS,
+        startAlpha,
+      );
     }
     this.solver.pack(this.cpuPositions);
     this.uploadPositions();
@@ -1269,6 +1299,12 @@ export class ThreeField implements SceneFieldRenderer {
     // A frozen sim never resumes ticking from a data swap (the pending settle waits
     // for unfreeze); otherwise run until the solver actually reaches rest.
     this.running = !this.frozen && !this.solver.isSettled();
+    // A swap that genuinely ticked and landed settled synchronously persists the
+    // layout here (the live loop's settle-transition persist never fires for it);
+    // a zero-tick same-topology swap writes nothing.
+    if (prewarmTicks > 0 && !this.frozen && this.solver.isSettled()) {
+      this.persistSettledLayout();
+    }
     // A genuine state change (new corpus, filter reflow, ego expansion, explicit user
     // action) re-engages autoframe when it is on, so the new corpus reframes on
     // load/filter — releasing any prior selection-frame or manual-nav suspension (#13
@@ -1316,10 +1352,49 @@ export class ThreeField implements SceneFieldRenderer {
     }, 900);
   }
 
-  /** Persistence scope (Stage calls this directly). No-op: warm-start keys on node
-   *  id, which is already scope-unique — a scope switch yields a disjoint id set, so
-   *  setData takes the cold path automatically. Mirrors CosmosField's no-op. */
-  setPersistenceScope(_workspace: string, _scope: string): void {}
+  // Persisted settled-layout base (graph-simulation-stability ADR): the bounded
+  // LRU PositionCache (built in W01.P02.S08, wired here) keyed per workspace +
+  // scope. In-memory warm-start still keys on node id; the cache is the
+  // CROSS-SESSION base a cold load seeds from.
+  private positionCache = defaultPositionCache();
+  private persistWorkspace: string | null = null;
+  private persistScope: string | null = null;
+
+  /** Persistence scope (Stage calls this directly): keys the persisted
+   *  settled-layout cache — the "pre-simulated base" a cold load opens at.
+   *  Node ids are corpus-prefixed and scope-unique, so one per-scope blob
+   *  serves both corpora. */
+  setPersistenceScope(workspace: string, scope: string): void {
+    this.persistWorkspace = workspace;
+    this.persistScope = scope;
+  }
+
+  /** Persist the settled layout as the next cold load's base — called only on
+   *  a genuine settle transition (the live loop's running→false edge, or a
+   *  swap that ticked and landed settled synchronously). Merged over the
+   *  scope's existing blob so the OTHER corpus's layout survives; the current
+   *  view's entries take precedence under the cache's entry cap. Best-effort
+   *  by design (the cache owns quota eviction and bounds). */
+  private persistSettledLayout(): void {
+    if (!this.positionCache || this.persistWorkspace === null) return;
+    if (!this.solver || this.idToIndex.size === 0) return;
+    const merged = new Map<string, NodePosition>();
+    for (const [id, idx] of this.idToIndex) {
+      const x = this.cpuPositions[idx * 4];
+      const y = this.cpuPositions[idx * 4 + 1];
+      if (Number.isFinite(x) && Number.isFinite(y)) merged.set(id, { x, y });
+    }
+    const existing = this.positionCache.load(this.persistWorkspace, this.persistScope);
+    for (const [id, p] of existing) {
+      if (!merged.has(id)) merged.set(id, p);
+    }
+    this.positionCache.save(
+      this.persistWorkspace,
+      this.persistScope,
+      merged,
+      Date.now(),
+    );
+  }
 
   private buildNodes(nodes: SceneNodeData[], texSize: number): void {
     const n = nodes.length;
@@ -1938,11 +2013,16 @@ export class ThreeField implements SceneFieldRenderer {
     if (this.solver && this.running) {
       // One d3-force tick on the CPU, then mirror positions into the GPU texture.
       // Freeze when the solver has cooled below alphaMin (and no drag holds it
-      // warm) — a real convergence stop that idles the GPU to zero.
+      // warm) — a real convergence stop that idles the GPU to zero. The settle
+      // TRANSITION persists the layout as the next cold load's base
+      // (graph-simulation-stability ADR) — once per settle, never per frame.
       this.solver.tick();
       this.solver.pack(this.cpuPositions);
       this.uploadPositions();
-      if (!this.dragActive && this.solver.isSettled()) this.running = false;
+      if (!this.dragActive && this.solver.isSettled()) {
+        this.running = false;
+        this.persistSettledLayout();
+      }
       dirty = true;
     }
 

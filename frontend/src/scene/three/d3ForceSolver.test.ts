@@ -79,10 +79,20 @@ function settle(solver: D3ForceSolver, maxTicks = 2000): boolean {
 
 // ---- 1. H1 invariant: asleep ⇔ pinned --------------------------------------
 
+/** Anneal-aware settle: prewarm chews the violent early phase, then tick the
+ *  live loop until the convergence-gated anneal releases and the freeze lands
+ *  (graph-simulation-stability ADR). prewarm alone now intentionally returns
+ *  MID-anneal (the visible live settle); the tests below assert SETTLED-state
+ *  contracts, so they run the full lifecycle first. Bounded. */
+function settleLive(solver: D3ForceSolver): void {
+  for (let t = 0; t < 2000 && !solver.isSettled(); t++) solver.tick();
+}
+
 describe("D3ForceSolver — H1 invariant (asleep ⇔ pinned)", () => {
   it("every asleep node is pinned (fx & fy non-null) after prewarm", () => {
     const solver = makeSolver(40, ringEdges(40));
     solver.prewarm();
+    settleLive(solver);
 
     const nodes = (solver as any).nodes as { fx: number | null; fy: number | null }[];
     const awake = (solver as any).awake as Uint8Array;
@@ -112,6 +122,7 @@ describe("D3ForceSolver — H1 invariant (asleep ⇔ pinned)", () => {
     // assert the invariant survives.
     const solver = makeSolver(60, ringEdges(60));
     solver.prewarm();
+    settleLive(solver);
 
     // Grab a node and yank it well past wakeMove over several steps.
     const grab = 10;
@@ -140,6 +151,7 @@ describe("D3ForceSolver — H1 invariant (asleep ⇔ pinned)", () => {
   it("the inverse holds during a drag: an awake node is NOT pinned", () => {
     const solver = makeSolver(40, pathEdges(40));
     solver.prewarm();
+    settleLive(solver);
 
     const grab = 20;
     const start = positions(solver)[grab];
@@ -179,6 +191,7 @@ describe("D3ForceSolver — grab without movement", () => {
   it("grabbing a settled node and ticking moves nothing and wakes nothing", () => {
     const solver = makeSolver(50, ringEdges(50));
     solver.prewarm();
+    settleLive(solver);
     const before = positions(solver);
 
     const grab = 7;
@@ -221,6 +234,7 @@ describe("D3ForceSolver — drag locality", () => {
       wakeMove: 8,
     });
     solver.prewarm();
+    settleLive(solver);
     const before = positions(solver);
 
     const grab = 50;
@@ -268,6 +282,7 @@ describe("D3ForceSolver — re-sleep after release", () => {
   it("reaches isSettled() with awake count 0 after a drag is released", () => {
     const solver = makeSolver(45, ringEdges(45));
     solver.prewarm();
+    settleLive(solver);
 
     const grab = 3;
     const p = positions(solver)[grab];
@@ -297,7 +312,10 @@ describe("D3ForceSolver — determinism (seeded LCG)", () => {
     expect(positions(a)).toEqual(positions(b));
 
     a.prewarm();
+
+    settleLive(a);
     b.prewarm();
+    settleLive(b);
 
     const pa = positions(a);
     const pb = positions(b);
@@ -312,7 +330,9 @@ describe("D3ForceSolver — determinism (seeded LCG)", () => {
     const a = makeSolver(40, edges);
     const b = makeSolver(40, edges);
     a.prewarm();
+    settleLive(a);
     b.prewarm();
+    settleLive(b);
 
     for (const solver of [a, b]) {
       const p = positions(solver)[20];
@@ -347,6 +367,7 @@ describe("D3ForceSolver — NaN-safety on pathological graphs", () => {
     // Self-loops must not create degree/adjacency (they are skipped at build).
     expect((solver as any).degree[0]).toBe(1); // only the 0-1 edge counts
     solver.prewarm();
+    settleLive(solver);
     expectPackFinite(solver, n);
   });
 
@@ -361,6 +382,7 @@ describe("D3ForceSolver — NaN-safety on pathological graphs", () => {
     }
     const solver = makeSolver(n, edges);
     solver.prewarm();
+    settleLive(solver);
     expectPackFinite(solver, n);
 
     // Drag the hub hard, then release and settle — still finite.
@@ -391,6 +413,7 @@ describe("D3ForceSolver — NaN-safety on pathological graphs", () => {
       node.vy = 0;
     }
     solver.prewarm();
+    settleLive(solver);
     expectPackFinite(solver, n);
     // The collide/charge forces must have separated them — not all at origin.
     const after = positions(solver);
@@ -402,12 +425,14 @@ describe("D3ForceSolver — NaN-safety on pathological graphs", () => {
     const n = 30;
     const solver = makeSolver(n, []);
     solver.prewarm();
+    settleLive(solver);
     expectPackFinite(solver, n);
   });
 
   it("pack() writes the (x, y, 0, 1) layout", () => {
     const solver = makeSolver(5, ringEdges(5));
     solver.prewarm();
+    settleLive(solver);
     const out = new Float32Array(5 * 4);
     solver.pack(out);
     for (let i = 0; i < 5; i++) {
@@ -440,6 +465,7 @@ describe("D3ForceSolver — isSettled & activeCount lifecycle", () => {
   it("activeCount counts the dragged node even when nothing is awake", () => {
     const solver = makeSolver(30, ringEdges(30));
     solver.prewarm();
+    settleLive(solver);
     expect(solver.activeCount).toBe(0);
 
     const grab = 5;
@@ -456,7 +482,7 @@ describe("D3ForceSolver — isSettled & activeCount lifecycle", () => {
     expect(solver.isSettled()).toBe(true);
   });
 
-  it("alpha cools monotonically toward alphaMin during the global settle", () => {
+  it("alpha cools monotonically toward the anneal hold during the global settle", () => {
     const solver = makeSolver(40, ringEdges(40), { alphaDecay: 0.05 });
     solver.reheat(true); // COLD_ALPHA = 1
     const a0 = solver.alpha();
@@ -464,7 +490,11 @@ describe("D3ForceSolver — isSettled & activeCount lifecycle", () => {
     solver.tick();
     const a1 = solver.alpha();
     expect(a1).toBeLessThan(a0);
+    // prewarm chews the violent phase within its bounded budget and returns
+    // MID-anneal by design (graph-simulation-stability ADR); the full
+    // lifecycle — anneal release + decay + freeze — completes live.
     expect(solver.prewarm()).toBeGreaterThan(0); // returns the tick count it ran
+    settleLive(solver);
     expect(solver.isSettled()).toBe(true);
   });
 });
@@ -478,6 +508,7 @@ describe("D3ForceSolver — additive update pins survivors (settled layout is au
     // has no new nodes, so the layout is authoritative: zero ticks, zero movement.
     const solver = makeSolver(40, ringEdges(40));
     solver.prewarm();
+    settleLive(solver);
     const before = positions(solver);
 
     const ticks = solver.prewarmReflow(() => false); // nothing is new
@@ -500,6 +531,7 @@ describe("D3ForceSolver — additive update pins survivors (settled layout is au
     const n = 60;
     const solver = makeSolver(n, ringEdges(n));
     solver.prewarm();
+    settleLive(solver);
 
     // Simulate an ego-expansion: the last 10 nodes are "new" and seeded far off the
     // settled layout; the first 50 are carried survivors. prewarmReflow must pin the
@@ -542,6 +574,7 @@ describe("D3ForceSolver — params plumbing", () => {
   it("getParams returns a copy; setParams reheats the layout", () => {
     const solver = makeSolver(20, ringEdges(20));
     solver.prewarm();
+    settleLive(solver);
     expect(solver.isSettled()).toBe(true);
 
     const got = solver.getParams();

@@ -347,6 +347,64 @@ export const GRAPH_CONTROL_SCHEMA = [
     exposure: [],
     description: "Wall-clock budget for the off-screen pre-warm.",
   },
+  // Convergence-gated anneal (graph-simulation-stability ADR 2026-07-03):
+  // cold/warm restarts HOLD the alpha target at annealAlpha until the mean
+  // per-node displacement stays under annealSettleSpeed for annealSettleTicks
+  // consecutive ticks — or the annealMaxTicks hard cap fires — and only then
+  // release into the decay + alphaMin freeze. Cooling is convergence-driven,
+  // never schedule-driven; the cap is the bounded active-phase budget.
+  {
+    id: "annealAlpha",
+    label: "Anneal alpha",
+    group: "simulation",
+    type: "number",
+    min: 0.05,
+    max: 0.6,
+    step: 0.05,
+    default: 0.3,
+    exposure: [],
+    description:
+      "Alpha target held during the post-restart anneal: the field simulates at this sustained energy until measurably calm, then decays and freezes.",
+  },
+  {
+    id: "annealSettleSpeed",
+    label: "Anneal settle speed",
+    group: "simulation",
+    type: "number",
+    min: 0.01,
+    max: 1,
+    step: 0.01,
+    default: 0.12,
+    exposure: [],
+    description:
+      "Mean per-node displacement (world units per tick) under which an annealing layout counts as calm.",
+  },
+  {
+    id: "annealSettleTicks",
+    label: "Anneal settle ticks",
+    group: "simulation",
+    type: "number",
+    min: 5,
+    max: 120,
+    step: 5,
+    default: 30,
+    exposure: [],
+    description:
+      "Consecutive calm ticks before the anneal releases into the decay and freeze.",
+  },
+  {
+    id: "annealMaxTicks",
+    label: "Anneal max ticks",
+    group: "simulation",
+    type: "number",
+    min: 60,
+    max: 1800,
+    step: 30,
+    default: 600,
+    exposure: [],
+    description:
+      "Hard cap on anneal ticks (about ten seconds at sixty frames per second) — the bounded active-phase budget.",
+  },
 
   // ===================== VISUALISATION =======================================
   // The 7 AppearanceParams (ui+lab; ranges = appearanceControls.ts).

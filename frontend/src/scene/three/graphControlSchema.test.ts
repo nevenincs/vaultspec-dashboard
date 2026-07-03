@@ -47,6 +47,11 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   warmStartAlpha: 0.3,
   prewarmMaxTicks: 300,
   prewarmBudgetMs: 260,
+  // --- simulation: the convergence-gated anneal (graph-simulation-stability) ---
+  annealAlpha: 0.3,
+  annealSettleSpeed: 0.12,
+  annealSettleTicks: 30,
+  annealMaxTicks: 600,
   // --- visualisation: the 9 appearance params ---
   nodeSizeScale: 1,
   nodeSalienceScale: 1,

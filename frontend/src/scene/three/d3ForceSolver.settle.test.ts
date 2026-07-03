@@ -81,6 +81,15 @@ const EPSILON = 1e-3;
 
 // ---- (a) energy-neutral resume ---------------------------------------------
 
+/** Anneal-aware settle: prewarm chews the violent early phase, then tick the
+ *  live loop until the convergence-gated anneal releases and the freeze lands
+ *  (graph-simulation-stability ADR). prewarm alone now intentionally returns
+ *  MID-anneal (the visible live settle); the tests below assert SETTLED-state
+ *  contracts, so they run the full lifecycle first. Bounded. */
+function settleLive(solver: D3ForceSolver): void {
+  for (let t = 0; t < 2000 && !solver.isSettled(); t++) solver.tick();
+}
+
 describe("D3ForceSolver settle-probe — (a) energy-neutral resume", () => {
   it("ticking a settled layout WITHOUT reheat moves every node < ε and stays settled", () => {
     // This is the GIR-002 contract: threeField.resume() (set-simulation-active:true)
@@ -88,6 +97,7 @@ describe("D3ForceSolver settle-probe — (a) energy-neutral resume", () => {
     // has every node asleep+pinned, so plain ticking discharges no energy.
     const solver = makeSolver(50, ringEdges(50));
     solver.prewarm();
+    settleLive(solver);
     expect(solver.isSettled()).toBe(true);
     expect((solver as any).awakeCount).toBe(0);
 
@@ -108,6 +118,7 @@ describe("D3ForceSolver settle-probe — (a) energy-neutral resume", () => {
     // real, distinct discipline rather than a no-op solver.
     const solver = makeSolver(30, ringEdges(30));
     solver.prewarm();
+    settleLive(solver);
     const before = positions(solver);
 
     solver.reheat(true); // COLD_ALPHA = 1 — the explicit heat pump
@@ -141,7 +152,8 @@ describe("D3ForceSolver settle-probe — (b) reheatGentle never lowers alpha", (
 
   it("an above-current gentle kick raises the temperature to exactly the kick", () => {
     const solver = makeSolver(40, ringEdges(40));
-    solver.prewarm(); // settle → alpha decayed below alphaMin (0.005)
+    solver.prewarm(); // + settleLive: full lifecycle → alpha below alphaMin (0.005)
+    settleLive(solver);
     expect(solver.alpha()).toBeLessThan(0.005);
 
     solver.reheatGentle(0.15);
@@ -162,6 +174,7 @@ describe("D3ForceSolver settle-probe — (c) same-id-set update is authoritative
     // so the settled layout is authoritative: it runs zero ticks and holds exactly.
     const solver = makeSolver(45, ringEdges(45));
     solver.prewarm();
+    settleLive(solver);
     const before = positions(solver);
 
     const ticks = solver.prewarmReflow(() => false); // nothing is new
@@ -225,6 +238,59 @@ describe("D3ForceSolver settle-probe — (d) the alphaMin freeze fires", () => {
     for (let t = 0; t < 20; t++) solver.tick();
     expect(maxMove(before, positions(solver))).toBeLessThan(EPSILON);
     expect((solver as any).awakeCount).toBe(0);
+  });
+});
+
+// ---- (f) the convergence-gated anneal ----------------------------------------
+
+describe("D3ForceSolver settle-probe — (f) convergence-gated anneal", () => {
+  it("holds the alpha target after a cold restart and releases into a converged freeze", () => {
+    // graph-simulation-stability ADR: a restart holds alphaTarget at the anneal
+    // temperature (the freeze CANNOT fire during the hold), releases on
+    // sustained calm or the hard cap, and only then decays + freezes — so the
+    // frozen layout is a MEASURED equilibrium, never an interrupted anneal.
+    const n = 40;
+    const solver = makeSolver(n, ringEdges(n));
+    solver.reheat(true);
+    let minAlphaDuringHold = Infinity;
+    let releaseTick = -1;
+    let frozeTick = -1;
+    let dispBeforeFreeze = Infinity;
+    let prev = Infinity;
+    for (let t = 0; t < 2000; t++) {
+      const m = solver.tick();
+      if (releaseTick === -1 && (solver as any).annealRemaining === 0) {
+        releaseTick = t;
+      }
+      if (releaseTick === -1) {
+        minAlphaDuringHold = Math.min(minAlphaDuringHold, m.alpha);
+      }
+      if (m.awake === 0) {
+        frozeTick = t;
+        dispBeforeFreeze = prev;
+        break;
+      }
+      prev = m.meanDisplacement;
+    }
+    expect(releaseTick).toBeGreaterThan(30); // a real hold, never an instant release
+    expect(minAlphaDuringHold).toBeGreaterThan(0.2); // held near the anneal target
+    expect(frozeTick).toBeGreaterThan(releaseTick); // the freeze fires only after release
+    // The landed freeze is converged: residual motion far below the old
+    // interrupted-anneal tension the schedule-driven cooldown froze in.
+    expect(dispBeforeFreeze).toBeLessThan(0.05);
+  });
+
+  it("gentle retunes and drags never inherit the anneal hold", () => {
+    const solver = makeSolver(30, ringEdges(30));
+    solver.reheat(true);
+    expect((solver as any).annealRemaining).toBeGreaterThan(0);
+    solver.reheatGentle(0.15); // slider path: gentle stays gentle
+    expect((solver as any).annealRemaining).toBe(0);
+
+    solver.reheat(true);
+    solver.setDrag(0, 0, 0); // a grab takes over the energy discipline
+    expect((solver as any).annealRemaining).toBe(0);
+    solver.clearDrag();
   });
 });
 

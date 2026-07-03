@@ -166,6 +166,18 @@ const GENTLE_REHEAT_ALPHA = controlNumber("gentleReheatAlpha");
 /** Pre-warm caps: settle off-screen but never block the main thread for long. */
 const PREWARM_MAX_TICKS = controlNumber("prewarmMaxTicks");
 const PREWARM_BUDGET_MS = controlNumber("prewarmBudgetMs");
+/** Convergence-gated anneal (graph-simulation-stability ADR 2026-07-03): a
+ *  cold/warm restart HOLDS the alpha target at ANNEAL_ALPHA so the field keeps
+ *  simulating at sustained energy, and releases into the normal decay + freeze
+ *  only once the mean per-node displacement stays under ANNEAL_SETTLE_SPEED
+ *  for ANNEAL_SETTLE_TICKS consecutive ticks — or the ANNEAL_MAX_TICKS hard
+ *  cap fires (the bounded active-phase budget, ~10 s at 60 fps). Cooling is
+ *  convergence-driven, so the freeze can no longer capture an interrupted
+ *  anneal that every later reheat would visibly resume. */
+const ANNEAL_ALPHA = controlNumber("annealAlpha");
+const ANNEAL_SETTLE_SPEED = controlNumber("annealSettleSpeed");
+const ANNEAL_SETTLE_TICKS = controlNumber("annealSettleTicks");
+const ANNEAL_MAX_TICKS = controlNumber("annealMaxTicks");
 
 /** Per-tick dynamics for the host's convergence / diagnostics. */
 export interface TickMetrics {
@@ -204,6 +216,13 @@ export class D3ForceSolver {
   // Local mode gates sleeping (a drag perturbation); the global layout settle runs
   // pure d3 with everything awake and unpinned until it cools.
   private localMode = false;
+  // --- convergence-gated anneal state (graph-simulation-stability ADR) -------
+  // While `annealRemaining > 0` the alpha target is held at ANNEAL_ALPHA and
+  // tick() counts calm ticks; release (alphaTarget → 0) fires on sustained calm
+  // or budget exhaustion. Gentle paths, the pin-authoritative reflow, and a
+  // drag all CANCEL the anneal — it belongs to cold/warm restarts only.
+  private annealRemaining = 0;
+  private annealCalm = 0;
 
   constructor(
     nodeCount: number,
@@ -425,7 +444,8 @@ export class D3ForceSolver {
   ): number {
     this.localMode = false;
     this.wakeAllFree();
-    this.sim.alpha(startAlpha).alphaTarget(0);
+    this.sim.alpha(startAlpha);
+    this.beginAnneal();
     const start = now();
     let ticks = 0;
     while (ticks < maxTicks) {
@@ -455,6 +475,7 @@ export class D3ForceSolver {
     budgetMs = PREWARM_BUDGET_MS,
   ): number {
     this.localMode = false;
+    this.cancelAnneal(); // the pin-authoritative path owns its own energy budget
     this.wakeAllFree(); // clear any stale pins/drag; everything awake + unpinned
     // Pin the carried survivors at their current (seeded) position; only the new
     // nodes remain awake and free to integrate.
@@ -521,9 +542,23 @@ export class D3ForceSolver {
         const n = this.nodes[i];
         disp += Math.hypot(n.vx ?? 0, n.vy ?? 0);
       }
+      const mean = this.count ? disp / this.count : 0;
+      // Convergence-gated anneal: while the hold is live, count calm ticks and
+      // release the target on sustained calm or budget exhaustion — only then
+      // does alpha decay toward the alphaMin freeze. The freeze cannot fire
+      // during the hold (alpha never falls below the target), so the frozen
+      // layout is always a MEASURED equilibrium, never an interrupted anneal.
+      if (this.annealRemaining > 0 && !dragging) {
+        this.annealRemaining--;
+        this.annealCalm = mean < ANNEAL_SETTLE_SPEED ? this.annealCalm + 1 : 0;
+        if (this.annealCalm >= ANNEAL_SETTLE_TICKS || this.annealRemaining === 0) {
+          this.cancelAnneal();
+          this.sim.alphaTarget(0);
+        }
+      }
       return {
         alpha: this.sim.alpha(),
-        meanDisplacement: this.count ? disp / this.count : 0,
+        meanDisplacement: mean,
         awake: this.awakeCount,
       };
     }
@@ -605,11 +640,30 @@ export class D3ForceSolver {
   }
 
   /** Re-energise the whole layout (resume / explicit restart). Cold = full
-   *  re-explode, warm = gentle. Returns to global (non-gated, unpinned) settle. */
+   *  re-explode, warm = gentle. Returns to global (non-gated, unpinned) settle
+   *  through the convergence-gated anneal: the field holds at the anneal
+   *  temperature until measurably calm, THEN decays and freezes. */
   reheat(cold = false): void {
     this.localMode = false;
     this.wakeAllFree();
-    this.sim.alpha(cold ? COLD_ALPHA : WARM_ALPHA).alphaTarget(0);
+    this.sim.alpha(cold ? COLD_ALPHA : WARM_ALPHA);
+    this.beginAnneal();
+  }
+
+  /** Enter the convergence-gated anneal (graph-simulation-stability ADR): hold
+   *  the alpha target so the freeze cannot fire, and let tick() release it on
+   *  sustained calm or at the hard cap. */
+  private beginAnneal(): void {
+    this.annealRemaining = ANNEAL_MAX_TICKS;
+    this.annealCalm = 0;
+    this.sim.alphaTarget(ANNEAL_ALPHA);
+  }
+
+  /** Cancel an in-flight anneal (a gentle retune, a reflow, or a drag took
+   *  over the energy discipline). The caller owns the alpha target after. */
+  private cancelAnneal(): void {
+    this.annealRemaining = 0;
+    this.annealCalm = 0;
   }
 
   /** Gentle, change-proportional re-energise for a LIVE retune (force/size sliders).
@@ -625,6 +679,7 @@ export class D3ForceSolver {
    *  displacement or contact micro-buzz recurring AFTER the energy valves close. */
   reheatGentle(alpha: number): void {
     this.localMode = false;
+    this.cancelAnneal(); // gentle stays gentle — never inherits the anneal hold
     this.wakeAllFree();
     this.sim.alpha(Math.max(this.sim.alpha(), alpha)).alphaTarget(0);
   }
@@ -661,6 +716,10 @@ export class D3ForceSolver {
     if (this.dragIndex >= 0 && this.dragIndex !== index) this.clearDrag();
     const n = this.nodes[index];
     if (this.dragIndex !== index) {
+      // A grab takes over the energy discipline: an in-flight anneal ends and
+      // the drag's own alphaTarget hold applies (the user interfered — the
+      // layout keeps whatever convergence it reached).
+      this.cancelAnneal();
       if (!this.localMode) {
         this.localMode = true;
         this.pinSleeping();
