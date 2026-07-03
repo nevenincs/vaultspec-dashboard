@@ -3,7 +3,6 @@
 // does not duplicate the mutation path.
 
 import { useEffect, useMemo } from "react";
-import { useShallow } from "zustand/react/shallow";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
 import {
@@ -96,7 +95,10 @@ export function normalizeWorkingSetIds(ids: readonly unknown[]): string[] {
 }
 
 export function useWorkingSet(): readonly string[] {
-  return useViewStore(useShallow((state) => normalizeWorkingSetIds(state.workingSet)));
+  // Select the RAW stable slice; derive in useMemo (stable-selectors) — never
+  // inside the selector, even under useShallow.
+  const workingSet = useViewStore((state) => state.workingSet);
+  return useMemo(() => normalizeWorkingSetIds(workingSet), [workingSet]);
 }
 
 export function workingSetRows(

@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from "react";
 import { create } from "zustand";
-import { useShallow } from "zustand/react/shallow";
 
 import {
   deriveWorkspaceMapPickerPresentationView,
@@ -224,8 +223,21 @@ export function worktreePickerRowKeyboardTarget(
 }
 
 export function useWorktreePickerChrome(): WorktreePickerChromeView {
-  return useWorktreePickerChromeStore(
-    useShallow((state) => normalizeWorktreePickerChromeView(state)),
+  // Select the RAW stable fields; derive the view in useMemo (stable-selectors) —
+  // never inside the selector, even under useShallow.
+  const expanded = useWorktreePickerChromeStore((state) => state.expanded);
+  const keyboardToggle = useWorktreePickerChromeStore((state) => state.keyboardToggle);
+  const pendingId = useWorktreePickerChromeStore((state) => state.pendingId);
+  const switchError = useWorktreePickerChromeStore((state) => state.switchError);
+  return useMemo(
+    () =>
+      normalizeWorktreePickerChromeView({
+        expanded,
+        keyboardToggle,
+        pendingId,
+        switchError,
+      }),
+    [expanded, keyboardToggle, pendingId, switchError],
   );
 }
 

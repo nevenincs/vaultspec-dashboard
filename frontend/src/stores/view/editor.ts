@@ -4,7 +4,6 @@
 
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
-import { useShallow } from "zustand/react/shallow";
 
 import type { OpsWriteResult } from "../server/engine";
 import {
@@ -283,7 +282,21 @@ export function deriveDocumentEditorView(
 }
 
 export function useDocumentEditorView(nodeId: unknown): DocumentEditorView {
-  return useViewStore(useShallow((state) => deriveDocumentEditorView(state, nodeId)));
+  // Select the RAW stable slices; derive the view in useMemo (stable-selectors) —
+  // never inside the selector, even under useShallow (the sibling
+  // useMarkdownEditorChromeView below documents why).
+  const editorTarget = useViewStore((state) => state.editorTarget);
+  const draftText = useViewStore((state) => state.draftText);
+  const baseBlobHash = useViewStore((state) => state.baseBlobHash);
+  const editorStatus = useViewStore((state) => state.editorStatus);
+  return useMemo(
+    () =>
+      deriveDocumentEditorView(
+        { editorTarget, draftText, baseBlobHash, editorStatus },
+        nodeId,
+      ),
+    [editorTarget, draftText, baseBlobHash, editorStatus, nodeId],
+  );
 }
 
 export function useMarkdownEditorChromeView(

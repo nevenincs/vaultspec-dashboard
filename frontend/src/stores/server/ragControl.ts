@@ -25,7 +25,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { create } from "zustand";
-import { useShallow } from "zustand/react/shallow";
 
 import {
   engineClient,
@@ -593,12 +592,15 @@ export function useRagReindexJobIdentity(scope: unknown): {
   acceptReceipt: (requestScope: unknown, requestSeq: unknown, jobId: unknown) => void;
 } {
   const normalizedScope = normalizeRagControlScope(scope);
-  const identity = useRagReindexJobStore(
-    useShallow((state) => ({
-      jobId: state.jobId,
-      beginRequest: state.beginRequest,
-      acceptReceipt: state.acceptReceipt,
-    })),
+  // Select the RAW stable slices (jobId + the two stable action fns); assemble the
+  // identity in useMemo (stable-selectors) — never build the object inside the
+  // selector, even under useShallow.
+  const jobId = useRagReindexJobStore((state) => state.jobId);
+  const beginRequest = useRagReindexJobStore((state) => state.beginRequest);
+  const acceptReceipt = useRagReindexJobStore((state) => state.acceptReceipt);
+  const identity = useMemo(
+    () => ({ jobId, beginRequest, acceptReceipt }),
+    [jobId, beginRequest, acceptReceipt],
   );
   const setScope = useRagReindexJobStore((state) => state.setScope);
   useEffect(() => {
