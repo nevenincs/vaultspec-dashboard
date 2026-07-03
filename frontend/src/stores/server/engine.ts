@@ -2145,6 +2145,9 @@ export class EngineClient {
       query: string;
       target?: "vault" | "code";
       filters?: Record<string, string>;
+      /** App-chosen result bound → rag's `top_k` (ADR D5); the engine rejects a
+       *  value above its `MAX_SEARCH_RESULTS` ceiling. */
+      max_results?: number;
     },
     signal?: AbortSignal,
   ): Promise<SearchResponse> {

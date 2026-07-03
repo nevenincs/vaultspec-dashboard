@@ -5456,6 +5456,7 @@ export function useEngineSearch(
             scope: request.scope!,
             query: request.query,
             target: request.target,
+            max_results: SEARCH_MAX_RESULTS,
           },
           controller.signal,
         );
@@ -5479,7 +5480,29 @@ export function useEngineSearch(
   return enabled ? result : { ...result, data: undefined };
 }
 
-const SEARCH_QUERY_TIMEOUT_MS = 5_000;
+// The client-side search abort budget. Ordering invariant (rag-integration-
+// hardening ADR D2): this MUST stay STRICTLY GREATER than the engine's search
+// budget (`SEARCH_HTTP_BUDGET` = 10s in `engine/crates/vaultspec-api/src/routes/
+// ops.rs`) plus transport margin. When the client outlives the engine, every
+// search outcome — success, degraded, or shape-miss — arrives as a tiers-carrying
+// envelope BEFORE the client can abort, so degradation is read from tiers truth
+// (the whole degradation architecture depends on the envelope actually landing).
+// A client abort under this ordering therefore means only one thing honestly: the
+// engine itself is unreachable — the genuine transport-error state. 12s = 10s
+// engine budget + 2s transport margin.
+const SEARCH_QUERY_TIMEOUT_MS = 12_000;
+
+// The app-chosen per-target result bound, sent as `max_results` in the POST
+// /search body so the wire payload is app-bounded rather than left at rag's CLI
+// default (rag-integration-hardening ADR D5 / research G6). Sized to the unified
+// palette's merged-view bound (`UNIFIED_SEARCH_RESULTS_MAX_ITEMS` = 40 in
+// `searchController.ts`): the merge ranks vault + code hits together and keeps the
+// top N, so in the worst case all N winners come from one corpus — fetching up to
+// N per target is the honest bound that keeps the merged top-N correct. It sits
+// below the engine's `MAX_SEARCH_RESULTS` ceiling (50). The value is FIXED, so it
+// stays OUT of the query key (the key varies only by scope/target/query); a guard
+// test pins it equal to the merged-view bound so the two never drift.
+export const SEARCH_MAX_RESULTS = 40;
 
 // --- session / settings (user-state-persistence W04.P08.S26) -------------------------
 //
