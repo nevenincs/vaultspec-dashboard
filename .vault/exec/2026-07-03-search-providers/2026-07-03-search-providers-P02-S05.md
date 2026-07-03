@@ -50,21 +50,26 @@ related:
 
 ## Description
 
-- Add the `codeFiles` query key to `engineKeys` (keyed on scope alone — one
+- Verified the `codeFiles` query key in `engineKeys` (keyed on scope alone — one
   bounded cache entry per corpus, default gcTime bounding retention).
-- Add the `useCodeFiles` hook and `normalizeCodeFilesRequestIdentity`, mirroring
+- Verified `useCodeFiles` hook and `normalizeCodeFilesRequestIdentity`, mirroring
   `useVaultTree`: enabled only on a valid scope, driving the cursor-walking
   client so the reader holds the complete listing to narrow.
-- Add tests: request-identity normalization, the no-scope cache-isolation guard,
-  and a live-wire test that renders `useCodeFiles` against the real engine and
-  asserts a drained entries array, honest null truncation, and every entry a
-  navigable `code:{path}` node.
+- Verified the committed tests: request-identity normalization, the no-scope
+  cache-isolation guard, and a live-wire test rendering `useCodeFiles` against
+  the real engine asserting drained entries, honest null truncation, and every
+  entry a navigable `code:{path}` node.
+- Added `"code-files"` to `SCOPED_ENGINE_QUERY_SUBTREES` and
+  `GRAPH_GENERATION_QUERY_SUBTREES` (omitted from the prior commit): a scope
+  swap must evict the prior corpus's listing; a graph-generation bump must
+  re-fetch the updated projection.
+- Updated the two guard tests and the vault-mutation `affectedKeys` test to
+  enroll `engineKeys.codeFiles("wt-1")` / `engineKeys.codeFiles(scope)`.
 
 ## Outcome
 
-The files(code) reader is wired: a bounded, scope-keyed TanStack query walked to
-completion. The live-wire test passes against the spawned engine (serving the new
-`/code-files` route). Full frontend gate green (`just dev lint frontend`).
+`"code-files"` fully enrolled in the scope-swap and generation-refresh boundaries.
+All 250 queries tests pass (live-wire included). tsc, eslint, prettier clean.
 
 ## Notes
 

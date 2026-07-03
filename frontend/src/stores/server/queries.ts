@@ -380,6 +380,10 @@ export const engineKeys = {
 
 export const SCOPED_ENGINE_QUERY_SUBTREES = [
   "vault-tree",
+  // The complete code-file listing (search-providers ADR D1): keyed on scope so
+  // a workspace swap evicts the prior corpus's listing and the next scope starts
+  // fresh — the files(code) provider must never serve another scope's files.
+  "code-files",
   "file-tree",
   "filters",
   "dashboard-state",
@@ -407,6 +411,11 @@ export const SCOPED_ENGINE_QUERY_SUBTREES = [
 
 export const GRAPH_GENERATION_QUERY_SUBTREES = [
   "vault-tree",
+  // The complete code-file listing (search-providers ADR D1): projected from the
+  // LinkageGraph and memoized on the graph `generation` server-side, so a new
+  // ingest (added or removed source file) bumps the generation and the client
+  // listing must re-read from the fresh projection on the next render.
+  "code-files",
   // A watcher/SSE re-ingest (an external edit, a rename, or another client's
   // write) bumps the generation WITHOUT a local mutation, so the open reader/
   // editor's served bytes and the file-tree projection would otherwise go stale

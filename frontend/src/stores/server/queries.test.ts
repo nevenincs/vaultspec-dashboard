@@ -3893,6 +3893,7 @@ describe("engineKeys", () => {
   it("enrolls every scoped query family in the workspace-swap scoped-cache boundary", () => {
     const scopedKeys = [
       engineKeys.vaultTree("wt-1"),
+      engineKeys.codeFiles("wt-1"),
       engineKeys.fileTree("wt-1", ".vault", undefined),
       engineKeys.filters("wt-1"),
       engineKeys.dashboardState("wt-1", "session-a"),
@@ -3928,6 +3929,7 @@ describe("engineKeys", () => {
   it("enrolls every graph-generation read family in the generation-refresh boundary", () => {
     const graphGenerationKeys = [
       engineKeys.vaultTree("wt-1"),
+      engineKeys.codeFiles("wt-1"),
       engineKeys.content("wt-1", "doc:plan"),
       engineKeys.fileTree("wt-1", ".vault", undefined),
       engineKeys.filters("wt-1"),
@@ -4106,6 +4108,7 @@ describe("engineKeys", () => {
       engineKeys.map(),
       engineKeys.content(scope, nodeId),
       engineKeys.vaultTree(scope),
+      engineKeys.codeFiles(scope),
       engineKeys.filters(scope),
       engineKeys.dashboardState(scope, "session-a"),
       engineKeys.graph(scope, undefined, undefined, "document", "status", null),
