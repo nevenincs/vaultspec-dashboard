@@ -31,7 +31,6 @@ vi.mock("../../stores/server/panelStateIntent", async (importOriginal) => {
 });
 
 import {
-  RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
   RIGHT_RAIL_KEYMAP_CONTEXT,
   rightRailTabActionId,
   useRightRailKeybindings,
@@ -60,14 +59,6 @@ describe("useRightRailKeybindings", () => {
     });
   });
 
-  it("registers the global focus-search binding", () => {
-    renderHook(() => useRightRailKeybindings());
-    expect(getKeybinding(RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID)).toMatchObject({
-      defaultChord: "Mod+Shift+S",
-      context: "global",
-    });
-  });
-
   it("disposes the bindings and action resolvers on unmount", () => {
     const firstTabId = rightRailTabActionId(RIGHT_RAIL_TABS[0]!.id);
     const { unmount } = renderHook(() => useRightRailKeybindings());
@@ -87,21 +78,15 @@ describe("useRightRailKeybindings", () => {
     );
   });
 
-  it("focus-search switches to the search tab", () => {
-    renderHook(() => useRightRailKeybindings());
-    resolveKeyAction(RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID)!.run!();
-    expect(setRightTab).toHaveBeenCalledWith("search");
-  });
-
   it("exposes the rail's keymap-context attribute value", () => {
     expect(RIGHT_RAIL_KEYMAP_CONTEXT).toBe("right-rail");
   });
 
   it("normalizes runtime right-rail keybinding identity inputs", () => {
-    expect(normalizeRightRailKeybindingTab(" search ")).toBe("search");
-    expect(normalizeRightRailKeybindingTab({ tab: "search" })).toBeNull();
-    expect(rightRailTabActionId(" search ")).toBe("right-rail:show-search");
-    expect(rightRailTabActionId({ tab: "search" })).toBeNull();
+    expect(normalizeRightRailKeybindingTab(" changes ")).toBe("changes");
+    expect(normalizeRightRailKeybindingTab({ tab: "changes" })).toBeNull();
+    expect(rightRailTabActionId(" changes ")).toBe("right-rail:show-changes");
+    expect(rightRailTabActionId({ tab: "changes" })).toBeNull();
     expect(rightRailTabChord(0)).toBe("Mod+1");
     expect(rightRailTabChord("0")).toBeNull();
     expect(rightRailTabChord(RIGHT_RAIL_TABS.length)).toBeNull();

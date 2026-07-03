@@ -35,7 +35,6 @@ function commandContext(): CommandContext {
       resetFilters: noop,
       clearFeatureFilter: noop,
       clearProjectHistory: noop,
-      focusRightRailSearch: noop,
       setTheme: noop,
       runOp: noop,
       closeDocument: noop,

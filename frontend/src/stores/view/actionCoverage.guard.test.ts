@@ -33,7 +33,6 @@ import {
   deriveProjectKeybindings,
 } from "./projectActions";
 import {
-  RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
   deriveRightRailKeybindings,
 } from "./rightRailKeybindings";
 import {
@@ -50,7 +49,6 @@ import { deriveGraphToggleKeybindings } from "./graphToggleKeybindings";
 // Register the command providers and the right-rail resolvers under test (side effects).
 import "./commandProviders/leftRailCommandProvider";
 import "./commandProviders/projectCommandProvider";
-import "./commandProviders/rightRailCommandProvider";
 import "./commandProviders/reloadCommandProvider";
 import "./commandProviders/windowCommandProvider";
 import "../../app/right/menus/commitMenu";
@@ -72,7 +70,6 @@ const DUAL_PLANE_VERBS = [
   LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
   LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
   LEFT_RAIL_RESET_FILTERS_ACTION_ID,
-  RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
   RELOAD_REFRESH_DATA_ACTION_ID,
   // The keyboard-shortcuts legend: keymap (?) + palette (window provider, help family),
   // converged onto one id so its accelerator derives across both planes + the background
@@ -102,7 +99,6 @@ function commandContext(): CommandContext {
       resetFilters: noop,
       clearFeatureFilter: noop,
       clearProjectHistory: noop,
-      focusRightRailSearch: noop,
       setTheme: noop,
       runOp: noop,
       closeDocument: noop,
@@ -160,7 +156,6 @@ describe("action coverage grid guard", () => {
   it("the campaign's delta verbs are present in the palette", () => {
     expect(paletteIds.has(LEFT_RAIL_FOCUS_FILTER_ACTION_ID)).toBe(true);
     expect(paletteIds.has(LEFT_RAIL_CLEAR_FILTER_ACTION_ID)).toBe(true);
-    expect(paletteIds.has(RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID)).toBe(true);
   });
 
   it("the right-rail entity kinds each have a resolver (commit + pull-request)", () => {

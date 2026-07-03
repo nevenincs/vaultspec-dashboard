@@ -52,7 +52,6 @@ import {
 } from "./graphCommands";
 import { useGraphControlsFrozen } from "./graphControlsChrome";
 import { getKeymapOverrides } from "./keymapDispatcher";
-import { focusRightRailSearch } from "./rightRailKeybindings";
 import { useShellPanelIntent } from "../server/panelStateIntent";
 import {
   type KeybindingOverrides,
@@ -819,7 +818,6 @@ export function useCommandPaletteCommandView(
         resetFilters: () => void resetFilters(),
         clearFeatureFilter: () => void clearFeatureFilter(),
         clearProjectHistory: () => void clearProjectHistory(),
-        focusRightRailSearch: () => focusRightRailSearch(rightPanelSetTab),
         setTheme: setThemePreference,
         runOp: (target, verb) => {
           runPaletteOp({ target, verb });

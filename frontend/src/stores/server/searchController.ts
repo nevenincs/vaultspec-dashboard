@@ -25,7 +25,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { debounce } from "../../platform/timing";
-import type { SearchResultEntity } from "../../platform/actions/entity";
 import type {
   FiltersVocabulary,
   SearchIndexState,
@@ -43,7 +42,6 @@ import {
   normalizeSearchRequestIdentity,
   type SearchRequestIdentity,
 } from "./queries";
-import { normalizeSearchQuery } from "../searchQuery";
 
 // --- node-id grammar (stores-owned, §2 identity) -----------------------------------
 //
@@ -195,13 +193,6 @@ export interface SearchControllerView {
   /** True while serving text-match instead of semantic search — read from the
    *  tiers seam, NEVER a bare `isError` (search ADR degradation row). */
   semanticOffline: boolean;
-  /**
-   * Code-target offline has no fallback corpus: when semantic is offline AND the
-   * target is `code`, this is true and `results` is empty — the view renders the
-   * explicit "semantic search offline, no fallback for code" notice rather than a
-   * misleading empty result (search ADR "The rag-down path").
-   */
-  noCodeFallback: boolean;
   /** A query is in flight with no held results to show. */
   pending: boolean;
   /** A genuine, non-degradation transport failure the operator can retry. */
@@ -231,94 +222,7 @@ export interface SearchControllerView {
   retry: () => void;
 }
 
-export interface SearchPresentationView {
-  /** Root class for the right-rail search surface. */
-  rootClassName: string;
-  /** Whether the query has non-whitespace content. */
-  hasQuery: boolean;
-  /** Render-ready result rows; empty when there are no results. */
-  resultRows: SearchResultRowView[];
-  /** Whether the result list should render. */
-  showResults: boolean;
-  /** Whether the loading designed state should render. */
-  showLoading: boolean;
-  /** Whether the semantic-offline designed state should render. */
-  showSemanticOffline: boolean;
-  /** Whether the transport-error designed state should render. */
-  showError: boolean;
-  /** The first selectable result row; -1 when every result is non-selectable. */
-  firstClickableIndex: number;
-  /** Whether the view should render its no-results designed state. */
-  noResults: boolean;
-  /** Empty unless the view should render the no-results copy. */
-  noResultsMessage: string;
-  /** Idle prompt for an empty query. */
-  idleMessage: string;
-  /** Loading prompt for an in-flight search with no held data. */
-  loadingMessage: string;
-  /** Semantic-tier degraded banner copy. */
-  semanticOfflineMessage: string;
-  /** Transport error banner title. */
-  errorTitle: string;
-  /** Transport error retry affordance label. */
-  retryLabel: string;
-  /** Search input placeholder copy. */
-  inputPlaceholder: string;
-  /** Search input accessible label. */
-  inputAriaLabel: string;
-  /** Target segmented-control accessible label. */
-  targetGroupAriaLabel: string;
-  /** Result list accessible label. */
-  resultsListAriaLabel: string;
-  /** Result-list receipt text for the ranked result block. */
-  resultSummaryLabel: string;
-  /** Polite live-region copy for the settled search outcome. */
-  liveMessage: string;
-  /** Target segmented-control row class. */
-  targetGroupClassName: string;
-  /** Idle-state class. */
-  idleClassName: string;
-  /** Loading-state class. */
-  loadingClassName: string;
-  /** Semantic-offline banner class. */
-  semanticOfflineClassName: string;
-  /** Semantic-offline icon wrapper class. */
-  semanticOfflineIconClassName: string;
-  /** Transport error container class. */
-  errorClassName: string;
-  /** Transport error title class. */
-  errorTitleClassName: string;
-  /** Transport error retry button class. */
-  retryButtonClassName: string;
-  /** No-results empty-state class. */
-  noResultsClassName: string;
-  /** Result count receipt class. */
-  resultCountClassName: string;
-  /** Result list class. */
-  resultsListClassName: string;
-}
-
-export interface SearchResultRowView {
-  result: SearchResult;
-  key: string;
-  nodeId: string | null;
-  species: SearchResultSpecies;
-  source: string;
-  buttonClassName: string;
-  excerptClassName: string;
-  scoreLabel: string;
-  scoreToneClass: string;
-  fallbackBadgeLabel: string | null;
-  selectable: boolean;
-  ariaLabel: string;
-  entity: SearchResultEntity;
-}
-
 export type SearchResultSpecies = "doc" | "code" | "commit" | "unknown";
-
-export function searchScoreLabel(score: number): string {
-  return `${Math.round(score * 100)}%`;
-}
 
 export function searchResultSpecies(nodeId: string | null): SearchResultSpecies {
   if (nodeId === null) return "unknown";
@@ -326,155 +230,6 @@ export function searchResultSpecies(nodeId: string | null): SearchResultSpecies 
   if (nodeId.startsWith("code:")) return "code";
   if (nodeId.startsWith("doc:")) return "doc";
   return "unknown";
-}
-
-export function deriveSearchResultRowView(
-  result: SearchResult,
-  index: number,
-  target: "vault" | "code",
-  scope: string | null,
-  fallback = false,
-): SearchResultRowView {
-  const nodeId = result.node_id;
-  const scoreLabel = searchScoreLabel(result.score);
-  const selectable = nodeId !== null;
-  return {
-    result,
-    key: nodeId ?? `${result.source}:${index}`,
-    nodeId,
-    species: searchResultSpecies(nodeId),
-    source: result.source,
-    buttonClassName: `w-full rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-      selectable
-        ? "hover:border-rule-strong hover:bg-paper-sunken"
-        : "cursor-default opacity-70"
-    }`,
-    excerptClassName: "mt-fg-0-5 block truncate text-ink-muted",
-    scoreLabel,
-    scoreToneClass: fallback ? "text-ink-faint" : "text-ink-muted",
-    fallbackBadgeLabel: fallback ? "text match" : null,
-    selectable,
-    ariaLabel: selectable
-      ? `${result.source}, relevance ${scoreLabel}`
-      : `${result.source}, relevance ${scoreLabel}, no graph node - not selectable`,
-    entity: {
-      kind: "search-result",
-      id: nodeId ?? result.source,
-      scope,
-      source: result.source,
-      nodeId: nodeId ?? undefined,
-      score: result.score,
-      isCode: target === "code",
-    },
-  };
-}
-
-export function deriveSearchResultRowViews(
-  results: readonly SearchResult[],
-  target: "vault" | "code",
-  scope: string | null,
-  fallback = false,
-): SearchResultRowView[] {
-  return results.map((result, index) =>
-    deriveSearchResultRowView(result, index, target, scope, fallback),
-  );
-}
-
-export function searchResultKeyboardFocusDelta(key: unknown): -1 | 1 | null {
-  if (key === "ArrowDown") return 1;
-  if (key === "ArrowUp") return -1;
-  return null;
-}
-
-/**
- * Presentation facts derived from the interpreted controller state. The search
- * palette surface is dumb chrome: it renders this view instead of recomputing
- * result visibility, roving-tab entry, idle/no-results state, and live-region
- * copy beside the controller.
- */
-export function deriveSearchPresentationView(
-  query: unknown,
-  search: Pick<
-    SearchControllerView,
-    "state" | "results" | "semanticOffline" | "error"
-  > &
-    Partial<Pick<SearchControllerView, "noCodeFallback">>,
-  context: { target?: "vault" | "code"; scope?: string | null } = {},
-): SearchPresentationView {
-  const trimmedQuery = normalizeSearchQuery(query);
-  const hasQuery = trimmedQuery.length > 0;
-  const noCodeFallback = search.noCodeFallback ?? false;
-  const resultRows = deriveSearchResultRowViews(
-    search.results,
-    context.target ?? "vault",
-    context.scope ?? null,
-    search.semanticOffline,
-  );
-  const showResults = resultRows.length > 0;
-  const showLoading = search.state === "loading";
-  const showSemanticOffline = search.semanticOffline;
-  const showError = search.error;
-  const noResults = search.state === "no-results";
-  const noResultsMessage = noResults
-    ? `no matches for “${trimmedQuery}”. try broadening the query or switching target.`
-    : "";
-  const semanticOfflineMessage = search.semanticOffline
-    ? `semantic search offline — showing title and text matches${
-        noCodeFallback ? " (vault only; no code fallback available)" : ""
-      }`
-    : "";
-  const resultSummaryLabel = showResults
-    ? `${search.semanticOffline ? "Ranked by text match" : "Ranked by meaning"} · ${
-        resultRows.length
-      } result${resultRows.length === 1 ? "" : "s"}`
-    : "";
-  const liveMessage = search.error
-    ? "search request failed"
-    : search.semanticOffline
-      ? "semantic search offline — showing title and text matches"
-      : showResults
-        ? `${search.results.length} result${search.results.length === 1 ? "" : "s"}`
-        : noResults
-          ? "no results"
-          : "";
-  return {
-    rootClassName: "space-y-fg-2 text-body",
-    hasQuery,
-    resultRows,
-    showResults,
-    showLoading,
-    showSemanticOffline,
-    showError,
-    firstClickableIndex: resultRows.findIndex((row) => row.selectable),
-    noResults,
-    noResultsMessage,
-    idleMessage:
-      "search semantically across the vault and code. select a result to focus it on the stage.",
-    loadingMessage: "searching…",
-    semanticOfflineMessage,
-    errorTitle: "search request failed",
-    retryLabel: "try again",
-    inputPlaceholder: "Search documents and code…",
-    inputAriaLabel: "search query",
-    targetGroupAriaLabel: "search target",
-    resultsListAriaLabel: "search results",
-    resultSummaryLabel,
-    liveMessage,
-    targetGroupClassName: "flex gap-fg-1",
-    idleClassName: "px-fg-1 py-fg-2 text-label text-ink-faint",
-    loadingClassName: "animate-pulse-live px-fg-1 py-fg-0-5 text-label text-ink-faint",
-    semanticOfflineClassName:
-      "flex items-start gap-fg-1-5 rounded-fg-xs border border-state-stale/40 bg-paper-sunken px-fg-2 py-fg-1 text-label text-ink-muted",
-    semanticOfflineIconClassName: "mt-px shrink-0 text-state-stale",
-    errorClassName:
-      "space-y-fg-1 rounded-fg-xs border border-state-broken/40 px-fg-2 py-fg-1",
-    errorTitleClassName: "text-label text-state-broken",
-    retryButtonClassName:
-      "rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-    noResultsClassName: "px-fg-1 py-fg-2 text-label text-ink-faint",
-    resultCountClassName: "px-fg-1 text-caption text-ink-faint",
-    resultsListClassName: "space-y-fg-1",
-  };
 }
 
 /**
@@ -531,7 +286,6 @@ export function interpretSearch(input: {
       state: "idle",
       results: [],
       semanticOffline: false,
-      noCodeFallback: false,
       pending: false,
       error: false,
       filterVocabulary,
@@ -551,7 +305,6 @@ export function interpretSearch(input: {
       state: "semantic-offline",
       results: [],
       semanticOffline: true,
-      noCodeFallback: false,
       pending: false,
       error: false,
       filterVocabulary,
@@ -570,7 +323,6 @@ export function interpretSearch(input: {
       state: "error",
       results: data?.results ?? [],
       semanticOffline: false,
-      noCodeFallback: false,
       pending: false,
       error: true,
       filterVocabulary,
@@ -586,7 +338,6 @@ export function interpretSearch(input: {
       state: "loading",
       results: [],
       semanticOffline: false,
-      noCodeFallback: false,
       pending: true,
       error: false,
       filterVocabulary,
@@ -601,7 +352,6 @@ export function interpretSearch(input: {
     state: results.length > 0 ? "results" : "no-results",
     results,
     semanticOffline: false,
-    noCodeFallback: false,
     pending: isPending && data === undefined,
     error: false,
     filterVocabulary,

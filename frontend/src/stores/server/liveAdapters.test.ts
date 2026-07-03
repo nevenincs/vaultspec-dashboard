@@ -555,7 +555,8 @@ describe("adaptDashboardState", () => {
     expect(adapted.panel_state).toEqual({
       left_collapsed: true,
       right_collapsed: false,
-      right_tab: "search",
+      // The removed "search" tab heals to the default (search-providers ADR D3).
+      right_tab: "status",
     });
     expect(adapted.graph_bounds).toEqual({ shape: "circle", size: 13 });
 

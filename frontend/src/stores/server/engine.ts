@@ -693,7 +693,7 @@ export const REPRESENTATION_MODES = [
 ] as const;
 export type RepresentationMode = (typeof REPRESENTATION_MODES)[number];
 
-export const DASHBOARD_PANEL_TABS = ["status", "changes", "search"] as const;
+export const DASHBOARD_PANEL_TABS = ["status", "changes"] as const;
 export type DashboardPanelTab = (typeof DASHBOARD_PANEL_TABS)[number];
 
 export interface DashboardPanelState {

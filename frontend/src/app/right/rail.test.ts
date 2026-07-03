@@ -29,17 +29,13 @@ const status = (over: Partial<EngineStatus>): EngineStatus => ({
 });
 
 describe("rail tab strip IA (binding Figma ActivityRail 244:753)", () => {
-  it("is exactly Status, Changes, Search in that order", () => {
-    // The figma-frontend-rewrite ActivityRail board (244:753) shows EXACTLY three
-    // label-only tabs in this order, superseding the status-overview ADR's prior
-    // four-id IA (which added an Inspect pane) and its persistent liveness-pillar
-    // header. Status is the primary (leading) tab.
-    expect(RIGHT_RAIL_TABS.map((t) => t.label)).toEqual([
-      "Status",
-      "Changes",
-      "Search",
-    ]);
-    expect(RIGHT_RAIL_TABS.map((t) => t.id)).toEqual(["status", "changes", "search"]);
+  it("is exactly Status, Changes in that order", () => {
+    // The figma-frontend-rewrite ActivityRail board (244:753) shows the label-only
+    // tabs in this order. The vestigial Search tab was deleted with the dead
+    // right-rail search pillar (search-providers ADR D3): search is the Cmd+K
+    // plane, not a rail tab. Status is the primary (leading) tab.
+    expect(RIGHT_RAIL_TABS.map((t) => t.label)).toEqual(["Status", "Changes"]);
+    expect(RIGHT_RAIL_TABS.map((t) => t.id)).toEqual(["status", "changes"]);
   });
 
   it("renders every tab label-only — the board carries no leading tab marks", () => {

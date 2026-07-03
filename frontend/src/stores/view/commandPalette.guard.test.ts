@@ -25,7 +25,6 @@ import "./commandProviders/editorCommandProvider";
 import "./commandProviders/settingsCommandProvider";
 import "./commandProviders/opsCommandProvider";
 import "./commandProviders/reloadCommandProvider";
-import "./commandProviders/rightRailCommandProvider";
 
 const noop = () => undefined;
 function commandContext(): CommandContext {
@@ -46,7 +45,6 @@ function commandContext(): CommandContext {
       resetFilters: noop,
       clearFeatureFilter: noop,
       clearProjectHistory: noop,
-      focusRightRailSearch: noop,
       setTheme: noop,
       runOp: noop,
       closeDocument: noop,

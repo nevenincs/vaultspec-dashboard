@@ -219,7 +219,6 @@ describe("shell layout frame view", () => {
     expect(RIGHT_RAIL_TABS).toEqual([
       { id: "status", label: "Status" },
       { id: "changes", label: "Changes" },
-      { id: "search", label: "Search" },
     ]);
   });
 
@@ -230,13 +229,13 @@ describe("shell layout frame view", () => {
     expect(normalizeRightRailTab("   ")).toBe("status");
     expect(normalizeRightRailTab(null)).toBe("status");
 
+    // Two tabs now (Status, Changes): next/previous wrap between the pair.
     expect(rightRailAdjacentTab("status", "next")).toBe("changes");
-    expect(rightRailAdjacentTab(" changes ", "next")).toBe("search");
-    expect(rightRailAdjacentTab("changes", "next")).toBe("search");
-    expect(rightRailAdjacentTab("search", "next")).toBe("status");
-    expect(rightRailAdjacentTab("status", "previous")).toBe("search");
+    expect(rightRailAdjacentTab(" changes ", "next")).toBe("status");
+    expect(rightRailAdjacentTab("changes", "next")).toBe("status");
+    expect(rightRailAdjacentTab("status", "previous")).toBe("changes");
     expect(rightRailAdjacentTab("missing", "next")).toBe("changes");
-    expect(rightRailAdjacentTab("search", "sideways")).toBe("status");
+    expect(rightRailAdjacentTab("changes", "sideways")).toBe("status");
   });
 
   it("projects dashboard chrome and local layout into one shell frame", () => {

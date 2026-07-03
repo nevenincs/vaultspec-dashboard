@@ -185,16 +185,18 @@ describe("buildWindowCommands (window-management parity)", () => {
     commands.find((c) => c.id === "window:left-rail")?.run();
     commands.find((c) => c.id === "window:timeline")?.run();
     commands.find((c) => c.id === "window:reset-layout")?.run();
-    commands.find((c) => c.id === "window:rail-search")?.run();
+    commands.find((c) => c.id === "window:rail-changes")?.run();
     expect(fired).toEqual(["left-rail", "timeline", "reset"]);
-    expect(tabs).toEqual(["search"]);
+    expect(tabs).toEqual(["changes"]);
   });
 
   it("normalizes runtime right-rail tab command identity", () => {
-    expect(normalizeCommandPaletteRightRailTab(" search ")).toBe("search");
-    expect(normalizeCommandPaletteRightRailTab({ tab: "search" })).toBeNull();
-    expect(commandPaletteRightRailCommandId(" search ")).toBe("window:rail-search");
-    expect(commandPaletteRightRailCommandId({ tab: "search" })).toBeNull();
+    expect(normalizeCommandPaletteRightRailTab(" changes ")).toBe("changes");
+    expect(normalizeCommandPaletteRightRailTab({ tab: "changes" })).toBeNull();
+    expect(commandPaletteRightRailCommandId(" changes ")).toBe("window:rail-changes");
+    expect(commandPaletteRightRailCommandId({ tab: "changes" })).toBeNull();
+    // The deleted "search" tab is no longer a valid right-rail command target.
+    expect(normalizeCommandPaletteRightRailTab(" search ")).toBeNull();
   });
 });
 

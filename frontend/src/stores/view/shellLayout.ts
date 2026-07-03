@@ -52,12 +52,11 @@ export interface RightRailTabOption {
 const RIGHT_RAIL_TAB_LABELS: Record<DashboardPanelTab, string> = {
   status: "Status",
   changes: "Changes",
-  search: "Search",
 };
 
-// Status · Changes · Search, left to right: ids come from the dashboard-state
-// wire schema; labels live with the shell frame view so right-rail chrome does not
-// mint a parallel tab domain.
+// Status · Changes, left to right: ids come from the dashboard-state wire schema;
+// labels live with the shell frame view so right-rail chrome does not mint a
+// parallel tab domain.
 export const RIGHT_RAIL_TABS: readonly RightRailTabOption[] = DASHBOARD_PANEL_TABS.map(
   (id) => ({
     id,

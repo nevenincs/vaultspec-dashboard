@@ -52,9 +52,10 @@ describe("useShellPanelIntent", () => {
     expect(normalizeShellPanelCollapsed(false)).toBe(false);
     expect(normalizeShellPanelCollapsed("true")).toBeNull();
     expect(normalizeShellPanelCollapsed(1)).toBeNull();
-    expect(normalizeShellPanelRightTab(" search ")).toBe("search");
+    expect(normalizeShellPanelRightTab(" changes ")).toBe("changes");
     expect(normalizeShellPanelRightTab("missing")).toBeNull();
-    expect(normalizeShellPanelRightTab({ tab: "search" })).toBeNull();
+    expect(normalizeShellPanelRightTab("search")).toBeNull();
+    expect(normalizeShellPanelRightTab({ tab: "changes" })).toBeNull();
   });
 
   it("is inert without a scope", async () => {
@@ -65,7 +66,7 @@ describe("useShellPanelIntent", () => {
 
     await expect(result.current.setLeftCollapsed(true)).resolves.toBeNull();
     await expect(result.current.setRightCollapsed(true)).resolves.toBeNull();
-    await expect(result.current.setRightTab("search")).resolves.toBeNull();
+    await expect(result.current.setRightTab("changes")).resolves.toBeNull();
   });
 
   it("keeps panel intent callbacks stable across unchanged-scope rerenders", () => {
@@ -99,14 +100,14 @@ describe("useShellPanelIntent", () => {
     await act(async () => {
       await result.current.setLeftCollapsed(true);
       await result.current.setRightCollapsed(true);
-      await result.current.setRightTab("search");
+      await result.current.setRightTab("changes");
     });
 
     await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
       panel_state: {
         left_collapsed: true,
         right_collapsed: true,
-        right_tab: "search",
+        right_tab: "changes",
       },
     });
   });
@@ -159,7 +160,7 @@ describe("useShellPanelIntent", () => {
 
     await expect(result.current.setLeftCollapsed(true)).resolves.toBeNull();
     await expect(result.current.setRightCollapsed(true)).resolves.toBeNull();
-    await expect(result.current.setRightTab("search")).resolves.toBeNull();
+    await expect(result.current.setRightTab("changes")).resolves.toBeNull();
     await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
       panel_state: {
         left_collapsed: false,

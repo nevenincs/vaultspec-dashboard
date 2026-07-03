@@ -242,9 +242,9 @@ describe("dashboard-state engine client (live engine)", () => {
       right_collapsed: true,
       right_tab: "changes",
     });
-    expect(mergeDashboardPanelState(undefined, { right_tab: "search" })).toEqual({
+    expect(mergeDashboardPanelState(undefined, { right_tab: "changes" })).toEqual({
       ...DEFAULT_DASHBOARD_PANEL_STATE,
-      right_tab: "search",
+      right_tab: "changes",
     });
   });
 
@@ -252,7 +252,7 @@ describe("dashboard-state engine client (live engine)", () => {
     expect(normalizeDashboardPanelState("invalid")).toEqual(
       DEFAULT_DASHBOARD_PANEL_STATE,
     );
-    expect(normalizeDashboardPanelTab(" search ")).toBe("search");
+    expect(normalizeDashboardPanelTab(" search ")).toBeNull();
     expect(normalizeDashboardPanelTab("   ")).toBeNull();
     expect(
       normalizeDashboardPanelState({
@@ -269,11 +269,11 @@ describe("dashboard-state engine client (live engine)", () => {
       normalizeDashboardPanelStateUpdate({
         left_collapsed: true,
         right_collapsed: "no" as unknown as boolean,
-        right_tab: " search ",
+        right_tab: " changes ",
       }),
     ).toEqual({
       left_collapsed: true,
-      right_tab: "search",
+      right_tab: "changes",
     });
     expect(normalizeDashboardPanelStateUpdate("invalid")).toEqual({});
     expect(normalizeDashboardPanelStateUpdate(["search"])).toEqual({});
@@ -949,7 +949,7 @@ describe("dashboard-state engine client (live engine)", () => {
       await result.current.mutations.setPanelState({
         left_collapsed: true,
         right_collapsed: true,
-        right_tab: "search",
+        right_tab: "changes",
       });
       await result.current.mutations.setRepresentationMode("radial");
       await result.current.mutations.setGraphBounds({ shape: "free", size: 100 });
@@ -974,7 +974,7 @@ describe("dashboard-state engine client (live engine)", () => {
     expect(state?.panel_state).toEqual({
       left_collapsed: true,
       right_collapsed: true,
-      right_tab: "search",
+      right_tab: "changes",
     });
     expect(state?.representation_mode).toBe("radial");
 
@@ -1198,7 +1198,7 @@ describe("dashboard-state engine client (live engine)", () => {
     await act(async () => {
       await Promise.all([
         result.current.mutations.updatePanelState({ left_collapsed: true }),
-        result.current.mutations.updatePanelState({ right_tab: "search" }),
+        result.current.mutations.updatePanelState({ right_tab: "changes" }),
       ]);
     });
 
@@ -1207,7 +1207,7 @@ describe("dashboard-state engine client (live engine)", () => {
         expect(result.current.state.data?.panel_state).toEqual({
           left_collapsed: true,
           right_collapsed: false,
-          right_tab: "search",
+          right_tab: "changes",
         }),
       ENGINE_WAIT,
     );
