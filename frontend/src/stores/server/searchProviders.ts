@@ -138,6 +138,23 @@ export const SEMANTIC_PROVIDER_ID = "semantic";
 export const FILES_VAULT_PROVIDER_ID = "files-vault";
 export const FILES_CODE_PROVIDER_ID = "files-code";
 
+// ── Corpus separation ───────────────────────────────────────────────────────────
+//
+// The palette's user-facing scope control: `all` runs every provider, `docs`
+// narrows to the document corpus (semantic vault target + files(vault)), `code`
+// to the code corpus (semantic code target + files(code)). An excluded provider
+// receives an EMPTY query — its idle state — so its backing wire query is
+// disabled, never fetched-and-discarded. This is a search-target control on the
+// search plane, NOT a corpus filter (it never touches `dashboardState.filters`).
+
+export type SearchCorpus = "all" | "docs" | "code";
+
+export const SEARCH_CORPORA: readonly SearchCorpus[] = ["all", "docs", "code"];
+
+export function normalizeSearchCorpus(value: unknown): SearchCorpus {
+  return value === "docs" || value === "code" ? value : "all";
+}
+
 /** Per-provider result cap (bounded-by-default). The host applies the final 40-item
  *  bound over the merged set; each provider caps its own contribution first so a
  *  huge corpus cannot hand the merge an unbounded list. */
@@ -162,8 +179,9 @@ function codeBasename(path: string): string {
 export function useSemanticProvider(
   query: string,
   scope: string | null,
+  corpus: SearchCorpus = "all",
 ): SearchProviderResult {
-  const unified = useUnifiedSearchController(query, scope);
+  const unified = useUnifiedSearchController(query, scope, corpus);
   return useMemo(() => {
     const entries = unified.results.map((result) =>
       toProviderEntry(result, "semantic"),
@@ -431,11 +449,18 @@ function useDebouncedQuery(query: string): string {
 export function useSearchProviders(
   query: string,
   scope: string | null,
+  corpus: SearchCorpus = "all",
 ): SearchProvidersView {
   const debouncedQuery = useDebouncedQuery(query);
-  const semantic = useSemanticProvider(query, scope);
-  const filesVault = useFilesVaultProvider(debouncedQuery, scope);
-  const filesCode = useFilesCodeProvider(debouncedQuery, scope);
+  const semantic = useSemanticProvider(query, scope, corpus);
+  const filesVault = useFilesVaultProvider(
+    corpus === "code" ? "" : debouncedQuery,
+    scope,
+  );
+  const filesCode = useFilesCodeProvider(
+    corpus === "docs" ? "" : debouncedQuery,
+    scope,
+  );
   return useMemo(
     () => mergeSearchProviders([semantic, filesVault, filesCode]),
     [semantic, filesVault, filesCode],

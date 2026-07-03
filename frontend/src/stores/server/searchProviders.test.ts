@@ -228,4 +228,40 @@ describe("useSearchProviders (real engine, live wiring)", () => {
       expect(["doc", "code", "commit", "unknown"]).toContain(item.species);
     }
   });
+
+  it("narrows to the code corpus: only code hits, doc providers idle", async () => {
+    engineClient.useTransport(liveTransport);
+    const scope = await liveScope();
+    const client = testQueryClient();
+    const { result: hook } = renderHook(
+      () => useSearchProviders("plan", scope, "code"),
+      { wrapper: wrapper(client) },
+    );
+    await waitFor(
+      () => expect(["results", "no-results"]).toContain(hook.current.state),
+      ENGINE_WAIT,
+    );
+    // Every merged hit is a code hit — the doc-corpus providers read an empty
+    // query (idle), so no doc species can leak into a code-narrowed list.
+    for (const item of hook.current.entries) {
+      expect(item.species).toBe("code");
+    }
+  });
+
+  it("narrows to the docs corpus: no code hits leak in", async () => {
+    engineClient.useTransport(liveTransport);
+    const scope = await liveScope();
+    const client = testQueryClient();
+    const { result: hook } = renderHook(
+      () => useSearchProviders("plan", scope, "docs"),
+      { wrapper: wrapper(client) },
+    );
+    await waitFor(
+      () => expect(["results", "no-results"]).toContain(hook.current.state),
+      ENGINE_WAIT,
+    );
+    for (const item of hook.current.entries) {
+      expect(item.species).not.toBe("code");
+    }
+  });
 });

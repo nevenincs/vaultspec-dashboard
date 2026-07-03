@@ -622,9 +622,13 @@ export function mergeUnifiedSearch(
 export function useUnifiedSearchController(
   rawQuery: unknown,
   scope: unknown,
+  corpus: "all" | "docs" | "code" = "all",
 ): UnifiedSearchView {
-  const vault = useSearchController(rawQuery, "vault", scope);
-  const code = useSearchController(rawQuery, "code", scope);
+  // Corpus separation (search palette scope control): an excluded target reads
+  // an EMPTY query, which is the controller's idle state — its wire query is
+  // disabled entirely, never fetched-and-discarded.
+  const vault = useSearchController(corpus === "code" ? "" : rawQuery, "vault", scope);
+  const code = useSearchController(corpus === "docs" ? "" : rawQuery, "code", scope);
   const retry = useMemo(
     () => () => {
       vault.retry();

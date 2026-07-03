@@ -26,6 +26,7 @@ import {
   toggleCommandPalette,
   useCommandPaletteStore,
 } from "./commandPalette";
+import { normalizeSearchCorpus } from "../server/searchProviders";
 
 describe("command palette store", () => {
   beforeEach(() => useCommandPaletteStore.getState().reset());
@@ -449,5 +450,25 @@ describe("command palette store", () => {
 
     setCommandPaletteOpsFeedbackForEpoch(`${epoch}`, "stale");
     expect(useCommandPaletteStore.getState().opsMessage).toBe("running");
+  });
+});
+
+describe("search corpus separation (search-providers corpus seam)", () => {
+  it("normalizes the corpus and defaults to all", () => {
+    expect(normalizeSearchCorpus("docs")).toBe("docs");
+    expect(normalizeSearchCorpus("code")).toBe("code");
+    expect(normalizeSearchCorpus("everything")).toBe("all");
+    expect(normalizeSearchCorpus(undefined)).toBe("all");
+  });
+
+  it("switching the corpus restarts the cursor and opening resets to all", () => {
+    const store = useCommandPaletteStore.getState();
+    store.openSearch();
+    store.setSearchCursor(3);
+    store.setSearchCorpus("code");
+    expect(useCommandPaletteStore.getState().searchCorpus).toBe("code");
+    expect(useCommandPaletteStore.getState().searchCursor).toBe(0);
+    store.openSearch();
+    expect(useCommandPaletteStore.getState().searchCorpus).toBe("all");
   });
 });

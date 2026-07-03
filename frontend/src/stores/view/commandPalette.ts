@@ -1,3 +1,4 @@
+import { normalizeSearchCorpus, type SearchCorpus } from "../server/searchProviders";
 import { useEffect } from "react";
 import { create } from "zustand";
 
@@ -282,6 +283,8 @@ interface CommandPaletteState {
   searchCursor: number;
   /** Search mode: whether the on-demand reader split is revealed. */
   searchExpanded: boolean;
+  /** Search mode: the corpus separation control (all | docs | code). */
+  searchCorpus: SearchCorpus;
   armedCommandId: string | null;
   opsMessage: string | null;
   opsEpoch: number;
@@ -295,6 +298,7 @@ interface CommandPaletteState {
   setCursor: (cursor: unknown) => void;
   setSearchCursor: (cursor: unknown) => void;
   setSearchExpanded: (expanded: unknown) => void;
+  setSearchCorpus: (corpus: unknown) => void;
   setArmedCommandId: (commandId: unknown) => void;
   resetSurfaceState: () => void;
   resetOpsFeedback: () => void;
@@ -340,6 +344,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
   cursor: 0,
   searchCursor: 0,
   searchExpanded: false,
+  searchCorpus: "all",
   armedCommandId: null,
   opsMessage: null,
   opsEpoch: 0,
@@ -353,6 +358,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         cursor: 0,
         searchCursor: 0,
         searchExpanded: false,
+        searchCorpus: "all",
         armedCommandId: null,
         opsMessage: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
@@ -368,6 +374,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         cursor: 0,
         searchCursor: 0,
         searchExpanded: false,
+        searchCorpus: "all",
         armedCommandId: null,
         opsMessage: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
@@ -383,6 +390,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         cursor: 0,
         searchCursor: 0,
         searchExpanded: false,
+        searchCorpus: "all",
         armedCommandId: null,
         opsMessage: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
@@ -398,6 +406,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         cursor: 0,
         searchCursor: 0,
         searchExpanded: false,
+        searchCorpus: "all",
         armedCommandId: null,
         opsMessage: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
@@ -413,6 +422,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         cursor: 0,
         searchCursor: 0,
         searchExpanded: false,
+        searchCorpus: "all",
         armedCommandId: null,
         opsMessage: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
@@ -425,6 +435,9 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
     set({ searchCursor: normalizeSearchPaletteCursor(cursor) }),
   setSearchExpanded: (expanded) =>
     set({ searchExpanded: normalizeSearchPaletteExpanded(expanded) }),
+  // A corpus switch re-ranks the list, so the cursor restarts at the top.
+  setSearchCorpus: (corpus) =>
+    set({ searchCorpus: normalizeSearchCorpus(corpus), searchCursor: 0 }),
   setArmedCommandId: (commandId) =>
     set({ armedCommandId: normalizeCommandPaletteArmedCommandId(commandId) }),
   resetSurfaceState: () =>
@@ -433,6 +446,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
       cursor: 0,
       searchCursor: 0,
       searchExpanded: false,
+      searchCorpus: "all",
       armedCommandId: null,
     }),
   resetOpsFeedback: () =>
@@ -469,6 +483,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         cursor: 0,
         searchCursor: 0,
         searchExpanded: false,
+        searchCorpus: "all",
         armedCommandId: null,
         opsMessage: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
@@ -500,6 +515,10 @@ export function useSearchPaletteExpanded(): boolean {
   return useCommandPaletteStore((state) =>
     normalizeSearchPaletteExpanded(state.searchExpanded),
   );
+}
+
+export function useSearchPaletteCorpus(): SearchCorpus {
+  return useCommandPaletteStore((state) => normalizeSearchCorpus(state.searchCorpus));
 }
 
 export function useCommandPaletteQuery(): string {
@@ -542,6 +561,10 @@ export function setSearchPaletteCursor(cursor: unknown): void {
 
 export function setSearchPaletteExpanded(expanded: unknown): void {
   useCommandPaletteStore.getState().setSearchExpanded(expanded);
+}
+
+export function setSearchPaletteCorpus(corpus: unknown): void {
+  useCommandPaletteStore.getState().setSearchCorpus(corpus);
 }
 
 export function toggleCommandPalette(): void {

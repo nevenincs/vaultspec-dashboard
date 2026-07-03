@@ -37,17 +37,29 @@ import {
   searchPaletteMovedCursor,
   setCommandPaletteQuery,
   setSearchPaletteCursor,
+  setSearchPaletteCorpus,
   setSearchPaletteExpanded,
   useCommandPaletteQuery,
+  useSearchPaletteCorpus,
   useSearchPaletteCursor,
   useSearchPaletteExpanded,
 } from "../../stores/view/commandPalette";
-import { useSearchProviders } from "../../stores/server/searchProviders";
+import {
+  type SearchCorpus,
+  useSearchProviders,
+} from "../../stores/server/searchProviders";
 import { deriveSearchPillViews } from "../../stores/server/searchPill";
 import { useActiveScope, useContentView } from "../../stores/server/queries";
 import { activateEntity } from "../../stores/view/activateEntity";
 import { useViewportClass } from "../../stores/view/viewportClass";
-import { Kbd, Skeleton, SkeletonRow, StateBlock } from "../kit";
+import {
+  Kbd,
+  Segment,
+  SegmentedToggle,
+  Skeleton,
+  SkeletonRow,
+  StateBlock,
+} from "../kit";
 import { CodeViewer } from "../viewer/CodeViewer";
 import { MarkdownReader } from "../viewer/MarkdownReader";
 import { trapTabFocus } from "../chrome/focusTrap";
@@ -109,13 +121,32 @@ function LegendHint({ keys, label }: { keys: string[]; label: string }) {
   );
 }
 
+/** The corpus separation control (search-providers corpus seam): one three-way
+ *  segmented radiogroup — All | Docs | Code — narrowing which providers feed the
+ *  merged list. A search-target control on the search plane, never a corpus
+ *  filter write. */
+function CorpusToggle({ corpus }: { corpus: SearchCorpus }) {
+  return (
+    <SegmentedToggle
+      value={corpus}
+      onChange={(value) => setSearchPaletteCorpus(value)}
+      ariaLabel="Search scope"
+    >
+      <Segment value="all">All</Segment>
+      <Segment value="docs">Docs</Segment>
+      <Segment value="code">Code</Segment>
+    </SegmentedToggle>
+  );
+}
+
 export function SearchPaletteSurface() {
   const query = useCommandPaletteQuery();
   const cursor = useSearchPaletteCursor();
   const expanded = useSearchPaletteExpanded();
+  const corpus = useSearchPaletteCorpus();
   const scope = useActiveScope();
 
-  const search = useSearchProviders(query, scope);
+  const search = useSearchProviders(query, scope, corpus);
   const pills = useMemo(
     // The host yields banded provider entries; the pill derivation reads the
     // wire `result` each wraps (species/title/why are derived there).
@@ -247,6 +278,9 @@ export function SearchPaletteSurface() {
             Cancel
           </button>
         </div>
+        <div className="flex items-center border-b border-rule px-fg-3 py-fg-1-5">
+          <CorpusToggle corpus={corpus} />
+        </div>
         {pills.length > 0 ? (
           <ul
             id={listboxId}
@@ -328,6 +362,7 @@ export function SearchPaletteSurface() {
             placeholder={presentation.inputPlaceholder}
             className="min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink-faint"
           />
+          <CorpusToggle corpus={corpus} />
           {presentation.resultCountLabel && (
             <span className="shrink-0 text-caption text-ink-faint" data-tabular>
               {presentation.resultCountLabel}
