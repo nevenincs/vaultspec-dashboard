@@ -36,7 +36,7 @@ The cursor-walking code-files reader, its tolerant adapter, and the one literal 
 
 - [ ] `P02.S04` - Add the codeFiles cursor-walking client (bounded page loop mirroring vaultTree), the tolerant adaptCodeFiles adapter, and the typed CodeFileEntry wire shape; `frontend/src/stores/server/engine.ts + liveAdapters.ts`.
 - [ ] `P02.S05` - Add the useCodeFiles query hook with bounded cache keyed on scope, walked to completion so client narrowing holds the complete listing; `frontend/src/stores/server/queries.ts`.
-- [ ] `P02.S06` - Extract the one shared literal matcher utility with the explicit bands (strong-literal 0.70 to 0.95 for exact or prefix, weak-literal 0.20 to 0.50 for substring), token matching over stem, path, title, and tags, with unit vectors, replacing the two near-duplicate scanners; `frontend/src/stores/server/literalMatch.ts`.
+- [x] `P02.S06` - Extract the one shared literal matcher utility with the explicit bands (strong-literal 0.70 to 0.95 for exact or prefix, weak-literal 0.20 to 0.50 for substring), token matching over stem, path, title, and tags, with unit vectors, replacing the two near-duplicate scanners; `frontend/src/stores/server/literalMatch.ts`.
 
 ### Phase `P03` - The provider seam
 
