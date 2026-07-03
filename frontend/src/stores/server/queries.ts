@@ -5489,8 +5489,15 @@ export function useEngineSearch(
 // (the whole degradation architecture depends on the envelope actually landing).
 // A client abort under this ordering therefore means only one thing honestly: the
 // engine itself is unreachable — the genuine transport-error state. 12s = 10s
-// engine budget + 2s transport margin.
-const SEARCH_QUERY_TIMEOUT_MS = 12_000;
+// engine budget + 2s transport margin. Exported so a guard test can pin the
+// ordering invariant client-side (the engine budget it must exceed).
+export const SEARCH_QUERY_TIMEOUT_MS = 12_000;
+
+// The engine's own search budget (`SEARCH_HTTP_BUDGET` in
+// `engine/crates/vaultspec-api/src/routes/ops.rs`), mirrored here ONLY so the
+// ordering invariant is guard-testable on the frontend. This is not a wire value
+// the app reads — it is the number the client budget above must strictly exceed.
+export const ENGINE_SEARCH_BUDGET_MS = 10_000;
 
 // The app-chosen per-target result bound, sent as `max_results` in the POST
 // /search body so the wire payload is app-bounded rather than left at rag's CLI

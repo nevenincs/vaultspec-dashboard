@@ -1009,46 +1009,46 @@ describe("adaptGraphSlice salience conformance (live sample, graph-node-salience
   });
 });
 
-describe("adaptSearch (live nested rag envelope, W02.P16.S32)", () => {
-  it("unwraps the live nested rag envelope and preserves the engine node-id annotation", () => {
-    // The live `/search` forwards rag's envelope verbatim
-    // (`{envelope: {ok, data: {results}}}`) plus the engine's §8 node-id
-    // annotation; adaptSearch must reach into that nesting, not the flat shape.
+describe("adaptSearch (live flat rag HTTP envelope, rag-integration-hardening D1/D3)", () => {
+  it("reads top-level results and preserves the engine node-id annotation", () => {
+    // The live `/search` now serves rag's FLAT HTTP envelope: `results` at the
+    // top level (unwrapEnvelope already stripped the §2 {data,tiers} wrapper),
+    // plus the engine's §8 node-id annotation. adaptSearch reads the flat shape,
+    // not the retired nested `{envelope:{data:{results}}}` CLI envelope.
     const adapted = adaptSearch({
-      envelope: {
-        ok: true,
-        data: {
-          results: [
-            {
-              source: "2026-06-12-auth-flow-adr",
-              score: 0.91,
-              excerpt: "auth flow decisions",
-              node_id: "doc:2026-06-12-auth-flow-adr",
-            },
-          ],
+      results: [
+        {
+          source: "vault",
+          score: 0.91,
+          snippet: "auth flow decisions",
+          node_id: "doc:2026-06-12-auth-flow-adr",
         },
-      },
+      ],
       tiers: TIERS,
     }) as { results: SearchResult[]; tiers: typeof TIERS };
     expect(adapted.results).toHaveLength(1);
     expect(adapted.results[0].node_id).toBe("doc:2026-06-12-auth-flow-adr");
     expect(adapted.results[0].score).toBe(0.91);
-    // The tiers block rides through (semantic degraded in this sample).
+    // rag's short preview field is `snippet` (the CLI's `excerpt` is a tolerated
+    // alias); it becomes the internal `excerpt`.
+    expect(adapted.results[0].excerpt).toBe("auth flow decisions");
+    // The tiers block rides through (semantic degraded in this shared fixture).
     expect(adapted.tiers.semantic.available).toBe(false);
   });
 
-  it("passes a flat internal body through unchanged - the one-code-path property", () => {
-    const body = { results: [], tiers: TIERS };
-    expect(adaptSearch(body)).toBe(body);
+  it("adapts a flat top-level-results body (no nested envelope, no passthrough)", () => {
+    // Post-cutover there is one shape: a flat body with top-level `results` is
+    // ADAPTED (each row run through the node-id grammar), never short-circuited
+    // as a preadapted mock. An empty list yields an empty adapted list.
+    const adapted = adaptSearch({ results: [], tiers: TIERS }) as {
+      results: SearchResult[];
+    };
+    expect(adapted.results).toEqual([]);
   });
 
-  it("tolerates the rag item vocabulary (path/stem/text) when fields are sparse", () => {
+  it("tolerates the rag item vocabulary (path/stem/snippet) when fields are sparse", () => {
     const adapted = adaptSearch({
-      envelope: {
-        data: {
-          results: [{ path: "src/lib/auth.rs", score: 0.7, text: "fn authenticate" }],
-        },
-      },
+      results: [{ path: "src/lib/auth.rs", score: 0.7, snippet: "fn authenticate" }],
       tiers: TIERS,
     }) as { results: SearchResult[] };
     expect(adapted.results[0].source).toBe("src/lib/auth.rs");
@@ -1057,28 +1057,24 @@ describe("adaptSearch (live nested rag envelope, W02.P16.S32)", () => {
 
   it("normalizes search result rows before controller interpretation", () => {
     const adapted = adaptSearch({
-      envelope: {
-        data: {
-          results: [
-            {
-              path: " src/lib/auth.rs ",
-              score: 1.4,
-              text: " fn authenticate ",
-            },
-            {
-              source: "  ",
-              score: 0.3,
-              excerpt: "blank source is malformed",
-            },
-            {
-              stem: "2026-06-12-auth-flow-adr",
-              score: Number.NaN,
-              excerpt: "bad score is malformed",
-            },
-            "not a row",
-          ],
+      results: [
+        {
+          path: " src/lib/auth.rs ",
+          score: 1.4,
+          text: " fn authenticate ",
         },
-      },
+        {
+          source: "  ",
+          score: 0.3,
+          excerpt: "blank source is malformed",
+        },
+        {
+          stem: "2026-06-12-auth-flow-adr",
+          score: Number.NaN,
+          excerpt: "bad score is malformed",
+        },
+        "not a row",
+      ],
       tiers: TIERS,
     });
 
@@ -1090,6 +1086,79 @@ describe("adaptSearch (live nested rag envelope, W02.P16.S32)", () => {
         node_id: "code:src/lib/auth.rs",
       },
     ]);
+  });
+
+  it("forwards rag's index_state freshness block verbatim (D3)", () => {
+    const adapted = adaptSearch({
+      results: [{ source: "vault", score: 0.8, snippet: "hit", node_id: "doc:x" }],
+      index_state: {
+        source: "vault",
+        indexed_count: 3173,
+        vault_count: 3173,
+        code_count: 10507,
+        indexed_target_root: "Y:\\code\\proj",
+        requested_target_root: "Y:\\code\\proj",
+        target_matches: true,
+        status: "available",
+      },
+      semantic_epoch: 42,
+      tiers: TIERS,
+    }) as {
+      index_state?: {
+        indexed_count?: number;
+        target_matches?: boolean;
+        status?: string;
+      };
+      semantic_epoch?: number | null;
+    };
+    expect(adapted.index_state).toEqual({
+      source: "vault",
+      indexed_count: 3173,
+      vault_count: 3173,
+      code_count: 10507,
+      indexed_target_root: "Y:\\code\\proj",
+      requested_target_root: "Y:\\code\\proj",
+      target_matches: true,
+      status: "available",
+    });
+    expect(adapted.semantic_epoch).toBe(42);
+  });
+
+  it("preserves an explicit null semantic_epoch as the honest absent marker", () => {
+    // A cold/failed epoch read annotates `null` — freshness known-unknown, never
+    // fabricated. `null` and absent are distinct and never collapsed.
+    const adapted = adaptSearch({
+      results: [],
+      semantic_epoch: null,
+      tiers: TIERS,
+    }) as { semantic_epoch?: number | null };
+    expect("semantic_epoch" in adapted).toBe(true);
+    expect(adapted.semantic_epoch).toBeNull();
+  });
+
+  it("omits freshness entirely when the wire carried none (the degraded path)", () => {
+    // The degraded/empty search envelope emits neither index_state nor an epoch;
+    // the adapter never fabricates a block.
+    const adapted = adaptSearch({ results: [], tiers: TIERS }) as {
+      index_state?: unknown;
+      semantic_epoch?: unknown;
+    };
+    expect("index_state" in adapted).toBe(false);
+    expect("semantic_epoch" in adapted).toBe(false);
+  });
+
+  it("drops a malformed index_state field but keeps the well-formed rest", () => {
+    const adapted = adaptSearch({
+      results: [],
+      index_state: {
+        source: "vault",
+        indexed_count: -5, // negative count is malformed → dropped
+        target_matches: "yes", // non-boolean → dropped
+        status: "indexing",
+      },
+      tiers: TIERS,
+    }) as { index_state?: Record<string, unknown> };
+    expect(adapted.index_state).toEqual({ source: "vault", status: "indexing" });
   });
 
   it("bounds live search result strings and accumulated rows at the adapter", () => {
@@ -1109,7 +1178,7 @@ describe("adaptSearch (live nested rag envelope, W02.P16.S32)", () => {
     ];
 
     const adapted = adaptSearch({
-      envelope: { data: { results: rows } },
+      results: rows,
       tiers: TIERS,
     }) as { results: SearchResult[] };
 

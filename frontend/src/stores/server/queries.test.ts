@@ -154,6 +154,9 @@ import {
   useContentView,
   useEngineEvents,
   useEngineSearch,
+  ENGINE_SEARCH_BUDGET_MS,
+  SEARCH_MAX_RESULTS,
+  SEARCH_QUERY_TIMEOUT_MS,
   useFileTree,
   useFiltersVocabulary,
   useFiltersVocabularyView,
@@ -183,6 +186,7 @@ import {
   useVaultTreeSurface,
   dashboardStateSessionIdentity,
 } from "./queries";
+import { UNIFIED_SEARCH_RESULTS_MAX_ITEMS } from "./searchController";
 import { ENGINE_WAIT } from "../../testing/timing";
 
 function wrapper(client: QueryClient) {
@@ -891,6 +895,29 @@ describe("remaining scoped query cache boundaries", () => {
     expect(emptyQuery.result.current.data).toBeUndefined();
     expect(malformedScope.result.current.data).toBeUndefined();
     expect(malformedQuery.result.current.data).toBeUndefined();
+  });
+
+  // rag-integration-hardening D2/D5: the client budget ordering and the app-bounded
+  // search payload are load-bearing invariants pinned here so a later edit that
+  // breaks the ordering (or drifts the result bound) fails CI deterministically.
+  it("keeps the client search budget strictly above the engine budget plus margin (D2)", () => {
+    // The whole degradation architecture depends on the tiers envelope landing
+    // before the client aborts: client budget MUST strictly exceed the engine's
+    // search budget, with real transport headroom.
+    expect(SEARCH_QUERY_TIMEOUT_MS).toBeGreaterThan(ENGINE_SEARCH_BUDGET_MS);
+    expect(SEARCH_QUERY_TIMEOUT_MS - ENGINE_SEARCH_BUDGET_MS).toBeGreaterThanOrEqual(
+      1_000,
+    );
+  });
+
+  it("bounds the search payload to the merged-view need, under the engine ceiling (D5)", () => {
+    // The app-chosen per-target `max_results` is sized to the unified palette's
+    // merged-view bound — fetching up to N per target keeps the top-N merge
+    // correct when one corpus dominates — and must not drift from it.
+    expect(SEARCH_MAX_RESULTS).toBe(UNIFIED_SEARCH_RESULTS_MAX_ITEMS);
+    // It must stay at or below the engine's MAX_SEARCH_RESULTS ceiling (50 in
+    // engine/crates/vaultspec-api/src/routes/ops.rs), or the engine 400-rejects.
+    expect(SEARCH_MAX_RESULTS).toBeLessThanOrEqual(50);
   });
 
   it("normalizes settings update payloads before the settings mutation", () => {

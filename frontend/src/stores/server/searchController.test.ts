@@ -48,6 +48,7 @@ import {
   isSemanticOffline,
   isTransportError,
   latestBackendsRagAvailable,
+  mergeSemanticEpoch,
   normalizeSearchRagLifecycleWord,
   pathStem,
   pathToDocNodeId,
@@ -426,6 +427,80 @@ describe("interpretSearch (the explicit state machine)", () => {
     // Held results stay visible (not blanked) — a transient refetch error must
     // not blank a list the operator was reading.
     expect(v.results).toHaveLength(1);
+  });
+
+  it("surfaces served index_state + semantic_epoch on a results outcome (D3, raw)", () => {
+    const indexState = {
+      source: "vault",
+      indexed_count: 3173,
+      target_matches: true,
+      status: "available",
+    };
+    const v = interpretSearch({
+      ...base,
+      query: "auth",
+      data: {
+        results: [hit()],
+        tiers: { semantic: { available: true } },
+        index_state: indexState,
+        semantic_epoch: 42,
+      },
+      error: null,
+      isPending: false,
+    });
+    expect(v.state).toBe("results");
+    // Raw served truth, presentation-mapped only downstream.
+    expect(v.semanticEpoch).toBe(42);
+    expect(v.indexState).toEqual(indexState);
+    // The reference is forwarded, never cloned (frontend-store-selectors: no
+    // fresh reference minted), so identity is stable across renders.
+    expect(v.indexState).toBe(indexState);
+  });
+
+  it("preserves a null semantic_epoch (honest known-unknown), distinct from absent", () => {
+    const v = interpretSearch({
+      ...base,
+      query: "auth",
+      data: {
+        results: [hit()],
+        tiers: { semantic: { available: true } },
+        semantic_epoch: null,
+      },
+      error: null,
+      isPending: false,
+    });
+    expect(v.semanticEpoch).toBeNull();
+    expect(v.indexState).toBeUndefined();
+  });
+
+  it("idle reports no served freshness", () => {
+    const v = interpretSearch({
+      ...base,
+      query: "",
+      data: undefined,
+      error: null,
+      isPending: false,
+    });
+    expect(v.state).toBe("idle");
+    expect(v.semanticEpoch).toBeUndefined();
+    expect(v.indexState).toBeUndefined();
+  });
+});
+
+describe("mergeSemanticEpoch (one shared epoch across the two corpora)", () => {
+  it("prefers a concrete number over null over undefined", () => {
+    expect(mergeSemanticEpoch(42, null)).toBe(42);
+    expect(mergeSemanticEpoch(null, 7)).toBe(7);
+    expect(mergeSemanticEpoch(5, 9)).toBe(5); // both warm, agree in practice
+  });
+
+  it("collapses to null only when neither corpus served a number but one is known-unknown", () => {
+    expect(mergeSemanticEpoch(null, undefined)).toBeNull();
+    expect(mergeSemanticEpoch(undefined, null)).toBeNull();
+  });
+
+  it("is undefined only when neither corpus served an epoch", () => {
+    expect(mergeSemanticEpoch(undefined, undefined)).toBeUndefined();
   });
 });
 
