@@ -161,3 +161,36 @@ graph breathes into equilibrium once, then stays put."
 - The Option-A (annealed collide) re-open trigger stays untouched: this ADR
   fixes under-annealing BEFORE the freeze; micro-buzz at rest remains the
   recorded separate trigger.
+
+## Amendment (2026-07-03): cooling ramp + improvement-stall release
+
+First live review found the constant-temperature hold perceptually wrong: the
+collide jitter floor at the held temperature sits ABOVE any fixed calm
+threshold, so the calm gate never fired on real graphs — the field buzzed at
+constant amplitude for the full hard cap and snapped off at release, "a
+permanent jitter state for 10 seconds, even when seemingly already settled."
+Two refinements, both inside the anneal (no lifecycle change):
+
+- **The hold is a cooling RAMP, not a plateau.** The held alpha target
+  declines continuously from `annealAlpha` toward zero across the
+  `annealMaxTicks` budget (classic annealing schedule): early hold does the
+  hot macro-reorganization, the tail fine-tunes, and anneal motion FADES
+  rather than buzzing at one amplitude and stopping audibly. The freeze that
+  eventually fires is imperceptible because the motion already died.
+- **Release on measured improvement stall.** The calm gate keeps its raw
+  absolute fast-path, and gains a TEMPERATURE-NORMALIZED trend detector: an
+  EMA of (mean displacement / current alpha) that must improve by at least
+  `annealStallImprovement` to reset a stall counter; `annealStallTicks`
+  ticks without improvement mean the anneal has extracted everything
+  available at the current temperature — release immediately, whatever the
+  raw jitter floor is. A layout that opens already-converged (the persisted
+  base, a small graph) stalls within ~1.5 s and releases, instead of
+  simmering to the cap. Normalizing by alpha keeps the detector honest under
+  the ramp (the raw floor shrinks with temperature; the normalized floor
+  flattens only when STRUCTURE stops improving).
+- The freeze now also cancels any residual anneal bookkeeping, so a ramp that
+  cools below `alphaMin` before the explicit release can never leave a stale
+  hold behind on a frozen field.
+
+The hard cap stays the outer bound; two new registry constants
+(`annealStallTicks`, `annealStallImprovement`) join the anneal set.

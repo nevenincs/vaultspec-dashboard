@@ -403,7 +403,33 @@ export const GRAPH_CONTROL_SCHEMA = [
     default: 600,
     exposure: [],
     description:
-      "Hard cap on anneal ticks (about ten seconds at sixty frames per second) — the bounded active-phase budget.",
+      "Hard cap on anneal ticks (about ten seconds at sixty frames per second) — the bounded active-phase budget. The held target also RAMPS from annealAlpha toward zero across this budget, so anneal motion fades instead of buzzing at one amplitude.",
+  },
+  {
+    id: "annealStallTicks",
+    label: "Anneal stall ticks",
+    group: "simulation",
+    type: "number",
+    min: 30,
+    max: 600,
+    step: 10,
+    default: 90,
+    exposure: [],
+    description:
+      "Ticks without measurable structural improvement (temperature-normalized displacement trend) before the anneal releases early — an already-converged layout stops simmering within about a second and a half.",
+  },
+  {
+    id: "annealStallImprovement",
+    label: "Anneal stall improvement",
+    group: "simulation",
+    type: "number",
+    min: 0.005,
+    max: 0.2,
+    step: 0.005,
+    default: 0.02,
+    exposure: [],
+    description:
+      "Minimum relative improvement of the normalized displacement trend that counts as progress and resets the stall window.",
   },
 
   // ===================== VISUALISATION =======================================

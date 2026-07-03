@@ -252,18 +252,16 @@ describe("D3ForceSolver settle-probe — (f) convergence-gated anneal", () => {
     const n = 40;
     const solver = makeSolver(n, ringEdges(n));
     solver.reheat(true);
-    let minAlphaDuringHold = Infinity;
+    let alphaAtEarlyHold = 0;
     let releaseTick = -1;
     let frozeTick = -1;
     let dispBeforeFreeze = Infinity;
     let prev = Infinity;
     for (let t = 0; t < 2000; t++) {
       const m = solver.tick();
+      if (t === 60) alphaAtEarlyHold = m.alpha;
       if (releaseTick === -1 && (solver as any).annealRemaining === 0) {
         releaseTick = t;
-      }
-      if (releaseTick === -1) {
-        minAlphaDuringHold = Math.min(minAlphaDuringHold, m.alpha);
       }
       if (m.awake === 0) {
         frozeTick = t;
@@ -273,11 +271,40 @@ describe("D3ForceSolver settle-probe — (f) convergence-gated anneal", () => {
       prev = m.meanDisplacement;
     }
     expect(releaseTick).toBeGreaterThan(30); // a real hold, never an instant release
-    expect(minAlphaDuringHold).toBeGreaterThan(0.2); // held near the anneal target
-    expect(frozeTick).toBeGreaterThan(releaseTick); // the freeze fires only after release
+    // The early hold is HOT (near the anneal target); the ADR-amendment ramp
+    // then cools it continuously, so no constant-amplitude buzz + snap-off.
+    expect(alphaAtEarlyHold).toBeGreaterThan(0.2);
+    expect(frozeTick).toBeGreaterThanOrEqual(releaseTick); // never frozen mid-hold
     // The landed freeze is converged: residual motion far below the old
     // interrupted-anneal tension the schedule-driven cooldown froze in.
     expect(dispBeforeFreeze).toBeLessThan(0.05);
+  });
+
+  it("an already-converged layout releases on the improvement stall, well before the cap", () => {
+    // ADR amendment: the temperature-normalized trend detector. Settle one
+    // solver fully, seed a FRESH solver at those converged positions, and
+    // restart it: nothing structural improves, so the stall window (not the
+    // 600-tick cap) ends the hold — the "seemingly already settled" case
+    // stops simmering.
+    const n = 40;
+    const donor = makeSolver(n, ringEdges(n));
+    donor.prewarm();
+    settleLive(donor);
+    const settled = positions(donor);
+
+    const solver = makeSolver(n, ringEdges(n));
+    solver.seed((i) => settled[i]);
+    solver.reheat(false); // warm restart over the converged seed
+    let releaseTick = -1;
+    for (let t = 0; t < 700; t++) {
+      solver.tick();
+      if ((solver as any).annealRemaining === 0) {
+        releaseTick = t;
+        break;
+      }
+    }
+    expect(releaseTick).toBeGreaterThan(-1);
+    expect(releaseTick).toBeLessThan(400); // stall/calm release, never the 600 cap
   });
 
   it("gentle retunes and drags never inherit the anneal hold", () => {

@@ -52,6 +52,8 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   annealSettleSpeed: 0.12,
   annealSettleTicks: 30,
   annealMaxTicks: 600,
+  annealStallTicks: 90,
+  annealStallImprovement: 0.02,
   // --- visualisation: the 9 appearance params ---
   nodeSizeScale: 1,
   nodeSalienceScale: 1,

@@ -178,6 +178,16 @@ const ANNEAL_ALPHA = controlNumber("annealAlpha");
 const ANNEAL_SETTLE_SPEED = controlNumber("annealSettleSpeed");
 const ANNEAL_SETTLE_TICKS = controlNumber("annealSettleTicks");
 const ANNEAL_MAX_TICKS = controlNumber("annealMaxTicks");
+/** Early-release stall detector (ADR amendment): ticks without measurable
+ *  structural improvement — an EMA of TEMPERATURE-NORMALIZED displacement
+ *  (mean / alpha) that fails to improve by ANNEAL_STALL_IMPROVEMENT — before
+ *  the anneal releases. Normalizing by alpha keeps the trend honest under the
+ *  cooling ramp: the raw jitter floor shrinks with temperature, so only a
+ *  flattening NORMALIZED floor means the structure stopped improving. */
+const ANNEAL_STALL_TICKS = controlNumber("annealStallTicks");
+const ANNEAL_STALL_IMPROVEMENT = controlNumber("annealStallImprovement");
+/** Smoothing factor for the stall detector's displacement EMA. */
+const ANNEAL_EMA_WEIGHT = 0.1;
 
 /** Per-tick dynamics for the host's convergence / diagnostics. */
 export interface TickMetrics {
@@ -223,6 +233,9 @@ export class D3ForceSolver {
   // drag all CANCEL the anneal — it belongs to cold/warm restarts only.
   private annealRemaining = 0;
   private annealCalm = 0;
+  private annealEma = 0;
+  private annealBest = Infinity;
+  private annealStall = 0;
 
   constructor(
     nodeCount: number,
@@ -529,6 +542,11 @@ export class D3ForceSolver {
     // is reserved for the recorded re-open trigger — micro-buzz recurring here after the
     // energy valves close.
     if (!dragging && this.sim.alpha() < this.params.alphaMin && this.awakeCount > 0) {
+      // The cooling ramp can cross alphaMin before the explicit release near
+      // the budget's end — the freeze then also retires the anneal bookkeeping
+      // so no stale hold survives onto a frozen field (ADR amendment).
+      this.cancelAnneal();
+      this.sim.alphaTarget(0);
       this.sleepAll();
       return { alpha: this.sim.alpha(), meanDisplacement: 0, awake: 0 };
     }
@@ -543,15 +561,34 @@ export class D3ForceSolver {
         disp += Math.hypot(n.vx ?? 0, n.vy ?? 0);
       }
       const mean = this.count ? disp / this.count : 0;
-      // Convergence-gated anneal: while the hold is live, count calm ticks and
-      // release the target on sustained calm or budget exhaustion — only then
-      // does alpha decay toward the alphaMin freeze. The freeze cannot fire
-      // during the hold (alpha never falls below the target), so the frozen
-      // layout is always a MEASURED equilibrium, never an interrupted anneal.
+      // Convergence-gated anneal (+ ADR amendment): the held target COOLS on a
+      // ramp across the budget so anneal motion fades instead of buzzing at one
+      // amplitude, and release fires on the FIRST of: sustained raw calm, a
+      // measured improvement STALL (the temperature-normalized displacement
+      // trend stopped getting better — the layout was already converged), or
+      // the hard cap. Only after release does alpha decay to the alphaMin
+      // freeze, so the frozen layout is always a MEASURED equilibrium.
       if (this.annealRemaining > 0 && !dragging) {
         this.annealRemaining--;
+        this.sim.alphaTarget(ANNEAL_ALPHA * (this.annealRemaining / ANNEAL_MAX_TICKS));
         this.annealCalm = mean < ANNEAL_SETTLE_SPEED ? this.annealCalm + 1 : 0;
-        if (this.annealCalm >= ANNEAL_SETTLE_TICKS || this.annealRemaining === 0) {
+        const alpha = this.sim.alpha();
+        const normalized = alpha > 0 ? mean / alpha : 0;
+        this.annealEma =
+          this.annealEma === 0
+            ? normalized
+            : this.annealEma * (1 - ANNEAL_EMA_WEIGHT) + normalized * ANNEAL_EMA_WEIGHT;
+        if (this.annealEma < this.annealBest * (1 - ANNEAL_STALL_IMPROVEMENT)) {
+          this.annealBest = this.annealEma;
+          this.annealStall = 0;
+        } else {
+          this.annealStall++;
+        }
+        if (
+          this.annealCalm >= ANNEAL_SETTLE_TICKS ||
+          this.annealStall >= ANNEAL_STALL_TICKS ||
+          this.annealRemaining === 0
+        ) {
           this.cancelAnneal();
           this.sim.alphaTarget(0);
         }
@@ -656,6 +693,9 @@ export class D3ForceSolver {
   private beginAnneal(): void {
     this.annealRemaining = ANNEAL_MAX_TICKS;
     this.annealCalm = 0;
+    this.annealEma = 0;
+    this.annealBest = Infinity;
+    this.annealStall = 0;
     this.sim.alphaTarget(ANNEAL_ALPHA);
   }
 
@@ -664,6 +704,9 @@ export class D3ForceSolver {
   private cancelAnneal(): void {
     this.annealRemaining = 0;
     this.annealCalm = 0;
+    this.annealEma = 0;
+    this.annealBest = Infinity;
+    this.annealStall = 0;
   }
 
   /** Gentle, change-proportional re-energise for a LIVE retune (force/size sliders).
