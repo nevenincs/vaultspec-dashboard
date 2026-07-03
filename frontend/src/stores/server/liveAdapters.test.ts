@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { adaptOpsWrite } from "./engine";
 import type { OpsResult, SearchResult } from "./engine";
 import {
+  adaptCodeFiles,
   adaptFilters,
   adaptFileTree,
   adaptGitOp,
@@ -365,6 +366,99 @@ describe("adaptFileTree (code tree listing)", () => {
 
     expect(adapted.truncated).toBeNull();
     expect(adapted.next_cursor).toBeUndefined();
+  });
+});
+
+describe("adaptCodeFiles (complete code-file listing, search-providers ADR D1)", () => {
+  it("normalizes entries and falls back to code:{path} when node_id is absent", () => {
+    const adapted = adaptCodeFiles({
+      entries: [
+        {
+          path: " src/main.ts ",
+          node_id: " code:src/main.ts ",
+          title: " Main entry ",
+          lang: " typescript ",
+        },
+        {
+          path: " src/lib.rs ",
+          node_id: "   ", // blank → derives code:{path}
+          lang: " rust ",
+        },
+        {
+          path: "   ", // blank path → dropped
+          node_id: "code:oops",
+        },
+        "not an entry",
+      ],
+      truncated: null,
+      tiers: TIERS,
+    });
+
+    expect(adapted.entries).toEqual([
+      {
+        path: "src/main.ts",
+        node_id: "code:src/main.ts",
+        title: "Main entry",
+        lang: "typescript",
+      },
+      {
+        path: "src/lib.rs",
+        node_id: "code:src/lib.rs",
+        lang: "rust",
+      },
+    ]);
+    expect(adapted.truncated).toBeNull();
+    expect(adapted.tiers).toEqual(TIERS);
+  });
+
+  it("omits absent optional fields rather than emitting undefined keys", () => {
+    const adapted = adaptCodeFiles({
+      entries: [{ path: "src/bare.py", node_id: "code:src/bare.py" }],
+      truncated: null,
+      tiers: TIERS,
+    });
+
+    expect(adapted.entries[0]).toEqual({
+      path: "src/bare.py",
+      node_id: "code:src/bare.py",
+    });
+    expect("title" in adapted.entries[0]!).toBe(false);
+    expect("lang" in adapted.entries[0]!).toBe(false);
+  });
+
+  it("passes through honest truncation and drops malformed blocks", () => {
+    const capped = adaptCodeFiles({
+      entries: [],
+      truncated: { returned_files: 50000.7, reason: " walk ceiling " },
+      tiers: TIERS,
+    });
+    expect(capped.truncated).toEqual({ returned_files: 50000, reason: "walk ceiling" });
+
+    // Negative counts are clamped to 0 by the adapter (never rejected).
+    const badCount = adaptCodeFiles({
+      entries: [],
+      truncated: { returned_files: -1, reason: "negative" },
+      tiers: TIERS,
+    });
+    expect(badCount.truncated).toEqual({ returned_files: 0, reason: "negative" });
+
+    const missingReason = adaptCodeFiles({
+      entries: [],
+      truncated: { returned_files: 100 },
+      tiers: TIERS,
+    });
+    expect(missingReason.truncated).toBeNull();
+  });
+
+  it("defaults to empty entries and null truncated on a missing body", () => {
+    const fromNull = adaptCodeFiles(null);
+    expect(fromNull.entries).toEqual([]);
+    expect(fromNull.truncated).toBeNull();
+    expect(fromNull.tiers).toEqual({});
+
+    const fromEmpty = adaptCodeFiles({});
+    expect(fromEmpty.entries).toEqual([]);
+    expect(fromEmpty.truncated).toBeNull();
   });
 });
 

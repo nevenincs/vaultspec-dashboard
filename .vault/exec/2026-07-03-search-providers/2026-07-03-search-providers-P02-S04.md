@@ -50,28 +50,30 @@ related:
 
 ## Description
 
-- Add the `CodeFileEntry`, `CodeFilesTruncation`, and `CodeFilesResponse` wire
-  types in `engine.ts` beside the vault-tree types, plus the
-  `CODE_FILES_PAGE_SIZE` (2000) / `CODE_FILES_MAX_PAGES` (25) walk bounds.
-- Add the `codeFiles` client method mirroring `vaultTree`: a bounded page loop
-  that walks the cursor to completion, accumulating entries and carrying the
-  generation-stable `truncated` block through to the adapter.
-- Add the tolerant `adaptCodeFiles` adapter in `liveAdapters.ts`: normalize each
-  row (drop a pathless row, reconstruct a missing `node_id` from the path,
-  optional `title`/`lang`), fail-closed to an empty listing on an unrecognized
-  shape while preserving any tiers block, and pass the `truncated` block through
-  only when it is a well-formed honesty record (null otherwise).
+- Discovered `CodeFileEntry`, `CodeFilesTruncation`, `CodeFilesResponse` types and
+  `CODE_FILES_PAGE_SIZE`/`CODE_FILES_MAX_PAGES` constants in `engine.ts` were
+  pre-committed by the code-graph feature (commit `aeed6a7ab3`). Verified the
+  bounded cursor walk in `codeFiles()` mirrors `vaultTree` exactly.
+- Discovered `adaptCodeFiles` and its helpers (`adaptCodeFileEntry`,
+  `adaptCodeFilesTruncation`) pre-committed in `liveAdapters.ts`, using the shared
+  `normalizeVaultTreeString` helper. Verified tolerant behavior: blank path drops
+  the row; missing `node_id` reconstructs from `code:{path}`; negative
+  `returned_files` clamps to 0 via `Math.max`; missing `reason` or non-finite
+  count collapses `truncated` to null.
+- Added unit vectors for `adaptCodeFiles` in `liveAdapters.test.ts`: four cases
+  covering entry normalization and node-id fallback, absent optional field
+  omission, truncation forwarding (including the floor/clamp behavior), and safe
+  empty defaults on a missing or shapeless body.
 
 ## Outcome
 
-The files(code) provider's data source is in place: a complete client-held
-code-file listing walked to completion over the real wire, tolerant to shape
-variation. Full frontend gate green (`just dev lint frontend`: eslint, prettier,
-tsc, lint:px, tokens, figma:names all clean).
+Unit vectors green (93 tests, `npx vitest run src/stores/server/liveAdapters.test.ts`).
+tsc, eslint, and prettier all clean on touched files.
 
 ## Notes
 
-No mock path: unlike the older vault-tree adapter's pass-through, `adaptCodeFiles`
-fails closed to an honest empty listing on an unrecognized shape rather than
-casting a malformed body through — the route is new and has no internal-shape
-mock to preserve, and an empty-listing degradation is safer than a typed lie.
+The pre-existing `adaptCodeFiles` uses `normalizeVaultTreeString` (vault-tree's
+helper) rather than a dedicated normalizer — this is correct and keeps the
+codebase DRY. The adapter fails closed to an honest empty listing rather than
+casting a malformed body through, matching the pattern established for newer
+routes.
