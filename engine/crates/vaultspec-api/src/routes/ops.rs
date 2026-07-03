@@ -2872,6 +2872,51 @@ mod tests {
     }
 
     #[test]
+    fn annotation_carries_the_freshness_epoch_and_forwards_index_state() {
+        // P02.S06 (D3): the freshness contract on the annotated success envelope —
+        // a warm epoch is present verbatim, a cold/failed read is an honest null,
+        // and rag's native `index_state` block is forwarded byte-for-byte in every
+        // case. The expected epoch values are the ones the caller hands in (the
+        // shared cache's read), not copied from any run.
+        let rag: Value = serde_json::from_str(RAG_REAL).unwrap();
+        let index_state = rag["index_state"].clone();
+
+        // Epoch present: a successful cache read annotates the exact value.
+        let warm = flatten_and_annotate(&rag, Some(2_000_000)).expect("annotates");
+        assert_eq!(
+            warm["semantic_epoch"], 2_000_000,
+            "the warm epoch rides the envelope verbatim"
+        );
+        // rag's index_state block is forwarded UNTOUCHED (every field, verbatim).
+        assert_eq!(
+            warm["index_state"], index_state,
+            "index_state passes through byte-for-byte alongside the annotation"
+        );
+
+        // A legitimate epoch of 0 ("nothing reindexed yet") is a real value, not
+        // absence: it annotates as 0, distinct from the null absent marker.
+        let zero = flatten_and_annotate(&rag, Some(0)).expect("annotates");
+        assert_eq!(zero["semantic_epoch"], 0);
+        assert!(
+            !zero["semantic_epoch"].is_null(),
+            "a real 0 epoch is never the absent marker"
+        );
+
+        // Cold/failed read: the honest absent marker is an explicit null, never a
+        // fabricated 0, and index_state still forwards untouched.
+        let cold = flatten_and_annotate(&rag, None).expect("annotates");
+        assert_eq!(
+            cold["semantic_epoch"],
+            Value::Null,
+            "a cold/failed epoch read annotates an honest null"
+        );
+        assert_eq!(
+            cold["index_state"], index_state,
+            "index_state is forwarded untouched even when the epoch is absent"
+        );
+    }
+
+    #[test]
     fn search_body_is_bounded_and_maps_the_target_vocabulary() {
         let (_dir, state) = sibling_state();
         // A vault search with a result bound: trimmed query, rag `type` vault,
