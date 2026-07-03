@@ -41,7 +41,6 @@ related:
      DO NOT add fields beyond those scaffolded; metadata lives
      only in the frontmatter. -->
 
-
 <!-- HIERARCHY AND TIERS:
      Epic > Wave > Phase > Step. Step is the canonical leaf-row
      noun. Execution Record artifact: <Step Record>.
@@ -103,7 +102,6 @@ related:
 
 Close the filter lost-update race and harden the in-selector derivations against the getSnapshot crash class.
 
-
 <!-- One-line headline summary plan. -->
 
 - [x] `P01.S01` - SRR-001: serialize filter writes through the queued-chain shape already used for panel_state (compute the PATCH payload from the freshest cache inside the queued thunk) so rapid toggles cannot lost-update each other; `frontend/src/stores/server/dashboardState.ts`.
@@ -113,8 +111,8 @@ Close the filter lost-update race and harden the in-selector derivations against
 
 Document or gate the redundant dashboard-state invalidate and settle the view-local selection metadata.
 
-- [ ] `P02.S03` - SRR-003: document (or gate) the updateDashboardStateCache setQueryData + immediate invalidateQueries as a deliberate out-of-order convergence backstop; `frontend/src/stores/server/dashboardState.ts`.
-- [ ] `P02.S04` - SRR-004: promote viewStore.selection edge/event metadata into dashboard-state or re-document it as deliberately view-local; `frontend/src/stores/view/viewStore.ts`.
+- [x] `P02.S03` - SRR-003: document (or gate) the updateDashboardStateCache setQueryData + immediate invalidateQueries as a deliberate out-of-order convergence backstop; `frontend/src/stores/server/dashboardState.ts`.
+- [x] `P02.S04` - SRR-004: promote viewStore.selection edge/event metadata into dashboard-state or re-document it as deliberately view-local; `frontend/src/stores/view/viewStore.ts`.
 
 ## Description
 
