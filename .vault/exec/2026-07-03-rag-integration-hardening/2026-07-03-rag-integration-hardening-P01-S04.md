@@ -9,9 +9,6 @@ related:
   - "[[2026-07-03-rag-integration-hardening-plan]]"
 ---
 
-
-
-
 # Update the engine wire tests for the HTTP search path: rag-down tier parity, request-bound rejections, shape-miss degradation, and annotation over the flat fixture
 
 ## Scope

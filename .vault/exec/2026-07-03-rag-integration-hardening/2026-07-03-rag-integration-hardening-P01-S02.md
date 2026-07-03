@@ -9,9 +9,6 @@ related:
   - "[[2026-07-03-rag-integration-hardening-plan]]"
 ---
 
-
-
-
 # Swap the /search route onto the rag-client HTTP transport under rag_offload: map SearchBody query/target/max_results to rag's query/type/project_root/top_k vocabulary, introduce a warm-service SEARCH_HTTP_BUDGET, keep the pre-rag validation and typed-discovery availability gate, and delete the CLI spawn path (SEARCH_SIBLING_TIMEOUT and the rag_invocation search arm)
 
 ## Scope

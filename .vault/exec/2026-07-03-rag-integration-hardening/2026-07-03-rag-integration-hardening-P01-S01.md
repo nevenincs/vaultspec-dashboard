@@ -9,9 +9,6 @@ related:
   - "[[2026-07-03-rag-integration-hardening-plan]]"
 ---
 
-
-
-
 # Rewrite the rag-client search module as a pure bounded HTTP transport: add an http_search verb that POSTs the engine-built body verbatim to rag /search and returns the flat envelope untouched, delete the stale target_node_id and the forward_search annotation, keep degradation_reason, and cover verbatim transit plus bounds plus error mapping with FakeTransport unit tests
 
 ## Scope

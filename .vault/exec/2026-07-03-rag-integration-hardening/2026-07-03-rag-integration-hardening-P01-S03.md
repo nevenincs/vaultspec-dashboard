@@ -9,9 +9,6 @@ related:
   - "[[2026-07-03-rag-integration-hardening-plan]]"
 ---
 
-
-
-
 # Point flatten_and_annotate and hit_node_id at the flat HTTP response shape (top-level results, snippet field, source as the vault/codebase discriminator), re-record the live-response fixture from the HTTP path, and keep the SearchShapeMiss stated-reason degradation for every shape drift
 
 ## Scope
