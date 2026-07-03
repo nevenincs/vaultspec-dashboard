@@ -989,4 +989,59 @@ describe("useSearchController (real engine, live wiring)", () => {
       if (result.current.semanticOffline) expect(r.score).toBeLessThan(1);
     }
   });
+
+  it("rag-gated: a real semantic search serves the freshness contract when the semantic tier is up", async (ctx) => {
+    // The rag-gated live SUCCESS test (rag-integration-hardening D4): drive a real
+    // settled query through the controller and assert the served FRESHNESS
+    // contract — but only when the served tiers report the semantic tier
+    // available. The gate is the wire's own tiers truth, read through the
+    // controller's tiers-gated `semanticOffline` (and the transport-error state),
+    // never guessed: on a machine with no resident rag the fixture serve degrades
+    // the semantic tier, so this SKIPS honestly with a stated reason rather than
+    // asserting a chain that cannot run. The fixture serve scopes a scratch vault
+    // copy rag has not indexed, so the honest live outcome here is a semantic
+    // no-results (empty hits) that STILL carries the freshness envelope.
+    const { result } = renderHook(() => useSearchController("graph", "vault", scope), {
+      wrapper,
+    });
+    await waitFor(
+      () =>
+        expect(["results", "no-results", "semantic-offline", "error"]).toContain(
+          result.current.state,
+        ),
+      ENGINE_WAIT,
+    );
+
+    // Gate on served tiers truth: a degraded semantic tier (no resident rag) or a
+    // transport fault means the success chain cannot be exercised — skip loudly.
+    if (result.current.semanticOffline || result.current.state === "error") {
+      ctx.skip(
+        `semantic tier unavailable on this machine (state=${result.current.state}, ` +
+          `semanticOffline=${result.current.semanticOffline}); live search success ` +
+          `chain not exercised — needs a resident rag`,
+      );
+      return;
+    }
+
+    // Semantic tier is up: the outcome is a real semantic terminal state
+    // (results when the scope is indexed, no-results for the unindexed fixture),
+    // never the offline fallback band.
+    expect(["results", "no-results"]).toContain(result.current.state);
+
+    // Served freshness rides the interpreted view (D3): the shared epoch is a
+    // number (warm cache) or an explicit null (cold — a known-unknown), never
+    // undefined on an active search; rag's index_state is forwarded as an object
+    // (or absent per the adapter contract when the engine degraded to a shape
+    // miss, which is not this success path).
+    const { semanticEpoch, indexState } = result.current;
+    expect(semanticEpoch === null || typeof semanticEpoch === "number").toBe(true);
+    expect(indexState === undefined || typeof indexState === "object").toBe(true);
+
+    // Every hit carries the engine's node-id value-add key (null on a typed
+    // annotation miss, never a dropped key). Vacuous on the unindexed no-results
+    // outcome; load-bearing when the scope is indexed.
+    for (const r of result.current.results) {
+      expect(r).toHaveProperty("node_id");
+    }
+  });
 });
