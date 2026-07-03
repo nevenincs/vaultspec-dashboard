@@ -344,6 +344,20 @@ describe("command palette store", () => {
         error: false,
       }).incompleteNote,
     ).toBeNull();
+    // At idle (no query) the note stays silent even on a capped corpus — no
+    // matches are shown yet, so "missing matches" would be premature.
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "",
+        cursor: 0,
+        expanded: false,
+        pills: [],
+        searchState: "idle",
+        semanticOffline: false,
+        error: false,
+        incomplete: true,
+      }).incompleteNote,
+    ).toBeNull();
   });
 
   it("normalizes corrupted palette state before open and toggle transitions", () => {

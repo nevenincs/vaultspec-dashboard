@@ -182,8 +182,10 @@ export function deriveSearchPalettePresentationView(context: {
 
   // A walk-capped provider listing: the name matches may be missing files. One
   // plain-language line, no mechanism words (search-providers ADR D1 / D8).
+  // Gated on an active query — at idle no matches are shown yet, so announcing
+  // missing matches would be premature.
   const incompleteNote =
-    context.incomplete === true
+    context.incomplete === true && query.length > 0
       ? "Some files may be missing from name matches — the repository is very large."
       : null;
 
