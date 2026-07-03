@@ -130,6 +130,52 @@ async fn run_sibling(
     run_sibling_bounded(state, program, args, SIBLING_TIMEOUT, SIBLING_STDOUT_CAP).await
 }
 
+/// Convert a completed [`LifecycleRun`] to the JSON envelope `Value` that
+/// [`run_sibling`] would return on success, or an error description string on a
+/// non-zero exit.  Pure function — no I/O, no spawning — so the retry logic
+/// in [`run_sibling_version_tolerant`] can be exercised in unit tests.
+fn lifecycle_run_to_envelope(run: &LifecycleRun) -> Result<Value, String> {
+    if run.code != Some(0) {
+        return Err(format!("exited {:?}", run.code));
+    }
+    let raw = &run.stdout;
+    Ok(serde_json::from_str(raw).unwrap_or_else(|_| json!({ "raw": raw, "exit": run.code })))
+}
+
+/// Like [`run_sibling`] but with version-tolerant `--json`: if the first
+/// attempt exits 2 (a typer usage-error) or the combined output contains the
+/// unknown-option text (detected by [`rag_rejected_json`]), the verb is retried
+/// once WITHOUT `--json`.  A genuine non-zero exit — one that does NOT fire
+/// [`rag_rejected_json`] — still surfaces as a 502, preserving the contract.
+///
+/// Uses [`run_rag_lifecycle_capture`] so both stdout AND stderr are available
+/// for the rejection heuristic; the final JSON envelope is built from stdout
+/// only via [`lifecycle_run_to_envelope`], matching [`run_sibling`] semantics.
+async fn run_sibling_version_tolerant(
+    state: &AppState,
+    program: &[String],
+    args: &[&str],
+) -> Result<Value, (StatusCode, Json<Value>)> {
+    let cwd = state.active_cell().root.clone();
+    // First attempt: with --json for the structured-output contract.
+    let mut args_with_json: Vec<&str> = args.to_vec();
+    args_with_json.push("--json");
+    let mut run = run_rag_lifecycle_capture(state, &cwd, program, &args_with_json).await?;
+    // Version-tolerant retry: an older rag rejects --json with exit 2 (typer
+    // usage error) or produces the unknown-option text on a non-standard exit.
+    // Retry exactly once without --json (no cross-repo ordering requirement).
+    if run.code != Some(0) && rag_rejected_json(&run) {
+        run = run_rag_lifecycle_capture(state, &cwd, program, args).await?;
+    }
+    lifecycle_run_to_envelope(&run).map_err(|msg| {
+        super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("{} {}", program[0], msg),
+        )
+    })
+}
+
 /// The bounded sibling runner. `timeout`/`cap` are parameters so tests can
 /// inject short bounds; the production wrapper [`run_sibling`] pins the
 /// 120s / 8 MiB constants.
@@ -1014,22 +1060,34 @@ async fn run_rag_lifecycle_capture(
 /// just-started or just-won-the-race rag service may still be loading models when
 /// the first `/health` probe fires, so a single probe would misreport a slow-but-
 /// successful start as failed. Bounded at a few attempts with short gaps.
-async fn reprobe_rag_until_running(vault: &FsPath) -> rag_client::client::RagMachineState {
+///
+/// Each `probe_machine_state` call is blocking std::net I/O — offloaded via
+/// `rag_offload` (spawn_blocking) so the ≈7.5s worst-case probe loop never pins
+/// a Tokio async worker (ADR D5 / T1-R2). The inter-probe sleeps stay async
+/// (tokio::time::sleep).
+async fn reprobe_rag_until_running(
+    state: &AppState,
+    vault: &FsPath,
+) -> Result<rag_client::client::RagMachineState, (StatusCode, Json<Value>)> {
     const ATTEMPTS: usize = 4;
     let gap = Duration::from_millis(500);
     let mut last = rag_client::client::RagMachineState::Absent {
         reason: "rag start re-probe pending".to_string(),
     };
     for i in 0..ATTEMPTS {
-        last = rag_client::client::probe_machine_state(vault, RAG_LIFECYCLE_HEALTH_TIMEOUT);
+        let vault_clone = vault.to_owned();
+        last = rag_offload(state, move || {
+            rag_client::client::probe_machine_state(&vault_clone, RAG_LIFECYCLE_HEALTH_TIMEOUT)
+        })
+        .await?;
         if last.is_running() {
-            return last;
+            return Ok(last);
         }
         if i + 1 < ATTEMPTS {
             tokio::time::sleep(gap).await;
         }
     }
-    last
+    Ok(last)
 }
 
 /// `server-start` with the machine-singleton, attach-never-own discipline
@@ -1181,7 +1239,8 @@ async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControl
     // Non-zero exit: either we lost the race (a CLI/MCP/other dashboard owns the
     // machine, rag's lock refused our second service) or a genuine failure. Re-probe
     // with a bounded settle — a just-won race may still be warming — before deciding.
-    match reprobe_rag_until_running(&cell.root.join(".vault")).await {
+    // Probes run under rag_offload so blocking I/O stays off the async worker (T1-R2).
+    match reprobe_rag_until_running(state, &cell.root.join(".vault")).await? {
         rag_client::client::RagMachineState::Running { info, health } => Ok(super::envelope(
             json!({ "envelope": {
                 "status": "machine_owned",
@@ -1248,6 +1307,13 @@ async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControl
 async fn stop_rag_service(state: &AppState, cell: &ScopeCell) -> ApiResult {
     let run = run_rag_lifecycle_capture(state, &cell.root, &rag_invocation(), &["server", "stop"])
         .await?;
+    // TIERS-ON-STOP-FAILED (ADR D5 / T1-R3): the tiers block reports the TRUE
+    // current service state from discovery (`query_tiers`), NOT the outcome of
+    // this stop attempt.  When stop fails and rag is still running, the semantic
+    // tier correctly shows available — this is the decided, correct behavior.
+    // Callers MUST read the envelope `status` field ("stopped" vs "stop_failed")
+    // to learn the operation result; inferring from tiers would be wrong.  The
+    // stop failure lives in the envelope, not in the tiers.
     Ok(super::envelope(
         json!({ "envelope": {
             "status": if run.code == Some(0) { "stopped" } else { "stop_failed" },
@@ -2321,7 +2387,9 @@ pub async fn ops_rag(
     // discipline through their dedicated capture handlers: start appends `--json`
     // VERSION-TOLERANTLY (retrying without it when an older rag exits 2 rejecting
     // the option, per `rag_rejected_json`), stop carries no `--json`.
-    // status/doctor/install keep the shared JSON sibling runner (RAG_CLI_WHITELIST).
+    // status/doctor/install apply the SAME version-tolerant --json retry via
+    // `run_sibling_version_tolerant` (ADR D5 / T1-R1), closing the residual where
+    // a future rag dropping --json on these verbs would 502 loudly.
     match verb.as_str() {
         "server-start" => start_rag_service(&state, &cell, &body).await,
         "server-stop" => stop_rag_service(&state, &cell).await,
@@ -2329,8 +2397,8 @@ pub async fn ops_rag(
             let (_, args) = RAG_CLI_WHITELIST
                 .iter()
                 .find(|(name, _)| *name == verb)
-                .expect("verb is in the JSON-runner lifecycle set");
-            let envelope = run_sibling(&state, &rag_invocation(), args).await?;
+                .expect("verb is in the version-tolerant lifecycle set");
+            let envelope = run_sibling_version_tolerant(&state, &rag_invocation(), args).await?;
             Ok(super::envelope(
                 json!({ "envelope": envelope }),
                 super::query_tiers(&cell),
@@ -4530,6 +4598,73 @@ mod tests {
             })
             .is_err()
         );
+    }
+
+    // --- version-tolerant --json retry (ADR D5 / T1-R1) ---
+
+    /// `lifecycle_run_to_envelope` is the pure conversion step inside
+    /// `run_sibling_version_tolerant`.  It must turn an exit-0 JSON stdout into
+    /// the parsed envelope, wrap a non-JSON exit-0 stdout in {"raw":..,"exit":..},
+    /// and return Err for any non-zero exit (matching the `run_sibling` contract).
+    #[test]
+    fn lifecycle_run_to_envelope_converts_and_guards() {
+        // Exit 0 with valid JSON stdout → the parsed value passes through verbatim.
+        let ok_json = LifecycleRun {
+            code: Some(0),
+            stdout: r#"{"status": "running", "pid": 1234}"#.to_string(),
+            stderr: String::new(),
+        };
+        let val = lifecycle_run_to_envelope(&ok_json).expect("exit-0 JSON should succeed");
+        assert_eq!(val["status"], "running");
+        assert_eq!(val["pid"], 1234);
+
+        // Exit 0 with human/non-JSON stdout → wrapped as {"raw": ..., "exit": ...}.
+        let ok_text = LifecycleRun {
+            code: Some(0),
+            stdout: "Service is healthy.".to_string(),
+            stderr: String::new(),
+        };
+        let val = lifecycle_run_to_envelope(&ok_text).expect("exit-0 text should succeed");
+        assert_eq!(val["raw"], "Service is healthy.");
+        assert_eq!(val["exit"], 0);
+
+        // Non-zero exit without a JSON-rejection pattern → Err (genuine failure,
+        // not a --json rejection).  run_sibling_version_tolerant maps this to 502.
+        let fail = LifecycleRun {
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "Doctor found 2 issues".to_string(),
+        };
+        assert!(lifecycle_run_to_envelope(&fail).is_err());
+    }
+
+    /// The version-tolerant retry applies the SAME `rag_rejected_json` predicate
+    /// that `start_rag_service` uses — the detector must fire for exit-2 (the
+    /// typer usage-error primary signal) and for the unknown-option text, and must
+    /// NOT fire on a genuine exit-1 --json failure envelope.  The unit tests for
+    /// `rag_rejected_json` already pin these cases; this test documents that the
+    /// retry decision for server-status/doctor/install is routed through that
+    /// helper and not a bespoke heuristic.
+    #[test]
+    fn version_tolerant_retry_decision_reuses_rag_rejected_json() {
+        // exit-2 (primary: typer usage error) → retry
+        assert!(rag_rejected_json(&LifecycleRun {
+            code: Some(2),
+            stdout: String::new(),
+            stderr: String::new(),
+        }));
+        // unknown-option text on non-standard exit → retry
+        assert!(rag_rejected_json(&LifecycleRun {
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "Error: No such option: --json".to_string(),
+        }));
+        // genuine rag exit-1 --json failure envelope → NOT a retry
+        assert!(!rag_rejected_json(&LifecycleRun {
+            code: Some(1),
+            stdout: r#"{"ok": false, "error": "service_unreachable"}"#.to_string(),
+            stderr: String::new(),
+        }));
     }
 
     #[test]
