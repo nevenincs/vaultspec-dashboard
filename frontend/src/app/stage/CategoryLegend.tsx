@@ -53,6 +53,7 @@ import { useDashboardFilterSidebarIntent } from "../../stores/server/dashboardFi
 import { docTypeLabel } from "../../stores/server/docTypeVocabulary";
 import { useActiveScope, useVaultRailFacets } from "../../stores/server/queries";
 import { useCodeModuleLegend } from "../../stores/view/codeModuleLegend";
+import { useGraphControlsAppearanceParams } from "../../stores/view/graphControlsChrome";
 import { DocTypeMark } from "../../scene/field/markComponents";
 import { useFocusZone } from "../chrome/useFocusZone";
 import {
@@ -129,6 +130,9 @@ export function CategoryLegend() {
   // client-side. Non-empty ⇒ the graph is the code corpus ⇒ swap the doc-type key
   // for the module colour key below; empty ⇒ the vault doc-type legend (unchanged).
   const codeModules = useCodeModuleLegend(scope);
+  // The node colour mode decides WHICH key the code legend shows: module swatches
+  // (category) or the recency heat ramp (code-graph-heat ADR).
+  const { nodeColorMode } = useGraphControlsAppearanceParams();
   const { docTypes } = useVaultRailFacets(scope);
   const { toggleFacet, clearFacet } = useDashboardFilterSidebarIntent(scope);
   // The active `doc_types` inclusion set (stable raw slice, Set derived in useMemo
@@ -203,6 +207,42 @@ export function CategoryLegend() {
   // wire, and the module hue is served per-node, so re-listing it here re-classifies
   // nothing (display-state-is-backend-served). Same toolbar shell + chevron compact
   // as the doc-type legend; the module rows are non-interactive.
+  if (codeModules.length > 0 && nodeColorMode === "recency") {
+    // Recency heat mode (code-graph-heat ADR): the module-identity swatch key
+    // does not describe the node fill any more — one gradient ramp row does. The
+    // ramp mirrors the scene's two stops EXACTLY (cold = ink-muted mixed 35%
+    // toward the canvas ground, hot = the accent) via the same bound tokens, so
+    // legend and nodes re-theme together.
+    return (
+      <div
+        ref={regionRef}
+        className={LEGEND_REGION_POSITION}
+        data-category-legend-region
+      >
+        <div
+          className="flex w-fit max-w-full flex-nowrap items-center gap-fg-1-5 overflow-hidden"
+          role="group"
+          aria-label="recency colour ramp"
+          data-category-legend
+          data-category-legend-corpus="code"
+          data-category-legend-heat
+        >
+          <span className="shrink-0 text-caption text-ink-muted">Older</span>
+          <span
+            aria-hidden
+            className="inline-block h-[0.5em] w-[6em] shrink-0 rounded-fg-pill"
+            data-recency-ramp
+            style={{
+              background:
+                "linear-gradient(to right, color-mix(in srgb, var(--color-ink-muted) 65%, var(--color-canvas-bg) 35%), var(--color-accent))",
+            }}
+          />
+          <span className="shrink-0 text-caption text-ink-muted">Recent</span>
+        </div>
+      </div>
+    );
+  }
+
   if (codeModules.length > 0) {
     return (
       <div

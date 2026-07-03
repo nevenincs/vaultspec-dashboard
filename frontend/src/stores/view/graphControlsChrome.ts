@@ -249,6 +249,7 @@ export function formatGraphControlsBoundSize(value: unknown): string {
 // width/opacity MIN ends stay at the field defaults and ride along in the dispatch.
 
 export type GraphControlsEdgeColorMode = "solid" | "gradient";
+export type GraphControlsNodeColorMode = "category" | "recency";
 
 export interface GraphControlsAppearanceParams {
   nodeSizeScale: number;
@@ -258,6 +259,9 @@ export interface GraphControlsAppearanceParams {
   edgeOpacityMin: number;
   edgeOpacityMax: number;
   edgeColorMode: GraphControlsEdgeColorMode;
+  /** Node-body colour source (code-graph-heat ADR): the category palette, or the
+   *  engine-served recency rank on the theme heat ramp. */
+  nodeColorMode: GraphControlsNodeColorMode;
   /** Draw nodes as their doc-type element mark instead of a plain category circle
    *  (graph-node-icons). A boolean toggle in the appearance section. */
   nodeIcons: boolean;
@@ -311,6 +315,10 @@ export function normalizeGraphControlsAppearanceParams(
       mode === "solid" || mode === "gradient"
         ? mode
         : GRAPH_CONTROLS_APPEARANCE_DEFAULTS.edgeColorMode,
+    nodeColorMode:
+      value.nodeColorMode === "category" || value.nodeColorMode === "recency"
+        ? value.nodeColorMode
+        : GRAPH_CONTROLS_APPEARANCE_DEFAULTS.nodeColorMode,
     nodeIcons:
       typeof value.nodeIcons === "boolean"
         ? value.nodeIcons
@@ -326,6 +334,11 @@ export interface GraphControlsAppearancePresentationView {
   colorModeAriaLabel: string;
   solidLabel: string;
   gradientLabel: string;
+  /** Node colour-mode copy (code-graph-heat ADR), schema-derived. */
+  nodeColorModeLabel: string;
+  nodeColorModeAriaLabel: string;
+  categoryLabel: string;
+  recencyLabel: string;
   /** "Show icons" toggle copy (graph-node-icons), schema-derived. */
   iconsLabel: string;
   iconsTitle: string;
@@ -355,6 +368,10 @@ export function deriveGraphControlsAppearancePresentationView(): GraphControlsAp
     colorModeAriaLabel: "Link colour mode",
     solidLabel: "Solid",
     gradientLabel: "Blended",
+    nodeColorModeLabel: specById("nodeColorMode")?.uiLabel ?? "Node colour",
+    nodeColorModeAriaLabel: "Node colour mode",
+    categoryLabel: "Category",
+    recencyLabel: "Recency",
     iconsLabel: specById("nodeIcons")?.uiLabel ?? "Show icons",
     iconsTitle: "Draw each node as its document-type icon instead of a plain circle",
     iconsAriaLabel: "Show node icons",

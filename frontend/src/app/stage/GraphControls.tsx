@@ -517,6 +517,22 @@ function AppearanceSection() {
         onInteractEnd={endInteraction}
       />
       <div className="flex w-full flex-col gap-fg-1">
+        <span className="text-label text-ink-muted">{view.nodeColorModeLabel}</span>
+        <SegmentedToggle
+          ariaLabel={view.nodeColorModeAriaLabel}
+          value={params.nodeColorMode}
+          onChange={(v) =>
+            apply({
+              nodeColorMode: v as GraphControlsAppearanceParams["nodeColorMode"],
+            })
+          }
+          fullWidth
+        >
+          <Segment value="category">{view.categoryLabel}</Segment>
+          <Segment value="recency">{view.recencyLabel}</Segment>
+        </SegmentedToggle>
+      </div>
+      <div className="flex w-full flex-col gap-fg-1">
         <span className="text-label text-ink-muted">{view.colorModeLabel}</span>
         <SegmentedToggle
           ariaLabel={view.colorModeAriaLabel}

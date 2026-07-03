@@ -201,6 +201,57 @@ fn annotate_module_identity(view: &mut Value, key: &str, hues: &BTreeMap<String,
     view["module"] = Value::String(module);
 }
 
+/// Percentile RECENCY rank per code node key (code-graph-heat ADR): each dated
+/// file ranks by its worktree mtime among ALL dated files — 0 = oldest,
+/// 1 = newest, a single dated file ranks 1.0 — and a module carries the MAX
+/// over its descendant files ("hot content makes a hot container"). A rank,
+/// not a linear age: mtimes cluster (a checkout day, a campaign), and the
+/// percentile spreads the heat gradient evenly where a linear scale would
+/// collapse most nodes onto one end. Computed over the FULL graph — never the
+/// narrowed slice — so a node's heat is stable under narrowing (the
+/// `module_hues` discipline). An undated file is honestly absent (the client
+/// renders the cold end). Ties order by (mtime, key): deterministic.
+fn recency_ranks(graph: &LinkageGraph) -> BTreeMap<String, f64> {
+    let mut dated: Vec<(i64, &str)> = graph
+        .nodes()
+        .filter(|n| n.kind == NodeKind::CodeArtifact)
+        .filter_map(|n| {
+            n.dates
+                .as_ref()
+                .and_then(|d| d.modified)
+                .map(|ms| (ms, n.key.as_str()))
+        })
+        .collect();
+    dated.sort_unstable();
+    let count = dated.len();
+    let mut ranks: BTreeMap<String, f64> = BTreeMap::new();
+    // Ascending mtime order, so an ancestor overwrite always raises its rank —
+    // the module ends at the max of its descendants (file keys are paths and
+    // module keys are dirs, so the one map never collides across kinds).
+    for (i, (_, key)) in dated.iter().enumerate() {
+        let rank = if count <= 1 {
+            1.0
+        } else {
+            ((i as f64 / (count - 1) as f64) * 1000.0).round() / 1000.0
+        };
+        ranks.insert((*key).to_string(), rank);
+        let mut dir = *key;
+        while let Some(cut) = dir.rfind('/') {
+            dir = &dir[..cut];
+            ranks.insert(dir.to_string(), rank);
+        }
+        ranks.insert(".".to_string(), rank);
+    }
+    ranks
+}
+
+/// Attach the served recency rank (code-graph-heat ADR) when the node has one.
+fn annotate_recency(view: &mut Value, key: &str, ranks: &BTreeMap<String, f64>) {
+    if let Some(rank) = ranks.get(key) {
+        view["recency_rank"] = Value::from(*rank);
+    }
+}
+
 /// Aggregate file-level `imports` edges into module-level meta-edges,
 /// mirroring the constellation aggregation exactly: unordered canonical pair
 /// (one ribbon per module pair), multiplicity-weighted count, per-tier
@@ -275,6 +326,7 @@ pub fn code_graph_query(
     if feature_class_granularity {
         let counts = member_counts(graph);
         let hues = module_hues(graph);
+        let ranks = recency_ranks(graph);
         let mut nodes: Vec<Value> = graph
             .nodes()
             .filter(|n| n.kind == NodeKind::CodeModule)
@@ -285,6 +337,7 @@ pub fn code_graph_query(
                 view["member_count"] =
                     Value::from(counts.get(n.id.0.as_str()).copied().unwrap_or(0));
                 annotate_module_identity(&mut view, &n.key, &hues);
+                annotate_recency(&mut view, &n.key, &ranks);
                 view
             })
             .collect();
@@ -334,6 +387,7 @@ pub fn code_graph_query(
 
     let counts = member_counts(graph);
     let hues = module_hues(graph);
+    let ranks = recency_ranks(graph);
     let nodes = kept_nodes
         .iter()
         .map(|n| {
@@ -350,6 +404,7 @@ pub fn code_graph_query(
                 }
             }
             annotate_module_identity(&mut view, &n.key, &hues);
+            annotate_recency(&mut view, &n.key, &ranks);
             view
         })
         .collect();
@@ -782,6 +837,63 @@ mod tests {
             .filter_map(|n| n["id"].as_str())
             .collect();
         assert_eq!(ids, vec!["code-mod:app", "code-mod:app/deep"]);
+    }
+
+    #[test]
+    fn recency_rank_is_a_percentile_with_module_max_and_honest_absence() {
+        // code-graph-heat ADR: files rank by mtime percentile over ALL dated
+        // files; a module carries its descendants' max; an undated file (and a
+        // module with only undated content) serves NO rank.
+        let (g, _old_day, _new_day) = dated_graph();
+        let slice = code_graph_query(&g, &scope(), false, &CodeNarrow::default());
+        let rank_of = |id: &str| {
+            slice
+                .nodes
+                .iter()
+                .find(|n| n["id"] == id)
+                .unwrap()
+                .get("recency_rank")
+                .cloned()
+        };
+        // Two dated files: old = 0.0, new = 1.0.
+        assert_eq!(rank_of("code:app/deep/old.ts"), Some(json!(0.0)));
+        assert_eq!(rank_of("code:app/new.ts"), Some(json!(1.0)));
+        // The undated file has no position on the heat axis.
+        assert_eq!(rank_of("code:lib/undated.py"), None);
+        // Modules: `app/deep` shelters only the old file; `app` shelters both
+        // (max = the new file's 1.0); `lib` shelters nothing dated.
+        assert_eq!(rank_of("code-mod:app/deep"), Some(json!(0.0)));
+        assert_eq!(rank_of("code-mod:app"), Some(json!(1.0)));
+        assert_eq!(rank_of("code-mod:lib"), None);
+
+        // The rollup serves the SAME module ranks (full-graph stability).
+        let rollup = code_graph_query(&g, &scope(), true, &CodeNarrow::default());
+        let app = rollup
+            .nodes
+            .iter()
+            .find(|n| n["id"] == "code-mod:app")
+            .unwrap();
+        assert_eq!(app["recency_rank"], json!(1.0));
+    }
+
+    #[test]
+    fn recency_rank_is_stable_under_narrowing() {
+        // Heat identity mirrors the module_hues discipline: a narrowed slice
+        // serves the SAME rank a node had in the full view.
+        let (g, old_day, _new_day) = dated_graph();
+        let narrow = CodeNarrow {
+            date_from: Some(old_day.clone()),
+            date_to: Some(old_day),
+            ..CodeNarrow::default()
+        };
+        let slice = code_graph_query(&g, &scope(), false, &narrow);
+        let old = slice
+            .nodes
+            .iter()
+            .find(|n| n["id"] == "code:app/deep/old.ts")
+            .unwrap();
+        // Still the full-corpus percentile (0.0), not 1.0-of-the-narrowed-set.
+        assert_eq!(old["recency_rank"], json!(0.0));
     }
 
     #[test]

@@ -126,6 +126,13 @@ export interface SceneNodeData {
   module?: string;
   moduleHue?: number | null;
   depth?: number;
+  /**
+   * Engine-served recency percentile over the code corpus (code-graph-heat ADR):
+   * 0 = oldest worktree mtime, 1 = newest; a module carries its descendants'
+   * max. Drives the Recency node-color mode's theme-token heat ramp. Absent on
+   * undated files and on vault nodes (the cold end / category color applies).
+   */
+  recencyRank?: number;
   temporal?: { bucket: string };
   /**
    * Per-node semantic embedding vector (graph-representation ADR §4 amendment):

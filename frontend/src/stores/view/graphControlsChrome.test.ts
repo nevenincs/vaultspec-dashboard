@@ -334,6 +334,7 @@ describe("graph controls appearance seam (set-appearance-params)", () => {
       edgeOpacityMin: 0.1,
       edgeOpacityMax: 0.5,
       edgeColorMode: "gradient",
+      nodeColorMode: "category",
       nodeIcons: false,
     });
     expect(useGraphControlsChromeStore.getState().appearanceParams).toEqual(

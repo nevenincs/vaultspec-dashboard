@@ -434,6 +434,13 @@ export interface EngineNode {
   module_hue?: number | null;
   depth?: number;
   /**
+   * Engine-served recency percentile over the code corpus (code-graph-heat ADR):
+   * a dated file's worktree-mtime rank in [0, 1] (0 = oldest, 1 = newest); a
+   * module carries its descendants' max. Computed over the FULL pre-truncation
+   * set, stable under narrowing. Absent on undated files and vault nodes.
+   */
+  recency_rank?: number;
+  /**
    * The authority register the node answers in (graph-node-semantics ADR):
    * `design` (ADR), `roadmap` (plan/feature), `evidence` (exec), `judgment`
    * (audit), `law` (rule), `substrate` (research/reference), `manifest`

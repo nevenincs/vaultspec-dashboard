@@ -25,7 +25,7 @@
 //     (e.g. the live 0.02–50 zoom clamp vs the stale cameraCore 0.05–8) is named.
 
 import type { D3ForceParams } from "./d3ForceSolver";
-import type { AppearanceParams, EdgeColorMode } from "./appearance";
+import type { AppearanceParams, EdgeColorMode, NodeColorMode } from "./appearance";
 
 export type ControlGroup = "simulation" | "visualisation" | "navigation";
 export type ControlExposure = "ui" | "lab";
@@ -441,6 +441,18 @@ export const GRAPH_CONTROL_SCHEMA = [
     exposure: ["ui", "lab"],
     description:
       "Edge inherits the endpoint node hue — solid (source/leaf) or gradient (leaf→parent). Never tier/grey/black.",
+  },
+  {
+    id: "nodeColorMode",
+    label: "Node colour",
+    uiLabel: "Node colour",
+    group: "visualisation",
+    type: "enum",
+    options: ["category", "recency"],
+    default: "category",
+    exposure: ["ui", "lab"],
+    description:
+      "How node bodies take colour: Category paints the module/doc-type palette; Recency maps each node's engine-served recency rank onto a theme heat ramp (cold structure recedes, recently-modified files glow toward the accent). Nodes without a rank paint the cold end.",
   },
   {
     id: "nodeIcons",
@@ -981,6 +993,7 @@ export function appearanceDefaults(): AppearanceParams {
     edgeOpacityMin: numericDefault("edgeOpacityMin"),
     edgeOpacityMax: numericDefault("edgeOpacityMax"),
     edgeColorMode: stringDefault("edgeColorMode") as EdgeColorMode,
+    nodeColorMode: stringDefault("nodeColorMode") as NodeColorMode,
     nodeIcons: booleanDefault("nodeIcons"),
   };
 }

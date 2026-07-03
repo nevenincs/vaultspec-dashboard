@@ -184,6 +184,10 @@ async fn code_file_granularity_serves_imports_contains_and_language() {
         .find(|n| n["id"] == "code:web/app.ts")
         .unwrap();
     assert_eq!(app_node["language"], "typescript");
+    // code-graph-heat ADR: every freshly-written (dated) file serves a
+    // percentile recency rank in [0, 1].
+    let rank = app_node["recency_rank"].as_f64().expect("recency_rank");
+    assert!((0.0..=1.0).contains(&rank), "{rank}");
     let edges = data["edges"].as_array().unwrap();
     let relations: Vec<&str> = edges
         .iter()

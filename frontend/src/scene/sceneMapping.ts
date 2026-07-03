@@ -59,6 +59,9 @@ export function engineNodeToScene(node: EngineNode): SceneNodeData {
     module: node.module,
     moduleHue: node.module_hue,
     depth: node.depth,
+    // Engine-served recency percentile (code-graph-heat) -> the Recency
+    // node-color heat ramp; absent on undated files and vault nodes.
+    recencyRank: typeof node.recency_rank === "number" ? node.recency_rank : undefined,
     // Per-lens salience (graph-node-salience) -> size + label priority; the
     // embedding feeds the semantic UMAP worker (graph-representation §4).
     salience: node.salience,

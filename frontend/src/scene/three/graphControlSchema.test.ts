@@ -47,7 +47,7 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   warmStartAlpha: 0.3,
   prewarmMaxTicks: 300,
   prewarmBudgetMs: 260,
-  // --- visualisation: the 7 appearance params ---
+  // --- visualisation: the 9 appearance params ---
   nodeSizeScale: 1,
   nodeSalienceScale: 1,
   edgeWidthMin: 0.6,
@@ -55,6 +55,7 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   edgeOpacityMin: 0.1,
   edgeOpacityMax: 0.5,
   edgeColorMode: "gradient",
+  nodeColorMode: "category",
   nodeIcons: false,
   // --- visualisation: internal render constants ---
   baseNodeRadius: 4,
@@ -105,6 +106,7 @@ const EXPECTED_UI_LABELS: Record<string, string> = {
   edgeWidthMax: "Link thickness",
   edgeOpacityMax: "Link opacity",
   edgeColorMode: "Link colour",
+  nodeColorMode: "Node colour",
   nodeIcons: "Show icons",
 };
 
@@ -128,9 +130,9 @@ describe("graphControlSchema defaults", () => {
     }
   });
 
-  it("derives the typed appearance defaults (8 params) from the schema", () => {
+  it("derives the typed appearance defaults (9 params) from the schema", () => {
     const appearance = appearanceDefaults();
-    expect(Object.keys(appearance)).toHaveLength(8);
+    expect(Object.keys(appearance)).toHaveLength(9);
     for (const [key, value] of Object.entries(appearance)) {
       expect(value).toBe(EXPECTED_DEFAULTS[key]);
     }

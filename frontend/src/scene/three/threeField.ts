@@ -1333,7 +1333,7 @@ export class ThreeField implements SceneFieldRenderer {
     nodes.forEach((node, i) => {
       aIndex[i] = i;
       aSize[i] = nodeWorldRadius(node, this.appearance);
-      const col = nodeColorNumber(node);
+      const col = nodeColorNumber(node, this.appearance);
       this.nodeColors[i] = col;
       tmp.set(col);
       aColor[i * 3] = tmp.r;
@@ -1808,17 +1808,29 @@ export class ThreeField implements SceneFieldRenderer {
       this.appearance.edgeOpacityMax !== prev.edgeOpacityMax ||
       this.appearance.edgeColorMode !== prev.edgeColorMode;
     const iconsChanged = this.appearance.nodeIcons !== prev.nodeIcons;
+    // A node COLOUR MODE change (category ↔ recency heat, code-graph-heat ADR)
+    // re-bakes every baked colour consumer at once — node aColor, edge
+    // end-colours, glyph inks, minimap — via the proven refresh-theme rebuild
+    // (layout + selection preserved). One rebuild on a rare, deliberate toggle
+    // beats a bespoke partial-rewrite path that could drift from build truth.
+    // The rebuild re-derives sizes/edge widths from the merged appearance too,
+    // so it SUBSUMES the attribute rewrites below (they skip when it ran);
+    // solver collide radii and the icon visibility toggle still apply after.
+    const colorModeChanged = this.appearance.nodeColorMode !== prev.nodeColorMode;
+    if (colorModeChanged) this.rebuildGLResources();
 
     if (sizeChanged && this.nodeMesh) {
-      const aSize = this.nodeMesh.geometry.getAttribute("aSize");
-      const glyphSize = this.glyphMesh?.geometry.getAttribute("aSize");
-      for (let i = 0; i < this.nodes.length; i++) {
-        const r = nodeWorldRadius(this.nodes[i], this.appearance);
-        aSize.setX(i, r);
-        glyphSize?.setX(i, r); // the icon tracks the dot's size
+      if (!colorModeChanged) {
+        const aSize = this.nodeMesh.geometry.getAttribute("aSize");
+        const glyphSize = this.glyphMesh?.geometry.getAttribute("aSize");
+        for (let i = 0; i < this.nodes.length; i++) {
+          const r = nodeWorldRadius(this.nodes[i], this.appearance);
+          aSize.setX(i, r);
+          glyphSize?.setX(i, r); // the icon tracks the dot's size
+        }
+        aSize.needsUpdate = true;
+        if (glyphSize) glyphSize.needsUpdate = true;
       }
-      aSize.needsUpdate = true;
-      if (glyphSize) glyphSize.needsUpdate = true;
       // Node size is the collision body too: re-feed collide radii so spacing tracks
       // the drawn size (the solver rebuilds collide + gently reheats).
       if (this.solver) {
@@ -1830,7 +1842,7 @@ export class ThreeField implements SceneFieldRenderer {
       }
     }
 
-    if (edgeChanged && this.edgeMesh && this.edgeData.length > 0) {
+    if (edgeChanged && !colorModeChanged && this.edgeMesh && this.edgeData.length > 0) {
       const aWidth = this.edgeMesh.geometry.getAttribute("aWidthPx");
       const aColor = this.edgeMesh.geometry.getAttribute("aColor");
       const colA = new Color();

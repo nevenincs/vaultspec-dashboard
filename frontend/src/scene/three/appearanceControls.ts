@@ -45,6 +45,7 @@ export type AppearanceControl = AppearanceNumberControl | AppearanceEnumControl;
 const SUBGROUP: Record<string, string> = {
   nodeSizeScale: "Nodes",
   nodeSalienceScale: "Nodes",
+  nodeColorMode: "Nodes",
   edgeColorMode: "Edges",
   edgeWidthMin: "Edges",
   edgeWidthMax: "Edges",
@@ -54,6 +55,8 @@ const SUBGROUP: Record<string, string> = {
 const ENUM_OPTION_LABELS: Record<string, string> = {
   solid: "Solid",
   gradient: "Gradient",
+  category: "Category",
+  recency: "Recency",
 };
 
 /** The 7 appearance knobs, derived from the ui/lab-exposed `visualisation` specs (the
