@@ -10,6 +10,16 @@ related:
   - '[[2026-07-03-rag-integration-hardening-research]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
+
 # `rag-integration-hardening` plan
 
 ### Phase `P01` - Engine search transport rides the resident service
@@ -17,7 +27,7 @@ related:
 Replace the per-query CLI spawn with the bounded rag-client HTTP search verb, point the proven annotator at the verified flat response shape, and keep every degradation path tiers-honest (ADR D1).
 
 - [x] `P01.S01` - Rewrite the rag-client search module as a pure bounded HTTP transport: add an http_search verb that POSTs the engine-built body verbatim to rag /search and returns the flat envelope untouched, delete the stale target_node_id and the forward_search annotation, keep degradation_reason, and cover verbatim transit plus bounds plus error mapping with FakeTransport unit tests; `engine/crates/rag-client/src/search.rs`.
-- [ ] `P01.S02` - Swap the /search route onto the rag-client HTTP transport under rag_offload: map SearchBody query/target/max_results to rag's query/type/project_root/top_k vocabulary, introduce a warm-service SEARCH_HTTP_BUDGET, keep the pre-rag validation and typed-discovery availability gate, and delete the CLI spawn path (SEARCH_SIBLING_TIMEOUT and the rag_invocation search arm); `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `P01.S02` - Swap the /search route onto the rag-client HTTP transport under rag_offload: map SearchBody query/target/max_results to rag's query/type/project_root/top_k vocabulary, introduce a warm-service SEARCH_HTTP_BUDGET, keep the pre-rag validation and typed-discovery availability gate, and delete the CLI spawn path (SEARCH_SIBLING_TIMEOUT and the rag_invocation search arm); `engine/crates/vaultspec-api/src/routes/ops.rs`.
 - [ ] `P01.S03` - Point flatten_and_annotate and hit_node_id at the flat HTTP response shape (top-level results, snippet field, source as the vault/codebase discriminator), re-record the live-response fixture from the HTTP path, and keep the SearchShapeMiss stated-reason degradation for every shape drift; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 - [ ] `P01.S04` - Update the engine wire tests for the HTTP search path: rag-down tier parity, request-bound rejections, shape-miss degradation, and annotation over the flat fixture; `engine/crates/vaultspec-api/tests/ + ops.rs test mod`.
 

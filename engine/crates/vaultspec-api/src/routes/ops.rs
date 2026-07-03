@@ -37,11 +37,15 @@ const SIBLING_STDOUT_CAP: u64 = 8 * 1024 * 1024;
 /// timeout the child is killed and a 504 degraded envelope is returned.
 const SIBLING_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// Interactive search budget: `/search` is a degradable, user-facing read. A
-/// hung or cold rag sibling should return a semantic-tier degradation quickly
-/// instead of pinning the dashboard or its live conformance gate behind the
-/// generic lifecycle/reindex subprocess ceiling.
-const SEARCH_SIBLING_TIMEOUT: Duration = Duration::from_secs(8);
+/// The `/search` HTTP budget (rag-integration-hardening D1/D2): search now rides
+/// the WARM resident rag service over the loopback transport, not a per-query CLI
+/// spawn, so it belongs to the Tier-1 READ class — a warm semantic round-trip,
+/// never the cold-spawn ceiling the deleted subprocess path needed. Pinned to
+/// rag-client's `READ_BUDGET` (10s) so a stalled service degrades the semantic
+/// tier quickly while a busy warm query still completes. The client search
+/// budget strictly exceeds this so the tiers envelope always lands before the
+/// client can abort (D2).
+const SEARCH_HTTP_BUDGET: Duration = rag_client::control::READ_BUDGET;
 
 /// Destructive-storage budget (rag-storage-broker ADR D4): a `prune` of a large
 /// orphaned set or an apply-mode `migrate` of a big shared store legitimately runs
@@ -2498,10 +2502,21 @@ pub struct SearchBody {
     pub max_results: Option<u32>,
 }
 
-fn search_args_for(
+/// Validate every user-controlled search argument and build rag's HTTP `/search`
+/// request body. The API is a public boundary, so the bounds are enforced here
+/// BEFORE anything reaches rag: non-empty query, `MAX_SEARCH_QUERY_CHARS`, the
+/// `{vault, code}` target whitelist, and the `MAX_SEARCH_RESULTS` ceiling. The
+/// engine's `{vault, code}` target vocabulary maps to rag's `{vault, codebase}`
+/// type (rag routes any non-`vault` type to the codebase corpus; the engine
+/// sends `codebase` explicitly). `project_root` is the engine-controlled scope
+/// root — REQUIRED by rag and never client-supplied, so a caller can never point
+/// rag at an arbitrary path. `max_results` maps to rag's `top_k`; absent, rag
+/// uses its own default.
+fn search_body_for(
     state: &AppState,
     body: &SearchBody,
-) -> Result<Vec<String>, (StatusCode, Json<Value>)> {
+    project_root: &str,
+) -> Result<Value, (StatusCode, Json<Value>)> {
     let query = body.query.trim();
     if query.is_empty() {
         return Err(super::api_error(
@@ -2517,15 +2532,20 @@ fn search_args_for(
             format!("search query exceeds the {MAX_SEARCH_QUERY_CHARS} character ceiling"),
         ));
     }
-    if let Some(target) = &body.target
-        && !matches!(target.as_str(), "vault" | "code")
-    {
-        return Err(super::api_error(
-            state,
-            StatusCode::BAD_REQUEST,
-            format!("search target `{target}` must be `vault` or `code`"),
-        ));
-    }
+    // Map the engine's target vocabulary to rag's `type`, folding the whitelist
+    // check into the mapping: `vault` (and an absent target, matching the app
+    // default) → `vault`; `code` → `codebase`.
+    let rag_type = match body.target.as_deref() {
+        None | Some("vault") => "vault",
+        Some("code") => "codebase",
+        Some(other) => {
+            return Err(super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                format!("search target `{other}` must be `vault` or `code`"),
+            ));
+        }
+    };
     if let Some(max_results) = body.max_results
         && max_results > MAX_SEARCH_RESULTS
     {
@@ -2538,16 +2558,15 @@ fn search_args_for(
         ));
     }
 
-    let mut args: Vec<String> = vec!["search".into(), query.to_string()];
-    if let Some(target) = &body.target {
-        args.push("--type".into());
-        args.push(target.clone());
-    }
+    let mut rag_body = json!({
+        "query": query,
+        "type": rag_type,
+        "project_root": project_root,
+    });
     if let Some(n) = body.max_results {
-        args.push("--max-results".into());
-        args.push(n.to_string());
+        rag_body["top_k"] = json!(n);
     }
-    Ok(args)
+    Ok(rag_body)
 }
 
 pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchBody>) -> ApiResult {
@@ -2559,43 +2578,43 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
         None => state.active_cell(),
     };
     // Validate and bound every user-controlled search argument BEFORE anything
-    // reaches rag. Argv passing already blocks shell injection; these guards keep
-    // query size, result count, and target vocabulary inside the API contract.
-    let args = search_args_for(&state, &body)?;
-    // Degrade to the tier block when rag is absent — never a dead control
-    // (contract §8).
-    if let rag_client::RagAvailability::Unavailable { reason } =
-        rag_client::client::discover(&cell.root.join(".vault")).0
-    {
-        return Ok(super::envelope(
-            json!({"results": []}),
-            super::degraded_tiers(&cell, reason.as_str()),
-            None,
-        ));
-    }
+    // reaches rag, and build rag's HTTP `/search` body. These guards keep query
+    // size, result count, and target vocabulary inside the API contract.
+    let project_root = cell.root.to_string_lossy().to_string();
+    let rag_body = search_body_for(&state, &body, &project_root)?;
 
-    // rag's CLI search with --json, vocabulary forwarded intact.
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    // A sibling fault (crash, timeout, capped runaway — now surfaced as a
-    // run_sibling Err per H1/M4) must DEGRADE the semantic tier here, never a
-    // hard 502/504: search is a degradable surface (contract §8), the rest of
-    // the engine is fully available. The error message rides the tier reason.
-    let rag_envelope = match run_sibling_bounded_in_dir(
-        &state,
-        &cell.root,
-        &rag_invocation(),
-        &arg_refs,
-        SEARCH_SIBLING_TIMEOUT,
-        SIBLING_STDOUT_CAP,
-    )
-    .await
-    {
-        Ok(envelope) => envelope,
-        Err((_, body)) => {
-            let reason = body.0["error"].as_str().unwrap_or("rag search failed");
+    // Build the bounded loopback transport to the resident rag service (D1).
+    // Discovery is the availability gate: a missing/stale service.json is the
+    // honest "semantic tier down" fact — degrade to the tier block with empty
+    // results, never a dead control (contract §8, degradation-is-read-from-tiers).
+    let transport = match rag_control_transport(&cell, SEARCH_HTTP_BUDGET) {
+        Ok(t) => t,
+        Err(reason) => {
             return Ok(super::envelope(
                 json!({"results": []}),
-                super::degraded_tiers(&cell, reason),
+                super::degraded_tiers(&cell, reason.as_str()),
+                None,
+            ));
+        }
+    };
+
+    // POST to rag's `/search` over the resident service, offloaded onto the
+    // blocking pool (RCR-001) so a slow search never pins an async worker. A
+    // transport fault (service down mid-flight, timeout, unreadable body) must
+    // DEGRADE the semantic tier here via the truthful degradation reason, never a
+    // hard 502/504: search is a degradable surface (contract §8) while the rest
+    // of the engine stays fully available.
+    let rag_envelope = match rag_offload(&state, move || {
+        rag_client::search::http_search(&transport, &rag_body)
+    })
+    .await?
+    {
+        Ok(envelope) => envelope,
+        Err(e) => {
+            let reason = rag_client::search::degradation_reason(&e);
+            return Ok(super::envelope(
+                json!({"results": []}),
+                super::degraded_tiers(&cell, reason.as_str()),
                 None,
             ));
         }
@@ -2816,9 +2835,11 @@ mod tests {
     }
 
     #[test]
-    fn search_args_are_bounded_before_rag_spawn() {
+    fn search_body_is_bounded_and_maps_the_target_vocabulary() {
         let (_dir, state) = sibling_state();
-        let args = search_args_for(
+        // A vault search with a result bound: trimmed query, rag `type` vault,
+        // the engine-controlled project_root, and max_results → top_k.
+        let vault = search_body_for(
             &state,
             &SearchBody {
                 scope: None,
@@ -2826,19 +2847,48 @@ mod tests {
                 target: Some("vault".to_string()),
                 max_results: Some(7),
             },
+            "Y:\\code\\proj",
         )
         .unwrap();
         assert_eq!(
-            args,
-            vec![
-                "search",
-                "graph state",
-                "--type",
-                "vault",
-                "--max-results",
-                "7"
-            ]
+            vault,
+            json!({
+                "query": "graph state",
+                "type": "vault",
+                "project_root": "Y:\\code\\proj",
+                "top_k": 7,
+            })
         );
+
+        // The engine `code` target maps to rag's `codebase`; an absent
+        // max_results omits top_k so rag uses its own default.
+        let code = search_body_for(
+            &state,
+            &SearchBody {
+                scope: None,
+                query: "server".to_string(),
+                target: Some("code".to_string()),
+                max_results: None,
+            },
+            "/tmp/proj",
+        )
+        .unwrap();
+        assert_eq!(code["type"], "codebase");
+        assert_eq!(code.get("top_k"), None, "absent max_results omits top_k");
+
+        // An absent target defaults to the app's `vault`.
+        let defaulted = search_body_for(
+            &state,
+            &SearchBody {
+                scope: None,
+                query: "x".to_string(),
+                target: None,
+                max_results: None,
+            },
+            "/tmp/proj",
+        )
+        .unwrap();
+        assert_eq!(defaulted["type"], "vault");
 
         for body in [
             SearchBody {
@@ -2867,8 +2917,8 @@ mod tests {
             },
         ] {
             assert!(
-                search_args_for(&state, &body).is_err(),
-                "invalid search body must be rejected before rag spawn"
+                search_body_for(&state, &body, "/tmp/proj").is_err(),
+                "invalid search body must be rejected before rag is reached"
             );
         }
     }
