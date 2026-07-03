@@ -888,7 +888,7 @@ export class ThreeField implements SceneFieldRenderer {
    *  d3-force layout (cpuPositions/solver) is untouched and persists for the rebuild. */
   private onContextLost = (e: Event): void => {
     e.preventDefault();
-    this.running = false;
+    this.setRunning(false);
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.scheduled = false;
@@ -910,7 +910,7 @@ export class ThreeField implements SceneFieldRenderer {
         state: "ok",
         recoverable: true,
       });
-      this.running = true;
+      this.setRunning(true);
       this.requestRender();
     } catch (err) {
       this.glRestoreAttempts += 1;
@@ -1034,7 +1034,18 @@ export class ThreeField implements SceneFieldRenderer {
         // Resume/pause is energy-neutral: just toggle ticking, never re-pump heat.
         // (A fresh layout reheats via set-data; an explicit restart via reheatNow.)
         if (cmd.active) this.resume();
-        else this.running = false;
+        else this.setRunning(false);
+        break;
+      case "sim-play":
+        // Deliberate PLAY intent (the top-left play/pause control): a paused mid-flight
+        // settle RESUMES energy-neutrally; an already-settled layout gets the explicit
+        // named restart (reheatNow) — the sim then runs its cooling schedule and the
+        // settle transition auto-emits sim-state{running:false}, flipping the button
+        // back without any wall-clock timer. A frozen field ignores play (the chrome
+        // unfreezes first through the set-frozen seam).
+        if (this.frozen) break;
+        if (this.solver && !this.solver.isSettled()) this.resume();
+        else this.reheatNow();
         break;
       case "set-autoframe":
         this.setAutoframe(cmd.enabled);
@@ -1047,9 +1058,9 @@ export class ThreeField implements SceneFieldRenderer {
         // WARM_ALPHA + woke every node, re-exploding a settled layout on every toggle.
         this.frozen = cmd.frozen;
         if (cmd.frozen) {
-          this.running = false;
+          this.setRunning(false);
         } else if (this.solver && !this.solver.isSettled()) {
-          this.running = true;
+          this.setRunning(true);
           this.wake();
         }
         break;
@@ -1405,7 +1416,7 @@ export class ThreeField implements SceneFieldRenderer {
     }
     // A frozen sim never resumes ticking from a data swap (the pending settle waits
     // for unfreeze); otherwise run until the solver actually reaches rest.
-    this.running = !this.frozen && !this.solver.isSettled();
+    this.setRunning(!this.frozen && !this.solver.isSettled());
     // A swap that genuinely ticked and landed settled synchronously persists the
     // layout here (the live loop's settle-transition persist never fires for it);
     // a zero-tick same-topology swap writes nothing.
@@ -1923,7 +1934,7 @@ export class ThreeField implements SceneFieldRenderer {
   private reheat(): void {
     if (this.frozen || !this.solver) return;
     this.solver.reheat(true);
-    this.running = true;
+    this.setRunning(true);
     this.wake();
   }
 
@@ -1944,7 +1955,7 @@ export class ThreeField implements SceneFieldRenderer {
   private resume(): void {
     if (this.frozen || !this.solver) return;
     if (!this.solver.isSettled()) {
-      this.running = true;
+      this.setRunning(true);
       this.wake();
     }
   }
@@ -1970,7 +1981,7 @@ export class ThreeField implements SceneFieldRenderer {
       // A floor (0.3×) keeps even a tiny nudge perceptibly responsive; the full gentle
       // alpha is reserved for a full-range change.
       this.solver.setParams(this.params, GENTLE_REHEAT_ALPHA * Math.max(0.3, frac));
-      this.running = true;
+      this.setRunning(true);
       this.wake();
       // A force-param (simulation) change reshapes the layout: when autoframe is on, bind to
       // it (re-engage even if a prior manual nav had disengaged). The running loop's poll then
@@ -2030,7 +2041,7 @@ export class ThreeField implements SceneFieldRenderer {
         this.solver.setRadii(
           this.nodes.map((node) => nodeWorldRadius(node, this.appearance)),
         );
-        this.running = true;
+        this.setRunning(true);
         this.wake();
       }
     }
@@ -2100,7 +2111,7 @@ export class ThreeField implements SceneFieldRenderer {
   diagnose(ticks: number): { alpha: number[]; meanDisplacement: number[] } {
     const out = { alpha: [] as number[], meanDisplacement: [] as number[] };
     if (!this.solver) return out;
-    this.running = false;
+    this.setRunning(false);
     for (let t = 0; t < ticks; t++) {
       const m = this.solver.tick();
       out.alpha.push(+m.alpha.toFixed(5));
@@ -2115,6 +2126,15 @@ export class ThreeField implements SceneFieldRenderer {
   private requestRender(): void {
     this.needsRender = true;
     this.wake();
+  }
+
+  /** The ONE `running` mutation point: emits `sim-state` on every TRANSITION (never
+   *  per frame) so the chrome's play/pause control mirrors the sim's own truth —
+   *  including the auto-flip back to "play" when the cooling schedule settles. */
+  private setRunning(next: boolean): void {
+    if (this.running === next) return;
+    this.running = next;
+    this.controller?.emit({ kind: "sim-state", running: next });
   }
 
   private wake(): void {
@@ -2138,7 +2158,7 @@ export class ThreeField implements SceneFieldRenderer {
       this.solver.pack(this.cpuPositions);
       this.uploadPositions();
       if (!this.dragActive && this.solver.isSettled()) {
-        this.running = false;
+        this.setRunning(false);
         this.persistSettledLayout();
       }
       dirty = true;
@@ -3177,7 +3197,7 @@ export class ThreeField implements SceneFieldRenderer {
     // No global re-energise: the solver pins the grabbed node and wakes only its
     // link-neighbours within wakeRadius (the sleep/active-set model); every other
     // settled node stays pinned, so distant clusters do not move.
-    this.running = true;
+    this.setRunning(true);
     const w = this.screenToWorld(sx, sy);
     this.solver.setDrag(index, w.x, w.y);
     this.wake();
@@ -3189,7 +3209,7 @@ export class ThreeField implements SceneFieldRenderer {
     this.dragNodeIndex = -1;
     this.dragActive = false;
     // Keep ticking; the released neighbourhood re-settles via the solver, then sleeps.
-    this.running = true;
+    this.setRunning(true);
     this.wake();
   }
 

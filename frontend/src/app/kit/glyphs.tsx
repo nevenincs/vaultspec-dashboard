@@ -33,6 +33,8 @@ import {
   Minus,
   PanelLeft,
   PanelRight,
+  Pause,
+  Play,
   Plus,
   Search,
   TriangleAlert,
@@ -60,6 +62,8 @@ export {
   Calendar,
   Funnel,
   GitBranch,
+  Play,
+  Pause,
 };
 export { Search as MagnifyingGlass };
 // The vault/browse mark is structural chrome → Lucide `Library` (one family with

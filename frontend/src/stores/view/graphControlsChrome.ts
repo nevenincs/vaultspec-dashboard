@@ -514,6 +514,25 @@ export function deriveGraphControlsFreezeToggleView(
   };
 }
 
+export interface GraphControlsSimToggleView {
+  label: string;
+  title: string;
+}
+
+/** Copy for the top-left play/pause control. The state it renders is the sim's own
+ *  truth (the `sim-state` mirror), so "Pause Layout" shows exactly while the layout is
+ *  actually ticking and flips back on its own when the cooldown settles. */
+export function deriveGraphControlsSimToggleView(
+  running: boolean,
+): GraphControlsSimToggleView {
+  return {
+    label: running ? "Pause Layout" : "Run Layout",
+    title: running
+      ? "Pause the moving layout in place — it stops right where it is"
+      : "Let the layout move: continues a paused settle, or gives a settled graph a fresh run that stops on its own",
+  };
+}
+
 export interface GraphControlsReflowToggleView {
   label: string;
   title: string;
@@ -589,6 +608,12 @@ interface GraphControlsChromeState {
   // camera to keep the whole graph framed as it settles/filters. A canvas-behaviour flag
   // (sibling of `frozen`/`reflowFilter`), never a persisted graph_controls override.
   autoframeEnabled: boolean;
+  // Live simulation run state (sim play/pause, 2026-07-03): a READ MIRROR of the
+  // field's own `running` truth, written ONLY from the scene's `sim-state` events —
+  // never by the play/pause click itself. The button reflects the graph internals
+  // (auto-flips to "play" when the cooling schedule settles) so the UI can never
+  // drift from the sim. Transient view chrome, never persisted.
+  simRunning: boolean;
   tuneParams: GraphControlsTuneParams;
   appearanceParams: GraphControlsAppearanceParams;
   setSettingsOpen: (open: unknown) => void;
@@ -602,6 +627,7 @@ interface GraphControlsChromeState {
   toggleReflowFilter: () => void;
   setAutoframe: (on: unknown) => void;
   toggleAutoframe: () => void;
+  setSimRunning: (running: unknown) => void;
   setTuneParams: (params: unknown) => void;
   patchTuneParams: (patch: unknown) => void;
   setAppearanceParams: (params: unknown) => void;
@@ -617,6 +643,7 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
   frozenScope: null,
   reflowFilter: false,
   autoframeEnabled: true,
+  simRunning: false,
   tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
   appearanceParams: normalizeGraphControlsAppearanceParams(
     GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
@@ -641,6 +668,7 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
   setAutoframe: (on) => set({ autoframeEnabled: normalizeGraphControlsOpen(on) }),
   toggleAutoframe: () =>
     set((state) => ({ autoframeEnabled: !state.autoframeEnabled })),
+  setSimRunning: (running) => set({ simRunning: normalizeGraphControlsOpen(running) }),
   setTuneParams: (tuneParams) =>
     set({ tuneParams: normalizeGraphControlsTuneParams(tuneParams) }),
   patchTuneParams: (patch) =>
@@ -682,6 +710,7 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
       frozenScope: null,
       reflowFilter: false,
       autoframeEnabled: true,
+      simRunning: false,
       tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
       appearanceParams: normalizeGraphControlsAppearanceParams(
         GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
@@ -696,6 +725,16 @@ export function useGraphControlsSettingsOpen(): boolean {
 /** Whether autoframe is on (default true) — the 4th nav button's toggle state. */
 export function useGraphControlsAutoframe(): boolean {
   return useGraphControlsChromeStore((state) => state.autoframeEnabled);
+}
+
+/** Live sim run state — the scene `sim-state` event mirror the play/pause button reads. */
+export function useGraphControlsSimRunning(): boolean {
+  return useGraphControlsChromeStore((state) => state.simRunning);
+}
+
+/** Write the sim run-state mirror (ONLY from the scene event bridge, never a click). */
+export function setGraphControlsSimRunning(running: unknown): void {
+  useGraphControlsChromeStore.getState().setSimRunning(running);
 }
 
 /** Toggle autoframe from outside React (the nav button's click handler). */

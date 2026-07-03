@@ -9,6 +9,7 @@ import {
   deriveGraphControlsNavigationView,
   deriveGraphControlsReflowToggleView,
   deriveGraphControlsSettingsPopoverView,
+  deriveGraphControlsSimToggleView,
   deriveGraphControlsTunePresentationView,
   deriveGraphControlsViewPresentationView,
   formatGraphControlsAppearanceValue,
@@ -25,6 +26,7 @@ import {
   setGraphControlsFrozen,
   setGraphControlsLayoutOpen,
   setGraphControlsSettingsOpen,
+  setGraphControlsSimRunning,
   setGraphControlsTuneParams,
   toggleGraphControlsAppearanceOpen,
   toggleGraphControlsLayoutOpen,
@@ -159,6 +161,33 @@ describe("graph controls chrome view seam", () => {
       label: "Freeze Layout",
       title: "Freezing pauses the live layout — it's off while you're viewing history",
     });
+  });
+
+  it("projects sim play/pause action copy from the run-state mirror", () => {
+    expect(deriveGraphControlsSimToggleView(false)).toEqual({
+      label: "Run Layout",
+      title:
+        "Let the layout move: continues a paused settle, or gives a settled graph a fresh run that stops on its own",
+    });
+    expect(deriveGraphControlsSimToggleView(true)).toEqual({
+      label: "Pause Layout",
+      title: "Pause the moving layout in place — it stops right where it is",
+    });
+  });
+
+  it("mirrors the scene sim-state into the run flag, boolean-strict, reset to idle", () => {
+    expect(useGraphControlsChromeStore.getState().simRunning).toBe(false);
+
+    setGraphControlsSimRunning(true);
+    expect(useGraphControlsChromeStore.getState().simRunning).toBe(true);
+
+    // Only a real boolean true counts (the scene emits booleans; anything else idles).
+    setGraphControlsSimRunning("true");
+    expect(useGraphControlsChromeStore.getState().simRunning).toBe(false);
+
+    setGraphControlsSimRunning(true);
+    resetGraphControlsChrome();
+    expect(useGraphControlsChromeStore.getState().simRunning).toBe(false);
   });
 
   it("projects navigation action chrome through one seam", () => {

@@ -329,6 +329,13 @@ export type SceneCommand =
   | { kind: "frame-nodes"; ids: ReadonlySet<string> }
   | { kind: "reset-view" }
   | { kind: "set-simulation-active"; active: boolean }
+  // Deliberate PLAY intent (graph sim play/pause control, 2026-07-03): run the sim NOW.
+  // Distinct from `set-simulation-active {active:true}` (energy-neutral resume, GIR-002):
+  // play RESUMES an in-flight paused settle, but on an already-settled layout it is the
+  // named explicit-restart entry point (`reheatNow`) — the one deliberate energy pump the
+  // simulation-stability ADR reserves for explicit user intent. A frozen field ignores it
+  // (the chrome unfreezes first). ADDITIVE to the locked union; no member changed.
+  | { kind: "sim-play" }
   // Three-native force tuning (replaces the retired set-cosmos-config): the
   // graph-controls sliders patch the field's d3-force params live.
   | { kind: "set-force-params"; params: GraphForceParams }
@@ -438,7 +445,16 @@ export type SceneEvent =
       requested: RepresentationMode;
       applied: RepresentationMode;
       downgradeReason?: string;
-    };
+    }
+  // --- sim play/pause (2026-07-03) -------------------------------------------
+  /**
+   * Emitted on every simulation run-state TRANSITION (start ticking ↔ settled/paused/
+   * frozen), never per frame. The chrome's play/pause control mirrors this into the
+   * graph-controls store, so the button state is sourced from the sim's own truth —
+   * it auto-flips to "play" when the cooling schedule settles the layout, without a
+   * wall-clock timer. Additive to the locked union; no existing member changed.
+   */
+  | { kind: "sim-state"; running: boolean };
 
 type SceneEventListener = (event: SceneEvent) => void;
 
@@ -521,6 +537,7 @@ export class SceneController {
         this.edges = cmd.edges;
         break;
       case "set-simulation-active":
+      case "sim-play":
         break;
       case "set-representation-mode":
         this._representationMode = cmd.mode;

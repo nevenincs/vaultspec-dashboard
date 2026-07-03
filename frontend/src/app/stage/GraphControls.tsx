@@ -40,6 +40,8 @@ import {
   Maximize,
   Menu,
   Minus,
+  Pause,
+  Play,
   Plus,
   Popover,
   SectionLabel,
@@ -61,6 +63,7 @@ import {
   deriveGraphControlsNavigationView,
   deriveGraphControlsReflowToggleView,
   deriveGraphControlsSettingsPopoverView,
+  deriveGraphControlsSimToggleView,
   deriveGraphControlsTunePresentationView,
   deriveGraphControlsViewPresentationView,
   setGraphControlsAppearanceParams,
@@ -81,6 +84,7 @@ import {
   useGraphControlsFrozenScope,
   useGraphControlsLayoutOpen,
   useGraphControlsSettingsOpen,
+  useGraphControlsSimRunning,
   useGraphControlsTuneParams,
   useGraphReflowFilter,
 } from "../../stores/view/graphControlsChrome";
@@ -217,6 +221,61 @@ export function GraphNavControls() {
           <Crosshair size={ICON_PX} aria-hidden />
         </IconButton>
       </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GraphSimControl — the top-left play/pause control over the live layout. The
+// rendered state is the SIM'S OWN truth: the field emits `sim-state` on every
+// run-state transition, the Stage bridge mirrors it into the graph-controls chrome
+// store, and this button only reads that mirror — so it auto-flips back to "play"
+// when the cooling schedule settles the layout, with no wall-clock timer and no
+// drift between UI and graph internals. Play resumes a paused settle or gives a
+// settled graph the named explicit restart (`sim-play`); pause holds the in-flight
+// settle in place (`set-simulation-active`, energy-neutral). Play on a frozen
+// field unfreezes first through the same set-frozen seam FreezeRow uses, so the
+// freeze chrome flag never desyncs.
+// ---------------------------------------------------------------------------
+
+export function GraphSimControl() {
+  const scene = getScene();
+  const running = useGraphControlsSimRunning();
+  const frozen = useGraphControlsFrozen();
+  const view = deriveGraphControlsSimToggleView(running);
+  function toggle() {
+    if (running) {
+      scene.controller.command({ kind: "set-simulation-active", active: false });
+      return;
+    }
+    if (frozen) {
+      setGraphControlsFrozen(false, null);
+      scene.controller.command({ kind: "set-frozen", frozen: false });
+    }
+    scene.controller.command({ kind: "sim-play" });
+  }
+  return (
+    <Card
+      elevation="raised"
+      padded={false}
+      className="pointer-events-auto absolute left-fg-2 top-fg-2 z-10 p-fg-1"
+      role="toolbar"
+      aria-label={view.label}
+      data-graph-sim-control
+    >
+      <IconButton
+        label={view.label}
+        title={view.title}
+        aria-pressed={running}
+        active={running}
+        onClick={toggle}
+      >
+        {running ? (
+          <Pause size={ICON_PX} aria-hidden />
+        ) : (
+          <Play size={ICON_PX} aria-hidden />
+        )}
+      </IconButton>
     </Card>
   );
 }

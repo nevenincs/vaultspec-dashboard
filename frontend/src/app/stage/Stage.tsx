@@ -32,6 +32,7 @@ import {
   stageSetDataCommand,
 } from "../../stores/view/stageSceneCommands";
 import { useGraphAffordanceReconciliation } from "../../stores/view/graphAffordances";
+import { setGraphControlsSimRunning } from "../../stores/view/graphControlsChrome";
 import { useGraphOverlays } from "../../stores/view/graphOverlays";
 import { useRenderCapability } from "../../stores/view/renderCapability";
 import { bindPinsToScene } from "../../stores/view/pins";
@@ -54,7 +55,7 @@ import { useTimeTravel } from "../timeline/timeTravel";
 import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
 import { MinimapWidget } from "./MinimapWidget";
 import { CANVAS_KEYMAP_CONTEXT, useGraphWalkKeybindings } from "./graphWalkKeybindings";
-import { GraphNavControls, GraphSettingsPanel } from "./GraphControls";
+import { GraphNavControls, GraphSettingsPanel, GraphSimControl } from "./GraphControls";
 import { useGraphControlsPersistenceSync } from "./graphControlsPersistence";
 
 // One scene singleton per app lifetime: the object survives route remounts, but
@@ -110,9 +111,25 @@ export function useSceneThemeRefresh(): void {
   );
 }
 
+/** Mirror the field's `sim-state` transitions into the graph-controls chrome store so
+ *  the play/pause control renders the sim's OWN truth — including the auto-flip back
+ *  to "play" when the cooling schedule settles the layout. One-way: scene → store;
+ *  the button's click goes back through SceneController commands, never this mirror. */
+export function useSceneSimStateBridge(): void {
+  useEffect(
+    () =>
+      scene.controller.on((event) => {
+        if (event.kind !== "sim-state") return;
+        setGraphControlsSimRunning(event.running);
+      }),
+    [],
+  );
+}
+
 export function Stage() {
   const hostRef = useRef<HTMLDivElement>(null);
   useSceneThemeRefresh();
+  useSceneSimStateBridge();
   // Restore the persisted session on load: the scope cold-start persist (S29)
   // and the scope+folder context seed (S30) both fire from this single owner,
   // since Stage mounts once per app lifetime.
@@ -425,6 +442,10 @@ export function Stage() {
           opened-island layer (node hover/open interactions), and the designed canvas
           states (which the binding DOES define: loading / empty / degraded). */}
       <GraphNavControls />
+      {/* Sim play/pause (2026-07-03, user-directed addition to the binding chrome
+          set): the top-left run-state control over the live layout, mirrored from
+          the field's own sim-state transitions. */}
+      <GraphSimControl />
       <GraphSettingsPanel />
       {/* The overview minimap is a DOCKED card bottom-right (binding graph/Hero
           minimap 212:521) — it owns the bottom-right corner directly. The scene owns
