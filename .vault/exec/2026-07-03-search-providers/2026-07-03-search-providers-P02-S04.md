@@ -50,30 +50,38 @@ related:
 
 ## Description
 
-- Discovered `CodeFileEntry`, `CodeFilesTruncation`, `CodeFilesResponse` types and
-  `CODE_FILES_PAGE_SIZE`/`CODE_FILES_MAX_PAGES` constants in `engine.ts` were
-  pre-committed by the code-graph feature (commit `aeed6a7ab3`). Verified the
-  bounded cursor walk in `codeFiles()` mirrors `vaultTree` exactly.
-- Discovered `adaptCodeFiles` and its helpers (`adaptCodeFileEntry`,
-  `adaptCodeFilesTruncation`) pre-committed in `liveAdapters.ts`, using the shared
-  `normalizeVaultTreeString` helper. Verified tolerant behavior: blank path drops
-  the row; missing `node_id` reconstructs from `code:{path}`; negative
-  `returned_files` clamps to 0 via `Math.max`; missing `reason` or non-finite
-  count collapses `truncated` to null.
-- Added unit vectors for `adaptCodeFiles` in `liveAdapters.test.ts`: four cases
-  covering entry normalization and node-id fallback, absent optional field
-  omission, truncation forwarding (including the floor/clamp behavior), and safe
-  empty defaults on a missing or shapeless body.
+- Add the `CodeFileEntry`, `CodeFilesTruncation`, and `CodeFilesResponse` wire
+  types in `engine.ts` beside the vault-tree types, plus the
+  `CODE_FILES_PAGE_SIZE` (2000) / `CODE_FILES_MAX_PAGES` (25) walk bounds.
+- Add the `codeFiles` client method mirroring `vaultTree`: a bounded page loop
+  that walks the cursor to completion, accumulating entries and carrying the
+  generation-stable `truncated` block through to the adapter.
+- Add the tolerant `adaptCodeFiles` adapter in `liveAdapters.ts` with its
+  `adaptCodeFileEntry` / `adaptCodeFilesTruncation` helpers over the shared
+  `normalizeVaultTreeString`: a blank path drops the row; a missing `node_id`
+  reconstructs from `code:{path}`; `returned_files` floors and clamps to 0; a
+  missing `reason` or non-finite count collapses `truncated` to null; an
+  unrecognized body fails closed to an honest empty listing.
 
 ## Outcome
 
-Unit vectors green (93 tests, `npx vitest run src/stores/server/liveAdapters.test.ts`).
-tsc, eslint, and prettier all clean on touched files.
+The files(code) provider's data source landed: a complete client-held code-file
+listing walked to completion over the real wire, tolerant to shape variation. Full
+frontend gate green (`just dev lint frontend`) at commit time.
 
 ## Notes
 
-The pre-existing `adaptCodeFiles` uses `normalizeVaultTreeString` (vault-tree's
-helper) rather than a dedicated normalizer — this is correct and keeps the
-codebase DRY. The adapter fails closed to an honest empty listing rather than
-casting a malformed body through, matching the pattern established for newer
-routes.
+Provenance correction (per team-lead directive; git history is authoritative):
+`CodeFileEntry`/`CodeFilesTruncation`/`CodeFilesResponse` and `adaptCodeFiles`
+were FIRST introduced by THIS step's commit `71aa225473` — `git log -S` confirms
+it, and `aeed6a7ab3` (the code-graph feature) introduced neither. An earlier
+revision of this record wrongly stated the types were pre-committed by
+`aeed6a7ab3`; that arose from a concurrent second agent independently
+re-implementing the same adapter in the shared working tree, which also produced
+a transient duplicate `adaptCodeFiles` export in `71aa225473` (my pathspec `git
+add` swept in the concurrent uncommitted block). The follow-up commit
+`8f9c8f3fe2` removed the duplicate — keeping THIS step's `adaptCodeFileEntry`
+implementation — and added the `adaptCodeFiles` unit vectors in
+`liveAdapters.test.ts` (four cases: entry normalization + node-id fallback,
+optional-field omission, truncation floor/clamp forwarding, and safe empty
+defaults). HEAD now carries exactly one `adaptCodeFiles`, tsc clean.
