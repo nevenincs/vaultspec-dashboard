@@ -1337,6 +1337,16 @@ pub struct AppState {
     /// one seam, so a warm read never pays a second `/jobs` round-trip and the
     /// derivation is not duplicated. Single value plus a TTL — bounded at creation.
     pub semantic_epoch_cache: SemanticEpochCache,
+    /// The fenced authoring domain's durable store (agentic-spec-authoring-
+    /// backend W03.P39). Opened LAZILY against `workspace_root/.vault` on the
+    /// first authoring request — as an `Option` so a bad or unopenable authoring
+    /// db DEGRADES the authoring panel (a typed error at the route) rather than
+    /// panicking the engine at boot, and so a workspace that never touches
+    /// authoring pays nothing. Held behind a `Mutex` because the store wraps a
+    /// `!Sync` rusqlite `Connection`; the authoring single-writer discipline
+    /// serializes every unit of work through this one handle, exactly like
+    /// `user_state`.
+    pub authoring_store: Mutex<Option<crate::authoring::store::Store>>,
 }
 
 impl AppState {
@@ -1387,6 +1397,29 @@ impl AppState {
             .flatten()
             .map(|r| PathBuf::from(r.path))
             .unwrap_or_else(|| self.workspace_root.clone())
+    }
+
+    /// Run `f` against the fenced authoring store, opening it lazily on first
+    /// use (agentic-spec-authoring-backend W03.P39). Serializes through the one
+    /// `Mutex`-held handle (single-writer). A lazy-open failure surfaces as the
+    /// store's own typed error so the route degrades honestly rather than the
+    /// engine panicking; poison is recovered like every other guard here.
+    pub fn with_authoring_store<T>(
+        &self,
+        f: impl FnOnce(&mut crate::authoring::store::Store) -> crate::authoring::store::Result<T>,
+    ) -> crate::authoring::store::Result<T> {
+        let mut guard = self
+            .authoring_store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if guard.is_none() {
+            *guard = Some(crate::authoring::store::Store::open(
+                &self.workspace_root.join(".vault"),
+            )?);
+        }
+        f(guard
+            .as_mut()
+            .expect("authoring store present after lazy open"))
     }
 }
 
@@ -1593,6 +1626,7 @@ pub fn build_state(root: PathBuf) -> Arc<AppState> {
         active_scope: RwLock::new(active_token.clone()),
         dashboard_state: Mutex::new(crate::routes::state::DashboardStateSlot::new()),
         semantic_epoch_cache: SemanticEpochCache::default(),
+        authoring_store: Mutex::new(None),
     });
     // Eagerly build the launch scope's cell so `/status`, the tiers fallback,
     // and the active-cell resolve are always satisfiable. The cell is pinned
