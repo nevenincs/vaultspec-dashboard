@@ -17,6 +17,7 @@ pub(crate) mod operations;
 pub(crate) mod projections;
 pub(crate) mod proposal;
 pub(crate) mod response;
+pub(crate) mod rollback;
 pub(crate) mod routes;
 pub(crate) mod snapshots;
 pub(crate) mod store;
