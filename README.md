@@ -16,13 +16,66 @@ activity from both siblings together behind a single user interface.
   is consumed for local integration work and never shipped in the published
   wheel.
 
-## Requirements
+## Install
 
-- Python 3.13 or newer
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) as the package
-  manager
+The dashboard ships as a single `vaultspec` executable with the web UI built
+in - install it, run `vaultspec serve` inside a vaultspec-managed workspace,
+and open the printed local address in your browser.
+
+Download from [GitHub Releases](https://github.com/nevenincs/vaultspec-dashboard/releases),
+or use one of the installers:
+
+```bash
+# macOS / Linux
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/vaultspec-cli-installer.sh | sh
+```
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/vaultspec-cli-installer.ps1 | iex"
+```
+
+Rust users can install via [cargo-binstall](https://github.com/cargo-bins/cargo-binstall):
+`cargo binstall vaultspec-cli`.
+
+Every release asset ships with a `.sha256` checksum file; verify downloads
+with `sha256sum -c <asset>.sha256`.
+
+Installer-installed copies can update themselves with `vaultspec-update`
+(updates are always user-invoked, never automatic). Copies installed through a
+package manager update through that package manager instead.
+
+### Unsigned binaries
+
+Release binaries are not code-signed (this is a zero-budget open-source
+project), so the first launch trips OS gatekeeping:
+
+- **Windows**: SmartScreen shows "Windows protected your PC" - choose
+  "More info" then "Run anyway". Verify the checksum first if in doubt.
+- **macOS**: Gatekeeper blocks the first run - right-click the binary and
+  choose "Open", or clear the quarantine flag with
+  `xattr -d com.apple.quarantine <path-to-vaultspec>`.
+- **Linux**: no signing regime; verify the checksum.
+
+### Runtime requirements
+
+- `git` on `PATH`
+- [vaultspec-core](https://github.com/nevenincs/vaultspec-core) 0.1.36 or
+  newer: `uv tool install vaultspec-core` (the dashboard checks at startup and
+  prints this exact command when it is missing)
+- Optional: [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag) for
+  semantic search - the dashboard attaches to a running rag service and
+  degrades the semantic panels gracefully when it is absent
 - A vaultspec-managed workspace (a `.vault/` directory created by
   vaultspec-core)
+
+### Releasing (maintainers)
+
+Releases are cut by tagging a green `main` commit with the workspace version
+(e.g. `v0.1.0`); the tag triggers the `release.yml` workflow, which builds
+every target with the web UI embedded, and publishes archives, checksums, and
+installers to GitHub Releases. The verification workflows gate merges to
+`main`, so only verified commits are taggable in practice.
 
 ## Status
 

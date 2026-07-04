@@ -73,7 +73,7 @@ Retires the orphaned release-please configuration and repairs the stale hooks, r
 
 Delivers honest install documentation for unsigned artifacts and closes the two research validations the ADR carries forward.
 
-- [ ] `P05.S20` - author the install section covering GitHub Releases, install scripts, cargo-binstall, checksum verification, and the SmartScreen and Gatekeeper friction stated plainly; `README.md`.
+- [x] `P05.S20` - author the install section covering GitHub Releases, install scripts, cargo-binstall, checksum verification, and the SmartScreen and Gatekeeper friction stated plainly; `README.md`.
 - [x] `P05.S21` - validate winget acceptance of unsigned hash-pinned manifests and record the finding in the step record (research only); `.vault/exec/2026-07-04-dashboard-packaging`.
 - [x] `P05.S22` - assess SignPath Foundation free OSS signing eligibility and record the finding in the step record (research only); `.vault/exec/2026-07-04-dashboard-packaging`.
 
