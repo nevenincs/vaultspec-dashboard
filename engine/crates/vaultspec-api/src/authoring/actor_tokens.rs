@@ -176,6 +176,38 @@ impl ActorTokenRepository<'_, '_> {
         Ok(true)
     }
 
+    /// Revoke ALL live tokens for a principal — the operator-facing admin verb
+    /// (arch-reviewer advisory): an operator can revoke a LOST token whose raw
+    /// value they no longer hold. Returns the count revoked; idempotent per row
+    /// (already-revoked rows are skipped by the `revoked_at_ms IS NULL` filter).
+    /// Rewrites each row's `record_json` (the resolve source of truth), not just
+    /// the column.
+    pub fn revoke_all_for_actor(&self, actor: &ActorRef, now_ms: i64) -> StoreResult<usize> {
+        let rows = self.repo.query_collect(
+            "SELECT token_hash, record_json
+             FROM authoring_actor_tokens
+             WHERE actor_id = ?1 AND actor_kind = ?2 AND revoked_at_ms IS NULL",
+            rusqlite::params![actor.id.as_str(), actor_kind_name(actor.kind)],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        let mut revoked = 0usize;
+        for (token_hash, json) in rows {
+            let mut record: ActorTokenRecord = serde_json::from_str(&json)
+                .map_err(|err| StoreError::ActorToken(err.to_string()))?;
+            record.revoked_at_ms = Some(now_ms);
+            let record_json = serde_json::to_string(&record)
+                .map_err(|err| StoreError::ActorToken(err.to_string()))?;
+            self.repo.execute(
+                "UPDATE authoring_actor_tokens
+                 SET revoked_at_ms = ?2, record_json = ?3
+                 WHERE token_hash = ?1",
+                rusqlite::params![token_hash.as_str(), now_ms, record_json.as_str()],
+            )?;
+            revoked += 1;
+        }
+        Ok(revoked)
+    }
+
     fn record_by_hash(&self, token_hash: &str) -> StoreResult<Option<ActorTokenRecord>> {
         let json = self.repo.query_optional(
             "SELECT record_json FROM authoring_actor_tokens WHERE token_hash = ?1",
@@ -302,5 +334,37 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(issued.record.expires_at_ms, MAX_ACTOR_TOKEN_LIFETIME_MS);
+    }
+
+    #[test]
+    fn revoke_all_for_actor_revokes_a_lost_token_by_principal() {
+        let (_dir, mut store) = temp_store();
+        let a = actor("agent:writer", ActorKind::Agent);
+        let b = actor("agent:other", ActorKind::Agent);
+
+        let (a1, a2, b1) = store
+            .with_unit_of_work(CommandKind::CreateSession, |uow| {
+                let t = uow.actor_tokens();
+                let a1 = t.issue(&a, &admin(), 100, 3_600_000)?.raw_token;
+                let a2 = t.issue(&a, &admin(), 100, 3_600_000)?.raw_token;
+                let b1 = t.issue(&b, &admin(), 100, 3_600_000)?.raw_token;
+                Ok((a1, a2, b1))
+            })
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::CreateSession, |uow| {
+                let t = uow.actor_tokens();
+                // An operator who lost the raw values revokes ALL of A's tokens.
+                assert_eq!(t.revoke_all_for_actor(&a, 200)?, 2);
+                // A's tokens no longer resolve; B is unaffected.
+                assert_eq!(t.resolve(&a1, 300)?, None);
+                assert_eq!(t.resolve(&a2, 300)?, None);
+                assert_eq!(t.resolve(&b1, 300)?, Some(b.clone()));
+                // Idempotent: nothing live remains for A.
+                assert_eq!(t.revoke_all_for_actor(&a, 400)?, 0);
+                Ok(())
+            })
+            .unwrap();
     }
 }
