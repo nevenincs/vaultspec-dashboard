@@ -47,7 +47,7 @@ _ci-help:
 
 _ci-run:
   just dev lint all
-  just prod vault check all
+  uv run vaultspec-core vault check all
   just dev test all
 
 # ---------------------------------------------------------------------------
