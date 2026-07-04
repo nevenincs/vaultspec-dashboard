@@ -40,9 +40,21 @@ pub(crate) fn query_tiers(cell: &ScopeCell) -> serde_json::Value {
     {
         unavailable.push(("declared", reason.clone()));
     }
+    tiers_value(&unavailable)
+}
+
+/// Serialize a tiers block and decorate it with the component compatibility
+/// handshake (dashboard-packaging D6): every served tiers block — success and
+/// error, all three degradation builders — carries the declared floors and
+/// probed versions, so clients read component compatibility from the one
+/// envelope they already trust.
+fn tiers_value(unavailable: &[(&'static str, String)]) -> serde_json::Value {
     let refs: Vec<(&'static str, &str)> =
         unavailable.iter().map(|(t, r)| (*t, r.as_str())).collect();
-    serde_json::to_value(engine_query::envelope::tiers_block(&refs)).expect("tiers serialize")
+    let mut tiers =
+        serde_json::to_value(engine_query::envelope::tiers_block(&refs)).expect("tiers serialize");
+    crate::handshake::decorate_tiers(&mut tiers);
+    tiers
 }
 
 /// A tier block carrying an explicit `semantic` degradation reason layered onto
@@ -59,9 +71,7 @@ pub(crate) fn degraded_tiers(cell: &ScopeCell, semantic_reason: &str) -> serde_j
     {
         unavailable.push(("declared", reason.clone()));
     }
-    let refs: Vec<(&'static str, &str)> =
-        unavailable.iter().map(|(t, r)| (*t, r.as_str())).collect();
-    serde_json::to_value(engine_query::envelope::tiers_block(&refs)).expect("tiers serialize")
+    tiers_value(&unavailable)
 }
 
 /// A tier block degrading ONE named tier with an explicit reason, layered onto
@@ -83,9 +93,7 @@ pub(crate) fn degraded_tiers_for(
     {
         unavailable.push(("declared", declared_reason.clone()));
     }
-    let refs: Vec<(&'static str, &str)> =
-        unavailable.iter().map(|(t, r)| (*t, r.as_str())).collect();
-    serde_json::to_value(engine_query::envelope::tiers_block(&refs)).expect("tiers serialize")
+    tiers_value(&unavailable)
 }
 
 /// THE shared success envelope (audit L1, contract §2): every HTTP payload

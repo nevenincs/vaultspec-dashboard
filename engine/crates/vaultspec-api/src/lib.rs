@@ -9,6 +9,7 @@
 
 pub mod app;
 mod authoring;
+pub mod handshake;
 pub mod registry;
 pub mod routes;
 
@@ -348,6 +349,12 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
             root.display()
         )));
     }
+
+    // Detect-and-instruct (dashboard-packaging D3): probe the two hard
+    // external requirements BEFORE any heavy work, failing closed with the
+    // exact remediation. A present-but-below-floor core passes — its verdict
+    // degrades through the tiers handshake instead of blocking startup.
+    handshake::startup_gate().map_err(std::io::Error::other)?;
 
     let crash_log = engine_store::engine_data_dir(&root.join(".vault")).join("crash.log");
     let default_hook = std::panic::take_hook();
@@ -1677,6 +1684,34 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::FORBIDDEN, "R1 whitelist");
+    }
+
+    #[tokio::test]
+    async fn served_tiers_carry_the_component_handshake() {
+        // P02.S08/S09 (dashboard-packaging D6): every served tiers block
+        // declares the component floors, with rag honestly version-less and —
+        // in this fixture workspace, which has no rag service — semantic
+        // truthfully unavailable alongside its component block.
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let router = build_router(state);
+        let (status, body) = get_with_token(router, "/status", Some(&token)).await;
+        assert_eq!(status, StatusCode::OK);
+        let core = &body["tiers"]["declared"]["component"];
+        assert_eq!(core["name"], "vaultspec-core");
+        assert_eq!(core["floor"], "0.1.36");
+        assert!(
+            core["meets_floor"].is_boolean() || core["meets_floor"].is_null(),
+            "floor verdict is served, never guessed: {core}"
+        );
+        let rag = &body["tiers"]["semantic"]["component"];
+        assert_eq!(rag["name"], "vaultspec-rag");
+        assert_eq!(rag["floor"], "0.2.28");
+        assert!(rag["version"].is_null(), "rag version is honestly unknown");
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "availability stays the tier computation's verdict"
+        );
     }
 
     // Without the embed-spa feature the fixture workspace has no bundle, so
