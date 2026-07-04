@@ -567,9 +567,11 @@ describe("useSearchController (real engine, live wiring)", () => {
     expect(searchBodies).toEqual([]);
 
     await waitFor(() => expect(searchBodies).toHaveLength(1), ENGINE_WAIT);
+    // The corpus target rides the wire as `type` (rag's vocabulary; see
+    // EngineClient.search) — a `target` key never reaches the wire.
     expect(JSON.parse(searchBodies[0])).toMatchObject({
       query: "alpha",
-      target: "code",
+      type: "code",
       scope,
     });
 
