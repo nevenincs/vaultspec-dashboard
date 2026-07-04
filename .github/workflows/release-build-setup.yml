@@ -1,0 +1,14 @@
+# Injected into every dist build job (engine/dist-workspace.toml
+# `github-build-setup`): the release binary is built with the embed-spa
+# feature, which compiles frontend/dist into the executable — so the SPA
+# production bundle must exist before cargo runs (dashboard-packaging D2).
+- name: Install Node
+  uses: actions/setup-node@v4
+  with:
+    node-version: 22
+    cache: npm
+    cache-dependency-path: frontend/package-lock.json
+- name: Build the SPA bundle for embedding
+  run: |
+    npm --prefix frontend ci
+    npm --prefix frontend run build

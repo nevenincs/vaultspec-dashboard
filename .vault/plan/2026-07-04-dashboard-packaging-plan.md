@@ -54,11 +54,11 @@ Delivers the detect-and-instruct startup probe for git and vaultspec-core and su
 
 Delivers the pinned dist-generated release workflow producing installers, binstall metadata, and checksummed GitHub Releases artifacts, gated on the existing verification jobs with the CI toolchain pinned.
 
-- [ ] `P03.S11` - run dist init and commit the pinned dist configuration (win, macos, linux targets, shell and powershell installers, binstall metadata, checksums, GitHub Releases hosting, install receipts, user-invoked updates only); `dist-workspace.toml`.
-- [ ] `P03.S12` - adapt the generated release workflow to build the frontend before the cargo build, enable the embed-spa feature, and gate publishing on the verification jobs; `.github/workflows/release.yml`.
-- [ ] `P03.S13` - pin the CI toolchain to the repo rust-toolchain.toml instead of stable in the engine workflow; `.github/workflows/engine-ci.yml`.
-- [ ] `P03.S14` - pin the CI toolchain to the repo rust-toolchain.toml instead of stable in the quality-gates workflow; `.github/workflows/quality-gates.yml`.
-- [ ] `P03.S15` - dry-run the release pipeline from a branch tag and verify a produced artifact installs and serves the embedded SPA standalone in a clean directory; `.github/workflows/release.yml`.
+- [x] `P03.S11` - run dist init and commit the pinned dist configuration (win, macos, linux targets, shell and powershell installers, binstall metadata, checksums, GitHub Releases hosting, install receipts, user-invoked updates only); `dist-workspace.toml`.
+- [x] `P03.S12` - adapt the generated release workflow to build the frontend before the cargo build, enable the embed-spa feature, and gate publishing on the verification jobs; `.github/workflows/release.yml`.
+- [x] `P03.S13` - pin the CI toolchain to the repo rust-toolchain.toml instead of stable in the engine workflow; `.github/workflows/engine-ci.yml`.
+- [x] `P03.S14` - pin the CI toolchain to the repo rust-toolchain.toml instead of stable in the quality-gates workflow; `.github/workflows/quality-gates.yml`.
+- [x] `P03.S15` - dry-run the release pipeline from a branch tag and verify a produced artifact installs and serves the embedded SPA standalone in a clean directory; `.github/workflows/release.yml`.
 
 ### Phase `P04` - releaser and manifest cleanup
 

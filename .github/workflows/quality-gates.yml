@@ -47,7 +47,15 @@ jobs:
       # `vaultspec-core install` against a scratch vault. Provision both — the
       # built engine binary and vaultspec-core on PATH — before vitest, or the
       # whole suite errors at global setup.
-      - uses: dtolnay/rust-toolchain@stable
+      # Pin to the repo toolchain (the action's RUSTUP_TOOLCHAIN export
+      # overrides engine/rust-toolchain.toml, so pass the pin explicitly).
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: engine
@@ -75,7 +83,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Pin to the repo toolchain (see the frontend job's note).
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: engine
