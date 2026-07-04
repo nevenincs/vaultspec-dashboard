@@ -32,8 +32,8 @@ use super::transitions::{
     submit_for_review_transition_eligibility, transition_eligibility,
 };
 use super::validation::{
-    ChunkValidationEvidence, CurrentRevisionObservation, ValidationStatusRecord,
-    submit_for_review_eligibility, validate_changeset_material,
+    ChunkEvidenceStatus, ChunkValidationEvidence, CurrentRevisionObservation,
+    ValidationStatusRecord, submit_for_review_eligibility, validate_changeset_material,
 };
 
 const OUTCOME_SCHEMA: &str = "authoring.proposal_command_outcome.v1";
@@ -391,6 +391,50 @@ pub fn proposal_snapshot(
         latest,
         latest_validation,
     })
+}
+
+/// Derive the validation evidence (current-revision observations + chunk evidence)
+/// for a changeset's latest materialized children from the live worktree — the
+/// server-side inputs the submit route feeds to [`validate_proposal`] so the
+/// validation pass is composed on the BACKEND, never supplied by the client. A
+/// whole-document ReplaceBody proposal validates against its captured base blob.
+pub fn validation_evidence(
+    reader: &SnapshotReader,
+    latest: &ChangesetAggregateRecord,
+) -> StoreResult<(
+    Vec<CurrentRevisionObservation>,
+    Vec<ChunkValidationEvidence>,
+)> {
+    let mut current_revisions = Vec::with_capacity(latest.children.len());
+    let mut chunk_evidence = Vec::with_capacity(latest.children.len());
+    for child in &latest.children {
+        let operation = child.materialized_operation.as_ref().ok_or_else(|| {
+            StoreError::Validation(format!(
+                "changeset `{}` child `{}` has no materialized operation to validate",
+                latest.changeset_id, child.child_key
+            ))
+        })?;
+        let snapshot = reader
+            .require_current_base(&operation.target_snapshot.document)
+            .map_err(|err| StoreError::Snapshot(err.to_string()))?;
+        current_revisions.push(CurrentRevisionObservation::from_snapshot(
+            &child.child_key,
+            &snapshot,
+        ));
+        chunk_evidence.push(ChunkValidationEvidence {
+            child_key: child.child_key.clone(),
+            evidence_id: format!("chunk:{}", child.child_key),
+            document: operation.target_snapshot.document.clone(),
+            base_revision: operation.target_snapshot.base_revision.clone(),
+            chunker_version: "whole_document_v1".to_string(),
+            range: "bytes:0..all".to_string(),
+            content_hash: operation.review_diff.base_blob_hash.clone(),
+            observed_revision: Some(operation.target_snapshot.base_revision.clone()),
+            observed_content_hash: Some(operation.review_diff.base_blob_hash.clone()),
+            status: ChunkEvidenceStatus::Current,
+        });
+    }
+    Ok((current_revisions, chunk_evidence))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -839,7 +883,10 @@ fn require_latest(
         ))
     })?;
     if latest.changeset_revision != *expected_revision {
-        return Err(StoreError::Ledger(format!(
+        // A client-supplied `expected_revision` that no longer matches the ledger
+        // head is an optimistic-concurrency CONFLICT ("your base is stale"), not an
+        // infrastructure fault — the route maps it to a 409, never a 5xx.
+        return Err(StoreError::StaleRevision(format!(
             "changeset `{changeset_id}` expected revision `{expected_revision}` but latest is `{}`",
             latest.changeset_revision
         )));

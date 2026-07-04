@@ -90,6 +90,19 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
         ],
     },
     RouteFixture {
+        family: EndpointFamily::Proposal,
+        method: "POST",
+        path_template: "/authoring/v1/proposals/{changeset_id}/submit",
+        command: Some(CommandKind::SubmitForReview),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &[
+            "missing_idempotency_key",
+            "stale_expected_revision",
+            "unknown_field",
+        ],
+    },
+    RouteFixture {
         family: EndpointFamily::Review,
         method: "POST",
         path_template: "/authoring/v1/reviews/{approval_id}/decisions",
@@ -277,6 +290,18 @@ pub struct DraftMutation {
 pub enum DraftMode {
     WholeDocument,
     Append,
+}
+
+/// Wire payload for `POST /authoring/v1/proposals/{changeset_id}/submit`: move a
+/// drafted proposal into review. The route COMPOSES the validation pass and the
+/// approval-request opening SERVER-SIDE (neither is a separate wire verb), so the
+/// client sends only the revision fence it last saw and the review summary; the
+/// changeset id travels in the path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubmitForReviewRequest {
+    pub expected_revision: RevisionToken,
+    pub summary: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

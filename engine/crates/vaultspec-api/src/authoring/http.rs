@@ -27,19 +27,33 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
+use ingest_struct::reader::blob_oid;
 use serde::de::DeserializeOwned;
 use serde_json::json;
 
-use super::api::{CommandEnvelope, CreateProposalRequest};
-use super::model::{ChangesetId, CommandKind};
+use super::api::{
+    CommandEnvelope, CreateProposalRequest, ReviewDecisionRequest, SubmitForReviewRequest,
+};
+use super::approvals::{
+    ApprovalDecision, ApprovalError, ApprovalOutcome, ApprovalRequestInput, ApprovalRequestRecord,
+    ReviewDecisionInput, ReviewedTuple, V1_POLICY_VERSION,
+};
+use super::model::{
+    ActionEligibility, ActorRef, ApprovalId, ChangesetId, CommandKind, IdempotencyKey, ProposalId,
+    ReviewDecisionKind, RevisionToken,
+};
 use super::principal::{
     AUTHORING_ACTOR_TOKEN_HEADER, AuthenticatedPrincipal, PrincipalDenial, ResolvedCommand,
     resolve_principal,
 };
 use super::projections::ProjectionError;
-use super::proposal::{ProposalCommandContext, ProposalCommandResult};
+use super::proposal::{
+    ProposalCommandContext, ProposalCommandOutcome, ProposalCommandResult, SubmitProposalRequest,
+    ValidateProposalRequest, validation_evidence,
+};
 use super::snapshots::SnapshotReader;
-use super::store::StoreError;
+use super::store::{Result as StoreResult, Store, StoreError};
+use super::transitions::ValidationFreshness;
 use crate::app::{AppState, now_ms};
 
 /// A mutating command's in-flight idempotency reservation window (resource-bounds:
@@ -372,6 +386,13 @@ fn command_error_response(state: &AppState, err: &StoreError) -> Response {
             "authoring_stale_base",
             err.to_string(),
         ),
+        // An optimistic-concurrency conflict: the client's `expected_revision` no
+        // longer matches the ledger head — "your base is stale", a 409, not a 5xx.
+        StoreError::StaleRevision(_) => (
+            StatusCode::CONFLICT,
+            "authoring_stale_revision",
+            err.to_string(),
+        ),
         StoreError::Validation(_) => (
             StatusCode::UNPROCESSABLE_ENTITY,
             "authoring_validation_failed",
@@ -439,17 +460,24 @@ fn proposal_result_response(state: &AppState, result: ProposalCommandResult) -> 
         // Denials are VALUES: an eligibility refusal rides the SUCCESS envelope
         // (200) as a denied decision carrying the domain reason, never a 4xx fault
         // (denials-are-values ADR; errors are faults).
-        ProposalCommandResult::Denied { eligibility } => super::response::snapshot(
-            state,
-            json!({
-                "status": "denied",
-                "command": eligibility.command,
-                "allowed": eligibility.allowed,
-                "reason": eligibility.reason,
-            }),
-        )
-        .into_response(),
+        ProposalCommandResult::Denied { eligibility } => denial_snapshot(state, &eligibility),
     }
+}
+
+/// A denied eligibility as a 200 SUCCESS-envelope value (denials-are-values ADR):
+/// the shared shape every command surface uses for a refusal — status, the command
+/// it refused, and the domain reason.
+fn denial_snapshot(state: &AppState, eligibility: &ActionEligibility) -> Response {
+    super::response::snapshot(
+        state,
+        json!({
+            "status": "denied",
+            "command": eligibility.command,
+            "allowed": eligibility.allowed,
+            "reason": eligibility.reason,
+        }),
+    )
+    .into_response()
 }
 
 /// `POST /authoring/v1/proposals` — open a new authoring changeset (a Draft
@@ -477,6 +505,414 @@ pub async fn create_proposal(
         Ok(result) => proposal_result_response(&state, result),
         Err(err) => command_error_response(&state, &err),
     }
+}
+
+// --- submit for review (composite: validate + submit + open approval) ---------
+
+/// The reduced outcome of one composed proposal command: its recorded outcome
+/// (on accept OR idempotent replay), a denial VALUE, or a still-in-flight prior
+/// attempt the composition must not run past.
+enum StepOutcome {
+    Outcome {
+        outcome: ProposalCommandOutcome,
+        replayed: bool,
+    },
+    Denied(ActionEligibility),
+    InFlight,
+}
+
+/// Reduce a `ProposalCommandResult` to the outcome the composition threads
+/// forward, deserializing the recorded outcome on an idempotent replay.
+fn reduce_step(result: ProposalCommandResult) -> StoreResult<StepOutcome> {
+    Ok(match result {
+        ProposalCommandResult::Accepted { outcome, .. } => StepOutcome::Outcome {
+            outcome,
+            replayed: false,
+        },
+        ProposalCommandResult::Replayed { idempotency } => {
+            let payload = idempotency
+                .outcome
+                .ok_or_else(|| {
+                    StoreError::Idempotency(
+                        "replayed proposal command carries no recorded outcome".to_string(),
+                    )
+                })?
+                .payload;
+            let outcome: ProposalCommandOutcome =
+                serde_json::from_value(payload).map_err(|err| {
+                    StoreError::Idempotency(format!(
+                        "recorded proposal outcome is unreadable: {err}"
+                    ))
+                })?;
+            StepOutcome::Outcome {
+                outcome,
+                replayed: true,
+            }
+        }
+        ProposalCommandResult::InFlight { .. } => StepOutcome::InFlight,
+        ProposalCommandResult::Denied { eligibility } => StepOutcome::Denied(eligibility),
+    })
+}
+
+/// The composed submit outcome: a denial value at validate or submit, an in-flight
+/// prior attempt, or the reviewed revision + derived proposal/approval ids + the
+/// opened approval the reviewer needs.
+enum SubmitComposite {
+    Denied(ActionEligibility),
+    InFlight,
+    Submitted {
+        changeset_id: ChangesetId,
+        needs_review_revision: RevisionToken,
+        validation_digest: String,
+        proposal_id: ProposalId,
+        // Boxed: the durable approval record dwarfs the other variants, so boxing
+        // it keeps `SubmitComposite` small (clippy::large_enum_variant).
+        approval: Box<ApprovalRequestRecord>,
+        replayed: bool,
+    },
+}
+
+/// The proposal ↔ approval identity is 1:1 in V1: the proposal id is DERIVED
+/// deterministically from the changeset id (hashed like the apply/rollback receipt
+/// ids — a long changeset id can never overflow the id cap, and a client-opaque
+/// value never leaks). The submit response echoes it so the reviewer can name it.
+fn derive_proposal_id(changeset_id: &ChangesetId) -> StoreResult<ProposalId> {
+    ProposalId::new(format!(
+        "proposal:{}",
+        blob_oid(changeset_id.as_str().as_bytes())
+    ))
+    .map_err(|err| StoreError::Approval(format!("derived proposal id is invalid: {err}")))
+}
+
+/// The approval-request id, likewise derived deterministically from the changeset
+/// (1:1 with the proposal in V1), so a submit retry opens the SAME request.
+fn derive_approval_id(changeset_id: &ChangesetId) -> StoreResult<ApprovalId> {
+    ApprovalId::new(format!(
+        "approval:{}",
+        blob_oid(changeset_id.as_str().as_bytes())
+    ))
+    .map_err(|err| StoreError::Approval(format!("derived approval id is invalid: {err}")))
+}
+
+/// A composed sub-command idempotency key `{base}:{step}` so each internal step of
+/// the submit composition dedups independently and a whole-submit retry replays
+/// every step.
+fn step_key(base: &IdempotencyKey, step: &str) -> StoreResult<IdempotencyKey> {
+    IdempotencyKey::new(format!("{}:{step}", base.as_str())).map_err(|err| {
+        StoreError::Idempotency(format!("composed idempotency key is invalid: {err}"))
+    })
+}
+
+/// Map an `ApprovalError` to a `StoreError` so an approval step composes inside a
+/// unit of work: a nested store fault surfaces verbatim; a domain approval refusal
+/// becomes a typed approval error (mapped to a 4xx by the taxonomy).
+fn approval_err_to_store(err: ApprovalError) -> StoreError {
+    match err {
+        ApprovalError::Store(store) => store,
+        other => StoreError::Approval(other.to_string()),
+    }
+}
+
+/// The submit composition: validate the drafted proposal (evidence derived from the
+/// live worktree), submit it for review, and open its approval request — all
+/// SERVER-SIDE, each step idempotent under the composed keys. A denial at validate
+/// or submit rides back as a value; a store fault aborts.
+fn submit_for_review_composed(
+    store: &mut Store,
+    reader: &SnapshotReader,
+    actor: &ActorRef,
+    idempotency_key: &IdempotencyKey,
+    now: i64,
+    changeset_id: &ChangesetId,
+    payload: &SubmitForReviewRequest,
+) -> StoreResult<SubmitComposite> {
+    // 1. VALIDATE — derive the evidence from the live worktree so the client never
+    //    supplies validation material (the "compose validation server-side" rule).
+    let latest = store
+        .with_unit_of_work(CommandKind::ValidateProposal, |uow| {
+            uow.ledger().latest(changeset_id)
+        })?
+        .ok_or_else(|| {
+            StoreError::StaleRevision(format!(
+                "changeset `{changeset_id}` has no proposal history to submit"
+            ))
+        })?;
+    let (current_revisions, chunk_evidence) = validation_evidence(reader, &latest)?;
+    let validate = super::proposal::validate_proposal(
+        store,
+        ProposalCommandContext {
+            actor: actor.clone(),
+            idempotency_key: step_key(idempotency_key, "validate")?,
+            now_ms: now,
+            in_flight_expires_at_ms: Some(now + COMMAND_IN_FLIGHT_TTL_MS),
+            outcome_expires_at_ms: Some(now + COMMAND_OUTCOME_TTL_MS),
+        },
+        ValidateProposalRequest {
+            changeset_id: changeset_id.clone(),
+            expected_revision: payload.expected_revision.clone(),
+            summary: payload.summary.clone(),
+            current_revisions,
+            chunk_evidence,
+        },
+    )?;
+    let validated = match reduce_step(validate)? {
+        StepOutcome::Outcome { outcome, .. } => outcome,
+        StepOutcome::Denied(eligibility) => return Ok(SubmitComposite::Denied(eligibility)),
+        StepOutcome::InFlight => return Ok(SubmitComposite::InFlight),
+    };
+    let validation_digest = validated
+        .validation_digest
+        .clone()
+        .ok_or_else(|| StoreError::Validation("validation pass produced no digest".to_string()))?;
+
+    // 2. SUBMIT — move the validated proposal to NeedsReview under its new revision.
+    let submit = super::proposal::submit_for_review(
+        store,
+        ProposalCommandContext {
+            actor: actor.clone(),
+            idempotency_key: step_key(idempotency_key, "submit")?,
+            now_ms: now,
+            in_flight_expires_at_ms: Some(now + COMMAND_IN_FLIGHT_TTL_MS),
+            outcome_expires_at_ms: Some(now + COMMAND_OUTCOME_TTL_MS),
+        },
+        SubmitProposalRequest {
+            changeset_id: changeset_id.clone(),
+            expected_revision: validated.changeset_revision.clone(),
+            validation_digest: validation_digest.clone(),
+            summary: payload.summary.clone(),
+        },
+    )?;
+    let (submitted, replayed) = match reduce_step(submit)? {
+        StepOutcome::Outcome { outcome, replayed } => (outcome, replayed),
+        StepOutcome::Denied(eligibility) => return Ok(SubmitComposite::Denied(eligibility)),
+        StepOutcome::InFlight => return Ok(SubmitComposite::InFlight),
+    };
+    let needs_review_revision = submitted.changeset_revision.clone();
+
+    // 3. OPEN APPROVAL — server-driven (request_approval is domain plumbing, not a
+    //    wire verb), idempotent by proposal id + the composed `:approval` key.
+    let proposal_id = derive_proposal_id(changeset_id)?;
+    let approval_id = derive_approval_id(changeset_id)?;
+    let approval = store.with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+        uow.approvals()
+            .request_approval(ApprovalRequestInput {
+                approval_id: approval_id.clone(),
+                proposal_id: proposal_id.clone(),
+                changeset_id: changeset_id.clone(),
+                reviewed: ReviewedTuple {
+                    proposal_revision: needs_review_revision.clone(),
+                    validation_digest: validation_digest.clone(),
+                    policy_version: V1_POLICY_VERSION.to_string(),
+                },
+                idempotency_key: format!("{}:approval", idempotency_key.as_str()),
+                created_at_ms: now,
+            })
+            .map_err(approval_err_to_store)
+    })?;
+
+    Ok(SubmitComposite::Submitted {
+        changeset_id: changeset_id.clone(),
+        needs_review_revision,
+        validation_digest,
+        proposal_id,
+        approval: Box::new(approval.record),
+        replayed,
+    })
+}
+
+/// `POST /authoring/v1/proposals/{changeset_id}/submit` — move a drafted proposal
+/// into review. The route COMPOSES the validation pass + the approval-request
+/// opening SERVER-SIDE; the actor is the middleware-resolved principal.
+pub async fn submit_for_review(
+    State(state): State<Arc<AppState>>,
+    Path(changeset_id): Path<String>,
+    command: ResolvedCommand<SubmitForReviewRequest>,
+) -> Response {
+    let changeset_id = match ChangesetId::new(&changeset_id) {
+        Ok(id) => id,
+        Err(err) => {
+            return super::response::typed_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                REQUEST_INVALID_KIND,
+                &format!("invalid changeset id: {err}"),
+            )
+            .into_response();
+        }
+    };
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let reader = SnapshotReader::for_worktree(state.active_workspace_root());
+    match state.with_authoring_store(|store| {
+        submit_for_review_composed(
+            store,
+            &reader,
+            &actor,
+            &idempotency_key,
+            now,
+            &changeset_id,
+            &payload,
+        )
+    }) {
+        Ok(composite) => submit_composite_response(&state, composite),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// Map a composed submit outcome to its enveloped response: a denial rides the 200
+/// success envelope as a value; a still-in-flight step returns 202; a completed
+/// submit (or idempotent replay) serves the reviewed revision + derived ids + the
+/// opened approval the reviewer drives the decision from.
+fn submit_composite_response(state: &AppState, composite: SubmitComposite) -> Response {
+    match composite {
+        SubmitComposite::Denied(eligibility) => denial_snapshot(state, &eligibility),
+        SubmitComposite::InFlight => (
+            StatusCode::ACCEPTED,
+            super::response::snapshot(state, json!({ "status": "in_flight" })),
+        )
+            .into_response(),
+        SubmitComposite::Submitted {
+            changeset_id,
+            needs_review_revision,
+            validation_digest,
+            proposal_id,
+            approval,
+            replayed,
+        } => super::response::snapshot(
+            state,
+            json!({
+                "status": if replayed { "replayed" } else { "submitted" },
+                "changeset_id": changeset_id.as_str(),
+                "proposal_id": proposal_id.as_str(),
+                "reviewed_revision": needs_review_revision,
+                "validation_digest": validation_digest,
+                "approval": approval,
+            }),
+        )
+        .into_response(),
+    }
+}
+
+// --- review decision (approve / reject) ---------------------------------------
+
+/// `POST /authoring/v1/reviews/{approval_id}/decisions` — record a reviewer's
+/// approve/reject on an opened approval. The self-approval ban + freshness gate run
+/// INSIDE `submit_decision`; the reviewer is the middleware-resolved principal, and
+/// the current validation freshness is read from store state (never client-claimed).
+pub async fn submit_review_decision(
+    State(state): State<Arc<AppState>>,
+    Path(approval_id): Path<String>,
+    command: ResolvedCommand<ReviewDecisionRequest>,
+) -> Response {
+    let path_approval_id = match ApprovalId::new(&approval_id) {
+        Ok(id) => id,
+        Err(err) => {
+            return super::response::typed_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                REQUEST_INVALID_KIND,
+                &format!("invalid approval id: {err}"),
+            )
+            .into_response();
+        }
+    };
+    let now = now_ms();
+    let (actor, _command, _idempotency_key, payload) = command.into_parts();
+    if path_approval_id != payload.approval_id {
+        return super::response::typed_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            REQUEST_INVALID_KIND,
+            "path approval id does not match the request body",
+        )
+        .into_response();
+    }
+    let decision = match payload.decision {
+        ReviewDecisionKind::Approve => ApprovalDecision::Approve,
+        ReviewDecisionKind::Reject => ApprovalDecision::Reject,
+        // Edit / Respond (request-changes + edit-response review loops) are reserved
+        // for W05.P24; the V1 review subset is approve/reject only. This rides the
+        // success envelope as a denial value (denials-are-values), never a fault.
+        ReviewDecisionKind::Edit | ReviewDecisionKind::Respond => {
+            return denial_snapshot(
+                &state,
+                &ActionEligibility::denied(
+                    CommandKind::EditProposal,
+                    "request-changes and edit-response review loops are reserved for W05.P24; \
+                     the V1 review subset is approve/reject only",
+                ),
+            );
+        }
+    };
+    let command_kind = match decision {
+        ApprovalDecision::Approve => CommandKind::Approve,
+        ApprovalDecision::Reject => CommandKind::Reject,
+        ApprovalDecision::RequestChanges => CommandKind::EditProposal,
+    };
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(command_kind, |uow| {
+            let approval = uow
+                .approvals()
+                .latest_for_proposal(&payload.proposal_id)?
+                .ok_or_else(|| {
+                    StoreError::Approval(format!(
+                        "no approval request exists for proposal `{}`",
+                        payload.proposal_id
+                    ))
+                })?;
+            let validation = uow
+                .validations()
+                .latest_for_changeset(&approval.changeset_id)?;
+            let current_validation_digest = validation
+                .as_ref()
+                .map(|record| record.validation_digest.clone())
+                .unwrap_or_default();
+            let validation_freshness = ValidationFreshness {
+                record_present: validation.is_some(),
+                approval_ready: validation
+                    .as_ref()
+                    .map(|record| record.approval_ready)
+                    .unwrap_or(false),
+                digest_matches_reviewed: validation
+                    .as_ref()
+                    .map(|record| record.validation_digest == approval.reviewed.validation_digest)
+                    .unwrap_or(false),
+            };
+            uow.approvals()
+                .submit_decision(ReviewDecisionInput {
+                    proposal_id: &payload.proposal_id,
+                    decision,
+                    reviewer: &actor,
+                    validation: validation_freshness,
+                    current_validation_digest: &current_validation_digest,
+                    current_policy_version: V1_POLICY_VERSION,
+                    run_cancelled: false,
+                    comment: payload.comment.clone(),
+                    decided_at_ms: now,
+                })
+                .map_err(approval_err_to_store)
+        })
+    }) {
+        Ok(outcome) => approval_outcome_response(&state, outcome),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// Map an approval decision outcome to its enveloped response: a refused decision
+/// (the self-approval ban, a stale/ineligible review) rides the 200 success
+/// envelope as a denied value; a permitted decision serves the durable approval.
+fn approval_outcome_response(state: &AppState, outcome: ApprovalOutcome) -> Response {
+    if !outcome.eligibility.allowed {
+        return denial_snapshot(state, &outcome.eligibility);
+    }
+    super::response::snapshot(
+        state,
+        json!({
+            "status": if outcome.replayed { "replayed" } else { "decided" },
+            "approval": outcome.record,
+        }),
+    )
+    .into_response()
 }
 
 #[cfg(test)]
@@ -929,6 +1365,211 @@ mod tests {
         assert!(
             body["tiers"]["semantic"]["available"].is_boolean(),
             "the denial rides the shared tiers envelope"
+        );
+    }
+
+    // --- mutating command handlers: submit for review + review decision -------
+
+    async fn json_body(response: Response) -> Value {
+        let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    fn human_reviewer() -> ActorRef {
+        ActorRef {
+            id: ActorId::new("human:reviewer").unwrap(),
+            kind: ActorKind::Human,
+            delegated_by: None,
+        }
+    }
+
+    fn submit_command(
+        principal: AuthenticatedPrincipal,
+        expected_revision: &str,
+        idem: &str,
+    ) -> ResolvedCommand<SubmitForReviewRequest> {
+        let envelope = CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::SubmitForReview,
+            idempotency_key: IdempotencyKey::new(idem).unwrap(),
+            payload: SubmitForReviewRequest {
+                expected_revision: RevisionToken::new(expected_revision).unwrap(),
+                summary: "submit for review".to_string(),
+            },
+        };
+        ResolvedCommand::from_principal(principal, envelope)
+    }
+
+    fn decision_command(
+        principal: AuthenticatedPrincipal,
+        approval_id: &str,
+        proposal_id: &str,
+        reviewed_revision: &str,
+        decision: ReviewDecisionKind,
+    ) -> ResolvedCommand<ReviewDecisionRequest> {
+        let command = match decision {
+            ReviewDecisionKind::Reject => CommandKind::Reject,
+            _ => CommandKind::Approve,
+        };
+        let envelope = CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command,
+            idempotency_key: IdempotencyKey::new(format!("idem:decision:{approval_id}")).unwrap(),
+            payload: ReviewDecisionRequest {
+                proposal_id: ProposalId::new(proposal_id).unwrap(),
+                approval_id: ApprovalId::new(approval_id).unwrap(),
+                decision,
+                reviewed_revision: RevisionToken::new(reviewed_revision).unwrap(),
+                interrupt_id: None,
+                comment: Some("decision".to_string()),
+            },
+        };
+        ResolvedCommand::from_principal(principal, envelope)
+    }
+
+    /// Drive create → submit over the real handlers (the proposer is `agent()`,
+    /// registered here), returning the parsed submit response for the review tests.
+    async fn create_then_submit(
+        state: &Arc<AppState>,
+        root: &std::path::Path,
+        changeset: &str,
+    ) -> Value {
+        register_actor(state, &agent());
+        let (_d1, p1) = resolved_principal(&agent());
+        let created = create_proposal(
+            State(state.clone()),
+            create_command(p1, root, changeset, &format!("idem:create:{changeset}")),
+        )
+        .await;
+        assert_eq!(created.status(), StatusCode::OK);
+        let created_body = json_body(created).await;
+        let revision = created_body["data"]["changeset_revision"]
+            .as_str()
+            .expect("create returns the draft revision")
+            .to_string();
+
+        let (_d2, p2) = resolved_principal(&agent());
+        let response = submit_for_review(
+            State(state.clone()),
+            axum::extract::Path(changeset.to_string()),
+            submit_command(p2, &revision, &format!("idem:submit:{changeset}")),
+        )
+        .await;
+        let status = response.status();
+        let body = json_body(response).await;
+        assert_eq!(status, StatusCode::OK, "submit failed: {body}");
+        body
+    }
+
+    #[tokio::test]
+    async fn submit_route_composes_validation_and_opens_the_approval() {
+        let (dir, state) = fixture_state();
+        let body = create_then_submit(&state, dir.path(), "changeset_submit_1").await;
+
+        assert_eq!(body["data"]["status"], "submitted");
+        assert_eq!(body["data"]["changeset_id"], "changeset_submit_1");
+        assert!(
+            body["data"]["proposal_id"]
+                .as_str()
+                .unwrap()
+                .starts_with("proposal:"),
+            "proposal id is derived from the changeset: {body}"
+        );
+        assert!(
+            body["data"]["validation_digest"].as_str().is_some(),
+            "the composed validation pass recorded a digest: {body}"
+        );
+        // The approval request was opened SERVER-SIDE, queued for a reviewer.
+        assert_eq!(body["data"]["approval"]["queue_state"], "queued");
+        assert!(body["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    #[tokio::test]
+    async fn review_decision_route_approves_under_a_distinct_reviewer() {
+        let (dir, state) = fixture_state();
+        let submitted = create_then_submit(&state, dir.path(), "changeset_review_1").await;
+        let proposal_id = submitted["data"]["proposal_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let approval_id = submitted["data"]["approval"]["approval_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let reviewed = submitted["data"]["reviewed_revision"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        register_actor(&state, &human_reviewer());
+        let (_d, reviewer) = resolved_principal(&human_reviewer());
+        let response = submit_review_decision(
+            State(state.clone()),
+            axum::extract::Path(approval_id.clone()),
+            decision_command(
+                reviewer,
+                &approval_id,
+                &proposal_id,
+                &reviewed,
+                ReviewDecisionKind::Approve,
+            ),
+        )
+        .await;
+
+        let status = response.status();
+        let body = json_body(response).await;
+        assert_eq!(status, StatusCode::OK, "decision failed: {body}");
+        assert_eq!(body["data"]["status"], "decided");
+        assert_eq!(body["data"]["approval"]["queue_state"], "closed");
+        assert_eq!(body["data"]["approval"]["decision"]["decision"], "approve");
+    }
+
+    #[tokio::test]
+    async fn agent_self_approval_is_denied_over_the_wire() {
+        let (dir, state) = fixture_state();
+        let submitted = create_then_submit(&state, dir.path(), "changeset_selfapprove_1").await;
+        let proposal_id = submitted["data"]["proposal_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let approval_id = submitted["data"]["approval"]["approval_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let reviewed = submitted["data"]["reviewed_revision"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // The PROPOSING agent (registered by create_then_submit) tries to approve
+        // its OWN proposal — the self-approval ban denies it as a 200 VALUE.
+        let (_d, self_principal) = resolved_principal(&agent());
+        let response = submit_review_decision(
+            State(state.clone()),
+            axum::extract::Path(approval_id.clone()),
+            decision_command(
+                self_principal,
+                &approval_id,
+                &proposal_id,
+                &reviewed,
+                ReviewDecisionKind::Approve,
+            ),
+        )
+        .await;
+
+        let status = response.status();
+        let body = json_body(response).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "self-approval must be a 200 denial: {body}"
+        );
+        assert_eq!(body["data"]["status"], "denied");
+        assert!(
+            body["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("its own proposal")),
+            "the ban names the self-approval: {body}"
         );
     }
 

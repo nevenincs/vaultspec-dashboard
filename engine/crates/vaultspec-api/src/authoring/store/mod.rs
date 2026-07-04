@@ -616,6 +616,8 @@ pub enum StoreError {
     Validation(String),
     #[error("authoring ledger error: {0}")]
     Ledger(String),
+    #[error("stale changeset revision: {0}")]
+    StaleRevision(String),
     #[error("authoring approval error: {0}")]
     Approval(String),
     #[error("authoring actor token error: {0}")]
