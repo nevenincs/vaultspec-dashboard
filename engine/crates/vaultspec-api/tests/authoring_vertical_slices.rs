@@ -6,14 +6,15 @@
 //! create → submit → approve → apply → rollback) plus the denial / idempotency /
 //! principal matrix.
 //!
-//! LIVE-CORE HONESTY: the apply leg drives the real `vaultspec-core` via
-//! `CoreAdapter::detect()`. This test does NOT fake core — the apply route is driven
-//! for real and the receipt is inspected: `child_outcome == "applied"` means a live
-//! core was present, otherwise `"failed"` (core unavailable). Both are honest
-//! enveloped outcomes; the full applied-write path is additionally covered by the
-//! `apply.rs` domain tests (fake adapter). The infra-fault → 503 mapping and the
-//! validation-fault → 422 mapping are covered by the `http.rs` unit tests (they are
-//! not cleanly wire-triggerable without contriving a corrupt store mid-flight).
+//! LIVE-CORE HONESTY (R1 (c)): the exit-gate test SCAFFOLDS a real `.vaultspec`
+//! workspace (`vaultspec-core install`, an offline local deploy) so the apply's
+//! `set-body` WRITE runs against a real vaultspec-core — the deepest integration (the
+//! set-body arg contract vs a real workspace) that unit tests never exercise. When
+//! the workspace installs (an operable core), the applied receipt is REQUIRED
+//! (child_outcome=applied + rollback=generated); with NO core in the env it degrades
+//! HONESTLY to a failed receipt + unavailable rollback. Core is NEVER faked. The
+//! infra-fault → 503 and validation-fault → 422 mappings are covered by the `http.rs`
+//! unit tests (not cleanly wire-triggerable without contriving a corrupt store).
 
 use std::path::Path;
 use std::sync::Arc;
@@ -27,8 +28,12 @@ use vaultspec_api::build_router;
 
 const ACTOR_TOKEN_HEADER: &str = "x-authoring-actor-token";
 const DOC_PATH: &str = ".vault/plan/e2e-plan.md";
-const BASE_BODY: &str = "---\ntags:\n  - '#plan'\n---\n\n# e2e plan\n\nbase body\n";
-const NEW_BODY: &str = "---\ntags:\n  - '#plan'\n---\n\n# e2e plan\n\nmaterialized body\n";
+// R1 (c): a fully VALID vault doc (feature tag + required `date` frontmatter) so the
+// real `vault set-body` write accepts it — an invalid doc is refused ("date is
+// required"), which is why an unscaffolded run degrades to a failed receipt.
+const BASE_BODY: &str =
+    "---\ntags:\n  - '#plan'\n  - '#e2e'\ndate: '2026-07-04'\n---\n\n# e2e plan\n\nbase body\n";
+const NEW_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#e2e'\ndate: '2026-07-04'\n---\n\n# e2e plan\n\nmaterialized body\n";
 
 fn git(dir: &Path, args: &[&str]) {
     let output = std::process::Command::new("git")
@@ -64,20 +69,55 @@ fn git_blob(root: &Path, rel: &str) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
-/// A real git worktree with a `.vault` corpus + the target plan doc. Returns the
-/// state and the doc's `blob:<sha1>` base revision.
-fn worktree_state() -> (tempfile::TempDir, Arc<AppState>, String) {
+/// Scaffold a real `.vaultspec` workspace in the worktree so the apply's core
+/// `set-body` WRITE operates against a real vaultspec-core workspace (R1 (c) — the
+/// deepest integration, otherwise never e2e-tested). Best-effort + offline (a local
+/// framework deploy): returns whether a workspace was installed. When it is NOT (no
+/// core in the env), the e2e degrades honestly to a failed receipt — never faked.
+fn scaffold_vaultspec_workspace(root: &Path) -> bool {
+    let attempts: [&[&str]; 2] = [
+        &[
+            "uv",
+            "run",
+            "--no-sync",
+            "vaultspec-core",
+            "install",
+            "--target",
+            ".",
+        ],
+        &["vaultspec-core", "install", "--target", "."],
+    ];
+    for args in attempts {
+        let installed = std::process::Command::new(args[0])
+            .args(&args[1..])
+            .current_dir(root)
+            .output()
+            .map(|out| out.status.success())
+            .unwrap_or(false);
+        if installed && root.join(".vaultspec").is_dir() {
+            return true;
+        }
+    }
+    root.join(".vaultspec").is_dir()
+}
+
+/// A real git worktree with a `.vault` corpus + the target plan doc, plus a real
+/// `.vaultspec` workspace when a core is available. Returns the state, the doc's
+/// `blob:<sha1>` base revision, and whether the workspace was installed (the applied
+/// leg runs for real ONLY then; otherwise the e2e degrades honestly).
+fn worktree_state() -> (tempfile::TempDir, Arc<AppState>, String, bool) {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     git(root, &["init", "-b", "main", "."]);
     let doc = root.join(DOC_PATH);
     std::fs::create_dir_all(doc.parent().unwrap()).unwrap();
     std::fs::write(&doc, BASE_BODY).unwrap();
+    let core_ready = scaffold_vaultspec_workspace(root);
     git(root, &["add", "."]);
     git(root, &["commit", "-m", "fixture"]);
     let base_revision = format!("blob:{}", git_blob(root, DOC_PATH));
     let state = app::build_state(root.to_path_buf());
-    (dir, state, base_revision)
+    (dir, state, base_revision, core_ready)
 }
 
 fn router(state: &Arc<AppState>) -> axum::Router {
@@ -253,7 +293,7 @@ async fn create_and_submit(
 
 #[tokio::test]
 async fn exit_gate_flow_issue_create_submit_approve_apply_rollback() {
-    let (dir, state, base) = worktree_state();
+    let (dir, state, base, core_ready) = worktree_state();
     let _keep = &dir;
     let bearer = state.bearer.clone();
 
@@ -308,12 +348,24 @@ async fn exit_gate_flow_issue_create_submit_approve_apply_rollback() {
         body["data"]["receipt"].is_object(),
         "apply records a receipt envelope regardless of core presence: {body}"
     );
-    let applied = body["data"]["child_outcome"] == "applied";
+    let child_outcome = body["data"]["child_outcome"]
+        .as_str()
+        .unwrap_or("<none>")
+        .to_string();
     eprintln!(
-        "[e2e] apply leg drove a {} vaultspec-core (child_outcome={})",
-        if applied { "LIVE" } else { "ABSENT" },
-        body["data"]["child_outcome"]
+        "[e2e] core_ready(workspace installed)={core_ready}; apply child_outcome={child_outcome}"
     );
+    // R1 (c): when a REAL .vaultspec workspace was installed (an operable core
+    // scaffolded it), the apply's set-body WRITE must land for real — assert the
+    // applied receipt. Otherwise (no core in the env) the e2e degrades honestly.
+    if core_ready {
+        assert_eq!(
+            child_outcome, "applied",
+            "a real vaultspec workspace must yield an APPLIED receipt (R1 (c) drives \
+             the real set-body write): {body}"
+        );
+    }
+    let applied = child_outcome == "applied";
 
     // 6. Rollback the source. It GENERATES only when the source actually APPLIED
     //    (a live core); with no core the source is `failed`, so rollback is honestly
@@ -362,7 +414,7 @@ async fn exit_gate_flow_issue_create_submit_approve_apply_rollback() {
 
 #[tokio::test]
 async fn principal_denials_missing_and_unknown_are_401() {
-    let (dir, state, base) = worktree_state();
+    let (dir, state, base, _core_ready) = worktree_state();
     let _keep = &dir;
     let bearer = state.bearer.clone();
 
@@ -402,7 +454,7 @@ async fn principal_denials_missing_and_unknown_are_401() {
 
 #[tokio::test]
 async fn a_stale_expected_revision_is_a_409() {
-    let (dir, state, base) = worktree_state();
+    let (dir, state, base, _core_ready) = worktree_state();
     let _keep = &dir;
     let bearer = state.bearer.clone();
     let agent = issue_token(&state, &bearer, "agent:writer", "agent").await;
@@ -441,7 +493,7 @@ async fn a_stale_expected_revision_is_a_409() {
 
 #[tokio::test]
 async fn an_idempotent_create_replays_the_same_receipt() {
-    let (dir, state, base) = worktree_state();
+    let (dir, state, base, _core_ready) = worktree_state();
     let _keep = &dir;
     let bearer = state.bearer.clone();
     let agent = issue_token(&state, &bearer, "agent:writer", "agent").await;
@@ -476,7 +528,7 @@ async fn an_idempotent_create_replays_the_same_receipt() {
 
 #[tokio::test]
 async fn an_agent_cannot_self_approve_over_the_wire() {
-    let (dir, state, base) = worktree_state();
+    let (dir, state, base, _core_ready) = worktree_state();
     let _keep = &dir;
     let bearer = state.bearer.clone();
     let agent = issue_token(&state, &bearer, "agent:writer", "agent").await;
@@ -511,7 +563,7 @@ async fn an_agent_cannot_self_approve_over_the_wire() {
 
 #[tokio::test]
 async fn applying_an_unapproved_changeset_is_a_200_denial() {
-    let (dir, state, base) = worktree_state();
+    let (dir, state, base, _core_ready) = worktree_state();
     let _keep = &dir;
     let bearer = state.bearer.clone();
     let agent = issue_token(&state, &bearer, "agent:writer", "agent").await;
