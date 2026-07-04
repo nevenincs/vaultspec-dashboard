@@ -15,10 +15,15 @@ use serde::Deserialize;
 
 /// Kill the child and, on Unix, its whole process group. The child is spawned
 /// as a group leader (`process_group(0)`), so a grandchild that inherited the
-/// stdout pipe (e.g. a shell's `sleep`) is signalled too and the reader thread
-/// unblocks at the deadline instead of waiting for that grandchild to exit. On
-/// Windows `Child::kill` already terminates the subtree.
-fn terminate(child: &mut Child) {
+/// stdout pipe (e.g. a shell's `sleep`, or the Python core under a `uv run`
+/// launcher) is signalled too and the reader thread unblocks at the deadline
+/// instead of waiting for that grandchild to exit. On Windows `Child::kill`
+/// calls `TerminateProcess`, which terminates ONLY the target process — a
+/// grandchild (the `uv`/console-script launcher's Python child) SURVIVES; a true
+/// subtree kill there needs a Job Object, which this runner deliberately does not
+/// take (dependency-free). Exposed `pub` so the fenced authoring core adapter can
+/// reuse this exact group-kill semantics rather than reinvent a weaker one.
+pub fn terminate(child: &mut Child) {
     #[cfg(unix)]
     {
         use nix::sys::signal::{Signal, killpg};

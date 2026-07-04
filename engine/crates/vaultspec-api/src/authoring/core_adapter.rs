@@ -21,7 +21,14 @@
 //!   (resource-bounds: a cap alone or a timeout alone is a defect). The bounded
 //!   loop mirrors `CoreRunner::run_json`; the stdin write + "branch on the
 //!   envelope, not the exit code" behaviour mirrors the existing `/ops/core`
-//!   write broker.
+//!   write broker. On a breach the child is killed by PROCESS GROUP on Unix (it
+//!   is spawned as its group leader), so the Python core GRANDCHILD under the
+//!   `uv run` launcher dies too — a bare child-kill would reap only the launcher
+//!   and leave the core to finish the write. On Windows a subtree kill needs a
+//!   Job Object (a dep we avoid), so the grandchild can survive; that is why
+//!   `Timeout`/`OutputTooLarge` are OUTCOME-INDETERMINATE
+//!   ([`CoreAdapterError::is_outcome_indeterminate`]) and the apply caller must
+//!   re-verify document post-state before recording a result.
 //! - Errors REDACT on the wire: [`CoreAdapterError::wire_reason`] surfaces only a
 //!   failure CATEGORY, never the child's stderr (which embeds absolute paths and
 //!   the sibling-workspace hint), the drafted body, a prompt, or a raw argument
@@ -252,6 +259,11 @@ impl CoreEnvelope {
 /// are REDACTED — they carry only a failure category, never the child's stderr,
 /// the drafted body, a prompt, or a raw argument value. The sensitive detail is
 /// held in the variant's private fields for [`Self::log_detail`] (operator logs).
+///
+/// WARNING: the derived `Debug` DOES render those sensitive fields (stderr,
+/// stdout, raw value). Never `{:?}`-format a `CoreAdapterError` onto the wire or
+/// into a `tiers` block — route it through [`Self::wire_reason`]. `Debug` is for
+/// tests and local diagnostics only.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CoreAdapterError {
     /// A request argument failed validation before any subprocess spawned. The
@@ -277,11 +289,22 @@ pub(crate) enum CoreAdapterError {
     /// The core exited but emitted nothing parseable as a `status` envelope.
     #[error("vaultspec-core produced no parseable envelope")]
     MalformedEnvelope { stdout: String },
-    /// Output exceeded the byte cap; the child was killed rather than buffered to
-    /// exhaustion.
+    /// Output exceeded the byte cap and the child was killed mid-flight.
+    ///
+    /// OUTCOME-INDETERMINATE: the core may have already completed (or partially
+    /// completed) the vault write before the kill landed — and on Windows the
+    /// killed launcher's Python grandchild can SURVIVE to finish it (no Job
+    /// Object, by design). This is NEVER "not applied." The apply caller (W03.P36)
+    /// MUST re-verify each target document's post-state (blob hash) before
+    /// recording an apply result — see [`Self::is_outcome_indeterminate`].
     #[error("vaultspec-core produced over {cap_mib} MiB of output (capped)")]
     OutputTooLarge { cap_mib: u64 },
-    /// The core outran its wall-clock deadline and was killed.
+    /// The core outran its wall-clock deadline and was killed mid-flight.
+    ///
+    /// OUTCOME-INDETERMINATE: identical caveat to [`Self::OutputTooLarge`] — the
+    /// write may have landed before (or, on Windows, despite) the kill. NEVER
+    /// treat this as "not applied"; the apply caller MUST re-verify document
+    /// post-state — see [`Self::is_outcome_indeterminate`].
     #[error("vaultspec-core timed out after {secs}s (killed)")]
     Timeout { secs: u64 },
 }
@@ -317,6 +340,18 @@ impl CoreAdapterError {
                 format!("vaultspec-core did not respond within {secs}s and was stopped")
             }
         }
+    }
+
+    /// Whether this failure leaves the vault write OUTCOME UNKNOWN — the core was
+    /// killed mid-flight (Timeout / OutputTooLarge), and on Windows its Python
+    /// grandchild may even have survived the kill, so the target document may or
+    /// may not have changed. The apply caller (W03.P36) MUST re-verify document
+    /// post-state (blob hash) before recording a result and MUST NEVER record such
+    /// a failure as "not applied." A pre-spawn validation error, a failed spawn,
+    /// or a core that self-terminated with no envelope did not have THIS adapter
+    /// kill a write in progress, so those are determinate.
+    pub(crate) fn is_outcome_indeterminate(&self) -> bool {
+        matches!(self, Self::Timeout { .. } | Self::OutputTooLarge { .. })
     }
 
     /// The sensitive detail, for the SERVER LOG only (never the wire): the raw
@@ -395,6 +430,17 @@ impl CoreAdapter {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        // Put the child in its OWN process group (Unix) so a Timeout / cap breach
+        // can kill the WHOLE tree — critically the Python core GRANDCHILD under
+        // the `uv run … vaultspec-core` launcher that `CoreRunner::detect()`
+        // resolves to (see `terminate`). Without this the group-kill has no group
+        // to target and a killed launcher would leave the core free to finish the
+        // vault write after we have already returned failure.
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt as _;
+            cmd.process_group(0);
+        }
         let mut child = cmd.spawn().map_err(CoreAdapterError::Unavailable)?;
 
         // Write the body to stdin and CLOSE it (EOF) on a worker thread, so a
@@ -437,11 +483,14 @@ impl CoreAdapter {
                 return Err(CoreAdapterError::Unavailable(io_err));
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                // The child outran its deadline: kill it (frees the pipe) and fail
-                // typed rather than hang. We do NOT join the reader here — the core
-                // is spawned directly (no shell), so killing the child closes the
-                // pipe and the reader ends promptly; a detached join avoids any
-                // wait on a pathological grandchild.
+                // The child outran its deadline: kill it — its whole process group
+                // on Unix, so the core GRANDCHILD dies too — and fail typed rather
+                // than hang. We do NOT join the reader: on Unix the group-kill
+                // closes the pipe so it ends promptly, but on Windows the core
+                // grandchild can survive (no Job Object) and hold the pipe, so a
+                // join could block; detaching bounds our return to the deadline.
+                // Timeout is OUTCOME-INDETERMINATE (see the variant docs): the
+                // write may have landed before — or, on Windows, despite — the kill.
                 terminate(&mut child);
                 let _ = child.wait();
                 let _ = writer.join();
@@ -504,13 +553,23 @@ impl CoreAdapter {
     }
 }
 
-/// Kill the child. We spawn `vaultspec-core` DIRECTLY (never via a shell), so
-/// there is no grandchild holding the stdout pipe and a direct-child kill reaps
-/// the process; on Windows `Child::kill` terminates the subtree anyway. (The
-/// process-group dance `CoreRunner` performs is for shell-wrapped verbs, which
-/// this adapter never spawns — keeping it dependency-free of `nix`.)
+/// Kill the core child AND, on Unix, its whole process group. The invocation
+/// `CoreRunner::detect()` binds is `["uv","run","--no-sync","vaultspec-core"]`
+/// (its PREFERRED resolution), so the DIRECT child is the `uv` launcher and the
+/// Python core is a GRANDCHILD — likewise the bare-PATH console-script shim →
+/// python, and on Windows always. A bare `Child::kill` (`TerminateProcess` on
+/// Windows) reaps only the launcher and leaves the core grandchild running, free
+/// to finish the vault write AFTER we have already returned failure (ledger says
+/// failed, document changed, preimage/rollback rot). On Unix we therefore kill
+/// the whole PROCESS GROUP (the child is spawned as its group leader via
+/// `process_group(0)`), reaping the grandchild too — reusing `ingest-core`'s
+/// group-kill so the semantics stay identical to the read runner. On Windows a
+/// true subtree kill needs a Job Object (a new dependency we deliberately avoid),
+/// so the grandchild CAN survive; that is exactly why [`CoreAdapterError::Timeout`]
+/// and [`CoreAdapterError::OutputTooLarge`] are OUTCOME-INDETERMINATE and the
+/// apply caller MUST re-verify document post-state.
 fn terminate(child: &mut Child) {
-    let _ = child.kill();
+    ingest_core::runner::terminate(child);
 }
 
 /// Drain the child's stderr under a byte cap for the redacted [`CoreFailed`]
@@ -958,6 +1017,66 @@ mod tests {
         assert!(
             elapsed < Duration::from_secs(10),
             "returned at the ~0.4s deadline, not after the 30s sleep; took {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn timeout_and_cap_are_outcome_indeterminate_the_rest_are_not() {
+        // The load-bearing R1 contract: a mid-flight kill leaves the write
+        // OUTCOME-UNKNOWN (the core, or its surviving Windows grandchild, may have
+        // completed it), so the apply caller MUST re-verify post-state and never
+        // record "not applied." Determinate failures did not kill a write.
+        assert!(CoreAdapterError::Timeout { secs: 1 }.is_outcome_indeterminate());
+        assert!(CoreAdapterError::OutputTooLarge { cap_mib: 8 }.is_outcome_indeterminate());
+        assert!(!invalid("ref", "x", "bad").is_outcome_indeterminate());
+        assert!(
+            !CoreAdapterError::CoreFailed {
+                code: Some(1),
+                stderr: String::new(),
+            }
+            .is_outcome_indeterminate()
+        );
+        assert!(
+            !CoreAdapterError::Unavailable(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "missing",
+            ))
+            .is_outcome_indeterminate()
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn timeout_group_kills_the_core_grandchild() {
+        // The realistic apply bug R1 fixes: the direct child is a LAUNCHER (uv)
+        // and the real vault write happens in a GRANDCHILD. Emulate with a shell
+        // that backgrounds a grandchild which writes a marker after a delay, then
+        // exits immediately. The deadline's GROUP-kill must reap the grandchild so
+        // the marker is NEVER written; a bare child-kill (the pre-R1 bug) would
+        // leave the orphaned grandchild to complete the "write."
+        let marker = std::env::temp_dir().join(format!(
+            "core_adapter_grandchild_{}_{}.marker",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_file(&marker);
+        let snippet = format!("(sleep 2; printf done > '{}') &", marker.display());
+        let adapter = CoreAdapter::from_invocation(vec!["sh".into(), "-c".into(), snippet])
+            .with_timeout(Duration::from_millis(300));
+        let cwd = std::env::current_dir().unwrap();
+        let err = adapter.invoke(&cwd, &shell_invocation(None)).unwrap_err();
+        assert!(matches!(err, CoreAdapterError::Timeout { .. }), "{err:?}");
+        // Wait well past the grandchild's 2s write window; if the group-kill
+        // reaped it, the marker is absent. (A leaked child would have written it.)
+        std::thread::sleep(Duration::from_millis(2600));
+        let survived = marker.exists();
+        let _ = std::fs::remove_file(&marker);
+        assert!(
+            !survived,
+            "group-kill must reap the backgrounded grandchild before it can write"
         );
     }
 
