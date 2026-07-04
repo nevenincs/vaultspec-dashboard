@@ -461,6 +461,31 @@ impl LedgerRepository<'_, '_> {
         row.map(|record| self.attach_children(record)).transpose()
     }
 
+    /// The ORIGIN revision — the FIRST revision of the changeset chain. Its
+    /// `actor` is the proposing (origin) author, which is DISTINCT from
+    /// `latest().actor` once a reviewer appends a decision revision. The
+    /// self-approval / self-apply ban (agents-cannot-self-approve-vault-writes)
+    /// must key on the ORIGIN author, never `latest().actor` (which becomes the
+    /// reviewer after approval).
+    pub fn origin(
+        &self,
+        changeset_id: &ChangesetId,
+    ) -> StoreResult<Option<ChangesetAggregateRecord>> {
+        let row = self.repo.query_optional(
+            "SELECT changeset_id, changeset_revision, previous_revision,
+                    changeset_kind, status, session_id, summary, operation_count,
+                    aggregate_digest, actor_id, actor_kind, delegated_by_actor_id,
+                    actor_provenance_key, created_at_ms, record_json
+             FROM authoring_changeset_revisions
+             WHERE changeset_id = ?1
+             ORDER BY seq ASC
+             LIMIT 1",
+            [changeset_id.as_str()],
+            read_revision_row,
+        )?;
+        row.map(|record| self.attach_children(record)).transpose()
+    }
+
     pub fn history(&self, changeset_id: &ChangesetId) -> StoreResult<ChangesetHistory> {
         let rows = self.repo.query_collect(
             "SELECT changeset_id, changeset_revision, previous_revision,

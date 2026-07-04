@@ -20,7 +20,7 @@ use super::model::CommandKind;
 pub const DB_FILENAME: &str = "authoring-state.sqlite3";
 const AUTHORING_DATA_DIR: &str = "authoring-state";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-const SCHEMA_VERSION: i64 = 8;
+const SCHEMA_VERSION: i64 = 9;
 const STORE_KIND: &str = "vaultspec_authoring";
 
 const METADATA_SCHEMA: &str = "
@@ -462,6 +462,40 @@ SET schema_version = 8
 WHERE singleton = 1;
 ";
 
+const APPROVAL_SCHEMA: &str = "
+CREATE TABLE authoring_approval_requests (
+    seq                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    approval_id                TEXT NOT NULL,
+    proposal_id                TEXT NOT NULL,
+    changeset_id               TEXT NOT NULL,
+    queue_state                TEXT NOT NULL CHECK (
+        queue_state IN ('queued', 'decision_submitted', 'closed')
+    ),
+    decision                   TEXT CHECK (
+        decision IN ('approve', 'reject', 'request_changes')
+    ),
+    reviewer_actor_id          TEXT,
+    reviewer_actor_kind        TEXT,
+    reviewed_proposal_revision TEXT NOT NULL,
+    reviewed_validation_digest TEXT NOT NULL,
+    policy_version             TEXT NOT NULL,
+    idempotency_key            TEXT NOT NULL,
+    record_json                TEXT NOT NULL,
+    created_at_ms              INTEGER NOT NULL,
+    updated_at_ms              INTEGER NOT NULL,
+    UNIQUE (approval_id)
+);
+
+CREATE INDEX idx_authoring_approval_requests_proposal
+    ON authoring_approval_requests (proposal_id, seq);
+CREATE INDEX idx_authoring_approval_requests_changeset
+    ON authoring_approval_requests (changeset_id, updated_at_ms);
+
+UPDATE authoring_store_metadata
+SET schema_version = 9
+WHERE singleton = 1;
+";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Migration {
     version: i64,
@@ -510,6 +544,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "create_authoring_actor_records_and_ledger_provenance",
         sql: ACTOR_PROVENANCE_SCHEMA,
     },
+    Migration {
+        version: 9,
+        name: "create_authoring_approval_requests",
+        sql: APPROVAL_SCHEMA,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -549,6 +588,8 @@ pub enum StoreError {
     Validation(String),
     #[error("authoring ledger error: {0}")]
     Ledger(String),
+    #[error("authoring approval error: {0}")]
+    Approval(String),
     #[error("command {command:?} is read-only and cannot open a mutating unit of work")]
     ReadOnlyCommandUnitOfWork { command: CommandKind },
 }
@@ -848,6 +889,10 @@ mod tests {
                         version: 8,
                         name: "create_authoring_actor_records_and_ledger_provenance".to_string(),
                     },
+                    AppliedMigration {
+                        version: 9,
+                        name: "create_authoring_approval_requests".to_string(),
+                    },
                 ]
             );
             let table_count: i64 = store
@@ -882,7 +927,7 @@ mod tests {
         let reopened = Store::open_at(&path).expect("authoring store reopens");
         let metadata = reopened.schema_metadata().unwrap();
         assert_eq!(metadata.schema_version, SCHEMA_VERSION);
-        assert_eq!(metadata.applied_migrations.len(), 8);
+        assert_eq!(metadata.applied_migrations.len(), 9);
     }
 
     #[test]
