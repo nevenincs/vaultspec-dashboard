@@ -160,10 +160,12 @@ describe("buildLeftRailCommands", () => {
       // The vault tree's sort plane (left-rail-tree-controls ADR D3): one
       // command per option + the reset, from the SAME shared builders.
       "left-rail:sort-recency",
+      "left-rail:sort-docs",
       "left-rail:sort-name",
       "left-rail:sort-created",
       "left-rail:sort-modified",
       "left-rail:sort-size",
+      "left-rail:sort-weight",
       "left-rail:reset-sorting",
     ]);
     const families = new Map(commands.map((c) => [c.id, c.family]));

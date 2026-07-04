@@ -1751,6 +1751,10 @@ export interface VaultTreeFeatureGroup {
   feature: string;
   /** Total document count across every doc-type group in this feature bucket. */
   count: number;
+  /** Summed served byte weight of this feature's members (left-rail-tree-controls
+   *  corpus-weight sort): 0 when no member carries a served size. A multi-tag
+   *  document weighs into each of its features (shares need not sum to 100%). */
+  weightBytes: number;
   /** Doc-type sub-groups, in canonical `.vault/` order then alphabetical. */
   docTypes: VaultTreeDocTypeGroup[];
 }
@@ -1817,13 +1821,18 @@ export function projectVaultTreeFeatureGroups(
           // The historical sub-folder order is path-ascending (chronological by
           // the date-stamped stem); a chosen sort key reorders it through the
           // ONE comparator (ADR D3 — one sort concept for the whole tree).
-          sort.key === "recency"
+          sort.key === "recency" || sort.key === "docs"
             ? (sort.direction === "desc" ? 1 : -1) * a.path.localeCompare(b.path)
             : compareVaultEntriesBySort(sort, a, b),
         ),
     }));
     const count = docTypes.reduce((n, group) => n + group.entries.length, 0);
-    groups.push({ feature, count, docTypes });
+    const weightBytes = docTypes.reduce(
+      (n, group) =>
+        n + group.entries.reduce((m, entry) => m + (entry.size?.bytes ?? 0), 0),
+      0,
+    );
+    groups.push({ feature, count, weightBytes, docTypes });
   }
   return groups;
 }
@@ -1914,7 +1923,10 @@ function vaultEntrySortField(
       return entry.dates.modified ?? null;
     case "size":
       return entry.size?.words ?? null;
+    case "weight":
+      return entry.size?.bytes ?? null;
     case "recency":
+    case "docs":
       return null;
   }
 }
@@ -1927,7 +1939,9 @@ export function compareVaultEntriesBySort(
   a: VaultTreeEntry,
   b: VaultTreeEntry,
 ): number {
-  if (sort.key === "recency") {
+  // `docs` is a FOLDER-count order — a document list has no per-item count, so
+  // its leaves keep the historical recency order (direction still applies).
+  if (sort.key === "recency" || sort.key === "docs") {
     const cmp = compareVaultRecency(a, b);
     return sort.direction === "desc" ? cmp : -cmp;
   }
@@ -2047,6 +2061,10 @@ export interface VaultRailView {
   docTypeCount: number;
   /** A facet was active but narrowed everything away (vs. an empty corpus). */
   filteredToNothing: boolean;
+  /** Total served byte weight of the WHOLE (unfiltered) vault listing — the
+   *  corpus-weight share denominator, so a feature's share stays stable while a
+   *  filter narrows the visible set. 0 when no entry carries a size. */
+  totalCorpusBytes: number;
 }
 
 /** A feature folder's sortable aggregate for a non-recency key (ADR D3): its
@@ -2057,6 +2075,7 @@ function featureGroupSortField(
   key: RailSortKey,
 ): string | number | null {
   if (key === "name") return group.feature.toLowerCase();
+  if (key === "weight") return group.weightBytes > 0 ? group.weightBytes : null;
   let maxDate: string | null = null;
   let words: number | null = null;
   for (const sub of group.docTypes) {
@@ -2084,7 +2103,7 @@ export function deriveVaultRailView(
 ): VaultRailView {
   const narrowed = narrowVaultRailEntries(entries, facets);
   const featureGroups = projectVaultTreeFeatureGroups(narrowed, sort).sort((a, b) => {
-    if (sort.key === "recency") {
+    if (sort.key === "recency" || sort.key === "docs") {
       const cmp = b.count - a.count;
       if (cmp !== 0) return sort.direction === "desc" ? cmp : -cmp;
       return a.feature.localeCompare(b.feature);
@@ -2115,6 +2134,7 @@ export function deriveVaultRailView(
     featureCount: featureGroups.length,
     docTypeCount: docTypeGroups.length,
     filteredToNothing: anyFacet && narrowed.length === 0,
+    totalCorpusBytes: entries.reduce((n, entry) => n + (entry.size?.bytes ?? 0), 0),
   };
 }
 
@@ -5005,7 +5025,7 @@ const STATUS_BODY_LOADING_CLASS =
 const STATUS_BODY_UNAVAILABLE_CLASS = "text-label text-ink-faint";
 const STATUS_BODY_EMPTY_CLASS = "text-label text-ink-faint";
 // Card-to-card gap inside the status sections (PRs / issues / commits): the rail's
-// items are bordered cards now (binding 599:2099), so they read with a 6px gutter.
+// items are bordered cards now (binding 599:2099), so they read with a 0.375rem gutter.
 const STATUS_BODY_LIST_CLASS = "space-y-fg-1-5";
 
 interface GitHubWorkItemAvailability<T> {
@@ -8180,7 +8200,7 @@ export interface GitChangeGroupView {
 }
 
 // Binding GitFileRow (653:1864): a flat row (no card chrome, no dot, no arrow) — the
-// name rides the 12px body role in ink, the numstat the 11px mono meta role in the
+// name rides the body role in ink, the numstat the mono meta role in the
 // sacred diff hues. Deleted strikes the name and dims it to ink-muted.
 const GIT_CHANGE_ROW_CLASS =
   "flex w-full items-center gap-fg-2 rounded-fg-xs py-fg-0-5 pr-fg-1 text-left transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
@@ -8355,7 +8375,7 @@ const CHANGES_OVERVIEW_NO_SCOPE_CLASS = "text-label text-ink-faint";
 const CHANGES_OVERVIEW_ROOT_CLASS = "space-y-fg-3 text-label";
 const CHANGES_OVERVIEW_SUMMARY_CLASS = "flex flex-wrap items-center gap-fg-1-5";
 // Binding GitStatusPill `git-head` (642:1721): "N files · M documents" rides the
-// 12px label role in ink/muted; the diff tallies are 11px (meta) in the sacred hues.
+// label role in ink/muted; the diff tallies read the meta role in the sacred hues.
 const CHANGES_OVERVIEW_SUMMARY_PRIMARY_CLASS = "text-label font-medium text-ink-muted";
 const CHANGES_OVERVIEW_SUMMARY_DIVIDER_CLASS = "text-ink-faint";
 const CHANGES_OVERVIEW_SUMMARY_ADDITIONS_CLASS = "text-meta text-diff-add";

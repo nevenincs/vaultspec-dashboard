@@ -107,6 +107,7 @@ import {
   docDateLabel,
   docDisplayTitle,
   docGroupLabel,
+  corpusWeightLabel,
   docTooltip,
   docTypeCategory,
   featureDisplayName,
@@ -114,6 +115,7 @@ import {
   planStatusLabel,
   planStatusMark,
   planStatusToneClass,
+  byteSizeLabel,
   planTierLabel,
   wordCountLabel,
 } from "./vaultRowPresentation";
@@ -492,6 +494,7 @@ export function TreeBrowser({
                 key={group.feature}
                 group={group}
                 sortKey={sort.key}
+                totalCorpusBytes={view.totalCorpusBytes}
                 expanded={expanded}
                 toggle={toggle}
                 scope={scope}
@@ -826,6 +829,8 @@ interface FeatureFolderRowProps {
   group: VaultTreeFeatureGroup;
   /** The active sort key — the leaf meta shows its field's value. */
   sortKey: RailSortKey;
+  /** Whole-vault served byte weight (the corpus-weight share denominator). */
+  totalCorpusBytes: number;
   expanded: ReadonlySet<string>;
   toggle: (key: string) => void;
   scope: string | null;
@@ -843,6 +848,7 @@ interface FeatureFolderRowProps {
 function FeatureFolderRow({
   group,
   sortKey,
+  totalCorpusBytes,
   expanded,
   toggle,
   scope,
@@ -863,7 +869,15 @@ function FeatureFolderRow({
       markColor="feature"
       expandable
       expanded={open}
-      count={group.count}
+      // Under the corpus-weight sort the folder shows ITS SORTED VALUE — the
+      // normalized share of the whole vault — in place of the member count
+      // (one trailing value per row).
+      count={sortKey === "weight" ? undefined : group.count}
+      meta={
+        sortKey === "weight"
+          ? corpusWeightLabel(group.weightBytes, totalCorpusBytes)
+          : undefined
+      }
       highlighted={normalizeFeatureTag(group.feature) === selectedFeatureTag}
       bodyId={`vault-${folderKey}`}
       onActivate={() => {
@@ -1051,10 +1065,11 @@ function docSignal(entry: VaultTreeEntry): ReactNode {
  *  an undated/unweighed entry renders nothing. */
 function docMetaLabel(entry: VaultTreeEntry, sortKey: RailSortKey): string {
   if (sortKey === "size" && entry.size) return wordCountLabel(entry.size.words);
+  if (sortKey === "weight" && entry.size) return byteSizeLabel(entry.size.bytes);
   // A plan row's progress signal IS its reviewable fact; under the default
   // (non-date) sorts the date yields the width to it (tooltip keeps all dates).
   if (
-    (sortKey === "recency" || sortKey === "name") &&
+    (sortKey === "recency" || sortKey === "docs" || sortKey === "name") &&
     entry.doc_type === "plan" &&
     entry.progress
   ) {

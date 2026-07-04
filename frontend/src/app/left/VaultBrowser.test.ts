@@ -191,6 +191,46 @@ describe("the vault sort plane (left-rail-tree-controls ADR D3)", () => {
     ]);
   });
 
+  it("sorts by corpus weight (summed bytes) with unweighed folders last, and exposes the share denominator", () => {
+    const view = deriveVaultRailView(
+      [
+        entry(".vault/adr/2026-01-02-x-adr.md", "adr", {
+          feature_tags: ["small"],
+          size: { bytes: 100, words: 20 },
+        }),
+        entry(".vault/adr/2026-01-05-y-adr.md", "adr", {
+          feature_tags: ["big"],
+          size: { bytes: 900, words: 200 },
+        }),
+        entry(".vault/adr/2026-01-06-z-adr.md", "adr", {
+          feature_tags: ["unmeasured"],
+        }),
+      ],
+      NO_FACETS,
+      { key: "weight", direction: "desc" },
+    );
+    expect(view.featureGroups.map((g) => g.feature)).toEqual([
+      "big",
+      "small",
+      "unmeasured",
+    ]);
+    expect(view.featureGroups[0]!.weightBytes).toBe(900);
+    expect(view.totalCorpusBytes).toBe(1000);
+  });
+
+  it("orders feature folders by explicit document count under the docs key", () => {
+    const view = deriveVaultRailView(
+      [
+        entry(".vault/adr/2026-01-02-x-adr.md", "adr", { feature_tags: ["solo"] }),
+        entry(".vault/adr/2026-01-05-y-adr.md", "adr", { feature_tags: ["pair"] }),
+        entry(".vault/plan/2026-01-06-z-plan.md", "plan", { feature_tags: ["pair"] }),
+      ],
+      NO_FACETS,
+      { key: "docs", direction: "asc" },
+    );
+    expect(view.featureGroups.map((g) => g.feature)).toEqual(["solo", "pair"]);
+  });
+
   it("ties break on path so the order is stable", () => {
     const a = entry(".vault/adr/a-adr.md", "adr", { title: "Same" });
     const b = entry(".vault/adr/b-adr.md", "adr", { title: "Same" });

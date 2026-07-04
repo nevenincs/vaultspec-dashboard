@@ -134,6 +134,13 @@ ADR D5: token-colored rem-aligned vertical indent guides on folder bodies; full 
 - [x] `P04.S11` - Vertical indent guide lines on `[data-vault-folder-body]`: 1px border-ink line per level at the rows' rem indent math, theme-aware token color; `frontend/src/app/left/TreeBrowser.tsx`.
 - [x] `P04.S12` - Full gate (`just dev lint all`), targeted vitest suites (tree render, menus, action coverage, filter guard), live verify on the canonical port; `frontend`.
 
+### Phase `P05` - Sort extensions and mobile parity
+
+ADR D3a: Document Count and Corpus Weight sort keys (normalized byte share over the whole vault), weight-share display on feature rows, compact-viewport parity verification
+
+- [x] `P05.S13` - Add `docs` and `weight` sort keys: option registry, projection comparators, feature `weightBytes` aggregate + `totalCorpusBytes` denominator; `frontend/src/stores`.
+- [x] `P05.S14` - Display the corpus-weight percent on feature rows under the weight sort, byte-size leaf meta, and verify compact-viewport parity live at phone width; `frontend/src/app/left`.
+
 ## Description
 
 Make the left rail a review surface, executing the accepted

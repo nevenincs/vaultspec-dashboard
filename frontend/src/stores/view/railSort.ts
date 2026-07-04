@@ -18,8 +18,18 @@ import { persist } from "zustand/middleware";
 
 /** The sort criteria (plain-language labels in RAIL_SORT_OPTIONS; these ids are
  *  internal). `recency` is the historical default: features by member count,
- *  documents newest-modified-first. */
-export type RailSortKey = "recency" | "name" | "created" | "modified" | "size";
+ *  documents newest-modified-first. `docs` is the explicit document-count order
+ *  (feature folders; document lists keep recency). `weight` is the corpus-weight
+ *  order: a feature's summed served byte size — displayed as its normalized
+ *  share of the whole vault. */
+export type RailSortKey =
+  | "recency"
+  | "docs"
+  | "name"
+  | "created"
+  | "modified"
+  | "size"
+  | "weight";
 export type RailSortDirection = "asc" | "desc";
 
 export interface RailSortValue {
@@ -39,10 +49,12 @@ export interface RailSortOption {
 /** The user-facing option set, in menu order. */
 export const RAIL_SORT_OPTIONS: readonly RailSortOption[] = [
   { id: "recency", label: "Latest Activity" },
+  { id: "docs", label: "Document Count" },
   { id: "name", label: "Name" },
   { id: "created", label: "Date Created" },
   { id: "modified", label: "Date Modified" },
   { id: "size", label: "Length" },
+  { id: "weight", label: "Corpus Weight" },
 ];
 
 export function normalizeRailSortKey(value: unknown): RailSortKey | null {

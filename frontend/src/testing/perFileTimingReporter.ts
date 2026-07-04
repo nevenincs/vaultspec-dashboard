@@ -108,7 +108,7 @@ export default class PerFileTimingReporter implements Reporter {
       );
     }
     lines.push("");
-    // eslint-disable-next-line no-console
+
     console.log(lines.join("\n"));
 
     const outPath = process.env.VAULTSPEC_TEST_TIMING_OUT;
@@ -129,7 +129,7 @@ export default class PerFileTimingReporter implements Reporter {
         })),
       };
       writeFileSync(outPath, JSON.stringify(profile, null, 2) + "\n");
-      // eslint-disable-next-line no-console
+
       console.log(`per-file timing profile written to ${outPath}`);
     }
   }

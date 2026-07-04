@@ -314,6 +314,18 @@ export function byteSizeLabel(bytes: number): string {
   return `${bytes} B`;
 }
 
+/** A feature's corpus-weight share as a compact percent (left-rail-tree-controls
+ *  corpus-weight sort): its summed member bytes normalized over the WHOLE vault's
+ *  served bytes. "12%" / "4.2%" / "<1%"; empty when either side is unmeasured so
+ *  an unserved weight never reads as a fabricated zero. */
+export function corpusWeightLabel(weightBytes: number, totalBytes: number): string {
+  if (totalBytes <= 0 || weightBytes <= 0) return "";
+  const percent = (weightBytes / totalBytes) * 100;
+  if (percent >= 10) return `${Math.round(percent)}%`;
+  if (percent >= 1) return `${percent.toFixed(1)}%`;
+  return "<1%";
+}
+
 /** The document leaf's full-metadata tooltip (left-rail-tree-controls ADR D1):
  *  path, then the three date semantics in plain language, then the weight —
  *  each line only when its fact is served (honest absence). */

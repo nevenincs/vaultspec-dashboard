@@ -385,10 +385,12 @@ describe("vaultSectionMenu", () => {
       // The sort plane + resets (left-rail-tree-controls ADR D3/D4): the SAME
       // shared builders the keymap chords and the palette fire.
       "left-rail:sort-recency",
+      "left-rail:sort-docs",
       "left-rail:sort-name",
       "left-rail:sort-created",
       "left-rail:sort-modified",
       "left-rail:sort-size",
+      "left-rail:sort-weight",
       "left-rail:reset-sorting",
       "left-rail:toggle-facets",
       "left-rail:reset-filters",

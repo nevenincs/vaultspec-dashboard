@@ -18,6 +18,8 @@ related:
   - '[[2026-07-03-left-rail-tree-controls-P03-S10]]'
   - '[[2026-07-03-left-rail-tree-controls-P04-S11]]'
   - '[[2026-07-03-left-rail-tree-controls-P04-S12]]'
+  - '[[2026-07-03-left-rail-tree-controls-P05-S13]]'
+  - '[[2026-07-03-left-rail-tree-controls-P05-S14]]'
   - '[[2026-07-03-left-rail-tree-controls-adr]]'
   - '[[2026-07-03-left-rail-tree-controls-plan]]'
   - '[[2026-07-03-left-rail-tree-controls-research]]'
@@ -47,6 +49,8 @@ Auto-generated index of all documents tagged with `#left-rail-tree-controls`.
 - `2026-07-03-left-rail-tree-controls-P03-S10` - Rail-top sort control beside the filter field (Vault mode only) and `vault-section` menu enrollment of sort, reset-sorting, reset-filters, clear-filter, toggle-facets verbs
 - `2026-07-03-left-rail-tree-controls-P04-S11` - Vertical indent guide lines on `[data-vault-folder-body]`: 1px border-ink line per level at the rows' rem indent math, theme-aware token color
 - `2026-07-03-left-rail-tree-controls-P04-S12` - Full gate (`just dev lint all`), targeted vitest suites (tree render, menus, action coverage, filter guard), live verify on the canonical port
+- `2026-07-03-left-rail-tree-controls-P05-S13` - Add `docs` and `weight` sort keys: option registry, projection comparators, feature `weightBytes` aggregate + `totalCorpusBytes` denominator
+- `2026-07-03-left-rail-tree-controls-P05-S14` - Display the corpus-weight percent on feature rows under the weight sort, byte-size leaf meta, and verify compact-viewport parity live at phone width
 
 ### plan
 

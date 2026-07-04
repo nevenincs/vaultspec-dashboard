@@ -136,6 +136,22 @@ descriptor per option (`left-rail:sort-*` ids); no per-mode drift — Files
 (code) mode renders no sort control and keeps the engine's fixed
 directories-first alphabetical order.
 
+**D3a — Sort-key extension (2026-07-04, user direction).** Two further keys
+join the plane through the same option registry, dropdown, menu, and palette:
+"Document Count" (the explicit member-count order for feature folders;
+document lists keep the recency order — a leaf has no count) and "Corpus
+Weight" — a feature's relevance as its summed served byte size normalized
+over the WHOLE vault's served bytes, displayed as a compact percent on the
+feature row in place of the member count while the sort is active. The share
+is derived client-side over the COMPLETE client-held `/vault-tree` listing
+from engine-served sizes — the same class as the client-derived member
+counts, not a re-count over a capped slice; the denominator is the unfiltered
+listing so a narrow never inflates shares. A multi-tagged document weighs
+into each of its features, so shares need not sum to 100%. Mobile parity is
+structural: the compact shell mounts the SAME browser region, so the sort
+control, dropdown, and shares render identically at phone width (verified
+live at 390px).
+
 **D4 — Reset verbs reach the rail's own menus.** The existing
 `resetFiltersAction`, `clearFilterAction`, and `toggleFacetsAction` builders
 enroll in the `vault-section` resolver (same ids, same builders — composition
