@@ -65,7 +65,7 @@ Delivers the pinned dist-generated release workflow producing installers, binsta
 Retires the orphaned release-please configuration and repairs the stale hooks, recipes, and dependency-scope drift the packaging research surfaced.
 
 - [x] `P04.S16` - remove the orphaned python-typed release-please configuration in favor of the dist tag-driven flow; `release-please-config.json`.
-- [ ] `P04.S17` - fix or remove the dormant CHANGELOG guard hook that assumes release-please runs; `.pre-commit-config.yaml`.
+- [x] `P04.S17` - fix or remove the dormant CHANGELOG guard hook that assumes release-please runs; `.pre-commit-config.yaml`.
 - [ ] `P04.S18` - repair the stale prod namespace reference in the ci recipe; `justfile`.
 - [ ] `P04.S19` - reconcile the dependency-scope drift between the runtime vaultspec-rag pin and the dev-group pin; `pyproject.toml`.
 
