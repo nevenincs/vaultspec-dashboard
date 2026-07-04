@@ -32,15 +32,18 @@ use serde::de::DeserializeOwned;
 use serde_json::json;
 
 use super::api::{
-    CommandEnvelope, CreateProposalRequest, ReviewDecisionRequest, SubmitForReviewRequest,
+    ApplyRequest as ApplyRequestDto, CommandEnvelope, CreateProposalRequest, ReviewDecisionRequest,
+    RollbackRequest as RollbackRequestDto, SubmitForReviewRequest,
 };
+use super::apply::{ApplyError, ApplyOutcome, ApplyRequest};
 use super::approvals::{
     ApprovalDecision, ApprovalError, ApprovalOutcome, ApprovalRequestInput, ApprovalRequestRecord,
     ReviewDecisionInput, ReviewedTuple, V1_POLICY_VERSION,
 };
+use super::core_adapter::CoreAdapter;
 use super::model::{
-    ActionEligibility, ActorRef, ApprovalId, ChangesetId, CommandKind, IdempotencyKey, ProposalId,
-    ReviewDecisionKind, RevisionToken,
+    ActionEligibility, ActorRef, ApplyState, ApprovalId, ChangesetId, CommandKind, IdempotencyKey,
+    ProposalId, ReviewDecisionKind, RevisionToken,
 };
 use super::principal::{
     AUTHORING_ACTOR_TOKEN_HEADER, AuthenticatedPrincipal, PrincipalDenial, ResolvedCommand,
@@ -51,6 +54,7 @@ use super::proposal::{
     ProposalCommandContext, ProposalCommandOutcome, ProposalCommandResult, SubmitProposalRequest,
     ValidateProposalRequest, validation_evidence,
 };
+use super::rollback::{RollbackOutcome, RollbackRequest, RollbackSourceChild};
 use super::snapshots::SnapshotReader;
 use super::store::{Result as StoreResult, Store, StoreError};
 use super::transitions::ValidationFreshness;
@@ -915,6 +919,203 @@ fn approval_outcome_response(state: &AppState, outcome: ApprovalOutcome) -> Resp
     .into_response()
 }
 
+// --- apply (the one side-effecting command) -----------------------------------
+
+/// Map an `ApplyError` FAULT to a `StoreError` for the shared taxonomy. Policy
+/// DENIALS never reach here — `apply_changeset` returns them as a denied
+/// `ApplyOutcome` value; only genuine faults become an `ApplyError`.
+fn apply_err_to_store(err: ApplyError) -> StoreError {
+    match err {
+        ApplyError::Store(store) => store,
+        ApplyError::Conflict => StoreError::Idempotency(
+            "apply idempotency key conflicts with a different recorded request".to_string(),
+        ),
+        ApplyError::NotFound(detail) => {
+            StoreError::StaleRevision(format!("apply target not found: {detail}"))
+        }
+        ApplyError::MissingMaterialization {
+            changeset_id,
+            child_key,
+        } => StoreError::Ledger(format!(
+            "approved changeset `{changeset_id}` child `{child_key}` is not materialized"
+        )),
+        ApplyError::Internal(detail) => {
+            StoreError::Ledger(format!("apply invariant violated: {detail}"))
+        }
+    }
+}
+
+/// `POST /authoring/v1/apply-requests` — materialize an APPROVED changeset (the one
+/// side-effecting command). Drives the `vaultspec-core` subprocess, so per
+/// apply.rs's lock discipline the whole sync command runs on a BLOCKING thread. A
+/// preflight denial rides the 200 success envelope as a value; `apply_changeset`
+/// owns the OUTCOME-INDETERMINATE contract (post-state re-verify, fail-closed); a
+/// panic of the blocking task itself is a typed indeterminate, never a lie.
+pub async fn apply_changeset(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<ApplyRequestDto>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let changeset_id = payload.changeset_id.clone();
+
+    // The proposal + approval are derived 1:1 from the changeset (V1). The wire
+    // approval id must NAME that derived approval — a coherence check that the
+    // client is applying the approval it was handed at submit.
+    let proposal_id = match derive_proposal_id(&changeset_id) {
+        Ok(id) => id,
+        Err(err) => return command_error_response(&state, &err),
+    };
+    let expected_approval = match derive_approval_id(&changeset_id) {
+        Ok(id) => id,
+        Err(err) => return command_error_response(&state, &err),
+    };
+    if payload.approval_id != expected_approval {
+        return super::response::typed_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            REQUEST_INVALID_KIND,
+            "apply approval id does not match the changeset's approval",
+        )
+        .into_response();
+    }
+
+    let worktree_root = state.active_workspace_root();
+    let adapter = CoreAdapter::detect();
+    let state_for_blocking = state.clone();
+    // The whole sync apply (subprocess included) runs off the async worker.
+    let joined = tokio::task::spawn_blocking(move || {
+        state_for_blocking.with_authoring_store(|store| {
+            super::apply::apply_changeset(
+                store,
+                &adapter,
+                &worktree_root,
+                ApplyRequest {
+                    changeset_id: &changeset_id,
+                    proposal_id: &proposal_id,
+                    actor: &actor,
+                    idempotency_key: &idempotency_key,
+                    now_ms: now,
+                },
+            )
+            .map_err(apply_err_to_store)
+        })
+    })
+    .await;
+
+    match joined {
+        Ok(Ok(outcome)) => apply_outcome_response(&state, outcome),
+        Ok(Err(err)) => command_error_response(&state, &err),
+        // The blocking task itself panicked: the write outcome is UNKNOWN. Report a
+        // typed indeterminate (never a forged success or failure).
+        Err(_join) => super::response::typed_error(
+            &state,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "authoring_apply_indeterminate",
+            "the apply attempt did not complete; its outcome is indeterminate — \
+             re-query the changeset before retrying",
+        )
+        .into_response(),
+    }
+}
+
+/// Map an apply outcome to its enveloped response: a preflight denial rides the 200
+/// success envelope as a value; a still-in-flight prior attempt returns 202; a
+/// completed attempt serves the durable receipt (whose `state` reports Applied vs
+/// Failed — a recorded business failure is not a fault).
+fn apply_outcome_response(state: &AppState, outcome: ApplyOutcome) -> Response {
+    if !outcome.eligibility.allowed {
+        return denial_snapshot(state, &outcome.eligibility);
+    }
+    if outcome.in_flight {
+        return (
+            StatusCode::ACCEPTED,
+            super::response::snapshot(state, json!({ "status": "in_flight" })),
+        )
+            .into_response();
+    }
+    let child_outcome = outcome.receipt.as_ref().map(|receipt| match receipt.state {
+        ApplyState::Applied => "applied",
+        _ => "failed",
+    });
+    super::response::snapshot(
+        state,
+        json!({
+            "status": if outcome.replayed { "replayed" } else { "recorded" },
+            "child_outcome": child_outcome,
+            "receipt": outcome.receipt,
+        }),
+    )
+    .into_response()
+}
+
+// --- rollback (generate an inverse proposal) ----------------------------------
+
+/// `POST /authoring/v1/rollback-proposals` — generate a rollback of an applied
+/// source changeset. Generation is pure in-process (no core subprocess): it appends
+/// a `RollbackProposed` inverse changeset that then rides the SAME review → approval
+/// → apply path. Unavailable rollbacks ride the 200 envelope as a value with the
+/// manual-repair hook the backend offers.
+pub async fn create_rollback(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<RollbackRequestDto>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let reader = SnapshotReader::for_worktree(state.active_workspace_root());
+    let source_children = payload
+        .source_children
+        .iter()
+        .map(|child| RollbackSourceChild {
+            child_key: child.source_child_key.clone(),
+        })
+        .collect();
+    match state.with_authoring_store(|store| {
+        super::rollback::generate_rollback(
+            store,
+            &reader,
+            RollbackRequest {
+                source_changeset_id: &payload.source_changeset_id,
+                source_children,
+                reason: payload.reason.clone(),
+                actor: &actor,
+                idempotency_key: &idempotency_key,
+                now_ms: now,
+            },
+        )
+    }) {
+        Ok(outcome) => rollback_outcome_response(&state, outcome),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// Map a rollback outcome to its enveloped response: an unavailable rollback rides
+/// the 200 success envelope as a value carrying the honest reason + the manual-repair
+/// hook; a generated (or replayed) rollback serves its new `Rollback` changeset id.
+fn rollback_outcome_response(state: &AppState, outcome: RollbackOutcome) -> Response {
+    if !outcome.eligibility.allowed {
+        return super::response::snapshot(
+            state,
+            json!({
+                "status": "unavailable",
+                "command": outcome.eligibility.command,
+                "reason": outcome.eligibility.reason,
+                "manual_repair": outcome.manual_repair,
+            }),
+        )
+        .into_response();
+    }
+    super::response::snapshot(
+        state,
+        json!({
+            "status": if outcome.replayed { "replayed" } else { "generated" },
+            "rollback_changeset_id": outcome.changeset_id.as_ref().map(ChangesetId::as_str),
+            "rollback_changeset_revision": outcome.changeset_revision,
+        }),
+    )
+    .into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1571,6 +1772,175 @@ mod tests {
                 .is_some_and(|reason| reason.contains("its own proposal")),
             "the ban names the self-approval: {body}"
         );
+    }
+
+    // --- mutating command handlers: apply + rollback -------------------------
+
+    fn apply_command(
+        principal: AuthenticatedPrincipal,
+        changeset: &str,
+        approval: &str,
+        idem: &str,
+    ) -> ResolvedCommand<ApplyRequestDto> {
+        let envelope = CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::RequestApply,
+            idempotency_key: IdempotencyKey::new(idem).unwrap(),
+            payload: ApplyRequestDto {
+                changeset_id: ChangesetId::new(changeset).unwrap(),
+                approval_id: ApprovalId::new(approval).unwrap(),
+                targets: vec![],
+            },
+        };
+        ResolvedCommand::from_principal(principal, envelope)
+    }
+
+    fn rollback_command(
+        principal: AuthenticatedPrincipal,
+        source: &str,
+        idem: &str,
+    ) -> ResolvedCommand<RollbackRequestDto> {
+        let envelope = CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::CreateRollback,
+            idempotency_key: IdempotencyKey::new(idem).unwrap(),
+            payload: RollbackRequestDto {
+                source_changeset_id: ChangesetId::new(source).unwrap(),
+                source_children: vec![],
+                reason: "restore reviewed preimage".to_string(),
+            },
+        };
+        ResolvedCommand::from_principal(principal, envelope)
+    }
+
+    #[tokio::test]
+    async fn apply_outcome_response_maps_a_preflight_denial_to_a_200_value() {
+        let (_dir, state) = fixture_state();
+        let outcome = ApplyOutcome {
+            eligibility: ActionEligibility::denied(
+                CommandKind::RequestApply,
+                "changeset is not approved",
+            ),
+            receipt: None,
+            replayed: false,
+            in_flight: false,
+        };
+        let response = apply_outcome_response(&state, outcome);
+
+        assert_eq!(response.status(), StatusCode::OK, "a denial is a 200 value");
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["status"], "denied");
+        assert_eq!(body["data"]["command"], "request_apply");
+        assert!(
+            body["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("not approved"))
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_outcome_response_reports_an_in_flight_attempt_as_202() {
+        let (_dir, state) = fixture_state();
+        let outcome = ApplyOutcome {
+            eligibility: ActionEligibility::allowed(CommandKind::RequestApply),
+            receipt: None,
+            replayed: false,
+            in_flight: true,
+        };
+        let response = apply_outcome_response(&state, outcome);
+
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["status"], "in_flight");
+    }
+
+    #[tokio::test]
+    async fn apply_route_rejects_a_mismatched_approval_id() {
+        let (_dir, state) = fixture_state();
+        let (_d, principal) = resolved_principal(&agent());
+        // A wrong approval id (not the one derived 1:1 from the changeset) is a 400
+        // BEFORE any store or core work.
+        let response = apply_changeset(
+            State(state.clone()),
+            apply_command(
+                principal,
+                "changeset_apply_1",
+                "approval_wrong",
+                "idem:apply:1",
+            ),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = json_body(response).await;
+        assert_eq!(body["error_kind"], REQUEST_INVALID_KIND);
+    }
+
+    #[tokio::test]
+    async fn rollback_route_over_an_unknown_source_is_unavailable() {
+        let (_dir, state) = fixture_state();
+        let (_d, principal) = resolved_principal(&agent());
+        let response = create_rollback(
+            State(state.clone()),
+            rollback_command(principal, "changeset_absent_source", "idem:rollback:1"),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["status"], "unavailable");
+        assert!(
+            body["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("does not exist")),
+            "an unknown source is honestly unavailable: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn rollback_outcome_response_offers_a_manual_repair_when_unavailable() {
+        let (_dir, state) = fixture_state();
+        let outcome = RollbackOutcome {
+            eligibility: ActionEligibility::denied(
+                CommandKind::CreateRollback,
+                "rollback_unavailable: no V1 inverse",
+            ),
+            changeset_id: None,
+            changeset_revision: None,
+            replayed: false,
+            manual_repair: Some(crate::authoring::rollback::ManualRepairProposal {
+                source_changeset_id: ChangesetId::new("changeset_1").unwrap(),
+                source_children: vec!["child_1".to_string()],
+                reason: "restore".to_string(),
+            }),
+        };
+        let response = rollback_outcome_response(&state, outcome);
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["status"], "unavailable");
+        assert_eq!(
+            body["data"]["manual_repair"]["source_children"][0],
+            "child_1"
+        );
+    }
+
+    #[tokio::test]
+    async fn rollback_outcome_response_serves_the_generated_changeset() {
+        let (_dir, state) = fixture_state();
+        let outcome = RollbackOutcome {
+            eligibility: ActionEligibility::allowed(CommandKind::CreateRollback),
+            changeset_id: Some(ChangesetId::new("rollback:abc123").unwrap()),
+            changeset_revision: Some(RevisionToken::new("blob:abc123").unwrap()),
+            replayed: false,
+            manual_repair: None,
+        };
+        let response = rollback_outcome_response(&state, outcome);
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["status"], "generated");
+        assert_eq!(body["data"]["rollback_changeset_id"], "rollback:abc123");
     }
 
     // --- the middleware, exercised through a real router (oneshot) -------------
