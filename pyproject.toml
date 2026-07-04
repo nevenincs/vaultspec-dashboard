@@ -19,10 +19,10 @@ requires-python = ">=3.13"
 version = "0.1.0"
 
   [project.urls]
-  "Bug Tracker" = "https://github.com/wgergely/vaultspec-dashboard/issues"
-  Documentation = "https://github.com/wgergely/vaultspec-dashboard/tree/main/README.md"
-  Homepage = "https://github.com/wgergely/vaultspec-dashboard"
-  Repository = "https://github.com/wgergely/vaultspec-dashboard"
+  "Bug Tracker" = "https://github.com/nevenincs/vaultspec-dashboard/issues"
+  Documentation = "https://github.com/nevenincs/vaultspec-dashboard/tree/main/README.md"
+  Homepage = "https://github.com/nevenincs/vaultspec-dashboard"
+  Repository = "https://github.com/nevenincs/vaultspec-dashboard"
 
 # The published Python wheel (src/vaultspec_dashboard) was retired: the dashboard
 # is the Rust engine (engine/) plus the TypeScript SPA (frontend/). This manifest
