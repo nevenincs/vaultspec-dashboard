@@ -34,6 +34,7 @@ related:
   - '[[2026-07-04-dashboard-packaging-P05-S22]]'
   - '[[2026-07-04-dashboard-packaging-P05-summary]]'
   - '[[2026-07-04-dashboard-packaging-adr]]'
+  - '[[2026-07-04-dashboard-packaging-audit]]'
   - '[[2026-07-04-dashboard-packaging-plan]]'
   - '[[2026-07-04-dashboard-packaging-research]]'
 ---
@@ -47,6 +48,10 @@ Auto-generated index of all documents tagged with `#dashboard-packaging`.
 ### adr
 
 - `2026-07-04-dashboard-packaging-adr` - `dashboard-packaging` adr: `installable single-binary distribution and release pipeline` | (**status:** `accepted`)
+
+### audit
+
+- `2026-07-04-dashboard-packaging-audit` - `dashboard-packaging` audit: `phase reviews and revision closure`
 
 ### exec
 
