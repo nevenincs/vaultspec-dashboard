@@ -291,7 +291,7 @@ async fn exit_gate_flow_issue_create_submit_approve_apply_rollback() {
             "api_version": "v1",
             "command": "request_apply",
             "idempotency_key": "idem:apply",
-            "payload": { "changeset_id": "changeset_e2e", "approval_id": approval_id, "targets": [] }
+            "payload": { "changeset_id": "changeset_e2e", "approval_id": approval_id }
         })),
     )
     .await;
@@ -330,14 +330,7 @@ async fn exit_gate_flow_issue_create_submit_approve_apply_rollback() {
             "idempotency_key": "idem:rollback",
             "payload": {
                 "source_changeset_id": "changeset_e2e",
-                "source_children": [{
-                    "source_child_key": "child_1",
-                    "target": {
-                        "document": document(&base),
-                        "base_revision": base,
-                        "current_revision": base,
-                    }
-                }],
+                "source_children": [{ "source_child_key": "child_1" }],
                 "reason": "restore the reviewed preimage"
             }
         })),
@@ -538,7 +531,7 @@ async fn applying_an_unapproved_changeset_is_a_200_denial() {
             "api_version": "v1",
             "command": "request_apply",
             "idempotency_key": "idem:apply",
-            "payload": { "changeset_id": "changeset_unapproved", "approval_id": approval_id, "targets": [] }
+            "payload": { "changeset_id": "changeset_unapproved", "approval_id": approval_id }
         })),
     )
     .await;

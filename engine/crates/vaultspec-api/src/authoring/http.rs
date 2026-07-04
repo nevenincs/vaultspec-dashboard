@@ -43,9 +43,10 @@ use super::approvals::{
     ReviewDecisionInput, ReviewedTuple, V1_POLICY_VERSION,
 };
 use super::core_adapter::CoreAdapter;
+use super::ledger::ChangesetAggregateRecord;
 use super::model::{
-    ActionEligibility, ActorId, ActorRef, ApplyState, ApprovalId, ChangesetId, CommandKind,
-    IdempotencyKey, ProposalId, ReviewDecisionKind, RevisionToken,
+    ActionEligibility, ActorId, ActorRef, ApplyState, ApprovalId, ChangesetId, ChangesetStatus,
+    CommandKind, IdempotencyKey, ProposalId, ReviewDecisionKind, RevisionToken,
 };
 use super::principal::{
     AUTHORING_ACTOR_TOKEN_HEADER, AuthenticatedPrincipal, PrincipalDenial, ResolvedCommand,
@@ -437,6 +438,13 @@ fn command_error_response(state: &AppState, err: &StoreError) -> Response {
             "authoring_stale_revision",
             err.to_string(),
         ),
+        // The reviewer reviewed a superseded proposal revision — a client conflict
+        // ("you reviewed a stale snapshot"), a 409, never a 5xx.
+        StoreError::StaleReview(_) => (
+            StatusCode::CONFLICT,
+            "authoring_stale_review",
+            err.to_string(),
+        ),
         StoreError::Validation(_) => (
             StatusCode::UNPROCESSABLE_ENTITY,
             "authoring_validation_failed",
@@ -681,6 +689,17 @@ fn submit_for_review_composed(
                 "changeset `{changeset_id}` has no proposal history to submit"
             ))
         })?;
+
+    // R1 PARTIAL-SUBMIT WEDGE HEAL: the composition is three units of work, so a
+    // crash between the submit and the approval-open leaves the head in NeedsReview
+    // with NO approval — and a fresh-key retry would then deny at validate
+    // (NeedsReview is not validatable), wedging the proposal unrecoverably. The
+    // deterministic proposal/approval ids let us RESUME idempotently: an in-review
+    // head skips validate+submit and (re-)opens the approval.
+    if latest.status == ChangesetStatus::NeedsReview {
+        return resume_submit_in_review(store, changeset_id, &latest, now);
+    }
+
     let (current_revisions, chunk_evidence) = validation_evidence(reader, &latest)?;
     let validate = super::proposal::validate_proposal(
         store,
@@ -761,6 +780,72 @@ fn submit_for_review_composed(
         proposal_id,
         approval: Box::new(approval.record),
         replayed,
+    })
+}
+
+/// Resume a submit whose changeset is ALREADY in review (R1 wedge heal). If the
+/// approval already exists the submit is fully done → replay it; if it is ABSENT
+/// (the crash window between submit and approval-open) → open it from the recorded
+/// validation, healing the wedge idempotently under a deterministic key.
+fn resume_submit_in_review(
+    store: &mut Store,
+    changeset_id: &ChangesetId,
+    latest: &ChangesetAggregateRecord,
+    now: i64,
+) -> StoreResult<SubmitComposite> {
+    let proposal_id = derive_proposal_id(changeset_id)?;
+    let existing = store.with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+        uow.approvals().latest_for_proposal(&proposal_id)
+    })?;
+    if let Some(approval) = existing {
+        // Fully submitted already — an idempotent re-submit replays the state.
+        return Ok(SubmitComposite::Submitted {
+            changeset_id: changeset_id.clone(),
+            needs_review_revision: approval.reviewed.proposal_revision.clone(),
+            validation_digest: approval.reviewed.validation_digest.clone(),
+            proposal_id,
+            approval: Box::new(approval),
+            replayed: true,
+        });
+    }
+
+    // WEDGE: NeedsReview but no approval → open it from the recorded validation.
+    let validation_digest = store
+        .with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+            uow.validations().latest_for_changeset(changeset_id)
+        })?
+        .map(|record| record.validation_digest)
+        .ok_or_else(|| {
+            StoreError::Validation(
+                "submitted proposal has no validation record to resume its approval".to_string(),
+            )
+        })?;
+    let needs_review_revision = latest.changeset_revision.clone();
+    let approval_id = derive_approval_id(changeset_id)?;
+    let approval = store.with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+        uow.approvals()
+            .request_approval(ApprovalRequestInput {
+                approval_id,
+                proposal_id: proposal_id.clone(),
+                changeset_id: changeset_id.clone(),
+                reviewed: ReviewedTuple {
+                    proposal_revision: needs_review_revision.clone(),
+                    validation_digest: validation_digest.clone(),
+                    policy_version: V1_POLICY_VERSION.to_string(),
+                },
+                idempotency_key: format!("resume-approval:{changeset_id}"),
+                created_at_ms: now,
+            })
+            .map_err(approval_err_to_store)
+    })?;
+
+    Ok(SubmitComposite::Submitted {
+        changeset_id: changeset_id.clone(),
+        needs_review_revision,
+        validation_digest,
+        proposal_id,
+        approval: Box::new(approval.record),
+        replayed: true,
     })
 }
 
@@ -904,6 +989,25 @@ pub async fn submit_review_decision(
                         payload.proposal_id
                     ))
                 })?;
+            // R1: reviewed_revision is LOAD-BEARING — the reviewer attests the exact
+            // revision the approval was opened against. A mismatch means they reviewed
+            // a SUPERSEDED revision → a typed conflict (409), never a silently-ignored
+            // field.
+            if payload.reviewed_revision != approval.reviewed.proposal_revision {
+                return Err(StoreError::StaleReview(format!(
+                    "reviewed revision `{}` is stale — the approval was opened against `{}`",
+                    payload.reviewed_revision, approval.reviewed.proposal_revision
+                )));
+            }
+            // Cheap belt: the loaded approval must be the one named on the path
+            // (unreachable under the V1 derived-id world, but guards a future where a
+            // client names an approval id directly).
+            if approval.approval_id != payload.approval_id {
+                return Err(StoreError::Approval(format!(
+                    "loaded approval `{}` does not match the requested approval `{}`",
+                    approval.approval_id, payload.approval_id
+                )));
+            }
             let validation = uow
                 .validations()
                 .latest_for_changeset(&approval.changeset_id)?;
@@ -1715,7 +1819,6 @@ mod tests {
                 approval_id: ApprovalId::new(approval_id).unwrap(),
                 decision,
                 reviewed_revision: RevisionToken::new(reviewed_revision).unwrap(),
-                interrupt_id: None,
                 comment: Some("decision".to_string()),
             },
         };
@@ -1868,6 +1971,158 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn a_stale_reviewed_revision_is_a_409() {
+        // R1: reviewed_revision is load-bearing — a reviewer attesting a SUPERSEDED
+        // revision is a typed conflict (409 authoring_stale_review), never ignored.
+        let (dir, state) = fixture_state();
+        let submitted = create_then_submit(&state, dir.path(), "changeset_stalereview").await;
+        let proposal_id = submitted["data"]["proposal_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let approval_id = submitted["data"]["approval"]["approval_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        register_actor(&state, &human_reviewer());
+        let (_d, reviewer) = resolved_principal(&human_reviewer());
+        let response = submit_review_decision(
+            State(state.clone()),
+            axum::extract::Path(approval_id.clone()),
+            decision_command(
+                reviewer,
+                &approval_id,
+                &proposal_id,
+                "blob:0000000000000000000000000000000000000000",
+                ReviewDecisionKind::Approve,
+            ),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body = json_body(response).await;
+        assert_eq!(body["error_kind"], "authoring_stale_review");
+    }
+
+    #[tokio::test]
+    async fn a_wedged_submit_needsreview_without_approval_heals_on_resubmit() {
+        // R1 partial-submit wedge: a crash between submit and approval-open leaves
+        // NeedsReview with NO approval. A fresh-key re-submit must RESUME forward
+        // (open the approval), not deny at validate.
+        let (dir, state) = fixture_state();
+        register_actor(&state, &agent());
+        let changeset = "changeset_wedge";
+        let changeset_id = ChangesetId::new(changeset).unwrap();
+
+        let (_d0, p0) = resolved_principal(&agent());
+        let created = create_proposal(
+            State(state.clone()),
+            create_command(p0, dir.path(), changeset, "idem:create"),
+        )
+        .await;
+        assert_eq!(created.status(), StatusCode::OK);
+
+        // Simulate the crash: drive validate + submit at the DOMAIN to reach
+        // NeedsReview WITHOUT opening the approval (the route's step 3).
+        let reader = SnapshotReader::for_worktree(state.active_workspace_root());
+        let now = now_ms();
+        let ctx = |key: &str| ProposalCommandContext {
+            actor: agent(),
+            idempotency_key: IdempotencyKey::new(key).unwrap(),
+            now_ms: now,
+            in_flight_expires_at_ms: Some(now + 60_000),
+            outcome_expires_at_ms: Some(now + 60_000),
+        };
+        state
+            .with_authoring_store(|store| {
+                let latest = store
+                    .with_unit_of_work(CommandKind::ValidateProposal, |uow| {
+                        uow.ledger().latest(&changeset_id)
+                    })?
+                    .expect("draft exists");
+                let (current_revisions, chunk_evidence) = validation_evidence(&reader, &latest)?;
+                let validated = super::super::proposal::validate_proposal(
+                    store,
+                    ctx("idem:wedge:validate"),
+                    ValidateProposalRequest {
+                        changeset_id: changeset_id.clone(),
+                        expected_revision: latest.changeset_revision.clone(),
+                        summary: "v".to_string(),
+                        current_revisions,
+                        chunk_evidence,
+                    },
+                )?;
+                let (vrev, vdigest) = match validated {
+                    ProposalCommandResult::Accepted { outcome, .. } => (
+                        outcome.changeset_revision,
+                        outcome.validation_digest.unwrap(),
+                    ),
+                    other => panic!("expected validate accepted, got {other:?}"),
+                };
+                super::super::proposal::submit_for_review(
+                    store,
+                    ctx("idem:wedge:submit"),
+                    SubmitProposalRequest {
+                        changeset_id: changeset_id.clone(),
+                        expected_revision: vrev,
+                        validation_digest: vdigest,
+                        summary: "s".to_string(),
+                    },
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        // Confirm the wedge: NeedsReview + no approval for the derived proposal id.
+        let proposal_id = derive_proposal_id(&changeset_id).unwrap();
+        let wedged = state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+                    uow.approvals().latest_for_proposal(&proposal_id)
+                })
+            })
+            .unwrap();
+        assert!(
+            wedged.is_none(),
+            "the wedge: submitted but no approval opened"
+        );
+
+        // Re-submit via the ROUTE with a FRESH key → the heal opens the approval.
+        let (_d1, p1) = resolved_principal(&agent());
+        let healed = submit_for_review(
+            State(state.clone()),
+            axum::extract::Path(changeset.to_string()),
+            submit_command(
+                p1,
+                "blob:0000000000000000000000000000000000000000",
+                "idem:wedge:resubmit",
+            ),
+        )
+        .await;
+        let hstatus = healed.status();
+        let hbody = json_body(healed).await;
+        assert_eq!(hstatus, StatusCode::OK, "heal: {hbody}");
+        assert_eq!(
+            hbody["data"]["status"], "replayed",
+            "resume replays: {hbody}"
+        );
+        assert_eq!(hbody["data"]["approval"]["queue_state"], "queued");
+
+        let healed_exists = state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+                    uow.approvals().latest_for_proposal(&proposal_id)
+                })
+            })
+            .unwrap();
+        assert!(
+            healed_exists.is_some(),
+            "the wedge is healed — approval opened"
+        );
+    }
+
     // --- mutating command handlers: apply + rollback -------------------------
 
     fn apply_command(
@@ -1883,7 +2138,6 @@ mod tests {
             payload: ApplyRequestDto {
                 changeset_id: ChangesetId::new(changeset).unwrap(),
                 approval_id: ApprovalId::new(approval).unwrap(),
-                targets: vec![],
             },
         };
         ResolvedCommand::from_principal(principal, envelope)

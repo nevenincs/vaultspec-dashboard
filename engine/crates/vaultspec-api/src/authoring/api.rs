@@ -7,9 +7,9 @@ use serde_json::{Value, json};
 
 use super::model::{
     ActorId, ActorKind, ActorRef, ApprovalId, ChangesetId, CommandKind, DocumentRef,
-    IdempotencyKey, InterruptId, LangGraphCheckpointId, LangGraphRef, LangGraphRunId,
-    LangGraphThreadId, LeaseId, ProvisionalCollisionStatus, ReceiptId, ReceiptRef,
-    ReviewDecisionKind, RevisionToken, RunId, SessionId,
+    IdempotencyKey, LangGraphCheckpointId, LangGraphRef, LangGraphRunId, LangGraphThreadId,
+    LeaseId, ProvisionalCollisionStatus, ReceiptId, ReceiptRef, ReviewDecisionKind, RevisionToken,
+    RunId, SessionId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -325,25 +325,18 @@ pub struct ReviewDecisionRequest {
     pub decision: ReviewDecisionKind,
     pub reviewed_revision: RevisionToken,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub interrupt_id: Option<InterruptId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub comment: Option<String>,
 }
 
+/// V1 apply names only the changeset + the approval it applies. The approved
+/// per-child targets are re-derived from the applied record and re-fenced by the
+/// core write, so no client-supplied `targets` block exists (R1: an accepted-but-
+/// ignored field is a contract lie).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApplyRequest {
     pub changeset_id: ChangesetId,
     pub approval_id: ApprovalId,
-    pub targets: Vec<ApplyTargetExpectation>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ApplyTargetExpectation {
-    pub child_key: String,
-    pub target: TargetRevisionFence,
-    pub approved_proposal_revision: RevisionToken,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -354,13 +347,13 @@ pub struct RollbackRequest {
     pub reason: String,
 }
 
+/// A named source child to roll back. The operation kind + revision fence are
+/// AUTHORITATIVE from the applied source record, so the client names only the child
+/// key (R1: no accepted-but-ignored `target`/`materialized_revision`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RollbackChildSource {
     pub source_child_key: String,
-    pub target: TargetRevisionFence,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub materialized_revision: Option<RevisionToken>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -559,7 +552,6 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
                 approval_id: approval_id(),
                 decision: ReviewDecisionKind::Approve,
                 reviewed_revision: revision("proposal:rev1"),
-                interrupt_id: Some(interrupt_id()),
                 comment: Some("approved".to_string()),
             },
         )),
@@ -569,22 +561,6 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
             ApplyRequest {
                 changeset_id: changeset_id(),
                 approval_id: approval_id(),
-                targets: vec![
-                    ApplyTargetExpectation {
-                        child_key: "child_1".to_string(),
-                        target: target_revision_fence(
-                            existing_document_fixture(),
-                            Some("blob:abc123"),
-                            Some("blob:abc123"),
-                        ),
-                        approved_proposal_revision: revision("proposal:rev1"),
-                    },
-                    ApplyTargetExpectation {
-                        child_key: "child_2".to_string(),
-                        target: target_revision_fence(provisional_document_fixture(), None, None),
-                        approved_proposal_revision: revision("proposal:rev1"),
-                    },
-                ],
             },
         )),
         EndpointFamily::Rollback => command_value(CommandEnvelope::new(
@@ -595,21 +571,9 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
                 source_children: vec![
                     RollbackChildSource {
                         source_child_key: "child_1".to_string(),
-                        target: target_revision_fence(
-                            existing_document_fixture(),
-                            Some("blob:def456"),
-                            Some("blob:def456"),
-                        ),
-                        materialized_revision: Some(revision("blob:def456")),
                     },
                     RollbackChildSource {
                         source_child_key: "child_2".to_string(),
-                        target: target_revision_fence(
-                            second_existing_document_fixture(),
-                            Some("blob:ghi789"),
-                            Some("blob:ghi789"),
-                        ),
-                        materialized_revision: Some(revision("blob:ghi789")),
                     },
                 ],
                 reason: "restore reviewed preimage".to_string(),
@@ -761,17 +725,6 @@ fn provisional_document_fixture() -> DocumentRef {
     }
 }
 
-fn second_existing_document_fixture() -> DocumentRef {
-    DocumentRef::Existing {
-        scope: "scope_a".to_string(),
-        node_id: "doc:plan-1".to_string(),
-        stem: "plan-1".to_string(),
-        path: ".vault/plan/plan-1.md".to_string(),
-        doc_type: "plan".to_string(),
-        base_revision: revision("blob:ghi789"),
-    }
-}
-
 fn target_revision_fence(
     document: DocumentRef,
     base_revision: Option<&str>,
@@ -815,10 +768,6 @@ fn proposal_id() -> super::model::ProposalId {
 
 fn approval_id() -> ApprovalId {
     ApprovalId::new("approval_1").unwrap()
-}
-
-fn interrupt_id() -> InterruptId {
-    InterruptId::new("interrupt_1").unwrap()
 }
 
 #[cfg(test)]
@@ -1066,21 +1015,12 @@ mod tests {
             "existing targets carry base and current revision fences"
         );
 
+        // R1: V1 apply names only the changeset + the approval it applies — the
+        // per-child targets are re-derived from the applied record + the core fence.
         let apply: CommandEnvelope<ApplyRequest> =
             serde_json::from_value(request_fixture(EndpointFamily::Apply)).unwrap();
-        assert_eq!(
-            apply.payload.targets.len(),
-            proposal.payload.operations.len(),
-            "apply names each reviewed child target"
-        );
-        assert!(
-            apply
-                .payload
-                .targets
-                .iter()
-                .any(|target| target.target.current_revision.is_some()),
-            "apply carries per-target current revision observations"
-        );
+        assert_eq!(apply.payload.changeset_id, changeset_id());
+        assert_eq!(apply.payload.approval_id, approval_id());
 
         let rollback: CommandEnvelope<RollbackRequest> =
             serde_json::from_value(request_fixture(EndpointFamily::Rollback)).unwrap();
@@ -1089,13 +1029,15 @@ mod tests {
             2,
             "rollback names source children explicitly"
         );
+        // R1: a rollback child names only its key; the op kind + revision fence are
+        // authoritative from the applied source record (no accepted-but-ignored field).
         assert!(
             rollback
                 .payload
                 .source_children
                 .iter()
-                .all(|source| source.materialized_revision.is_some()),
-            "rollback sources retain materialized revision evidence"
+                .all(|source| !source.source_child_key.is_empty()),
+            "rollback sources are named by child key"
         );
     }
 

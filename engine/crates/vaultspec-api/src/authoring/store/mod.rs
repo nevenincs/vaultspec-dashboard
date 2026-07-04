@@ -618,6 +618,8 @@ pub enum StoreError {
     Ledger(String),
     #[error("stale changeset revision: {0}")]
     StaleRevision(String),
+    #[error("stale review revision: {0}")]
+    StaleReview(String),
     #[error("authoring approval error: {0}")]
     Approval(String),
     #[error("authoring actor token error: {0}")]
