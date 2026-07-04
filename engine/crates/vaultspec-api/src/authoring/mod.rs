@@ -14,6 +14,7 @@ pub(crate) mod documents;
 pub(crate) mod ledger;
 pub(crate) mod model;
 pub(crate) mod operations;
+pub(crate) mod projections;
 pub(crate) mod proposal;
 pub(crate) mod response;
 pub(crate) mod routes;
