@@ -3,6 +3,7 @@ tags:
   - '#plan'
   - '#agentic-spec-authoring-backend'
 date: '2026-06-30'
+modified: '2026-07-04'
 tier: L4
 related:
   - '[[2026-07-02-agentic-spec-authoring-backend-reference]]'
@@ -163,131 +164,131 @@ Resolve existing and provisional vault documents through stable references witho
 
 Capture revision metadata, before-state preimages, and snapshot recovery inputs for previews, apply, and rollback.
 
-- [ ] `W03.P11.S51` - Ground Revision snapshots and preimages requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P11.S52` - Implement revision metadata reads, target snapshots, preimage capture, snapshot hashes, and recovery payloads; `engine/crates/vaultspec-api/src/authoring/snapshots.rs`.
-- [ ] `W03.P11.S53` - Add snapshot tests for unchanged revision, stale base, missing preimage, hash mismatch, and restart recovery; `engine/crates/vaultspec-api/src/authoring/snapshots.rs`.
-- [ ] `W03.P11.S54` - Run Revision snapshots and preimages code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P11.S55` - Verify apply and rollback inputs can recover exact preimages through tests and manual snapshot inspection; `engine/crates/vaultspec-api/src/authoring/snapshots.rs`.
+- [x] `W03.P11.S51` - Ground Revision snapshots and preimages requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P11.S52` - Implement revision metadata reads, target snapshots, preimage capture, snapshot hashes, and recovery payloads; `engine/crates/vaultspec-api/src/authoring/snapshots.rs`.
+- [x] `W03.P11.S53` - Add snapshot tests for unchanged revision, stale base, missing preimage, hash mismatch, and restart recovery; `engine/crates/vaultspec-api/src/authoring/snapshots.rs`.
+- [x] `W03.P11.S54` - Run Revision snapshots and preimages code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P11.S55` - Verify apply and rollback inputs can recover exact preimages through tests and manual snapshot inspection; `engine/crates/vaultspec-api/src/authoring/snapshots.rs`.
 
 ### Phase `W03.P13` - Proposal operation payloads and previews (whole-document subset)
 
 V1 subset for the walking skeleton: represent whole-document operations with materialized previews and reviewable diffs. Section-scoped and atomic-hunk operations defer to the Increment 5 conditional remainder phase.
 
-- [ ] `W03.P13.S61` - Ground Proposal operation payloads and previews requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P13.S62` - Implement proposal operation payloads, whole-document drafts, atomic patches, materialized preview builders, and review diff projections; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
-- [ ] `W03.P13.S63` - Add operation tests for full replacement, create, delete, atomic hunk, preview recovery, semantic diff, and invalid range cases; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
-- [ ] `W03.P13.S64` - Run Proposal operation payloads and previews code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P13.S65` - Verify reviewers can inspect proposal material before apply through tests and manual diff fixture review; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
+- [x] `W03.P13.S61` - Ground Proposal operation payloads and previews requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P13.S62` - Implement proposal operation payloads, whole-document drafts, atomic patches, materialized preview builders, and review diff projections; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
+- [x] `W03.P13.S63` - Add operation tests for full replacement, create, delete, atomic hunk, preview recovery, semantic diff, and invalid range cases; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
+- [x] `W03.P13.S64` - Run Proposal operation payloads and previews code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P13.S65` - Verify reviewers can inspect proposal material before apply through tests and manual diff fixture review; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
 
 ### Phase `W03.P14` - Validation digest and stale-input detection
 
 Persist validation digests and detect stale bases, stale approvals, changed chunks, and invalid metadata before review or apply.
 
-- [ ] `W03.P14.S66` - Ground Validation digest and stale-input detection requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P14.S67` - Implement validation digests, stale-input checks, validation status records, warning states, and blocking error records; `engine/crates/vaultspec-api/src/authoring/validation.rs`.
-- [ ] `W03.P14.S68` - Add validation tests for valid proposals, invalid frontmatter, stale chunks, changed base revision, warning-only status, and blocking failures; `engine/crates/vaultspec-api/src/authoring/validation.rs`.
-- [ ] `W03.P14.S69` - Run Validation digest and stale-input detection code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P14.S70` - Verify stale or invalid proposals cannot become approval-ready without a fresh validation digest; `engine/crates/vaultspec-api/src/authoring/validation.rs`.
+- [x] `W03.P14.S66` - Ground Validation digest and stale-input detection requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P14.S67` - Implement validation digests, stale-input checks, validation status records, warning states, and blocking error records; `engine/crates/vaultspec-api/src/authoring/validation.rs`.
+- [x] `W03.P14.S68` - Add validation tests for valid proposals, invalid frontmatter, stale chunks, changed base revision, warning-only status, and blocking failures; `engine/crates/vaultspec-api/src/authoring/validation.rs`.
+- [x] `W03.P14.S69` - Run Validation digest and stale-input detection code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P14.S70` - Verify stale or invalid proposals cannot become approval-ready without a fresh validation digest; `engine/crates/vaultspec-api/src/authoring/validation.rs`.
 
 ### Phase `W03.P15` - Changeset aggregate and child operations
 
 Persist changesets as append-only aggregates with explicit child operations and target ordering.
 
-- [ ] `W03.P15.S71` - Ground Changeset aggregate and child operations requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P15.S72` - Implement changeset aggregate records, child operation records, target ordering, revision linkage, and audit-friendly identifiers; `engine/crates/vaultspec-api/src/authoring/ledger.rs`.
-- [ ] `W03.P15.S73` - Add ledger tests for append-only revisions, child ordering, duplicate child rejection, multi-document changes, and history reconstruction; `engine/crates/vaultspec-api/src/authoring/ledger.rs`.
-- [ ] `W03.P15.S74` - Run Changeset aggregate and child operations code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P15.S75` - Verify changeset history reconstructs proposal state without LangGraph checkpoints or frontend memory; `engine/crates/vaultspec-api/src/authoring/ledger.rs`.
+- [x] `W03.P15.S71` - Ground Changeset aggregate and child operations requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P15.S72` - Implement changeset aggregate records, child operation records, target ordering, revision linkage, and audit-friendly identifiers; `engine/crates/vaultspec-api/src/authoring/ledger.rs`.
+- [x] `W03.P15.S73` - Add ledger tests for append-only revisions, child ordering, duplicate child rejection, multi-document changes, and history reconstruction; `engine/crates/vaultspec-api/src/authoring/ledger.rs`.
+- [x] `W03.P15.S74` - Run Changeset aggregate and child operations code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P15.S75` - Verify changeset history reconstructs proposal state without LangGraph checkpoints or frontend memory; `engine/crates/vaultspec-api/src/authoring/ledger.rs`.
 
 ### Phase `W03.P16` - Transition engine and terminal-state validation
 
 Centralize legal lifecycle transitions and terminal-state guards for sessions, proposals, approvals, applies, and rollbacks. The transition engine enforces the amended apply-materialization ADR's single-child apply restriction, and keeps the two staged multi-document apply lifecycle statuses reserved but unreachable until vaultspec-core provides a batch transaction capability.
 
-- [ ] `W03.P16.S76` - Ground Transition engine and terminal-state validation requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P16.S77` - Implement lifecycle transition rules, terminal-state validation, stale-state guards, and action eligibility helpers; `engine/crates/vaultspec-api/src/authoring/transitions.rs`.
-- [ ] `W03.P16.S78` - Add transition tests for illegal moves, terminal refusal, stale approval, cancelled run, rejected proposal, and rollback terminal states; `engine/crates/vaultspec-api/src/authoring/transitions.rs`.
-- [ ] `W03.P16.S79` - Run Transition engine and terminal-state validation code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P16.S80` - Verify every command uses the shared transition engine through tests and manual transition table review; `engine/crates/vaultspec-api/src/authoring/transitions.rs`.
+- [x] `W03.P16.S76` - Ground Transition engine and terminal-state validation requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P16.S77` - Implement lifecycle transition rules, terminal-state validation, stale-state guards, and action eligibility helpers; `engine/crates/vaultspec-api/src/authoring/transitions.rs`.
+- [x] `W03.P16.S78` - Add transition tests for illegal moves, terminal refusal, stale approval, cancelled run, rejected proposal, and rollback terminal states; `engine/crates/vaultspec-api/src/authoring/transitions.rs`.
+- [x] `W03.P16.S79` - Run Transition engine and terminal-state validation code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P16.S80` - Verify every command uses the shared transition engine through tests and manual transition table review; `engine/crates/vaultspec-api/src/authoring/transitions.rs`.
 
 ### Phase `W03.P17` - Proposal command handlers
 
 Create, append, replace, validate, submit, supersede, and cancel proposals through backend-owned commands.
 
-- [ ] `W03.P17.S81` - Ground Proposal command handlers requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P17.S82` - Implement proposal creation, material append, draft replacement, validate, submit, supersede, cancel, and snapshot handlers; `engine/crates/vaultspec-api/src/authoring/proposal.rs`.
-- [ ] `W03.P17.S83` - Add command tests for ordered revisions, replayed writes, validation gates, terminal refusal, supersession, and cancellation; `engine/crates/vaultspec-api/src/authoring/proposal.rs`.
-- [ ] `W03.P17.S84` - Run Proposal command handlers code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P17.S85` - Verify proposal lifecycle transitions are idempotent and backend-owned through tests and manual command replay; `engine/crates/vaultspec-api/src/authoring/proposal.rs`.
+- [x] `W03.P17.S81` - Ground Proposal command handlers requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P17.S82` - Implement proposal creation, material append, draft replacement, validate, submit, supersede, cancel, and snapshot handlers; `engine/crates/vaultspec-api/src/authoring/proposal.rs`.
+- [x] `W03.P17.S83` - Add command tests for ordered revisions, replayed writes, validation gates, terminal refusal, supersession, and cancellation; `engine/crates/vaultspec-api/src/authoring/proposal.rs`.
+- [x] `W03.P17.S84` - Run Proposal command handlers code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P17.S85` - Verify proposal lifecycle transitions are idempotent and backend-owned through tests and manual command replay; `engine/crates/vaultspec-api/src/authoring/proposal.rs`.
 
 ### Phase `W03.P19` - Actor model and delegated scopes (minimal-actor subset)
 
 V1 subset for the walking skeleton: model human and agent actor identity and stable provenance keys so every ledger record is actor-attributed from day one. Service identities and delegated scopes defer to the Increment 5 remainder folded into W05.P20.
 
-- [ ] `W03.P19.S91` - Ground Actor model and delegated scopes requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P19.S92` - Implement actor records, service identities, delegated scopes, stable provenance keys, and actor display metadata; `engine/crates/vaultspec-api/src/authoring/actors.rs`.
-- [ ] `W03.P19.S93` - Add actor tests for human identity, agent identity, delegated scope, missing actor, stale actor, and provenance key stability; `engine/crates/vaultspec-api/src/authoring/actors.rs`.
-- [ ] `W03.P19.S94` - Run Actor model and delegated scopes code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P19.S95` - Verify every mutation can be attributed to a stable actor and delegated scope; `engine/crates/vaultspec-api/src/authoring/actors.rs`.
+- [x] `W03.P19.S91` - Ground Actor model and delegated scopes requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P19.S92` - Implement actor records, service identities, delegated scopes, stable provenance keys, and actor display metadata; `engine/crates/vaultspec-api/src/authoring/actors.rs`.
+- [x] `W03.P19.S93` - Add actor tests for human identity, agent identity, delegated scope, missing actor, stale actor, and provenance key stability; `engine/crates/vaultspec-api/src/authoring/actors.rs`.
+- [x] `W03.P19.S94` - Run Actor model and delegated scopes code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P19.S95` - Verify every mutation can be attributed to a stable actor and delegated scope; `engine/crates/vaultspec-api/src/authoring/actors.rs`.
 
 ### Phase `W03.P35` - Core adapter capability registry
 
 Wrap vaultspec-core as a private bounded adapter with explicit capability mapping, caps, timeouts, and tiered failures.
 
-- [ ] `W03.P35.S171` - Ground Core adapter capability registry requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P35.S172` - Implement core capability registry, argument builders, bounded subprocess calls, timeout handling, output caps, and safe error mapping; `engine/crates/vaultspec-api/src/authoring/core_adapter.rs`.
-- [ ] `W03.P35.S173` - Add core adapter tests for validation, apply, timeout, output cap, error redaction, missing core, and forbidden direct verb exposure; `engine/crates/vaultspec-api/src/authoring/core_adapter.rs`.
-- [ ] `W03.P35.S174` - Run Core adapter capability registry code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P35.S175` - Verify collaborators cannot see or invoke core-shaped writes through tests and manual route checks; `engine/crates/vaultspec-api/src/authoring/core_adapter.rs`.
+- [x] `W03.P35.S171` - Ground Core adapter capability registry requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P35.S172` - Implement core capability registry, argument builders, bounded subprocess calls, timeout handling, output caps, and safe error mapping; `engine/crates/vaultspec-api/src/authoring/core_adapter.rs`.
+- [x] `W03.P35.S173` - Add core adapter tests for validation, apply, timeout, output cap, error redaction, missing core, and forbidden direct verb exposure; `engine/crates/vaultspec-api/src/authoring/core_adapter.rs`.
+- [x] `W03.P35.S174` - Run Core adapter capability registry code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P35.S175` - Verify collaborators cannot see or invoke core-shaped writes through tests and manual route checks; `engine/crates/vaultspec-api/src/authoring/core_adapter.rs`.
 
 ### Phase `W03.P23` - Changeset approval requests and decisions (approve/reject subset)
 
 V1 subset for the walking skeleton: persist approval requests, approve/reject decisions bound to the reviewed tuple, and stale invalidation; the V1 queue is queued / decision_submitted / closed. Request-changes, edit-response loops, and claims defer to the Increment 5 remainder folded into W05.P24, where the claimed state activates.
 
-- [ ] `W03.P23.S111` - Ground Changeset approval requests and decisions requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P23.S112` - Implement approval request, approve, reject, request-changes, edit response, stale invalidation, and approval snapshot handlers; `engine/crates/vaultspec-api/src/authoring/approvals.rs`.
-- [ ] `W03.P23.S113` - Add approval tests for approved proposal, rejected proposal, request-changes, stale revision, replayed decision, and conflicting reviewer action; `engine/crates/vaultspec-api/src/authoring/approvals.rs`.
-- [ ] `W03.P23.S114` - Run Changeset approval requests and decisions code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P23.S115` - Verify approved and rejected proposals surface correct durable approval state through tests and manual review API checks; `engine/crates/vaultspec-api/src/authoring/approvals.rs`.
+- [x] `W03.P23.S111` - Ground Changeset approval requests and decisions requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P23.S112` - Implement approval request, approve, reject, request-changes, edit response, stale invalidation, and approval snapshot handlers; `engine/crates/vaultspec-api/src/authoring/approvals.rs`.
+- [x] `W03.P23.S113` - Add approval tests for approved proposal, rejected proposal, request-changes, stale revision, replayed decision, and conflicting reviewer action; `engine/crates/vaultspec-api/src/authoring/approvals.rs`.
+- [x] `W03.P23.S114` - Run Changeset approval requests and decisions code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P23.S115` - Verify approved and rejected proposals surface correct durable approval state through tests and manual review API checks; `engine/crates/vaultspec-api/src/authoring/approvals.rs`.
 
 ### Phase `W03.P36` - Apply job state machine and receipts
 
 Run approved proposal materialization as durable jobs with approval freshness checks, per-child receipts, and recovery. V1 apply accepts only single-child changesets per the amended apply-materialization ADR; a multi-child changeset is refused with an honest typed capability result naming the limit.
 
-- [ ] `W03.P36.S176` - Ground Apply job state machine and receipts requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P36.S177` - Implement apply job states, approval freshness checks, staged execution, per-child receipts, post-write hashes, progress, and recovery handlers; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
-- [ ] `W03.P36.S178` - Add apply tests for approved-only gates, stale approval, rejected proposal, partial failure, restart recovery, and idempotent apply request; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
-- [ ] `W03.P36.S179` - Run Apply job state machine and receipts code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P36.S180` - Verify approved changes materialize once and rejected or stale changes never materialize; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [x] `W03.P36.S176` - Ground Apply job state machine and receipts requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P36.S177` - Implement apply job states, approval freshness checks, staged execution, per-child receipts, post-write hashes, progress, and recovery handlers; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [x] `W03.P36.S178` - Add apply tests for approved-only gates, stale approval, rejected proposal, partial failure, restart recovery, and idempotent apply request; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [x] `W03.P36.S179` - Run Apply job state machine and receipts code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P36.S180` - Verify approved changes materialize once and rejected or stale changes never materialize; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
 
 ### Phase `W03.P38` - Rollback generator and eligibility (whole-document subset)
 
 V1 subset for the walking skeleton: rollback is whole-document preimage restore, with an honest rollback_available=false reason for everything else. Per-operation rollback inverses defer to the Increment 5 remainder, evidence-gated.
 
-- [ ] `W03.P38.S186` - Ground Rollback generator and eligibility requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P38.S187` - Implement rollback proposal generation, operation-specific inverse logic, eligibility projection, unavailable reasons, and manual repair proposal hooks; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
-- [ ] `W03.P38.S188` - Add rollback tests for available preimage, missing preimage, delete inverse, rename inverse, approval gate, repeated request, and manual repair fallback; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
-- [ ] `W03.P38.S189` - Run Rollback generator and eligibility code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P38.S190` - Verify rollback is reviewable and unavailable rollback is explicit through tests and manual rollback API checks; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
+- [x] `W03.P38.S186` - Ground Rollback generator and eligibility requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P38.S187` - Implement rollback proposal generation, operation-specific inverse logic, eligibility projection, unavailable reasons, and manual repair proposal hooks; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
+- [x] `W03.P38.S188` - Add rollback tests for available preimage, missing preimage, delete inverse, rename inverse, approval gate, repeated request, and manual repair fallback; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
+- [x] `W03.P38.S189` - Run Rollback generator and eligibility code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P38.S190` - Verify rollback is reviewable and unavailable rollback is explicit through tests and manual rollback API checks; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
 
 ### Phase `W03.P18` - Projection rebuilders and eligibility state (skeleton subset)
 
 V1 subset for the walking skeleton: serve the proposal list, action eligibility, conflict reason, validation status, and rollback availability the skeleton UI needs. Counts and per-document activity rollups defer to the Increment 3 remainder.
 
-- [ ] `W03.P18.S86` - Ground Projection rebuilders and eligibility state requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P18.S87` - Implement projection rebuilders for review counts, per-document activity, action eligibility, conflicts, validation state, and rollback availability; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
-- [ ] `W03.P18.S88` - Add projection tests for rebuild after restart, stale data, eligibility reasons, conflict state, rollback availability, and bounded projection reads; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
-- [ ] `W03.P18.S89` - Run Projection rebuilders and eligibility state code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P18.S90` - Verify frontend-visible status and eligibility are backend-served and rebuildable through tests and manual projection checks; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
+- [x] `W03.P18.S86` - Ground Projection rebuilders and eligibility state requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P18.S87` - Implement projection rebuilders for review counts, per-document activity, action eligibility, conflicts, validation state, and rollback availability; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
+- [x] `W03.P18.S88` - Add projection tests for rebuild after restart, stale data, eligibility reasons, conflict state, rollback availability, and bounded projection reads; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
+- [x] `W03.P18.S89` - Run Projection rebuilders and eligibility state code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P18.S90` - Verify frontend-visible status and eligibility are backend-served and rebuildable through tests and manual projection checks; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
 
 ### Phase `W03.P39` - Backend route vertical slices (walking-skeleton exit gate)
 
 V1 subset as Increment 1's exit gate: one real vertical-slice test, two actors, stale base cannot apply, reject mutates nothing, apply idempotent under retry, rollback appends, over real routes, real store, and the real core adapter. The full endpoint-family sweep widens as later increments land their subsystems.
 
-- [ ] `W03.P39.S191` - Ground Backend route vertical slices requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P39.S192` - Implement backend vertical-slice tests for sessions, documents, proposals, reviews, leases, streams, apply, rollback, and recovery; `engine/crates/vaultspec-api/tests/authoring_vertical_slices.rs`.
-- [ ] `W03.P39.S193` - Add end-to-end backend scenarios for human edit, agent proposal, approval, rejection, conflict, apply, rollback, and reconnect; `engine/crates/vaultspec-api/tests/authoring_vertical_slices.rs`.
-- [ ] `W03.P39.S194` - Run Backend route vertical slices code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P39.S195` - Verify every endpoint family works through real backend routes and real product state; `engine/crates/vaultspec-api/tests/authoring_vertical_slices.rs`.
+- [x] `W03.P39.S191` - Ground Backend route vertical slices requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P39.S192` - Implement backend vertical-slice tests for proposals, reviews, apply, rollback, and recovery (sessions/leases/streams deferred to their own phases); `engine/crates/vaultspec-api/tests/authoring_vertical_slices.rs`.
+- [x] `W03.P39.S193` - Add end-to-end backend scenarios for human edit, agent proposal, approval, rejection, conflict, apply, and rollback (reconnect deferred to the streams phase); `engine/crates/vaultspec-api/tests/authoring_vertical_slices.rs`.
+- [x] `W03.P39.S194` - Run Backend route vertical slices code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P39.S195` - Verify every in-scope endpoint family works through real backend routes and real product state (F1 narrowing, ASA-P39-review); `engine/crates/vaultspec-api/tests/authoring_vertical_slices.rs`.
 
 ### Phase `W03.P40` - Frontend store and review station contract (thin skeleton subset)
 

@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#agentic-spec-authoring-backend'
-date: '2026-07-02'
-modified: '2026-07-02'
+date: '2026-07-04'
+modified: '2026-07-04'
 related:
   - '[[2026-06-29-agentic-apply-materialization-adr]]'
   - '[[2026-06-29-agentic-approval-gates-review-state-adr]]'
@@ -76,6 +76,49 @@ related:
   - '[[2026-06-30-agentic-spec-authoring-backend-W03-P10-S49]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-W03-P10-S50]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-W03-P10-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P11-S51]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P11-S52]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P11-S53]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P11-S54]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P11-S55]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P11-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P13-S61]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P13-S62]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P13-S63]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P13-S64]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P13-S65]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P13-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P14-S66]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P14-S67]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P14-S68]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P14-S69]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P14-S70]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P14-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P15-S71]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P15-S72]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P15-S73]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P15-S74]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P15-S75]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P15-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P16-S76]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P16-S77]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P16-S78]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P16-S79]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P16-S80]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P16-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P17-S81]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P17-S82]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P17-S83]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P17-S84]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P17-S85]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P17-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P19-S91]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P19-S92]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P19-S93]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P19-S94]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P19-S95]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P19-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W03-P35-S171]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-audit]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-plan]]'
   - '[[2026-07-02-agentic-operation-modes-adr]]'
@@ -169,6 +212,49 @@ Auto-generated index of all documents tagged with `#agentic-spec-authoring-backe
 - `2026-06-30-agentic-spec-authoring-backend-W03-P10-S49` - Run Document reference resolver code review and record the phase audit
 - `2026-06-30-agentic-spec-authoring-backend-W03-P10-S50` - Verify document references remain stable across rename and provisional-create scenarios
 - `2026-06-30-agentic-spec-authoring-backend-W03-P10-summary` - `agentic-spec-authoring-backend` `W03.P10` summary
+- `2026-06-30-agentic-spec-authoring-backend-W03-P11-S51` - Ground Revision snapshots and preimages requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W03-P11-S52` - Implement revision metadata reads, target snapshots, preimage capture, snapshot hashes, and recovery payloads
+- `2026-06-30-agentic-spec-authoring-backend-W03-P11-S53` - Add snapshot tests for unchanged revision, stale base, missing preimage, hash mismatch, and restart recovery
+- `2026-06-30-agentic-spec-authoring-backend-W03-P11-S54` - Run Revision snapshots and preimages code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W03-P11-S55` - Verify apply and rollback inputs can recover exact preimages through tests and manual snapshot inspection
+- `2026-06-30-agentic-spec-authoring-backend-W03-P11-summary` - `agentic-spec-authoring-backend` `W03.P11` summary
+- `2026-06-30-agentic-spec-authoring-backend-W03-P13-S61` - Ground Proposal operation payloads and previews requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W03-P13-S62` - Implement proposal operation payloads, whole-document drafts, atomic patches, materialized preview builders, and review diff projections
+- `2026-06-30-agentic-spec-authoring-backend-W03-P13-S63` - Add operation tests for full replacement, create, delete, atomic hunk, preview recovery, semantic diff, and invalid range cases
+- `2026-06-30-agentic-spec-authoring-backend-W03-P13-S64` - Run Proposal operation payloads and previews code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W03-P13-S65` - Verify reviewers can inspect proposal material before apply through tests and manual diff fixture review
+- `2026-06-30-agentic-spec-authoring-backend-W03-P13-summary` - `agentic-spec-authoring-backend` `W03.P13` summary
+- `2026-06-30-agentic-spec-authoring-backend-W03-P14-S66` - Ground Validation digest and stale-input detection requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W03-P14-S67` - Implement validation digests, stale-input checks, validation status records, warning states, and blocking error records
+- `2026-06-30-agentic-spec-authoring-backend-W03-P14-S68` - Add validation tests for valid proposals, invalid frontmatter, stale chunks, changed base revision, warning-only status, and blocking failures
+- `2026-06-30-agentic-spec-authoring-backend-W03-P14-S69` - Run Validation digest and stale-input detection code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W03-P14-S70` - Verify stale or invalid proposals cannot become approval-ready without a fresh validation digest
+- `2026-06-30-agentic-spec-authoring-backend-W03-P14-summary` - `agentic-spec-authoring-backend` `W03.P14` summary
+- `2026-06-30-agentic-spec-authoring-backend-W03-P15-S71` - Ground Changeset aggregate and child operations requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W03-P15-S72` - Implement changeset aggregate records, child operation records, target ordering, revision linkage, and audit-friendly identifiers
+- `2026-06-30-agentic-spec-authoring-backend-W03-P15-S73` - Add ledger tests for append-only revisions, child ordering, duplicate child rejection, multi-document changes, and history reconstruction
+- `2026-06-30-agentic-spec-authoring-backend-W03-P15-S74` - Run Changeset aggregate and child operations code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W03-P15-S75` - Verify changeset history reconstructs proposal state without LangGraph checkpoints or frontend memory
+- `2026-06-30-agentic-spec-authoring-backend-W03-P15-summary` - `agentic-spec-authoring-backend` `W03.P15` summary
+- `2026-06-30-agentic-spec-authoring-backend-W03-P16-S76` - Ground Transition engine and terminal-state validation requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W03-P16-S77` - Implement lifecycle transition rules, terminal-state validation, stale-state guards, and action eligibility helpers
+- `2026-06-30-agentic-spec-authoring-backend-W03-P16-S78` - Add transition tests for illegal moves, terminal refusal, stale approval, cancelled run, rejected proposal, and rollback terminal states
+- `2026-06-30-agentic-spec-authoring-backend-W03-P16-S79` - Run Transition engine and terminal-state validation code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W03-P16-S80` - Verify every command uses the shared transition engine through tests and manual transition table review
+- `2026-06-30-agentic-spec-authoring-backend-W03-P16-summary` - `agentic-spec-authoring-backend` `W03.P16` summary
+- `2026-06-30-agentic-spec-authoring-backend-W03-P17-S81` - Ground Proposal command handlers requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W03-P17-S82` - Implement proposal creation, material append, draft replacement, validate, submit, supersede, cancel, and snapshot handlers
+- `2026-06-30-agentic-spec-authoring-backend-W03-P17-S83` - Add command tests for ordered revisions, replayed writes, validation gates, terminal refusal, supersession, and cancellation
+- `2026-06-30-agentic-spec-authoring-backend-W03-P17-S84` - Run Proposal command handlers code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W03-P17-S85` - Verify proposal lifecycle transitions are idempotent and backend-owned through tests and manual command replay
+- `2026-06-30-agentic-spec-authoring-backend-W03-P17-summary` - `agentic-spec-authoring-backend` `W03.P17` summary
+- `2026-06-30-agentic-spec-authoring-backend-W03-P19-S91` - Ground Actor model and delegated scopes requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W03-P19-S92` - Implement actor records, service identities, delegated scopes, stable provenance keys, and actor display metadata
+- `2026-06-30-agentic-spec-authoring-backend-W03-P19-S93` - Add actor tests for human identity, agent identity, delegated scope, missing actor, stale actor, and provenance key stability
+- `2026-06-30-agentic-spec-authoring-backend-W03-P19-S94` - Run Actor model and delegated scopes code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W03-P19-S95` - Verify every mutation can be attributed to a stable actor and delegated scope
+- `2026-06-30-agentic-spec-authoring-backend-W03-P19-summary` - `agentic-spec-authoring-backend` `W03.P19` summary
+- `2026-06-30-agentic-spec-authoring-backend-W03-P35-S171` - Ground Core adapter capability registry requirements into the phase checklist
 
 ### plan
 

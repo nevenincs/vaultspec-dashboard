@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#agentic-spec-authoring-backend'
 date: '2026-06-29'
-modified: '2026-06-30'
+modified: '2026-07-03'
 related:
   - "[[2026-06-29-agentic-spec-authoring-backend-research]]"
   - "[[2026-06-29-langgraph-approval-document-editing-research]]"
@@ -79,6 +79,25 @@ Every mutating endpoint accepts an idempotency key in a consistent request field
 or header and records the scoped command outcome. The command scope includes
 actor, aggregate id, operation kind, and target revision where applicable. The
 same key replays to the recorded outcome or current in-flight state.
+
+**Denials are values; errors are faults** (DECIDED 2026-07-04, W03.P39 route
+grounding; this amendment owns the wire error taxonomy). The wire contract
+requires a client to distinguish "your request was refused" from "a backend is
+down", so the two ride DIFFERENT lanes and are never conflated in one error
+type. A policy or eligibility refusal — ineligible transition, stale approval,
+self-approval ban, capability limit — is a DOMAIN OUTCOME: it rides the
+SUCCESS envelope as a denied `ActionEligibility` (allowed=false plus an honest
+reason), exactly as the approvals and apply command handlers already return
+it; a denial is never encoded as a store or infrastructure error. The error
+envelope is reserved for genuine faults, mapped by category: infrastructure
+failures (SQLite, IO, schema/migration, serialization, subprocess) are server
+faults; a malformed or invalid request payload is a client validation fault;
+an idempotency-key conflict with a different recorded request is a conflict.
+Any domain error variant that mixes refusals with faults (the
+`StoreError::Ledger` overload) must be split or — preferred — realigned so the
+refusal returns as a denied outcome, leaving the variant purely
+infrastructure. A route never guesses a status from a conflated variant, and
+never maps a possible backend fault to a client-fault status.
 
 ## Rationale
 
