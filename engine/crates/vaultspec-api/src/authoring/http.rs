@@ -30,15 +30,26 @@ use axum::{Json, Router};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 
-use super::api::CommandEnvelope;
+use super::api::{CommandEnvelope, CreateProposalRequest};
 use super::model::{ChangesetId, CommandKind};
 use super::principal::{
     AUTHORING_ACTOR_TOKEN_HEADER, AuthenticatedPrincipal, PrincipalDenial, ResolvedCommand,
     resolve_principal,
 };
 use super::projections::ProjectionError;
+use super::proposal::{ProposalCommandContext, ProposalCommandResult};
+use super::snapshots::SnapshotReader;
 use super::store::StoreError;
 use crate::app::{AppState, now_ms};
+
+/// A mutating command's in-flight idempotency reservation window (resource-bounds:
+/// a bounded TTL at creation). A crashed attempt's reservation expires and the
+/// command becomes re-runnable.
+const COMMAND_IN_FLIGHT_TTL_MS: i64 = 60_000;
+
+/// A recorded command outcome's replay-retention window (bounded; a duplicate
+/// within it replays the recorded receipt, after it a re-run is a fresh command).
+const COMMAND_OUTCOME_TTL_MS: i64 = 24 * 3_600 * 1_000;
 
 /// A body/schema violation (missing idempotency key, a body-claimed actor, an
 /// unknown field, malformed JSON) — the request was wrong.
@@ -338,6 +349,136 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         ))
 }
 
+// --- mutating command handlers --------------------------------------------
+
+/// Map a domain `StoreError` to a typed, tiers-bearing HTTP FAULT response.
+///
+/// Denials-are-values (ADR "denials are values; errors are faults"): an
+/// eligibility refusal NEVER reaches here — it rides the SUCCESS envelope as a
+/// denied value via [`proposal_result_response`]. So every `StoreError` is a
+/// genuine fault, mapped by category: a client-correctable fault to a 4xx (with
+/// the domain-authored, leak-free reason echoed), an authenticated-but-
+/// unregistered actor to a 403 authz refusal, and an infrastructure fault
+/// (`Ledger` now included) to a reason-suppressed 503.
+fn command_error_response(state: &AppState, err: &StoreError) -> Response {
+    let (status, kind, message) = match err {
+        StoreError::Idempotency(_) => (
+            StatusCode::CONFLICT,
+            "authoring_idempotency_conflict",
+            err.to_string(),
+        ),
+        StoreError::Snapshot(_) => (
+            StatusCode::CONFLICT,
+            "authoring_stale_base",
+            err.to_string(),
+        ),
+        StoreError::Validation(_) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "authoring_validation_failed",
+            err.to_string(),
+        ),
+        StoreError::Approval(_) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "authoring_review_refused",
+            err.to_string(),
+        ),
+        // An authenticated principal that is not a registered/active actor is an
+        // AUTHORIZATION refusal (the token resolved, but the actor cannot write) —
+        // a 403, distinct from a bad request (422) or a store outage (503).
+        StoreError::Actor(_) | StoreError::ActorToken(_) => (
+            StatusCode::FORBIDDEN,
+            "authoring_actor_forbidden",
+            err.to_string(),
+        ),
+        StoreError::ReadOnlyCommandUnitOfWork { .. } => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "authoring_internal_error",
+            "authoring command dispatch error".to_string(),
+        ),
+        // Infrastructure failures: suppress the reason (a path/`file:line` may leak)
+        // and degrade honestly. `Ledger` is PURE infrastructure now that eligibility
+        // denials are values (a `Ledger` error is a ledger serialize/IO fault).
+        StoreError::Sqlite(_)
+        | StoreError::Io(_)
+        | StoreError::SchemaVersion { .. }
+        | StoreError::MigrationMetadata(_)
+        | StoreError::Ledger(_)
+        | StoreError::Retention(_)
+        | StoreError::Outbox(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            STORE_UNAVAILABLE_KIND,
+            "authoring store is unavailable".to_string(),
+        ),
+    };
+    super::response::typed_error(state, status, kind, &message).into_response()
+}
+
+/// Map a completed proposal command to its enveloped response: an accepted
+/// outcome and an idempotent replay both serve the outcome snapshot (200); a
+/// still-in-flight prior attempt returns 202 so the client continues rather than
+/// re-issuing; an eligibility DENIAL rides the 200 success envelope as a denied
+/// value (denials-are-values), never a 4xx fault.
+fn proposal_result_response(state: &AppState, result: ProposalCommandResult) -> Response {
+    match result {
+        ProposalCommandResult::Accepted { outcome, .. } => {
+            let data = serde_json::to_value(&outcome).expect("proposal outcome serializes");
+            super::response::snapshot(state, data).into_response()
+        }
+        ProposalCommandResult::Replayed { idempotency } => {
+            let data = idempotency
+                .outcome
+                .map(|outcome| outcome.payload)
+                .unwrap_or_else(|| json!({ "status": "replayed" }));
+            super::response::snapshot(state, data).into_response()
+        }
+        ProposalCommandResult::InFlight { .. } => (
+            StatusCode::ACCEPTED,
+            super::response::snapshot(state, json!({ "status": "in_flight" })),
+        )
+            .into_response(),
+        // Denials are VALUES: an eligibility refusal rides the SUCCESS envelope
+        // (200) as a denied decision carrying the domain reason, never a 4xx fault
+        // (denials-are-values ADR; errors are faults).
+        ProposalCommandResult::Denied { eligibility } => super::response::snapshot(
+            state,
+            json!({
+                "status": "denied",
+                "command": eligibility.command,
+                "allowed": eligibility.allowed,
+                "reason": eligibility.reason,
+            }),
+        )
+        .into_response(),
+    }
+}
+
+/// `POST /authoring/v1/proposals` — open a new authoring changeset (a Draft
+/// proposal). The wire `CreateProposalRequest` IS the domain input; the actor is
+/// the middleware-RESOLVED principal (ASA-010), never a body claim. The domain
+/// handler owns its own idempotency + unit of work.
+pub async fn create_proposal(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<CreateProposalRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let context = ProposalCommandContext {
+        actor,
+        idempotency_key,
+        now_ms: now,
+        in_flight_expires_at_ms: Some(now + COMMAND_IN_FLIGHT_TTL_MS),
+        outcome_expires_at_ms: Some(now + COMMAND_OUTCOME_TTL_MS),
+    };
+    // The materializer reads the vault worktree (parent of `.vault`).
+    let reader = SnapshotReader::for_worktree(state.active_workspace_root());
+    match state.with_authoring_store(|store| {
+        super::proposal::create_proposal(store, &reader, context, payload)
+    }) {
+        Ok(result) => proposal_result_response(&state, result),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,8 +489,17 @@ mod tests {
     use serde_json::{Value, json};
     use tower::ServiceExt;
 
-    use crate::authoring::api::{CreateSessionRequest, EndpointFamily, request_fixture};
-    use crate::authoring::model::{ActorId, ActorKind, ActorRef};
+    use std::path::Path;
+
+    use crate::authoring::actors::{ActorDisplayMetadata, ActorRecordInput};
+    use crate::authoring::api::{
+        ApiVersion, ChangesetChildOperationDraft, ChangesetOperationKind, CreateSessionRequest,
+        DraftMode, DraftMutation, EndpointFamily, TargetRevisionFence, request_fixture,
+    };
+    use crate::authoring::documents::{DocumentResolver, ExistingDocumentLookup};
+    use crate::authoring::model::{
+        ActorId, ActorKind, ActorRef, DocumentRef, IdempotencyKey, SessionId,
+    };
     use crate::authoring::store::Store;
 
     fn fixture_state() -> (tempfile::TempDir, Arc<AppState>) {
@@ -624,6 +774,162 @@ mod tests {
         let body: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(body["data"]["items"], json!([]));
         assert_eq!(body["data"]["cap"], 200);
+    }
+
+    // --- mutating command handler: create proposal ----------------------------
+
+    /// Register `actor` in the authoring actor registry (P19) of the state's own
+    /// store — an authoring command requires a registered, active actor.
+    fn register_actor(state: &AppState, actor: &ActorRef) {
+        state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::CreateSession, |uow| {
+                    uow.actors().put_record(ActorRecordInput::active(
+                        actor.clone(),
+                        ActorDisplayMetadata {
+                            display_name: "Test Actor".to_string(),
+                            display_summary: None,
+                        },
+                        now_ms(),
+                    ))
+                })
+            })
+            .unwrap();
+    }
+
+    /// A `create_proposal` command over a real seeded existing document with a
+    /// single `ReplaceBody` operation whose base/current revision matches the
+    /// worktree (the skeleton materializes ReplaceBody, not CreateDocument). The
+    /// same seed + request is reproducible, so a duplicate replays idempotently.
+    fn create_command(
+        principal: AuthenticatedPrincipal,
+        root: &Path,
+        changeset: &str,
+        idem: &str,
+    ) -> ResolvedCommand<CreateProposalRequest> {
+        let doc_path = root.join(".vault/plan/operation-plan.md");
+        std::fs::create_dir_all(doc_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &doc_path,
+            "---\ntags:\n  - '#plan'\n---\n\n# Plan\n\nbase\n",
+        )
+        .unwrap();
+        let document = DocumentResolver::for_worktree(root)
+            .resolve_existing(ExistingDocumentLookup::Stem("operation-plan".to_string()))
+            .unwrap();
+        let DocumentRef::Existing { base_revision, .. } = &document else {
+            unreachable!("resolved an existing document");
+        };
+        let revision = base_revision.clone();
+        let envelope = CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::CreateProposal,
+            idempotency_key: IdempotencyKey::new(idem).unwrap(),
+            payload: CreateProposalRequest {
+                session_id: SessionId::new("session_http_1").unwrap(),
+                changeset_id: ChangesetId::new(changeset).unwrap(),
+                summary: "create a plan".to_string(),
+                operations: vec![ChangesetChildOperationDraft {
+                    child_key: "child_1".to_string(),
+                    operation: ChangesetOperationKind::ReplaceBody,
+                    target: TargetRevisionFence {
+                        document: document.clone(),
+                        base_revision: Some(revision.clone()),
+                        current_revision: Some(revision),
+                    },
+                    draft: DraftMutation {
+                        mode: DraftMode::WholeDocument,
+                        body: "---\ntags:\n  - '#plan'\n---\n\n# Plan\n\nnew body\n".to_string(),
+                    },
+                }],
+            },
+        };
+        ResolvedCommand::from_principal(principal, envelope)
+    }
+
+    #[tokio::test]
+    async fn create_proposal_opens_a_draft_changeset_under_the_resolved_actor() {
+        let (dir, state) = fixture_state();
+        register_actor(&state, &agent());
+        let (_token_dir, principal) = resolved_principal(&agent());
+
+        let response = create_proposal(
+            State(state.clone()),
+            create_command(principal, dir.path(), "changeset_http_1", "idem:create:1"),
+        )
+        .await;
+
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(status, StatusCode::OK, "create failed: {body}");
+        assert_eq!(body["data"]["changeset_id"], "changeset_http_1");
+        assert_eq!(body["data"]["status"], "draft");
+        assert_eq!(body["data"]["command"], "create_proposal");
+        assert!(body["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    #[tokio::test]
+    async fn create_proposal_replays_a_duplicate_idempotent_command() {
+        let (dir, state) = fixture_state();
+        register_actor(&state, &agent());
+
+        let (_d1, principal1) = resolved_principal(&agent());
+        let first = create_proposal(
+            State(state.clone()),
+            create_command(principal1, dir.path(), "changeset_http_2", "idem:create:2"),
+        )
+        .await;
+        assert_eq!(first.status(), StatusCode::OK);
+
+        // Same actor + idempotency key + request → the recorded outcome replays.
+        let (_d2, principal2) = resolved_principal(&agent());
+        let second = create_proposal(
+            State(state.clone()),
+            create_command(principal2, dir.path(), "changeset_http_2", "idem:create:2"),
+        )
+        .await;
+        assert_eq!(second.status(), StatusCode::OK);
+        let bytes = to_bytes(second.into_body(), 1 << 20).await.unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["data"]["changeset_id"], "changeset_http_2");
+        assert_eq!(body["data"]["command"], "create_proposal");
+    }
+
+    #[tokio::test]
+    async fn an_ineligible_command_is_a_200_denial_not_a_4xx_fault() {
+        // Denials-are-values (ADR): an eligibility refusal rides the SUCCESS
+        // envelope (200) as a denied decision carrying the domain reason — never a
+        // 4xx. The fault map (`command_error_response`) only ever sees genuine
+        // `StoreError`s; a denial never reaches it.
+        let (_dir, state) = fixture_state();
+        let eligibility = crate::authoring::model::ActionEligibility::denied(
+            CommandKind::AppendDraft,
+            "changeset is terminal and cannot be mutated",
+        );
+        let response =
+            proposal_result_response(&state, ProposalCommandResult::Denied { eligibility });
+
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "a denial is a 200 value, not a fault"
+        );
+        let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["data"]["status"], "denied");
+        assert_eq!(body["data"]["allowed"], false);
+        assert_eq!(body["data"]["command"], "append_draft");
+        assert!(
+            body["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("terminal")),
+            "the denial carries the domain reason: {body}"
+        );
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "the denial rides the shared tiers envelope"
+        );
     }
 
     // --- the middleware, exercised through a real router (oneshot) -------------

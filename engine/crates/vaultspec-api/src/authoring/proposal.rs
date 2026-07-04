@@ -22,8 +22,8 @@ use super::model::{
 use super::operations::MaterializedProposalOperation;
 use super::snapshots::{PreimageCaptureRequest, PreimageRecord, SnapshotReader};
 use super::store::idempotency::{
-    IdempotencyKeyScope, IdempotencyRecord, IdempotencyScope, InFlightReservation, OutcomeKind,
-    RecordedOutcome, ReserveDecision,
+    IdempotencyConflict, IdempotencyKeyScope, IdempotencyRecord, IdempotencyScope,
+    InFlightReservation, OutcomeKind, RecordedOutcome, ReplayLookup, ReserveDecision,
 };
 use super::store::unit_of_work::UnitOfWork;
 use super::store::{Result as StoreResult, Store, StoreError};
@@ -108,6 +108,12 @@ pub enum ProposalCommandResult {
     InFlight {
         idempotency: IdempotencyRecord,
     },
+    /// The eligibility gate refused the command BEFORE any reservation: it rides
+    /// the SUCCESS envelope as a denied value, reserving nothing and mutating
+    /// nothing. Denials are values; errors are faults (never a `StoreError`).
+    Denied {
+        eligibility: ActionEligibility,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,15 +135,22 @@ pub fn create_proposal(
         run_idempotent(
             uow,
             &context,
-            CommandKind::CreateProposal,
-            request.changeset_id.clone(),
-            scope,
-            request_digest.clone(),
-            |receipt_id| {
-                ensure_allowed(initial_changeset_status_eligibility(
-                    ChangesetKind::Authoring,
-                    ChangesetStatus::Draft,
-                ))?;
+            CommandCoordinates {
+                command: CommandKind::CreateProposal,
+                aggregate_id: request.changeset_id.clone(),
+                scope,
+                request_digest: request_digest.clone(),
+            },
+            || {
+                Ok(admit_if_eligible(
+                    initial_changeset_status_eligibility(
+                        ChangesetKind::Authoring,
+                        ChangesetStatus::Draft,
+                    ),
+                    (),
+                ))
+            },
+            |(), receipt_id| {
                 let operations = materialize_drafts(
                     reader,
                     &request.changeset_id,
@@ -217,14 +230,16 @@ pub fn validate_proposal(
         run_idempotent(
             uow,
             &context,
-            CommandKind::ValidateProposal,
-            request.changeset_id.clone(),
-            scope,
-            request_digest.clone(),
-            |receipt_id| {
+            CommandCoordinates {
+                command: CommandKind::ValidateProposal,
+                aggregate_id: request.changeset_id.clone(),
+                scope,
+                request_digest: request_digest.clone(),
+            },
+            || {
                 let latest =
                     require_latest(uow, &request.changeset_id, &request.expected_revision)?;
-                ensure_allowed(
+                Ok(admit_if_eligible(
                     TransitionRequest::new(
                         CommandKind::ValidateProposal,
                         latest.kind,
@@ -233,7 +248,10 @@ pub fn validate_proposal(
                     )
                     .with_operation_count(latest.operation_count)
                     .into_eligibility(),
-                )?;
+                    latest,
+                ))
+            },
+            |latest, receipt_id| {
                 let operations = materialized_from_record(&latest)?;
                 let validation = validate_changeset_material(
                     &operations,
@@ -282,30 +300,37 @@ pub fn submit_for_review(
         run_idempotent(
             uow,
             &context,
-            CommandKind::SubmitForReview,
-            request.changeset_id.clone(),
-            scope,
-            request_digest.clone(),
-            |receipt_id| {
+            CommandCoordinates {
+                command: CommandKind::SubmitForReview,
+                aggregate_id: request.changeset_id.clone(),
+                scope,
+                request_digest: request_digest.clone(),
+            },
+            || {
                 let latest =
                     require_latest(uow, &request.changeset_id, &request.expected_revision)?;
                 let validation = uow
                     .validations()
                     .record_by_digest(&request.validation_digest)?;
-                ensure_allowed(submit_for_review_eligibility(
+                let eligibility = submit_for_review_eligibility(
                     validation.as_ref(),
                     Some(&request.validation_digest),
-                ))?;
+                );
+                if !eligibility.allowed {
+                    return Ok(GateOutcome::Deny(eligibility));
+                }
                 let validation = validation.as_ref().ok_or_else(|| {
                     StoreError::Validation("proposal has no validation digest".to_string())
                 })?;
                 ensure_latest_revision_binds_validation(&latest, validation)?;
                 let validation_freshness =
                     validation_freshness(Some(validation), &request.validation_digest);
-                ensure_allowed(submit_for_review_transition_eligibility(
-                    &latest,
-                    validation_freshness,
-                ))?;
+                Ok(admit_if_eligible(
+                    submit_for_review_transition_eligibility(&latest, validation_freshness),
+                    latest,
+                ))
+            },
+            |latest, receipt_id| {
                 let record = revision_from_existing(
                     &latest,
                     &context.actor,
@@ -392,14 +417,16 @@ fn mutate_draft(
         run_idempotent(
             uow,
             &context,
-            command,
-            request.changeset_id.clone(),
-            scope,
-            request_digest.clone(),
-            |receipt_id| {
+            CommandCoordinates {
+                command,
+                aggregate_id: request.changeset_id.clone(),
+                scope,
+                request_digest: request_digest.clone(),
+            },
+            || {
                 let latest =
                     require_latest(uow, &request.changeset_id, &request.expected_revision)?;
-                ensure_allowed(
+                Ok(admit_if_eligible(
                     TransitionRequest::new(
                         command,
                         latest.kind,
@@ -408,7 +435,10 @@ fn mutate_draft(
                     )
                     .with_operation_count(latest.operation_count)
                     .into_eligibility(),
-                )?;
+                    latest,
+                ))
+            },
+            |latest, receipt_id| {
                 let operations = materialize_drafts(
                     reader,
                     &request.changeset_id,
@@ -458,18 +488,23 @@ fn terminal_transition(
         run_idempotent(
             uow,
             &context,
-            command,
-            request.changeset_id.clone(),
-            scope,
-            request_digest.clone(),
-            |receipt_id| {
+            CommandCoordinates {
+                command,
+                aggregate_id: request.changeset_id.clone(),
+                scope,
+                request_digest: request_digest.clone(),
+            },
+            || {
                 let latest =
                     require_latest(uow, &request.changeset_id, &request.expected_revision)?;
-                ensure_allowed(
+                Ok(admit_if_eligible(
                     TransitionRequest::new(command, latest.kind, latest.status, next)
                         .with_operation_count(latest.operation_count)
                         .into_eligibility(),
-                )?;
+                    latest,
+                ))
+            },
+            |latest, receipt_id| {
                 let record = revision_from_existing(
                     &latest,
                     &context.actor,
@@ -495,15 +530,55 @@ impl TransitionRequestExt for TransitionRequest {
     }
 }
 
-fn run_idempotent(
-    uow: &UnitOfWork<'_>,
-    context: &ProposalCommandContext,
+/// The eligibility gate's decision, evaluated BEFORE any idempotency reservation
+/// (denials-are-values ADR; mirrors `apply`'s `Preflight::Denied`). `Admit`
+/// carries the loaded precondition state the handler needs, so the aggregate is
+/// read once; `Deny` rides the SUCCESS envelope as a value and reserves nothing.
+enum GateOutcome<L> {
+    Admit(L),
+    Deny(ActionEligibility),
+}
+
+/// Fold an eligibility check into a gate outcome: allowed admits with the loaded
+/// state; a denial becomes a `Deny` VALUE, never an `Err` (errors are faults).
+fn admit_if_eligible<L>(eligibility: ActionEligibility, loaded: L) -> GateOutcome<L> {
+    if eligibility.allowed {
+        GateOutcome::Admit(loaded)
+    } else {
+        GateOutcome::Deny(eligibility)
+    }
+}
+
+fn idempotency_conflict(conflict: &IdempotencyConflict) -> StoreError {
+    StoreError::Idempotency(format!(
+        "idempotency key `{}` conflicts with existing proposal command scope `{}`",
+        conflict.key_scope.key.as_str(),
+        conflict.existing_scope.id
+    ))
+}
+
+/// The idempotency coordinates of one proposal command: which command it is, the
+/// changeset it targets, and the scope + request digest that dedupe a retry.
+struct CommandCoordinates {
     command: CommandKind,
     aggregate_id: ChangesetId,
     scope: IdempotencyScope,
     request_digest: String,
-    handler: impl FnOnce(&ReceiptId) -> StoreResult<ProposalCommandOutcome>,
+}
+
+fn run_idempotent<L>(
+    uow: &UnitOfWork<'_>,
+    context: &ProposalCommandContext,
+    coordinates: CommandCoordinates,
+    gate: impl FnOnce() -> StoreResult<GateOutcome<L>>,
+    handler: impl FnOnce(L, &ReceiptId) -> StoreResult<ProposalCommandOutcome>,
 ) -> StoreResult<ProposalCommandResult> {
+    let CommandCoordinates {
+        command,
+        aggregate_id,
+        scope,
+        request_digest,
+    } = coordinates;
     let _actor_record = uow.actors().ensure_active(&context.actor)?;
     let key_scope = IdempotencyKeyScope::new(
         context.actor.clone(),
@@ -511,35 +586,68 @@ fn run_idempotent(
         context.idempotency_key.clone(),
     );
     let receipt_id = receipt_id(command, &aggregate_id, &request_digest)?;
-    let decision = uow.idempotency().reserve_in_flight(
+
+    // Replay / in-flight FIRST: a recorded outcome replays regardless of the
+    // current aggregate state, and a still-live attempt is reported in-flight —
+    // neither re-runs the eligibility gate (idempotency wins over re-evaluation).
+    match uow
+        .idempotency()
+        .lookup_replay(&key_scope, &scope, &request_digest, context.now_ms)?
+    {
+        ReplayLookup::Replay(record) => {
+            return Ok(ProposalCommandResult::Replayed {
+                idempotency: record,
+            });
+        }
+        ReplayLookup::InFlight(record) => {
+            return Ok(ProposalCommandResult::InFlight {
+                idempotency: record,
+            });
+        }
+        ReplayLookup::Conflict(conflict) => return Err(idempotency_conflict(&conflict)),
+        // A never-seen key, or an EXPIRED prior attempt safe to re-run (a proposal
+        // command is a single atomic ledger append): proceed to the gate.
+        ReplayLookup::None | ReplayLookup::Expired(_) => {}
+    }
+
+    // Fresh command: run the eligibility gate BEFORE reserving. A denial leaves
+    // the store untouched and rides the success envelope as a value.
+    let loaded = match gate()? {
+        GateOutcome::Admit(loaded) => loaded,
+        GateOutcome::Deny(eligibility) => {
+            return Ok(ProposalCommandResult::Denied { eligibility });
+        }
+    };
+
+    // Reserve the attempt, mutate under the reserved receipt, record the outcome.
+    let reservation = match uow.idempotency().reserve_in_flight(
         key_scope,
         scope,
         request_digest,
         receipt_id,
         context.now_ms,
         context.in_flight_expires_at_ms,
-    )?;
-    match decision {
-        ReserveDecision::Reserved(reservation) => {
-            let outcome = handler(&reservation.receipt_id)?;
-            let idempotency = record_outcome(uow, &reservation, &outcome, context)?;
-            Ok(ProposalCommandResult::Accepted {
-                outcome,
-                idempotency,
-            })
+    )? {
+        ReserveDecision::Reserved(reservation) => reservation,
+        // A concurrent writer landed the same key between the lookup and here.
+        ReserveDecision::Replay(record) => {
+            return Ok(ProposalCommandResult::Replayed {
+                idempotency: record,
+            });
         }
-        ReserveDecision::Replay(record) => Ok(ProposalCommandResult::Replayed {
-            idempotency: record,
-        }),
-        ReserveDecision::InFlight(record) => Ok(ProposalCommandResult::InFlight {
-            idempotency: record,
-        }),
-        ReserveDecision::Conflict(conflict) => Err(StoreError::Idempotency(format!(
-            "idempotency key `{}` conflicts with existing proposal command scope `{}`",
-            conflict.key_scope.key.as_str(),
-            conflict.existing_scope.id
-        ))),
-    }
+        ReserveDecision::InFlight(record) => {
+            return Ok(ProposalCommandResult::InFlight {
+                idempotency: record,
+            });
+        }
+        ReserveDecision::Conflict(conflict) => return Err(idempotency_conflict(&conflict)),
+    };
+    let outcome = handler(loaded, &reservation.receipt_id)?;
+    let idempotency = record_outcome(uow, &reservation, &outcome, context)?;
+    Ok(ProposalCommandResult::Accepted {
+        outcome,
+        idempotency,
+    })
 }
 
 fn record_outcome(
@@ -773,16 +881,6 @@ fn ensure_latest_revision_binds_validation(
         Err(StoreError::Validation(format!(
             "validation digest `{}` is not bound to the current proposal revision",
             validation.validation_digest
-        )))
-    }
-}
-
-fn ensure_allowed(eligibility: ActionEligibility) -> StoreResult<()> {
-    if eligibility.allowed {
-        Ok(())
-    } else {
-        Err(StoreError::Ledger(eligibility.reason.unwrap_or_else(
-            || "proposal command is not eligible".to_string(),
         )))
     }
 }
@@ -1044,6 +1142,13 @@ mod tests {
         match result {
             ProposalCommandResult::Accepted { outcome, .. } => outcome,
             other => panic!("expected accepted command result, got {other:?}"),
+        }
+    }
+
+    fn denied(result: ProposalCommandResult) -> ActionEligibility {
+        match result {
+            ProposalCommandResult::Denied { eligibility } => eligibility,
+            other => panic!("expected denied command result, got {other:?}"),
         }
     }
 
@@ -1607,20 +1712,25 @@ mod tests {
             .clone()
             .expect("validation returns digest");
 
-        let stale_submit = submit_for_review(
-            &mut store,
-            context("idem:submit:missing", 102),
-            SubmitProposalRequest {
-                changeset_id: changeset_id.clone(),
-                expected_revision: first_validation.changeset_revision.clone(),
-                validation_digest: "validation:missing".to_string(),
-                summary: "submit missing validation".to_string(),
-            },
-        )
-        .unwrap_err();
+        let stale_submit = denied(
+            submit_for_review(
+                &mut store,
+                context("idem:submit:missing", 102),
+                SubmitProposalRequest {
+                    changeset_id: changeset_id.clone(),
+                    expected_revision: first_validation.changeset_revision.clone(),
+                    validation_digest: "validation:missing".to_string(),
+                    summary: "submit missing validation".to_string(),
+                },
+            )
+            .unwrap(),
+        );
         assert!(
-            stale_submit.to_string().contains("validation"),
-            "{stale_submit}"
+            stale_submit
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("validation")),
+            "{stale_submit:?}"
         );
 
         let replaced = accepted(
@@ -1887,21 +1997,26 @@ mod tests {
         assert_eq!(latest_validation.validation_digest, validation_digest);
         assert!(!latest_validation.approval_ready);
 
-        let rejected = submit_for_review(
-            &mut store,
-            context("idem:submit:invalid", 102),
-            SubmitProposalRequest {
-                changeset_id: changeset_id.clone(),
-                expected_revision: validation.changeset_revision,
-                validation_digest,
-                summary: "submit invalid validation".to_string(),
-            },
-        )
-        .unwrap_err();
+        let rejected = denied(
+            submit_for_review(
+                &mut store,
+                context("idem:submit:invalid", 102),
+                SubmitProposalRequest {
+                    changeset_id: changeset_id.clone(),
+                    expected_revision: validation.changeset_revision,
+                    validation_digest,
+                    summary: "submit invalid validation".to_string(),
+                },
+            )
+            .unwrap(),
+        );
 
         assert!(
-            rejected.to_string().contains("not reviewable"),
-            "{rejected}"
+            rejected
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("not reviewable")),
+            "{rejected:?}"
         );
         let final_snapshot = snapshot(&mut store, &changeset_id);
         assert_eq!(final_snapshot.history.revisions.len(), 2);
@@ -1978,22 +2093,27 @@ mod tests {
             .unwrap(),
         );
         assert_eq!(cancelled.status, ChangesetStatus::Cancelled);
-        let terminal_append = append_draft(
-            &mut store,
-            &reader,
-            context("idem:append:cancelled", 102),
-            draft_request(
-                root,
-                cancelled_id.clone(),
-                cancelled.changeset_revision,
-                "child_2",
-                valid_body("blocked"),
-            ),
-        )
-        .unwrap_err();
+        let terminal_append = denied(
+            append_draft(
+                &mut store,
+                &reader,
+                context("idem:append:cancelled", 102),
+                draft_request(
+                    root,
+                    cancelled_id.clone(),
+                    cancelled.changeset_revision,
+                    "child_2",
+                    valid_body("blocked"),
+                ),
+            )
+            .unwrap(),
+        );
         assert!(
-            terminal_append.to_string().contains("terminal"),
-            "{terminal_append}"
+            terminal_append
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("terminal")),
+            "{terminal_append:?}"
         );
 
         let created = accepted(
@@ -2018,21 +2138,26 @@ mod tests {
             .unwrap(),
         );
         assert_eq!(superseded.status, ChangesetStatus::Superseded);
-        let terminal_validate = validate_proposal(
-            &mut store,
-            context("idem:validate:superseded", 202),
-            ValidateProposalRequest {
-                changeset_id: superseded_id,
-                expected_revision: superseded.changeset_revision,
-                summary: "validate terminal proposal".to_string(),
-                current_revisions: Vec::new(),
-                chunk_evidence: Vec::new(),
-            },
-        )
-        .unwrap_err();
+        let terminal_validate = denied(
+            validate_proposal(
+                &mut store,
+                context("idem:validate:superseded", 202),
+                ValidateProposalRequest {
+                    changeset_id: superseded_id,
+                    expected_revision: superseded.changeset_revision,
+                    summary: "validate terminal proposal".to_string(),
+                    current_revisions: Vec::new(),
+                    chunk_evidence: Vec::new(),
+                },
+            )
+            .unwrap(),
+        );
         assert!(
-            terminal_validate.to_string().contains("terminal"),
-            "{terminal_validate}"
+            terminal_validate
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("terminal")),
+            "{terminal_validate:?}"
         );
     }
 }
