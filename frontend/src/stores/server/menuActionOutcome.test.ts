@@ -71,7 +71,7 @@ describe("consumeMenuActionOutcome (KAR-006 / KAR-004)", () => {
       null,
       qc,
     );
-    expect(failed.message).toBe("Copy failed.");
+    expect(failed.message).toBe("Couldn't copy.");
   });
 
   it("reports nothing (null message) for a dispatch type with no observable outcome", async () => {

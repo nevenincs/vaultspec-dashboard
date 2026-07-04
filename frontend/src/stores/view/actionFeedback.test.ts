@@ -2,67 +2,60 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   ACTION_FEEDBACK_MESSAGE_CAP,
+  actionFeedbackSnapshot,
   announceActionFeedback,
   clearActionFeedback,
   normalizeActionFeedbackMessage,
-  useActionFeedbackStore,
 } from "./actionFeedback";
 
-// KAR-006 / KAR-004. The persistent action-outcome feedback store: it normalizes
-// and caps the announced line, and rides a monotonic token so an IDENTICAL
-// consecutive outcome ("Copied." twice) still re-announces (the aria-live region
-// keys its text node on the token to force a screen-reader-observed change).
+describe("actionFeedback store (KAR-006 / KAR-004)", () => {
+  beforeEach(() => clearActionFeedback());
 
-describe("normalizeActionFeedbackMessage", () => {
-  it("trims, rejects blanks/non-strings, and caps with an ellipsis", () => {
+  it("normalizes: trims, drops empty/non-string, caps length", () => {
     expect(normalizeActionFeedbackMessage("  Copied.  ")).toBe("Copied.");
     expect(normalizeActionFeedbackMessage("   ")).toBeNull();
     expect(normalizeActionFeedbackMessage(42)).toBeNull();
-    expect(normalizeActionFeedbackMessage(null)).toBeNull();
-
-    const long = "x".repeat(ACTION_FEEDBACK_MESSAGE_CAP + 50);
-    const capped = normalizeActionFeedbackMessage(long);
-    expect(capped).toHaveLength(ACTION_FEEDBACK_MESSAGE_CAP);
-    expect(capped?.endsWith("…")).toBe(true);
-  });
-});
-
-describe("announceActionFeedback", () => {
-  beforeEach(() => {
-    useActionFeedbackStore.setState({ message: null, token: 0 });
+    const capped = normalizeActionFeedbackMessage(
+      "x".repeat(ACTION_FEEDBACK_MESSAGE_CAP + 50),
+    );
+    expect(capped).not.toBeNull();
+    expect(capped!.length).toBe(ACTION_FEEDBACK_MESSAGE_CAP);
+    expect(capped!.endsWith("…")).toBe(true);
   });
 
-  it("sets the normalized message and bumps the token", () => {
-    announceActionFeedback("  Done.  ");
-    const state = useActionFeedbackStore.getState();
-    expect(state.message).toBe("Done.");
-    expect(state.token).toBe(1);
-  });
-
-  it("re-announces an IDENTICAL consecutive message by bumping the token", () => {
+  it("announce sets the message and bumps the re-announce token every time", () => {
     announceActionFeedback("Copied.");
-    const first = useActionFeedbackStore.getState().token;
+    const first = actionFeedbackSnapshot();
+    expect(first.message).toBe("Copied.");
+
+    // An IDENTICAL consecutive message must still re-announce: same text, a NEW
+    // token (the aria-live region keys on the token, so AT reads it again).
     announceActionFeedback("Copied.");
-    const second = useActionFeedbackStore.getState();
+    const second = actionFeedbackSnapshot();
     expect(second.message).toBe("Copied.");
-    expect(second.token).toBeGreaterThan(first);
+    expect(second.token).toBeGreaterThan(first.token);
+
+    announceActionFeedback("Couldn't copy.");
+    const third = actionFeedbackSnapshot();
+    expect(third.message).toBe("Couldn't copy.");
+    expect(third.token).toBeGreaterThan(second.token);
   });
 
-  it("ignores a blank announcement without disturbing state", () => {
-    announceActionFeedback("Real.");
-    const before = useActionFeedbackStore.getState();
+  it("ignores an empty announce (no message, no token bump)", () => {
+    announceActionFeedback("Done.");
+    const before = actionFeedbackSnapshot();
     announceActionFeedback("   ");
-    const after = useActionFeedbackStore.getState();
-    expect(after.message).toBe("Real.");
+    const after = actionFeedbackSnapshot();
+    expect(after.message).toBe("Done.");
     expect(after.token).toBe(before.token);
   });
 
-  it("clear() drops the message but still bumps the token (a fresh change)", () => {
-    announceActionFeedback("Copied.");
-    const before = useActionFeedbackStore.getState().token;
+  it("clear empties the message and still bumps the token", () => {
+    announceActionFeedback("Done.");
+    const before = actionFeedbackSnapshot();
     clearActionFeedback();
-    const after = useActionFeedbackStore.getState();
+    const after = actionFeedbackSnapshot();
     expect(after.message).toBeNull();
-    expect(after.token).toBeGreaterThan(before);
+    expect(after.token).toBeGreaterThan(before.token);
   });
 });

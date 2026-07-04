@@ -80,9 +80,9 @@ export async function consumeMenuActionOutcome(
       const { ok } = (await outcome) as CopyResult;
       return ok
         ? { ok: true, message: "Copied." }
-        : { ok: false, message: "Copy failed." };
+        : { ok: false, message: "Couldn't copy." };
     } catch {
-      return { ok: false, message: "Copy failed." };
+      return { ok: false, message: "Couldn't copy." };
     }
   }
   return { ok: true, message: null };

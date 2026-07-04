@@ -26,7 +26,8 @@ import {
 import { consumeMenuActionOutcome } from "../../stores/server/menuActionOutcome";
 import {
   announceActionFeedback,
-  useActionFeedback,
+  useActionFeedbackMessage,
+  useActionFeedbackToken,
 } from "../../stores/view/actionFeedback";
 import {
   armContextMenuItem,
@@ -80,7 +81,8 @@ export function ContextMenuHost({
   // The persistent action-outcome feedback (KAR-006 / KAR-004): rendered below in
   // an always-mounted aria-live region that OUTLIVES the menu (the menu's own
   // live region unmounts on close, before an async ops/copy outcome resolves).
-  const feedback = useActionFeedback();
+  const feedbackMessage = useActionFeedbackMessage();
+  const feedbackToken = useActionFeedbackToken();
 
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -335,7 +337,7 @@ export function ContextMenuHost({
           className="sr-only"
           data-action-feedback
         >
-          <span key={feedback.token}>{feedback.message}</span>
+          <span key={feedbackToken}>{feedbackMessage}</span>
         </div>,
         document.body,
       )}

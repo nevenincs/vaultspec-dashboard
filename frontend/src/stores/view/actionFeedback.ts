@@ -26,12 +26,9 @@ export function normalizeActionFeedbackMessage(message: unknown): string | null 
     : trimmed;
 }
 
-export interface ActionFeedback {
+interface ActionFeedbackState {
   message: string | null;
   token: number;
-}
-
-interface ActionFeedbackState extends ActionFeedback {
   announce: (message: unknown) => void;
   clear: () => void;
 }
@@ -59,11 +56,20 @@ export function clearActionFeedback(): void {
   useActionFeedbackStore.getState().clear();
 }
 
-/** Read the current feedback message + its re-announce token. Selects raw
- *  PRIMITIVES (stable-selectors: no fresh reference escapes a selector); the
- *  returned object is assembled in the component body. */
-export function useActionFeedback(): ActionFeedback {
-  const message = useActionFeedbackStore((state) => state.message);
-  const token = useActionFeedbackStore((state) => state.token);
+/** Non-React snapshot of the current feedback (message + token), for consumers
+ *  outside a component (tests, imperative readers). */
+export function actionFeedbackSnapshot(): { message: string | null; token: number } {
+  const { message, token } = useActionFeedbackStore.getState();
   return { message, token };
+}
+
+/** The current feedback message (raw primitive — stable-selectors). */
+export function useActionFeedbackMessage(): string | null {
+  return useActionFeedbackStore((state) => state.message);
+}
+
+/** The re-announce token (raw primitive): a monotonic counter the aria-live
+ *  region keys on so an identical consecutive message still re-announces. */
+export function useActionFeedbackToken(): number {
+  return useActionFeedbackStore((state) => state.token);
 }
