@@ -6,6 +6,7 @@ tags:
 date: '2026-07-04'
 modified: '2026-07-04'
 related:
+  - '[[2026-07-04-dashboard-packaging-adr]]'
   - '[[2026-07-04-dashboard-packaging-research]]'
 ---
 
@@ -14,6 +15,10 @@ related:
 Auto-generated index of all documents tagged with `#dashboard-packaging`.
 
 ## Documents
+
+### adr
+
+- `2026-07-04-dashboard-packaging-adr` - `dashboard-packaging` adr: `installable single-binary distribution and release pipeline` | (**status:** `proposed`)
 
 ### research
 
