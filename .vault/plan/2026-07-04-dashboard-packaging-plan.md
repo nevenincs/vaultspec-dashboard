@@ -37,7 +37,7 @@ Delivers the embed-spa cargo feature so a release build of the vaultspec binary 
 - [x] `P01.S01` - add the embed-spa cargo feature and the rust-embed dependency to the api crate; `engine/crates/vaultspec-api/Cargo.toml`.
 - [x] `P01.S02` - forward the embed-spa feature from the bin crate so release builds enable it with one flag; `engine/crates/vaultspec-cli/Cargo.toml`.
 - [x] `P01.S03` - implement the embedded asset store and the embedded-first resolution chain (embedded, then VAULTSPEC_SPA_DIR, then frontend/dist, then placeholder) preserving the traversal guard, MIME map, deep-link fallback, API prefix boundary, and token injection; `engine/crates/vaultspec-api/src/routes/spa.rs`.
-- [ ] `P01.S04` - add feature-gated tests covering embedded index delivery, asset MIME, deep-link fallback, API 404 boundary, and token injection; `engine/crates/vaultspec-api`.
+- [x] `P01.S04` - add feature-gated tests covering embedded index delivery, asset MIME, deep-link fallback, API 404 boundary, and token injection; `engine/crates/vaultspec-api`.
 - [ ] `P01.S05` - add a packaged-build recipe running the frontend build then the release cargo build with the embed-spa feature; `justfile`.
 
 ### Phase `P02` - startup provisioning probe and compatibility handshake

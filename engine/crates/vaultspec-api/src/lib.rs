@@ -1679,6 +1679,11 @@ mod tests {
         assert_eq!(response.status(), StatusCode::FORBIDDEN, "R1 whitelist");
     }
 
+    // Without the embed-spa feature the fixture workspace has no bundle, so
+    // the deep link resolves to the placeholder; with the feature the
+    // embedded store answers first and the placeholder is unreachable — the
+    // embedded suite below owns that case.
+    #[cfg(not(feature = "embed-spa"))]
     #[tokio::test]
     async fn spa_fallback_serves_placeholder_without_a_bundle() {
         let (_dir, state) = fixture_state();
@@ -1703,6 +1708,94 @@ mod tests {
             .unwrap()
             .to_string();
         assert!(content_type.starts_with("text/html"));
+    }
+
+    /// P01.S04 (dashboard-packaging): the embedded bundle serves standalone —
+    /// index with the token bootstrap, assets with correct MIME, deep links
+    /// falling back to the shell, and the API prefix boundary staying JSON.
+    #[cfg(feature = "embed-spa")]
+    mod embedded_spa {
+        use super::*;
+
+        async fn get_raw(path: &str) -> (StatusCode, String, Vec<u8>) {
+            let (_dir, state) = fixture_state();
+            let token = state.bearer.clone();
+            let router = build_router(state);
+            let response = router
+                .oneshot(
+                    Request::get(path)
+                        .header("host", "127.0.0.1")
+                        .header("authorization", format!("Bearer {token}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let status = response.status();
+            let content_type = response
+                .headers()
+                .get("content-type")
+                .map(|v| v.to_str().unwrap().to_string())
+                .unwrap_or_default();
+            let bytes = axum::body::to_bytes(response.into_body(), 1 << 26)
+                .await
+                .unwrap()
+                .to_vec();
+            (status, content_type, bytes)
+        }
+
+        #[tokio::test]
+        async fn embedded_index_serves_with_the_token_bootstrap() {
+            let (status, content_type, body) = get_raw("/").await;
+            assert_eq!(status, StatusCode::OK);
+            assert!(content_type.starts_with("text/html"));
+            let html = String::from_utf8_lossy(&body);
+            assert!(
+                html.contains(r#"<meta name="vaultspec-token""#),
+                "token bootstrap is injected into the embedded index"
+            );
+            assert!(
+                !html.contains("No SPA bundle found"),
+                "the placeholder is unreachable with an embedded bundle"
+            );
+        }
+
+        #[tokio::test]
+        async fn embedded_asset_serves_with_correct_mime() {
+            let asset = crate::routes::spa::EmbeddedSpa::iter()
+                .find(|name| name.starts_with("assets/") && name.ends_with(".js"))
+                .expect("the built bundle carries at least one hashed JS chunk");
+            let (status, content_type, body) = get_raw(&format!("/{asset}")).await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(content_type, "text/javascript");
+            assert!(!body.is_empty(), "asset bytes come from the embedded store");
+        }
+
+        #[tokio::test]
+        async fn embedded_deep_link_falls_back_to_the_shell() {
+            let (status, content_type, body) = get_raw("/some/deep/link").await;
+            assert_eq!(status, StatusCode::OK);
+            assert!(content_type.starts_with("text/html"));
+            assert!(
+                String::from_utf8_lossy(&body).contains(r#"<meta name="vaultspec-token""#),
+                "deep links resolve to the embedded shell with the bootstrap"
+            );
+        }
+
+        #[tokio::test]
+        async fn api_prefixes_stay_a_json_boundary_with_an_embedded_bundle() {
+            let (status, content_type, body) = get_raw("/graph/definitely-not-a-route").await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "API typos fail loud");
+            assert!(
+                content_type.starts_with("application/json"),
+                "never the SPA shell for an API path: {content_type}"
+            );
+            let value: Value = serde_json::from_slice(&body).unwrap();
+            assert!(
+                value["tiers"]["semantic"]["available"].is_boolean(),
+                "the JSON 404 carries the tiers block"
+            );
+        }
     }
 
     fn urlencode(s: &str) -> String {

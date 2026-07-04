@@ -18,7 +18,7 @@ use std::sync::Arc;
 #[cfg(feature = "embed-spa")]
 #[derive(rust_embed::RustEmbed)]
 #[folder = "../../../frontend/dist"]
-struct EmbeddedSpa;
+pub(crate) struct EmbeddedSpa;
 
 use axum::extract::State;
 use axum::http::{StatusCode, Uri, header};
