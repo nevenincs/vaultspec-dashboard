@@ -12,6 +12,7 @@ pub(crate) mod apply;
 pub(crate) mod approvals;
 pub(crate) mod core_adapter;
 pub(crate) mod documents;
+pub(crate) mod http;
 pub(crate) mod ledger;
 pub(crate) mod model;
 pub(crate) mod operations;
