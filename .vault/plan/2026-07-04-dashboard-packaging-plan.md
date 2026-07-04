@@ -10,6 +10,16 @@ related:
   - '[[2026-07-04-dashboard-packaging-research]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
+
 # `dashboard-packaging` plan
 
 Turn the dashboard into an installable single-binary product with a pinned dist release pipeline, detect-and-instruct provisioning, and a retired legacy releaser - the v1 phase of the accepted packaging ADR.
@@ -54,7 +64,7 @@ Delivers the pinned dist-generated release workflow producing installers, binsta
 
 Retires the orphaned release-please configuration and repairs the stale hooks, recipes, and dependency-scope drift the packaging research surfaced.
 
-- [ ] `P04.S16` - remove the orphaned python-typed release-please configuration in favor of the dist tag-driven flow; `release-please-config.json`.
+- [x] `P04.S16` - remove the orphaned python-typed release-please configuration in favor of the dist tag-driven flow; `release-please-config.json`.
 - [ ] `P04.S17` - fix or remove the dormant CHANGELOG guard hook that assumes release-please runs; `.pre-commit-config.yaml`.
 - [ ] `P04.S18` - repair the stale prod namespace reference in the ci recipe; `justfile`.
 - [ ] `P04.S19` - reconcile the dependency-scope drift between the runtime vaultspec-rag pin and the dev-group pin; `pyproject.toml`.
