@@ -9,6 +9,10 @@
     cache: npm
     cache-dependency-path: frontend/package-lock.json
 - name: Build the SPA bundle for embedding
+  # bash on every matrix runner: pwsh only checks native exit codes at script
+  # end, so a failed `npm ci` would not halt before the build (P03 review).
+  shell: bash
   run: |
+    set -euo pipefail
     npm --prefix frontend ci
     npm --prefix frontend run build

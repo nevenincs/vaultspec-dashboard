@@ -135,8 +135,10 @@ jobs:
           "node-version": 22
       - name: "Build the SPA bundle for embedding"
         run: |
+          set -euo pipefail
           npm --prefix frontend ci
           npm --prefix frontend run build
+        shell: "bash"
       - name: Install dist
         run: ${{ matrix.install_dist.run }}
       # Get the dist-manifest

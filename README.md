@@ -35,13 +35,10 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nevenincs/vaultspec-das
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/vaultspec-cli-installer.ps1 | iex"
 ```
 
-Rust users can install via [cargo-binstall](https://github.com/cargo-bins/cargo-binstall):
-`cargo binstall vaultspec-cli`.
-
 Every release asset ships with a `.sha256` checksum file; verify downloads
 with `sha256sum -c <asset>.sha256`.
 
-Installer-installed copies can update themselves with `vaultspec-update`
+Installer-installed copies can update themselves with `vaultspec-cli-update`
 (updates are always user-invoked, never automatic). Copies installed through a
 package manager update through that package manager instead.
 
