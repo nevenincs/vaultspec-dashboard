@@ -5,6 +5,7 @@
 //! core remains a private validation/materialization adapter added in later
 //! waves, and this module does not write vault documents.
 
+pub(crate) mod actor_tokens;
 pub(crate) mod actors;
 pub(crate) mod api;
 pub(crate) mod apply;
@@ -14,6 +15,7 @@ pub(crate) mod documents;
 pub(crate) mod ledger;
 pub(crate) mod model;
 pub(crate) mod operations;
+pub(crate) mod principal;
 pub(crate) mod projections;
 pub(crate) mod proposal;
 pub(crate) mod response;

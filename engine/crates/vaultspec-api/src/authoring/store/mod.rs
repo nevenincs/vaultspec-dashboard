@@ -20,7 +20,7 @@ use super::model::CommandKind;
 pub const DB_FILENAME: &str = "authoring-state.sqlite3";
 const AUTHORING_DATA_DIR: &str = "authoring-state";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-const SCHEMA_VERSION: i64 = 9;
+const SCHEMA_VERSION: i64 = 10;
 const STORE_KIND: &str = "vaultspec_authoring";
 
 const METADATA_SCHEMA: &str = "
@@ -496,6 +496,29 @@ SET schema_version = 9
 WHERE singleton = 1;
 ";
 
+const ACTOR_TOKEN_SCHEMA: &str = "
+CREATE TABLE authoring_actor_tokens (
+    seq                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash             TEXT NOT NULL,
+    actor_id               TEXT NOT NULL,
+    actor_kind             TEXT NOT NULL,
+    delegated_by_actor_id  TEXT,
+    issued_by_actor_id     TEXT NOT NULL,
+    issued_at_ms           INTEGER NOT NULL,
+    expires_at_ms          INTEGER NOT NULL,
+    revoked_at_ms          INTEGER,
+    record_json            TEXT NOT NULL,
+    UNIQUE (token_hash)
+);
+
+CREATE INDEX idx_authoring_actor_tokens_actor
+    ON authoring_actor_tokens (actor_id, actor_kind);
+
+UPDATE authoring_store_metadata
+SET schema_version = 10
+WHERE singleton = 1;
+";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Migration {
     version: i64,
@@ -549,6 +572,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "create_authoring_approval_requests",
         sql: APPROVAL_SCHEMA,
     },
+    Migration {
+        version: 10,
+        name: "create_authoring_actor_tokens",
+        sql: ACTOR_TOKEN_SCHEMA,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -590,6 +618,8 @@ pub enum StoreError {
     Ledger(String),
     #[error("authoring approval error: {0}")]
     Approval(String),
+    #[error("authoring actor token error: {0}")]
+    ActorToken(String),
     #[error("command {command:?} is read-only and cannot open a mutating unit of work")]
     ReadOnlyCommandUnitOfWork { command: CommandKind },
 }
@@ -893,6 +923,10 @@ mod tests {
                         version: 9,
                         name: "create_authoring_approval_requests".to_string(),
                     },
+                    AppliedMigration {
+                        version: 10,
+                        name: "create_authoring_actor_tokens".to_string(),
+                    },
                 ]
             );
             let table_count: i64 = store
@@ -927,7 +961,7 @@ mod tests {
         let reopened = Store::open_at(&path).expect("authoring store reopens");
         let metadata = reopened.schema_metadata().unwrap();
         assert_eq!(metadata.schema_version, SCHEMA_VERSION);
-        assert_eq!(metadata.applied_migrations.len(), 9);
+        assert_eq!(metadata.applied_migrations.len(), 10);
     }
 
     #[test]

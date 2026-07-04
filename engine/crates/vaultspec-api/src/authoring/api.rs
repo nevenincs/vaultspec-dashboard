@@ -153,27 +153,28 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
     },
 ];
 
+/// The wire envelope for a mutating authoring command. It carries NO actor
+/// (ASA-010, security-provenance ADR): a client-supplied actor would make
+/// `kind:Human` claimable and the automated-self-approval ban cosmetic. Actor
+/// identity resolves ONLY from the server-held principal seam (the per-principal
+/// actor token → the principal-resolution middleware → `ResolvedCommand`), so the
+/// wire type simply has no `actor` field — `deny_unknown_fields` then rejects any
+/// client that still sends one with a loud typed 4xx (a compile-time + wire-time
+/// fence, not per-route vigilance).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommandEnvelope<T> {
     pub api_version: ApiVersion,
     pub command: CommandKind,
-    pub actor: ActorRef,
     pub idempotency_key: IdempotencyKey,
     pub payload: T,
 }
 
 impl<T> CommandEnvelope<T> {
-    fn new(
-        command: CommandKind,
-        actor: ActorRef,
-        idempotency_key: IdempotencyKey,
-        payload: T,
-    ) -> Self {
+    fn new(command: CommandKind, idempotency_key: IdempotencyKey, payload: T) -> Self {
         Self {
             api_version: ApiVersion::V1,
             command,
-            actor,
             idempotency_key,
             payload,
         }
@@ -464,7 +465,6 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
     match family {
         EndpointFamily::Session => command_value(CommandEnvelope::new(
             CommandKind::CreateSession,
-            actor_fixture(),
             idempotency_key("idem:session:create"),
             CreateSessionRequest {
                 scope: "scope_a".to_string(),
@@ -482,7 +482,6 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
         }),
         EndpointFamily::Proposal => command_value(CommandEnvelope::new(
             CommandKind::CreateProposal,
-            actor_fixture(),
             idempotency_key("idem:proposal:create"),
             CreateProposalRequest {
                 session_id: session_id(),
@@ -516,7 +515,6 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
         )),
         EndpointFamily::Review => command_value(CommandEnvelope::new(
             CommandKind::Approve,
-            actor_fixture(),
             idempotency_key("idem:review:approve"),
             ReviewDecisionRequest {
                 proposal_id: proposal_id(),
@@ -529,7 +527,6 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
         )),
         EndpointFamily::Apply => command_value(CommandEnvelope::new(
             CommandKind::RequestApply,
-            actor_fixture(),
             idempotency_key("idem:apply:request"),
             ApplyRequest {
                 changeset_id: changeset_id(),
@@ -554,7 +551,6 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
         )),
         EndpointFamily::Rollback => command_value(CommandEnvelope::new(
             CommandKind::CreateRollback,
-            actor_fixture(),
             idempotency_key("idem:rollback:create"),
             RollbackRequest {
                 source_changeset_id: changeset_id(),
@@ -583,7 +579,6 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
         )),
         EndpointFamily::Lease => command_value(CommandEnvelope::new(
             CommandKind::AcquireLease,
-            actor_fixture(),
             idempotency_key("idem:lease:acquire"),
             LeaseRequest {
                 lease_id: LeaseId::new("lease_1").unwrap(),
@@ -851,17 +846,34 @@ mod tests {
     }
 
     #[test]
-    fn mutating_command_requests_require_idempotency_and_reject_unknown_fields() {
+    fn command_envelope_carries_no_actor_requires_idempotency_and_rejects_unknown_fields() {
         let valid = request_fixture(EndpointFamily::Session);
         let parsed: CommandEnvelope<CreateSessionRequest> =
             serde_json::from_value(valid).expect("valid command fixture parses");
         assert_eq!(parsed.command, CommandKind::CreateSession);
         assert_eq!(parsed.idempotency_key.as_str(), "idem:session:create");
 
-        let missing_key = json!({
+        // A2.3 FALSIFIER: the wire envelope has NO actor field, so a client that
+        // tries to CLAIM an identity in the body is rejected as an unknown field
+        // (deny_unknown_fields) — kind:Human can never be smuggled. Actor resolves
+        // only from the principal token via ResolvedCommand.
+        let claims_actor = json!({
             "api_version": "v1",
             "command": "create_session",
             "actor": {"id": "human:alice", "kind": "human"},
+            "idempotency_key": "idem:session:create",
+            "payload": {"scope": "scope_a", "title": "Agentic authoring"}
+        });
+        let err = serde_json::from_value::<CommandEnvelope<CreateSessionRequest>>(claims_actor)
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("unknown field") && err.to_string().contains("actor"),
+            "a body-claimed actor is rejected as an unknown field (A2.3): {err}"
+        );
+
+        let missing_key = json!({
+            "api_version": "v1",
+            "command": "create_session",
             "payload": {"scope": "scope_a", "title": "Agentic authoring"}
         });
         let err = serde_json::from_value::<CommandEnvelope<CreateSessionRequest>>(missing_key)
@@ -874,7 +886,6 @@ mod tests {
         let unknown_top_level = json!({
             "api_version": "v1",
             "command": "create_session",
-            "actor": {"id": "human:alice", "kind": "human"},
             "idempotency_key": "idem:session:create",
             "payload": {"scope": "scope_a", "title": "Agentic authoring"},
             "core_verb": "vault set-body"
