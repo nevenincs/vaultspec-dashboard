@@ -372,7 +372,7 @@ describe("vaultCategoryMenu", () => {
 });
 
 describe("vaultSectionMenu", () => {
-  it("offers expand-all, collapse-all (shared keymap verbs), and new document", () => {
+  it("offers expand/collapse, the sort plane, the filter resets, and new document", () => {
     const actions = vaultSectionMenu({
       kind: "vault-section",
       id: "vault-section:features",
@@ -382,10 +382,24 @@ describe("vaultSectionMenu", () => {
     expect(ids(actions)).toEqual([
       "left-rail:expand-tree",
       "left-rail:collapse-tree",
+      // The sort plane + resets (left-rail-tree-controls ADR D3/D4): the SAME
+      // shared builders the keymap chords and the palette fire.
+      "left-rail:sort-recency",
+      "left-rail:sort-name",
+      "left-rail:sort-created",
+      "left-rail:sort-modified",
+      "left-rail:sort-size",
+      "left-rail:reset-sorting",
+      "left-rail:toggle-facets",
+      "left-rail:reset-filters",
+      "left-rail:clear-filter",
       "left-rail:new-document",
     ]);
     expect(byId(actions, "left-rail:expand-tree")?.section).toBe("navigate");
     expect(byId(actions, "left-rail:collapse-tree")?.section).toBe("navigate");
+    expect(byId(actions, "left-rail:sort-name")?.section).toBe("navigate");
+    expect(byId(actions, "left-rail:reset-sorting")?.section).toBe("navigate");
+    expect(byId(actions, "left-rail:reset-filters")?.section).toBe("navigate");
     expect(byId(actions, "left-rail:new-document")?.section).toBe("transform");
   });
 

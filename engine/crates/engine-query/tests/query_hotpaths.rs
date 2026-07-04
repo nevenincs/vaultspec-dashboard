@@ -31,6 +31,7 @@ fn document(i: usize) -> Node {
         feature_tags: vec![format!("feature-{}", i % 8)],
         status: (i % 4 == 1).then_some("accepted".into()),
         tier: i.is_multiple_of(4).then_some("L3".into()),
+        size: None,
         facets: vec![Facet {
             scope: scope(),
             presence: Presence::Exists,

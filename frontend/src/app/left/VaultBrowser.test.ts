@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { VaultTreeEntry } from "../../stores/server/engine";
 import {
+  compareVaultEntriesBySort,
+  deriveVaultRailView,
+  projectVaultDocTypeGroups,
+  type VaultRailFacets,
+} from "../../stores/server/queries";
+import {
   docMarkName,
   entryStem,
   filterVaultEntries,
@@ -114,6 +120,116 @@ describe("entry presentation", () => {
 
   it("derives the display stem from the path", () => {
     expect(entryStem(".vault/adr/2026-06-12-x-adr.md")).toBe("2026-06-12-x-adr");
+  });
+});
+
+describe("the vault sort plane (left-rail-tree-controls ADR D3)", () => {
+  const NO_FACETS: VaultRailFacets = {
+    featureQuery: null,
+    docTypes: [],
+    statuses: [],
+    featureTags: [],
+    dateRange: {},
+    dateField: "created",
+  };
+  const entry = (
+    path: string,
+    docType: string,
+    extra: Partial<VaultTreeEntry> = {},
+  ): VaultTreeEntry => ({
+    path,
+    doc_type: docType,
+    feature_tags: extra.feature_tags ?? ["f"],
+    dates: extra.dates ?? {},
+    ...extra,
+  });
+  const docs = [
+    entry(".vault/adr/2026-01-02-bravo-adr.md", "adr", {
+      title: "Bravo",
+      dates: { created: "2026-01-02", modified: "2026-01-09" },
+      size: { bytes: 100, words: 50 },
+    }),
+    entry(".vault/adr/2026-01-05-alpha-adr.md", "adr", {
+      title: "Alpha",
+      dates: { created: "2026-01-05", modified: "2026-01-07" },
+      size: { bytes: 900, words: 400 },
+    }),
+    entry(".vault/adr/2026-01-01-carol-adr.md", "adr", {
+      title: "Carol",
+      dates: { created: "2026-01-01", modified: "2026-01-08" },
+    }),
+  ];
+
+  it("defaults to the historical newest-modified-first order byte-for-byte", () => {
+    const groups = projectVaultDocTypeGroups(docs);
+    expect(groups[0]!.entries.map((e) => e.title)).toEqual(["Bravo", "Carol", "Alpha"]);
+  });
+
+  it("sorts by name, created, and size with direction; absent facts sort last", () => {
+    const byName = projectVaultDocTypeGroups(docs, { key: "name", direction: "asc" });
+    expect(byName[0]!.entries.map((e) => e.title)).toEqual(["Alpha", "Bravo", "Carol"]);
+    const byCreated = projectVaultDocTypeGroups(docs, {
+      key: "created",
+      direction: "desc",
+    });
+    expect(byCreated[0]!.entries.map((e) => e.title)).toEqual([
+      "Alpha",
+      "Bravo",
+      "Carol",
+    ]);
+    // Size: Carol carries no served weight → sorts LAST in both directions.
+    const bySize = projectVaultDocTypeGroups(docs, { key: "size", direction: "desc" });
+    expect(bySize[0]!.entries.map((e) => e.title)).toEqual(["Alpha", "Bravo", "Carol"]);
+    const bySizeAsc = projectVaultDocTypeGroups(docs, {
+      key: "size",
+      direction: "asc",
+    });
+    expect(bySizeAsc[0]!.entries.map((e) => e.title)).toEqual([
+      "Bravo",
+      "Alpha",
+      "Carol",
+    ]);
+  });
+
+  it("ties break on path so the order is stable", () => {
+    const a = entry(".vault/adr/a-adr.md", "adr", { title: "Same" });
+    const b = entry(".vault/adr/b-adr.md", "adr", { title: "Same" });
+    expect(
+      compareVaultEntriesBySort({ key: "name", direction: "asc" }, a, b),
+    ).toBeLessThan(0);
+  });
+
+  it("orders feature folders by the same sort value (name + newest member date)", () => {
+    const view = deriveVaultRailView(
+      [
+        entry(".vault/adr/2026-01-02-x-adr.md", "adr", {
+          feature_tags: ["zeta"],
+          dates: { created: "2026-01-02" },
+        }),
+        entry(".vault/adr/2026-01-05-y-adr.md", "adr", {
+          feature_tags: ["alpha"],
+          dates: { created: "2026-01-05" },
+        }),
+      ],
+      NO_FACETS,
+      { key: "name", direction: "asc" },
+    );
+    expect(view.featureGroups.map((g) => g.feature)).toEqual(["alpha", "zeta"]);
+    const byCreated = deriveVaultRailView(
+      [
+        entry(".vault/adr/2026-01-02-x-adr.md", "adr", {
+          feature_tags: ["zeta"],
+          dates: { created: "2026-01-02" },
+        }),
+        entry(".vault/adr/2026-01-05-y-adr.md", "adr", {
+          feature_tags: ["alpha"],
+          dates: { created: "2026-01-05" },
+        }),
+      ],
+      NO_FACETS,
+      { key: "created", direction: "desc" },
+    );
+    expect(byCreated.featureGroups.map((g) => g.feature)).toEqual(["alpha", "zeta"]);
   });
 });
 

@@ -828,6 +828,7 @@ mod tests {
                 feature_tags: vec![feature.to_string()],
                 status: None,
                 tier: None,
+                size: None,
                 facets: vec![Facet {
                     scope,
                     presence: Presence::Exists,
@@ -923,6 +924,7 @@ mod tests {
                 feature_tags: vec!["alpha".to_string()],
                 status: None,
                 tier: None,
+                size: None,
                 facets: vec![Facet {
                     scope: ScopeRef::Worktree {
                         path: "/wt/main".into(),
@@ -1019,6 +1021,7 @@ mod tests {
                 feature_tags: vec![],
                 status: status.map(str::to_string),
                 tier: tier.map(str::to_string),
+                size: None,
                 facets: vec![engine_model::Facet {
                     scope: ScopeRef::Ref {
                         name: "main".into(),
@@ -1075,6 +1078,7 @@ mod tests {
             feature_tags: vec![],
             status: status.map(str::to_string),
             tier: tier.map(str::to_string),
+            size: None,
             facets: vec![engine_model::Facet {
                 scope: ScopeRef::Ref {
                     name: "main".into(),
@@ -1140,6 +1144,7 @@ mod tests {
             feature_tags: vec![],
             status: None,
             tier: None,
+            size: None,
             facets: vec![engine_model::Facet {
                 scope: ScopeRef::Ref {
                     name: "main".into(),
@@ -1185,6 +1190,7 @@ mod tests {
             feature_tags: vec![],
             status: None,
             tier: None,
+            size: None,
             facets: vec![engine_model::Facet {
                 scope: ScopeRef::Ref {
                     name: "main".into(),
@@ -1239,6 +1245,7 @@ mod tests {
             feature_tags: vec![],
             status: None,
             tier: None,
+            size: None,
             facets: vec![engine_model::Facet {
                 scope: ScopeRef::Ref {
                     name: "main".into(),
@@ -1293,6 +1300,7 @@ mod tests {
             feature_tags: tags.iter().map(|t| t.to_string()).collect(),
             status: None,
             tier: None,
+            size: None,
             facets: vec![engine_model::Facet {
                 scope: ScopeRef::Ref {
                     name: "main".into(),
@@ -1364,6 +1372,7 @@ mod tests {
             feature_tags: vec![],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: ScopeRef::Ref {
                     name: "main".into(),
@@ -1411,6 +1420,7 @@ mod tests {
             feature_tags: vec![],
             status: Some("accepted".into()),
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: ScopeRef::Ref {
                     name: "main".into(),
@@ -1524,6 +1534,7 @@ mod tests {
                 feature_tags: vec![],
                 status: None,
                 tier: Some(tier.to_string()),
+                size: None,
                 facets: vec![Facet {
                     scope: ScopeRef::Ref {
                         name: "main".into(),
@@ -1550,6 +1561,7 @@ mod tests {
                 feature_tags: vec![],
                 status: None,
                 tier: None,
+                size: None,
                 facets: vec![Facet {
                     scope: ScopeRef::Ref {
                         name: "main".into(),

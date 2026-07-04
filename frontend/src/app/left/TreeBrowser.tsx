@@ -78,6 +78,7 @@ import {
   collapseTreeAction,
   expandTreeAction,
 } from "../../stores/view/leftRailKeybindings";
+import { type RailSortKey, useRailSort } from "../../stores/view/railSort";
 import { registerKeyAction } from "../../stores/view/keymapDispatcher";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { useViewportClass } from "../../stores/view/viewportClass";
@@ -99,11 +100,22 @@ import "./menus/vaultCategoryMenu";
 import "./menus/vaultSectionMenu";
 import {
   CHEVRON_PX,
+  STATUS_MARK_PX,
+  adrStatusLabel,
+  adrStatusMark,
+  adrStatusToneClass,
   docDateLabel,
   docDisplayTitle,
   docGroupLabel,
+  docTooltip,
   docTypeCategory,
   featureDisplayName,
+  planStatus,
+  planStatusLabel,
+  planStatusMark,
+  planStatusToneClass,
+  planTierLabel,
+  wordCountLabel,
 } from "./vaultRowPresentation";
 
 /** Display stem — the shared derivation from the selection join. */
@@ -126,6 +138,19 @@ function indentStyle(level: number): CSSProperties {
 
 // The leading category GLYPH reads at the row text size — a real icon, not a dot.
 const ICON_PX = 15;
+
+// The vertical indent guide (left-rail-tree-controls ADR D5): every expanded
+// folder body draws a hairline `bg-rule` line under its parent's CHEVRON COLUMN
+// — the standard tree-view guide — absolutely positioned so it never shifts the
+// rows' own absolute indentation. The chevron column is 0.75rem wide
+// (CHEVRON_PX at the 16 basis), so its center sits half that — 0.375rem — into
+// the parent's content box (rem only, no-hardcoded-px).
+const GUIDE_CENTER_REM = 0.375;
+function guideStyle(parentLevel: number): CSSProperties {
+  return {
+    insetInlineStart: `${INDENT_BASE_REM + parentLevel * INDENT_STEP_REM + GUIDE_CENTER_REM}rem`,
+  };
+}
 
 /** The ONE row shell + selection treatment shared by EVERY tree level (feature,
  *  category folder, document leaf). Fully rounded (`rounded-fg-xs`) always; a
@@ -374,9 +399,14 @@ export function TreeBrowser({
   // is stable). The key set feeds two consumers: the in-component expand-all keymap
   // thunk (via `treeKeysRef`) and the section context-menu's "expand all" verb (via
   // the published store seam) — ONE derivation, two readers (no drift).
+  // The ONE sort plane (left-rail-tree-controls ADR D3): the persisted view-local
+  // value orders the whole tree through the one projection, and the leaf meta
+  // shows THE SORTED FIELD's value so the visible number is the one being
+  // sorted by (title-first truncation: the row carries exactly one meta value).
+  const sort = useRailSort();
   const view = useMemo(
-    () => deriveVaultRailView(tree.data?.entries ?? [], facets),
-    [tree.data?.entries, facets],
+    () => deriveVaultRailView(tree.data?.entries ?? [], facets, sort),
+    [tree.data?.entries, facets, sort],
   );
   const allTreeKeys = useMemo(
     () =>
@@ -461,6 +491,7 @@ export function TreeBrowser({
               <FeatureFolderRow
                 key={group.feature}
                 group={group}
+                sortKey={sort.key}
                 expanded={expanded}
                 toggle={toggle}
                 scope={scope}
@@ -487,6 +518,7 @@ export function TreeBrowser({
               <CategoryFolderRow
                 key={group.docType}
                 folderKey={`type:${group.docType}`}
+                sortKey={sort.key}
                 docType={group.docType}
                 count={group.count}
                 entries={group.entries}
@@ -541,8 +573,13 @@ interface VaultTreeRowProps {
   expanded?: boolean;
   /** Trailing member count (folders). */
   count?: number;
-  /** Trailing meta text (a document's modified date). */
+  /** Trailing meta text (a document's date / weight cluster). */
   meta?: string;
+  /** A leaf's review-state signal (plan progress pip, ADR status token),
+   *  rendered just before the trailing meta (left-rail-tree-controls ADR D1). */
+  signal?: ReactNode;
+  /** Full-metadata tooltip; falls back to the entity path / label. */
+  tooltip?: string;
   /** Whether this row is the selected document (leaf). */
   highlighted?: boolean;
   /** `aria-controls` target id for an expandable row's body. */
@@ -572,6 +609,8 @@ function VaultTreeRow({
   expanded = false,
   count,
   meta,
+  signal,
+  tooltip,
   highlighted = false,
   bodyId,
   onActivate,
@@ -604,7 +643,7 @@ function VaultTreeRow({
     <button
       ref={ref}
       type="button"
-      title={(entity && "path" in entity ? entity.path : undefined) ?? label}
+      title={tooltip ?? (entity && "path" in entity ? entity.path : undefined) ?? label}
       aria-expanded={expandable ? expanded : undefined}
       aria-controls={expandable ? bodyId : undefined}
       aria-current={!expandable && highlighted ? "page" : undefined}
@@ -673,6 +712,7 @@ function VaultTreeRow({
           {count}
         </span>
       )}
+      {signal}
       {meta && (
         <span className="shrink-0 text-meta text-ink-faint" data-tabular>
           {meta}
@@ -688,7 +728,15 @@ function VaultTreeRow({
     <div data-vault-folder={folderMarker ? "" : undefined}>
       {button}
       {expanded && (
-        <div id={bodyId} data-vault-folder-body>
+        <div id={bodyId} data-vault-folder-body className="relative">
+          {/* the indent guide: a quiet rule under this folder's chevron column
+              (ADR D5) — presentation only, never a layout shift. */}
+          <span
+            aria-hidden
+            data-tree-guide
+            className="pointer-events-none absolute inset-y-0 w-px bg-rule"
+            style={guideStyle(level)}
+          />
           {body}
         </div>
       )}
@@ -776,6 +824,8 @@ function folderCategory(docType: string): Category {
 
 interface FeatureFolderRowProps {
   group: VaultTreeFeatureGroup;
+  /** The active sort key — the leaf meta shows its field's value. */
+  sortKey: RailSortKey;
   expanded: ReadonlySet<string>;
   toggle: (key: string) => void;
   scope: string | null;
@@ -792,6 +842,7 @@ interface FeatureFolderRowProps {
  *  category sub-folder per doc type present (each itself expanding to documents). */
 function FeatureFolderRow({
   group,
+  sortKey,
   expanded,
   toggle,
   scope,
@@ -833,6 +884,7 @@ function FeatureFolderRow({
         <CategoryFolderRow
           key={sub.docType}
           folderKey={`featcat:${group.feature}:${sub.docType}`}
+          sortKey={sortKey}
           docType={sub.docType}
           feature={group.feature}
           count={sub.entries.length}
@@ -855,6 +907,8 @@ function FeatureFolderRow({
 
 interface CategoryFolderRowProps {
   folderKey: string;
+  /** The active sort key — the leaf meta shows its field's value. */
+  sortKey: RailSortKey;
   docType: string;
   /** The parent feature tag for a Features-section sub-folder; absent for a
    *  top-level Documents-section category folder. Threads into the context-menu
@@ -878,6 +932,7 @@ interface CategoryFolderRowProps {
  *  sit one level deeper. */
 function CategoryFolderRow({
   folderKey,
+  sortKey,
   docType,
   feature,
   count,
@@ -913,6 +968,7 @@ function CategoryFolderRow({
             <DocumentRow
               key={entry.path}
               navKey={`${folderKey}:doc:${entry.path}`}
+              sortKey={sortKey}
               entry={entry}
               docType={docType}
               level={level + 1}
@@ -933,6 +989,8 @@ function CategoryFolderRow({
 
 interface DocumentRowProps {
   navKey: string;
+  /** The active sort key — the leaf meta shows its field's value. */
+  sortKey: RailSortKey;
   entry: VaultTreeEntry;
   docType: string;
   level: number;
@@ -943,13 +1001,89 @@ interface DocumentRowProps {
   nav: RowNav;
 }
 
+/** The leaf's review-state signal (left-rail-tree-controls ADR D1): a plan row
+ *  reads its checkbox progress as the designed status pip + a tabular done/total;
+ *  an ADR row reads its acceptance status as a plain-language token. Other doc
+ *  types carry no signal. Served facts only — nothing is guessed. */
+function docSignal(entry: VaultTreeEntry): ReactNode {
+  if (entry.doc_type === "plan") {
+    const status = planStatus(entry.progress);
+    const Mark = planStatusMark(status);
+    return (
+      <span
+        className={`flex shrink-0 items-center gap-fg-1 text-meta ${planStatusToneClass(status)}`}
+        data-plan-status={status}
+        aria-label={`plan ${planStatusLabel(status)}`}
+      >
+        <Mark size={STATUS_MARK_PX} aria-hidden />
+        {entry.progress && (
+          <span data-tabular>
+            {entry.progress.done}/{entry.progress.total}
+          </span>
+        )}
+      </span>
+    );
+  }
+  if (entry.doc_type === "adr" && entry.status) {
+    // Compact shape+tone MARK, not the word — the 16rem rail keeps the title
+    // first; the plain-language status rides the aria-label and the tooltip.
+    const Mark = adrStatusMark(entry.status);
+    return (
+      <span
+        className={`flex shrink-0 items-center ${adrStatusToneClass(entry.status)}`}
+        data-adr-status={entry.status}
+        role="img"
+        aria-label={`decision ${adrStatusLabel(entry.status).toLowerCase()}`}
+      >
+        <Mark size={STATUS_MARK_PX} aria-hidden />
+      </span>
+    );
+  }
+  return null;
+}
+
+/** The leaf's trailing meta: ONE value — the active sort key's field — so the
+ *  title always leads and never collapses under a meta cluster (the 16rem rail
+ *  cannot hold title + date + weight at depth). Default (recency/name) shows the
+ *  AUTHORED date (the filename's stamp, served as `dates.created`); a modified
+ *  sort shows the modified date; a Length sort shows the compact word count.
+ *  The full card (all dates + weight) always rides the tooltip. Honest absence:
+ *  an undated/unweighed entry renders nothing. */
+function docMetaLabel(entry: VaultTreeEntry, sortKey: RailSortKey): string {
+  if (sortKey === "size" && entry.size) return wordCountLabel(entry.size.words);
+  // A plan row's progress signal IS its reviewable fact; under the default
+  // (non-date) sorts the date yields the width to it (tooltip keeps all dates).
+  if (
+    (sortKey === "recency" || sortKey === "name") &&
+    entry.doc_type === "plan" &&
+    entry.progress
+  ) {
+    return "";
+  }
+  const date =
+    sortKey === "modified"
+      ? (entry.dates.modified ?? entry.dates.created)
+      : (entry.dates.created ?? entry.dates.modified);
+  return docDateLabel(date);
+}
+
+/** The full-metadata hover card: path, the three date semantics, the weight,
+ *  and a plan's plain-language tier. */
+function docTooltipLabel(entry: VaultTreeEntry): string {
+  const base = docTooltip(entry.path, entry.dates, entry.size);
+  const tier = entry.tier ? planTierLabel(entry.tier) : "";
+  return tier ? `${base}\n${tier}` : base;
+}
+
 /** One document leaf. Renders through the SAME `VaultTreeRow` shell as every folder
  *  — fully rounded, same selection — with an aligned spacer in place of the chevron,
  *  the doc-type mark in QUIET neutral ink (color is a top-level signal), the human
- *  title, and the modified date as trailing meta. Selection is the rounded accent
- *  tint + accent label, identical to any other selected row. */
+ *  title, the review-state signal (plan pip / ADR status), and the authored date +
+ *  weight as trailing meta. Selection is the rounded accent tint + accent label,
+ *  identical to any other selected row. */
 function DocumentRow({
   navKey,
+  sortKey,
   entry,
   docType,
   level,
@@ -966,7 +1100,9 @@ function DocumentRow({
       label={docDisplayTitle(entry.path)}
       markKind={docType}
       expandable={false}
-      meta={docDateLabel(entry.dates.modified)}
+      signal={docSignal(entry)}
+      meta={docMetaLabel(entry, sortKey)}
+      tooltip={docTooltipLabel(entry)}
       highlighted={highlighted}
       onActivate={onClick}
       onOpen={onOpen}

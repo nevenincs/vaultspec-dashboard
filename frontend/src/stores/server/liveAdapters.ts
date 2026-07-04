@@ -1073,6 +1073,25 @@ function normalizeVaultTreeProgress(
   return { done, total };
 }
 
+/** Ingest-measured document weight (left-rail-tree-controls ADR D2): kept only
+ *  when BOTH fields are finite non-negative numbers; anything malformed is
+ *  dropped whole so the rail never renders a half-true weight. */
+function normalizeVaultTreeSize(value: unknown): VaultTreeEntry["size"] | undefined {
+  if (!isRec(value)) return undefined;
+  if (
+    typeof value.bytes !== "number" ||
+    typeof value.words !== "number" ||
+    !Number.isFinite(value.bytes) ||
+    !Number.isFinite(value.words)
+  ) {
+    return undefined;
+  }
+  const bytes = Math.floor(value.bytes);
+  const words = Math.floor(value.words);
+  if (bytes < 0 || words < 0) return undefined;
+  return { bytes, words };
+}
+
 function adaptVaultTreeEntry(value: unknown): VaultTreeEntry | null {
   if (!isRec(value)) return null;
   const path = normalizeVaultTreeString(value.path);
@@ -1086,6 +1105,7 @@ function adaptVaultTreeEntry(value: unknown): VaultTreeEntry | null {
   const tier = normalizeVaultTreeString(value.tier);
   const title = normalizeVaultTreeString(value.title);
   const progress = normalizeVaultTreeProgress(value.progress);
+  const size = normalizeVaultTreeSize(value.size);
   return {
     path: entryPath,
     doc_type: docType,
@@ -1095,6 +1115,7 @@ function adaptVaultTreeEntry(value: unknown): VaultTreeEntry | null {
     ...(status !== undefined ? { status } : {}),
     ...(tier !== undefined ? { tier } : {}),
     ...(progress !== undefined ? { progress } : {}),
+    ...(size !== undefined ? { size } : {}),
   };
 }
 

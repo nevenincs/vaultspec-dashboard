@@ -1367,6 +1367,7 @@ describe("adaptVaultTree (live stem entries)", () => {
           status: " proposed ",
           tier: " L2 ",
           progress: { done: 2.9, total: 5.1 },
+          size: { bytes: 2048.7, words: 310.2 },
         },
         {
           path: " .vault/adr/2026-06-12-dashboard-gui-adr.md ",
@@ -1374,6 +1375,8 @@ describe("adaptVaultTree (live stem entries)", () => {
           feature_tags: [" design "],
           dates: { modified: " 2026-06-13 " },
           progress: { done: 5, total: 2 },
+          // Malformed weight (negative / non-numeric) is dropped whole.
+          size: { bytes: -1, words: "many" },
         },
         {
           stem: "   ",
@@ -1393,6 +1396,7 @@ describe("adaptVaultTree (live stem entries)", () => {
         status: "proposed",
         tier: "L2",
         progress: { done: 2, total: 5 },
+        size: { bytes: 2048, words: 310 },
       },
       {
         path: ".vault/adr/2026-06-12-dashboard-gui-adr.md",

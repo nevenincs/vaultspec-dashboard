@@ -567,6 +567,7 @@ mod tests {
             feature_tags: vec![],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -825,6 +826,7 @@ mod tests {
             feature_tags: vec![],
             status: None,
             tier: Some("L3".into()),
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -848,6 +850,7 @@ mod tests {
             feature_tags: vec![],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,

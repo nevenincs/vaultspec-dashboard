@@ -599,6 +599,23 @@ export function toggleDashboardFilterFacet(
   );
 }
 
+/** Clear the whole canonical filter record to empty (the "Reset Filters" verb,
+ *  imperative — the same effect as the sidebar intent's `clearFilters`, shared by
+ *  the vault-section context menu). Rides the serialized SRR-001 chain so an
+ *  imperative reset and a rail/legend toggle cannot lost-update each other. */
+export function clearDashboardFilters(scope: unknown): Promise<DashboardState | null> {
+  const normalizedScope = normalizeDashboardStateWriteScope(scope);
+  if (normalizedScope === null) return Promise.resolve(null);
+  const sessionIdentity = cachedDashboardStateSessionIdentity(queryClient);
+  return serializedFilterWrite(
+    normalizedScope,
+    queryClient,
+    sessionIdentity,
+    () => ({}),
+    (patch) => patchDashboardState(normalizedScope, patch),
+  );
+}
+
 /** Set the canonical feature-query filter from a raw feature term (the rail
  *  feature-search commit, imperative). Parses the term into the wire `{value,mode}`
  *  exactly as the search bar does, so "Filter to this feature" === picking it there. */

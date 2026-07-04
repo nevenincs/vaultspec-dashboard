@@ -532,6 +532,9 @@ pub fn build_vault_tree_rows(graph: &LinkageGraph, scope: &ScopeRef) -> Vec<Valu
                 "status": n.status,
                 "tier": n.tier,
                 "progress": progress,
+                // Ingest-measured document weight (left-rail-tree-controls ADR
+                // D2): honestly absent (null) when the node carries none.
+                "size": n.size,
             })
         })
         .collect();
@@ -1043,6 +1046,7 @@ mod tests {
             feature_tags: vec![feature.into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -1399,6 +1403,7 @@ mod tests {
             feature_tags: vec!["feature-a".into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -1530,6 +1535,7 @@ mod tests {
             feature_tags: vec!["feature-a".into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -1552,6 +1558,7 @@ mod tests {
             feature_tags: vec!["feature-a".into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -1689,6 +1696,7 @@ mod tests {
             feature_tags: vec![feature.into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -1711,6 +1719,7 @@ mod tests {
             feature_tags: vec![feature.into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -1740,6 +1749,27 @@ mod tests {
         assert!(
             rows.iter().all(|r| r["doc_type"] != "index"),
             "no row carries the index doc_type"
+        );
+    }
+
+    #[test]
+    fn vault_tree_rows_carry_size_and_absent_size_serves_null() {
+        // left-rail-tree-controls ADR D2: the ingest-measured weight rides the
+        // row; a node without one (older cache, projection) serves an honest
+        // null, never a fabricated zero.
+        let mut g = LinkageGraph::new();
+        let mut sized = doc("a-sized", "feature-a");
+        sized.size = Some(engine_model::DocSize::measure("four words of body"));
+        g.upsert_node(sized);
+        g.upsert_node(doc("b-sizeless", "feature-a"));
+        let rows = build_vault_tree_rows(&g, &scope());
+        let sized_row = rows.iter().find(|r| r["stem"] == "a-sized").unwrap();
+        assert_eq!(sized_row["size"]["bytes"], 18);
+        assert_eq!(sized_row["size"]["words"], 4);
+        let sizeless_row = rows.iter().find(|r| r["stem"] == "b-sizeless").unwrap();
+        assert!(
+            sizeless_row["size"].is_null(),
+            "absent weight serves null: {sizeless_row}"
         );
     }
 

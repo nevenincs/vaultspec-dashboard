@@ -17,9 +17,11 @@ import {
   FileDashed,
   type Icon,
   ListBullets,
+  MinusCircle,
   Pencil,
   SealCheck,
   Stack,
+  XCircle,
 } from "@phosphor-icons/react";
 
 import { docTypeLabel } from "../../stores/server/docTypeVocabulary";
@@ -125,14 +127,10 @@ export function docMarkName(docType: string): string {
 // half-filled ring (in-progress), an empty ring (not-started), each distinct by
 // SHAPE so the status survives without hue.
 //
-// HONESTY NOTE (the one place this projection cannot fully reach the design): plan
-// progress (`lifecycle.progress.done/total`) is a GRAPH-NODE / pipeline facet, NOT
-// carried on the `/vault-tree` `VaultTreeEntry` this projection reads. Deriving a
-// ✓/◐ from data the projection does not hold would be a guess — and Vault mode is
-// bound to be a PURE projection of `/vault-tree` with no engine work. So when no
-// progress is known the row reads the honest NOT-STARTED baseline (the empty ring),
-// matching the design's neutral plan pip; a caller that DOES hold progress (a future
-// surface that joins the pipeline projection) passes it and the mark lights up.
+// Progress is SERVED: `/vault-tree` rows carry the plan's checkbox
+// `progress {done, total}` (dashboard-pipeline-wire W01, read from the same
+// `lifecycle_in_scope` facet the graph consumes), so the pip lights from wire
+// truth. A plan without served progress reads the honest not-started baseline.
 
 export type PlanStatus = "complete" | "in-progress" | "not-started";
 
@@ -236,6 +234,104 @@ export function docDateLabel(iso?: string): string {
  *  search autofill, and the feature-query narrow all sanitize identically.
  *  Presentation only; the selection-join identity stays the real feature tag. */
 export const featureDisplayName = featureTagDisplayName;
+
+// --- ADR acceptance status (left-rail-tree-controls ADR D1) ------------------------
+//
+// The served `status` vocabulary is the ADR H1 status set. Plain-language labels
+// only (ui-labels-are-user-facing): the wire token capitalizes to a readable word;
+// an unknown future token still reads as a word, never raw internal casing.
+
+const ADR_STATUS_LABELS: Record<string, string> = {
+  proposed: "Proposed",
+  accepted: "Accepted",
+  rejected: "Rejected",
+  superseded: "Superseded",
+  deprecated: "Deprecated",
+};
+
+/** The display label for a served ADR acceptance status. */
+export function adrStatusLabel(status: string): string {
+  const known = ADR_STATUS_LABELS[status];
+  if (known) return known;
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+/** Tone class for the ADR status mark — sanctioned state tokens only:
+ *  accepted reads settled-active, proposed reads in-flight amber, rejected
+ *  reads broken, retired states read quiet faint ink. */
+export function adrStatusToneClass(status: string): string {
+  switch (status) {
+    case "accepted":
+      return "text-state-active";
+    case "proposed":
+      return "text-state-stale";
+    case "rejected":
+      return "text-state-broken";
+    default:
+      return "text-ink-faint";
+  }
+}
+
+// The ADR acceptance-status MARK (left-rail-tree-controls ADR D1, densified):
+// a compact grayscale-by-shape mark in the plan-pip family — the 16rem rail
+// cannot afford the status WORD on every ADR row, so the word rides the
+// tooltip + aria-label and the row carries the shape+tone mark: filled tick
+// (accepted), empty ring (proposed / unknown-future), crossed ring (rejected),
+// minus ring (superseded / deprecated).
+const ADR_STATUS_MARKS: Record<string, Icon> = {
+  accepted: CheckCircle,
+  proposed: Circle,
+  rejected: XCircle,
+  superseded: MinusCircle,
+  deprecated: MinusCircle,
+};
+
+/** The shape-distinct mark for a served ADR acceptance status. */
+export function adrStatusMark(status: string): Icon {
+  return ADR_STATUS_MARKS[status] ?? Circle;
+}
+
+// --- plan tier + document weight labels (left-rail-tree-controls ADR D1/D2) --------
+
+/** Plain-language plan tier ("L2" → "Tier 2"); empty for an unrecognised token
+ *  so the internal wire form never reaches the screen. */
+export function planTierLabel(tier: string): string {
+  const match = /^L([1-4])$/.exec(tier);
+  return match ? `Tier ${match[1]}` : "";
+}
+
+/** Compact human word count ("310 words", "1.2k words"). */
+export function wordCountLabel(words: number): string {
+  if (words >= 10_000) return `${Math.round(words / 1000)}k words`;
+  if (words >= 1000) return `${(words / 1000).toFixed(1)}k words`;
+  return `${words} ${words === 1 ? "word" : "words"}`;
+}
+
+/** Human byte size for the tooltip ("8.1 KB", "912 B"). */
+export function byteSizeLabel(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+/** The document leaf's full-metadata tooltip (left-rail-tree-controls ADR D1):
+ *  path, then the three date semantics in plain language, then the weight —
+ *  each line only when its fact is served (honest absence). */
+export function docTooltip(
+  path: string,
+  dates: { created?: string; modified?: string; stamped?: string },
+  size?: { bytes: number; words: number },
+): string {
+  const lines = [path];
+  const dateParts = [
+    dates.created ? `Authored ${dates.created}` : null,
+    dates.stamped ? `Updated ${dates.stamped}` : null,
+    dates.modified ? `Edited ${dates.modified}` : null,
+  ].filter((part): part is string => part !== null);
+  if (dateParts.length > 0) lines.push(dateParts.join(" · "));
+  if (size) lines.push(`${wordCountLabel(size.words)} · ${byteSizeLabel(size.bytes)}`);
+  return lines.join("\n");
+}
 
 /** A readable row title derived from the document stem (see note above). */
 export function docDisplayTitle(path: string): string {

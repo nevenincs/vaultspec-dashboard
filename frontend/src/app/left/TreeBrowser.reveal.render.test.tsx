@@ -124,10 +124,12 @@ describe("TreeBrowser reveal-on-selection scroll (GS-003, live engine)", () => {
       return button!;
     }, ENGINE_WAIT);
     fireEvent.click(folder);
+    // The row tooltip is the full metadata card (left-rail-tree-controls ADR D1);
+    // its FIRST line is the path — the stable selection-join contract.
     const path = await waitFor(() => {
       const row = docRows()[0];
       expect(row).toBeTruthy();
-      return row.getAttribute("title")!;
+      return row.getAttribute("title")!.split("\n")[0]!;
     }, ENGINE_WAIT);
     const nodeId = pathToNodeId(path);
 
@@ -150,7 +152,7 @@ describe("TreeBrowser reveal-on-selection scroll (GS-003, live engine)", () => {
     const revealed = await waitFor(() => {
       const current = document.querySelector('[aria-current="page"]');
       expect(current).toBeTruthy();
-      expect(current!.getAttribute("title")).toBe(path);
+      expect(current!.getAttribute("title")!.split("\n")[0]).toBe(path);
       return current!;
     }, ENGINE_WAIT);
     // …and it is scrolled into view.

@@ -157,6 +157,14 @@ describe("buildLeftRailCommands", () => {
       "left-rail:toggle-facets",
       "left-rail:collapse-tree",
       "left-rail:reset-filters",
+      // The vault tree's sort plane (left-rail-tree-controls ADR D3): one
+      // command per option + the reset, from the SAME shared builders.
+      "left-rail:sort-recency",
+      "left-rail:sort-name",
+      "left-rail:sort-created",
+      "left-rail:sort-modified",
+      "left-rail:sort-size",
+      "left-rail:reset-sorting",
     ]);
     const families = new Map(commands.map((c) => [c.id, c.family]));
     expect(families.get("left-rail:new-document")).toBe("app");

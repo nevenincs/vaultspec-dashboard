@@ -289,6 +289,11 @@ export interface VaultTreeEntry {
    *  reads. Present only on plan rows that carry checkbox progress; absent
    *  everywhere else so the left rail paints the honest not-started baseline. */
   progress?: { done: number; total: number };
+  /** Ingest-measured document weight (left-rail-tree-controls ADR D2): byte
+   *  length + whitespace-separated word count of the body. Absent on an older
+   *  engine or a node that carries none — honest absence, the rail renders
+   *  nothing (never a fabricated zero). */
+  size?: { bytes: number; words: number };
 }
 
 export interface VaultTreeResponse {

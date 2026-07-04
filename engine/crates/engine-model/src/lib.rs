@@ -282,7 +282,36 @@ pub struct Node {
     /// absent everywhere else.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<String>,
+    /// Ingest-computed document weight (left-rail-tree-controls ADR D2): byte
+    /// length + whitespace-separated word count of the body the indexer already
+    /// holds. Same truthful-absence class as `doc_type`/`dates` — present only
+    /// on vault document nodes read from a live body, absent everywhere else
+    /// (code artifacts, historical views without one). Volatile fact, never
+    /// identity: excluded from every stable-key derivation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<DocSize>,
     pub facets: Vec<Facet>,
+}
+
+/// Document weight served on listing rows (contract §4 `size?`): computed
+/// O(bytes) at ingest on the already-read body — no second read, no markdown
+/// parse (worktree-parse-performance stays linear).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DocSize {
+    /// Body length in bytes.
+    pub bytes: u64,
+    /// Whitespace-separated word count over the raw body.
+    pub words: u64,
+}
+
+impl DocSize {
+    /// Measure a document body: byte length + whitespace-split word count.
+    pub fn measure(text: &str) -> Self {
+        Self {
+            bytes: text.len() as u64,
+            words: text.split_whitespace().count() as u64,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -328,6 +357,7 @@ mod tests {
             feature_tags: vec!["x".into()],
             status: Some("accepted".into()),
             tier: None,
+            size: None,
             facets: vec![],
         };
         let json = serde_json::to_string(&adr).unwrap();
@@ -349,6 +379,7 @@ mod tests {
             feature_tags: vec!["x".into()],
             status: None,
             tier: Some("L3".into()),
+            size: None,
             facets: vec![],
         };
         let json = serde_json::to_string(&plan).unwrap();
@@ -372,6 +403,7 @@ mod tests {
             feature_tags: vec![],
             status: None,
             tier: None,
+            size: None,
             facets: vec![],
         };
         let json = serde_json::to_string(&plain).unwrap();

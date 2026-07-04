@@ -307,6 +307,56 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     }, ENGINE_WAIT);
   });
 
+  it("renders the review signals: plan progress pip, ADR status token, authored date, weight", async () => {
+    // left-rail-tree-controls ADR D1 over the LIVE fixture vault: the alpha plan
+    // (1 of 2 checkboxes) reads as an in-progress pip with a tabular 1/2; the
+    // beta ADR (H1 `accepted` marker) reads its plain-language status token; a
+    // leaf's trailing meta leads with the AUTHORED created date (the filename
+    // stamp) and the served word count; the tooltip is the full metadata card.
+    renderBrowser();
+    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    const documentsHeader = await expandSection("documents");
+    const body = document.getElementById(
+      documentsHeader.getAttribute("aria-controls")!,
+    )!;
+    // Expand every category folder so plan + adr leaves mount.
+    await waitFor(() => {
+      expect(
+        body.querySelectorAll("[data-vault-folder] > button[aria-expanded]").length,
+      ).toBeGreaterThan(0);
+    }, ENGINE_WAIT);
+    for (const folder of body.querySelectorAll<HTMLButtonElement>(
+      "[data-vault-folder] > button[aria-expanded='false']",
+    )) {
+      fireEvent.click(folder);
+    }
+    // Plan leaf: in-progress pip + done/total in tabular numerals.
+    const planSignal = await waitFor(() => {
+      const el = body.querySelector("[data-plan-status]");
+      expect(el).toBeTruthy();
+      return el!;
+    }, ENGINE_WAIT);
+    expect(planSignal.getAttribute("data-plan-status")).toBe("in-progress");
+    expect(planSignal.textContent).toContain("1/2");
+    // ADR leaf: the acceptance status as a compact shape+tone mark whose
+    // plain-language word rides the aria-label (title-first density).
+    const adrSignal = body.querySelector("[data-adr-status]");
+    expect(adrSignal?.getAttribute("data-adr-status")).toBe("accepted");
+    expect(adrSignal?.getAttribute("aria-label")).toBe("decision accepted");
+    // A leaf's meta is ONE value — the AUTHORED date by default (fixture created
+    // 2026-01-05 → "Jan 5"), never the checkout's worktree mtime; the weight
+    // lives in the tooltip so the title never collapses (title-first density).
+    const adrLeaf = adrSignal!.closest("button")!;
+    expect(adrLeaf.textContent).toContain("Jan 5");
+    expect(adrLeaf.textContent).not.toMatch(/\d+ words?/);
+    // The tooltip is the full metadata card: path first (the selection contract
+    // other suites key on), then dates, then weight.
+    const tooltip = adrLeaf.getAttribute("title")!;
+    expect(tooltip.startsWith(".vault/adr/2026-01-05-beta-adr.md")).toBe(true);
+    expect(tooltip).toContain("Authored 2026-01-05");
+    expect(tooltip).toMatch(/\d+ words? · [\d.]+ K?B/);
+  });
+
   it("renders folders and leaves through one fully-rounded row shell with one standardized selection", async () => {
     // Every tree level uses the SAME row shell: fully rounded (`rounded-fg-xs`),
     // never a square or half-rounded edge. Selection is the rounded accent-tint FILL

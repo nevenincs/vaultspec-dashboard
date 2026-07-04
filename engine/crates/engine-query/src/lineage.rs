@@ -513,6 +513,7 @@ mod tests {
             feature_tags: vec!["x".into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,

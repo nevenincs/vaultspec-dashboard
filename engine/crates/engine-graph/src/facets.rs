@@ -89,6 +89,7 @@ mod tests {
             feature_tags: vec!["editor-demo".into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![
                 facet("main", Presence::Exists, "h1", 3),
                 facet("feature-x", Presence::Exists, "h2", 6),
@@ -117,6 +118,7 @@ mod tests {
             feature_tags: vec![],
             status: None,
             tier: None,
+            size: None,
             facets: vec![
                 facet("main", Presence::Exists, "h1", 1),
                 Facet {

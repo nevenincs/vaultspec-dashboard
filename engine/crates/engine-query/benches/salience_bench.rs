@@ -59,6 +59,7 @@ fn synthetic_graph(n: usize) -> (LinkageGraph, Vec<Node>) {
             feature_tags: vec![format!("f-{}", i % 64)],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,

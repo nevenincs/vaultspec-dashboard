@@ -125,6 +125,7 @@ pub fn mint(
             feature_tags: Vec::new(),
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope.clone(),
                 presence: Presence::Exists,

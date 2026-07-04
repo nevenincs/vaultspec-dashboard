@@ -29,6 +29,8 @@ import {
   focusFilterAction,
   newDocumentAction,
   resetFiltersAction,
+  resetSortingAction,
+  sortTreeActions,
   toggleFacetsAction,
 } from "./leftRailKeybindings";
 import {
@@ -296,6 +298,11 @@ export function buildLeftRailCommands(
       run: effects.collapseTree,
     },
     { ...resetFiltersAction(effects.resetFilters), family: "filters" },
+    // The vault tree's sort plane (left-rail-tree-controls ADR D3): one command
+    // per sort option + the reset, from the SAME shared builders the rail-top
+    // sort menu and the vault-section context menu consume.
+    ...sortTreeActions().map((action) => ({ ...action, family: "navigate" })),
+    { ...resetSortingAction(), family: "navigate" },
   ];
   return normalizedPaletteCommands(commands);
 }

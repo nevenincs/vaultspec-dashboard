@@ -210,6 +210,7 @@ mod tests {
             feature_tags: vec!["demo".into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: ScopeRef::Ref { name: scope.into() },
                 presence: Presence::Exists,

@@ -239,6 +239,7 @@ mod tests {
             feature_tags: vec!["x".into()],
             status: status.map(str::to_string),
             tier: tier.map(str::to_string),
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,

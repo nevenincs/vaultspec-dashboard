@@ -143,6 +143,11 @@ import {
   type SettingsGroup,
 } from "./settingsSelectors";
 import { filterChoicesFromDashboardState, type FilterChoices } from "../view/filters";
+import {
+  DEFAULT_RAIL_SORT,
+  type RailSortKey,
+  type RailSortValue,
+} from "../view/railSort";
 import { setKeymapOverridesReader } from "../view/keymapDispatcher";
 import {
   deriveSessionIntentBootHealIntent,
@@ -1780,6 +1785,7 @@ function vaultTreeDocTypeOrder(present: Iterable<string>): string[] {
 
 export function projectVaultTreeFeatureGroups(
   entries: readonly VaultTreeEntry[],
+  sort: RailSortValue = DEFAULT_RAIL_SORT,
 ): VaultTreeFeatureGroup[] {
   const UNTAGGED = "(untagged)";
   const byFeature = new Map<string, Map<string, VaultTreeEntry[]>>();
@@ -1807,7 +1813,14 @@ export function projectVaultTreeFeatureGroups(
       entries: docMap
         .get(docType)!
         .slice()
-        .sort((a, b) => a.path.localeCompare(b.path)),
+        .sort((a, b) =>
+          // The historical sub-folder order is path-ascending (chronological by
+          // the date-stamped stem); a chosen sort key reorders it through the
+          // ONE comparator (ADR D3 — one sort concept for the whole tree).
+          sort.key === "recency"
+            ? (sort.direction === "desc" ? 1 : -1) * a.path.localeCompare(b.path)
+            : compareVaultEntriesBySort(sort, a, b),
+        ),
     }));
     const count = docTypes.reduce((n, group) => n + group.entries.length, 0);
     groups.push({ feature, count, docTypes });
@@ -1883,9 +1896,60 @@ function compareVaultRecency(a: VaultTreeEntry, b: VaultTreeEntry): number {
   return a.path.localeCompare(b.path);
 }
 
-/** Group vault entries by doc type (the Documents section), excluding `index`. */
+/** A document's sortable field for a non-recency sort key (left-rail-tree-
+ *  controls ADR D3): the served H1 title (falling back to the stem) for `name`,
+ *  the day-granular ISO date for `created`/`modified`, the served word count for
+ *  `size`. `null` = the fact is absent — an absent fact sorts LAST regardless of
+ *  direction (honest absence never floats to the top). */
+function vaultEntrySortField(
+  entry: VaultTreeEntry,
+  key: RailSortKey,
+): string | number | null {
+  switch (key) {
+    case "name":
+      return (entry.title ?? stemFromPath(entry.path)).toLowerCase();
+    case "created":
+      return entry.dates.created ?? null;
+    case "modified":
+      return entry.dates.modified ?? null;
+    case "size":
+      return entry.size?.words ?? null;
+    case "recency":
+      return null;
+  }
+}
+
+/** The ONE document comparator the whole vault tree sorts by (ADR D3): `recency`
+ *  is the historical newest-modified-first order (direction flips it); every
+ *  other key compares its field with absent-last, path tiebreak. */
+export function compareVaultEntriesBySort(
+  sort: RailSortValue,
+  a: VaultTreeEntry,
+  b: VaultTreeEntry,
+): number {
+  if (sort.key === "recency") {
+    const cmp = compareVaultRecency(a, b);
+    return sort.direction === "desc" ? cmp : -cmp;
+  }
+  const av = vaultEntrySortField(a, sort.key);
+  const bv = vaultEntrySortField(b, sort.key);
+  if (av === null && bv === null) return a.path.localeCompare(b.path);
+  if (av === null) return 1;
+  if (bv === null) return -1;
+  const cmp =
+    typeof av === "number" && typeof bv === "number"
+      ? av - bv
+      : String(av).localeCompare(String(bv));
+  if (cmp === 0) return a.path.localeCompare(b.path);
+  return sort.direction === "asc" ? cmp : -cmp;
+}
+
+/** Group vault entries by doc type (the Documents section), excluding `index`.
+ *  Member order follows the rail sort plane; the default is the historical
+ *  newest-modified-first. */
 export function projectVaultDocTypeGroups(
   entries: readonly VaultTreeEntry[],
+  sort: RailSortValue = DEFAULT_RAIL_SORT,
 ): VaultDocTypeGroup[] {
   const byType = new Map<string, VaultTreeEntry[]>();
   for (const entry of entries) {
@@ -1901,7 +1965,10 @@ export function projectVaultDocTypeGroups(
   return order
     .filter((docType) => byType.has(docType))
     .map((docType) => {
-      const list = byType.get(docType)!.slice().sort(compareVaultRecency);
+      const list = byType
+        .get(docType)!
+        .slice()
+        .sort((a, b) => compareVaultEntriesBySort(sort, a, b));
       return { docType, count: list.length, entries: list };
     });
 }
@@ -1982,17 +2049,59 @@ export interface VaultRailView {
   filteredToNothing: boolean;
 }
 
-/** Derive the whole Vault-tab view from the entries + the canonical facets. */
+/** A feature folder's sortable aggregate for a non-recency key (ADR D3): its
+ *  name, its newest member date, or its summed member word count. `null` =
+ *  no member carries the fact — the folder sorts last. */
+function featureGroupSortField(
+  group: VaultTreeFeatureGroup,
+  key: RailSortKey,
+): string | number | null {
+  if (key === "name") return group.feature.toLowerCase();
+  let maxDate: string | null = null;
+  let words: number | null = null;
+  for (const sub of group.docTypes) {
+    for (const entry of sub.entries) {
+      if (key === "size" && entry.size) words = (words ?? 0) + entry.size.words;
+      if (key === "created" || key === "modified") {
+        const value = entry.dates[key];
+        if (value !== undefined && (maxDate === null || value > maxDate)) {
+          maxDate = value;
+        }
+      }
+    }
+  }
+  return key === "size" ? words : maxDate;
+}
+
+/** Derive the whole Vault-tab view from the entries + the canonical facets,
+ *  ordered by the ONE rail sort plane (left-rail-tree-controls ADR D3). The
+ *  default is the historical order byte-for-byte: features most-active first,
+ *  documents newest-modified first. */
 export function deriveVaultRailView(
   entries: readonly VaultTreeEntry[],
   facets: VaultRailFacets,
+  sort: RailSortValue = DEFAULT_RAIL_SORT,
 ): VaultRailView {
   const narrowed = narrowVaultRailEntries(entries, facets);
-  const featureGroups = projectVaultTreeFeatureGroups(narrowed).sort((a, b) => {
-    if (a.count !== b.count) return b.count - a.count;
-    return a.feature.localeCompare(b.feature);
+  const featureGroups = projectVaultTreeFeatureGroups(narrowed, sort).sort((a, b) => {
+    if (sort.key === "recency") {
+      const cmp = b.count - a.count;
+      if (cmp !== 0) return sort.direction === "desc" ? cmp : -cmp;
+      return a.feature.localeCompare(b.feature);
+    }
+    const av = featureGroupSortField(a, sort.key);
+    const bv = featureGroupSortField(b, sort.key);
+    if (av === null && bv === null) return a.feature.localeCompare(b.feature);
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    const cmp =
+      typeof av === "number" && typeof bv === "number"
+        ? av - bv
+        : String(av).localeCompare(String(bv));
+    if (cmp === 0) return a.feature.localeCompare(b.feature);
+    return sort.direction === "asc" ? cmp : -cmp;
   });
-  const docTypeGroups = projectVaultDocTypeGroups(narrowed);
+  const docTypeGroups = projectVaultDocTypeGroups(narrowed, sort);
   const anyFacet =
     facets.featureQuery !== null ||
     facets.docTypes.length > 0 ||
