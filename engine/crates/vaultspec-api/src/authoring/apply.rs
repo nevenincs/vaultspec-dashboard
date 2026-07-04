@@ -219,6 +219,26 @@ pub fn apply_changeset(
                 in_flight: false,
             });
         }
+        Preflight::Reclaim(prep) => {
+            // A crashed prior attempt: DO NOT re-invoke the core — the write may
+            // already have landed. Re-verify the document post-state (against the
+            // recorded expected blob hash) and complete to the terminal receipt,
+            // exactly the indeterminate-kill resolution (P36-R1).
+            let resolution = post_state_resolution(
+                worktree_root,
+                &prep,
+                "a prior apply attempt was interrupted and its reservation expired",
+            );
+            let receipt = store.with_unit_of_work(CommandKind::RequestApply, |uow| {
+                complete_in_uow(uow, &prep, resolution, request.now_ms)
+            })??;
+            return Ok(ApplyOutcome {
+                eligibility: ActionEligibility::allowed(CommandKind::RequestApply),
+                receipt: Some(receipt),
+                replayed: false,
+                in_flight: false,
+            });
+        }
         Preflight::Proceed(prep) => prep,
     };
 
@@ -264,6 +284,10 @@ enum Preflight {
     InFlight,
     Denied(ActionEligibility),
     Proceed(Box<ApplyPrep>),
+    /// A prior attempt crashed between stage A and stage C, its in-flight
+    /// reservation has EXPIRED, and the head is wedged in `Applying`. Resume
+    /// completion by post-state re-verify only — NO core re-invoke (P36-R1).
+    Reclaim(Box<ApplyPrep>),
 }
 
 fn preflight_in_uow(
@@ -300,7 +324,17 @@ fn preflight_in_uow(
         }
         ReplayLookup::InFlight(_) => return Ok(Ok(Preflight::InFlight)),
         ReplayLookup::Conflict(_) => return Ok(Err(ApplyError::Conflict)),
-        ReplayLookup::None | ReplayLookup::Expired(_) => {}
+        ReplayLookup::Expired(record) => {
+            // P36-R1: an EXPIRED reservation whose head is wedged in `Applying` is a
+            // crashed attempt (a ghost `in_flight` before expiry, a permanent denial
+            // after — the gate below only admits `Approved`). Reclaim it by resuming
+            // completion instead of re-applying. One reclaim path heals both variants.
+            if latest.status == ChangesetStatus::Applying {
+                return build_reclaim_prep(request, &latest, &record, &key_scope);
+            }
+            // Any other head status: a fresh attempt (fall through to the gate).
+        }
+        ReplayLookup::None => {}
     }
 
     // GATE (no state mutated yet, so a denial leaks nothing).
@@ -485,45 +519,12 @@ fn resolve_outcome(
                 }
             }
         }
+        // OUTCOME-UNKNOWN: the core was killed mid-flight (and on Windows its
+        // grandchild may have survived to finish). Re-verify post-state and FAIL
+        // CLOSED — the shared reclaim resolution (also used by P36-R1 recovery).
+        // `wire_reason` is the REDACTED category — never `{:?}`-Debug the error.
         Err(error) if error.is_outcome_indeterminate() => {
-            // OUTCOME-UNKNOWN: the core was killed mid-flight (and on Windows its
-            // grandchild may have survived to finish). RE-VERIFY post-state and
-            // FAIL CLOSED — record Applied only when the write provably landed.
-            match read_blob_hash(worktree_root, &prep.document) {
-                Ok(observed) if observed == prep.expected_result_blob_hash => ChildResolution {
-                    outcome: ApplyChildOutcome::Applied,
-                    observed_result_blob_hash: Some(observed),
-                    core_status: None,
-                    core_schema: None,
-                    resolved_via_post_verify: true,
-                    diagnostic: Some(format!(
-                        "{}; post-state re-verified the write landed",
-                        error.wire_reason()
-                    )),
-                },
-                Ok(observed) => ChildResolution {
-                    outcome: ApplyChildOutcome::Failed,
-                    observed_result_blob_hash: Some(observed),
-                    core_status: None,
-                    core_schema: None,
-                    resolved_via_post_verify: true,
-                    diagnostic: Some(format!(
-                        "{}; post-state re-verified the write did NOT land",
-                        error.wire_reason()
-                    )),
-                },
-                Err(_) => ChildResolution {
-                    outcome: ApplyChildOutcome::Failed,
-                    observed_result_blob_hash: None,
-                    core_status: None,
-                    core_schema: None,
-                    resolved_via_post_verify: true,
-                    diagnostic: Some(format!(
-                        "{}; post-state could not be re-verified (recorded not-applied, fail-closed)",
-                        error.wire_reason()
-                    )),
-                },
-            }
+            post_state_resolution(worktree_root, prep, &error.wire_reason())
         }
         // A determinate fault (spawn failure, self-terminated core with no envelope,
         // malformed output): the write did not complete. Redacted category only —
@@ -537,6 +538,120 @@ fn resolve_outcome(
             diagnostic: Some(error.wire_reason()),
         },
     }
+}
+
+/// Resolve a child outcome by RE-VERIFYING the document post-state against the
+/// expected result blob hash — no core invoke. Shared by the indeterminate-kill
+/// path and the P36-R1 crash-recovery reclaim. FAILS CLOSED: records `Applied`
+/// only when the post-state provably matches; an unreadable post-state is
+/// `Failed`, never a forged success. `reason` is a redacted, leak-free prefix.
+fn post_state_resolution(worktree_root: &Path, prep: &ApplyPrep, reason: &str) -> ChildResolution {
+    match read_blob_hash(worktree_root, &prep.document) {
+        Ok(observed) if observed == prep.expected_result_blob_hash => ChildResolution {
+            outcome: ApplyChildOutcome::Applied,
+            observed_result_blob_hash: Some(observed),
+            core_status: None,
+            core_schema: None,
+            resolved_via_post_verify: true,
+            diagnostic: Some(format!("{reason}; post-state re-verified the write landed")),
+        },
+        Ok(observed) => ChildResolution {
+            outcome: ApplyChildOutcome::Failed,
+            observed_result_blob_hash: Some(observed),
+            core_status: None,
+            core_schema: None,
+            resolved_via_post_verify: true,
+            diagnostic: Some(format!(
+                "{reason}; post-state re-verified the write did NOT land"
+            )),
+        },
+        Err(_) => ChildResolution {
+            outcome: ApplyChildOutcome::Failed,
+            observed_result_blob_hash: None,
+            core_status: None,
+            core_schema: None,
+            resolved_via_post_verify: true,
+            diagnostic: Some(format!(
+                "{reason}; post-state could not be re-verified (recorded not-applied, fail-closed)"
+            )),
+        },
+    }
+}
+
+/// Reconstruct an [`ApplyPrep`] from a changeset WEDGED in `Applying` whose
+/// in-flight reservation expired (P36-R1). The Applying revision carries the
+/// single materialized child and the recorded receipt id; the completion path
+/// then re-verifies post-state and records the terminal receipt against the
+/// still-`in_flight` (expired) reservation — no core re-invoke.
+fn build_reclaim_prep(
+    request: &ApplyRequest<'_>,
+    applying: &ChangesetAggregateRecord,
+    record: &super::store::idempotency::IdempotencyRecord,
+    key_scope: &IdempotencyKeyScope,
+) -> StoreResult<std::result::Result<Preflight, ApplyError>> {
+    let child = &applying.children[0];
+    let Some(materialized) = child.materialized_operation.as_ref() else {
+        return Ok(Err(ApplyError::MissingMaterialization {
+            changeset_id: request.changeset_id.to_string(),
+            child_key: child.child_key.clone(),
+        }));
+    };
+    let document = materialized.target.document.clone();
+    let Some(document_path) = existing_path(&document) else {
+        return Ok(Err(ApplyError::Internal(format!(
+            "wedged child `{}` target is not an existing document",
+            child.child_key
+        ))));
+    };
+    // The materialized (approved) revision the wedged Applying followed.
+    let source_revision = applying
+        .previous_revision
+        .clone()
+        .unwrap_or_else(|| applying.changeset_revision.clone());
+    let receipt_id = record
+        .receipt_id
+        .clone()
+        .unwrap_or_else(|| receipt_id_for(request.changeset_id, &source_revision));
+    let base_blob_hash = materialized.base.blob_hash.clone();
+    let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
+    let reservation = InFlightReservation {
+        key_scope: key_scope.clone(),
+        scope: apply_scope(request.changeset_id),
+        request_digest: apply_request_digest(request.changeset_id, request.actor),
+        receipt_id: receipt_id.clone(),
+    };
+    // Built for prep uniformity; the reclaim path never invokes it (no re-write).
+    let invocation = match CoreInvocation::write(
+        CoreCapability::SetBody,
+        &document_path,
+        WriteArgs {
+            expected_blob_hash: Some(base_blob_hash.clone()),
+            body: Some(materialized.target_snapshot.payload_text.clone()),
+            ..Default::default()
+        },
+    ) {
+        Ok(invocation) => invocation,
+        Err(err) => {
+            return Ok(Err(ApplyError::Internal(format!(
+                "reclaim invocation build failed: {err}"
+            ))));
+        }
+    };
+    Ok(Ok(Preflight::Reclaim(Box::new(ApplyPrep {
+        reservation,
+        receipt_id,
+        actor: request.actor.clone(),
+        idempotency_key: request.idempotency_key.clone(),
+        changeset_id: request.changeset_id.clone(),
+        source_revision,
+        applying_record: applying.clone(),
+        child_key: child.child_key.clone(),
+        document,
+        document_path,
+        base_blob_hash,
+        expected_result_blob_hash,
+        invocation,
+    }))))
 }
 
 fn complete_in_uow(
@@ -1464,5 +1579,104 @@ mod tests {
         );
         assert!(outcome.receipt.is_none());
         assert!(!outcome.replayed);
+    }
+
+    #[test]
+    fn an_expired_wedged_applying_reservation_is_reclaimed_to_a_terminal_receipt() {
+        // P36-R1 falsifier: a crash between stage A (reservation + Applying) and
+        // stage C wedges the changeset in Applying. Within the TTL a retry reports
+        // in_flight; PAST the TTL the reclaim path must RESUME COMPLETION to an
+        // honest terminal receipt (Applied here — the write had landed), never a
+        // permanent wedge or a forever-ghost poll.
+        let mut fx = setup(true);
+        let applier = fx.applier.clone();
+        let key = IdempotencyKey::new("idem:apply:1").unwrap();
+        let changeset_id = fx.changeset_id.clone();
+        let proposal_id = fx.proposal_id.clone();
+
+        // Stage A ONLY (simulate a crash before completion): reserve + append
+        // Applying, then drop the prep without running stage C.
+        let pf = fx
+            .store
+            .with_unit_of_work(CommandKind::RequestApply, |uow| {
+                preflight_in_uow(
+                    uow,
+                    &ApplyRequest {
+                        changeset_id: &changeset_id,
+                        proposal_id: &proposal_id,
+                        actor: &applier,
+                        idempotency_key: &key,
+                        now_ms: 100,
+                    },
+                )
+            })
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(pf, Preflight::Proceed(_)),
+            "stage A reserves + appends Applying"
+        );
+        drop(pf); // the process dies here — no stage C.
+        assert_eq!(
+            ledger_status(&mut fx),
+            ChangesetStatus::Applying,
+            "the changeset is wedged in Applying"
+        );
+
+        // Within the TTL a retry is a ghost poll (in_flight), not yet a heal.
+        let within = apply(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:apply:1",
+            100 + 1_000,
+        );
+        assert!(
+            within.in_flight,
+            "within the TTL the attempt is presumed live"
+        );
+        assert!(within.receipt.is_none());
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applying);
+
+        // The killed core HAD landed the write (post-state = materialized content).
+        std::fs::write(&fx.doc_file, NEW_BODY).unwrap();
+
+        // Past the TTL: reclaim RESUMES COMPLETION to a terminal receipt — the core
+        // is NOT re-invoked (the passed adapter would fail; it must never be called).
+        let reclaimed = apply(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:apply:1",
+            100 + IN_FLIGHT_TTL_MS + 1,
+        );
+        assert!(
+            !reclaimed.in_flight,
+            "past the TTL the wedge is healed, never a permanent ghost"
+        );
+        let receipt = reclaimed
+            .receipt
+            .expect("reclaim records a terminal receipt, not a wedge");
+        assert_eq!(
+            receipt.state,
+            ApplyState::Applied,
+            "the landed write is confirmed by post-state re-verify"
+        );
+        assert!(receipt.child.resolved_via_post_verify);
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        // A further retry now replays the recorded terminal receipt (idempotent).
+        let replay = apply(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:apply:1",
+            100 + IN_FLIGHT_TTL_MS + 2,
+        );
+        assert!(replay.replayed);
+        assert_eq!(
+            replay.receipt.unwrap().result_revision,
+            receipt.result_revision
+        );
     }
 }

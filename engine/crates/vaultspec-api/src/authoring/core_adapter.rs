@@ -35,7 +35,15 @@
 //!   value. The sensitive detail is preserved for operator logs by
 //!   [`CoreAdapterError::log_detail`].
 //!
-//! Wired into the apply command in W03.P36.
+//! Consumed by the apply command (W03.P36) and the authoring routes (W03.P39).
+//!
+//! `dead_code` allow retained through W03.P39 (matching every sibling authoring
+//! module): apply consumes only the `SetBody` write path, while the rest of the
+//! P35 deliverable — the full 5-verb capability registry, `detect()`, and the
+//! forensics API (`is_failed`/`log_detail`) — is exercised by the tests and
+//! awaits the P39 route wiring. It is dead in the LIB target until then (the
+//! `-D warnings` gate builds the lib target without the test modules), so the
+//! allow drops with P39, not P36. See coder-4's note to team-lead (2026-07-04).
 #![allow(dead_code)]
 
 use std::io::{Read, Write};
