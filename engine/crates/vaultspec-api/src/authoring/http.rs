@@ -22,18 +22,20 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::rejection::JsonRejection;
-use axum::extract::{FromRequest, Request, State};
+use axum::extract::{FromRequest, Path, Request, State};
 use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use serde::de::DeserializeOwned;
 
 use super::api::CommandEnvelope;
-use super::model::CommandKind;
+use super::model::{ChangesetId, CommandKind};
 use super::principal::{
     AUTHORING_ACTOR_TOKEN_HEADER, AuthenticatedPrincipal, PrincipalDenial, ResolvedCommand,
     resolve_principal,
 };
+use super::projections::ProjectionError;
+use super::store::StoreError;
 use crate::app::{AppState, now_ms};
 
 /// A body/schema violation (missing idempotency key, a body-claimed actor, an
@@ -193,6 +195,85 @@ where
             })?;
 
         Ok(ResolvedCommand::from_principal(principal, envelope))
+    }
+}
+
+/// A store the route could not open/read → a typed, tiers-bearing 503 (the
+/// authoring panel degrades honestly rather than the engine panicking).
+fn store_unavailable(state: &AppState, err: &StoreError) -> Response {
+    super::response::typed_error(
+        state,
+        StatusCode::SERVICE_UNAVAILABLE,
+        STORE_UNAVAILABLE_KIND,
+        &format!("authoring store is unavailable: {err}"),
+    )
+    .into_response()
+}
+
+/// `GET /authoring/v1/proposals` — the bounded review-station proposal list, a
+/// pure backend-served projection over the ledger + live worktree (no principal
+/// required; reads are unauthenticated). A projection failure is a store failure
+/// (the only `ProjectionError` variant), degraded to a typed 503.
+pub async fn list_proposals(State(state): State<Arc<AppState>>) -> Response {
+    // The target-fence comparison reads the vault worktree (parent of `.vault`).
+    let worktree_root = state.active_workspace_root();
+    // Identity/projection reads ride a mutating-command unit of work — the house
+    // read pattern (projections' own tests do the same); the deferred read
+    // transaction takes no write lock and commits empty.
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            uow.projections()
+                .list_proposals(&worktree_root)
+                .map_err(|ProjectionError::Store(err)| err)
+        })
+    }) {
+        Ok(projection) => {
+            let data =
+                serde_json::to_value(projection).expect("proposal list projection serializes");
+            super::response::snapshot(&state, data).into_response()
+        }
+        Err(err) => store_unavailable(&state, &err),
+    }
+}
+
+/// `GET /authoring/v1/proposals/{changeset_id}` — one changeset's backend-served
+/// review projection, or a typed 404 when no such changeset exists.
+pub async fn project_proposal(
+    State(state): State<Arc<AppState>>,
+    Path(changeset_id): Path<String>,
+) -> Response {
+    let changeset_id = match ChangesetId::new(&changeset_id) {
+        Ok(id) => id,
+        Err(err) => {
+            return super::response::typed_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                REQUEST_INVALID_KIND,
+                &format!("invalid changeset id: {err}"),
+            )
+            .into_response();
+        }
+    };
+    let worktree_root = state.active_workspace_root();
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            uow.projections()
+                .project_proposal(&changeset_id, &worktree_root)
+                .map_err(|ProjectionError::Store(err)| err)
+        })
+    }) {
+        Ok(Some(projection)) => {
+            let data = serde_json::to_value(projection).expect("proposal projection serializes");
+            super::response::snapshot(&state, data).into_response()
+        }
+        Ok(None) => super::response::typed_error(
+            &state,
+            StatusCode::NOT_FOUND,
+            "authoring_proposal_not_found",
+            "no such changeset",
+        )
+        .into_response(),
+        Err(err) => store_unavailable(&state, &err),
     }
 }
 
@@ -397,6 +478,49 @@ mod tests {
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(envelope["error_kind"], REQUEST_INVALID_KIND);
+    }
+
+    // --- read / projection handlers -------------------------------------------
+
+    #[tokio::test]
+    async fn list_proposals_over_an_empty_store_serves_an_honest_empty_page() {
+        let (_dir, state) = fixture_state();
+        let response = list_proposals(State(state.clone())).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["data"]["items"], json!([]));
+        assert_eq!(body["data"]["truncated"], false);
+        assert_eq!(body["data"]["cap"], 200);
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "the projection rides the shared tiers envelope"
+        );
+    }
+
+    #[tokio::test]
+    async fn project_proposal_for_an_unknown_changeset_is_a_typed_404() {
+        let (_dir, state) = fixture_state();
+        let response =
+            project_proposal(State(state.clone()), Path("changeset_absent".to_string())).await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["error_kind"], "authoring_proposal_not_found");
+        assert!(body["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    #[tokio::test]
+    async fn project_proposal_rejects_an_invalid_changeset_id() {
+        let (_dir, state) = fixture_state();
+        let response = project_proposal(State(state.clone()), Path("bad id".to_string())).await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["error_kind"], REQUEST_INVALID_KIND);
     }
 
     // --- the middleware, exercised through a real router (oneshot) -------------
