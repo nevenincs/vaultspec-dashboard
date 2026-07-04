@@ -20,13 +20,15 @@
 
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{FromRequest, Path, Request, State};
 use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use axum::routing::get;
+use axum::{Json, Router};
 use serde::de::DeserializeOwned;
+use serde_json::json;
 
 use super::api::CommandEnvelope;
 use super::model::{ChangesetId, CommandKind};
@@ -277,6 +279,65 @@ pub async fn project_proposal(
     }
 }
 
+/// `GET /authoring/v1/proposals/{changeset_id}/snapshot` — the full changeset
+/// revision history + latest aggregate + latest validation record (the
+/// lower-level read behind the review projection). The domain `ProposalSnapshot`
+/// wrapper is not itself `Serialize`, but its fields are, so the handler
+/// assembles them into the envelope directly (no domain edit).
+pub async fn proposal_snapshot(
+    State(state): State<Arc<AppState>>,
+    Path(changeset_id): Path<String>,
+) -> Response {
+    let changeset_id = match ChangesetId::new(&changeset_id) {
+        Ok(id) => id,
+        Err(err) => {
+            return super::response::typed_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                REQUEST_INVALID_KIND,
+                &format!("invalid changeset id: {err}"),
+            )
+            .into_response();
+        }
+    };
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            super::proposal::proposal_snapshot(uow, &changeset_id)
+        })
+    }) {
+        Ok(snapshot) => {
+            let data = json!({
+                "changeset_id": changeset_id.as_str(),
+                "history": snapshot.history,
+                "latest": snapshot.latest,
+                "latest_validation": snapshot.latest_validation,
+            });
+            super::response::snapshot(&state, data).into_response()
+        }
+        Err(err) => store_unavailable(&state, &err),
+    }
+}
+
+/// The `/authoring` router — the read/projection surface, wired with the
+/// principal middleware layer (so a command route added here resolves identity
+/// AFTER `bearer_gate`). This is the router-builder SKELETON: the mutating
+/// command slices, the shared app-router mount, and the `disabled_status` flip
+/// land together in the mount increment. It returns a state-parameterized
+/// `Router<Arc<AppState>>` so the app router supplies state on `.nest`.
+pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/v1/proposals", get(list_proposals))
+        .route("/v1/proposals/{changeset_id}", get(project_proposal))
+        .route(
+            "/v1/proposals/{changeset_id}/snapshot",
+            get(proposal_snapshot),
+        )
+        .layer(axum::middleware::from_fn_with_state(
+            state,
+            resolve_principal_layer,
+        ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -521,6 +582,48 @@ mod tests {
         let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
         let body: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(body["error_kind"], REQUEST_INVALID_KIND);
+    }
+
+    #[tokio::test]
+    async fn proposal_snapshot_over_an_unknown_changeset_serves_an_empty_history() {
+        let (_dir, state) = fixture_state();
+        let response =
+            proposal_snapshot(State(state.clone()), Path("changeset_absent".to_string())).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["data"]["changeset_id"], "changeset_absent");
+        assert!(
+            body["data"]["latest"].is_null(),
+            "an unknown changeset has no latest revision"
+        );
+        assert!(body["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    // --- the /authoring router-builder skeleton (un-mounted) ------------------
+
+    #[tokio::test]
+    async fn authoring_router_serves_the_list_read_through_the_middleware() {
+        let (_dir, state) = fixture_state();
+        // The read flows through the permissive principal middleware (no token).
+        let router = authoring_router(state.clone()).with_state(state);
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/proposals")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["data"]["items"], json!([]));
+        assert_eq!(body["data"]["cap"], 200);
     }
 
     // --- the middleware, exercised through a real router (oneshot) -------------
