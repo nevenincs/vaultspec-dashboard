@@ -304,14 +304,14 @@ mod tests {
     fn reshape_pr_maps_core_fields_and_author_login() {
         let raw = json!({
             "number": 128, "title": "Broker rag control plane",
-            "author": {"login": "wgergely", "name": "Gergely"},
+            "author": {"login": "octocat", "name": "Octo Cat"},
             "state": "OPEN", "isDraft": false, "url": "https://x/pr/128",
             "reviewDecision": "APPROVED",
             "statusCheckRollup": [{"conclusion":"SUCCESS"},{"conclusion":"SUCCESS"}]
         });
         let out = reshape_pr(&raw);
         assert_eq!(out["number"], 128);
-        assert_eq!(out["author"], "wgergely");
+        assert_eq!(out["author"], "octocat");
         assert_eq!(out["state"], "open");
         assert_eq!(out["is_draft"], false);
         assert_eq!(out["review_decision"], "approved");
@@ -345,7 +345,7 @@ mod tests {
     fn reshape_issue_collects_label_names() {
         let raw = json!({
             "number": 94, "title": "Graph clumps",
-            "author": {"login": "wgergely"}, "state": "OPEN", "url": "https://x/i/94",
+            "author": {"login": "octocat"}, "state": "OPEN", "url": "https://x/i/94",
             "labels": [{"name":"bug"},{"name":"perf"}]
         });
         let out = reshape_issue(&raw);
