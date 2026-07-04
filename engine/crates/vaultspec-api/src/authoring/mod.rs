@@ -7,6 +7,7 @@
 
 pub(crate) mod actors;
 pub(crate) mod api;
+pub(crate) mod apply;
 pub(crate) mod approvals;
 pub(crate) mod core_adapter;
 pub(crate) mod documents;
