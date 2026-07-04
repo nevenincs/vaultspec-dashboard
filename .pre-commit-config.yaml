@@ -17,7 +17,6 @@ repos:
     pass_filenames: true
     types:
     - markdown
-    exclude: ^CHANGELOG\.md$
   - id: mdformat-wrap-docs-check
     name: Check wrapped user-facing Markdown (mdformat)
     entry: uv run --no-sync mdformat --wrap 88 --check
@@ -31,7 +30,6 @@ repos:
     pass_filenames: true
     types:
     - markdown
-    exclude: ^CHANGELOG\.md$
   - id: vault-fix
     name: Vault Doctor (Fix)
     entry: uv run --no-sync vaultspec-core vault check all --fix
