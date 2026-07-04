@@ -45,7 +45,7 @@ dev = [
   "prek>=0.3.2",
   "pymarkdownlnt>=0.9.0",
   "torch>=2.4",
-  "vaultspec-rag>=0.2.25",
+  "vaultspec-rag[mcp]>=0.2.28",
 ]
 
 [[tool.uv.index]]

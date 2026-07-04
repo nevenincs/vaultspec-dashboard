@@ -34,7 +34,7 @@ Executes the v1 scope of the dashboard-packaging ADR (see `related:`), grounded 
 
 Delivers the embed-spa cargo feature so a release build of the vaultspec binary carries the built SPA bundle, embedded-first, with the dev disk passthrough retained.
 
-- [ ] `P01.S01` - add the embed-spa cargo feature and the rust-embed dependency to the api crate; `engine/crates/vaultspec-api/Cargo.toml`.
+- [x] `P01.S01` - add the embed-spa cargo feature and the rust-embed dependency to the api crate; `engine/crates/vaultspec-api/Cargo.toml`.
 - [ ] `P01.S02` - forward the embed-spa feature from the bin crate so release builds enable it with one flag; `engine/crates/vaultspec-cli/Cargo.toml`.
 - [ ] `P01.S03` - implement the embedded asset store and the embedded-first resolution chain (embedded, then VAULTSPEC_SPA_DIR, then frontend/dist, then placeholder) preserving the traversal guard, MIME map, deep-link fallback, API prefix boundary, and token injection; `engine/crates/vaultspec-api/src/routes/spa.rs`.
 - [ ] `P01.S04` - add feature-gated tests covering embedded index delivery, asset MIME, deep-link fallback, API 404 boundary, and token injection; `engine/crates/vaultspec-api`.
@@ -67,7 +67,7 @@ Retires the orphaned release-please configuration and repairs the stale hooks, r
 - [x] `P04.S16` - remove the orphaned python-typed release-please configuration in favor of the dist tag-driven flow; `release-please-config.json`.
 - [x] `P04.S17` - fix or remove the dormant CHANGELOG guard hook that assumes release-please runs; `.pre-commit-config.yaml`.
 - [x] `P04.S18` - repair the stale prod namespace reference in the ci recipe; `justfile`.
-- [ ] `P04.S19` - reconcile the dependency-scope drift between the runtime vaultspec-rag pin and the dev-group pin; `pyproject.toml`.
+- [x] `P04.S19` - reconcile the dependency-scope drift between the runtime vaultspec-rag pin and the dev-group pin; `pyproject.toml`.
 
 ### Phase `P05` - install docs and channel validations
 
