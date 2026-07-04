@@ -43,8 +43,25 @@ const API_BASE = import.meta.env.DEV ? "/api" : "";
 
 // --- cross-cutting contract shapes (§2) ----------------------------------------
 
+/**
+ * The component compatibility handshake the engine attaches to a tier
+ * (dashboard-packaging D6): the sibling tool the tier rides on, the floor the
+ * dashboard declares for it, the probed version (null when unknowable — rag
+ * reports none), and the served floor verdict. All values are engine-served;
+ * the client only maps them to presentation.
+ */
+export interface TierComponent {
+  readonly name: string;
+  readonly floor: string;
+  readonly version: string | null;
+  readonly meets_floor?: boolean | null;
+}
+
 /** Every response carries a per-tier degradation block — truthful absence. */
-export type TiersBlock = Record<string, { available: boolean; reason?: string }>;
+export type TiersBlock = Record<
+  string,
+  { available: boolean; reason?: string; component?: TierComponent }
+>;
 
 /**
  * The canonical, ordered tier-name vocabulary (contract §2). The single source
@@ -175,9 +192,20 @@ export function readTierAvailability(
   const reasons: Record<string, string> = {};
   for (const tier of tierNames) {
     const state = tiers[tier];
-    if (state === undefined || state.available === false) {
+    // A tier whose component handshake reports a below-floor sibling is
+    // degraded even when nominally available (dashboard-packaging D6): the
+    // served verdict is the truth; the client only words the label.
+    const belowFloor = state?.component?.meets_floor === false;
+    if (state === undefined || state.available === false || belowFloor) {
       degradedTiers.push(tier);
-      if (state?.reason) reasons[tier] = state.reason;
+      if (state?.reason) {
+        reasons[tier] = state.reason;
+      } else if (belowFloor && state.component) {
+        const probed = state.component.version ?? "an unknown version";
+        reasons[tier] =
+          `${state.component.name} ${probed} is older than the supported ` +
+          `version ${state.component.floor} - update it to restore this data`;
+      }
     }
   }
   return { degraded: degradedTiers.length > 0, degradedTiers, reasons };

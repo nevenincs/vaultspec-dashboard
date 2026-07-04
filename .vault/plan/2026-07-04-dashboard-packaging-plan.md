@@ -44,11 +44,11 @@ Delivers the embed-spa cargo feature so a release build of the vaultspec binary 
 
 Delivers the detect-and-instruct startup probe for git and vaultspec-core and surfaces the component handshake honestly through the served tiers envelope.
 
-- [ ] `P02.S06` - probe git presence at serve startup with a bounded git version run and fail closed with plain remediation prose; `engine/crates/vaultspec-api/src/lib.rs`.
-- [ ] `P02.S07` - probe vaultspec-core capability and the 0.1.36 floor at serve startup reusing the existing runner resolution and emit the exact uv tool install remediation; `engine/crates/vaultspec-api/src/lib.rs`.
-- [ ] `P02.S08` - surface the component handshake (declared floors, probed versions, degraded flags for core and rag) through the served tiers envelope; `engine/crates/vaultspec-api`.
-- [ ] `P02.S09` - add engine tests proving missing git, stale core, and absent rag each degrade honestly in the tiers block; `engine/crates/vaultspec-api`.
-- [ ] `P02.S10` - consume the handshake fields through the existing stores tiers reader so stale-core blocks authoring verbs and absent rag greys semantic panels; `frontend/src/stores/server`.
+- [x] `P02.S06` - probe git presence at serve startup with a bounded git version run and fail closed with plain remediation prose; `engine/crates/vaultspec-api/src/lib.rs`.
+- [x] `P02.S07` - probe vaultspec-core capability and the 0.1.36 floor at serve startup reusing the existing runner resolution and emit the exact uv tool install remediation; `engine/crates/vaultspec-api/src/lib.rs`.
+- [x] `P02.S08` - surface the component handshake (declared floors, probed versions, degraded flags for core and rag) through the served tiers envelope; `engine/crates/vaultspec-api`.
+- [x] `P02.S09` - add engine tests proving missing git, stale core, and absent rag each degrade honestly in the tiers block; `engine/crates/vaultspec-api`.
+- [x] `P02.S10` - consume the handshake fields through the existing stores tiers reader so stale-core blocks authoring verbs and absent rag greys semantic panels; `frontend/src/stores/server`.
 
 ### Phase `P03` - dist release pipeline
 
