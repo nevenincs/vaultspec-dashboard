@@ -152,6 +152,7 @@ pub fn create_proposal(
                     kind: ChangesetKind::Authoring,
                     status: ChangesetStatus::Draft,
                     session_id: Some(request.session_id.clone()),
+                    actor: context.actor.clone(),
                     summary: request.summary.clone(),
                     children: child_inputs_from_materialized(operations.materialized, None, None),
                     created_at_ms: context.now_ms,
@@ -244,6 +245,7 @@ pub fn validate_proposal(
                 uow.validations().store_record(&validation)?;
                 let record = revision_from_existing(
                     &latest,
+                    &context.actor,
                     ChangesetStatus::Proposed,
                     request.summary.clone(),
                     child_inputs_from_record(
@@ -306,6 +308,7 @@ pub fn submit_for_review(
                 ))?;
                 let record = revision_from_existing(
                     &latest,
+                    &context.actor,
                     ChangesetStatus::NeedsReview,
                     request.summary.clone(),
                     child_inputs_from_record(&latest, None, None),
@@ -425,6 +428,7 @@ fn mutate_draft(
                 ));
                 let record = revision_from_existing(
                     &latest,
+                    &context.actor,
                     ChangesetStatus::Draft,
                     request.summary.clone(),
                     children,
@@ -468,6 +472,7 @@ fn terminal_transition(
                 )?;
                 let record = revision_from_existing(
                     &latest,
+                    &context.actor,
                     next,
                     request.summary.clone(),
                     child_inputs_from_record(&latest, None, None),
@@ -499,6 +504,7 @@ fn run_idempotent(
     request_digest: String,
     handler: impl FnOnce(&ReceiptId) -> StoreResult<ProposalCommandOutcome>,
 ) -> StoreResult<ProposalCommandResult> {
+    let _actor_record = uow.actors().ensure_active(&context.actor)?;
     let key_scope = IdempotencyKeyScope::new(
         context.actor.clone(),
         command,
@@ -694,6 +700,7 @@ fn child_inputs_from_record(
 
 fn revision_from_existing(
     previous: &ChangesetAggregateRecord,
+    actor: &ActorRef,
     status: ChangesetStatus,
     summary: String,
     children: Vec<ChangesetChildOperationInput>,
@@ -705,6 +712,7 @@ fn revision_from_existing(
         kind: previous.kind,
         status,
         session_id: previous.session_id.clone(),
+        actor: actor.clone(),
         summary,
         children,
         created_at_ms: now_ms,
@@ -850,6 +858,9 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+    use crate::authoring::actors::{
+        ActorDisplayMetadata, ActorRecordInput, ActorStatus, actor_provenance_key,
+    };
     use crate::authoring::api::{
         ChangesetOperationKind, DraftMode, DraftMutation, TargetRevisionFence,
     };
@@ -871,8 +882,28 @@ mod tests {
             ".vault/plan/proposal-plan.md",
             "---\ntags:\n  - '#plan'\n---\n\n# Plan\n\nold body\n",
         );
-        let store = Store::open(&dir.path().join(".vault")).unwrap();
+        let mut store = Store::open(&dir.path().join(".vault")).unwrap();
+        register_actor(&mut store);
         (dir, store)
+    }
+
+    fn register_actor(store: &mut Store) {
+        register_actor_with_status(store, actor(), ActorStatus::Active);
+    }
+
+    fn register_actor_with_status(store: &mut Store, actor: ActorRef, status: ActorStatus) {
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.actors().put_record(ActorRecordInput {
+                    actor,
+                    display: ActorDisplayMetadata::new("Proposal test actor", None),
+                    status,
+                    created_at_ms: 1,
+                    updated_at_ms: 1,
+                })?;
+                Ok(())
+            })
+            .unwrap();
     }
 
     fn reader(root: &Path) -> SnapshotReader {
@@ -908,9 +939,29 @@ mod tests {
         }
     }
 
+    fn human_actor() -> ActorRef {
+        ActorRef {
+            id: ActorId::new("human:reviewer").unwrap(),
+            kind: ActorKind::Human,
+            delegated_by: None,
+        }
+    }
+
+    fn delegated_actor(delegated_by: &ActorRef) -> ActorRef {
+        ActorRef {
+            id: actor().id,
+            kind: ActorKind::Agent,
+            delegated_by: Some(delegated_by.id.clone()),
+        }
+    }
+
     fn context(key: &str, now_ms: i64) -> ProposalCommandContext {
+        context_for_actor(actor(), key, now_ms)
+    }
+
+    fn context_for_actor(actor: ActorRef, key: &str, now_ms: i64) -> ProposalCommandContext {
         ProposalCommandContext {
-            actor: actor(),
+            actor,
             idempotency_key: IdempotencyKey::new(key).unwrap(),
             now_ms,
             in_flight_expires_at_ms: Some(now_ms + 60_000),
@@ -1017,6 +1068,24 @@ mod tests {
         }
     }
 
+    fn replayed_outcome(
+        result: ProposalCommandResult,
+        expected: &ProposalCommandOutcome,
+    ) -> IdempotencyRecord {
+        let idempotency = replayed(result);
+        let recorded = idempotency
+            .outcome
+            .as_ref()
+            .expect("replay carries recorded outcome");
+        assert_eq!(recorded.kind, OutcomeKind::Accepted);
+        assert_eq!(recorded.aggregate_kind, "changeset");
+        assert_eq!(recorded.aggregate_id, expected.changeset_id.as_str());
+        assert_eq!(recorded.schema, OUTCOME_SCHEMA);
+        assert_eq!(recorded.http_status, Some(202));
+        assert_eq!(recorded.payload, serde_json::to_value(expected).unwrap());
+        idempotency
+    }
+
     fn latest_record(store: &mut Store, changeset_id: &ChangesetId) -> ChangesetAggregateRecord {
         store
             .with_unit_of_work(CommandKind::CreateProposal, |uow| {
@@ -1040,6 +1109,32 @@ mod tests {
                 proposal_snapshot(uow, changeset_id)
             })
             .unwrap()
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct SideEffectCounts {
+        idempotency: i64,
+        preimages: i64,
+        validations: i64,
+        ledger: i64,
+        outbox: i64,
+    }
+
+    fn side_effect_counts(store: &Store) -> SideEffectCounts {
+        let conn = rusqlite::Connection::open(store.path()).unwrap();
+        let count = |table: &str| -> i64 {
+            conn.query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
+                row.get(0)
+            })
+            .unwrap()
+        };
+        SideEffectCounts {
+            idempotency: count("authoring_idempotency_records"),
+            preimages: count("authoring_document_preimages"),
+            validations: count("authoring_validation_records"),
+            ledger: count("authoring_changeset_revisions"),
+            outbox: count("authoring_outbox_events"),
+        }
     }
 
     fn validation_inputs(
@@ -1103,6 +1198,257 @@ mod tests {
             )
             .unwrap(),
         )
+    }
+
+    #[test]
+    fn proposal_mutations_persist_issuing_actor_and_delegated_provenance() {
+        let (dir, mut store) = temp_store();
+        let root = dir.path();
+        let reader = reader(root);
+        let human = human_actor();
+        register_actor_with_status(&mut store, human.clone(), ActorStatus::Active);
+        let delegated = delegated_actor(&human);
+        let trace_id = changeset_id("changeset_actor_trace");
+
+        let created = accepted(
+            create_proposal(
+                &mut store,
+                &reader,
+                context_for_actor(human.clone(), "idem:create:actor-trace", 100),
+                create_request(root, trace_id.clone(), "child_1", valid_body("first")),
+            )
+            .unwrap(),
+        );
+        let appended = accepted(
+            append_draft(
+                &mut store,
+                &reader,
+                context_for_actor(delegated.clone(), "idem:append:actor-trace", 101),
+                draft_request(
+                    root,
+                    trace_id.clone(),
+                    created.changeset_revision,
+                    "child_2",
+                    valid_body("second"),
+                ),
+            )
+            .unwrap(),
+        );
+        let replaced = accepted(
+            replace_draft(
+                &mut store,
+                &reader,
+                context_for_actor(human.clone(), "idem:replace:actor-trace", 102),
+                draft_request(
+                    root,
+                    trace_id.clone(),
+                    appended.changeset_revision,
+                    "child_3",
+                    valid_body("third"),
+                ),
+            )
+            .unwrap(),
+        );
+        let latest = latest_record(&mut store, &trace_id);
+        let (current_revisions, chunk_evidence) = validation_inputs(root, &latest);
+        let validated = accepted(
+            validate_proposal(
+                &mut store,
+                context_for_actor(delegated.clone(), "idem:validate:actor-trace", 103),
+                ValidateProposalRequest {
+                    changeset_id: trace_id.clone(),
+                    expected_revision: replaced.changeset_revision,
+                    summary: "validate actor trace".to_string(),
+                    current_revisions,
+                    chunk_evidence,
+                },
+            )
+            .unwrap(),
+        );
+        let submitted = accepted(
+            submit_for_review(
+                &mut store,
+                context_for_actor(human.clone(), "idem:submit:actor-trace", 104),
+                SubmitProposalRequest {
+                    changeset_id: trace_id.clone(),
+                    expected_revision: validated.changeset_revision,
+                    validation_digest: validated.validation_digest.unwrap(),
+                    summary: "submit actor trace".to_string(),
+                },
+            )
+            .unwrap(),
+        );
+
+        assert_eq!(submitted.status, ChangesetStatus::NeedsReview);
+        let revisions = history(&mut store, &trace_id).revisions;
+        let expected_actors = vec![
+            human.clone(),
+            delegated.clone(),
+            human.clone(),
+            delegated.clone(),
+            human.clone(),
+        ];
+        assert_eq!(
+            revisions
+                .iter()
+                .map(|record| record.actor.clone())
+                .collect::<Vec<_>>(),
+            expected_actors
+        );
+        for record in &revisions {
+            assert_eq!(
+                record.actor_provenance_key,
+                actor_provenance_key(&record.actor)
+            );
+        }
+
+        let cancel_id = changeset_id("changeset_actor_cancel");
+        let cancel_created = accepted(
+            create_proposal(
+                &mut store,
+                &reader,
+                context_for_actor(delegated.clone(), "idem:create:actor-cancel", 200),
+                create_request(root, cancel_id.clone(), "child_1", valid_body("cancel")),
+            )
+            .unwrap(),
+        );
+        accepted(
+            cancel_proposal(
+                &mut store,
+                context_for_actor(human.clone(), "idem:cancel:actor-cancel", 201),
+                terminal_request(
+                    cancel_id.clone(),
+                    cancel_created.changeset_revision,
+                    "cancel with human",
+                ),
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            history(&mut store, &cancel_id)
+                .revisions
+                .iter()
+                .map(|record| record.actor.clone())
+                .collect::<Vec<_>>(),
+            vec![delegated.clone(), human.clone()]
+        );
+
+        let supersede_id = changeset_id("changeset_actor_supersede");
+        let supersede_created = accepted(
+            create_proposal(
+                &mut store,
+                &reader,
+                context_for_actor(human.clone(), "idem:create:actor-supersede", 300),
+                create_request(
+                    root,
+                    supersede_id.clone(),
+                    "child_1",
+                    valid_body("supersede"),
+                ),
+            )
+            .unwrap(),
+        );
+        accepted(
+            supersede_proposal(
+                &mut store,
+                context_for_actor(delegated.clone(), "idem:supersede:actor-supersede", 301),
+                terminal_request(
+                    supersede_id.clone(),
+                    supersede_created.changeset_revision,
+                    "supersede with delegated actor",
+                ),
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            history(&mut store, &supersede_id)
+                .revisions
+                .iter()
+                .map(|record| record.actor.clone())
+                .collect::<Vec<_>>(),
+            vec![human, delegated]
+        );
+    }
+
+    #[test]
+    fn missing_actor_rejects_before_proposal_side_effects() {
+        let (dir, mut store) = temp_store();
+        let root = dir.path();
+        let reader = reader(root);
+        let missing = ActorRef {
+            id: ActorId::new("agent:missing").unwrap(),
+            kind: ActorKind::Agent,
+            delegated_by: None,
+        };
+
+        let err = create_proposal(
+            &mut store,
+            &reader,
+            context_for_actor(missing, "idem:create:missing-actor", 100),
+            create_request(
+                root,
+                changeset_id("changeset_missing_actor"),
+                "child_1",
+                valid_body("missing"),
+            ),
+        )
+        .unwrap_err();
+
+        assert!(
+            matches!(err, StoreError::Actor(ref detail) if detail.contains("not registered")),
+            "unexpected missing actor error: {err}"
+        );
+        assert_eq!(
+            side_effect_counts(&store),
+            SideEffectCounts {
+                idempotency: 0,
+                preimages: 0,
+                validations: 0,
+                ledger: 0,
+                outbox: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn stale_actor_rejects_before_proposal_side_effects() {
+        let (dir, mut store) = temp_store();
+        let root = dir.path();
+        let reader = reader(root);
+        let stale = ActorRef {
+            id: ActorId::new("agent:stale").unwrap(),
+            kind: ActorKind::Agent,
+            delegated_by: None,
+        };
+        register_actor_with_status(&mut store, stale.clone(), ActorStatus::Stale);
+
+        let err = create_proposal(
+            &mut store,
+            &reader,
+            context_for_actor(stale, "idem:create:stale-actor", 100),
+            create_request(
+                root,
+                changeset_id("changeset_stale_actor"),
+                "child_1",
+                valid_body("stale"),
+            ),
+        )
+        .unwrap_err();
+
+        assert!(
+            matches!(err, StoreError::Actor(ref detail) if detail.contains("is stale")),
+            "unexpected stale actor error: {err}"
+        );
+        assert_eq!(
+            side_effect_counts(&store),
+            SideEffectCounts {
+                idempotency: 0,
+                preimages: 0,
+                validations: 0,
+                ledger: 0,
+                outbox: 0,
+            }
+        );
     }
 
     #[test]
@@ -1367,13 +1713,14 @@ mod tests {
             )
             .unwrap(),
         );
-        let validation_replay = replayed(
+        let validation_replay = replayed_outcome(
             validate_proposal(
                 &mut store,
                 context("idem:validate:replay", 102),
                 validation_request,
             )
             .unwrap(),
+            &validated,
         );
         assert_eq!(
             validation_replay.receipt_id.as_ref(),
@@ -1383,7 +1730,7 @@ mod tests {
         let submit_request = SubmitProposalRequest {
             changeset_id: review_id.clone(),
             expected_revision: validated.changeset_revision,
-            validation_digest: validated.validation_digest.unwrap(),
+            validation_digest: validated.validation_digest.clone().unwrap(),
             summary: "submit replay".to_string(),
         };
         let submitted = accepted(
@@ -1394,13 +1741,14 @@ mod tests {
             )
             .unwrap(),
         );
-        let submit_replay = replayed(
+        let submit_replay = replayed_outcome(
             submit_for_review(
                 &mut store,
                 context("idem:submit:replay", 104),
                 submit_request,
             )
             .unwrap(),
+            &submitted,
         );
         assert_eq!(
             submit_replay.receipt_id.as_ref(),
@@ -1434,13 +1782,14 @@ mod tests {
             )
             .unwrap(),
         );
-        let cancel_replay = replayed(
+        let cancel_replay = replayed_outcome(
             cancel_proposal(
                 &mut store,
                 context("idem:cancel:replay", 202),
                 cancel_request,
             )
             .unwrap(),
+            &cancelled,
         );
         assert_eq!(
             cancel_replay.receipt_id.as_ref(),
@@ -1479,13 +1828,14 @@ mod tests {
             )
             .unwrap(),
         );
-        let supersede_replay = replayed(
+        let supersede_replay = replayed_outcome(
             supersede_proposal(
                 &mut store,
                 context("idem:supersede:replay", 302),
                 supersede_request,
             )
             .unwrap(),
+            &superseded,
         );
         assert_eq!(
             supersede_replay.receipt_id.as_ref(),

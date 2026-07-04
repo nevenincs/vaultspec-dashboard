@@ -10,17 +10,18 @@ use std::collections::BTreeSet;
 use ingest_struct::reader::blob_oid;
 use serde::{Deserialize, Serialize};
 
+use super::actors::{actor_kind_from_name, actor_kind_name, actor_provenance_key};
 use super::api::{ChangesetOperationKind, TargetRevisionFence};
 use super::model::{
-    AuthoringModelError, ChangesetId, ChangesetKind, ChangesetStatus, RevisionToken, SessionId,
-    validate_authoring_token,
+    ActorId, ActorRef, AuthoringModelError, ChangesetId, ChangesetKind, ChangesetStatus,
+    RevisionToken, SessionId, validate_authoring_token,
 };
 use super::operations::MaterializedProposalOperation;
 use super::store::unit_of_work::{Repository, SqliteRepository, UnitOfWork};
 use super::store::{Result as StoreResult, StoreError};
 use super::transitions::ledger_append_transition_blocker;
 
-const LEDGER_SCHEMA: &str = "authoring.ledger.v1";
+const LEDGER_SCHEMA: &str = "authoring.ledger.v2";
 
 #[derive(Debug, thiserror::Error)]
 pub enum LedgerError {
@@ -53,6 +54,7 @@ pub struct ChangesetRevisionInput {
     pub status: ChangesetStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<SessionId>,
+    pub actor: ActorRef,
     pub summary: String,
     pub children: Vec<ChangesetChildOperationInput>,
     pub created_at_ms: i64,
@@ -101,6 +103,8 @@ pub struct ChangesetAggregateRecord {
     pub status: ChangesetStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<SessionId>,
+    pub actor: ActorRef,
+    pub actor_provenance_key: String,
     pub summary: String,
     pub operation_count: usize,
     pub aggregate_digest: String,
@@ -112,6 +116,7 @@ impl ChangesetAggregateRecord {
     pub fn new(input: ChangesetRevisionInput) -> Result<Self> {
         validate_revision_input(&input)?;
         let digest = aggregate_digest(&input)?;
+        let actor_provenance_key = actor_provenance_key(&input.actor);
         let changeset_revision = RevisionToken::new(format!("changeset:{}", digest_hash(&digest)))?;
         let children = input
             .children
@@ -134,6 +139,8 @@ impl ChangesetAggregateRecord {
             kind: input.kind,
             status: input.status,
             session_id: input.session_id,
+            actor: input.actor,
+            actor_provenance_key,
             summary: input.summary,
             operation_count: children.len(),
             aggregate_digest: digest,
@@ -219,6 +226,8 @@ struct AggregateDigestInput<'a> {
     kind: ChangesetKind,
     status: ChangesetStatus,
     session_id: &'a Option<SessionId>,
+    actor: &'a ActorRef,
+    actor_provenance_key: String,
     summary: &'a str,
     created_at_ms: i64,
     children: Vec<ChildDigestInput<'a>>,
@@ -266,6 +275,7 @@ fn validate_child_key(value: &str) -> Result<()> {
 }
 
 fn aggregate_digest(input: &ChangesetRevisionInput) -> Result<String> {
+    let actor_provenance_key = actor_provenance_key(&input.actor);
     let children = input
         .children
         .iter()
@@ -287,6 +297,8 @@ fn aggregate_digest(input: &ChangesetRevisionInput) -> Result<String> {
         kind: input.kind,
         status: input.status,
         session_id: &input.session_id,
+        actor: &input.actor,
+        actor_provenance_key,
         summary: input.summary.as_str(),
         created_at_ms: input.created_at_ms,
         children,
@@ -312,6 +324,10 @@ struct StoredRevisionRow {
     summary: String,
     operation_count: i64,
     aggregate_digest: String,
+    actor_id: String,
+    actor_kind: String,
+    delegated_by_actor_id: String,
+    actor_provenance_key: String,
     created_at_ms: i64,
     record: ChangesetAggregateRecord,
 }
@@ -341,6 +357,7 @@ impl<'conn> UnitOfWork<'conn> {
 
 impl LedgerRepository<'_, '_> {
     pub fn append_revision(&self, record: &ChangesetAggregateRecord) -> StoreResult<()> {
+        self.validate_active_actor(record)?;
         validate_record_for_store(record)?;
         self.validate_append_chain(record)?;
         let record_json =
@@ -349,9 +366,10 @@ impl LedgerRepository<'_, '_> {
             "INSERT INTO authoring_changeset_revisions
                 (changeset_id, changeset_revision, previous_revision, changeset_kind,
                  status, session_id, summary, operation_count, aggregate_digest,
+                 actor_id, actor_kind, delegated_by_actor_id, actor_provenance_key,
                  created_at_ms, record_json)
              VALUES
-                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             rusqlite::params![
                 record.changeset_id.as_str(),
                 record.changeset_revision.as_str(),
@@ -362,6 +380,10 @@ impl LedgerRepository<'_, '_> {
                 record.summary.as_str(),
                 record.operation_count as i64,
                 record.aggregate_digest.as_str(),
+                record.actor.id.as_str(),
+                actor_kind_name(record.actor.kind),
+                delegated_by_key(&record.actor),
+                record.actor_provenance_key.as_str(),
                 record.created_at_ms,
                 record_json.as_str(),
             ],
@@ -372,6 +394,35 @@ impl LedgerRepository<'_, '_> {
         Ok(())
     }
 
+    fn validate_active_actor(&self, record: &ChangesetAggregateRecord) -> StoreResult<()> {
+        let status = self.repo.query_optional(
+            "SELECT status
+             FROM authoring_actor_records
+             WHERE actor_id = ?1
+               AND actor_kind = ?2",
+            rusqlite::params![record.actor.id.as_str(), actor_kind_name(record.actor.kind)],
+            |row| row.get::<_, String>(0),
+        )?;
+        match status.as_deref() {
+            Some("active") => Ok(()),
+            Some("stale") => Err(StoreError::Actor(format!(
+                "actor `{}` of kind `{}` is stale",
+                record.actor.id,
+                actor_kind_name(record.actor.kind)
+            ))),
+            Some(other) => Err(StoreError::Actor(format!(
+                "actor `{}` of kind `{}` has unsupported status `{other}`",
+                record.actor.id,
+                actor_kind_name(record.actor.kind)
+            ))),
+            None => Err(StoreError::Actor(format!(
+                "actor `{}` of kind `{}` is not registered",
+                record.actor.id,
+                actor_kind_name(record.actor.kind)
+            ))),
+        }
+    }
+
     pub fn revision(
         &self,
         changeset_id: &ChangesetId,
@@ -380,7 +431,8 @@ impl LedgerRepository<'_, '_> {
         let row = self.repo.query_optional(
             "SELECT changeset_id, changeset_revision, previous_revision,
                     changeset_kind, status, session_id, summary, operation_count,
-                    aggregate_digest, created_at_ms, record_json
+                    aggregate_digest, actor_id, actor_kind, delegated_by_actor_id,
+                    actor_provenance_key, created_at_ms, record_json
              FROM authoring_changeset_revisions
              WHERE changeset_id = ?1
                AND changeset_revision = ?2",
@@ -397,7 +449,8 @@ impl LedgerRepository<'_, '_> {
         let row = self.repo.query_optional(
             "SELECT changeset_id, changeset_revision, previous_revision,
                     changeset_kind, status, session_id, summary, operation_count,
-                    aggregate_digest, created_at_ms, record_json
+                    aggregate_digest, actor_id, actor_kind, delegated_by_actor_id,
+                    actor_provenance_key, created_at_ms, record_json
              FROM authoring_changeset_revisions
              WHERE changeset_id = ?1
              ORDER BY seq DESC
@@ -412,7 +465,8 @@ impl LedgerRepository<'_, '_> {
         let rows = self.repo.query_collect(
             "SELECT changeset_id, changeset_revision, previous_revision,
                     changeset_kind, status, session_id, summary, operation_count,
-                    aggregate_digest, created_at_ms, record_json
+                    aggregate_digest, actor_id, actor_kind, delegated_by_actor_id,
+                    actor_provenance_key, created_at_ms, record_json
              FROM authoring_changeset_revisions
              WHERE changeset_id = ?1
              ORDER BY seq ASC",
@@ -532,7 +586,7 @@ impl LedgerRepository<'_, '_> {
 }
 
 fn read_revision_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredRevisionRow> {
-    let record_json: String = row.get(10)?;
+    let record_json: String = row.get(14)?;
     let record = serde_json::from_str(&record_json).map_err(to_sql_error)?;
     Ok(StoredRevisionRow {
         changeset_id: row.get(0)?,
@@ -544,7 +598,11 @@ fn read_revision_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredRevision
         summary: row.get(6)?,
         operation_count: row.get(7)?,
         aggregate_digest: row.get(8)?,
-        created_at_ms: row.get(9)?,
+        actor_id: row.get(9)?,
+        actor_kind: row.get(10)?,
+        delegated_by_actor_id: row.get(11)?,
+        actor_provenance_key: row.get(12)?,
+        created_at_ms: row.get(13)?,
         record,
     })
 }
@@ -612,6 +670,35 @@ fn validate_revision_row(row: StoredRevisionRow) -> StoreResult<ChangesetAggrega
         row.aggregate_digest.as_str(),
         record.aggregate_digest.as_str(),
     )?;
+    expect_column("actor_id", row.actor_id.as_str(), record.actor.id.as_str())?;
+    expect_column(
+        "actor_kind",
+        row.actor_kind.as_str(),
+        actor_kind_name(record.actor.kind),
+    )?;
+    if actor_kind_from_name(&row.actor_kind).map_err(|err| StoreError::Ledger(err.to_string()))?
+        != record.actor.kind
+    {
+        return Err(StoreError::Ledger(
+            "actor_kind column cannot be decoded as ledger record actor kind".to_string(),
+        ));
+    }
+    expect_optional_column(
+        "delegated_by_actor_id",
+        empty_as_none(row.delegated_by_actor_id.as_str()),
+        record.actor.delegated_by.as_ref().map(ActorId::as_str),
+    )?;
+    expect_column(
+        "actor_provenance_key",
+        row.actor_provenance_key.as_str(),
+        record.actor_provenance_key.as_str(),
+    )?;
+    let recomputed_actor_key = actor_provenance_key(&record.actor);
+    if record.actor_provenance_key != recomputed_actor_key {
+        return Err(StoreError::Ledger(
+            "actor_provenance_key does not match ledger actor".to_string(),
+        ));
+    }
     if row.created_at_ms != record.created_at_ms {
         return Err(StoreError::Ledger(format!(
             "column created_at_ms `{}` does not match ledger record `{}`",
@@ -753,6 +840,11 @@ fn validate_record_for_store(record: &ChangesetAggregateRecord) -> StoreResult<(
             "operation_count must match non-empty children".to_string(),
         ));
     }
+    if record.actor_provenance_key != actor_provenance_key(&record.actor) {
+        return Err(StoreError::Ledger(
+            "actor_provenance_key does not match ledger actor".to_string(),
+        ));
+    }
     let mut child_keys = BTreeSet::new();
     for (expected_order, child) in record.children.iter().enumerate() {
         validate_child_key(&child.child_key).map_err(|err| StoreError::Ledger(err.to_string()))?;
@@ -800,6 +892,7 @@ fn recompute_record_identity(record: &ChangesetAggregateRecord) -> Result<(Strin
         kind: record.kind,
         status: record.status,
         session_id: record.session_id.clone(),
+        actor: record.actor.clone(),
         summary: record.summary.clone(),
         children: record
             .children
@@ -818,6 +911,18 @@ fn recompute_record_identity(record: &ChangesetAggregateRecord) -> Result<(Strin
     let digest = aggregate_digest(&input)?;
     let revision = RevisionToken::new(format!("changeset:{}", digest_hash(&digest)))?;
     Ok((digest, revision))
+}
+
+fn delegated_by_key(actor: &ActorRef) -> &str {
+    actor
+        .delegated_by
+        .as_ref()
+        .map(ActorId::as_str)
+        .unwrap_or("")
+}
+
+fn empty_as_none(value: &str) -> Option<&str> {
+    if value.is_empty() { None } else { Some(value) }
 }
 
 fn changeset_kind_as_str(kind: ChangesetKind) -> &'static str {
@@ -868,7 +973,10 @@ fn to_sql_error(error: impl std::error::Error + Send + Sync + 'static) -> rusqli
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::authoring::model::{CommandKind, DocumentRef, ProvisionalCollisionStatus};
+    use crate::authoring::actors::{ActorDisplayMetadata, ActorRecordInput};
+    use crate::authoring::model::{
+        ActorId, ActorKind, ActorRef, CommandKind, DocumentRef, ProvisionalCollisionStatus,
+    };
     use crate::authoring::store::Store;
 
     fn changeset_id() -> ChangesetId {
@@ -877,6 +985,14 @@ mod tests {
 
     fn session_id() -> SessionId {
         SessionId::new("session_1").unwrap()
+    }
+
+    fn actor() -> ActorRef {
+        ActorRef {
+            id: ActorId::new("agent:ledger-tests").unwrap(),
+            kind: ActorKind::Agent,
+            delegated_by: None,
+        }
     }
 
     fn revision(value: &str) -> RevisionToken {
@@ -945,6 +1061,7 @@ mod tests {
             kind: ChangesetKind::Authoring,
             status,
             session_id: Some(session_id()),
+            actor: actor(),
             summary: summary.to_string(),
             children,
             created_at_ms,
@@ -953,6 +1070,22 @@ mod tests {
     }
 
     fn temp_store() -> (tempfile::TempDir, Store) {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join(".vault")).unwrap();
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.actors().put_record(ActorRecordInput::active(
+                    actor(),
+                    ActorDisplayMetadata::new("Ledger test agent", None),
+                    1,
+                ))?;
+                Ok(())
+            })
+            .unwrap();
+        (dir, store)
+    }
+
+    fn unregistered_temp_store() -> (tempfile::TempDir, Store) {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(&dir.path().join(".vault")).unwrap();
         (dir, store)
@@ -1004,6 +1137,42 @@ mod tests {
         assert_eq!(latest.changeset_revision, second.changeset_revision);
         assert_eq!(latest.previous_revision, Some(first.changeset_revision));
         assert_eq!(latest.status, ChangesetStatus::Proposed);
+    }
+
+    #[test]
+    fn append_rejects_unregistered_actor_before_insert() {
+        let (_dir, mut store) = unregistered_temp_store();
+        let record = record(
+            None,
+            ChangesetStatus::Draft,
+            "unregistered actor proposal",
+            vec![child(
+                "child_1",
+                ChangesetOperationKind::ReplaceBody,
+                existing_doc("ledger-a", "blob:aaa111"),
+            )],
+            100,
+        );
+
+        let err = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.ledger().append_revision(&record)
+            })
+            .unwrap_err();
+
+        assert!(
+            matches!(err, StoreError::Actor(ref detail) if detail.contains("not registered")),
+            "unexpected actor validation error: {err}"
+        );
+        let conn = rusqlite::Connection::open(store.path()).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM authoring_changeset_revisions",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]
@@ -1064,6 +1233,7 @@ mod tests {
             kind: ChangesetKind::Authoring,
             status: ChangesetStatus::Draft,
             session_id: Some(session_id()),
+            actor: actor(),
             summary: "duplicate child".to_string(),
             children: vec![
                 child(
@@ -1095,6 +1265,7 @@ mod tests {
             kind: ChangesetKind::Authoring,
             status: ChangesetStatus::Draft,
             session_id: Some(session_id()),
+            actor: actor(),
             summary: "invalid child".to_string(),
             children: vec![child(
                 "child_1 ",
@@ -1508,6 +1679,57 @@ mod tests {
             (
                 "material:tampered",
                 serde_json::to_string(&tampered.children[0]).unwrap(),
+                record.changeset_id.as_str(),
+                record.changeset_revision.as_str(),
+            ),
+        )
+        .unwrap();
+        drop(conn);
+
+        let err = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.ledger().history(&record.changeset_id)
+            })
+            .unwrap_err();
+
+        assert!(matches!(err, StoreError::Ledger(detail) if detail.contains("aggregate_digest")));
+    }
+
+    #[test]
+    fn actor_provenance_tamper_is_rejected_on_reconstruction() {
+        let (_dir, mut store) = temp_store();
+        let record = record(
+            None,
+            ChangesetStatus::Draft,
+            "actor tamper proposal",
+            vec![child(
+                "child_1",
+                ChangesetOperationKind::ReplaceBody,
+                existing_doc("ledger-a", "blob:aaa111"),
+            )],
+            100,
+        );
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.ledger().append_revision(&record)
+            })
+            .unwrap();
+
+        let mut tampered = record.clone();
+        tampered.actor.delegated_by = Some(ActorId::new("human:alice").unwrap());
+        tampered.actor_provenance_key = actor_provenance_key(&tampered.actor);
+        let conn = rusqlite::Connection::open(store.path()).unwrap();
+        conn.execute(
+            "UPDATE authoring_changeset_revisions
+             SET delegated_by_actor_id = ?1,
+                 actor_provenance_key = ?2,
+                 record_json = ?3
+             WHERE changeset_id = ?4
+               AND changeset_revision = ?5",
+            (
+                "human:alice",
+                tampered.actor_provenance_key.as_str(),
+                serde_json::to_string(&tampered).unwrap(),
                 record.changeset_id.as_str(),
                 record.changeset_revision.as_str(),
             ),

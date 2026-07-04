@@ -978,7 +978,8 @@ mod tests {
     use crate::authoring::api::{ChangesetOperationKind, TargetRevisionFence};
     use crate::authoring::ledger::{ChangesetChildOperationInput, ChangesetRevisionInput};
     use crate::authoring::model::{
-        ChangesetId, DocumentRef, ProvisionalCollisionStatus, RevisionToken, SessionId,
+        ActorId, ActorKind, ActorRef, ChangesetId, DocumentRef, ProvisionalCollisionStatus,
+        RevisionToken, SessionId,
     };
 
     fn changeset_id(value: &str) -> ChangesetId {
@@ -987,6 +988,14 @@ mod tests {
 
     fn session_id() -> SessionId {
         SessionId::new("session_1").unwrap()
+    }
+
+    fn actor() -> ActorRef {
+        ActorRef {
+            id: ActorId::new("agent:transition-tests").unwrap(),
+            kind: ActorKind::Agent,
+            delegated_by: None,
+        }
     }
 
     fn revision(value: &str) -> RevisionToken {
@@ -1052,6 +1061,7 @@ mod tests {
             kind,
             status,
             session_id: Some(session_id()),
+            actor: actor(),
             summary: "transition proposal".to_string(),
             children,
             created_at_ms: 100,

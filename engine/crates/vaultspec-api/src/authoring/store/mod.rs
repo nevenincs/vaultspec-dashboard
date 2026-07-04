@@ -20,7 +20,7 @@ use super::model::CommandKind;
 pub const DB_FILENAME: &str = "authoring-state.sqlite3";
 const AUTHORING_DATA_DIR: &str = "authoring-state";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-const SCHEMA_VERSION: i64 = 7;
+const SCHEMA_VERSION: i64 = 8;
 const STORE_KIND: &str = "vaultspec_authoring";
 
 const METADATA_SCHEMA: &str = "
@@ -411,6 +411,57 @@ SET schema_version = 7
 WHERE singleton = 1;
 ";
 
+const ACTOR_PROVENANCE_SCHEMA: &str = "
+CREATE TABLE authoring_v8_empty_ledger_guard (
+    must_be_empty INTEGER NOT NULL CHECK (must_be_empty = 0)
+);
+INSERT INTO authoring_v8_empty_ledger_guard (must_be_empty)
+    SELECT 1
+    WHERE EXISTS (SELECT 1 FROM authoring_changeset_revisions LIMIT 1);
+DROP TABLE authoring_v8_empty_ledger_guard;
+
+CREATE TABLE authoring_actor_records (
+    actor_id       TEXT NOT NULL,
+    actor_kind     TEXT NOT NULL CHECK (
+        actor_kind IN ('human', 'agent')
+    ),
+    display_name   TEXT NOT NULL,
+    display_summary TEXT,
+    status         TEXT NOT NULL CHECK (status IN ('active', 'stale')),
+    provenance_key TEXT NOT NULL,
+    created_at_ms  INTEGER NOT NULL,
+    updated_at_ms  INTEGER NOT NULL,
+    record_json    TEXT NOT NULL,
+    PRIMARY KEY (actor_id, actor_kind)
+) WITHOUT ROWID;
+
+CREATE UNIQUE INDEX idx_authoring_actor_records_provenance_key
+    ON authoring_actor_records (provenance_key);
+CREATE INDEX idx_authoring_actor_records_status
+    ON authoring_actor_records (status, actor_kind);
+
+ALTER TABLE authoring_changeset_revisions
+    ADD COLUMN actor_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE authoring_changeset_revisions
+    ADD COLUMN actor_kind TEXT NOT NULL DEFAULT '';
+ALTER TABLE authoring_changeset_revisions
+    ADD COLUMN delegated_by_actor_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE authoring_changeset_revisions
+    ADD COLUMN actor_provenance_key TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX idx_authoring_changeset_revisions_actor
+    ON authoring_changeset_revisions (
+        actor_id,
+        actor_kind,
+        delegated_by_actor_id,
+        seq
+    );
+
+UPDATE authoring_store_metadata
+SET schema_version = 8
+WHERE singleton = 1;
+";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Migration {
     version: i64,
@@ -454,6 +505,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "create_authoring_changeset_ledger",
         sql: LEDGER_SCHEMA,
     },
+    Migration {
+        version: 8,
+        name: "create_authoring_actor_records_and_ledger_provenance",
+        sql: ACTOR_PROVENANCE_SCHEMA,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -481,6 +537,8 @@ pub enum StoreError {
     MigrationMetadata(String),
     #[error("authoring idempotency record error: {0}")]
     Idempotency(String),
+    #[error("authoring actor record error: {0}")]
+    Actor(String),
     #[error("authoring retention record error: {0}")]
     Retention(String),
     #[error("authoring outbox event error: {0}")]
@@ -786,6 +844,10 @@ mod tests {
                         version: 7,
                         name: "create_authoring_changeset_ledger".to_string(),
                     },
+                    AppliedMigration {
+                        version: 8,
+                        name: "create_authoring_actor_records_and_ledger_provenance".to_string(),
+                    },
                 ]
             );
             let table_count: i64 = store
@@ -806,6 +868,7 @@ mod tests {
                            'authoring_outbox_events',
                            'authoring_document_preimages',
                            'authoring_validation_records',
+                           'authoring_actor_records',
                            'authoring_changeset_revisions',
                            'authoring_changeset_child_operations'
                         )",
@@ -813,12 +876,57 @@ mod tests {
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(table_count, 13);
+            assert_eq!(table_count, 14);
         }
 
         let reopened = Store::open_at(&path).expect("authoring store reopens");
         let metadata = reopened.schema_metadata().unwrap();
         assert_eq!(metadata.schema_version, SCHEMA_VERSION);
+        assert_eq!(metadata.applied_migrations.len(), 8);
+    }
+
+    #[test]
+    fn v8_migration_refuses_populated_unattributed_ledger() {
+        let (_dir, path) = temp_db();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(METADATA_SCHEMA).unwrap();
+        for migration in &MIGRATIONS[..7] {
+            let tx = conn.unchecked_transaction().unwrap();
+            tx.execute_batch(migration.sql).unwrap();
+            tx.execute(
+                "INSERT INTO authoring_schema_migrations
+                    (version, name, applied_at_ms)
+                 VALUES
+                    (?1, ?2, 1)",
+                (migration.version, migration.name),
+            )
+            .unwrap();
+            tx.pragma_update(None, "user_version", migration.version)
+                .unwrap();
+            tx.commit().unwrap();
+        }
+        conn.execute(
+            "INSERT INTO authoring_changeset_revisions
+                (changeset_id, changeset_revision, previous_revision, changeset_kind,
+                 status, session_id, summary, operation_count, aggregate_digest,
+                 created_at_ms, record_json)
+             VALUES
+                ('changeset_legacy', 'changeset:legacy', NULL, 'authoring',
+                 'draft', NULL, 'legacy row', 1, 'ledger:legacy', 1, '{}')",
+            [],
+        )
+        .unwrap();
+
+        let err = run_migrations(&conn, MIGRATIONS).unwrap_err();
+
+        assert!(
+            matches!(err, StoreError::Sqlite(_)),
+            "populated unattributed v7 ledger must fail loudly, got {err:?}"
+        );
+        assert_eq!(user_version(&conn).unwrap(), 7);
+        let metadata = read_schema_metadata(&conn).unwrap();
+        assert_eq!(metadata.schema_version, 7);
         assert_eq!(metadata.applied_migrations.len(), 7);
     }
 
