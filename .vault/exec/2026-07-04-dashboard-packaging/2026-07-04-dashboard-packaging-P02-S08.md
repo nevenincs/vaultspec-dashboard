@@ -28,3 +28,5 @@ related:
 ## Notes
 
 - Changing the tiers shape is a contract event per the wire-contract rule; it is the deliberate, ADR-decided D6 mechanism (additive fields, tolerant adapters), not incidental drift.
+- Review revision: the underlying `core_version()` probe in `engine/crates/ingest-core/src/runner.rs` was rebounded (64 KiB cap + 30 s deadline + kill, the capability-probe pattern) because the startup gate promoted it onto the serve critical path where an unbounded child could hang startup.
+- Conscious exclusion, recorded per review: the ungated `/health` liveness body and the as-of/temporal envelopes serialize tiers without the component block - the handshake describes present-machine component state, which historical as-of reads and the static liveness probe do not carry. A component-less block degrades gracefully by test.

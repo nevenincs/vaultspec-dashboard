@@ -18,14 +18,13 @@ related:
 ## Description
 
 - Extend `TiersBlock` with the served, optional per-tier `component` handshake (`TierComponent`: name, floor, version, meets_floor)
-- Fold the served `meets_floor: false` verdict into the ONE degradation reader (`readTierAvailability`): a below-floor component degrades its tier even when nominally available, so all twenty-plus consuming surfaces (authoring eligibility on `declared`, semantic panels on `semantic`) block or grey automatically
-- The engine-served reason always wins; only when the engine supplied no reason does the client word a presentation label from the served fields ("vaultspec-core 0.1.34 is older than the supported version 0.1.36")
-- Add `engine.tierComponent.test.ts`: below-floor degrades with the worded reason, floor-met stays healthy, an unknown (null) verdict never degrades on its own, the served reason wins, and a component-less block behaves exactly as before
+- Expose the handshake through the ONE degradation reader (`readTierAvailability`) as an advisory `components` map on `TierAvailability` - deliberately NOT folded into `degraded` (review revision): a below-floor core still reads fine, and the engine's own served eligibility is what blocks the authoring verbs it cannot honor, so the client never invents a whole-tier degradation over working read surfaces
+- Add `engine.tierComponent.test.ts`: a below-floor component is exposed but never degrades an available tier, component data rides along on a degraded tier with the engine reason intact, rag's honestly-null version is preserved, and a component-less block behaves exactly as before
 
 ## Outcome
 
-The five new tests pass; the full frontend suite passes (2648 tests, one pre-existing unrelated failure fixed separately in the stale target-to-type wire assertion); `just dev lint frontend` exits 0. The conformance suite is unaffected (presence-based tiers assertions).
+The four reader tests pass, `tsc -b` and the full `just dev lint frontend` gate exit 0, and the full frontend suite passed (2648 tests; one pre-existing unrelated stale wire assertion fixed separately). The conformance suite is unaffected (presence-based tiers assertions).
 
 ## Notes
 
-- No surface reads the raw block; the verdict is engine-served and the client only words the label, per the wire-contract rule that displayed state is backend-served.
+- First landing folded `meets_floor: false` into `degraded`; the P02 review correctly flagged that as broader than the ADR (D6 blocks AUTHORING on a stale core - reads keep working on old verbs) and it was revised to the advisory exposure recorded above. Authoring blocking remains the engine's served eligibility, which the capability probe already degrades on a stale core.

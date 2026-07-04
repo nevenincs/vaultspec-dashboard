@@ -172,6 +172,12 @@ export interface TierAvailability {
   degradedTiers: string[];
   /** Per-tier human reason the engine supplied, keyed by tier name. */
   reasons: Record<string, string>;
+  /** The served component handshake per inspected tier, when the engine
+   *  attached one (dashboard-packaging D6): advisory floor/version data for
+   *  status surfaces. Never folded into `degraded` — the engine's served
+   *  eligibility is the authority on what a below-floor component blocks.
+   *  Optional so composed availability shapes need not carry it. */
+  components?: Record<string, TierComponent>;
 }
 
 /**
@@ -187,28 +193,26 @@ export function readTierAvailability(
   tiers: TiersBlock | undefined,
   tierNames: readonly string[],
 ): TierAvailability {
-  if (!tiers) return { degraded: false, degradedTiers: [], reasons: {} };
+  if (!tiers)
+    return { degraded: false, degradedTiers: [], reasons: {}, components: {} };
   const degradedTiers: string[] = [];
   const reasons: Record<string, string> = {};
+  const components: Record<string, TierComponent> = {};
   for (const tier of tierNames) {
     const state = tiers[tier];
-    // A tier whose component handshake reports a below-floor sibling is
-    // degraded even when nominally available (dashboard-packaging D6): the
-    // served verdict is the truth; the client only words the label.
-    const belowFloor = state?.component?.meets_floor === false;
-    if (state === undefined || state.available === false || belowFloor) {
+    // The component handshake (dashboard-packaging D6) is exposed as served
+    // data, NOT folded into `degraded`: a below-floor core still reads fine —
+    // the engine's own served eligibility blocks the authoring verbs it
+    // cannot honor, and inventing a whole-tier client-side degradation would
+    // grey working read surfaces (P02 review). Surfaces that want to render
+    // component staleness (status chrome, settings) read `components`.
+    if (state?.component) components[tier] = state.component;
+    if (state === undefined || state.available === false) {
       degradedTiers.push(tier);
-      if (state?.reason) {
-        reasons[tier] = state.reason;
-      } else if (belowFloor && state.component) {
-        const probed = state.component.version ?? "an unknown version";
-        reasons[tier] =
-          `${state.component.name} ${probed} is older than the supported ` +
-          `version ${state.component.floor} - update it to restore this data`;
-      }
+      if (state?.reason) reasons[tier] = state.reason;
     }
   }
-  return { degraded: degradedTiers.length > 0, degradedTiers, reasons };
+  return { degraded: degradedTiers.length > 0, degradedTiers, reasons, components };
 }
 
 /**

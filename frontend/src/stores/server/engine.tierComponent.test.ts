@@ -1,15 +1,16 @@
 // The component compatibility handshake read (dashboard-packaging D6, P02.S10):
-// the ONE tiers reader folds the engine-served floor verdict into degradation,
-// so a below-floor vaultspec-core blocks the surfaces riding the declared tier
-// and an absent rag greys semantic panels — without any surface reading the raw
-// block or the client re-deriving a verdict the engine already served.
+// the ONE tiers reader exposes the engine-served per-tier component handshake
+// (floor, probed version, verdict) as advisory data for status surfaces. It is
+// deliberately NOT folded into `degraded` (P02 review): a below-floor core
+// still reads fine — the engine's own served eligibility blocks the authoring
+// verbs it cannot honor, so the client never invents a whole-tier degradation.
 
 import { describe, expect, test } from "vitest";
 
 import { readTierAvailability, type TiersBlock } from "./engine";
 
 describe("readTierAvailability with the component handshake", () => {
-  test("a below-floor core degrades the declared tier even when nominally available", () => {
+  test("a below-floor component is exposed but never degrades an available tier", () => {
     const tiers: TiersBlock = {
       declared: {
         available: true,
@@ -23,45 +24,16 @@ describe("readTierAvailability with the component handshake", () => {
       semantic: { available: true },
     };
     const availability = readTierAvailability(tiers, ["declared"]);
-    expect(availability.degraded).toBe(true);
-    expect(availability.degradedTiers).toEqual(["declared"]);
-    expect(availability.reasons.declared).toContain("vaultspec-core 0.1.34");
-    expect(availability.reasons.declared).toContain("0.1.36");
+    expect(availability.degraded).toBe(false);
+    expect(availability.components?.declared).toMatchObject({
+      name: "vaultspec-core",
+      floor: "0.1.36",
+      version: "0.1.34",
+      meets_floor: false,
+    });
   });
 
-  test("a floor-meeting core leaves an available tier healthy", () => {
-    const tiers: TiersBlock = {
-      declared: {
-        available: true,
-        component: {
-          name: "vaultspec-core",
-          floor: "0.1.36",
-          version: "0.1.36",
-          meets_floor: true,
-        },
-      },
-    };
-    expect(readTierAvailability(tiers, ["declared"]).degraded).toBe(false);
-  });
-
-  test("an unknown verdict (null) never degrades on its own", () => {
-    // meets_floor null = version unprobeable; the tier's own availability is
-    // the only truth then — the client must not guess degradation.
-    const tiers: TiersBlock = {
-      semantic: {
-        available: true,
-        component: {
-          name: "vaultspec-rag",
-          floor: "0.2.28",
-          version: null,
-          meets_floor: null,
-        },
-      },
-    };
-    expect(readTierAvailability(tiers, ["semantic"]).degraded).toBe(false);
-  });
-
-  test("the engine-served reason wins over the client-worded floor label", () => {
+  test("component data rides along on a degraded tier with the engine reason intact", () => {
     const tiers: TiersBlock = {
       declared: {
         available: false,
@@ -77,6 +49,24 @@ describe("readTierAvailability with the component handshake", () => {
     const availability = readTierAvailability(tiers, ["declared"]);
     expect(availability.degraded).toBe(true);
     expect(availability.reasons.declared).toBe("core exited unsuccessfully");
+    expect(availability.components?.declared?.meets_floor).toBe(false);
+  });
+
+  test("the rag component's honestly-null version is preserved", () => {
+    const tiers: TiersBlock = {
+      semantic: {
+        available: true,
+        component: {
+          name: "vaultspec-rag",
+          floor: "0.2.28",
+          version: null,
+          meets_floor: null,
+        },
+      },
+    };
+    const availability = readTierAvailability(tiers, ["semantic"]);
+    expect(availability.degraded).toBe(false);
+    expect(availability.components?.semantic?.version).toBeNull();
   });
 
   test("a component-less block behaves exactly as before", () => {
@@ -87,5 +77,6 @@ describe("readTierAvailability with the component handshake", () => {
     const availability = readTierAvailability(tiers, ["declared", "semantic"]);
     expect(availability.degradedTiers).toEqual(["semantic"]);
     expect(availability.reasons.semantic).toBe("rag service not installed");
+    expect(availability.components).toEqual({});
   });
 });

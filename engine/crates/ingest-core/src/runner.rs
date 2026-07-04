@@ -425,20 +425,42 @@ pub const MIN_READONLY_WORKTREE_GRAPH: (u64, u64, u64) = (0, 1, 34);
 pub fn core_version() -> Option<(u64, u64, u64)> {
     static VERSION: OnceLock<Option<(u64, u64, u64)>> = OnceLock::new();
     *VERSION.get_or_init(|| {
+        // Bounded like the capability probe (resource-bounds: every subprocess
+        // carries an output cap AND a wall-clock deadline). This probe sits on
+        // the serve startup gate (dashboard-packaging D3), so a stuck child —
+        // e.g. a stalled cold `uv run` resolve — must be killed and reported
+        // as unknown, never allowed to hang startup.
         let invocation = CoreRunner::detect().invocation;
         let (program, leading) = invocation.split_first()?;
-        let out = Command::new(program)
+        let mut child = Command::new(program)
             .args(leading)
             .arg("--version")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .output()
+            .spawn()
             .ok()?;
-        if !out.status.success() {
+        let stdout_pipe = child.stdout.take().expect("piped stdout");
+        let (tx, rx) = mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let res = stdout_pipe
+                .take(64 * 1024)
+                .read_to_end(&mut buf)
+                .map(|_| buf);
+            let _ = tx.send(res);
+        });
+        let drained = rx.recv_timeout(CAPABILITY_PROBE_TIMEOUT);
+        if drained.is_err() {
+            let _ = child.kill();
+        }
+        let status = child.wait();
+        let _ = reader.join();
+        let bytes = drained.ok()?.ok()?;
+        if !status.map(|s| s.success()).unwrap_or(false) {
             return None;
         }
-        parse_semver(&String::from_utf8_lossy(&out.stdout))
+        parse_semver(&String::from_utf8_lossy(&bytes))
     })
 }
 
