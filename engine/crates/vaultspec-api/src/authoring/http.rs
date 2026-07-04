@@ -25,15 +25,17 @@ use axum::extract::{FromRequest, Path, Request, State};
 use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use ingest_struct::reader::blob_oid;
 use serde::de::DeserializeOwned;
 use serde_json::json;
 
+use super::actors::{ActorDisplayMetadata, ActorRecordInput};
 use super::api::{
-    ApplyRequest as ApplyRequestDto, CommandEnvelope, CreateProposalRequest, ReviewDecisionRequest,
-    RollbackRequest as RollbackRequestDto, SubmitForReviewRequest,
+    ApplyRequest as ApplyRequestDto, CommandEnvelope, CreateProposalRequest,
+    IssueActorTokenRequest, ReviewDecisionRequest, RollbackRequest as RollbackRequestDto,
+    SubmitForReviewRequest,
 };
 use super::apply::{ApplyError, ApplyOutcome, ApplyRequest};
 use super::approvals::{
@@ -42,8 +44,8 @@ use super::approvals::{
 };
 use super::core_adapter::CoreAdapter;
 use super::model::{
-    ActionEligibility, ActorRef, ApplyState, ApprovalId, ChangesetId, CommandKind, IdempotencyKey,
-    ProposalId, ReviewDecisionKind, RevisionToken,
+    ActionEligibility, ActorId, ActorRef, ApplyState, ApprovalId, ChangesetId, CommandKind,
+    IdempotencyKey, ProposalId, ReviewDecisionKind, RevisionToken,
 };
 use super::principal::{
     AUTHORING_ACTOR_TOKEN_HEADER, AuthenticatedPrincipal, PrincipalDenial, ResolvedCommand,
@@ -347,24 +349,62 @@ pub async fn proposal_snapshot(
     }
 }
 
-/// The `/authoring` router — the read/projection surface, wired with the
-/// principal middleware layer (so a command route added here resolves identity
-/// AFTER `bearer_gate`). This is the router-builder SKELETON: the mutating
-/// command slices, the shared app-router mount, and the `disabled_status` flip
-/// land together in the mount increment. It returns a state-parameterized
-/// `Router<Arc<AppState>>` so the app router supplies state on `.nest`.
+/// The `/authoring` router — the enabled status shell, the read/projection
+/// surface, the propose → review → apply → rollback command routes, and the
+/// actor-token issuance seam — wired with the principal middleware layer so a
+/// command route resolves identity AFTER the app `bearer_gate` (this router nests
+/// under it). Returns a state-parameterized `Router<Arc<AppState>>` so the app
+/// router supplies state on `.nest`.
 pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
-        .route("/v1/proposals", get(list_proposals))
+        // The enabled status shell, moved under the nest so the app router owns
+        // exactly one `/authoring` subtree (no route/nest overlap).
+        .route("/status", get(super::routes::status))
+        // Reads are principal-permissive; mutating commands require a resolved
+        // principal via the `ResolvedCommand` extractor.
+        .route("/v1/proposals", get(list_proposals).post(create_proposal))
         .route("/v1/proposals/{changeset_id}", get(project_proposal))
         .route(
             "/v1/proposals/{changeset_id}/snapshot",
             get(proposal_snapshot),
         )
+        .route(
+            "/v1/proposals/{changeset_id}/submit",
+            post(submit_for_review),
+        )
+        .route(
+            "/v1/reviews/{approval_id}/decisions",
+            post(submit_review_decision),
+        )
+        .route("/v1/apply-requests", post(apply_changeset))
+        .route("/v1/rollback-proposals", post(create_rollback))
+        // The bootstrap seam: mint a per-principal actor token. Machine-bearer-gated
+        // by the app router; the permissive principal layer never blocks it (it uses
+        // a plain JSON body, not the ResolvedCommand extractor).
+        .route("/v1/actor-tokens", post(issue_actor_token))
+        // Unknown `/authoring/*` paths fail as tiered API JSON, not SPA fallback.
+        .fallback(authoring_route_not_found)
+        // Principal resolution runs AFTER the app-level bearer gate (this router is
+        // nested under it): a valid machine bearer first, then the actor principal.
         .layer(axum::middleware::from_fn_with_state(
             state,
             resolve_principal_layer,
         ))
+}
+
+/// Tiered 404 for an unknown `/authoring/*` path (the nested router's fallback), so
+/// an unknown authoring API path fails as enveloped JSON rather than HTML/SPA.
+async fn authoring_route_not_found(
+    State(state): State<Arc<AppState>>,
+    uri: axum::http::Uri,
+) -> Response {
+    super::response::typed_error(
+        &state,
+        StatusCode::NOT_FOUND,
+        "authoring_unknown_route",
+        &format!("unknown API path `{}`", uri.path()),
+    )
+    .into_response()
 }
 
 // --- mutating command handlers --------------------------------------------
@@ -1114,6 +1154,60 @@ fn rollback_outcome_response(state: &AppState, outcome: RollbackOutcome) -> Resp
         }),
     )
     .into_response()
+}
+
+// --- actor-token issuance (the machine-bearer bootstrap seam) ------------------
+
+/// The machine bootstrap principal recorded as `issued_by` on every minted token —
+/// the audited trust root. V1 makes the machine service token the sole
+/// administer-policy holder; a permission module narrows this later.
+const ISSUANCE_PRINCIPAL: &str = "system:bootstrap";
+
+/// Default minted-token lifetime when the request omits one. The issue path clamps
+/// to `MAX_ACTOR_TOKEN_LIFETIME_MS` regardless (a credential is bounded at creation).
+const DEFAULT_ACTOR_TOKEN_LIFETIME_MS: i64 = 24 * 3_600 * 1_000;
+
+/// `POST /authoring/v1/actor-tokens` — mint a per-principal actor token. This is
+/// MACHINE-bearer-gated (the app bearer gate), NOT actor-token-gated — it is what
+/// mints those tokens. It REGISTERS the named actor active (so a subsequent command
+/// does not 403 on `ensure_active` — P39 finding #1), records `issued_by` (the
+/// machine principal), and returns the raw token EXACTLY once (the store persists
+/// only its hash; the raw is never echoed again). V1 issues NON-delegated
+/// principals: a `delegated_by` actor is refused by the registry (a 403).
+pub async fn issue_actor_token(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<IssueActorTokenRequest>,
+) -> Response {
+    let now = now_ms();
+    let issued_by = ActorId::new(ISSUANCE_PRINCIPAL).expect("issuance principal id is valid");
+    let lifetime = request
+        .lifetime_ms
+        .map(|ms| ms.min(i64::MAX as u64) as i64)
+        .unwrap_or(DEFAULT_ACTOR_TOKEN_LIFETIME_MS);
+    let actor = request.actor;
+    let display = ActorDisplayMetadata::new(actor.id.as_str(), None);
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::CreateSession, |uow| {
+            // Register-or-require the actor active so its later commands resolve a
+            // live, registered principal (upsert-safe).
+            uow.actors()
+                .put_record(ActorRecordInput::active(actor.clone(), display, now))?;
+            uow.actor_tokens().issue(&actor, &issued_by, now, lifetime)
+        })
+    }) {
+        Ok(issued) => (
+            StatusCode::CREATED,
+            super::response::snapshot(
+                &state,
+                json!({
+                    "raw_token": issued.raw_token,
+                    "record": issued.record,
+                }),
+            ),
+        )
+            .into_response(),
+        Err(err) => command_error_response(&state, &err),
+    }
 }
 
 #[cfg(test)]
@@ -1941,6 +2035,43 @@ mod tests {
         let body = json_body(response).await;
         assert_eq!(body["data"]["status"], "generated");
         assert_eq!(body["data"]["rollback_changeset_id"], "rollback:abc123");
+    }
+
+    // --- actor-token issuance (the bootstrap seam) ---------------------------
+
+    #[tokio::test]
+    async fn issue_actor_token_mints_registers_and_returns_the_raw_token_once() {
+        let (_dir, state) = fixture_state();
+        let response = issue_actor_token(
+            State(state.clone()),
+            Json(IssueActorTokenRequest {
+                actor: agent(),
+                lifetime_ms: Some(3_600_000),
+            }),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let body = json_body(response).await;
+        let raw = body["data"]["raw_token"]
+            .as_str()
+            .expect("the raw token is returned once")
+            .to_string();
+        // Hash-only persistence: the record carries a token_hash, never the raw token.
+        assert_ne!(body["data"]["record"]["token_hash"], json!(raw));
+        assert_eq!(body["data"]["record"]["actor"]["id"], "agent:writer");
+        assert_eq!(body["data"]["record"]["issued_by"], "system:bootstrap");
+
+        // The actor was REGISTERED active AND the token resolves — so a subsequent
+        // command would not 403 on ensure_active (P39 finding #1).
+        let resolved = state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::CreateSession, |uow| {
+                    uow.actor_tokens().resolve(&raw, now_ms())
+                })
+            })
+            .unwrap();
+        assert_eq!(resolved, Some(agent()));
     }
 
     // --- the middleware, exercised through a real router (oneshot) -------------

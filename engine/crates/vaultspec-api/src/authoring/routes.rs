@@ -6,10 +6,10 @@ use serde_json::Value;
 
 use crate::app::AppState;
 
-/// Disabled-safe authoring status snapshot.
+/// Authoring domain status snapshot.
 ///
-/// W01.P01 establishes the route family and ownership boundary only. Later
-/// phases add the command model, durable store, streams, and apply adapter.
+/// ENABLED as of the W03.P39 mount: the propose → review → apply → rollback route
+/// family is live. Reports the ownership boundary + the V1 capability set.
 pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
-    super::response::disabled_status(&state)
+    super::response::enabled_status(&state)
 }

@@ -156,11 +156,16 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/issues", get(routes::github::issues))
         .route("/status", get(routes::stream::status))
         .route("/stream", get(routes::stream::stream))
-        // Fenced agentic authoring backend shell (agentic-spec-authoring-
-        // backend W01.P01): a semantic, tiers-bearing status endpoint for the
-        // future product authoring domain. This is deliberately NOT an
-        // `/ops/core/*` alias and does not materialize documents.
-        .route("/authoring/status", get(authoring::routes::status))
+        // Fenced agentic authoring backend (agentic-spec-authoring-backend),
+        // MOUNTED at W03.P39: the enabled status shell + the propose → review →
+        // apply → rollback command routes, nested as one `/authoring` subtree. Its
+        // `resolve_principal_layer` runs AFTER this router's `bearer_gate` (the nest
+        // sits under it), so a valid machine bearer is required first, then the
+        // actor principal resolves per command. Still NOT an `/ops/core/*` alias.
+        .nest(
+            "/authoring",
+            authoring::http::authoring_router(state.clone()),
+        )
         .route("/search", post(routes::ops::search))
         .route("/ops/core/{verb}", post(routes::ops::ops_core))
         // The core WRITE channel (W02): forward a whitelisted
@@ -1354,11 +1359,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authoring_status_shell_is_semantic_disabled_and_tiered() {
-        // W01.P01: the authoring domain starts as a fenced product API shell,
-        // not a core-shaped write proxy. The initial route is intentionally a
-        // disabled status snapshot: clients can discover the feature boundary
-        // and ownership map without any durable authoring mutation existing yet.
+    async fn authoring_status_is_enabled_and_semantic_and_tiered() {
+        // W03.P39 mount: the authoring domain is a fenced product API (NOT a
+        // core-shaped write proxy) and is now ENABLED — the propose → review →
+        // apply → rollback slice is live. The status snapshot reports the boundary
+        // + the V1 capability set.
         let (_dir, state) = fixture_state();
         let token = state.bearer.clone();
         let router = build_router(state);
@@ -1366,8 +1371,10 @@ mod tests {
         let (status, body) = get_with_token(router, "/authoring/status", Some(&token)).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["data"]["feature"], authoring::FEATURE_TAG);
-        assert_eq!(body["data"]["enabled"], false);
-        assert_eq!(body["data"]["status"], "disabled");
+        assert_eq!(body["data"]["enabled"], true);
+        assert_eq!(body["data"]["status"], "enabled");
+        assert_eq!(body["data"]["capabilities"]["proposals"], true);
+        assert_eq!(body["data"]["capabilities"]["apply"], true);
         assert_eq!(
             body["data"]["route_family"], "/authoring",
             "the collaborator-facing route family is semantic"
@@ -1383,6 +1390,49 @@ mod tests {
         assert!(
             body["tiers"]["semantic"]["available"].is_boolean(),
             "authoring status carries the tiers block"
+        );
+    }
+
+    #[tokio::test]
+    async fn authoring_command_routes_are_mounted_under_the_principal_layer() {
+        // W03.P39 mount smoke: the nested authoring router is reachable — a read
+        // flows (principal-permissive) with just the machine bearer, and a command
+        // route is mounted AND gated by the principal layer (a machine bearer alone,
+        // with no actor token, is a 401 from the ResolvedCommand extractor, never a
+        // 404 for an unmounted route).
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let (status, body) =
+            get_with_token(router.clone(), "/authoring/v1/proposals", Some(&token)).await;
+        assert_eq!(status, StatusCode::OK, "read is reachable: {body}");
+        assert_eq!(body["data"]["items"], json!([]));
+
+        let (status, body) = post_json_with_token(
+            router,
+            "/authoring/v1/apply-requests",
+            json!({
+                "api_version": "v1",
+                "command": "request_apply",
+                "idempotency_key": "idem:mount:apply",
+                "payload": {
+                    "changeset_id": "changeset_mount",
+                    "approval_id": "approval_mount",
+                    "targets": []
+                }
+            }),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "a command needs an actor token, not just the machine bearer: {body}"
+        );
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "the principal denial carries tiers"
         );
     }
 

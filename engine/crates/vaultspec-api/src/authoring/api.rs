@@ -304,6 +304,19 @@ pub struct SubmitForReviewRequest {
     pub summary: String,
 }
 
+/// Wire payload for `POST /authoring/v1/actor-tokens` — the machine-bearer-gated
+/// bootstrap seam that mints a per-principal actor token. It names the actor to
+/// provision (registered active so its commands do not 403 on `ensure_active`) and
+/// an optional lifetime (clamped bounded by the issue path). This is NOT a
+/// collaborator command family, so it carries no idempotency envelope.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IssueActorTokenRequest {
+    pub actor: ActorRef,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lifetime_ms: Option<u64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReviewDecisionRequest {

@@ -4,8 +4,6 @@ use serde_json::{Value, json};
 
 use crate::app::AppState;
 
-pub(crate) const DISABLED_REASON: &str = "authoring backend is not enabled";
-
 pub fn snapshot(state: &AppState, data: Value) -> Json<Value> {
     crate::routes::envelope(data, crate::routes::query_tiers(&state.active_cell()), None)
 }
@@ -45,16 +43,18 @@ pub fn typed_error(
     crate::routes::api_error_kind(state, status, kind, message.to_string())
 }
 
-pub fn disabled_status(state: &AppState) -> Json<Value> {
-    snapshot(state, disabled_status_data())
+/// The ENABLED authoring status (W03.P39 mount): the domain is live now that the
+/// propose → review → apply → rollback routes are mounted. Same ownership map as
+/// the disabled shell; the capability flags report exactly what V1 serves.
+pub fn enabled_status(state: &AppState) -> Json<Value> {
+    snapshot(state, enabled_status_data())
 }
 
-pub fn disabled_status_data() -> Value {
+pub fn enabled_status_data() -> Value {
     json!({
         "feature": super::FEATURE_TAG,
-        "enabled": false,
-        "status": "disabled",
-        "reason": DISABLED_REASON,
+        "enabled": true,
+        "status": "enabled",
         "route_family": super::ROUTE_FAMILY,
         "ownership": {
             "backend": "vaultspec-api authoring domain",
@@ -63,13 +63,15 @@ pub fn disabled_status_data() -> Value {
             "core_routes_are_authoring_contract": false,
         },
         "capabilities": {
+            // Live in the V1 walking skeleton (W03.P39).
+            "proposals": true,
+            "review": true,
+            "apply": true,
+            "rollback": true,
+            // Deferred to later increments.
             "sessions": false,
-            "proposals": false,
-            "review": false,
             "leases": false,
             "streams": false,
-            "apply": false,
-            "rollback": false,
             "langgraph": false,
         }
     })
@@ -93,19 +95,19 @@ mod tests {
     }
 
     #[test]
-    fn disabled_status_is_backend_served_and_tiered() {
+    fn enabled_status_is_backend_served_and_tiered() {
         let (_dir, state) = fixture_state();
-        let Json(body) = disabled_status(&state);
+        let Json(body) = enabled_status(&state);
 
         assert_eq!(body["data"]["feature"], super::super::FEATURE_TAG);
-        assert_eq!(body["data"]["enabled"], false);
-        assert_eq!(body["data"]["status"], "disabled");
-        assert_eq!(body["data"]["reason"], DISABLED_REASON);
+        assert_eq!(body["data"]["enabled"], true);
+        assert_eq!(body["data"]["status"], "enabled");
         assert_eq!(body["data"]["route_family"], super::super::ROUTE_FAMILY);
-        assert_eq!(body["data"]["capabilities"]["proposals"], false);
+        assert_eq!(body["data"]["capabilities"]["proposals"], true);
+        assert_eq!(body["data"]["capabilities"]["apply"], true);
         assert!(
             body["tiers"]["semantic"]["available"].is_boolean(),
-            "disabled snapshots must still carry tiers"
+            "enabled snapshots carry tiers"
         );
     }
 
