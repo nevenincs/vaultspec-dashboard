@@ -81,6 +81,20 @@ fn resolve_spa_source(state: &AppState) -> Option<SpaSource> {
     spa_dir(state).map(SpaSource::Disk)
 }
 
+/// Path traversal guard for the asset lookup: the request must stay a plain
+/// relative path under the asset root. Rejects `..` segments, and — because
+/// `PathBuf::join` REPLACES the base when handed an absolute or drive-relative
+/// path — rejects absolute paths and any `:`-bearing segment (`C:/...`,
+/// `C:foo`), which on Windows would otherwise escape the root entirely
+/// (P01 review finding, disk-source hardening). No legitimate Vite asset name
+/// carries a colon or leads with a separator.
+fn is_safe_relative(requested: &str) -> bool {
+    !requested.split(['/', '\\']).any(|seg| seg == "..")
+        && !std::path::Path::new(requested).is_absolute()
+        && !requested.contains(':')
+        && !requested.starts_with(['/', '\\'])
+}
+
 fn mime_for(path: &str) -> &'static str {
     match path.rsplit('.').next().unwrap_or("") {
         "html" => "text/html; charset=utf-8",
@@ -208,8 +222,7 @@ pub async fn spa_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> Respo
             .into_response();
     };
     let requested = uri.path().trim_start_matches('/');
-    // Path traversal guard: reject any segment escaping the asset root.
-    let safe = !requested.split(['/', '\\']).any(|seg| seg == "..");
+    let safe = is_safe_relative(requested);
     // Serve the requested asset when it exists; otherwise fall back to
     // index.html so deep links resolve client-side (contract R2).
     let target = if safe && !requested.is_empty() && source.contains(requested) {
@@ -238,6 +251,28 @@ pub async fn spa_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> Respo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_traversal_guard_rejects_every_root_escape_shape() {
+        // The disk arm feeds the request straight into `PathBuf::join`, which
+        // REPLACES the base for absolute and drive-relative paths — so the
+        // guard must reject them, not just `..` (P01 review, Windows escape).
+        for escape in [
+            "../secret",
+            "assets/../../secret",
+            r"assets\..\secret",
+            "C:/Windows/win.ini",
+            r"C:\Windows\win.ini",
+            "C:win.ini",
+            "//server/share/file",
+            r"\\server\share\file",
+        ] {
+            assert!(!is_safe_relative(escape), "must reject {escape}");
+        }
+        for legit in ["index.html", "assets/index-DB4JoJbE.js", "favicon.ico"] {
+            assert!(is_safe_relative(legit), "must keep {legit}");
+        }
+    }
 
     #[test]
     fn token_injects_before_head_close_and_survives_headless_html() {
