@@ -473,3 +473,19 @@ export function ReviewStation() {
     </section>
   );
 }
+
+/** The review station as a rail SECTION BODY (no title of its own — the enclosing
+ *  rail SectionCard supplies the "Review station" header, mirroring the
+ *  search-service console's body-in-a-section pattern). Carries the reviewer
+ *  identity control + the polled queue. */
+export function ReviewStationSection() {
+  const view = useReviewStationView();
+  return (
+    <div className="flex flex-col gap-fg-3 text-body" data-review-station>
+      <div className="flex items-center justify-end">
+        <ReviewerIdentity />
+      </div>
+      <ReviewStationBody view={view} />
+    </div>
+  );
+}

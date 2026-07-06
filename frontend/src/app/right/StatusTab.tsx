@@ -72,6 +72,7 @@ import {
 import { activateEntity } from "../../stores/view/activateEntity";
 import { freshnessLabel } from "../presentation/freshness";
 import { ChangesOverview } from "./ChangesOverview";
+import { ReviewStationSection } from "../authoring/ReviewStation";
 import { PlanStepTree } from "./PlanStepTree";
 import { RailDegraded, RailEmpty, RailLoading, type RailState } from "./railStates";
 // Centralized kit primitives (design-system-is-centralized).
@@ -774,6 +775,18 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
         defaultOpen={false}
       >
         <RagOpsConsoleBody />
+      </SectionCard>
+      {/* The agentic-authoring review station (W03.P40): the human-in-the-loop
+          proposal review queue. Independent of corpus state (it manages authoring
+          proposals, not the graph), so — like the search-service console — it
+          renders in every rail state, collapsed by default. */}
+      <SectionCard
+        {...headerNav("authoring-review")}
+        id="authoring-review"
+        title="Review station"
+        defaultOpen={false}
+      >
+        <ReviewStationSection />
       </SectionCard>
     </div>
   );
