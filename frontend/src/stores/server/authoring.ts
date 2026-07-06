@@ -22,6 +22,7 @@
 // The store consumes the SERVED projection shapes unchanged (no new client
 // model); it maps only presentation. Wire values stay snake_case as served.
 
+import { useMemo, useSyncExternalStore } from "react";
 import {
   keepPreviousData,
   queryOptions,
@@ -117,12 +118,26 @@ export interface ValidationStateProjection {
   validation_digest?: string;
 }
 
-/** The approval state a reviewer sees for a proposal. */
+/** The approval state a reviewer sees for a proposal. `approval_id` /
+ *  `proposal_id` / `reviewed_proposal_revision` are the identity a reviewer needs
+ *  to drive a decision or apply FROM THE QUEUE (they never held the submit
+ *  response that echoed them). They are OPTIONAL because a projection that
+ *  predates the identity addition omits them — the decision/apply affordances
+ *  render only once the served projection carries the identity (no
+ *  frontend re-derivation of the backend-hashed ids; stable-keys/provenance). */
 export interface ApprovalStateProjection {
   present: boolean;
   queue_state?: ApprovalQueueState;
   decision?: ApprovalDecision;
   stale: boolean;
+  /** The opened approval's id — required to drive a review decision. */
+  approval_id?: string;
+  /** The 1:1 proposal id — required to drive a review decision. */
+  proposal_id?: string;
+  /** The exact proposal revision the approval was opened against — the reviewer
+   *  attests to this (a mismatch is a stale-review 409). Falls back to the
+   *  changeset revision for a NeedsReview item when absent. */
+  reviewed_proposal_revision?: string;
 }
 
 /** A target-document conflict: a child's reviewed base no longer matches the
@@ -328,6 +343,9 @@ export function adaptProposalProjection(raw: unknown): ProposalProjection {
       queue_state: asStr(approval.queue_state) as ApprovalQueueState | undefined,
       decision: asStr(approval.decision) as ApprovalDecision | undefined,
       stale: asBool(approval.stale),
+      approval_id: asStr(approval.approval_id),
+      proposal_id: asStr(approval.proposal_id),
+      reviewed_proposal_revision: asStr(approval.reviewed_proposal_revision),
     },
     conflict: conflict
       ? {
@@ -437,20 +455,20 @@ export function readAuthoringDegradation(query: {
 
 // --- the wire client ------------------------------------------------------------
 
-/** The production transport: the machine bearer from the injected meta tag, plus
- *  the per-principal actor-token header on a command (identity resolves from it
- *  alone). Reads carry no actor token. Mirrors `EngineClient`'s default. */
-function authoringTransport(actorToken?: string): FetchLike {
-  return (input, init) => {
-    const headers = new Headers(init?.headers);
-    const bearer = bearerToken();
-    if (bearer && !headers.has("authorization")) {
-      headers.set("Authorization", `Bearer ${bearer}`);
-    }
-    if (actorToken) headers.set(ACTOR_TOKEN_HEADER, actorToken);
-    return fetch(input, { ...init, headers });
-  };
-}
+/** The production base transport: the machine bearer from the injected meta tag
+ *  (identical to `EngineClient`'s default). A command layers the per-principal
+ *  actor-token header on top of this (see `AuthoringClient.withActor`). The test
+ *  harness swaps this for the live transport that carries the spawned engine's
+ *  bearer, so the SAME client code runs against the real wire. */
+const defaultBearerTransport: FetchLike = (input, init) => {
+  const bearer = bearerToken();
+  if (!bearer) return fetch(input, init);
+  const headers = new Headers(init?.headers);
+  if (!headers.has("authorization")) {
+    headers.set("Authorization", `Bearer ${bearer}`);
+  }
+  return fetch(input, { ...init, headers });
+};
 
 /** Build an `EngineError` from a non-ok authoring response, PRESERVING the tiers
  *  block + typed `error_kind` the engine attaches to its error envelope so a
@@ -492,6 +510,14 @@ interface CommandOptions {
   idempotencyKey?: string;
 }
 
+export interface AuthoringClientOptions {
+  baseUrl?: string;
+  /** The base transport (bearer-carrying). Defaults to the meta-tag bearer
+   *  transport; the test harness injects the live transport. The actor-token
+   *  header is layered on top per command by `withActor`. */
+  fetchImpl?: FetchLike;
+}
+
 /**
  * The authoring wire client. Lives in `stores/` (the sole wire client boundary);
  * `scene`/`app` consume its hooks, never it directly. Reads are unauthenticated;
@@ -499,9 +525,22 @@ interface CommandOptions {
  */
 export class AuthoringClient {
   readonly baseUrl: string;
+  private readonly baseFetch: FetchLike;
 
-  constructor(baseUrl: string = AUTHORING_BASE) {
-    this.baseUrl = baseUrl;
+  constructor(options: AuthoringClientOptions = {}) {
+    this.baseUrl = options.baseUrl ?? AUTHORING_BASE;
+    this.baseFetch = options.fetchImpl ?? defaultBearerTransport;
+  }
+
+  /** Layer the per-principal actor-token header onto the base (bearer) transport.
+   *  Reads pass no token; a command passes the resolved actor token. */
+  private withActor(actorToken?: string): FetchLike {
+    return (input, init) => {
+      if (!actorToken) return this.baseFetch(input, init);
+      const headers = new Headers(init?.headers);
+      headers.set(ACTOR_TOKEN_HEADER, actorToken);
+      return this.baseFetch(input, { ...init, headers });
+    };
   }
 
   // --- reads (principal-permissive) ---
@@ -549,7 +588,7 @@ export class AuthoringClient {
     const body = await this.postJson(
       "/authoring/v1/actor-tokens",
       payload,
-      authoringTransport(),
+      this.withActor(),
     );
     const r: Rec = isRec(body) ? body : {};
     return {
@@ -626,7 +665,7 @@ export class AuthoringClient {
   // --- transport ---
 
   private async get(path: string, signal?: AbortSignal): Promise<unknown> {
-    const response = await authoringTransport()(
+    const response = await this.withActor()(
       `${this.baseUrl}${path}`,
       signal ? { signal } : undefined,
     );
@@ -649,11 +688,7 @@ export class AuthoringClient {
       idempotency_key: opts.idempotencyKey ?? newIdempotencyKey(),
       payload,
     };
-    const body = await this.postJson(
-      path,
-      envelope,
-      authoringTransport(opts.actorToken),
-    );
+    const body = await this.postJson(path, envelope, this.withActor(opts.actorToken));
     return interpretCommandOutcome(body);
   }
 
@@ -684,15 +719,35 @@ export const authoringClient = new AuthoringClient();
 // proposals/approvals/receipts (backend-owned), NOT this ephemeral credential.
 
 let sessionActorToken: string | null = null;
+const tokenListeners = new Set<() => void>();
 
-/** Set the session's active actor token (after `issueActorToken`). */
+/** Set the session's active actor token (after `issueActorToken`), notifying any
+ *  subscribed identity readers. */
 export function setActorToken(token: string | null): void {
   sessionActorToken = token;
+  for (const listener of tokenListeners) listener();
 }
 
 /** Read the session's active actor token, or `null` when none is bootstrapped. */
 export function getActorToken(): string | null {
   return sessionActorToken;
+}
+
+/** Subscribe to actor-token changes (for `useSyncExternalStore`). */
+function subscribeActorToken(onChange: () => void): () => void {
+  tokenListeners.add(onChange);
+  return () => tokenListeners.delete(onChange);
+}
+
+/** Whether a reviewer actor token is bootstrapped — the identity gate the review
+ *  station reads to know a human can act. Returns a primitive (value-compared), so
+ *  it is a stable external-store read (frontend-store-selectors). */
+export function useHasActorToken(): boolean {
+  return useSyncExternalStore(
+    subscribeActorToken,
+    () => getActorToken() !== null,
+    () => false,
+  );
 }
 
 // --- query keys + hooks ----------------------------------------------------------
@@ -730,6 +785,59 @@ function proposalsQueryOptions() {
  *  call site — frontend-store-selectors). */
 export function useProposals(): UseQueryResult<ProposalListResult, Error> {
   return useQuery(proposalsQueryOptions());
+}
+
+/** The interpreted review-station view model the dumb app surface consumes: the
+ *  served rows plus the four mutually-exclusive display modes and the honest
+ *  degradation truth. Derivation lives here (stores layer) so the app view reads
+ *  it flat and maps only presentation (architecture-boundaries). */
+export interface ReviewStationView {
+  /** The served proposal projections, consumed unchanged (no client model). */
+  rows: ProposalProjection[];
+  /** First load in flight (no data yet). */
+  loading: boolean;
+  /** A tier the queue depends on is degraded (read from `tiers`). */
+  degraded: boolean;
+  /** The durable authoring store is unavailable (typed 503) — a fail-closed mode
+   *  distinct from tier degradation. */
+  storeUnavailable: boolean;
+  /** A one-sentence, leak-free degradation notice, or `null` when healthy. */
+  degradedMessage: string | null;
+  /** Loaded with no proposals in the queue. */
+  empty: boolean;
+  /** The corpus has more changesets than the served page cap. */
+  truncated: boolean;
+}
+
+/**
+ * The review-station queue as an interpreted view model. Composes the polled
+ * `useProposals` query with the tiers/store degradation read, keyed on the raw
+ * query slices so the derived object is referentially stable across re-renders
+ * that change nothing (frontend-store-selectors: derive in `useMemo`).
+ */
+export function useReviewStationView(): ReviewStationView {
+  const query = useProposals();
+  const data = query.data;
+  const error = query.error;
+  const isLoading = query.isLoading;
+  return useMemo(() => {
+    const degradation = readAuthoringDegradation({ data, error });
+    const rows = data?.items ?? [];
+    const degradedMessage = degradation.storeUnavailable
+      ? "The authoring service is unavailable right now — the review queue can’t be loaded."
+      : degradation.degraded
+        ? "Some review information may be out of date."
+        : null;
+    return {
+      rows,
+      loading: isLoading && !data,
+      degraded: degradation.degraded,
+      storeUnavailable: degradation.storeUnavailable,
+      degradedMessage,
+      empty: !!data && rows.length === 0,
+      truncated: data?.truncated ?? false,
+    };
+  }, [data, error, isLoading]);
 }
 
 /** One changeset's review projection (`null` when unknown). Enabled only for a
