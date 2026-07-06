@@ -38,6 +38,7 @@ import {
   type ReviewStationView,
 } from "../../stores/server/authoring";
 import { Badge, Button, SectionLabel, Skeleton, SkeletonRow, StateBlock } from "../kit";
+import { DiffPanel } from "./DiffPanel";
 
 // The reviewer principal the bootstrap provisions — a HUMAN actor distinct from
 // any agent author (the automated-self-approval ban is a real gate the reviewer
@@ -251,6 +252,7 @@ export function ProposalCard({
 }) {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<CardFeedback>(null);
+  const [showDiff, setShowDiff] = useState(false);
 
   const run = async (fn: () => Promise<AuthoringCommandOutcome>) => {
     setBusy(true);
@@ -372,7 +374,17 @@ export function ProposalCard({
             {commandLabel("create_rollback")}
           </Button>
         )}
+        <Button
+          variant="ghost"
+          onClick={() => setShowDiff((open) => !open)}
+          aria-expanded={showDiff}
+          data-toggle-diff
+        >
+          {showDiff ? "Hide changes" : "Show changes"}
+        </Button>
       </div>
+
+      {showDiff && <DiffPanel changesetId={proposal.changeset_id} />}
 
       {feedback && (
         <p
