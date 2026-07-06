@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#agentic-spec-authoring-backend'
-date: '2026-07-04'
-modified: '2026-07-04'
+date: '2026-07-06'
+modified: '2026-07-06'
 related:
   - '[[2026-06-29-agentic-apply-materialization-adr]]'
   - '[[2026-06-29-agentic-approval-gates-review-state-adr]]'

@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#agentic-spec-authoring-backend'
 date: '2026-06-30'
-modified: '2026-07-04'
+modified: '2026-07-06'
 tier: L4
 related:
   - '[[2026-07-02-agentic-spec-authoring-backend-reference]]'
@@ -294,11 +294,11 @@ V1 subset as Increment 1's exit gate: one real vertical-slice test, two actors, 
 
 V1 subset for the walking skeleton, run in parallel with the ledger, actor, and adapter work once DTOs are consumed: a thin review surface, proposal list, diff view reusing the existing reader/diff machinery, approve/reject buttons, polling refresh. The user is part of the loop; the skeleton is not done until a human can click deny. Streamed replay and richer store consumption widen in later increments.
 
-- [ ] `W03.P40.S196` - Ground Frontend store and review station contract requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P40.S197` - Implement authoring wire clients, query keys, mutations, replay cursors, review queue consumers, and degraded response handling; `frontend/src/stores/server/authoring.ts`.
-- [ ] `W03.P40.S198` - Add frontend store tests for snapshots, commands, idempotency replay, stream cursor recovery, review queues, and degraded responses; `frontend/src/stores/server/authoring.test.ts`.
-- [ ] `W03.P40.S199` - Run Frontend store and review station contract code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P40.S200` - Verify the Increment 1 demo: live end-to-end run on a real worktree, propose, deny (nothing changes), propose again, approve, applied document visible in the graph/reader via the existing watcher path, roll back, preimage restored, full history in the ledger; `frontend/src/stores/server/authoring.test.ts`.
+- [x] `W03.P40.S196` - Ground Frontend store and review station contract requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P40.S197` - Implement authoring wire clients, query keys, mutations, replay cursors, review queue consumers, and degraded response handling; `frontend/src/stores/server/authoring.ts`.
+- [x] `W03.P40.S198` - Add frontend store tests for snapshots, commands, idempotency replay, stream cursor recovery, review queues, and degraded responses; `frontend/src/stores/server/authoring.test.ts`.
+- [x] `W03.P40.S199` - Run Frontend store and review station contract code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P40.S200` - Verify the Increment 1 demo: live end-to-end run on a real worktree, propose, deny (nothing changes), propose again, approve, applied document visible in the graph/reader via the existing watcher path, roll back, preimage restored, full history in the ledger; `frontend/src/stores/server/authoring.test.ts`.
 
 ## Wave `W10` - Increment 2 - Operation modes (the accepted headline capability)
 

@@ -947,6 +947,64 @@ Increment 1 (the walking skeleton) closes: issue-token → create → submit →
 approve/reject → apply (real core write) → rollback, wire-driveable end to
 end under the full identity, idempotency, and denial contracts.
 
+### ASA-P40-diff-ruling | info | P40 scope call: populate `materialized_operation` in the DETAIL projection — the diff is in-phase, not an expansion
+
+Ruling (2026-07-06): option (b). Grounds: the P40 phase text itself names the
+"diff view reusing the existing reader/diff machinery", so populating the
+designed-but-empty `materialized_operation` slot (hard-coded `None` in the
+projection) COMPLETES the phase — the option needing justification was
+shipping without it; and a reviewer who cannot SEE the change is a rubber
+stamp, not the human-in-the-loop the approval-gates and operation-modes ADRs
+are built on. Three bounds on the fill: (1) DETAIL projection only
+(`project_proposal`, one proposal) — never the bounded 200-item list, whose
+rows must not carry document bodies; if the shared child DTO would leave the
+list serving a permanently-`None` field, make the population detail-only by
+shape or document it as detail-only, not a silent asymmetry; (2) the served
+`payload_text` respects an explicit size bound consistent with the
+api-contract ADR's "bounded document content" (truncate with an honest flag,
+never an unbounded serve); (3) the DIFF itself stays CLIENT-RENDERED
+presentation over the backend-served base + new texts — per the
+change-format ADR, diffs are derived review artifacts and never authority,
+so no server-side diff computation is owed. This is a deliberate
+served-projection-shape contract event, recorded here.
+
+### ASA-P40-review | info | W03.P40 review station (S199, 6 commits → 4d332ef462): verdict APPROVED — no required revisions; all three diff bounds honored; the human-click-deny proof is live
+
+Phase review. THE RULING'S BOUNDS ALL HONORED, verified in the diff: bound #1
+BY SHAPE — bodies live only on the new detail-only `ProposalDetailProjection`
+(`review_documents` of `ReviewDocumentProjection`), the 200-row list never
+carries them, and the `list_projection_never_carries_document_bodies` guard
+test pins it; bound #2 — both texts ride `BoundedDocumentText` under a 128 KiB
+per-text cap with char-boundary truncation, an honest `truncated` flag, and
+total/returned byte counts; bound #3 — the backend serves only the two texts
+(no hunks), and the client's new `diffLines` (a compact LCS line diff, capped
+at 3,000 lines per side since no diff library exists in-repo) renders the
+presentation — consistent with the ruling and the change-format ADR. The
+REQUIRED identity enrichment landed as ruled: `approval_id` / `proposal_id` /
+`reviewed_proposal_revision` on `ApprovalStateProjection`, sourced from the
+record in hand, on both routes (small identity fields). The frontend honors
+the architecture rules: `authoring.ts` is the SOLE wire client for the
+`/authoring/v1/*` family (tiers-only degradation, the typed
+`authoring_store_unavailable` kind, denials surfaced as `denied` OUTCOMES
+never error toasts); the ReviewStation renders SERVED eligibility directly
+(reason as the disabled title) and never re-derives it; the live test drives
+the load-bearing acceptance over the REAL wire — two distinct principals,
+agent self-approval returns a `denied` VALUE on the 200 envelope, and the
+HUMAN reviewer's reject lands with the served queue reflecting `rejected`.
+THE THREE DEVIATIONS ACCEPTED: (1) the wrapped detail shape
+`{proposal, review_documents}` is a clean deliberate contract event (no
+external consumer asserted the bare shape); (2) the client `diffLines` util is
+exactly bound #3's consumer; (3) the SectionCard-in-StatusTab mount follows
+the post-redesign rail (tabs retired, Figma 599:2099) and the rag
+console-in-a-section precedent, with no panel-schema change. LOW observations,
+no action owed: `review_document` silently skips a child whose base is
+unreadable — the conflict projection carries the reason elsewhere, but an
+explicit base-unreadable marker on the detail would be more honest for the
+panel; the LCS table at the 3,000-line cap is ~9M cells (a transient
+tens-of-MB worst case — an `Int32Array` row table or a Myers diff cuts it if
+it ever shows in profiling); `eligibilityForRender` filters fresh per render
+over query data (plain render derivation, not a store selector — compliant).
+
 ## Recommendations
 
 The superseding-ADR set this audit grounds — five documents, each hardened by the
