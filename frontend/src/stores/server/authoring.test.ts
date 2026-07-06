@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import { EngineError, type TiersBlock } from "./engine";
 import {
   AUTHORING_STORE_UNAVAILABLE_KIND,
+  adaptProposalDetail,
   adaptProposalList,
   adaptProposalProjection,
   adaptProposalSnapshot,
@@ -142,6 +143,66 @@ describe("adaptProposalList", () => {
     expect(list.items).toEqual([]);
     expect(list.truncated).toBe(false);
     expect(list.tiers).toEqual({});
+  });
+});
+
+describe("adaptProposalDetail", () => {
+  it("reads the nested projection plus the per-operation base+proposed diff texts", () => {
+    const detail = adaptProposalDetail({
+      proposal: needsReviewProjectionWire(),
+      review_documents: [
+        {
+          child_key: "child_1",
+          document: { kind: "existing", stem: "alpha-research" },
+          base: {
+            text: "original body\n",
+            truncated: false,
+            total_bytes: 14,
+            returned_bytes: 14,
+          },
+          proposed: {
+            text: "original body\n\nnew paragraph\n",
+            truncated: false,
+            total_bytes: 29,
+            returned_bytes: 29,
+          },
+        },
+      ],
+      tiers: availableTiers,
+    });
+
+    expect(detail.proposal.changeset_id).toBe("changeset_1");
+    // The identity fields the queue-driven decision needs are read through.
+    expect(detail.proposal.approval).toBeTruthy();
+    expect(detail.review_documents).toHaveLength(1);
+    expect(detail.review_documents[0].base.text).toBe("original body\n");
+    expect(detail.review_documents[0].proposed.text).toContain("new paragraph");
+    expect(detail.tiers).toBe(availableTiers);
+  });
+
+  it("tolerates a detail with no review documents", () => {
+    const detail = adaptProposalDetail({ proposal: needsReviewProjectionWire() });
+    expect(detail.review_documents).toEqual([]);
+    expect(detail.proposal.status).toBe("needs_review");
+  });
+
+  it("reads served approval identity through the projection (queue-driven decision)", () => {
+    const detail = adaptProposalDetail({
+      proposal: {
+        ...needsReviewProjectionWire(),
+        approval: {
+          present: true,
+          queue_state: "queued",
+          stale: false,
+          approval_id: "approval:abc",
+          proposal_id: "proposal:abc",
+          reviewed_proposal_revision: "proposal:rev2",
+        },
+      },
+    });
+    expect(detail.proposal.approval.approval_id).toBe("approval:abc");
+    expect(detail.proposal.approval.proposal_id).toBe("proposal:abc");
+    expect(detail.proposal.approval.reviewed_proposal_revision).toBe("proposal:rev2");
   });
 });
 

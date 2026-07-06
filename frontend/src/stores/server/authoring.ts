@@ -187,6 +187,38 @@ export interface ProposalListResult {
   tiers: TiersBlock;
 }
 
+/** A bounded whole-document text (engine `BoundedDocumentText`): the served body
+ *  for one side of the review diff, with an honest byte-cap marker. */
+export interface BoundedDocumentText {
+  text: string;
+  truncated: boolean;
+  total_bytes: number;
+  returned_bytes: number;
+}
+
+/** The base + proposed whole-document texts for ONE replace-body operation
+ *  (engine `ReviewDocumentProjection`), served ONLY on the review DETAIL
+ *  projection. NO server-side diff — the two bounded texts are the backend's whole
+ *  obligation; hunking is client-rendered presentation (a diff is a derived review
+ *  artifact, never authority). */
+export interface ReviewDocumentProjection {
+  child_key: string;
+  document: unknown;
+  /** The current worktree body (the diff's "before"). */
+  base: BoundedDocumentText;
+  /** The proposed new body (the diff's "after"). */
+  proposed: BoundedDocumentText;
+}
+
+/** One changeset's review DETAIL (engine `ProposalDetailProjection`): the proposal
+ *  projection plus the per-operation base+proposed texts the review diff renders
+ *  over. The DETAIL route carries bodies; the bounded LIST never does. */
+export interface ProposalDetail {
+  proposal: ProposalProjection;
+  review_documents: ReviewDocumentProjection[];
+  tiers: TiersBlock;
+}
+
 /** One changeset's full revision history + latest aggregate + latest validation
  *  (the lower-level read behind the review projection). Shapes are served
  *  domain records; kept loose here (the thin UI reads only identity + status). */
@@ -377,6 +409,34 @@ export function adaptProposalList(raw: unknown): ProposalListResult {
   };
 }
 
+function adaptBoundedText(raw: unknown): BoundedDocumentText {
+  const r: Rec = isRec(raw) ? raw : {};
+  return {
+    text: asStr(r.text) ?? "",
+    truncated: asBool(r.truncated),
+    total_bytes: asNum(r.total_bytes),
+    returned_bytes: asNum(r.returned_bytes),
+  };
+}
+
+/** Adapt the review DETAIL projection: the nested proposal projection plus the
+ *  per-operation base+proposed diff texts. The DETAIL wire nests the projection
+ *  under `proposal` (the LIST serves the projection rows flat). */
+export function adaptProposalDetail(raw: unknown): ProposalDetail {
+  const r: Rec = isRec(raw) ? raw : {};
+  const documents = Array.isArray(r.review_documents) ? r.review_documents : [];
+  return {
+    proposal: adaptProposalProjection(r.proposal),
+    review_documents: documents.filter(isRec).map((doc) => ({
+      child_key: asStr(doc.child_key) ?? "",
+      document: doc.document ?? null,
+      base: adaptBoundedText(doc.base),
+      proposed: adaptBoundedText(doc.proposed),
+    })),
+    tiers: asTiers(r.tiers),
+  };
+}
+
 /** Adapt one proposal's full snapshot (history + latest + latest validation). */
 export function adaptProposalSnapshot(raw: unknown): ProposalSnapshotResult {
   const r: Rec = isRec(raw) ? raw : {};
@@ -550,19 +610,20 @@ export class AuthoringClient {
     return adaptProposalList(await this.get("/authoring/v1/proposals", signal));
   }
 
-  /** `GET /authoring/v1/proposals/{id}` — one changeset's review projection, or
-   *  `null` when the changeset is unknown (a typed 404 → an honest absence, not a
-   *  thrown query error). */
+  /** `GET /authoring/v1/proposals/{id}` — one changeset's review DETAIL (the
+   *  projection plus the per-operation base+proposed diff texts), or `null` when
+   *  the changeset is unknown (a typed 404 → an honest absence, not a thrown query
+   *  error). */
   async projectProposal(
     changesetId: string,
     signal?: AbortSignal,
-  ): Promise<ProposalProjection | null> {
+  ): Promise<ProposalDetail | null> {
     try {
       const body = await this.get(
         `/authoring/v1/proposals/${encodeURIComponent(changesetId)}`,
         signal,
       );
-      return adaptProposalProjection(body);
+      return adaptProposalDetail(body);
     } catch (err) {
       if (err instanceof EngineError && err.status === 404) return null;
       throw err;
@@ -840,11 +901,12 @@ export function useReviewStationView(): ReviewStationView {
   }, [data, error, isLoading]);
 }
 
-/** One changeset's review projection (`null` when unknown). Enabled only for a
- *  non-empty id so the detail pane can mount before a selection exists. */
+/** One changeset's review DETAIL — the projection plus the base+proposed diff
+ *  texts (`null` when unknown). Enabled only for a non-empty id so the detail pane
+ *  can mount before a selection exists. */
 export function useProposalDetail(
   changesetId: string | null,
-): UseQueryResult<ProposalProjection | null, Error> {
+): UseQueryResult<ProposalDetail | null, Error> {
   return useQuery({
     queryKey: authoringKeys.proposal(changesetId ?? ""),
     queryFn: ({ signal }) => authoringClient.projectProposal(changesetId ?? "", signal),
