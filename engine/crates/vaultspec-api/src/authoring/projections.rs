@@ -38,8 +38,8 @@ use super::approvals::{
 };
 use super::ledger::{ChangesetAggregateRecord, ChangesetChildOperationRecord};
 use super::model::{
-    ActionEligibility, ActorRef, ChangesetId, ChangesetKind, ChangesetStatus, DocumentRef,
-    RevisionToken,
+    ActionEligibility, ActorRef, ApprovalId, ChangesetId, ChangesetKind, ChangesetStatus,
+    DocumentRef, ProposalId, RevisionToken,
 };
 use super::snapshots::SnapshotReader;
 use super::store::StoreError;
@@ -56,6 +56,15 @@ use super::validation::{ValidationStatus, ValidationStatusRecord};
 /// shows a bounded working set; the corpus-wide paged listing is the Increment 3
 /// remainder. A page at the cap sets `truncated`, never a silently-clipped read.
 pub const MAX_PROJECTION_PROPOSALS: usize = 200;
+
+/// The byte ceiling for ONE review-document text (base or proposed) served on the
+/// DETAIL projection. resource-bounds: every serve is bounded at creation, and the
+/// api-contract ADR's bounded-document-content forbids an unbounded whole-document
+/// serve. A text over the cap is truncated at a char boundary and its
+/// [`BoundedDocumentText::truncated`] flag is set, so the reviewer sees an HONEST
+/// "more exists" marker rather than a silently-clipped body. Sized to hold a normal
+/// `.vault/` document whole while still capping a pathological one.
+pub const MAX_REVIEW_DOCUMENT_TEXT_BYTES: usize = 128 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectionError {
@@ -80,6 +89,14 @@ pub struct ValidationStateProjection {
 
 /// The approval state a reviewer sees: whether a request exists, its queue state,
 /// the recorded decision (if any), and whether the pending approval is stale.
+///
+/// The `approval_id` / `proposal_id` / `reviewed_proposal_revision` IDENTITY fields
+/// are sourced from the durable [`ApprovalRequestRecord`] the projection already
+/// holds. A human reviewing FROM THE QUEUE never performed the submit, so they do
+/// not hold the ids the submit response echoed — the projection must carry them so
+/// the deny/approve path can name the approval, and the client never recomputes an
+/// internal hash to derive them (wire-contract: stable keys are backend-served).
+/// They are small identity fields, so they ride BOTH the list and detail routes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApprovalStateProjection {
@@ -89,6 +106,12 @@ pub struct ApprovalStateProjection {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decision: Option<ApprovalDecision>,
     pub stale: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval_id: Option<ApprovalId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proposal_id: Option<ProposalId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reviewed_proposal_revision: Option<RevisionToken>,
 }
 
 /// A target-document conflict: a child's reviewed base revision no longer matches
@@ -155,6 +178,74 @@ pub struct ProposalListProjection {
     pub items: Vec<ProposalProjection>,
     pub truncated: bool,
     pub cap: usize,
+}
+
+/// One whole-document text served on the review DETAIL projection, size-bounded
+/// with an HONEST `truncated` flag — NEVER an unbounded serve (resource-bounds /
+/// api-contract bounded-document-content). `total_bytes` is the full document size,
+/// `returned_bytes` the served (possibly truncated) length.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BoundedDocumentText {
+    pub text: String,
+    pub truncated: bool,
+    pub total_bytes: usize,
+    pub returned_bytes: usize,
+}
+
+impl BoundedDocumentText {
+    /// Bound `text` at [`MAX_REVIEW_DOCUMENT_TEXT_BYTES`], truncating at a char
+    /// boundary and flagging honestly when the cap is reached.
+    fn from_text(text: &str) -> Self {
+        let total_bytes = text.len();
+        if total_bytes <= MAX_REVIEW_DOCUMENT_TEXT_BYTES {
+            return Self {
+                text: text.to_string(),
+                truncated: false,
+                total_bytes,
+                returned_bytes: total_bytes,
+            };
+        }
+        let bounded = truncate_at_char_boundary(text, MAX_REVIEW_DOCUMENT_TEXT_BYTES);
+        Self {
+            text: bounded.to_string(),
+            truncated: true,
+            total_bytes,
+            returned_bytes: bounded.len(),
+        }
+    }
+}
+
+/// The base + proposed whole-document texts for ONE materialized replace-body
+/// operation, served ONLY on the review DETAIL projection so the client renders the
+/// diff over them. NO server-side diff is computed here: the backend's whole
+/// obligation is the two bounded texts; hunking is client-rendered presentation (a
+/// diff is a DERIVED review artifact, never authority — agentic-change-format).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewDocumentProjection {
+    pub child_key: String,
+    pub document: DocumentRef,
+    /// The CURRENT worktree document body (read the same way apply reads its base).
+    pub base: BoundedDocumentText,
+    /// The proposed new body (the materialized target snapshot payload).
+    pub proposed: BoundedDocumentText,
+}
+
+/// The review DETAIL projection: the proposal projection plus the per-operation
+/// base+proposed bounded texts the review diff renders over.
+///
+/// DETAIL-ONLY BY SHAPE (arch-reviewer ASA-P40-diff-ruling, three bounds): the
+/// bounded proposal LIST (`GET /proposals`, up to [`MAX_PROJECTION_PROPOSALS`] rows)
+/// must never carry document bodies, so the texts live on THIS distinct type rather
+/// than as a permanently-empty body field on the list's [`ProposalProjection`] row.
+/// Only [`ProjectionRepository::project_proposal_detail`] (the single-changeset
+/// detail route) builds it; `list_proposals` never does.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProposalDetailProjection {
+    pub proposal: ProposalProjection,
+    pub review_documents: Vec<ReviewDocumentProjection>,
 }
 
 pub struct ProjectionRepository<'repo, 'conn> {
@@ -255,6 +346,41 @@ impl ProjectionRepository<'_, '_> {
             eligibility,
             rollback,
             created_at_ms: latest.created_at_ms,
+        }))
+    }
+
+    /// Project one changeset AS A DETAIL VIEW: the proposal projection plus the
+    /// base+proposed bounded document texts for each materialized replace-body
+    /// operation, so the client renders the review diff. Returns `None` when the
+    /// changeset has no ledger history.
+    ///
+    /// DETAIL-ONLY: `list_proposals` never calls this, so a page of proposals never
+    /// carries document bodies (bound #1). The base text is the CURRENT worktree body
+    /// (read the same way `child_target_conflict` / apply read it — the projection
+    /// already has cheap worktree access); the proposed text is the materialized
+    /// target snapshot payload. Both are size-bounded (bound #2); no diff is computed
+    /// server-side (bound #3).
+    pub fn project_proposal_detail(
+        &self,
+        changeset_id: &ChangesetId,
+        worktree_root: &Path,
+    ) -> Result<Option<ProposalDetailProjection>> {
+        let Some(proposal) = self.project_proposal(changeset_id, worktree_root)? else {
+            return Ok(None);
+        };
+        // The proposal exists, so latest is present; re-read it for the child
+        // operations (a single bounded-row read).
+        let Some(latest) = self.uow.ledger().latest(changeset_id)? else {
+            return Ok(None);
+        };
+        let review_documents = latest
+            .children
+            .iter()
+            .filter_map(|child| review_document(worktree_root, child))
+            .collect();
+        Ok(Some(ProposalDetailProjection {
+            proposal,
+            review_documents,
         }))
     }
 
@@ -423,6 +549,45 @@ fn child_target_conflict(
     }
 }
 
+/// Build the base+proposed bounded texts for one child IF it carries a materialized
+/// replace-body operation. The proposed text is the materialized target snapshot
+/// payload; the base text is the CURRENT worktree document body (read the same way
+/// apply reads its base). A child with NO materialized operation, or one whose base
+/// document is unreadable (e.g. a provisional create has no base to diff against),
+/// contributes no review-document pair.
+fn review_document(
+    worktree_root: &Path,
+    child: &ChangesetChildOperationRecord,
+) -> Option<ReviewDocumentProjection> {
+    let materialized = child.materialized_operation.as_ref()?;
+    let base = SnapshotReader::for_worktree(worktree_root)
+        .capture_existing(&child.target.document)
+        .ok()
+        .map(|snapshot| BoundedDocumentText::from_text(&snapshot.text))?;
+    Some(ReviewDocumentProjection {
+        child_key: child.child_key.clone(),
+        document: child.target.document.clone(),
+        base,
+        proposed: BoundedDocumentText::from_text(&materialized.target_snapshot.payload_text),
+    })
+}
+
+/// Truncate `value` to at most `max_bytes`, snapping DOWN to the nearest UTF-8 char
+/// boundary so the returned slice is always valid UTF-8.
+fn truncate_at_char_boundary(value: &str, max_bytes: usize) -> &str {
+    if value.len() <= max_bytes {
+        return value;
+    }
+    let mut boundary = 0;
+    for (index, _) in value.char_indices() {
+        if index > max_bytes {
+            break;
+        }
+        boundary = index;
+    }
+    &value[..boundary]
+}
+
 fn validation_state(record: Option<&ValidationStatusRecord>) -> ValidationStateProjection {
     match record {
         Some(record) => ValidationStateProjection {
@@ -447,12 +612,18 @@ fn approval_state(record: Option<&ApprovalRequestRecord>) -> ApprovalStateProjec
             queue_state: Some(record.queue_state),
             decision: record.decision.as_ref().map(|decision| decision.decision),
             stale: record.stale,
+            approval_id: Some(record.approval_id.clone()),
+            proposal_id: Some(record.proposal_id.clone()),
+            reviewed_proposal_revision: Some(record.reviewed.proposal_revision.clone()),
         },
         None => ApprovalStateProjection {
             present: false,
             queue_state: None,
             decision: None,
             stale: false,
+            approval_id: None,
+            proposal_id: None,
+            reviewed_proposal_revision: None,
         },
     }
 }
@@ -723,6 +894,84 @@ mod tests {
             .unwrap()
             .unwrap()
             .unwrap()
+    }
+
+    fn project_detail(
+        store: &mut Store,
+        root: &Path,
+        changeset_id: &ChangesetId,
+    ) -> ProposalDetailProjection {
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                Ok(uow
+                    .projections()
+                    .project_proposal_detail(changeset_id, root))
+            })
+            .unwrap()
+            .unwrap()
+            .unwrap()
+    }
+
+    /// Write a base document and build a MATERIALIZED replace-body child input for it
+    /// (child_key `child_1`), carrying the real target snapshot the projection reads
+    /// the proposed text from. The materialized operation's `changeset_id` must equal
+    /// the aggregate's, so the ledger's materialized-child identity check passes.
+    fn materialized_child(
+        root: &Path,
+        stem: &str,
+        changeset_id: &ChangesetId,
+        base_body: &str,
+        new_body: &str,
+    ) -> ChangesetChildOperationInput {
+        use crate::authoring::api::{ChangesetChildOperationDraft, DraftMode, DraftMutation};
+        use crate::authoring::documents::{DocumentResolver, ExistingDocumentLookup};
+        use crate::authoring::operations::MaterializedProposalOperation;
+
+        let rel = format!(".vault/plan/{stem}.md");
+        let path = root.join(&rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, base_body).unwrap();
+
+        let document = DocumentResolver::for_worktree(root)
+            .resolve_existing(ExistingDocumentLookup::Stem(stem.to_string()))
+            .unwrap();
+        let base_snapshot = SnapshotReader::for_worktree(root)
+            .require_current_base(&document)
+            .unwrap();
+        let base_revision = match &document {
+            DocumentRef::Existing { base_revision, .. } => base_revision.clone(),
+            _ => panic!("resolved document must be existing"),
+        };
+        let draft = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::ReplaceBody,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(base_revision.clone()),
+                current_revision: Some(base_revision),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: new_body.to_string(),
+            },
+        };
+        let preimage = SnapshotReader::for_worktree(root)
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: "preimage_1".to_string(),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: "child_1".to_string(),
+                document,
+                captured_at_ms: 100,
+            })
+            .unwrap();
+        let operation = MaterializedProposalOperation::materialize_replace_body(
+            changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        ChangesetChildOperationInput::from_materialized(operation, "material:v1", "validation:v1")
     }
 
     #[test]
@@ -1064,5 +1313,114 @@ mod tests {
             "the page is bounded at the cap"
         );
         assert!(page.truncated, "a corpus over the cap reports truncation");
+    }
+
+    #[test]
+    fn detail_projection_serves_approval_ids_and_bounded_base_and_proposed_texts() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let mut store = temp_store(root);
+        let changeset_id = ChangesetId::new("changeset_1").unwrap();
+        let author = actor("agent:author", ActorKind::Agent);
+        let mat = materialized_child(
+            root,
+            "projection-a",
+            &changeset_id,
+            "alpha\nbeta\n",
+            "alpha\nBETA\n",
+        );
+        let revision = seed_needs_review(&mut store, &changeset_id, &author, {
+            let mat = mat.clone();
+            move || vec![mat.clone()]
+        });
+        request_approval(&mut store, &changeset_id, &revision);
+
+        let detail = project_detail(&mut store, root, &changeset_id);
+
+        // Part 1: the IDENTITY fields are served from the approval record so a human
+        // reviewing from the queue can name the approval without recomputing a hash.
+        assert!(detail.proposal.approval.present);
+        assert_eq!(
+            detail.proposal.approval.approval_id,
+            Some(ApprovalId::new("approval_1").unwrap())
+        );
+        assert_eq!(
+            detail.proposal.approval.proposal_id,
+            Some(ProposalId::new("proposal_1").unwrap())
+        );
+        assert_eq!(
+            detail.proposal.approval.reviewed_proposal_revision.as_ref(),
+            Some(&revision)
+        );
+
+        // Part 2: BOTH the base and proposed bounded texts are served, with honest
+        // (unset) truncation flags for these small documents. No server-side diff.
+        assert_eq!(detail.review_documents.len(), 1);
+        let doc = &detail.review_documents[0];
+        assert_eq!(doc.child_key, "child_1");
+        assert_eq!(doc.base.text, "alpha\nbeta\n");
+        assert!(!doc.base.truncated);
+        assert_eq!(doc.base.total_bytes, "alpha\nbeta\n".len());
+        assert_eq!(doc.base.returned_bytes, "alpha\nbeta\n".len());
+        assert_eq!(doc.proposed.text, "alpha\nBETA\n");
+        assert!(!doc.proposed.truncated);
+        assert_eq!(doc.proposed.total_bytes, "alpha\nBETA\n".len());
+    }
+
+    #[test]
+    fn review_document_text_truncates_honestly_over_the_byte_cap() {
+        let big = "a".repeat(MAX_REVIEW_DOCUMENT_TEXT_BYTES + 64);
+        let bounded = BoundedDocumentText::from_text(&big);
+        assert!(bounded.truncated, "an over-cap body reports truncation");
+        assert_eq!(bounded.total_bytes, MAX_REVIEW_DOCUMENT_TEXT_BYTES + 64);
+        assert_eq!(bounded.returned_bytes, MAX_REVIEW_DOCUMENT_TEXT_BYTES);
+        assert_eq!(bounded.text.len(), MAX_REVIEW_DOCUMENT_TEXT_BYTES);
+
+        let small = "short body\n";
+        let bounded = BoundedDocumentText::from_text(small);
+        assert!(!bounded.truncated);
+        assert_eq!(bounded.returned_bytes, small.len());
+        assert_eq!(bounded.total_bytes, small.len());
+    }
+
+    #[test]
+    fn list_projection_never_carries_document_bodies() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let mut store = temp_store(root);
+        let changeset_id = ChangesetId::new("changeset_1").unwrap();
+        let author = actor("agent:author", ActorKind::Agent);
+        let mat = materialized_child(
+            root,
+            "projection-a",
+            &changeset_id,
+            "alpha\nbeta\n",
+            "alpha\nBETA\n",
+        );
+        let revision = seed_needs_review(&mut store, &changeset_id, &author, {
+            let mat = mat.clone();
+            move || vec![mat.clone()]
+        });
+        request_approval(&mut store, &changeset_id, &revision);
+
+        let page = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                Ok(uow.projections().list_proposals(root))
+            })
+            .unwrap()
+            .unwrap();
+
+        let serialized = serde_json::to_value(&page).unwrap().to_string();
+        // The list row carries the approval IDENTITY fields (Part 1, allowed on the
+        // list) but NEVER a document body: no detail shape, no proposed text, and the
+        // proposed body content must not leak (bound #1).
+        assert!(serialized.contains("approval_id"));
+        assert!(!serialized.contains("review_documents"));
+        assert!(!serialized.contains("proposed"));
+        assert!(!serialized.contains("payload_text"));
+        assert!(
+            !serialized.contains("BETA"),
+            "the proposed body must never appear on the list projection"
+        );
     }
 }

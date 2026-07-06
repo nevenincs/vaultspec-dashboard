@@ -271,7 +271,10 @@ pub async fn list_proposals(State(state): State<Arc<AppState>>) -> Response {
 }
 
 /// `GET /authoring/v1/proposals/{changeset_id}` — one changeset's backend-served
-/// review projection, or a typed 404 when no such changeset exists.
+/// review DETAIL projection (the proposal projection plus the per-operation
+/// base+proposed bounded texts the review diff renders over), or a typed 404 when no
+/// such changeset exists. Detail-only: the list route (`GET /proposals`) never
+/// carries document bodies.
 pub async fn project_proposal(
     State(state): State<Arc<AppState>>,
     Path(changeset_id): Path<String>,
@@ -292,12 +295,13 @@ pub async fn project_proposal(
     match state.with_authoring_store(|store| {
         store.with_unit_of_work(CommandKind::CreateProposal, |uow| {
             uow.projections()
-                .project_proposal(&changeset_id, &worktree_root)
+                .project_proposal_detail(&changeset_id, &worktree_root)
                 .map_err(|ProjectionError::Store(err)| err)
         })
     }) {
         Ok(Some(projection)) => {
-            let data = serde_json::to_value(projection).expect("proposal projection serializes");
+            let data =
+                serde_json::to_value(projection).expect("proposal detail projection serializes");
             super::response::snapshot(&state, data).into_response()
         }
         Ok(None) => super::response::typed_error(
