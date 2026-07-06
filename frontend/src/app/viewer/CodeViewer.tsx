@@ -25,31 +25,10 @@ import {
 } from "../../stores/view/codeViewer";
 import { useElementHeight } from "../chrome/useElementWidth";
 import { Badge, Button, Skeleton, SkeletonBar } from "../kit";
+import { HighlightedLineContent } from "./HighlightedCode";
 import { stopScrollKeyPropagation } from "./scrollRegion";
 import type { TokenLine } from "./useHighlighter";
 import { useTokenLines } from "./useHighlighter";
-
-/** Render one tokenized line's spans, each colored by its theme token (the
- *  `var(--color-*)` foreground the token-bound theme emits). A plain line (no
- *  tokens) renders its raw text. */
-function TokenizedLine({ tokens }: { tokens: TokenLine }): ReactElement {
-  return (
-    <>
-      {tokens.map((token, i) => (
-        <span
-          key={i}
-          style={{
-            color: token.color,
-            ...(token.fontStyle === 1 ? { fontStyle: "italic" } : {}),
-            ...(token.fontStyle === 2 ? { fontWeight: 700 } : {}),
-          }}
-        >
-          {token.content}
-        </span>
-      ))}
-    </>
-  );
-}
 
 /** The windowed line list: renders only the visible range (plus overscan) of the
  *  line array, absolutely positioned within a full-height spacer, with a sticky
@@ -108,11 +87,7 @@ function CodeLines({
                 {lineNo + 1}
               </span>
               <code className={presentation.codeClassName}>
-                {tokenLines && tokenLines[lineNo] ? (
-                  <TokenizedLine tokens={tokenLines[lineNo]} />
-                ) : (
-                  raw
-                )}
+                <HighlightedLineContent raw={raw} tokens={tokenLines?.[lineNo]} />
               </code>
             </div>
           );

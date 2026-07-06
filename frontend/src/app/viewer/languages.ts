@@ -77,6 +77,40 @@ const HINT_ALIASES: Record<string, string> = {
   htm: "html",
 };
 
+const EXTENSION_HINTS: Record<string, string> = {
+  rs: "rust",
+  py: "python",
+  js: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  ts: "typescript",
+  mts: "typescript",
+  cts: "typescript",
+  jsx: "jsx",
+  tsx: "tsx",
+  sh: "bash",
+  bash: "bash",
+  zsh: "bash",
+  bat: "batch",
+  cmd: "batch",
+  ps1: "powershell",
+  c: "c",
+  h: "c",
+  cc: "cpp",
+  cpp: "cpp",
+  cxx: "cpp",
+  hpp: "cpp",
+  json: "json",
+  toml: "toml",
+  yml: "yaml",
+  yaml: "yaml",
+  md: "markdown",
+  markdown: "markdown",
+  css: "css",
+  html: "html",
+  htm: "html",
+};
+
 /**
  * Resolve a `language_hint` (engine wire) or a code-fence info string to a
  * grammar spec, applying the alias normalization. Returns null for an
@@ -89,6 +123,17 @@ export function resolveGrammar(hint: string | null | undefined): GrammarSpec | n
   const normalized = hint.trim().toLowerCase();
   const canonical = HINT_ALIASES[normalized] ?? normalized;
   return GRAMMARS[canonical] ?? null;
+}
+
+/** Derive a highlighter hint from a served path or review-snippet label. */
+export function languageHintFromPath(path: string | null | undefined): string | null {
+  if (!path) return null;
+  const clean = path.split(/[?#]/, 1)[0]?.trim().toLowerCase();
+  if (!clean) return null;
+  const leaf = clean.split(/[\\/]/).pop() ?? clean;
+  const dot = leaf.lastIndexOf(".");
+  if (dot < 0 || dot === leaf.length - 1) return null;
+  return EXTENSION_HINTS[leaf.slice(dot + 1)] ?? null;
 }
 
 /** The set of canonical grammar ids the viewers can highlight (for tests / docs). */

@@ -6,13 +6,18 @@
 // tally, the honest truncation notice, and the no-change empty state. Core vitest
 // matchers only (no jest-dom).
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { ENGINE_WAIT } from "../../testing/timing";
 import type { BoundedDocumentText } from "../../stores/server/authoring";
 import { DiffLinesView } from "./DiffPanel";
+import { __resetHighlighterForTests } from "../viewer/useHighlighter";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  __resetHighlighterForTests();
+});
 
 function text(
   body: string,
@@ -81,5 +86,26 @@ describe("DiffLinesView", () => {
     const notice = screen.getByText(/Preview truncated/);
     expect(notice.textContent).toContain("4");
     expect(notice.textContent).toContain("4096");
+  });
+
+  it("highlights snippet text from the document path without losing diff markers", async () => {
+    render(
+      <DiffLinesView
+        base={text("const ready = false\n")}
+        proposed={text("const ready: boolean = true\n")}
+        label="frontend/src/state.ts"
+      />,
+    );
+
+    expect(document.querySelector('[data-diff-line="remove"]')).toBeTruthy();
+    expect(document.querySelector('[data-diff-line="add"]')).toBeTruthy();
+
+    await waitFor(() => {
+      const token = document.querySelector(
+        '[data-diff-line="add"] [data-highlight-token]',
+      ) as HTMLElement;
+      expect(token).toBeTruthy();
+      expect(token.getAttribute("style") ?? "").toContain("var(--color-");
+    }, ENGINE_WAIT);
   });
 });

@@ -9,9 +9,10 @@
 // review artifact); the line diff itself is PRESENTATION, computed client-side by
 // `diffLines`. Truncation is surfaced honestly from the served `BoundedDocumentText`.
 //
-// Design system: kit StateBlock/Skeleton for the non-diff states; diff lines use
-// the bound `--color-diff-*` ink tokens with a grayscale-safe +/− gutter (the sign
-// is the non-color identity), no background tints, no hardcoded px.
+// Design system: kit StateBlock/Skeleton for the non-diff states; diff identity
+// stays in the bound `--color-diff-*` tally and grayscale-safe +/− gutter, while
+// snippet text reuses the shared token-tier highlighter. No background tints, no
+// hardcoded px.
 
 import { useMemo } from "react";
 
@@ -21,6 +22,9 @@ import {
   type ReviewDocumentProjection,
 } from "../../stores/server/authoring";
 import { Skeleton, SkeletonRow, StateBlock } from "../kit";
+import { HighlightedLineContent } from "../viewer/HighlightedCode";
+import { languageHintFromPath } from "../viewer/languages";
+import { useTokenLines } from "../viewer/useHighlighter";
 import { diffLines, diffStat, type DiffLineKind } from "./diffLines";
 
 const GUTTER: Record<DiffLineKind, string> = {
@@ -70,6 +74,11 @@ export function DiffLinesView({
   );
   const stat = useMemo(() => diffStat(lines), [lines]);
   const truncated = truncationNotice(base, proposed);
+  const languageHint = useMemo(() => languageHintFromPath(label), [label]);
+  const { lines: tokenLines } = useTokenLines(
+    lines.map((line) => line.text).join("\n"),
+    languageHint,
+  );
 
   return (
     <div className="flex flex-col gap-fg-1-5" data-review-doc-diff data-doc={label}>
@@ -104,7 +113,10 @@ export function DiffLinesView({
                   {GUTTER[line.kind]}
                 </span>
                 <span className="whitespace-pre-wrap break-words">
-                  {line.text || " "}
+                  <HighlightedLineContent
+                    raw={line.text}
+                    tokens={tokenLines?.[index]}
+                  />
                 </span>
               </div>
             ))}

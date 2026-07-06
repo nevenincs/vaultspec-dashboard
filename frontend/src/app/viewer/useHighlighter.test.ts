@@ -11,7 +11,11 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { resolveGrammar, supportedLanguageIds } from "./languages";
+import {
+  languageHintFromPath,
+  resolveGrammar,
+  supportedLanguageIds,
+} from "./languages";
 import {
   __resetHighlighterForTests,
   useHighlightedHast,
@@ -62,6 +66,13 @@ describe("language resolver", () => {
     expect(resolveGrammar(null)).toBeNull();
     expect(resolveGrammar(undefined)).toBeNull();
     expect(resolveGrammar("")).toBeNull();
+  });
+
+  it("derives review-snippet language hints from paths", () => {
+    expect(languageHintFromPath("frontend/src/App.tsx")).toBe("tsx");
+    expect(languageHintFromPath(".vault/research/alpha.md")).toBe("markdown");
+    expect(languageHintFromPath("scripts/build.ps1")).toBe("powershell");
+    expect(languageHintFromPath("Makefile")).toBeNull();
   });
 });
 
