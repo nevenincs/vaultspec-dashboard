@@ -4077,7 +4077,7 @@ export interface ContentView extends TierAvailability {
   path?: string;
   /** The git-style blob oid of the served bytes, when available. */
   blobHash?: string;
-  /** The extension-derived highlighter grammar hint; null when none applies. */
+  /** The path-derived highlighter grammar hint; null when none applies. */
   languageHint: string | null;
   /** The (possibly truncated) UTF-8 text; empty while loading/degraded/errored. */
   text: string;

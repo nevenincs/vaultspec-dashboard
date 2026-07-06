@@ -155,12 +155,25 @@ fn guard_within_root(rel: &str) -> Result<String, ContentError> {
     Ok(rel_path.to_string_lossy().replace('\\', "/"))
 }
 
-/// Derive the highlighter language hint from the path extension (so the client
-/// picks the grammar without re-parsing). The hint is advisory; the client maps
-/// it to a Shiki grammar and degrades to plain text on an unknown hint.
+/// Derive the highlighter language hint from the path (so the client picks the
+/// grammar without re-parsing). The hint is advisory; the client maps it to a
+/// Shiki grammar and degrades to plain text on an unknown hint.
 fn language_hint(rel_path: &str) -> Option<String> {
-    let ext = rel_path.rsplit('.').next()?;
-    if ext == rel_path {
+    let leaf = rel_path.rsplit(['/', '\\']).next()?.to_ascii_lowercase();
+    if let Some(hint) = match leaf.as_str() {
+        "dockerfile" => Some("dockerfile"),
+        "makefile" => Some("makefile"),
+        "justfile" => Some("just"),
+        "cargo.lock" | "uv.lock" | "poetry.lock" => Some("toml"),
+        "gemfile" | "rakefile" => Some("ruby"),
+        "jenkinsfile" => Some("groovy"),
+        "cmakelists.txt" => Some("cmake"),
+        _ => None,
+    } {
+        return Some(hint.to_string());
+    }
+    let ext = leaf.rsplit('.').next()?;
+    if ext == leaf {
         return None; // no extension
     }
     let hint = match ext.to_ascii_lowercase().as_str() {
@@ -175,12 +188,49 @@ fn language_hint(rel_path: &str) -> Option<String> {
         "ps1" | "psm1" | "psd1" => "powershell",
         "c" | "h" => "c",
         "cc" | "cpp" | "cxx" | "hpp" | "hxx" => "cpp",
+        "cs" => "csharp",
+        "java" => "java",
+        "kt" | "kts" => "kotlin",
+        "go" => "go",
+        "rb" => "ruby",
+        "php" => "php",
+        "lua" => "lua",
+        "pl" | "pm" => "perl",
+        "r" => "r",
+        "swift" => "swift",
+        "zig" => "zig",
+        "dart" => "dart",
+        "ex" | "exs" => "elixir",
+        "scala" => "scala",
         "json" => "json",
+        "jsonc" => "jsonc",
+        "json5" => "json5",
+        "jsonl" => "jsonl",
         "toml" => "toml",
         "yaml" | "yml" => "yaml",
         "md" | "markdown" => "markdown",
+        "mdx" => "mdx",
         "css" => "css",
+        "scss" => "scss",
+        "sass" => "sass",
+        "less" => "less",
         "html" | "htm" => "html",
+        "xml" | "svg" => "xml",
+        "sql" => "sql",
+        "graphql" | "gql" => "graphql",
+        "vue" => "vue",
+        "svelte" => "svelte",
+        "astro" => "astro",
+        "dockerfile" => "dockerfile",
+        "env" => "dotenv",
+        "ini" | "cfg" | "conf" => "ini",
+        "properties" => "properties",
+        "csv" => "csv",
+        "tsv" => "tsv",
+        "diff" | "patch" => "diff",
+        "hcl" => "hcl",
+        "tf" | "tfvars" => "terraform",
+        "proto" | "protobuf" => "proto",
         _ => return None,
     };
     Some(hint.to_string())
@@ -605,6 +655,24 @@ mod tests {
             ("a.yaml", Some("yaml")),
             ("a.yml", Some("yaml")),
             ("a.md", Some("markdown")),
+            ("a.mdx", Some("mdx")),
+            ("a.sql", Some("sql")),
+            ("a.graphql", Some("graphql")),
+            ("a.xml", Some("xml")),
+            ("a.go", Some("go")),
+            ("a.java", Some("java")),
+            ("a.kt", Some("kotlin")),
+            ("a.rb", Some("ruby")),
+            ("a.php", Some("php")),
+            ("a.vue", Some("vue")),
+            ("a.svelte", Some("svelte")),
+            ("a.scss", Some("scss")),
+            ("a.jsonc", Some("jsonc")),
+            ("Dockerfile", Some("dockerfile")),
+            ("Makefile", Some("makefile")),
+            ("Justfile", Some("just")),
+            ("Cargo.lock", Some("toml")),
+            ("uv.lock", Some("toml")),
             ("README", None),
             ("a.unknownext", None),
         ] {

@@ -28,13 +28,18 @@ viewer. `frontend/src/app/viewer/highlighterTheme.ts` binds token colors to
 `var(--color-*)`, preserving the OKLCH theme tier across light, dark, and
 high-contrast modes.
 
-### F2 - The supported language set is already centralized
+### F2 - The supported language set is centralized and can be broadened safely
 
-`frontend/src/app/viewer/languages.ts` covers the ADR-required set: Rust, Python,
-JavaScript, TypeScript, JSX, TSX, Bash, batch, PowerShell, C, C++, JSON, TOML,
-YAML, Markdown, plus CSS and HTML. Aliases cover common fence spellings such as
-`ts`, `tsx`, `sh`, `ps1`, `c++`, `yml`, and `md`. Unknown hints intentionally
-degrade to plain text rather than guessing.
+`frontend/src/app/viewer/languages.ts` is the single resolver consumed by
+Markdown fences, code viewers, the highlighted document editor, and review
+snippets. The first implementation carried a small ADR-required grammar table.
+The completion audit found that this kept common industry files such as
+`Dockerfile`, `Makefile`, `Cargo.lock`, `*.sql`, `*.graphql`, `*.vue`, and
+`*.svelte` on the plain-text path even though Shiki already ships lazy import
+thunks for them. The safe extension is to keep the same resolver boundary and
+same singleton highlighter, but delegate grammar loading to Shiki's bundled
+language registry while keeping path-derived hint maps for served code files and
+review labels. Unknown hints still degrade to plain text rather than guessing.
 
 ### F3 - Viewer surfaces are highlighted, edit mode is not
 

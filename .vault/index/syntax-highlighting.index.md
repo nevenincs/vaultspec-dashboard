@@ -10,6 +10,7 @@ related:
   - '[[2026-07-06-syntax-highlighting-S02]]'
   - '[[2026-07-06-syntax-highlighting-S03]]'
   - '[[2026-07-06-syntax-highlighting-S04]]'
+  - '[[2026-07-06-syntax-highlighting-S05]]'
   - '[[2026-07-06-syntax-highlighting-adr]]'
   - '[[2026-07-06-syntax-highlighting-audit]]'
   - '[[2026-07-06-syntax-highlighting-plan]]'
@@ -36,6 +37,7 @@ Auto-generated index of all documents tagged with `#syntax-highlighting`.
 - `2026-07-06-syntax-highlighting-S02` - Mount highlighting in the document editor
 - `2026-07-06-syntax-highlighting-S03` - Highlight review snippet diffs
 - `2026-07-06-syntax-highlighting-S04` - Cover highlighter editor and snippet behavior
+- `2026-07-06-syntax-highlighting-S05` - Broaden language coverage
 
 ### plan
 

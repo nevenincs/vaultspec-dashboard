@@ -26,6 +26,7 @@ import {
 import { useElementHeight } from "../chrome/useElementWidth";
 import { Badge, Button, Skeleton, SkeletonBar } from "../kit";
 import { HighlightedLineContent } from "./HighlightedCode";
+import { languageDisplayName } from "./languages";
 import { stopScrollKeyPropagation } from "./scrollRegion";
 import type { TokenLine } from "./useHighlighter";
 import { useTokenLines } from "./useHighlighter";
@@ -122,9 +123,7 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
   }
 
   const fileName = view.path ? (view.path.split("/").pop() ?? view.path) : null;
-  const langDisplay = view.languageHint
-    ? view.languageHint.charAt(0).toUpperCase() + view.languageHint.slice(1)
-    : "Text";
+  const langDisplay = languageDisplayName(view.languageHint);
   const onCopy = () => {
     // Route through the copy verb so the execCommand fallback reaches this button
     // too (a bare navigator.clipboard write is a silent no-op on http origins).

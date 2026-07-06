@@ -1,85 +1,43 @@
-// The shared language registry for both viewers (review-rail-viewers ADR P03.S15).
+// The shared language registry for all highlighted viewer/editor surfaces.
 //
 // Maps the engine's `language_hint` (and a markdown code-fence `language-*` info
-// string) onto a Shiki grammar id plus its lazy `@shikijs/langs/*` dynamic import,
-// so the code viewer and the markdown reader's fenced code share ONE tokenizer and
-// ONE language vocabulary. Per the ADR the required set is py, rs, js, ts,
-// jsx/tsx, bash, batch, powershell, c, c++, json, toml, yaml, md — plus a small
-// long tail (css/html). Grammars load lazily (only what the operator opens), via
-// per-language dynamic `import()` so the bundle stays proportional.
+// string) onto Shiki's bundled grammar registry, so the code viewer, markdown
+// fenced blocks, document editor overlay, and review snippets share ONE tokenizer
+// and ONE language vocabulary. Grammars still load lazily through Shiki's dynamic
+// import registry: this file imports metadata and import thunks, not every grammar.
 //
 // An unknown/absent hint resolves to `null`: the viewer renders the text as plain
-// (no grammar) rather than guessing — an honest degradation, not a broken render.
+// (no grammar) rather than guessing -- an honest degradation, not a broken render.
 
 import type { LanguageRegistration } from "shiki/core";
+import { bundledLanguages, bundledLanguagesInfo } from "shiki/langs";
 
-/** A lazily-imported grammar module: the `@shikijs/langs/*` default export is the
- *  grammar registration array Shiki's `loadLanguage` accepts. */
+/** A lazily-imported grammar module: the Shiki import thunk's default export is
+ *  the grammar registration array Shiki's `loadLanguage` accepts. */
 type GrammarModule = { default: LanguageRegistration[] };
+type BundledLanguageId = keyof typeof bundledLanguages;
 
 /** A resolved grammar: the Shiki language id and its lazy loader. */
 export interface GrammarSpec {
   /** The Shiki grammar id (the registered language name). */
   id: string;
-  /** The lazy `@shikijs/langs/*` import producing the grammar registration. */
+  /** The lazy Shiki import producing the grammar registration. */
   load: () => Promise<GrammarModule>;
 }
 
-// The grammar table. Each entry's `load` is a per-language dynamic import so a
-// grammar ships only when first opened (the ADR's lazy-grammar requirement).
-const GRAMMARS: Record<string, GrammarSpec> = {
-  rust: { id: "rust", load: () => import("@shikijs/langs/rust") },
-  python: { id: "python", load: () => import("@shikijs/langs/python") },
-  javascript: { id: "javascript", load: () => import("@shikijs/langs/javascript") },
-  typescript: { id: "typescript", load: () => import("@shikijs/langs/typescript") },
-  jsx: { id: "jsx", load: () => import("@shikijs/langs/jsx") },
-  tsx: { id: "tsx", load: () => import("@shikijs/langs/tsx") },
-  bash: { id: "bash", load: () => import("@shikijs/langs/bash") },
-  batch: { id: "batch", load: () => import("@shikijs/langs/bat") },
-  powershell: { id: "powershell", load: () => import("@shikijs/langs/powershell") },
-  c: { id: "c", load: () => import("@shikijs/langs/c") },
-  cpp: { id: "cpp", load: () => import("@shikijs/langs/cpp") },
-  json: { id: "json", load: () => import("@shikijs/langs/json") },
-  toml: { id: "toml", load: () => import("@shikijs/langs/toml") },
-  yaml: { id: "yaml", load: () => import("@shikijs/langs/yaml") },
-  markdown: { id: "markdown", load: () => import("@shikijs/langs/markdown") },
-  css: { id: "css", load: () => import("@shikijs/langs/css") },
-  html: { id: "html", load: () => import("@shikijs/langs/html") },
-};
+const BUNDLED_LANGUAGE_KEYS = new Set(Object.keys(bundledLanguages));
 
-/**
- * Aliases the markdown code-fence info string (or a stray client hint) may use,
- * normalized onto the canonical hint the engine's `language_hint` emits. The
- * engine already normalizes by extension, so these cover the fence `info` strings
- * authors type (```ts, ```sh, ```yml, …) and a few common spellings.
- */
-const HINT_ALIASES: Record<string, string> = {
-  rs: "rust",
-  py: "python",
-  js: "javascript",
-  mjs: "javascript",
-  cjs: "javascript",
-  ts: "typescript",
-  mts: "typescript",
-  cts: "typescript",
-  sh: "bash",
-  shell: "bash",
-  zsh: "bash",
-  bat: "batch",
-  cmd: "batch",
-  ps1: "powershell",
-  pwsh: "powershell",
-  "c++": "cpp",
-  cc: "cpp",
-  cxx: "cpp",
-  yml: "yaml",
-  md: "markdown",
-  htm: "html",
-};
+const HINT_ALIASES: Record<string, string> = Object.fromEntries(
+  bundledLanguagesInfo.flatMap((info) => [
+    [info.id, info.id],
+    ...(info.aliases ?? []).map((alias) => [alias, info.id]),
+  ]),
+);
 
 const EXTENSION_HINTS: Record<string, string> = {
   rs: "rust",
   py: "python",
+  pyi: "python",
   js: "javascript",
   mjs: "javascript",
   cjs: "javascript",
@@ -91,38 +49,117 @@ const EXTENSION_HINTS: Record<string, string> = {
   sh: "bash",
   bash: "bash",
   zsh: "bash",
+  fish: "fish",
   bat: "batch",
   cmd: "batch",
   ps1: "powershell",
+  psm1: "powershell",
+  psd1: "powershell",
   c: "c",
   h: "c",
   cc: "cpp",
   cpp: "cpp",
   cxx: "cpp",
   hpp: "cpp",
+  hxx: "cpp",
+  cs: "csharp",
+  java: "java",
+  kt: "kotlin",
+  kts: "kotlin",
+  go: "go",
+  rb: "ruby",
+  php: "php",
+  lua: "lua",
+  pl: "perl",
+  pm: "perl",
+  r: "r",
+  swift: "swift",
+  zig: "zig",
+  dart: "dart",
+  ex: "elixir",
+  exs: "elixir",
+  scala: "scala",
   json: "json",
+  jsonc: "jsonc",
+  json5: "json5",
+  jsonl: "jsonl",
   toml: "toml",
   yml: "yaml",
   yaml: "yaml",
   md: "markdown",
   markdown: "markdown",
+  mdx: "mdx",
   css: "css",
+  scss: "scss",
+  sass: "sass",
+  less: "less",
   html: "html",
   htm: "html",
+  xml: "xml",
+  svg: "xml",
+  sql: "sql",
+  graphql: "graphql",
+  gql: "graphql",
+  vue: "vue",
+  svelte: "svelte",
+  astro: "astro",
+  dockerfile: "dockerfile",
+  env: "dotenv",
+  ini: "ini",
+  cfg: "ini",
+  conf: "ini",
+  properties: "properties",
+  csv: "csv",
+  tsv: "tsv",
+  diff: "diff",
+  patch: "diff",
+  hcl: "hcl",
+  tf: "terraform",
+  tfvars: "terraform",
+  proto: "proto",
+  protobuf: "proto",
+  rsx: "rust",
 };
+
+const BASENAME_HINTS: Record<string, string> = {
+  dockerfile: "dockerfile",
+  makefile: "makefile",
+  justfile: "just",
+  "cargo.lock": "toml",
+  "uv.lock": "toml",
+  "poetry.lock": "toml",
+  gemfile: "ruby",
+  rakefile: "ruby",
+  jenkinsfile: "groovy",
+  "cmakelists.txt": "cmake",
+};
+
+function normalizeHint(hint: string): string | null {
+  const normalized = hint
+    .trim()
+    .toLowerCase()
+    .replace(/^language-/, "")
+    .split(/\s+/, 1)[0];
+  if (!normalized) return null;
+  return HINT_ALIASES[normalized] ?? normalized;
+}
+
+function bundledLoader(id: string): (() => Promise<GrammarModule>) | null {
+  if (!BUNDLED_LANGUAGE_KEYS.has(id)) return null;
+  return bundledLanguages[id as BundledLanguageId] as () => Promise<GrammarModule>;
+}
 
 /**
  * Resolve a `language_hint` (engine wire) or a code-fence info string to a
- * grammar spec, applying the alias normalization. Returns null for an
- * unknown/absent hint so the viewer renders plain text — the shared resolver both
- * viewers consume, so the code viewer and the markdown fences agree on the
- * grammar for any given hint.
+ * grammar spec, applying Shiki's alias normalization. Returns null for an
+ * unknown/absent hint so the viewer renders plain text.
  */
 export function resolveGrammar(hint: string | null | undefined): GrammarSpec | null {
   if (!hint) return null;
-  const normalized = hint.trim().toLowerCase();
-  const canonical = HINT_ALIASES[normalized] ?? normalized;
-  return GRAMMARS[canonical] ?? null;
+  const id = normalizeHint(hint);
+  if (!id) return null;
+  const load = bundledLoader(id);
+  return load ? { id, load } : null;
 }
 
 /** Derive a highlighter hint from a served path or review-snippet label. */
@@ -131,12 +168,21 @@ export function languageHintFromPath(path: string | null | undefined): string | 
   const clean = path.split(/[?#]/, 1)[0]?.trim().toLowerCase();
   if (!clean) return null;
   const leaf = clean.split(/[\\/]/).pop() ?? clean;
+  const basenameHint = BASENAME_HINTS[leaf];
+  if (basenameHint) return basenameHint;
   const dot = leaf.lastIndexOf(".");
   if (dot < 0 || dot === leaf.length - 1) return null;
   return EXTENSION_HINTS[leaf.slice(dot + 1)] ?? null;
 }
 
-/** The set of canonical grammar ids the viewers can highlight (for tests / docs). */
+/** A user-facing language display name for badges and fenced-code labels. */
+export function languageDisplayName(hint: string | null | undefined): string {
+  if (!hint) return "Text";
+  const id = normalizeHint(hint) ?? hint.trim().toLowerCase();
+  return bundledLanguagesInfo.find((info) => info.id === id)?.name ?? hint;
+}
+
+/** The set of grammar hint ids the viewers can highlight (for tests / docs). */
 export function supportedLanguageIds(): string[] {
-  return Object.keys(GRAMMARS);
+  return Object.keys(bundledLanguages);
 }

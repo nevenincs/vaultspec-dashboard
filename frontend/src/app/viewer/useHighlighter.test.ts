@@ -12,6 +12,7 @@ import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  languageDisplayName,
   languageHintFromPath,
   resolveGrammar,
   supportedLanguageIds,
@@ -47,6 +48,21 @@ describe("language resolver", () => {
       "toml",
       "yaml",
       "markdown",
+      "mdx",
+      "dockerfile",
+      "makefile",
+      "sql",
+      "graphql",
+      "go",
+      "java",
+      "kotlin",
+      "ruby",
+      "php",
+      "vue",
+      "svelte",
+      "xml",
+      "jsonc",
+      "scss",
     ]) {
       expect(ids).toContain(id);
     }
@@ -56,13 +72,16 @@ describe("language resolver", () => {
     expect(resolveGrammar("rs")?.id).toBe("rust");
     expect(resolveGrammar("ts")?.id).toBe("typescript");
     expect(resolveGrammar("TSX")?.id).toBe("tsx");
-    expect(resolveGrammar("sh")?.id).toBe("bash");
+    expect(resolveGrammar("sh")?.id).toBe("shellscript");
+    expect(resolveGrammar("bat")?.id).toBe("bat");
     expect(resolveGrammar("c++")?.id).toBe("cpp");
     expect(resolveGrammar("yml")?.id).toBe("yaml");
+    expect(resolveGrammar("dockerfile")?.id).toBe("docker");
+    expect(resolveGrammar("language-ruby")?.id).toBe("ruby");
   });
 
   it("returns null for an unknown or absent hint (plain-text degradation)", () => {
-    expect(resolveGrammar("brainfuck")).toBeNull();
+    expect(resolveGrammar("definitely-not-a-real-language")).toBeNull();
     expect(resolveGrammar(null)).toBeNull();
     expect(resolveGrammar(undefined)).toBeNull();
     expect(resolveGrammar("")).toBeNull();
@@ -72,7 +91,17 @@ describe("language resolver", () => {
     expect(languageHintFromPath("frontend/src/App.tsx")).toBe("tsx");
     expect(languageHintFromPath(".vault/research/alpha.md")).toBe("markdown");
     expect(languageHintFromPath("scripts/build.ps1")).toBe("powershell");
-    expect(languageHintFromPath("Makefile")).toBeNull();
+    expect(languageHintFromPath("Makefile")).toBe("makefile");
+    expect(languageHintFromPath("Dockerfile")).toBe("dockerfile");
+    expect(languageHintFromPath("Cargo.lock")).toBe("toml");
+    expect(languageHintFromPath("schema.graphql")).toBe("graphql");
+    expect(languageHintFromPath("Component.vue")).toBe("vue");
+  });
+
+  it("labels broad Shiki aliases with their display names", () => {
+    expect(languageDisplayName("ts")).toBe("TypeScript");
+    expect(languageDisplayName("dockerfile")).toBe("Dockerfile");
+    expect(languageDisplayName("sh")).toBe("Shell");
   });
 });
 

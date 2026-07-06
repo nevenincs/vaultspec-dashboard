@@ -38,6 +38,7 @@ import {
   categoryColorVar,
 } from "../kit";
 import { PlanSummaryCard } from "./PlanSummaryCard";
+import { languageDisplayName } from "./languages";
 import { remarkWikiLink, wikiLinkNodeId, WIKI_LINK_SCHEME } from "./remarkWikiLink";
 import { stopScrollKeyPropagation } from "./scrollRegion";
 import { useHighlightedHast } from "./useHighlighter";
@@ -59,34 +60,6 @@ function hastToReact(hast: Root): ReactElement {
 
 // --- fenced code (CodeBlock board 256:836) ------------------------------------
 
-const LANG_LABEL: Record<string, string> = {
-  typescript: "TypeScript",
-  ts: "TypeScript",
-  tsx: "TSX",
-  javascript: "JavaScript",
-  js: "JavaScript",
-  jsx: "JSX",
-  rust: "Rust",
-  python: "Python",
-  py: "Python",
-  bash: "Bash",
-  sh: "Shell",
-  shell: "Shell",
-  json: "JSON",
-  toml: "TOML",
-  yaml: "YAML",
-  yml: "YAML",
-  css: "CSS",
-  html: "HTML",
-  markdown: "Markdown",
-  md: "Markdown",
-};
-
-function langLabel(lang: string | null): string {
-  if (!lang) return "Text";
-  return LANG_LABEL[lang] ?? lang;
-}
-
 /** A fenced code block in the binding CodeBlock chrome: a header bar (language +
  *  a Read-only flag and a Copy affordance) over the shared-highlighter body. */
 function CodeFence({
@@ -107,7 +80,7 @@ function CodeFence({
   return (
     <div className="vs-code-fence">
       <div className="vs-code-fence__header">
-        <span className="vs-code-fence__lang">{langLabel(lang)}</span>
+        <span className="vs-code-fence__lang">{languageDisplayName(lang)}</span>
         <span className="vs-code-fence__actions">
           <span className="vs-code-fence__readonly">Read-only</span>
           <button type="button" className="vs-code-fence__copy" onClick={onCopy}>

@@ -17,7 +17,9 @@ Reviewed the syntax-highlighting implementation against the accepted ADR and
 closed L1 plan. The audit covered `frontend/src/app/viewer/HighlightedCode.tsx`,
 the `CodeViewer` reuse path, the `MarkdownDocView` edit-mode mount, the
 `DiffPanel` snippet rendering path, the language resolver update, and the new and
-extended tests.
+extended tests. The follow-up audit also covered the broader Shiki bundled
+language registry path and the backend content route's path-derived language
+hint map.
 
 ## Findings
 
@@ -30,6 +32,18 @@ language hint from served labels and reuse the same highlighter, and tests cover
 the editor, snippet, and path-hint behavior. No engine or stores wire contract
 was changed, no new fetch was added in app chrome, and the existing bounded
 highlighter cache remains the only syntax-token accumulator.
+
+### coverage-follow-up | low | broad language registry and path hints verified
+
+Status: PASS. `frontend/src/app/viewer/languages.ts` now resolves aliases through
+Shiki's bundled language registry, preserving lazy grammar imports while covering
+common source, config, build, lockfile, and component languages beyond the
+original small table. `engine/crates/vaultspec-api/src/routes/content.rs` now
+emits path-derived hints for common file names and extensions, including
+`Dockerfile`, `Makefile`, `Justfile`, `Cargo.lock`, `uv.lock`, SQL, GraphQL, Vue,
+Svelte, XML, JSONC, SCSS, Go, Java, Kotlin, Ruby, and PHP. Focused frontend tests,
+the backend language-hint test, frontend typecheck, Prettier check, Rust format
+check, and the full frontend lint gate passed.
 
 ## Recommendations
 

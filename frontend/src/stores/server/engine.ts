@@ -459,7 +459,7 @@ export interface ContentTruncated {
 }
 
 /** The bytes of one document or source file (GET /nodes/{id}/content data).
- *  `language_hint` is the engine's extension-derived grammar hint (the viewer
+ *  `language_hint` is the engine's path-derived grammar hint (the viewer
  *  maps it to a Shiki grammar, degrading to plain text on an unknown hint);
  *  `blob_hash` is the git-style blob oid that content-addresses the cache entry. */
 export interface ContentResponse {
@@ -469,7 +469,7 @@ export interface ContentResponse {
   blob_hash: string;
   /** Full byte length of the file (before any truncation). */
   byte_len: number;
-  /** Extension-derived highlighter grammar hint; null when none applies. */
+  /** Path-derived highlighter grammar hint; null when none applies. */
   language_hint: string | null;
   /** The (possibly truncated) UTF-8 text. */
   text: string;
