@@ -308,29 +308,29 @@ Ship the accepted agentic-operation-modes ADR end to end: manual / assisted / au
 
 Represent approval requirements, freshness rules, reviewer eligibility, and tool permission gates as backend policy data. Extended for Increment 2 with named mode bundles (manual / assisted / autonomous) and per-scope mode selection with a narrowing-only per-session override, per the accepted operation-modes ADR.
 
-- [ ] `W10.P21.S101` - Ground Approval policy matrix requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W10.P21.S102` - Implement approval policy matrix, freshness checks, reviewer eligibility, tool permission gates, and policy reason projection; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
-- [ ] `W10.P21.S103` - Add policy tests for reviewer eligibility, stale validation, dangerous tool request, self-approval refusal, and request-changes loops; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
-- [ ] `W10.P21.S104` - Run Approval policy matrix code review and record the phase audit; `.vault/audit/`.
-- [ ] `W10.P21.S105` - Verify approval decisions are governed by backend policy rather than frontend inference; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
+- [x] `W10.P21.S101` - Ground Approval policy matrix requirements into the phase checklist; `.vault/adr/`.
+- [x] `W10.P21.S102` - Implement approval policy matrix, freshness checks, reviewer eligibility, tool permission gates, and policy reason projection; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
+- [x] `W10.P21.S103` - Add policy tests for reviewer eligibility, stale validation, dangerous tool request, self-approval refusal, and request-changes loops; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
+- [x] `W10.P21.S104` - Run Approval policy matrix code review and record the phase audit; `.vault/audit/`.
+- [x] `W10.P21.S105` - Verify approval decisions are governed by backend policy rather than frontend inference; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
 
 ### Phase `W10.P48` - System-actor auto-approval, after-the-fact review lane, and kill switch
 
 Grounded on the accepted operation-modes ADR: eligible non-destructive changesets auto-approve under a recorded system-actor policy decision while traversing the canonical lifecycle unchanged, the review-station projection gains the after-the-fact review lane plus its thin frontend lane with one-command rollback, and a mode downgrade re-queues in-flight auto-approvals for human review via the existing policy-change stale trigger.
 
-- [ ] `W10.P48.S216` - Ground System-actor auto-approval, after-the-fact review lane, and kill switch requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W10.P48.S217` - Implement mode-scoped system-actor auto-approval, the after-the-fact review-station lane, kill-switch re-queue on mode downgrade, and its thin frontend lane with one-command rollback; `engine/crates/vaultspec-api/src/authoring/modes.rs`.
-- [ ] `W10.P48.S218` - Add mode tests for eligible auto-approval, the destructive-op human floor, after-the-fact lane contents, kill-switch re-queue, and stale system approval on policy downgrade; `engine/crates/vaultspec-api/src/authoring/modes.rs`.
-- [ ] `W10.P48.S219` - Run System-actor auto-approval, after-the-fact review lane, and kill switch code review and record the phase audit; `.vault/audit/`.
-- [ ] `W10.P48.S220` - Verify eligible changesets auto-approve under system-actor authority, appear in the after-the-fact lane with rollback available, and a mode downgrade re-queues in-flight auto-approvals for human review; `engine/crates/vaultspec-api/src/authoring/modes.rs`.
+- [x] `W10.P48.S216` - Ground System-actor auto-approval, after-the-fact review lane, and kill switch requirements into the phase checklist; `.vault/adr/`.
+- [x] `W10.P48.S217` - Implement mode-scoped system-actor auto-approval, the after-the-fact review-station lane, kill-switch re-queue on mode downgrade, and its thin frontend lane with one-command rollback; `engine/crates/vaultspec-api/src/authoring/modes.rs`.
+- [x] `W10.P48.S218` - Add mode tests for eligible auto-approval, the destructive-op human floor, after-the-fact lane contents, kill-switch re-queue, and stale system approval on policy downgrade; `engine/crates/vaultspec-api/src/authoring/modes.rs`.
+- [x] `W10.P48.S219` - Run System-actor auto-approval, after-the-fact review lane, and kill switch code review and record the phase audit; `.vault/audit/`.
+- [x] `W10.P48.S220` - Verify eligible changesets auto-approve under system-actor authority, appear in the after-the-fact lane with rollback available, and a mode downgrade re-queues in-flight auto-approvals for human review; `engine/crates/vaultspec-api/src/authoring/modes.rs`.
 
 ### Phase `W10.P49` - Unified write path: direct-changeset dual-run for the editor save
 
 Transition-state half of the unified write path: the editor save creates a kind=direct self-approved changeset behind a feature flag, dual-running against the legacy /ops/core broker while latency and conflict-UX parity are measured; broker retirement is Increment 6, gated on this evidence.
 
-- [ ] `W10.P49.S221` - Ground Unified write path: direct-changeset dual-run for the editor save requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W10.P49.S222` - Implement the kind=direct self-approved changeset path behind a feature flag, dual-running the editor save against the legacy /ops/core broker; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
-- [ ] `W10.P49.S223` - Add dual-run tests for human self-approval legality, preimage capture, latency parity measurement, and conflict-UX parity against the legacy broker; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
+- [x] `W10.P49.S221` - Ground Unified write path: direct-changeset dual-run for the editor save requirements into the phase checklist; `.vault/adr/`.
+- [x] `W10.P49.S222` - Implement the kind=direct self-approved changeset path behind a feature flag, dual-running the editor save against the legacy /ops/core broker; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
+- [x] `W10.P49.S223` - Add dual-run tests for human self-approval legality, preimage capture, latency parity measurement, and conflict-UX parity against the legacy broker; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
 - [ ] `W10.P49.S224` - Run Unified write path: direct-changeset dual-run for the editor save code review and record the phase audit; `.vault/audit/`.
 - [ ] `W10.P49.S225` - Verify the Increment 2 demo: set scope to autonomous, have a script propose a body edit, watch it apply with no human gate, find it in the after-the-fact lane, roll it back, then flip the kill switch mid-flight and watch a pending auto-approval re-queue for manual review; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
 

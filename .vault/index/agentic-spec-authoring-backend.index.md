@@ -119,11 +119,27 @@ related:
   - '[[2026-06-30-agentic-spec-authoring-backend-W03-P19-S95]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-W03-P19-summary]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-W03-P35-S171]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P21-S101]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P21-S102]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P21-S103]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P21-S104]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P21-S105]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P21-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P48-S216]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P48-S217]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P48-S218]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P48-S219]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P48-S220]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P48-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P49-S221]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P49-S222]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P49-S223]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-audit]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-plan]]'
   - '[[2026-07-02-agentic-operation-modes-adr]]'
   - '[[2026-07-02-agentic-spec-authoring-backend-audit]]'
   - '[[2026-07-02-agentic-spec-authoring-backend-reference]]'
+  - '[[2026-07-06-agentic-spec-authoring-backend-audit]]'
 ---
 
 # `agentic-spec-authoring-backend` feature index
@@ -157,6 +173,7 @@ Auto-generated index of all documents tagged with `#agentic-spec-authoring-backe
 
 - `2026-06-30-agentic-spec-authoring-backend-audit` - `agentic-spec-authoring-backend` audit: `W01 P01 authoring route shell review`
 - `2026-07-02-agentic-spec-authoring-backend-audit` - `agentic-spec-authoring-backend` audit: `architecture review toward hardened superseding ADRs`
+- `2026-07-06-agentic-spec-authoring-backend-audit` - `agentic-spec-authoring-backend` audit: `W10 P21 approval policy matrix review`
 
 ### exec
 
@@ -255,6 +272,21 @@ Auto-generated index of all documents tagged with `#agentic-spec-authoring-backe
 - `2026-06-30-agentic-spec-authoring-backend-W03-P19-S95` - Verify every mutation can be attributed to a stable actor and delegated scope
 - `2026-06-30-agentic-spec-authoring-backend-W03-P19-summary` - `agentic-spec-authoring-backend` `W03.P19` summary
 - `2026-06-30-agentic-spec-authoring-backend-W03-P35-S171` - Ground Core adapter capability registry requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W10-P21-S101` - Ground Approval policy matrix requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W10-P21-S102` - Implement approval policy matrix, freshness checks, reviewer eligibility, tool permission gates, and policy reason projection
+- `2026-06-30-agentic-spec-authoring-backend-W10-P21-S103` - Add policy tests for reviewer eligibility, stale validation, dangerous tool request, self-approval refusal, and request-changes loops
+- `2026-06-30-agentic-spec-authoring-backend-W10-P21-S104` - Run Approval policy matrix code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W10-P21-S105` - Verify approval decisions are governed by backend policy rather than frontend inference
+- `2026-06-30-agentic-spec-authoring-backend-W10-P21-summary` - `agentic-spec-authoring-backend` `W10.P21` summary
+- `2026-06-30-agentic-spec-authoring-backend-W10-P48-S216` - Ground System-actor auto-approval, after-the-fact review lane, and kill switch requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W10-P48-S217` - Implement mode-scoped system-actor auto-approval, the after-the-fact review-station lane, kill-switch re-queue on mode downgrade, and its thin frontend lane with one-command rollback
+- `2026-06-30-agentic-spec-authoring-backend-W10-P48-S218` - Add mode tests for eligible auto-approval, the destructive-op human floor, after-the-fact lane contents, kill-switch re-queue, and stale system approval on policy downgrade
+- `2026-06-30-agentic-spec-authoring-backend-W10-P48-S219` - Run System-actor auto-approval, after-the-fact review lane, and kill switch code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W10-P48-S220` - Verify eligible changesets auto-approve under system-actor authority, appear in the after-the-fact lane with rollback available, and a mode downgrade re-queues in-flight auto-approvals for human review
+- `2026-06-30-agentic-spec-authoring-backend-W10-P48-summary` - `agentic-spec-authoring-backend` `W10.P48` summary
+- `2026-06-30-agentic-spec-authoring-backend-W10-P49-S221` - Ground Unified write path: direct-changeset dual-run for the editor save requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W10-P49-S222` - Implement the kind=direct self-approved changeset path behind a feature flag, dual-running the editor save against the legacy /ops/core broker
+- `2026-06-30-agentic-spec-authoring-backend-W10-P49-S223` - Add dual-run tests for human self-approval legality, preimage capture, latency parity measurement, and conflict-UX parity against the legacy broker
 
 ### plan
 
