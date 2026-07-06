@@ -221,6 +221,29 @@ describe("adaptProposalSnapshot", () => {
     expect(snapshot.latest).toEqual({ status: "needs_review" });
     expect(snapshot.latest_validation).toBeNull();
   });
+
+  it("lifts the revisions out of the served ChangesetHistory wrapper", () => {
+    // The wire serves `history` as the domain `{revisions:[...]}` wrapper — the
+    // adapter unwraps it so the full lifecycle sequence is readable.
+    const snapshot = adaptProposalSnapshot({
+      changeset_id: "changeset_1",
+      history: {
+        revisions: [
+          { status: "draft" },
+          { status: "needs_review" },
+          { status: "approved" },
+          { status: "applying" },
+          { status: "applied" },
+        ],
+      },
+      latest: { status: "applied" },
+      latest_validation: null,
+      tiers: availableTiers,
+    });
+
+    expect(snapshot.history).toHaveLength(5);
+    expect((snapshot.history[4] as { status?: string }).status).toBe("applied");
+  });
 });
 
 describe("interpretCommandOutcome (denials are values)", () => {

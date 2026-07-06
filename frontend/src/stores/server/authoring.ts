@@ -437,12 +437,21 @@ export function adaptProposalDetail(raw: unknown): ProposalDetail {
   };
 }
 
-/** Adapt one proposal's full snapshot (history + latest + latest validation). */
+/** Adapt one proposal's full snapshot (history + latest + latest validation). The
+ *  wire `history` is the domain `ChangesetHistory` wrapper `{revisions:[...]}`, so
+ *  the revisions list is lifted out (tolerant to a bare array too). */
 export function adaptProposalSnapshot(raw: unknown): ProposalSnapshotResult {
   const r: Rec = isRec(raw) ? raw : {};
+  // Bare-array first (an array is also `typeof "object"`); else the domain
+  // `ChangesetHistory` wrapper `{revisions:[...]}`.
+  const revisions = Array.isArray(r.history)
+    ? r.history
+    : isRec(r.history) && Array.isArray(r.history.revisions)
+      ? r.history.revisions
+      : [];
   return {
     changeset_id: asStr(r.changeset_id) ?? "",
-    history: Array.isArray(r.history) ? r.history : [],
+    history: revisions,
     latest: r.latest ?? null,
     latest_validation: r.latest_validation ?? null,
     tiers: asTiers(r.tiers),
