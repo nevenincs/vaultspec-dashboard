@@ -15,7 +15,14 @@
 // removes the scratch dir.
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  cpSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -142,6 +149,17 @@ export default async function setup(): Promise<() => void> {
   }
 
   // 3. Real git history — the engine's structural + temporal ingest source.
+  //    The ignore mirrors the vaultspec-managed block every production
+  //    workspace carries (install can't scaffold it here — it runs before git
+  //    init): the engine's own cache under `.vault/data/` must be invisible to
+  //    git, or its per-rebuild writes keep the scratch permanently dirty — on
+  //    Linux each /status git probe then refreshes `.git/index`, the watcher
+  //    (which watches `.git` for HEAD/ref moves) fires, and the
+  //    rebuild→probe→rebuild churn never reaches quiescence.
+  writeFileSync(
+    join(scratch, ".gitignore"),
+    ".vault/data/\n.vault/logs/\n.vault/.obsidian/\n.vault/.trash/\n",
+  );
   git(scratch, ["init", "-q", "-b", "main"]);
   git(scratch, ["add", "-A"]);
   git(scratch, ["commit", "-qm", "fixture corpus"]);
