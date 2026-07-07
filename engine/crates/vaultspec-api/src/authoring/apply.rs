@@ -39,6 +39,7 @@ use serde::{Deserialize, Serialize};
 use super::api::ChangesetOperationKind;
 use super::approvals::{V1_POLICY_VERSION, automated_self_approval_blocker};
 use super::core_adapter::{CoreAdapter, CoreCapability, CoreInvocation, WriteArgs};
+use super::events::{apply_recorded_event, apply_started_event};
 use super::ledger::{
     ChangesetAggregateRecord, ChangesetChildOperationInput, ChangesetRevisionInput,
 };
@@ -51,7 +52,6 @@ use super::store::idempotency::{
     IdempotencyKeyScope, IdempotencyScope, InFlightReservation, OutcomeKind, RecordedOutcome,
     ReplayLookup, ReserveDecision,
 };
-use super::store::outbox::OutboxEventDraft;
 use super::store::retention::{
     LifecycleStatus, RetentionClass, RetentionRecord, RetentionRecordRef,
 };
@@ -63,7 +63,6 @@ use super::transitions::{
 };
 
 const RECEIPT_SCHEMA: &str = "authoring.apply_receipt.v1";
-const OUTBOX_SCHEMA_VERSION: i64 = 1;
 /// In-flight reservation TTL: a crashed apply between preflight and completion
 /// leaves an `Applying` revision + an in-flight reservation. Within this window a
 /// retry replays the same in-flight attempt (never a second apply); past it the
@@ -193,7 +192,7 @@ pub fn apply_changeset(
     // The unit of work commits the reservation + `Applying` revision (or rolls
     // back on a StoreError); domain outcomes ride the inner `Result`.
     let prep = match store.with_unit_of_work(CommandKind::RequestApply, |uow| {
-        preflight_in_uow(uow, &request)
+        preflight_in_uow(uow, worktree_root, &request)
     })?? {
         Preflight::Replay(receipt) => {
             return Ok(ApplyOutcome {
@@ -292,6 +291,7 @@ enum Preflight {
 
 fn preflight_in_uow(
     uow: &UnitOfWork<'_>,
+    worktree_root: &Path,
     request: &ApplyRequest<'_>,
 ) -> StoreResult<std::result::Result<Preflight, ApplyError>> {
     let key_scope = IdempotencyKeyScope::new(
@@ -330,7 +330,7 @@ fn preflight_in_uow(
             // after — the gate below only admits `Approved`). Reclaim it by resuming
             // completion instead of re-applying. One reclaim path heals both variants.
             if latest.status == ChangesetStatus::Applying {
-                return build_reclaim_prep(request, &latest, &record, &key_scope);
+                return build_reclaim_prep(request, worktree_root, &latest, &record, &key_scope);
             }
             // Any other head status: a fresh attempt (fall through to the gate).
         }
@@ -401,13 +401,14 @@ fn preflight_in_uow(
         ))));
     };
     let base_blob_hash = materialized.base.blob_hash.clone();
+    let core_base_blob_hash = full_file_blob_hash(worktree_root, &document_path, &base_blob_hash);
     let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
     let body = materialized.target_snapshot.payload_text.clone();
     let invocation = match CoreInvocation::write(
         CoreCapability::SetBody,
         &document_path,
         WriteArgs {
-            expected_blob_hash: Some(base_blob_hash.clone()),
+            expected_blob_hash: Some(core_base_blob_hash),
             body: Some(body),
             ..Default::default()
         },
@@ -449,6 +450,15 @@ fn preflight_in_uow(
         request.now_ms,
     )?;
     uow.ledger().append_revision(&applying_record)?;
+    let started_event = apply_started_event(
+        request.changeset_id.as_str(),
+        source_revision.as_str(),
+        applying_record.changeset_revision.as_str(),
+        request.actor.clone(),
+        request.idempotency_key.clone(),
+        request.now_ms,
+    )?;
+    uow.outbox().append_event(started_event)?;
 
     Ok(Ok(Preflight::Proceed(Box::new(ApplyPrep {
         reservation,
@@ -585,6 +595,7 @@ fn post_state_resolution(worktree_root: &Path, prep: &ApplyPrep, reason: &str) -
 /// still-`in_flight` (expired) reservation — no core re-invoke.
 fn build_reclaim_prep(
     request: &ApplyRequest<'_>,
+    worktree_root: &Path,
     applying: &ChangesetAggregateRecord,
     record: &super::store::idempotency::IdempotencyRecord,
     key_scope: &IdempotencyKeyScope,
@@ -613,6 +624,7 @@ fn build_reclaim_prep(
         .clone()
         .unwrap_or_else(|| receipt_id_for(request.changeset_id, &source_revision));
     let base_blob_hash = materialized.base.blob_hash.clone();
+    let core_base_blob_hash = full_file_blob_hash(worktree_root, &document_path, &base_blob_hash);
     let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
     let reservation = InFlightReservation {
         key_scope: key_scope.clone(),
@@ -625,7 +637,7 @@ fn build_reclaim_prep(
         CoreCapability::SetBody,
         &document_path,
         WriteArgs {
-            expected_blob_hash: Some(base_blob_hash.clone()),
+            expected_blob_hash: Some(core_base_blob_hash),
             body: Some(materialized.target_snapshot.payload_text.clone()),
             ..Default::default()
         },
@@ -747,30 +759,16 @@ fn complete_in_uow(
 
         // Publish the durable authoring event (dedupe on the result revision so a
         // replay/retry never double-publishes).
-        let event_kind = if receipt.is_applied() {
-            "changeset.applied"
-        } else {
-            "changeset.apply_failed"
-        };
-        let payload_hash = blob_oid(
-            serde_json::to_vec(&receipt_payload)
-                .map_err(|err| StoreError::Outbox(err.to_string()))?
-                .as_slice(),
-        );
-        uow.outbox().append_event(OutboxEventDraft {
-            event_id: format!("apply-event:{}", receipt.result_revision),
-            dedupe_key: format!("apply:{}:{}", prep.changeset_id, receipt.result_revision),
-            aggregate_kind: "changeset".to_string(),
-            aggregate_id: prep.changeset_id.as_str().to_string(),
-            event_kind: event_kind.to_string(),
-            schema_version: OUTBOX_SCHEMA_VERSION,
-            actor: prep.actor.clone(),
-            command: Some(CommandKind::RequestApply),
-            idempotency_key: Some(prep.idempotency_key.clone()),
-            payload: receipt_payload,
-            payload_hash,
-            created_at_ms: now_ms,
-        })?;
+        let event = apply_recorded_event(
+            prep.changeset_id.as_str(),
+            receipt.result_revision.as_str(),
+            receipt_payload,
+            receipt.state,
+            prep.actor.clone(),
+            prep.idempotency_key.clone(),
+            now_ms,
+        )?;
+        uow.outbox().append_event(event)?;
 
         Ok(Ok(receipt))
     }
@@ -825,6 +823,12 @@ fn existing_path(document: &DocumentRef) -> Option<String> {
         DocumentRef::Existing { path, .. } => Some(path.clone()),
         _ => None,
     }
+}
+
+fn full_file_blob_hash(worktree_root: &Path, document_path: &str, fallback: &str) -> String {
+    std::fs::read(worktree_root.join(document_path))
+        .map(|bytes| blob_oid(&bytes))
+        .unwrap_or_else(|_| fallback.to_string())
 }
 
 /// The head-independent idempotency scope for applying a changeset (see the note
@@ -928,6 +932,7 @@ mod tests {
     use crate::authoring::operations::MaterializedProposalOperation;
     use crate::authoring::snapshots::{PreimageCaptureRequest, SnapshotReader};
     use crate::authoring::store::Store;
+    use crate::authoring::store::outbox::OutboxEvent;
     use crate::authoring::validation::{CurrentRevisionObservation, validate_changeset_material};
 
     const BASE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\n---\n\n# apply demo\n\nbase content\n";
@@ -1223,6 +1228,14 @@ mod tests {
             .unwrap()
     }
 
+    fn outbox_events(fx: &mut Fx) -> Vec<OutboxEvent> {
+        fx.store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.outbox().events_after(0, 10)
+            })
+            .unwrap()
+    }
+
     fn plain_child(key: &str, path: &str) -> ChangesetChildOperationInput {
         let doc = DocumentRef::Existing {
             scope: "worktree".to_string(),
@@ -1277,6 +1290,24 @@ mod tests {
         );
         assert_eq!(receipt.child.base_blob_hash.len(), 40, "git blob oid");
         assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+        let events = outbox_events(&mut fx);
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.event_kind.as_str())
+                .collect::<Vec<_>>(),
+            vec!["apply.started".to_string(), "apply.recorded".to_string()]
+        );
+        for event in events {
+            let payload = serde_json::to_string(&event.payload).unwrap();
+            assert!(
+                !payload.contains("token")
+                    && !payload.contains("debug")
+                    && !payload.contains("chunk")
+                    && !payload.contains("generation"),
+                "durable lifecycle payload must not carry transient stream data: {payload}"
+            );
+        }
     }
 
     #[test]
@@ -1601,6 +1632,7 @@ mod tests {
             .with_unit_of_work(CommandKind::RequestApply, |uow| {
                 preflight_in_uow(
                     uow,
+                    &fx.root,
                     &ApplyRequest {
                         changeset_id: &changeset_id,
                         proposal_id: &proposal_id,

@@ -292,10 +292,11 @@ fn read_actor_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredActorRow> {
 
 fn validate_actor_record_input(input: &ActorRecordInput) -> Result<()> {
     match input.actor.kind {
-        ActorKind::Human | ActorKind::Agent => {}
-        ActorKind::System | ActorKind::ToolExecutor => {
+        ActorKind::Human | ActorKind::Agent | ActorKind::System => {}
+        ActorKind::ToolExecutor => {
             return Err(StoreError::Actor(
-                "actor records support only human and agent actors in this subset".to_string(),
+                "actor records support only human, agent, and system actors in this subset"
+                    .to_string(),
             ));
         }
     }
@@ -640,23 +641,40 @@ mod tests {
     }
 
     #[test]
-    fn service_identity_actor_kinds_are_not_registry_records_in_this_subset() {
+    fn system_actor_identity_persists_for_backend_policy_authority() {
         let (_dir, mut store) = temp_store();
         let system = actor("system:automation", ActorKind::System);
 
-        let err = store
+        let created = store
             .with_unit_of_work(CommandKind::CreateProposal, |uow| {
                 uow.actors().put_record(ActorRecordInput::active(
-                    system,
+                    system.clone(),
                     display("System automation"),
                     800,
                 ))
             })
+            .unwrap();
+
+        assert_eq!(created.actor, system);
+        assert_eq!(created.status, ActorStatus::Active);
+        assert_eq!(created.provenance_key, actor_provenance_key(&system));
+    }
+
+    #[test]
+    fn tool_executor_identity_is_not_a_registry_record_in_this_subset() {
+        let (_dir, mut store) = temp_store();
+        let tool = actor("tool:writer", ActorKind::ToolExecutor);
+
+        let err = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.actors()
+                    .put_record(ActorRecordInput::active(tool, display("Tool writer"), 800))
+            })
             .unwrap_err();
 
         assert!(
-            matches!(err, StoreError::Actor(ref detail) if detail.contains("human and agent")),
-            "unexpected system actor error: {err}"
+            matches!(err, StoreError::Actor(ref detail) if detail.contains("human, agent, and system")),
+            "unexpected tool executor error: {err}"
         );
     }
 }

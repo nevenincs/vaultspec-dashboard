@@ -20,7 +20,7 @@ use super::model::CommandKind;
 pub const DB_FILENAME: &str = "authoring-state.sqlite3";
 const AUTHORING_DATA_DIR: &str = "authoring-state";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-const SCHEMA_VERSION: i64 = 10;
+const SCHEMA_VERSION: i64 = 13;
 const STORE_KIND: &str = "vaultspec_authoring";
 
 const METADATA_SCHEMA: &str = "
@@ -519,6 +519,211 @@ SET schema_version = 10
 WHERE singleton = 1;
 ";
 
+const OPERATION_MODE_SCHEMA: &str = "
+ALTER TABLE authoring_actor_records RENAME TO authoring_actor_records_v10;
+
+CREATE TABLE authoring_actor_records (
+    actor_id       TEXT NOT NULL,
+    actor_kind     TEXT NOT NULL CHECK (
+        actor_kind IN ('human', 'agent', 'system')
+    ),
+    display_name   TEXT NOT NULL,
+    display_summary TEXT,
+    status         TEXT NOT NULL CHECK (status IN ('active', 'stale')),
+    provenance_key TEXT NOT NULL,
+    created_at_ms  INTEGER NOT NULL,
+    updated_at_ms  INTEGER NOT NULL,
+    record_json    TEXT NOT NULL,
+    PRIMARY KEY (actor_id, actor_kind)
+) WITHOUT ROWID;
+
+INSERT INTO authoring_actor_records
+    (actor_id, actor_kind, display_name, display_summary, status,
+     provenance_key, created_at_ms, updated_at_ms, record_json)
+SELECT
+    actor_id, actor_kind, display_name, display_summary, status,
+    provenance_key, created_at_ms, updated_at_ms, record_json
+FROM authoring_actor_records_v10;
+
+DROP TABLE authoring_actor_records_v10;
+
+CREATE UNIQUE INDEX idx_authoring_actor_records_provenance_key
+    ON authoring_actor_records (provenance_key);
+CREATE INDEX idx_authoring_actor_records_status
+    ON authoring_actor_records (status, actor_kind);
+
+CREATE TABLE authoring_operation_mode_events (
+    seq               INTEGER PRIMARY KEY AUTOINCREMENT,
+    scope_id          TEXT NOT NULL,
+    mode              TEXT NOT NULL CHECK (mode IN ('manual', 'assisted', 'autonomous')),
+    policy_id         TEXT NOT NULL,
+    policy_version    TEXT NOT NULL,
+    actor_id          TEXT NOT NULL,
+    actor_kind        TEXT NOT NULL,
+    idempotency_key   TEXT NOT NULL,
+    record_json       TEXT NOT NULL,
+    created_at_ms     INTEGER NOT NULL,
+    UNIQUE (scope_id, idempotency_key)
+);
+
+CREATE INDEX idx_authoring_operation_mode_events_scope
+    ON authoring_operation_mode_events (scope_id, seq);
+
+CREATE TABLE authoring_system_policy_approvals (
+    approval_id        TEXT NOT NULL PRIMARY KEY,
+    proposal_id        TEXT NOT NULL,
+    changeset_id       TEXT NOT NULL,
+    scope_id           TEXT NOT NULL,
+    mode               TEXT NOT NULL CHECK (mode IN ('assisted', 'autonomous')),
+    policy_id          TEXT NOT NULL,
+    policy_version     TEXT NOT NULL,
+    system_actor_id    TEXT NOT NULL,
+    system_actor_kind  TEXT NOT NULL,
+    requeued_at_ms     INTEGER,
+    record_json        TEXT NOT NULL,
+    created_at_ms      INTEGER NOT NULL,
+    updated_at_ms      INTEGER NOT NULL
+);
+
+CREATE INDEX idx_authoring_system_policy_approvals_changeset
+    ON authoring_system_policy_approvals (changeset_id);
+CREATE INDEX idx_authoring_system_policy_approvals_scope
+    ON authoring_system_policy_approvals (scope_id, created_at_ms);
+
+CREATE TABLE authoring_after_fact_acknowledgements (
+    seq                INTEGER PRIMARY KEY AUTOINCREMENT,
+    changeset_id       TEXT NOT NULL,
+    approval_id        TEXT NOT NULL,
+    reviewer_actor_id  TEXT NOT NULL,
+    reviewer_actor_kind TEXT NOT NULL,
+    idempotency_key    TEXT NOT NULL,
+    comment            TEXT,
+    record_json        TEXT NOT NULL,
+    created_at_ms      INTEGER NOT NULL,
+    UNIQUE (changeset_id, reviewer_actor_id, reviewer_actor_kind, idempotency_key)
+);
+
+CREATE INDEX idx_authoring_after_fact_acknowledgements_changeset
+    ON authoring_after_fact_acknowledgements (changeset_id, seq);
+
+UPDATE authoring_store_metadata
+SET schema_version = 11
+WHERE singleton = 1;
+";
+
+const DIRECT_WRITE_SCHEMA: &str = "
+CREATE TABLE authoring_direct_write_records (
+    changeset_id        TEXT NOT NULL PRIMARY KEY,
+    proposal_id         TEXT NOT NULL,
+    approval_id         TEXT NOT NULL,
+    document_ref        TEXT NOT NULL,
+    document_path       TEXT NOT NULL,
+    expected_blob_hash  TEXT NOT NULL,
+    target_blob_hash    TEXT NOT NULL,
+    actor_id            TEXT NOT NULL,
+    actor_kind          TEXT NOT NULL,
+    idempotency_key     TEXT NOT NULL,
+    request_digest      TEXT NOT NULL,
+    authoritative_path  TEXT NOT NULL CHECK (authoritative_path IN ('direct_changeset')),
+    direct_elapsed_ms   INTEGER NOT NULL CHECK (direct_elapsed_ms >= 0),
+    legacy_status       TEXT NOT NULL,
+    apply_status        TEXT NOT NULL,
+    apply_receipt_id    TEXT,
+    record_json         TEXT NOT NULL,
+    created_at_ms       INTEGER NOT NULL,
+    updated_at_ms       INTEGER NOT NULL,
+    UNIQUE (actor_id, actor_kind, idempotency_key)
+) WITHOUT ROWID;
+
+CREATE INDEX idx_authoring_direct_write_records_proposal
+    ON authoring_direct_write_records (proposal_id);
+CREATE INDEX idx_authoring_direct_write_records_actor
+    ON authoring_direct_write_records (actor_id, actor_kind, created_at_ms);
+
+UPDATE authoring_store_metadata
+SET schema_version = 12
+WHERE singleton = 1;
+";
+
+const SESSION_SCHEMA: &str = "
+CREATE TABLE authoring_sessions (
+    session_id              TEXT NOT NULL,
+    scope_id                TEXT NOT NULL,
+    title                   TEXT NOT NULL,
+    status                  TEXT NOT NULL CHECK (status IN ('active', 'cancelled', 'closed')),
+    actor_id                TEXT NOT NULL,
+    actor_kind              TEXT NOT NULL,
+    delegated_by_actor_id   TEXT NOT NULL DEFAULT '',
+    langgraph_thread_id     TEXT,
+    langgraph_run_id        TEXT,
+    langgraph_checkpoint_id TEXT,
+    latest_turn_id          TEXT,
+    latest_run_id           TEXT,
+    record_json             TEXT NOT NULL,
+    created_at_ms           INTEGER NOT NULL,
+    updated_at_ms           INTEGER NOT NULL,
+    cancelled_at_ms         INTEGER,
+    PRIMARY KEY (session_id)
+) WITHOUT ROWID;
+
+CREATE TABLE authoring_prompt_turns (
+    turn_id                 TEXT NOT NULL,
+    session_id              TEXT NOT NULL,
+    turn_index              INTEGER NOT NULL CHECK (turn_index > 0),
+    prompt_digest           TEXT NOT NULL,
+    prompt_text             TEXT NOT NULL,
+    prompt_bytes            INTEGER NOT NULL CHECK (prompt_bytes >= 0),
+    summary                 TEXT,
+    actor_id                TEXT NOT NULL,
+    actor_kind              TEXT NOT NULL,
+    delegated_by_actor_id   TEXT NOT NULL DEFAULT '',
+    langgraph_thread_id     TEXT,
+    langgraph_run_id        TEXT,
+    langgraph_checkpoint_id TEXT,
+    record_json             TEXT NOT NULL,
+    created_at_ms           INTEGER NOT NULL,
+    PRIMARY KEY (turn_id),
+    UNIQUE (session_id, turn_index)
+) WITHOUT ROWID;
+
+CREATE TABLE authoring_runs (
+    run_id                  TEXT NOT NULL,
+    session_id              TEXT NOT NULL,
+    turn_id                 TEXT,
+    status                  TEXT NOT NULL CHECK (
+        status IN ('active', 'cancel_requested', 'cancelled', 'completed', 'failed')
+    ),
+    active                  INTEGER NOT NULL CHECK (active IN (0, 1)),
+    owner_actor_id          TEXT NOT NULL,
+    owner_actor_kind        TEXT NOT NULL,
+    delegated_by_actor_id   TEXT NOT NULL DEFAULT '',
+    langgraph_thread_id     TEXT,
+    langgraph_run_id        TEXT,
+    langgraph_checkpoint_id TEXT,
+    cancellation_reason     TEXT,
+    record_json             TEXT NOT NULL,
+    created_at_ms           INTEGER NOT NULL,
+    updated_at_ms           INTEGER NOT NULL,
+    cancelled_at_ms         INTEGER,
+    completed_at_ms         INTEGER,
+    PRIMARY KEY (run_id)
+) WITHOUT ROWID;
+
+CREATE INDEX idx_authoring_sessions_updated
+    ON authoring_sessions (updated_at_ms DESC, session_id ASC);
+CREATE INDEX idx_authoring_prompt_turns_session
+    ON authoring_prompt_turns (session_id, turn_index ASC);
+CREATE INDEX idx_authoring_runs_session
+    ON authoring_runs (session_id, created_at_ms ASC);
+CREATE UNIQUE INDEX idx_authoring_runs_one_active_per_session
+    ON authoring_runs (session_id)
+    WHERE active = 1;
+
+UPDATE authoring_store_metadata
+SET schema_version = 13
+WHERE singleton = 1;
+";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Migration {
     version: i64,
@@ -577,6 +782,21 @@ const MIGRATIONS: &[Migration] = &[
         name: "create_authoring_actor_tokens",
         sql: ACTOR_TOKEN_SCHEMA,
     },
+    Migration {
+        version: 11,
+        name: "create_authoring_operation_modes",
+        sql: OPERATION_MODE_SCHEMA,
+    },
+    Migration {
+        version: 12,
+        name: "create_authoring_direct_write_records",
+        sql: DIRECT_WRITE_SCHEMA,
+    },
+    Migration {
+        version: 13,
+        name: "create_authoring_sessions_prompt_turns_and_runs",
+        sql: SESSION_SCHEMA,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -624,6 +844,10 @@ pub enum StoreError {
     Approval(String),
     #[error("authoring actor token error: {0}")]
     ActorToken(String),
+    #[error("authoring operation mode error: {0}")]
+    Mode(String),
+    #[error("authoring session error: {0}")]
+    Session(String),
     #[error("command {command:?} is read-only and cannot open a mutating unit of work")]
     ReadOnlyCommandUnitOfWork { command: CommandKind },
 }
@@ -931,6 +1155,18 @@ mod tests {
                         version: 10,
                         name: "create_authoring_actor_tokens".to_string(),
                     },
+                    AppliedMigration {
+                        version: 11,
+                        name: "create_authoring_operation_modes".to_string(),
+                    },
+                    AppliedMigration {
+                        version: 12,
+                        name: "create_authoring_direct_write_records".to_string(),
+                    },
+                    AppliedMigration {
+                        version: 13,
+                        name: "create_authoring_sessions_prompt_turns_and_runs".to_string(),
+                    },
                 ]
             );
             let table_count: i64 = store
@@ -953,19 +1189,23 @@ mod tests {
                            'authoring_validation_records',
                            'authoring_actor_records',
                            'authoring_changeset_revisions',
-                           'authoring_changeset_child_operations'
+                           'authoring_changeset_child_operations',
+                           'authoring_direct_write_records',
+                           'authoring_sessions',
+                           'authoring_prompt_turns',
+                           'authoring_runs'
                         )",
                     [],
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(table_count, 14);
+            assert_eq!(table_count, 18);
         }
 
         let reopened = Store::open_at(&path).expect("authoring store reopens");
         let metadata = reopened.schema_metadata().unwrap();
         assert_eq!(metadata.schema_version, SCHEMA_VERSION);
-        assert_eq!(metadata.applied_migrations.len(), 10);
+        assert_eq!(metadata.applied_migrations.len(), 13);
     }
 
     #[test]

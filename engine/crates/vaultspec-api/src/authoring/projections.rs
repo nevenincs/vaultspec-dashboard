@@ -8,13 +8,12 @@
 //! in the client (architecture-boundaries: displayed/filterable state is
 //! backend-served).
 //!
-//! V1 SKELETON SUBSET (agentic plan W03.P18): the proposal list, action
-//! eligibility, conflict reason, validation status, and rollback availability the
-//! walking-skeleton review station needs. Corpus-wide review COUNTS and
-//! per-document ACTIVITY rollups are the Increment 3 remainder (W11.P50) and are
-//! deliberately NOT computed here — a count over a bounded page would be a lie
-//! (wire-contract: counts are computed over the full pre-truncation set), so the
-//! honest skeleton serves the bounded list and defers the rollups.
+//! V1 REVIEW PROJECTIONS (agentic plan W03.P18 + W11.P50): the proposal list,
+//! action eligibility, conflict reason, validation status, rollback availability,
+//! corpus-wide review COUNTS, and bounded per-document ACTIVITY rollups the
+//! review station needs. Counts are computed over the full durable corpus before
+//! any list cap is applied — never from the bounded proposal page — and activity
+//! pages carry their own cap/truncation metadata.
 //!
 //! TARGET-FENCE FRESHNESS (arch-reviewer advisory A2.1 / ASA-007): the stored
 //! approval freshness (`ReviewDecisionFreshness.target_revisions_current`) is a
@@ -33,6 +32,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use super::api::ChangesetOperationKind;
 use super::approvals::{
     ApprovalDecision, ApprovalQueueState, ApprovalRequestRecord, V1_POLICY_VERSION,
 };
@@ -41,6 +41,8 @@ use super::model::{
     ActionEligibility, ActorRef, ApprovalId, ChangesetId, ChangesetKind, ChangesetStatus,
     DocumentRef, ProposalId, RevisionToken,
 };
+use super::modes::{SystemPolicyApprovalRecord, scope_id_for_worktree};
+use super::policy::{OperationMode, PolicyDecisionProjection, decide_changeset_approval};
 use super::snapshots::SnapshotReader;
 use super::store::StoreError;
 use super::store::unit_of_work::{Repository, UnitOfWork};
@@ -56,6 +58,17 @@ use super::validation::{ValidationStatus, ValidationStatusRecord};
 /// shows a bounded working set; the corpus-wide paged listing is the Increment 3
 /// remainder. A page at the cap sets `truncated`, never a silently-clipped read.
 pub const MAX_PROJECTION_PROPOSALS: usize = 200;
+
+/// The bounded ceiling for one per-document activity projection page. The read is
+/// scoped by a backend-issued document activity key and reports `truncated` when
+/// more durable ledger activity exists.
+pub const MAX_DOCUMENT_ACTIVITY_ITEMS: usize = 100;
+
+/// The maximum number of most-recent changeset heads one activity read may scan
+/// while looking for matching document identities. Until the store has a durable
+/// document-activity index, this keeps the repository read bounded and reports
+/// `truncated` when the scan ceiling is reached before the corpus is exhausted.
+pub const MAX_DOCUMENT_ACTIVITY_SCAN_ROWS: usize = 10_000;
 
 /// The byte ceiling for ONE review-document text (base or proposed) served on the
 /// DETAIL projection. resource-bounds: every serve is bounded at creation, and the
@@ -107,6 +120,8 @@ pub struct ApprovalStateProjection {
     pub decision: Option<ApprovalDecision>,
     pub stale: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub stale_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub approval_id: Option<ApprovalId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proposal_id: Option<ProposalId>,
@@ -142,7 +157,7 @@ pub struct RollbackAvailabilityProjection {
 
 /// The backend-served review projection for one changeset: its latest lifecycle
 /// state plus every derived, frontend-visible value — validation, approval,
-/// conflict, action eligibility, and rollback availability.
+/// policy decision, conflict, action eligibility, and rollback availability.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProposalProjection {
@@ -159,6 +174,11 @@ pub struct ProposalProjection {
     pub operation_count: usize,
     pub validation: ValidationStateProjection,
     pub approval: ApprovalStateProjection,
+    /// The operation-mode approval policy decision the UI renders directly. The
+    /// phase has no durable mode store yet, so the projection uses the policy
+    /// default (`manual`) and no session override; W10.P48 replaces those inputs
+    /// when mode scope is implemented without changing the served contract.
+    pub policy: PolicyDecisionProjection,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conflict: Option<ConflictProjection>,
     /// The backend-served action eligibility for the current status: each entry is
@@ -176,6 +196,162 @@ pub struct ProposalProjection {
 #[serde(deny_unknown_fields)]
 pub struct ProposalListProjection {
     pub items: Vec<ProposalProjection>,
+    pub truncated: bool,
+    pub cap: usize,
+    pub counts: ReviewCountProjection,
+    pub applied_under_policy: AppliedUnderPolicyLaneProjection,
+}
+
+/// Corpus-wide review counts over the latest durable changeset and approval
+/// records. This is intentionally separate from the bounded proposal page:
+/// clients must never infer these values from `ProposalListProjection.items`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewCountProjection {
+    pub total_changesets: usize,
+    pub statuses: ChangesetStatusCounts,
+    pub queues: ApprovalQueueCounts,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChangesetStatusCounts {
+    pub draft: usize,
+    pub generating: usize,
+    pub proposed: usize,
+    pub needs_review: usize,
+    pub approved: usize,
+    pub applying: usize,
+    pub applied: usize,
+    pub partially_applied: usize,
+    pub compensation_required: usize,
+    pub rejected: usize,
+    pub conflicted: usize,
+    pub superseded: usize,
+    pub failed: usize,
+    pub rollback_proposed: usize,
+    pub cancelled: usize,
+}
+
+impl ChangesetStatusCounts {
+    fn add(&mut self, status: ChangesetStatus) {
+        match status {
+            ChangesetStatus::Draft => self.draft += 1,
+            ChangesetStatus::Generating => self.generating += 1,
+            ChangesetStatus::Proposed => self.proposed += 1,
+            ChangesetStatus::NeedsReview => self.needs_review += 1,
+            ChangesetStatus::Approved => self.approved += 1,
+            ChangesetStatus::Applying => self.applying += 1,
+            ChangesetStatus::Applied => self.applied += 1,
+            ChangesetStatus::PartiallyApplied => self.partially_applied += 1,
+            ChangesetStatus::CompensationRequired => self.compensation_required += 1,
+            ChangesetStatus::Rejected => self.rejected += 1,
+            ChangesetStatus::Conflicted => self.conflicted += 1,
+            ChangesetStatus::Superseded => self.superseded += 1,
+            ChangesetStatus::Failed => self.failed += 1,
+            ChangesetStatus::RollbackProposed => self.rollback_proposed += 1,
+            ChangesetStatus::Cancelled => self.cancelled += 1,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalQueueCounts {
+    pub queued: usize,
+    /// Reserved for the review-station ADR's claimed state. The V1 store has not
+    /// implemented claim/release rows yet, so this remains zero until that durable
+    /// state exists rather than being guessed from client session state.
+    pub claimed: usize,
+    pub decision_submitted: usize,
+    pub closed: usize,
+}
+
+impl ApprovalQueueCounts {
+    fn add(&mut self, state: ApprovalQueueState) {
+        match state {
+            ApprovalQueueState::Queued => self.queued += 1,
+            ApprovalQueueState::DecisionSubmitted => self.decision_submitted += 1,
+            ApprovalQueueState::Closed => self.closed += 1,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DocumentActivityPageProjection {
+    pub document_key: String,
+    pub items: Vec<DocumentActivityItemProjection>,
+    pub truncated: bool,
+    pub cap: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DocumentActivityItemProjection {
+    pub document: DocumentActivityIdentityProjection,
+    pub ledger_seq: i64,
+    pub child_key: String,
+    pub target_order: usize,
+    pub operation: ChangesetOperationKind,
+    pub proposal: ProposalProjection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DocumentActivityIdentityProjection {
+    pub key: String,
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stem: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub doc_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provisional_doc_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proposed_stem: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proposed_node_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_node_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_path: Option<String>,
+}
+
+struct LatestChangesetRow {
+    seq: i64,
+    record: ChangesetAggregateRecord,
+}
+
+/// The after-the-fact lane item: a changeset that was applied under recorded
+/// system-actor mode authority. The row carries the normal proposal projection so
+/// rollback availability and action eligibility remain backend-served.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AppliedUnderPolicyProjection {
+    pub proposal: ProposalProjection,
+    pub policy_id: String,
+    pub policy_version: String,
+    pub mode: OperationMode,
+    pub system_actor: ActorRef,
+    pub applied_at_ms: i64,
+    pub acknowledgement_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AppliedUnderPolicyLaneProjection {
+    pub items: Vec<AppliedUnderPolicyProjection>,
     pub truncated: bool,
     pub cap: usize,
 }
@@ -287,11 +463,117 @@ impl ProjectionRepository<'_, '_> {
                 items.push(projection);
             }
         }
+        let applied_under_policy = self.applied_under_policy_lane(worktree_root)?;
+        let counts = self.review_counts()?;
         Ok(ProposalListProjection {
             items,
             truncated,
             cap: MAX_PROJECTION_PROPOSALS,
+            counts,
+            applied_under_policy,
         })
+    }
+
+    /// Corpus-wide count projection over latest durable changeset and approval
+    /// rows. This deliberately ignores the bounded proposal page and therefore
+    /// remains correct when the visible list is truncated.
+    pub fn review_counts(&self) -> Result<ReviewCountProjection> {
+        let latest_changesets = self.latest_changeset_rows()?;
+        let mut statuses = ChangesetStatusCounts::default();
+        for row in &latest_changesets {
+            statuses.add(row.record.status);
+        }
+
+        let latest_approvals = self.latest_approval_records()?;
+        let mut queues = ApprovalQueueCounts::default();
+        for approval in latest_approvals {
+            queues.add(approval.queue_state);
+        }
+
+        Ok(ReviewCountProjection {
+            total_changesets: latest_changesets.len(),
+            statuses,
+            queues,
+        })
+    }
+
+    /// Per-document activity over latest durable ledger records, scoped by a
+    /// backend-issued document activity key. The key comes from
+    /// [`DocumentActivityIdentityProjection::key`] and is based on stable ids
+    /// (`scope` + `node_id`, provisional id, proposed node id, or result id) rather
+    /// than mutable paths alone.
+    pub fn document_activity(
+        &self,
+        document_key: &str,
+        worktree_root: &Path,
+    ) -> Result<DocumentActivityPageProjection> {
+        self.document_activity_bounded(document_key, MAX_DOCUMENT_ACTIVITY_ITEMS, worktree_root)
+    }
+
+    fn document_activity_bounded(
+        &self,
+        document_key: &str,
+        cap: usize,
+        worktree_root: &Path,
+    ) -> Result<DocumentActivityPageProjection> {
+        let probe = cap.saturating_add(1);
+        let mut items = Vec::with_capacity(cap.min(MAX_DOCUMENT_ACTIVITY_ITEMS));
+        let exhausted = self.for_each_latest_changeset_row_until(
+            MAX_DOCUMENT_ACTIVITY_SCAN_ROWS as i64,
+            |row| {
+                for child in &row.record.children {
+                    if self.push_matching_document_activity_item(
+                        &mut items,
+                        document_key,
+                        row.seq,
+                        child,
+                        &row.record.changeset_id,
+                        worktree_root,
+                    )? && items.len() >= probe
+                    {
+                        return Ok(false);
+                    }
+                }
+                Ok(true)
+            },
+        )?;
+        let truncated = items.len() > cap || !exhausted;
+        items.truncate(cap);
+        Ok(DocumentActivityPageProjection {
+            document_key: document_key.to_string(),
+            items,
+            truncated,
+            cap,
+        })
+    }
+
+    fn push_matching_document_activity_item(
+        &self,
+        items: &mut Vec<DocumentActivityItemProjection>,
+        document_key: &str,
+        ledger_seq: i64,
+        child: &ChangesetChildOperationRecord,
+        changeset_id: &ChangesetId,
+        worktree_root: &Path,
+    ) -> Result<bool> {
+        let mut matched = false;
+        for identity in document_activity_identities(&child.target.document) {
+            if identity.key != document_key {
+                continue;
+            }
+            matched = true;
+            if let Some(proposal) = self.project_proposal(changeset_id, worktree_root)? {
+                items.push(DocumentActivityItemProjection {
+                    document: identity,
+                    ledger_seq,
+                    child_key: child.child_key.clone(),
+                    target_order: child.target_order,
+                    operation: child.operation,
+                    proposal,
+                });
+            }
+        }
+        Ok(matched)
     }
 
     /// Project one changeset by id, or `None` when it has no ledger history.
@@ -321,7 +603,11 @@ impl ProjectionRepository<'_, '_> {
         let targets_current = conflict.is_none();
 
         let validation = validation_state(validation_record.as_ref());
-        let approval_state = approval_state(approval.as_ref());
+        let requeue_reason = self.uow.modes().policy_requeue_reason(changeset_id)?;
+        let approval_state = approval_state(approval.as_ref(), requeue_reason);
+        let scope_id = scope_id_for_worktree(worktree_root);
+        let scope_mode = self.uow.modes().current_mode(&scope_id)?;
+        let policy = policy_decision(&latest, scope_mode);
         let eligibility = self.eligibility_for(
             &latest,
             &origin,
@@ -342,11 +628,56 @@ impl ProjectionRepository<'_, '_> {
             operation_count: latest.operation_count,
             validation,
             approval: approval_state,
+            policy,
             conflict,
             eligibility,
             rollback,
             created_at_ms: latest.created_at_ms,
         }))
+    }
+
+    fn applied_under_policy_lane(
+        &self,
+        worktree_root: &Path,
+    ) -> Result<AppliedUnderPolicyLaneProjection> {
+        let probe = MAX_PROJECTION_PROPOSALS + 1;
+        let scope_id = scope_id_for_worktree(worktree_root);
+        let markers = self
+            .uow
+            .modes()
+            .applied_under_policy_markers(&scope_id, probe)?;
+        let truncated = markers.len() > MAX_PROJECTION_PROPOSALS;
+        let mut items = Vec::with_capacity(markers.len().min(MAX_PROJECTION_PROPOSALS));
+        for marker in markers.into_iter().take(MAX_PROJECTION_PROPOSALS) {
+            if let Some(proposal) = self.project_proposal(&marker.changeset_id, worktree_root)? {
+                items.push(self.applied_under_policy_item(marker, proposal)?);
+            }
+        }
+        Ok(AppliedUnderPolicyLaneProjection {
+            items,
+            truncated,
+            cap: MAX_PROJECTION_PROPOSALS,
+        })
+    }
+
+    fn applied_under_policy_item(
+        &self,
+        marker: SystemPolicyApprovalRecord,
+        proposal: ProposalProjection,
+    ) -> Result<AppliedUnderPolicyProjection> {
+        let acknowledgement_count = self
+            .uow
+            .modes()
+            .acknowledgement_count(&marker.changeset_id)?;
+        Ok(AppliedUnderPolicyProjection {
+            applied_at_ms: proposal.created_at_ms,
+            proposal,
+            policy_id: marker.policy_id,
+            policy_version: marker.policy_version,
+            mode: marker.mode,
+            system_actor: marker.system_actor,
+            acknowledgement_count,
+        })
     }
 
     /// Project one changeset AS A DETAIL VIEW: the proposal projection plus the
@@ -373,11 +704,12 @@ impl ProjectionRepository<'_, '_> {
         let Some(latest) = self.uow.ledger().latest(changeset_id)? else {
             return Ok(None);
         };
-        let review_documents = latest
-            .children
-            .iter()
-            .filter_map(|child| review_document(worktree_root, child))
-            .collect();
+        let mut review_documents = Vec::new();
+        for child in &latest.children {
+            if let Some(document) = self.review_document(child)? {
+                review_documents.push(document);
+            }
+        }
         Ok(Some(ProposalDetailProjection {
             proposal,
             review_documents,
@@ -468,6 +800,33 @@ impl ProjectionRepository<'_, '_> {
         })
     }
 
+    /// Build the base+proposed bounded texts for one materialized replace-body
+    /// child. The proposed text is the materialized target snapshot payload; the
+    /// base text is the durable preimage payload captured at materialization time,
+    /// not the current worktree body. That keeps after-the-fact review evidence
+    /// intact after an autonomous apply has already changed the file.
+    fn review_document(
+        &self,
+        child: &ChangesetChildOperationRecord,
+    ) -> Result<Option<ReviewDocumentProjection>> {
+        let Some(materialized) = child.materialized_operation.as_ref() else {
+            return Ok(None);
+        };
+        let preimage = self
+            .uow
+            .snapshots()
+            .preimage(&materialized.preimage.preimage_id)?;
+        let Some(preimage) = preimage else {
+            return Ok(None);
+        };
+        Ok(Some(ReviewDocumentProjection {
+            child_key: child.child_key.clone(),
+            document: child.target.document.clone(),
+            base: BoundedDocumentText::from_text(&preimage.payload_text),
+            proposed: BoundedDocumentText::from_text(&materialized.target_snapshot.payload_text),
+        }))
+    }
+
     /// The latest approval request for a changeset (by insert sequence), read by
     /// `changeset_id` directly — the approval store is keyed by `proposal_id`, and
     /// the projection enumerates changesets, so it reads the durable row directly
@@ -498,6 +857,102 @@ impl ProjectionRepository<'_, '_> {
         }
     }
 
+    fn latest_changeset_rows(&self) -> Result<Vec<LatestChangesetRow>> {
+        let mut latest = Vec::new();
+        self.for_each_latest_changeset_row_until(i64::MAX, |row| {
+            latest.push(row);
+            Ok(true)
+        })?;
+        Ok(latest)
+    }
+
+    fn for_each_latest_changeset_row_until(
+        &self,
+        max_rows: i64,
+        mut visit: impl FnMut(LatestChangesetRow) -> Result<bool>,
+    ) -> Result<bool> {
+        let mut visited = 0_i64;
+        let mut exhausted = true;
+        self.uow
+            .repository("authoring_changeset_revisions")
+            .query_for_each(
+                "SELECT seq, changeset_id
+                 FROM authoring_changeset_revisions
+                 WHERE seq IN (
+                     SELECT MAX(seq)
+                     FROM authoring_changeset_revisions
+                     GROUP BY changeset_id
+                 )
+                 ORDER BY seq DESC, changeset_id DESC
+                 LIMIT ?1",
+                [max_rows],
+                |row| {
+                    visited += 1;
+                    let seq = row.get::<_, i64>(0)?;
+                    let raw_changeset_id = row.get::<_, String>(1)?;
+                    let changeset_id = ChangesetId::new(&raw_changeset_id)
+                        .map_err(|err| StoreError::Ledger(err.to_string()))?;
+                    let record = self.uow.ledger().latest(&changeset_id)?.ok_or_else(|| {
+                        StoreError::Ledger(format!(
+                            "latest changeset row `{raw_changeset_id}` has no ledger record"
+                        ))
+                    })?;
+                    let keep_going = visit(LatestChangesetRow { seq, record })
+                        .map_err(|err| StoreError::Ledger(err.to_string()))?;
+                    if !keep_going {
+                        exhausted = false;
+                    }
+                    Ok(keep_going)
+                },
+            )?;
+        if visited == max_rows {
+            let next_exists = self
+                .uow
+                .repository("authoring_changeset_revisions")
+                .query_optional(
+                    "SELECT 1
+                     FROM authoring_changeset_revisions
+                     WHERE seq IN (
+                         SELECT MAX(seq)
+                         FROM authoring_changeset_revisions
+                         GROUP BY changeset_id
+                     )
+                     ORDER BY seq DESC, changeset_id DESC
+                     LIMIT 1 OFFSET ?1",
+                    [max_rows],
+                    |row| row.get::<_, i64>(0),
+                )?
+                .is_some();
+            exhausted = !next_exists;
+        }
+        Ok(exhausted)
+    }
+
+    fn latest_approval_records(&self) -> Result<Vec<ApprovalRequestRecord>> {
+        let rows = self
+            .uow
+            .repository("authoring_approval_requests")
+            .query_collect(
+                "SELECT record_json
+                 FROM authoring_approval_requests
+                 WHERE seq IN (
+                     SELECT MAX(seq)
+                     FROM authoring_approval_requests
+                     GROUP BY changeset_id
+                 )
+                 ORDER BY seq DESC, changeset_id DESC",
+                [],
+                |row| row.get::<_, String>(0),
+            )?;
+        rows.into_iter()
+            .map(|json| {
+                let record: ApprovalRequestRecord = serde_json::from_str(&json)
+                    .map_err(|err| StoreError::Approval(err.to_string()))?;
+                Ok(record)
+            })
+            .collect()
+    }
+
     /// Whether a rollback preimage exists for a changeset child (operation id ==
     /// child key). A bounded existence read (`LIMIT 1`).
     fn preimage_present(&self, changeset_id: &ChangesetId, child_key: &str) -> Result<bool> {
@@ -514,6 +969,131 @@ impl ProjectionRepository<'_, '_> {
                 |row| row.get::<_, i64>(0),
             )?;
         Ok(found.is_some())
+    }
+}
+
+fn document_activity_identities(document: &DocumentRef) -> Vec<DocumentActivityIdentityProjection> {
+    let mut identities = vec![primary_document_activity_identity(document)];
+    match document {
+        DocumentRef::RenameTarget {
+            source,
+            proposed_stem,
+            proposed_node_id,
+        } => {
+            identities.extend(document_activity_identities(source));
+            identities.push(DocumentActivityIdentityProjection {
+                key: format!("rename_target:{proposed_node_id}"),
+                kind: "rename_target".to_string(),
+                scope: None,
+                node_id: None,
+                stem: None,
+                path: None,
+                doc_type: document_doc_type(source),
+                provisional_doc_id: None,
+                feature: None,
+                title: None,
+                proposed_stem: Some(proposed_stem.clone()),
+                proposed_node_id: Some(proposed_node_id.clone()),
+                result_node_id: None,
+                result_path: None,
+            });
+        }
+        DocumentRef::MaterializedResult {
+            reviewed,
+            result_node_id,
+            result_path,
+            ..
+        } => {
+            identities.extend(document_activity_identities(reviewed));
+            identities.push(DocumentActivityIdentityProjection {
+                key: format!("materialized:{result_node_id}"),
+                kind: "materialized_result".to_string(),
+                scope: None,
+                node_id: None,
+                stem: None,
+                path: Some(result_path.clone()),
+                doc_type: document_doc_type(reviewed),
+                provisional_doc_id: None,
+                feature: None,
+                title: None,
+                proposed_stem: None,
+                proposed_node_id: None,
+                result_node_id: Some(result_node_id.clone()),
+                result_path: Some(result_path.clone()),
+            });
+        }
+        DocumentRef::Existing { .. } | DocumentRef::ProvisionalCreate { .. } => {}
+    }
+    identities.sort_by(|left, right| left.key.cmp(&right.key));
+    identities.dedup_by(|left, right| left.key == right.key);
+    identities
+}
+
+fn primary_document_activity_identity(
+    document: &DocumentRef,
+) -> DocumentActivityIdentityProjection {
+    match document {
+        DocumentRef::Existing {
+            scope,
+            node_id,
+            stem,
+            path,
+            doc_type,
+            ..
+        } => DocumentActivityIdentityProjection {
+            key: format!("existing:{scope}:{node_id}"),
+            kind: "existing".to_string(),
+            scope: Some(scope.clone()),
+            node_id: Some(node_id.clone()),
+            stem: Some(stem.clone()),
+            path: Some(path.clone()),
+            doc_type: Some(doc_type.clone()),
+            provisional_doc_id: None,
+            feature: None,
+            title: None,
+            proposed_stem: None,
+            proposed_node_id: None,
+            result_node_id: None,
+            result_path: None,
+        },
+        DocumentRef::ProvisionalCreate {
+            provisional_doc_id,
+            doc_type,
+            feature,
+            title,
+            proposed_stem,
+            ..
+        } => DocumentActivityIdentityProjection {
+            key: format!("provisional:{provisional_doc_id}"),
+            kind: "provisional_create".to_string(),
+            scope: None,
+            node_id: None,
+            stem: None,
+            path: None,
+            doc_type: Some(doc_type.clone()),
+            provisional_doc_id: Some(provisional_doc_id.clone()),
+            feature: Some(feature.clone()),
+            title: Some(title.clone()),
+            proposed_stem: proposed_stem.clone(),
+            proposed_node_id: None,
+            result_node_id: None,
+            result_path: None,
+        },
+        DocumentRef::RenameTarget { source, .. } => primary_document_activity_identity(source),
+        DocumentRef::MaterializedResult { reviewed, .. } => {
+            primary_document_activity_identity(reviewed)
+        }
+    }
+}
+
+fn document_doc_type(document: &DocumentRef) -> Option<String> {
+    match document {
+        DocumentRef::Existing { doc_type, .. }
+        | DocumentRef::ProvisionalCreate { doc_type, .. } => Some(doc_type.clone()),
+        DocumentRef::RenameTarget { source, .. }
+        | DocumentRef::MaterializedResult {
+            reviewed: source, ..
+        } => document_doc_type(source),
     }
 }
 
@@ -549,29 +1129,6 @@ fn child_target_conflict(
     }
 }
 
-/// Build the base+proposed bounded texts for one child IF it carries a materialized
-/// replace-body operation. The proposed text is the materialized target snapshot
-/// payload; the base text is the CURRENT worktree document body (read the same way
-/// apply reads its base). A child with NO materialized operation, or one whose base
-/// document is unreadable (e.g. a provisional create has no base to diff against),
-/// contributes no review-document pair.
-fn review_document(
-    worktree_root: &Path,
-    child: &ChangesetChildOperationRecord,
-) -> Option<ReviewDocumentProjection> {
-    let materialized = child.materialized_operation.as_ref()?;
-    let base = SnapshotReader::for_worktree(worktree_root)
-        .capture_existing(&child.target.document)
-        .ok()
-        .map(|snapshot| BoundedDocumentText::from_text(&snapshot.text))?;
-    Some(ReviewDocumentProjection {
-        child_key: child.child_key.clone(),
-        document: child.target.document.clone(),
-        base,
-        proposed: BoundedDocumentText::from_text(&materialized.target_snapshot.payload_text),
-    })
-}
-
 /// Truncate `value` to at most `max_bytes`, snapping DOWN to the nearest UTF-8 char
 /// boundary so the returned slice is always valid UTF-8.
 fn truncate_at_char_boundary(value: &str, max_bytes: usize) -> &str {
@@ -605,13 +1162,17 @@ fn validation_state(record: Option<&ValidationStatusRecord>) -> ValidationStateP
     }
 }
 
-fn approval_state(record: Option<&ApprovalRequestRecord>) -> ApprovalStateProjection {
+fn approval_state(
+    record: Option<&ApprovalRequestRecord>,
+    requeue_reason: Option<String>,
+) -> ApprovalStateProjection {
     match record {
         Some(record) => ApprovalStateProjection {
             present: true,
             queue_state: Some(record.queue_state),
             decision: record.decision.as_ref().map(|decision| decision.decision),
             stale: record.stale,
+            stale_reason: record.stale_reason.clone().or(requeue_reason),
             approval_id: Some(record.approval_id.clone()),
             proposal_id: Some(record.proposal_id.clone()),
             reviewed_proposal_revision: Some(record.reviewed.proposal_revision.clone()),
@@ -621,11 +1182,24 @@ fn approval_state(record: Option<&ApprovalRequestRecord>) -> ApprovalStateProjec
             queue_state: None,
             decision: None,
             stale: false,
+            stale_reason: None,
             approval_id: None,
             proposal_id: None,
             reviewed_proposal_revision: None,
         },
     }
+}
+
+fn policy_decision(
+    latest: &ChangesetAggregateRecord,
+    scope_mode: OperationMode,
+) -> PolicyDecisionProjection {
+    let operations = latest
+        .children
+        .iter()
+        .map(|child| child.operation)
+        .collect::<Vec<_>>();
+    decide_changeset_approval(scope_mode, None, latest.kind, &operations)
 }
 
 /// Build the validation freshness tuple. `digest_matches_reviewed` is true when no
@@ -727,12 +1301,16 @@ mod tests {
     use super::*;
     use crate::authoring::actors::{ActorDisplayMetadata, ActorRecordInput};
     use crate::authoring::api::{ChangesetOperationKind, TargetRevisionFence};
-    use crate::authoring::approvals::{ApprovalRequestInput, ReviewedTuple};
+    use crate::authoring::approvals::{
+        ApprovalDecision, ApprovalRequestInput, ReviewDecisionInput, ReviewedTuple,
+    };
     use crate::authoring::ledger::{ChangesetChildOperationInput, ChangesetRevisionInput};
     use crate::authoring::model::{
-        ActorId, ActorKind, ApprovalId, ChangesetKind, CommandKind, ProposalId, SessionId,
+        ActorId, ActorKind, ApprovalId, ChangesetKind, CommandKind, ProposalId,
+        ProvisionalCollisionStatus, SessionId,
     };
-    use crate::authoring::snapshots::{PreimageCaptureRequest, SnapshotReader};
+    use crate::authoring::policy::{ApprovalRequirement, OperationMode, RiskClass};
+    use crate::authoring::snapshots::{PreimageCaptureRequest, PreimageRecord, SnapshotReader};
     use crate::authoring::store::Store;
 
     fn actor(id: &str, kind: ActorKind) -> ActorRef {
@@ -865,20 +1443,64 @@ mod tests {
         changeset_id: &ChangesetId,
         reviewed_revision: &RevisionToken,
     ) {
+        request_approval_with(
+            store,
+            changeset_id,
+            reviewed_revision,
+            "approval_1",
+            "proposal_1",
+            "idem:request:1",
+            30,
+        );
+    }
+
+    fn request_approval_with(
+        store: &mut Store,
+        changeset_id: &ChangesetId,
+        reviewed_revision: &RevisionToken,
+        approval_id: &str,
+        proposal_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> ProposalId {
+        let proposal_id = ProposalId::new(proposal_id).unwrap();
         store
             .with_unit_of_work(CommandKind::SubmitForReview, |uow| {
                 uow.approvals()
                     .request_approval(ApprovalRequestInput {
-                        approval_id: ApprovalId::new("approval_1").unwrap(),
-                        proposal_id: ProposalId::new("proposal_1").unwrap(),
+                        approval_id: ApprovalId::new(approval_id).unwrap(),
+                        proposal_id: proposal_id.clone(),
                         changeset_id: changeset_id.clone(),
                         reviewed: ReviewedTuple {
                             proposal_revision: reviewed_revision.clone(),
                             validation_digest: "validation:v1".to_string(),
                             policy_version: V1_POLICY_VERSION.to_string(),
                         },
-                        idempotency_key: "idem:request:1".to_string(),
-                        created_at_ms: 30,
+                        idempotency_key: idempotency_key.to_string(),
+                        created_at_ms,
+                    })
+                    .map_err(|err| StoreError::Approval(err.to_string()))?;
+                Ok(())
+            })
+            .unwrap();
+        proposal_id
+    }
+
+    fn approve_proposal(store: &mut Store, proposal_id: &ProposalId, decided_at_ms: i64) {
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        store
+            .with_unit_of_work(CommandKind::Approve, |uow| {
+                uow.approvals()
+                    .submit_decision(ReviewDecisionInput {
+                        proposal_id,
+                        decision: ApprovalDecision::Approve,
+                        reviewer: &reviewer,
+                        validation: ValidationFreshness::fresh(),
+                        current_validation_digest: "validation:v1",
+                        current_policy_version: V1_POLICY_VERSION,
+                        run_cancelled: false,
+                        comment: None,
+                        decided_at_ms,
                     })
                     .map_err(|err| StoreError::Approval(err.to_string()))?;
                 Ok(())
@@ -922,7 +1544,7 @@ mod tests {
         changeset_id: &ChangesetId,
         base_body: &str,
         new_body: &str,
-    ) -> ChangesetChildOperationInput {
+    ) -> (ChangesetChildOperationInput, PreimageRecord) {
         use crate::authoring::api::{ChangesetChildOperationDraft, DraftMode, DraftMutation};
         use crate::authoring::documents::{DocumentResolver, ExistingDocumentLookup};
         use crate::authoring::operations::MaterializedProposalOperation;
@@ -971,7 +1593,22 @@ mod tests {
             &preimage,
         )
         .unwrap();
-        ChangesetChildOperationInput::from_materialized(operation, "material:v1", "validation:v1")
+        (
+            ChangesetChildOperationInput::from_materialized(
+                operation,
+                "material:v1",
+                "validation:v1",
+            ),
+            preimage,
+        )
+    }
+
+    fn store_preimage(store: &mut Store, preimage: &PreimageRecord) {
+        store
+            .with_unit_of_work(CommandKind::ValidateProposal, |uow| {
+                uow.snapshots().store_preimage(preimage)
+            })
+            .unwrap();
     }
 
     #[test]
@@ -993,6 +1630,18 @@ mod tests {
         assert!(projection.conflict.is_none(), "base matches the worktree");
         assert!(projection.approval.present);
         assert!(!projection.approval.stale);
+        assert_eq!(projection.policy.scope_mode, OperationMode::Manual);
+        assert_eq!(projection.policy.effective_mode, OperationMode::Manual);
+        assert_eq!(projection.policy.risk, RiskClass::NonDestructive);
+        assert_eq!(
+            projection.policy.requirement,
+            ApprovalRequirement::HumanApprovalRequired
+        );
+        assert!(
+            projection.policy.reason.contains("manual mode"),
+            "policy reason is backend-served: {:?}",
+            projection.policy
+        );
         // Both review decisions are served, backend-owned. With no validation
         // record seeded, the served reason is the MISSING validation record
         // (absence is NOT staleness — a NeedsReview proposal that was never
@@ -1112,6 +1761,44 @@ mod tests {
                     .as_deref()
                     .is_some_and(|reason| reason.contains("validation record")),
             "submit is denied without a validation record: {submit:?}"
+        );
+    }
+
+    #[test]
+    fn projection_serves_destructive_policy_for_empty_or_structural_changesets() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let base = write_doc(root, "projection-a", "body\n");
+        let mut store = temp_store(root);
+        let changeset_id = ChangesetId::new("changeset_1").unwrap();
+        let author = actor("agent:author", ActorKind::Agent);
+        let children = move || {
+            vec![ChangesetChildOperationInput {
+                child_key: "child_1".to_string(),
+                operation: ChangesetOperationKind::Rename,
+                target: TargetRevisionFence {
+                    document: existing_doc("projection-a", &base),
+                    base_revision: Some(base.clone()),
+                    current_revision: Some(base.clone()),
+                },
+                materialized_operation: None,
+                material_digest: Some("material:v1".to_string()),
+                validation_digest: Some("validation:v1".to_string()),
+            }]
+        };
+        seed_needs_review(&mut store, &changeset_id, &author, children);
+
+        let projection = project(&mut store, root, &changeset_id);
+
+        assert_eq!(projection.policy.risk, RiskClass::Destructive);
+        assert_eq!(
+            projection.policy.requirement,
+            ApprovalRequirement::HumanApprovalRequired
+        );
+        assert!(
+            projection.policy.reason.contains("destructive"),
+            "destructive policy reason is served: {:?}",
+            projection.policy
         );
     }
 
@@ -1313,6 +2000,259 @@ mod tests {
             "the page is bounded at the cap"
         );
         assert!(page.truncated, "a corpus over the cap reports truncation");
+        assert_eq!(
+            page.counts.total_changesets, total,
+            "counts cover the full durable corpus, not the bounded page"
+        );
+        assert_eq!(page.counts.statuses.draft, total);
+        assert_eq!(page.counts.queues.queued, 0);
+    }
+
+    #[test]
+    fn review_counts_roll_up_latest_statuses_and_approval_queues() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let base = write_doc(root, "projection-a", "body\n");
+        let mut store = temp_store(root);
+        let author = actor("agent:author", ActorKind::Agent);
+
+        let queued_changeset = ChangesetId::new("changeset_queued").unwrap();
+        let queued_revision = seed_needs_review(&mut store, &queued_changeset, &author, {
+            let base = base.clone();
+            move || vec![child("child_1", existing_doc("projection-a", &base))]
+        });
+        request_approval_with(
+            &mut store,
+            &queued_changeset,
+            &queued_revision,
+            "approval_queued",
+            "proposal_queued",
+            "idem:queued",
+            30,
+        );
+
+        let closed_changeset = ChangesetId::new("changeset_closed").unwrap();
+        let closed_revision = seed_needs_review(&mut store, &closed_changeset, &author, {
+            let base = base.clone();
+            move || vec![child("child_1", existing_doc("projection-a", &base))]
+        });
+        let closed_proposal = request_approval_with(
+            &mut store,
+            &closed_changeset,
+            &closed_revision,
+            "approval_closed",
+            "proposal_closed",
+            "idem:closed",
+            40,
+        );
+        approve_proposal(&mut store, &closed_proposal, 50);
+
+        let draft_changeset = ChangesetId::new("changeset_draft").unwrap();
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                let draft = record(
+                    &draft_changeset,
+                    None,
+                    ChangesetStatus::Draft,
+                    &author,
+                    vec![child("child_1", existing_doc("projection-a", &base))],
+                    60,
+                );
+                uow.ledger().append_revision(&draft)?;
+                Ok(())
+            })
+            .unwrap();
+
+        let counts = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                Ok(uow.projections().review_counts())
+            })
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(counts.total_changesets, 3);
+        assert_eq!(counts.statuses.needs_review, 1);
+        assert_eq!(counts.statuses.approved, 1);
+        assert_eq!(counts.statuses.draft, 1);
+        assert_eq!(counts.queues.queued, 1);
+        assert_eq!(counts.queues.closed, 1);
+        assert_eq!(
+            counts.queues.decision_submitted, 0,
+            "decision-submitted remains zero until the durable store exposes that state"
+        );
+        assert_eq!(counts.queues.claimed, 0);
+    }
+
+    #[test]
+    fn document_activity_is_bounded_ordered_and_rebuildable() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let base_a = write_doc(root, "projection-a", "body a\n");
+        let base_b = write_doc(root, "projection-b", "body b\n");
+        let author = actor("agent:author", ActorKind::Agent);
+        let document_key = "existing:worktree:doc:projection-a";
+
+        {
+            let mut store = temp_store(root);
+            store
+                .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                    for index in 0..4 {
+                        let changeset_id =
+                            ChangesetId::new(format!("changeset_activity_{index}")).unwrap();
+                        let stem = if index == 1 {
+                            "projection-b"
+                        } else {
+                            "projection-a"
+                        };
+                        let base = if index == 1 { &base_b } else { &base_a };
+                        let draft = record(
+                            &changeset_id,
+                            None,
+                            ChangesetStatus::Draft,
+                            &author,
+                            vec![child("child_1", existing_doc(stem, base))],
+                            10 + index as i64,
+                        );
+                        uow.ledger().append_revision(&draft)?;
+                    }
+                    Ok(())
+                })
+                .unwrap();
+
+            let page = store
+                .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                    Ok(uow
+                        .projections()
+                        .document_activity_bounded(document_key, 2, root))
+                })
+                .unwrap()
+                .unwrap();
+
+            assert_eq!(page.cap, 2);
+            assert!(page.truncated);
+            assert_eq!(page.items.len(), 2);
+            assert_eq!(
+                page.items[0].proposal.changeset_id.as_str(),
+                "changeset_activity_3"
+            );
+            assert_eq!(
+                page.items[1].proposal.changeset_id.as_str(),
+                "changeset_activity_2"
+            );
+            assert!(
+                page.items
+                    .iter()
+                    .all(|item| item.document.key == document_key)
+            );
+        }
+
+        let mut reopened = Store::open(&root.join(".vault")).unwrap();
+        let rebuilt = reopened
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                Ok(uow
+                    .projections()
+                    .document_activity_bounded(document_key, 2, root))
+            })
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(rebuilt.items.len(), 2);
+        assert!(rebuilt.truncated);
+        assert_eq!(
+            rebuilt.items[0].proposal.changeset_id.as_str(),
+            "changeset_activity_3"
+        );
+        assert_eq!(
+            rebuilt.items[1].proposal.changeset_id.as_str(),
+            "changeset_activity_2"
+        );
+    }
+
+    #[test]
+    fn document_activity_groups_all_document_ref_identity_variants() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let base = write_doc(root, "projection-a", "body\n");
+        let mut store = temp_store(root);
+        let author = actor("agent:author", ActorKind::Agent);
+        let source = existing_doc("projection-a", &base);
+        let provisional = DocumentRef::ProvisionalCreate {
+            provisional_doc_id: "provisional_doc_1".to_string(),
+            doc_type: "adr".to_string(),
+            feature: "agentic-spec-authoring-backend".to_string(),
+            title: "Activity Identity".to_string(),
+            collision_status: ProvisionalCollisionStatus::Available,
+            proposed_stem: Some("activity-identity".to_string()),
+        };
+        let rename = DocumentRef::RenameTarget {
+            source: Box::new(source.clone()),
+            proposed_stem: "projection-renamed".to_string(),
+            proposed_node_id: "doc:projection-renamed".to_string(),
+        };
+        let materialized = DocumentRef::MaterializedResult {
+            reviewed: Box::new(source.clone()),
+            result_node_id: "doc:projection-materialized".to_string(),
+            result_path: ".vault/plan/projection-materialized.md".to_string(),
+            result_revision: base.clone(),
+        };
+        let changeset_id = ChangesetId::new("changeset_identity").unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                let draft = record(
+                    &changeset_id,
+                    None,
+                    ChangesetStatus::Draft,
+                    &author,
+                    vec![
+                        child("child_existing", source),
+                        child("child_provisional", provisional),
+                        child("child_rename", rename),
+                        child("child_materialized", materialized),
+                    ],
+                    10,
+                );
+                uow.ledger().append_revision(&draft)?;
+                Ok(())
+            })
+            .unwrap();
+
+        for (key, kind, expected_child) in [
+            (
+                "existing:worktree:doc:projection-a",
+                "existing",
+                "child_existing",
+            ),
+            (
+                "provisional:provisional_doc_1",
+                "provisional_create",
+                "child_provisional",
+            ),
+            (
+                "rename_target:doc:projection-renamed",
+                "rename_target",
+                "child_rename",
+            ),
+            (
+                "materialized:doc:projection-materialized",
+                "materialized_result",
+                "child_materialized",
+            ),
+        ] {
+            let page = store
+                .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                    Ok(uow.projections().document_activity(key, root))
+                })
+                .unwrap()
+                .unwrap();
+            assert!(
+                page.items
+                    .iter()
+                    .any(|item| item.document.kind == kind && item.child_key == expected_child),
+                "activity key {key} should expose {kind}/{expected_child}: {:?}",
+                page.items
+            );
+        }
     }
 
     #[test]
@@ -1322,13 +2262,14 @@ mod tests {
         let mut store = temp_store(root);
         let changeset_id = ChangesetId::new("changeset_1").unwrap();
         let author = actor("agent:author", ActorKind::Agent);
-        let mat = materialized_child(
+        let (mat, preimage) = materialized_child(
             root,
             "projection-a",
             &changeset_id,
             "alpha\nbeta\n",
             "alpha\nBETA\n",
         );
+        store_preimage(&mut store, &preimage);
         let revision = seed_needs_review(&mut store, &changeset_id, &author, {
             let mat = mat.clone();
             move || vec![mat.clone()]
@@ -1368,6 +2309,39 @@ mod tests {
     }
 
     #[test]
+    fn detail_projection_keeps_original_base_after_worktree_matches_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let mut store = temp_store(root);
+        let changeset_id = ChangesetId::new("changeset_1").unwrap();
+        let author = actor("agent:author", ActorKind::Agent);
+        let (mat, preimage) = materialized_child(
+            root,
+            "projection-a",
+            &changeset_id,
+            "alpha\nbeta\n",
+            "alpha\nBETA\n",
+        );
+        store_preimage(&mut store, &preimage);
+        let revision = seed_needs_review(&mut store, &changeset_id, &author, {
+            let mat = mat.clone();
+            move || vec![mat.clone()]
+        });
+        request_approval(&mut store, &changeset_id, &revision);
+        std::fs::write(root.join(".vault/plan/projection-a.md"), "alpha\nBETA\n").unwrap();
+
+        let detail = project_detail(&mut store, root, &changeset_id);
+
+        assert_eq!(detail.review_documents.len(), 1);
+        let doc = &detail.review_documents[0];
+        assert_eq!(
+            doc.base.text, "alpha\nbeta\n",
+            "review evidence must come from the stored preimage, not current worktree"
+        );
+        assert_eq!(doc.proposed.text, "alpha\nBETA\n");
+    }
+
+    #[test]
     fn review_document_text_truncates_honestly_over_the_byte_cap() {
         let big = "a".repeat(MAX_REVIEW_DOCUMENT_TEXT_BYTES + 64);
         let bounded = BoundedDocumentText::from_text(&big);
@@ -1390,7 +2364,7 @@ mod tests {
         let mut store = temp_store(root);
         let changeset_id = ChangesetId::new("changeset_1").unwrap();
         let author = actor("agent:author", ActorKind::Agent);
-        let mat = materialized_child(
+        let (mat, _preimage) = materialized_child(
             root,
             "projection-a",
             &changeset_id,
@@ -1416,7 +2390,6 @@ mod tests {
         // proposed body content must not leak (bound #1).
         assert!(serialized.contains("approval_id"));
         assert!(!serialized.contains("review_documents"));
-        assert!(!serialized.contains("proposed"));
         assert!(!serialized.contains("payload_text"));
         assert!(
             !serialized.contains("BETA"),

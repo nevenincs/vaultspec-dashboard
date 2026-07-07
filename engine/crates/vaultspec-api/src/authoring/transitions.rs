@@ -398,6 +398,9 @@ pub fn command_lifecycle_scope(command: CommandKind) -> CommandLifecycleScope {
         | CommandKind::AcquireLease
         | CommandKind::RenewLease
         | CommandKind::ReleaseLease
+        | CommandKind::SetOperationMode
+        | CommandKind::DirectWrite
+        | CommandKind::MapLangGraphRuntime
         | CommandKind::RequestToolPermission
         | CommandKind::ReadContext
         | CommandKind::SearchGraph

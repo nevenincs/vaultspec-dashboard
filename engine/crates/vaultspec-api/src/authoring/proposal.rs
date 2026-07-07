@@ -142,6 +142,12 @@ pub fn create_proposal(
                 request_digest: request_digest.clone(),
             },
             || {
+                if uow.sessions().session(&request.session_id)?.is_none() {
+                    return Err(StoreError::Session(format!(
+                        "session `{}` does not exist",
+                        request.session_id
+                    )));
+                }
                 Ok(admit_if_eligible(
                     initial_changeset_status_eligibility(
                         ChangesetKind::Authoring,
@@ -1007,7 +1013,7 @@ mod tests {
         ActorDisplayMetadata, ActorRecordInput, ActorStatus, actor_provenance_key,
     };
     use crate::authoring::api::{
-        ChangesetOperationKind, DraftMode, DraftMutation, TargetRevisionFence,
+        ChangesetOperationKind, CreateSessionRequest, DraftMode, DraftMutation, TargetRevisionFence,
     };
     use crate::authoring::documents::{DocumentResolver, ExistingDocumentLookup};
     use crate::authoring::model::{ActorId, ActorKind, DocumentRef, SessionId};
@@ -1040,12 +1046,21 @@ mod tests {
         store
             .with_unit_of_work(CommandKind::CreateProposal, |uow| {
                 uow.actors().put_record(ActorRecordInput {
-                    actor,
+                    actor: actor.clone(),
                     display: ActorDisplayMetadata::new("Proposal test actor", None),
                     status,
                     created_at_ms: 1,
                     updated_at_ms: 1,
                 })?;
+                uow.sessions().create_session(
+                    session_id(),
+                    CreateSessionRequest {
+                        scope: "proposal-tests".to_string(),
+                        title: "Proposal test session".to_string(),
+                    },
+                    actor,
+                    1,
+                )?;
                 Ok(())
             })
             .unwrap();

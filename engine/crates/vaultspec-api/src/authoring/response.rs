@@ -47,10 +47,12 @@ pub fn typed_error(
 /// propose → review → apply → rollback routes are mounted. Same ownership map as
 /// the disabled shell; the capability flags report exactly what V1 serves.
 pub fn enabled_status(state: &AppState) -> Json<Value> {
-    snapshot(state, enabled_status_data())
+    snapshot(state, enabled_status_data(state))
 }
 
-pub fn enabled_status_data() -> Value {
+pub fn enabled_status_data(state: &AppState) -> Value {
+    let direct =
+        super::direct_write::DirectWriteCapabilities::for_worktree(&state.active_workspace_root());
     json!({
         "feature": super::FEATURE_TAG,
         "enabled": true,
@@ -68,10 +70,13 @@ pub fn enabled_status_data() -> Value {
             "review": true,
             "apply": true,
             "rollback": true,
+            "direct_write": direct.enabled,
+            "direct_write_dual_run": direct.dual_run,
+            "direct_write_authority": direct.authority_label(),
             // Deferred to later increments.
-            "sessions": false,
+            "sessions": true,
             "leases": false,
-            "streams": false,
+            "streams": true,
             "langgraph": false,
         }
     })
@@ -105,9 +110,31 @@ mod tests {
         assert_eq!(body["data"]["route_family"], super::super::ROUTE_FAMILY);
         assert_eq!(body["data"]["capabilities"]["proposals"], true);
         assert_eq!(body["data"]["capabilities"]["apply"], true);
+        assert_eq!(body["data"]["capabilities"]["direct_write"], false);
+        assert_eq!(
+            body["data"]["capabilities"]["direct_write_authority"],
+            "legacy_core"
+        );
         assert!(
             body["tiers"]["semantic"]["available"].is_boolean(),
             "enabled snapshots carry tiers"
+        );
+    }
+
+    #[test]
+    fn enabled_status_reports_backend_direct_write_capabilities() {
+        let (dir, state) = fixture_state();
+        super::super::direct_write::DirectWriteCapabilities::write_for_tests(
+            dir.path(),
+            super::super::direct_write::DirectWriteCapabilities::direct_dual_run(),
+        );
+        let Json(body) = enabled_status(&state);
+
+        assert_eq!(body["data"]["capabilities"]["direct_write"], true);
+        assert_eq!(body["data"]["capabilities"]["direct_write_dual_run"], true);
+        assert_eq!(
+            body["data"]["capabilities"]["direct_write_authority"],
+            "direct_changeset"
         );
     }
 

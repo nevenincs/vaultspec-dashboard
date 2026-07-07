@@ -28,6 +28,11 @@ pub trait Repository {
     where
         P: Params,
         F: FnMut(&Row<'_>) -> rusqlite::Result<T>;
+
+    fn query_for_each<P, F>(&self, sql: &str, params: P, f: F) -> Result<()>
+    where
+        P: Params,
+        F: FnMut(&Row<'_>) -> Result<bool>;
 }
 
 pub struct UnitOfWork<'conn> {
@@ -93,6 +98,21 @@ impl Repository for SqliteRepository<'_, '_> {
         }
         Ok(items)
     }
+
+    fn query_for_each<P, F>(&self, sql: &str, params: P, mut f: F) -> Result<()>
+    where
+        P: Params,
+        F: FnMut(&Row<'_>) -> Result<bool>,
+    {
+        let mut stmt = self.tx.prepare(sql)?;
+        let mut rows = stmt.query(params)?;
+        while let Some(row) = rows.next()? {
+            if !f(row)? {
+                break;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Store {
@@ -116,6 +136,38 @@ impl Store {
                 let _ = uow.tx.rollback();
                 Err(err)
             }
+        }
+    }
+
+    pub fn with_read_unit_of_work<T, F>(&mut self, command: CommandKind, f: F) -> Result<T>
+    where
+        F: FnOnce(&UnitOfWork<'_>) -> Result<T>,
+    {
+        if command.requires_unit_of_work() {
+            return Err(StoreError::ReadOnlyCommandUnitOfWork { command });
+        }
+
+        self.conn.pragma_update(None, "query_only", "ON")?;
+        let outcome = (|| {
+            let tx = self.conn.transaction()?;
+            let uow = UnitOfWork { command, tx };
+            let result = f(&uow);
+            match result {
+                Ok(value) => {
+                    uow.tx.commit()?;
+                    Ok(value)
+                }
+                Err(err) => {
+                    let _ = uow.tx.rollback();
+                    Err(err)
+                }
+            }
+        })();
+        let reset = self.conn.pragma_update(None, "query_only", "OFF");
+        match (outcome, reset) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Ok(_), Err(err)) => Err(err.into()),
+            (Err(err), _) => Err(err),
         }
     }
 }
@@ -288,6 +340,51 @@ mod tests {
             "context and stream reads stay outside mutating units"
         );
         assert_eq!(probe_count(&store), mutating);
+    }
+
+    #[test]
+    fn read_only_commands_can_open_read_transactions_without_mutating_boundary() {
+        let (_dir, mut store) = temp_store();
+        create_probe_table(&mut store);
+
+        for command in [
+            CommandKind::ReadContext,
+            CommandKind::SearchGraph,
+            CommandKind::SubscribeEvents,
+            CommandKind::RecoverEventStream,
+        ] {
+            let command_seen = store
+                .with_read_unit_of_work(command, |uow| Ok(uow.command()))
+                .unwrap();
+            assert_eq!(command_seen, command);
+        }
+
+        match store.with_read_unit_of_work(CommandKind::CreateProposal, |_| Ok(())) {
+            Err(StoreError::ReadOnlyCommandUnitOfWork { command }) => {
+                assert_eq!(command, CommandKind::CreateProposal);
+            }
+            other => panic!("expected mutating command rejection, got {other:?}"),
+        }
+        assert_eq!(probe_count(&store), 0);
+    }
+
+    #[test]
+    fn read_transactions_reject_repository_writes() {
+        let (_dir, mut store) = temp_store();
+        create_probe_table(&mut store);
+
+        let err = store
+            .with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
+                insert_probe(uow, "should-roll-back")?;
+                Ok(())
+            })
+            .unwrap_err();
+
+        assert!(
+            matches!(err, StoreError::Sqlite(_)),
+            "query-only read transactions must reject writes, got {err:?}"
+        );
+        assert_eq!(probe_count(&store), 0);
     }
 
     #[test]

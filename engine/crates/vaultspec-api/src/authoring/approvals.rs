@@ -187,6 +187,8 @@ pub struct ApprovalRequestRecord {
     /// True once the reviewed tuple no longer matches the current proposal: a
     /// stale pending approval cannot be decided or applied.
     pub stale: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stale_reason: Option<String>,
     pub idempotency_key: String,
     pub created_at_ms: i64,
     pub updated_at_ms: i64,
@@ -203,6 +205,7 @@ impl ApprovalRequestRecord {
             reviewed: input.reviewed,
             decision: None,
             stale: false,
+            stale_reason: None,
             idempotency_key: input.idempotency_key,
             created_at_ms: input.created_at_ms,
             updated_at_ms: input.created_at_ms,
@@ -350,6 +353,7 @@ impl ApprovalRepository<'_, '_> {
             if existing.decision.is_none() && !existing.stale {
                 let mut superseded = existing;
                 superseded.stale = true;
+                superseded.stale_reason = Some("superseded_by_new_request".to_string());
                 superseded.updated_at_ms = input.created_at_ms.max(superseded.created_at_ms);
                 self.store_record(&superseded)?;
                 self.register_retention(&superseded, LifecycleStatus::Superseded)?;
@@ -523,6 +527,12 @@ impl ApprovalRepository<'_, '_> {
             || request.reviewed.policy_version != current_policy_version;
         if stale && !request.stale {
             request.stale = true;
+            request.stale_reason = Some(stale_reason(
+                &request,
+                current_proposal_revision,
+                current_validation_digest,
+                current_policy_version,
+            ));
             request.updated_at_ms = now_ms;
             self.store_record(&request)?;
         }
@@ -656,6 +666,23 @@ fn append_status_transition(
     })
     .map_err(|err| ApprovalError::Store(StoreError::Approval(err.to_string())))?;
     Ok(record)
+}
+
+fn stale_reason(
+    request: &ApprovalRequestRecord,
+    current_proposal_revision: &RevisionToken,
+    current_validation_digest: &str,
+    current_policy_version: &str,
+) -> String {
+    if &request.reviewed.proposal_revision != current_proposal_revision {
+        "proposal_revision_changed".to_string()
+    } else if request.reviewed.validation_digest != current_validation_digest {
+        "validation_digest_changed".to_string()
+    } else if request.reviewed.policy_version != current_policy_version {
+        "policy_version_changed".to_string()
+    } else {
+        "approval_marked_stale".to_string()
+    }
 }
 
 fn read_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<ApprovalRequestRecord> {

@@ -260,10 +260,15 @@ pub fn tool_permission_eligibility(tier: ToolRiskTier) -> ActionEligibility {
         ToolPermissionRequirement::AutoPermitted => {
             ActionEligibility::allowed(CommandKind::RequestToolPermission)
         }
-        ToolPermissionRequirement::HumanApprovalRequired => ActionEligibility::denied(
-            CommandKind::RequestToolPermission,
-            "this tool capability requires explicit human approval and cannot be auto-permitted",
-        ),
+        ToolPermissionRequirement::HumanApprovalRequired => ActionEligibility {
+            command: CommandKind::RequestToolPermission,
+            allowed: true,
+            reason: Some(
+                "this tool capability may be requested, but it requires explicit human approval \
+                 before execution"
+                    .to_string(),
+            ),
+        },
     }
 }
 
@@ -615,13 +620,16 @@ mod tests {
 
         assert!(tool_permission_eligibility(ToolRiskTier::ReadOnly).allowed);
         let dangerous = tool_permission_eligibility(ToolRiskTier::Dangerous);
-        assert!(!dangerous.allowed);
+        assert!(
+            dangerous.allowed,
+            "a dangerous tool permission request enters the human gate; it is not refused outright"
+        );
         assert_eq!(dangerous.command, CommandKind::RequestToolPermission);
         assert!(
             dangerous
                 .reason
                 .as_deref()
-                .is_some_and(|reason| reason.contains("explicit human approval"))
+                .is_some_and(|reason| reason.contains("requires explicit human approval"))
         );
     }
 

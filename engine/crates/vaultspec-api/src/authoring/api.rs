@@ -7,10 +7,10 @@ use serde_json::{Value, json};
 
 use super::model::{
     ActorId, ActorKind, ActorRef, ApprovalId, ChangesetId, CommandKind, DocumentRef,
-    IdempotencyKey, LangGraphCheckpointId, LangGraphRef, LangGraphRunId, LangGraphThreadId,
-    LeaseId, ProvisionalCollisionStatus, ReceiptId, ReceiptRef, ReviewDecisionKind, RevisionToken,
-    RunId, SessionId,
+    IdempotencyKey, LeaseId, ProvisionalCollisionStatus, ReceiptId, ReceiptRef, ReviewDecisionKind,
+    RevisionToken, RunId, SessionId,
 };
+use super::policy::OperationMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -27,6 +27,8 @@ pub enum EndpointFamily {
     Review,
     Apply,
     Rollback,
+    Mode,
+    DirectWrite,
     Lease,
     Stream,
     Recovery,
@@ -40,6 +42,8 @@ impl EndpointFamily {
         Self::Review,
         Self::Apply,
         Self::Rollback,
+        Self::Mode,
+        Self::DirectWrite,
         Self::Lease,
         Self::Stream,
         Self::Recovery,
@@ -138,6 +142,29 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
         ],
     },
     RouteFixture {
+        family: EndpointFamily::Mode,
+        method: "POST",
+        path_template: "/authoring/v1/mode",
+        command: Some(CommandKind::SetOperationMode),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &["missing_idempotency_key", "unknown_field"],
+    },
+    RouteFixture {
+        family: EndpointFamily::DirectWrite,
+        method: "POST",
+        path_template: "/authoring/v1/direct-writes",
+        command: Some(CommandKind::DirectWrite),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &[
+            "missing_idempotency_key",
+            "stale_base_revision",
+            "agent_self_approval",
+            "unknown_field",
+        ],
+    },
+    RouteFixture {
         family: EndpointFamily::Lease,
         method: "POST",
         path_template: "/authoring/v1/leases",
@@ -215,8 +242,38 @@ impl<T> ReadEnvelope<T> {
 pub struct CreateSessionRequest {
     pub scope: String,
     pub title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StartPromptTurnRequest {
+    pub prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub langgraph: Option<LangGraphRef>,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CancelRunRequest {
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResumeRunRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<SessionId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SessionListRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cap: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after_session_id: Option<SessionId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -317,6 +374,30 @@ pub struct IssueActorTokenRequest {
     pub lifetime_ms: Option<u64>,
 }
 
+/// Wire payload for `POST /authoring/v1/mode`: set the active worktree's
+/// operation mode. The scope is backend-derived from the active worktree rather
+/// than client-claimed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SetOperationModeRequest {
+    pub mode: OperationMode,
+}
+
+/// Wire payload for `POST /authoring/v1/direct-writes`: a human editor save
+/// routed through the authoring ledger. The actor is still middleware-resolved
+/// from the principal token; the payload names only the target and optimistic
+/// editor base.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DirectWriteRequest {
+    #[serde(rename = "ref")]
+    pub doc_ref: String,
+    pub body: String,
+    pub expected_blob_hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReviewDecisionRequest {
@@ -399,6 +480,9 @@ pub enum AggregateRef {
     },
     Approval {
         approval_id: ApprovalId,
+    },
+    OperationMode {
+        scope_id: String,
     },
     Lease {
         lease_id: LeaseId,
@@ -500,7 +584,6 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
             CreateSessionRequest {
                 scope: "scope_a".to_string(),
                 title: "Agentic authoring".to_string(),
-                langgraph: Some(langgraph_fixture()),
             },
         )),
         EndpointFamily::Document => read_value(DocumentSnapshotRequest {
@@ -579,6 +662,23 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
                 reason: "restore reviewed preimage".to_string(),
             },
         )),
+        EndpointFamily::Mode => command_value(CommandEnvelope::new(
+            CommandKind::SetOperationMode,
+            idempotency_key("idem:mode:set"),
+            SetOperationModeRequest {
+                mode: OperationMode::Autonomous,
+            },
+        )),
+        EndpointFamily::DirectWrite => command_value(CommandEnvelope::new(
+            CommandKind::DirectWrite,
+            idempotency_key("idem:direct-write"),
+            DirectWriteRequest {
+                doc_ref: ".vault/adr/adr-1.md".to_string(),
+                body: "directly saved body".to_string(),
+                expected_blob_hash: "abc123abc123abc123abc123abc123abc123abcd".to_string(),
+                summary: Some("Editor save".to_string()),
+            },
+        )),
         EndpointFamily::Lease => command_value(CommandEnvelope::new(
             CommandKind::AcquireLease,
             idempotency_key("idem:lease:acquire"),
@@ -605,14 +705,19 @@ pub fn response_fixture(family: EndpointFamily) -> Value {
         EndpointFamily::Document => AggregateRef::Document {
             document: existing_document_fixture(),
         },
-        EndpointFamily::Proposal | EndpointFamily::Apply => AggregateRef::Changeset {
-            changeset_id: changeset_id(),
-        },
+        EndpointFamily::Proposal | EndpointFamily::Apply | EndpointFamily::DirectWrite => {
+            AggregateRef::Changeset {
+                changeset_id: changeset_id(),
+            }
+        }
         EndpointFamily::Review => AggregateRef::Approval {
             approval_id: approval_id(),
         },
         EndpointFamily::Rollback => AggregateRef::Changeset {
             changeset_id: ChangesetId::new("changeset_rollback_1").unwrap(),
+        },
+        EndpointFamily::Mode => AggregateRef::OperationMode {
+            scope_id: "worktree".to_string(),
         },
         EndpointFamily::Lease => AggregateRef::Lease {
             lease_id: LeaseId::new("lease_1").unwrap(),
@@ -692,14 +797,6 @@ fn actor_fixture() -> ActorRef {
         id: ActorId::new("human:alice").unwrap(),
         kind: ActorKind::Human,
         delegated_by: None,
-    }
-}
-
-fn langgraph_fixture() -> LangGraphRef {
-    LangGraphRef {
-        thread_id: LangGraphThreadId::new("thread_1").unwrap(),
-        run_id: Some(LangGraphRunId::new("lg_run_1").unwrap()),
-        checkpoint_id: Some(LangGraphCheckpointId::new("checkpoint_1").unwrap()),
     }
 }
 
@@ -888,7 +985,6 @@ mod tests {
         let unknown_payload = json!({
             "api_version": "v1",
             "command": "create_session",
-            "actor": {"id": "human:alice", "kind": "human"},
             "idempotency_key": "idem:session:create",
             "payload": {
                 "scope": "scope_a",
@@ -927,7 +1023,6 @@ mod tests {
         let unknown_langgraph = json!({
             "api_version": "v1",
             "command": "create_session",
-            "actor": {"id": "human:alice", "kind": "human"},
             "idempotency_key": "idem:session:create",
             "payload": {
                 "scope": "scope_a",
@@ -943,8 +1038,8 @@ mod tests {
             serde_json::from_value::<CommandEnvelope<CreateSessionRequest>>(unknown_langgraph)
                 .unwrap_err();
         assert!(
-            err.to_string().contains("unknown field"),
-            "unknown langgraph fields are rejected: {err}"
+            err.to_string().contains("unknown field") && err.to_string().contains("langgraph"),
+            "caller-supplied langgraph refs are rejected at the public command boundary: {err}"
         );
 
         let unknown_document_ref = json!({
@@ -1021,6 +1116,15 @@ mod tests {
             serde_json::from_value(request_fixture(EndpointFamily::Apply)).unwrap();
         assert_eq!(apply.payload.changeset_id, changeset_id());
         assert_eq!(apply.payload.approval_id, approval_id());
+
+        let direct: CommandEnvelope<DirectWriteRequest> =
+            serde_json::from_value(request_fixture(EndpointFamily::DirectWrite)).unwrap();
+        assert_eq!(direct.command, CommandKind::DirectWrite);
+        assert_eq!(direct.payload.doc_ref, ".vault/adr/adr-1.md");
+        assert_eq!(
+            direct.payload.expected_blob_hash,
+            "abc123abc123abc123abc123abc123abc123abcd"
+        );
 
         let rollback: CommandEnvelope<RollbackRequest> =
             serde_json::from_value(request_fixture(EndpointFamily::Rollback)).unwrap();

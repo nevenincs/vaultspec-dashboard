@@ -141,7 +141,6 @@ mod tests {
             payload: CreateSessionRequest {
                 scope: "scope_a".to_string(),
                 title: "Agentic".to_string(),
-                langgraph: None,
             },
         }
     }
