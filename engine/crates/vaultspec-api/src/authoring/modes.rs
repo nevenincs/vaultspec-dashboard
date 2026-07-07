@@ -230,10 +230,12 @@ impl ModeRepository<'_, '_> {
         let policy =
             decide_changeset_approval(mode_record.mode, None, latest.kind, operations.as_slice());
         // A DIRECT changeset is human-self-approved at creation (operation-modes
-        // kind=direct); the mode machinery must NEVER system-auto-approve it (P49-R2
-        // arch-reviewer bar — semantically wrong even if harmless). The direct-write
-        // flow never routes here, but guard it explicitly so a stray call can't turn a
-        // human's own save into a system approval.
+        // kind=direct); the mode machinery must NEVER system-auto-approve it (P49-R2).
+        // This guard is LOAD-BEARING, not merely defensive: a crashed direct save can
+        // leave a Draft kind=Direct changeset, and the GENERIC submit route
+        // (POST /proposals/{id}/submit) gates nothing on kind — so a client can push
+        // that partially-composed save into this composition. Without the guard,
+        // assisted/autonomous mode would land a SYSTEM approval on a human's own save.
         if latest.kind == ChangesetKind::Direct {
             return Ok(ModeAutoApprovalOutcome {
                 policy,
@@ -929,11 +931,12 @@ mod tests {
         actor: &ActorRef,
         child: ChangesetChildOperationInput,
         created_at_ms: i64,
+        kind: ChangesetKind,
     ) -> ChangesetAggregateRecord {
         ChangesetAggregateRecord::new(ChangesetRevisionInput {
             changeset_id: changeset_id.clone(),
             previous_revision: previous,
-            kind: ChangesetKind::Authoring,
+            kind,
             status,
             session_id: Some(SessionId::new("session_1").unwrap()),
             actor: actor.clone(),
@@ -950,6 +953,16 @@ mod tests {
         author: &ActorRef,
         child: ChangesetChildOperationInput,
     ) -> RevisionToken {
+        seed_needs_review_of_kind(store, changeset_id, author, child, ChangesetKind::Authoring)
+    }
+
+    fn seed_needs_review_of_kind(
+        store: &mut Store,
+        changeset_id: &ChangesetId,
+        author: &ActorRef,
+        child: ChangesetChildOperationInput,
+        kind: ChangesetKind,
+    ) -> RevisionToken {
         store
             .with_unit_of_work(CommandKind::CreateProposal, |uow| {
                 let draft = changeset_record(
@@ -959,6 +972,7 @@ mod tests {
                     author,
                     child.clone(),
                     30,
+                    kind,
                 );
                 uow.ledger().append_revision(&draft)?;
                 let needs_review = changeset_record(
@@ -968,6 +982,7 @@ mod tests {
                     author,
                     child,
                     31,
+                    kind,
                 );
                 uow.ledger().append_revision(&needs_review)?;
                 Ok(needs_review.changeset_revision)
@@ -1111,6 +1126,70 @@ mod tests {
                 })
                 .unwrap(),
             ChangesetStatus::Approved
+        );
+    }
+
+    #[test]
+    fn direct_changeset_is_never_system_auto_approved_even_in_autonomous_mode() {
+        // P49-R2 site-c guard (LOAD-BEARING): a crashed direct save can leave a Draft
+        // kind=Direct changeset that a client pushes through the GENERIC submit route
+        // (which gates nothing on kind) into this composition. Even in autonomous mode
+        // over a non-destructive body edit — which WOULD auto-approve for Authoring —
+        // a Direct changeset must be refused: it is the human's own self-approved save,
+        // never a system approval.
+        let (dir, mut store) = temp_store();
+        let root = dir.path();
+        let author = actor("human:reviewer", ActorKind::Human);
+        let admin = actor("human:admin", ActorKind::Human);
+        let changeset_id = ChangesetId::new("changeset_1").unwrap();
+        let proposal_id = ProposalId::new("proposal_1").unwrap();
+        let (operation, preimage, validation) = materialized(root, &changeset_id);
+        store
+            .with_unit_of_work(CommandKind::ValidateProposal, |uow| {
+                uow.snapshots().store_preimage(&preimage)?;
+                uow.validations().store_record(&validation)
+            })
+            .unwrap();
+        let reviewed = seed_needs_review_of_kind(
+            &mut store,
+            &changeset_id,
+            &author,
+            materialized_child(operation, &validation),
+            ChangesetKind::Direct,
+        );
+        let approval = request_approval(
+            &mut store,
+            &proposal_id,
+            &changeset_id,
+            &reviewed,
+            &validation.validation_digest,
+        );
+        set_mode(&mut store, root, OperationMode::Autonomous, &admin, 50);
+
+        let scope_id = scope_id_for_worktree(root);
+        let outcome = store
+            .with_unit_of_work(CommandKind::Approve, |uow| {
+                uow.modes().maybe_auto_approve(&scope_id, &approval, 60)
+            })
+            .unwrap();
+
+        assert!(
+            !outcome.approved(),
+            "a direct changeset must never be system-auto-approved: {:?}",
+            outcome.eligibility
+        );
+        assert!(
+            outcome.marker.is_none(),
+            "no system approval marker for a direct save"
+        );
+        assert!(
+            outcome
+                .eligibility
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("human-self-approved")),
+            "the refusal names the human-self-approval reason: {:?}",
+            outcome.eligibility
         );
     }
 
