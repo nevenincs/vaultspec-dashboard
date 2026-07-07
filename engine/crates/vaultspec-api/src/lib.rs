@@ -355,11 +355,18 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
         )));
     }
 
-    // Detect-and-instruct (dashboard-packaging D3): probe the two hard
-    // external requirements BEFORE any heavy work, failing closed with the
-    // exact remediation. A present-but-below-floor core passes — its verdict
-    // degrades through the tiers handshake instead of blocking startup.
-    handshake::startup_gate().map_err(std::io::Error::other)?;
+    // Detect-and-instruct (dashboard-packaging D3, amended by review): probe
+    // the two external requirements BEFORE any heavy work and WARN with the
+    // exact remediation — never exit. Serving degraded with honest tiers is
+    // the binding doctrine (the adversarial degradation suite and the
+    // conformance harness both run serve without core by design), and the
+    // affected tiers carry the same remediation truth to the GUI.
+    if let Err(remediation) = handshake::startup_gate() {
+        eprintln!(
+            "vaultspec serve: WARNING - a companion tool is missing; the \
+             affected data tiers will report unavailable.\n\n{remediation}\n"
+        );
+    }
 
     let crash_log = engine_store::engine_data_dir(&root.join(".vault")).join("crash.log");
     let default_hook = std::panic::take_hook();

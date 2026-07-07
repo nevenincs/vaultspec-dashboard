@@ -128,28 +128,35 @@ pub fn probe_core() -> &'static CoreProbe {
     })
 }
 
-/// The startup gate (D3, detect-and-instruct): fail closed BEFORE any heavy
-/// work when a hard requirement is absent, with the exact remediation the
-/// operator should run. A below-floor core passes the gate — presence is the
-/// hard requirement; the floor verdict degrades through the handshake.
+/// The startup probe (D3, detect-and-instruct — amended): probe the two
+/// external requirements BEFORE any heavy work and return the exact
+/// remediation prose when one is absent. The caller WARNS and serves degraded
+/// rather than exiting: the tiers doctrine (degradation is honest, per
+/// component, read from the envelope) is the binding contract, the affected
+/// tiers report the same truth to the GUI, and both the adversarial
+/// degradation suite and the conformance harness deliberately run serve
+/// without core. A below-floor core passes silently — presence is the probed
+/// question; the floor verdict degrades through the handshake.
 pub fn startup_gate() -> Result<(), String> {
     gate(probe_git(), probe_core())
 }
 
-/// The pure gate decision, parameterized for tests.
+/// The pure probe verdict, parameterized for tests.
 fn gate(git: &GitProbe, core: &CoreProbe) -> Result<(), String> {
     if !git.available {
         return Err("git was not found on PATH (the dashboard's history and \
-             worktree views read through it).\n\nInstall git from \
-             https://git-scm.com, confirm `git --version` succeeds in a new \
-             shell, then rerun `vaultspec serve`."
+             worktree views read through it; they will show as unavailable).\
+             \n\nInstall git from https://git-scm.com and confirm \
+             `git --version` succeeds in a new shell, then restart \
+             `vaultspec serve`."
             .to_string());
     }
     if core.version.is_none() {
-        return Err("vaultspec-core was not found (the dashboard brokers every \
-             vault read and write through it).\n\nInstall it with:\n\n    uv \
-             tool install vaultspec-core\n\nconfirm `vaultspec-core --version` \
-             succeeds in a new shell, then rerun `vaultspec serve`."
+        return Err("vaultspec-core was not found (the dashboard brokers vault \
+             reads and writes through it; the declared tier and authoring \
+             will show as unavailable).\n\nInstall it with:\n\n    uv tool \
+             install vaultspec-core\n\nconfirm `vaultspec-core --version` \
+             succeeds in a new shell, then restart `vaultspec serve`."
             .to_string());
     }
     Ok(())
@@ -197,7 +204,7 @@ mod tests {
     }
 
     #[test]
-    fn the_gate_fails_closed_with_remediation_for_missing_git() {
+    fn the_probe_returns_git_remediation_for_missing_git() {
         let git = GitProbe {
             available: false,
             version: None,
@@ -214,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn the_gate_fails_closed_with_the_exact_install_command_for_missing_core() {
+    fn the_probe_returns_the_exact_install_command_for_missing_core() {
         let git = GitProbe {
             available: true,
             version: Some("git version 2.49.0".into()),
@@ -228,10 +235,10 @@ mod tests {
     }
 
     #[test]
-    fn a_below_floor_core_passes_the_gate_and_fails_the_floor() {
-        // Stale core (D6): presence passes the startup gate; the handshake
+    fn a_below_floor_core_passes_the_probe_and_fails_the_floor() {
+        // Stale core (D6): presence passes the startup probe; the handshake
         // carries the floor verdict so authoring degrades instead of the
-        // whole dashboard refusing to start.
+        // whole dashboard warning about absence.
         let git = GitProbe {
             available: true,
             version: Some("git version 2.49.0".into()),

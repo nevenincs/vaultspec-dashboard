@@ -27,3 +27,4 @@ Unit tests cover the missing-binary probe path (spawn failure reports absence) a
 ## Notes
 
 - S06 through S08 landed as one commit (one cohesive module) rather than one commit per step; recorded here per step for traceability.
+- AMENDED after CI (2026-07-07): the fail-closed exit broke the adversarial degradation suite and the conformance harness, both of which run serve without core by design; the probe now WARNS with the same remediation and serves degraded, honoring the binding tiers doctrine. The gate function and its tests are unchanged; only serve's handling softened. Recorded as a D3 amendment on the packaging ADR.
