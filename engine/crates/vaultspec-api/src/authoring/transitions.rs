@@ -416,13 +416,15 @@ pub fn initial_changeset_status_eligibility(
     status: ChangesetStatus,
 ) -> ActionEligibility {
     let command = match kind {
-        ChangesetKind::Authoring => CommandKind::CreateProposal,
+        ChangesetKind::Authoring | ChangesetKind::Direct => CommandKind::CreateProposal,
         ChangesetKind::Rollback => CommandKind::CreateRollback,
     };
     let allowed = matches!(
         (kind, status),
-        (ChangesetKind::Authoring, ChangesetStatus::Draft)
-            | (ChangesetKind::Rollback, ChangesetStatus::RollbackProposed)
+        (
+            ChangesetKind::Authoring | ChangesetKind::Direct,
+            ChangesetStatus::Draft
+        ) | (ChangesetKind::Rollback, ChangesetStatus::RollbackProposed)
     );
     if allowed {
         ActionEligibility::allowed(command)
@@ -439,7 +441,7 @@ pub fn submit_for_review_transition_eligibility(
     validation: ValidationFreshness,
 ) -> ActionEligibility {
     let next = match record.kind {
-        ChangesetKind::Authoring => ChangesetStatus::NeedsReview,
+        ChangesetKind::Authoring | ChangesetKind::Direct => ChangesetStatus::NeedsReview,
         ChangesetKind::Rollback => ChangesetStatus::NeedsReview,
     };
     transition_eligibility(
@@ -818,7 +820,7 @@ fn command_allows_transition(request: TransitionRequest) -> bool {
                 && request.next == ChangesetStatus::Draft
         }
         CommandKind::ValidateProposal => {
-            request.kind == ChangesetKind::Authoring
+            request.kind.is_authoring_like()
                 && matches!(
                     request.current,
                     ChangesetStatus::Draft | ChangesetStatus::Proposed
@@ -826,7 +828,7 @@ fn command_allows_transition(request: TransitionRequest) -> bool {
                 && request.next == ChangesetStatus::Proposed
         }
         CommandKind::SubmitForReview => match request.kind {
-            ChangesetKind::Authoring => {
+            ChangesetKind::Authoring | ChangesetKind::Direct => {
                 matches!(
                     request.current,
                     ChangesetStatus::Draft | ChangesetStatus::Proposed
@@ -851,7 +853,7 @@ fn command_allows_transition(request: TransitionRequest) -> bool {
                 ChangesetStatus::NeedsReview | ChangesetStatus::Approved
             ) && request.next
                 == match request.kind {
-                    ChangesetKind::Authoring => ChangesetStatus::Draft,
+                    ChangesetKind::Authoring | ChangesetKind::Direct => ChangesetStatus::Draft,
                     ChangesetKind::Rollback => ChangesetStatus::RollbackProposed,
                 }
         }
@@ -880,7 +882,7 @@ fn command_allows_transition(request: TransitionRequest) -> bool {
             request.current == ChangesetStatus::Conflicted
                 && request.next
                     == match request.kind {
-                        ChangesetKind::Authoring => ChangesetStatus::Draft,
+                        ChangesetKind::Authoring | ChangesetKind::Direct => ChangesetStatus::Draft,
                         ChangesetKind::Rollback => ChangesetStatus::RollbackProposed,
                     }
         }
@@ -894,7 +896,7 @@ fn append_allows_status_transition(
     next: ChangesetStatus,
 ) -> bool {
     match kind {
-        ChangesetKind::Authoring => match current {
+        ChangesetKind::Authoring | ChangesetKind::Direct => match current {
             ChangesetStatus::Draft => matches!(
                 next,
                 ChangesetStatus::Draft
@@ -1092,7 +1094,7 @@ mod tests {
     ) -> ChangesetAggregateRecord {
         ChangesetAggregateRecord::new(ChangesetRevisionInput {
             changeset_id: changeset_id(match kind {
-                ChangesetKind::Authoring => "changeset_1",
+                ChangesetKind::Authoring | ChangesetKind::Direct => "changeset_1",
                 ChangesetKind::Rollback => "rollback_changeset_1",
             }),
             previous_revision: None,

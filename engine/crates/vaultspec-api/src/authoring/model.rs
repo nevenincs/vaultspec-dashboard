@@ -274,7 +274,35 @@ impl CommandKind {
 #[serde(rename_all = "snake_case")]
 pub enum ChangesetKind {
     Authoring,
+    /// A human editor's direct save (operation-modes ADR `kind=direct`): a
+    /// self-approved changeset that traverses the SAME lifecycle as `Authoring`
+    /// (propose → review → approve → apply) — so it is "authoring-like" everywhere
+    /// the lifecycle vocabulary is applied. The KIND is what makes the ledger
+    /// self-describing about a direct save; it never forks the lifecycle.
+    Direct,
     Rollback,
+}
+
+impl ChangesetKind {
+    /// Whether this kind follows the standard authoring lifecycle BEHAVIOUR. `Direct`
+    /// is authoring-like (a self-approved authoring save that traverses the same
+    /// states); `Rollback` is not (it is a `RollbackProposed`-rooted inverse
+    /// changeset). Centralizes the `Authoring | Direct` behaviour so a new
+    /// authoring-like kind never silently mis-behaves in a scattered `== Authoring`
+    /// comparison (P49-R2).
+    ///
+    /// USE PER-SITE (arch-reviewer P49-R2 bar). A `ChangesetKind` comparison falls in
+    /// one of THREE semantic classes — decide each consciously, do NOT blanket-swap:
+    /// - **authoring-like BEHAVIOUR** (transitions, apply, rollback-source eligibility,
+    ///   risk classification): use `is_authoring_like()` — `Direct` MATCHES.
+    /// - **is `Authoring` SPECIFICALLY** (provenance identity — "was this an agent
+    ///   proposal, not a human direct save"): keep `== ChangesetKind::Authoring` —
+    ///   `Direct` must NOT match.
+    /// - **is NOT `Rollback`** (a different question): keep the `== Rollback` check —
+    ///   `Direct` naturally takes the non-rollback path.
+    pub fn is_authoring_like(self) -> bool {
+        matches!(self, Self::Authoring | Self::Direct)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

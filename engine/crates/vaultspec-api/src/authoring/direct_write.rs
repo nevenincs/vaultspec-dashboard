@@ -359,6 +359,7 @@ pub fn execute_direct_write(
     let expected_blob_hash = validate_blob_hash(&payload.expected_blob_hash)?;
     let target_blob_hash = blob_oid(payload.body.as_bytes());
 
+    let capabilities = DirectWriteCapabilities::for_worktree(worktree_root);
     let reader = SnapshotReader::for_worktree(worktree_root);
     let resolver = DocumentResolver::for_worktree(worktree_root);
     let resolved = resolve_existing_document(&resolver, &payload.doc_ref)?;
@@ -394,16 +395,9 @@ pub fn execute_direct_write(
         return persist_outcome(store, record, false, false);
     }
 
-    let legacy = compare_legacy(
-        adapter,
-        worktree_root,
-        &payload.doc_ref,
-        &actual_snapshot,
-        &payload.body,
-        &expected_blob_hash,
-    );
-
     if actual_snapshot.blob_hash != expected_blob_hash {
+        // Early conflict: SKIP the legacy comparison entirely (P49-R2) — a save that is
+        // going to conflict pays no per-save `.vaultspec` copy + core-subprocess tax.
         let conflict = DirectWriteConflict {
             document_ref: payload.doc_ref.clone(),
             document_path: actual_snapshot.path.clone(),
@@ -426,7 +420,7 @@ pub fn execute_direct_write(
             idempotency_key,
             request_digest,
             started: Instant::now(),
-            legacy: Some(legacy),
+            legacy: None,
             conflict: Some(conflict),
             eligibility: Some(eligibility),
             approval: None,
@@ -435,6 +429,21 @@ pub fn execute_direct_write(
         });
         return persist_outcome(store, record, false, false);
     }
+
+    // Non-conflicting save: run the legacy comparison ONLY under dual_run (P49-R2) —
+    // dual_run:false must not pay the legacy `/ops/core` tax on every save.
+    let legacy = if capabilities.dual_run {
+        Some(compare_legacy(
+            adapter,
+            worktree_root,
+            &payload.doc_ref,
+            &actual_snapshot,
+            &payload.body,
+            &expected_blob_hash,
+        ))
+    } else {
+        None
+    };
 
     let started = Instant::now();
     let summary = direct_summary(payload.summary.as_deref(), &payload.doc_ref);
@@ -454,7 +463,7 @@ pub fn execute_direct_write(
             body: payload.body,
         },
     )? {
-        return Ok(in_flight_outcome(&ids, legacy));
+        return Ok(in_flight_outcome(&ids, legacy.clone()));
     }
 
     if let Some(conflict) = refreshed_conflict(
@@ -479,7 +488,7 @@ pub fn execute_direct_write(
             idempotency_key,
             request_digest,
             started,
-            legacy: Some(legacy),
+            legacy: legacy.clone(),
             conflict: Some(conflict),
             eligibility: Some(eligibility),
             approval: None,
@@ -499,7 +508,7 @@ pub fn execute_direct_write(
         &summary,
     )? {
         ReviewOpen::Ready(review) => review,
-        ReviewOpen::InFlight => return Ok(in_flight_outcome(&ids, legacy)),
+        ReviewOpen::InFlight => return Ok(in_flight_outcome(&ids, legacy.clone())),
     };
     let approval = ensure_human_approval(store, actor, idempotency_key, now_ms, &ids, &review)?;
     if !approval.eligibility.allowed {
@@ -513,7 +522,7 @@ pub fn execute_direct_write(
             apply_receipt: None,
             apply_replayed: false,
             apply_in_flight: false,
-            legacy: Some(legacy),
+            legacy: legacy.clone(),
             conflict: None,
             eligibility: Some(approval.eligibility),
             record: None,
@@ -566,7 +575,7 @@ pub fn execute_direct_write(
                 idempotency_key,
                 request_digest,
                 started,
-                legacy: Some(legacy),
+                legacy: legacy.clone(),
                 conflict: Some(conflict),
                 eligibility: Some(apply.eligibility),
                 approval: Some(approval.record),
@@ -585,7 +594,7 @@ pub fn execute_direct_write(
             apply_receipt: None,
             apply_replayed: apply.replayed,
             apply_in_flight: apply.in_flight,
-            legacy: Some(legacy),
+            legacy: legacy.clone(),
             conflict: None,
             eligibility: Some(apply.eligibility),
             record: None,
@@ -603,7 +612,7 @@ pub fn execute_direct_write(
             apply_receipt: None,
             apply_replayed: apply.replayed,
             apply_in_flight: true,
-            legacy: Some(legacy),
+            legacy: legacy.clone(),
             conflict: None,
             eligibility: Some(apply.eligibility),
             record: None,
@@ -626,7 +635,7 @@ pub fn execute_direct_write(
         idempotency_key,
         request_digest,
         started,
-        legacy: Some(legacy),
+        legacy: legacy.clone(),
         conflict: None,
         eligibility: None,
         approval: Some(approval.record),
@@ -780,7 +789,7 @@ fn terminal_approval_id(record: &DirectWriteRecord) -> Option<ApprovalId> {
     }
 }
 
-fn in_flight_outcome(ids: &DirectWriteIds, legacy: LegacyComparison) -> DirectWriteOutcome {
+fn in_flight_outcome(ids: &DirectWriteIds, legacy: Option<LegacyComparison>) -> DirectWriteOutcome {
     DirectWriteOutcome {
         status: DirectWriteStatus::InFlight,
         replayed: false,
@@ -791,7 +800,7 @@ fn in_flight_outcome(ids: &DirectWriteIds, legacy: LegacyComparison) -> DirectWr
         apply_receipt: None,
         apply_replayed: false,
         apply_in_flight: true,
-        legacy: Some(legacy),
+        legacy: legacy.clone(),
         conflict: None,
         eligibility: Some(ActionEligibility::allowed(CommandKind::DirectWrite)),
         record: None,
@@ -1663,6 +1672,11 @@ mod tests {
     fn human_direct_save_self_approves_captures_preimage_and_records_dual_run() {
         let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
         let mut fx = setup();
+        // dual_run ON → the legacy comparison is recorded (P49-R2 gates it on dual_run).
+        DirectWriteCapabilities::write_for_tests(
+            &fx.root,
+            DirectWriteCapabilities::direct_dual_run(),
+        );
         let human = fx.human.clone();
         let base_hash = fx.base_hash.clone();
         let outcome = direct_save(
@@ -1876,7 +1890,33 @@ mod tests {
     }
 
     #[test]
-    fn stale_expected_blob_hash_conflicts_like_legacy_and_does_not_apply() {
+    fn direct_save_skips_legacy_when_dual_run_disabled() {
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup();
+        // No capabilities file → dual_run defaults OFF. A successful (non-conflict) save
+        // must NOT pay the legacy comparison tax (P49-R2): the save still applies, but
+        // no legacy `/ops/core` comparison is recorded.
+        let human = fx.human.clone();
+        let base_hash = fx.base_hash.clone();
+        let outcome = direct_save(
+            &mut fx,
+            &human,
+            "idem:direct:nodual:1",
+            &base_hash,
+            NEW_BODY,
+            100,
+        );
+        assert_eq!(outcome.status, DirectWriteStatus::Applied);
+        let record = outcome.record.as_ref().expect("direct record is served");
+        assert!(
+            record.legacy.is_none(),
+            "dual_run OFF must skip the legacy comparison: {:?}",
+            record.legacy
+        );
+    }
+
+    #[test]
+    fn stale_expected_blob_hash_conflicts_and_skips_legacy_and_does_not_apply() {
         let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
         let mut fx = setup();
         let human = fx.human.clone();
@@ -1901,23 +1941,14 @@ mod tests {
         assert_eq!(conflict.actual_blob_hash, concurrent_hash);
         assert_eq!(conflict.target_blob_hash, blob_oid(NEW_BODY.as_bytes()));
 
-        let legacy = outcome
-            .legacy
-            .as_ref()
-            .expect("legacy comparison is served");
+        // P49-R2: the early-conflict path SKIPS the legacy comparison — no per-save
+        // `.vaultspec` copy + core-subprocess tax on a save that is going to conflict.
+        // The blob-hash fence catches the conflict without the legacy comparator.
         assert!(
-            matches!(
-                legacy.status,
-                LegacyComparisonStatus::CoreConflict | LegacyComparisonStatus::CoreFailed
-            ),
-            "legacy comparator must observe the stale save as a failed write shape: {legacy:?}"
+            outcome.legacy.is_none(),
+            "the early-conflict path skips the legacy comparison: {:?}",
+            outcome.legacy
         );
-        assert_eq!(legacy.core_status.as_deref(), Some("failed"));
-        assert!(
-            legacy.conflict || legacy.status == LegacyComparisonStatus::CoreFailed,
-            "real core may report stale set-body as a failed write without a conflict flag: {legacy:?}"
-        );
-        assert!(legacy.elapsed_ms >= 0);
         assert_eq!(
             std::fs::read_to_string(fx.root.join(DOC_PATH)).unwrap(),
             CONCURRENT_BODY,

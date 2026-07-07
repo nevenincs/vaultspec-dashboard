@@ -953,6 +953,7 @@ fn empty_as_none(value: &str) -> Option<&str> {
 fn changeset_kind_as_str(kind: ChangesetKind) -> &'static str {
     match kind {
         ChangesetKind::Authoring => "authoring",
+        ChangesetKind::Direct => "direct",
         ChangesetKind::Rollback => "rollback",
     }
 }
