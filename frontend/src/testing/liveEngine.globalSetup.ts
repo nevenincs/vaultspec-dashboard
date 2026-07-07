@@ -217,8 +217,11 @@ export default async function setup(): Promise<() => void> {
   // engine answers /status the moment it binds, but its initial declared-fold graph
   // rebuild is still in flight for a beat after. Publishing env now would let file 1
   // start reading a mid-fold corpus. Block until the graph `generation` is stable.
+  // The budget is sized for a COLD CI runner (2 vCPUs, debug binary, uv-resolved
+  // core subprocess per declared fold): the barrier's 20s default was tuned on dev
+  // hardware and expires there while the cold folds are still trickling.
   try {
-    await awaitEngineQuiescent({ baseUrl, token });
+    await awaitEngineQuiescent({ baseUrl, token, timeoutMs: 90_000 });
   } catch (err) {
     throw new Error(
       `engine came up but did not reach quiescence:\n${(err as Error).message}\n${serveLog}`,

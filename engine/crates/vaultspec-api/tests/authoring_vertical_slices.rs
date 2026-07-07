@@ -183,6 +183,33 @@ async fn issue_token(state: &Arc<AppState>, bearer: &str, actor_id: &str, kind: 
         .to_string()
 }
 
+/// Create a durable authoring session over the wire and return its
+/// server-minted id. The session registry (W10-W12) made sessions
+/// first-class: a proposal's `session_id` must name an EXISTING session, so
+/// every create-capable flow opens one first — exactly what a real client
+/// does.
+async fn create_session(state: &Arc<AppState>, bearer: &str, actor_token: &str) -> String {
+    let (status, body) = send(
+        router(state),
+        "POST",
+        "/authoring/v1/sessions",
+        bearer,
+        Some(actor_token),
+        Some(json!({
+            "api_version": "v1",
+            "command": "create_session",
+            "idempotency_key": "idem:session:create",
+            "payload": { "scope": "worktree", "title": "e2e session" },
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "session create: {body}");
+    body["data"]["session_id"]
+        .as_str()
+        .expect("session create returns the session id")
+        .to_string()
+}
+
 fn document(base_revision: &str) -> Value {
     json!({
         "kind": "existing",
@@ -195,13 +222,13 @@ fn document(base_revision: &str) -> Value {
     })
 }
 
-fn create_body(changeset: &str, idem: &str, base_revision: &str) -> Value {
+fn create_body(session_id: &str, changeset: &str, idem: &str, base_revision: &str) -> Value {
     json!({
         "api_version": "v1",
         "command": "create_proposal",
         "idempotency_key": idem,
         "payload": {
-            "session_id": "session_e2e",
+            "session_id": session_id,
             "changeset_id": changeset,
             "summary": "e2e proposal",
             "operations": [{
@@ -251,13 +278,14 @@ async fn create_and_submit(
     changeset: &str,
     base: &str,
 ) -> (String, String, String) {
+    let session = create_session(state, bearer, agent).await;
     let (status, body) = send(
         router(state),
         "POST",
         "/authoring/v1/proposals",
         bearer,
         Some(agent),
-        Some(create_body(changeset, "idem:create", base)),
+        Some(create_body(&session, changeset, "idem:create", base)),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "create: {body}");
@@ -425,7 +453,12 @@ async fn principal_denials_missing_and_unknown_are_401() {
         "/authoring/v1/proposals",
         &bearer,
         None,
-        Some(create_body("changeset_noauth", "idem:x", &base)),
+        Some(create_body(
+            "session_unused",
+            "changeset_noauth",
+            "idem:x",
+            &base,
+        )),
     )
     .await;
     assert_eq!(
@@ -442,7 +475,12 @@ async fn principal_denials_missing_and_unknown_are_401() {
         "/authoring/v1/proposals",
         &bearer,
         Some("deadbeefdeadbeef"),
-        Some(create_body("changeset_badauth", "idem:x", &base)),
+        Some(create_body(
+            "session_unused",
+            "changeset_badauth",
+            "idem:x",
+            &base,
+        )),
     )
     .await;
     assert_eq!(
@@ -458,6 +496,7 @@ async fn a_stale_expected_revision_is_a_409() {
     let _keep = &dir;
     let bearer = state.bearer.clone();
     let agent = issue_token(&state, &bearer, "agent:writer", "agent").await;
+    let session = create_session(&state, &bearer, &agent).await;
 
     let (status, _) = send(
         router(&state),
@@ -465,7 +504,12 @@ async fn a_stale_expected_revision_is_a_409() {
         "/authoring/v1/proposals",
         &bearer,
         Some(&agent),
-        Some(create_body("changeset_stale", "idem:create", &base)),
+        Some(create_body(
+            &session,
+            "changeset_stale",
+            "idem:create",
+            &base,
+        )),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -497,6 +541,7 @@ async fn an_idempotent_create_replays_the_same_receipt() {
     let _keep = &dir;
     let bearer = state.bearer.clone();
     let agent = issue_token(&state, &bearer, "agent:writer", "agent").await;
+    let session = create_session(&state, &bearer, &agent).await;
 
     let (status, first) = send(
         router(&state),
@@ -504,7 +549,7 @@ async fn an_idempotent_create_replays_the_same_receipt() {
         "/authoring/v1/proposals",
         &bearer,
         Some(&agent),
-        Some(create_body("changeset_dup", "idem:dup", &base)),
+        Some(create_body(&session, "changeset_dup", "idem:dup", &base)),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{first}");
@@ -516,7 +561,7 @@ async fn an_idempotent_create_replays_the_same_receipt() {
         "/authoring/v1/proposals",
         &bearer,
         Some(&agent),
-        Some(create_body("changeset_dup", "idem:dup", &base)),
+        Some(create_body(&session, "changeset_dup", "idem:dup", &base)),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{second}");
