@@ -7,7 +7,9 @@
 
 use super::api::ChangesetOperationKind;
 use super::ledger::ChangesetAggregateRecord;
-use super::model::{ActionEligibility, ChangesetKind, ChangesetStatus, CommandKind};
+use super::model::{
+    ActionEligibility, ActorKind, ActorRef, ChangesetKind, ChangesetStatus, CommandKind,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandLifecycleScope {
@@ -516,6 +518,38 @@ pub fn apply_completion_transition_eligibility(
     )
 }
 
+/// The kill-switch POLICY-REQUEUE arc (P48-R1): `Approved → NeedsReview`. When a mode
+/// downgrade stales a not-yet-applied system approval, the changeset is re-queued for
+/// human review through ONE declared arc — never a synthetic `Approved → Draft → …`
+/// re-draft (which would distort provenance and leak an undeclared arc into the
+/// projections and event stream). Legal ONLY for the SYSTEM actor over an `Approved`
+/// head (the caller supplies the staled-system-approval context). It is a policy
+/// action, not a user command, so it carries `SubmitForReview` as its nearest verb.
+pub fn policy_requeue_transition_eligibility(
+    record: &ChangesetAggregateRecord,
+    actor: &ActorRef,
+) -> ActionEligibility {
+    if actor.kind != ActorKind::System {
+        return ActionEligibility::denied(
+            CommandKind::SubmitForReview,
+            "policy requeue is a system-actor action",
+        );
+    }
+    if record.status != ChangesetStatus::Approved {
+        return ActionEligibility::denied(
+            CommandKind::SubmitForReview,
+            format!(
+                "policy requeue requires an approved head, not `{:?}`",
+                record.status
+            ),
+        );
+    }
+    // The arc itself is declared in the append vocabulary
+    // (`append_allows_status_transition`: Approved → NeedsReview); this helper is the
+    // fine gate (system actor + approved head) the requeue caller checks first.
+    ActionEligibility::allowed(CommandKind::SubmitForReview)
+}
+
 pub fn create_rollback_eligibility(
     source: &ChangesetAggregateRecord,
     requested_source_children: &[RollbackChildEligibility],
@@ -893,6 +927,7 @@ fn append_allows_status_transition(
             ChangesetStatus::Approved => matches!(
                 next,
                 ChangesetStatus::Applying
+                    | ChangesetStatus::NeedsReview
                     | ChangesetStatus::Draft
                     | ChangesetStatus::Cancelled
                     | ChangesetStatus::Superseded
@@ -1533,6 +1568,41 @@ mod tests {
                 )],
             ),
             "required preimage",
+        );
+    }
+
+    #[test]
+    fn policy_requeue_arc_is_declared_and_gated_to_system_over_approved() {
+        // P48-R1: the Approved→NeedsReview kill-switch arc is DECLARED in the append
+        // vocabulary (so it is not a synthetic 2-hop leaking undeclared arcs).
+        assert!(append_allows_status_transition(
+            ChangesetKind::Authoring,
+            ChangesetStatus::Approved,
+            ChangesetStatus::NeedsReview,
+        ));
+
+        let approved = authoring_record(ChangesetStatus::Approved);
+        let system = ActorRef {
+            id: ActorId::new("system:modes").unwrap(),
+            kind: ActorKind::System,
+            delegated_by: None,
+        };
+        let human = ActorRef {
+            id: ActorId::new("human:reviewer").unwrap(),
+            kind: ActorKind::Human,
+            delegated_by: None,
+        };
+
+        // Legal only for the system actor over an approved head.
+        allowed(policy_requeue_transition_eligibility(&approved, &system));
+        denied_contains(
+            policy_requeue_transition_eligibility(&approved, &human),
+            "system-actor",
+        );
+        let needs_review = authoring_record(ChangesetStatus::NeedsReview);
+        denied_contains(
+            policy_requeue_transition_eligibility(&needs_review, &system),
+            "approved head",
         );
     }
 

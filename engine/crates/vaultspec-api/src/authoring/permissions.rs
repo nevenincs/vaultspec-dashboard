@@ -19,7 +19,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::actors::actor_kind_name;
-use super::model::{ActionEligibility, ActorRef, CommandKind, ToolCallId};
+use super::model::{ActionEligibility, ActorKind, ActorRef, CommandKind, ToolCallId};
 use super::policy::{
     OperationMode, ToolPermissionRequirement, ToolRiskTier, resolve_effective_mode,
     tool_permission_requirement_in_mode,
@@ -271,6 +271,16 @@ impl ToolPermissionRepository<'_, '_> {
         if record.is_decided() {
             return Ok(self.replay(record));
         }
+        // A human-gated request may be claimed only by an eligible human reviewer, not
+        // the requester itself (P22-R1: claiming is a review action, same authority gate
+        // as deciding).
+        if let Some(denied) = tool_reviewer_authority_blocker(&record, reviewer) {
+            return Ok(ToolPermissionOutcome {
+                record,
+                eligibility: denied,
+                replayed: false,
+            });
+        }
         record.queue_state = ToolPermissionQueueState::Claimed;
         record.claimed_by = Some(reviewer.clone());
         record.updated_at_ms = now_ms;
@@ -313,6 +323,17 @@ impl ToolPermissionRepository<'_, '_> {
         }
         if let Some(expired) = self.expire_in_place(&mut record, now_ms)? {
             return Ok(expired);
+        }
+        // AUTHORITY (P22-R1): a human-gated tool permission may be decided ONLY by an
+        // eligible human reviewer who is not the requester — else the requester could
+        // approve its own request and the human/dangerous floor becomes self-approvable.
+        // A denied decision rides the success envelope as a value (denials-are-values).
+        if let Some(denied) = tool_reviewer_authority_blocker(&record, reviewer) {
+            return Ok(ToolPermissionOutcome {
+                record,
+                eligibility: denied,
+                replayed: false,
+            });
         }
 
         record.decision = Some(ToolPermissionDecisionRecord {
@@ -474,6 +495,38 @@ impl ToolPermissionRepository<'_, '_> {
         )?;
         Ok(())
     }
+}
+
+/// The reviewer-authority gate for a HUMAN-GATED tool permission (P22-R1). A request
+/// whose requirement is HumanApprovalRequired may be decided or claimed ONLY by a HUMAN
+/// who is NOT the requester: a system actor's tool authority is the auto-permit lane the
+/// mode policy owns, never the reviewer hat (security-provenance), and the requester
+/// cannot decide its own request nor a delegate acting on its behalf — else the
+/// human/dangerous floor becomes requester-self-approvable. Mirrors the
+/// `automated_self_approval_blocker` shape (self / on-behalf) rather than re-deriving it.
+fn tool_reviewer_authority_blocker(
+    record: &ToolPermissionRequestRecord,
+    reviewer: &ActorRef,
+) -> Option<ActionEligibility> {
+    // An auto-permitted read tool has no reviewer gate (policy already resolved it).
+    if record.auto_permitted {
+        return None;
+    }
+    if reviewer.kind != ActorKind::Human {
+        return Some(ActionEligibility::denied(
+            CommandKind::RequestToolPermission,
+            "a human-gated tool permission may be decided only by a human reviewer",
+        ));
+    }
+    let decides_as_requester = reviewer.id == record.requester.id;
+    let decides_on_behalf = reviewer.delegated_by.as_ref() == Some(&record.requester.id);
+    if decides_as_requester || decides_on_behalf {
+        return Some(ActionEligibility::denied(
+            CommandKind::RequestToolPermission,
+            "the requester cannot decide its own tool permission request",
+        ));
+    }
+    None
 }
 
 /// The served eligibility for whether the tool action may proceed. Granted → allowed;
@@ -994,5 +1047,121 @@ mod tests {
             outcome.record.queue_state,
             ToolPermissionQueueState::Pending
         );
+    }
+
+    fn human_gated_record(requester: &ActorRef) -> ToolPermissionRequestRecord {
+        ToolPermissionRequestRecord::from_input(
+            &ToolPermissionRequestInput {
+                tool_call_id: ToolCallId::new("call_auth").unwrap(),
+                tool: SemanticToolName::RequestApply,
+                scope_id: "worktree".to_string(),
+                requester: requester.clone(),
+                scope_mode: OperationMode::Autonomous,
+                session_override: None,
+                idempotency_key: "idem:auth".to_string(),
+                created_at_ms: 10,
+                ttl_ms: None,
+            },
+            ToolPermissionRequirement::HumanApprovalRequired,
+            OperationMode::Autonomous,
+        )
+    }
+
+    #[test]
+    fn reviewer_authority_blocker_denies_non_human_and_self_decide() {
+        let requester = actor("agent:requester", ActorKind::Agent);
+        let record = human_gated_record(&requester);
+        assert!(!record.auto_permitted);
+
+        // Agent self-decide DENIED.
+        assert!(tool_reviewer_authority_blocker(&record, &requester).is_some());
+        // A ToolExecutor delegate of the requester DENIED (non-human AND on-behalf).
+        let tool_delegate = ActorRef {
+            id: ActorId::new("tool:writer").unwrap(),
+            kind: ActorKind::ToolExecutor,
+            delegated_by: Some(ActorId::new("agent:requester").unwrap()),
+        };
+        assert!(tool_reviewer_authority_blocker(&record, &tool_delegate).is_some());
+        // A System actor DENIED (system's tool authority is the auto-permit lane).
+        let system = actor("system:auto", ActorKind::System);
+        assert!(tool_reviewer_authority_blocker(&record, &system).is_some());
+        // A human delegate acting on behalf of the requester is STILL denied (self-decide).
+        let human_delegate = ActorRef {
+            id: ActorId::new("human:proxy").unwrap(),
+            kind: ActorKind::Human,
+            delegated_by: Some(ActorId::new("agent:requester").unwrap()),
+        };
+        assert!(tool_reviewer_authority_blocker(&record, &human_delegate).is_some());
+        // A DISTINCT human passes.
+        let human = actor("human:reviewer", ActorKind::Human);
+        assert!(tool_reviewer_authority_blocker(&record, &human).is_none());
+        // An auto-permitted read tool has no reviewer gate at all.
+        let read_record = ToolPermissionRequestRecord::from_input(
+            &ToolPermissionRequestInput {
+                tool_call_id: ToolCallId::new("call_read").unwrap(),
+                tool: SemanticToolName::ReadContext,
+                scope_id: "worktree".to_string(),
+                requester: requester.clone(),
+                scope_mode: OperationMode::Manual,
+                session_override: None,
+                idempotency_key: "idem:read".to_string(),
+                created_at_ms: 10,
+                ttl_ms: None,
+            },
+            ToolPermissionRequirement::AutoPermitted,
+            OperationMode::Manual,
+        );
+        assert!(read_record.auto_permitted);
+        assert!(tool_reviewer_authority_blocker(&read_record, &requester).is_none());
+    }
+
+    #[test]
+    fn requester_cannot_self_decide_but_a_distinct_human_can() {
+        let (_dir, mut store) = temp_store();
+        // A dangerous tool requested by the agent — human-gated in every mode.
+        request(
+            &mut store,
+            "call_auth",
+            SemanticToolName::RequestApply,
+            None,
+            10,
+        );
+
+        // The requester (agent) approving its OWN request is denied — no decision lands,
+        // the dangerous floor is NOT self-approvable.
+        let self_decide = decide(
+            &mut store,
+            "call_auth",
+            ToolPermissionDecisionKind::Approve,
+            &requester(),
+            20,
+        )
+        .unwrap();
+        assert!(!self_decide.eligibility.allowed && !self_decide.record.granted());
+        assert!(
+            self_decide.record.decision.is_none(),
+            "a denied self-decide records nothing"
+        );
+        // The requester is an agent, so the kind gate fires first (a human-gated tool
+        // needs a HUMAN reviewer); the self-decide gate itself is covered directly in
+        // `reviewer_authority_blocker_denies_non_human_and_self_decide`.
+        assert!(
+            self_decide
+                .eligibility
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("human reviewer"))
+        );
+
+        // A distinct human reviewer approves.
+        let approved = decide(
+            &mut store,
+            "call_auth",
+            ToolPermissionDecisionKind::Approve,
+            &reviewer(),
+            30,
+        )
+        .unwrap();
+        assert!(approved.eligibility.allowed && approved.record.granted());
     }
 }

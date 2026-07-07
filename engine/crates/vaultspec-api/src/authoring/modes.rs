@@ -30,7 +30,7 @@ use super::policy::{
 };
 use super::store::unit_of_work::{Repository, SqliteRepository, UnitOfWork};
 use super::store::{Result as StoreResult, StoreError};
-use super::transitions::ValidationFreshness;
+use super::transitions::{ValidationFreshness, policy_requeue_transition_eligibility};
 
 const MODE_RECORD_SCHEMA: &str = "authoring.operation_mode.v1";
 const SYSTEM_POLICY_APPROVAL_SCHEMA: &str = "authoring.system_policy_approval.v1";
@@ -556,14 +556,19 @@ impl ModeRepository<'_, '_> {
             self.uow.approvals().store_record(&old_approval)?;
 
             let system = system_actor();
-            let draft =
-                append_status_revision(self.uow, &latest, ChangesetStatus::Draft, &system, now_ms)?;
+            // ONE declared policy-requeue arc (Approved → NeedsReview) under the system
+            // actor — never a synthetic Approved → Draft re-draft (P48-R1: an
+            // undeclared arc distorts provenance and leaks into projections + the event
+            // stream). Gate it on the fine helper (system actor over an approved head).
+            if !policy_requeue_transition_eligibility(&latest, &system).allowed {
+                continue;
+            }
             let needs_review = append_status_revision(
                 self.uow,
-                &draft,
+                &latest,
                 ChangesetStatus::NeedsReview,
                 &system,
-                now_ms + 1,
+                now_ms,
             )?;
             let approval_id =
                 requeue_approval_id(&marker.changeset_id, &marker.approval_id, now_ms)?;
@@ -668,15 +673,8 @@ fn requeue_approval_id(
 }
 
 fn mode_is_downgrade(previous: OperationMode, next: OperationMode) -> bool {
-    mode_rank(next) < mode_rank(previous)
-}
-
-fn mode_rank(mode: OperationMode) -> u8 {
-    match mode {
-        OperationMode::Manual => 0,
-        OperationMode::Assisted => 1,
-        OperationMode::Autonomous => 2,
-    }
+    // Autonomy rank is owned by `policy::OperationMode` (one source, P48-R1 dedup).
+    next.autonomy_rank() < previous.autonomy_rank()
 }
 
 pub fn mode_as_str(mode: OperationMode) -> &'static str {
@@ -1268,6 +1266,28 @@ mod tests {
             })
             .unwrap();
         assert_eq!(latest.status, ChangesetStatus::NeedsReview);
+        // P48-R1: the kill switch re-queues through the SINGLE declared
+        // Approved→NeedsReview arc — the head's predecessor is the Approved auto-approval,
+        // NOT a synthetic Approved→Draft re-draft, and the system actor never authored a
+        // Draft revision.
+        let history = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.ledger().history(&changeset_id)
+            })
+            .unwrap();
+        let predecessor = &history.revisions[history.revisions.len() - 2];
+        assert_eq!(
+            predecessor.status,
+            ChangesetStatus::Approved,
+            "requeue is a direct Approved→NeedsReview hop, not through Draft"
+        );
+        assert!(
+            !history
+                .revisions
+                .iter()
+                .any(|rev| rev.status == ChangesetStatus::Draft && rev.actor == system_actor()),
+            "the requeue never emits a synthetic Approved→Draft re-draft"
+        );
         assert!(old.stale);
         assert_eq!(old.stale_reason.as_deref(), Some("policy_version_changed"));
         assert_ne!(replacement.approval_id, stale_approval_id);

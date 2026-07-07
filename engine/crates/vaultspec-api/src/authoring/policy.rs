@@ -53,8 +53,9 @@ impl OperationMode {
     pub const DEFAULT: Self = Self::Manual;
 
     /// Autonomy rank: higher is MORE autonomous. Used to resolve a narrowing-only
-    /// session override (a session may lower the rank, never raise it).
-    const fn autonomy_rank(self) -> u8 {
+    /// session override (a session may lower the rank, never raise it), and to detect a
+    /// mode downgrade for the kill switch (`modes`, P48-R1 — one owner of the rank).
+    pub(crate) const fn autonomy_rank(self) -> u8 {
         match self {
             Self::Manual => 0,
             Self::Assisted => 1,
