@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#agentic-spec-authoring-backend'
-date: '2026-07-06'
-modified: '2026-07-06'
+date: '2026-07-07'
+modified: '2026-07-07'
 related:
   - '[[2026-06-29-agentic-apply-materialization-adr]]'
   - '[[2026-06-29-agentic-approval-gates-review-state-adr]]'
@@ -134,6 +134,38 @@ related:
   - '[[2026-06-30-agentic-spec-authoring-backend-W10-P49-S221]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-W10-P49-S222]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-W10-P49-S223]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P49-S224]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P49-S225]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W10-P49-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P33-S161]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P33-S162]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P33-S163]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P33-S164]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P33-S165]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P33-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P34-S166]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P34-S167]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P34-S168]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P34-S169]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P34-S170]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P34-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P50-S226]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P50-S227]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P50-S228]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P50-S229]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P50-S230]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P50-summary]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P51-S231]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P51-S232]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P51-S233]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P51-S234]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W11-P51-S235]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W12-P25-S121]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W12-P25-S122]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W12-P25-S123]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W12-P25-S124]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W12-P25-S125]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W12-P30-S146]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-audit]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-plan]]'
   - '[[2026-07-02-agentic-operation-modes-adr]]'
@@ -287,6 +319,38 @@ Auto-generated index of all documents tagged with `#agentic-spec-authoring-backe
 - `2026-06-30-agentic-spec-authoring-backend-W10-P49-S221` - Ground Unified write path: direct-changeset dual-run for the editor save requirements into the phase checklist
 - `2026-06-30-agentic-spec-authoring-backend-W10-P49-S222` - Implement the kind=direct self-approved changeset path behind a feature flag, dual-running the editor save against the legacy /ops/core broker
 - `2026-06-30-agentic-spec-authoring-backend-W10-P49-S223` - Add dual-run tests for human self-approval legality, preimage capture, latency parity measurement, and conflict-UX parity against the legacy broker
+- `2026-06-30-agentic-spec-authoring-backend-W10-P49-S224` - Run Unified write path: direct-changeset dual-run for the editor save code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W10-P49-S225` - Verify the Increment 2 demo: set scope to autonomous, have a script propose a body edit, watch it apply with no human gate, find it in the after-the-fact lane, roll it back, then flip the kill switch mid-flight and watch a pending auto-approval re-queue for manual review
+- `2026-06-30-agentic-spec-authoring-backend-W10-P49-summary` - `agentic-spec-authoring-backend` `W10.P49` summary
+- `2026-06-30-agentic-spec-authoring-backend-W11-P33-S161` - Ground Durable lifecycle events and projector feed requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W11-P33-S162` - Implement durable lifecycle event schemas, projector feed records, event versioning, and transition-to-event mapping
+- `2026-06-30-agentic-spec-authoring-backend-W11-P33-S163` - Add event tests for session created, proposal updated, validation changed, approval resolved, apply recorded, rollback created, and version rejection
+- `2026-06-30-agentic-spec-authoring-backend-W11-P33-S164` - Run Durable lifecycle events and projector feed code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W11-P33-S165` - Verify lifecycle projections rebuild from durable events and not transient generation chunks
+- `2026-06-30-agentic-spec-authoring-backend-W11-P33-summary` - `agentic-spec-authoring-backend` `W11.P33` summary
+- `2026-06-30-agentic-spec-authoring-backend-W11-P34-S166` - Ground Stream replay and generation retention requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W11-P34-S167` - Implement stream subscriptions, last-sequence replay, gap events, snapshot recovery, bounded generation channels, and transcript compaction hooks
+- `2026-06-30-agentic-spec-authoring-backend-W11-P34-S168` - Add stream tests for replay, gaps, snapshot recovery, token retention caps, compacted transcripts, and frontend cursor restoration
+- `2026-06-30-agentic-spec-authoring-backend-W11-P34-S169` - Run Stream replay and generation retention code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W11-P34-S170` - Verify clients recover lifecycle truth after stream loss while token gaps remain non-authoritative
+- `2026-06-30-agentic-spec-authoring-backend-W11-P34-summary` - `agentic-spec-authoring-backend` `W11.P34` summary
+- `2026-06-30-agentic-spec-authoring-backend-W11-P50-S226` - Ground Per-document activity and count projections requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W11-P50-S227` - Implement review count rollups and per-document activity projections deferred from the Increment 1 review-projection subset
+- `2026-06-30-agentic-spec-authoring-backend-W11-P50-S228` - Add projection tests for count rollups, per-document activity feeds, and bounded activity reads
+- `2026-06-30-agentic-spec-authoring-backend-W11-P50-S229` - Run Per-document activity and count projections code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W11-P50-S230` - Verify counts and per-document activity are backend-served and rebuildable alongside the Increment 1 eligibility projections
+- `2026-06-30-agentic-spec-authoring-backend-W11-P50-summary` - `agentic-spec-authoring-backend` `W11.P50` summary
+- `2026-06-30-agentic-spec-authoring-backend-W11-P51-S231` - Ground Frontend stream cursor: swap polling for the authoring lifecycle stream requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W11-P51-S232` - Implement the store-owned authoring lifecycle stream cursor replacing the review station's polling refresh, mirroring the graph stream's hardened reducer patterns
+- `2026-06-30-agentic-spec-authoring-backend-W11-P51-S233` - Add frontend stream tests for cursor advance, gap recovery, snapshot-plus-next-seq recovery, and reconnect resubscribe
+- `2026-06-30-agentic-spec-authoring-backend-W11-P51-S234` - Run Frontend stream cursor: swap polling for the authoring lifecycle stream code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W11-P51-S235` - Verify the Increment 3 demo: kill and restart the engine mid-review, then confirm the review surface recovers state and resumes the stream with no lost lifecycle events
+- `2026-06-30-agentic-spec-authoring-backend-W12-P25-S121` - Ground Sessions prompt turns and recovery snapshots requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W12-P25-S122` - Implement session creation, prompt turns, run ownership, cancellation, active state, and recovery snapshot handlers
+- `2026-06-30-agentic-spec-authoring-backend-W12-P25-S123` - Add session tests for create, resume, cancelled run, joined active run, restart recovery, and bounded session listings
+- `2026-06-30-agentic-spec-authoring-backend-W12-P25-S124` - Run Sessions prompt turns and recovery snapshots code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W12-P25-S125` - Verify refreshed clients recover session and run state from backend snapshots
+- `2026-06-30-agentic-spec-authoring-backend-W12-P30-S146` - Ground LangGraph runtime mapping requirements into the phase checklist
 
 ### plan
 

@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#agentic-spec-authoring-backend'
 date: '2026-06-30'
-modified: '2026-07-06'
+modified: '2026-07-07'
 tier: L4
 related:
   - '[[2026-07-02-agentic-spec-authoring-backend-reference]]'
@@ -331,8 +331,8 @@ Transition-state half of the unified write path: the editor save creates a kind=
 - [x] `W10.P49.S221` - Ground Unified write path: direct-changeset dual-run for the editor save requirements into the phase checklist; `.vault/adr/`.
 - [x] `W10.P49.S222` - Implement the kind=direct self-approved changeset path behind a feature flag, dual-running the editor save against the legacy /ops/core broker; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
 - [x] `W10.P49.S223` - Add dual-run tests for human self-approval legality, preimage capture, latency parity measurement, and conflict-UX parity against the legacy broker; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
-- [ ] `W10.P49.S224` - Run Unified write path: direct-changeset dual-run for the editor save code review and record the phase audit; `.vault/audit/`.
-- [ ] `W10.P49.S225` - Verify the Increment 2 demo: set scope to autonomous, have a script propose a body edit, watch it apply with no human gate, find it in the after-the-fact lane, roll it back, then flip the kill switch mid-flight and watch a pending auto-approval re-queue for manual review; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
+- [x] `W10.P49.S224` - Run Unified write path: direct-changeset dual-run for the editor save code review and record the phase audit; `.vault/audit/`.
+- [x] `W10.P49.S225` - Verify the Increment 2 demo: set scope to autonomous, have a script propose a body edit, watch it apply with no human gate, find it in the after-the-fact lane, roll it back, then flip the kill switch mid-flight and watch a pending auto-approval re-queue for manual review; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
 
 ## Wave `W11` - Increment 3 - Streams and recovery (activate the shipped outbox)
 
@@ -342,41 +342,41 @@ Replace polling with the durable lifecycle stream and prove recovery survives re
 
 Define event schemas and feed projection rebuilders from durable lifecycle transitions rather than token streams.
 
-- [ ] `W11.P33.S161` - Ground Durable lifecycle events and projector feed requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W11.P33.S162` - Implement durable lifecycle event schemas, projector feed records, event versioning, and transition-to-event mapping; `engine/crates/vaultspec-api/src/authoring/events.rs`.
-- [ ] `W11.P33.S163` - Add event tests for session created, proposal updated, validation changed, approval resolved, apply recorded, rollback created, and version rejection; `engine/crates/vaultspec-api/src/authoring/events.rs`.
-- [ ] `W11.P33.S164` - Run Durable lifecycle events and projector feed code review and record the phase audit; `.vault/audit/`.
-- [ ] `W11.P33.S165` - Verify lifecycle projections rebuild from durable events and not transient generation chunks; `engine/crates/vaultspec-api/src/authoring/events.rs`.
+- [x] `W11.P33.S161` - Ground Durable lifecycle events and projector feed requirements into the phase checklist; `.vault/adr/`.
+- [x] `W11.P33.S162` - Implement durable lifecycle event schemas, projector feed records, event versioning, and transition-to-event mapping; `engine/crates/vaultspec-api/src/authoring/events.rs`.
+- [x] `W11.P33.S163` - Add event tests for session created, proposal updated, validation changed, approval resolved, apply recorded, rollback created, and version rejection; `engine/crates/vaultspec-api/src/authoring/events.rs`.
+- [x] `W11.P33.S164` - Run Durable lifecycle events and projector feed code review and record the phase audit; `.vault/audit/`.
+- [x] `W11.P33.S165` - Verify lifecycle projections rebuild from durable events and not transient generation chunks; `engine/crates/vaultspec-api/src/authoring/events.rs`.
 
 ### Phase `W11.P34` - Stream replay and generation retention
 
 Serve SSE replay, snapshot-plus-next-sequence recovery, bounded generation streams, and transcript compaction.
 
-- [ ] `W11.P34.S166` - Ground Stream replay and generation retention requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W11.P34.S167` - Implement stream subscriptions, last-sequence replay, gap events, snapshot recovery, bounded generation channels, and transcript compaction hooks; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
-- [ ] `W11.P34.S168` - Add stream tests for replay, gaps, snapshot recovery, token retention caps, compacted transcripts, and frontend cursor restoration; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
-- [ ] `W11.P34.S169` - Run Stream replay and generation retention code review and record the phase audit; `.vault/audit/`.
-- [ ] `W11.P34.S170` - Verify clients recover lifecycle truth after stream loss while token gaps remain non-authoritative; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
+- [x] `W11.P34.S166` - Ground Stream replay and generation retention requirements into the phase checklist; `.vault/adr/`.
+- [x] `W11.P34.S167` - Implement stream subscriptions, last-sequence replay, gap events, snapshot recovery, bounded generation channels, and transcript compaction hooks; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
+- [x] `W11.P34.S168` - Add stream tests for replay, gaps, snapshot recovery, token retention caps, compacted transcripts, and frontend cursor restoration; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
+- [x] `W11.P34.S169` - Run Stream replay and generation retention code review and record the phase audit; `.vault/audit/`.
+- [x] `W11.P34.S170` - Verify clients recover lifecycle truth after stream loss while token gaps remain non-authoritative; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
 
 ### Phase `W11.P50` - Per-document activity and count projections (W04.P18 remainder)
 
 Deferred remainder of the Increment 1 review-projection subset: review counts and per-document activity feeds, now that a real usage history exists to roll up.
 
-- [ ] `W11.P50.S226` - Ground Per-document activity and count projections requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W11.P50.S227` - Implement review count rollups and per-document activity projections deferred from the Increment 1 review-projection subset; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
-- [ ] `W11.P50.S228` - Add projection tests for count rollups, per-document activity feeds, and bounded activity reads; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
-- [ ] `W11.P50.S229` - Run Per-document activity and count projections code review and record the phase audit; `.vault/audit/`.
-- [ ] `W11.P50.S230` - Verify counts and per-document activity are backend-served and rebuildable alongside the Increment 1 eligibility projections; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
+- [x] `W11.P50.S226` - Ground Per-document activity and count projections requirements into the phase checklist; `.vault/adr/`.
+- [x] `W11.P50.S227` - Implement review count rollups and per-document activity projections deferred from the Increment 1 review-projection subset; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
+- [x] `W11.P50.S228` - Add projection tests for count rollups, per-document activity feeds, and bounded activity reads; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
+- [x] `W11.P50.S229` - Run Per-document activity and count projections code review and record the phase audit; `.vault/audit/`.
+- [x] `W11.P50.S230` - Verify counts and per-document activity are backend-served and rebuildable alongside the Increment 1 eligibility projections; `engine/crates/vaultspec-api/src/authoring/projections.rs`.
 
 ### Phase `W11.P51` - Frontend stream cursor: swap polling for the authoring lifecycle stream
 
 Swap the review station's polling refresh for a store-owned authoring lifecycle stream cursor, mirroring the graph stream's hardened reducer patterns.
 
-- [ ] `W11.P51.S231` - Ground Frontend stream cursor: swap polling for the authoring lifecycle stream requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W11.P51.S232` - Implement the store-owned authoring lifecycle stream cursor replacing the review station's polling refresh, mirroring the graph stream's hardened reducer patterns; `frontend/src/stores/server/authoring.ts`.
-- [ ] `W11.P51.S233` - Add frontend stream tests for cursor advance, gap recovery, snapshot-plus-next-seq recovery, and reconnect resubscribe; `frontend/src/stores/server/authoring.test.ts`.
-- [ ] `W11.P51.S234` - Run Frontend stream cursor: swap polling for the authoring lifecycle stream code review and record the phase audit; `.vault/audit/`.
-- [ ] `W11.P51.S235` - Verify the Increment 3 demo: kill and restart the engine mid-review, then confirm the review surface recovers state and resumes the stream with no lost lifecycle events; `frontend/src/stores/server/authoring.ts`.
+- [x] `W11.P51.S231` - Ground Frontend stream cursor: swap polling for the authoring lifecycle stream requirements into the phase checklist; `.vault/adr/`.
+- [x] `W11.P51.S232` - Implement the store-owned authoring lifecycle stream cursor replacing the review station's polling refresh, mirroring the graph stream's hardened reducer patterns; `frontend/src/stores/server/authoring.ts`.
+- [x] `W11.P51.S233` - Add frontend stream tests for cursor advance, gap recovery, snapshot-plus-next-seq recovery, and reconnect resubscribe; `frontend/src/stores/server/authoring.test.ts`.
+- [x] `W11.P51.S234` - Run Frontend stream cursor: swap polling for the authoring lifecycle stream code review and record the phase audit; `.vault/audit/`.
+- [x] `W11.P51.S235` - Verify the Increment 3 demo: kill and restart the engine mid-review, then confirm the review surface recovers state and resumes the stream with no lost lifecycle events; `frontend/src/stores/server/authoring.ts`.
 
 ## Wave `W12` - Increment 4 - Agent runtime (LangGraph drives the loop)
 
@@ -386,11 +386,11 @@ Run a LangGraph agent through the whole Increment 1 and Increment 2 loop via sem
 
 Persist sessions, prompt turns, run ownership, active state, cancellation state, and recovery snapshots.
 
-- [ ] `W12.P25.S121` - Ground Sessions prompt turns and recovery snapshots requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W12.P25.S122` - Implement session creation, prompt turns, run ownership, cancellation, active state, and recovery snapshot handlers; `engine/crates/vaultspec-api/src/authoring/session.rs`.
-- [ ] `W12.P25.S123` - Add session tests for create, resume, cancelled run, joined active run, restart recovery, and bounded session listings; `engine/crates/vaultspec-api/src/authoring/session.rs`.
-- [ ] `W12.P25.S124` - Run Sessions prompt turns and recovery snapshots code review and record the phase audit; `.vault/audit/`.
-- [ ] `W12.P25.S125` - Verify refreshed clients recover session and run state from backend snapshots; `engine/crates/vaultspec-api/src/authoring/session.rs`.
+- [x] `W12.P25.S121` - Ground Sessions prompt turns and recovery snapshots requirements into the phase checklist; `.vault/adr/`.
+- [x] `W12.P25.S122` - Implement session creation, prompt turns, run ownership, cancellation, active state, and recovery snapshot handlers; `engine/crates/vaultspec-api/src/authoring/session.rs`.
+- [x] `W12.P25.S123` - Add session tests for create, resume, cancelled run, joined active run, restart recovery, and bounded session listings; `engine/crates/vaultspec-api/src/authoring/session.rs`.
+- [x] `W12.P25.S124` - Run Sessions prompt turns and recovery snapshots code review and record the phase audit; `.vault/audit/`.
+- [x] `W12.P25.S125` - Verify refreshed clients recover session and run state from backend snapshots; `engine/crates/vaultspec-api/src/authoring/session.rs`.
 
 ### Phase `W12.P30` - LangGraph runtime mapping
 
