@@ -47,7 +47,7 @@ pub struct ProposalCommandContext {
     pub outcome_expires_at_ms: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DraftProposalRequest {
     pub changeset_id: ChangesetId,

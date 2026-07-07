@@ -59,8 +59,8 @@ use super::principal::{
 };
 use super::projections::ProjectionError;
 use super::proposal::{
-    ProposalCommandContext, ProposalCommandOutcome, ProposalCommandResult, SubmitProposalRequest,
-    ValidateProposalRequest, validation_evidence,
+    DraftProposalRequest, ProposalCommandContext, ProposalCommandOutcome, ProposalCommandResult,
+    SubmitProposalRequest, ValidateProposalRequest, validation_evidence,
 };
 use super::rollback::{RollbackOutcome, RollbackRequest, RollbackSourceChild};
 use super::snapshots::SnapshotReader;
@@ -394,6 +394,14 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/v1/runs/{run_id}/resume", post(resume_run))
         .route("/v1/proposals", get(list_proposals).post(create_proposal))
         .route("/v1/proposals/{changeset_id}", get(project_proposal))
+        .route(
+            "/v1/proposals/{changeset_id}/append",
+            post(append_proposal_draft),
+        )
+        .route(
+            "/v1/proposals/{changeset_id}/replace",
+            post(replace_proposal_draft),
+        )
         .route(
             "/v1/proposals/{changeset_id}/snapshot",
             get(proposal_snapshot),
@@ -782,6 +790,83 @@ pub async fn create_proposal(
         Ok(result) => proposal_result_response(&state, result),
         Err(err) => command_error_response(&state, &err),
     }
+}
+
+/// Which draft-mutation domain handler a draft route dispatches to.
+#[derive(Clone, Copy)]
+enum DraftRoute {
+    Append,
+    Replace,
+}
+
+/// Shared body of the append/replace draft routes: resolve the path changeset id,
+/// reject a body that names a DIFFERENT changeset (coherence), then dispatch to the
+/// shipped `append_draft`/`replace_draft` domain handler. The actor is the
+/// middleware-resolved principal; the handler owns its own idempotency + unit of work.
+async fn mutate_proposal_draft(
+    state: Arc<AppState>,
+    changeset_id: String,
+    command: ResolvedCommand<DraftProposalRequest>,
+    route: DraftRoute,
+) -> Response {
+    let changeset_id = match ChangesetId::new(&changeset_id) {
+        Ok(id) => id,
+        Err(err) => {
+            return super::response::typed_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                REQUEST_INVALID_KIND,
+                &format!("invalid changeset id: {err}"),
+            )
+            .into_response();
+        }
+    };
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    if payload.changeset_id != changeset_id {
+        return super::response::typed_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            REQUEST_INVALID_KIND,
+            "path changeset id does not match the request body",
+        )
+        .into_response();
+    }
+    let context = ProposalCommandContext {
+        actor,
+        idempotency_key,
+        now_ms: now,
+        in_flight_expires_at_ms: Some(now + COMMAND_IN_FLIGHT_TTL_MS),
+        outcome_expires_at_ms: Some(now + COMMAND_OUTCOME_TTL_MS),
+    };
+    let reader = SnapshotReader::for_worktree(state.active_workspace_root());
+    match state.with_authoring_store(|store| match route {
+        DraftRoute::Append => super::proposal::append_draft(store, &reader, context, payload),
+        DraftRoute::Replace => super::proposal::replace_draft(store, &reader, context, payload),
+    }) {
+        Ok(result) => proposal_result_response(&state, result),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `POST /authoring/v1/proposals/{changeset_id}/append` — append operations to a draft
+/// changeset (the executable route behind the `propose_changeset`/append tool alias).
+pub async fn append_proposal_draft(
+    State(state): State<Arc<AppState>>,
+    Path(changeset_id): Path<String>,
+    command: ResolvedCommand<DraftProposalRequest>,
+) -> Response {
+    mutate_proposal_draft(state, changeset_id, command, DraftRoute::Append).await
+}
+
+/// `POST /authoring/v1/proposals/{changeset_id}/replace` — replace a draft changeset's
+/// operations (the executable route behind the `propose_changeset`/replace tool alias).
+pub async fn replace_proposal_draft(
+    State(state): State<Arc<AppState>>,
+    Path(changeset_id): Path<String>,
+    command: ResolvedCommand<DraftProposalRequest>,
+) -> Response {
+    mutate_proposal_draft(state, changeset_id, command, DraftRoute::Replace).await
 }
 
 // --- submit for review (composite: validate + submit + open approval) ---------

@@ -1437,6 +1437,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn proposal_append_and_replace_draft_routes_are_mounted_and_principal_gated() {
+        // W12.P22 fold-in: the served tool catalog advertises `propose_changeset`
+        // append/replace, so those verbs MUST have executable routes (not
+        // advertise-what-can't-run). Each is mounted AND principal-gated: a machine
+        // bearer with no actor token is a 401 from the extractor, never a 404.
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        for verb in ["append", "replace"] {
+            let (status, body) = post_json_with_token(
+                router.clone(),
+                &format!("/authoring/v1/proposals/changeset_mount/{verb}"),
+                json!({
+                    "api_version": "v1",
+                    "command": "append_draft",
+                    "idempotency_key": format!("idem:mount:{verb}"),
+                    "payload": {
+                        "changeset_id": "changeset_mount",
+                        "expected_revision": "changeset:mount",
+                        "summary": "mount smoke",
+                        "operations": []
+                    }
+                }),
+                Some(&token),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::UNAUTHORIZED,
+                "the {verb} draft route is mounted and needs an actor token: {body}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn authoring_api_misses_and_method_errors_are_tiered_json() {
         // The `/authoring` prefix is an API boundary, not an SPA deep link.
         // Unknown authoring paths and framework method errors must therefore be
