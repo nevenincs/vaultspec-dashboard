@@ -9,7 +9,7 @@ related:
   - "[[2026-07-04-dashboard-packaging-research]]"
 ---
 
-# `release-automation` adr: `release-please release PR in front of the dist tag pipeline` | (**status:** `proposed`)
+# `release-automation` adr: `release-please release PR in front of the dist tag pipeline` | (**status:** `accepted`)
 
 ## Problem Statement
 
