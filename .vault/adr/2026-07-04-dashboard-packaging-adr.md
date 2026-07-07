@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#dashboard-packaging'
 date: '2026-07-04'
-modified: '2026-07-04'
+modified: '2026-07-07'
 related:
   - '[[2026-07-04-dashboard-packaging-research]]'
   - '[[2026-06-12-dashboard-foundation-adr]]'
@@ -57,7 +57,7 @@ High-level layering only.
 - **Startup provisioning probe.** At startup the engine probes `git` on PATH and `vaultspec-core` (capability probe + version floor `>=0.1.36`, reusing the existing `runner.rs` resolution). On failure it fails closed with the exact `uv tool install vaultspec-core` remediation string. rag stays attach-or-instruct: discovered via the machine singleton, degraded fail-closed when absent, never bundled or auto-provisioned.
 - **Compatibility handshake.** A startup handshake declares component floors (`vaultspec-core >=0.1.36`; `vaultspec-rag >=0.2.28` when present), probing `vaultspec-core --version` + capability and rag `/health`. Results ride the existing `tiers` envelope: authoring verbs block on stale/absent core; semantic panels grey on absent/stale rag. Degradation is read from `tiers`, never inferred from a bare transport error, and never enforced as hard lockstep.
 - **Update provenance.** `dist` installers write an install receipt; self-update (axoupdater) is offered only to copies whose receipt marks them self-installed. Package-manager-installed copies update through their manager. No auto-update; update is user-invoked or advisory.
-- **Releaser cleanup.** Remove the orphaned `release-please-config.json` (typed `python` for the retired wheel) and let `dist`'s tag-driven flow own releases; versioning stays the single shared cargo workspace version bumped via conventional commits, with the changelog generated from those commits. Fix or remove the dormant pre-commit CHANGELOG hook (`.pre-commit-config.yaml`) accordingly.
+- **Releaser cleanup.** Remove the orphaned `release-please-config.json` (typed `python` for the retired wheel) and let `dist`'s tag-driven flow own releases; versioning stays the single shared cargo workspace version bumped via conventional commits, with the changelog generated from those commits. Fix or remove the dormant pre-commit CHANGELOG hook (`.pre-commit-config.yaml`) accordingly. SUPERSEDED IN PART (2026-07-07): the no-releaser-in-front posture of this D7 row is amended by the release-automation ADR, which layers a correctly-typed, actually-invoked release-please release PR in front of the unchanged dist tag flow; the retirement of the ORPHANED python-typed config recorded here stands.
 
 ## Rationale
 

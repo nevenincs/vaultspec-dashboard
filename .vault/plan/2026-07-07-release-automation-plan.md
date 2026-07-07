@@ -20,14 +20,13 @@ Executes the accepted release-automation ADR: a manifest-driven release-please (
 
 ## Steps
 
-- [ ] `S01` - author the rust-typed release-please config: path engine, include-component-in-tag false so tags stay v-plain for the dist trigger, pre-1.0 bump rules, changelog sections, and a toml jsonpath extra-file bumping the workspace.package.version in the virtual engine manifest; `release-please-config.json`.
-- [ ] `S02` - seed the manifest at the current workspace version for the engine path; `.release-please-manifest.json`.
-- [ ] `S03` - add the release-please workflow on pushes to main, running the v4 action with a release token seam (PAT or App token) so the minted tag actually fires the downstream release workflow; `.github/workflows/release-please.yml`.
-- [ ] `S04` - restore the block-manual-changelog pre-commit guard now that a generated CHANGELOG.md returns; `.pre-commit-config.yaml`.
-- [ ] `S05` - append the D7 supersession note pointing at the release-automation adr; `.vault/adr/2026-07-04-dashboard-packaging-adr.md`.
-- [ ] `S06` - reword the maintainers release process to the merge-the-release-PR ritual and name the first-release watch list; `README.md`.
-- [ ] `S07` - validate the config pair against the published release-please JSON schemas and pass the repo lint gates; `release-please-config.json`.
-
+- [x] `S01` - author the rust-typed release-please config: path engine, include-component-in-tag false so tags stay v-plain for the dist trigger, pre-1.0 bump rules, changelog sections, and a toml jsonpath extra-file bumping the workspace.package.version in the virtual engine manifest; `release-please-config.json`.
+- [x] `S02` - seed the manifest at the current workspace version for the engine path; `.release-please-manifest.json`.
+- [x] `S03` - add the release-please workflow on pushes to main, running the v4 action with a release token seam (PAT or App token) so the minted tag actually fires the downstream release workflow; `.github/workflows/release-please.yml`.
+- [x] `S04` - restore the block-manual-changelog pre-commit guard now that a generated CHANGELOG.md returns; `.pre-commit-config.yaml`.
+- [x] `S05` - append the D7 supersession note pointing at the release-automation adr; `.vault/adr/2026-07-04-dashboard-packaging-adr.md`.
+- [x] `S06` - reword the maintainers release process to the merge-the-release-PR ritual and name the first-release watch list; `README.md`.
+- [x] `S07` - validate the config pair against the published release-please JSON schemas and pass the repo lint gates; `release-please-config.json`.
 ## Parallelization
 
 S01 through S06 touch disjoint files and may run in any order; S02 depends on S01 only conceptually (the manifest key must match the config's package path). S07 is the closing gate and runs last.

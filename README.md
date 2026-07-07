@@ -68,11 +68,22 @@ project), so the first launch trips OS gatekeeping:
 
 ### Releasing (maintainers)
 
-Releases are cut by tagging a green `main` commit with the workspace version
-(e.g. `v0.1.0`); the tag triggers the `release.yml` workflow, which builds
-every target with the web UI embedded, and publishes archives, checksums, and
-installers to GitHub Releases. The verification workflows gate merges to
-`main`, so only verified commits are taggable in practice.
+Releases are one merge click. release-please watches `main` and maintains a
+standing release PR that accumulates the changelog and computes the next
+version from conventional commits; merging that PR bumps the engine workspace
+version, updates `engine/CHANGELOG.md`, and creates the version tag. The tag
+triggers the `release.yml` workflow, which builds every target with the web
+UI embedded and publishes archives, checksums, and installers to GitHub
+Releases. The release PR runs the verification workflows before it can merge,
+so tags are only ever minted from verified commits. `engine/CHANGELOG.md` is
+generated - never edit it by hand.
+
+First-release watch list (one-time): confirm the release PR bumps
+`engine/Cargo.toml` and the lockfile stays consistent, and confirm the minted
+tag actually fires `release.yml` - that requires the `RELEASE_PLEASE_TOKEN`
+repository secret (a fine-grained PAT with contents and pull-request write),
+because tags created with the default workflow token do not trigger
+downstream workflows.
 
 ## Status
 
