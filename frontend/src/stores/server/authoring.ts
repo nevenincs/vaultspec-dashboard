@@ -22,7 +22,7 @@
 // The store consumes the SERVED projection shapes unchanged (no new client
 // model); it maps only presentation. Wire values stay snake_case as served.
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   keepPreviousData,
   queryOptions,
@@ -43,6 +43,7 @@ import {
 } from "./engine";
 import { unwrapEnvelope } from "./liveAdapters";
 import { queryClient as defaultQueryClient } from "./queryClient";
+import { sseChunks, streamReducer, type StreamChunk } from "./queries";
 
 // In dev Vite proxies /api to the engine; in production the SPA shares the engine
 // origin and the prefix collapses — identical to the `EngineClient` base rule.
@@ -91,6 +92,18 @@ export interface ActorRef {
   delegated_by?: string;
 }
 
+/** Operation-mode policy vocabulary served by the backend. */
+export type OperationMode = "manual" | "assisted" | "autonomous";
+
+/** Backend-owned direct-write authority label served by `/authoring/status`. */
+export type DirectWriteAuthority = "legacy_core" | "direct_changeset";
+
+/** Changeset risk class served by the approval policy matrix. */
+export type RiskClass = "non_destructive" | "destructive";
+
+/** What approval the backend policy requires for the projected changeset. */
+export type ApprovalRequirement = "human_approval_required" | "system_auto_approvable";
+
 /** The V1 approval queue state (agentic-review-station-state ADR, ASA-003:
  *  FOUR states collapsed to the single-reviewer reality). */
 export type ApprovalQueueState = "queued" | "decision_submitted" | "closed";
@@ -108,6 +121,20 @@ export interface ActionEligibility {
   command: string;
   allowed: boolean;
   reason?: string;
+}
+
+/** The backend-owned approval-policy decision for one changeset. The client
+ *  renders these fields directly; it never re-derives mode, risk, requirement, or
+ *  reason from status/operation fields. */
+export interface PolicyDecisionProjection {
+  policy_version: string;
+  scope_mode: OperationMode;
+  session_override?: OperationMode;
+  effective_mode: OperationMode;
+  session_override_ignored: boolean;
+  risk: RiskClass;
+  requirement: ApprovalRequirement;
+  reason: string;
 }
 
 /** The validation state a reviewer sees for a proposal. */
@@ -130,6 +157,7 @@ export interface ApprovalStateProjection {
   queue_state?: ApprovalQueueState;
   decision?: ApprovalDecision;
   stale: boolean;
+  stale_reason?: string;
   /** The opened approval's id — required to drive a review decision. */
   approval_id?: string;
   /** The 1:1 proposal id — required to drive a review decision. */
@@ -171,11 +199,34 @@ export interface ProposalProjection {
   operation_count: number;
   validation: ValidationStateProjection;
   approval: ApprovalStateProjection;
+  /** The backend-served policy decision for this changeset. Omitted only by
+   *  sparse/non-current wires; consumers must not synthesize policy locally. */
+  policy?: PolicyDecisionProjection;
   conflict?: ConflictProjection;
   /** The served action eligibility for the current status — rendered directly. */
   eligibility: ActionEligibility[];
   rollback: RollbackAvailabilityProjection;
   created_at_ms: number;
+}
+
+/** A changeset that has already applied under recorded mode-policy authority.
+ *  The nested proposal remains the normal backend-served projection, so rollback
+ *  and eligibility stay on the same command surface as the review queue. */
+export interface AppliedUnderPolicyProjection {
+  proposal: ProposalProjection;
+  policy_id: string;
+  policy_version: string;
+  mode: OperationMode;
+  system_actor: ActorRef;
+  applied_at_ms: number;
+  acknowledgement_count: number;
+}
+
+/** The after-the-fact review lane served by the backend. */
+export interface AppliedUnderPolicyLaneProjection {
+  items: AppliedUnderPolicyProjection[];
+  truncated: boolean;
+  cap: number;
 }
 
 /** The bounded review-queue page (engine `ProposalListProjection`). `truncated`
@@ -184,6 +235,7 @@ export interface ProposalListResult {
   items: ProposalProjection[];
   truncated: boolean;
   cap: number;
+  applied_under_policy: AppliedUnderPolicyLaneProjection;
   tiers: TiersBlock;
 }
 
@@ -227,6 +279,80 @@ export interface ProposalSnapshotResult {
   history: unknown[];
   latest: unknown | null;
   latest_validation: unknown | null;
+  tiers: TiersBlock;
+}
+
+/** Capability flags served by `GET /authoring/status`. */
+export interface AuthoringStatusCapabilities {
+  proposals: boolean;
+  review: boolean;
+  apply: boolean;
+  rollback: boolean;
+  direct_write: boolean;
+  direct_write_dual_run: boolean;
+  direct_write_authority: DirectWriteAuthority;
+  sessions: boolean;
+  leases: boolean;
+  streams: boolean;
+  langgraph: boolean;
+}
+
+/** Backend-served authoring status snapshot. */
+export interface AuthoringStatus {
+  feature: string;
+  enabled: boolean;
+  status: string;
+  route_family: string;
+  ownership: unknown;
+  capabilities: AuthoringStatusCapabilities;
+  tiers: TiersBlock;
+}
+
+/** One durable lifecycle event replayed from the authoring outbox. It is an
+ *  invalidation signal only; proposal rows remain backend-served projections. */
+export interface AuthoringLifecycleEvent {
+  seq: number;
+  event_id: string;
+  aggregate_kind: string;
+  aggregate_id: string;
+  event_kind: string;
+  schema_version: number;
+  actor: ActorRef;
+  command?: string;
+  idempotency_key?: string;
+  payload: unknown;
+  payload_hash: string;
+  created_at_ms: number;
+}
+
+export type AuthoringStreamFrame =
+  | { kind: "lifecycle"; event: AuthoringLifecycleEvent }
+  | {
+      kind: "gap";
+      reason: string;
+      requested_last_seq: number | null;
+      latest_outbox_seq: number | null;
+      next_recovery_seq: number | null;
+    }
+  | { kind: "error"; error_kind: string; error: string; tiers: TiersBlock }
+  | { kind: "ignored"; channel: string };
+
+export interface AuthoringRecoverySnapshot {
+  proposals: ProposalListResult;
+  generation_channels: {
+    implemented: boolean;
+    cap: number;
+    authoritative: boolean;
+  };
+}
+
+export interface AuthoringRecoveryResult {
+  api_version: string;
+  family: string;
+  latest_outbox_seq: number;
+  next_seq: number;
+  requested_last_seq: number;
+  snapshot: AuthoringRecoverySnapshot;
   tiers: TiersBlock;
 }
 
@@ -327,6 +453,25 @@ const asNum = (v: unknown, fallback = 0): number =>
   typeof v === "number" && Number.isFinite(v) ? v : fallback;
 const asTiers = (v: unknown): TiersBlock => (isRec(v) ? (v as TiersBlock) : {});
 
+export const AUTHORING_STREAM_SEQ_MAX = Number.MAX_SAFE_INTEGER;
+export const AUTHORING_STREAM_REOPEN_MS = 1_000;
+export const AUTHORING_STREAM_RETRY_BASE_MS = 250;
+export const AUTHORING_STREAM_RETRY_MAX_MS = 30_000;
+
+export function normalizeAuthoringStreamSeq(seq: unknown): number | null {
+  if (typeof seq !== "number" || !Number.isFinite(seq) || seq < 0) return null;
+  const normalized = Math.floor(seq);
+  return Number.isSafeInteger(normalized) && normalized <= AUTHORING_STREAM_SEQ_MAX
+    ? normalized
+    : null;
+}
+
+export function lastSeqBefore(nextSeq: unknown): number {
+  const normalized = normalizeAuthoringStreamSeq(nextSeq);
+  if (normalized === null) return 0;
+  return Math.max(0, normalized - 1);
+}
+
 // --- tolerant adapters (anti-corruption over the served wire) -------------------
 
 function adaptActorRef(raw: unknown): ActorRef {
@@ -345,6 +490,21 @@ function adaptEligibility(raw: unknown): ActionEligibility[] {
     allowed: asBool(entry.allowed),
     reason: asStr(entry.reason),
   }));
+}
+
+function adaptPolicyDecision(raw: unknown): PolicyDecisionProjection | undefined {
+  if (!isRec(raw)) return undefined;
+  const r = raw;
+  return {
+    policy_version: asStr(r.policy_version) ?? "",
+    scope_mode: asStr(r.scope_mode) as OperationMode,
+    session_override: asStr(r.session_override) as OperationMode | undefined,
+    effective_mode: asStr(r.effective_mode) as OperationMode,
+    session_override_ignored: asBool(r.session_override_ignored),
+    risk: asStr(r.risk) as RiskClass,
+    requirement: asStr(r.requirement) as ApprovalRequirement,
+    reason: asStr(r.reason) ?? "",
+  };
 }
 
 /** Adapt one served proposal projection, flooring optionals so a sparse wire
@@ -375,10 +535,12 @@ export function adaptProposalProjection(raw: unknown): ProposalProjection {
       queue_state: asStr(approval.queue_state) as ApprovalQueueState | undefined,
       decision: asStr(approval.decision) as ApprovalDecision | undefined,
       stale: asBool(approval.stale),
+      stale_reason: asStr(approval.stale_reason),
       approval_id: asStr(approval.approval_id),
       proposal_id: asStr(approval.proposal_id),
       reviewed_proposal_revision: asStr(approval.reviewed_proposal_revision),
     },
+    policy: adaptPolicyDecision(r.policy),
     conflict: conflict
       ? {
           child_key: asStr(conflict.child_key) ?? "",
@@ -397,6 +559,29 @@ export function adaptProposalProjection(raw: unknown): ProposalProjection {
   };
 }
 
+function adaptAppliedUnderPolicy(raw: unknown): AppliedUnderPolicyProjection {
+  const r: Rec = isRec(raw) ? raw : {};
+  return {
+    proposal: adaptProposalProjection(r.proposal),
+    policy_id: asStr(r.policy_id) ?? "",
+    policy_version: asStr(r.policy_version) ?? "",
+    mode: (asStr(r.mode) as OperationMode) ?? "manual",
+    system_actor: adaptActorRef(r.system_actor),
+    applied_at_ms: asNum(r.applied_at_ms),
+    acknowledgement_count: asNum(r.acknowledgement_count),
+  };
+}
+
+function adaptAppliedUnderPolicyLane(raw: unknown): AppliedUnderPolicyLaneProjection {
+  const r: Rec = isRec(raw) ? raw : {};
+  const items = Array.isArray(r.items) ? r.items.map(adaptAppliedUnderPolicy) : [];
+  return {
+    items,
+    truncated: asBool(r.truncated),
+    cap: asNum(r.cap, items.length),
+  };
+}
+
 /** Adapt the bounded proposal-list projection. */
 export function adaptProposalList(raw: unknown): ProposalListResult {
   const r: Rec = isRec(raw) ? raw : {};
@@ -405,6 +590,7 @@ export function adaptProposalList(raw: unknown): ProposalListResult {
     items,
     truncated: asBool(r.truncated),
     cap: asNum(r.cap, items.length),
+    applied_under_policy: adaptAppliedUnderPolicyLane(r.applied_under_policy),
     tiers: asTiers(r.tiers),
   };
 }
@@ -456,6 +642,115 @@ export function adaptProposalSnapshot(raw: unknown): ProposalSnapshotResult {
     latest_validation: r.latest_validation ?? null,
     tiers: asTiers(r.tiers),
   };
+}
+
+function adaptDirectWriteAuthority(raw: unknown): DirectWriteAuthority {
+  return raw === "direct_changeset" ? "direct_changeset" : "legacy_core";
+}
+
+export function adaptAuthoringStatus(raw: unknown): AuthoringStatus {
+  const r: Rec = isRec(raw) ? raw : {};
+  const capabilities: Rec = isRec(r.capabilities) ? r.capabilities : {};
+  return {
+    feature: asStr(r.feature) ?? "",
+    enabled: asBool(r.enabled),
+    status: asStr(r.status) ?? "disabled",
+    route_family: asStr(r.route_family) ?? "",
+    ownership: r.ownership ?? null,
+    capabilities: {
+      proposals: asBool(capabilities.proposals),
+      review: asBool(capabilities.review),
+      apply: asBool(capabilities.apply),
+      rollback: asBool(capabilities.rollback),
+      direct_write: asBool(capabilities.direct_write),
+      direct_write_dual_run: asBool(capabilities.direct_write_dual_run),
+      direct_write_authority: adaptDirectWriteAuthority(
+        capabilities.direct_write_authority,
+      ),
+      sessions: asBool(capabilities.sessions),
+      leases: asBool(capabilities.leases),
+      streams: asBool(capabilities.streams),
+      langgraph: asBool(capabilities.langgraph),
+    },
+    tiers: asTiers(r.tiers),
+  };
+}
+
+function adaptGenerationChannels(
+  raw: unknown,
+): AuthoringRecoverySnapshot["generation_channels"] {
+  const r: Rec = isRec(raw) ? raw : {};
+  return {
+    implemented: asBool(r.implemented),
+    cap: asNum(r.cap),
+    authoritative: asBool(r.authoritative),
+  };
+}
+
+export function adaptAuthoringRecovery(raw: unknown): AuthoringRecoveryResult {
+  const r: Rec = isRec(raw) ? raw : {};
+  const snapshot: Rec = isRec(r.snapshot) ? r.snapshot : {};
+  return {
+    api_version: asStr(r.api_version) ?? "v1",
+    family: asStr(r.family) ?? "recovery",
+    latest_outbox_seq: asNum(r.latest_outbox_seq),
+    next_seq: asNum(r.next_seq, 1),
+    requested_last_seq: asNum(r.requested_last_seq),
+    snapshot: {
+      proposals: adaptProposalList(snapshot.proposals),
+      generation_channels: adaptGenerationChannels(snapshot.generation_channels),
+    },
+    tiers: asTiers(r.tiers),
+  };
+}
+
+function adaptLifecycleEvent(raw: unknown): AuthoringLifecycleEvent | null {
+  if (!isRec(raw)) return null;
+  const seq = normalizeAuthoringStreamSeq(raw.seq);
+  if (seq === null) return null;
+  return {
+    seq,
+    event_id: asStr(raw.event_id) ?? "",
+    aggregate_kind: asStr(raw.aggregate_kind) ?? "",
+    aggregate_id: asStr(raw.aggregate_id) ?? "",
+    event_kind: asStr(raw.event_kind) ?? "",
+    schema_version: asNum(raw.schema_version),
+    actor: adaptActorRef(raw.actor),
+    command: asStr(raw.command),
+    idempotency_key: asStr(raw.idempotency_key),
+    payload: raw.payload ?? null,
+    payload_hash: asStr(raw.payload_hash) ?? "",
+    created_at_ms: asNum(raw.created_at_ms),
+  };
+}
+
+export function adaptAuthoringStreamFrame(frame: StreamChunk): AuthoringStreamFrame {
+  if (frame.channel === "lifecycle") {
+    const event = adaptLifecycleEvent(frame.data);
+    return event
+      ? { kind: "lifecycle", event }
+      : { kind: "ignored", channel: frame.channel };
+  }
+  if (frame.channel === "gap") {
+    const r: Rec = isRec(frame.data) ? frame.data : {};
+    return {
+      kind: "gap",
+      reason: asStr(r.reason) ?? "unknown_gap",
+      requested_last_seq: normalizeAuthoringStreamSeq(r.requested_last_seq),
+      latest_outbox_seq: normalizeAuthoringStreamSeq(r.latest_outbox_seq),
+      next_recovery_seq: normalizeAuthoringStreamSeq(r.next_recovery_seq),
+    };
+  }
+  if (frame.channel === "error") {
+    const r: Rec = isRec(frame.data) ? frame.data : {};
+    return {
+      kind: "error",
+      error_kind: asStr(r.error_kind) ?? "authoring_stream_error",
+      error: asStr(r.error) ?? "authoring stream error",
+      tiers: asTiers(r.tiers),
+    };
+  }
+  return { kind: "ignored", channel: frame.channel };
 }
 
 /**
@@ -614,6 +909,11 @@ export class AuthoringClient {
 
   // --- reads (principal-permissive) ---
 
+  /** `GET /authoring/status` — backend-owned feature and capability status. */
+  async status(signal?: AbortSignal): Promise<AuthoringStatus> {
+    return adaptAuthoringStatus(await this.get("/authoring/status", signal));
+  }
+
   /** `GET /authoring/v1/proposals` — the bounded review-station queue. */
   async listProposals(signal?: AbortSignal): Promise<ProposalListResult> {
     return adaptProposalList(await this.get("/authoring/v1/proposals", signal));
@@ -649,6 +949,32 @@ export class AuthoringClient {
         `/authoring/v1/proposals/${encodeURIComponent(changesetId)}/snapshot`,
         signal,
       ),
+    );
+  }
+
+  /** `GET /authoring/v1/events?last_seq=N` — finite durable lifecycle replay.
+   *  The caller consumes the SSE body and resubscribes from its durable cursor
+   *  after clean replay completion. */
+  async openEventStream(lastSeq: unknown, signal?: AbortSignal): Promise<Response> {
+    const cursor = normalizeAuthoringStreamSeq(lastSeq) ?? 0;
+    const path = `/authoring/v1/events?last_seq=${cursor}`;
+    const response = await this.withActor()(
+      `${this.baseUrl}${path}`,
+      signal ? { signal } : undefined,
+    );
+    if (!response.ok) throw await authoringErrorFrom(path, response);
+    return response;
+  }
+
+  /** `GET /authoring/v1/recovery?last_seq=N` — authoritative snapshot plus the
+   *  next durable sequence the stream should resume after. */
+  async recoverEventStream(
+    lastSeq: unknown,
+    signal?: AbortSignal,
+  ): Promise<AuthoringRecoveryResult> {
+    const cursor = normalizeAuthoringStreamSeq(lastSeq) ?? 0;
+    return adaptAuthoringRecovery(
+      await this.get(`/authoring/v1/recovery?last_seq=${cursor}`, signal),
     );
   }
 
@@ -780,6 +1106,284 @@ export class AuthoringClient {
 /** The app-wide authoring client, bound to the live engine origin. */
 export const authoringClient = new AuthoringClient();
 
+// --- lifecycle stream cursor ----------------------------------------------------
+
+export interface AuthoringStreamCursorState {
+  streamConnected: boolean | null;
+  recovering: boolean;
+  lastSeq: number | null;
+  lastGapReason: string | null;
+  lastErrorKind: string | null;
+  retained: readonly StreamChunk[];
+}
+
+const AUTHORING_STREAM_INITIAL: AuthoringStreamCursorState = {
+  streamConnected: null,
+  recovering: false,
+  lastSeq: null,
+  lastGapReason: null,
+  lastErrorKind: null,
+  retained: [],
+};
+
+let authoringStreamCursor: AuthoringStreamCursorState = AUTHORING_STREAM_INITIAL;
+const authoringStreamListeners = new Set<() => void>();
+
+function publishAuthoringStreamCursor(
+  next: AuthoringStreamCursorState,
+): AuthoringStreamCursorState {
+  if (next === authoringStreamCursor) return authoringStreamCursor;
+  authoringStreamCursor = next;
+  for (const listener of authoringStreamListeners) listener();
+  return authoringStreamCursor;
+}
+
+export function getAuthoringStreamCursor(): AuthoringStreamCursorState {
+  return authoringStreamCursor;
+}
+
+function subscribeAuthoringStreamCursor(listener: () => void): () => void {
+  authoringStreamListeners.add(listener);
+  return () => authoringStreamListeners.delete(listener);
+}
+
+export function resetAuthoringStreamCursor(): void {
+  publishAuthoringStreamCursor({
+    ...AUTHORING_STREAM_INITIAL,
+    retained: [],
+  });
+}
+
+function setAuthoringStreamConnected(connected: boolean | null): void {
+  publishAuthoringStreamCursor({
+    ...authoringStreamCursor,
+    streamConnected: connected,
+    lastErrorKind: connected === false ? authoringStreamCursor.lastErrorKind : null,
+  });
+}
+
+function setAuthoringStreamRecovering(recovering: boolean): void {
+  publishAuthoringStreamCursor({ ...authoringStreamCursor, recovering });
+}
+
+function noteAuthoringStreamError(errorKind: string): void {
+  publishAuthoringStreamCursor({
+    ...authoringStreamCursor,
+    streamConnected: false,
+    recovering: false,
+    lastErrorKind: errorKind,
+  });
+}
+
+function appendAuthoringStreamFrame(chunk: StreamChunk): void {
+  publishAuthoringStreamCursor({
+    ...authoringStreamCursor,
+    retained: streamReducer([...authoringStreamCursor.retained], chunk),
+  });
+}
+
+export function advanceAuthoringStreamSeq(seq: unknown): void {
+  const normalized = normalizeAuthoringStreamSeq(seq);
+  if (
+    normalized === null ||
+    (authoringStreamCursor.lastSeq !== null &&
+      normalized <= authoringStreamCursor.lastSeq)
+  ) {
+    return;
+  }
+  publishAuthoringStreamCursor({
+    ...authoringStreamCursor,
+    lastSeq: normalized,
+    streamConnected: true,
+    lastErrorKind: null,
+  });
+}
+
+function setAuthoringStreamGap(
+  frame: Extract<AuthoringStreamFrame, { kind: "gap" }>,
+): void {
+  publishAuthoringStreamCursor({
+    ...authoringStreamCursor,
+    recovering: true,
+    lastGapReason: frame.reason,
+  });
+}
+
+export function useAuthoringStreamCursor(): AuthoringStreamCursorState {
+  return useSyncExternalStore(
+    subscribeAuthoringStreamCursor,
+    getAuthoringStreamCursor,
+    () => AUTHORING_STREAM_INITIAL,
+  );
+}
+
+function invalidateAuthoring(): void {
+  void defaultQueryClient.invalidateQueries({ queryKey: authoringKeys.all });
+}
+
+export function applyAuthoringRecovery(recovery: AuthoringRecoveryResult): void {
+  defaultQueryClient.setQueryData(
+    authoringKeys.proposals(),
+    recovery.snapshot.proposals,
+  );
+  publishAuthoringStreamCursor({
+    ...authoringStreamCursor,
+    recovering: false,
+    streamConnected: true,
+    lastSeq: lastSeqBefore(recovery.next_seq),
+    lastErrorKind: null,
+  });
+  invalidateAuthoring();
+}
+
+export async function recoverAuthoringLifecycleStream(
+  lastSeq: unknown,
+  signal?: AbortSignal,
+): Promise<AuthoringRecoveryResult> {
+  setAuthoringStreamRecovering(true);
+  try {
+    const recovery = await authoringClient.recoverEventStream(lastSeq, signal);
+    applyAuthoringRecovery(recovery);
+    return recovery;
+  } catch (err) {
+    if (!(err instanceof Error && err.name === "AbortError")) {
+      noteAuthoringStreamError(
+        err instanceof EngineError
+          ? (err.errorKind ?? AUTHORING_STORE_UNAVAILABLE_KIND)
+          : "authoring_stream_recovery_failed",
+      );
+    }
+    throw err;
+  }
+}
+
+export async function handleAuthoringStreamChunk(
+  chunk: StreamChunk,
+  signal?: AbortSignal,
+): Promise<void> {
+  appendAuthoringStreamFrame(chunk);
+  const frame = adaptAuthoringStreamFrame(chunk);
+  switch (frame.kind) {
+    case "lifecycle":
+      advanceAuthoringStreamSeq(frame.event.seq);
+      invalidateAuthoring();
+      return;
+    case "gap":
+      setAuthoringStreamGap(frame);
+      await recoverAuthoringLifecycleStream(
+        frame.requested_last_seq ?? authoringStreamCursor.lastSeq ?? 0,
+        signal,
+      );
+      return;
+    case "error":
+      noteAuthoringStreamError(frame.error_kind);
+      return;
+    case "ignored":
+      return;
+  }
+}
+
+function authoringStreamRetryDelay(attempt: number): number {
+  return attempt === 0
+    ? AUTHORING_STREAM_RETRY_BASE_MS
+    : Math.min(
+        AUTHORING_STREAM_RETRY_MAX_MS,
+        AUTHORING_STREAM_RETRY_BASE_MS * 2 ** attempt,
+      );
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
+}
+
+let authoringLifecycleSubscriberCount = 0;
+let stopAuthoringLifecycleLoop: (() => void) | null = null;
+
+function startAuthoringLifecycleLoop(): () => void {
+  let stopped = false;
+  let controller: AbortController | null = null;
+  let retryAttempt = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearPendingTimer = () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  const schedule = (delayMs: number) => {
+    clearPendingTimer();
+    timer = setTimeout(() => {
+      void run();
+    }, delayMs);
+  };
+
+  const run = async () => {
+    if (stopped) return;
+    controller = new AbortController();
+    try {
+      setAuthoringStreamConnected(true);
+      const response = await authoringClient.openEventStream(
+        authoringStreamCursor.lastSeq ?? 0,
+        controller.signal,
+      );
+      for await (const chunk of sseChunks(response)) {
+        if (stopped) return;
+        await handleAuthoringStreamChunk(chunk, controller.signal);
+      }
+      retryAttempt = 0;
+      if (!stopped) schedule(AUTHORING_STREAM_REOPEN_MS);
+    } catch (err) {
+      if (stopped || isAbortError(err)) return;
+      noteAuthoringStreamError(
+        err instanceof EngineError
+          ? (err.errorKind ?? "authoring_stream_http_error")
+          : "authoring_stream_lost",
+      );
+      schedule(authoringStreamRetryDelay(retryAttempt));
+      retryAttempt += 1;
+    }
+  };
+
+  void run();
+  return () => {
+    stopped = true;
+    clearPendingTimer();
+    controller?.abort();
+  };
+}
+
+export function subscribeAuthoringLifecycle(): () => void {
+  authoringLifecycleSubscriberCount += 1;
+  if (authoringLifecycleSubscriberCount === 1) {
+    stopAuthoringLifecycleLoop = startAuthoringLifecycleLoop();
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    authoringLifecycleSubscriberCount = Math.max(
+      0,
+      authoringLifecycleSubscriberCount - 1,
+    );
+    if (authoringLifecycleSubscriberCount === 0) {
+      stopAuthoringLifecycleLoop?.();
+      stopAuthoringLifecycleLoop = null;
+    }
+  };
+}
+
+/** Subscribe the review station to durable lifecycle replay. Backend `/events`
+ *  is currently finite replay, so clean completion deliberately reopens from the
+ *  last durable cursor instead of assuming a held socket. */
+export function useAuthoringLifecycleSubscription(enabled = true): void {
+  useEffect(() => {
+    if (!enabled) return;
+    return subscribeAuthoringLifecycle();
+  }, [enabled]);
+}
+
 // --- in-memory actor-token holder ------------------------------------------------
 //
 // The raw actor token is returned exactly once at issuance and is session
@@ -824,6 +1428,7 @@ export function useHasActorToken(): boolean {
 
 export const authoringKeys = {
   all: ["authoring"] as const,
+  status: () => [...authoringKeys.all, "status"] as const,
   proposals: () => [...authoringKeys.all, "proposals"] as const,
   proposal: (changesetId: string) =>
     [...authoringKeys.all, "proposal", changesetId] as const,
@@ -831,30 +1436,34 @@ export const authoringKeys = {
     [...authoringKeys.all, "snapshot", changesetId] as const,
 };
 
-/** The review-queue polling interval (resource-bounds: a bounded refresh clock).
- *  The walking skeleton polls the backend-served queue; live deltas are a later
- *  increment (the authoring event stream is deferred). */
-export const AUTHORING_POLL_MS = 4_000;
-
-function proposalsQueryOptions() {
+export function proposalsQueryOptions() {
   return queryOptions({
     queryKey: authoringKeys.proposals(),
     queryFn: ({ signal }) => authoringClient.listProposals(signal),
-    // Smoothness across polls: keep the prior page while the next loads.
+    // Smoothness across stream-triggered invalidations: keep the prior page
+    // while the next backend-served projection loads.
     placeholderData: keepPreviousData,
     staleTime: 2_000,
     gcTime: 60_000,
-    // Poll the backend-served queue; back off to the same cadence on error so a
-    // transient store outage recovers without a tight retry loop.
-    refetchInterval: AUTHORING_POLL_MS,
   });
 }
 
-/** The review-station queue: the bounded, backend-served proposal list, polled
- *  on a bounded clock. Returns the raw query result (derive in `useMemo` at the
- *  call site — frontend-store-selectors). */
+/** The review-station queue: the bounded, backend-served proposal list. Freshness
+ *  is driven by the authoring lifecycle stream cursor/recovery path. Returns the
+ *  raw query result (derive in `useMemo` at the call site). */
 export function useProposals(): UseQueryResult<ProposalListResult, Error> {
   return useQuery(proposalsQueryOptions());
+}
+
+/** Backend-served authoring status, including the direct-write capability and
+ *  authority flags the UI must consume rather than inferring from core routes. */
+export function useAuthoringStatus(): UseQueryResult<AuthoringStatus, Error> {
+  return useQuery({
+    queryKey: authoringKeys.status(),
+    queryFn: ({ signal }) => authoringClient.status(signal),
+    staleTime: 5_000,
+    gcTime: 60_000,
+  });
 }
 
 /** The interpreted review-station view model the dumb app surface consumes: the
@@ -864,6 +1473,8 @@ export function useProposals(): UseQueryResult<ProposalListResult, Error> {
 export interface ReviewStationView {
   /** The served proposal projections, consumed unchanged (no client model). */
   rows: ProposalProjection[];
+  /** The after-the-fact lane served by the backend for policy-applied work. */
+  afterFactRows: AppliedUnderPolicyProjection[];
   /** First load in flight (no data yet). */
   loading: boolean;
   /** A tier the queue depends on is degraded (read from `tiers`). */
@@ -877,6 +1488,8 @@ export interface ReviewStationView {
   empty: boolean;
   /** The corpus has more changesets than the served page cap. */
   truncated: boolean;
+  /** The after-the-fact lane has more items than the served page cap. */
+  afterFactTruncated: boolean;
 }
 
 /**
@@ -886,6 +1499,7 @@ export interface ReviewStationView {
  * that change nothing (frontend-store-selectors: derive in `useMemo`).
  */
 export function useReviewStationView(): ReviewStationView {
+  useAuthoringLifecycleSubscription();
   const query = useProposals();
   const data = query.data;
   const error = query.error;
@@ -893,6 +1507,7 @@ export function useReviewStationView(): ReviewStationView {
   return useMemo(() => {
     const degradation = readAuthoringDegradation({ data, error });
     const rows = data?.items ?? [];
+    const afterFactRows = data?.applied_under_policy.items ?? [];
     const degradedMessage = degradation.storeUnavailable
       ? "The authoring service is unavailable right now — the review queue can’t be loaded."
       : degradation.degraded
@@ -900,12 +1515,14 @@ export function useReviewStationView(): ReviewStationView {
         : null;
     return {
       rows,
+      afterFactRows,
       loading: isLoading && !data,
       degraded: degradation.degraded,
       storeUnavailable: degradation.storeUnavailable,
       degradedMessage,
-      empty: !!data && rows.length === 0,
+      empty: !!data && rows.length === 0 && afterFactRows.length === 0,
       truncated: data?.truncated ?? false,
+      afterFactTruncated: data?.applied_under_policy.truncated ?? false,
     };
   }, [data, error, isLoading]);
 }
@@ -923,7 +1540,6 @@ export function useProposalDetail(
     placeholderData: keepPreviousData,
     staleTime: 2_000,
     gcTime: 60_000,
-    refetchInterval: AUTHORING_POLL_MS,
   });
 }
 
@@ -939,11 +1555,6 @@ export function useProposalSnapshot(
     staleTime: 2_000,
     gcTime: 60_000,
   });
-}
-
-/** Invalidate the whole authoring subtree after a command changes queue state. */
-function invalidateAuthoring(): void {
-  void defaultQueryClient.invalidateQueries({ queryKey: authoringKeys.all });
 }
 
 /** Bootstrap a per-principal actor token, caching the raw token in the session

@@ -8,19 +8,31 @@
 // sparse projection, and degradation read from the `tiers` block + the typed
 // store-unavailable error envelope.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { EngineError, type TiersBlock } from "./engine";
 import {
   AUTHORING_STORE_UNAVAILABLE_KIND,
+  adaptAuthoringRecovery,
+  adaptAuthoringStatus,
+  adaptAuthoringStreamFrame,
   adaptProposalDetail,
   adaptProposalList,
   adaptProposalProjection,
   adaptProposalSnapshot,
+  advanceAuthoringStreamSeq,
+  applyAuthoringRecovery,
+  authoringKeys,
+  getAuthoringStreamCursor,
+  handleAuthoringStreamChunk,
   interpretCommandOutcome,
+  lastSeqBefore,
   newIdempotencyKey,
+  proposalsQueryOptions,
   readAuthoringDegradation,
+  resetAuthoringStreamCursor,
 } from "./authoring";
+import { queryClient } from "./queryClient";
 
 const availableTiers: TiersBlock = {
   declared: { available: true },
@@ -28,6 +40,61 @@ const availableTiers: TiersBlock = {
   temporal: { available: true },
   semantic: { available: true },
 };
+
+beforeEach(() => {
+  resetAuthoringStreamCursor();
+  queryClient.clear();
+});
+
+afterEach(() => {
+  resetAuthoringStreamCursor();
+  queryClient.clear();
+});
+
+describe("adaptAuthoringStatus", () => {
+  it("consumes backend-served direct-write capability and authority flags", () => {
+    const status = adaptAuthoringStatus({
+      feature: "agentic-spec-authoring-backend",
+      enabled: true,
+      status: "enabled",
+      route_family: "authoring",
+      ownership: { backend: "vaultspec-api authoring domain" },
+      capabilities: {
+        proposals: true,
+        review: true,
+        apply: true,
+        rollback: true,
+        direct_write: true,
+        direct_write_dual_run: true,
+        direct_write_authority: "direct_changeset",
+        sessions: false,
+        leases: false,
+        streams: false,
+        langgraph: false,
+      },
+      tiers: availableTiers,
+    });
+
+    expect(status.enabled).toBe(true);
+    expect(status.capabilities.direct_write).toBe(true);
+    expect(status.capabilities.direct_write_dual_run).toBe(true);
+    expect(status.capabilities.direct_write_authority).toBe("direct_changeset");
+    expect(status.capabilities.proposals).toBe(true);
+    expect(status.tiers).toBe(availableTiers);
+  });
+
+  it("floors sparse direct-write status to the disabled legacy authority", () => {
+    const status = adaptAuthoringStatus({
+      capabilities: { direct_write_authority: "unknown" },
+    });
+
+    expect(status.enabled).toBe(false);
+    expect(status.status).toBe("disabled");
+    expect(status.capabilities.direct_write).toBe(false);
+    expect(status.capabilities.direct_write_dual_run).toBe(false);
+    expect(status.capabilities.direct_write_authority).toBe("legacy_core");
+  });
+});
 
 /** A served NeedsReview projection carrying backend-owned approve/reject
  *  eligibility, exactly as `/authoring/v1/proposals` serves each item. */
@@ -48,6 +115,15 @@ function needsReviewProjectionWire() {
       validation_digest: "validation:v1",
     },
     approval: { present: true, queue_state: "queued", stale: false },
+    policy: {
+      policy_version: "authoring.approval_policy.v1",
+      scope_mode: "manual",
+      effective_mode: "manual",
+      session_override_ignored: false,
+      risk: "non_destructive",
+      requirement: "human_approval_required",
+      reason: "manual mode requires an eligible human approval before apply",
+    },
     eligibility: [
       { command: "approve", allowed: true },
       {
@@ -57,6 +133,27 @@ function needsReviewProjectionWire() {
     ],
     rollback: { available: false, reason: "changeset is not applied" },
     created_at_ms: 1_775_000_000_000,
+  };
+}
+
+function lifecycleWire(seq: number, eventKind = "proposal.updated") {
+  return {
+    seq,
+    event_id: `event:${seq}`,
+    aggregate_kind: "proposal",
+    aggregate_id: `proposal_${seq}`,
+    event_kind: eventKind,
+    schema_version: 1,
+    actor: { id: "agent:writer", kind: "agent" },
+    command: "edit_proposal",
+    idempotency_key: `idem:${seq}`,
+    payload: {
+      event_kind: eventKind,
+      status: "needs_review",
+      eligibility: [{ command: "approve", allowed: false }],
+    },
+    payload_hash: `hash:${seq}`,
+    created_at_ms: 1_775_000_000_000 + seq,
   };
 }
 
@@ -73,6 +170,16 @@ describe("adaptProposalProjection", () => {
       { command: "reject", allowed: true, reason: undefined },
     ]);
     expect(projection.validation.approval_ready).toBe(true);
+    expect(projection.policy).toEqual({
+      policy_version: "authoring.approval_policy.v1",
+      scope_mode: "manual",
+      session_override: undefined,
+      effective_mode: "manual",
+      session_override_ignored: false,
+      risk: "non_destructive",
+      requirement: "human_approval_required",
+      reason: "manual mode requires an eligible human approval before apply",
+    });
     expect(projection.rollback.available).toBe(false);
   });
 
@@ -86,6 +193,7 @@ describe("adaptProposalProjection", () => {
     expect(projection.status).toBe("draft");
     expect(projection.summary).toBe("");
     expect(projection.eligibility).toEqual([]);
+    expect(projection.policy).toBeUndefined();
     expect(projection.validation.present).toBe(false);
     expect(projection.approval.present).toBe(false);
     expect(projection.conflict).toBeUndefined();
@@ -120,6 +228,21 @@ describe("adaptProposalProjection", () => {
     expect(projection.eligibility.every((entry) => !entry.allowed)).toBe(true);
     expect(projection.eligibility[0].reason).toContain("target revisions");
   });
+
+  it("preserves a backend-served approval stale reason", () => {
+    const projection = adaptProposalProjection({
+      ...needsReviewProjectionWire(),
+      approval: {
+        present: true,
+        queue_state: "queued",
+        stale: true,
+        stale_reason: "policy_version_changed",
+      },
+    });
+
+    expect(projection.approval.stale).toBe(true);
+    expect(projection.approval.stale_reason).toBe("policy_version_changed");
+  });
 });
 
 describe("adaptProposalList", () => {
@@ -128,6 +251,35 @@ describe("adaptProposalList", () => {
       items: [needsReviewProjectionWire()],
       truncated: true,
       cap: 200,
+      applied_under_policy: {
+        items: [
+          {
+            proposal: {
+              ...needsReviewProjectionWire(),
+              changeset_id: "changeset_applied",
+              status: "applied",
+              rollback: { available: true, child_key: "child_1" },
+              policy: {
+                policy_version: "authoring.approval_policy.v1",
+                scope_mode: "autonomous",
+                effective_mode: "autonomous",
+                session_override_ignored: false,
+                risk: "non_destructive",
+                requirement: "system_auto_approvable",
+                reason: "autonomous mode auto-approves non-destructive changes",
+              },
+            },
+            policy_id: "authoring.operation_modes",
+            policy_version: "authoring.operation_modes.v1",
+            mode: "autonomous",
+            system_actor: { id: "system:operation-modes", kind: "system" },
+            applied_at_ms: 1_775_000_000_100,
+            acknowledgement_count: 2,
+          },
+        ],
+        truncated: false,
+        cap: 200,
+      },
       tiers: availableTiers,
     });
 
@@ -135,14 +287,176 @@ describe("adaptProposalList", () => {
     expect(list.items[0].changeset_id).toBe("changeset_1");
     expect(list.truncated).toBe(true);
     expect(list.cap).toBe(200);
+    expect(list.applied_under_policy.items).toHaveLength(1);
+    expect(list.applied_under_policy.items[0].proposal.changeset_id).toBe(
+      "changeset_applied",
+    );
+    expect(list.applied_under_policy.items[0].mode).toBe("autonomous");
+    expect(list.applied_under_policy.items[0].acknowledgement_count).toBe(2);
     expect(list.tiers).toBe(availableTiers);
   });
 
   it("tolerates an empty/absent body", () => {
     const list = adaptProposalList(undefined);
     expect(list.items).toEqual([]);
+    expect(list.applied_under_policy.items).toEqual([]);
     expect(list.truncated).toBe(false);
     expect(list.tiers).toEqual({});
+  });
+});
+
+describe("authoring lifecycle stream adapters", () => {
+  it("adapts lifecycle frames without treating payload fields as proposal projection state", () => {
+    const frame = adaptAuthoringStreamFrame({
+      channel: "lifecycle",
+      data: lifecycleWire(7, "approval.resolved"),
+    });
+
+    expect(frame.kind).toBe("lifecycle");
+    if (frame.kind === "lifecycle") {
+      expect(frame.event.seq).toBe(7);
+      expect(frame.event.event_kind).toBe("approval.resolved");
+      expect(frame.event.actor).toEqual({ id: "agent:writer", kind: "agent" });
+      expect(frame.event.payload).toEqual({
+        event_kind: "approval.resolved",
+        status: "needs_review",
+        eligibility: [{ command: "approve", allowed: false }],
+      });
+    }
+  });
+
+  it("adapts explicit gap and error frames with recovery cursors and tiers", () => {
+    const gap = adaptAuthoringStreamFrame({
+      channel: "gap",
+      data: {
+        reason: "cursor_ahead_of_high_water",
+        requested_last_seq: 99,
+        latest_outbox_seq: 12,
+        next_recovery_seq: 13,
+      },
+    });
+    expect(gap).toEqual({
+      kind: "gap",
+      reason: "cursor_ahead_of_high_water",
+      requested_last_seq: 99,
+      latest_outbox_seq: 12,
+      next_recovery_seq: 13,
+    });
+
+    const error = adaptAuthoringStreamFrame({
+      channel: "error",
+      data: {
+        error_kind: AUTHORING_STORE_UNAVAILABLE_KIND,
+        error: "store unavailable",
+        tiers: availableTiers,
+      },
+    });
+    expect(error).toEqual({
+      kind: "error",
+      error_kind: AUTHORING_STORE_UNAVAILABLE_KIND,
+      error: "store unavailable",
+      tiers: availableTiers,
+    });
+  });
+
+  it("normalizes recovery next_seq into the last_seq resume cursor", () => {
+    expect(lastSeqBefore(1)).toBe(0);
+    expect(lastSeqBefore(13)).toBe(12);
+    expect(lastSeqBefore(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+});
+
+describe("authoring lifecycle stream cursor", () => {
+  it("advances monotonically and ignores duplicate or old lifecycle sequences", async () => {
+    await handleAuthoringStreamChunk({
+      channel: "lifecycle",
+      data: lifecycleWire(2),
+    });
+    advanceAuthoringStreamSeq(2);
+    await handleAuthoringStreamChunk({
+      channel: "lifecycle",
+      data: lifecycleWire(1),
+    });
+
+    const cursor = getAuthoringStreamCursor();
+    expect(cursor.streamConnected).toBe(true);
+    expect(cursor.lastSeq).toBe(2);
+    expect(cursor.retained.map((frame) => frame.data)).toEqual([
+      lifecycleWire(2),
+      lifecycleWire(1),
+    ]);
+  });
+
+  it("uses lifecycle events only to invalidate; cached proposal state is not derived from the event payload", async () => {
+    const servedList = adaptProposalList({
+      items: [needsReviewProjectionWire()],
+      truncated: false,
+      cap: 200,
+      tiers: availableTiers,
+    });
+    queryClient.setQueryData(authoringKeys.proposals(), servedList);
+
+    await handleAuthoringStreamChunk({
+      channel: "lifecycle",
+      data: lifecycleWire(3, "proposal.updated"),
+    });
+
+    const cached = queryClient.getQueryData(authoringKeys.proposals());
+    expect(cached).toBe(servedList);
+    expect((cached as typeof servedList).items[0].eligibility).toEqual([
+      { command: "approve", allowed: true, reason: undefined },
+      { command: "reject", allowed: true, reason: undefined },
+    ]);
+    expect(getAuthoringStreamCursor().lastSeq).toBe(3);
+  });
+
+  it("applies recovery snapshots into the proposal-list cache and resumes from next_seq - 1", () => {
+    const recovery = adaptAuthoringRecovery({
+      api_version: "v1",
+      family: "recovery",
+      latest_outbox_seq: 8,
+      next_seq: 9,
+      requested_last_seq: 2,
+      snapshot: {
+        proposals: {
+          items: [
+            {
+              ...needsReviewProjectionWire(),
+              changeset_id: "changeset_recovered",
+              summary: "Recovered from snapshot",
+            },
+          ],
+          truncated: false,
+          cap: 200,
+          applied_under_policy: { items: [], truncated: false, cap: 200 },
+          tiers: availableTiers,
+        },
+        generation_channels: {
+          implemented: false,
+          cap: 0,
+          authoritative: false,
+        },
+      },
+      tiers: availableTiers,
+    });
+
+    applyAuthoringRecovery(recovery);
+
+    const cached = queryClient.getQueryData<ReturnType<typeof adaptProposalList>>(
+      authoringKeys.proposals(),
+    );
+    expect(cached?.items[0].changeset_id).toBe("changeset_recovered");
+    expect(cached?.items[0].summary).toBe("Recovered from snapshot");
+    expect(getAuthoringStreamCursor().recovering).toBe(false);
+    expect(getAuthoringStreamCursor().streamConnected).toBe(true);
+    expect(getAuthoringStreamCursor().lastSeq).toBe(8);
+  });
+});
+
+describe("authoring proposal query options", () => {
+  it("does not carry a polling refetch interval", () => {
+    const options = proposalsQueryOptions() as Record<string, unknown>;
+    expect(options.refetchInterval).toBeUndefined();
   });
 });
 

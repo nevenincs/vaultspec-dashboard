@@ -32,6 +32,7 @@ import {
   useReviewStationView,
   useSubmitForReview,
   type ActionEligibility,
+  type AppliedUnderPolicyProjection,
   type AuthoringCommandOutcome,
   type ChangesetStatus,
   type ProposalProjection,
@@ -74,12 +75,39 @@ const COMMAND_LABEL: Record<string, string> = {
   create_rollback: "Roll back",
 };
 
+const MODE_LABEL: Record<string, string> = {
+  manual: "Manual",
+  assisted: "Assisted",
+  autonomous: "Autonomous",
+};
+
+const REQUIREMENT_LABEL: Record<string, string> = {
+  human_approval_required: "Human approval",
+  system_auto_approvable: "System approval",
+};
+
 function statusLabel(status: ChangesetStatus): string {
   return STATUS_LABEL[status] ?? status;
 }
 
 function commandLabel(command: string): string {
   return COMMAND_LABEL[command] ?? command;
+}
+
+function policyLabel(proposal: ProposalProjection): string {
+  if (!proposal.policy) return "";
+  const mode =
+    MODE_LABEL[proposal.policy.effective_mode] ?? proposal.policy.effective_mode;
+  const requirement =
+    REQUIREMENT_LABEL[proposal.policy.requirement] ?? proposal.policy.requirement;
+  return `${mode} · ${requirement}`;
+}
+
+function staleLabel(proposal: ProposalProjection): string {
+  if (proposal.approval.stale_reason === "policy_version_changed") {
+    return "Review policy changed";
+  }
+  return "Review is stale";
 }
 
 // --- reviewer identity ----------------------------------------------------------
@@ -182,6 +210,11 @@ type CardFeedback =
   | { tone: "error"; message: string }
   | null;
 
+type AppliedPolicyMeta = Pick<
+  AppliedUnderPolicyProjection,
+  "policy_id" | "policy_version" | "mode" | "acknowledgement_count"
+>;
+
 function outcomeFeedback(outcome: AuthoringCommandOutcome): CardFeedback {
   if (outcome.kind === "denied") {
     return {
@@ -245,10 +278,12 @@ export function ProposalCard({
   proposal,
   actions,
   hasToken,
+  appliedPolicy,
 }: {
   proposal: ProposalProjection;
   actions: ReviewActions;
   hasToken: boolean;
+  appliedPolicy?: AppliedPolicyMeta;
 }) {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<CardFeedback>(null);
@@ -324,6 +359,35 @@ export function ProposalCard({
             ? "1 change"
             : `${proposal.operation_count} changes`}
         </span>
+        {proposal.policy && (
+          <>
+            <span aria-hidden>·</span>
+            <span data-proposal-policy title={proposal.policy.reason || undefined}>
+              {policyLabel(proposal)}
+            </span>
+          </>
+        )}
+        {appliedPolicy && (
+          <>
+            <span aria-hidden>·</span>
+            <span
+              data-applied-policy
+              title={`${appliedPolicy.policy_id} @ ${appliedPolicy.policy_version}`}
+            >
+              {MODE_LABEL[appliedPolicy.mode] ?? appliedPolicy.mode} policy
+            </span>
+            {appliedPolicy.acknowledgement_count > 0 && (
+              <>
+                <span aria-hidden>·</span>
+                <span data-applied-policy-ack>
+                  {appliedPolicy.acknowledgement_count === 1
+                    ? "1 acknowledgement"
+                    : `${appliedPolicy.acknowledgement_count} acknowledgements`}
+                </span>
+              </>
+            )}
+          </>
+        )}
         {proposal.validation.present && proposal.validation.status && (
           <>
             <span aria-hidden>·</span>
@@ -334,11 +398,11 @@ export function ProposalCard({
             </span>
           </>
         )}
-        {proposal.approval.stale && (
+        {(proposal.approval.stale || proposal.approval.stale_reason) && (
           <>
             <span aria-hidden>·</span>
             <span className="text-state-stale" data-proposal-stale>
-              Review is stale
+              {staleLabel(proposal)}
             </span>
           </>
         )}
@@ -401,6 +465,34 @@ export function ProposalCard({
   );
 }
 
+export function AppliedUnderPolicyLane({
+  items,
+  actions,
+  hasToken,
+}: {
+  items: AppliedUnderPolicyProjection[];
+  actions: ReviewActions;
+  hasToken: boolean;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-fg-2" data-after-fact-lane>
+      <SectionLabel count={items.length}>Applied under policy</SectionLabel>
+      <ul className="flex flex-col gap-fg-2" role="list" data-after-fact-list>
+        {items.map((item) => (
+          <ProposalCard
+            key={`${item.proposal.changeset_id}:${item.applied_at_ms}`}
+            proposal={item.proposal}
+            actions={actions}
+            hasToken={hasToken}
+            appliedPolicy={item}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 // --- the surface ----------------------------------------------------------------
 
 /** The review-station body: the four mutually-exclusive display modes over the
@@ -433,21 +525,35 @@ function ReviewStationBody({ view }: { view: ReviewStationView }) {
       {view.degraded && view.degradedMessage && (
         <StateBlock mode="degraded" layout="inline" message={view.degradedMessage} />
       )}
-      <ul className="flex flex-col gap-fg-2" role="list" data-proposal-list>
-        {view.rows.map((proposal) => (
-          <ProposalCard
-            key={proposal.changeset_id}
-            proposal={proposal}
-            actions={actions}
-            hasToken={hasToken}
-          />
-        ))}
-      </ul>
+      {view.rows.length > 0 && (
+        <ul className="flex flex-col gap-fg-2" role="list" data-proposal-list>
+          {view.rows.map((proposal) => (
+            <ProposalCard
+              key={proposal.changeset_id}
+              proposal={proposal}
+              actions={actions}
+              hasToken={hasToken}
+            />
+          ))}
+        </ul>
+      )}
+      <AppliedUnderPolicyLane
+        items={view.afterFactRows}
+        actions={actions}
+        hasToken={hasToken}
+      />
       {view.truncated && (
         <StateBlock
           mode="degraded"
           layout="inline"
           message="More proposals exist than are shown here — narrow the queue to see the rest."
+        />
+      )}
+      {view.afterFactTruncated && (
+        <StateBlock
+          mode="degraded"
+          layout="inline"
+          message="More policy-applied changes exist than are shown here."
         />
       )}
     </>
@@ -466,7 +572,9 @@ export function ReviewStation() {
       aria-label="Review station"
     >
       <header className="flex items-center justify-between gap-fg-2">
-        <SectionLabel count={view.rows.length}>Review station</SectionLabel>
+        <SectionLabel count={view.rows.length + view.afterFactRows.length}>
+          Review station
+        </SectionLabel>
         <ReviewerIdentity />
       </header>
       <ReviewStationBody view={view} />

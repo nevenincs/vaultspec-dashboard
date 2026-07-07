@@ -15,10 +15,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
   ActorRef,
+  AppliedUnderPolicyProjection,
   AuthoringCommandOutcome,
   ProposalProjection,
 } from "../../stores/server/authoring";
-import { ProposalCard, type ReviewActions } from "./ReviewStation";
+import {
+  AppliedUnderPolicyLane,
+  ProposalCard,
+  type ReviewActions,
+} from "./ReviewStation";
 
 afterEach(cleanup);
 
@@ -52,6 +57,15 @@ function needsReviewProposal(
       approval_id: "approval:abc",
       proposal_id: "proposal:abc",
       reviewed_proposal_revision: "proposal:rev2",
+    },
+    policy: {
+      policy_version: "authoring.approval_policy.v1",
+      scope_mode: "manual",
+      effective_mode: "manual",
+      session_override_ignored: false,
+      risk: "non_destructive",
+      requirement: "human_approval_required",
+      reason: "manual mode requires an eligible human approval before apply",
     },
     eligibility: [
       { command: "approve", allowed: true },
@@ -87,6 +101,27 @@ describe("ProposalCard", () => {
     expect(screen.getByText("Rewrite the ADR introduction")).toBeTruthy();
     expect(screen.getByText("Needs review")).toBeTruthy();
     expect(screen.getByText("2 changes")).toBeTruthy();
+    const policy = screen.getByText("Manual · Human approval");
+    expect(policy).toBeTruthy();
+    expect(policy.getAttribute("title")).toContain("manual mode");
+  });
+
+  it("renders a served policy-stale approval reason", () => {
+    render(
+      <ProposalCard
+        proposal={needsReviewProposal({
+          approval: {
+            ...needsReviewProposal().approval,
+            stale: false,
+            stale_reason: "policy_version_changed",
+          },
+        })}
+        actions={stubActions()}
+        hasToken
+      />,
+    );
+
+    expect(screen.getByText("Review policy changed")).toBeTruthy();
   });
 
   it("clicking Reject dispatches the deny decision (the human-in-the-loop seam)", async () => {
@@ -175,6 +210,17 @@ describe("ProposalCard", () => {
     expect(reject.getAttribute("title")).toContain("Sign in as reviewer");
   });
 
+  it("does not render a policy label when the backend did not serve policy", () => {
+    render(
+      <ProposalCard
+        proposal={needsReviewProposal({ policy: undefined })}
+        actions={stubActions()}
+        hasToken
+      />,
+    );
+    expect(document.querySelector("[data-proposal-policy]")).toBeNull();
+  });
+
   it("hides decision buttons until the projection carries the approval identity", () => {
     render(
       <ProposalCard
@@ -188,5 +234,45 @@ describe("ProposalCard", () => {
     // No recomputed backend id → no dead decision buttons (no permanent lie).
     expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+  });
+});
+
+describe("AppliedUnderPolicyLane", () => {
+  it("renders policy-applied work in the second lane with rollback available", () => {
+    const item: AppliedUnderPolicyProjection = {
+      proposal: needsReviewProposal({
+        changeset_id: "changeset_applied",
+        status: "applied",
+        policy: {
+          policy_version: "authoring.approval_policy.v1",
+          scope_mode: "autonomous",
+          effective_mode: "autonomous",
+          session_override_ignored: false,
+          risk: "non_destructive",
+          requirement: "system_auto_approvable",
+          reason: "autonomous mode auto-approves non-destructive changes",
+        },
+        eligibility: [],
+        rollback: { available: true, child_key: "child_1" },
+      }),
+      policy_id: "authoring.operation_modes",
+      policy_version: "authoring.operation_modes.v1",
+      mode: "autonomous",
+      system_actor: { id: "system:operation-modes", kind: "system" },
+      applied_at_ms: 1_775_000_000_100,
+      acknowledgement_count: 1,
+    };
+
+    render(<AppliedUnderPolicyLane items={[item]} actions={stubActions()} hasToken />);
+
+    expect(screen.getByText("Applied under policy")).toBeTruthy();
+    expect(screen.getByText("Autonomous · System approval")).toBeTruthy();
+    const appliedPolicy = screen.getByText("Autonomous policy");
+    expect(appliedPolicy.getAttribute("title")).toContain("authoring.operation_modes");
+    expect(appliedPolicy.getAttribute("title")).toContain(
+      "authoring.operation_modes.v1",
+    );
+    expect(screen.getByText("1 acknowledgement")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Roll back" })).toBeTruthy();
   });
 });
