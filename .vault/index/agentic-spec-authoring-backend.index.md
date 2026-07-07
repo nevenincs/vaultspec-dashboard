@@ -166,12 +166,20 @@ related:
   - '[[2026-06-30-agentic-spec-authoring-backend-W12-P25-S124]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-W12-P25-S125]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-W12-P30-S146]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W12-P30-S147]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W12-P30-S148]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W12-P30-S149]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W12-P30-S150]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W12-P31-S151]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W12-P31-S152]]'
+  - '[[2026-06-30-agentic-spec-authoring-backend-W12-P31-S153]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-audit]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-plan]]'
   - '[[2026-07-02-agentic-operation-modes-adr]]'
   - '[[2026-07-02-agentic-spec-authoring-backend-audit]]'
   - '[[2026-07-02-agentic-spec-authoring-backend-reference]]'
   - '[[2026-07-06-agentic-spec-authoring-backend-audit]]'
+  - '[[2026-07-07-agentic-spec-authoring-backend-audit]]'
 ---
 
 # `agentic-spec-authoring-backend` feature index
@@ -206,6 +214,7 @@ Auto-generated index of all documents tagged with `#agentic-spec-authoring-backe
 - `2026-06-30-agentic-spec-authoring-backend-audit` - `agentic-spec-authoring-backend` audit: `W01 P01 authoring route shell review`
 - `2026-07-02-agentic-spec-authoring-backend-audit` - `agentic-spec-authoring-backend` audit: `architecture review toward hardened superseding ADRs`
 - `2026-07-06-agentic-spec-authoring-backend-audit` - `agentic-spec-authoring-backend` audit: `W10 P21 approval policy matrix review`
+- `2026-07-07-agentic-spec-authoring-backend-audit` - `agentic-spec-authoring-backend` audit: `semantic-agent-tool-aliases`
 
 ### exec
 
@@ -351,6 +360,13 @@ Auto-generated index of all documents tagged with `#agentic-spec-authoring-backe
 - `2026-06-30-agentic-spec-authoring-backend-W12-P25-S124` - Run Sessions prompt turns and recovery snapshots code review and record the phase audit
 - `2026-06-30-agentic-spec-authoring-backend-W12-P25-S125` - Verify refreshed clients recover session and run state from backend snapshots
 - `2026-06-30-agentic-spec-authoring-backend-W12-P30-S146` - Ground LangGraph runtime mapping requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W12-P30-S147` - Implement LangGraph runtime adapter, thread mapping, run mapping, checkpoint reference storage, and runtime error mapping
+- `2026-06-30-agentic-spec-authoring-backend-W12-P30-S148` - Add runtime mapping tests for unavailable runtime, thread creation, run references, checkpoint references, and redacted runtime errors
+- `2026-06-30-agentic-spec-authoring-backend-W12-P30-S149` - Run LangGraph runtime mapping code review and record the phase audit
+- `2026-06-30-agentic-spec-authoring-backend-W12-P30-S150` - Verify LangGraph checkpoints are references and never the only product history
+- `2026-06-30-agentic-spec-authoring-backend-W12-P31-S151` - Ground Semantic agent tool aliases requirements into the phase checklist
+- `2026-06-30-agentic-spec-authoring-backend-W12-P31-S152` - Implement the semantic agent tool catalog, tool schemas, bounded scope validation, and command dispatch aliases
+- `2026-06-30-agentic-spec-authoring-backend-W12-P31-S153` - Add tool tests for read context, search, propose, validate, approval request, cancel, apply request, and rejected core-shaped verb
 
 ### plan
 

@@ -30,16 +30,6 @@ related:
   - '[[2026-06-29-zed-acp-document-authoring-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 <!-- RETIRED: W04, W05, W06, W07, W08, W09, P12, P29, P37, S56, S57, S58, S59, S60, S141, S142, S143, S144, S145, S181, S182, S183, S184, S185 -->
 
 # `agentic-spec-authoring-backend` plan
@@ -396,19 +386,19 @@ Persist sessions, prompt turns, run ownership, active state, cancellation state,
 
 Map LangGraph threads, runs, checkpoints, and interrupt references to Vaultspec-owned product records.
 
-- [ ] `W12.P30.S146` - Ground LangGraph runtime mapping requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W12.P30.S147` - Implement LangGraph runtime adapter, thread mapping, run mapping, checkpoint reference storage, and runtime error mapping; `engine/crates/vaultspec-api/src/authoring/langgraph.rs`.
-- [ ] `W12.P30.S148` - Add runtime mapping tests for unavailable runtime, thread creation, run references, checkpoint references, and redacted runtime errors; `engine/crates/vaultspec-api/src/authoring/langgraph.rs`.
-- [ ] `W12.P30.S149` - Run LangGraph runtime mapping code review and record the phase audit; `.vault/audit/`.
-- [ ] `W12.P30.S150` - Verify LangGraph checkpoints are references and never the only product history; `engine/crates/vaultspec-api/src/authoring/langgraph.rs`.
+- [x] `W12.P30.S146` - Ground LangGraph runtime mapping requirements into the phase checklist; `.vault/adr/`.
+- [x] `W12.P30.S147` - Implement LangGraph runtime adapter, thread mapping, run mapping, checkpoint reference storage, and runtime error mapping; `engine/crates/vaultspec-api/src/authoring/langgraph.rs`.
+- [x] `W12.P30.S148` - Add runtime mapping tests for unavailable runtime, thread creation, run references, checkpoint references, and redacted runtime errors; `engine/crates/vaultspec-api/src/authoring/langgraph.rs`.
+- [x] `W12.P30.S149` - Run LangGraph runtime mapping code review and record the phase audit; `.vault/audit/`.
+- [x] `W12.P30.S150` - Verify LangGraph checkpoints are references and never the only product history; `engine/crates/vaultspec-api/src/authoring/langgraph.rs`.
 
 ### Phase `W12.P31` - Semantic agent tool aliases
 
 Expose context, search, propose, validate, request approval, cancel, and request apply as semantic tools over backend commands.
 
-- [ ] `W12.P31.S151` - Ground Semantic agent tool aliases requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W12.P31.S152` - Implement the semantic agent tool catalog, tool schemas, bounded scope validation, and command dispatch aliases; `engine/crates/vaultspec-api/src/authoring/tools.rs`.
-- [ ] `W12.P31.S153` - Add tool tests for read context, search, propose, validate, approval request, cancel, apply request, and rejected core-shaped verb; `engine/crates/vaultspec-api/src/authoring/tools.rs`.
+- [x] `W12.P31.S151` - Ground Semantic agent tool aliases requirements into the phase checklist; `.vault/adr/`.
+- [x] `W12.P31.S152` - Implement the semantic agent tool catalog, tool schemas, bounded scope validation, and command dispatch aliases; `engine/crates/vaultspec-api/src/authoring/tools.rs`.
+- [x] `W12.P31.S153` - Add tool tests for read context, search, propose, validate, approval request, cancel, apply request, and rejected core-shaped verb; `engine/crates/vaultspec-api/src/authoring/tools.rs`.
 - [ ] `W12.P31.S154` - Run Semantic agent tool aliases code review and record the phase audit; `.vault/audit/`.
 - [ ] `W12.P31.S155` - Verify agents can call semantic tools but cannot invoke direct core writes; `engine/crates/vaultspec-api/src/authoring/tools.rs`.
 
