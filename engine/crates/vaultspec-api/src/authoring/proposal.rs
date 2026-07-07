@@ -123,11 +123,35 @@ pub struct ProposalSnapshot {
     pub latest_validation: Option<ValidationStatusRecord>,
 }
 
+/// Open a new authoring (agent/human proposal) changeset — `kind=authoring`.
 pub fn create_proposal(
     store: &mut Store,
     reader: &SnapshotReader,
     context: ProposalCommandContext,
     request: CreateProposalRequest,
+) -> StoreResult<ProposalCommandResult> {
+    create_proposal_of_kind(store, reader, context, request, ChangesetKind::Authoring)
+}
+
+/// Open a human editor's DIRECT save changeset — `kind=direct` (operation-modes ADR;
+/// P49-R2). Structurally identical to `create_proposal`, but the ledger records the
+/// direct kind so the save is self-describing without a side-table join. It is
+/// self-approved by the human downstream, not system-auto-approved.
+pub fn create_direct_proposal(
+    store: &mut Store,
+    reader: &SnapshotReader,
+    context: ProposalCommandContext,
+    request: CreateProposalRequest,
+) -> StoreResult<ProposalCommandResult> {
+    create_proposal_of_kind(store, reader, context, request, ChangesetKind::Direct)
+}
+
+fn create_proposal_of_kind(
+    store: &mut Store,
+    reader: &SnapshotReader,
+    context: ProposalCommandContext,
+    request: CreateProposalRequest,
+    kind: ChangesetKind,
 ) -> StoreResult<ProposalCommandResult> {
     let request_digest = digest_value("proposal_request", &request)?;
     let scope = proposal_scope(&request.changeset_id, None, &request_digest);
@@ -149,10 +173,7 @@ pub fn create_proposal(
                     )));
                 }
                 Ok(admit_if_eligible(
-                    initial_changeset_status_eligibility(
-                        ChangesetKind::Authoring,
-                        ChangesetStatus::Draft,
-                    ),
+                    initial_changeset_status_eligibility(kind, ChangesetStatus::Draft),
                     (),
                 ))
             },
@@ -168,7 +189,7 @@ pub fn create_proposal(
                 let record = ChangesetAggregateRecord::new(ChangesetRevisionInput {
                     changeset_id: request.changeset_id.clone(),
                     previous_revision: None,
-                    kind: ChangesetKind::Authoring,
+                    kind,
                     status: ChangesetStatus::Draft,
                     session_id: Some(request.session_id.clone()),
                     actor: context.actor.clone(),

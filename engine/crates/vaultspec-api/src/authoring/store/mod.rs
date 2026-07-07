@@ -20,7 +20,7 @@ use super::model::CommandKind;
 pub const DB_FILENAME: &str = "authoring-state.sqlite3";
 const AUTHORING_DATA_DIR: &str = "authoring-state";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-const SCHEMA_VERSION: i64 = 14;
+const SCHEMA_VERSION: i64 = 15;
 const STORE_KIND: &str = "vaultspec_authoring";
 
 const METADATA_SCHEMA: &str = "
@@ -760,6 +760,135 @@ SET schema_version = 14
 WHERE singleton = 1;
 ";
 
+// P49-R2: widen the `changeset_kind` CHECK to admit `direct` (operation-modes
+// kind=direct). The column carries a CHECK constraint, so its value set can only be
+// widened by recreating the table. `authoring_changeset_revisions` is FK-referenced by
+// `authoring_changeset_child_operations`, and `foreign_keys` is ON, so BOTH tables are
+// recreated in dependency order and the child FK is rebuilt against the new parent —
+// a rename-only approach would leave the child FK dangling at the dropped parent (fatal
+// on the next child insert). Data-preserving: every column of both tables is copied
+// verbatim, including the actor-provenance columns added in v8.
+const CHANGESET_KIND_DIRECT_SCHEMA: &str = "
+ALTER TABLE authoring_changeset_child_operations RENAME TO authoring_ccho_pre_v15;
+ALTER TABLE authoring_changeset_revisions RENAME TO authoring_ccr_pre_v15;
+
+CREATE TABLE authoring_changeset_revisions (
+    seq                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    changeset_id          TEXT NOT NULL,
+    changeset_revision    TEXT NOT NULL,
+    previous_revision     TEXT,
+    changeset_kind        TEXT NOT NULL CHECK (
+        changeset_kind IN ('authoring', 'direct', 'rollback')
+    ),
+    status                TEXT NOT NULL CHECK (
+        status IN (
+            'draft',
+            'generating',
+            'proposed',
+            'needs_review',
+            'approved',
+            'applying',
+            'applied',
+            'partially_applied',
+            'compensation_required',
+            'rejected',
+            'conflicted',
+            'superseded',
+            'failed',
+            'rollback_proposed',
+            'cancelled'
+        )
+    ),
+    session_id            TEXT,
+    summary               TEXT NOT NULL,
+    operation_count       INTEGER NOT NULL CHECK (operation_count > 0),
+    aggregate_digest      TEXT NOT NULL,
+    created_at_ms         INTEGER NOT NULL,
+    record_json           TEXT NOT NULL,
+    actor_id              TEXT NOT NULL DEFAULT '',
+    actor_kind            TEXT NOT NULL DEFAULT '',
+    delegated_by_actor_id TEXT NOT NULL DEFAULT '',
+    actor_provenance_key  TEXT NOT NULL DEFAULT '',
+    UNIQUE (changeset_id, changeset_revision)
+);
+
+INSERT INTO authoring_changeset_revisions
+    (seq, changeset_id, changeset_revision, previous_revision, changeset_kind,
+     status, session_id, summary, operation_count, aggregate_digest,
+     created_at_ms, record_json, actor_id, actor_kind, delegated_by_actor_id,
+     actor_provenance_key)
+SELECT
+    seq, changeset_id, changeset_revision, previous_revision, changeset_kind,
+    status, session_id, summary, operation_count, aggregate_digest,
+    created_at_ms, record_json, actor_id, actor_kind, delegated_by_actor_id,
+    actor_provenance_key
+FROM authoring_ccr_pre_v15;
+
+CREATE TABLE authoring_changeset_child_operations (
+    seq                         INTEGER PRIMARY KEY AUTOINCREMENT,
+    changeset_id                TEXT NOT NULL,
+    changeset_revision          TEXT NOT NULL,
+    child_key                   TEXT NOT NULL,
+    target_order                INTEGER NOT NULL CHECK (target_order >= 0),
+    operation_kind              TEXT NOT NULL,
+    target_json                 TEXT NOT NULL,
+    base_revision               TEXT,
+    current_revision            TEXT,
+    materialized_operation_json TEXT,
+    material_digest             TEXT,
+    validation_digest           TEXT,
+    record_json                 TEXT NOT NULL,
+    UNIQUE (changeset_id, changeset_revision, child_key),
+    UNIQUE (changeset_id, changeset_revision, target_order),
+    FOREIGN KEY (changeset_id, changeset_revision)
+        REFERENCES authoring_changeset_revisions(changeset_id, changeset_revision)
+);
+
+INSERT INTO authoring_changeset_child_operations
+    (seq, changeset_id, changeset_revision, child_key, target_order,
+     operation_kind, target_json, base_revision, current_revision,
+     materialized_operation_json, material_digest, validation_digest, record_json)
+SELECT
+    seq, changeset_id, changeset_revision, child_key, target_order,
+    operation_kind, target_json, base_revision, current_revision,
+    materialized_operation_json, material_digest, validation_digest, record_json
+FROM authoring_ccho_pre_v15;
+
+DROP TABLE authoring_ccho_pre_v15;
+DROP TABLE authoring_ccr_pre_v15;
+
+DELETE FROM sqlite_sequence WHERE name = 'authoring_changeset_revisions';
+INSERT INTO sqlite_sequence (name, seq)
+SELECT 'authoring_changeset_revisions', COALESCE(MAX(seq), 0)
+FROM authoring_changeset_revisions;
+DELETE FROM sqlite_sequence WHERE name = 'authoring_changeset_child_operations';
+INSERT INTO sqlite_sequence (name, seq)
+SELECT 'authoring_changeset_child_operations', COALESCE(MAX(seq), 0)
+FROM authoring_changeset_child_operations;
+
+CREATE INDEX idx_authoring_changeset_revisions_changeset
+    ON authoring_changeset_revisions (changeset_id, seq);
+CREATE INDEX idx_authoring_changeset_revisions_revision
+    ON authoring_changeset_revisions (changeset_revision);
+CREATE INDEX idx_authoring_changeset_revisions_actor
+    ON authoring_changeset_revisions (
+        actor_id,
+        actor_kind,
+        delegated_by_actor_id,
+        seq
+    );
+CREATE INDEX idx_authoring_changeset_children_revision
+    ON authoring_changeset_child_operations (
+        changeset_id,
+        changeset_revision,
+        target_order
+    );
+
+UPDATE authoring_store_metadata
+SET schema_version = 15
+WHERE singleton = 1;
+";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Migration {
     version: i64,
@@ -837,6 +966,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 14,
         name: "create_authoring_tool_permission_requests",
         sql: TOOL_PERMISSION_SCHEMA,
+    },
+    Migration {
+        version: 15,
+        name: "widen_changeset_kind_for_direct",
+        sql: CHANGESET_KIND_DIRECT_SCHEMA,
     },
 ];
 
@@ -1214,6 +1348,10 @@ mod tests {
                         version: 14,
                         name: "create_authoring_tool_permission_requests".to_string(),
                     },
+                    AppliedMigration {
+                        version: 15,
+                        name: "widen_changeset_kind_for_direct".to_string(),
+                    },
                 ]
             );
             let table_count: i64 = store
@@ -1253,7 +1391,7 @@ mod tests {
         let reopened = Store::open_at(&path).expect("authoring store reopens");
         let metadata = reopened.schema_metadata().unwrap();
         assert_eq!(metadata.schema_version, SCHEMA_VERSION);
-        assert_eq!(metadata.applied_migrations.len(), 14);
+        assert_eq!(metadata.applied_migrations.len(), 15);
     }
 
     #[test]

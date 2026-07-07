@@ -862,7 +862,7 @@ fn ensure_proposal_created(
     ids: &DirectWriteIds,
     input: DirectProposalInput<'_>,
 ) -> StoreResult<bool> {
-    let result = super::proposal::create_proposal(
+    let result = super::proposal::create_direct_proposal(
         store,
         reader,
         context(actor, &step_key(idempotency_key, "create")?, now_ms),
@@ -1739,7 +1739,7 @@ mod tests {
 
         let changeset_id = outcome.changeset_id.as_ref().unwrap().clone();
         let preimage_id = format!("preimage:{}:direct_write_body", changeset_id.as_str());
-        let (preimage, projection) = fx
+        let (preimage, projection, ledger_kind) = fx
             .store
             .with_unit_of_work(CommandKind::CreateProposal, |uow| {
                 let preimage = uow.snapshots().preimage(&preimage_id)?.unwrap();
@@ -1748,12 +1748,22 @@ mod tests {
                     .project_proposal(&changeset_id, &fx.root)
                     .map_err(|err| StoreError::Ledger(err.to_string()))?
                     .unwrap();
-                Ok((preimage, projection))
+                let ledger_kind = uow.ledger().latest(&changeset_id)?.unwrap().kind;
+                Ok((preimage, projection, ledger_kind))
             })
             .unwrap();
         assert_eq!(preimage.payload_text, BASE_BODY);
         assert_eq!(preimage.blob_hash, base_hash);
         assert_eq!(preimage.document_path, DOC_PATH);
+        // P49-R2: the direct save is a self-describing `kind=direct` changeset in the
+        // ledger (no side-table join needed to know it was a human direct save).
+        assert_eq!(
+            ledger_kind,
+            crate::authoring::model::ChangesetKind::Direct,
+            "a direct save is recorded as kind=Direct in the ledger"
+        );
+        // Direct behaves authoring-like: it applied through the normal lifecycle and an
+        // applied direct save is a legal rollback SOURCE (arch-reviewer site a).
         assert!(
             projection.rollback.available,
             "applied direct save remains rollback-available: {:?}",

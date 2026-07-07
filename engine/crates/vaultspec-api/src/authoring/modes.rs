@@ -21,8 +21,8 @@ use super::ledger::{
     ChangesetAggregateRecord, ChangesetChildOperationInput, ChangesetRevisionInput,
 };
 use super::model::{
-    ActionEligibility, ActorId, ActorKind, ActorRef, ApprovalId, ChangesetId, ChangesetStatus,
-    CommandKind, IdempotencyKey, ProposalId,
+    ActionEligibility, ActorId, ActorKind, ActorRef, ApprovalId, ChangesetId, ChangesetKind,
+    ChangesetStatus, CommandKind, IdempotencyKey, ProposalId,
 };
 use super::policy::{
     ApprovalRequirement, OperationMode, PolicyDecisionProjection, decide_changeset_approval,
@@ -229,6 +229,22 @@ impl ModeRepository<'_, '_> {
             .collect::<Vec<_>>();
         let policy =
             decide_changeset_approval(mode_record.mode, None, latest.kind, operations.as_slice());
+        // A DIRECT changeset is human-self-approved at creation (operation-modes
+        // kind=direct); the mode machinery must NEVER system-auto-approve it (P49-R2
+        // arch-reviewer bar — semantically wrong even if harmless). The direct-write
+        // flow never routes here, but guard it explicitly so a stray call can't turn a
+        // human's own save into a system approval.
+        if latest.kind == ChangesetKind::Direct {
+            return Ok(ModeAutoApprovalOutcome {
+                policy,
+                eligibility: ActionEligibility::denied(
+                    CommandKind::Approve,
+                    "a direct changeset is human-self-approved and is never system-auto-approved",
+                ),
+                approval: None,
+                marker: None,
+            });
+        }
         if policy.requirement != ApprovalRequirement::SystemAutoApprovable {
             let reason = policy.reason.clone();
             return Ok(ModeAutoApprovalOutcome {
