@@ -627,6 +627,11 @@ fn command_error_response(state: &AppState, err: &StoreError) -> Response {
             "authoring_mode_refused",
             err.to_string(),
         ),
+        StoreError::Permission(_) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "authoring_tool_permission_refused",
+            err.to_string(),
+        ),
         StoreError::Session(_) => (
             StatusCode::UNPROCESSABLE_ENTITY,
             "authoring_session_refused",

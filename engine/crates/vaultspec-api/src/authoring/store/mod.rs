@@ -20,7 +20,7 @@ use super::model::CommandKind;
 pub const DB_FILENAME: &str = "authoring-state.sqlite3";
 const AUTHORING_DATA_DIR: &str = "authoring-state";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-const SCHEMA_VERSION: i64 = 13;
+const SCHEMA_VERSION: i64 = 14;
 const STORE_KIND: &str = "vaultspec_authoring";
 
 const METADATA_SCHEMA: &str = "
@@ -724,6 +724,42 @@ SET schema_version = 13
 WHERE singleton = 1;
 ";
 
+const TOOL_PERMISSION_SCHEMA: &str = "
+CREATE TABLE authoring_tool_permission_requests (
+    seq                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool_call_id          TEXT NOT NULL,
+    tool_name             TEXT NOT NULL,
+    risk_tier             TEXT NOT NULL CHECK (
+        risk_tier IN ('read_only', 'mutating', 'dangerous')
+    ),
+    scope_id              TEXT NOT NULL,
+    queue_state           TEXT NOT NULL CHECK (
+        queue_state IN ('pending', 'claimed', 'decided', 'expired')
+    ),
+    auto_permitted        INTEGER NOT NULL CHECK (auto_permitted IN (0, 1)),
+    decision              TEXT CHECK (decision IN ('approve', 'reject')),
+    requester_actor_id    TEXT NOT NULL,
+    requester_actor_kind  TEXT NOT NULL,
+    reviewer_actor_id     TEXT,
+    reviewer_actor_kind   TEXT,
+    idempotency_key       TEXT NOT NULL,
+    record_json           TEXT NOT NULL,
+    created_at_ms         INTEGER NOT NULL,
+    expires_at_ms         INTEGER NOT NULL,
+    updated_at_ms         INTEGER NOT NULL,
+    UNIQUE (tool_call_id)
+);
+
+CREATE INDEX idx_authoring_tool_permission_requests_scope
+    ON authoring_tool_permission_requests (scope_id, seq);
+CREATE INDEX idx_authoring_tool_permission_requests_state
+    ON authoring_tool_permission_requests (queue_state, expires_at_ms);
+
+UPDATE authoring_store_metadata
+SET schema_version = 14
+WHERE singleton = 1;
+";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Migration {
     version: i64,
@@ -797,6 +833,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "create_authoring_sessions_prompt_turns_and_runs",
         sql: SESSION_SCHEMA,
     },
+    Migration {
+        version: 14,
+        name: "create_authoring_tool_permission_requests",
+        sql: TOOL_PERMISSION_SCHEMA,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -846,6 +887,8 @@ pub enum StoreError {
     ActorToken(String),
     #[error("authoring operation mode error: {0}")]
     Mode(String),
+    #[error("authoring tool permission error: {0}")]
+    Permission(String),
     #[error("authoring session error: {0}")]
     Session(String),
     #[error("command {command:?} is read-only and cannot open a mutating unit of work")]
@@ -1167,6 +1210,10 @@ mod tests {
                         version: 13,
                         name: "create_authoring_sessions_prompt_turns_and_runs".to_string(),
                     },
+                    AppliedMigration {
+                        version: 14,
+                        name: "create_authoring_tool_permission_requests".to_string(),
+                    },
                 ]
             );
             let table_count: i64 = store
@@ -1193,19 +1240,20 @@ mod tests {
                            'authoring_direct_write_records',
                            'authoring_sessions',
                            'authoring_prompt_turns',
-                           'authoring_runs'
+                           'authoring_runs',
+                           'authoring_tool_permission_requests'
                         )",
                     [],
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(table_count, 18);
+            assert_eq!(table_count, 19);
         }
 
         let reopened = Store::open_at(&path).expect("authoring store reopens");
         let metadata = reopened.schema_metadata().unwrap();
         assert_eq!(metadata.schema_version, SCHEMA_VERSION);
-        assert_eq!(metadata.applied_migrations.len(), 13);
+        assert_eq!(metadata.applied_migrations.len(), 14);
     }
 
     #[test]
