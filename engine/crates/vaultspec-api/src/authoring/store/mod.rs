@@ -1440,6 +1440,116 @@ mod tests {
     }
 
     #[test]
+    fn v15_migration_preserves_populated_revisions_and_child_fk() {
+        // P49-R2 / arch-reviewer v15 bar 1: the changeset_kind CHECK widen recreates
+        // the core ledger table AND its FK-referenced child table — so it must be
+        // tested against a POPULATED store: every row (incl. the v8 actor-provenance
+        // columns) survives, the child FK integrity holds, and the widened CHECK now
+        // admits `direct`.
+        let (_dir, path) = temp_db();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let conn = Connection::open(&path).unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        conn.execute_batch(METADATA_SCHEMA).unwrap();
+        // Migrate up to v14 — the shape a real store carries just before v15.
+        for migration in &MIGRATIONS[..14] {
+            let tx = conn.unchecked_transaction().unwrap();
+            tx.execute_batch(migration.sql).unwrap();
+            tx.execute(
+                "INSERT INTO authoring_schema_migrations
+                    (version, name, applied_at_ms)
+                 VALUES
+                    (?1, ?2, 1)",
+                (migration.version, migration.name),
+            )
+            .unwrap();
+            tx.pragma_update(None, "user_version", migration.version)
+                .unwrap();
+            tx.commit().unwrap();
+        }
+        // Populate a real revision (with the v8 actor-provenance columns) + a child op.
+        conn.execute(
+            "INSERT INTO authoring_changeset_revisions
+                (changeset_id, changeset_revision, previous_revision, changeset_kind,
+                 status, session_id, summary, operation_count, aggregate_digest,
+                 created_at_ms, record_json, actor_id, actor_kind, delegated_by_actor_id,
+                 actor_provenance_key)
+             VALUES
+                ('cs1', 'rev1', NULL, 'authoring', 'draft', NULL, 'populated row', 1,
+                 'ledger:1', 10, '{}', 'agent:a', 'agent', '', 'pk:a')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO authoring_changeset_child_operations
+                (changeset_id, changeset_revision, child_key, target_order,
+                 operation_kind, target_json, record_json)
+             VALUES ('cs1', 'rev1', 'child_1', 0, 'replace_body', '{}', '{}')",
+            [],
+        )
+        .unwrap();
+
+        // Run v15 (the widen migration) over the populated store.
+        run_migrations(&conn, MIGRATIONS).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), 15);
+
+        // Every populated column survived the recreate, including actor-provenance.
+        let (kind, summary, actor_id, prov): (String, String, String, String) = conn
+            .query_row(
+                "SELECT changeset_kind, summary, actor_id, actor_provenance_key
+                 FROM authoring_changeset_revisions
+                 WHERE changeset_id = 'cs1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (
+                kind.as_str(),
+                summary.as_str(),
+                actor_id.as_str(),
+                prov.as_str()
+            ),
+            ("authoring", "populated row", "agent:a", "pk:a")
+        );
+        let child_count: i64 = conn
+            .query_row(
+                "SELECT count(*)
+                 FROM authoring_changeset_child_operations
+                 WHERE changeset_id = 'cs1' AND child_key = 'child_1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(child_count, 1, "the child operation survived the recreate");
+
+        // The widened CHECK now admits a `direct` revision.
+        conn.execute(
+            "INSERT INTO authoring_changeset_revisions
+                (changeset_id, changeset_revision, changeset_kind, status, summary,
+                 operation_count, aggregate_digest, created_at_ms, record_json)
+             VALUES
+                ('cs2', 'rev2', 'direct', 'draft', 'a direct save', 1, 'ledger:2', 20, '{}')",
+            [],
+        )
+        .expect("the widened CHECK admits a direct revision");
+
+        // FK integrity holds on the RECREATED child table: a child referencing a
+        // missing parent is rejected (the FK points at the new parent, not a stale one).
+        let orphan = conn.execute(
+            "INSERT INTO authoring_changeset_child_operations
+                (changeset_id, changeset_revision, child_key, target_order,
+                 operation_kind, target_json, record_json)
+             VALUES ('missing', 'nope', 'c', 0, 'replace_body', '{}', '{}')",
+            [],
+        );
+        assert!(
+            orphan.is_err(),
+            "child FK to a missing parent must still be rejected after the recreate"
+        );
+    }
+
+    #[test]
     fn migration_ordering_is_validated_before_any_schema_write() {
         let (_dir, path) = temp_db();
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
