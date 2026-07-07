@@ -15,7 +15,7 @@
   ],
   "packages": {
     "engine": {
-      "release-type": "rust",
+      "release-type": "simple",
       "package-name": "vaultspec-dashboard",
       "extra-files": [
         {

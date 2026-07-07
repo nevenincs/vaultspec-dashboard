@@ -24,8 +24,8 @@ related:
 
 ## Outcome
 
-Config validates against the published release-please config schema (ajv, draft-07, formats plugin). Both frontier-risk mitigations from the ADR are encoded in config rather than deferred.
+Config validates against the published release-please config schema (ajv, draft-07, formats plugin). REVISED after review: release-type changed from `rust` to `simple`. Driving release-please's own updater classes against the real manifests proved the review's prediction - the rust strategy unconditionally registers its built-in `CargoToml` updater on the package root, and that updater throws "is not a package manifest" on the virtual `engine/Cargo.toml`; the strategy also leaves the glob members (`crates/*`) unexpanded, so its versions map is empty and its lock updater no-ops regardless. The `simple` strategy with `createIfMissing: false` on its version file writes NO stray `version.txt` when none exists; the changelog and the proven toml jsonpath extra-file carry the whole bump.
 
 ## Notes
 
-- If the rust strategy also updates the same value, the two updaters write the identical version string - a harmless double-write, verified conceptually; watch on the first release PR.
+- Lock posture, verified empirically: the generic toml updater's jsonpath filters do not match lockfile array entries ("No entries modified"), so the release PR cannot bump `engine/Cargo.lock` - and does not need to. A stale-lock `dist build` was run for real (workspace at 0.1.1, lock at 0.1.0): exit 0, cargo auto-reconciled the 13 member versions during the build. Nothing in the pipeline builds `--locked`. The lag is benign drift documented in the README; the refreshed lock rides the next commit that touches it.

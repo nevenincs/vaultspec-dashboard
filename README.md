@@ -79,11 +79,16 @@ so tags are only ever minted from verified commits. `engine/CHANGELOG.md` is
 generated - never edit it by hand.
 
 First-release watch list (one-time): confirm the release PR bumps
-`engine/Cargo.toml` and the lockfile stays consistent, and confirm the minted
-tag actually fires `release.yml` - that requires the `RELEASE_PLEASE_TOKEN`
-repository secret (a fine-grained PAT with contents and pull-request write),
-because tags created with the default workflow token do not trigger
-downstream workflows.
+`engine/Cargo.toml`, and confirm the minted tag actually fires `release.yml` -
+that requires the `RELEASE_PLEASE_TOKEN` repository secret (a fine-grained
+PAT with contents and pull-request write), because tags created with the
+default workflow token do not trigger downstream workflows.
+
+A note on `engine/Cargo.lock`: the release PR does not touch it, so the
+workspace crates' own version entries lag one release behind until the next
+build refreshes them. This is benign and verified - nothing in the pipeline
+builds with `--locked`, and cargo reconciles the path-crate versions
+automatically; commit the refreshed lock whenever it shows up in your diff.
 
 ## Status
 
