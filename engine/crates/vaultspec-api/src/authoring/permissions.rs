@@ -20,7 +20,10 @@ use serde::{Deserialize, Serialize};
 
 use super::actors::actor_kind_name;
 use super::model::{ActionEligibility, ActorRef, CommandKind, ToolCallId};
-use super::policy::{ToolPermissionRequirement, ToolRiskTier, tool_permission_requirement};
+use super::policy::{
+    OperationMode, ToolPermissionRequirement, ToolRiskTier, resolve_effective_mode,
+    tool_permission_requirement_in_mode,
+};
 use super::store::retention::{
     LifecycleStatus, RetentionClass, RetentionRecord, RetentionRecordRef,
 };
@@ -89,6 +92,9 @@ pub struct ToolPermissionRequestRecord {
     pub risk_tier: ToolRiskTier,
     pub scope_id: String,
     pub requester: ActorRef,
+    /// The effective operation mode (after narrowing resolution) the gate decision was
+    /// made under — provenance for why a Mutating tool auto-permitted or gated.
+    pub effective_mode: OperationMode,
     pub queue_state: ToolPermissionQueueState,
     pub auto_permitted: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -105,6 +111,7 @@ impl ToolPermissionRequestRecord {
     fn from_input(
         input: &ToolPermissionRequestInput,
         requirement: ToolPermissionRequirement,
+        effective_mode: OperationMode,
     ) -> Self {
         let auto_permitted = requirement == ToolPermissionRequirement::AutoPermitted;
         let ttl = input
@@ -128,6 +135,7 @@ impl ToolPermissionRequestRecord {
             risk_tier: input.tool.risk_tier(),
             scope_id: input.scope_id.clone(),
             requester: input.requester.clone(),
+            effective_mode,
             queue_state,
             auto_permitted,
             claimed_by: None,
@@ -173,6 +181,13 @@ pub struct ToolPermissionRequestInput {
     pub tool: SemanticToolName,
     pub scope_id: String,
     pub requester: ActorRef,
+    /// The scope's configured operation mode. A Mutating tool auto-permits under
+    /// assisted/autonomous (its proposal still rides the changeset gate); Dangerous
+    /// always needs a human gate regardless of mode.
+    pub scope_mode: OperationMode,
+    /// A narrowing-only per-session override; a widening override is ignored (the
+    /// scope mode stands), resolved via `policy::resolve_effective_mode`.
+    pub session_override: Option<OperationMode>,
     pub idempotency_key: String,
     pub created_at_ms: i64,
     /// Decision window override; `None` uses [`DEFAULT_TOOL_PERMISSION_TTL_MS`].
@@ -215,8 +230,12 @@ impl ToolPermissionRepository<'_, '_> {
         if let Some(existing) = self.latest_for_tool_call(&input.tool_call_id)? {
             return Ok(self.replay(existing));
         }
-        let requirement = tool_permission_requirement(input.tool.risk_tier());
-        let record = ToolPermissionRequestRecord::from_input(&input, requirement);
+        // Resolve the effective mode (narrowing-only) and gate mode-aware: a Mutating
+        // tool auto-permits under assisted/autonomous; Dangerous always needs a human.
+        let effective_mode = resolve_effective_mode(input.scope_mode, input.session_override);
+        let requirement =
+            tool_permission_requirement_in_mode(input.tool.risk_tier(), effective_mode);
+        let record = ToolPermissionRequestRecord::from_input(&input, requirement, effective_mode);
         self.store_record(&record)?;
         // A pending human-gated request is product state (a human must decide it) →
         // retention `Pending`, protected from compaction; an auto-permitted read tool
@@ -601,9 +620,38 @@ mod tests {
                         tool,
                         scope_id: "worktree".to_string(),
                         requester: requester(),
+                        scope_mode: OperationMode::Manual,
+                        session_override: None,
                         idempotency_key: format!("idem:{tool_call_id}"),
                         created_at_ms: now,
                         ttl_ms,
+                    }))
+            })
+            .unwrap()
+            .unwrap()
+    }
+
+    fn request_in_mode(
+        store: &mut Store,
+        tool_call_id: &str,
+        tool: SemanticToolName,
+        scope_mode: OperationMode,
+        now: i64,
+    ) -> ToolPermissionOutcome {
+        store
+            .with_unit_of_work(CommandKind::RequestToolPermission, |uow| {
+                Ok(uow
+                    .tool_permissions()
+                    .request_permission(ToolPermissionRequestInput {
+                        tool_call_id: ToolCallId::new(tool_call_id).unwrap(),
+                        tool,
+                        scope_id: "worktree".to_string(),
+                        requester: requester(),
+                        scope_mode,
+                        session_override: None,
+                        idempotency_key: format!("idem:{tool_call_id}"),
+                        created_at_ms: now,
+                        ttl_ms: None,
                     }))
             })
             .unwrap()
@@ -892,5 +940,59 @@ mod tests {
             "a re-request for the same tool call replays"
         );
         assert_eq!(again.record.created_at_ms, 10, "the original record stands");
+    }
+
+    #[test]
+    fn mutating_tool_auto_permits_under_autonomous_but_stays_gated_under_manual() {
+        let (_dir, mut store) = temp_store();
+        // Autonomous scope: a Mutating tool auto-permits (its proposal still rides the
+        // changeset approval matrix — no double gate).
+        let autonomous = request_in_mode(
+            &mut store,
+            "call_auto",
+            SemanticToolName::ProposeChangeset,
+            OperationMode::Autonomous,
+            10,
+        );
+        assert_eq!(autonomous.record.effective_mode, OperationMode::Autonomous);
+        assert!(
+            autonomous.record.auto_permitted && autonomous.record.granted(),
+            "a mutating tool auto-permits under autonomous"
+        );
+        assert!(autonomous.eligibility.allowed);
+
+        // Manual scope: the same Mutating tool queues for a human decision.
+        let manual = request_in_mode(
+            &mut store,
+            "call_manual",
+            SemanticToolName::ProposeChangeset,
+            OperationMode::Manual,
+            10,
+        );
+        assert!(!manual.record.auto_permitted && !manual.record.granted());
+        assert_eq!(manual.record.queue_state, ToolPermissionQueueState::Pending);
+    }
+
+    #[test]
+    fn dangerous_tool_stays_human_gated_even_under_autonomous() {
+        let (_dir, mut store) = temp_store();
+        // The dangerous floor holds regardless of mode — autonomy never auto-permits it.
+        let outcome = request_in_mode(
+            &mut store,
+            "call_danger",
+            SemanticToolName::RequestApply,
+            OperationMode::Autonomous,
+            10,
+        );
+        assert_eq!(outcome.record.risk_tier, ToolRiskTier::Dangerous);
+        assert_eq!(outcome.record.effective_mode, OperationMode::Autonomous);
+        assert!(
+            !outcome.record.auto_permitted && !outcome.record.granted(),
+            "dangerous stays human-gated even under autonomous"
+        );
+        assert_eq!(
+            outcome.record.queue_state,
+            ToolPermissionQueueState::Pending
+        );
     }
 }

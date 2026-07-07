@@ -182,6 +182,13 @@ pub fn approval_requirement(mode: OperationMode, risk: RiskClass) -> ApprovalReq
 /// approve or apply its own proposal (or one it proposed on behalf of), while a human
 /// approving their own manual changeset and any distinct reviewer are permitted. This
 /// formalizes the reviewer check through the policy layer without duplicating it.
+///
+/// SCOPE — approve/apply-class commands ONLY (Approve, RequestApply, and their kin).
+/// The ban targets self-APPROVAL, so a caller must NOT route a reject or a withdrawal
+/// through this helper: an agent rejecting or withdrawing its OWN proposal is
+/// deliberately legal, and a future uniform decision-path wiring that gated EVERY
+/// decision on this helper would silently outlaw that. Reject/withdraw run their own
+/// transition eligibility, never this self-approval gate.
 pub fn reviewer_eligibility(
     command: CommandKind,
     approver: &ActorRef,
@@ -226,9 +233,13 @@ pub fn system_auto_approval_eligibility(
 pub enum ToolRiskTier {
     /// Read/context tools (read a document, search the graph) — no side effects.
     ReadOnly,
-    /// A tool that proposes a mutation — still gated by CHANGESET approval downstream.
+    /// A tool that proposes a mutation. Its proposal rides the FULL changeset approval
+    /// matrix downstream, so the tool-permission layer gates it human only under
+    /// `manual`; under `assisted`/`autonomous` it auto-permits (a human tool-gate on
+    /// top of the changeset gate would be a redundant double gate).
     Mutating,
-    /// A dangerous capability (destructive or outside the sandbox) — always gated.
+    /// A dangerous capability (destructive or outside the sandbox) — always gated in
+    /// every mode (the dangerous floor).
     Dangerous,
 }
 
@@ -240,16 +251,36 @@ pub enum ToolPermissionRequirement {
     HumanApprovalRequired,
 }
 
-/// The tool-permission gate. A read/context tool is auto-permitted; a mutating or
-/// dangerous tool needs an explicit human gate. A tool permission NEVER substitutes
-/// for changeset approval (approval-gates ADR) — an auto-permitted tool call still
-/// produces a proposal that rides the full approval matrix.
+/// The tool-permission gate, MODE-INDEPENDENT baseline — the conservative `manual`
+/// default the served catalog advertises: a read/context tool auto-permits; a
+/// mutating or dangerous tool needs a human gate. The per-REQUEST decision is
+/// mode-aware ([`tool_permission_requirement_in_mode`]). A tool permission NEVER
+/// substitutes for changeset approval (approval-gates ADR) — a permitted tool call
+/// still produces a proposal that rides the full approval matrix.
 pub fn tool_permission_requirement(tier: ToolRiskTier) -> ToolPermissionRequirement {
+    tool_permission_requirement_in_mode(tier, OperationMode::Manual)
+}
+
+/// The MODE-AWARE tool-permission gate (operation-modes: a mode selects policy, never
+/// a new mechanism). A read/context tool always auto-permits. A DANGEROUS tool always
+/// needs a human gate regardless of mode (the dangerous floor, mirroring the
+/// destructive changeset floor). A MUTATING tool auto-permits under
+/// `assisted`/`autonomous` — its proposal already rides the changeset approval matrix,
+/// so a human tool-gate on top would be a redundant double gate that makes autonomy
+/// autonomy-in-name-only — and stays human-gated under `manual`.
+pub fn tool_permission_requirement_in_mode(
+    tier: ToolRiskTier,
+    mode: OperationMode,
+) -> ToolPermissionRequirement {
     match tier {
         ToolRiskTier::ReadOnly => ToolPermissionRequirement::AutoPermitted,
-        ToolRiskTier::Mutating | ToolRiskTier::Dangerous => {
-            ToolPermissionRequirement::HumanApprovalRequired
-        }
+        ToolRiskTier::Dangerous => ToolPermissionRequirement::HumanApprovalRequired,
+        ToolRiskTier::Mutating => match mode {
+            OperationMode::Manual => ToolPermissionRequirement::HumanApprovalRequired,
+            OperationMode::Assisted | OperationMode::Autonomous => {
+                ToolPermissionRequirement::AutoPermitted
+            }
+        },
     }
 }
 
@@ -631,6 +662,52 @@ mod tests {
                 .as_deref()
                 .is_some_and(|reason| reason.contains("requires explicit human approval"))
         );
+    }
+
+    #[test]
+    fn mutating_tool_gate_is_mode_aware_but_dangerous_holds_the_floor() {
+        // Read/context always auto-permits.
+        for mode in [
+            OperationMode::Manual,
+            OperationMode::Assisted,
+            OperationMode::Autonomous,
+        ] {
+            assert_eq!(
+                tool_permission_requirement_in_mode(ToolRiskTier::ReadOnly, mode),
+                ToolPermissionRequirement::AutoPermitted
+            );
+            // Dangerous always needs a human gate — the dangerous floor holds in every mode.
+            assert_eq!(
+                tool_permission_requirement_in_mode(ToolRiskTier::Dangerous, mode),
+                ToolPermissionRequirement::HumanApprovalRequired,
+                "dangerous stays human-gated in {mode:?}"
+            );
+        }
+        // Mutating is human-gated under manual, auto-permitted under assisted/autonomous
+        // (its proposal still rides the changeset approval matrix — no double gate).
+        assert_eq!(
+            tool_permission_requirement_in_mode(ToolRiskTier::Mutating, OperationMode::Manual),
+            ToolPermissionRequirement::HumanApprovalRequired
+        );
+        assert_eq!(
+            tool_permission_requirement_in_mode(ToolRiskTier::Mutating, OperationMode::Assisted),
+            ToolPermissionRequirement::AutoPermitted
+        );
+        assert_eq!(
+            tool_permission_requirement_in_mode(ToolRiskTier::Mutating, OperationMode::Autonomous),
+            ToolPermissionRequirement::AutoPermitted
+        );
+        // The mode-independent baseline equals the manual (most restrictive) mode.
+        for tier in [
+            ToolRiskTier::ReadOnly,
+            ToolRiskTier::Mutating,
+            ToolRiskTier::Dangerous,
+        ] {
+            assert_eq!(
+                tool_permission_requirement(tier),
+                tool_permission_requirement_in_mode(tier, OperationMode::Manual)
+            );
+        }
     }
 
     #[test]
