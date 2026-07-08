@@ -25,9 +25,13 @@ features = ["embed-spa"]
 # Steps injected into every build job BEFORE cargo runs: the embed-spa build
 # compiles frontend/dist into the binary, so the SPA bundle must exist first
 # (build order, dashboard-packaging D2).
-github-build-setup = "release-build-setup.yml"
+github-build-setup = "../release-build-setup.yml"
 # Validate this release config on PRs without building artifacts.
 pr-run-mode = "plan"
+# release-please CREATES the GitHub Release when it mints the tag (with the
+# changelog as its body); dist must UPLOAD to it, never create a second one
+# (the v0.1.1 host job failed on exactly that collision).
+create-release = false
 # After the GitHub Release publishes, bump the in-repo scoop manifest to the
 # released version (distribution-channels ADR: `scoop update` reads the
 # COMMITTED manifest, so freshness is a per-release commit, automated here).
