@@ -2022,17 +2022,24 @@ fn agent_tool_execute_envelope(
     outcome: &ExecuteOutcome,
     result: Value,
 ) -> Value {
-    let disposition = match outcome.disposition {
-        ExecuteDisposition::Dispatch(_) => "dispatched",
-        ExecuteDisposition::AwaitingPermission => "awaiting_permission",
-        ExecuteDisposition::Refused => "refused",
-        ExecuteDisposition::AlreadyHandled => "already_handled",
+    // The raised `interrupt_id` is surfaced ONLY on the awaiting arm (structurally
+    // present exactly when suspended), so a wire client resumes-by-id via
+    // `/v1/interrupts/{interrupt_id}/resume` with no internal-derivation coupling (F1);
+    // every other disposition serves it as `null`.
+    let (disposition, interrupt_id) = match &outcome.disposition {
+        ExecuteDisposition::Dispatch(_) => ("dispatched", None),
+        ExecuteDisposition::AwaitingPermission { interrupt_id } => {
+            ("awaiting_permission", Some(interrupt_id))
+        }
+        ExecuteDisposition::Refused => ("refused", None),
+        ExecuteDisposition::AlreadyHandled => ("already_handled", None),
     };
     json!({
         "tool_call_id": tool_call_id,
         "tool": tool,
         "command": command,
         "disposition": disposition,
+        "interrupt_id": interrupt_id,
         "eligibility": outcome.eligibility,
         "replayed": outcome.replayed,
         "tool_call_record": outcome.tool_call_record,

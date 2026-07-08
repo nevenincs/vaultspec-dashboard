@@ -69,7 +69,9 @@ pub(crate) enum ExecuteDisposition {
     Dispatch(CommandKind),
     /// A mutating/dangerous call without a granted permission: a `Pending` request was
     /// opened and a tool-permission interrupt raised. The run suspends; nothing runs.
-    AwaitingPermission,
+    /// Carries the raised `interrupt_id` so the caller can surface it on the wire and a
+    /// client resumes-by-id WITHOUT recomputing the internal derivation (F1).
+    AwaitingPermission { interrupt_id: InterruptId },
     /// The permission was explicitly rejected or expired: a terminal refusal, recorded,
     /// no dispatch.
     Refused,
@@ -171,11 +173,14 @@ pub(crate) fn execute_tool_call(
     // rejection or a lapsed window is a terminal refusal.
     match permission.queue_state {
         ToolPermissionQueueState::Pending | ToolPermissionQueueState::Claimed => {
-            uow.interrupts()
-                .record_interrupt(interrupt_input(request)?)?;
+            let input = interrupt_input(request)?;
+            // The id is recorded AND returned so the caller surfaces it on the awaiting
+            // response — a client resumes-by-id with no internal-derivation coupling.
+            let interrupt_id = input.interrupt_id.clone();
+            uow.interrupts().record_interrupt(input)?;
             Ok(ExecuteOutcome {
                 eligibility: gate,
-                disposition: ExecuteDisposition::AwaitingPermission,
+                disposition: ExecuteDisposition::AwaitingPermission { interrupt_id },
                 tool_call_record: None,
                 replayed: false,
             })
@@ -407,13 +412,16 @@ mod tests {
         let req = request(SemanticToolName::ProposeChangeset, "call_mutate", 10);
         let outcome = execute(&mut store, &req);
 
-        assert_eq!(outcome.disposition, ExecuteDisposition::AwaitingPermission);
+        let ExecuteDisposition::AwaitingPermission { interrupt_id } = &outcome.disposition else {
+            panic!("expected AwaitingPermission, got {:?}", outcome.disposition);
+        };
         assert!(!outcome.eligibility.allowed, "no grant → not allowed");
         assert!(
             outcome.tool_call_record.is_none(),
             "an awaiting call is not a terminal tool-call record"
         );
-        // A stable-id tool-permission interrupt was raised for the run.
+        // A stable-id tool-permission interrupt was raised for the run — and the
+        // disposition surfaces THAT SAME id so the caller can resume-by-id.
         let interrupts = store
             .with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
                 uow.interrupts()
@@ -423,6 +431,10 @@ mod tests {
         assert_eq!(interrupts.len(), 1);
         assert_eq!(interrupts[0].kind, InterruptKind::ToolPermission);
         assert!(!interrupts[0].is_resolved());
+        assert_eq!(
+            &interrupts[0].interrupt_id, interrupt_id,
+            "the surfaced interrupt id names the raised interrupt"
+        );
     }
 
     #[test]
@@ -432,7 +444,10 @@ mod tests {
 
         // First attempt suspends (no grant yet).
         let first = execute(&mut store, &req);
-        assert_eq!(first.disposition, ExecuteDisposition::AwaitingPermission);
+        assert!(matches!(
+            first.disposition,
+            ExecuteDisposition::AwaitingPermission { .. }
+        ));
 
         // A human grants the queued permission.
         grant(&mut store, "call_grant", 20);
@@ -469,7 +484,10 @@ mod tests {
 
         // First call opens a Pending permission expiring at now+5 and suspends.
         let first = execute(&mut store, &req);
-        assert_eq!(first.disposition, ExecuteDisposition::AwaitingPermission);
+        assert!(matches!(
+            first.disposition,
+            ExecuteDisposition::AwaitingPermission { .. }
+        ));
 
         // Re-execute past the TTL: expire_if_due fires, the gate sees Expired → Refused.
         let mut later = req.clone();
@@ -523,10 +541,10 @@ mod tests {
         let req = request(SemanticToolName::RequestApply, "call_reject", 10);
 
         // Suspend, then a human REJECTS the permission.
-        assert_eq!(
+        assert!(matches!(
             execute(&mut store, &req).disposition,
-            ExecuteDisposition::AwaitingPermission
-        );
+            ExecuteDisposition::AwaitingPermission { .. }
+        ));
         reject(&mut store, "call_reject", 20);
 
         let refused = execute(&mut store, &req);
