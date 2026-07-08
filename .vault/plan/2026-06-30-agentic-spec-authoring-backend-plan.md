@@ -510,9 +510,9 @@ Enforce policy before any human or agent command mutates authoring state or requ
 
 Serve review queues, claims, clarification, reviewer edits, audit records, redaction, and bounded provenance queries. Folds in the Increment 1 approval remainder: request-changes and edit-response loops, deferred from W05.P23's approve/reject subset; the claimed queue state activates here against the amended four-state-queue review-station ADR.
 
-- [ ] `W13.P24.S116` - Ground Review station queues and provenance audit requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W13.P24.S117` - Implement review queue projections, claim handling, clarification responses, reviewer edits, audit records, redaction, and provenance queries; `engine/crates/vaultspec-api/src/authoring/review.rs`.
-- [ ] `W13.P24.S118` - Add review station tests for pending queues, claims, release, clarification, reviewer edits, redacted audit records, and bounded query results; `engine/crates/vaultspec-api/src/authoring/review.rs`.
+- [x] `W13.P24.S116` - Ground Review station queues and provenance audit requirements into the phase checklist; `.vault/adr/`.
+- [x] `W13.P24.S117` - Implement review queue projections, claim handling, clarification responses, reviewer edits, audit records, redaction, and provenance queries; `engine/crates/vaultspec-api/src/authoring/review.rs`.
+- [x] `W13.P24.S118` - Add review station tests for pending queues, claims, release, clarification, reviewer edits, redacted audit records, and bounded query results; `engine/crates/vaultspec-api/src/authoring/review.rs`.
 - [ ] `W13.P24.S119` - Run Review station queues and provenance audit code review and record the phase audit; `.vault/audit/`.
 - [ ] `W13.P24.S120` - Verify review station state and provenance are backend-served through tests and manual queue checks; `engine/crates/vaultspec-api/src/authoring/review.rs`.
 
@@ -529,6 +529,21 @@ Per-operation rollback inverses, evidence-gated on real usage need. DEFERRED OUT
 ## Wave `W14` - Increment 6 - Acceptance, retirement, and release
 
 Close the epic: restart, replay, reconnect, and security-negative acceptance; retire the legacy write broker once Increment 2 parity evidence holds; run the final gate audit and release readiness review.
+
+### Phase `W14.P42a` - Engine wiring: enforce and serve the authorization, concurrency, and review-station engines
+
+The W12/W13 engines (authorization authorize_command, lease fencing validate_fencing_token, conflict detection detect_conflicts, rebase/supersession, review-station queues/claims/respond/provenance, and generation compaction) were built and fixture-tested in isolation with route/apply wiring deferred; none is invoked by any production command, route, or apply path, so authorization enforces nothing (a security no-op) and the rebase/conflict/review-station surfaces serve nothing. This phase wires each engine into the live paths BEFORE the P42 security-negative acceptance tests and the P43 release gate. Discovered 2026-07-08 as a plan gap: every engine phase deferred its wiring and no phase scheduled it.
+
+- [ ] `W14.P42a.S256` - Ground engine-wiring requirements and map the resolved-command dispatch, apply/finalize, and route-registration integration points for each engine; `.vault/adr/`.
+- [ ] `W14.P42a.S257` - Wire authorize_command into every mutating command path before its effect, populate origin_author for approve/apply, and add a coverage-guard test that every mutating CommandKind routes through authorization; `engine/crates/vaultspec-api/src/authoring/http.rs`.
+- [ ] `W14.P42a.S258` - Wire validate_fencing_token into the apply/finalize path and register lease acquire/renew/release routes; `engine/crates/vaultspec-api/src/authoring/http.rs`.
+- [ ] `W14.P42a.S259` - Serve detect_conflicts via a route and projection and consult it in the apply preflight; `engine/crates/vaultspec-api/src/authoring/http.rs`.
+- [ ] `W14.P42a.S260` - Register the rebase and replacement-proposal routes over rebase_proposal and create_replacement_proposal; `engine/crates/vaultspec-api/src/authoring/http.rs`.
+- [ ] `W14.P42a.S261` - Register the review-station queue, claims, respond, and provenance routes and flip submit_review_decision Edit and Respond onto the review-station respond path; `engine/crates/vaultspec-api/src/authoring/http.rs`.
+- [ ] `W14.P42a.S262` - Drive compact_generation_transcripts via an apply or append-time hook or a bounded periodic sweep; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
+- [ ] `W14.P42a.S263` - Add negative-path and integration tests over the live API for unauthorized, forbidden-scope, and forbidden-tool refusals, served stale conflicts, and rebase and review-station round-trips; `engine/crates/vaultspec-api/tests/`.
+- [ ] `W14.P42a.S264` - Run engine-wiring code review and record the phase audit; `.vault/audit/`.
+- [ ] `W14.P42a.S265` - Verify unauthorized humans and agents cannot mutate state through the live API and every wired engine is reachable and enforcing; `engine/crates/vaultspec-api/src/authoring/http.rs`.
 
 ### Phase `W14.P42` - Restart replay reconnect and security negatives
 
