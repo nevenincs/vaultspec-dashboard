@@ -266,10 +266,12 @@ async fn set_mode(state: &Arc<AppState>, bearer: &str, human_token: &str, mode: 
     assert_eq!(body["data"]["mode"], mode, "mode is now {mode}: {body}");
 }
 
-fn document(base_revision: &str) -> Value {
+/// The target document ref. `scope` must be the SERVER-AUTHORITATIVE scope
+/// token of the served worktree (W14.P42a document-scope guard).
+fn document(scope: &str, base_revision: &str) -> Value {
     json!({
         "kind": "existing",
-        "scope": "worktree",
+        "scope": scope,
         "node_id": "doc:loop-plan",
         "stem": "loop-plan",
         "path": DOC_PATH,
@@ -297,7 +299,11 @@ fn execute_body(envelope_command: &str, tool_call_id: &str, tool: &str, input: V
 
 /// A `propose_changeset` / create tool input: the domain `CreateProposalRequest`
 /// fields flattened alongside the `operation: create` discriminant the tool expects.
-fn propose_create_input(session: &str, changeset: &str, base_revision: &str) -> Value {
+fn scope_token_of(state: &Arc<AppState>) -> String {
+    engine_model::scope_token(&state.workspace_root)
+}
+
+fn propose_create_input(scope: &str, session: &str, changeset: &str, base_revision: &str) -> Value {
     json!({
         "operation": "create",
         "session_id": session,
@@ -307,7 +313,7 @@ fn propose_create_input(session: &str, changeset: &str, base_revision: &str) -> 
             "child_key": "child_1",
             "operation": "replace_body",
             "target": {
-                "document": document(base_revision),
+                "document": document(scope, base_revision),
                 "base_revision": base_revision,
                 "current_revision": base_revision,
             },
@@ -385,7 +391,7 @@ async fn agent_run_loop_suspends_grants_resumes_and_redrives_effectively_once() 
         "create_proposal",
         tool_call_id,
         "propose_changeset",
-        propose_create_input(&session, "changeset_loop", &base),
+        propose_create_input(&scope_token_of(&state), &session, "changeset_loop", &base),
     );
 
     // 1. SUSPEND — a mutating tool without a grant opens a Pending permission and
@@ -536,7 +542,7 @@ async fn autonomous_request_approval_auto_approves_applies_and_lists_after_the_f
             "create_proposal",
             "call_auto_propose",
             "propose_changeset",
-            propose_create_input(&session, changeset, &base),
+            propose_create_input(&scope_token_of(&state), &session, changeset, &base),
         ),
     )
     .await;
@@ -744,7 +750,7 @@ async fn agent_run_loop_rejected_tool_is_a_terminal_refusal_that_never_dispatche
         "create_proposal",
         tool_call_id,
         "propose_changeset",
-        propose_create_input(&session, "changeset_reject", &base),
+        propose_create_input(&scope_token_of(&state), &session, "changeset_reject", &base),
     );
 
     // 1. SUSPEND — a mutating tool without a grant opens a Pending permission.
@@ -830,7 +836,13 @@ async fn agent_run_loop_rejected_tool_is_a_terminal_refusal_that_never_dispatche
 /// A `create_proposal` command body for the dedicated `POST /v1/proposals` route (the
 /// direct-client draft path, distinct from the `propose_changeset` tool alias — no
 /// `operation` discriminant).
-fn create_draft_body(session: &str, changeset: &str, idem: &str, base_revision: &str) -> Value {
+fn create_draft_body(
+    scope: &str,
+    session: &str,
+    changeset: &str,
+    idem: &str,
+    base_revision: &str,
+) -> Value {
     json!({
         "api_version": "v1",
         "command": "create_proposal",
@@ -843,7 +855,7 @@ fn create_draft_body(session: &str, changeset: &str, idem: &str, base_revision: 
                 "child_key": "child_1",
                 "operation": "replace_body",
                 "target": {
-                    "document": document(base_revision),
+                    "document": document(scope, base_revision),
                     "base_revision": base_revision,
                     "current_revision": base_revision,
                 },
@@ -879,6 +891,7 @@ async fn manual_mode_request_approval_is_review_station_state_not_a_suspending_i
         &bearer,
         Some(&agent),
         Some(create_draft_body(
+            &scope_token_of(&state),
             &session,
             changeset,
             "idem:rs:create",
