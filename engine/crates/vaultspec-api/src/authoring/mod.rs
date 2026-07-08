@@ -15,6 +15,7 @@ pub(crate) mod direct_write;
 pub(crate) mod documents;
 pub(crate) mod events;
 pub(crate) mod http;
+pub(crate) mod interrupts;
 pub(crate) mod langgraph;
 pub(crate) mod ledger;
 pub(crate) mod model;
