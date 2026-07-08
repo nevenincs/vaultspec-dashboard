@@ -11,11 +11,14 @@
 //! - RECORD BEFORE DISPATCH. A granted call writes its `ToolCallRecord` (permitted)
 //!   before the caller dispatches; a refused call records the refusal and dispatches
 //!   NOTHING. The gate outcome is durable before any effect.
-//! - IDEMPOTENT BY `tool_call_id`. A terminal call (dispatched or refused) writes its
-//!   record exactly once (P32 `ToolCallRepository` is `ON CONFLICT DO NOTHING`); a
-//!   replay of the same id returns the recorded outcome and NEVER re-dispatches — a
-//!   network-flap retry can never double-apply a mutation. At-most-once: the record is
-//!   the durable intent, written before dispatch.
+//! - EFFECTIVELY-ONCE BY `tool_call_id`. A terminal call writes its record exactly once
+//!   (P32 `ToolCallRepository` is `ON CONFLICT DO NOTHING`). A replay of a PERMITTED
+//!   record RE-DRIVES the dispatch (disposition `Dispatch`, `replayed:true`): the caller
+//!   dispatches the mapped command with an idempotency key deterministically derived
+//!   from `tool_call_id`, so a completed dispatch is deduped by the command's own
+//!   idempotency while a crash-lost dispatch runs fresh — the permitted-but-lost window
+//!   HEALS, and a network-flap retry never double-applies. A replay of a REFUSED record
+//!   stays terminal (`AlreadyHandled`) and never dispatches.
 //! - DENIALS ARE VALUES. A gate refusal or an awaiting-permission suspension is an
 //!   `ActionEligibility` value the caller returns on the 200 envelope, never a fault.
 //! - DISPATCH ONLY THROUGH EXISTING COMMANDS. The granted disposition names a
@@ -30,14 +33,16 @@
 //! refusal.
 #![allow(dead_code)]
 
+use ingest_struct::reader::blob_oid;
+
 use super::interrupts::{
     InterruptKind, RecordInterruptInput, RecordToolCallInput, ToolCallRecord, tool_execution_gate,
 };
 use super::model::{ActionEligibility, ActorRef, CommandKind, InterruptId, RunId, ToolCallId};
 use super::permissions::{ToolPermissionQueueState, ToolPermissionRequestInput};
 use super::policy::{OperationMode, ToolRiskTier};
-use super::store::Result as StoreResult;
 use super::store::unit_of_work::UnitOfWork;
+use super::store::{Result as StoreResult, StoreError};
 use super::tools::SemanticToolName;
 
 /// The resolved inputs for one run-loop step. The `requester` is the server-held
@@ -104,8 +109,9 @@ pub(crate) fn execute_tool_call(
 ) -> StoreResult<ExecuteOutcome> {
     let tool = request.tool;
 
-    // Idempotency: a prior TERMINAL call (dispatched or refused) already wrote its
-    // record. Replay it and never re-dispatch — the guard against double-apply.
+    // Idempotency (effectively-once): a prior terminal call already wrote its record. A
+    // permitted record RE-DRIVES the dispatch (command-layer idempotency dedups a
+    // completed one, heals a crash-lost one); a refused record stays terminal.
     if let Some(existing) = uow.tool_call_records().get(&request.tool_call_id)? {
         return Ok(replayed(existing));
     }
@@ -125,17 +131,22 @@ pub(crate) fn execute_tool_call(
 
     // A mutating/dangerous tool must hold a granted permission. Resolve the existing
     // request or open a fresh `Pending` one (which is not granted).
-    let permission = match uow
+    match uow
         .tool_permissions()
         .latest_for_tool_call(&request.tool_call_id)?
     {
-        Some(record) => record,
+        Some(_) => {}
         None => {
             uow.tool_permissions()
-                .request_permission(permission_input(request))?
-                .record
+                .request_permission(permission_input(request))?;
         }
-    };
+    }
+    // LAZY EXPIRY: a Pending-past-TTL permission terminally expires HERE, so the gate
+    // refuses it rather than suspending forever (it otherwise heals only on a human
+    // touch or the background janitor). `expire_if_due` returns the refreshed record.
+    let permission = uow
+        .tool_permissions()
+        .expire_if_due(&request.tool_call_id, request.now_ms)?;
 
     let gate = tool_execution_gate(tool, Some(&permission));
     if gate.allowed {
@@ -145,7 +156,9 @@ pub(crate) fn execute_tool_call(
             .tool_call_records()
             .record_tool_call(record_input(request, true, None))?;
         if outcome.replayed {
-            return Ok(already_handled(outcome.record, gate));
+            // A concurrent terminal write won: re-drive through the same permitted-replay
+            // path (effectively-once) rather than dropping the dispatch.
+            return Ok(replayed(outcome.record));
         }
         return Ok(ExecuteOutcome {
             eligibility: gate,
@@ -161,7 +174,7 @@ pub(crate) fn execute_tool_call(
     match permission.queue_state {
         ToolPermissionQueueState::Pending | ToolPermissionQueueState::Claimed => {
             uow.interrupts()
-                .record_interrupt(interrupt_input(request))?;
+                .record_interrupt(interrupt_input(request)?)?;
             Ok(ExecuteOutcome {
                 eligibility: gate,
                 disposition: ExecuteDisposition::AwaitingPermission,
@@ -181,33 +194,35 @@ pub(crate) fn execute_tool_call(
     }
 }
 
+/// Replay a prior terminal record (effectively-once). A PERMITTED record RE-DRIVES the
+/// dispatch — the caller re-issues the mapped command under its deterministic
+/// idempotency key, so a completed dispatch dedups and a crash-lost one runs fresh. A
+/// REFUSED record is terminal and never dispatches.
 fn replayed(record: ToolCallRecord) -> ExecuteOutcome {
     let command = SemanticToolName::from_wire(&record.tool_name).map(|tool| tool.command());
-    let eligibility = if record.permitted {
-        ActionEligibility::allowed(command.unwrap_or(CommandKind::ReadContext))
+    if record.permitted {
+        ExecuteOutcome {
+            eligibility: ActionEligibility::allowed(command.unwrap_or(CommandKind::ReadContext)),
+            disposition: command
+                .map(ExecuteDisposition::Dispatch)
+                .unwrap_or(ExecuteDisposition::AlreadyHandled),
+            tool_call_record: Some(record),
+            replayed: true,
+        }
     } else {
-        ActionEligibility::denied(
-            command.unwrap_or(CommandKind::ReadContext),
-            record
-                .refusal_reason
-                .clone()
-                .unwrap_or_else(|| "tool call was previously refused".to_string()),
-        )
-    };
-    ExecuteOutcome {
-        eligibility,
-        disposition: ExecuteDisposition::AlreadyHandled,
-        tool_call_record: Some(record),
-        replayed: true,
-    }
-}
-
-fn already_handled(record: ToolCallRecord, gate: ActionEligibility) -> ExecuteOutcome {
-    ExecuteOutcome {
-        eligibility: gate,
-        disposition: ExecuteDisposition::AlreadyHandled,
-        tool_call_record: Some(record),
-        replayed: true,
+        let reason = record
+            .refusal_reason
+            .clone()
+            .unwrap_or_else(|| "tool call was previously refused".to_string());
+        ExecuteOutcome {
+            eligibility: ActionEligibility::denied(
+                command.unwrap_or(CommandKind::ReadContext),
+                reason,
+            ),
+            disposition: ExecuteDisposition::AlreadyHandled,
+            tool_call_record: Some(record),
+            replayed: true,
+        }
     }
 }
 
@@ -252,19 +267,26 @@ fn permission_input(request: &ExecuteToolCallRequest) -> ToolPermissionRequestIn
     }
 }
 
-fn interrupt_input(request: &ExecuteToolCallRequest) -> RecordInterruptInput {
-    RecordInterruptInput {
-        // A STABLE id derived from the tool call — re-raising the same suspended call is
-        // idempotent (P32 records once), so resume is BY id, never by position.
-        interrupt_id: InterruptId::new(format!("interrupt:tool/{}", request.tool_call_id.as_str()))
-            .unwrap_or_else(|_| InterruptId::new("interrupt:tool/unnamed").unwrap()),
+fn interrupt_input(request: &ExecuteToolCallRequest) -> StoreResult<RecordInterruptInput> {
+    // A STABLE, BOUNDED, collision-free id: the tool_call_id is hashed (blob_oid), so an
+    // arbitrarily long client id can never overflow InterruptId's cap and collide with
+    // another call on a shared sentinel. Re-raising the same suspended call is idempotent
+    // (P32 records once), so resume is BY id, never by position. No fallback — a
+    // construction failure propagates rather than aliasing onto a shared id.
+    let interrupt_id = InterruptId::new(format!(
+        "interrupt:tool/{}",
+        blob_oid(request.tool_call_id.as_str().as_bytes())
+    ))
+    .map_err(|err| StoreError::Validation(format!("interrupt id: {err}")))?;
+    Ok(RecordInterruptInput {
+        interrupt_id,
         run_id: request.run_id.clone(),
         kind: InterruptKind::ToolPermission,
         tool_call_id: Some(request.tool_call_id.clone()),
         proposal_id: None,
         idempotency_key: format!("interrupt:{}", request.idempotency_key),
         created_at_ms: request.now_ms,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -406,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn mutating_tool_dispatches_after_a_grant_then_replays_idempotently() {
+    fn mutating_tool_dispatches_after_a_grant_then_re_drives_effectively_once() {
         let (_dir, mut store) = temp_store();
         let req = request(SemanticToolName::ProposeChangeset, "call_grant", 10);
 
@@ -426,13 +448,75 @@ mod tests {
         assert!(granted.tool_call_record.as_ref().unwrap().permitted);
         assert!(!granted.replayed);
 
-        // A network-flap retry of the same id replays the recorded outcome and NEVER
-        // re-dispatches — no double-apply.
+        // EFFECTIVELY-ONCE: a retry of the same id RE-DRIVES the dispatch (replayed=true)
+        // — the command's own idempotency key (derived from tool_call_id) dedups a
+        // completed dispatch, so re-driving heals a crash-lost one without double-apply.
         let replay = execute(&mut store, &req);
-        assert_eq!(replay.disposition, ExecuteDisposition::AlreadyHandled);
+        assert_eq!(
+            replay.disposition,
+            ExecuteDisposition::Dispatch(CommandKind::CreateProposal)
+        );
         assert!(replay.replayed);
-        assert!(replay.should_dispatch().is_none());
+        assert!(replay.should_dispatch().is_some());
         assert!(replay.tool_call_record.unwrap().permitted);
+    }
+
+    #[test]
+    fn a_pending_permission_past_its_ttl_terminally_refuses_not_suspends() {
+        // LAZY EXPIRY: a mutating call whose permission window has lapsed refuses at the
+        // gate rather than suspending forever.
+        let (_dir, mut store) = temp_store();
+        let mut req = request(SemanticToolName::ProposeChangeset, "call_ttl", 10);
+        req.ttl_ms = Some(5);
+
+        // First call opens a Pending permission expiring at now+5 and suspends.
+        let first = execute(&mut store, &req);
+        assert_eq!(first.disposition, ExecuteDisposition::AwaitingPermission);
+
+        // Re-execute past the TTL: expire_if_due fires, the gate sees Expired → Refused.
+        let mut later = req.clone();
+        later.now_ms = 1_000;
+        let refused = execute(&mut store, &later);
+        assert_eq!(refused.disposition, ExecuteDisposition::Refused);
+        assert!(!refused.eligibility.allowed);
+        assert!(!refused.tool_call_record.unwrap().permitted);
+    }
+
+    #[test]
+    fn a_long_tool_call_id_yields_a_bounded_collision_free_interrupt_id() {
+        // The interrupt id is hashed (blob_oid), so an arbitrarily long client id can
+        // never overflow the id cap or collide with another call on a shared sentinel:
+        // two distinct long ids raise two DISTINCT interrupts.
+        let (_dir, mut store) = temp_store();
+        // Valid ToolCallIds (≤160 bytes) whose raw "interrupt:tool/{id}" prefix WOULD
+        // overflow InterruptId's 160-byte cap — the old sentinel-fallback collision case.
+        let long_a = format!("call_{}", "a".repeat(150));
+        let long_b = format!("call_{}", "b".repeat(150));
+        execute(
+            &mut store,
+            &request(SemanticToolName::ProposeChangeset, &long_a, 10),
+        );
+        execute(
+            &mut store,
+            &request(SemanticToolName::ProposeChangeset, &long_b, 11),
+        );
+
+        let interrupts = store
+            .with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
+                uow.interrupts()
+                    .interrupts_for_run(&RunId::new("run:1").unwrap(), 100)
+            })
+            .unwrap();
+        assert_eq!(
+            interrupts.len(),
+            2,
+            "two long ids raise two distinct interrupts"
+        );
+        assert_ne!(
+            interrupts[0].interrupt_id.as_str(),
+            interrupts[1].interrupt_id.as_str(),
+            "no collision on a shared sentinel"
+        );
     }
 
     #[test]
