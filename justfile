@@ -307,11 +307,13 @@ _dev-build-rust:
 _dev-build-frontend:
   npm --prefix frontend run build
 
-# The packaged artifact (dashboard-packaging ADR): the SPA bundle is built
-# first, then baked into the release `vaultspec` binary via the embed-spa
+# The packaged artifact (dashboard-packaging ADR): the SPA bundle is built,
+# staged INSIDE the api crate (distribution-channels ADR: boundary-clean
+# embed), then baked into the release `vaultspec` binary via the embed-spa
 # feature, so the result serves standalone with no frontend/dist on disk.
 _dev-build-package:
   npm --prefix frontend run build
+  uv run --no-sync python -c "import shutil; shutil.rmtree('engine/crates/vaultspec-api/assets/spa', ignore_errors=True); shutil.copytree('frontend/dist', 'engine/crates/vaultspec-api/assets/spa')"
   cargo build --manifest-path engine/Cargo.toml --release -p vaultspec-cli --features embed-spa
 
 _dev-build-all:

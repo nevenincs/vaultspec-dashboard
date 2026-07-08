@@ -11,13 +11,17 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// The compiled-in SPA bundle for release packaging: `frontend/dist` baked
-/// into the binary at build time (path relative to this crate's manifest).
-/// Present only under the `embed-spa` feature; dev builds omit it and keep the
-/// disk passthrough so a UI change needs no engine rebuild.
+/// The compiled-in SPA bundle for release packaging, embedded from the
+/// crate-internal staged directory `assets/spa` (distribution-channels ADR:
+/// boundary-clean — the crate never reaches outside itself, so it is
+/// packageable). The packaged-build recipe and the CI build step stage
+/// `frontend/dist` into it; a feature-on build without staging is a COMPILE
+/// ERROR, preserving fail-loud. Present only under the `embed-spa` feature;
+/// dev builds omit it and keep the disk passthrough so a UI change needs no
+/// engine rebuild.
 #[cfg(feature = "embed-spa")]
 #[derive(rust_embed::RustEmbed)]
-#[folder = "../../../frontend/dist"]
+#[folder = "assets/spa"]
 pub(crate) struct EmbeddedSpa;
 
 use axum::extract::State;
@@ -192,6 +196,7 @@ pub(crate) const API_PREFIXES: &[&str] = &[
     "/authoring",
     "/search",
     "/ops",
+    "/provision",
     "/health",
     "/session",
     "/settings",

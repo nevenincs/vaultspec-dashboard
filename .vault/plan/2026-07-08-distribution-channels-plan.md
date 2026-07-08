@@ -10,6 +10,16 @@ related:
   - '[[2026-07-04-dashboard-packaging-adr]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
+
 # `distribution-channels` plan
 
 Ship the scoop, cargo-binstall, and winget channels over the published artifacts, fixing the embed's crate-boundary escape on the way.
@@ -24,10 +34,10 @@ Executes the accepted distribution-channels ADR (see related): the rust-embed ta
 
 Moves the rust-embed target inside the crate (staged assets/spa) so the api crate is self-contained and packageable, with the fail-loud compile error preserved.
 
-- [ ] `P01.S01` - move the embed folder attribute to the crate-internal staged assets/spa directory; `engine/crates/vaultspec-api/src/routes/spa.rs`.
-- [ ] `P01.S02` - stage frontend/dist into the crate assets before the feature-on cargo build in the packaged-build recipe; `justfile`.
-- [ ] `P01.S03` - stage the assets in the CI build step and regenerate the release workflow through dist; `.github/workflows/release-build-setup.yml`.
-- [ ] `P01.S04` - gitignore the staged crate assets directory; `.gitignore`.
+- [x] `P01.S01` - move the embed folder attribute to the crate-internal staged assets/spa directory; `engine/crates/vaultspec-api/src/routes/spa.rs`.
+- [x] `P01.S02` - stage frontend/dist into the crate assets before the feature-on cargo build in the packaged-build recipe; `justfile`.
+- [x] `P01.S03` - stage the assets in the CI build step and regenerate the release workflow through dist; `.github/workflows/release-build-setup.yml`.
+- [x] `P01.S04` - gitignore the staged crate assets directory; `.gitignore`.
 
 ### Phase `P02` - scoop channel
 
