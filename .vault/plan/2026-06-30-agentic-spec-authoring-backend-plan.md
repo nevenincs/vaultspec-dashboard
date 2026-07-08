@@ -448,7 +448,7 @@ Run a LangGraph-backed fixture against semantic backend tools and approval inter
 
 - [x] `W12.P41.S201` - Ground LangGraph agent fixture against backend commands requirements into the phase checklist; `.vault/adr/`.
 - [x] `W12.P41.S202` - Implement a LangGraph authoring fixture that creates proposals, pauses for approval, resumes, and requests apply through backend commands; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
-- [ ] `W12.P41.S203` - Add fixture tests for proposal creation, permission interrupt, approval interrupt, resume by interrupt ID, rejected tool, and cancelled run; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
+- [x] `W12.P41.S203` - Add fixture tests for proposal creation, permission interrupt, manual-mode approval as review-station state (not a suspending interrupt), resume by interrupt ID, rejected tool, and cancelled run; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
 - [ ] `W12.P41.S204` - Run LangGraph agent fixture against backend commands code review and record the phase audit; `.vault/audit/`.
 - [ ] `W12.P41.S205` - Verify the Increment 4 demo: a real LangGraph fixture drafts a proposal, pauses on a tool-permission interrupt, resumes by interrupt id, requests approval, and, in autonomous mode, sees its work applied and listed after-the-fact; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
 
@@ -460,9 +460,9 @@ Add multi-writer safety and the full review and security surface against real us
 
 Coordinate active editing with scoped advisory leases, renewals, expirations, releases, and fencing tokens.
 
-- [ ] `W13.P26.S126` - Ground Advisory leases and fencing tokens requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W13.P26.S127` - Implement acquire, renew, release, expire, list, and fencing-token validation for scoped authoring leases; `engine/crates/vaultspec-api/src/authoring/leases.rs`.
-- [ ] `W13.P26.S128` - Add lease tests for renewal, expiry, bad scope, concurrent acquisition, stale fencing token, and release by non-owner; `engine/crates/vaultspec-api/src/authoring/leases.rs`.
+- [x] `W13.P26.S126` - Ground Advisory leases and fencing tokens requirements into the phase checklist; `.vault/adr/`.
+- [x] `W13.P26.S127` - Implement acquire, renew, release, expire, list, and fencing-token validation for scoped authoring leases; `engine/crates/vaultspec-api/src/authoring/leases.rs`.
+- [x] `W13.P26.S128` - Add lease tests for renewal, expiry, bad scope, concurrent acquisition, stale fencing token, and release by non-owner; `engine/crates/vaultspec-api/src/authoring/leases.rs`.
 - [ ] `W13.P26.S129` - Run Advisory leases and fencing tokens code review and record the phase audit; `.vault/audit/`.
 - [ ] `W13.P26.S130` - Verify two editors receive deterministic lease and fencing outcomes through tests and manual concurrent API checks; `engine/crates/vaultspec-api/src/authoring/leases.rs`.
 
