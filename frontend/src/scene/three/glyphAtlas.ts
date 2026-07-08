@@ -42,10 +42,15 @@ export const GLYPH_KEYS = [
   "exec",
   "audit",
   "reference",
+  // The CODE corpus's mark (codebase-graphing ADR D7): the Phosphor Code bracket
+  // in `DOC_TYPE_MARK_DEFS.code`. Reached only on the disconnected code corpus,
+  // where a `code-artifact` file node folds to the `code` glyph key
+  // (glyphKeyForNode via nodeCategory) — the same family as every other mark.
+  "code",
 ] as const;
 export type GlyphKey = (typeof GLYPH_KEYS)[number];
 
-// Atlas geometry: COLS*ROWS must cover GLYPH_KEYS (7). 4×2 cells of 64px → a 256×128
+// Atlas geometry: COLS*ROWS must cover GLYPH_KEYS (8). 4×2 cells of 64px → a 256×128
 // pow2 atlas. SS supersamples each cell for box-downsampled edge AA.
 const COLS = 4;
 const ROWS = 2;
@@ -65,9 +70,10 @@ export interface GlyphAtlas {
  * Resolve a scene node to its glyph key — the SAME fallback ladder
  * `categoryColor` uses to colour the node body, so a node's icon always matches its
  * hue. `docType` wins; then the wire species (`feature`); else the category fallback
- * (`nodeCategory` always lands on a key in GLYPH_KEYS). `code`/`index` are never graph
- * nodes (code excluded at the engine projection, index dropped at ingest), so they
- * carry no glyph here — a stray code-artifact species folds to the `reference` mark.
+ * (`nodeCategory` always lands on a key in GLYPH_KEYS). A CODE-corpus node
+ * (`code-artifact`, codebase-graphing ADR D7) folds through `nodeCategory` to
+ * the `code` glyph key (the Phosphor Code bracket). `index` is never a graph
+ * node (dropped at ingest), so it folds to the `reference` mark.
  */
 export function glyphKeyForNode(node: { kind: string; docType?: string }): GlyphKey {
   const dt = node.docType;

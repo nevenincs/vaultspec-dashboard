@@ -53,9 +53,19 @@ document proposals, not arbitrary filesystem writes.
 The existing read/infer engine remains read-and-infer for `.vault/`
 materialization: it must not hand-write vault documents or absorb core mutation
 semantics. The authoring work therefore needs a fenced authoring backend domain
-or sibling service boundary inside the Rust dashboard backend. If it is
-co-located in the current process, its ownership boundary must be explicit and
-the `engine-read-and-infer` rule must be refined before implementation.
+or sibling service boundary inside the Rust dashboard backend. The
+`engine-read-and-infer` refinement this requires is DECIDED here (2026-07-02,
+architecture review finding ASA-006; the rule text is amended to match): the
+co-located authoring domain may own durable authoring WORKFLOW state — the
+changeset ledger, approvals, preimages, receipts, audit records, in the
+dedicated non-derivable authoring store — because that is product state the
+domain itself originates, not vault content; the fence line is that the
+authoring domain never hand-writes `.vault/` documents, never mutates git, and
+reaches vault materialization exclusively through the internal `vaultspec-core`
+adapter. The engine's own read-side guarantees (re-derivable caches, inference
+only) are unchanged; the authoring store is explicitly OUTSIDE the "deletable,
+fully re-derivable" class and lives under a distinct product-state directory for
+exactly that reason.
 
 Every browser response must use the shared envelope and carry `tiers`. Stores
 remain the sole frontend wire client. Displayed workflow state, action

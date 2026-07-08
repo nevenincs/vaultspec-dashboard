@@ -47,7 +47,7 @@ _ci-help:
 
 _ci-run:
   just dev lint all
-  just prod vault check all
+  uv run --no-sync vaultspec-core vault check all
   just dev test all
 
 # ---------------------------------------------------------------------------
@@ -298,6 +298,7 @@ _dev-build-help:
   @echo "Targets:"
   @echo "  rust      Build the engine workspace (release)"
   @echo "  frontend  Build the SPA production bundle"
+  @echo "  package   Build the installable single binary (SPA embedded)"
   @echo "  all       Run all builds"
 
 _dev-build-rust:
@@ -305,6 +306,13 @@ _dev-build-rust:
 
 _dev-build-frontend:
   npm --prefix frontend run build
+
+# The packaged artifact (dashboard-packaging ADR): the SPA bundle is built
+# first, then baked into the release `vaultspec` binary via the embed-spa
+# feature, so the result serves standalone with no frontend/dist on disk.
+_dev-build-package:
+  npm --prefix frontend run build
+  cargo build --manifest-path engine/Cargo.toml --release -p vaultspec-cli --features embed-spa
 
 _dev-build-all:
   just _dev-build-rust

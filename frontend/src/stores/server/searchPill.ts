@@ -1,8 +1,7 @@
 // The search-result PILL view (figma SearchResultPill set 650:1790) — the stores-
-// layer projection a `SearchResult` renders as in the Cmd-K search surface. It is
-// the pill counterpart of `deriveSearchResultRowView` (the right-rail row): both are
-// pure, tiers-free presentation derivations, but the pill obeys the UX simplicity
-// law set on the binding Figma frames — show the ANSWER, hide the MECHANISM. The
+// layer projection a `SearchResult` renders as in the Cmd-K search surface. It is a
+// pure, tiers-free presentation derivation that obeys the UX simplicity law set on
+// the binding Figma frames — show the ANSWER, hide the MECHANISM. The
 // face carries exactly four things: a plain colour-coded TYPE WORD, the TITLE, a
 // one-line WHY, and (for docs) the feature tag. The relevance score, commit hash,
 // file encoding, lifecycle status, and the semantic-vs-text-match distinction are

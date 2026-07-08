@@ -126,7 +126,7 @@ async fn declared_tier_degradation_is_consistent_across_front_doors() {
 }
 
 #[tokio::test]
-async fn degrade_paths_keep_the_declared_tier_truthful() {
+async fn a_search_keeps_the_declared_tier_truthful_independent_of_semantic() {
     let (_dir, state) = fixture_state();
     let token = state.bearer.clone();
     // Core unreachable this rebuild: the declared tier could not ingest. The
@@ -135,20 +135,33 @@ async fn degrade_paths_keep_the_declared_tier_truthful() {
         Some("core graph unavailable: forced for test".to_string());
     let router = build_router(state);
 
-    // rag is unavailable in the test env, so POST /search takes the rag-down
-    // degrade path. That path degrades `semantic` truthfully — and (LENSA-02)
-    // must ALSO keep the declared tier truthful, never hardcode it available.
+    // `/search` now rides the resident rag over HTTP (rag-integration-hardening
+    // D1), so the SEMANTIC tier reflects the ambient machine: degraded when no
+    // resident rag is discoverable (the rag-down path), available when one
+    // answers (an unindexed scope is a healthy 200 with empty results). Either
+    // way the response is a tiers-carrying 200 — a degradable surface, never a
+    // hard error — and the client reads its state from the tiers block.
     let (status, body) = post(router, "/search", &token, serde_json::json!({"query": "x"})).await;
-    assert_eq!(status, StatusCode::OK);
     assert_eq!(
-        body["tiers"]["semantic"]["available"],
-        Value::Bool(false),
-        "the rag-down degrade path degrades semantic: {body}"
+        status,
+        StatusCode::OK,
+        "search is never a hard error: {body}"
     );
+    assert!(
+        body["tiers"]["semantic"]["available"].is_boolean(),
+        "the semantic tier is always reported, read from tiers not guessed: {body}"
+    );
+    assert!(
+        body["data"]["results"].is_array(),
+        "results is always an array on the tiers-carrying 200: {body}"
+    );
+    // LENSA-02 (the load-bearing guard): whatever the semantic outcome, the
+    // declared tier must stay truthful — false here because core was unreachable
+    // — never hardcoded available by `rag_tiers()`.
     assert_eq!(
         body["tiers"]["declared"]["available"],
         Value::Bool(false),
-        "LENSA-02: a degrade path must keep the declared tier truthful when core \
-         was unreachable, never hardcode declared:true: {body}"
+        "LENSA-02: a search response must keep the declared tier truthful when \
+         core was unreachable, never hardcode declared:true: {body}"
     );
 }

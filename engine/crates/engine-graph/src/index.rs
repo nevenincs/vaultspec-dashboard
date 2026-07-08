@@ -335,6 +335,9 @@ fn index_structural(
             // (or tier-less plan) carries no tier.
             status: frontmatter_adr_status(&text),
             tier: frontmatter_plan_tier(&text),
+            // Document weight (left-rail-tree-controls ADR D2): measured on the
+            // body this pass already holds — O(bytes), no second read.
+            size: Some(engine_model::DocSize::measure(&text)),
             facets: vec![Facet {
                 scope: scope.clone(),
                 presence: Presence::Exists,
@@ -466,6 +469,8 @@ pub(crate) fn project_rules(
             // state lives in its facet lifecycle below.
             status: None,
             tier: None,
+            // A rule is a projection, not a vault document row; no weight facet.
+            size: None,
             facets: vec![Facet {
                 scope: scope.clone(),
                 presence: Presence::Exists,
@@ -807,6 +812,7 @@ pub(crate) fn mint_plan_containers(
             feature_tags: feature_tags.to_vec(),
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope.clone(),
                 presence: Presence::Exists,
@@ -1468,6 +1474,7 @@ mod tests {
             feature_tags: vec![],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,

@@ -33,6 +33,7 @@ import { useViewStore } from "../../stores/view/viewStore";
 // shell, which imports this aggregator once at load).
 import "../menus/registerAllCommands";
 import { CommandPalette } from "./CommandPalette";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function PaletteShortcutHarness() {
   useKeymapDispatcher();
@@ -87,7 +88,7 @@ describe("CommandPalette lifecycle", () => {
     expect(useCommandPaletteStore.getState().query).toBe("stale scope query");
 
     act(() => useCommandPaletteStore.getState().reset());
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), ENGINE_WAIT);
 
     act(() => useCommandPaletteStore.getState().openPalette());
     const reopened = screen.getByRole("combobox") as HTMLInputElement;
@@ -124,14 +125,16 @@ describe("CommandPalette lifecycle", () => {
     act(() => useCommandPaletteStore.getState().openPalette());
     const input = screen.getByRole("combobox") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "ops vault check" } });
-    fireEvent.click(await screen.findByRole("option", { name: "ops: vault check" }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: "ops: vault check" }, ENGINE_WAIT),
+    );
     expect(appConfirmGuard.isArmed("ops:run")).toBe(true);
 
     seedPaletteDashboardState(scope, { kind: "time-travel", at: 42 });
 
     await waitFor(() => {
       expect(appConfirmGuard.isArmed("ops:run")).toBe(false);
-    });
+    }, ENGINE_WAIT);
     expect(screen.queryByRole("option", { name: "ops: vault check" })).toBeNull();
   });
 });

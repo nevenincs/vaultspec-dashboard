@@ -16,8 +16,10 @@ const TIERS = {
   semantic: { available: true },
 };
 
+// The engine's flat annotated HTTP envelope after `unwrapEnvelope`: results at
+// the top level alongside the tiers block (rag-integration-hardening D1).
 const envelope = (results: unknown[]) => ({
-  envelope: { ok: true, data: { results } },
+  results,
   tiers: TIERS,
 });
 

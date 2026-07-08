@@ -13,6 +13,7 @@ import {
   normalizeDashboardTextFilterDraftValue,
   useDashboardTextFilterDraft,
 } from "./dashboardTextFilter";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
@@ -78,14 +79,14 @@ describe("useDashboardTextFilterDraft", () => {
       { initialProps: { scope: scopeA }, wrapper: wrapper(client) },
     );
 
-    await waitFor(() => expect(result.current.value).toBe(""));
+    await waitFor(() => expect(result.current.value).toBe(""), ENGINE_WAIT);
 
     act(() => result.current.setValue("from-a"));
     expect(result.current.value).toBe("from-a");
 
     rerender({ scope: scopeB });
 
-    await waitFor(() => expect(result.current.value).toBe(""));
+    await waitFor(() => expect(result.current.value).toBe(""), ENGINE_WAIT);
   });
 
   it("resets a pending local draft when the dashboard source changes with the same canonical text", async () => {
@@ -111,7 +112,7 @@ describe("useDashboardTextFilterDraft", () => {
       wrapper: wrapper(client),
     });
 
-    await waitFor(() => expect(result.current.value).toBe(""));
+    await waitFor(() => expect(result.current.value).toBe(""), ENGINE_WAIT);
 
     act(() => result.current.setValue("from-session-a"));
     expect(result.current.value).toBe("from-session-a");
@@ -121,7 +122,7 @@ describe("useDashboardTextFilterDraft", () => {
     });
     rerender();
 
-    await waitFor(() => expect(result.current.value).toBe(""));
+    await waitFor(() => expect(result.current.value).toBe(""), ENGINE_WAIT);
   });
 
   it("keeps malformed runtime draft input from becoming visual state", async () => {
@@ -142,7 +143,7 @@ describe("useDashboardTextFilterDraft", () => {
       wrapper: wrapper(client),
     });
 
-    await waitFor(() => expect(result.current.value).toBe(""));
+    await waitFor(() => expect(result.current.value).toBe(""), ENGINE_WAIT);
 
     act(() => result.current.setValue({ value: "ad hoc" }));
 
@@ -167,7 +168,7 @@ describe("useDashboardTextFilterDraft", () => {
       wrapper: wrapper(client),
     });
 
-    await waitFor(() => expect(result.current.value).toBe(""));
+    await waitFor(() => expect(result.current.value).toBe(""), ENGINE_WAIT);
 
     act(() => result.current.setValue("local"));
     expect(result.current.value).toBe("local");

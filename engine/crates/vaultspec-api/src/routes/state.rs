@@ -84,6 +84,13 @@ pub struct DashboardState {
     pub date_range: DateRange,
     pub timeline_mode: DashboardTimelineMode,
     pub graph_granularity: GraphGranularity,
+    /// The active graph corpus / view mode (codebase-graphing ADR D7): which
+    /// dataset the whole graph surface renders — the VAULT knowledge graph
+    /// (default) or the DISCONNECTED code graph. Threaded into the graph query
+    /// so a switch re-queries the other corpus and the scene reloads. Seeded on
+    /// load from the durable `graph_corpus` setting.
+    #[serde(default)]
+    pub corpus: GraphCorpus,
     pub salience_lens: SalienceLens,
     pub salience_focus: Option<String>,
     pub representation_mode: RepresentationMode,
@@ -101,11 +108,31 @@ impl DashboardState {
             date_range: DateRange::default(),
             timeline_mode: DashboardTimelineMode::Live,
             graph_granularity: GraphGranularity::Feature,
+            corpus: GraphCorpus::default(),
             salience_lens: SalienceLens::Status,
             salience_focus: None,
             representation_mode: RepresentationMode::Connectivity,
             panel_state: PanelState::default(),
             graph_bounds: GraphBounds::default(),
+        }
+    }
+}
+
+/// The graph corpus / view mode (codebase-graphing ADR D7). Vault is the
+/// default so an unspecified state is the pre-corpus behaviour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum GraphCorpus {
+    #[default]
+    Vault,
+    Code,
+}
+
+impl GraphCorpus {
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            GraphCorpus::Vault => "vault",
+            GraphCorpus::Code => "code",
         }
     }
 }
@@ -211,6 +238,7 @@ pub struct DashboardStatePatch {
     pub date_range: Option<DateRange>,
     pub timeline_mode: Option<DashboardTimelineMode>,
     pub graph_granularity: Option<GraphGranularity>,
+    pub corpus: Option<GraphCorpus>,
     pub salience_lens: Option<SalienceLens>,
     pub salience_focus: PatchValue<String>,
     pub representation_mode: Option<RepresentationMode>,
@@ -327,6 +355,9 @@ fn apply_patch(
     }
     if let Some(graph_granularity) = patch.graph_granularity {
         current.graph_granularity = graph_granularity;
+    }
+    if let Some(corpus) = patch.corpus {
+        current.corpus = corpus;
     }
     if let Some(salience_lens) = patch.salience_lens {
         let raw = salience_lens.as_wire();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { EngineEdge, EngineNode } from "../../stores/server/engine";
-import { mergeSlices } from "./WorkingSet";
+import { mergeSlices } from "../../stores/view/displaySlice";
 
 const node = (id: string): EngineNode => ({ id, kind: "feature" });
 const edge = (id: string, src: string, dst: string): EngineEdge => ({

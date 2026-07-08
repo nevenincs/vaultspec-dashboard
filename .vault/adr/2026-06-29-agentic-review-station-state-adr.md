@@ -24,6 +24,7 @@ related:
   - '[[2026-06-29-agentic-document-chunk-management-adr]]'
   - '[[2026-06-29-agentic-multiagent-composition-adr]]'
   - '[[2026-06-29-agentic-document-identity-adr]]'
+  - '[[2026-07-02-agentic-operation-modes-adr]]'
 ---
 
 # `agentic-review-station-state` adr: `review station queue state and assignment model` | (**status:** `accepted`)
@@ -55,23 +56,35 @@ station must tolerate stale browser tabs and retry decisions idempotently.
 ## Implementation
 
 The backend serves review-station items as projections over proposals,
-approval requests, assignments, and policy. V1 queue item states are
-`queued`, `claimed`, `in_review`, `waiting_on_agent`, `clarification_requested`,
-`clarification_responded`, `reviewer_editing`, `stale`, `escalated`,
-`decision_submitted`, and `closed`.
+approval requests, assignments, and policy. V1 queue item states are FOUR
+(decided 2026-07-02, architecture review finding ASA-003, collapsing this ADR's
+earlier eleven-state vocabulary to the single-reviewer reality): `queued`,
+`claimed`, `decision_submitted`, and `closed`. Facts the wider vocabulary
+encoded as states remain visible as projection FIELDS on the item — staleness is
+the already-served stale reason, conflict the conflict summary, an in-flight
+clarification the latest `respond` exchange — so nothing is hidden; it is simply
+not a state machine until a real review team needs one. The deferred extension
+states (`in_review`, `waiting_on_agent`, `clarification_requested`,
+`clarification_responded`, `reviewer_editing`, `stale`, `escalated`) are
+reserved vocabulary, enabled per state when multi-reviewer or long-loop
+clarification workflows produce evidence of need.
 
 Reviewers may claim and release items. A claim records actor, expiry, and
 purpose, but it does not grant authority to apply stale or unauthorized work.
 Clarification loops use `respond` decisions to send structured feedback to the
-agent and move the item to `waiting_on_agent` until a response or revised
-proposal arrives. Reviewer edits create a new proposal revision or reviewer
-candidate and make older approvals stale.
+agent; in V1 the item stays `claimed` while the exchange runs. Reviewer edits
+create a new proposal revision or reviewer candidate and make older approvals
+stale.
 
 The station projection includes queue reason, assigned reviewer, visible
 decision options, stale reason, validation status, conflict summary, risk class,
 required reviewer role/count, competing proposal ids, and recommended next
-actions. Multi-reviewer or quorum rules are policy data; V1 may start with a
-single required human reviewer but the projection shape supports a count.
+actions. Multi-reviewer or quorum rules are policy data; V1 starts with a
+single required human reviewer and the projection shape supports a count. Under
+the operation-modes decision (see the agentic-operation-modes ADR) the station
+also serves the after-the-fact lane: changesets applied under a recorded mode
+policy, ordered by apply time, with rollback availability — acknowledgement
+items, not gates.
 
 ## Rationale
 

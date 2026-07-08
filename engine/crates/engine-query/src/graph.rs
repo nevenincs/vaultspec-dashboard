@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use engine_graph::diff::DiffOp;
+use engine_graph::diff::{DiffOp, DiffTruncated, MAX_DIFF_DELTAS};
 use engine_graph::{LinkageGraph, MetaEdge, degree_by_tier, lifecycle_in_scope, meta_edges};
 use engine_model::{Edge, EdgeId, Node, NodeId, NodeKind, Progress, RelationKind, ScopeRef};
 use rayon::prelude::*;
@@ -197,6 +197,11 @@ impl DocumentViews {
 /// defense belt-and-braces the bounded-query rules use). The id/kind are
 /// untouched — this is a pure filter.
 pub fn is_displayable_node(node: &Node) -> bool {
+    // The CODE-corpus kind is fenced from the vault graph (codebase-graphing
+    // ADR D1: the corpora never mix; the code corpus is served only through its
+    // own query path). Files are the code corpus's ONLY node kind
+    // (code-graph-files-only): the former directory `CodeModule` kind is
+    // deleted from the model, so this one arm covers the whole fence.
     if node.kind == NodeKind::CodeArtifact {
         return false;
     }
@@ -253,7 +258,7 @@ pub fn bound_slice(slice: &mut GraphSlice) -> Option<usize> {
 /// ADR P01) when the type carries one. All are pure re-computable projections —
 /// they perturb no existing field and do NOT touch the node id (the §4 identity
 /// guarantee is preserved).
-fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> Value {
+pub(crate) fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> Value {
     let mut view = serde_json::to_value(node).expect("node serializes");
     view["degree_by_tier"] =
         serde_json::to_value(degree_by_tier(graph, &node.id)).expect("degrees serialize");
@@ -527,6 +532,9 @@ pub fn build_vault_tree_rows(graph: &LinkageGraph, scope: &ScopeRef) -> Vec<Valu
                 "status": n.status,
                 "tier": n.tier,
                 "progress": progress,
+                // Ingest-measured document weight (left-rail-tree-controls ADR
+                // D2): honestly absent (null) when the node carries none.
+                "size": n.size,
             })
         })
         .collect();
@@ -535,6 +543,43 @@ pub fn build_vault_tree_rows(graph: &LinkageGraph, scope: &ScopeRef) -> Vec<Valu
             .as_str()
             .unwrap_or_default()
             .cmp(b["stem"].as_str().unwrap_or_default())
+    });
+    rows
+}
+
+/// Build the path-sorted `/code-files` rows: one minimal row per `code:` FILE
+/// node projected off the code corpus's `LinkageGraph` (never the DOI-bounded
+/// graph projection), so a client can hold the COMPLETE code-file listing and
+/// narrow it (search-providers ADR: `files (code)` is a client narrow over a
+/// complete set, never the capped graph slice). Every admitted source file
+/// mints exactly one `code:{path}` node (files-only representation), so the row
+/// count equals the corpus's file count. The row is deliberately minimal —
+/// `path` (the node key), `node_id` (so a hit is directly navigable), `title`
+/// (the file's display title, honestly null when unset), and `lang` (the wire
+/// language token derived from the path extension via the one
+/// `engine_model::language_token` source of truth, null for an unclassified
+/// extension). Sorted by borrowed path — no per-comparison allocation — a
+/// filter-independent projection the API cell memoizes per code generation
+/// (mirroring `build_vault_tree_rows`); the handler paginates the slice per
+/// request.
+pub fn build_code_file_rows(graph: &LinkageGraph) -> Vec<Value> {
+    let mut rows: Vec<Value> = graph
+        .nodes()
+        .filter(|n| n.kind == NodeKind::CodeArtifact)
+        .map(|n| {
+            json!({
+                "path": n.key,
+                "node_id": n.id.0,
+                "title": n.title,
+                "lang": engine_model::language_token(&n.key),
+            })
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        a["path"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(b["path"].as_str().unwrap_or_default())
     });
     rows
 }
@@ -840,17 +885,25 @@ fn graph_query_inner(
 /// FEATURE granularity (feature-convergence nodes + meta-edges) and diffs them
 /// by stable id into `granularity: "feature"` entries
 /// (`{op, granularity, node?|edge?, t, seq}` — the same wire shape as the
-/// document deltas), advancing `seq` from `seq_start`. Returns the entries and
-/// the last seq used. The engine owns this aggregation (contract §4: the GUI
-/// never derives the constellation from document edges); meta-edge identity is
-/// the endpoint pair, stable across re-derivation (provenance-stable keys).
+/// document deltas), advancing `seq` from `seq_start`. Returns the entries, the
+/// last seq used, and an optional truncation block. The engine owns this
+/// aggregation (contract §4: the GUI never derives the constellation from
+/// document edges); meta-edge identity is the endpoint pair, stable across
+/// re-derivation (provenance-stable keys).
+///
+/// Bounded the SAME way the document diff is (GIR-014, sharing
+/// [`MAX_DIFF_DELTAS`] / [`DiffTruncated`] with `engine_graph::diff`): a diff
+/// whose feature-node + meta-edge delta count exceeds the ceiling DEGRADES TO
+/// KEYFRAME-ONLY — empty `entries` plus a truncation block — because a partial
+/// mutation log is not self-consistent. Both diff granularities therefore share
+/// ONE bounding contract, and the client answers either with a re-keyframe.
 pub fn feature_delta(
     old: &LinkageGraph,
     new: &LinkageGraph,
     scope: &ScopeRef,
     t: i64,
     seq_start: u64,
-) -> (Vec<Value>, u64) {
+) -> (Vec<Value>, u64, Option<DiffTruncated>) {
     fn project(
         g: &LinkageGraph,
         scope: &ScopeRef,
@@ -881,7 +934,16 @@ pub fn feature_delta(
 
     let mut entries: Vec<Value> = Vec::new();
     let mut seq = seq_start;
+    // `total` counts EVERY changed element so the truncation block reports the
+    // true size; `entries` is capped at the ceiling so allocation stays bounded
+    // even for an over-ceiling diff that will be discarded (mirrors the document
+    // `diff`; bounded-by-default-for-every-accumulator).
+    let mut total: usize = 0;
     let mut push = |op: DiffOp, node: Option<&Value>, edge: Option<&Value>| {
+        total += 1;
+        if entries.len() >= MAX_DIFF_DELTAS {
+            return;
+        }
         let mut entry = serde_json::Map::new();
         entry.insert(
             "op".into(),
@@ -927,8 +989,27 @@ pub fn feature_delta(
         }
     }
 
+    // Over the ceiling: degrade to KEYFRAME-ONLY (GIR-014), the same contract the
+    // document diff uses — a partial feature/meta-edge mutation log is not
+    // self-consistent, so emit no deltas plus an honest truncation block and let
+    // the client re-keyframe via `/graph/asof`.
+    if total > MAX_DIFF_DELTAS {
+        return (
+            Vec::new(),
+            seq_start,
+            Some(DiffTruncated {
+                total_deltas: total,
+                returned_deltas: 0,
+                reason: format!(
+                    "feature diff delta ceiling ({MAX_DIFF_DELTAS}): a partial mutation \
+                     log is not self-consistent — the client re-keyframes via /graph/asof"
+                ),
+            }),
+        );
+    }
+
     let last_seq = seq.saturating_sub(1).max(seq_start);
-    (entries, last_seq)
+    (entries, last_seq, None)
 }
 
 #[cfg(test)]
@@ -965,6 +1046,7 @@ mod tests {
             feature_tags: vec![feature.into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -1321,6 +1403,7 @@ mod tests {
             feature_tags: vec!["feature-a".into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -1452,6 +1535,7 @@ mod tests {
             feature_tags: vec!["feature-a".into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -1474,6 +1558,7 @@ mod tests {
             feature_tags: vec!["feature-a".into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -1611,6 +1696,7 @@ mod tests {
             feature_tags: vec![feature.into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -1633,6 +1719,7 @@ mod tests {
             feature_tags: vec![feature.into()],
             status: None,
             tier: None,
+            size: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -1663,6 +1750,91 @@ mod tests {
             rows.iter().all(|r| r["doc_type"] != "index"),
             "no row carries the index doc_type"
         );
+    }
+
+    #[test]
+    fn vault_tree_rows_carry_size_and_absent_size_serves_null() {
+        // left-rail-tree-controls ADR D2: the ingest-measured weight rides the
+        // row; a node without one (older cache, projection) serves an honest
+        // null, never a fabricated zero.
+        let mut g = LinkageGraph::new();
+        let mut sized = doc("a-sized", "feature-a");
+        sized.size = Some(engine_model::DocSize::measure("four words of body"));
+        g.upsert_node(sized);
+        g.upsert_node(doc("b-sizeless", "feature-a"));
+        let rows = build_vault_tree_rows(&g, &scope());
+        let sized_row = rows.iter().find(|r| r["stem"] == "a-sized").unwrap();
+        assert_eq!(sized_row["size"]["bytes"], 18);
+        assert_eq!(sized_row["size"]["words"], 4);
+        let sizeless_row = rows.iter().find(|r| r["stem"] == "b-sizeless").unwrap();
+        assert!(
+            sizeless_row["size"].is_null(),
+            "absent weight serves null: {sizeless_row}"
+        );
+    }
+
+    /// A titled `code` artifact node — mirrors `code_artifact` but carries a
+    /// display title, so the projection's title pass-through is exercised.
+    fn titled_code_artifact(path: &str, title: &str) -> Node {
+        let mut n = code_artifact(path, "feature-a");
+        n.title = Some(title.into());
+        n
+    }
+
+    #[test]
+    fn code_file_rows_project_only_code_nodes_sorted_by_path() {
+        // The projection is the complete code-file listing: every `code:` FILE
+        // node, and NOTHING else (no `doc:` or `index` node bleeds in). Rows
+        // are path-sorted for cursor determinism.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-plan", "feature-a"));
+        g.upsert_node(index_doc("feature-a.index", "feature-a"));
+        g.upsert_node(code_artifact("src/zeta.rs", "feature-a"));
+        g.upsert_node(code_artifact("src/alpha.ts", "feature-a"));
+        let rows = build_code_file_rows(&g);
+        let paths: Vec<&str> = rows.iter().filter_map(|r| r["path"].as_str()).collect();
+        assert_eq!(
+            paths,
+            vec!["src/alpha.ts", "src/zeta.rs"],
+            "only code files, sorted by path"
+        );
+        // The node id rides each row so a hit is directly navigable.
+        assert_eq!(rows[0]["node_id"], "code:src/alpha.ts");
+        assert_eq!(rows[1]["node_id"], "code:src/zeta.rs");
+    }
+
+    #[test]
+    fn code_file_rows_derive_language_and_pass_title_honestly() {
+        // `lang` derives from the path extension via the one language_token
+        // source of truth; an unclassified extension serves a null lang. The
+        // title passes through, honestly null when the node carries none.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(titled_code_artifact("app/main.py", "main"));
+        g.upsert_node(code_artifact("docs/readme.md", "feature-a"));
+        let rows = build_code_file_rows(&g);
+        let py = rows.iter().find(|r| r["path"] == "app/main.py").unwrap();
+        assert_eq!(py["lang"], "python");
+        assert_eq!(py["title"], "main");
+        let md = rows.iter().find(|r| r["path"] == "docs/readme.md").unwrap();
+        assert_eq!(
+            md["lang"],
+            Value::Null,
+            "unclassified extension → null lang"
+        );
+        assert_eq!(
+            md["title"],
+            Value::Null,
+            "no title → null, never fabricated"
+        );
+    }
+
+    #[test]
+    fn code_file_rows_empty_on_a_graph_with_no_code() {
+        // A vault-only graph (no code corpus) projects zero rows — the honest
+        // empty listing, never a 5xx or a fabricated entry.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-plan", "feature-a"));
+        assert!(build_code_file_rows(&g).is_empty());
     }
 
     #[test]
@@ -1808,8 +1980,12 @@ mod tests {
         // changes.
         let new = fixture();
 
-        let (entries, last_seq) = feature_delta(&old, &new, &scope(), 100, 5);
+        let (entries, last_seq, truncated) = feature_delta(&old, &new, &scope(), 100, 5);
 
+        assert!(
+            truncated.is_none(),
+            "an in-bounds feature diff is not truncated"
+        );
         assert!(!entries.is_empty(), "constellation changed: deltas emitted");
         // Every entry rides the FEATURE species and the shared clock from 5.
         assert!(entries.iter().all(|e| e["granularity"] == "feature"));
@@ -1830,5 +2006,43 @@ mod tests {
             }),
             "the new cross-feature meta-edge appears as a tagged add: {entries:?}"
         );
+    }
+
+    #[test]
+    fn over_ceiling_feature_delta_degrades_to_keyframe_only() {
+        // GIR-014: a feature diff whose feature-node/meta-edge delta count exceeds
+        // MAX_DIFF_DELTAS degrades to keyframe-only (empty entries + honest
+        // truncation), the SAME contract as the document diff. One distinct
+        // feature tag per doc → one feature-convergence node → one add delta.
+        let old = LinkageGraph::new();
+        let mut new = LinkageGraph::new();
+        let over = MAX_DIFF_DELTAS + 1;
+        for i in 0..over {
+            new.upsert_node(doc(&format!("d{i:06}-plan"), &format!("feat-{i:06}")));
+        }
+        let (entries, _last_seq, truncated) = feature_delta(&old, &new, &scope(), 7, 0);
+        assert!(
+            entries.is_empty(),
+            "an over-ceiling feature diff emits no deltas (keyframe-only)"
+        );
+        let truncated = truncated.expect("over-ceiling feature diff carries truncation");
+        assert_eq!(
+            truncated.total_deltas, over,
+            "the TRUE delta count is reported"
+        );
+        assert_eq!(truncated.returned_deltas, 0);
+    }
+
+    #[test]
+    fn at_ceiling_feature_delta_ships_every_delta() {
+        // Exactly at the ceiling is in-bounds: all feature deltas ship, no truncation.
+        let old = LinkageGraph::new();
+        let mut new = LinkageGraph::new();
+        for i in 0..MAX_DIFF_DELTAS {
+            new.upsert_node(doc(&format!("d{i:06}-plan"), &format!("feat-{i:06}")));
+        }
+        let (entries, _last_seq, truncated) = feature_delta(&old, &new, &scope(), 7, 0);
+        assert_eq!(entries.len(), MAX_DIFF_DELTAS);
+        assert!(truncated.is_none());
     }
 }

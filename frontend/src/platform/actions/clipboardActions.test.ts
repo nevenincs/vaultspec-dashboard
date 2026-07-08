@@ -15,13 +15,19 @@ import {
 } from "./clipboardActions";
 
 const writeText = vi.fn().mockResolvedValue(undefined);
+const execCommand = vi.fn().mockReturnValue(true);
 
 beforeEach(() => {
   writeText.mockClear().mockResolvedValue(undefined);
+  execCommand.mockClear().mockReturnValue(true);
   Object.defineProperty(globalThis.navigator, "clipboard", {
     value: { writeText },
     configurable: true,
   });
+  // happy-dom doesn't implement execCommand; stub it so the non-secure-origin
+  // fallback path is exercisable.
+  (globalThis.document as unknown as { execCommand: typeof execCommand }).execCommand =
+    execCommand;
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -46,8 +52,29 @@ describe("copy verb", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("reports not-ok when the clipboard write rejects (degrades, no throw)", async () => {
+  it("falls back to execCommand on a non-secure origin (navigator.clipboard undefined)", async () => {
+    // The KAR-002 bug: on plain-http origins navigator.clipboard is undefined,
+    // so the copy must fall through to the hidden-textarea execCommand path.
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      value: undefined,
+      configurable: true,
+    });
+    const result = await dispatchCopy({ text: "node:alpha", what: "id" });
+    expect(writeText).not.toHaveBeenCalled();
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(result.ok).toBe(true);
+  });
+
+  it("falls back to execCommand when the async clipboard write rejects", async () => {
     writeText.mockRejectedValueOnce(new Error("denied"));
+    const result = await dispatchCopy({ text: "x" });
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(result.ok).toBe(true);
+  });
+
+  it("reports not-ok only when BOTH the clipboard write and execCommand fail", async () => {
+    writeText.mockRejectedValueOnce(new Error("denied"));
+    execCommand.mockReturnValue(false);
     const result = await dispatchCopy({ text: "x" });
     expect(result.ok).toBe(false);
   });

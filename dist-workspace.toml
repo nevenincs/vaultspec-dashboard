@@ -1,0 +1,30 @@
+[workspace]
+members = ["cargo:engine"]
+
+# Config for 'dist'
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.32.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["shell", "powershell"]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# Path that installers should place binaries in
+install-path = "CARGO_HOME"
+# Where to host releases
+hosting = "github"
+# Ship the standalone user-invoked updater (dashboard-packaging D5): installers
+# write an install receipt, and only receipt-marked self-installed copies get
+# `vaultspec-update`; package-manager installs update through their manager.
+# No auto-update — updating is always user-invoked.
+install-updater = true
+# Build the packaged binary with the SPA embedded (dashboard-packaging D2).
+features = ["embed-spa"]
+# Steps injected into every build job BEFORE cargo runs: the embed-spa build
+# compiles frontend/dist into the binary, so the SPA bundle must exist first
+# (build order, dashboard-packaging D2).
+github-build-setup = "release-build-setup.yml"
+# Validate this release config on PRs without building artifacts.
+pr-run-mode = "plan"

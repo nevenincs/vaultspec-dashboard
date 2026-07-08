@@ -26,6 +26,7 @@ import {
   toggleCommandPalette,
   useCommandPaletteStore,
 } from "./commandPalette";
+import { normalizeSearchCorpus } from "../server/searchProviders";
 
 describe("command palette store", () => {
   beforeEach(() => useCommandPaletteStore.getState().reset());
@@ -224,7 +225,7 @@ describe("command palette store", () => {
       showExpandedPanel: false,
       resultCountLabel: "",
       stateMode: null,
-      emptyMessage: "Search across your documents and code by meaning.",
+      emptyMessage: "Search across your documents and code.",
       liveMessage: "",
     });
 
@@ -259,7 +260,7 @@ describe("command palette store", () => {
       }),
     ).toMatchObject({
       stateMode: "degraded",
-      emptyMessage: "Semantic search is offline — showing title and text matches.",
+      emptyMessage: "Full search is unavailable — showing name matches only.",
       liveMessage: "search request failed",
     });
 
@@ -277,6 +278,87 @@ describe("command palette store", () => {
       stateMode: "empty",
       emptyMessage: "No matches for “auth”.",
     });
+
+    // Degraded WITHOUT a transport error (rag offline, files providers still
+    // serving): the plain-language copy states both truths — full search down,
+    // name matches only — and the screen-reader twin MATCHES the visible copy
+    // (search-providers ADR D3; no mechanism vocabulary).
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "auth",
+        cursor: 0,
+        expanded: false,
+        pills: [],
+        searchState: "semantic-offline",
+        semanticOffline: true,
+        error: false,
+      }),
+    ).toMatchObject({
+      stateMode: "degraded",
+      emptyMessage: "Full search is unavailable — showing name matches only.",
+      liveMessage: "Full search is unavailable — showing name matches only.",
+    });
+
+    // Twin parity when files RESCUE the query (review LOW-1): semantic offline but
+    // results present → no degraded StateBlock, and the SR live region announces
+    // the normal COUNT, not the degraded copy that would have no visible twin.
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "auth",
+        cursor: 0,
+        expanded: false,
+        pills: [{ nodeId: "doc:a" }, { nodeId: "code:b" }],
+        searchState: "results",
+        semanticOffline: true,
+        error: false,
+      }),
+    ).toMatchObject({
+      stateMode: null,
+      emptyMessage: null,
+      liveMessage: "2 results",
+    });
+
+    // A walk-capped provider surfaces the honest one-line incomplete note (review
+    // HIGH: truncated-not-surfaced); absent when every listing is complete.
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "auth",
+        cursor: 0,
+        expanded: false,
+        pills: [{ nodeId: "code:a" }],
+        searchState: "results",
+        semanticOffline: false,
+        error: false,
+        incomplete: true,
+      }).incompleteNote,
+    ).toBe(
+      "Some files may be missing from name matches — the repository is very large.",
+    );
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "auth",
+        cursor: 0,
+        expanded: false,
+        pills: [{ nodeId: "code:a" }],
+        searchState: "results",
+        semanticOffline: false,
+        error: false,
+      }).incompleteNote,
+    ).toBeNull();
+    // At idle (no query) the note stays silent even on a capped corpus — no
+    // matches are shown yet, so "missing matches" would be premature.
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "",
+        cursor: 0,
+        expanded: false,
+        pills: [],
+        searchState: "idle",
+        semanticOffline: false,
+        error: false,
+        incomplete: true,
+      }).incompleteNote,
+    ).toBeNull();
   });
 
   it("normalizes corrupted palette state before open and toggle transitions", () => {
@@ -368,5 +450,25 @@ describe("command palette store", () => {
 
     setCommandPaletteOpsFeedbackForEpoch(`${epoch}`, "stale");
     expect(useCommandPaletteStore.getState().opsMessage).toBe("running");
+  });
+});
+
+describe("search corpus separation (search-providers corpus seam)", () => {
+  it("normalizes the corpus and defaults to all", () => {
+    expect(normalizeSearchCorpus("docs")).toBe("docs");
+    expect(normalizeSearchCorpus("code")).toBe("code");
+    expect(normalizeSearchCorpus("everything")).toBe("all");
+    expect(normalizeSearchCorpus(undefined)).toBe("all");
+  });
+
+  it("switching the corpus restarts the cursor and opening resets to all", () => {
+    const store = useCommandPaletteStore.getState();
+    store.openSearch();
+    store.setSearchCursor(3);
+    store.setSearchCorpus("code");
+    expect(useCommandPaletteStore.getState().searchCorpus).toBe("code");
+    expect(useCommandPaletteStore.getState().searchCursor).toBe(0);
+    store.openSearch();
+    expect(useCommandPaletteStore.getState().searchCorpus).toBe("all");
   });
 });

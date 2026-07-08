@@ -65,17 +65,52 @@ export function normalizeCopyPayload(payload: unknown): CopyPayload {
   };
 }
 
-/** Write text to the clipboard, with an execCommand fallback for older surfaces. */
-async function writeClipboard(text: string): Promise<boolean> {
+/** The one clipboard write that works in a NON-SECURE context: a hidden textarea
+ *  + `document.execCommand("copy")`, fired synchronously within the user-gesture
+ *  stack. `navigator.clipboard` is undefined on plain-http origins (anything but
+ *  https / localhost / 127.0.0.1), which is our canonical network origin — so
+ *  without this fallback every copy is a silent no-op off localhost (KAR-002). */
+function execCommandCopy(text: string): boolean {
+  if (typeof document === "undefined" || !document.body) return false;
+  const active = document.activeElement as HTMLElement | null;
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", ""); // avoid the mobile soft keyboard
+  textarea.style.position = "fixed";
+  textarea.style.top = "-624.9375rem";
+  textarea.style.left = "-624.9375rem";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, text.length);
+  let ok = false;
   try {
-    if (globalThis.navigator?.clipboard?.writeText) {
+    ok = document.execCommand("copy");
+  } catch (error) {
+    clipboardLog.warn("execCommand copy failed", { error });
+  }
+  document.body.removeChild(textarea);
+  active?.focus?.(); // restore focus to the triggering surface
+  return ok;
+}
+
+/** Write text to the clipboard. Prefers the async Clipboard API (secure
+ *  contexts); falls back to the hidden-textarea `execCommand` path — the only
+ *  mechanism that works on the non-secure plain-http origin the dashboard is
+ *  served from (KAR-002/003: the previously-advertised fallback did not exist). */
+async function writeClipboard(text: string): Promise<boolean> {
+  if (globalThis.navigator?.clipboard?.writeText) {
+    try {
       await globalThis.navigator.clipboard.writeText(text);
       return true;
+    } catch (error) {
+      // Secure context but the write was rejected — try execCommand as a
+      // best-effort (it may be past the gesture after the await, but costs
+      // nothing to attempt).
+      clipboardLog.warn("clipboard.writeText failed; trying execCommand", { error });
     }
-  } catch (error) {
-    clipboardLog.warn("clipboard.writeText failed", { error });
   }
-  return false;
+  return execCommandCopy(text);
 }
 
 // Register the terminal effect once at module load (the ops handler pattern).

@@ -12,11 +12,12 @@
 // split, then closes.
 //
 // Layer law (dashboard-layer-ownership / view-rewrite-preserves-the-contract): dumb
-// chrome. It consumes the stores `useUnifiedSearchController` (the sole wire client
-// for search) and `useContentView` (the sole wire client for node content), derives
-// the pill views through the stores `deriveSearchPillViews`, reads degradation only
-// through the controller's interpreted `semanticOffline`, and emits selection through
-// the scoped dashboard-selection seam. It fetches nothing itself and reads no raw
+// chrome. It consumes the stores `useSearchProviders` (the ONE Search host composing
+// the semantic + files(vault) + files(code) providers into one ranked interleaved
+// list) and `useContentView` (the sole wire client for node content), derives the
+// pill views through the stores `deriveSearchPillViews`, reads degradation only
+// through the host's interpreted `semanticOffline`, and emits selection through the
+// scoped dashboard-selection seam. It fetches nothing itself and reads no raw
 // `tiers` block. The editorial render REUSES the existing MarkdownReader / CodeViewer
 // viewers rather than authoring a bespoke long-form.
 
@@ -36,17 +37,29 @@ import {
   searchPaletteMovedCursor,
   setCommandPaletteQuery,
   setSearchPaletteCursor,
+  setSearchPaletteCorpus,
   setSearchPaletteExpanded,
   useCommandPaletteQuery,
+  useSearchPaletteCorpus,
   useSearchPaletteCursor,
   useSearchPaletteExpanded,
 } from "../../stores/view/commandPalette";
-import { useUnifiedSearchController } from "../../stores/server/searchController";
+import {
+  type SearchCorpus,
+  useSearchProviders,
+} from "../../stores/server/searchProviders";
 import { deriveSearchPillViews } from "../../stores/server/searchPill";
 import { useActiveScope, useContentView } from "../../stores/server/queries";
 import { activateEntity } from "../../stores/view/activateEntity";
 import { useViewportClass } from "../../stores/view/viewportClass";
-import { Kbd, Skeleton, SkeletonRow, StateBlock } from "../kit";
+import {
+  Kbd,
+  Segment,
+  SegmentedToggle,
+  Skeleton,
+  SkeletonRow,
+  StateBlock,
+} from "../kit";
 import { CodeViewer } from "../viewer/CodeViewer";
 import { MarkdownReader } from "../viewer/MarkdownReader";
 import { trapTabFocus } from "../chrome/focusTrap";
@@ -108,16 +121,41 @@ function LegendHint({ keys, label }: { keys: string[]; label: string }) {
   );
 }
 
+/** The corpus separation control (search-providers corpus seam): one three-way
+ *  segmented radiogroup — All | Docs | Code — narrowing which providers feed the
+ *  merged list. A search-target control on the search plane, never a corpus
+ *  filter write. */
+function CorpusToggle({ corpus }: { corpus: SearchCorpus }) {
+  return (
+    <SegmentedToggle
+      value={corpus}
+      onChange={(value) => setSearchPaletteCorpus(value)}
+      ariaLabel="Search scope"
+    >
+      <Segment value="all">All</Segment>
+      <Segment value="docs">Docs</Segment>
+      <Segment value="code">Code</Segment>
+    </SegmentedToggle>
+  );
+}
+
 export function SearchPaletteSurface() {
   const query = useCommandPaletteQuery();
   const cursor = useSearchPaletteCursor();
   const expanded = useSearchPaletteExpanded();
+  const corpus = useSearchPaletteCorpus();
   const scope = useActiveScope();
 
-  const search = useUnifiedSearchController(query, scope);
+  const search = useSearchProviders(query, scope, corpus);
   const pills = useMemo(
-    () => deriveSearchPillViews(search.results, scope),
-    [search.results, scope],
+    // The host yields banded provider entries; the pill derivation reads the
+    // wire `result` each wraps (species/title/why are derived there).
+    () =>
+      deriveSearchPillViews(
+        search.entries.map((entry) => entry.result),
+        scope,
+      ),
+    [search.entries, scope],
   );
   const presentation = deriveSearchPalettePresentationView({
     query,
@@ -127,6 +165,7 @@ export function SearchPaletteSurface() {
     searchState: search.state,
     semanticOffline: search.semanticOffline,
     error: search.error,
+    incomplete: search.incomplete,
   });
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -239,6 +278,9 @@ export function SearchPaletteSurface() {
             Cancel
           </button>
         </div>
+        <div className="flex items-center border-b border-rule px-fg-3 py-fg-1-5">
+          <CorpusToggle corpus={corpus} />
+        </div>
         {pills.length > 0 ? (
           <ul
             id={listboxId}
@@ -271,6 +313,11 @@ export function SearchPaletteSurface() {
               stateMode={presentation.stateMode}
               message={presentation.emptyMessage}
             />
+          </div>
+        )}
+        {presentation.incompleteNote && (
+          <div className="border-t border-rule px-fg-3 py-fg-1 text-caption text-ink-faint">
+            {presentation.incompleteNote}
           </div>
         )}
         <div id={liveRegionId} aria-live="polite" className="sr-only">
@@ -315,6 +362,7 @@ export function SearchPaletteSurface() {
             placeholder={presentation.inputPlaceholder}
             className="min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink-faint"
           />
+          <CorpusToggle corpus={corpus} />
           {presentation.resultCountLabel && (
             <span className="shrink-0 text-caption text-ink-faint" data-tabular>
               {presentation.resultCountLabel}
@@ -393,6 +441,15 @@ export function SearchPaletteSurface() {
               stateMode={presentation.stateMode}
               message={presentation.emptyMessage}
             />
+          </div>
+        )}
+
+        {/* Incomplete-listing note: a walk-capped provider means name matches may
+            miss files. Visible (and thus screen-reader accessible) plain-language
+            line, no mechanism words (search-providers ADR D1 / D8). */}
+        {presentation.incompleteNote && (
+          <div className="border-t border-rule px-fg-4 py-fg-1 text-caption text-ink-faint">
+            {presentation.incompleteNote}
           </div>
         )}
 

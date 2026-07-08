@@ -119,6 +119,7 @@ impl RelationKind {
             RelationKind::Resembles => "resembles",
             RelationKind::Contains => "contains",
             RelationKind::CoreDerived => "core-derived",
+            RelationKind::Imports => "imports",
         }
     }
 }
@@ -141,6 +142,7 @@ impl Provenance {
             // provenance as attribution only.
             Provenance::CommitCorrelation { sha, .. } => format!("commit:{sha}"),
             Provenance::RagMatch { query, .. } => format!("rag:{query}"),
+            Provenance::TreeLayout { target } => format!("tree:{target}"),
         }
     }
 }
@@ -255,6 +257,15 @@ mod tests {
         for (actual, expected) in cases {
             assert_eq!(actual.0, expected);
         }
+    }
+
+    #[test]
+    fn imports_relation_wire_name_is_pinned() {
+        // codebase-graphing ADR D4: the import edge's relation token. `as_str`
+        // must match the serde kebab-case encoding, like every other variant.
+        assert_eq!(RelationKind::Imports.as_str(), "imports");
+        let json = serde_json::to_string(&RelationKind::Imports).unwrap();
+        assert_eq!(json, "\"imports\"");
     }
 
     #[test]

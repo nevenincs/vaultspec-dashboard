@@ -67,18 +67,25 @@ that knows which `vaultspec-core` verb or batch capability implements a semantic
 operation. It captures the core envelope, post-write blob hashes, diagnostics,
 and failures as apply receipts.
 
-The changeset model is multi-document from the start. V1 may restrict which
-multi-document changes can be applied atomically to operations backed by a core
-atomic verb or batch capability. For other multi-document work, the backend
-either refuses apply with a clear capability result or records an honest staged
-materialization with per-child receipts and compensating rollback requirements.
-It must not present a staged apply as all-or-nothing.
+The changeset model is multi-document from the start, but V1 APPLY IS
+SINGLE-CHILD (decided 2026-07-02, architecture review finding ASA-004,
+superseding this ADR's earlier "V1 may restrict" hedge): the apply command
+accepts only changesets with exactly one child operation, and refuses a
+multi-child changeset with an honest typed capability result naming the limit.
+The multi-document SCHEMA is retained unchanged — proposals, reviews, diffs, and
+the ledger all model child operations — so agents can draft connected work and
+reviewers can see it as one unit; only materialization is single-child until the
+atomicity story is real.
 
-For staged materialization, each child operation records its own materialization
-state and receipt. Aggregate projections include `partially_applied`,
-`compensation_required`, and rollback availability. A staged apply that cannot
-complete must surface its compensation and rollback limits rather than collapse
-into a generic `failed` state.
+Staged multi-document materialization — per-child materialization states,
+`partially_applied`, `compensation_required`, compensation records, and
+watcher-convergence repair projections — is DEFERRED behind `vaultspec-core`
+growing a batch transaction capability, which is filed upstream as the sibling
+gap it is. A saga/compensation engine compensating for a missing core capability
+is not V1 scope; when core provides the transaction boundary, multi-child apply
+returns as an atomic capability rather than a compensation workflow. Until then
+the two staged-apply lifecycle statuses remain reserved vocabulary in the ledger
+but are unreachable.
 
 Post-apply, the backend records the durable result, publishes authoring events
 through the outbox, and waits for watcher or reindex convergence as a separate
@@ -96,9 +103,11 @@ protects audit and rollback correctness.
 
 Approved proposals can materialize safely through the existing conformance and
 write machinery. Agents remain untrusted proposers rather than direct writers.
-Multi-document support is honest but may be capability-limited until core grows a
-true batch transaction. Apply records become central product data and require
-migrations, retention, and reconciliation.
+Multi-document work is reviewable as one unit but materializes single-child in
+V1; the compensation subsystem, two lifecycle statuses, and the convergence
+repair machinery drop off the critical path until core provides a real batch
+transaction. Apply records become central product data and require migrations,
+retention, and reconciliation.
 
 ## Codification candidates
 

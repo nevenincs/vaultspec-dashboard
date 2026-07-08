@@ -48,6 +48,7 @@ import { ProjectNavigator } from "./left/ProjectNavigator";
 import { CommandPalette } from "./palette/CommandPalette";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { useSettingsEffects } from "./settings/settingsEffects";
+import { useGraphViewModeBridge } from "../stores/server/graphViewModeBridge";
 import { useThemeSetting } from "./settings/themeSetting";
 import { StatusTab } from "./right/StatusTab";
 import { IconRail } from "./shell/IconRail";
@@ -103,6 +104,11 @@ export function AppShell() {
   // Apply document-level settings effects once at the shell top. Graph/filter
   // defaults are dashboard-state concerns, not legacy store seeds.
   useSettingsEffects(scope);
+  // Bridge the left-rail vault|code view mode to the graph corpus + durable
+  // setting once at the shell top (codebase-graphing ADR D7): a view-mode change
+  // (rail toggle, keyboard cycle, or command palette) re-queries the other corpus
+  // and wipes/reloads the canvas; a fresh scope adopts the persisted mode.
+  useGraphViewModeBridge(scope);
   // F-M1 (event-unity): mount the shared backend-signal stream (backends + git)
   // once here so status / rag-health stay live regardless of which rail tab is
   // open; NowStrip and the search controller read the deduped shared accumulator.

@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#graph-simulation-stability'
-date: '2026-06-29'
-modified: '2026-06-29'
+date: '2026-07-03'
+modified: '2026-07-03'
 related:
   - '[[2026-06-29-graph-simulation-stability-S01]]'
   - '[[2026-06-29-graph-simulation-stability-S02]]'
@@ -13,6 +13,10 @@ related:
   - '[[2026-06-29-graph-simulation-stability-adr]]'
   - '[[2026-06-29-graph-simulation-stability-plan]]'
   - '[[2026-06-29-graph-simulation-stability-research]]'
+  - '[[2026-07-02-graph-simulation-stability-audit]]'
+  - '[[2026-07-03-graph-simulation-stability-adr]]'
+  - '[[2026-07-03-graph-simulation-stability-reference]]'
+  - '[[2026-07-03-graph-simulation-stability-research]]'
 ---
 
 # `graph-simulation-stability` feature index
@@ -24,6 +28,11 @@ Auto-generated index of all documents tagged with `#graph-simulation-stability`.
 ### adr
 
 - `2026-06-29-graph-simulation-stability-adr` - `graph-simulation-stability` adr: `the settled layout is authoritative: additive set-data pins survivors and relaxes only new nodes` | (**status:** `accepted`)
+- `2026-07-03-graph-simulation-stability-adr` - `graph-simulation-stability` adr: `convergence-gated anneal and persisted layout base` | (**status:** `accepted`)
+
+### audit
+
+- `2026-07-02-graph-simulation-stability-audit` - `graph-simulation-stability` audit: `settle-on-swap non-convergence`
 
 ### exec
 
@@ -36,6 +45,11 @@ Auto-generated index of all documents tagged with `#graph-simulation-stability`.
 
 - `2026-06-29-graph-simulation-stability-plan` - `graph-simulation-stability` plan
 
+### reference
+
+- `2026-07-03-graph-simulation-stability-reference` - `graph-simulation-stability` reference: `Obsidian-feel force sim discipline — Quartz, d3-force, ForceAtlas2 vs our solver`
+
 ### research
 
 - `2026-06-29-graph-simulation-stability-research` - `graph-simulation-stability` research: `graph stays static unless dragged: decoupling selection and additive set-data from the force solver`
+- `2026-07-03-graph-simulation-stability-research` - `graph-simulation-stability` research: `jitter root cause measurement`

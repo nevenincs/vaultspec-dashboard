@@ -18,15 +18,25 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
+import type { SettingsState } from "../../stores/server/engine";
 import { engineKeys } from "../../stores/server/queries";
 import { queryClient } from "../../stores/server/queryClient";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useSettingsDialog } from "../../stores/view/settingsDialog";
 import { createLiveClient, liveScope, liveTransport } from "../../testing/liveClient";
 import { SettingsDialog } from "./SettingsDialog";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function renderDialog() {
   return render(
@@ -40,8 +50,32 @@ function renderDialog() {
 
 describe("SettingsDialog (schema-driven, live engine)", () => {
   let scope: string;
+  // TIH-004 (write hygiene): this suite writes non-default values to the shared
+  // engine settings store (label_filter global, default_granularity scoped);
+  // snapshot them before the suite and restore at teardown so a later suite
+  // never inherits this suite's writes.
+  let settingsSnapshot: SettingsState;
   beforeAll(async () => {
     scope = await liveScope();
+    settingsSnapshot = await engineClient.settings();
+  });
+  afterAll(async () => {
+    for (const key of ["theme", "label_filter"]) {
+      const defaults: Record<string, string> = {
+        theme: "system",
+        label_filter: "",
+      };
+      await engineClient
+        .putSettings({ key, value: settingsSnapshot.global[key] ?? defaults[key] })
+        .catch(() => undefined);
+    }
+    await engineClient
+      .putSettings({
+        scope,
+        key: "default_granularity",
+        value: settingsSnapshot.scoped[scope]?.["default_granularity"] ?? "feature",
+      })
+      .catch(() => undefined);
   });
   beforeEach(() => {
     useViewStore.getState().setScope(scope);
@@ -59,7 +93,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
   it("renders the engine-declared groups and a control per setting", async () => {
     renderDialog();
     // Groups in declared order.
-    expect(await screen.findByText("Appearance")).toBeTruthy();
+    expect(await screen.findByText("Appearance", undefined, ENGINE_WAIT)).toBeTruthy();
     expect(screen.getByText("Graph")).toBeTruthy();
     // A labelled control per declared setting.
     expect(screen.getByText("Theme")).toBeTruthy();
@@ -81,20 +115,27 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     // assert against an explicit value, not an assumed-unset default).
     await engineClient.putSettings({ key: "theme", value: "system" });
     renderDialog();
-    const systemRadio = await screen.findByRole("radio", { name: "System" });
-    await waitFor(() => expect(systemRadio.getAttribute("aria-checked")).toBe("true"));
+    const systemRadio = await screen.findByRole(
+      "radio",
+      { name: "System" },
+      ENGINE_WAIT,
+    );
+    await waitFor(
+      () => expect(systemRadio.getAttribute("aria-checked")).toBe("true"),
+      ENGINE_WAIT,
+    );
     // Choose "dark" — write-through + invalidate re-reads the persisted value.
     fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
     await waitFor(() => {
       expect(
         screen.getByRole("radio", { name: "Dark" }).getAttribute("aria-checked"),
       ).toBe("true");
-    });
+    }, ENGINE_WAIT);
   });
 
   it("offers the per-scope override target for a scope-eligible setting only", async () => {
     renderDialog();
-    await screen.findByText("Default granularity");
+    await screen.findByText("Default granularity", undefined, ENGINE_WAIT);
     // Scope-eligible settings (e.g. default_granularity, timeline_date_criterion)
     // expose the [Global | This scope] target; global-only ones (theme, reduce_motion)
     // do not. Derive the expected count from the served schema so adding another
@@ -110,7 +151,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     useViewStore.getState().setScope(null);
     queryClient.clear();
     renderDialog();
-    await screen.findByText("Default granularity");
+    await screen.findByText("Default granularity", undefined, ENGINE_WAIT);
     const schema = await createLiveClient().settingsSchema();
     const scopeEligibleCount = schema.settings.filter((s) => s.scope_eligible).length;
     expect(screen.getAllByRole("radiogroup", { name: "apply to" })).toHaveLength(
@@ -120,7 +161,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
 
   it("persists a scope override when the target is 'This scope'", async () => {
     renderDialog();
-    await screen.findByText("Default granularity");
+    await screen.findByText("Default granularity", undefined, ENGINE_WAIT);
     // Switch the first scope-eligible row's target to 'This scope', then pick a value.
     const thisScope = screen.getAllByRole("radio", { name: "This scope" })[0];
     fireEvent.click(thisScope);
@@ -129,7 +170,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
       expect(
         screen.getByRole("radio", { name: "Document" }).getAttribute("aria-checked"),
       ).toBe("true");
-    });
+    }, ENGINE_WAIT);
   });
 
   it("cancels a pending continuous setting write when the dialog closes", async () => {
@@ -143,7 +184,11 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     });
 
     renderDialog();
-    const labelFilter = await screen.findByRole("textbox", { name: "Label filter" });
+    const labelFilter = await screen.findByRole(
+      "textbox",
+      { name: "Label filter" },
+      ENGINE_WAIT,
+    );
     fireEvent.change(labelFilter, { target: { value: "transient label draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
 
@@ -166,9 +211,13 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     });
 
     renderDialog();
-    const labelFilter = (await screen.findByRole("textbox", {
-      name: "Label filter",
-    })) as HTMLInputElement;
+    const labelFilter = (await screen.findByRole(
+      "textbox",
+      {
+        name: "Label filter",
+      },
+      ENGINE_WAIT,
+    )) as HTMLInputElement;
     fireEvent.change(labelFilter, { target: { value: "stale settings draft" } });
 
     const canonical = await engineClient.putSettings({
@@ -177,7 +226,10 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     });
     queryClient.setQueryData(engineKeys.settings(), canonical);
 
-    await waitFor(() => expect(labelFilter.value).toBe("canonical settings text"));
+    await waitFor(
+      () => expect(labelFilter.value).toBe("canonical settings text"),
+      ENGINE_WAIT,
+    );
     await new Promise((resolve) => setTimeout(resolve, 300));
 
     expect(settingWrites.map((body) => JSON.parse(body))).toContainEqual(
@@ -205,7 +257,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     useViewStore.getState().setScope(sourceScope);
 
     renderDialog();
-    await screen.findByText("Default granularity");
+    await screen.findByText("Default granularity", undefined, ENGINE_WAIT);
     // default_granularity is the first scope-eligible row (declared before
     // timeline_date_criterion), so target its [Global | This scope] radios by index.
     await waitFor(() => {
@@ -214,7 +266,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
           .getAllByRole("radio", { name: "This scope" })[0]
           .getAttribute("aria-checked"),
       ).toBe("true");
-    });
+    }, ENGINE_WAIT);
 
     act(() => useViewStore.getState().setScope(targetScope));
 
@@ -224,6 +276,6 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
           .getAllByRole("radio", { name: "Global" })[0]
           .getAttribute("aria-checked"),
       ).toBe("true");
-    });
+    }, ENGINE_WAIT);
   });
 });

@@ -23,10 +23,17 @@
 //                     let far components feel no repulsion and collapse together).
 //   • forceCollide  — circle non-overlap at the real node radius (+pad), the clean
 //                     "no two nodes touching" look; a soft constraint (strength<1,
-//                     1 iteration). NB collide is NOT alpha-scaled, so it never fully
-//                     cools — a dense graph "settles" only because the loop freezes
-//                     it at alphaMin (see tick()); a true fixed point would require
-//                     scaling collide by alpha (a known refinement).
+//                     1 iteration). collide is NOT alpha-scaled BY DESIGN: the layout
+//                     reaches rest by the loop FREEZING it at alphaMin (see tick()),
+//                     with sleeping nodes PINNED (not merely low-energy), rather than by
+//                     the force field relaxing to a true fixed point. This
+//                     freeze-at-alphaMin + pin-authoritative model is the accepted
+//                     stability design (ADR "graph simulation stability model", Option
+//                     B): the frozen layout IS authoritative. Alpha-annealing collide to
+//                     a true fixed point (Option A) is held in reserve behind one
+//                     recorded re-open trigger — if at-rest displacement or contact
+//                     micro-buzz recurs AFTER the energy valves are closed and the
+//                     guards are green.
 //   • forceX/forceY(0) — gentle positional gravity toward the origin. Chosen over
 //                     forceCenter: forceX/Y is a per-node spring that both centres
 //                     AND keeps the layout compact, and it never fights the other
@@ -114,9 +121,13 @@ export interface D3ForceParams {
   collideIterations: number;
   /** Atmospheric friction: velocity *= (1 - velocityDecay) each tick. */
   velocityDecay: number;
-  /** Per-tick cooling rate; default 0.0228 ≈ 300 ticks to settle. */
+  /** Per-tick cooling rate. The canonical default lives in the schema registry
+   *  (`graphControlSchema` — 0.03 after the 2026-07-03 sim-smoothness retune, giving
+   *  a longer post-anneal tail than the prior 0.05 so the freeze captures a
+   *  better-balanced field). */
   alphaDecay: number;
-  /** Freeze threshold: the global settle is "done" once alpha drops below this. */
+  /** Freeze threshold: the global settle is "done" once alpha drops below this
+   *  (default 0.005). */
   alphaMin: number;
   /** Alpha held while dragging — energy for the WOKEN region only (sleeping nodes
    *  are pinned, so this does not move them). */
@@ -157,6 +168,28 @@ const GENTLE_REHEAT_ALPHA = controlNumber("gentleReheatAlpha");
 /** Pre-warm caps: settle off-screen but never block the main thread for long. */
 const PREWARM_MAX_TICKS = controlNumber("prewarmMaxTicks");
 const PREWARM_BUDGET_MS = controlNumber("prewarmBudgetMs");
+/** Convergence-gated anneal (graph-simulation-stability ADR 2026-07-03): a
+ *  cold/warm restart HOLDS the alpha target at ANNEAL_ALPHA so the field keeps
+ *  simulating at sustained energy, and releases into the normal decay + freeze
+ *  only once the mean per-node displacement stays under ANNEAL_SETTLE_SPEED
+ *  for ANNEAL_SETTLE_TICKS consecutive ticks — or the ANNEAL_MAX_TICKS hard
+ *  cap fires (the bounded active-phase budget, ~10 s at 60 fps). Cooling is
+ *  convergence-driven, so the freeze can no longer capture an interrupted
+ *  anneal that every later reheat would visibly resume. */
+const ANNEAL_ALPHA = controlNumber("annealAlpha");
+const ANNEAL_SETTLE_SPEED = controlNumber("annealSettleSpeed");
+const ANNEAL_SETTLE_TICKS = controlNumber("annealSettleTicks");
+const ANNEAL_MAX_TICKS = controlNumber("annealMaxTicks");
+/** Early-release stall detector (ADR amendment): ticks without measurable
+ *  structural improvement — an EMA of TEMPERATURE-NORMALIZED displacement
+ *  (mean / alpha) that fails to improve by ANNEAL_STALL_IMPROVEMENT — before
+ *  the anneal releases. Normalizing by alpha keeps the trend honest under the
+ *  cooling ramp: the raw jitter floor shrinks with temperature, so only a
+ *  flattening NORMALIZED floor means the structure stopped improving. */
+const ANNEAL_STALL_TICKS = controlNumber("annealStallTicks");
+const ANNEAL_STALL_IMPROVEMENT = controlNumber("annealStallImprovement");
+/** Smoothing factor for the stall detector's displacement EMA. */
+const ANNEAL_EMA_WEIGHT = 0.1;
 
 /** Per-tick dynamics for the host's convergence / diagnostics. */
 export interface TickMetrics {
@@ -195,6 +228,16 @@ export class D3ForceSolver {
   // Local mode gates sleeping (a drag perturbation); the global layout settle runs
   // pure d3 with everything awake and unpinned until it cools.
   private localMode = false;
+  // --- convergence-gated anneal state (graph-simulation-stability ADR) -------
+  // While `annealRemaining > 0` the alpha target is held at ANNEAL_ALPHA and
+  // tick() counts calm ticks; release (alphaTarget → 0) fires on sustained calm
+  // or budget exhaustion. Gentle paths, the pin-authoritative reflow, and a
+  // drag all CANCEL the anneal — it belongs to cold/warm restarts only.
+  private annealRemaining = 0;
+  private annealCalm = 0;
+  private annealEma = 0;
+  private annealBest = Infinity;
+  private annealStall = 0;
 
   constructor(
     nodeCount: number,
@@ -416,7 +459,8 @@ export class D3ForceSolver {
   ): number {
     this.localMode = false;
     this.wakeAllFree();
-    this.sim.alpha(startAlpha).alphaTarget(0);
+    this.sim.alpha(startAlpha);
+    this.beginAnneal();
     const start = now();
     let ticks = 0;
     while (ticks < maxTicks) {
@@ -446,6 +490,7 @@ export class D3ForceSolver {
     budgetMs = PREWARM_BUDGET_MS,
   ): number {
     this.localMode = false;
+    this.cancelAnneal(); // the pin-authoritative path owns its own energy budget
     this.wakeAllFree(); // clear any stale pins/drag; everything awake + unpinned
     // Pin the carried survivors at their current (seeded) position; only the new
     // nodes remain awake and free to integrate.
@@ -467,7 +512,11 @@ export class D3ForceSolver {
     }
     if (movable === 0) {
       // Pure removal / reorder: nothing to relax. The survivors are pinned at their
-      // carried positions and asleep ⇒ settled, zero movement.
+      // carried positions and asleep ⇒ settled, zero movement. Clamp alpha to the
+      // settled temperature: a FRESH solver otherwise still holds d3's constructor
+      // alpha 1, and the next reheatGentle (max(current, kick)) would read that 1 as
+      // the current temperature and cold-explode instead of nudging.
+      this.sim.alpha(Math.min(this.sim.alpha(), this.params.alphaMin)).alphaTarget(0);
       return 0;
     }
     this.sim.alpha(startAlpha).alphaTarget(0);
@@ -488,8 +537,18 @@ export class D3ForceSolver {
     const dragging = this.dragIndex >= 0;
 
     // Global cool-down guarantee: once cooled and not interacting, the whole graph
-    // sleeps — a definite stop even if a soft collide would otherwise micro-buzz.
+    // sleeps — a definite stop even if a soft collide would otherwise micro-buzz. This
+    // freeze-at-alphaMin stop is the accepted stability design, not a workaround (ADR
+    // "graph simulation stability model", Option B): the frozen layout is authoritative,
+    // held still by pinning. Annealing collide so rest is a true fixed point (Option A)
+    // is reserved for the recorded re-open trigger — micro-buzz recurring here after the
+    // energy valves close.
     if (!dragging && this.sim.alpha() < this.params.alphaMin && this.awakeCount > 0) {
+      // The cooling ramp can cross alphaMin before the explicit release near
+      // the budget's end — the freeze then also retires the anneal bookkeeping
+      // so no stale hold survives onto a frozen field (ADR amendment).
+      this.cancelAnneal();
+      this.sim.alphaTarget(0);
       this.sleepAll();
       return { alpha: this.sim.alpha(), meanDisplacement: 0, awake: 0 };
     }
@@ -503,9 +562,42 @@ export class D3ForceSolver {
         const n = this.nodes[i];
         disp += Math.hypot(n.vx ?? 0, n.vy ?? 0);
       }
+      const mean = this.count ? disp / this.count : 0;
+      // Convergence-gated anneal (+ ADR amendment): the held target COOLS on a
+      // ramp across the budget so anneal motion fades instead of buzzing at one
+      // amplitude, and release fires on the FIRST of: sustained raw calm, a
+      // measured improvement STALL (the temperature-normalized displacement
+      // trend stopped getting better — the layout was already converged), or
+      // the hard cap. Only after release does alpha decay to the alphaMin
+      // freeze, so the frozen layout is always a MEASURED equilibrium.
+      if (this.annealRemaining > 0 && !dragging) {
+        this.annealRemaining--;
+        this.sim.alphaTarget(ANNEAL_ALPHA * (this.annealRemaining / ANNEAL_MAX_TICKS));
+        this.annealCalm = mean < ANNEAL_SETTLE_SPEED ? this.annealCalm + 1 : 0;
+        const alpha = this.sim.alpha();
+        const normalized = alpha > 0 ? mean / alpha : 0;
+        this.annealEma =
+          this.annealEma === 0
+            ? normalized
+            : this.annealEma * (1 - ANNEAL_EMA_WEIGHT) + normalized * ANNEAL_EMA_WEIGHT;
+        if (this.annealEma < this.annealBest * (1 - ANNEAL_STALL_IMPROVEMENT)) {
+          this.annealBest = this.annealEma;
+          this.annealStall = 0;
+        } else {
+          this.annealStall++;
+        }
+        if (
+          this.annealCalm >= ANNEAL_SETTLE_TICKS ||
+          this.annealStall >= ANNEAL_STALL_TICKS ||
+          this.annealRemaining === 0
+        ) {
+          this.cancelAnneal();
+          this.sim.alphaTarget(0);
+        }
+      }
       return {
         alpha: this.sim.alpha(),
-        meanDisplacement: this.count ? disp / this.count : 0,
+        meanDisplacement: mean,
         awake: this.awakeCount,
       };
     }
@@ -587,11 +679,36 @@ export class D3ForceSolver {
   }
 
   /** Re-energise the whole layout (resume / explicit restart). Cold = full
-   *  re-explode, warm = gentle. Returns to global (non-gated, unpinned) settle. */
+   *  re-explode, warm = gentle. Returns to global (non-gated, unpinned) settle
+   *  through the convergence-gated anneal: the field holds at the anneal
+   *  temperature until measurably calm, THEN decays and freezes. */
   reheat(cold = false): void {
     this.localMode = false;
     this.wakeAllFree();
-    this.sim.alpha(cold ? COLD_ALPHA : WARM_ALPHA).alphaTarget(0);
+    this.sim.alpha(cold ? COLD_ALPHA : WARM_ALPHA);
+    this.beginAnneal();
+  }
+
+  /** Enter the convergence-gated anneal (graph-simulation-stability ADR): hold
+   *  the alpha target so the freeze cannot fire, and let tick() release it on
+   *  sustained calm or at the hard cap. */
+  private beginAnneal(): void {
+    this.annealRemaining = ANNEAL_MAX_TICKS;
+    this.annealCalm = 0;
+    this.annealEma = 0;
+    this.annealBest = Infinity;
+    this.annealStall = 0;
+    this.sim.alphaTarget(ANNEAL_ALPHA);
+  }
+
+  /** Cancel an in-flight anneal (a gentle retune, a reflow, or a drag took
+   *  over the energy discipline). The caller owns the alpha target after. */
+  private cancelAnneal(): void {
+    this.annealRemaining = 0;
+    this.annealCalm = 0;
+    this.annealEma = 0;
+    this.annealBest = Infinity;
+    this.annealStall = 0;
   }
 
   /** Gentle, change-proportional re-energise for a LIVE retune (force/size sliders).
@@ -599,10 +716,15 @@ export class D3ForceSolver {
    *  act on every node — but it nudges alpha only to a LOW `alpha` (and never BELOW the
    *  current temperature) instead of WARM_ALPHA, so the layout re-settles smoothly in
    *  place rather than re-exploding. The caller scales `alpha` to the magnitude of the
-   *  change. (The deeper "rest state is a true fixed point" fix — alpha-annealing the
-   *  collide force — is a separate, higher-risk follow-up; this only tames the kick.) */
+   *  change. A bounded, proportional kick over a freeze-at-alphaMin + pin-authoritative
+   *  layout is the accepted stability design (ADR "graph simulation stability model",
+   *  Option B): rest is a frozen-yet-authoritative state, not a force-field fixed point,
+   *  and that is intentional. Making rest a TRUE fixed point (alpha-annealed collide,
+   *  Option A) is held in reserve behind the recorded re-open trigger — at-rest
+   *  displacement or contact micro-buzz recurring AFTER the energy valves close. */
   reheatGentle(alpha: number): void {
     this.localMode = false;
+    this.cancelAnneal(); // gentle stays gentle — never inherits the anneal hold
     this.wakeAllFree();
     this.sim.alpha(Math.max(this.sim.alpha(), alpha)).alphaTarget(0);
   }
@@ -632,8 +754,17 @@ export class D3ForceSolver {
    */
   setDrag(index: number, x: number, y: number): void {
     if (index < 0 || index >= this.count) return;
+    // Hand-off guard (GIR-004): a grab on a DIFFERENT node without an intervening
+    // clearDrag must release the prior drag first. Otherwise the previous node stays
+    // pinned to its stale cursor (fx/fy never cleared) and never re-settles; releasing it
+    // returns it to a free-awake node so its rest invariant holds unconditionally.
+    if (this.dragIndex >= 0 && this.dragIndex !== index) this.clearDrag();
     const n = this.nodes[index];
     if (this.dragIndex !== index) {
+      // A grab takes over the energy discipline: an in-flight anneal ends and
+      // the drag's own alphaTarget hold applies (the user interfered — the
+      // layout keeps whatever convergence it reached).
+      this.cancelAnneal();
       if (!this.localMode) {
         this.localMode = true;
         this.pinSleeping();
@@ -695,9 +826,10 @@ export class D3ForceSolver {
     return { x: n.x as number, y: n.y as number };
   }
 
-  /** Re-tune the forces live (graph-lab knob set) and reheat. Pass `reheatAlpha` for a
-   *  gentle, change-proportional kick (the slider path — re-settle in place); omit it to
-   *  fall back to the full warm reheat. */
+  /** Re-tune the forces live (graph-lab knob set) and reheat GENTLY. Pass `reheatAlpha`
+   *  for a change-proportional kick (the slider path — re-settle in place); omit it to
+   *  fall back to the default gentle reheat (GENTLE_REHEAT_ALPHA), NEVER a violent
+   *  WARM_ALPHA re-explode (GIR-003). */
   setParams(params: D3ForceParams, reheatAlpha?: number): void {
     this.params = params;
     this.sim
@@ -709,8 +841,7 @@ export class D3ForceSolver {
     this.sim.force("collide", this.collide());
     this.sim.force("x", forceX<D3Node>(0).strength(params.centerStrength));
     this.sim.force("y", forceY<D3Node>(0).strength(params.centerStrength));
-    if (reheatAlpha !== undefined) this.reheatGentle(reheatAlpha);
-    else this.reheat(false);
+    this.reheatGentle(reheatAlpha ?? GENTLE_REHEAT_ALPHA);
   }
 
   getParams(): D3ForceParams {

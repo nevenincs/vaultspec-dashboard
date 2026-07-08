@@ -27,13 +27,20 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   linkDistance: 40,
   linkStrength: 1,
   chargeDistanceMax: 0,
-  chargeTheta: 0.8,
+  // 0.5 = the Barnes-Hut accuracy sweet spot (graph-simulation-stability ADR
+  // amendment 2): a coarser criterion measured as two thirds of the live jitter.
+  chargeTheta: 0.5,
   centerStrength: 0.06,
   collidePadding: 3,
-  collideStrength: 0.8,
+  // 0.35 — deliberate retune (sim-smoothness reference audit): collide is never
+  // alpha-scaled, so 0.8 over-corrected ~3.3x during the anneal hold; references
+  // ship no collide at all.
+  collideStrength: 0.35,
   collideIterations: 1,
   velocityDecay: 0.5,
-  alphaDecay: 0.05,
+  // 0.03 — deliberate retune (sim-smoothness reference audit): 0.05 was 2.2x the
+  // d3/Quartz default, freezing a less-balanced field after too short a tail.
+  alphaDecay: 0.03,
   alphaMin: 0.005,
   dragAlpha: 0.3,
   wakeMove: 14,
@@ -47,7 +54,14 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   warmStartAlpha: 0.3,
   prewarmMaxTicks: 300,
   prewarmBudgetMs: 260,
-  // --- visualisation: the 7 appearance params ---
+  // --- simulation: the convergence-gated anneal (graph-simulation-stability) ---
+  annealAlpha: 0.3,
+  annealSettleSpeed: 0.12,
+  annealSettleTicks: 30,
+  annealMaxTicks: 600,
+  annealStallTicks: 90,
+  annealStallImprovement: 0.02,
+  // --- visualisation: the 9 appearance params ---
   nodeSizeScale: 1,
   nodeSalienceScale: 1,
   edgeWidthMin: 0.6,
@@ -55,6 +69,7 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   edgeOpacityMin: 0.1,
   edgeOpacityMax: 0.5,
   edgeColorMode: "gradient",
+  nodeColorMode: "category",
   nodeIcons: false,
   // --- visualisation: internal render constants ---
   baseNodeRadius: 4,
@@ -105,6 +120,7 @@ const EXPECTED_UI_LABELS: Record<string, string> = {
   edgeWidthMax: "Link thickness",
   edgeOpacityMax: "Link opacity",
   edgeColorMode: "Link colour",
+  nodeColorMode: "Node colour",
   nodeIcons: "Show icons",
 };
 
@@ -128,9 +144,9 @@ describe("graphControlSchema defaults", () => {
     }
   });
 
-  it("derives the typed appearance defaults (8 params) from the schema", () => {
+  it("derives the typed appearance defaults (9 params) from the schema", () => {
     const appearance = appearanceDefaults();
-    expect(Object.keys(appearance)).toHaveLength(8);
+    expect(Object.keys(appearance)).toHaveLength(9);
     for (const [key, value] of Object.entries(appearance)) {
       expect(value).toBe(EXPECTED_DEFAULTS[key]);
     }

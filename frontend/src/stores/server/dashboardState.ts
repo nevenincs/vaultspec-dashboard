@@ -6,6 +6,7 @@ import type {
   DashboardPanelState,
   DashboardState,
   DashboardStatePatch,
+  GraphCorpus,
   GraphFilter,
   GraphGranularity,
   SalienceLens,
@@ -30,6 +31,7 @@ import {
   normalizeDashboardConfidenceFloor,
   normalizeDashboardFilterTiers,
   normalizeDashboardGraphBounds,
+  normalizeDashboardGraphCorpus,
   normalizeDashboardGraphGranularity,
   normalizeDashboardMinConfidence,
   normalizeDashboardNodeId,
@@ -63,6 +65,7 @@ export {
   normalizeDashboardNodeId,
   normalizeDashboardFilterTiers,
   normalizeDashboardGraphBounds,
+  normalizeDashboardGraphCorpus,
   normalizeDashboardGraphGranularity,
   normalizeDashboardMinConfidence,
   normalizeDashboardPanelState,
@@ -104,6 +107,7 @@ export interface DashboardGraphQueryVariables {
   granularity: GraphGranularity;
   lens: SalienceLens;
   focus: string | null;
+  corpus: GraphCorpus;
 }
 
 export function selectionPatch(selected_ids: unknown): DashboardStateMutationPatch {
@@ -172,6 +176,14 @@ export function granularityPatch(
   return { graph_granularity: normalizeDashboardGraphGranularity(graph_granularity) };
 }
 
+// The active graph corpus / view mode (codebase-graphing ADR D7): the live
+// dashboard-state driver a corpus switch writes, so the graph query re-keys and
+// the canvas reloads. The durable `graph_corpus` SETTING is the source of truth;
+// this mirrors it into dashboard-state.
+export function corpusPatch(corpus: unknown): DashboardStateMutationPatch {
+  return { corpus: normalizeDashboardGraphCorpus(corpus) };
+}
+
 export function dashboardDocumentStateResetPatch(scope: string): DashboardStatePatch {
   return {
     scope,
@@ -201,6 +213,7 @@ export function dashboardDocumentStateSeed(
     date_range: normalizeDashboardDateRange(patch.date_range),
     timeline_mode: normalizeDashboardTimelineMode(patch.timeline_mode),
     graph_granularity: normalizeDashboardGraphGranularity(patch.graph_granularity),
+    corpus: normalizeDashboardGraphCorpus(patch.corpus),
     salience_lens: normalizeDashboardSalienceLens(patch.salience_lens),
     salience_focus: normalizeDashboardNodeId(patch.salience_focus),
     representation_mode: normalizeDashboardRepresentationMode(
@@ -226,6 +239,20 @@ function cachedDashboardStateSessionIdentity(client: QueryClient): string {
   );
 }
 
+/**
+ * Land a PATCH response (already the full merged server state) into the cache.
+ *
+ * The immediate `invalidateQueries` after `setQueryData` is a DELIBERATE
+ * out-of-order convergence backstop, not a redundant fetch (SRR-003). Writes fan
+ * out concurrently — a rapid selection click, facet toggle, and panel resize can
+ * each PATCH in flight at once — and their responses may resolve out of order, so
+ * the last `setQueryData` to run can be a STALE earlier response. The refetch
+ * re-reads the authoritative current state and converges the cache regardless of
+ * resolution order. The cost is one extra `GET /dashboard-state` per intent write
+ * per observing surface; convergence correctness is worth it, and the per-scope
+ * write chains (panel_state / filters / timeline-mode below) already collapse the
+ * bursts that would otherwise multiply it.
+ */
 export function updateDashboardStateCache(
   state: DashboardState,
   client: QueryClient = queryClient,
@@ -355,6 +382,46 @@ function queuePanelStateWrite(
     }
   });
   return next;
+}
+
+// SRR-001 filter-write serialization. The whole `filters` record is ONE
+// top-level field the engine PATCH replaces wholesale, so two rapid toggles that
+// both read the SAME base filters lost-update each other (the second PATCH erases
+// the first, and the invalidate-refetch converges the cache to the already-wrong
+// server truth). Filters are the most-clicked shared intent, yet — unlike
+// `panel_state` (serialized here) and `timeline_mode` (seq-tokened) — they had no
+// guard. This mirrors the panel-state chain: serialize filter writes per scope
+// AND recompute the payload from the FRESHEST cache INSIDE the queued thunk, so
+// each serialized write builds on the prior write's committed result rather than
+// a stale snapshot captured at call time.
+const filterWriteChainsByScope = new Map<string, Promise<unknown>>();
+
+function queueFilterWrite<T>(scope: string, write: () => Promise<T>): Promise<T> {
+  const previous = filterWriteChainsByScope.get(scope) ?? Promise.resolve(undefined);
+  const next = previous.catch(() => undefined).then(() => write());
+  filterWriteChainsByScope.set(scope, next);
+  void next.finally(() => {
+    if (filterWriteChainsByScope.get(scope) === next) {
+      filterWriteChainsByScope.delete(scope);
+    }
+  });
+  return next;
+}
+
+/** Serialize one filter transform for a scope, reading the base filters INSIDE
+ *  the queued thunk (SRR-001) so concurrent facet writes cannot lost-update. */
+function serializedFilterWrite<T>(
+  scope: string,
+  client: QueryClient,
+  sessionIdentity: string,
+  transform: (filters: DashboardFilters) => DashboardFilters,
+  write: (patch: DashboardStateMutationPatch) => Promise<T>,
+): Promise<T> {
+  return queueFilterWrite(scope, () =>
+    write(
+      filtersPatch(transform(cachedDashboardFilters(client, scope, sessionIdentity))),
+    ),
+  );
 }
 
 export function dashboardFiltersWithText(
@@ -521,10 +588,31 @@ export function toggleDashboardFilterFacet(
   const normalizedScope = normalizeDashboardStateWriteScope(scope);
   if (normalizedScope === null) return Promise.resolve(null);
   const sessionIdentity = cachedDashboardStateSessionIdentity(queryClient);
-  const filters = cachedDashboardFilters(queryClient, normalizedScope, sessionIdentity);
-  return patchDashboardState(
+  // Shares the SRR-001 serialized chain with the hook writers, so an imperative
+  // context-menu toggle and a rail/legend toggle cannot lost-update each other.
+  return serializedFilterWrite(
     normalizedScope,
-    filtersPatch(dashboardFiltersWithFacetToggled(filters, facet, value)),
+    queryClient,
+    sessionIdentity,
+    (filters) => dashboardFiltersWithFacetToggled(filters, facet, value),
+    (patch) => patchDashboardState(normalizedScope, patch),
+  );
+}
+
+/** Clear the whole canonical filter record to empty (the "Reset Filters" verb,
+ *  imperative — the same effect as the sidebar intent's `clearFilters`, shared by
+ *  the vault-section context menu). Rides the serialized SRR-001 chain so an
+ *  imperative reset and a rail/legend toggle cannot lost-update each other. */
+export function clearDashboardFilters(scope: unknown): Promise<DashboardState | null> {
+  const normalizedScope = normalizeDashboardStateWriteScope(scope);
+  if (normalizedScope === null) return Promise.resolve(null);
+  const sessionIdentity = cachedDashboardStateSessionIdentity(queryClient);
+  return serializedFilterWrite(
+    normalizedScope,
+    queryClient,
+    sessionIdentity,
+    () => ({}),
+    (patch) => patchDashboardState(normalizedScope, patch),
   );
 }
 
@@ -538,12 +626,13 @@ export function setDashboardFeatureFilter(
   const normalizedScope = normalizeDashboardStateWriteScope(scope);
   if (normalizedScope === null) return Promise.resolve(null);
   const sessionIdentity = cachedDashboardStateSessionIdentity(queryClient);
-  const filters = cachedDashboardFilters(queryClient, normalizedScope, sessionIdentity);
-  return patchDashboardState(
+  return serializedFilterWrite(
     normalizedScope,
-    filtersPatch(
+    queryClient,
+    sessionIdentity,
+    (filters) =>
       dashboardFiltersWithFeatureQuery(filters, parseFeatureQueryInput(featureTerm)),
-    ),
+    (patch) => patchDashboardState(normalizedScope, patch),
   );
 }
 
@@ -569,10 +658,15 @@ export function dashboardFeatureDescentPatch(
 export function dashboardGraphDefaultsPatch(
   graph_granularity: unknown,
   filters?: DashboardFilters,
+  corpus?: unknown,
 ): DashboardStateMutationPatch {
   return {
     graph_granularity: normalizeDashboardGraphGranularity(graph_granularity),
     ...(filters ? { filters: cloneDashboardFilters(filters) } : {}),
+    // Seed the corpus / view mode on a fresh scope from the durable
+    // `graph_corpus` setting (codebase-graphing ADR D7). Omitted when not
+    // supplied so pre-corpus callers are unchanged (vault is the state default).
+    ...(corpus === undefined ? {} : { corpus: normalizeDashboardGraphCorpus(corpus) }),
   };
 }
 
@@ -590,6 +684,7 @@ export function normalizeDashboardGraphSettingsDefaults(
   const record = dashboardGraphSettingsDefaultsRecord(defaults);
   return {
     defaultGranularity: normalizeDashboardGraphGranularity(record.defaultGranularity),
+    corpus: normalizeDashboardGraphCorpus(record.corpus),
     confidenceFloor:
       typeof record.confidenceFloor === "number" &&
       Number.isFinite(record.confidenceFloor)
@@ -628,6 +723,7 @@ export function dashboardGraphSettingsDefaultsPatch(
   return dashboardGraphDefaultsPatch(
     normalizedDefaults.defaultGranularity,
     filtersChanged ? filters : undefined,
+    normalizedDefaults.corpus,
   );
 }
 
@@ -673,42 +769,56 @@ export function useDashboardStateMutations(scope: unknown) {
     setSelection: (selectedIds: unknown) =>
       mutation.mutateAsync(selectionPatch(selectedIds)),
     setFilters: (filters: unknown) => mutation.mutateAsync(filtersPatch(filters)),
-    setTextFilter: (text: unknown) => {
-      const filters =
-        normalizedScope === null
-          ? {}
-          : cachedDashboardFilters(client, normalizedScope, sessionIdentity);
-      return mutation.mutateAsync(
-        filtersPatch(dashboardFiltersWithText(filters, text)),
-      );
-    },
-    setFeatureQuery: (query: unknown) => {
-      const filters =
-        normalizedScope === null
-          ? {}
-          : cachedDashboardFilters(client, normalizedScope, sessionIdentity);
-      return mutation.mutateAsync(
-        filtersPatch(dashboardFiltersWithFeatureQuery(filters, query)),
-      );
-    },
-    toggleFilterFacet: (facet: unknown, value: unknown) => {
-      const filters =
-        normalizedScope === null
-          ? {}
-          : cachedDashboardFilters(client, normalizedScope, sessionIdentity);
-      return mutation.mutateAsync(
-        filtersPatch(dashboardFiltersWithFacetToggled(filters, facet, value)),
-      );
-    },
-    clearFilterFacet: (facet: unknown) => {
-      const filters =
-        normalizedScope === null
-          ? {}
-          : cachedDashboardFilters(client, normalizedScope, sessionIdentity);
-      return mutation.mutateAsync(
-        filtersPatch(dashboardFiltersWithFacetCleared(filters, facet)),
-      );
-    },
+    // Filter writes serialize per scope and recompute from the freshest cache
+    // inside the queued thunk (SRR-001), so rapid facet toggles never
+    // lost-update. The null-scope path keeps the unguarded direct write (there is
+    // no scope to serialize on, and no cache to build from).
+    setTextFilter: (text: unknown) =>
+      normalizedScope === null
+        ? mutation.mutateAsync(filtersPatch(dashboardFiltersWithText({}, text)))
+        : serializedFilterWrite(
+            normalizedScope,
+            client,
+            sessionIdentity,
+            (filters) => dashboardFiltersWithText(filters, text),
+            (patch) => mutation.mutateAsync(patch),
+          ),
+    setFeatureQuery: (query: unknown) =>
+      normalizedScope === null
+        ? mutation.mutateAsync(
+            filtersPatch(dashboardFiltersWithFeatureQuery({}, query)),
+          )
+        : serializedFilterWrite(
+            normalizedScope,
+            client,
+            sessionIdentity,
+            (filters) => dashboardFiltersWithFeatureQuery(filters, query),
+            (patch) => mutation.mutateAsync(patch),
+          ),
+    toggleFilterFacet: (facet: unknown, value: unknown) =>
+      normalizedScope === null
+        ? mutation.mutateAsync(
+            filtersPatch(dashboardFiltersWithFacetToggled({}, facet, value)),
+          )
+        : serializedFilterWrite(
+            normalizedScope,
+            client,
+            sessionIdentity,
+            (filters) => dashboardFiltersWithFacetToggled(filters, facet, value),
+            (patch) => mutation.mutateAsync(patch),
+          ),
+    clearFilterFacet: (facet: unknown) =>
+      normalizedScope === null
+        ? mutation.mutateAsync(
+            filtersPatch(dashboardFiltersWithFacetCleared({}, facet)),
+          )
+        : serializedFilterWrite(
+            normalizedScope,
+            client,
+            sessionIdentity,
+            (filters) => dashboardFiltersWithFacetCleared(filters, facet),
+            (patch) => mutation.mutateAsync(patch),
+          ),
     setDateRange: (dateRange: unknown) =>
       mutation.mutateAsync(dateRangePatch(dateRange)),
     setFiltersAndDateRange: (filters: unknown, dateRange: unknown) =>
@@ -731,6 +841,7 @@ export function useDashboardStateMutations(scope: unknown) {
     setGraphBounds: (bounds: unknown) => mutation.mutateAsync(graphBoundsPatch(bounds)),
     setGranularity: (granularity: unknown) =>
       mutation.mutateAsync(granularityPatch(granularity)),
+    setCorpus: (corpus: unknown) => mutation.mutateAsync(corpusPatch(corpus)),
     descendFeature: (state: unknown, featureTag: unknown) =>
       mutation.mutateAsync(dashboardFeatureDescentPatch(state, featureTag)),
     descendFeatureTag: (featureTag: unknown) => {
@@ -840,5 +951,6 @@ export function dashboardGraphQueryVariables(
     granularity: state.graph_granularity,
     lens: state.salience_lens,
     focus: state.salience_focus,
+    corpus: normalizeDashboardGraphCorpus(state.corpus),
   };
 }

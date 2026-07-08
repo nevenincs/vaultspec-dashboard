@@ -163,6 +163,33 @@ describe("working-set intent seam", () => {
     });
   });
 
+  it("dims a chip whose node is filtered out of the visible set (GS-006)", () => {
+    // The un-dimmed base row class (derived from a null-membership call so the test does
+    // not duplicate the private class literal).
+    const baseClass = workingSetRows(["doc:seed"])[0].rootClassName;
+    const rows = workingSetRows(["doc:alpha", "doc:beta"], new Set(["doc:alpha"]));
+
+    // In the visible set → NOT hidden: base class, no hidden/hiddenHint fields.
+    expect(rows[0].hidden).toBeUndefined();
+    expect(rows[0].hiddenHint).toBeUndefined();
+    expect(rows[0].rootClassName).toBe(baseClass);
+
+    // Filtered OUT → hidden:true, a plain-language affordance, and the dim utility appended.
+    expect(rows[1].hidden).toBe(true);
+    expect(rows[1].hiddenHint).toBe("Hidden by the active filter");
+    expect(rows[1].rootClassName).toBe(`${baseClass} opacity-50`);
+  });
+
+  it("dims nothing when no visibility membership is supplied (null → shape unchanged)", () => {
+    const baseClass = workingSetRows(["doc:seed"])[0].rootClassName;
+    const [row] = workingSetRows(["doc:alpha"]);
+    expect(row.hidden).toBeUndefined();
+    expect(row.hiddenHint).toBeUndefined();
+    expect(row.rootClassName).toBe(baseClass);
+    // The same holds through the view projection.
+    expect(workingSetView(["doc:alpha"]).rows[0].hidden).toBeUndefined();
+  });
+
   it("declares working-set keyboard verbs behind the keymap registry shape", () => {
     expect(WORKING_SET_KEYBINDINGS).toEqual([
       {

@@ -18,6 +18,8 @@ import type { Root } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import Markdown, { defaultUrlTransform } from "react-markdown";
+
+import { dispatchCopy } from "../../platform/actions/clipboardActions";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -36,6 +38,7 @@ import {
   categoryColorVar,
 } from "../kit";
 import { PlanSummaryCard } from "./PlanSummaryCard";
+import { languageDisplayName } from "./languages";
 import { remarkWikiLink, wikiLinkNodeId, WIKI_LINK_SCHEME } from "./remarkWikiLink";
 import { stopScrollKeyPropagation } from "./scrollRegion";
 import { useHighlightedHast } from "./useHighlighter";
@@ -57,34 +60,6 @@ function hastToReact(hast: Root): ReactElement {
 
 // --- fenced code (CodeBlock board 256:836) ------------------------------------
 
-const LANG_LABEL: Record<string, string> = {
-  typescript: "TypeScript",
-  ts: "TypeScript",
-  tsx: "TSX",
-  javascript: "JavaScript",
-  js: "JavaScript",
-  jsx: "JSX",
-  rust: "Rust",
-  python: "Python",
-  py: "Python",
-  bash: "Bash",
-  sh: "Shell",
-  shell: "Shell",
-  json: "JSON",
-  toml: "TOML",
-  yaml: "YAML",
-  yml: "YAML",
-  css: "CSS",
-  html: "HTML",
-  markdown: "Markdown",
-  md: "Markdown",
-};
-
-function langLabel(lang: string | null): string {
-  if (!lang) return "Text";
-  return LANG_LABEL[lang] ?? lang;
-}
-
 /** A fenced code block in the binding CodeBlock chrome: a header bar (language +
  *  a Read-only flag and a Copy affordance) over the shared-highlighter body. */
 function CodeFence({
@@ -98,12 +73,14 @@ function CodeFence({
   // Mirror the CodeViewer's Copy affordance (a direct clipboard write); the prior
   // bare <span> rendered an actionable-looking "Copy" that did nothing (dead control).
   const onCopy = () => {
-    void navigator.clipboard?.writeText(code).catch(() => undefined);
+    // Route through the copy verb so the execCommand fallback reaches this button
+    // too (a bare navigator.clipboard write is a silent no-op on http origins).
+    void dispatchCopy({ text: code });
   };
   return (
     <div className="vs-code-fence">
       <div className="vs-code-fence__header">
-        <span className="vs-code-fence__lang">{langLabel(lang)}</span>
+        <span className="vs-code-fence__lang">{languageDisplayName(lang)}</span>
         <span className="vs-code-fence__actions">
           <span className="vs-code-fence__readonly">Read-only</span>
           <button type="button" className="vs-code-fence__copy" onClick={onCopy}>

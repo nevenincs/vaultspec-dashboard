@@ -9,7 +9,6 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { create } from "zustand";
-import { useShallow } from "zustand/react/shallow";
 
 import { debounce } from "../../platform/timing";
 import type { GraphDeltaEntry } from "./engine";
@@ -130,15 +129,29 @@ export function useGraphLiveDeltaView(
   const normalizedScope = normalizeGraphLiveScope(scope);
   const normalizedKeyframeSeq =
     normalizedScope === null ? null : normalizeGraphLiveKeyframeSeq(keyframeSeq);
-  return useGraphLiveDeltaStore(
-    useShallow((state) =>
-      state.scope === normalizedScope && state.keyframeSeq === normalizedKeyframeSeq
+  // Select the RAW stable slices; derive in useMemo (stable-selectors) — never
+  // inside the selector, even under useShallow. `normalize*` here are the
+  // ref-preserving normalizers (GIR-009), so the memo output stays ref-stable.
+  const stateScope = useGraphLiveDeltaStore((state) => state.scope);
+  const stateKeyframeSeq = useGraphLiveDeltaStore((state) => state.keyframeSeq);
+  const featureDeltas = useGraphLiveDeltaStore((state) => state.featureDeltas);
+  const gapCount = useGraphLiveDeltaStore((state) => state.gapCount);
+  return useMemo(
+    () =>
+      stateScope === normalizedScope && stateKeyframeSeq === normalizedKeyframeSeq
         ? {
-            featureDeltas: normalizeGraphFeatureDeltas(state.featureDeltas),
-            gapCount: normalizeGraphLiveGapCount(state.gapCount),
+            featureDeltas: normalizeGraphFeatureDeltas(featureDeltas),
+            gapCount: normalizeGraphLiveGapCount(gapCount),
           }
         : EMPTY_GRAPH_LIVE_DELTA_VIEW,
-    ),
+    [
+      stateScope,
+      stateKeyframeSeq,
+      featureDeltas,
+      gapCount,
+      normalizedScope,
+      normalizedKeyframeSeq,
+    ],
   );
 }
 

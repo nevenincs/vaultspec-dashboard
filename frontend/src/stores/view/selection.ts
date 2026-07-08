@@ -3,7 +3,6 @@
 // non-node entity kinds.
 
 import { useCallback, useEffect, useMemo } from "react";
-import { useShallow } from "zustand/react/shallow";
 import type { SceneController } from "../../scene/sceneController";
 import { normalizeNodeId } from "../nodeIds";
 import {
@@ -173,9 +172,10 @@ export function normalizeOpenedNodeIslandIds(ids: readonly unknown[]): string[] 
 }
 
 export function useOpenedNodeIslands(): readonly string[] {
-  return useViewStore(
-    useShallow((state) => normalizeOpenedNodeIslandIds(state.openedIds)),
-  );
+  // Select the RAW stable slice; derive in useMemo (stable-selectors) — never
+  // inside the selector, even under useShallow.
+  const openedIds = useViewStore((state) => state.openedIds);
+  return useMemo(() => normalizeOpenedNodeIslandIds(openedIds), [openedIds]);
 }
 
 export function isNodeIslandOpen(id: unknown): boolean {

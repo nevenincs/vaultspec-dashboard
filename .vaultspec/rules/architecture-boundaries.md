@@ -1,0 +1,13 @@
+---
+name: architecture-boundaries
+---
+
+# Architecture: four layers, one-way boundaries
+
+- **Four layers, one-way data flow.** Engine (`engine/`) serves the wire. `frontend/src/stores/` is the SOLE wire client: the only place that fetches, holds the query cache and SSE delta clock, and reads the `tiers` block. `frontend/src/scene/` renders the model, receiving data only through `SceneController` commands and emitting selection/hover via its event channel. `frontend/src/app/` is leaf chrome: renders store+scene state, derives nothing.
+- Scene and chrome NEVER fetch the engine, NEVER read raw `tiers`, NEVER define a client model/node shape. Route all wire access through `frontend/src/stores/`.
+- **Engine is read-and-infer.** Never write `.vault/` documents, never mutate git refs/trees/config, never grow sibling control or search semantics. Serve mode only forwards whitelisted sibling verbs verbatim through the namespaced `/ops/*` and `/search` pass-throughs. Inference persists only in the deletable, fully re-derivable cache under `.vault/data/engine-data/` — never written back into documents.
+- The fenced `authoring` module may own durable workflow state (changeset ledger, approvals, preimages, receipts, audit) in its non-derivable store under `.vault/data/authoring-state/`, but reaches vault materialization only through its internal `vaultspec-core` adapter (capped, timed, project-pinned). It never hand-writes `.vault/` documents and never mutates git.
+- **Views are projections over one model** (engine `LinkageGraph`, mirrored by `frontend/src/stores/`). A new view = one projection in `engine-query` + one query/selector in stores + one dumb component that subscribes and emits intent (select/hover/expand). Never author a new model or a per-view model/view abstraction.
+- Shared dashboard intent (selection, hover, filters, date range, timeline mode, graph query id/bounds, panel affordances) lives in backend dashboard-state, consumed via TanStack stores helpers. Local view stores hold only local chrome. Preserve the route's served ids; merge partial backend state atomically.
+- **A view rewrite freezes the contract.** It consumes existing stores hooks and the `SceneController` command/event contract UNCHANGED: no new fetch, no new client model, never reads raw `tiers`. Change a stores shape or the `SceneController` surface only as a deliberate, reviewed contract event — never incidental to restyling.

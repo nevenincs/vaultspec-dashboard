@@ -1,5 +1,5 @@
+import { useMemo } from "react";
 import { create } from "zustand";
-import { useShallow } from "zustand/react/shallow";
 
 // Add-project chrome state: modal visibility, the path draft, and validation
 // feedback. The registration itself stays in stores/server (`useAddWorkspace`),
@@ -73,8 +73,14 @@ export const useAddProjectChromeStore = create<AddProjectChromeState>((set) => (
 }));
 
 export function useAddProjectChrome(): AddProjectChromeView {
-  return useAddProjectChromeStore(
-    useShallow((state) => normalizeAddProjectChromeView(state)),
+  // Select the RAW stable fields; derive the view in useMemo (stable-selectors) —
+  // never inside the selector, even under useShallow.
+  const open = useAddProjectChromeStore((state) => state.open);
+  const path = useAddProjectChromeStore((state) => state.path);
+  const error = useAddProjectChromeStore((state) => state.error);
+  return useMemo(
+    () => normalizeAddProjectChromeView({ open, path, error }),
+    [open, path, error],
   );
 }
 

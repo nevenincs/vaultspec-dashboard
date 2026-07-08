@@ -79,6 +79,7 @@ import {
 } from "./dashboardState";
 import { engineKeys, useDashboardState } from "./queries";
 import { SEARCH_QUERY_MAX_CHARS } from "../searchQuery";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
@@ -241,9 +242,9 @@ describe("dashboard-state engine client (live engine)", () => {
       right_collapsed: true,
       right_tab: "changes",
     });
-    expect(mergeDashboardPanelState(undefined, { right_tab: "search" })).toEqual({
+    expect(mergeDashboardPanelState(undefined, { right_tab: "changes" })).toEqual({
       ...DEFAULT_DASHBOARD_PANEL_STATE,
-      right_tab: "search",
+      right_tab: "changes",
     });
   });
 
@@ -251,7 +252,7 @@ describe("dashboard-state engine client (live engine)", () => {
     expect(normalizeDashboardPanelState("invalid")).toEqual(
       DEFAULT_DASHBOARD_PANEL_STATE,
     );
-    expect(normalizeDashboardPanelTab(" search ")).toBe("search");
+    expect(normalizeDashboardPanelTab(" search ")).toBeNull();
     expect(normalizeDashboardPanelTab("   ")).toBeNull();
     expect(
       normalizeDashboardPanelState({
@@ -268,11 +269,11 @@ describe("dashboard-state engine client (live engine)", () => {
       normalizeDashboardPanelStateUpdate({
         left_collapsed: true,
         right_collapsed: "no" as unknown as boolean,
-        right_tab: " search ",
+        right_tab: " changes ",
       }),
     ).toEqual({
       left_collapsed: true,
-      right_tab: "search",
+      right_tab: "changes",
     });
     expect(normalizeDashboardPanelStateUpdate("invalid")).toEqual({});
     expect(normalizeDashboardPanelStateUpdate(["search"])).toEqual({});
@@ -415,6 +416,7 @@ describe("dashboard-state engine client (live engine)", () => {
       granularity: "feature",
       lens: "design",
       focus: "doc:adr",
+      corpus: "vault",
     });
   });
 
@@ -627,6 +629,7 @@ describe("dashboard-state engine client (live engine)", () => {
       }),
     ).toEqual({
       defaultGranularity: "feature",
+      corpus: "vault",
       confidenceFloor: 100,
       labelFilter: "adr",
     });
@@ -638,6 +641,7 @@ describe("dashboard-state engine client (live engine)", () => {
       }),
     ).toEqual({
       defaultGranularity: DOCUMENT_DASHBOARD_GRAPH_GRANULARITY,
+      corpus: "vault",
       confidenceFloor: 0,
       labelFilter: "",
     });
@@ -649,6 +653,7 @@ describe("dashboard-state engine client (live engine)", () => {
       }),
     ).toEqual({
       graph_granularity: "feature",
+      corpus: "vault",
       filters: {
         text: "adr",
         min_confidence: { temporal: 0.6 },
@@ -656,6 +661,7 @@ describe("dashboard-state engine client (live engine)", () => {
     });
     expect(dashboardGraphSettingsDefaultsPatch({ confidenceFloor: -20 })).toEqual({
       graph_granularity: DOCUMENT_DASHBOARD_GRAPH_GRANULARITY,
+      corpus: "vault",
     });
   });
 
@@ -925,9 +931,7 @@ describe("dashboard-state engine client (live engine)", () => {
       { wrapper: wrapper(qc) },
     );
 
-    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
 
     await act(async () => {
       await result.current.mutations.setSelection([node.id]);
@@ -945,17 +949,19 @@ describe("dashboard-state engine client (live engine)", () => {
       await result.current.mutations.setPanelState({
         left_collapsed: true,
         right_collapsed: true,
-        right_tab: "search",
+        right_tab: "changes",
       });
       await result.current.mutations.setRepresentationMode("radial");
       await result.current.mutations.setGraphBounds({ shape: "free", size: 100 });
     });
 
-    await waitFor(() =>
-      expect(result.current.state.data?.graph_bounds).toEqual({
-        shape: "free",
-        size: 0,
-      }),
+    await waitFor(
+      () =>
+        expect(result.current.state.data?.graph_bounds).toEqual({
+          shape: "free",
+          size: 0,
+        }),
+      ENGINE_WAIT,
     );
     const state = result.current.state.data;
     expect(state?.selected_ids).toEqual([node.id]);
@@ -968,7 +974,7 @@ describe("dashboard-state engine client (live engine)", () => {
     expect(state?.panel_state).toEqual({
       left_collapsed: true,
       right_collapsed: true,
-      right_tab: "search",
+      right_tab: "changes",
     });
     expect(state?.representation_mode).toBe("radial");
 
@@ -1053,16 +1059,15 @@ describe("dashboard-state engine client (live engine)", () => {
       { wrapper: wrapper(qc) },
     );
 
-    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
 
     await act(async () => {
       await result.current.mutations.setTimelineMode({ kind: "live" });
     });
 
-    await waitFor(() =>
-      expect(result.current.state.data?.timeline_mode).toEqual({ kind: "live" }),
+    await waitFor(
+      () => expect(result.current.state.data?.timeline_mode).toEqual({ kind: "live" }),
+      ENGINE_WAIT,
     );
   });
 
@@ -1083,9 +1088,7 @@ describe("dashboard-state engine client (live engine)", () => {
       { wrapper: wrapper(qc) },
     );
 
-    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
 
     let compound!: DashboardState;
     await act(async () => {
@@ -1190,24 +1193,60 @@ describe("dashboard-state engine client (live engine)", () => {
       { wrapper: wrapper(qc) },
     );
 
-    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
 
     await act(async () => {
       await Promise.all([
         result.current.mutations.updatePanelState({ left_collapsed: true }),
-        result.current.mutations.updatePanelState({ right_tab: "search" }),
+        result.current.mutations.updatePanelState({ right_tab: "changes" }),
       ]);
     });
 
-    await waitFor(() =>
-      expect(result.current.state.data?.panel_state).toEqual({
-        left_collapsed: true,
-        right_collapsed: false,
-        right_tab: "search",
-      }),
+    await waitFor(
+      () =>
+        expect(result.current.state.data?.panel_state).toEqual({
+          left_collapsed: true,
+          right_collapsed: false,
+          right_tab: "changes",
+        }),
+      ENGINE_WAIT,
     );
+  });
+
+  it("serializes rapid filter toggles so neither facet lost-updates the other (SRR-001)", async () => {
+    const scope = await liveScope();
+    cleanupScope = scope;
+    await createLiveClient().patchDashboardState(
+      dashboardDocumentStateResetPatch(scope),
+    );
+
+    const qc = testQueryClient();
+    const { result } = renderHook(
+      () => ({
+        state: useDashboardState(scope),
+        mutations: useDashboardStateMutations(scope),
+      }),
+      { wrapper: wrapper(qc) },
+    );
+
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), ENGINE_WAIT);
+
+    // Two facet toggles fired inside ONE round-trip window on DIFFERENT facets.
+    // The engine replaces the whole `filters` record per PATCH, so without write
+    // serialization both reads see the empty base and the second PATCH erases the
+    // first (the lost update). Serialized + recomputed-from-freshest-cache, the
+    // second toggle builds on the first's committed result and BOTH persist.
+    await act(async () => {
+      await Promise.all([
+        result.current.mutations.toggleFilterFacet("doc_types", "adr"),
+        result.current.mutations.toggleFilterFacet("statuses", "accepted"),
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.state.data?.filters.doc_types).toEqual(["adr"]);
+      expect(result.current.state.data?.filters.statuses).toEqual(["accepted"]);
+    }, ENGINE_WAIT);
   });
 
   it("derives graph query variables from the canonical dashboard state", async () => {

@@ -55,6 +55,7 @@ import {
   deriveDashboardShellChromeView,
   deriveDashboardStageSceneView,
   deriveDashboardTimelineModeView,
+  deriveTimelineBootHealIntent,
   fileTreeChildStatusStyle,
   deriveFileTreeLevelView,
   deriveFileTreeRootSurfaceState,
@@ -65,7 +66,6 @@ import {
   deriveHistoryView,
   deriveIssuesView,
   deriveInspectorNeighborTierView,
-  deriveLocationAnchor,
   deriveMarkdownHeaderView,
   deriveMarkdownReaderView,
   deriveNodeDetailView,
@@ -134,6 +134,7 @@ import {
   normalizeSaveBodyArgs,
   normalizeSetFrontmatterArgs,
   normalizeVaultTreeRequestIdentity,
+  normalizeCodeFilesRequestIdentity,
   parseSseFrames,
   refreshAfterAcceptedScopeSwitch,
   refreshAfterAcceptedWorkspaceSwitch,
@@ -153,6 +154,9 @@ import {
   useContentView,
   useEngineEvents,
   useEngineSearch,
+  ENGINE_SEARCH_BUDGET_MS,
+  SEARCH_MAX_RESULTS,
+  SEARCH_QUERY_TIMEOUT_MS,
   useFileTree,
   useFiltersVocabulary,
   useFiltersVocabularyView,
@@ -176,12 +180,15 @@ import {
   usePRsView,
   useReadTime,
   useSalienceSliceView,
+  useCodeFiles,
   useTimelineLineage,
   useTimelineLineageView,
   useVaultTree,
   useVaultTreeSurface,
   dashboardStateSessionIdentity,
 } from "./queries";
+import { UNIFIED_SEARCH_RESULTS_MAX_ITEMS } from "./searchController";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
@@ -221,6 +228,7 @@ function dashboardState(scope: string): DashboardState {
     date_range: { from: "2026-06-01", to: "2026-06-30" },
     timeline_mode: { kind: "time-travel", at: 42 },
     graph_granularity: "document",
+    corpus: "vault",
     salience_lens: "design",
     salience_focus: "doc:cached",
     representation_mode: "lineage",
@@ -890,6 +898,29 @@ describe("remaining scoped query cache boundaries", () => {
     expect(malformedQuery.result.current.data).toBeUndefined();
   });
 
+  // rag-integration-hardening D2/D5: the client budget ordering and the app-bounded
+  // search payload are load-bearing invariants pinned here so a later edit that
+  // breaks the ordering (or drifts the result bound) fails CI deterministically.
+  it("keeps the client search budget strictly above the engine budget plus margin (D2)", () => {
+    // The whole degradation architecture depends on the tiers envelope landing
+    // before the client aborts: client budget MUST strictly exceed the engine's
+    // search budget, with real transport headroom.
+    expect(SEARCH_QUERY_TIMEOUT_MS).toBeGreaterThan(ENGINE_SEARCH_BUDGET_MS);
+    expect(SEARCH_QUERY_TIMEOUT_MS - ENGINE_SEARCH_BUDGET_MS).toBeGreaterThanOrEqual(
+      1_000,
+    );
+  });
+
+  it("bounds the search payload to the merged-view need, under the engine ceiling (D5)", () => {
+    // The app-chosen per-target `max_results` is sized to the unified palette's
+    // merged-view bound — fetching up to N per target keeps the top-N merge
+    // correct when one corpus dominates — and must not drift from it.
+    expect(SEARCH_MAX_RESULTS).toBe(UNIFIED_SEARCH_RESULTS_MAX_ITEMS);
+    // It must stay at or below the engine's MAX_SEARCH_RESULTS ceiling (50 in
+    // engine/crates/vaultspec-api/src/routes/ops.rs), or the engine 400-rejects.
+    expect(SEARCH_MAX_RESULTS).toBeLessThanOrEqual(50);
+  });
+
   it("normalizes settings update payloads before the settings mutation", () => {
     expect(
       normalizeSettingUpdate({
@@ -1251,6 +1282,37 @@ describe("deriveDashboardTimelineModeView (timeline-mode consumers)", () => {
       opsDisabled: true,
       asOf: 42,
     });
+  });
+});
+
+describe("deriveTimelineBootHealIntent (TTR-005 cold-start heal to live)", () => {
+  const base = {
+    scope: "wt:main",
+    stateLoaded: true,
+    isLive: false,
+    alreadyHealed: false,
+  };
+
+  it("heals a loaded, non-live, not-yet-healed scope", () => {
+    // A returning scope whose persisted timeline_mode is time-travel must boot
+    // live — with entry retired there is otherwise no exit.
+    expect(deriveTimelineBootHealIntent(base)).toBe(true);
+  });
+
+  it("does not heal until the scope's dashboard state has loaded", () => {
+    expect(deriveTimelineBootHealIntent({ ...base, stateLoaded: false })).toBe(false);
+  });
+
+  it("does not heal a scope already live (no needless write)", () => {
+    expect(deriveTimelineBootHealIntent({ ...base, isLive: true })).toBe(false);
+  });
+
+  it("heals each scope at most once (idempotent with activateWorktreeScope)", () => {
+    expect(deriveTimelineBootHealIntent({ ...base, alreadyHealed: true })).toBe(false);
+  });
+
+  it("does not heal when there is no active scope", () => {
+    expect(deriveTimelineBootHealIntent({ ...base, scope: null })).toBe(false);
   });
 });
 
@@ -1711,6 +1773,7 @@ describe("deriveDashboardStageSceneView (Stage scene owner)", () => {
     date_range: { from: "2026-06-01", to: "2026-06-18" },
     timeline_mode: { kind: "time-travel", at: 42 },
     graph_granularity: "document",
+    corpus: "vault",
     salience_lens: "design",
     salience_focus: "node:a",
     representation_mode: "lineage",
@@ -1743,6 +1806,7 @@ describe("deriveDashboardStageSceneView (Stage scene owner)", () => {
         granularity: "document",
         lens: "design",
         focus: "node:a",
+        corpus: "vault",
       },
       granularity: "document",
       activeRepresentationMode: "lineage",
@@ -2321,6 +2385,7 @@ describe("deriveSettingsEffectsView (settings side effects)", () => {
       reduceMotion: true,
       graphDefaults: {
         defaultGranularity: "feature",
+        corpus: "vault",
         confidenceFloor: 60,
         labelFilter: "adr",
       },
@@ -2511,7 +2576,11 @@ describe("left-rail root surface states", () => {
     });
 
     expect(view.triggerLabel).toBe("vault-b");
-    expect(view.triggerAriaLabel).toBe("worktree scope: vault-b, switching");
+    expect(view.triggerAriaLabel).toBe("current location: vault-b, switching");
+    // The pending-aware headline is the switch TARGET while switching, so the
+    // trigger's git/path lines never mix the target's name with the outgoing
+    // worktree's state.
+    expect(view.headline?.id).toBe("vault-b");
     expect(view.triggerClassName).toBe(
       "flex w-full items-center rounded-fg-xs py-fg-1 text-left transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
     );
@@ -2526,7 +2595,7 @@ describe("left-rail root surface states", () => {
       "rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
     );
     expect(view.degradedLabel).toBe(
-      "the worktree map is partly unavailable right now — worktree missing. showing what loaded.",
+      "The worktree list is partly unavailable right now — worktree missing. Showing what loaded.",
     );
     expect(view.degradedClassName).toBe(
       "mt-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted",
@@ -2548,7 +2617,7 @@ describe("left-rail root surface states", () => {
       degradedIconClassName: "flex shrink-0 items-center text-state-stale",
       pendingLabelClassName: "ml-auto shrink-0 text-caption text-ink-faint",
       defaultLabel: "·default",
-      ariaLabel: "switch to vault-a, the default, current scope",
+      ariaLabel: "switch to vault-a, the default worktree, the current worktree",
     });
     expect(view.rows[1]).toMatchObject({
       isPending: true,
@@ -2563,9 +2632,9 @@ describe("left-rail root surface states", () => {
       rowClassName:
         "flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus cursor-not-allowed text-ink-faint/60",
       activeCueClassName: "-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full bg-transparent",
-      bareLabel: "·bare",
+      noVaultLabel: "·no vault",
       degradedTitle: "structural",
-      ariaLabel: "bare-a — context only, no vault corpus to switch to",
+      ariaLabel: "bare-a — no vault here, shown for context only",
     });
   });
 
@@ -2578,10 +2647,9 @@ describe("left-rail root surface states", () => {
         availability: noDegradation,
       }),
     ).toMatchObject({
-      triggerLabel: "pick a worktree…",
-      triggerAriaLabel: "choose a worktree scope",
-      emptyLabel:
-        "no worktrees mapped yet — point the engine at a repository to begin.",
+      triggerLabel: "Pick a worktree…",
+      triggerAriaLabel: "choose a project or worktree",
+      emptyLabel: "No worktrees here yet — point the engine at a repository to begin.",
       singleScopeLabel: null,
     });
 
@@ -2607,7 +2675,7 @@ describe("left-rail root surface states", () => {
         "min-w-0 flex-1 truncate text-left text-body-strong text-ink",
       emptyLabel: null,
       emptyClassName: "px-fg-2 py-fg-1 text-label text-ink-faint",
-      singleScopeLabel: "this is the only vault-bearing worktree.",
+      singleScopeLabel: "This is the only worktree with a vault.",
       singleScopeClassName: "px-fg-2 py-fg-0-5 text-caption text-ink-faint",
     });
   });
@@ -2652,6 +2720,9 @@ describe("left-rail root surface states", () => {
       sameProject: false,
       isActive: false,
     });
+    // The row's primary ink LEADS with the project on a cross-project entry, so
+    // colliding basenames ("main" everywhere) stay distinguishable at a glance.
+    expect(rows.map((r) => r.label)).toEqual(["main", "engine / main", "feature-x"]);
   });
 
   it("marks a recent in an unreachable project non-selectable", () => {
@@ -2808,6 +2879,50 @@ describe("left-rail root surface states", () => {
     expect(result.current.data).toBeUndefined();
   });
 
+  it("does not expose cached code-files data when no scope is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.codeFiles(""), {
+      entries: [],
+      tiers: {},
+      truncated: null,
+    });
+
+    const { result } = renderHook(() => useCodeFiles(null), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it("normalizes code-files request identity like the vault tree", () => {
+    expect(normalizeCodeFilesRequestIdentity(" scope-a ")).toEqual({
+      scope: "scope-a",
+    });
+    expect(normalizeCodeFilesRequestIdentity(["scope-a"] as unknown).scope).toBeNull();
+  });
+
+  it("useCodeFiles walks the code-files listing to completion over the live wire", async () => {
+    // The reader holds the COMPLETE listing (walked to completion), so the
+    // files(code) provider narrows the whole set. On the vault-only fixture the
+    // code corpus is empty (no source files), but the assertions are shape-safe
+    // whether empty or populated: an entries array the client drained, honest
+    // null truncation well below the walk ceiling, and every entry a navigable
+    // `code:{path}` node.
+    const scope = await liveScope();
+    const client = testQueryClient();
+    const { result } = renderHook(() => useCodeFiles(scope), {
+      wrapper: wrapper(client),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true), ENGINE_WAIT);
+    const data = result.current.data!;
+    expect(Array.isArray(data.entries)).toBe(true);
+    expect(data.truncated).toBeNull();
+    for (const entry of data.entries) {
+      expect(entry.node_id).toBe(`code:${entry.path}`);
+    }
+  });
+
   it("normalizes vault-tree and filters vocabulary request identity", () => {
     expect(normalizeVaultTreeRequestIdentity(" scope-a ")).toEqual({
       scope: "scope-a",
@@ -2815,6 +2930,11 @@ describe("left-rail root surface states", () => {
     expect(normalizeVaultTreeRequestIdentity(["scope-a"] as unknown).scope).toBeNull();
     expect(normalizeFiltersVocabularyRequestIdentity(" scope-a ")).toEqual({
       scope: "scope-a",
+      corpus: "vault",
+    });
+    expect(normalizeFiltersVocabularyRequestIdentity(" scope-a ", "code")).toEqual({
+      scope: "scope-a",
+      corpus: "code",
     });
     expect(
       normalizeFiltersVocabularyRequestIdentity({ scope: "scope-a" } as unknown).scope,
@@ -3018,7 +3138,7 @@ describe("left-rail root surface states", () => {
       loadingMessage: "reading the worktree…",
       errorTitle: "code tree unavailable",
       retryLabel: "try again",
-      emptyMessage: "no source files in this scope yet.",
+      emptyMessage: "No source files in this worktree yet.",
       childLoadingMessage: "…",
       childErrorMessage: "could not list this directory.",
       truncationMessage: null,
@@ -3036,7 +3156,7 @@ describe("left-rail root surface states", () => {
       loadingMessage: "reading the worktree…",
       errorTitle: "code tree unavailable",
       retryLabel: "try again",
-      emptyMessage: "no source files in this scope yet.",
+      emptyMessage: "No source files in this worktree yet.",
       childLoadingMessage: "…",
       childErrorMessage: "could not list this directory.",
       truncationMessage: null,
@@ -3061,7 +3181,7 @@ describe("left-rail root surface states", () => {
       loadingMessage: "reading the worktree…",
       errorTitle: "code tree unavailable",
       retryLabel: "try again",
-      emptyMessage: "no source files in this scope yet.",
+      emptyMessage: "No source files in this worktree yet.",
       childLoadingMessage: "…",
       childErrorMessage: "could not list this directory.",
       truncationMessage: null,
@@ -3097,7 +3217,7 @@ describe("left-rail root surface states", () => {
       loadingMessage: "reading the worktree…",
       errorTitle: "code tree unavailable",
       retryLabel: "try again",
-      emptyMessage: "no source files in this scope yet.",
+      emptyMessage: "No source files in this worktree yet.",
       childLoadingMessage: "…",
       childErrorMessage: "could not list this directory.",
       truncationMessage: "more here (20) — expand a subdirectory to narrow.",
@@ -3217,17 +3337,17 @@ describe("deriveGraphSliceAvailability (nav-controls descent, contract §2)", ()
       initialProps: { lens: "status" },
     });
 
-    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true), ENGINE_WAIT);
     expect(result.current.availability.loading).toBe(false);
     expect(graphRequests).toHaveLength(1);
 
     rerender({ lens: "status", filter: { doc_types: ["plan"] } });
-    await waitFor(() => expect(graphRequests).toHaveLength(2));
-    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true));
+    await waitFor(() => expect(graphRequests).toHaveLength(2), ENGINE_WAIT);
+    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true), ENGINE_WAIT);
 
     rerender({ lens: "design", filter: { doc_types: ["plan"] } });
-    await waitFor(() => expect(graphRequests).toHaveLength(3));
-    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true));
+    await waitFor(() => expect(graphRequests).toHaveLength(3), ENGINE_WAIT);
+    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true), ENGINE_WAIT);
   });
 
   it("forwards the canonical filter to the lineage wire on the same client path (unified-filter-plane D3)", async () => {
@@ -3249,12 +3369,12 @@ describe("deriveGraphSliceAvailability (nav-controls descent, contract §2)", ()
       { wrapper: wrapper(client), initialProps: undefined as string | undefined },
     );
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.loading).toBe(false), ENGINE_WAIT);
     expect(lineageRequests).toHaveLength(1);
     expect(lineageRequests[0]).not.toContain("filter=");
 
     rerender(JSON.stringify({ doc_types: ["plan"] }));
-    await waitFor(() => expect(lineageRequests).toHaveLength(2));
+    await waitFor(() => expect(lineageRequests).toHaveLength(2), ENGINE_WAIT);
     expect(lineageRequests[1]).toContain("filter=");
     expect(decodeURIComponent(lineageRequests[1]!)).toContain('"doc_types":["plan"]');
   });
@@ -3652,25 +3772,26 @@ describe("useGitFileDiff git availability boundary", () => {
 });
 
 describe("engineKeys", () => {
-  it("keys graph slices by the (scope, filter, as-of, granularity, lens, focus) tuple", () => {
+  it("keys graph slices by the (scope, filter, as-of, granularity, lens, focus, corpus) tuple", () => {
     const a = engineKeys.graph("wt-1", { tiers: { structural: false } }, 123);
     const b = engineKeys.graph("wt-1", { tiers: { structural: false } }, 123);
     const c = engineKeys.graph("wt-2", { tiers: { structural: false } }, 123);
     const d = engineKeys.graph("wt-1", { tiers: { structural: false } });
     expect(a).toEqual(b);
     expect(a).not.toEqual(c);
-    // Defaults (key tail is [..., asOf, granularity, lens, focus]): as-of "live",
-    // granularity "document", lens "status", focus "none" (the engine's defaults).
-    expect(d[d.length - 4]).toBe("live");
-    expect(d[d.length - 3]).toBe("document");
-    expect(d[d.length - 2]).toBe("status");
-    expect(d[d.length - 1]).toBe("none");
+    // Defaults (key tail is [..., asOf, granularity, lens, focus, corpus]): as-of
+    // "live", granularity "document", lens "status", focus "none", corpus "vault".
+    expect(d[d.length - 5]).toBe("live");
+    expect(d[d.length - 4]).toBe("document");
+    expect(d[d.length - 3]).toBe("status");
+    expect(d[d.length - 2]).toBe("none");
+    expect(d[d.length - 1]).toBe("vault");
     // Granularity is part of the cache identity: the constellation (feature)
     // and a document slice never collide in cache.
     const feature = engineKeys.graph("wt-1", undefined, undefined, "feature");
     const document = engineKeys.graph("wt-1", undefined, undefined, "document");
     expect(feature).not.toEqual(document);
-    expect(feature[feature.length - 3]).toBe("feature");
+    expect(feature[feature.length - 4]).toBe("feature");
     // Lens and focus are part of the cache identity (graph-node-salience): two
     // lenses or two focuses never collide in cache.
     const statusLens = engineKeys.graph(
@@ -3688,8 +3809,31 @@ describe("engineKeys", () => {
       "design",
     );
     expect(statusLens).not.toEqual(designLens);
-    // With focus appended as the key tail, the lens sits at length-2.
-    expect(designLens[designLens.length - 2]).toBe("design");
+    // With focus + corpus appended as the key tail, the lens sits at length-3.
+    expect(designLens[designLens.length - 3]).toBe("design");
+    // The corpus is part of the cache identity (codebase-graphing ADR D7): the
+    // vault and code corpora are disconnected datasets that never share a cache
+    // entry, so a corpus switch is a refetch that reloads the canvas.
+    const vaultCorpus = engineKeys.graph(
+      "wt-1",
+      undefined,
+      undefined,
+      "document",
+      "status",
+      null,
+      "vault",
+    );
+    const codeCorpus = engineKeys.graph(
+      "wt-1",
+      undefined,
+      undefined,
+      "document",
+      "status",
+      null,
+      "code",
+    );
+    expect(vaultCorpus).not.toEqual(codeCorpus);
+    expect(codeCorpus[codeCorpus.length - 1]).toBe("code");
   });
 
   it("keys graph diffs by scope, window, and filter", () => {
@@ -3754,6 +3898,7 @@ describe("engineKeys", () => {
   it("enrolls every scoped query family in the workspace-swap scoped-cache boundary", () => {
     const scopedKeys = [
       engineKeys.vaultTree("wt-1"),
+      engineKeys.codeFiles("wt-1"),
       engineKeys.fileTree("wt-1", ".vault", undefined),
       engineKeys.filters("wt-1"),
       engineKeys.dashboardState("wt-1", "session-a"),
@@ -3789,6 +3934,7 @@ describe("engineKeys", () => {
   it("enrolls every graph-generation read family in the generation-refresh boundary", () => {
     const graphGenerationKeys = [
       engineKeys.vaultTree("wt-1"),
+      engineKeys.codeFiles("wt-1"),
       engineKeys.content("wt-1", "doc:plan"),
       engineKeys.fileTree("wt-1", ".vault", undefined),
       engineKeys.filters("wt-1"),
@@ -3967,6 +4113,7 @@ describe("engineKeys", () => {
       engineKeys.map(),
       engineKeys.content(scope, nodeId),
       engineKeys.vaultTree(scope),
+      engineKeys.codeFiles(scope),
       engineKeys.filters(scope),
       engineKeys.dashboardState(scope, "session-a"),
       engineKeys.graph(scope, undefined, undefined, "document", "status", null),
@@ -4467,6 +4614,7 @@ describe("the lens-keyed graph query cache", () => {
       granularity: "feature",
       lens: "design",
       focus: "doc:plan",
+      corpus: "vault",
     });
 
     expect(
@@ -4485,6 +4633,60 @@ describe("the lens-keyed graph query cache", () => {
       granularity: "document",
       lens: "status",
       focus: null,
+      corpus: "vault",
+    });
+  });
+
+  it("pins the code-corpus identity to canonical defaults for engine-ignored fields", () => {
+    // The code corpus carries no vault Filter grammar, lens, as_of or focus (the
+    // queryFn sends none of them), so they must not re-key the query either — a
+    // left-rail filter toggle would otherwise re-fetch a byte-identical code slice
+    // and its set-data could interrupt an in-flight settle (settle-on-swap audit).
+    expect(
+      normalizeGraphSliceRequestIdentity(
+        " wt-1 ",
+        { text: " graph " },
+        " HEAD ",
+        "feature",
+        "design",
+        " doc:plan ",
+        "code",
+      ),
+    ).toEqual({
+      scope: "wt-1",
+      filter: {},
+      asOf: undefined,
+      granularity: "feature",
+      lens: "status",
+      focus: null,
+      corpus: "code",
+    });
+  });
+
+  it("carries ONLY the timeline date_range into the code-corpus identity", () => {
+    // code-timeline-range ADR: the range facet is the one shared narrow, so a
+    // timeline change re-keys the code slice while every other facet stays pinned.
+    expect(
+      normalizeGraphSliceRequestIdentity(
+        "wt-1",
+        {
+          text: "ignored",
+          date_range: { from: "2026-06-01", to: "2026-06-30" },
+        },
+        undefined,
+        "document",
+        undefined,
+        undefined,
+        "code",
+      ),
+    ).toEqual({
+      scope: "wt-1",
+      filter: { date_range: { from: "2026-06-01", to: "2026-06-30" } },
+      asOf: undefined,
+      granularity: "document",
+      lens: "status",
+      focus: null,
+      corpus: "code",
     });
   });
 
@@ -4787,82 +4989,6 @@ describe("deriveGitStatusView", () => {
   });
 });
 
-describe("deriveLocationAnchor", () => {
-  it("keeps location empty-state copy and branch resolution in stores", () => {
-    const git = deriveGitStatusView(
-      statusWith({ branch: "git-main", dirty: true, ahead: 2, behind: 1 }),
-      undefined,
-      false,
-    );
-
-    expect(deriveLocationAnchor(null, undefined, git)).toMatchObject({
-      path: null,
-      emptyLabel: "no scope — pick a worktree first",
-      emptyClassName: "px-fg-1 text-label text-ink-faint",
-      branch: "git-main",
-      mainLabel: null,
-      mainClassName: "shrink-0 font-medium text-ink",
-      branchClassName: "min-w-0 truncate font-medium text-accent-text",
-      pathClassName: "truncate font-mono text-caption text-ink-faint",
-      dirty: true,
-      ahead: 2,
-      behind: 1,
-    });
-
-    expect(
-      deriveLocationAnchor(
-        " scope-a ",
-        {
-          repositories: [
-            {
-              path: "/repo",
-              branches: [],
-              worktrees: [
-                {
-                  id: "scope-a",
-                  path: "/repo/main",
-                  branch: "map-main",
-                  has_vault: true,
-                  is_default: true,
-                },
-              ],
-            },
-          ],
-          tiers: {},
-        },
-        git,
-      ),
-    ).toMatchObject({
-      path: "scope-a",
-      emptyLabel: null,
-      branch: "map-main",
-      isMain: true,
-      mainLabel: "main",
-      dirty: true,
-    });
-  });
-
-  it("normalizes malformed location scopes to the no-scope anchor state", () => {
-    const git = deriveGitStatusView(
-      statusWith({ branch: "git-main", dirty: true, ahead: 2, behind: 1 }),
-      undefined,
-      false,
-    );
-
-    expect(
-      deriveLocationAnchor({ scope: "scope-a" }, { repositories: [], tiers: {} }, git),
-    ).toMatchObject({
-      path: null,
-      emptyLabel: "no scope — pick a worktree first",
-      branch: "git-main",
-      isMain: false,
-      dirty: true,
-      ahead: 2,
-      behind: 1,
-    });
-  });
-});
-
 describe("deriveChangedFilesView", () => {
   it("splits vault documents from source files and computes the summary once", () => {
     const files: ChangedFile[] = [
@@ -5032,7 +5158,9 @@ describe("deriveChangesOverviewView", () => {
       additions: "+6",
       deletions: "−1",
     });
-    expect(view.noScopeLabel).toBe("no scope — pick a worktree first");
+    expect(view.noScopeLabel).toBe(
+      "No worktree selected — pick one in the left rail first.",
+    );
     expect(view.filesSectionLabel).toBe("Changed files — open diff or source");
     expect(view.filesListAriaLabel).toBe("changed files");
     expect(view.documentsSectionLabel).toBe("Changed documents — open reader");
@@ -5112,7 +5240,7 @@ describe("deriveChangesOverviewView", () => {
       hasChanges: false,
       hasFiles: false,
       hasDocuments: false,
-      noScopeLabel: "no scope — pick a worktree first",
+      noScopeLabel: "No worktree selected — pick one in the left rail first.",
     });
   });
 

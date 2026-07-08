@@ -14,6 +14,9 @@
 import { CANONICAL_TIERS } from "./engine";
 import type {
   ChangedFile,
+  CodeFileEntry,
+  CodeFilesResponse,
+  CodeFilesTruncation,
   ContentResponse,
   ContentTruncated,
   DashboardState,
@@ -30,6 +33,7 @@ import type {
   GitDiffLine,
   GitFileDiff,
   GitOpResponse,
+  GraphCorpus,
   GraphSlice,
   HistoryCommit,
   HistoryResponse,
@@ -59,6 +63,7 @@ import type {
   PullRequest,
   RecentScope,
   ScopeContextWire,
+  SearchIndexState,
   SearchResponse,
   SessionState,
   SettingControlKind,
@@ -79,6 +84,7 @@ import { normalizeWorkspaceLayoutBlob } from "../workspaceLayout";
 import {
   cloneDashboardFilters,
   normalizeDashboardGraphBounds,
+  normalizeDashboardGraphCorpus,
   normalizeDashboardGraphGranularity,
   normalizeDashboardNodeId,
   normalizeDashboardPanelState,
@@ -189,8 +195,17 @@ export function metaEdgeToEdge(meta: WireMetaEdge): EngineEdge {
 export const MAX_CLIENT_GRAPH_NODES = 20000;
 export const MAX_CLIENT_GRAPH_EDGES = 80000;
 
-export function adaptGraphSlice(body: unknown): GraphSlice {
+export function adaptGraphSlice(
+  body: unknown,
+  options?: { corpus?: GraphCorpus },
+): GraphSlice {
   if (!isRec(body)) return body as GraphSlice;
+  // The code corpus (codebase-graphing ADR D1/D7) is a DIFFERENT dataset whose
+  // `code:` file nodes are the legitimate content (code-graph-files-only: files
+  // are its ONLY node kind) — the vault-only code-node exclusion below must NOT
+  // fire when adapting it. On the vault corpus (default) the exclusion stays in
+  // force, keeping the vault graph clean.
+  const isCodeCorpus = options?.corpus === "code";
   const allNodes = Array.isArray(body.nodes) ? (body.nodes as EngineNode[]) : [];
   const allEdges = Array.isArray(body.edges) ? (body.edges as EngineEdge[]) : [];
   // G2 trust-boundary cap: clamp a hostile/buggy oversized payload BEFORE mapping, so
@@ -219,7 +234,7 @@ export function adaptGraphSlice(body: unknown): GraphSlice {
   // dropped node. An edge is kept only when BOTH endpoints survive.
   const droppedNodeIds = new Set<string>();
   const nodes = rawNodes.filter((node) => {
-    if (isExcludedGraphNode(node)) {
+    if (!isCodeCorpus && isExcludedGraphNode(node)) {
       droppedNodeIds.add(node.id);
       return false;
     }
@@ -271,7 +286,9 @@ function isExcludedGraphNode(node: EngineNode): boolean {
   if (node.doc_type === "index") return true;
   const kind = node.kind;
   if (kind === "code" || kind === "code-artifact") return true;
-  if (typeof node.id === "string" && node.id.startsWith("code:")) return true;
+  if (typeof node.id === "string" && node.id.startsWith("code:")) {
+    return true;
+  }
   return false;
 }
 
@@ -293,6 +310,7 @@ export function adaptDashboardState(body: unknown): DashboardState {
       date_range: {},
       timeline_mode: { kind: "live" },
       graph_granularity: "feature",
+      corpus: "vault",
       salience_lens: normalizeDashboardSalienceLens(undefined),
       salience_focus: null,
       representation_mode: "connectivity",
@@ -309,6 +327,7 @@ export function adaptDashboardState(body: unknown): DashboardState {
     date_range: normalizeDashboardDateRange(body.date_range),
     timeline_mode: normalizeDashboardTimelineMode(body.timeline_mode),
     graph_granularity: normalizeDashboardGraphGranularity(body.graph_granularity),
+    corpus: normalizeDashboardGraphCorpus(body.corpus),
     salience_lens: normalizeDashboardSalienceLens(body.salience_lens),
     salience_focus: normalizeDashboardNodeId(body.salience_focus),
     representation_mode: normalizeDashboardRepresentationMode(body.representation_mode),
@@ -794,11 +813,16 @@ export function adaptFilters(body: unknown): FiltersVocabulary {
 }
 
 /**
- * Live `/search` nests the rag envelope verbatim:
- * `{envelope: {ok, data: {results}}}`. Map result items tolerantly (the
- * rag item vocabulary: path/stem/source, score, excerpt/text) and derive
- * the graph node id from a stem when the engine annotation is absent —
- * the annotation gap is a flagged divergence, not silently papered.
+ * Live `/search` serves rag's FLAT annotated HTTP envelope (rag-integration-
+ * hardening D1): `results` sits at the TOP level (already unwrapped from the §2
+ * `{data, tiers}` wrapper by `unwrapEnvelope`), each item carrying rag's real
+ * per-hit vocabulary (path/stem/source, score, `snippet`/excerpt/text, and the
+ * species-specific metadata), plus the engine's `node_id` value-add. The
+ * envelope also carries rag's forwarded `index_state` freshness block and the
+ * engine-annotated `semantic_epoch`. Map result items tolerantly and derive the
+ * graph node id from a stem/path only when the engine annotation is absent — the
+ * annotation gap is a flagged divergence, not silently papered. There is ONE
+ * shape: the older nested CLI-subprocess envelope is retired (no bridge).
  */
 export const SEARCH_RESULTS_MAX_ITEMS = 256;
 export const SEARCH_RESULT_IDENTITY_MAX_CHARS = 2048;
@@ -832,6 +856,54 @@ function normalizeSearchResultLine(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   const n = Math.trunc(value);
   return n >= 0 ? n : undefined;
+}
+
+/** An `index_state` count field: a finite, non-negative integer, else undefined
+ *  (a malformed or absent count never poisons the freshness block). */
+function normalizeSearchCount(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const n = Math.trunc(value);
+  return n >= 0 ? n : undefined;
+}
+
+/**
+ * The shared D4 semantic epoch the engine annotates on a `/search` success
+ * (rag-integration-hardening D3). Three distinct served truths, preserved:
+ * a finite non-negative number is the warm epoch; an explicit `null` is the
+ * engine's HONEST absent marker (a cold/failed cache read — freshness unknown,
+ * never fabricated); anything else (field absent, non-number) is `undefined` —
+ * the wire carried no epoch at all (the degraded path emits none). `null` and
+ * `undefined` are NOT collapsed: one is "known-unknown", the other "not served".
+ */
+function normalizeSearchEpoch(
+  present: boolean,
+  value: unknown,
+): number | null | undefined {
+  if (!present) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const n = Math.trunc(value);
+  return n >= 0 ? n : undefined;
+}
+
+/** rag's `index_state` freshness block → the internal `SearchIndexState`,
+ *  forwarded verbatim (engine-read-and-infer — no engine staleness semantics),
+ *  every field normalized tolerantly and dropped when malformed/absent. Returns
+ *  undefined when no field survives (a sparse or absent block). */
+function adaptSearchIndexState(value: unknown): SearchIndexState | undefined {
+  if (!isRec(value)) return undefined;
+  const state = pickDefined({
+    source: normalizeSearchResultString(value.source),
+    indexed_count: normalizeSearchCount(value.indexed_count),
+    vault_count: normalizeSearchCount(value.vault_count),
+    code_count: normalizeSearchCount(value.code_count),
+    indexed_target_root: normalizeSearchResultString(value.indexed_target_root),
+    requested_target_root: normalizeSearchResultString(value.requested_target_root),
+    target_matches:
+      typeof value.target_matches === "boolean" ? value.target_matches : undefined,
+    status: normalizeSearchResultString(value.status),
+  });
+  return Object.keys(state).length > 0 ? state : undefined;
 }
 
 /** Drop `undefined` entries so only present fields ride the optional wire shape. */
@@ -894,10 +966,11 @@ function adaptSearchResult(item: unknown): SearchResponse["results"][number] | n
 
 export function adaptSearch(body: unknown): SearchResponse {
   if (!isRec(body)) return body as never;
-  if (Array.isArray(body.results)) return body as never; // internal/mock shape
-  const envelope = isRec(body.envelope) ? body.envelope : {};
-  const data = isRec(envelope.data) ? envelope.data : {};
-  const rawResults = Array.isArray(data.results) ? data.results : [];
+  // The flat annotated shape (rag-integration-hardening D1): `results` at the
+  // top level, adapted per hit. The old nested `{envelope:{data:{results}}}`
+  // CLI-subprocess shape is retired — search rides the resident HTTP service, so
+  // there is exactly one shape and no discriminating bridge.
+  const rawResults = Array.isArray(body.results) ? body.results : [];
   const results: SearchResponse["results"] = [];
   for (const item of rawResults) {
     const result = adaptSearchResult(item);
@@ -905,9 +978,17 @@ export function adaptSearch(body: unknown): SearchResponse {
     results.push(result);
     if (results.length >= SEARCH_RESULTS_MAX_ITEMS) break;
   }
+  // Freshness (D3): rag's `index_state` forwarded verbatim and the engine's
+  // annotated `semantic_epoch` passed through as served truth. Both are optional
+  // and only emitted when present, so a degraded/empty search (no freshness on
+  // the wire) carries neither rather than a fabricated block.
+  const indexState = adaptSearchIndexState(body.index_state);
+  const epoch = normalizeSearchEpoch("semantic_epoch" in body, body.semantic_epoch);
   return {
     results,
     tiers: (body.tiers ?? {}) as TiersBlock,
+    ...(indexState !== undefined ? { index_state: indexState } : {}),
+    ...(epoch !== undefined ? { semantic_epoch: epoch } : {}),
   };
 }
 
@@ -992,6 +1073,25 @@ function normalizeVaultTreeProgress(
   return { done, total };
 }
 
+/** Ingest-measured document weight (left-rail-tree-controls ADR D2): kept only
+ *  when BOTH fields are finite non-negative numbers; anything malformed is
+ *  dropped whole so the rail never renders a half-true weight. */
+function normalizeVaultTreeSize(value: unknown): VaultTreeEntry["size"] | undefined {
+  if (!isRec(value)) return undefined;
+  if (
+    typeof value.bytes !== "number" ||
+    typeof value.words !== "number" ||
+    !Number.isFinite(value.bytes) ||
+    !Number.isFinite(value.words)
+  ) {
+    return undefined;
+  }
+  const bytes = Math.floor(value.bytes);
+  const words = Math.floor(value.words);
+  if (bytes < 0 || words < 0) return undefined;
+  return { bytes, words };
+}
+
 function adaptVaultTreeEntry(value: unknown): VaultTreeEntry | null {
   if (!isRec(value)) return null;
   const path = normalizeVaultTreeString(value.path);
@@ -1003,15 +1103,19 @@ function adaptVaultTreeEntry(value: unknown): VaultTreeEntry | null {
     path ?? `.vault/${docType === "document" ? "doc" : docType}/${stem}.md`;
   const status = normalizeVaultTreeString(value.status);
   const tier = normalizeVaultTreeString(value.tier);
+  const title = normalizeVaultTreeString(value.title);
   const progress = normalizeVaultTreeProgress(value.progress);
+  const size = normalizeVaultTreeSize(value.size);
   return {
     path: entryPath,
     doc_type: docType,
     feature_tags: normalizeVaultTreeStringList(value.feature_tags),
     dates: adaptVaultTreeDates(value.dates),
+    ...(title !== undefined ? { title } : {}),
     ...(status !== undefined ? { status } : {}),
     ...(tier !== undefined ? { tier } : {}),
     ...(progress !== undefined ? { progress } : {}),
+    ...(size !== undefined ? { size } : {}),
   };
 }
 
@@ -1024,6 +1128,65 @@ export function adaptVaultTree(body: unknown): VaultTreeResponse {
     .map(adaptVaultTreeEntry)
     .filter((entry): entry is VaultTreeEntry => entry !== null);
   return { entries, tiers: (body.tiers ?? {}) as TiersBlock };
+}
+
+// --- /code-files: the complete code-file listing (search-providers ADR) ----------
+//
+// Tolerant adapter for the drained `/code-files` walk. Every field defaults to a
+// safe empty so a sparse or older shape NEVER throws: a row missing its `path` is
+// dropped (a code hit with no path is unnavigable), a missing `node_id` is
+// reconstructed from the path (the files-only `code:{path}` identity), and the
+// walk-cap `truncated` block is passed through only when it is a well-formed
+// honesty record (null otherwise — absence reads as completeness, never a guess).
+
+function adaptCodeFileEntry(value: unknown): CodeFileEntry | null {
+  if (!isRec(value)) return null;
+  const path = normalizeVaultTreeString(value.path);
+  if (path === undefined) return null;
+  const nodeId = normalizeVaultTreeString(value.node_id) ?? `code:${path}`;
+  const title = normalizeVaultTreeString(value.title);
+  const lang = normalizeVaultTreeString(value.lang);
+  return {
+    path,
+    node_id: nodeId,
+    ...(title !== undefined ? { title } : {}),
+    ...(lang !== undefined ? { lang } : {}),
+  };
+}
+
+function adaptCodeFilesTruncation(value: unknown): CodeFilesTruncation | null {
+  if (!isRec(value)) return null;
+  const returned = value.returned_files;
+  const reason = normalizeVaultTreeString(value.reason);
+  if (
+    typeof returned !== "number" ||
+    !Number.isFinite(returned) ||
+    reason === undefined
+  ) {
+    return null;
+  }
+  return { returned_files: Math.max(0, Math.floor(returned)), reason };
+}
+
+/** Live code-file rows → the internal complete listing. Fail-closed to an empty
+ *  listing (never a throw) when the shape is unrecognized, preserving any tiers
+ *  block so degradation truth still rides through. */
+export function adaptCodeFiles(body: unknown): CodeFilesResponse {
+  if (!isRec(body) || !Array.isArray(body.entries)) {
+    return {
+      entries: [],
+      tiers: (isRec(body) ? (body.tiers ?? {}) : {}) as TiersBlock,
+      truncated: null,
+    };
+  }
+  const entries = body.entries
+    .map(adaptCodeFileEntry)
+    .filter((entry): entry is CodeFileEntry => entry !== null);
+  return {
+    entries,
+    tiers: (body.tiers ?? {}) as TiersBlock,
+    truncated: adaptCodeFilesTruncation(body.truncated),
+  };
 }
 
 // --- §3 code (worktree) file tree (dashboard-code-tree ADR) ----------------------

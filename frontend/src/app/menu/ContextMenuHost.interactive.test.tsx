@@ -24,6 +24,7 @@ import {
 } from "../../testing/menuQueryClient";
 import { openContextMenu, useContextMenuStore } from "../../stores/view/contextMenu";
 import { ContextMenuHost } from "./ContextMenuHost";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 // The host reads active scope / selected node id through TanStack query hooks.
 let testClient: QueryClient;
@@ -61,27 +62,38 @@ function openAt(trigger?: HTMLElement) {
 describe("ContextMenuHost interactive", () => {
   it("moves focus to the first item on open", async () => {
     openAt();
-    await waitFor(() => expect(document.activeElement?.textContent).toContain("First"));
+    await waitFor(
+      () => expect(document.activeElement?.textContent).toContain("First"),
+      ENGINE_WAIT,
+    );
   });
 
   it("ArrowDown/ArrowUp walk the items via roving focus", async () => {
     openAt();
-    const menu = await screen.findByRole("menu");
-    await waitFor(() => expect(document.activeElement?.textContent).toContain("First"));
+    const menu = await screen.findByRole("menu", undefined, ENGINE_WAIT);
+    await waitFor(
+      () => expect(document.activeElement?.textContent).toContain("First"),
+      ENGINE_WAIT,
+    );
     fireEvent.keyDown(menu, { key: "ArrowDown" });
-    await waitFor(() =>
-      expect(document.activeElement?.textContent).toContain("Second"),
+    await waitFor(
+      () => expect(document.activeElement?.textContent).toContain("Second"),
+      ENGINE_WAIT,
     );
     fireEvent.keyDown(menu, { key: "ArrowUp" });
-    await waitFor(() => expect(document.activeElement?.textContent).toContain("First"));
+    await waitFor(
+      () => expect(document.activeElement?.textContent).toContain("First"),
+      ENGINE_WAIT,
+    );
   });
 
   it("Enter activates the focused item and closes", async () => {
     openAt();
-    const menu = await screen.findByRole("menu");
+    const menu = await screen.findByRole("menu", undefined, ENGINE_WAIT);
     fireEvent.keyDown(menu, { key: "ArrowDown" });
-    await waitFor(() =>
-      expect(document.activeElement?.textContent).toContain("Second"),
+    await waitFor(
+      () => expect(document.activeElement?.textContent).toContain("Second"),
+      ENGINE_WAIT,
     );
     fireEvent.keyDown(menu, { key: "Enter" });
     expect(second).toHaveBeenCalledTimes(1);
@@ -94,7 +106,7 @@ describe("ContextMenuHost interactive", () => {
     trigger.textContent = "opener";
     document.body.appendChild(trigger);
     openAt(trigger);
-    const menu = await screen.findByRole("menu");
+    const menu = await screen.findByRole("menu", undefined, ENGINE_WAIT);
     fireEvent.keyDown(menu, { key: "Escape" });
     expect(document.activeElement).toBe(trigger);
     trigger.remove();
@@ -109,7 +121,7 @@ describe("ContextMenuHost interactive", () => {
       trigger.focus();
       openContextMenu({ kind: "node", id: "n1" }, { x: 10, y: 10 });
     });
-    await screen.findByRole("menu");
+    await screen.findByRole("menu", undefined, ENGINE_WAIT);
     view.unmount();
     expect(document.activeElement).toBe(trigger);
     trigger.remove();

@@ -42,6 +42,7 @@ import type {
   FileTreeResponse,
   GitFileDiff,
   GitOpResponse,
+  GraphCorpus,
   GraphFilter,
   GraphGranularity,
   GraphSlice,
@@ -101,10 +102,13 @@ import {
   dashboardLineageFilterArg,
   dashboardSelectionId,
   normalizeDashboardGraphBounds,
+  normalizeDashboardGraphCorpus,
   normalizeDashboardGraphGranularity,
   normalizeDashboardPanelState,
   normalizeDashboardRepresentationMode,
   normalizeDashboardSalienceLens,
+  patchDashboardState,
+  selectionPatch,
   type DashboardGraphQueryVariables,
 } from "./dashboardState";
 import { isFreshDashboardGraphDefaultsState } from "./dashboardDefaults";
@@ -139,7 +143,18 @@ import {
   type SettingsGroup,
 } from "./settingsSelectors";
 import { filterChoicesFromDashboardState, type FilterChoices } from "../view/filters";
+import {
+  DEFAULT_RAIL_SORT,
+  type RailSortKey,
+  type RailSortValue,
+} from "../view/railSort";
 import { setKeymapOverridesReader } from "../view/keymapDispatcher";
+import {
+  deriveSessionIntentBootHealIntent,
+  isSessionIntentStale,
+  readSessionIntentTouch,
+  stampSessionIntentTouch,
+} from "../view/sessionIntentFreshness";
 import { movePlayhead } from "../view/timelineIntent";
 import { normalizeNodeId, normalizeNodeIds } from "../nodeIds";
 import { normalizeSearchQuery } from "../searchQuery";
@@ -192,6 +207,11 @@ export const engineKeys = {
   // authoritative shape (dashboard-workspace-registry ADR).
   workspaces: () => [...engineKeys.all, "workspaces"] as const,
   vaultTree: (scope: string) => [...engineKeys.all, "vault-tree", scope] as const,
+  // The complete code-file listing (search-providers ADR), keyed on scope alone:
+  // one bounded cache entry per corpus, walked to completion by the client so the
+  // files(code) provider narrows the WHOLE set. A scope/workspace swap evicts it
+  // like the vault-tree cache (default gcTime bounds retention).
+  codeFiles: (scope: string) => [...engineKeys.all, "code-files", scope] as const,
   // The code (worktree) file tree is fetched ONE directory level per call
   // (dashboard-code-tree ADR): the key folds (scope, dir-path, cursor) so each
   // expanded directory — and each page of a paginated level — is its own cache
@@ -200,7 +220,8 @@ export const engineKeys = {
   // corpus's levels never survive (mirrors the vault-tree cache discipline).
   fileTree: (scope: string, path?: string, cursor?: string) =>
     [...engineKeys.all, "file-tree", scope, path ?? "", cursor ?? ""] as const,
-  filters: (scope: string) => [...engineKeys.all, "filters", scope] as const,
+  filters: (scope: string, corpus?: GraphCorpus) =>
+    [...engineKeys.all, "filters", scope, corpus ?? "vault"] as const,
   dashboardState: (scope: string, backendSessionIdentity: string) =>
     [...engineKeys.all, "dashboard-state", scope, backendSessionIdentity] as const,
   graph: (
@@ -210,6 +231,7 @@ export const engineKeys = {
     granularity?: "document" | "feature",
     lens?: SalienceLens,
     focus?: string | null,
+    corpus?: GraphCorpus,
   ) =>
     [
       ...engineKeys.all,
@@ -224,6 +246,11 @@ export const engineKeys = {
       // entry. Defaulted so the omitted case is the status-lens, no-focus key.
       lens ?? DEFAULT_SALIENCE_LENS,
       focus ?? "none",
+      // The active corpus (codebase-graphing ADR D7): vault and code are
+      // DISCONNECTED datasets, so they must never share a cache entry — a corpus
+      // switch is a key change that refetches the other corpus and reloads the
+      // canvas. Defaulted to `vault` so the pre-corpus key is byte-identical.
+      corpus ?? "vault",
     ] as const,
   // The dedicated bounded embedding read (graph-semantic-embeddings ADR D2):
   // keyed by (scope, lens, focus) — the SAME DOI selection unit `/graph/query`
@@ -358,6 +385,10 @@ export const engineKeys = {
 
 export const SCOPED_ENGINE_QUERY_SUBTREES = [
   "vault-tree",
+  // The complete code-file listing (search-providers ADR D1): keyed on scope so
+  // a workspace swap evicts the prior corpus's listing and the next scope starts
+  // fresh — the files(code) provider must never serve another scope's files.
+  "code-files",
   "file-tree",
   "filters",
   "dashboard-state",
@@ -385,6 +416,11 @@ export const SCOPED_ENGINE_QUERY_SUBTREES = [
 
 export const GRAPH_GENERATION_QUERY_SUBTREES = [
   "vault-tree",
+  // The complete code-file listing (search-providers ADR D1): projected from the
+  // LinkageGraph and memoized on the graph `generation` server-side, so a new
+  // ingest (added or removed source file) bumps the generation and the client
+  // listing must re-read from the fresh projection on the next render.
+  "code-files",
   // A watcher/SSE re-ingest (an external edit, a rename, or another client's
   // write) bumps the generation WITHOUT a local mutation, so the open reader/
   // editor's served bytes and the file-tree projection would otherwise go stale
@@ -599,9 +635,11 @@ export interface WorkspaceMapPickerRowView {
   isDegraded: boolean;
   rowClassName: string;
   activeCueClassName: string;
-  /** The worktree's display NAME (path basename) — shown in place of the branch
-   *  so repository status reads once per rail. */
+  /** The worktree's display NAME (path basename) — the row's primary ink. */
   nameLabel: string;
+  /** The checked-out branch when it adds identity beyond the name (null when it
+   *  matches the folder name — "main main" says nothing twice). */
+  branchLabel: string | null;
   branchClassName: string;
   badgeClassName: string;
   degradedIconClassName: string;
@@ -609,19 +647,28 @@ export interface WorkspaceMapPickerRowView {
   title: string;
   ariaLabel: string;
   defaultLabel: string | null;
-  bareLabel: string | null;
+  /** Quiet marker for a worktree with no vault to open (context-only row). */
+  noVaultLabel: string | null;
   degradedTitle: string;
   pendingLabel: string | null;
 }
 
 export interface WorkspaceMapPickerPresentationView {
   worktrees: MapWorktree[];
-  /** The FULL ordered worktree set of the ACTIVE project (the "All worktrees"
+  /** The FULL ordered worktree set of the ACTIVE project (the worktree
    *  disclosure). The cross-project "Recent" section is derived separately from
    *  the session recents, not from this `/map` projection. */
   rows: WorkspaceMapPickerRowView[];
-  /** Label for the active project's worktree disclosure. */
+  /** Label for the active project's worktree disclosure — names the project so
+   *  the count is never read machine-wide. */
   allLabel: string;
+  /** The active PROJECT's display name (threaded from the registry), or null
+   *  before the registry resolves — the trigger's identity line. */
+  projectLabel: string | null;
+  /** The pending-aware headline worktree (the switch target while switching,
+   *  else the active worktree) — drives the trigger's git line and path line so
+   *  the header never mixes target and outgoing state. */
+  headline: MapWorktree | null;
   pending: boolean;
   triggerLabel: string;
   triggerAriaLabel: string;
@@ -746,11 +793,14 @@ export function deriveWorkspaceMapPickerPresentationView({
   activeScope,
   pendingId,
   availability,
+  projectLabel = null,
 }: {
   map: MapResponse | undefined;
   activeScope: string | null;
   pendingId: string | null;
   availability: WorkspaceMapAvailability;
+  /** The active project's display name from the registry (identity line). */
+  projectLabel?: string | null;
 }): WorkspaceMapPickerPresentationView {
   const worktrees = orderWorkspaceMapWorktrees(
     map?.repositories.flatMap((repo) => repo.worktrees) ?? [],
@@ -770,6 +820,8 @@ export function deriveWorkspaceMapPickerPresentationView({
     const isActive = worktree.id === activeScope;
     const isPending = pending && worktree.id === pendingId;
     const isDegraded = (worktree.degraded?.length ?? 0) > 0;
+    const name = worktreeName(worktree.path);
+    const branch = worktree.branch.trim();
     return {
       worktree,
       selectable,
@@ -778,21 +830,22 @@ export function deriveWorkspaceMapPickerPresentationView({
       isDegraded,
       rowClassName: workspaceMapPickerRowClassName({ isActive, selectable }),
       activeCueClassName: workspaceMapPickerActiveCueClassName(isActive),
-      nameLabel: worktreeName(worktree.path),
+      nameLabel: name,
+      branchLabel: branch.length > 0 && branch !== name ? branch : null,
       branchClassName: WORKSPACE_MAP_PICKER_BRANCH_CLASS,
       badgeClassName: WORKSPACE_MAP_PICKER_BADGE_CLASS,
       degradedIconClassName: WORKSPACE_MAP_PICKER_DEGRADED_ICON_CLASS,
       pendingLabelClassName: WORKSPACE_MAP_PICKER_PENDING_LABEL_CLASS,
       title: worktree.has_vault
         ? worktree.path
-        : `${worktree.path} — no vault corpus, context only`,
+        : `${worktree.path} — no vault here; shown for context`,
       ariaLabel: worktree.has_vault
-        ? `switch to ${worktreeName(worktree.path)}${worktree.is_default ? ", the default" : ""}${
-            isActive ? ", current scope" : ""
-          }`
-        : `${worktreeName(worktree.path)} — context only, no vault corpus to switch to`,
+        ? `switch to ${name}${branch.length > 0 && branch !== name ? ` on branch ${branch}` : ""}${
+            worktree.is_default ? ", the default worktree" : ""
+          }${isActive ? ", the current worktree" : ""}`
+        : `${name} — no vault here, shown for context only`,
       defaultLabel: worktree.is_default ? "·default" : null,
-      bareLabel: worktree.has_vault ? null : "·bare",
+      noVaultLabel: worktree.has_vault ? null : "·no vault",
       degradedTitle: worktree.degraded?.join(", ") ?? "",
       pendingLabel: isPending ? "switching…" : null,
     };
@@ -801,40 +854,46 @@ export function deriveWorkspaceMapPickerPresentationView({
   return {
     worktrees,
     rows,
-    allLabel: "All worktrees",
+    allLabel: projectLabel
+      ? `Worktrees in ${projectLabel}`
+      : "This project's worktrees",
+    projectLabel,
+    headline: headlineWorktree ?? null,
     pending,
-    triggerLabel: headlineName ?? "pick a worktree…",
+    triggerLabel: headlineName ?? "Pick a worktree…",
     triggerAriaLabel: headlineName
-      ? `worktree scope: ${headlineName}${pending ? ", switching" : ""}`
-      : "choose a worktree scope",
+      ? `current location: ${projectLabel ? `${projectLabel} / ` : ""}${headlineName}${
+          pending ? ", switching" : ""
+        }`
+      : "choose a project or worktree",
     triggerClassName: WORKSPACE_MAP_PICKER_TRIGGER_CLASS,
     triggerLabelClassName: workspaceMapPickerTriggerLabelClassName(pending),
     triggerIconClassName: WORKSPACE_MAP_PICKER_TRIGGER_ICON_CLASS,
-    loadingLabel: "mapping worktrees…",
+    loadingLabel: "Loading worktrees…",
     loadingClassName: WORKSPACE_MAP_PICKER_LOADING_CLASS,
-    errorLabel: "workspace map unavailable",
+    errorLabel: "The worktree list couldn't be loaded",
     errorRootClassName: WORKSPACE_MAP_PICKER_ERROR_ROOT_CLASS,
     errorLabelClassName: WORKSPACE_MAP_PICKER_ERROR_LABEL_CLASS,
-    retryLabel: "retry",
-    retryAriaLabel: "retry loading the workspace map",
+    retryLabel: "Retry",
+    retryAriaLabel: "retry loading the worktree list",
     retryButtonClassName: WORKSPACE_MAP_PICKER_RETRY_BUTTON_CLASS,
     degradedLabel: availability.degraded
-      ? `the worktree map is partly unavailable right now${
+      ? `The worktree list is partly unavailable right now${
           availabilityReason ? ` — ${availabilityReason}` : ""
-        }. showing what loaded.`
+        }. Showing what loaded.`
       : null,
     degradedClassName: WORKSPACE_MAP_PICKER_DEGRADED_CLASS,
-    listAriaLabel: "worktree scopes",
+    listAriaLabel: "projects and worktrees",
     emptyLabel:
       worktrees.length === 0
-        ? "no worktrees mapped yet — point the engine at a repository to begin."
+        ? "No worktrees here yet — point the engine at a repository to begin."
         : selectableCount === 0
-          ? "no vault-bearing worktree to switch to here. listed refs are context only."
+          ? "None of these worktrees has a vault to open — they're shown for context."
           : null,
     emptyClassName: WORKSPACE_MAP_PICKER_EMPTY_CLASS,
     singleScopeLabel:
       selectableCount === 1 && worktrees.length === 1
-        ? "this is the only vault-bearing worktree."
+        ? "This is the only worktree with a vault."
         : null,
     singleScopeClassName: WORKSPACE_MAP_PICKER_SINGLE_SCOPE_CLASS,
   };
@@ -991,6 +1050,10 @@ export interface WorktreePickerRecentRowView {
   worktreeName: string;
   /** The owning project's name (registry label, falling back to basename). */
   projectLabel: string;
+  /** The row's primary ink: a same-project entry is just the worktree name; a
+   *  cross-project entry LEADS with the project ("project / worktree") so the
+   *  distinguishing token carries the emphasis when basenames collide. */
+  label: string;
   /** This entry is the current active (workspace, scope). */
   isActive: boolean;
   /** This entry belongs to the currently-active project. */
@@ -1056,10 +1119,11 @@ export function deriveWorktreePickerRecentRows({
       scope,
       worktreeName: name,
       projectLabel,
+      label: sameProject ? name : `${projectLabel} / ${name}`,
       isActive,
       sameProject,
       selectable,
-      title: sameProject ? scope : `${name} — ${projectLabel}\n${scope}`,
+      title: sameProject ? scope : `${projectLabel} / ${name}\n${scope}`,
       ariaLabel: sameProject
         ? `switch to ${name}${isActive ? ", current" : ""}`
         : `switch to ${name} in project ${projectLabel}`,
@@ -1448,6 +1512,119 @@ export function useActivateWorktreeScope(): (scope: unknown) => Promise<SessionS
   );
 }
 
+export interface TimelineBootHealInput {
+  scope: string | null;
+  stateLoaded: boolean;
+  isLive: boolean;
+  alreadyHealed: boolean;
+}
+
+/**
+ * Cold-start timeline healing (TTR-005): with time-travel ENTRY retired, the app
+ * must always resolve to a LIVE playhead. A scope whose backend-persisted
+ * `timeline_mode` is time-travel would otherwise load into a historical view with
+ * no exit (the entry affordances are gone). This derives whether to force live:
+ * the active scope's dashboard state has loaded, its persisted mode is NOT live,
+ * and this scope has not already been healed this session. `activateWorktreeScope`
+ * already heals on explicit worktree activation; this covers the cold-start
+ * restore path, which persists a scope but never resets the playhead.
+ */
+export function deriveTimelineBootHealIntent({
+  scope,
+  stateLoaded,
+  isLive,
+  alreadyHealed,
+}: TimelineBootHealInput): boolean {
+  if (scope === null) return false;
+  if (!stateLoaded) return false;
+  if (isLive) return false;
+  if (alreadyHealed) return false;
+  return true;
+}
+
+/**
+ * Force the dashboard playhead to LIVE once per scope on load (TTR-005). Mounted
+ * once by the Stage: after time-travel entry was retired every scope must boot
+ * live, so a persisted time-travel mode is healed to live exactly once — idempotent
+ * with `activateWorktreeScope` (which also lands live: whichever fires first wins,
+ * the other observes `live` and no-ops). One-shot per scope via a healed-set ref so
+ * the heal cannot race the session seed or re-fire when its own write settles.
+ */
+export function useHealTimelineModeToLiveOnBoot(): void {
+  const scope = useActiveScope();
+  const dashboardState = useDashboardState(scope);
+  const healedScopesRef = useRef<Set<string>>(new Set());
+
+  const stateLoaded = dashboardState.data !== undefined;
+  const isLive = (dashboardState.data?.timeline_mode?.kind ?? "live") === "live";
+
+  useEffect(() => {
+    const alreadyHealed = scope !== null && healedScopesRef.current.has(scope);
+    if (
+      scope === null ||
+      !deriveTimelineBootHealIntent({ scope, stateLoaded, isLive, alreadyHealed })
+    ) {
+      return;
+    }
+    healedScopesRef.current.add(scope);
+    movePlayhead("live", scope);
+  }, [scope, stateLoaded, isLive]);
+}
+
+/**
+ * Stale-SESSION-INTENT boot heal (dashboard-state field lifetimes ADR,
+ * global-state-review 2026-07-03). Dashboard-state fields classify into durable
+ * preferences (filters, date range, granularity, corpus, panels — persist forever)
+ * and SESSION INTENT: the canonical selection, whose resumption value is real inside
+ * a working session and gone after a genuine absence — a days-old persisted
+ * selection otherwise silently re-drives the rail reveal, the cluster spotlight, and
+ * the camera on a fresh load (GSR-002). Once per scope per app lifetime: when the
+ * dashboard state has loaded and the scope's view-local activity stamp is stale
+ * (8h) or absent, clear the selection through the ONE canonical selection seam —
+ * every surface follows via the existing projection. The scope is then stamped, and
+ * re-stamped whenever the canonical selection changes while mounted, so an actively
+ * used tab keeps its scope fresh and a mid-session reload resumes. Mirrors the
+ * TTR-005 timeline heal's one-shot discipline (its stricter unconditional clear
+ * stays — a modal mode with no exit has no resumption value).
+ */
+export function useHealStaleSessionIntentOnBoot(): void {
+  const scope = useActiveScope();
+  const dashboardState = useDashboardState(scope);
+  const healedScopesRef = useRef<Set<string>>(new Set());
+
+  const stateLoaded = dashboardState.data !== undefined;
+  const hasSelection = (dashboardState.data?.selected_ids?.length ?? 0) > 0;
+  const selectedId = dashboardSelectionId(dashboardState.data);
+
+  useEffect(() => {
+    if (scope === null || !stateLoaded) return;
+    const alreadyHealed = healedScopesRef.current.has(scope);
+    if (!alreadyHealed) {
+      healedScopesRef.current.add(scope);
+      const stale = isSessionIntentStale(readSessionIntentTouch(scope), Date.now());
+      if (
+        deriveSessionIntentBootHealIntent({
+          scope,
+          stateLoaded,
+          hasSelection,
+          stale,
+          alreadyHealed,
+        })
+      ) {
+        void patchDashboardState(scope, selectionPatch([])).catch(() => undefined);
+      }
+    }
+    stampSessionIntentTouch(scope, Date.now());
+  }, [scope, stateLoaded, hasSelection]);
+
+  // Activity tracking: a selection CHANGE while mounted refreshes the scope's stamp,
+  // so a long-open, actively-used tab never reads as absent on its next reload.
+  useEffect(() => {
+    if (scope === null || selectedId === null) return;
+    stampSessionIntentTouch(scope, Date.now());
+  }, [scope, selectedId]);
+}
+
 export interface VaultTreeRequestIdentity {
   scope: string | null;
 }
@@ -1464,6 +1641,31 @@ export function useVaultTree(scope: unknown) {
   const query = useQuery({
     queryKey: engineKeys.vaultTree(request.scope ?? ""),
     queryFn: () => engineClient.vaultTree(request.scope!),
+    enabled,
+  });
+  return withManualRetry(enabled ? query : { ...query, data: undefined });
+}
+
+export interface CodeFilesRequestIdentity {
+  scope: string | null;
+}
+
+export function normalizeCodeFilesRequestIdentity(
+  scope: unknown,
+): CodeFilesRequestIdentity {
+  return { scope: normalizeGraphSliceScope(scope) };
+}
+
+/** The complete code-file listing (search-providers ADR): the client walks the
+ *  cursor to completion, so the files(code) provider holds the WHOLE set to
+ *  narrow client-side (the complete-paginated-set rule). Bounded cache keyed on
+ *  scope, mirroring `useVaultTree`; default gcTime bounds retention. */
+export function useCodeFiles(scope: unknown) {
+  const request = normalizeCodeFilesRequestIdentity(scope);
+  const enabled = request.scope !== null;
+  const query = useQuery({
+    queryKey: engineKeys.codeFiles(request.scope ?? ""),
+    queryFn: () => engineClient.codeFiles(request.scope!),
     enabled,
   });
   return withManualRetry(enabled ? query : { ...query, data: undefined });
@@ -1549,6 +1751,10 @@ export interface VaultTreeFeatureGroup {
   feature: string;
   /** Total document count across every doc-type group in this feature bucket. */
   count: number;
+  /** Summed served byte weight of this feature's members (left-rail-tree-controls
+   *  corpus-weight sort): 0 when no member carries a served size. A multi-tag
+   *  document weighs into each of its features (shares need not sum to 100%). */
+  weightBytes: number;
   /** Doc-type sub-groups, in canonical `.vault/` order then alphabetical. */
   docTypes: VaultTreeDocTypeGroup[];
 }
@@ -1583,6 +1789,7 @@ function vaultTreeDocTypeOrder(present: Iterable<string>): string[] {
 
 export function projectVaultTreeFeatureGroups(
   entries: readonly VaultTreeEntry[],
+  sort: RailSortValue = DEFAULT_RAIL_SORT,
 ): VaultTreeFeatureGroup[] {
   const UNTAGGED = "(untagged)";
   const byFeature = new Map<string, Map<string, VaultTreeEntry[]>>();
@@ -1610,10 +1817,22 @@ export function projectVaultTreeFeatureGroups(
       entries: docMap
         .get(docType)!
         .slice()
-        .sort((a, b) => a.path.localeCompare(b.path)),
+        .sort((a, b) =>
+          // The historical sub-folder order is path-ascending (chronological by
+          // the date-stamped stem); a chosen sort key reorders it through the
+          // ONE comparator (ADR D3 — one sort concept for the whole tree).
+          sort.key === "recency" || sort.key === "docs"
+            ? (sort.direction === "desc" ? 1 : -1) * a.path.localeCompare(b.path)
+            : compareVaultEntriesBySort(sort, a, b),
+        ),
     }));
     const count = docTypes.reduce((n, group) => n + group.entries.length, 0);
-    groups.push({ feature, count, docTypes });
+    const weightBytes = docTypes.reduce(
+      (n, group) =>
+        n + group.entries.reduce((m, entry) => m + (entry.size?.bytes ?? 0), 0),
+      0,
+    );
+    groups.push({ feature, count, weightBytes, docTypes });
   }
   return groups;
 }
@@ -1686,9 +1905,65 @@ function compareVaultRecency(a: VaultTreeEntry, b: VaultTreeEntry): number {
   return a.path.localeCompare(b.path);
 }
 
-/** Group vault entries by doc type (the Documents section), excluding `index`. */
+/** A document's sortable field for a non-recency sort key (left-rail-tree-
+ *  controls ADR D3): the served H1 title (falling back to the stem) for `name`,
+ *  the day-granular ISO date for `created`/`modified`, the served word count for
+ *  `size`. `null` = the fact is absent — an absent fact sorts LAST regardless of
+ *  direction (honest absence never floats to the top). */
+function vaultEntrySortField(
+  entry: VaultTreeEntry,
+  key: RailSortKey,
+): string | number | null {
+  switch (key) {
+    case "name":
+      return (entry.title ?? stemFromPath(entry.path)).toLowerCase();
+    case "created":
+      return entry.dates.created ?? null;
+    case "modified":
+      return entry.dates.modified ?? null;
+    case "size":
+      return entry.size?.words ?? null;
+    case "weight":
+      return entry.size?.bytes ?? null;
+    case "recency":
+    case "docs":
+      return null;
+  }
+}
+
+/** The ONE document comparator the whole vault tree sorts by (ADR D3): `recency`
+ *  is the historical newest-modified-first order (direction flips it); every
+ *  other key compares its field with absent-last, path tiebreak. */
+export function compareVaultEntriesBySort(
+  sort: RailSortValue,
+  a: VaultTreeEntry,
+  b: VaultTreeEntry,
+): number {
+  // `docs` is a FOLDER-count order — a document list has no per-item count, so
+  // its leaves keep the historical recency order (direction still applies).
+  if (sort.key === "recency" || sort.key === "docs") {
+    const cmp = compareVaultRecency(a, b);
+    return sort.direction === "desc" ? cmp : -cmp;
+  }
+  const av = vaultEntrySortField(a, sort.key);
+  const bv = vaultEntrySortField(b, sort.key);
+  if (av === null && bv === null) return a.path.localeCompare(b.path);
+  if (av === null) return 1;
+  if (bv === null) return -1;
+  const cmp =
+    typeof av === "number" && typeof bv === "number"
+      ? av - bv
+      : String(av).localeCompare(String(bv));
+  if (cmp === 0) return a.path.localeCompare(b.path);
+  return sort.direction === "asc" ? cmp : -cmp;
+}
+
+/** Group vault entries by doc type (the Documents section), excluding `index`.
+ *  Member order follows the rail sort plane; the default is the historical
+ *  newest-modified-first. */
 export function projectVaultDocTypeGroups(
   entries: readonly VaultTreeEntry[],
+  sort: RailSortValue = DEFAULT_RAIL_SORT,
 ): VaultDocTypeGroup[] {
   const byType = new Map<string, VaultTreeEntry[]>();
   for (const entry of entries) {
@@ -1704,7 +1979,10 @@ export function projectVaultDocTypeGroups(
   return order
     .filter((docType) => byType.has(docType))
     .map((docType) => {
-      const list = byType.get(docType)!.slice().sort(compareVaultRecency);
+      const list = byType
+        .get(docType)!
+        .slice()
+        .sort((a, b) => compareVaultEntriesBySort(sort, a, b));
       return { docType, count: list.length, entries: list };
     });
 }
@@ -1783,19 +2061,66 @@ export interface VaultRailView {
   docTypeCount: number;
   /** A facet was active but narrowed everything away (vs. an empty corpus). */
   filteredToNothing: boolean;
+  /** Total served byte weight of the WHOLE (unfiltered) vault listing — the
+   *  corpus-weight share denominator, so a feature's share stays stable while a
+   *  filter narrows the visible set. 0 when no entry carries a size. */
+  totalCorpusBytes: number;
 }
 
-/** Derive the whole Vault-tab view from the entries + the canonical facets. */
+/** A feature folder's sortable aggregate for a non-recency key (ADR D3): its
+ *  name, its newest member date, or its summed member word count. `null` =
+ *  no member carries the fact — the folder sorts last. */
+function featureGroupSortField(
+  group: VaultTreeFeatureGroup,
+  key: RailSortKey,
+): string | number | null {
+  if (key === "name") return group.feature.toLowerCase();
+  if (key === "weight") return group.weightBytes > 0 ? group.weightBytes : null;
+  let maxDate: string | null = null;
+  let words: number | null = null;
+  for (const sub of group.docTypes) {
+    for (const entry of sub.entries) {
+      if (key === "size" && entry.size) words = (words ?? 0) + entry.size.words;
+      if (key === "created" || key === "modified") {
+        const value = entry.dates[key];
+        if (value !== undefined && (maxDate === null || value > maxDate)) {
+          maxDate = value;
+        }
+      }
+    }
+  }
+  return key === "size" ? words : maxDate;
+}
+
+/** Derive the whole Vault-tab view from the entries + the canonical facets,
+ *  ordered by the ONE rail sort plane (left-rail-tree-controls ADR D3). The
+ *  default is the historical order byte-for-byte: features most-active first,
+ *  documents newest-modified first. */
 export function deriveVaultRailView(
   entries: readonly VaultTreeEntry[],
   facets: VaultRailFacets,
+  sort: RailSortValue = DEFAULT_RAIL_SORT,
 ): VaultRailView {
   const narrowed = narrowVaultRailEntries(entries, facets);
-  const featureGroups = projectVaultTreeFeatureGroups(narrowed).sort((a, b) => {
-    if (a.count !== b.count) return b.count - a.count;
-    return a.feature.localeCompare(b.feature);
+  const featureGroups = projectVaultTreeFeatureGroups(narrowed, sort).sort((a, b) => {
+    if (sort.key === "recency" || sort.key === "docs") {
+      const cmp = b.count - a.count;
+      if (cmp !== 0) return sort.direction === "desc" ? cmp : -cmp;
+      return a.feature.localeCompare(b.feature);
+    }
+    const av = featureGroupSortField(a, sort.key);
+    const bv = featureGroupSortField(b, sort.key);
+    if (av === null && bv === null) return a.feature.localeCompare(b.feature);
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    const cmp =
+      typeof av === "number" && typeof bv === "number"
+        ? av - bv
+        : String(av).localeCompare(String(bv));
+    if (cmp === 0) return a.feature.localeCompare(b.feature);
+    return sort.direction === "asc" ? cmp : -cmp;
   });
-  const docTypeGroups = projectVaultDocTypeGroups(narrowed);
+  const docTypeGroups = projectVaultDocTypeGroups(narrowed, sort);
   const anyFacet =
     facets.featureQuery !== null ||
     facets.docTypes.length > 0 ||
@@ -1809,6 +2134,7 @@ export function deriveVaultRailView(
     featureCount: featureGroups.length,
     docTypeCount: docTypeGroups.length,
     filteredToNothing: anyFacet && narrowed.length === 0,
+    totalCorpusBytes: entries.reduce((n, entry) => n + (entry.size?.bytes ?? 0), 0),
   };
 }
 
@@ -2035,7 +2361,7 @@ const FILE_TREE_LEVEL_COPY = {
   loadingMessage: "reading the worktree…",
   errorTitle: "code tree unavailable",
   retryLabel: "try again",
-  emptyMessage: "no source files in this scope yet.",
+  emptyMessage: "No source files in this worktree yet.",
   childLoadingMessage: "…",
   childErrorMessage: "could not list this directory.",
   childLoadingClassName:
@@ -2156,20 +2482,28 @@ export function useFileTreeRootSurface(scope: unknown): FileTreeRootSurfaceView 
 
 export interface FiltersVocabularyRequestIdentity {
   scope: string | null;
+  /** The corpus whose facet vocabulary is served (codebase-graphing ADR D5 —
+   *  `/filters` serves the ACTIVE corpus only; the code corpus carries its own
+   *  mtime date span per the code-timeline-range ADR). */
+  corpus: GraphCorpus;
 }
 
 export function normalizeFiltersVocabularyRequestIdentity(
   scope: unknown,
+  corpus?: unknown,
 ): FiltersVocabularyRequestIdentity {
-  return { scope: normalizeGraphSliceScope(scope) };
+  return {
+    scope: normalizeGraphSliceScope(scope),
+    corpus: normalizeDashboardGraphCorpus(corpus),
+  };
 }
 
-export function useFiltersVocabulary(scope: unknown) {
-  const request = normalizeFiltersVocabularyRequestIdentity(scope);
+export function useFiltersVocabulary(scope: unknown, corpus?: unknown) {
+  const request = normalizeFiltersVocabularyRequestIdentity(scope, corpus);
   const enabled = request.scope !== null;
   const query = useQuery({
-    queryKey: engineKeys.filters(request.scope ?? ""),
-    queryFn: () => engineClient.filters(request.scope!),
+    queryKey: engineKeys.filters(request.scope ?? "", request.corpus),
+    queryFn: () => engineClient.filters(request.scope!, request.corpus),
     enabled,
   });
   return enabled ? query : { ...query, data: undefined };
@@ -2219,9 +2553,12 @@ export function deriveFiltersVocabularyView(
  * facet lists and loading semantics once so palette/sidebar chrome does not
  * branch on raw query flags or repeat optional field fallbacks.
  */
-export function useFiltersVocabularyView(scope: unknown): FiltersVocabularyView {
-  const request = normalizeFiltersVocabularyRequestIdentity(scope);
-  const query = useFiltersVocabulary(scope);
+export function useFiltersVocabularyView(
+  scope: unknown,
+  corpus?: unknown,
+): FiltersVocabularyView {
+  const request = normalizeFiltersVocabularyRequestIdentity(scope, corpus);
+  const query = useFiltersVocabulary(scope, corpus);
   const loading = request.scope !== null && query.isPending;
   const awaitingScope = request.scope === null;
   return useMemo(
@@ -2250,8 +2587,11 @@ export interface TimelineAvailability {
  *  carries the per-tier availability block; when the structural/temporal tier is
  *  down the bounds are unreliable, which is DEGRADED — distinct from a loaded-but-
  *  empty corpus (no dated documents), which is EMPTY. */
-export function useTimelineAvailability(scope: unknown): TimelineAvailability {
-  const query = useFiltersVocabulary(scope);
+export function useTimelineAvailability(
+  scope: unknown,
+  corpus?: unknown,
+): TimelineAvailability {
+  const query = useFiltersVocabulary(scope, corpus);
   const errorTiers = query.error instanceof EngineError ? query.error.tiers : undefined;
   const tiers = errorTiers ?? query.data?.tiers_block;
   return useMemo(
@@ -2920,6 +3260,7 @@ export interface GraphSliceRequestIdentity {
   granularity: GraphGranularity;
   lens: SalienceLens;
   focus: string | null;
+  corpus: GraphCorpus;
 }
 
 function graphSliceRecord(value: unknown): Record<string, unknown> {
@@ -2952,7 +3293,31 @@ export function normalizeGraphSliceRequestIdentity(
   granularity: unknown,
   lens: unknown,
   focus: unknown,
+  corpus?: unknown,
 ): GraphSliceRequestIdentity {
+  const normalizedCorpus = normalizeDashboardGraphCorpus(corpus);
+  // The code corpus carries no vault Filter grammar, no salience lens, no as_of and
+  // no focus (ADR D1/D5 — the queryFn sends none of them), so none of those may be
+  // part of the request IDENTITY either: pin them to their canonical defaults so a
+  // left-rail filter toggle cannot re-key and re-fetch a byte-identical code slice
+  // (settle-on-swap audit — the spurious re-deliveries that interrupted in-flight
+  // settles and froze the layout mid-convergence). The ONE facet that does carry
+  // over is the timeline's `date_range` (code-timeline-range ADR): it stays in the
+  // identity so a range change re-keys and re-narrows the code slice by mtime.
+  if (normalizedCorpus === "code") {
+    const dateRange = normalizeGraphSliceFilter(filter).date_range;
+    const codeFilter = normalizeGraphSliceFilter(undefined);
+    if (dateRange) codeFilter.date_range = dateRange;
+    return {
+      scope: normalizeGraphSliceScope(scope),
+      filter: codeFilter,
+      asOf: undefined,
+      granularity: normalizeDashboardGraphGranularity(granularity),
+      lens: normalizeDashboardSalienceLens(undefined),
+      focus: normalizeNodeId(undefined),
+      corpus: normalizedCorpus,
+    };
+  }
   return {
     scope: normalizeGraphSliceScope(scope),
     filter: normalizeGraphSliceFilter(filter),
@@ -2960,6 +3325,7 @@ export function normalizeGraphSliceRequestIdentity(
     granularity: normalizeDashboardGraphGranularity(granularity),
     lens: normalizeDashboardSalienceLens(lens),
     focus: normalizeNodeId(focus),
+    corpus: normalizedCorpus,
   };
 }
 
@@ -3000,6 +3366,7 @@ export function useGraphSlice(
   granularity?: unknown,
   lens?: unknown,
   focus?: unknown,
+  corpus?: unknown,
 ) {
   const request = normalizeGraphSliceRequestIdentity(
     scope,
@@ -3008,7 +3375,9 @@ export function useGraphSlice(
     granularity,
     lens,
     focus,
+    corpus,
   );
+  const isCode = request.corpus === "code";
   const enabled = request.scope !== null;
   const query = useQuery({
     queryKey: engineKeys.graph(
@@ -3018,16 +3387,36 @@ export function useGraphSlice(
       request.granularity,
       request.lens,
       request.focus,
+      request.corpus,
     ),
     queryFn: () =>
-      engineClient.graphQuery({
-        scope: request.scope!,
-        filter: request.filter,
-        as_of: request.asOf,
-        granularity: request.granularity,
-        lens: request.lens,
-        focus: request.focus,
-      }),
+      // The code corpus is a DISCONNECTED dataset (ADR D1/D5): it carries no vault
+      // Filter grammar, no salience lens, and no as_of (present view only) — the
+      // engine rejects those on the code corpus as typed errors. The ONE shared
+      // facet is the timeline `date_range` (code-timeline-range ADR), always sent
+      // with its pinned `modified` criterion — the only date a code file carries.
+      isCode
+        ? engineClient.graphQuery({
+            scope: request.scope!,
+            granularity: request.granularity,
+            corpus: "code",
+            ...(request.filter.date_range
+              ? {
+                  filter: {
+                    date_range: request.filter.date_range,
+                    date_field: "modified" as const,
+                  },
+                }
+              : {}),
+          })
+        : engineClient.graphQuery({
+            scope: request.scope!,
+            filter: request.filter,
+            as_of: request.asOf,
+            granularity: request.granularity,
+            lens: request.lens,
+            focus: request.focus,
+          }),
     enabled,
     // Tier-1 filter changes (graph-filter-fetch-split ADR D1): hold the prior bounded
     // slice while the newly-filtered one loads, so a filter change never blanks and a
@@ -3069,6 +3458,9 @@ export function useSalienceGraphSlice(
     granularity,
     state?.salience_lens,
     state?.salience_focus ?? null,
+    // The active corpus (codebase-graphing ADR D7): read from canonical
+    // dashboard state so a corpus switch is a re-query keyed on (…, corpus).
+    state?.corpus,
   );
 }
 
@@ -3685,7 +4077,7 @@ export interface ContentView extends TierAvailability {
   path?: string;
   /** The git-style blob oid of the served bytes, when available. */
   blobHash?: string;
-  /** The extension-derived highlighter grammar hint; null when none applies. */
+  /** The path-derived highlighter grammar hint; null when none applies. */
   languageHint: string | null;
   /** The (possibly truncated) UTF-8 text; empty while loading/degraded/errored. */
   text: string;
@@ -4633,7 +5025,7 @@ const STATUS_BODY_LOADING_CLASS =
 const STATUS_BODY_UNAVAILABLE_CLASS = "text-label text-ink-faint";
 const STATUS_BODY_EMPTY_CLASS = "text-label text-ink-faint";
 // Card-to-card gap inside the status sections (PRs / issues / commits): the rail's
-// items are bordered cards now (binding 599:2099), so they read with a 6px gutter.
+// items are bordered cards now (binding 599:2099), so they read with a 0.375rem gutter.
 const STATUS_BODY_LIST_CLASS = "space-y-fg-1-5";
 
 interface GitHubWorkItemAvailability<T> {
@@ -5322,6 +5714,7 @@ export function useEngineSearch(
             scope: request.scope!,
             query: request.query,
             target: request.target,
+            max_results: SEARCH_MAX_RESULTS,
           },
           controller.signal,
         );
@@ -5345,7 +5738,40 @@ export function useEngineSearch(
   return enabled ? result : { ...result, data: undefined };
 }
 
-const SEARCH_QUERY_TIMEOUT_MS = 5_000;
+// The client-side search abort budget. Ordering invariant (rag-integration-
+// hardening ADR D2): this MUST stay STRICTLY GREATER than the engine's search
+// budget (`SEARCH_HTTP_BUDGET` = 10s in `engine/crates/vaultspec-api/src/routes/
+// ops.rs`) plus transport margin. When the client outlives the engine, every
+// search outcome — success, degraded, or shape-miss — arrives as a tiers-carrying
+// envelope BEFORE the client can abort, so degradation is read from tiers truth
+// (the whole degradation architecture depends on the envelope actually landing).
+// A client abort under this ordering therefore means only one thing honestly: the
+// engine itself is unreachable — the genuine transport-error state. 12s = 10s
+// engine budget + 2s transport margin. Exported so a guard test can pin the
+// ordering invariant client-side (the engine budget it must exceed).
+export const SEARCH_QUERY_TIMEOUT_MS = 12_000;
+
+// The engine's own search budget (`SEARCH_HTTP_BUDGET` in
+// `engine/crates/vaultspec-api/src/routes/ops.rs`), mirrored here ONLY so the
+// ordering invariant is guard-testable on the frontend. This is not a wire value
+// the app reads — it is the number the client budget above must strictly exceed.
+// Two-sided anchor: the engine test
+// `search_budget_is_pinned_to_the_frontend_mirror_anchor` (ops.rs) pins the real
+// constant to this value, so a budget retune fails engine-side before this mirror
+// can go silently stale.
+export const ENGINE_SEARCH_BUDGET_MS = 10_000;
+
+// The app-chosen per-target result bound, sent as `max_results` in the POST
+// /search body so the wire payload is app-bounded rather than left at rag's CLI
+// default (rag-integration-hardening ADR D5 / research G6). Sized to the unified
+// palette's merged-view bound (`UNIFIED_SEARCH_RESULTS_MAX_ITEMS` = 40 in
+// `searchController.ts`): the merge ranks vault + code hits together and keeps the
+// top N, so in the worst case all N winners come from one corpus — fetching up to
+// N per target is the honest bound that keeps the merged top-N correct. It sits
+// below the engine's `MAX_SEARCH_RESULTS` ceiling (50). The value is FIXED, so it
+// stays OUT of the query key (the key varies only by scope/target/query); a guard
+// test pins it equal to the merged-view bound so the two never drift.
+export const SEARCH_MAX_RESULTS = 40;
 
 // --- session / settings (user-state-persistence W04.P08.S26) -------------------------
 //
@@ -6579,99 +7005,6 @@ export function useCoreStatus(): CoreStatusView {
   return deriveCoreStatusView(status.data, status.error, status.isPending);
 }
 
-// --- location anchor (status-overview ADR: "Where are we?") -------------------------
-//
-// The "Where are we?" anchor composes EXISTING wire reads — the active scope (the
-// absolute worktree path, canonical token, forward slashes), the worktree it
-// belongs to from `/map` (branch + is_main), and the git rollup from `/status`
-// (branch + dirty/ahead/behind) — into ONE interpreted view so the Status tab
-// (dumb chrome) reads a single selector and never iterates `map.data.repositories`
-// or reads the raw `tiers` block (dashboard-layer-ownership). No new wire read.
-
-/** The interpreted location anchor the Status overview header renders. */
-export interface LocationAnchorView {
-  /** The absolute worktree path being browsed (canonical token, forward slashes). */
-  path: string | null;
-  /** Empty-state copy for consumers when no active scope is resolved. */
-  emptyLabel: string | null;
-  /** Render class for the empty location state. */
-  emptyClassName: string;
-  /** The current git branch (preferring the `/map` worktree, then the git rollup). */
-  branch: string | null;
-  /** True when the active scope is the repository's main/default worktree. */
-  isMain: boolean;
-  /** Worktree label shown for the repository default worktree. */
-  mainLabel: string | null;
-  mainClassName: string;
-  branchClassName: string;
-  pathClassName: string;
-  /** Working-tree dirty truth from the git rollup (false when unknown/clean). */
-  dirty: boolean;
-  /** Commits ahead of upstream; undefined = no upstream configured (not zero). */
-  ahead?: number;
-  /** Commits behind upstream; undefined = no upstream configured (not zero). */
-  behind?: number;
-}
-
-/**
- * Derive the location anchor from the active scope, the workspace map, and the git
- * status view. Pure projection over already-fetched reads: it matches the active
- * scope to its `/map` worktree (for branch + is_main) and falls back to the git
- * rollup's branch when the map has not resolved the worktree yet. The dirty /
- * ahead / behind chips come from the git rollup. Reads no raw `tiers` block.
- */
-export function deriveLocationAnchor(
-  scope: unknown,
-  map: MapResponse | undefined,
-  git: GitStatusView,
-): LocationAnchorView {
-  const normalizedScope = normalizeGraphSliceScope(scope);
-  let branch: string | null = git.git?.branch ?? null;
-  let isMain = false;
-  if (normalizedScope !== null && map) {
-    for (const repo of map.repositories) {
-      // The live engine's scope token IS the worktree path; match on either the
-      // path or the stable id so the anchor resolves on the live origin and the
-      // mock (whose worktree id and path differ) alike.
-      const wt = repo.worktrees.find(
-        (w) => w.path === normalizedScope || w.id === normalizedScope,
-      );
-      if (wt) {
-        branch = wt.branch || branch;
-        isMain = wt.is_default === true;
-        break;
-      }
-    }
-  }
-  return {
-    path: normalizedScope,
-    emptyLabel: normalizedScope === null ? "no scope — pick a worktree first" : null,
-    emptyClassName: "px-fg-1 text-label text-ink-faint",
-    branch,
-    isMain,
-    mainLabel: isMain ? "main" : null,
-    mainClassName: "shrink-0 font-medium text-ink",
-    branchClassName: "min-w-0 truncate font-medium text-accent-text",
-    pathClassName: "truncate font-mono text-caption text-ink-faint",
-    dirty: git.dirty,
-    ahead: git.git?.ahead,
-    behind: git.git?.behind,
-  };
-}
-
-/**
- * Stores hook: the interpreted location anchor for the Status overview header,
- * composing the active scope, `/map`, and `/status` git rollup so the rail (dumb
- * chrome) reads one selector. The active scope is passed in by the caller (it
- * already holds it via `useActiveScope`), keeping this hook a pure composition of
- * the two stores reads.
- */
-export function useLocationAnchor(scope: unknown): LocationAnchorView {
-  const map = useWorkspaceMap();
-  const git = useGitStatus();
-  return deriveLocationAnchor(scope, map.data, git);
-}
-
 // --- rag service status (dashboard-rag-manager ADR) ----------------------------------
 //
 // The rag rollup is app chrome; it reads rag readiness through this stores
@@ -7867,7 +8200,7 @@ export interface GitChangeGroupView {
 }
 
 // Binding GitFileRow (653:1864): a flat row (no card chrome, no dot, no arrow) — the
-// name rides the 12px body role in ink, the numstat the 11px mono meta role in the
+// name rides the body role in ink, the numstat the mono meta role in the
 // sacred diff hues. Deleted strikes the name and dims it to ink-muted.
 const GIT_CHANGE_ROW_CLASS =
   "flex w-full items-center gap-fg-2 rounded-fg-xs py-fg-0-5 pr-fg-1 text-left transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
@@ -8042,7 +8375,7 @@ const CHANGES_OVERVIEW_NO_SCOPE_CLASS = "text-label text-ink-faint";
 const CHANGES_OVERVIEW_ROOT_CLASS = "space-y-fg-3 text-label";
 const CHANGES_OVERVIEW_SUMMARY_CLASS = "flex flex-wrap items-center gap-fg-1-5";
 // Binding GitStatusPill `git-head` (642:1721): "N files · M documents" rides the
-// 12px label role in ink/muted; the diff tallies are 11px (meta) in the sacred hues.
+// label role in ink/muted; the diff tallies read the meta role in the sacred hues.
 const CHANGES_OVERVIEW_SUMMARY_PRIMARY_CLASS = "text-label font-medium text-ink-muted";
 const CHANGES_OVERVIEW_SUMMARY_DIVIDER_CLASS = "text-ink-faint";
 const CHANGES_OVERVIEW_SUMMARY_ADDITIONS_CLASS = "text-meta text-diff-add";
@@ -8089,7 +8422,7 @@ export function deriveChangesOverviewView(
     degradedLabel: "repository state unavailable",
     errorTitle: "changes unavailable",
     retryLabel: "retry",
-    noScopeLabel: "no scope — pick a worktree first",
+    noScopeLabel: "No worktree selected — pick one in the left rail first.",
     filesSectionLabel: "Changed files — open diff or source",
     filesListAriaLabel: "changed files",
     documentsSectionLabel: "Changed documents — open reader",

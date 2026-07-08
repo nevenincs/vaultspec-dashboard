@@ -8,11 +8,14 @@
 // date_range writer — filtering-has-one-canonical-surface). The active criterion
 // (created/modified/stamped) also rides as the `date_field` facet so the corpus
 // narrows by the chosen field; the criterion is the engine-served
-// `timeline_date_criterion` setting, chosen from the "Filter by" context menu. Only
-// `created` is served today, so the criterion is NOT echoed in the strip — a static
-// one-value label is non-informational and non-interactive. When the engine serves
-// more than one date field, surface the criterion here as a selector (the "Filter by"
-// menu is the selection plane until then).
+// `timeline_date_criterion` setting, chosen from the "Filter by" context menu. The
+// engine serves the corpus span for ALL THREE fields (`date_bounds_by_field`:
+// created / modified / stamped), so the strip's edges track the ACTIVE criterion's
+// span — not a created-only fallback (TTR-008); the flat `dateBounds` (created) is the
+// fallback ONLY when a criterion is genuinely absent from the corpus. The criterion is
+// selected either from the "Filter by" context menu OR the on-strip SegmentedToggle
+// below (TTR-008b) — both write the ONE engine-served `timeline_date_criterion` setting
+// through the same seam; Modified/Stamped stay disabled-with-reason until it is served.
 //
 // Presentation matches the binding TimelineRange State= set (1005:4203, Typical
 // variant cloned from the prior canonical frame 993:4204): a single low row — small
@@ -28,14 +31,21 @@
 
 import { useRef } from "react";
 
-import { Skeleton, SkeletonBar, StateBlock } from "../kit";
+import { Segment, SegmentedToggle, Skeleton, SkeletonBar, StateBlock } from "../kit";
 import {
   useDashboardDateRangeView,
+  useDashboardState,
   useFiltersVocabularyView,
   useTimelineAvailability,
   useTimelineDateCriterion,
 } from "../../stores/server/queries";
 import { useDashboardStateMutations } from "../../stores/server/dashboardState";
+import { normalizeDashboardGraphCorpus } from "../../stores/server/dashboardStateNormalization";
+import { setTimelineDateCriterion } from "../../stores/server/timelineDateCriterionIntent";
+import {
+  TIMELINE_DATE_CRITERIA,
+  type TimelineDateCriterion,
+} from "./timelineDateCriterion";
 import {
   clampToSpan,
   dayMonth,
@@ -56,9 +66,19 @@ export interface TimelineRangeProps {
 }
 
 export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps) {
-  const vocabulary = useFiltersVocabularyView(scope);
-  const availability = useTimelineAvailability(scope);
-  const { criterion } = useTimelineDateCriterion(scope);
+  // The strip narrows the ACTIVE corpus (code-timeline-range ADR): its edge
+  // bounds, degradation truth, and date criterion all follow the served graph
+  // corpus, so in code mode the span is the code files' mtime span — never the
+  // vault span rendered over code nodes.
+  const corpus = normalizeDashboardGraphCorpus(useDashboardState(scope).data?.corpus);
+  const isCode = corpus === "code";
+  const vocabulary = useFiltersVocabularyView(scope, corpus);
+  const availability = useTimelineAvailability(scope, corpus);
+  const { criterion: vaultCriterion, served } = useTimelineDateCriterion(scope);
+  // Code files carry exactly one date (their worktree modified time), so the
+  // criterion is pinned to Modified in code mode whatever the persisted vault
+  // criterion setting says — the label always names the field actually matched.
+  const criterion = isCode ? "modified" : vaultCriterion;
   const trackRef = useRef<HTMLDivElement>(null);
   const activeHandle = useRef<"from" | "to" | null>(null);
 
@@ -127,7 +147,11 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
         <StateBlock
           mode="empty"
           layout="inline"
-          message="No dated documents to scrub in this view."
+          message={
+            isCode
+              ? "No dated files to scrub in this view."
+              : "No dated documents to scrub in this view."
+          }
         />
       </div>
     );
@@ -239,6 +263,42 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
           />
         </div>
       </div>
+
+      {/* On-strip date-criterion selector (TTR-008b): switches WHICH date field the
+          strip's edges + the `date_range` filter key off. Writes the one engine-served
+          `timeline_date_criterion` setting through the SAME seam the "Filter by" menu
+          uses — never a second writer (display-state-is-backend-served /
+          settings-are-schema-driven). Modified/Stamped disable with an honest reason
+          until the engine serves the setting; the per-criterion bounds (TTR-008) make
+          the edges follow the choice automatically. */}
+      <SegmentedToggle
+        value={criterion}
+        onChange={(next) =>
+          void setTimelineDateCriterion(next as TimelineDateCriterion)
+        }
+        ariaLabel="timeline date field"
+        className="shrink-0"
+      >
+        {TIMELINE_DATE_CRITERIA.map((c) => {
+          // Code mode pins the criterion to Modified — the only date a code file
+          // carries — so the other criteria disable with the honest reason
+          // instead of silently matching a different field than their label.
+          const gated = isCode ? c.id !== "modified" : c.id !== "created" && !served;
+          const gatedReason = isCode
+            ? "Code files date by modified time only"
+            : c.unavailableReason;
+          return (
+            <Segment
+              key={c.id}
+              value={c.id}
+              disabled={gated}
+              title={gated ? gatedReason : `Range by ${c.label.toLowerCase()} date`}
+            >
+              {c.label}
+            </Segment>
+          );
+        })}
+      </SegmentedToggle>
 
       {isNarrowed && (
         <button

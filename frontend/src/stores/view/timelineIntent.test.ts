@@ -3,29 +3,19 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { queryClient } from "../server/queryClient";
 import {
   DEFAULT_PX_PER_MS,
-  orderedTimelineDateInputRange,
   resetTimelineViewState,
   timelineViewSnapshot,
 } from "./timeline";
 import {
   fitTimelineScopeToCorpus,
-  fitTimelineNavigationToCorpus,
-  fitTimelineNavigationToDateRange,
-  jumpTimelineNavigationToCorpusEdge,
-  jumpTimelineNavigationToLive,
-  panTimelineNavigation,
-  playheadKeyboardTarget,
-  PLAYHEAD_KEY_NUDGE_FRACTION,
-  PLAYHEAD_KEY_STEP_FRACTION,
   TIMELINE_NAV_DEFAULT_VIEWPORT_WIDTH,
-  TIMELINE_NAV_EVENT_SPAN_MS,
   timelineNavigationViewportWidth,
-  zoomTimelineNavigationAt,
-  zoomTimelineNavigationToInstant,
-  zoomTimelineNavigation,
 } from "./timelineIntent";
 
-describe("timeline navigation intent seam", () => {
+// The Issue-#14 scroll-strip navigation intents (zoom/pan/fit-nav/jump/playhead-scrub)
+// were retired with the timeline teardown; their tests went with them. Only the live
+// seams remain: the viewport-width clamp and the per-scope corpus auto-fit.
+describe("timeline intent seam", () => {
   beforeEach(() => {
     queryClient.clear();
     resetTimelineViewState();
@@ -36,54 +26,6 @@ describe("timeline navigation intent seam", () => {
       TIMELINE_NAV_DEFAULT_VIEWPORT_WIDTH,
     );
     expect(timelineNavigationViewportWidth(960)).toBe(960);
-  });
-
-  it("zooms the timeline viewport through one write seam", () => {
-    const next = zoomTimelineNavigation(DEFAULT_PX_PER_MS, 100, 800, 1.6);
-
-    expect(timelineViewSnapshot()).toMatchObject(next);
-    expect(next.pxPerMs).toBe(DEFAULT_PX_PER_MS * 1.6);
-    expect(next.scrollOffset).toBeGreaterThan(100);
-  });
-
-  it("zooms around an interaction cursor through the timeline intent seam", () => {
-    const next = zoomTimelineNavigationAt(DEFAULT_PX_PER_MS, 100, 80, 1.6);
-
-    expect(timelineViewSnapshot()).toMatchObject(next);
-    expect(next.pxPerMs).toBe(DEFAULT_PX_PER_MS * 1.6);
-    expect((80 + next.scrollOffset) / next.pxPerMs).toBeCloseTo(
-      (80 + 100) / DEFAULT_PX_PER_MS,
-      0,
-    );
-  });
-
-  it("pans through the timeline intent seam", () => {
-    expect(panTimelineNavigation(20, -50)).toBe(0);
-    expect(timelineViewSnapshot().scrollOffset).toBe(0);
-
-    expect(panTimelineNavigation(20, 50)).toBe(70);
-    expect(timelineViewSnapshot().scrollOffset).toBe(70);
-  });
-
-  it("fits served corpus bounds through one write seam", () => {
-    const fitted = fitTimelineNavigationToCorpus(
-      { from: "2026-06-01T00:00:00.000Z", to: "2026-06-11T00:00:00.000Z" },
-      800,
-    );
-
-    expect(fitted).not.toBeNull();
-    expect(timelineViewSnapshot()).toMatchObject(fitted!);
-  });
-
-  it("fits a date-picker range through one timeline viewport seam", () => {
-    const range = orderedTimelineDateInputRange("2026-06-01", "2026-06-11");
-    expect(range).not.toBeNull();
-
-    const fitted = fitTimelineNavigationToDateRange(range!, 800);
-
-    expect(timelineViewSnapshot()).toMatchObject(fitted);
-    expect(fitted.pxPerMs).toBeGreaterThan(0);
-    expect(fitted.scrollOffset).toBeGreaterThan(0);
   });
 
   it("auto-fits served corpus bounds for a scope through one provenance seam", () => {
@@ -131,105 +73,5 @@ describe("timeline navigation intent seam", () => {
       autoFittedScope: null,
       autoFittedCorpusKey: null,
     });
-  });
-
-  it("ignores corpus fit when the served start bound is missing or invalid", () => {
-    expect(fitTimelineNavigationToCorpus({ to: "2026-06-11" }, 800)).toBeNull();
-    expect(timelineViewSnapshot()).toMatchObject({
-      pxPerMs: DEFAULT_PX_PER_MS,
-      scrollOffset: 0,
-    });
-  });
-
-  it("jumps to either corpus edge through the timeline intent seam", () => {
-    const start = jumpTimelineNavigationToCorpusEdge(
-      "start",
-      { from: "1970-01-01T00:00:10.000Z", to: "1970-01-01T00:00:30.000Z" },
-      2,
-      800,
-    );
-    expect(start).toBe(19_976);
-    expect(timelineViewSnapshot().scrollOffset).toBe(start);
-
-    const end = jumpTimelineNavigationToCorpusEdge(
-      "end",
-      { from: "1970-01-01T00:00:10.000Z", to: "1970-01-01T00:00:30.000Z" },
-      2,
-      800,
-    );
-    expect(end).toBe(59_224);
-    expect(timelineViewSnapshot().scrollOffset).toBe(end);
-  });
-
-  it("jumps to the corpus end and returns the local playhead to live", () => {
-    const offset = jumpTimelineNavigationToLive(
-      { to: "2026-06-11T00:00:00.000Z" },
-      DEFAULT_PX_PER_MS,
-      800,
-      null,
-    );
-
-    expect(timelineViewSnapshot()).toMatchObject({
-      playheadT: "live",
-      scrollOffset: offset,
-    });
-    expect(offset).toBeGreaterThan(0);
-  });
-
-  it("does not create local playhead state for malformed live-jump scope", () => {
-    const initial = 1234;
-    const liveOffset = jumpTimelineNavigationToCorpusEdge(
-      "end",
-      { to: "2026-06-11T00:00:00.000Z" },
-      DEFAULT_PX_PER_MS,
-      800,
-    );
-    timelineViewSnapshot().setPlayhead(initial);
-
-    const offset = jumpTimelineNavigationToLive(
-      { to: "2026-06-12T00:00:00.000Z" },
-      DEFAULT_PX_PER_MS,
-      800,
-      { scope: "timeline-scope" },
-    );
-
-    expect(offset).toBeGreaterThan(liveOffset);
-    expect(timelineViewSnapshot().playheadT).toBe(initial);
-  });
-
-  it("projects playhead keyboard scrub through one timeline intent seam", () => {
-    const now = 100_000;
-    const span = 24_000;
-
-    expect(playheadKeyboardTarget("[", "live", span, now)).toBe(
-      now - span * PLAYHEAD_KEY_STEP_FRACTION,
-    );
-    expect(playheadKeyboardTarget("ArrowLeft", now, span, now)).toBe(
-      now - span * PLAYHEAD_KEY_NUDGE_FRACTION,
-    );
-    expect(playheadKeyboardTarget("]", now - 1, span, now)).toBe("live");
-    expect(playheadKeyboardTarget("ArrowRight", now - 1, span, now)).toBe("live");
-    expect(playheadKeyboardTarget("Home", now - span, span, now)).toBe("live");
-  });
-
-  it("keeps malformed playhead keyboard inputs inert at the intent seam", () => {
-    expect(playheadKeyboardTarget("Escape", "live", 1000, 5000)).toBeNull();
-    expect(playheadKeyboardTarget("[", "live", 0, 5000)).toBeNull();
-    expect(playheadKeyboardTarget("[", "live", Number.NaN, 5000)).toBeNull();
-    expect(playheadKeyboardTarget({ key: "[" }, "live", 1000, 5000)).toBeNull();
-  });
-
-  it("zooms the timeline viewport to a centered event instant through one intent", () => {
-    const tMs = 1_700_000_000_000;
-    const next = zoomTimelineNavigationToInstant(
-      tMs,
-      800,
-      TIMELINE_NAV_EVENT_SPAN_MS,
-      tMs + 10 * 24 * 3600_000,
-    );
-
-    expect(timelineViewSnapshot()).toMatchObject(next);
-    expect(next.pxPerMs).toBeGreaterThan(0);
-    expect(next.scrollOffset + 400).toBeCloseTo(tMs * next.pxPerMs, 0);
   });
 });

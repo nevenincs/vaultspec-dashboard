@@ -25,7 +25,7 @@
 //     (e.g. the live 0.02–50 zoom clamp vs the stale cameraCore 0.05–8) is named.
 
 import type { D3ForceParams } from "./d3ForceSolver";
-import type { AppearanceParams, EdgeColorMode } from "./appearance";
+import type { AppearanceParams, EdgeColorMode, NodeColorMode } from "./appearance";
 
 export type ControlGroup = "simulation" | "visualisation" | "navigation";
 export type ControlExposure = "ui" | "lab";
@@ -118,7 +118,13 @@ export const GRAPH_CONTROL_SCHEMA = [
     min: 0.1,
     max: 1.5,
     step: 0.05,
-    default: 0.8,
+    // 0.5 = the classic Barnes-Hut accuracy sweet spot (graph-simulation-
+    // stability ADR amendment 2): a coarser criterion makes the many-body
+    // force field NON-SMOOTH — quadtree estimates jump as nodes cross cells —
+    // and that approximation noise measured as two thirds of the live jitter
+    // (even on edgeless nodes). ~1.7x many-body cost, paid only while the
+    // field actually ticks (anneal/drag); rest is frozen.
+    default: 0.5,
     exposure: ["lab"],
     description: "Quadtree accuracy; lower = more accurate, slower.",
   },
@@ -155,7 +161,11 @@ export const GRAPH_CONTROL_SCHEMA = [
     min: 0,
     max: 1,
     step: 0.05,
-    default: 0.8,
+    // 0.35 (was 0.8) — sim-smoothness reference audit: collide is never alpha-scaled,
+    // so at the anneal hold it over-corrects ~3.3x vs the decaying forces; every
+    // reference implementation ships no collide at all (d3 default, Quartz/Obsidian)
+    // or off (FA2 adjustSizes). 0.35 keeps overlap prevention at ~40% correction.
+    default: 0.35,
     exposure: ["lab"],
     description: "Non-overlap softness (<1 relaxes instead of buzzing).",
   },
@@ -191,7 +201,11 @@ export const GRAPH_CONTROL_SCHEMA = [
     min: 0.005,
     max: 0.2,
     step: 0.001,
-    default: 0.05,
+    // 0.03 (was 0.05) — sim-smoothness reference audit: 0.05 is 2.2x the d3/Quartz
+    // default (~0.0228), cutting the post-anneal tail to ~1.1s and freezing a
+    // less-balanced field. 0.03 lengthens the tail (~1.9s) while still settling
+    // faster than stock d3.
+    default: 0.03,
     exposure: ["lab"],
     description: "Cooling rate; higher = settles in fewer ticks.",
   },
@@ -347,6 +361,90 @@ export const GRAPH_CONTROL_SCHEMA = [
     exposure: [],
     description: "Wall-clock budget for the off-screen pre-warm.",
   },
+  // Convergence-gated anneal (graph-simulation-stability ADR 2026-07-03):
+  // cold/warm restarts HOLD the alpha target at annealAlpha until the mean
+  // per-node displacement stays under annealSettleSpeed for annealSettleTicks
+  // consecutive ticks — or the annealMaxTicks hard cap fires — and only then
+  // release into the decay + alphaMin freeze. Cooling is convergence-driven,
+  // never schedule-driven; the cap is the bounded active-phase budget.
+  {
+    id: "annealAlpha",
+    label: "Anneal alpha",
+    group: "simulation",
+    type: "number",
+    min: 0.05,
+    max: 0.6,
+    step: 0.05,
+    default: 0.3,
+    exposure: [],
+    description:
+      "Alpha target held during the post-restart anneal: the field simulates at this sustained energy until measurably calm, then decays and freezes.",
+  },
+  {
+    id: "annealSettleSpeed",
+    label: "Anneal settle speed",
+    group: "simulation",
+    type: "number",
+    min: 0.01,
+    max: 1,
+    step: 0.01,
+    default: 0.12,
+    exposure: [],
+    description:
+      "Mean per-node displacement (world units per tick) under which an annealing layout counts as calm.",
+  },
+  {
+    id: "annealSettleTicks",
+    label: "Anneal settle ticks",
+    group: "simulation",
+    type: "number",
+    min: 5,
+    max: 120,
+    step: 5,
+    default: 30,
+    exposure: [],
+    description:
+      "Consecutive calm ticks before the anneal releases into the decay and freeze.",
+  },
+  {
+    id: "annealMaxTicks",
+    label: "Anneal max ticks",
+    group: "simulation",
+    type: "number",
+    min: 60,
+    max: 1800,
+    step: 30,
+    default: 600,
+    exposure: [],
+    description:
+      "Hard cap on anneal ticks (about ten seconds at sixty frames per second) — the bounded active-phase budget. The held target also RAMPS from annealAlpha toward zero across this budget, so anneal motion fades instead of buzzing at one amplitude.",
+  },
+  {
+    id: "annealStallTicks",
+    label: "Anneal stall ticks",
+    group: "simulation",
+    type: "number",
+    min: 30,
+    max: 600,
+    step: 10,
+    default: 90,
+    exposure: [],
+    description:
+      "Ticks without measurable structural improvement (temperature-normalized displacement trend) before the anneal releases early — an already-converged layout stops simmering within about a second and a half.",
+  },
+  {
+    id: "annealStallImprovement",
+    label: "Anneal stall improvement",
+    group: "simulation",
+    type: "number",
+    min: 0.005,
+    max: 0.2,
+    step: 0.005,
+    default: 0.02,
+    exposure: [],
+    description:
+      "Minimum relative improvement of the normalized displacement trend that counts as progress and resets the stall window.",
+  },
 
   // ===================== VISUALISATION =======================================
   // The 7 AppearanceParams (ui+lab; ranges = appearanceControls.ts).
@@ -441,6 +539,18 @@ export const GRAPH_CONTROL_SCHEMA = [
     exposure: ["ui", "lab"],
     description:
       "Edge inherits the endpoint node hue — solid (source/leaf) or gradient (leaf→parent). Never tier/grey/black.",
+  },
+  {
+    id: "nodeColorMode",
+    label: "Node colour",
+    uiLabel: "Node colour",
+    group: "visualisation",
+    type: "enum",
+    options: ["category", "recency"],
+    default: "category",
+    exposure: ["ui", "lab"],
+    description:
+      "How node bodies take colour: Category paints the module/doc-type palette; Recency maps each node's engine-served recency rank onto a theme heat ramp (cold structure recedes, recently-modified files glow toward the accent). Nodes without a rank paint the cold end.",
   },
   {
     id: "nodeIcons",
@@ -981,6 +1091,7 @@ export function appearanceDefaults(): AppearanceParams {
     edgeOpacityMin: numericDefault("edgeOpacityMin"),
     edgeOpacityMax: numericDefault("edgeOpacityMax"),
     edgeColorMode: stringDefault("edgeColorMode") as EdgeColorMode,
+    nodeColorMode: stringDefault("nodeColorMode") as NodeColorMode,
     nodeIcons: booleanDefault("nodeIcons"),
   };
 }

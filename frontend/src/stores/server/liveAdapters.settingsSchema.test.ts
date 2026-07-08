@@ -9,7 +9,7 @@
 // pinned with explicit test vectors — inputs to a pure function, not a faked
 // engine.
 
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { THEMES } from "../../platform/theme/themeController";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
@@ -26,10 +26,28 @@ import {
 
 let schema: SettingsSchema;
 let scope: string;
+// TIH-004 (write hygiene): the validation describe below performs a valid scoped
+// `default_granularity` write against the shared engine; snapshot its pre-suite
+// value and restore it at teardown so a later suite never inherits this write.
+let settingsSnapshot: SettingsState;
 
 beforeAll(async () => {
-  schema = await createLiveClient().settingsSchema();
+  const client = createLiveClient();
+  schema = await client.settingsSchema();
   scope = await liveScope();
+  settingsSnapshot = await client.settings();
+});
+
+afterAll(async () => {
+  await createLiveClient()
+    .putSettings({
+      scope,
+      key: CONSUMED_SETTING_KEYS.defaultGranularity,
+      value:
+        settingsSnapshot.scoped[scope]?.[CONSUMED_SETTING_KEYS.defaultGranularity] ??
+        "feature",
+    })
+    .catch(() => undefined);
 });
 
 describe("settings schema (live engine GET /settings/schema)", () => {

@@ -15,41 +15,72 @@
 // removes the scratch dir.
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  cpSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+
+import { awaitEngineQuiescent } from "./awaitEngineQuiescent";
 
 const FIXTURE_DIR = resolve(import.meta.dirname, "fixtures/live-vault");
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const BIN_NAME = process.platform === "win32" ? "vaultspec.exe" : "vaultspec";
 
-/** Pick the freshest built engine binary: debug is current on a dev machine
- *  (the release copy is held open by the dev server), release is current in CI.
- *  Choosing by mtime means the suite always runs against the latest build. */
-function resolveEngineBin(): string {
-  const candidates = ["release", "debug"].map((p) =>
-    join(REPO_ROOT, "engine", "target", p, BIN_NAME),
-  );
+/** Resolve the engine binary the suite runs against (TIH-005).
+ *
+ *  An explicit `VAULTSPEC_TEST_ENGINE_BIN` override wins first — the same
+ *  adopt-what-you're-told discipline as `ENGINE_BASE_URL`, so a developer can
+ *  pin the exact binary and never race an in-flight `cargo build`.
+ *
+ *  Otherwise pick the freshest of `engine/target/{release,debug}` by mtime:
+ *  debug is current on a dev machine (the release copy is held open by the dev
+ *  server), release is current in CI. The chosen path + source is logged in the
+ *  setup banner so a mismatch (a half-linked or stale binary) is visible in the
+ *  first line of a failing run. */
+function resolveEngineBin(): { path: string; source: string } {
+  const override = process.env["VAULTSPEC_TEST_ENGINE_BIN"];
+  if (override) {
+    try {
+      statSync(override);
+    } catch {
+      throw new Error(
+        `VAULTSPEC_TEST_ENGINE_BIN points at a missing binary: ${override}`,
+      );
+    }
+    return { path: override, source: "VAULTSPEC_TEST_ENGINE_BIN" };
+  }
+  const candidates = ["release", "debug"].map((profile) => ({
+    profile,
+    path: join(REPO_ROOT, "engine", "target", profile, BIN_NAME),
+  }));
   const built = candidates
-    .map((path) => {
+    .map(({ profile, path }) => {
       try {
-        return { path, mtime: statSync(path).mtimeMs };
+        return { profile, path, mtime: statSync(path).mtimeMs };
       } catch {
         return undefined;
       }
     })
-    .filter((c): c is { path: string; mtime: number } => c !== undefined)
+    .filter(
+      (c): c is { profile: string; path: string; mtime: number } => c !== undefined,
+    )
     .sort((a, b) => b.mtime - a.mtime);
   if (built.length === 0) {
     throw new Error(
       `no vaultspec engine binary found under engine/target/{release,debug}/ — run \`cargo build\` first`,
     );
   }
-  return built[0].path;
+  return { path: built[0].path, source: `mtime:${built[0].profile}` };
 }
 
-const ENGINE_BIN = resolveEngineBin();
+const { path: ENGINE_BIN, source: ENGINE_BIN_SOURCE } = resolveEngineBin();
 
 // Fixed commit identity + dates: the fixture's git history is the engine's
 // temporal source, so reproducible dates make asof/diff windows deterministic.
@@ -118,6 +149,17 @@ export default async function setup(): Promise<() => void> {
   }
 
   // 3. Real git history — the engine's structural + temporal ingest source.
+  //    The ignore mirrors the vaultspec-managed block every production
+  //    workspace carries (install can't scaffold it here — it runs before git
+  //    init): the engine's own cache under `.vault/data/` must be invisible to
+  //    git, or its per-rebuild writes keep the scratch permanently dirty — on
+  //    Linux each /status git probe then refreshes `.git/index`, the watcher
+  //    (which watches `.git` for HEAD/ref moves) fires, and the
+  //    rebuild→probe→rebuild churn never reaches quiescence.
+  writeFileSync(
+    join(scratch, ".gitignore"),
+    ".vault/data/\n.vault/logs/\n.vault/.obsidian/\n.vault/.trash/\n",
+  );
   git(scratch, ["init", "-q", "-b", "main"]);
   git(scratch, ["add", "-A"]);
   git(scratch, ["commit", "-qm", "fixture corpus"]);
@@ -139,6 +181,11 @@ export default async function setup(): Promise<() => void> {
   // 3. Spawn the real engine on a free loopback port, scoped to the scratch dir.
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
+  // Banner (TIH-005): make the exact binary under test visible in the first
+  // lines of a run so a stale / half-linked / overridden binary is diagnosable.
+  console.info(
+    `[live-engine] binary: ${ENGINE_BIN} (source: ${ENGINE_BIN_SOURCE}) → ${baseUrl}`,
+  );
   engine = spawn(ENGINE_BIN, ["serve", "--port", String(port)], {
     cwd: scratch,
     stdio: ["ignore", "pipe", "pipe"],
@@ -183,6 +230,22 @@ export default async function setup(): Promise<() => void> {
     await new Promise((r) => setTimeout(r, 200));
   }
   if (!ready) throw new Error(`engine did not come up within 30s:\n${serveLog}`);
+
+  // Wait for the COLD ingest to settle before any test runs (TIH-003 / TIH-006): the
+  // engine answers /status the moment it binds, but its initial declared-fold graph
+  // rebuild is still in flight for a beat after. Publishing env now would let file 1
+  // start reading a mid-fold corpus. Block until the graph `generation` is stable.
+  // The budget is sized for a COLD CI runner (2 vCPUs, debug binary, uv-resolved
+  // core subprocess per declared fold): the barrier's 20s default was tuned on dev
+  // hardware and expires there while the cold folds are still trickling.
+  try {
+    await awaitEngineQuiescent({ baseUrl, token, timeoutMs: 90_000 });
+  } catch (err) {
+    throw new Error(
+      `engine came up but did not reach quiescence:\n${(err as Error).message}\n${serveLog}`,
+      { cause: err },
+    );
+  }
 
   process.env["ENGINE_BASE_URL"] = baseUrl;
   process.env["ENGINE_TOKEN"] = token;

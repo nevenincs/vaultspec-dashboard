@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { queryClient } from "../../stores/server/queryClient";
 import { NowStrip } from "./NowStrip";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function ragCardEl(): HTMLElement {
   return document.querySelector('[data-card="rag"]') as HTMLElement;
@@ -47,6 +48,6 @@ describe("NowStrip rag rollup (live engine)", () => {
       // error), with non-empty receipt copy — whatever the live rag state is.
       expect(["ok", "warn", "error"]).toContain(card.getAttribute("data-tone"));
       expect((card.textContent ?? "").trim().length).toBeGreaterThan(0);
-    });
+    }, ENGINE_WAIT);
   });
 });

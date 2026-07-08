@@ -8,6 +8,8 @@
 //! No WebSocket in v1 (D7.1).
 
 pub mod app;
+mod authoring;
+pub mod handshake;
 pub mod registry;
 pub mod routes;
 
@@ -39,6 +41,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/map",
     "/workspaces",
     "/vault-tree",
+    "/code-files",
     "/file-tree",
     "/pipeline",
     "/dashboard-state",
@@ -59,6 +62,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/issues",
     "/status",
     "/stream",
+    "/authoring/status",
     "/search",
     "/ops/core/{verb}",
     "/ops/core/{verb}/write",
@@ -96,6 +100,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // envelope. Registry mutation rides /session (config), never here.
         .route("/workspaces", get(routes::registry::list_workspaces))
         .route("/vault-tree", get(routes::query::vault_tree))
+        .route("/code-files", get(routes::query::code_files))
         // Read-only codebase file-tree listing (dashboard-code-tree ADR): one
         // bounded, ignore-aware directory level per call, metadata only, through
         // the shared envelope so every response carries the tiers block.
@@ -151,6 +156,16 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/issues", get(routes::github::issues))
         .route("/status", get(routes::stream::status))
         .route("/stream", get(routes::stream::stream))
+        // Fenced agentic authoring backend (agentic-spec-authoring-backend),
+        // MOUNTED at W03.P39: the enabled status shell + the propose → review →
+        // apply → rollback command routes, nested as one `/authoring` subtree. Its
+        // `resolve_principal_layer` runs AFTER this router's `bearer_gate` (the nest
+        // sits under it), so a valid machine bearer is required first, then the
+        // actor principal resolves per command. Still NOT an `/ops/core/*` alias.
+        .nest(
+            "/authoring",
+            authoring::http::authoring_router(state.clone()),
+        )
         .route("/search", post(routes::ops::search))
         .route("/ops/core/{verb}", post(routes::ops::ops_core))
         // The core WRITE channel (W02): forward a whitelisted
@@ -338,6 +353,19 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
              vaultspec-managed worktree",
             root.display()
         )));
+    }
+
+    // Detect-and-instruct (dashboard-packaging D3, amended by review): probe
+    // the two external requirements BEFORE any heavy work and WARN with the
+    // exact remediation — never exit. Serving degraded with honest tiers is
+    // the binding doctrine (the adversarial degradation suite and the
+    // conformance harness both run serve without core by design), and the
+    // affected tiers carry the same remediation truth to the GUI.
+    if let Err(remediation) = handshake::startup_gate() {
+        eprintln!(
+            "vaultspec serve: WARNING - a companion tool is missing; the \
+             affected data tiers will report unavailable.\n\n{remediation}\n"
+        );
     }
 
     let crash_log = engine_store::engine_data_dir(&root.join(".vault")).join("crash.log");
@@ -1338,6 +1366,152 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn authoring_status_is_enabled_and_semantic_and_tiered() {
+        // W03.P39 mount: the authoring domain is a fenced product API (NOT a
+        // core-shaped write proxy) and is now ENABLED — the propose → review →
+        // apply → rollback slice is live. The status snapshot reports the boundary
+        // + the V1 capability set.
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let (status, body) = get_with_token(router, "/authoring/status", Some(&token)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["data"]["feature"], authoring::FEATURE_TAG);
+        assert_eq!(body["data"]["enabled"], true);
+        assert_eq!(body["data"]["status"], "enabled");
+        assert_eq!(body["data"]["capabilities"]["proposals"], true);
+        assert_eq!(body["data"]["capabilities"]["apply"], true);
+        assert_eq!(
+            body["data"]["route_family"], "/authoring",
+            "the collaborator-facing route family is semantic"
+        );
+        assert_eq!(
+            body["data"]["ownership"]["materialization"], "internal vaultspec-core adapter",
+            "core stays hidden behind the future adapter"
+        );
+        assert_eq!(
+            body["data"]["ownership"]["core_routes_are_authoring_contract"], false,
+            "authoring status must not expose /ops/core as the authoring API"
+        );
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "authoring status carries the tiers block"
+        );
+    }
+
+    #[tokio::test]
+    async fn authoring_command_routes_are_mounted_under_the_principal_layer() {
+        // W03.P39 mount smoke: the nested authoring router is reachable — a read
+        // flows (principal-permissive) with just the machine bearer, and a command
+        // route is mounted AND gated by the principal layer (a machine bearer alone,
+        // with no actor token, is a 401 from the ResolvedCommand extractor, never a
+        // 404 for an unmounted route).
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let (status, body) =
+            get_with_token(router.clone(), "/authoring/v1/proposals", Some(&token)).await;
+        assert_eq!(status, StatusCode::OK, "read is reachable: {body}");
+        assert_eq!(body["data"]["items"], json!([]));
+
+        let (status, body) = post_json_with_token(
+            router,
+            "/authoring/v1/apply-requests",
+            json!({
+                "api_version": "v1",
+                "command": "request_apply",
+                "idempotency_key": "idem:mount:apply",
+                "payload": {
+                    "changeset_id": "changeset_mount",
+                    "approval_id": "approval_mount",
+                    "targets": []
+                }
+            }),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "a command needs an actor token, not just the machine bearer: {body}"
+        );
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "the principal denial carries tiers"
+        );
+    }
+
+    #[tokio::test]
+    async fn proposal_append_and_replace_draft_routes_are_mounted_and_principal_gated() {
+        // W12.P22 fold-in: the served tool catalog advertises `propose_changeset`
+        // append/replace, so those verbs MUST have executable routes (not
+        // advertise-what-can't-run). Each is mounted AND principal-gated: a machine
+        // bearer with no actor token is a 401 from the extractor, never a 404.
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        for verb in ["append", "replace"] {
+            let (status, body) = post_json_with_token(
+                router.clone(),
+                &format!("/authoring/v1/proposals/changeset_mount/{verb}"),
+                json!({
+                    "api_version": "v1",
+                    "command": "append_draft",
+                    "idempotency_key": format!("idem:mount:{verb}"),
+                    "payload": {
+                        "changeset_id": "changeset_mount",
+                        "expected_revision": "changeset:mount",
+                        "summary": "mount smoke",
+                        "operations": []
+                    }
+                }),
+                Some(&token),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::UNAUTHORIZED,
+                "the {verb} draft route is mounted and needs an actor token: {body}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn authoring_api_misses_and_method_errors_are_tiered_json() {
+        // The `/authoring` prefix is an API boundary, not an SPA deep link.
+        // Unknown authoring paths and framework method errors must therefore be
+        // JSON API errors with tiers, not HTML fallback or tiers-less axum text.
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let (status, body) =
+            get_with_token(router.clone(), "/authoring/no-such-route", Some(&token)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|message| message.contains("unknown API path")),
+            "unknown authoring API paths must fail as API JSON: {body}"
+        );
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "unknown authoring API path carries tiers"
+        );
+
+        let (status, body) =
+            post_json_with_token(router, "/authoring/status", json!({}), Some(&token)).await;
+        assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED, "{body}");
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "method errors carry tiers"
+        );
+    }
+
+    #[tokio::test]
     async fn node_family_serves_from_the_live_graph() {
         let (_dir, state) = fixture_state();
         let token = state.bearer.clone();
@@ -1606,6 +1780,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn served_tiers_carry_the_component_handshake() {
+        // P02.S08/S09 (dashboard-packaging D6): every served tiers block
+        // declares the component floors, with rag honestly version-less and —
+        // in this fixture workspace, which has no rag service — semantic
+        // truthfully unavailable alongside its component block.
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let router = build_router(state);
+        let (status, body) = get_with_token(router, "/status", Some(&token)).await;
+        assert_eq!(status, StatusCode::OK);
+        let core = &body["tiers"]["declared"]["component"];
+        assert_eq!(core["name"], "vaultspec-core");
+        assert_eq!(core["floor"], "0.1.36");
+        assert!(
+            core["meets_floor"].is_boolean() || core["meets_floor"].is_null(),
+            "floor verdict is served, never guessed: {core}"
+        );
+        let rag = &body["tiers"]["semantic"]["component"];
+        assert_eq!(rag["name"], "vaultspec-rag");
+        assert_eq!(rag["floor"], "0.2.28");
+        assert!(rag["version"].is_null(), "rag version is honestly unknown");
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "availability stays the tier computation's verdict"
+        );
+    }
+
+    // Without the embed-spa feature the fixture workspace has no bundle, so
+    // the deep link resolves to the placeholder; with the feature the
+    // embedded store answers first and the placeholder is unreachable — the
+    // embedded suite below owns that case.
+    #[cfg(not(feature = "embed-spa"))]
+    #[tokio::test]
     async fn spa_fallback_serves_placeholder_without_a_bundle() {
         let (_dir, state) = fixture_state();
         let token = state.bearer.clone();
@@ -1629,6 +1836,94 @@ mod tests {
             .unwrap()
             .to_string();
         assert!(content_type.starts_with("text/html"));
+    }
+
+    /// P01.S04 (dashboard-packaging): the embedded bundle serves standalone —
+    /// index with the token bootstrap, assets with correct MIME, deep links
+    /// falling back to the shell, and the API prefix boundary staying JSON.
+    #[cfg(feature = "embed-spa")]
+    mod embedded_spa {
+        use super::*;
+
+        async fn get_raw(path: &str) -> (StatusCode, String, Vec<u8>) {
+            let (_dir, state) = fixture_state();
+            let token = state.bearer.clone();
+            let router = build_router(state);
+            let response = router
+                .oneshot(
+                    Request::get(path)
+                        .header("host", "127.0.0.1")
+                        .header("authorization", format!("Bearer {token}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let status = response.status();
+            let content_type = response
+                .headers()
+                .get("content-type")
+                .map(|v| v.to_str().unwrap().to_string())
+                .unwrap_or_default();
+            let bytes = axum::body::to_bytes(response.into_body(), 1 << 26)
+                .await
+                .unwrap()
+                .to_vec();
+            (status, content_type, bytes)
+        }
+
+        #[tokio::test]
+        async fn embedded_index_serves_with_the_token_bootstrap() {
+            let (status, content_type, body) = get_raw("/").await;
+            assert_eq!(status, StatusCode::OK);
+            assert!(content_type.starts_with("text/html"));
+            let html = String::from_utf8_lossy(&body);
+            assert!(
+                html.contains(r#"<meta name="vaultspec-token""#),
+                "token bootstrap is injected into the embedded index"
+            );
+            assert!(
+                !html.contains("No SPA bundle found"),
+                "the placeholder is unreachable with an embedded bundle"
+            );
+        }
+
+        #[tokio::test]
+        async fn embedded_asset_serves_with_correct_mime() {
+            let asset = crate::routes::spa::EmbeddedSpa::iter()
+                .find(|name| name.starts_with("assets/") && name.ends_with(".js"))
+                .expect("the built bundle carries at least one hashed JS chunk");
+            let (status, content_type, body) = get_raw(&format!("/{asset}")).await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(content_type, "text/javascript");
+            assert!(!body.is_empty(), "asset bytes come from the embedded store");
+        }
+
+        #[tokio::test]
+        async fn embedded_deep_link_falls_back_to_the_shell() {
+            let (status, content_type, body) = get_raw("/some/deep/link").await;
+            assert_eq!(status, StatusCode::OK);
+            assert!(content_type.starts_with("text/html"));
+            assert!(
+                String::from_utf8_lossy(&body).contains(r#"<meta name="vaultspec-token""#),
+                "deep links resolve to the embedded shell with the bootstrap"
+            );
+        }
+
+        #[tokio::test]
+        async fn api_prefixes_stay_a_json_boundary_with_an_embedded_bundle() {
+            let (status, content_type, body) = get_raw("/graph/definitely-not-a-route").await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "API typos fail loud");
+            assert!(
+                content_type.starts_with("application/json"),
+                "never the SPA shell for an API path: {content_type}"
+            );
+            let value: Value = serde_json::from_slice(&body).unwrap();
+            assert!(
+                value["tiers"]["semantic"]["available"].is_boolean(),
+                "the JSON 404 carries the tiers block"
+            );
+        }
     }
 
     fn urlencode(s: &str) -> String {
@@ -1752,6 +2047,7 @@ mod tests {
             "/graph/query",
             "/events",
             "/stream",
+            "/authoring/status",
             "/search",
             "/ops/core/{verb}",
         ] {

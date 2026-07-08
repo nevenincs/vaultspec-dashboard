@@ -184,6 +184,17 @@ fn collect(
     seen: &mut HashSet<PathBuf>,
 ) {
     if let Ok(event) = event {
+        // READS are never corpus changes. On Linux, inotify reports Access
+        // (open/close) events for every directory a scan opens — including
+        // the rebuild's OWN corpus walk — so treating them as dirt makes
+        // each rebuild schedule the next: an endless walk→access→rebuild
+        // loop (CI quiescence failure 2026-07-08; ~20 directory paths per
+        // window, one rebuild per debounce, forever). Windows emits no
+        // access events, which is why the loop never reproduced there.
+        // Only creations, modifications, removals, and renames re-ingest.
+        if matches!(event.kind, notify::EventKind::Access(_)) {
+            return;
+        }
         for path in event.paths {
             // Engine-owned cache/log zones under `.vault/` are SKIPPED: the
             // engine's own `put_artifact` writes (the SQLite cache + its
@@ -193,7 +204,7 @@ fn collect(
             // watcher self-trigger on every cache write — an endless
             // rebuild→write→rebuild churn (perf ADR follow-up). Mirrors the
             // `vault_documents` walk skip of `data`/`logs`.
-            if is_engine_owned_path(&path) {
+            if is_engine_owned_path(&path) || is_git_noise_path(&path) {
                 continue;
             }
             if seen.insert(path.clone()) {
@@ -201,6 +212,42 @@ fn collect(
             }
         }
     }
+}
+
+/// True when `path` is `.git`-internal NOISE for the graph's purposes. The
+/// git root is watched ONLY for corpus-relevant moves — `HEAD` (branch
+/// switch), `refs/…` and `packed-refs` (commits, branches), and the
+/// `worktrees/` registry (worktree add/remove, with the same signal set one
+/// level deeper inside each entry). Everything else under `.git` churns
+/// incidentally: ANY sibling `git status` — including the one vaultspec-core
+/// runs inside every declared fold — refreshes `.git/index` on Linux, so
+/// rebuilding on it self-sustains a rebuild→fold→git→index→rebuild loop that
+/// never reaches quiescence (CI failure, 2026-07-07). Lock files are
+/// transient even on signal paths: a HEAD move lands as a rename ONTO `HEAD`,
+/// which is the event that matters.
+fn is_git_noise_path(path: &Path) -> bool {
+    use std::ffi::OsStr;
+    let comps: Vec<&OsStr> = path.components().map(|c| c.as_os_str()).collect();
+    let Some(pos) = comps.iter().position(|c| *c == OsStr::new(".git")) else {
+        return false;
+    };
+    if path.extension().is_some_and(|e| e == "lock") {
+        return true;
+    }
+    let Some(&first) = comps.get(pos + 1) else {
+        // The `.git` entry itself (repo/linked-worktree creation) — a signal.
+        return false;
+    };
+    let head = if first == OsStr::new("worktrees") {
+        match comps.get(pos + 3) {
+            // `worktrees/` or `worktrees/<name>` themselves: add/remove — keep.
+            None => return false,
+            Some(&inner) => inner,
+        }
+    } else {
+        first
+    };
+    !(head == OsStr::new("HEAD") || head == OsStr::new("packed-refs") || head == OsStr::new("refs"))
 }
 
 /// True when `path` lives in an engine-owned, gitignored zone under `.vault/`
@@ -342,6 +389,70 @@ mod tests {
             std::thread::sleep(Duration::from_millis(25));
         }
         sup.join().unwrap();
+    }
+
+    #[test]
+    fn git_noise_is_skipped_but_ref_and_head_moves_are_kept() {
+        // Noise: the churn any sibling `git status` produces (the declared
+        // fold's core subprocess runs one per rebuild — the CI loop).
+        for noise in [
+            "/ws/main/.git/index",
+            "/ws/main/.git/index.lock",
+            "/ws/main/.git/FETCH_HEAD",
+            "/ws/main/.git/config",
+            "/ws/main/.git/objects/ab/cdef0123",
+            "/ws/main/.git/logs/HEAD",
+            "/ws/main/.git/refs/heads/main.lock",
+            "/ws/main/.git/worktrees/degraded/index",
+            "/ws/main/.git/worktrees/degraded/logs/HEAD",
+        ] {
+            assert!(is_git_noise_path(Path::new(noise)), "noise: {noise}");
+        }
+        // Signals: the corpus-relevant moves the git root is watched FOR.
+        for signal in [
+            "/ws/main/.git",
+            "/ws/main/.git/HEAD",
+            "/ws/main/.git/packed-refs",
+            "/ws/main/.git/refs/heads/main",
+            "/ws/main/.git/worktrees",
+            "/ws/main/.git/worktrees/degraded",
+            "/ws/main/.git/worktrees/degraded/HEAD",
+            "/ws/main/.git/worktrees/degraded/refs/heads/x",
+        ] {
+            assert!(!is_git_noise_path(Path::new(signal)), "signal: {signal}");
+        }
+        // A vault document whose name merely contains git-ish segments is
+        // never mistaken for git internals.
+        assert!(!is_git_noise_path(Path::new(
+            "/ws/main/.vault/plan/index.md"
+        )));
+    }
+
+    #[test]
+    fn collect_drops_access_events_entirely() {
+        // Linux inotify reports Access (open/close) for every directory a
+        // scan opens — including the rebuild's OWN corpus walk — so an
+        // access event treated as dirt makes each rebuild schedule the next
+        // (the CI quiescence loop, 2026-07-08). Reads are never corpus
+        // changes; only create/modify/remove/rename re-ingest.
+        let doc = Path::new("/ws/main/.vault/plan/2026-06-14-x-plan.md");
+        let mut dirty = Vec::new();
+        let mut seen = HashSet::new();
+        collect(
+            Ok(notify::Event {
+                kind: notify::EventKind::Access(notify::event::AccessKind::Open(
+                    notify::event::AccessMode::Read,
+                )),
+                paths: vec![doc.to_path_buf()],
+                attrs: Default::default(),
+            }),
+            &mut dirty,
+            &mut seen,
+        );
+        assert!(dirty.is_empty(), "an access event never dirties: {dirty:?}");
+        // The same path as a MODIFY still dirties.
+        collect(event_for(doc), &mut dirty, &mut seen);
+        assert_eq!(dirty.len(), 1, "a modify event dirties");
     }
 
     #[test]

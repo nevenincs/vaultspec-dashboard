@@ -11,12 +11,18 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { resolveGrammar, supportedLanguageIds } from "./languages";
+import {
+  languageDisplayName,
+  languageHintFromPath,
+  resolveGrammar,
+  supportedLanguageIds,
+} from "./languages";
 import {
   __resetHighlighterForTests,
   useHighlightedHast,
   useTokenLines,
 } from "./useHighlighter";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 afterEach(() => {
   cleanup();
@@ -42,6 +48,21 @@ describe("language resolver", () => {
       "toml",
       "yaml",
       "markdown",
+      "mdx",
+      "dockerfile",
+      "makefile",
+      "sql",
+      "graphql",
+      "go",
+      "java",
+      "kotlin",
+      "ruby",
+      "php",
+      "vue",
+      "svelte",
+      "xml",
+      "jsonc",
+      "scss",
     ]) {
       expect(ids).toContain(id);
     }
@@ -51,16 +72,36 @@ describe("language resolver", () => {
     expect(resolveGrammar("rs")?.id).toBe("rust");
     expect(resolveGrammar("ts")?.id).toBe("typescript");
     expect(resolveGrammar("TSX")?.id).toBe("tsx");
-    expect(resolveGrammar("sh")?.id).toBe("bash");
+    expect(resolveGrammar("sh")?.id).toBe("shellscript");
+    expect(resolveGrammar("bat")?.id).toBe("bat");
     expect(resolveGrammar("c++")?.id).toBe("cpp");
     expect(resolveGrammar("yml")?.id).toBe("yaml");
+    expect(resolveGrammar("dockerfile")?.id).toBe("docker");
+    expect(resolveGrammar("language-ruby")?.id).toBe("ruby");
   });
 
   it("returns null for an unknown or absent hint (plain-text degradation)", () => {
-    expect(resolveGrammar("brainfuck")).toBeNull();
+    expect(resolveGrammar("definitely-not-a-real-language")).toBeNull();
     expect(resolveGrammar(null)).toBeNull();
     expect(resolveGrammar(undefined)).toBeNull();
     expect(resolveGrammar("")).toBeNull();
+  });
+
+  it("derives review-snippet language hints from paths", () => {
+    expect(languageHintFromPath("frontend/src/App.tsx")).toBe("tsx");
+    expect(languageHintFromPath(".vault/research/alpha.md")).toBe("markdown");
+    expect(languageHintFromPath("scripts/build.ps1")).toBe("powershell");
+    expect(languageHintFromPath("Makefile")).toBe("makefile");
+    expect(languageHintFromPath("Dockerfile")).toBe("dockerfile");
+    expect(languageHintFromPath("Cargo.lock")).toBe("toml");
+    expect(languageHintFromPath("schema.graphql")).toBe("graphql");
+    expect(languageHintFromPath("Component.vue")).toBe("vue");
+  });
+
+  it("labels broad Shiki aliases with their display names", () => {
+    expect(languageDisplayName("ts")).toBe("TypeScript");
+    expect(languageDisplayName("dockerfile")).toBe("Dockerfile");
+    expect(languageDisplayName("sh")).toBe("Shell");
   });
 });
 
@@ -106,7 +147,7 @@ describe("shared highlighter hooks", () => {
     await waitFor(() => {
       expect(first.result.current.loading).toBe(false);
       expect(second.result.current.loading).toBe(false);
-    });
+    }, ENGINE_WAIT);
 
     expect(first.result.current.languageId).toBe("rust");
     expect(second.result.current.hast).toBe(first.result.current.hast);
@@ -115,7 +156,7 @@ describe("shared highlighter hooks", () => {
   it("tokenizes line arrays through the same highlighter singleton", async () => {
     const { result } = renderHook(() => useTokenLines("const x: number = 1", "ts"));
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.loading).toBe(false), ENGINE_WAIT);
 
     expect(result.current.languageId).toBe("typescript");
     expect(

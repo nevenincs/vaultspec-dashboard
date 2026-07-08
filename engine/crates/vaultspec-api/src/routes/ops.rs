@@ -37,11 +37,15 @@ const SIBLING_STDOUT_CAP: u64 = 8 * 1024 * 1024;
 /// timeout the child is killed and a 504 degraded envelope is returned.
 const SIBLING_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// Interactive search budget: `/search` is a degradable, user-facing read. A
-/// hung or cold rag sibling should return a semantic-tier degradation quickly
-/// instead of pinning the dashboard or its live conformance gate behind the
-/// generic lifecycle/reindex subprocess ceiling.
-const SEARCH_SIBLING_TIMEOUT: Duration = Duration::from_secs(8);
+/// The `/search` HTTP budget (rag-integration-hardening D1/D2): search now rides
+/// the WARM resident rag service over the loopback transport, not a per-query CLI
+/// spawn, so it belongs to the Tier-1 READ class — a warm semantic round-trip,
+/// never the cold-spawn ceiling the deleted subprocess path needed. Pinned to
+/// rag-client's `READ_BUDGET` (10s) so a stalled service degrades the semantic
+/// tier quickly while a busy warm query still completes. The client search
+/// budget strictly exceeds this so the tiers envelope always lands before the
+/// client can abort (D2).
+const SEARCH_HTTP_BUDGET: Duration = rag_client::control::READ_BUDGET;
 
 /// Destructive-storage budget (rag-storage-broker ADR D4): a `prune` of a large
 /// orphaned set or an apply-mode `migrate` of a big shared store legitimately runs
@@ -84,17 +88,22 @@ const CORE_WRITE_WHITELIST: &[(&str, &[&str])] = &[
     ("rename", &["vault", "rename"]),
 ];
 
-/// The rag CLI whitelist is now PROCESS LIFECYCLE ONLY (rag-control-plane ADR
-/// D1, P02.S13): you cannot HTTP a service that is not running, so start / stop
-/// / status / doctor / install stay the bounded CLI subprocess runner. Every
-/// other rag verb — the reindex TRIGGER, job polling, watcher config, project
-/// management, and the observability reads — is brokered over rag's HTTP service
-/// through the `rag_client::control` module (the HTTP-brokered verbs below),
-/// because rag's runtime truth lives on the running service and a reindex is
-/// job-based (returns a `job_id`, polled via `/jobs`), never a blocking CLI call.
+/// The JSON-runner lifecycle whitelist: the process-lifecycle rag verbs that run
+/// through the shared bounded `--json` sibling runner (rag-control-plane ADR D1,
+/// P02.S13) — you cannot HTTP a service that is not running, so status / doctor /
+/// install stay CLI subprocess reads. `server-start` / `server-stop` are ALSO
+/// process lifecycle but are dispatched to their OWN dedicated capture handlers
+/// (`start_rag_service` / `stop_rag_service` — the machine-singleton
+/// attach-never-own discipline, with version-tolerant `--json` on start), so they
+/// intercept BEFORE this lookup and are deliberately NOT listed here (RCR-004: a
+/// dead row here would only ever fall through to `run_sibling`, which appends
+/// `--json` unconditionally — the exact rejection those handlers exist to manage).
+/// Every other rag verb — the reindex TRIGGER, job polling, watcher config,
+/// project management, and the observability reads — is brokered over rag's HTTP
+/// service through the `rag_client::control` module (the HTTP-brokered verbs
+/// below), because rag's runtime truth lives on the running service and a reindex
+/// is job-based (returns a `job_id`, polled via `/jobs`), never a blocking CLI call.
 const RAG_CLI_WHITELIST: &[(&str, &[&str])] = &[
-    ("server-start", &["server", "start"]),
-    ("server-stop", &["server", "stop"]),
     ("server-status", &["server", "status"]),
     ("server-doctor", &["server", "doctor"]),
     ("server-install", &["install"]),
@@ -119,6 +128,52 @@ async fn run_sibling(
     args: &[&str],
 ) -> Result<Value, (StatusCode, Json<Value>)> {
     run_sibling_bounded(state, program, args, SIBLING_TIMEOUT, SIBLING_STDOUT_CAP).await
+}
+
+/// Convert a completed [`LifecycleRun`] to the JSON envelope `Value` that
+/// [`run_sibling`] would return on success, or an error description string on a
+/// non-zero exit.  Pure function — no I/O, no spawning — so the retry logic
+/// in [`run_sibling_version_tolerant`] can be exercised in unit tests.
+fn lifecycle_run_to_envelope(run: &LifecycleRun) -> Result<Value, String> {
+    if run.code != Some(0) {
+        return Err(format!("exited {:?}", run.code));
+    }
+    let raw = &run.stdout;
+    Ok(serde_json::from_str(raw).unwrap_or_else(|_| json!({ "raw": raw, "exit": run.code })))
+}
+
+/// Like [`run_sibling`] but with version-tolerant `--json`: if the first
+/// attempt exits 2 (a typer usage-error) or the combined output contains the
+/// unknown-option text (detected by [`rag_rejected_json`]), the verb is retried
+/// once WITHOUT `--json`.  A genuine non-zero exit — one that does NOT fire
+/// [`rag_rejected_json`] — still surfaces as a 502, preserving the contract.
+///
+/// Uses [`run_rag_lifecycle_capture`] so both stdout AND stderr are available
+/// for the rejection heuristic; the final JSON envelope is built from stdout
+/// only via [`lifecycle_run_to_envelope`], matching [`run_sibling`] semantics.
+async fn run_sibling_version_tolerant(
+    state: &AppState,
+    program: &[String],
+    args: &[&str],
+) -> Result<Value, (StatusCode, Json<Value>)> {
+    let cwd = state.active_cell().root.clone();
+    // First attempt: with --json for the structured-output contract.
+    let mut args_with_json: Vec<&str> = args.to_vec();
+    args_with_json.push("--json");
+    let mut run = run_rag_lifecycle_capture(state, &cwd, program, &args_with_json).await?;
+    // Version-tolerant retry: an older rag rejects --json with exit 2 (typer
+    // usage error) or produces the unknown-option text on a non-standard exit.
+    // Retry exactly once without --json (no cross-repo ordering requirement).
+    if run.code != Some(0) && rag_rejected_json(&run) {
+        run = run_rag_lifecycle_capture(state, &cwd, program, args).await?;
+    }
+    lifecycle_run_to_envelope(&run).map_err(|msg| {
+        super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("{} {}", program[0], msg),
+        )
+    })
 }
 
 /// The bounded sibling runner. `timeout`/`cap` are parameters so tests can
@@ -1005,22 +1060,34 @@ async fn run_rag_lifecycle_capture(
 /// just-started or just-won-the-race rag service may still be loading models when
 /// the first `/health` probe fires, so a single probe would misreport a slow-but-
 /// successful start as failed. Bounded at a few attempts with short gaps.
-async fn reprobe_rag_until_running(vault: &FsPath) -> rag_client::client::RagMachineState {
+///
+/// Each `probe_machine_state` call is blocking std::net I/O — offloaded via
+/// `rag_offload` (spawn_blocking) so the ≈7.5s worst-case probe loop never pins
+/// a Tokio async worker (ADR D5 / T1-R2). The inter-probe sleeps stay async
+/// (tokio::time::sleep).
+async fn reprobe_rag_until_running(
+    state: &AppState,
+    vault: &FsPath,
+) -> Result<rag_client::client::RagMachineState, (StatusCode, Json<Value>)> {
     const ATTEMPTS: usize = 4;
     let gap = Duration::from_millis(500);
     let mut last = rag_client::client::RagMachineState::Absent {
         reason: "rag start re-probe pending".to_string(),
     };
     for i in 0..ATTEMPTS {
-        last = rag_client::client::probe_machine_state(vault, RAG_LIFECYCLE_HEALTH_TIMEOUT);
+        let vault_clone = vault.to_owned();
+        last = rag_offload(state, move || {
+            rag_client::client::probe_machine_state(&vault_clone, RAG_LIFECYCLE_HEALTH_TIMEOUT)
+        })
+        .await?;
         if last.is_running() {
-            return last;
+            return Ok(last);
         }
         if i + 1 < ATTEMPTS {
             tokio::time::sleep(gap).await;
         }
     }
-    last
+    Ok(last)
 }
 
 /// `server-start` with the machine-singleton, attach-never-own discipline
@@ -1103,10 +1170,14 @@ async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControl
 
     let vault = cell.root.join(".vault");
     // Gate: a running machine service is managed, not restarted (the start flags
-    // are moot when we attach to an existing service).
-    if let rag_client::client::RagMachineState::Running { info, health } =
-        rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT)
-    {
+    // are moot when we attach to an existing service). The /health probe is
+    // blocking socket I/O — offload it (RCR-001).
+    let gate_probe = rag_offload(state, {
+        let vault = vault.clone();
+        move || rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT)
+    })
+    .await?;
+    if let rag_client::client::RagMachineState::Running { info, health } = gate_probe {
         return Ok(super::envelope(
             json!({ "envelope": {
                 "status": "already_running",
@@ -1140,13 +1211,18 @@ async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControl
     // downgrade a slow-but-successful start to "failed": trust exit 0 and harvest
     // pid/port best-effort without blocking on readiness.
     if run.code == Some(0) {
-        let (pid, port) =
-            match rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT) {
-                rag_client::client::RagMachineState::Running { info, health } => {
-                    (health.pid.or(info.pid), Some(info.port))
-                }
-                other => (None, other.service_info().map(|i| i.port)),
-            };
+        // Best-effort pid/port harvest — blocking /health probe, offload it (RCR-001).
+        let post_probe = rag_offload(state, {
+            let vault = vault.clone();
+            move || rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT)
+        })
+        .await?;
+        let (pid, port) = match post_probe {
+            rag_client::client::RagMachineState::Running { info, health } => {
+                (health.pid.or(info.pid), Some(info.port))
+            }
+            other => (None, other.service_info().map(|i| i.port)),
+        };
         return Ok(super::envelope(
             json!({ "envelope": {
                 "status": "started",
@@ -1163,7 +1239,8 @@ async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControl
     // Non-zero exit: either we lost the race (a CLI/MCP/other dashboard owns the
     // machine, rag's lock refused our second service) or a genuine failure. Re-probe
     // with a bounded settle — a just-won race may still be warming — before deciding.
-    match reprobe_rag_until_running(&cell.root.join(".vault")).await {
+    // Probes run under rag_offload so blocking I/O stays off the async worker (T1-R2).
+    match reprobe_rag_until_running(state, &cell.root.join(".vault")).await? {
         rag_client::client::RagMachineState::Running { info, health } => Ok(super::envelope(
             json!({ "envelope": {
                 "status": "machine_owned",
@@ -1230,6 +1307,13 @@ async fn start_rag_service(state: &AppState, cell: &ScopeCell, body: &RagControl
 async fn stop_rag_service(state: &AppState, cell: &ScopeCell) -> ApiResult {
     let run = run_rag_lifecycle_capture(state, &cell.root, &rag_invocation(), &["server", "stop"])
         .await?;
+    // TIERS-ON-STOP-FAILED (ADR D5 / T1-R3): the tiers block reports the TRUE
+    // current service state from discovery (`query_tiers`), NOT the outcome of
+    // this stop attempt.  When stop fails and rag is still running, the semantic
+    // tier correctly shows available — this is the decided, correct behavior.
+    // Callers MUST read the envelope `status` field ("stopped" vs "stop_failed")
+    // to learn the operation result; inferring from tiers would be wrong.  The
+    // stop failure lives in the envelope, not in the tiers.
     Ok(super::envelope(
         json!({ "envelope": {
             "status": if run.code == Some(0) { "stopped" } else { "stop_failed" },
@@ -1946,6 +2030,27 @@ fn brokered_envelope(cell: &ScopeCell, result: rag_client::client::Result<Value>
     }
 }
 
+/// Offload a blocking rag transport call chain onto the blocking pool (RCR-001).
+/// The rag loopback transport is synchronous `std::net` I/O — bounded by a socket
+/// timeout + the `MAX_RAG_BODY` cap — but running it DIRECTLY on a Tokio async
+/// worker lets a burst of slow/stalled rag reads pin every worker and stall the
+/// whole engine (every route, not just rag) up to the largest in-flight budget.
+/// The closure OWNS its transport + args; a task join failure (a panic in the
+/// blocking call) surfaces as a 500 through the shared error helper. Mirrors the
+/// `spawn_blocking` discipline already used for the code-corpus + declared folds.
+async fn rag_offload<T: Send + 'static>(
+    state: &AppState,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, (StatusCode, Json<Value>)> {
+    tokio::task::spawn_blocking(f).await.map_err(|e| {
+        super::api_error(
+            state,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("rag read task failed: {e}"),
+        )
+    })
+}
+
 /// GET `/ops/rag/collection-health?collection=<name>` — Tier-2 Qdrant-native
 /// health (rag-service-management D6 / W02.P05). Reads Qdrant's documented
 /// `GET /collections/{name}` DIRECTLY on its loopback port, but GATED on the
@@ -1956,7 +2061,7 @@ fn brokered_envelope(cell: &ScopeCell, result: rag_client::client::Result<Value>
 /// single path segment (injection guard). Returns the optimizer/segment/
 /// indexed-vs-total health the operations console reads as the "needs repair"
 /// signal.
-fn rag_collection_health(
+async fn rag_collection_health(
     state: &AppState,
     cell: &ScopeCell,
     params: &HashMap<String, String>,
@@ -1979,11 +2084,13 @@ fn rag_collection_health(
             ));
         }
     };
-    // Qdrant health is only meaningful when rag is running (rag owns Qdrant).
-    let probe = rag_client::client::probe_machine_state(
-        &cell.root.join(".vault"),
-        RAG_LIFECYCLE_HEALTH_TIMEOUT,
-    );
+    // Qdrant health is only meaningful when rag is running (rag owns Qdrant). The
+    // /health probe is blocking socket I/O — offload it (RCR-001).
+    let vault = cell.root.join(".vault");
+    let probe = rag_offload(state, move || {
+        rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT)
+    })
+    .await?;
     let rag_client::client::RagMachineState::Running { info, health } = probe else {
         return Ok(super::envelope(
             json!({ "envelope": { "supported": false, "reason": "rag service is not running" } }),
@@ -2024,7 +2131,14 @@ fn rag_collection_health(
         bearer: None,
         timeout: rag_client::control::READ_BUDGET,
     };
-    let result = rag_client::vectors::read_collection_health(&transport, collection).map(|h| {
+    // Direct Qdrant collection read — blocking socket I/O, offload it (RCR-001).
+    // The cheap `.map` result shaping stays on the async thread.
+    let collection_owned = collection.to_string();
+    let health = rag_offload(state, move || {
+        rag_client::vectors::read_collection_health(&transport, &collection_owned)
+    })
+    .await?;
+    let result = health.map(|h| {
         json!({
             "supported": true,
             "qdrant_version": version,
@@ -2083,7 +2197,7 @@ pub async fn ops_rag_get(
     // (Qdrant's loopback port) gated on the Qdrant version, so it handles its own
     // discovery + transport rather than the standard rag-service one below.
     if verb == "collection-health" {
-        return rag_collection_health(&state, &cell, &params);
+        return rag_collection_health(&state, &cell, &params).await;
     }
 
     // Per-verb wall-clock budget (ADR honest difficulty: a fast `/jobs` poll and
@@ -2100,27 +2214,32 @@ pub async fn ops_rag_get(
         }
     };
 
-    let job_id = params.get("job_id").map(String::as_str);
+    let job_id = params.get("job_id").cloned();
     let limit = bounded_rag_read_u32(&params, "limit", MAX_RAG_JOBS_LIMIT);
     let lines = bounded_rag_read_u32(&params, "lines", MAX_RAG_LOG_LINES);
     let survey_limit = bounded_rag_read_u32(&params, "limit", MAX_RAG_SURVEY_LIMIT);
 
-    use rag_client::control;
-    let result = match verb.as_str() {
-        "service-state" => control::service_state(&transport, &project_root),
-        "jobs" => control::jobs(&transport, job_id, limit),
-        "watcher" => control::watcher_get(&transport, &project_root),
-        "projects" => control::projects(&transport),
-        "readiness" => control::readiness(&transport),
-        "logs" => control::logs(&transport, lines, job_id),
-        // Prometheus text is not JSON; forward it verbatim under a string field.
-        "metrics" => control::metrics(&transport).map(|text| json!({ "metrics": text })),
-        "storage-survey" => control::storage_survey(&transport, survey_limit),
-        // The Rust-aggregated size/state snapshot: fetch + derive, then serialize.
-        "ops-state" => control::fetch_rag_ops_state(&transport, &project_root)
-            .and_then(|state| serde_json::to_value(state).map_err(Into::into)),
-        _ => unreachable!("RAG_READ_VERBS membership is checked above"),
-    };
+    // Offload the blocking transport reads onto the blocking pool (RCR-001): the
+    // closure owns the transport + args so a slow/stalled read cannot pin a worker.
+    let result = rag_offload(&state, move || {
+        use rag_client::control;
+        match verb.as_str() {
+            "service-state" => control::service_state(&transport, &project_root),
+            "jobs" => control::jobs(&transport, job_id.as_deref(), limit),
+            "watcher" => control::watcher_get(&transport, &project_root),
+            "projects" => control::projects(&transport),
+            "readiness" => control::readiness(&transport),
+            "logs" => control::logs(&transport, lines, job_id.as_deref()),
+            // Prometheus text is not JSON; forward it verbatim under a string field.
+            "metrics" => control::metrics(&transport).map(|text| json!({ "metrics": text })),
+            "storage-survey" => control::storage_survey(&transport, survey_limit),
+            // The Rust-aggregated size/state snapshot: fetch + derive, then serialize.
+            "ops-state" => control::fetch_rag_ops_state(&transport, &project_root)
+                .and_then(|state| serde_json::to_value(state).map_err(Into::into)),
+            _ => unreachable!("RAG_READ_VERBS membership is checked above"),
+        }
+    })
+    .await?;
     Ok(brokered_envelope(&cell, result))
 }
 
@@ -2229,35 +2348,48 @@ pub async fn ops_rag(
                 ));
             }
         };
-        let result = match verb.as_str() {
+        // Offload the blocking control round-trip onto the blocking pool (RCR-001):
+        // the closure owns the transport + owned copies of the validated args, so a
+        // slow rag control call cannot pin an async worker — matters most for
+        // `/quality` (a 60s budget) that several concurrent panels can trigger.
+        let reindex_type = reindex_type.to_string();
+        let initiator_kind = initiator_kind.to_string();
+        let clean = body.clean.unwrap_or(false);
+        let debounce_ms = body.debounce_ms;
+        let cooldown_s = body.cooldown_s;
+        let project_root = project_root.clone();
+        let verb_owned = verb.clone();
+        let result = rag_offload(&state, move || match verb_owned.as_str() {
             "reindex" => control::reindex(
                 &transport,
                 &control::ReindexArgs {
                     project_root: &project_root,
-                    reindex_type,
-                    clean: body.clean.unwrap_or(false),
-                    initiator_kind,
+                    reindex_type: &reindex_type,
+                    clean,
+                    initiator_kind: &initiator_kind,
                 },
             ),
             "watcher-start" => control::watcher_start(&transport, &project_root),
             "watcher-stop" => control::watcher_stop(&transport, &project_root),
-            "watcher-reconfigure" => control::watcher_reconfigure(
-                &transport,
-                &project_root,
-                body.debounce_ms,
-                body.cooldown_s,
-            ),
+            "watcher-reconfigure" => {
+                control::watcher_reconfigure(&transport, &project_root, debounce_ms, cooldown_s)
+            }
             "project-evict" => control::projects_evict(&transport, &evict_root),
             "quality" => control::quality(&transport),
             _ => unreachable!("http_verb set guards the match"),
-        };
+        })
+        .await?;
         return Ok(brokered_envelope(&cell, result));
     }
 
     // Process-lifecycle verbs (a dead service cannot be reached over HTTP, ADR
     // D1). server-start/stop carry the machine-singleton attach-never-own
-    // discipline and NO `--json` (rag 0.2.25 rejects it on those verbs);
-    // status/doctor/install keep the shared JSON sibling runner.
+    // discipline through their dedicated capture handlers: start appends `--json`
+    // VERSION-TOLERANTLY (retrying without it when an older rag exits 2 rejecting
+    // the option, per `rag_rejected_json`), stop carries no `--json`.
+    // status/doctor/install apply the SAME version-tolerant --json retry via
+    // `run_sibling_version_tolerant` (ADR D5 / T1-R1), closing the residual where
+    // a future rag dropping --json on these verbs would 502 loudly.
     match verb.as_str() {
         "server-start" => start_rag_service(&state, &cell, &body).await,
         "server-stop" => stop_rag_service(&state, &cell).await,
@@ -2265,8 +2397,8 @@ pub async fn ops_rag(
             let (_, args) = RAG_CLI_WHITELIST
                 .iter()
                 .find(|(name, _)| *name == verb)
-                .expect("verb is in the JSON-runner lifecycle set");
-            let envelope = run_sibling(&state, &rag_invocation(), args).await?;
+                .expect("verb is in the version-tolerant lifecycle set");
+            let envelope = run_sibling_version_tolerant(&state, &rag_invocation(), args).await?;
             Ok(super::envelope(
                 json!({ "envelope": envelope }),
                 super::query_tiers(&cell),
@@ -2438,10 +2570,21 @@ pub struct SearchBody {
     pub max_results: Option<u32>,
 }
 
-fn search_args_for(
+/// Validate every user-controlled search argument and build rag's HTTP `/search`
+/// request body. The API is a public boundary, so the bounds are enforced here
+/// BEFORE anything reaches rag: non-empty query, `MAX_SEARCH_QUERY_CHARS`, the
+/// `{vault, code}` target whitelist, and the `MAX_SEARCH_RESULTS` ceiling. The
+/// engine's `{vault, code}` target vocabulary maps to rag's `{vault, codebase}`
+/// type (rag routes any non-`vault` type to the codebase corpus; the engine
+/// sends `codebase` explicitly). `project_root` is the engine-controlled scope
+/// root — REQUIRED by rag and never client-supplied, so a caller can never point
+/// rag at an arbitrary path. `max_results` maps to rag's `top_k`; absent, rag
+/// uses its own default.
+fn search_body_for(
     state: &AppState,
     body: &SearchBody,
-) -> Result<Vec<String>, (StatusCode, Json<Value>)> {
+    project_root: &str,
+) -> Result<Value, (StatusCode, Json<Value>)> {
     let query = body.query.trim();
     if query.is_empty() {
         return Err(super::api_error(
@@ -2457,15 +2600,20 @@ fn search_args_for(
             format!("search query exceeds the {MAX_SEARCH_QUERY_CHARS} character ceiling"),
         ));
     }
-    if let Some(target) = &body.target
-        && !matches!(target.as_str(), "vault" | "code")
-    {
-        return Err(super::api_error(
-            state,
-            StatusCode::BAD_REQUEST,
-            format!("search target `{target}` must be `vault` or `code`"),
-        ));
-    }
+    // Map the engine's target vocabulary to rag's `type`, folding the whitelist
+    // check into the mapping: `vault` (and an absent target, matching the app
+    // default) → `vault`; `code` → `codebase`.
+    let rag_type = match body.target.as_deref() {
+        None | Some("vault") => "vault",
+        Some("code") => "codebase",
+        Some(other) => {
+            return Err(super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                format!("search target `{other}` must be `vault` or `code`"),
+            ));
+        }
+    };
     if let Some(max_results) = body.max_results
         && max_results > MAX_SEARCH_RESULTS
     {
@@ -2478,16 +2626,15 @@ fn search_args_for(
         ));
     }
 
-    let mut args: Vec<String> = vec!["search".into(), query.to_string()];
-    if let Some(target) = &body.target {
-        args.push("--type".into());
-        args.push(target.clone());
-    }
+    let mut rag_body = json!({
+        "query": query,
+        "type": rag_type,
+        "project_root": project_root,
+    });
     if let Some(n) = body.max_results {
-        args.push("--max-results".into());
-        args.push(n.to_string());
+        rag_body["top_k"] = json!(n);
     }
-    Ok(args)
+    Ok(rag_body)
 }
 
 pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchBody>) -> ApiResult {
@@ -2499,53 +2646,60 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
         None => state.active_cell(),
     };
     // Validate and bound every user-controlled search argument BEFORE anything
-    // reaches rag. Argv passing already blocks shell injection; these guards keep
-    // query size, result count, and target vocabulary inside the API contract.
-    let args = search_args_for(&state, &body)?;
-    // Degrade to the tier block when rag is absent — never a dead control
-    // (contract §8).
-    if let rag_client::RagAvailability::Unavailable { reason } =
-        rag_client::client::discover(&cell.root.join(".vault")).0
-    {
-        return Ok(super::envelope(
-            json!({"results": []}),
-            super::degraded_tiers(&cell, reason.as_str()),
-            None,
-        ));
-    }
+    // reaches rag, and build rag's HTTP `/search` body. These guards keep query
+    // size, result count, and target vocabulary inside the API contract.
+    let project_root = cell.root.to_string_lossy().to_string();
+    let rag_body = search_body_for(&state, &body, &project_root)?;
 
-    // rag's CLI search with --json, vocabulary forwarded intact.
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    // A sibling fault (crash, timeout, capped runaway — now surfaced as a
-    // run_sibling Err per H1/M4) must DEGRADE the semantic tier here, never a
-    // hard 502/504: search is a degradable surface (contract §8), the rest of
-    // the engine is fully available. The error message rides the tier reason.
-    let rag_envelope = match run_sibling_bounded_in_dir(
-        &state,
-        &cell.root,
-        &rag_invocation(),
-        &arg_refs,
-        SEARCH_SIBLING_TIMEOUT,
-        SIBLING_STDOUT_CAP,
-    )
-    .await
-    {
-        Ok(envelope) => envelope,
-        Err((_, body)) => {
-            let reason = body.0["error"].as_str().unwrap_or("rag search failed");
+    // Build the bounded loopback transport to the resident rag service (D1).
+    // Discovery is the availability gate: a missing/stale service.json is the
+    // honest "semantic tier down" fact — degrade to the tier block with empty
+    // results, never a dead control (contract §8, degradation-is-read-from-tiers).
+    let transport = match rag_control_transport(&cell, SEARCH_HTTP_BUDGET) {
+        Ok(t) => t,
+        Err(reason) => {
             return Ok(super::envelope(
                 json!({"results": []}),
-                super::degraded_tiers(&cell, reason),
+                super::degraded_tiers(&cell, reason.as_str()),
                 None,
             ));
         }
     };
 
+    // POST to rag's `/search` over the resident service, offloaded onto the
+    // blocking pool (RCR-001) so a slow search never pins an async worker. A
+    // transport fault (service down mid-flight, timeout, unreadable body) must
+    // DEGRADE the semantic tier here via the truthful degradation reason, never a
+    // hard 502/504: search is a degradable surface (contract §8) while the rest
+    // of the engine stays fully available.
+    let rag_envelope = match rag_offload(&state, move || {
+        rag_client::search::http_search(&transport, &rag_body)
+    })
+    .await?
+    {
+        Ok(envelope) => envelope,
+        Err(e) => {
+            let reason = rag_client::search::degradation_reason(&e);
+            return Ok(super::envelope(
+                json!({"results": []}),
+                super::degraded_tiers(&cell, reason.as_str()),
+                None,
+            ));
+        }
+    };
+
+    // The shared D4 freshness epoch rides the annotated envelope (D3). Served from
+    // the short-TTL cache ONLY — never a second blocking `/jobs` round-trip on the
+    // search path: a warm slot annotates the epoch, a cold/expired slot annotates
+    // an honest absent marker (null). The `/graph/embeddings` poll keeps the slot
+    // warm, so both planes share one invalidation key without taxing every search.
+    let semantic_epoch = state.semantic_epoch_cache.fresh();
+
     // Flatten rag's envelope to the contract §2 shape and annotate each hit
-    // with its engine node id (§8 value-add). A shape miss degrades the
-    // `semantic` tier truthfully — never a healthy-looking empty result and
-    // never a foreign envelope passed through unflattened.
-    match flatten_and_annotate(&rag_envelope) {
+    // with its engine node id (§8 value-add) plus the freshness epoch. A shape
+    // miss degrades the `semantic` tier truthfully — never a healthy-looking empty
+    // result and never a foreign envelope passed through unflattened.
+    match flatten_and_annotate(&rag_envelope, semantic_epoch) {
         Ok(data) => Ok(super::envelope(data, super::query_tiers(&cell), None)),
         Err(miss) => {
             let reason = miss.reason();
@@ -2558,10 +2712,10 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
     }
 }
 
-/// A rag search hit in rag's real `search --json` shape (recorded 2026-06-13
-/// against a live rag service). The engine reads only the fields it needs to
-/// derive the click-through node id; every field of the original hit passes
-/// through to the client verbatim (the hit travels as its JSON `Value`).
+/// A rag search hit in rag's real HTTP `/search` result shape (verified live
+/// against rag 0.2.28). The engine reads only the fields it needs to derive the
+/// click-through node id; every field of the original hit passes through to the
+/// client verbatim (the hit travels as its JSON `Value`).
 ///
 /// The trap this shape documents: `source` is the search-type DISCRIMINATOR
 /// (`vault` for docs, `codebase` — historically `code` — for code), NOT a path.
@@ -2607,25 +2761,25 @@ fn hit_node_id(hit: &RagHitShape) -> Option<String> {
     }
 }
 
-/// A typed miss reading rag's search envelope: rag reported its own failure,
-/// or the response did not carry the `data.results` list the contract §8
-/// pass-through requires. Surfaced as a `semantic`-tier degradation so the
-/// client never reads a shape drift as a healthy empty result.
+/// A typed miss reading rag's flat search envelope: the 2xx response did not
+/// carry the top-level `results` list the contract §8 pass-through requires.
+/// A rag HTTP-level failure never reaches here — the loopback transport maps a
+/// non-2xx status to a typed error the handler degrades on before annotation.
+/// Surfaced as a `semantic`-tier degradation so the client never reads a shape
+/// drift as a healthy empty result.
 #[derive(Debug)]
 enum SearchShapeMiss {
-    RagError(String),
     NoResults,
 }
 
 impl SearchShapeMiss {
     fn reason(&self) -> String {
         match self {
-            SearchShapeMiss::RagError(m) => format!("rag search failed: {m}"),
             SearchShapeMiss::NoResults => {
-                // rag is up (it answered) but the payload carried no results
-                // list: most often the scope is not yet indexed, otherwise a
-                // genuine response-shape drift. An `ok:true` empty results
-                // list is NOT this case — it is a healthy zero-match success.
+                // rag answered 2xx but the body carried no `results` list: most
+                // often the scope is not yet indexed, otherwise a genuine
+                // response-shape drift. An empty `results` array is NOT this
+                // case — it is a healthy zero-match success.
                 "rag returned no results payload (scope unindexed, or response shape drift)"
                     .to_string()
             }
@@ -2633,24 +2787,22 @@ impl SearchShapeMiss {
     }
 }
 
-/// Flatten rag's search envelope to the contract §2 `data` payload: a flat
-/// `results` list where each hit keeps its original rag fields and gains the
-/// engine's one value-add (`node_id`). rag's own `query`/`search_type`/`via`
-/// context fields pass through. The nested foreign envelope is dropped.
-fn flatten_and_annotate(rag: &Value) -> Result<Value, SearchShapeMiss> {
-    // `ok: false` is rag reporting its own failure — surface it, never
-    // present it as a healthy empty result.
-    if rag.get("ok") == Some(&Value::Bool(false)) {
-        let msg = rag
-            .get("error")
-            .or_else(|| rag.get("message"))
-            .and_then(Value::as_str)
-            .unwrap_or("rag reported failure")
-            .to_string();
-        return Err(SearchShapeMiss::RagError(msg));
-    }
-    let data = rag.get("data").ok_or(SearchShapeMiss::NoResults)?;
-    let results = data
+/// Annotate rag's FLAT search envelope (rag-integration-hardening D1/D3): each
+/// hit in the top-level `results` list gains the engine's node-id value-add, and
+/// the envelope gains the shared D4 `semantic_epoch`; every other field of the
+/// flat envelope (`request_id`, `summary`, `timing`, `index_state`, ...) — rag's
+/// native freshness block `index_state` included — passes through verbatim. rag's
+/// HTTP `/search` response is already flat (no nested `{ok, command, data}`
+/// wrapper to strip), so this annotates in place. `semantic_epoch` is `Some` when
+/// the shared cache served a warm epoch and `None` (annotated as an explicit
+/// `null` — freshness unknown, never a fabricated `0`) when the slot was
+/// cold/failed. A 2xx response missing the `results` list is a typed shape miss
+/// the caller degrades the `semantic` tier on.
+fn flatten_and_annotate(
+    rag: &Value,
+    semantic_epoch: Option<u64>,
+) -> Result<Value, SearchShapeMiss> {
+    let results = rag
         .get("results")
         .and_then(Value::as_array)
         .ok_or(SearchShapeMiss::NoResults)?;
@@ -2672,8 +2824,14 @@ fn flatten_and_annotate(rag: &Value) -> Result<Value, SearchShapeMiss> {
         })
         .collect();
 
-    let mut out = data.clone();
+    let mut out = rag.clone();
     out["results"] = Value::Array(annotated);
+    // Engine value-add (D3): the shared D4 semantic epoch rides the annotated
+    // envelope so downstream builds key one invalidation across search AND
+    // embeddings. `None` (a cold/failed epoch read) annotates an explicit `null` —
+    // freshness unknown — never a fabricated `0`. rag's own `index_state` and every
+    // other flat field passed through verbatim in the `rag.clone()` above.
+    out["semantic_epoch"] = semantic_epoch.map(|e| json!(e)).unwrap_or(Value::Null);
     Ok(out)
 }
 
@@ -2681,84 +2839,168 @@ fn flatten_and_annotate(rag: &Value) -> Result<Value, SearchShapeMiss> {
 mod tests {
     use super::*;
 
-    // Recorded 2026-06-13 against a live rag service
-    // (`vaultspec-rag search --type vault --json`), trimmed to the
-    // annotation-relevant fields plus a synthetic code hit. `source` is the
-    // vault|code DISCRIMINATOR, never a path — the fixture exists to pin that.
-    const RAG_REAL: &str = r#"{
-        "ok": true, "command": "search",
-        "data": {
-            "query": "test", "search_type": "vault", "via": "service",
-            "results": [
-                {"id": "adr/2026-06-05-x-adr",
-                 "path": "adr/2026-06-05-x-adr.md",
-                 "score": 0.548, "source": "vault",
-                 "doc_type": "adr", "feature": "f", "date": "2026-06-05"},
-                {"path": "src/lib.rs", "score": 0.40, "source": "code",
-                 "function_name": "alpha", "language": "rust"},
-                {"path": "src/lib.rs", "score": 0.30, "source": "code"},
-                {"path": "src/main.rs", "score": 0.25, "source": "codebase",
-                 "class_name": "Server", "language": "rust"},
-                {"score": 0.10, "source": "unknown-future-kind"}
-            ]
-        }
-    }"#;
+    // Two-sided D2 budget anchor: the frontend guards the client-outlives-engine
+    // ordering against its mirrored `ENGINE_SEARCH_BUDGET_MS`
+    // (`frontend/src/stores/server/queries.ts`), which cannot see this constant.
+    // Pinning the numeric value HERE makes a budget retune fail at the source of
+    // the change, so the mirror can never go silently stale — anyone changing
+    // `SEARCH_HTTP_BUDGET` / rag-client `READ_BUDGET` must visit both anchors.
+    #[test]
+    fn search_budget_is_pinned_to_the_frontend_mirror_anchor() {
+        assert_eq!(SEARCH_HTTP_BUDGET, Duration::from_secs(10));
+    }
+
+    // rag's real FLAT HTTP `/search` envelope, captured live against rag 0.2.28
+    // (`POST /search {query, type, project_root, top_k}`): results sit at the
+    // TOP level (no `{ok, command, data}` wrapper), each item carrying rag's real
+    // field vocabulary, alongside the top-level `request_id`/`summary`/`timing`/
+    // `index_state` context. The vault path prefix, the `codebase` discriminator,
+    // and the null code symbols mirror the captured live shape; a `code`-source
+    // hit with a `function_name` and an unknown-discriminator hit are added to
+    // pin every annotation branch. `source` is the vault|codebase DISCRIMINATOR,
+    // never a path — the fixture exists to pin that.
+    const RAG_REAL: &str = r##"{
+        "request_id": "req-7f3c",
+        "summary": "5 results",
+        "timing": {"total_ms": 7, "embed_ms": 3, "search_ms": 4},
+        "index_state": {
+            "source": "vault", "indexed_count": 3173, "vault_count": 3173,
+            "code_count": 10507, "indexed_target_root": "Y:\\code\\proj",
+            "requested_target_root": "Y:\\code\\proj", "target_matches": true,
+            "status": "available"
+        },
+        "results": [
+            {"id": "adr/2026-06-05-x-adr",
+             "path": ".vault/adr/2026-06-05-x-adr.md",
+             "title": "x adr", "snippet": "# x adr",
+             "score": 0.548, "source": "vault",
+             "doc_type": "adr", "feature": "f", "date": "2026-06-05",
+             "line_start": null, "line_end": null},
+            {"id": "src/lib.rs:1-9:aa", "path": "src/lib.rs", "score": 0.40,
+             "source": "code", "function_name": "alpha", "language": "rust",
+             "line_start": 1, "line_end": 9},
+            {"id": "src/lib.rs:20-30:bb", "path": "src/lib.rs", "score": 0.30,
+             "source": "codebase", "language": "rust",
+             "function_name": null, "class_name": null},
+            {"id": "src/main.rs:5-40:cc", "path": "src/main.rs", "score": 0.25,
+             "source": "codebase", "class_name": "Server", "language": "rust"},
+            {"score": 0.10, "source": "unknown-future-kind"}
+        ]
+    }"##;
 
     #[test]
-    fn flattens_and_annotates_rags_real_shape() {
+    fn annotates_rags_real_flat_shape() {
         let rag: Value = serde_json::from_str(RAG_REAL).unwrap();
-        let out = flatten_and_annotate(&rag).expect("real shape flattens");
+        let out = flatten_and_annotate(&rag, None).expect("real flat shape annotates");
 
-        // §2 flat shape: results sit directly under data; rag's context
-        // fields pass through; no nested foreign `envelope`.
-        assert_eq!(out["query"], "test");
-        assert_eq!(out["search_type"], "vault");
+        // The flat envelope's top-level context fields pass through verbatim —
+        // there is nothing to flatten, only annotate in place.
+        assert_eq!(out["request_id"], "req-7f3c");
+        assert_eq!(out["summary"], "5 results");
+        assert_eq!(out["index_state"]["status"], "available");
+        assert_eq!(out["timing"]["total_ms"], 7);
         let results = out["results"].as_array().unwrap();
         assert_eq!(results.len(), 5, "every hit survives; none dropped");
 
-        // Vault hit → doc node from the PATH STEM, not the "vault"
-        // discriminator. rag fields pass through verbatim alongside node_id.
+        // Vault hit → doc node from the PATH STEM (last segment, `.md` stripped),
+        // not the "vault" discriminator. rag fields pass through alongside node_id.
         assert_eq!(results[0]["node_id"], "doc:2026-06-05-x-adr");
         assert_eq!(results[0]["doc_type"], "adr");
         assert_eq!(results[0]["score"], 0.548);
 
         // Code hit with a symbol → code-artifact id qualified by `#symbol`.
         assert_eq!(results[1]["node_id"], "code:src/lib.rs#alpha");
-        // Code hit without a symbol → bare path.
+        // The LIVE `codebase` discriminator with null symbols → bare path (the
+        // real captured code shape).
         assert_eq!(results[2]["node_id"], "code:src/lib.rs");
-        // The LIVE rag discriminator is `codebase` (not `code`); it must still
-        // click through, qualified by its class symbol.
+        // A `codebase` hit qualified by its class symbol still clicks through.
         assert_eq!(results[3]["node_id"], "code:src/main.rs#Server");
         // Unknown discriminator → explicit null (typed miss), never guessed.
         assert_eq!(results[4]["node_id"], Value::Null);
     }
 
     #[test]
-    fn rag_reported_failure_is_a_typed_miss() {
-        let rag = json!({"ok": false, "error": "index cold"});
-        let miss = flatten_and_annotate(&rag).unwrap_err();
-        assert!(miss.reason().contains("index cold"));
-        assert!(matches!(miss, SearchShapeMiss::RagError(_)));
-    }
-
-    #[test]
     fn missing_results_list_is_a_typed_miss_not_an_empty_success() {
-        let rag = json!({"ok": true, "data": {"query": "x"}});
+        // A 2xx flat body with no `results` key at all is shape drift.
+        let rag = json!({"request_id": "r-1", "summary": "x"});
         assert!(matches!(
-            flatten_and_annotate(&rag).unwrap_err(),
+            flatten_and_annotate(&rag, None).unwrap_err(),
             SearchShapeMiss::NoResults
         ));
-        // A response with no `data` at all is the same shape drift.
+        // A `results` that is not an array is the same shape drift.
         assert!(matches!(
-            flatten_and_annotate(&json!({"raw": "not json", "exit": 1})).unwrap_err(),
+            flatten_and_annotate(&json!({"results": "not-an-array"}), None).unwrap_err(),
             SearchShapeMiss::NoResults
         ));
     }
 
     #[test]
-    fn search_args_are_bounded_before_rag_spawn() {
+    fn an_empty_results_array_is_a_healthy_zero_match_not_a_miss() {
+        // The empty-index / zero-hit case: rag answered 2xx with an empty
+        // `results` list. That is a healthy success, never a shape miss.
+        let out = flatten_and_annotate(
+            &json!({
+                "request_id": "r-2", "results": [],
+                "index_state": {"status": "available"}
+            }),
+            None,
+        )
+        .expect("empty results is a healthy zero-match");
+        assert_eq!(out["results"].as_array().unwrap().len(), 0);
+        assert_eq!(out["index_state"]["status"], "available");
+    }
+
+    #[test]
+    fn annotation_carries_the_freshness_epoch_and_forwards_index_state() {
+        // P02.S06 (D3): the freshness contract on the annotated success envelope —
+        // a warm epoch is present verbatim, a cold/failed read is an honest null,
+        // and rag's native `index_state` block is forwarded byte-for-byte in every
+        // case. The expected epoch values are the ones the caller hands in (the
+        // shared cache's read), not copied from any run.
+        let rag: Value = serde_json::from_str(RAG_REAL).unwrap();
+        let index_state = rag["index_state"].clone();
+
+        // Epoch present: a successful cache read annotates the exact value.
+        let warm = flatten_and_annotate(&rag, Some(2_000_000)).expect("annotates");
+        assert_eq!(
+            warm["semantic_epoch"], 2_000_000,
+            "the warm epoch rides the envelope verbatim"
+        );
+        // rag's index_state block is forwarded UNTOUCHED (every field, verbatim).
+        assert_eq!(
+            warm["index_state"], index_state,
+            "index_state passes through byte-for-byte alongside the annotation"
+        );
+
+        // A legitimate epoch of 0 ("nothing reindexed yet") is a real value, not
+        // absence: it annotates as 0, distinct from the null absent marker.
+        let zero = flatten_and_annotate(&rag, Some(0)).expect("annotates");
+        assert_eq!(zero["semantic_epoch"], 0);
+        assert!(
+            !zero["semantic_epoch"].is_null(),
+            "a real 0 epoch is never the absent marker"
+        );
+
+        // Cold/failed read: the honest absent marker is an explicit null, never a
+        // fabricated 0, and index_state still forwards untouched.
+        let cold = flatten_and_annotate(&rag, None).expect("annotates");
+        assert_eq!(
+            cold["semantic_epoch"],
+            Value::Null,
+            "a cold/failed epoch read annotates an honest null"
+        );
+        assert_eq!(
+            cold["index_state"], index_state,
+            "index_state is forwarded untouched even when the epoch is absent"
+        );
+    }
+
+    #[test]
+    fn search_body_is_bounded_and_maps_the_target_vocabulary() {
         let (_dir, state) = sibling_state();
-        let args = search_args_for(
+        // A vault search with a result bound: trimmed query, rag `type` vault,
+        // the engine-controlled project_root, and max_results → top_k.
+        let vault = search_body_for(
             &state,
             &SearchBody {
                 scope: None,
@@ -2766,19 +3008,48 @@ mod tests {
                 target: Some("vault".to_string()),
                 max_results: Some(7),
             },
+            "Y:\\code\\proj",
         )
         .unwrap();
         assert_eq!(
-            args,
-            vec![
-                "search",
-                "graph state",
-                "--type",
-                "vault",
-                "--max-results",
-                "7"
-            ]
+            vault,
+            json!({
+                "query": "graph state",
+                "type": "vault",
+                "project_root": "Y:\\code\\proj",
+                "top_k": 7,
+            })
         );
+
+        // The engine `code` target maps to rag's `codebase`; an absent
+        // max_results omits top_k so rag uses its own default.
+        let code = search_body_for(
+            &state,
+            &SearchBody {
+                scope: None,
+                query: "server".to_string(),
+                target: Some("code".to_string()),
+                max_results: None,
+            },
+            "/tmp/proj",
+        )
+        .unwrap();
+        assert_eq!(code["type"], "codebase");
+        assert_eq!(code.get("top_k"), None, "absent max_results omits top_k");
+
+        // An absent target defaults to the app's `vault`.
+        let defaulted = search_body_for(
+            &state,
+            &SearchBody {
+                scope: None,
+                query: "x".to_string(),
+                target: None,
+                max_results: None,
+            },
+            "/tmp/proj",
+        )
+        .unwrap();
+        assert_eq!(defaulted["type"], "vault");
 
         for body in [
             SearchBody {
@@ -2807,8 +3078,8 @@ mod tests {
             },
         ] {
             assert!(
-                search_args_for(&state, &body).is_err(),
-                "invalid search body must be rejected before rag spawn"
+                search_body_for(&state, &body, "/tmp/proj").is_err(),
+                "invalid search body must be rejected before rag is reached"
             );
         }
     }
@@ -4338,6 +4609,73 @@ mod tests {
             })
             .is_err()
         );
+    }
+
+    // --- version-tolerant --json retry (ADR D5 / T1-R1) ---
+
+    /// `lifecycle_run_to_envelope` is the pure conversion step inside
+    /// `run_sibling_version_tolerant`.  It must turn an exit-0 JSON stdout into
+    /// the parsed envelope, wrap a non-JSON exit-0 stdout in {"raw":..,"exit":..},
+    /// and return Err for any non-zero exit (matching the `run_sibling` contract).
+    #[test]
+    fn lifecycle_run_to_envelope_converts_and_guards() {
+        // Exit 0 with valid JSON stdout → the parsed value passes through verbatim.
+        let ok_json = LifecycleRun {
+            code: Some(0),
+            stdout: r#"{"status": "running", "pid": 1234}"#.to_string(),
+            stderr: String::new(),
+        };
+        let val = lifecycle_run_to_envelope(&ok_json).expect("exit-0 JSON should succeed");
+        assert_eq!(val["status"], "running");
+        assert_eq!(val["pid"], 1234);
+
+        // Exit 0 with human/non-JSON stdout → wrapped as {"raw": ..., "exit": ...}.
+        let ok_text = LifecycleRun {
+            code: Some(0),
+            stdout: "Service is healthy.".to_string(),
+            stderr: String::new(),
+        };
+        let val = lifecycle_run_to_envelope(&ok_text).expect("exit-0 text should succeed");
+        assert_eq!(val["raw"], "Service is healthy.");
+        assert_eq!(val["exit"], 0);
+
+        // Non-zero exit without a JSON-rejection pattern → Err (genuine failure,
+        // not a --json rejection).  run_sibling_version_tolerant maps this to 502.
+        let fail = LifecycleRun {
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "Doctor found 2 issues".to_string(),
+        };
+        assert!(lifecycle_run_to_envelope(&fail).is_err());
+    }
+
+    /// The version-tolerant retry applies the SAME `rag_rejected_json` predicate
+    /// that `start_rag_service` uses — the detector must fire for exit-2 (the
+    /// typer usage-error primary signal) and for the unknown-option text, and must
+    /// NOT fire on a genuine exit-1 --json failure envelope.  The unit tests for
+    /// `rag_rejected_json` already pin these cases; this test documents that the
+    /// retry decision for server-status/doctor/install is routed through that
+    /// helper and not a bespoke heuristic.
+    #[test]
+    fn version_tolerant_retry_decision_reuses_rag_rejected_json() {
+        // exit-2 (primary: typer usage error) → retry
+        assert!(rag_rejected_json(&LifecycleRun {
+            code: Some(2),
+            stdout: String::new(),
+            stderr: String::new(),
+        }));
+        // unknown-option text on non-standard exit → retry
+        assert!(rag_rejected_json(&LifecycleRun {
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "Error: No such option: --json".to_string(),
+        }));
+        // genuine rag exit-1 --json failure envelope → NOT a retry
+        assert!(!rag_rejected_json(&LifecycleRun {
+            code: Some(1),
+            stdout: r#"{"ok": false, "error": "service_unreachable"}"#.to_string(),
+            stderr: String::new(),
+        }));
     }
 
     #[test]

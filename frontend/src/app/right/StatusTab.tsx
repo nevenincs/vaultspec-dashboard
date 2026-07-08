@@ -4,9 +4,9 @@
 // questions through a stack of flush COLLAPSIBLE SECTIONS — the one canonical
 // fold (a twisty + SectionLabel over a collapsible body, NO border, NO card
 // background; the kit `FoldSection` primitive, shared identically with the left
-// rail):
-//   • a slim LOCATION strip (the current branch name only — the worktree name and
-//     folder picker live in the left rail's single title),
+// rail). Location identity (project / worktree / branch / path) lives ONLY in
+// the left rail's switcher trigger (worktree-switcher-identity ADR) — this rail
+// states no location of its own:
 //   • OPEN PLANS — flush plan trackers foregrounding a real progress bar,
 //     expandable into the standardized step tree,
 //   • OPEN PRS / OPEN ISSUES / RECENT PRS — GitHub work items,
@@ -15,7 +15,7 @@
 //
 // Layer ownership (dashboard-layer-ownership / views-are-projections): this is a
 // DUMB app-chrome view. It consumes stores selectors EXCLUSIVELY
-// (`useLocationAnchor`, `usePipelineStatusView`, `usePlanInteriorView`,
+// (`usePipelineStatusView`, `usePlanInteriorView`,
 // `useHistoryView`, `usePRsView`, `useIssuesView`) — it fetches nothing, never
 // inspects the raw `tiers` block, and defines no node model. Degradation is read
 // from the interpreted views (the tiers truth they carry, or the engine's
@@ -32,7 +32,7 @@
 import { useState } from "react";
 import type { ButtonHTMLAttributes, Ref, ReactNode } from "react";
 
-import { CircleDot, GitBranch, GitMerge, GitPullRequest } from "lucide-react";
+import { CircleDot, GitMerge, GitPullRequest } from "lucide-react";
 
 import { useFocusZone } from "../chrome/useFocusZone";
 import { RagOpsConsoleBody } from "./RagOpsConsole";
@@ -47,7 +47,6 @@ import {
   useDashboardTimelineModeView,
   useHistoryView,
   useIssuesView,
-  useLocationAnchor,
   usePipelineStatusView,
   usePlanInteriorView,
   usePRsView,
@@ -57,7 +56,6 @@ import {
   usePipelineExpansion,
 } from "../../stores/view/pipelineExpansion";
 import { openContextMenu } from "../../stores/view/contextMenu";
-import { useViewportClass } from "../../stores/view/viewportClass";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
 import type { FocusZoneItemOptions, FocusZoneItemProps } from "../chrome/useFocusZone";
 import { selectEventNodes } from "../../stores/view/selection";
@@ -74,6 +72,7 @@ import {
 import { activateEntity } from "../../stores/view/activateEntity";
 import { freshnessLabel } from "../presentation/freshness";
 import { ChangesOverview } from "./ChangesOverview";
+import { ReviewStationSection } from "../authoring/ReviewStation";
 import { PlanStepTree } from "./PlanStepTree";
 import { RailDegraded, RailEmpty, RailLoading, type RailState } from "./railStates";
 // Centralized kit primitives (design-system-is-centralized).
@@ -137,70 +136,6 @@ function SectionCard({
     >
       {children}
     </RailSection>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Location strip — slim "where are we" (worktree · branch over a faint path).
-// ---------------------------------------------------------------------------
-
-function LocationStrip({ scope }: { scope: unknown }) {
-  const anchor = useLocationAnchor(scope);
-  // Compact (binding compact Status frame 793:3322): the location is a bordered
-  // worktree/branch CARD with NO full path (the path line is desktop-only chrome).
-  const compact = useViewportClass() === "compact";
-  if (!anchor.path) {
-    return (
-      <p
-        className={anchor.emptyClassName}
-        data-location-strip
-        data-location-state="empty"
-      >
-        {anchor.emptyLabel}
-      </p>
-    );
-  }
-  // The rail header anchors "where are we" (binding redesign LocationStrip,
-  // node 598:1137): a worktree · branch row over a faint mono path. Every value
-  // is read from the one `useLocationAnchor` selector — no fetch, no raw tiers.
-  return (
-    <div
-      className={
-        compact
-          ? "m-fg-3 flex flex-col gap-[0.1875rem] rounded-fg-md border border-rule bg-paper-raised p-fg-3"
-          : "flex flex-col gap-[0.1875rem] p-fg-3"
-      }
-      data-location-strip
-      data-location-state="located"
-    >
-      <div className="flex items-center gap-fg-1-5 text-label">
-        <GitBranch size={ICON_PX} aria-hidden className="shrink-0 text-ink-faint" />
-        {anchor.mainLabel && (
-          <span className={anchor.mainClassName} data-location-worktree>
-            {anchor.mainLabel}
-          </span>
-        )}
-        {anchor.mainLabel && anchor.branch && (
-          <span aria-hidden className="shrink-0 text-ink-faint">
-            ·
-          </span>
-        )}
-        {anchor.branch && (
-          <span
-            className={anchor.branchClassName}
-            data-location-branch
-            title={anchor.branch}
-          >
-            {anchor.branch}
-          </span>
-        )}
-      </div>
-      {!compact && (
-        <span className={anchor.pathClassName} data-location-path title={anchor.path}>
-          {anchor.path}
-        </span>
-      )}
-    </div>
   );
 }
 
@@ -644,6 +579,7 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
                     id: commit.hash,
                     shortHash: commit.short_hash,
                     subject: commit.subject,
+                    ts: commit.ts,
                   },
                   { x: e.clientX, y: e.clientY },
                 );
@@ -782,7 +718,6 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
   };
   return (
     <div className="space-y-fg-4 text-body" data-status-tab data-rail-state={railState}>
-      <LocationStrip scope={scope} />
       {railState === "loading" && <RailLoading />}
       {railState === "degraded" && <RailDegraded />}
       {railState === "empty" && <RailEmpty />}
@@ -829,16 +764,29 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
           </SectionCard>
         </>
       )}
-      {/* The machine-level rag operations console is independent of corpus state
+      {/* The machine-level search-service console is independent of corpus state
           (it manages the one machine service), so it renders in every rail state,
-          collapsed by default. */}
+          collapsed by default. Plain-language title: the backing service name
+          stays internal vocabulary (labels-are-user-facing). */}
       <SectionCard
         {...headerNav("rag-ops")}
         id="rag-ops"
-        title="RAG OPS"
+        title="Search service"
         defaultOpen={false}
       >
         <RagOpsConsoleBody />
+      </SectionCard>
+      {/* The agentic-authoring review station (W03.P40): the human-in-the-loop
+          proposal review queue. Independent of corpus state (it manages authoring
+          proposals, not the graph), so — like the search-service console — it
+          renders in every rail state, collapsed by default. */}
+      <SectionCard
+        {...headerNav("authoring-review")}
+        id="authoring-review"
+        title="Review station"
+        defaultOpen={false}
+      >
+        <ReviewStationSection />
       </SectionCard>
     </div>
   );

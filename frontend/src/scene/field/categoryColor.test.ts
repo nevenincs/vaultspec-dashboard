@@ -12,9 +12,18 @@ describe("nodeCategory — kind -> a scene category (index-node-exclusion ADR)",
       "exec",
       "audit",
       "reference",
+      "code",
     ] as const) {
       expect(nodeCategory(cat)).toBe(cat);
     }
+  });
+
+  it("maps the CODE corpus species onto the code category (codebase-graphing ADR D7)", () => {
+    // A source file paints the one `code` colour — files are the corpus's ONLY
+    // node kind (code-graph-files-only). This category is reachable ONLY on
+    // the disconnected code corpus — the vault graph never emits a code node.
+    expect(nodeCategory("code-artifact")).toBe("code");
+    expect(nodeCategory("code")).toBe("code");
   });
 
   it("is not aware of an index category at all", () => {
@@ -46,10 +55,10 @@ describe("nodeCategory — kind -> a scene category (index-node-exclusion ADR)",
   });
 
   it("falls an unknown kind back to the reference swatch (defensive only)", () => {
-    // `code` and `index` are not scene categories; an unmapped kind resolves the
-    // `reference` colour so a stray/diagnostic node still paints rather than
-    // crashing. `index`/`code` never reach a displayed knowledge node (index
-    // dropped at ingest, code excluded at the engine projection).
+    // `index` is not a scene category; an unmapped kind resolves the `reference`
+    // colour so a stray/diagnostic node still paints rather than crashing. `index`
+    // never reaches a displayed node (dropped at ingest).
+    expect(nodeCategory("index")).toBe("reference");
     expect(nodeCategory("totally-unknown")).toBe("reference");
     expect(nodeCategory("")).toBe("reference");
   });
@@ -67,13 +76,17 @@ describe("categoryColor — node body fill from the scene-category token seam", 
       "exec",
       "audit",
       "reference",
+      "code",
     ].map((k) => categoryColor(k));
-    // All seven are distinct (the legend reads as separable hues).
-    expect(new Set(colors).size).toBe(7);
-    // Spot-check against the Figma variable values (83:2) and the reference token
-    // (terminology-standardization ADR D3, light #9d5e86).
+    // All eight are distinct (the legend reads as separable hues).
+    expect(new Set(colors).size).toBe(8);
+    // Spot-check against the Figma variable values (83:2), the reference token
+    // (terminology-standardization ADR D3, light #9d5e86), and the code token
+    // (codebase-graphing ADR D7, light #b05a6b — the existing Files/search colour).
     expect(categoryColor("feature")).toBe(0xb3823c);
     expect(categoryColor("reference")).toBe(0x9d5e86);
+    expect(categoryColor("code")).toBe(0xb05a6b);
+    expect(categoryColor("code-artifact")).toBe(0xb05a6b);
   });
 
   it("colours a folded kind with its mapped category hue", () => {

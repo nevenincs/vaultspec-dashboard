@@ -12,10 +12,10 @@
 //!
 //! Point-id → engine node-id mapping (ADR open question, resolved): rag stores
 //! each chunk/document point with a `source` field in its payload — a vault stem
-//! or a repo-relative code path, the SAME `source` token rag's `/search`
-//! response carries (see `search.rs`). We map it to an engine node id through the
-//! EXISTING `target_node_id` correlation, so a vault stem resolves to its `doc:`
-//! node exactly as the search-result annotation does. A point whose `source` does
+//! or a repo-relative code path, the SAME vocabulary rag's `/search` response
+//! items carry. We map it to an engine node id by minting the canonical
+//! `CanonicalKey::Document` id from the payload path's stem, so a vault stem
+//! resolves to its `doc:` node exactly as the search-result annotation does. A point whose `source` does
 //! not resolve to a vault-document node is skipped (v1 scope is vault-document
 //! embeddings only, ADR D10); a graph node with no Qdrant point renders as honest
 //! ABSENCE (no vector served), which the scene draws as the fallback ring.
@@ -313,7 +313,7 @@ struct ScrollPoint {
 #[derive(Debug, Deserialize)]
 struct ScrollPayload {
     /// The vault repo-relative path rag stores per chunk (e.g.
-    /// `adr/2026-06-16-x-adr.md`) — `target_node_id` maps it to `doc:{stem}`,
+    /// `adr/2026-06-16-x-adr.md`) — its stem mints the `doc:{stem}` id,
     /// the same id the graph mints for the document node.
     #[serde(default)]
     path: Option<String>,
@@ -449,7 +449,8 @@ mod tests {
         // The LIVE shape: rag's vault collection is NAMED-vector, so each point's
         // `vector` is an object `{dense, sparse}` keyed by path. Two vault-doc
         // points + one code point: code is dropped (v1 doc-only, ADR D10), the doc
-        // points map to `doc:{stem}` via target_node_id, taking the `dense` vector.
+        // points map to `doc:{stem}` from the payload path's stem, taking the
+        // `dense` vector.
         let page = r#"{"result": {"points": [
             {"id": 1, "payload": {"path": "adr/2026-06-16-x-adr.md"},
              "vector": {"dense": [0.1, 0.2, 0.3], "sparse": {"indices": [1], "values": [0.5]}}},

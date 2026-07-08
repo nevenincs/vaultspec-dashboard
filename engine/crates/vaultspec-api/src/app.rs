@@ -231,6 +231,291 @@ pub struct ScopeCell {
     /// piggy-back on). Without it, a fold finishing after a final HEAD advance
     /// would serve the superseded commit's declared edges indefinitely.
     pub declared_fold_pending: AtomicBool,
+    /// The CODE corpus (codebase-graphing ADR D1): a SEPARATE `LinkageGraph`
+    /// instance with its own generation counter and extraction cache, served
+    /// beside the vault graph and never merged into it. The two datasets share
+    /// no node or edge; the frontend switches which corpus the graph surface
+    /// renders.
+    pub code: CodeGraphCell,
+}
+
+/// The disconnected code-corpus store (codebase-graphing ADR D1/D6): its own
+/// graph, generation, source-tree fingerprint, and honest extraction stats.
+/// Refresh is LAZY: a code-corpus query calls [`CodeGraphCell::ensure_fresh`]
+/// (on a blocking thread), which re-walks + fingerprints the source tree —
+/// debounced to at most one probe per [`CODE_FRESHNESS_DEBOUNCE_MS`] — and
+/// re-extracts only on a fingerprint miss. This keeps the vault watcher
+/// untouched (ADR D6 refinement: query-time freshness instead of watching the
+/// whole source tree) while an uncommitted source edit still refreshes the
+/// served graph on the next query.
+pub struct CodeGraphCell {
+    graph: RwLock<Arc<LinkageGraph>>,
+    /// Bumped AFTER the graph swap (both SeqCst): a reader observing G+1
+    /// necessarily observes the new graph — the vault commit discipline.
+    pub generation: AtomicU64,
+    fingerprint: Mutex<Option<String>>,
+    last_probe_ms: std::sync::atomic::AtomicI64,
+    /// Extraction honesty counters from the last rebuild (ADR D8): the route
+    /// serves these so truncation/accuracy is stated, never implied away.
+    pub stats: RwLock<Option<ingest_code::ExtractionStats>>,
+    rebuild_lock: Mutex<()>,
+    /// The DEFAULT (un-narrowed) module-rollup slice, memoized per code
+    /// generation (review M1; `derived-projections-memoize-on-the-graph-
+    /// generation`): the default rollup poll is the code corpus's hot path and
+    /// its aggregation + per-node projection are generation-stable. A NARROWED
+    /// query flows through the projection per request, exactly as a filtered
+    /// vault constellation does. The recency Arc rides the key by POINTER
+    /// identity (the recency memo hands back the same Arc until its own key
+    /// changes), so a commit or dirty-set change invalidates the rollup even
+    /// at an unchanged parse generation.
+    #[allow(clippy::type_complexity)]
+    rollup_cache: Mutex<
+        Option<(
+            u64,
+            Option<Arc<engine_query::code::CodeRecency>>,
+            Arc<engine_query::graph::GraphSlice>,
+        )>,
+    >,
+    /// Per-file GIT recency for the heat ranking (code-graph-heat ADR
+    /// amendment), memoized on its OWN freshness key — `HEAD sha @ dirty-set
+    /// hash` — distinct from the parse generation (a commit moves HEAD without
+    /// changing the tree fingerprint; an edit moves the fingerprint without
+    /// changing HEAD). The `embeddings_cache` epoch-key precedent.
+    recency_cache: Mutex<Option<(String, Arc<engine_query::code::CodeRecency>)>>,
+    recency_probe_ms: std::sync::atomic::AtomicI64,
+    /// The complete path-sorted `/code-files` listing, memoized per code
+    /// generation (search-providers ADR: the `files (code)` provider narrows a
+    /// COMPLETE client-cached listing, so the engine serves the whole set from
+    /// this generation-stable projection rather than the DOI-bounded graph
+    /// slice). One slot, replaced on a generation bump — the
+    /// `vault_tree_rows_cache` discipline, keyed on the CODE generation because
+    /// the projection is over the code corpus's own graph.
+    code_file_rows_cache: Mutex<Option<(u64, Arc<Vec<serde_json::Value>>)>>,
+}
+
+/// Commit-walk ceiling for the per-file recency fold — the event tier's
+/// established 5000-commit horizon. Files last touched beyond it join the
+/// oldest tie block honestly (rank 0), never a fabricated time.
+pub const CODE_RECENCY_MAX_COMMITS: usize = 5_000;
+
+/// Ceiling on the enumerated dirty/untracked path set fed to the recency key
+/// and ranking (`bounded-by-default-for-every-accumulator`).
+pub const CODE_DIRTY_PATHS_CAP: usize = 20_000;
+
+/// Freshness-probe debounce: repeated code-corpus polls within this window
+/// serve the held graph without re-walking the tree.
+pub const CODE_FRESHNESS_DEBOUNCE_MS: i64 = 2_000;
+
+impl CodeGraphCell {
+    fn new() -> Self {
+        CodeGraphCell {
+            graph: RwLock::new(Arc::new(LinkageGraph::new())),
+            generation: AtomicU64::new(0),
+            fingerprint: Mutex::new(None),
+            last_probe_ms: std::sync::atomic::AtomicI64::new(0),
+            stats: RwLock::new(None),
+            rebuild_lock: Mutex::new(()),
+            rollup_cache: Mutex::new(None),
+            recency_cache: Mutex::new(None),
+            recency_probe_ms: std::sync::atomic::AtomicI64::new(0),
+            code_file_rows_cache: Mutex::new(None),
+        }
+    }
+
+    /// The default module rollup, memoized on the code generation (review M1)
+    /// AND the recency snapshot (by Arc pointer identity — the recency memo
+    /// returns the same Arc until its own `HEAD@dirty` key changes). The
+    /// caller passes a graph Arc it already holds so the projection runs over
+    /// exactly the generation it read.
+    pub fn default_rollup(
+        &self,
+        graph: &Arc<LinkageGraph>,
+        scope: &ScopeRef,
+        recency: Option<&Arc<engine_query::code::CodeRecency>>,
+    ) -> Arc<engine_query::graph::GraphSlice> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        let mut cache = self.rollup_cache.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_generation, cached_recency, cached)) = cache.as_ref()
+            && *cached_generation == generation
+            && match (cached_recency, recency) {
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            }
+        {
+            return cached.clone();
+        }
+        let fresh = Arc::new(engine_query::code::code_graph_query(
+            graph,
+            scope,
+            true,
+            &engine_query::code::CodeNarrow::default(),
+            recency.map(Arc::as_ref),
+        ));
+        *cache = Some((generation, recency.cloned(), fresh.clone()));
+        fresh
+    }
+
+    /// The complete path-sorted `/code-files` rows, memoized on the code
+    /// generation (search-providers ADR; `derived-projections-memoize-on-the-
+    /// graph-generation`). The caller passes a graph Arc it already holds so
+    /// the projection runs over exactly the generation it read — the
+    /// `default_rollup` discipline. Filter-independent (the whole listing), so
+    /// the handler paginates the cached slice per request.
+    pub fn code_file_rows(&self, graph: &Arc<LinkageGraph>) -> Arc<Vec<serde_json::Value>> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        let mut cache = self
+            .code_file_rows_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_generation, cached)) = cache.as_ref()
+            && *cached_generation == generation
+        {
+            return cached.clone();
+        }
+        let fresh = Arc::new(engine_query::graph::build_code_file_rows(graph));
+        *cache = Some((generation, fresh.clone()));
+        fresh
+    }
+
+    /// Per-file git recency for the heat ranking (code-graph-heat ADR
+    /// amendment): repo-relative path → last-commit committer time, folded
+    /// order-independently (max) from ONE bounded commit walk, plus the
+    /// dirty/untracked set from git status. Probes are debounced like the
+    /// extraction fingerprint; the fold re-runs only when `HEAD sha @
+    /// dirty-set hash` changes. `None` = not a git repository / unborn HEAD —
+    /// the query falls back to mtime ranking honestly. BLOCKING (a commit walk
+    /// + a status diff) — request paths call it via `spawn_blocking`.
+    pub fn ensure_recency(
+        &self,
+        root: &std::path::Path,
+    ) -> Option<Arc<engine_query::code::CodeRecency>> {
+        let now = now_ms();
+        if now.saturating_sub(self.recency_probe_ms.load(Ordering::SeqCst))
+            < CODE_FRESHNESS_DEBOUNCE_MS
+        {
+            return self
+                .recency_cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+                .map(|(_, held)| held.clone());
+        }
+        self.recency_probe_ms.store(now, Ordering::SeqCst);
+        let Ok(sha) = engine_graph::asof::resolve_ref(root, "HEAD") else {
+            *self.recency_cache.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            return None;
+        };
+        let dirty =
+            ingest_git::worktrees::dirty_paths(root, CODE_DIRTY_PATHS_CAP).unwrap_or_default();
+        let key = format!(
+            "{sha}@{}",
+            engine_model::content_hash(dirty.join("\n").as_bytes())
+        );
+        {
+            let cache = self.recency_cache.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some((held_key, held)) = cache.as_ref()
+                && *held_key == key
+            {
+                return Some(held.clone());
+            }
+        }
+        let workspace = ingest_git::workspace::Workspace::discover(root).ok()?;
+        let events = ingest_git::log::walk(&workspace, "HEAD", CODE_RECENCY_MAX_COMMITS).ok()?;
+        let mut last_commit_ms: std::collections::BTreeMap<String, i64> =
+            std::collections::BTreeMap::new();
+        for event in &events {
+            for path in &event.touched_paths {
+                let entry = last_commit_ms.entry(path.clone()).or_insert(event.ts);
+                if event.ts > *entry {
+                    *entry = event.ts;
+                }
+            }
+        }
+        let fresh = Arc::new(engine_query::code::CodeRecency {
+            last_commit_ms,
+            dirty: dirty.into_iter().collect(),
+        });
+        *self.recency_cache.lock().unwrap_or_else(|e| e.into_inner()) = Some((key, fresh.clone()));
+        Some(fresh)
+    }
+
+    pub fn graph_arc(&self) -> Arc<LinkageGraph> {
+        self.graph.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn stats_snapshot(&self) -> Option<ingest_code::ExtractionStats> {
+        self.stats.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// Serve the code graph, re-extracting when the source tree changed.
+    /// BLOCKING (tree walk; full parse on a miss) — request paths call it via
+    /// `spawn_blocking`. Never errors into a stale lie: an IO failure surfaces
+    /// as `Err` and the route degrades honestly.
+    pub fn ensure_fresh(&self, root: &std::path::Path) -> Result<Arc<LinkageGraph>, String> {
+        let now = now_ms();
+        let extracted_once = self
+            .fingerprint
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some();
+        if extracted_once
+            && now.saturating_sub(self.last_probe_ms.load(Ordering::SeqCst))
+                < CODE_FRESHNESS_DEBOUNCE_MS
+        {
+            return Ok(self.graph_arc());
+        }
+        // One rebuild at a time; a second query waits and then hits the
+        // fingerprint fast path below.
+        let _guard = self.rebuild_lock.lock().unwrap_or_else(|e| e.into_inner());
+        // Debounce re-check under the lock (review L3): a waiter whose holder
+        // just rebuilt serves the fresh graph without re-walking the tree.
+        if now.saturating_sub(self.last_probe_ms.load(Ordering::SeqCst))
+            < CODE_FRESHNESS_DEBOUNCE_MS
+            && self
+                .fingerprint
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_some()
+        {
+            return Ok(self.graph_arc());
+        }
+        let caps = ingest_code::WalkCaps::default();
+        let outcome =
+            ingest_code::walk::walk_source_tree(root, &caps).map_err(|e| e.to_string())?;
+        let probe =
+            ingest_code::fingerprint::source_tree_fingerprint(&outcome.files, outcome.capped);
+        {
+            let held = self.fingerprint.lock().unwrap_or_else(|e| e.into_inner());
+            if held.as_deref() == Some(probe.as_str()) {
+                self.last_probe_ms.store(now, Ordering::SeqCst);
+                return Ok(self.graph_arc());
+            }
+        }
+        let data = ingest_code::extract_code_graph(root, &caps).map_err(|e| e.to_string())?;
+        let mut graph = LinkageGraph::new();
+        for node in data.nodes {
+            graph.upsert_node(node);
+        }
+        for ce in data.edges {
+            engine_graph::edges::ingest(
+                &mut graph,
+                ce.edge,
+                engine_graph::EdgeAttrs {
+                    multiplicity: ce.multiplicity,
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| format!("code edge rejected at the graph boundary: {e}"))?;
+        }
+        *self.stats.write().unwrap_or_else(|e| e.into_inner()) = Some(data.stats);
+        *self.fingerprint.lock().unwrap_or_else(|e| e.into_inner()) = Some(data.fingerprint);
+        // Swap happens-before the generation bump (both SeqCst).
+        *self.graph.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(graph);
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        self.last_probe_ms.store(now, Ordering::SeqCst);
+        Ok(self.graph_arc())
+    }
 }
 
 pub const RING_CAP: usize = 4096;
@@ -275,6 +560,7 @@ impl ScopeCell {
             declared_status: RwLock::new(None),
             declared_fold_active: AtomicBool::new(false),
             declared_fold_pending: AtomicBool::new(false),
+            code: CodeGraphCell::new(),
         }
     }
 
@@ -877,8 +1163,22 @@ impl ScopeCell {
         // are not blocked by graph-scale projection work.
         let doc_log = engine_graph::diff::diff(&old, &fresh, t, 0);
         let feat_seq_start = doc_log.entries.len() as u64;
-        let (feat_entries, _) =
+        // GIR-014/GIR-015: both diffs are delta-ceiling bounded and degrade to
+        // keyframe-only (empty entries + a truncation block) on a pathological
+        // over-ceiling single commit. When that happens the deltas are DROPPED from
+        // this broadcast — but the SIGNAL must NOT be. The client's ONLY live
+        // invalidation trigger is stream-chunk processing (`useGraphLiveSync`): a
+        // non-"feature" chunk sets `sawDocumentDelta`, which fires the debounced
+        // constellation refetch. An over-ceiling commit that emitted ZERO chunks
+        // would advance nothing and the client would silently miss the change until
+        // the next commit/reconnect — the server-side generation bump below is NOT
+        // a client backstop (the client never reads it). So a degraded commit
+        // broadcasts one synthetic "rekeyframe" marker chunk (below) that rides the
+        // seq clock + resume ring and triggers that refetch. Invariant: degradation
+        // may drop the DELTAS, never the SIGNAL.
+        let (feat_entries, _, feat_truncated) =
             engine_query::graph::feature_delta(&old, &fresh, &self.scope, t, feat_seq_start);
+        let degraded = doc_log.truncated.is_some() || feat_truncated.is_some();
 
         // Unify both species as (seq, payload) for the resume buffer + the
         // live channel; the document entries serialize to the same wire shape.
@@ -902,6 +1202,24 @@ impl ScopeCell {
                 Some(_) => payloads.push(entry),
                 None => eprintln!("vaultspec serve: dropping feature delta with no seq: {entry}"),
             }
+        }
+        // GIR-015: a degraded commit dropped its deltas above; broadcast ONE
+        // synthetic non-"feature" marker so the client re-keyframes. Its `seq` is
+        // assigned by the broadcast loop below (like every other payload), so it
+        // rides the resume ring with a valid contiguous seq — the clock advances
+        // by exactly one and the next commit stays gapless; a `since=` resume
+        // replays it as a harmless extra refetch. Non-"feature" granularity routes
+        // it through the client's `sawDocumentDelta` → `invalidateConstellation`.
+        if degraded {
+            payloads.push(serde_json::json!({
+                "op": "rekeyframe",
+                "granularity": "rekeyframe",
+                "t": t,
+                "reason": format!(
+                    "diff exceeded the delta ceiling ({}); re-keyframe",
+                    engine_graph::diff::MAX_DIFF_DELTAS
+                ),
+            }));
         }
 
         let emitted = payloads.len();
@@ -935,6 +1253,61 @@ impl ScopeCell {
 /// Workspace-level serve state: the warm scope registry, the single shared
 /// user-state handle, the bearer token, and the active scope. Per-scope serve
 /// state lives in [`ScopeCell`], resolved through the registry.
+/// The freshness window for the cached semantic epoch
+/// (rag-integration-hardening D3). rag's index epoch only advances when a
+/// reindex COMPLETES — a minutes-long operation — so serving an epoch up to a
+/// few seconds stale is negligible against the build it tracks, while the window
+/// collapses a burst of `/search` freshness annotations and `/graph/embeddings`
+/// polls onto a single `/jobs` round-trip.
+const SEMANTIC_EPOCH_TTL: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The value + read instant of a cached semantic epoch.
+struct CachedEpoch {
+    epoch: u64,
+    read_at: std::time::Instant,
+}
+
+/// A bounded, single-value, short-TTL cache of rag's machine-global semantic
+/// freshness epoch (rag-integration-hardening D3). The epoch is ONE fact for the
+/// resident service — the newest terminal reindex timestamp across its `/jobs`,
+/// derived by [`rag_client::control::semantic_epoch`] — so the whole cache is a
+/// single `(epoch, read_at)` slot, never a growing per-scope map
+/// (`every-accumulator-is-bounded`: one value plus a TTL bound). Both the
+/// `/graph/embeddings` vector-cache key and the `/search` freshness annotation
+/// read the epoch through this one seam, so the derivation lives in exactly one
+/// place and a warm read costs no round-trip.
+#[derive(Default)]
+pub struct SemanticEpochCache {
+    slot: Mutex<Option<CachedEpoch>>,
+}
+
+impl SemanticEpochCache {
+    /// The cached epoch IF it was read within [`SEMANTIC_EPOCH_TTL`], else `None`
+    /// (a cold or expired slot). A `None` is each caller's cue to refresh on its
+    /// own terms: `/graph/embeddings` does the one bounded `/jobs` read and
+    /// [`SemanticEpochCache::store`]s it; `/search` annotates an honest absent
+    /// marker rather than adding a second blocking round-trip on the search path.
+    pub fn fresh(&self) -> Option<u64> {
+        // Poison recovery (robustness H2): see `graph_arc`.
+        let slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        slot.as_ref()
+            .filter(|c| c.read_at.elapsed() < SEMANTIC_EPOCH_TTL)
+            .map(|c| c.epoch)
+    }
+
+    /// Store a freshly-read epoch, opening a new TTL window. Only a genuinely
+    /// read epoch is stored — a legitimate `0` ("nothing reindexed yet") included;
+    /// a FAILED read is never stored, so a rag flake leaves the slot cold and
+    /// `/search` reports absent rather than a fabricated `0`.
+    pub fn store(&self, epoch: u64) {
+        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
+        *slot = Some(CachedEpoch {
+            epoch,
+            read_at: std::time::Instant::now(),
+        });
+    }
+}
+
 pub struct AppState {
     /// The launch root of the workspace — used for worktree discovery so any
     /// vault-bearing worktree in this workspace is a selectable scope.
@@ -958,6 +1331,22 @@ pub struct AppState {
     /// semantics; it exists so the dashboard has one backend-backed state
     /// authority during the browser session.
     pub dashboard_state: Mutex<crate::routes::state::DashboardStateSlot>,
+    /// Bounded short-TTL cache of rag's machine-global semantic-index freshness
+    /// epoch (rag-integration-hardening D3): the `/search` freshness annotation
+    /// and the `/graph/embeddings` vector-cache key read the epoch through this
+    /// one seam, so a warm read never pays a second `/jobs` round-trip and the
+    /// derivation is not duplicated. Single value plus a TTL — bounded at creation.
+    pub semantic_epoch_cache: SemanticEpochCache,
+    /// The fenced authoring domain's durable store (agentic-spec-authoring-
+    /// backend W03.P39). Opened LAZILY against `workspace_root/.vault` on the
+    /// first authoring request — as an `Option` so a bad or unopenable authoring
+    /// db DEGRADES the authoring panel (a typed error at the route) rather than
+    /// panicking the engine at boot, and so a workspace that never touches
+    /// authoring pays nothing. Held behind a `Mutex` because the store wraps a
+    /// `!Sync` rusqlite `Connection`; the authoring single-writer discipline
+    /// serializes every unit of work through this one handle, exactly like
+    /// `user_state`.
+    pub authoring_store: Mutex<Option<crate::authoring::store::Store>>,
 }
 
 impl AppState {
@@ -1008,6 +1397,29 @@ impl AppState {
             .flatten()
             .map(|r| PathBuf::from(r.path))
             .unwrap_or_else(|| self.workspace_root.clone())
+    }
+
+    /// Run `f` against the fenced authoring store, opening it lazily on first
+    /// use (agentic-spec-authoring-backend W03.P39). Serializes through the one
+    /// `Mutex`-held handle (single-writer). A lazy-open failure surfaces as the
+    /// store's own typed error so the route degrades honestly rather than the
+    /// engine panicking; poison is recovered like every other guard here.
+    pub fn with_authoring_store<T>(
+        &self,
+        f: impl FnOnce(&mut crate::authoring::store::Store) -> crate::authoring::store::Result<T>,
+    ) -> crate::authoring::store::Result<T> {
+        let mut guard = self
+            .authoring_store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if guard.is_none() {
+            *guard = Some(crate::authoring::store::Store::open(
+                &self.workspace_root.join(".vault"),
+            )?);
+        }
+        f(guard
+            .as_mut()
+            .expect("authoring store present after lazy open"))
     }
 }
 
@@ -1213,6 +1625,8 @@ pub fn build_state(root: PathBuf) -> Arc<AppState> {
         user_state,
         active_scope: RwLock::new(active_token.clone()),
         dashboard_state: Mutex::new(crate::routes::state::DashboardStateSlot::new()),
+        semantic_epoch_cache: SemanticEpochCache::default(),
+        authoring_store: Mutex::new(None),
     });
     // Eagerly build the launch scope's cell so `/status`, the tiers fallback,
     // and the active-cell resolve are always satisfiable. The cell is pinned
@@ -1315,6 +1729,91 @@ mod tests {
         let ring = cell.ring.lock().unwrap();
         let seqs: Vec<u64> = ring.iter().map(|(seq, _)| *seq).collect();
         assert!(seqs.windows(2).all(|w| w[1] > w[0]));
+    }
+
+    #[test]
+    fn over_ceiling_commit_broadcasts_a_rekeyframe_marker_not_a_delta_flood() {
+        // GIR-015: a commit whose diff exceeds the delta ceiling degrades to
+        // keyframe-only — the deltas are DROPPED, but ONE synthetic non-"feature"
+        // "rekeyframe" marker MUST ride the seq clock + resume ring so the client
+        // re-keyframes. Without it the live clock would freeze (emitted=0) and
+        // clients would silently miss the change until the next commit/reconnect.
+        use engine_model::{CanonicalKey, Facet, Node, NodeKind, Presence, node_id};
+
+        let (_dir, state) = fixture_state();
+        let cell = state.active_cell();
+        let before = cell.ring.lock().unwrap().len();
+
+        // A fresh graph with more nodes than the delta ceiling: the document diff
+        // (old 1 node → fresh N nodes) exceeds MAX_DIFF_DELTAS and DEGRADES to
+        // keyframe-only. The feature diff stays IN-BOUNDS: the fixture's single
+        // pre-existing `#w` feature node is removed (the fresh nodes are tagless),
+        // so one legitimate feature-remove delta rides ALONGSIDE the marker. The
+        // contract is one MARKER on a degraded commit, not one total payload — the
+        // dropped 20k-doc-delta flood is what must never be broadcast.
+        let mut fresh = LinkageGraph::new();
+        let over = engine_graph::diff::MAX_DIFF_DELTAS + 1;
+        for i in 0..over {
+            let stem = format!("d{i:06}");
+            fresh.upsert_node(Node {
+                id: node_id(&CanonicalKey::Document {
+                    stem: stem.as_str(),
+                }),
+                kind: NodeKind::Document,
+                key: stem.clone(),
+                title: None,
+                doc_type: None,
+                dates: None,
+                feature_tags: vec![],
+                status: None,
+                tier: None,
+                size: None,
+                facets: vec![Facet {
+                    scope: ScopeRef::Ref {
+                        name: "main".into(),
+                    },
+                    presence: Presence::Exists,
+                    content_hash: Some("h".into()),
+                    lifecycle: None,
+                }],
+            });
+        }
+
+        let emitted = cell.commit_graph(fresh);
+        // The over-ceiling DOCUMENT delta flood (>MAX_DIFF_DELTAS changes) is
+        // DROPPED, not broadcast: the emitted set is only the small in-bounds
+        // feature delta(s) plus the single marker — never the flood.
+        assert!(
+            emitted < engine_graph::diff::MAX_DIFF_DELTAS,
+            "the over-ceiling document delta flood is dropped (emitted={emitted})"
+        );
+
+        let ring = cell.ring.lock().unwrap();
+        // Exactly ONE re-keyframe marker rides the resume ring on a degraded commit
+        // (the code pushes it once). Any in-bounds deltas from the non-degraded
+        // feature species ride alongside it but are NOT markers.
+        let marker_count = ring
+            .iter()
+            .skip(before)
+            .filter(|(_, payload)| payload["granularity"] == "rekeyframe")
+            .count();
+        assert_eq!(
+            marker_count, 1,
+            "exactly one re-keyframe marker is broadcast on a degraded commit"
+        );
+        let marker = ring
+            .iter()
+            .skip(before)
+            .map(|(_, payload)| payload)
+            .find(|payload| payload["granularity"] == "rekeyframe")
+            .expect("the re-keyframe marker is present in the ring");
+        assert_eq!(marker["op"], "rekeyframe");
+        assert!(
+            marker["seq"].as_u64().is_some(),
+            "the marker carries a valid contiguous seq (clock advanced by one)"
+        );
+        // The graph still converged to the fresh corpus (the swap is unconditional).
+        assert_eq!(cell.graph_arc().node_count(), over);
     }
 
     #[test]

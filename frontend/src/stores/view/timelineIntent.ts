@@ -1,3 +1,14 @@
+// Timeline intent seam.
+//
+// The Issue-#14 scroll-strip NAVIGATION machinery (playhead pointer-drag + keyboard
+// scrub, and the zoom / pan / fit / jump viewport intents) was retired with the timeline
+// teardown and the TTR-005/006 time-travel parking — the strip is now a fixed two-handle
+// date-range selector with no playhead, dots, or scroll. Only the two still-live seams
+// remain: the per-scope corpus auto-fit consumed by the command palette
+// (`fitTimelineScopeToCorpus`) and the playhead↔timeline-mode writer (`movePlayhead`),
+// plus the small viewport-width clamp the auto-fit depends on. (Dead nav surface removed —
+// timeline-temporal review item 6.)
+
 import { patchDashboardTimelineMode } from "../server/dashboardState";
 import {
   dashboardPlayheadForTimelineMode,
@@ -11,190 +22,13 @@ import {
   normalizeTimelineScope,
   parseTimelineInstant,
   setTimelinePlayhead,
-  setTimelineScrollOffset,
-  setTimelineViewport,
-  timelineJumpToCorpusEdgeOffset,
-  timelinePanScrollOffset,
-  timelineViewSnapshot,
-  timelineViewportXToTime,
-  timelineViewportForInstant,
-  timelineZoomViewport,
-  timelineZoomViewportAt,
-  type TimelineCorpusEdge,
   type TimelineCorpusBounds,
-  type TimelineOrderedDateInputRange,
 } from "./timeline";
 
 export const TIMELINE_NAV_DEFAULT_VIEWPORT_WIDTH = 800;
-export const TIMELINE_NAV_EVENT_SPAN_MS = 24 * 3600 * 1000;
-export const LIVE_SNAP_PX = 10;
-export const PLAYHEAD_KEY_STEP_FRACTION = 1 / 24;
-export const PLAYHEAD_KEY_NUDGE_FRACTION = 1 / 96;
-
-export function dragToPlayhead(
-  x: number,
-  pxPerMs: number,
-  scrollOffset: number,
-  liveDockX: number,
-  now: number,
-): number | "live" {
-  if (x >= liveDockX - LIVE_SNAP_PX) return "live";
-  return Math.min(now, timelineViewportXToTime(x, pxPerMs, scrollOffset));
-}
-
-export function keyboardStep(
-  current: number | "live",
-  deltaMs: number,
-  now: number,
-): number | "live" {
-  const base = current === "live" ? now : current;
-  const next = base + deltaMs;
-  if (next >= now) return "live";
-  return Math.min(now, next);
-}
-
-export function playheadKeyboardTarget(
-  key: unknown,
-  current: unknown,
-  visibleSpanMs: unknown,
-  now = Date.now(),
-): number | "live" | null {
-  if (typeof key !== "string") return null;
-  if (
-    typeof visibleSpanMs !== "number" ||
-    !Number.isFinite(visibleSpanMs) ||
-    visibleSpanMs <= 0
-  ) {
-    return null;
-  }
-  const playhead = normalizeTimelinePlayhead(current);
-  const step = visibleSpanMs * PLAYHEAD_KEY_STEP_FRACTION;
-  const nudge = visibleSpanMs * PLAYHEAD_KEY_NUDGE_FRACTION;
-  switch (key) {
-    case "[":
-      return keyboardStep(playhead, -step, now);
-    case "]":
-      return keyboardStep(playhead, step, now);
-    case "ArrowLeft":
-      return keyboardStep(playhead, -nudge, now);
-    case "ArrowRight":
-      return keyboardStep(playhead, nudge, now);
-    case "Home":
-      return "live";
-    default:
-      return null;
-  }
-}
-
-export interface PlayheadDragPointerSessionInput {
-  host: HTMLElement;
-  getScope: () => unknown;
-  moveTarget?: Pick<typeof globalThis, "addEventListener" | "removeEventListener">;
-}
-
-export function startPlayheadDragPointerSession({
-  host,
-  getScope,
-  moveTarget = globalThis,
-}: PlayheadDragPointerSessionInput): () => void {
-  let dragging = false;
-  const toPlayhead = (event: PointerEvent) => {
-    const rect = host.getBoundingClientRect();
-    const { pxPerMs, scrollOffset } = timelineViewSnapshot();
-    return dragToPlayhead(
-      event.clientX - rect.left,
-      pxPerMs,
-      scrollOffset,
-      rect.width,
-      Date.now(),
-    );
-  };
-  const onDown = (event: PointerEvent) => {
-    if (!(event.target as HTMLElement).closest("[data-playhead-grip]")) return;
-    dragging = true;
-    event.preventDefault();
-  };
-  const onMove = (event: PointerEvent) => {
-    if (dragging) movePlayhead(toPlayhead(event), getScope());
-  };
-  const onUp = () => {
-    dragging = false;
-  };
-  host.addEventListener("pointerdown", onDown);
-  moveTarget.addEventListener("pointermove", onMove);
-  moveTarget.addEventListener("pointerup", onUp);
-  return () => {
-    host.removeEventListener("pointerdown", onDown);
-    moveTarget.removeEventListener("pointermove", onMove);
-    moveTarget.removeEventListener("pointerup", onUp);
-  };
-}
 
 export function timelineNavigationViewportWidth(viewportWidth: number): number {
   return viewportWidth > 0 ? viewportWidth : TIMELINE_NAV_DEFAULT_VIEWPORT_WIDTH;
-}
-
-export function zoomTimelineNavigation(
-  pxPerMs: number,
-  scrollOffset: number,
-  viewportWidth: number,
-  factor: number,
-): { pxPerMs: number; scrollOffset: number } {
-  const next = timelineZoomViewport(
-    pxPerMs,
-    scrollOffset,
-    timelineNavigationViewportWidth(viewportWidth),
-    factor,
-  );
-  setTimelineViewport(next.pxPerMs, next.scrollOffset);
-  return next;
-}
-
-export function zoomTimelineNavigationAt(
-  pxPerMs: number,
-  scrollOffset: number,
-  cursorX: number,
-  factor: number,
-): { pxPerMs: number; scrollOffset: number } {
-  const next = timelineZoomViewportAt(pxPerMs, scrollOffset, cursorX, factor);
-  setTimelineViewport(next.pxPerMs, next.scrollOffset);
-  return next;
-}
-
-export function panTimelineNavigation(scrollOffset: number, deltaPx: number): number {
-  const next = timelinePanScrollOffset(scrollOffset, deltaPx);
-  setTimelineScrollOffset(next);
-  return next;
-}
-
-export function fitTimelineNavigationToCorpus(
-  corpusBounds: TimelineCorpusBounds | undefined,
-  viewportWidth: number,
-  now = Date.now(),
-): { pxPerMs: number; scrollOffset: number } | null {
-  const from = parseTimelineInstant(corpusBounds?.from);
-  const to = parseTimelineInstant(corpusBounds?.to, now);
-  if (!Number.isFinite(from)) return null;
-  const next = fitTimelineSpan(
-    from,
-    Number.isFinite(to) ? to : now,
-    timelineNavigationViewportWidth(viewportWidth),
-  );
-  setTimelineViewport(next.pxPerMs, next.scrollOffset);
-  return next;
-}
-
-export function fitTimelineNavigationToDateRange(
-  range: TimelineOrderedDateInputRange,
-  viewportWidth: number,
-): { pxPerMs: number; scrollOffset: number } {
-  const next = fitTimelineSpan(
-    range.fromMs,
-    range.toMs,
-    timelineNavigationViewportWidth(viewportWidth),
-  );
-  setTimelineViewport(next.pxPerMs, next.scrollOffset);
-  return next;
 }
 
 export function fitTimelineScopeToCorpus(
@@ -221,62 +55,6 @@ export function fitTimelineScopeToCorpus(
     next.scrollOffset,
     normalizedCorpusKey,
   );
-  return next;
-}
-
-export function jumpTimelineNavigationToCorpusEdge(
-  edge: TimelineCorpusEdge,
-  corpusBounds: TimelineCorpusBounds | undefined,
-  pxPerMs: number,
-  viewportWidth: number,
-  now = Date.now(),
-): number {
-  const raw =
-    edge === "start"
-      ? parseTimelineInstant(corpusBounds?.from, now)
-      : parseTimelineInstant(corpusBounds?.to, now);
-  const tMs = Number.isFinite(raw) ? raw : now;
-  const scrollOffset = timelineJumpToCorpusEdgeOffset(
-    edge,
-    tMs,
-    pxPerMs,
-    timelineNavigationViewportWidth(viewportWidth),
-  );
-  setTimelineScrollOffset(scrollOffset);
-  return scrollOffset;
-}
-
-export function jumpTimelineNavigationToLive(
-  corpusBounds: TimelineCorpusBounds | undefined,
-  pxPerMs: number,
-  viewportWidth: number,
-  scope: unknown,
-  now = Date.now(),
-): number {
-  const scrollOffset = jumpTimelineNavigationToCorpusEdge(
-    "end",
-    corpusBounds,
-    pxPerMs,
-    viewportWidth,
-    now,
-  );
-  movePlayhead("live", scope);
-  return scrollOffset;
-}
-
-export function zoomTimelineNavigationToInstant(
-  tMs: number,
-  viewportWidth = timelineViewSnapshot().viewportWidth,
-  spanMs = TIMELINE_NAV_EVENT_SPAN_MS,
-  now = Date.now(),
-): { pxPerMs: number; scrollOffset: number } {
-  const next = timelineViewportForInstant(
-    tMs,
-    timelineNavigationViewportWidth(viewportWidth),
-    spanMs,
-    now,
-  );
-  setTimelineViewport(next.pxPerMs, next.scrollOffset);
   return next;
 }
 

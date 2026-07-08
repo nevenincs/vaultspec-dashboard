@@ -1,11 +1,13 @@
 import { useEffect } from "react";
 
 import {
+  ArrowUpDown,
   FilePlus2,
   Filter,
   FilterX,
   FoldVertical,
   ListFilter,
+  ListRestart,
   Search,
   UnfoldVertical,
 } from "lucide-react";
@@ -27,6 +29,12 @@ import { openCreateDocDialog } from "./createDocChrome";
 import { useDashboardFeatureFilterDraft } from "./dashboardFeatureFilter";
 import { toggleFilterSidebar } from "./filterSidebar";
 import { registerKeyAction } from "./keymapDispatcher";
+import {
+  RAIL_SORT_OPTIONS,
+  type RailSortKey,
+  resetRailSort,
+  setRailSortKey,
+} from "./railSort";
 
 export const LEFT_RAIL_KEYMAP_CONTEXT = "left-rail";
 export const LEFT_RAIL_CYCLE_MODE_ACTION_ID = "left-rail:cycle-browser-mode";
@@ -37,12 +45,14 @@ export const LEFT_RAIL_EXPAND_TREE_ACTION_ID = "left-rail:expand-tree";
 export const LEFT_RAIL_COLLAPSE_TREE_ACTION_ID = "left-rail:collapse-tree";
 export const LEFT_RAIL_TOGGLE_FACETS_ACTION_ID = "left-rail:toggle-facets";
 export const LEFT_RAIL_RESET_FILTERS_ACTION_ID = "left-rail:reset-filters";
+export const LEFT_RAIL_RESET_SORTING_ACTION_ID = "left-rail:reset-sorting";
 
 export const LEFT_RAIL_NEW_DOC_LABEL = "New Document…";
 export const LEFT_RAIL_EXPAND_TREE_LABEL = "Expand Vault Tree";
 export const LEFT_RAIL_COLLAPSE_TREE_LABEL = "Collapse Vault Tree";
 export const LEFT_RAIL_TOGGLE_FACETS_LABEL = "Toggle Filter Facets";
 export const LEFT_RAIL_RESET_FILTERS_LABEL = "Reset Filters";
+export const LEFT_RAIL_RESET_SORTING_LABEL = "Reset Sorting";
 
 const LEFT_RAIL_GROUP = "Left rail";
 
@@ -183,6 +193,35 @@ export function resetFiltersAction(resetFilters: () => void): ActionDescriptor {
     section: "navigate",
     icon: ListFilter,
     run: resetFilters,
+  };
+}
+
+/** The vault tree's sort verbs (left-rail-tree-controls ADR D3): ONE descriptor
+ *  per sort option under a stable shared id, consumed by the rail-top sort menu,
+ *  the vault-section context menu, and the palette. Choosing the active key again
+ *  flips direction (the store owns that gesture). Store-only intents. */
+export function sortTreeActions(): ActionDescriptor[] {
+  return RAIL_SORT_OPTIONS.map((option) => ({
+    id: sortTreeActionId(option.id),
+    label: `Sort by ${option.label}`,
+    section: "navigate",
+    icon: ArrowUpDown,
+    run: () => setRailSortKey(option.id),
+  }));
+}
+
+export function sortTreeActionId(key: RailSortKey): string {
+  return `left-rail:sort-${key}`;
+}
+
+/** "Reset sorting" — restores the default order (latest activity). */
+export function resetSortingAction(): ActionDescriptor {
+  return {
+    id: LEFT_RAIL_RESET_SORTING_ACTION_ID,
+    label: LEFT_RAIL_RESET_SORTING_LABEL,
+    section: "navigate",
+    icon: ListRestart,
+    run: resetRailSort,
   };
 }
 

@@ -331,16 +331,23 @@ export function deriveContextMenuResolvedView(
   snapshot: ContextMenuSnapshot,
   timeTravel: unknown,
   selectedNodeId: unknown = null,
+  scope: unknown = null,
+  corpus: unknown = null,
 ): ContextMenuResolvedView {
   const normalizedTimeTravel = normalizeContextMenuTimeTravel(timeTravel);
   const normalizedSelectedNodeId =
     typeof selectedNodeId === "string" && selectedNodeId.length > 0
       ? selectedNodeId
       : null;
+  const normalizedScope = typeof scope === "string" && scope.length > 0 ? scope : null;
   const actions = snapshot.entity
     ? resolveActions(snapshot.entity, {
         timeTravel: normalizedTimeTravel,
         selectedNodeId: normalizedSelectedNodeId,
+        scope: normalizedScope,
+        // Threaded like scope: lets a resolver honestly disable a vault-only
+        // capability while the code corpus is active (code-timeline-range ADR).
+        corpus: corpus === "code" ? "code" : "vault",
       })
     : [];
   const groups = groupContextMenuActions(actions);
@@ -578,6 +585,8 @@ export function useContextMenuState(): ContextMenuSnapshot {
 export function useContextMenuResolvedView(
   timeTravel: unknown,
   selectedNodeId: unknown = null,
+  scope: unknown = null,
+  corpus: unknown = null,
 ): ContextMenuResolvedView {
   const snapshot = useContextMenuState();
   const normalizedTimeTravel = normalizeContextMenuTimeTravel(timeTravel);
@@ -585,14 +594,24 @@ export function useContextMenuResolvedView(
     typeof selectedNodeId === "string" && selectedNodeId.length > 0
       ? selectedNodeId
       : null;
+  const normalizedScope = typeof scope === "string" && scope.length > 0 ? scope : null;
+  const normalizedCorpus = corpus === "code" ? "code" : "vault";
   return useMemo(
     () =>
       deriveContextMenuResolvedView(
         snapshot,
         normalizedTimeTravel,
         normalizedSelectedNodeId,
+        normalizedScope,
+        normalizedCorpus,
       ),
-    [snapshot, normalizedTimeTravel, normalizedSelectedNodeId],
+    [
+      snapshot,
+      normalizedTimeTravel,
+      normalizedSelectedNodeId,
+      normalizedScope,
+      normalizedCorpus,
+    ],
   );
 }
 

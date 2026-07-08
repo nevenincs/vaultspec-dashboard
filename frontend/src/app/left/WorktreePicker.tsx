@@ -69,18 +69,26 @@ const ALL_TOGGLE_KEY = "all-toggle";
 const WARN_PX = 12;
 // Git-status glyphs (branch, ahead/behind) read one step below the name.
 const GIT_GLYPH_PX = 12;
+// The trigger chevron reads with the display-size title, one step larger than
+// the row glyphs, so the "this title opens a chooser" affordance is well defined.
+const TRIGGER_CHEVRON_PX = 14;
 
-// The worktree trigger: a typographical element, NOT a button — the worktree
-// name reads as a prominent, decorative title (no border, no background, no
-// hover state change) over a git-status line (branch + dirty + ahead/behind),
-// opening the switcher dropdown. The chevron is the only affordance that this
-// title is also a selector. Token-driven, no raw px (no-hardcoded-px), composed
-// from the shared type/ink/state tiers (design-system-is-centralized). The
-// focus-visible ring stays for keyboard a11y (it is not a hover affordance).
+// The worktree trigger: a typographical element, NOT a button — the ONE location
+// identity block of the app (worktree-switcher-identity ADR): the project name
+// as a faint identity line, the worktree name as a prominent title (chevron
+// hugging the text — the title is NOT flex-1, so the affordance never floats
+// away from a short name), a git-status line (branch + dirty + ahead/behind)
+// driven by the pending-aware headline, and the absolute folder path as a faint
+// mono line. Token-driven, no raw px (no-hardcoded-px), composed from the shared
+// type/ink/state tiers (design-system-is-centralized). The focus-visible ring
+// stays for keyboard a11y (it is not a hover affordance).
 const PILL_CLASS =
   "group flex min-w-0 flex-1 flex-col gap-fg-0-5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
-const PILL_NAME_ROW_CLASS = "flex items-center gap-fg-1";
-const PILL_NAME_CLASS = "min-w-0 flex-1 truncate text-display text-ink";
+// The first two identity lines keep clear of the absolutely-pinned collapse
+// toggle riding the header's right edge (the window-top chrome band below).
+const PILL_PROJECT_CLASS = "min-w-0 truncate pr-fg-8 text-caption text-ink-faint";
+const PILL_NAME_ROW_CLASS = "flex min-w-0 items-center gap-fg-1 pr-fg-8";
+const PILL_NAME_CLASS = "min-w-0 truncate text-display text-ink";
 const PILL_CHEVRON_CLASS =
   "shrink-0 text-ink-faint transition-transform duration-ui-fast";
 const PILL_STATUS_ROW_CLASS =
@@ -89,16 +97,20 @@ const PILL_BRANCH_CLASS = "flex min-w-0 items-center gap-fg-0-5";
 const PILL_BRANCH_NAME_CLASS = "min-w-0 truncate font-mono";
 const PILL_DIRTY_DOT_CLASS = "size-1.5 shrink-0 rounded-full bg-state-stale";
 const PILL_COUNT_CLASS = "flex shrink-0 items-center gap-fg-0-5 tabular-nums";
+const PILL_PATH_CLASS = "min-w-0 truncate font-mono text-caption text-ink-faint";
+// Dropdown row secondary ink: the branch a worktree row is checked out on.
+const ROW_BRANCH_CLASS =
+  "min-w-0 shrink truncate font-mono text-caption text-ink-faint";
 
 // The switcher dropdown: the shared floating-card idiom (the command palette /
 // filter flyout elevation), so the picker stops hand-rolling an inline list.
 const DROPDOWN_CARD_CLASS =
   "absolute left-0 right-0 top-full z-30 mt-fg-1 max-h-[18rem] overflow-y-auto rounded-fg-lg border border-rule bg-paper-raised p-fg-1 shadow-fg-popover animate-slide-in-down";
 
-// Section eyebrow inside the dropdown (Recent / All worktrees / Projects).
+// Section eyebrow inside the dropdown (Recent / the worktree disclosure / Projects).
 const DROPDOWN_SECTION_LABEL_CLASS =
   "px-fg-2 pt-fg-1-5 pb-fg-0-5 text-caption uppercase tracking-wide text-ink-faint";
-// The pinned "Add a project…" command row and the "All worktrees" disclosure share
+// The pinned "Add a project…" command row and the worktree disclosure share
 // the worktree-row affordance idiom (selectable, hover, focus ring) so the dropdown
 // reads as one surface (design-system-is-centralized).
 const DROPDOWN_COMMAND_ROW_CLASS =
@@ -126,7 +138,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
     collapseLeftRail,
   } = useWorktreePickerView();
 
-  // The "All worktrees" disclosure. Tri-state: null = the data-driven default
+  // The project's worktree disclosure. Tri-state: null = the data-driven default
   // (open when there are no real recents beyond the active worktree, so a fresh
   // session shows the full list; collapsed once recents accrue), a boolean once
   // the user toggles it.
@@ -158,20 +170,20 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
   // registered project whose worktree moved — a tiers-less 400) only makes THIS
   // project's worktree LIST unavailable; the dropdown's project switcher (Projects,
   // from the independent `/workspaces` query) and "Add a project" stay reachable so
-  // the operator can always escape a broken project. Only the "All worktrees" section
+  // the operator can always escape a broken project. Only the worktree section
   // reflects the map's loading/error sub-state, with a friendly note (never the raw
   // engine/git message).
   const mapLoading = state === "loading";
   const mapError = state === "error";
 
-  const { rows } = pickerView;
-  // The active worktree's git status feeds the pill (branch + dirty + ahead/behind).
-  // Read from the already-projected rows — no fetch, no raw tiers (layer ownership).
-  const activeWorktree = rows.find((row) => row.isActive)?.worktree;
-  const ahead = activeWorktree?.ahead ?? 0;
-  const behind = activeWorktree?.behind ?? 0;
-  const showStatusLine =
-    activeWorktree !== undefined && activeWorktree.branch.trim().length > 0;
+  const { rows, headline } = pickerView;
+  // The PENDING-AWARE headline worktree feeds the pill's git line and path line
+  // (the switch target while switching, else the active worktree) so the header
+  // never shows the target's name over the outgoing worktree's branch. Read from
+  // the projected view — no fetch, no raw tiers (layer ownership).
+  const ahead = headline?.ahead ?? 0;
+  const behind = headline?.behind ?? 0;
+  const showStatusLine = headline !== null && headline.branch.trim().length > 0;
 
   const collapse = (viaKeyboard: boolean) => {
     setWorktreePickerExpanded(false, viaKeyboard);
@@ -249,11 +261,23 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           {/* Grayscale-safe active cue: a leading accent bar plus fill + weight,
               so the active worktree reads without relying on hue. */}
           <span aria-hidden className={row.activeCueClassName} />
+          {/* Every dropdown row leads with one glyph so text starts on ONE column
+              across sections (command rows carry their own icons). */}
+          <GitBranch
+            size={GIT_GLYPH_PX}
+            aria-hidden
+            className="shrink-0 text-ink-faint"
+          />
           <span className={row.branchClassName}>{row.nameLabel}</span>
+          {row.branchLabel && (
+            <span className={ROW_BRANCH_CLASS}>{row.branchLabel}</span>
+          )}
           {row.defaultLabel && (
             <span className={row.badgeClassName}>{row.defaultLabel}</span>
           )}
-          {row.bareLabel && <span className={row.badgeClassName}>{row.bareLabel}</span>}
+          {row.noVaultLabel && (
+            <span className={row.badgeClassName}>{row.noVaultLabel}</span>
+          )}
           {row.isDegraded && (
             <span
               className={row.degradedIconClassName}
@@ -348,14 +372,15 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           className={recent.rowClassName}
         >
           <span aria-hidden className={recent.activeCueClassName} />
-          <span className="min-w-0 truncate">{recent.worktreeName}</span>
-          {/* A cross-project recent names its project so two "main" worktrees stay
-              distinguishable; a same-project recent needs no project suffix. */}
-          {!recent.sameProject && (
-            <span className="ml-auto min-w-0 shrink truncate text-caption text-ink-faint">
-              {recent.projectLabel}
-            </span>
-          )}
+          <GitBranch
+            size={GIT_GLYPH_PX}
+            aria-hidden
+            className="shrink-0 text-ink-faint"
+          />
+          {/* The shared row label LEADS with the project on a cross-project entry
+              ("project / worktree"), so the distinguishing token carries the ink
+              when worktree basenames collide. */}
+          <span className="min-w-0 truncate">{recent.label}</span>
         </button>
       </li>
     );
@@ -410,7 +435,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
     );
   };
 
-  // The "All worktrees" disclosure toggle (only rendered when there are worktrees
+  // The worktree disclosure toggle (only rendered when there are worktrees
   // beyond the Recent section).
   const renderAllToggleRow = () => {
     const item = zone.rove(ALL_TOGGLE_KEY);
@@ -472,7 +497,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           folder-add IconButton was retired: "Add a project" now lives as the pinned
           first item of the dropdown (and a Cmd+K command), not a header glyph. */}
       <div
-        className="relative flex items-center justify-between gap-fg-1 py-fg-1"
+        className="relative flex items-start justify-between gap-fg-1 py-fg-1"
         data-worktree-picker-header
       >
         <button
@@ -499,27 +524,33 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           }}
           aria-expanded={expanded}
           aria-controls={listId}
-          aria-haspopup="listbox"
           aria-label={pickerView.triggerAriaLabel}
           className={PILL_CLASS}
         >
+          {/* Project identity line: WHICH project this "main" belongs to. Shown
+              whenever the registry resolves it — identity, not a control. */}
+          {pickerView.projectLabel && (
+            <span className={PILL_PROJECT_CLASS} data-trigger-project>
+              {pickerView.projectLabel}
+            </span>
+          )}
           <span className={PILL_NAME_ROW_CLASS}>
             <span className={PILL_NAME_CLASS}>{pickerView.triggerLabel}</span>
             <ChevronDown
-              size={GIT_GLYPH_PX}
+              size={TRIGGER_CHEVRON_PX}
               aria-hidden
               className={`${PILL_CHEVRON_CLASS} ${expanded ? "rotate-180" : ""}`}
             />
           </span>
           {/* Git-status line: branch + a dirty dot + ahead/behind counts for the
-              active worktree, so "where am I + git state" reads at a glance. */}
+              headline worktree, so "where am I + git state" reads at a glance. */}
           {showStatusLine && (
             <span className={PILL_STATUS_ROW_CLASS} data-git-status-pill>
               <span className={PILL_BRANCH_CLASS}>
                 <GitBranch size={GIT_GLYPH_PX} aria-hidden className="shrink-0" />
-                <span className={PILL_BRANCH_NAME_CLASS}>{activeWorktree.branch}</span>
+                <span className={PILL_BRANCH_NAME_CLASS}>{headline.branch}</span>
               </span>
-              {activeWorktree.dirty && (
+              {headline.dirty && (
                 <span
                   className={PILL_DIRTY_DOT_CLASS}
                   title="uncommitted changes"
@@ -549,14 +580,33 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
               )}
             </span>
           )}
+          {/* The folder being read: the absolute worktree path, faint mono, full
+              path on hover — the one place location-on-disk is stated. */}
+          {headline && (
+            <span className={PILL_PATH_CLASS} title={headline.path} data-trigger-path>
+              {headline.path}
+            </span>
+          )}
         </button>
-        <IconButton
-          label="collapse left rail"
-          title="collapse left rail"
-          onClick={collapseLeftRail}
+        {/* The rail-collapse toggle rides the SAME window-top chrome band as the
+            dock header's right-rail toggle (the shared --chrome-topband-height
+            token also driving the dockview tab bar), so the two panel toggles
+            align vertically instead of this one centering against the multi-line
+            identity block. `-top-fg-3` cancels the rail's `pt-fg-3` so the band
+            starts at the window top edge (LeftRail owns that padding; keep the
+            two in step). */}
+        <div
+          className="absolute right-0 -top-fg-3 flex h-[var(--chrome-topband-height)] items-center"
+          data-worktree-collapse-band
         >
-          <PanelLeft size={16} aria-hidden />
-        </IconButton>
+          <IconButton
+            label="collapse left rail"
+            title="collapse left rail"
+            onClick={collapseLeftRail}
+          >
+            <PanelLeft size={16} aria-hidden />
+          </IconButton>
+        </div>
 
         {/* The switcher dropdown: the shared kit Popover owns the light-dismiss
             wiring (Escape + outside pointer); `ignoreSelector` excludes the pill

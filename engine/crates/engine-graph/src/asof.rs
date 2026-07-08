@@ -228,6 +228,8 @@ pub fn asof_graph_resolved_cached(
             // (dashboard-pipeline-wire W01).
             status: crate::index::frontmatter_adr_status(&body.text),
             tier: crate::index::frontmatter_plan_tier(&body.text),
+            // Blob-true weight: measured on the committed body as it stood at T.
+            size: Some(engine_model::DocSize::measure(&body.text)),
             facets: vec![Facet {
                 scope: scope.clone(),
                 presence: Presence::Exists,

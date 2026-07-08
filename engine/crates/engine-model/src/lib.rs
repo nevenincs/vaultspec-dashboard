@@ -7,8 +7,30 @@
 use serde::{Deserialize, Serialize};
 
 pub mod id;
+pub mod packages;
 
 pub use id::{CanonicalKey, content_hash, edge_id, node_id};
+pub use packages::{PackageIndex, package_entry_rank};
+
+/// The language wire token for a source-file PATH, classified by extension.
+///
+/// The single source of truth for the code corpus's language facet: the ingest
+/// crate's `Lang::as_str` is guarded consistent with it, and the query
+/// projection (`engine-query::code`) consumes it directly, so the two can never
+/// drift (codebase-graphing review CGR-007 closed the hand-mirrored duplicate).
+/// It lives in this dependency-sink crate precisely so the query crate can share
+/// it WITHOUT pulling the tree-sitter grammar chain that `ingest-code` carries.
+/// `None` means "not a source file the code corpus parses".
+pub fn language_token(path: &str) -> Option<&'static str> {
+    let ext = path.rsplit('.').next()?;
+    match ext {
+        "rs" => Some("rust"),
+        "ts" | "mts" | "cts" | "tsx" => Some("typescript"),
+        "js" | "mjs" | "cjs" | "jsx" => Some("javascript"),
+        "py" => Some("python"),
+        _ => None,
+    }
+}
 
 /// Stable node identity: kind + canonical key (contract §2).
 ///
@@ -33,7 +55,10 @@ pub enum NodeKind {
     PlanContainer,
     /// Commit keyed by SHA; inherently ref-scoped.
     Commit,
-    /// Code artifact keyed by repo-relative path (+ optional symbol).
+    /// Code artifact keyed by repo-relative path (+ optional symbol). The ONLY
+    /// node kind the code corpus mints (code-graph-files-only): a package is
+    /// represented by its entry FILE (`packages::PackageIndex`), never by a
+    /// directory node.
     CodeArtifact,
     /// A project rule keyed by its kebab-case slug (graph-node-semantics ADR):
     /// the codify pipeline's output, projected from the rules tree
@@ -63,6 +88,10 @@ pub enum RelationKind {
     /// Core's `derived_edges`, ingested as a distinct relation at 0.8 —
     /// never mixed into declared (engine-spec §3).
     CoreDerived,
+    /// A file-level import in the CODE corpus (codebase-graphing ADR D4):
+    /// `src` imports `dst`, extracted syntactically against the working tree at
+    /// the structural tier. Never minted in the vault corpus.
+    Imports,
 }
 
 /// The three provenance tiers minted as graph fact (engine-spec §3, D3.1).
@@ -140,6 +169,11 @@ pub enum Provenance {
         rank: u32,
         score: f32,
     },
+    /// The working tree's own file/module layout named this relationship
+    /// (codebase-graphing ADR D4): containment and module membership in the
+    /// CODE corpus. `target` is the contained child's repo-relative path.
+    /// Never emitted in the vault corpus.
+    TreeLayout { target: String },
 }
 
 /// Milliseconds since the Unix epoch — the shipped epoch-ms representation the
@@ -248,7 +282,36 @@ pub struct Node {
     /// absent everywhere else.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<String>,
+    /// Ingest-computed document weight (left-rail-tree-controls ADR D2): byte
+    /// length + whitespace-separated word count of the body the indexer already
+    /// holds. Same truthful-absence class as `doc_type`/`dates` — present only
+    /// on vault document nodes read from a live body, absent everywhere else
+    /// (code artifacts, historical views without one). Volatile fact, never
+    /// identity: excluded from every stable-key derivation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<DocSize>,
     pub facets: Vec<Facet>,
+}
+
+/// Document weight served on listing rows (contract §4 `size?`): computed
+/// O(bytes) at ingest on the already-read body — no second read, no markdown
+/// parse (worktree-parse-performance stays linear).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DocSize {
+    /// Body length in bytes.
+    pub bytes: u64,
+    /// Whitespace-separated word count over the raw body.
+    pub words: u64,
+}
+
+impl DocSize {
+    /// Measure a document body: byte length + whitespace-split word count.
+    pub fn measure(text: &str) -> Self {
+        Self {
+            bytes: text.len() as u64,
+            words: text.split_whitespace().count() as u64,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -294,6 +357,7 @@ mod tests {
             feature_tags: vec!["x".into()],
             status: Some("accepted".into()),
             tier: None,
+            size: None,
             facets: vec![],
         };
         let json = serde_json::to_string(&adr).unwrap();
@@ -315,6 +379,7 @@ mod tests {
             feature_tags: vec!["x".into()],
             status: None,
             tier: Some("L3".into()),
+            size: None,
             facets: vec![],
         };
         let json = serde_json::to_string(&plan).unwrap();
@@ -338,6 +403,7 @@ mod tests {
             feature_tags: vec![],
             status: None,
             tier: None,
+            size: None,
             facets: vec![],
         };
         let json = serde_json::to_string(&plain).unwrap();

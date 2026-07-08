@@ -25,6 +25,12 @@ thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["rt-multi-thread"] }
 vaultspec-api.workspace = true
 
+[features]
+# Forward the api crate's SPA embed so a release build of the `vaultspec`
+# binary compiles in `frontend/dist` with one flag at the bin
+# (dashboard-packaging ADR). Dev builds omit it and keep the disk passthrough.
+embed-spa = ["vaultspec-api/embed-spa"]
+
 [lints]
 workspace = true
 

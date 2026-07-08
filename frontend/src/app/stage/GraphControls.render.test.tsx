@@ -45,6 +45,7 @@ import { resetGraphControlsChrome } from "../../stores/view/graphControlsChrome"
 import { useViewStore } from "../../stores/view/viewStore";
 import { GraphNavControls, GraphSettingsPanel } from "./GraphControls";
 import { getScene } from "./Stage";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 let scope: string;
 
@@ -234,19 +235,23 @@ describe("GraphSettingsPanel — Show (node-level / granularity switch)", () => 
     openSettings();
     // The reset patch seeds document granularity, so Documents starts active once
     // the served dashboard-state loads.
-    await waitFor(() =>
-      expect(
-        screen.getByRole("radio", { name: "Documents" }).getAttribute("aria-checked"),
-      ).toBe("true"),
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole("radio", { name: "Documents" }).getAttribute("aria-checked"),
+        ).toBe("true"),
+      ENGINE_WAIT,
     );
     fireEvent.click(screen.getByRole("radio", { name: "Features" }));
     // The click writes graph_granularity=feature through the stage-controls intent;
     // the graph slice re-keys and the active segment flips once the served state
     // round-trips (display-state-is-backend-served — read back, not optimistic-only).
-    await waitFor(() =>
-      expect(
-        screen.getByRole("radio", { name: "Features" }).getAttribute("aria-checked"),
-      ).toBe("true"),
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole("radio", { name: "Features" }).getAttribute("aria-checked"),
+        ).toBe("true"),
+      ENGINE_WAIT,
     );
     const state = await createLiveClient().dashboardState(scope);
     expect(state?.graph_granularity).toBe("feature");
@@ -278,6 +283,6 @@ describe("GraphSettingsPanel — Freeze toggle", () => {
             (c[0] as { frozen?: boolean }).frozen === false,
         ),
       ).toBe(true);
-    });
+    }, ENGINE_WAIT);
   });
 });

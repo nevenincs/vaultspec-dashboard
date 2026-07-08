@@ -72,17 +72,23 @@ explicitly. If the original apply was partial, rollback only covers materialized
 children. If an inverse cannot be generated safely, the backend creates a manual
 repair proposal rather than guessing.
 
-Rollback support is operation-specific. A create rolls back by archive or
-tombstone by default; physical delete is available only when a documented core
-capability and policy allow it and no dependent links make that unsafe. A body
-or frontmatter edit rolls back by restoring the stored preimage against the
-current base. A section edit uses the selected preimage and exact selector
-evidence; if the selector no longer resolves, rollback becomes a manual repair
-proposal. A related-link change uses the inverse link operation when the target
-still resolves. A rename rolls back by proposing the inverse rename and link
-repair. An archive/unarchive rolls back through the inverse archive state. If
-the required preimage was compacted or an inverse is unsafe, the projection
-exposes `rollback_available=false` and a `rollback_unavailable_reason`.
+V1 ROLLBACK IS PREIMAGE RESTORE (decided 2026-07-02, architecture review finding
+ASA-003, narrowing this ADR's earlier per-operation matrix to the evidenced
+need): a body or frontmatter edit rolls back by restoring the stored
+whole-document preimage against the current base — the one inverse that is
+deterministic from already-retained material. Every other applied operation kind
+(create, rename, related-link, archive/unarchive, section edit) exposes
+`rollback_available=false` with an honest `rollback_unavailable_reason` naming
+the unimplemented inverse, and the backend offers a manual repair proposal
+instead. The per-operation inverse matrix — create rolling back by
+archive/tombstone (physical delete only under documented core capability +
+policy + no dependent links), section edits by selected preimage + exact
+selector (unresolved selector degrades to manual repair), related-link changes
+by inverse link operation, renames by inverse rename + link repair,
+archive/unarchive by inverse state — is the DEFERRED extension path, to be
+enabled per operation kind as the walking skeleton produces evidence of need,
+never as one speculative batch. If a required preimage was compacted, the same
+`rollback_available=false` + reason contract applies.
 
 Git integration is recorded as related evidence: source commit, resulting
 commit, or git revert reference when available. The authoring rollback remains

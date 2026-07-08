@@ -488,6 +488,9 @@ pub async fn graph_diff(
             json!({
                 "deltas": [],
                 "last_seq": 0,
+                // Uniform wire shape with the built diff below: an empty
+                // fast-path log is in-bounds, so `truncated` is null.
+                "truncated": Value::Null,
                 "clock": "result-local",
                 "from_resolved_sha": from_sha,
                 "to_resolved_sha": to_sha,
@@ -529,24 +532,42 @@ pub async fn graph_diff(
     // engine projects the document diff to the constellation species (S50), so
     // a scrub re-keyframes and replays in its own species; entries are tagged.
     let t = crate::app::now_ms();
-    let (deltas, last_seq) = match granularity {
+    let (deltas, last_seq, truncated) = match granularity {
         engine_query::graph::Granularity::Document => {
+            // The document delta log is bounded (GIR-010,
+            // graph-queries-are-bounded-by-default): an over-ceiling symmetric
+            // difference degrades to keyframe-only (empty `deltas`) with an honest
+            // `truncated` block the client answers by re-keyframing through
+            // `/graph/asof`. In-bounds diffs carry `truncated: null`.
             let log = engine_graph::diff::diff(from_graph, to_graph, t, 0);
             (
                 serde_json::to_value(&log.entries).expect("deltas serialize"),
                 log.last_seq,
+                serde_json::to_value(&log.truncated).expect("truncated serializes"),
             )
         }
         engine_query::graph::Granularity::Feature => {
-            let (entries, last_seq) =
+            // The feature diff is bounded the SAME way as the document diff
+            // (GIR-014): an over-ceiling feature-node/meta-edge delta count
+            // degrades to keyframe-only with an honest `truncated` block. Both
+            // granularities share ONE bounding contract, and the client answers
+            // either with a re-keyframe.
+            let (entries, last_seq, truncated) =
                 engine_query::graph::feature_delta(from_graph, to_graph, &scope, t, 0);
-            (Value::Array(entries), last_seq)
+            (
+                Value::Array(entries),
+                last_seq,
+                serde_json::to_value(&truncated).expect("truncated serializes"),
+            )
         }
     };
     Ok(super::envelope(
         json!({
             "deltas": deltas,
             "last_seq": last_seq,
+            // Honest truncation (GIR-010): present when the document diff exceeded
+            // the delta ceiling and degraded to keyframe-only; null otherwise.
+            "truncated": truncated,
             "clock": "result-local",
             // Additive (ADD-901): the resolved commit + token reading for each
             // endpoint, so a scrub log states which commits it ran between.

@@ -21,7 +21,14 @@ import { logger } from "../../platform/logger/logger";
 import {
   useActiveScope,
   useDashboardSelectedNodeId,
+  useDashboardState,
 } from "../../stores/server/queries";
+import { consumeMenuActionOutcome } from "../../stores/server/menuActionOutcome";
+import {
+  announceActionFeedback,
+  useActionFeedbackMessage,
+  useActionFeedbackToken,
+} from "../../stores/view/actionFeedback";
 import {
   armContextMenuItem,
   closeContextMenu,
@@ -48,7 +55,11 @@ export function ContextMenuHost({
 } = {}) {
   const scope = useActiveScope();
   const selectedNodeId = useDashboardSelectedNodeId(scope);
-  const menu = useContextMenuResolvedView(timeTravel, selectedNodeId);
+  // The active graph corpus rides the resolver context like scope does, so a
+  // vault-only verb (the commit row's time-travel entry) disables honestly in
+  // code mode (code-timeline-range ADR).
+  const corpus = useDashboardState(scope).data?.corpus;
+  const menu = useContextMenuResolvedView(timeTravel, selectedNodeId, scope, corpus);
   const {
     open,
     entity,
@@ -67,6 +78,11 @@ export function ContextMenuHost({
   } = menu;
   const dispatch = useDispatch();
   const canDispatch = useCanDispatchAction();
+  // The persistent action-outcome feedback (KAR-006 / KAR-004): rendered below in
+  // an always-mounted aria-live region that OUTLIVES the menu (the menu's own
+  // live region unmounts on close, before an async ops/copy outcome resolves).
+  const feedbackMessage = useActionFeedbackMessage();
+  const feedbackToken = useActionFeedbackToken();
 
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -135,13 +151,24 @@ export function ContextMenuHost({
         // inside a React event handler. Log and close rather than crash.
         menuLog.warn(`no handler for menu action "${activation.type}"`);
       } else if (activation.kind === "dispatch") {
-        dispatch(activation.dispatch);
+        // Consume the dispatch OUTCOME (KAR-006 / KAR-004): a mutating ops verb
+        // (relate/autofix/archive) or a copy resolves asynchronously AFTER the
+        // menu closes, so we hand the promise to the stores-layer consumer —
+        // which branches the business-refusal envelope, invalidates the cache on
+        // success, catches transport failures, and returns a message we announce.
+        // Fire-and-forget with the announce in the tail; the consumer never
+        // rejects, so no unhandled rejection escapes.
+        const outcome = dispatch(activation.dispatch);
+        const dispatchType = (activation.dispatch as { type?: unknown }).type;
+        void consumeMenuActionOutcome(dispatchType, outcome, scope).then((result) => {
+          if (result.message !== null) announceActionFeedback(result.message);
+        });
       } else {
         activation.action.run?.();
       }
       closeContextMenu();
     },
-    [armedItemId, canDispatch, dispatch],
+    [armedItemId, canDispatch, dispatch, scope],
   );
 
   const onKeyDown = useCallback(
@@ -170,126 +197,150 @@ export function ContextMenuHost({
     [moveCursor, runnableIndices, ordered, cursor, activate],
   );
 
-  if (!open || !entity || !anchor) return null;
-
   // Hidden until measured so the first paint never flashes at the wrong spot.
   const placed = position !== null;
 
-  return createPortal(
-    <div
-      // Invisible full-screen catcher: a click anywhere outside the panel
-      // dismisses (light-dismiss, not a modal scrim).
-      className="fixed inset-0 z-50"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) closeContextMenu();
-      }}
-      onContextMenu={(e) => {
-        // A right-click on the catcher (outside the panel) closes the menu and
-        // suppresses the native menu, matching cohort behaviour.
-        e.preventDefault();
-        closeContextMenu();
-      }}
-    >
-      <div
-        ref={panelRef}
-        role="menu"
-        aria-label={menuAriaLabel}
-        aria-activedescendant={activeRow ? itemId(activeRow.id) : undefined}
-        tabIndex={-1}
-        onKeyDown={onKeyDown}
-        onMouseDown={(e) => e.stopPropagation()}
-        onContextMenu={(e) => {
-          // A right-click inside the open menu must not bubble to the catcher
-          // and dismiss it (L1); suppress the native menu and keep this one open.
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-        style={{
-          position: "fixed",
-          left: position ? position.x : anchor.x,
-          top: position ? position.y : anchor.y,
-          visibility: placed ? "visible" : "hidden",
-        }}
-        className="flex max-h-[min(24rem,calc(100vh-1rem))] w-56 max-w-[calc(100vw-1rem)] flex-col overflow-y-auto rounded-fg-lg border border-rule bg-paper-raised p-fg-1 text-body shadow-fg-popover animate-fade-in"
-      >
-        {ordered.length === 0 && (
-          <div className="px-fg-3 py-fg-2 text-center text-label text-ink-faint">
-            {emptyMessage}
-          </div>
-        )}
-        {rowGroups.map((group, gi) => (
+  // The menu panel renders only while open; the feedback region below is ALWAYS
+  // mounted so an action outcome that resolves after the menu closes is announced.
+  const menuPortal =
+    open && entity && anchor
+      ? createPortal(
           <div
-            key={group.section}
-            role="presentation"
-            className="flex flex-col gap-fg-0-5"
+            // Invisible full-screen catcher: a click anywhere outside the panel
+            // dismisses (light-dismiss, not a modal scrim).
+            className="fixed inset-0 z-50"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) closeContextMenu();
+            }}
+            onContextMenu={(e) => {
+              // A right-click on the catcher (outside the panel) closes the menu and
+              // suppresses the native menu, matching cohort behaviour.
+              e.preventDefault();
+              closeContextMenu();
+            }}
           >
-            {gi > 0 && (
-              // Inset divider: a symmetrically-inset hairline, padded from the
-              // edges to match the inset rounded selection rects, so the
-              // separator reads as a soft section break.
-              <div role="separator" className="py-fg-0-5 px-fg-1">
-                <div className="h-px bg-rule" />
-              </div>
-            )}
-            {group.rows.map((row) => {
-              const Mark = row.icon;
-              const action = row.action;
-              return (
-                <button
-                  key={row.id}
-                  type="button"
-                  id={itemId(row.id)}
-                  role="menuitem"
-                  tabIndex={row.selected ? 0 : -1}
-                  aria-disabled={row.disabled || undefined}
-                  title={row.disabledReason}
-                  onMouseEnter={() => {
-                    if (!row.disabled) {
-                      disarmContextMenu();
-                      setContextMenuCursor(row.index);
-                    }
-                  }}
-                  onClick={() => {
-                    if (!row.disabled) setContextMenuCursor(row.index);
-                    activate(action);
-                  }}
-                  className={`flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ${row.className}`}
+            <div
+              ref={panelRef}
+              role="menu"
+              aria-label={menuAriaLabel}
+              aria-activedescendant={activeRow ? itemId(activeRow.id) : undefined}
+              tabIndex={-1}
+              onKeyDown={onKeyDown}
+              onMouseDown={(e) => e.stopPropagation()}
+              onContextMenu={(e) => {
+                // A right-click inside the open menu must not bubble to the catcher
+                // and dismiss it (L1); suppress the native menu and keep this one open.
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              style={{
+                position: "fixed",
+                left: position ? position.x : anchor.x,
+                top: position ? position.y : anchor.y,
+                visibility: placed ? "visible" : "hidden",
+              }}
+              className="flex max-h-[min(24rem,calc(100vh-1rem))] w-56 max-w-[calc(100vw-1rem)] flex-col overflow-y-auto rounded-fg-lg border border-rule bg-paper-raised p-fg-1 text-body shadow-fg-popover animate-fade-in"
+            >
+              {ordered.length === 0 && (
+                <div className="px-fg-3 py-fg-2 text-center text-label text-ink-faint">
+                  {emptyMessage}
+                </div>
+              )}
+              {rowGroups.map((group, gi) => (
+                <div
+                  key={group.section}
+                  role="presentation"
+                  className="flex flex-col gap-fg-0-5"
                 >
-                  {Mark ? (
-                    <Mark aria-hidden size={14} className={row.iconClassName} />
-                  ) : (
-                    <span aria-hidden className={row.iconSpacerClassName} />
+                  {gi > 0 && (
+                    // Inset divider: a symmetrically-inset hairline, padded from the
+                    // edges to match the inset rounded selection rects, so the
+                    // separator reads as a soft section break.
+                    <div role="separator" className="py-fg-0-5 px-fg-1">
+                      <div className="h-px bg-rule" />
+                    </div>
                   )}
-                  <span className={row.labelClassName}>{row.label}</span>
-                  {row.confirmShortcutLabel && (
-                    <span aria-hidden className={row.confirmShortcutClassName}>
-                      {row.confirmShortcutLabel}
-                    </span>
-                  )}
-                  {row.acceleratorLabel && (
-                    <span className={row.acceleratorClassName}>
-                      {row.acceleratorLabel}
-                    </span>
-                  )}
-                  {row.selectionHintVisible && (
-                    <CornerDownLeft
-                      aria-hidden
-                      size={12}
-                      className={row.selectionHintClassName}
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </div>
+                  {group.rows.map((row) => {
+                    const Mark = row.icon;
+                    const action = row.action;
+                    return (
+                      <button
+                        key={row.id}
+                        type="button"
+                        id={itemId(row.id)}
+                        role="menuitem"
+                        tabIndex={row.selected ? 0 : -1}
+                        aria-disabled={row.disabled || undefined}
+                        title={row.disabledReason}
+                        onMouseEnter={() => {
+                          if (!row.disabled) {
+                            disarmContextMenu();
+                            setContextMenuCursor(row.index);
+                          }
+                        }}
+                        onClick={() => {
+                          if (!row.disabled) setContextMenuCursor(row.index);
+                          activate(action);
+                        }}
+                        className={`flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ${row.className}`}
+                      >
+                        {Mark ? (
+                          <Mark aria-hidden size={14} className={row.iconClassName} />
+                        ) : (
+                          <span aria-hidden className={row.iconSpacerClassName} />
+                        )}
+                        <span className={row.labelClassName}>{row.label}</span>
+                        {row.confirmShortcutLabel && (
+                          <span aria-hidden className={row.confirmShortcutClassName}>
+                            {row.confirmShortcutLabel}
+                          </span>
+                        )}
+                        {row.acceleratorLabel && (
+                          <span className={row.acceleratorClassName}>
+                            {row.acceleratorLabel}
+                          </span>
+                        )}
+                        {row.selectionHintVisible && (
+                          <CornerDownLeft
+                            aria-hidden
+                            size={12}
+                            className={row.selectionHintClassName}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
 
-      {/* Polite live region: entity, focused item, and the arm prompt. */}
-      <div id={liveRegionId} aria-live="polite" className="sr-only">
-        {liveMessage}
-      </div>
-    </div>,
-    document.body,
+            {/* Polite live region: entity, focused item, and the arm prompt. */}
+            <div id={liveRegionId} aria-live="polite" className="sr-only">
+              {liveMessage}
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <>
+      {menuPortal}
+      {/* Persistent action-outcome region (KAR-006 / KAR-004): mounted for the
+          host's lifetime, so an ops/copy outcome that resolves after the menu
+          closes is still announced. Keyed on the token so an identical
+          consecutive outcome re-announces. */}
+      {createPortal(
+        <div
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+          data-action-feedback
+        >
+          <span key={feedbackToken}>{feedbackMessage}</span>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }

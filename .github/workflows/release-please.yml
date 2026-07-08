@@ -1,0 +1,37 @@
+# Release automation (release-automation ADR): release-please maintains a
+# standing release PR from conventional commits on main; merging it bumps the
+# engine workspace version, writes engine/CHANGELOG.md, and mints the v-tag
+# that fires the dist-generated release.yml unchanged.
+#
+# TOKEN SEAM (the key hazard the ADR records): a tag minted with the default
+# GITHUB_TOKEN does NOT trigger downstream `on: push: tags` workflows —
+# GitHub suppresses workflow chaining — so release.yml would silently never
+# fire. Provision RELEASE_PLEASE_TOKEN as a fine-grained PAT (or GitHub App
+# token) with contents: write and pull-requests: write on this repository.
+# The github.token fallback keeps the release-PR flow alive without it, but
+# the minted tag will not chain until the secret exists.
+
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# Serialize runs: rapid pushes to main must not race on the release PR.
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

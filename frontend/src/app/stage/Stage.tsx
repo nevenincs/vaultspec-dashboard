@@ -4,7 +4,7 @@
 // client-flattened doc edges. React sends commands and subscribes to
 // events; the field owns every frame.
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { getThemeController } from "../../platform/theme/themeController";
 import { createDashboardScene } from "../../scene/field/fieldAssembly";
@@ -18,15 +18,14 @@ import {
   useDashboardStageSceneView,
   useGraphSlice,
   useGraphSliceAvailability,
+  useHealStaleSessionIntentOnBoot,
+  useHealTimelineModeToLiveOnBoot,
   useNodeNeighborsBulk,
 } from "../../stores/server/queries";
 import {
   useRestoreSessionScope,
   useSeedSessionContext,
 } from "../../stores/server/sessionContext";
-import { useDashboardVisibilityCommand } from "../../stores/view/dashboardFilterChoices";
-import { filterSliceByMembership } from "../../stores/view/filters";
-import { useGraphReflowFilter } from "../../stores/view/graphControlsChrome";
 import {
   stageBoundsCommand,
   stageOverlaysCommand,
@@ -34,6 +33,7 @@ import {
   stageSetDataCommand,
 } from "../../stores/view/stageSceneCommands";
 import { useGraphAffordanceReconciliation } from "../../stores/view/graphAffordances";
+import { setGraphControlsSimRunning } from "../../stores/view/graphControlsChrome";
 import { useGraphOverlays } from "../../stores/view/graphOverlays";
 import { useRenderCapability } from "../../stores/view/renderCapability";
 import { bindPinsToScene } from "../../stores/view/pins";
@@ -44,6 +44,7 @@ import {
   selectFromScene,
 } from "../../stores/view/selection";
 import { activateEntity } from "../../stores/view/activateEntity";
+import { useDisplaySlice } from "../../stores/view/displaySlice";
 import { handleStageSceneEvent } from "../../stores/view/stageSceneEvents";
 import { docSurfaceForNodeId } from "../../stores/view/tabs";
 import { expandWorkingSet, useWorkingSet } from "../../stores/view/workingSet";
@@ -55,9 +56,8 @@ import { useTimeTravel } from "../timeline/timeTravel";
 import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
 import { MinimapWidget } from "./MinimapWidget";
 import { CANVAS_KEYMAP_CONTEXT, useGraphWalkKeybindings } from "./graphWalkKeybindings";
-import { GraphNavControls, GraphSettingsPanel } from "./GraphControls";
+import { GraphNavControls, GraphSettingsPanel, GraphSimControl } from "./GraphControls";
 import { useGraphControlsPersistenceSync } from "./graphControlsPersistence";
-import { mergeSlices } from "./WorkingSet";
 
 // One scene singleton per app lifetime: the object survives route remounts, but
 // its renderer is released on unmount (F#1) and rebuilt on remount.
@@ -112,14 +112,40 @@ export function useSceneThemeRefresh(): void {
   );
 }
 
+/** Mirror the field's `sim-state` transitions into the graph-controls chrome store so
+ *  the play/pause control renders the sim's OWN truth — including the auto-flip back
+ *  to "play" when the cooling schedule settles the layout. One-way: scene → store;
+ *  the button's click goes back through SceneController commands, never this mirror. */
+export function useSceneSimStateBridge(): void {
+  useEffect(() => {
+    // Seed from the controller's cached run state (GPR-001): a transition emitted
+    // while this bridge was unmounted (the field simulates even with the canvas
+    // hidden) would otherwise leave the mirror stale until the next transition.
+    setGraphControlsSimRunning(scene.controller.simRunning);
+    return scene.controller.on((event) => {
+      if (event.kind !== "sim-state") return;
+      setGraphControlsSimRunning(event.running);
+    });
+  }, []);
+}
+
 export function Stage() {
   const hostRef = useRef<HTMLDivElement>(null);
   useSceneThemeRefresh();
+  useSceneSimStateBridge();
   // Restore the persisted session on load: the scope cold-start persist (S29)
   // and the scope+folder context seed (S30) both fire from this single owner,
   // since Stage mounts once per app lifetime.
   useRestoreSessionScope();
   useSeedSessionContext();
+  // With time-travel entry retired (TTR-005), heal any persisted time-travel mode
+  // to live on load so a returning scope never boots into a historical view with
+  // no exit.
+  useHealTimelineModeToLiveOnBoot();
+  // Session-intent lifetime (dashboard-state field lifetimes ADR): a stale scope's
+  // persisted selection clears once on boot so a days-old click never steers a
+  // fresh load; a mid-session reload resumes (view-local activity stamp, 8h).
+  useHealStaleSessionIntentOnBoot();
   const scope = useActiveScope();
   const activeWorkspace = useActiveWorkspace();
   const stageView = useDashboardStageSceneView(scope);
@@ -141,6 +167,9 @@ export function Stage() {
     graphQuery?.granularity,
     graphQuery?.lens,
     graphQuery?.focus,
+    // The active graph corpus (codebase-graphing ADR D7): a corpus switch re-keys
+    // this slice query, so the canvas reloads with the other corpus's data.
+    graphQuery?.corpus,
   );
   // The active representation mode + overlay visibility (graph-representation
   // ADR): view state the chrome owns and emits to the scene. A mode switch
@@ -260,37 +289,17 @@ export function Stage() {
     );
   }, [selectedIds, selectedNodeId]);
 
-  // Constellation + working-set expansions → seam command (keyframe path).
-  const expansionData = expansions
-    .map((q) => q.data)
-    .filter((d): d is NonNullable<typeof d> => d !== undefined);
-  // Content signature (P-LOW-5): `dataUpdatedAt` bumps on every successful
-  // (re)fetch, so a neighbors refetch returning DIFFERENT data for the same id
-  // recomputes `merged` even when the expansion count is unchanged — the old
-  // `expansionData.length` proxy missed same-count content changes.
-  const expansionSig = expansions.map((q) => q.dataUpdatedAt).join(",");
-  const merged = useMemo(
-    () => (slice.data ? mergeSlices(slice.data, [...expansionData]) : null),
-    [slice.data, expansionSig],
+  // Constellation + working-set expansions → merged/display slice (keyframe path).
+  // The slice union and the reflow-filter composition are stores-owned MODEL
+  // derivation (useDisplaySlice, GIR-007 / dashboard-layer-ownership); the stage
+  // just consumes them. The reflow set-data carries the `reflow` hint below so the
+  // field warm-starts (no cold re-explode / refit) on the topology change.
+  const { merged, displaySlice, reflow, visibilityCommand } = useDisplaySlice(
+    scope,
+    slice,
+    expansions,
   );
   useGraphAffordanceReconciliation(merged);
-  // Reflow filter mode (graph-controls toggle): ON = filtering REMOVES the
-  // filtered-out nodes/edges from the live simulation (true node removal/re-add) so
-  // the layout re-forms around the survivors; OFF (default) = the filter is a
-  // visibility MASK over the full set (stable positions). Both consume the SAME
-  // stores-owned filter membership (the visibility command), so the two modes can
-  // never drift — only how the scene receives it differs: reflow feeds a reduced
-  // set-data, hide feeds a mask. The reflow set-data carries the `reflow` hint so the
-  // field warm-starts (no cold re-explode / refit) on the topology change.
-  const reflow = useGraphReflowFilter();
-  const visibilityCommand = useDashboardVisibilityCommand(scope, merged);
-  const displaySlice = useMemo(
-    () =>
-      reflow && merged && visibilityCommand?.kind === "set-visibility"
-        ? filterSliceByMembership(merged, visibilityCommand)
-        : merged,
-    [reflow, merged, visibilityCommand],
-  );
   // Scene persistence follows the active workspace+scope; client-side pin/lens
   // store keys are owned by viewStore scope actions, including session restore.
   useEffect(() => {
@@ -299,7 +308,10 @@ export function Stage() {
   }, [activeWorkspace, scope]);
 
   // While time travelling the driver owns the stage's data (S34); the
-  // live keyframe path resumes — and re-pushes — on return to LIVE.
+  // live keyframe path resumes — and re-pushes — on return to LIVE. Entry is
+  // the recent-commit row's "View corpus at this commit" verb (TTR-005a); the
+  // boot-heal above still guarantees a returning scope boots LIVE, so the mode
+  // is transient-by-design (a reload/scope-swap returns to live).
   useTimeTravel(scope, scene.controller);
   // LIVE-mode reactivity (live-state D3 / constellation-live-delta S06):
   // subscribe with `since=keyframeSeq` when available so only new deltas
@@ -310,10 +322,25 @@ export function Stage() {
     liveTimeline,
     slice.data?.last_seq ?? null,
   );
+  // A corpus identity change (vault|code view-mode switch) rides the seam's explicit
+  // `reset` cold contract: the NEXT freshly-fetched slice cold-reloads (full prewarm +
+  // one-time fit) by intent, not by the id-overlap heuristic happening to see disjoint
+  // namespaces. During the keepPreviousData window the held slice still belongs to the
+  // OLD corpus — pushing it under the new identity would cold-explode stale data — so
+  // that placeholder delivery is skipped; the canvas keeps the old view until the new
+  // corpus's data lands.
+  const pushedCorpusRef = useRef<string | undefined>(undefined);
+  const corpus = graphQuery?.corpus ?? "vault";
   useEffect(() => {
     if (!displaySlice || !scope || !liveTimeline) return;
-    scene.controller.command(stageSetDataCommand(displaySlice, { reflow }));
-  }, [displaySlice, scope, liveTimeline, reflow]);
+    const held = pushedCorpusRef.current;
+    const corpusChanged = held !== undefined && held !== corpus;
+    if (slice.isPlaceholderData && corpusChanged) return;
+    pushedCorpusRef.current = corpus;
+    scene.controller.command(
+      stageSetDataCommand(displaySlice, { reflow, reset: corpusChanged }),
+    );
+  }, [displaySlice, scope, liveTimeline, reflow, corpus, slice.isPlaceholderData]);
 
   // Representation mode -> scene (graph-representation ADR): a mode switch
   // re-lays-out the current set with id-keyed object constancy (no re-query). The
@@ -422,6 +449,10 @@ export function Stage() {
           opened-island layer (node hover/open interactions), and the designed canvas
           states (which the binding DOES define: loading / empty / degraded). */}
       <GraphNavControls />
+      {/* Sim play/pause (2026-07-03, user-directed addition to the binding chrome
+          set): the top-left run-state control over the live layout, mirrored from
+          the field's own sim-state transitions. */}
+      <GraphSimControl />
       <GraphSettingsPanel />
       {/* The overview minimap is a DOCKED card bottom-right (binding graph/Hero
           minimap 212:521) — it owns the bottom-right corner directly. The scene owns

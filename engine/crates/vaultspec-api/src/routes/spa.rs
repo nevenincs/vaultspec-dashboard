@@ -1,10 +1,24 @@
 //! SPA static serving (contract R2, W03.P11.S52): fallback routing to
-//! `index.html` for unknown non-API paths, correct MIME types,
-//! filesystem-dir serving (the dev passthrough; asset embedding is
-//! bundling-time work under D9.2's deferred mechanics).
+//! `index.html` for unknown non-API paths, correct MIME types, and an
+//! embedded-first asset source (dashboard-packaging ADR). A release build
+//! compiled with the `embed-spa` feature carries `frontend/dist` inside the
+//! binary and serves it from memory; without the feature (dev) the source is
+//! the disk passthrough — `VAULTSPEC_SPA_DIR` or `<workspace>/frontend/dist`.
+//! The resolution chain is embedded → `VAULTSPEC_SPA_DIR` → `frontend/dist` →
+//! placeholder; the traversal guard, MIME map, deep-link fallback, API prefix
+//! boundary, and bearer-token injection are identical across both sources.
 
 use std::path::PathBuf;
 use std::sync::Arc;
+
+/// The compiled-in SPA bundle for release packaging: `frontend/dist` baked
+/// into the binary at build time (path relative to this crate's manifest).
+/// Present only under the `embed-spa` feature; dev builds omit it and keep the
+/// disk passthrough so a UI change needs no engine rebuild.
+#[cfg(feature = "embed-spa")]
+#[derive(rust_embed::RustEmbed)]
+#[folder = "../../../frontend/dist"]
+pub(crate) struct EmbeddedSpa;
 
 use axum::extract::State;
 use axum::http::{StatusCode, Uri, header};
@@ -21,6 +35,64 @@ pub fn spa_dir(state: &AppState) -> Option<PathBuf> {
     }
     let candidate = state.workspace_root.join("frontend").join("dist");
     candidate.is_dir().then_some(candidate)
+}
+
+/// Where SPA assets are read from: the compiled-in store (release packaging
+/// via the `embed-spa` feature) or a directory on disk (the dev passthrough
+/// and the `VAULTSPEC_SPA_DIR` override). Both sources answer the same two
+/// questions the fallback handler asks, so the serving logic is source-blind.
+enum SpaSource {
+    #[cfg(feature = "embed-spa")]
+    Embedded,
+    Disk(PathBuf),
+}
+
+impl SpaSource {
+    /// True when `rel` names a concrete asset in this source — used to decide
+    /// asset-vs-deep-link-fallback, never to serve.
+    fn contains(&self, rel: &str) -> bool {
+        match self {
+            #[cfg(feature = "embed-spa")]
+            SpaSource::Embedded => EmbeddedSpa::get(rel).is_some(),
+            SpaSource::Disk(dir) => dir.join(rel).is_file(),
+        }
+    }
+
+    /// Read `rel` from this source, or `None` if it is absent.
+    fn read(&self, rel: &str) -> Option<Vec<u8>> {
+        match self {
+            #[cfg(feature = "embed-spa")]
+            SpaSource::Embedded => EmbeddedSpa::get(rel).map(|f| f.data.into_owned()),
+            SpaSource::Disk(dir) => std::fs::read(dir.join(rel)).ok(),
+        }
+    }
+}
+
+/// Resolve the SPA asset source embedded-first (dashboard-packaging ADR): the
+/// compiled-in store when the `embed-spa` feature baked assets in, else the
+/// `VAULTSPEC_SPA_DIR` override or `<workspace_root>/frontend/dist` on disk,
+/// else `None` → the placeholder page. Dev builds (no feature) skip straight
+/// to the disk passthrough, so their behavior is unchanged.
+fn resolve_spa_source(state: &AppState) -> Option<SpaSource> {
+    #[cfg(feature = "embed-spa")]
+    if EmbeddedSpa::get("index.html").is_some() {
+        return Some(SpaSource::Embedded);
+    }
+    spa_dir(state).map(SpaSource::Disk)
+}
+
+/// Path traversal guard for the asset lookup: the request must stay a plain
+/// relative path under the asset root. Rejects `..` segments, and — because
+/// `PathBuf::join` REPLACES the base when handed an absolute or drive-relative
+/// path — rejects absolute paths and any `:`-bearing segment (`C:/...`,
+/// `C:foo`), which on Windows would otherwise escape the root entirely
+/// (P01 review finding, disk-source hardening). No legitimate Vite asset name
+/// carries a colon or leads with a separator.
+fn is_safe_relative(requested: &str) -> bool {
+    !requested.split(['/', '\\']).any(|seg| seg == "..")
+        && !std::path::Path::new(requested).is_absolute()
+        && !requested.contains(':')
+        && !requested.starts_with(['/', '\\'])
 }
 
 fn mime_for(path: &str) -> &'static str {
@@ -104,6 +176,7 @@ pub(crate) const API_PREFIXES: &[&str] = &[
     "/map",
     "/workspaces",
     "/vault-tree",
+    "/code-files",
     "/file-tree",
     "/pipeline",
     "/dashboard-state",
@@ -116,6 +189,7 @@ pub(crate) const API_PREFIXES: &[&str] = &[
     "/issues",
     "/status",
     "/stream",
+    "/authoring",
     "/search",
     "/ops",
     "/health",
@@ -140,7 +214,7 @@ pub async fn spa_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> Respo
         )
             .into_response();
     }
-    let Some(dist) = spa_dir(&state) else {
+    let Some(source) = resolve_spa_source(&state) else {
         return (
             [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
             inject_token(PLACEHOLDER, &state.bearer),
@@ -148,19 +222,19 @@ pub async fn spa_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> Respo
             .into_response();
     };
     let requested = uri.path().trim_start_matches('/');
-    // Path traversal guard: reject any segment escaping the dist dir.
-    let safe = !requested.split(['/', '\\']).any(|seg| seg == "..");
-    let candidate = dist.join(requested);
-    let target = if safe && !requested.is_empty() && candidate.is_file() {
-        candidate
+    let safe = is_safe_relative(requested);
+    // Serve the requested asset when it exists; otherwise fall back to
+    // index.html so deep links resolve client-side (contract R2).
+    let target = if safe && !requested.is_empty() && source.contains(requested) {
+        requested
     } else {
-        dist.join("index.html")
+        "index.html"
     };
-    match std::fs::read(&target) {
-        Ok(bytes) => {
+    match source.read(target) {
+        Some(bytes) => {
             // index.html gets the token bootstrap meta tag (DF-6); other
             // assets pass through untouched.
-            if target.file_name().and_then(|n| n.to_str()) == Some("index.html") {
+            if target.rsplit('/').next() == Some("index.html") {
                 let html = String::from_utf8_lossy(&bytes);
                 return (
                     [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
@@ -168,19 +242,37 @@ pub async fn spa_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> Respo
                 )
                     .into_response();
             }
-            (
-                [(header::CONTENT_TYPE, mime_for(&target.to_string_lossy()))],
-                bytes,
-            )
-                .into_response()
+            ([(header::CONTENT_TYPE, mime_for(target))], bytes).into_response()
         }
-        Err(_) => (StatusCode::NOT_FOUND, "no index.html in SPA dir").into_response(),
+        None => (StatusCode::NOT_FOUND, "no index.html in SPA dir").into_response(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_traversal_guard_rejects_every_root_escape_shape() {
+        // The disk arm feeds the request straight into `PathBuf::join`, which
+        // REPLACES the base for absolute and drive-relative paths — so the
+        // guard must reject them, not just `..` (P01 review, Windows escape).
+        for escape in [
+            "../secret",
+            "assets/../../secret",
+            r"assets\..\secret",
+            "C:/Windows/win.ini",
+            r"C:\Windows\win.ini",
+            "C:win.ini",
+            "//server/share/file",
+            r"\\server\share\file",
+        ] {
+            assert!(!is_safe_relative(escape), "must reject {escape}");
+        }
+        for legit in ["index.html", "assets/index-DB4JoJbE.js", "favicon.ico"] {
+            assert!(is_safe_relative(legit), "must keep {legit}");
+        }
+    }
 
     #[test]
     fn token_injects_before_head_close_and_survives_headless_html() {

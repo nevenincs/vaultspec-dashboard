@@ -1,32 +1,32 @@
 ---
 tags:
-  - '#adr'
-  - '#agentic-spec-authoring-backend'
+  - "#adr"
+  - "#agentic-spec-authoring-backend"
 date: '2026-06-29'
-modified: '2026-06-30'
 related:
   - "[[2026-06-29-agentic-spec-authoring-backend-research]]"
   - "[[2026-06-29-langgraph-approval-document-editing-research]]"
   - "[[2026-06-29-zed-acp-document-authoring-research]]"
   - "[[2026-06-29-agentic-authoring-boundary-adr]]"
   - "[[2026-06-29-agentic-changeset-ledger-adr]]"
-  - '[[2026-06-29-agentic-authoring-state-store-adr]]'
-  - '[[2026-06-29-agentic-change-format-and-chunking-adr]]'
-  - '[[2026-06-29-agentic-concurrency-leases-conflicts-adr]]'
-  - '[[2026-06-29-agentic-approval-gates-review-state-adr]]'
-  - '[[2026-06-29-agentic-langgraph-integration-adr]]'
-  - '[[2026-06-29-agentic-streaming-events-outbox-adr]]'
-  - '[[2026-06-29-agentic-apply-materialization-adr]]'
-  - '[[2026-06-29-agentic-rollback-history-adr]]'
-  - '[[2026-06-29-agentic-security-provenance-adr]]'
-  - '[[2026-06-29-agentic-live-editing-room-adr]]'
-  - '[[2026-06-29-agentic-authoring-api-contract-adr]]'
-  - '[[2026-06-29-agentic-review-station-state-adr]]'
-  - '[[2026-06-29-agentic-multiagent-composition-adr]]'
-  - '[[2026-06-29-agentic-document-identity-adr]]'
+  - "[[2026-06-29-agentic-authoring-state-store-adr]]"
+  - "[[2026-06-29-agentic-change-format-and-chunking-adr]]"
+  - "[[2026-06-29-agentic-concurrency-leases-conflicts-adr]]"
+  - "[[2026-06-29-agentic-approval-gates-review-state-adr]]"
+  - "[[2026-06-29-agentic-langgraph-integration-adr]]"
+  - "[[2026-06-29-agentic-streaming-events-outbox-adr]]"
+  - "[[2026-06-29-agentic-apply-materialization-adr]]"
+  - "[[2026-06-29-agentic-rollback-history-adr]]"
+  - "[[2026-06-29-agentic-security-provenance-adr]]"
+  - "[[2026-06-29-agentic-live-editing-room-adr]]"
+  - "[[2026-06-29-agentic-authoring-api-contract-adr]]"
+  - "[[2026-06-29-agentic-review-station-state-adr]]"
+  - "[[2026-06-29-agentic-multiagent-composition-adr]]"
+  - "[[2026-06-29-agentic-document-identity-adr]]"
+superseded_by: '2026-06-29-agentic-change-format-and-chunking-adr'
+modified: '2026-07-02'
 ---
-
-# `agentic-document-chunk-management` adr: `revision scoped document chunk management` | (**status:** `accepted`)
+# `agentic-document-chunk-management` adr: `revision scoped document chunk management` | (**status:** `superseded`)
 
 ## Problem Statement
 

@@ -126,5 +126,14 @@ export default defineConfig(({ command }) => ({
     // The engine cold-indexes the fixture on boot; give startup-bound suites room.
     testTimeout: 15_000,
     hookTimeout: 35_000,
+    // Per-file timing instrumentation (TIH P05): OPT-IN and zero-impact by
+    // default. With `VAULTSPEC_TEST_TIMING=1` the run adds the slowest-first
+    // per-file wall-clock reporter alongside the default reporter (and writes a
+    // machine-readable profile when `VAULTSPEC_TEST_TIMING_OUT` is also set);
+    // unset, vitest uses its default reporter and the timing reporter is never
+    // loaded, so a normal run and the gate are unaffected.
+    ...(process.env.VAULTSPEC_TEST_TIMING === "1"
+      ? { reporters: ["default", "./src/testing/perFileTimingReporter.ts"] }
+      : {}),
   },
 }));

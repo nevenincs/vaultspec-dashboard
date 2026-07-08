@@ -28,7 +28,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { liveScope, liveTransport } from "../../testing/liveClient";
 import { SEARCH_QUERY_MAX_CHARS, normalizeSearchQuery } from "../searchQuery";
-import type { SearchResult, TiersBlock, VaultTreeEntry } from "./engine";
+import type { SearchResult, TiersBlock } from "./engine";
 import { EngineError, engineClient } from "./engine";
 import type { StreamChunk } from "./queries";
 import {
@@ -41,28 +41,19 @@ import {
 } from "./queries";
 import { queryClient } from "./queryClient";
 import {
-  buildFallbackResults,
-  deriveSearchPresentationView,
-  searchResultKeyboardFocusDelta,
   interpretSearch,
   isSemanticOffline,
   isTransportError,
   latestBackendsRagAvailable,
+  mergeSemanticEpoch,
   normalizeSearchRagLifecycleWord,
   pathStem,
   pathToDocNodeId,
   SEARCH_DEBOUNCE_MS,
-  SEARCH_FALLBACK_RESULTS_MAX_ITEMS,
   SEARCH_RAG_LIFECYCLE_WORD_MAX_CHARS,
   useSearchController,
 } from "./searchController";
-
-const entry = (path: string, tags: string[] = []): VaultTreeEntry => ({
-  path,
-  doc_type: "adr",
-  feature_tags: tags,
-  dates: {},
-});
+import { ENGINE_WAIT } from "../../testing/timing";
 
 const noop = () => undefined;
 
@@ -96,57 +87,11 @@ describe("normalizeSearchQuery (shared search request identity)", () => {
   });
 });
 
-// --- pure fallback matching (relocated from the chrome layer) ----------------------
-
-describe("buildFallbackResults (text-match fallback, search ADR)", () => {
-  const entries = [
-    entry(".vault/adr/2026-06-12-auth-flow-adr.md", ["auth-flow"]),
-    entry(".vault/plan/2026-06-12-sync-service-plan.md", ["sync-service"]),
-  ];
-
-  it("matches stems and feature tags, clickable via derived doc node ids", () => {
-    const results = buildFallbackResults(entries, "auth");
-    expect(results).toHaveLength(1);
-    expect(results[0].node_id).toBe("doc:2026-06-12-auth-flow-adr");
-    expect(results[0].excerpt).toContain("#auth-flow");
-  });
-
-  it("scores STRICTLY below the semantic certainty band (never reads as a hit)", () => {
-    const results = buildFallbackResults(entries, "2026-06-12");
-    expect(results).toHaveLength(2);
-    for (const result of results) {
-      expect(result.score).toBeLessThan(1);
-      expect(result.score).toBeGreaterThan(0);
-    }
-  });
-
-  it("is empty without a query or entries", () => {
-    expect(buildFallbackResults(entries, "  ")).toEqual([]);
-    expect(buildFallbackResults(undefined, "auth")).toEqual([]);
-    expect(buildFallbackResults(entries, "no-such-thing")).toEqual([]);
-    expect(buildFallbackResults(entries, { query: "auth" })).toEqual([]);
-  });
-
-  it("uses the shared bounded search-query normalizer before fallback matching", () => {
-    const longQuery = ` auth ${"x".repeat(SEARCH_QUERY_MAX_CHARS)}`;
-    expect(buildFallbackResults(entries, " AUTH ")).toHaveLength(1);
-    expect(buildFallbackResults(entries, longQuery)).toEqual([]);
-  });
-
-  it("keeps fallback result collection bounded without dropping better later hits", () => {
-    const noisyEntries = [
-      ...Array.from({ length: SEARCH_FALLBACK_RESULTS_MAX_ITEMS + 8 }, (_, index) =>
-        entry(`.vault/adr/low-${index}-needle.md`, []),
-      ),
-      entry(".vault/adr/needle-best.md", []),
-    ];
-
-    const results = buildFallbackResults(noisyEntries, "needle");
-
-    expect(results).toHaveLength(SEARCH_FALLBACK_RESULTS_MAX_ITEMS);
-    expect(results[0].node_id).toBe("doc:needle-best");
-  });
-});
+// The rag-down text fallback (`buildFallbackResults`) retired with the ADR D2
+// fold: name matches now come from the files(vault) search provider through the
+// one shared literal matcher, covered by `literalMatch` + `searchProviders`
+// vectors. The tiers-gated `semanticOffline` truth this controller still exports
+// is exercised below.
 
 describe("node-id grammar (stores-owned, §2 identity)", () => {
   it("stems a vault path and forms its doc node id", () => {
@@ -316,8 +261,6 @@ const hit = (nodeId: string | null = "doc:x"): SearchResult => ({
 
 const base = {
   target: "vault" as const,
-  fallbackEntries: undefined,
-  fallbackPending: false,
   filterVocabulary: undefined,
   retry: noop,
 };
@@ -374,7 +317,10 @@ describe("interpretSearch (the explicit state machine)", () => {
     expect(v.semanticOffline).toBe(false);
   });
 
-  it("semantic-offline: tiers-gated, serves the vault text-match fallback", () => {
+  it("semantic-offline: tiers-gated, contributes NO results (files provider carries names)", () => {
+    // ADR D2 fold: the controller no longer serves a text fallback. When rag is
+    // offline it reports the tiers-gated `semanticOffline` truth and an EMPTY
+    // result set — the files(vault) provider carries name matches in the host.
     const v = interpretSearch({
       ...base,
       query: "auth",
@@ -383,15 +329,13 @@ describe("interpretSearch (the explicit state machine)", () => {
         tiers: { semantic: { available: false, reason: "rag down" } },
       }),
       isPending: false,
-      fallbackEntries: [entry(".vault/adr/2026-06-12-auth-flow-adr.md", ["auth-flow"])],
     });
     expect(v.state).toBe("semantic-offline");
     expect(v.semanticOffline).toBe(true);
-    expect(v.noCodeFallback).toBe(false);
-    expect(v.results[0].node_id).toBe("doc:2026-06-12-auth-flow-adr");
+    expect(v.results).toEqual([]);
   });
 
-  it("semantic-offline + code target: explicit no-fallback, never a misleading empty", () => {
+  it("semantic-offline is target-independent now the fallback folded away", () => {
     const v = interpretSearch({
       ...base,
       target: "code",
@@ -401,13 +345,9 @@ describe("interpretSearch (the explicit state machine)", () => {
         tiers: { semantic: { available: false } },
       }),
       isPending: false,
-      fallbackEntries: [entry(".vault/adr/2026-06-12-auth-flow-adr.md", ["auth-flow"])],
     });
     expect(v.state).toBe("semantic-offline");
-    expect(v.noCodeFallback).toBe(true);
-    // No corpus for code → empty results, but the state is offline (not
-    // no-results), so the view renders the explicit notice not a blank "no
-    // matches".
+    expect(v.semanticOffline).toBe(true);
     expect(v.results).toEqual([]);
   });
 
@@ -426,277 +366,79 @@ describe("interpretSearch (the explicit state machine)", () => {
     // not blank a list the operator was reading.
     expect(v.results).toHaveLength(1);
   });
+
+  it("surfaces served index_state + semantic_epoch on a results outcome (D3, raw)", () => {
+    const indexState = {
+      source: "vault",
+      indexed_count: 3173,
+      target_matches: true,
+      status: "available",
+    };
+    const v = interpretSearch({
+      ...base,
+      query: "auth",
+      data: {
+        results: [hit()],
+        tiers: { semantic: { available: true } },
+        index_state: indexState,
+        semantic_epoch: 42,
+      },
+      error: null,
+      isPending: false,
+    });
+    expect(v.state).toBe("results");
+    // Raw served truth, presentation-mapped only downstream.
+    expect(v.semanticEpoch).toBe(42);
+    expect(v.indexState).toEqual(indexState);
+    // The reference is forwarded, never cloned (frontend-store-selectors: no
+    // fresh reference minted), so identity is stable across renders.
+    expect(v.indexState).toBe(indexState);
+  });
+
+  it("preserves a null semantic_epoch (honest known-unknown), distinct from absent", () => {
+    const v = interpretSearch({
+      ...base,
+      query: "auth",
+      data: {
+        results: [hit()],
+        tiers: { semantic: { available: true } },
+        semantic_epoch: null,
+      },
+      error: null,
+      isPending: false,
+    });
+    expect(v.semanticEpoch).toBeNull();
+    expect(v.indexState).toBeUndefined();
+  });
+
+  it("idle reports no served freshness", () => {
+    const v = interpretSearch({
+      ...base,
+      query: "",
+      data: undefined,
+      error: null,
+      isPending: false,
+    });
+    expect(v.state).toBe("idle");
+    expect(v.semanticEpoch).toBeUndefined();
+    expect(v.indexState).toBeUndefined();
+  });
 });
 
-describe("deriveSearchPresentationView (SearchTab display facts)", () => {
-  it("projects result keyboard focus deltas at the search presentation seam", () => {
-    expect(searchResultKeyboardFocusDelta("ArrowDown")).toBe(1);
-    expect(searchResultKeyboardFocusDelta("ArrowUp")).toBe(-1);
-    expect(searchResultKeyboardFocusDelta("Enter")).toBeNull();
-    expect(searchResultKeyboardFocusDelta({ key: "ArrowDown" })).toBeNull();
+describe("mergeSemanticEpoch (one shared epoch across the two corpora)", () => {
+  it("prefers a concrete number over null over undefined", () => {
+    expect(mergeSemanticEpoch(42, null)).toBe(42);
+    expect(mergeSemanticEpoch(null, 7)).toBe(7);
+    expect(mergeSemanticEpoch(5, 9)).toBe(5); // both warm, agree in practice
   });
 
-  it("derives the live region and first selectable row from served results", () => {
-    expect(
-      deriveSearchPresentationView(
-        "alpha",
-        {
-          state: "results",
-          results: [hit(null), hit("doc:selectable")],
-          semanticOffline: false,
-          error: false,
-        },
-        { target: "code", scope: "scope-a" },
-      ),
-    ).toEqual({
-      rootClassName: "space-y-fg-2 text-body",
-      hasQuery: true,
-      resultRows: [
-        expect.objectContaining({
-          key: "x:0",
-          nodeId: null,
-          species: "unknown",
-          source: "x",
-          buttonClassName:
-            "w-full rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus cursor-default opacity-70",
-          excerptClassName: "mt-fg-0-5 block truncate text-ink-muted",
-          scoreLabel: "80%",
-          scoreToneClass: "text-ink-muted",
-          fallbackBadgeLabel: null,
-          selectable: false,
-          ariaLabel: "x, relevance 80%, no graph node - not selectable",
-          entity: expect.objectContaining({
-            kind: "search-result",
-            id: "x",
-            scope: "scope-a",
-            source: "x",
-            nodeId: undefined,
-            score: 0.8,
-            isCode: true,
-          }),
-        }),
-        expect.objectContaining({
-          key: "doc:selectable",
-          nodeId: "doc:selectable",
-          species: "doc",
-          source: "x",
-          buttonClassName:
-            "w-full rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus hover:border-rule-strong hover:bg-paper-sunken",
-          excerptClassName: "mt-fg-0-5 block truncate text-ink-muted",
-          scoreLabel: "80%",
-          scoreToneClass: "text-ink-muted",
-          fallbackBadgeLabel: null,
-          selectable: true,
-          ariaLabel: "x, relevance 80%",
-          entity: expect.objectContaining({
-            kind: "search-result",
-            id: "doc:selectable",
-            scope: "scope-a",
-            source: "x",
-            nodeId: "doc:selectable",
-            score: 0.8,
-            isCode: true,
-          }),
-        }),
-      ],
-      showResults: true,
-      showLoading: false,
-      showSemanticOffline: false,
-      showError: false,
-      firstClickableIndex: 1,
-      noResults: false,
-      noResultsMessage: "",
-      idleMessage:
-        "search semantically across the vault and code. select a result to focus it on the stage.",
-      loadingMessage: "searching…",
-      semanticOfflineMessage: "",
-      errorTitle: "search request failed",
-      retryLabel: "try again",
-      inputPlaceholder: "Search documents and code…",
-      inputAriaLabel: "search query",
-      targetGroupAriaLabel: "search target",
-      resultsListAriaLabel: "search results",
-      resultSummaryLabel: "Ranked by meaning · 2 results",
-      liveMessage: "2 results",
-      targetGroupClassName: "flex gap-fg-1",
-      idleClassName: "px-fg-1 py-fg-2 text-label text-ink-faint",
-      loadingClassName:
-        "animate-pulse-live px-fg-1 py-fg-0-5 text-label text-ink-faint",
-      semanticOfflineClassName:
-        "flex items-start gap-fg-1-5 rounded-fg-xs border border-state-stale/40 bg-paper-sunken px-fg-2 py-fg-1 text-label text-ink-muted",
-      semanticOfflineIconClassName: "mt-px shrink-0 text-state-stale",
-      errorClassName:
-        "space-y-fg-1 rounded-fg-xs border border-state-broken/40 px-fg-2 py-fg-1",
-      errorTitleClassName: "text-label text-state-broken",
-      retryButtonClassName:
-        "rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-      noResultsClassName: "px-fg-1 py-fg-2 text-label text-ink-faint",
-      resultCountClassName: "px-fg-1 text-caption text-ink-faint",
-      resultsListClassName: "space-y-fg-1",
-    });
+  it("collapses to null only when neither corpus served a number but one is known-unknown", () => {
+    expect(mergeSemanticEpoch(null, undefined)).toBeNull();
+    expect(mergeSemanticEpoch(undefined, null)).toBeNull();
   });
 
-  it("derives result species from stable node ids for chrome icons", () => {
-    const rows = deriveSearchPresentationView(
-      "alpha",
-      {
-        state: "results",
-        results: [
-          hit("doc:a"),
-          hit("code:src/app.ts"),
-          hit("commit:abc"),
-          hit("feature:auth"),
-          hit(null),
-        ],
-        semanticOffline: false,
-        error: false,
-      },
-      { target: "vault", scope: "scope-a" },
-    ).resultRows;
-
-    expect(rows.map((row) => row.species)).toEqual([
-      "doc",
-      "code",
-      "commit",
-      "unknown",
-      "unknown",
-    ]);
-  });
-
-  it("announces semantic-offline and no-results as controller-owned outcomes", () => {
-    const offline = deriveSearchPresentationView("alpha", {
-      state: "semantic-offline",
-      results: [hit("doc:fallback")],
-      semanticOffline: true,
-      error: false,
-    });
-
-    expect(offline).toMatchObject({
-      showLoading: false,
-      showSemanticOffline: true,
-      showError: false,
-      semanticOfflineMessage:
-        "semantic search offline — showing title and text matches",
-      resultSummaryLabel: "Ranked by text match · 1 result",
-      liveMessage: "semantic search offline — showing title and text matches",
-    });
-    expect(offline.resultRows[0]).toMatchObject({
-      scoreToneClass: "text-ink-faint",
-      fallbackBadgeLabel: "text match",
-    });
-
-    expect(
-      deriveSearchPresentationView("alpha", {
-        state: "semantic-offline",
-        results: [],
-        semanticOffline: true,
-        noCodeFallback: true,
-        error: false,
-      }).semanticOfflineMessage,
-    ).toBe(
-      "semantic search offline — showing title and text matches (vault only; no code fallback available)",
-    );
-
-    expect(
-      deriveSearchPresentationView("  zzz  ", {
-        state: "no-results",
-        results: [],
-        semanticOffline: false,
-        error: false,
-      }),
-    ).toMatchObject({
-      showResults: false,
-      showLoading: false,
-      showSemanticOffline: false,
-      showError: false,
-      resultRows: [],
-      firstClickableIndex: -1,
-      noResults: true,
-      noResultsMessage:
-        "no matches for “zzz”. try broadening the query or switching target.",
-      resultSummaryLabel: "",
-      liveMessage: "no results",
-    });
-  });
-
-  it("keeps transport failure live copy distinct from degraded semantic search", () => {
-    expect(
-      deriveSearchPresentationView("alpha", {
-        state: "error",
-        results: [hit()],
-        semanticOffline: false,
-        error: true,
-      }),
-    ).toMatchObject({
-      showResults: true,
-      showLoading: false,
-      showSemanticOffline: false,
-      showError: true,
-      firstClickableIndex: 0,
-      noResults: false,
-      errorTitle: "search request failed",
-      retryLabel: "try again",
-      resultSummaryLabel: "Ranked by meaning · 1 result",
-      liveMessage: "search request failed",
-    });
-  });
-
-  it("normalizes runtime query input at the presentation seam", () => {
-    expect(
-      deriveSearchPresentationView("   ", {
-        state: "idle",
-        results: [],
-        semanticOffline: false,
-        error: false,
-      }),
-    ).toMatchObject({
-      hasQuery: false,
-      resultRows: [],
-      showLoading: false,
-      showSemanticOffline: false,
-      showError: false,
-      noResults: false,
-      noResultsMessage: "",
-      idleMessage:
-        "search semantically across the vault and code. select a result to focus it on the stage.",
-      loadingMessage: "searching…",
-      liveMessage: "",
-    });
-
-    expect(
-      deriveSearchPresentationView(
-        { query: "zzz" },
-        {
-          state: "no-results",
-          results: [],
-          semanticOffline: false,
-          error: false,
-        },
-      ),
-    ).toMatchObject({
-      hasQuery: false,
-      noResultsMessage:
-        "no matches for “”. try broadening the query or switching target.",
-    });
-  });
-
-  it("derives loading state copy for the chrome surface", () => {
-    expect(
-      deriveSearchPresentationView("alpha", {
-        state: "loading",
-        results: [],
-        semanticOffline: false,
-        error: false,
-      }),
-    ).toMatchObject({
-      hasQuery: true,
-      showLoading: true,
-      showSemanticOffline: false,
-      showError: false,
-      loadingMessage: "searching…",
-      resultSummaryLabel: "",
-      liveMessage: "",
-    });
+  it("is undefined only when neither corpus served an epoch", () => {
+    expect(mergeSemanticEpoch(undefined, undefined)).toBeUndefined();
   });
 });
 
@@ -797,9 +539,7 @@ describe("useSearchController (real engine, live wiring)", () => {
     // After the window the settled term issues a request; the burst coalesces to
     // EXACTLY ONE (not one per keystroke) because the debounce drops the in-flight
     // intermediate terms.
-    await waitFor(() => expect(searchRequests).toBeGreaterThanOrEqual(1), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(searchRequests).toBeGreaterThanOrEqual(1), ENGINE_WAIT);
     expect(searchRequests).toBe(1);
 
     engineClient.useTransport(liveTransport);
@@ -826,10 +566,12 @@ describe("useSearchController (real engine, live wiring)", () => {
     rerender({ q: "alpha", target: "code" });
     expect(searchBodies).toEqual([]);
 
-    await waitFor(() => expect(searchBodies).toHaveLength(1), { timeout: 6000 });
+    await waitFor(() => expect(searchBodies).toHaveLength(1), ENGINE_WAIT);
+    // The corpus target rides the wire as `type` (rag's vocabulary; see
+    // EngineClient.search) — a `target` key never reaches the wire.
     expect(JSON.parse(searchBodies[0])).toMatchObject({
       query: "alpha",
-      target: "code",
+      type: "code",
       scope,
     });
 
@@ -852,7 +594,7 @@ describe("useSearchController (real engine, live wiring)", () => {
         expect(["results", "no-results", "semantic-offline", "error"]).toContain(
           result.current.state,
         ),
-      { timeout: 6000 },
+      ENGINE_WAIT,
     );
 
     rerender({ q: "alphabet" });
@@ -878,9 +620,7 @@ describe("useSearchController (real engine, live wiring)", () => {
       { wrapper, initialProps: { q: "alpha", activeScope: scope } },
     );
 
-    await waitFor(() => expect(filterRequests.length).toBeGreaterThan(0), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(filterRequests.length).toBeGreaterThan(0), ENGINE_WAIT);
     filterRequests.length = 0;
 
     const nextScope = `${scope}-not-yet-settled`;
@@ -909,12 +649,67 @@ describe("useSearchController (real engine, live wiring)", () => {
         expect(["results", "no-results", "semantic-offline", "error"]).toContain(
           result.current.state,
         ),
-      { timeout: 6000 },
+      ENGINE_WAIT,
     );
     for (const r of result.current.results) {
       expect(r.node_id).not.toBeNull();
       // semantic-offline fallback rows stay strictly below the semantic band.
       if (result.current.semanticOffline) expect(r.score).toBeLessThan(1);
+    }
+  });
+
+  it("rag-gated: a real semantic search serves the freshness contract when the semantic tier is up", async (ctx) => {
+    // The rag-gated live SUCCESS test (rag-integration-hardening D4): drive a real
+    // settled query through the controller and assert the served FRESHNESS
+    // contract — but only when the served tiers report the semantic tier
+    // available. The gate is the wire's own tiers truth, read through the
+    // controller's tiers-gated `semanticOffline` (and the transport-error state),
+    // never guessed: on a machine with no resident rag the fixture serve degrades
+    // the semantic tier, so this SKIPS honestly with a stated reason rather than
+    // asserting a chain that cannot run. The fixture serve scopes a scratch vault
+    // copy rag has not indexed, so the honest live outcome here is a semantic
+    // no-results (empty hits) that STILL carries the freshness envelope.
+    const { result } = renderHook(() => useSearchController("graph", "vault", scope), {
+      wrapper,
+    });
+    await waitFor(
+      () =>
+        expect(["results", "no-results", "semantic-offline", "error"]).toContain(
+          result.current.state,
+        ),
+      ENGINE_WAIT,
+    );
+
+    // Gate on served tiers truth: a degraded semantic tier (no resident rag) or a
+    // transport fault means the success chain cannot be exercised — skip loudly.
+    if (result.current.semanticOffline || result.current.state === "error") {
+      ctx.skip(
+        `semantic tier unavailable on this machine (state=${result.current.state}, ` +
+          `semanticOffline=${result.current.semanticOffline}); live search success ` +
+          `chain not exercised — needs a resident rag`,
+      );
+      return;
+    }
+
+    // Semantic tier is up: the outcome is a real semantic terminal state
+    // (results when the scope is indexed, no-results for the unindexed fixture),
+    // never the offline fallback band.
+    expect(["results", "no-results"]).toContain(result.current.state);
+
+    // Served freshness rides the interpreted view (D3): the shared epoch is a
+    // number (warm cache) or an explicit null (cold — a known-unknown), never
+    // undefined on an active search; rag's index_state is forwarded as an object
+    // (or absent per the adapter contract when the engine degraded to a shape
+    // miss, which is not this success path).
+    const { semanticEpoch, indexState } = result.current;
+    expect(semanticEpoch === null || typeof semanticEpoch === "number").toBe(true);
+    expect(indexState === undefined || typeof indexState === "object").toBe(true);
+
+    // Every hit carries the engine's node-id value-add key (null on a typed
+    // annotation miss, never a dropped key). Vacuous on the unindexed no-results
+    // outcome; load-bearing when the scope is indexed.
+    for (const r of result.current.results) {
+      expect(r).toHaveProperty("node_id");
     }
   });
 });

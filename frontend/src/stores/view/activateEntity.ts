@@ -28,6 +28,7 @@
 import { featureTagFromNodeId } from "../server/liveAdapters";
 import { normalizeNodeId } from "../nodeIds";
 import { normalizeSelectionScope } from "./selection";
+import { requestSelectionReveal } from "./selectionReveal";
 import { runSceneCommand } from "./sceneCommandBridge";
 import { openDocTab, previewDocTab } from "./tabs";
 import { expandWorkingSet } from "./workingSet";
@@ -111,7 +112,15 @@ export async function activateEntity(
   // when the node is rendered, and (after the ego-expand above lands) frames it on
   // arrival when it was off-slice — so the camera reaches "the actual document on the
   // graph" regardless of the starting granularity.
-  if (options.frame) runSceneCommand({ kind: "focus-node", id });
+  //
+  // (c-rail) REVEAL: the same off-canvas gate (`frame:true`) also asks the projection
+  // surfaces to scroll the node's row into view (GS-003) — a rail/search/menu selection
+  // reveals across surfaces, while an on-canvas click (`frame:false`) never does, so the
+  // canvas click doesn't yank the rail. Mirrors the camera focus-bounce gating.
+  if (options.frame) {
+    runSceneCommand({ kind: "focus-node", id });
+    requestSelectionReveal(id);
+  }
 
   return opened;
 }

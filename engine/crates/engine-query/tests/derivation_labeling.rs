@@ -51,6 +51,7 @@ fn doc(stem: &str, doc_type: Option<&str>, created: &str) -> Node {
         feature_tags: vec!["feature-a".into()],
         status: None,
         tier: None,
+        size: None,
         facets: vec![Facet {
             scope: scope(),
             presence: Presence::Exists,
@@ -76,6 +77,7 @@ fn plan_container(plan_stem: &str, container_id: &str) -> Node {
         feature_tags: vec!["feature-a".into()],
         status: None,
         tier: None,
+        size: None,
         facets: vec![Facet {
             scope: scope(),
             presence: Presence::Exists,

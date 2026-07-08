@@ -51,6 +51,7 @@ import {
 } from "../../stores/view/tabs";
 import { Button, type BreadcrumbItem } from "../kit";
 import { DocChrome, type DocChromeMode } from "./DocChrome";
+import { HighlightedTextarea } from "./HighlightedCode";
 import { MarkdownReader } from "./MarkdownReader";
 
 // The directory tags every .vault/ document carries; the OTHER tag is the feature.
@@ -312,12 +313,11 @@ export function MarkdownDocView({
         </div>
       )}
       <div className="flex min-h-0 flex-1">
-        <textarea
-          className="min-h-0 flex-1 resize-none border-none bg-paper px-fg-6 py-fg-3 font-mono text-body leading-relaxed text-ink outline-none"
+        <HighlightedTextarea
           value={editor.draftText}
-          onChange={(event) => updateEditorDraft(event.target.value)}
-          spellCheck={false}
-          aria-label="document body editor"
+          languageHint="markdown"
+          onChange={updateEditorDraft}
+          ariaLabel="document body editor"
         />
         <PropertiesCard
           draft={editorChrome.frontmatterDraft}

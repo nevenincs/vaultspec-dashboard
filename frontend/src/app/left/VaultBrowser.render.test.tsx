@@ -21,11 +21,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { createElement } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { dashboardDocumentStateResetPatch } from "../../stores/server/dashboardState";
 import { queryClient } from "../../stores/server/queryClient";
 import { useBrowserTreeExpansionStore } from "../../stores/view/browserTreeExpansion";
+import { setFollowMode } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
-import { liveScope } from "../../testing/liveClient";
+import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { VaultBrowser } from "./VaultBrowser";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function renderBrowser() {
   return render(
@@ -42,7 +45,18 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
   beforeAll(async () => {
     scope = await liveScope();
   });
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Reset the SERVER dashboard-state to default (TIH-007a): an earlier suite persists
+    // `selected_ids` on the shared engine, and this suite's client-only cache reset
+    // can't clear it. If it leaked in, the follow-mode reveal-on-selection reaction
+    // would fire when that stale selection arrives and re-render the tree — detaching a
+    // test's captured collapsed folder so no leaf ever mounts (the GS-007 failure).
+    await createLiveClient().patchDashboardState(
+      dashboardDocumentStateResetPatch(scope),
+    );
+    // Follow mode OFF here (TIH-007b): this suite tests disclosure mechanics; the
+    // reveal-on-selection reaction has its own dedicated suite, so it must not fire here.
+    setFollowMode(false);
     // Start every test from a clean, fully-collapsed disclosure state so the
     // persisted (localStorage-backed) tree store cannot leak expansion between tests
     // — the collapsed default is the contract under test.
@@ -61,9 +75,10 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     // benign AbortError into an UNHANDLED rejection that fails the run. Waiting for
     // isFetching()===0 lets the (local, fast) live engine settle every fetch first, so
     // nothing is left for the teardown abort to orphan — no masking, no swallowed errors.
-    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0), ENGINE_WAIT);
     queryClient.clear();
     useViewStore.getState().setScope(null);
+    setFollowMode(true); // restore the view-local default so follow-mode-off can't leak
   });
 
   // Every navigable element in the rail's single roving-tabindex order: the two
@@ -93,22 +108,29 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
       });
       expect(button).toBeTruthy();
       return button!;
-    });
+    }, ENGINE_WAIT);
     if (header.getAttribute("aria-expanded") === "false") {
       fireEvent.click(header);
     }
-    await waitFor(() => expect(header.getAttribute("aria-expanded")).toBe("true"));
+    await waitFor(
+      () => expect(header.getAttribute("aria-expanded")).toBe("true"),
+      ENGINE_WAIT,
+    );
     return header;
   }
 
   it("renders both sections collapsed by default under a labelled landmark", async () => {
     renderBrowser();
-    const nav = await screen.findByRole("navigation", { name: "vault browser" });
+    const nav = await screen.findByRole(
+      "navigation",
+      { name: "vault browser" },
+      ENGINE_WAIT,
+    );
     expect(nav).toBeTruthy();
     await waitFor(() => {
       const sections = document.querySelectorAll("[data-vault-section]");
       expect(sections.length).toBe(2);
-    });
+    }, ENGINE_WAIT);
     // Sections default COLLAPSED → both section headers read NOT expanded and no
     // folder rows are mounted yet.
     const sectionHeaders = screen
@@ -125,13 +147,13 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
       expect(document.querySelectorAll("[data-vault-folder]").length).toBeGreaterThan(
         0,
       );
-    });
+    }, ENGINE_WAIT);
   });
 
   it("is ONE tab-stop: exactly one navigable element has tabIndex 0 at a time", async () => {
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" });
-    await waitFor(() => expect(navButtons().length).toBeGreaterThan(0));
+    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    await waitFor(() => expect(navButtons().length).toBeGreaterThan(0), ENGINE_WAIT);
     expect(tabZero()).toHaveLength(1);
     const others = navButtons().filter((b) => b.tabIndex !== 0);
     expect(others.every((b) => b.tabIndex === -1)).toBe(true);
@@ -140,7 +162,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
 
   it("collapses then re-expands a section, and expands a folder to reveal document rows", async () => {
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" });
+    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
     // Open the Documents section (collapsed by default), then round-trip its
     // disclosure: collapse → re-expand.
     const section = await expandSection("documents");
@@ -164,20 +186,20 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
       );
       expect(button).toBeTruthy();
       return button!;
-    });
+    }, ENGINE_WAIT);
     fireEvent.click(folder);
     await waitFor(() => {
       const rows = screen
         .getAllByRole("button")
         .filter((b) => b.getAttribute("title")?.startsWith(".vault/"));
       expect(rows.length).toBeGreaterThan(0);
-    });
+    }, ENGINE_WAIT);
   });
 
   it("moves the roving tabIndex 0 with ArrowDown/ArrowUp across visible nodes", async () => {
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" });
-    await waitFor(() => expect(navButtons().length).toBeGreaterThan(1));
+    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    await waitFor(() => expect(navButtons().length).toBeGreaterThan(1), ENGINE_WAIT);
     const first = tabZero()[0];
     expect(first.hasAttribute("aria-expanded")).toBe(true);
     first.focus();
@@ -200,7 +222,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     // Decisions / …), NOT directly to documents; ADR D3: every folder row leads
     // with a centralized category icon, never a folder glyph or a dot.
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" });
+    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
     // Open the Features section (collapsed by default) so its feature folder rows mount.
     await expandSection("features");
     const featureFolder = await waitFor(() => {
@@ -209,7 +231,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
         .find((b) => b.parentElement?.hasAttribute("data-vault-folder"));
       expect(button).toBeTruthy();
       return button!;
-    });
+    }, ENGINE_WAIT);
     // The feature row carries a category icon (the centralized DocTypeMark), not a folder glyph.
     expect(featureFolder.querySelector("[data-doc-mark]")).toBeTruthy();
     fireEvent.click(featureFolder);
@@ -223,7 +245,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
       );
       expect(folderButton).toBeTruthy();
       return folderButton!;
-    });
+    }, ENGINE_WAIT);
     expect(subFolder.querySelector("[data-doc-mark]")).toBeTruthy();
     // A category sub-folder carries a category token on its icon (e.g. adr/research).
     expect(
@@ -233,7 +255,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
 
   it("groups the Documents section by category and never surfaces an index row", async () => {
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" });
+    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
     // Open the Documents section (collapsed by default) to mount its category folders.
     const documentsHeader = await expandSection("documents");
     // Its body's folder rows are category folders (each with a category icon), and an
@@ -250,12 +272,12 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
         expect(folder.querySelector("[data-doc-mark]")).toBeTruthy();
         expect(folder.textContent?.toLowerCase()).not.toContain("index");
       }
-    });
+    }, ENGINE_WAIT);
   });
 
   it("clicking a document row drives the shared selection (doc:<stem>)", async () => {
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" });
+    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
     // Open the Documents section (collapsed by default), then expand a category
     // folder, which reveals its documents directly.
     const documentsHeader = await expandSection("documents");
@@ -268,7 +290,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
       );
       expect(button).toBeTruthy();
       return button!;
-    });
+    }, ENGINE_WAIT);
     fireEvent.click(folder);
     // The clicked Documents-section category folder reveals its document rows
     // directly; click one to drive the shared selection.
@@ -278,11 +300,61 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
         .find((b) => b.getAttribute("title")?.startsWith(".vault/"));
       expect(candidate).toBeTruthy();
       return candidate!;
-    });
+    }, ENGINE_WAIT);
     fireEvent.click(row);
     await waitFor(() => {
       expect(row.getAttribute("aria-current")).toBe("page");
-    });
+    }, ENGINE_WAIT);
+  });
+
+  it("renders the review signals: plan progress pip, ADR status token, authored date, weight", async () => {
+    // left-rail-tree-controls ADR D1 over the LIVE fixture vault: the alpha plan
+    // (1 of 2 checkboxes) reads as an in-progress pip with a tabular 1/2; the
+    // beta ADR (H1 `accepted` marker) reads its plain-language status token; a
+    // leaf's trailing meta leads with the AUTHORED created date (the filename
+    // stamp) and the served word count; the tooltip is the full metadata card.
+    renderBrowser();
+    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    const documentsHeader = await expandSection("documents");
+    const body = document.getElementById(
+      documentsHeader.getAttribute("aria-controls")!,
+    )!;
+    // Expand every category folder so plan + adr leaves mount.
+    await waitFor(() => {
+      expect(
+        body.querySelectorAll("[data-vault-folder] > button[aria-expanded]").length,
+      ).toBeGreaterThan(0);
+    }, ENGINE_WAIT);
+    for (const folder of body.querySelectorAll<HTMLButtonElement>(
+      "[data-vault-folder] > button[aria-expanded='false']",
+    )) {
+      fireEvent.click(folder);
+    }
+    // Plan leaf: in-progress pip + done/total in tabular numerals.
+    const planSignal = await waitFor(() => {
+      const el = body.querySelector("[data-plan-status]");
+      expect(el).toBeTruthy();
+      return el!;
+    }, ENGINE_WAIT);
+    expect(planSignal.getAttribute("data-plan-status")).toBe("in-progress");
+    expect(planSignal.textContent).toContain("1/2");
+    // ADR leaf: the acceptance status as a compact shape+tone mark whose
+    // plain-language word rides the aria-label (title-first density).
+    const adrSignal = body.querySelector("[data-adr-status]");
+    expect(adrSignal?.getAttribute("data-adr-status")).toBe("accepted");
+    expect(adrSignal?.getAttribute("aria-label")).toBe("decision accepted");
+    // A leaf's meta is ONE value — the AUTHORED date by default (fixture created
+    // 2026-01-05 → "Jan 5"), never the checkout's worktree mtime; the weight
+    // lives in the tooltip so the title never collapses (title-first density).
+    const adrLeaf = adrSignal!.closest("button")!;
+    expect(adrLeaf.textContent).toContain("Jan 5");
+    expect(adrLeaf.textContent).not.toMatch(/\d+ words?/);
+    // The tooltip is the full metadata card: path first (the selection contract
+    // other suites key on), then dates, then weight.
+    const tooltip = adrLeaf.getAttribute("title")!;
+    expect(tooltip.startsWith(".vault/adr/2026-01-05-beta-adr.md")).toBe(true);
+    expect(tooltip).toContain("Authored 2026-01-05");
+    expect(tooltip).toMatch(/\d+ words? · [\d.]+ K?B/);
   });
 
   it("renders folders and leaves through one fully-rounded row shell with one standardized selection", async () => {
@@ -292,7 +364,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     // bar (`border-l*`) or a half-rounded (`rounded-r*`) leaf, which is exactly the
     // divergence this guards against.
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" });
+    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
     // Open the Documents section (collapsed by default) to reach a category folder.
     const documentsHeader = await expandSection("documents");
     const folder = await waitFor(() => {
@@ -304,7 +376,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
       );
       expect(button).toBeTruthy();
       return button!;
-    });
+    }, ENGINE_WAIT);
     // The folder row is fully rounded.
     expect(folder.className).toContain("rounded-fg-xs");
     fireEvent.click(folder);
@@ -314,7 +386,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
         .find((b) => b.getAttribute("title")?.startsWith(".vault/"));
       expect(candidate).toBeTruthy();
       return candidate!;
-    });
+    }, ENGINE_WAIT);
     // The leaf uses the SAME fully-rounded shell as the folder — no divergence.
     expect(leaf.className).toContain("rounded-fg-xs");
     expect(leaf.className).not.toContain("border-l");
@@ -323,7 +395,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     fireEvent.click(leaf);
     await waitFor(() => {
       expect(leaf.getAttribute("aria-current")).toBe("page");
-    });
+    }, ENGINE_WAIT);
     expect(leaf.className).toContain("bg-accent-subtle");
     expect(leaf.className).not.toContain("border-l");
   });

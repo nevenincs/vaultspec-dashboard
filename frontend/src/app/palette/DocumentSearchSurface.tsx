@@ -5,11 +5,11 @@
 // available when the semantic tier is offline.
 //
 // Layer law (dashboard-layer-ownership): dumb chrome. It consumes the stores
-// `useDocumentSearchController` (which owns the only wire access — the vault tree),
-// derives pill views through the shared `deriveSearchPillViews`, and opens a result
-// through the ONE standardized open seam (`openNodeIsland`), exactly like the
-// semantic surface and the context-menu Open. It fetches nothing itself and reads no
-// raw `tiers` block.
+// `useDocumentSearchController` (a thin files(vault) provider consumer — the wire
+// access stays in the stores layer), derives pill views through the shared
+// `deriveSearchPillViews`, and opens a result through the ONE standardized open
+// seam (`activateEntity`), exactly like the search surface and the context-menu
+// Open. It fetches nothing itself and reads no raw `tiers` block.
 
 import { FileText } from "lucide-react";
 import {

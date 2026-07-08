@@ -74,6 +74,7 @@ describe("useSettingsEffectsIntent", () => {
       }),
     ).toEqual({
       defaultGranularity: "feature",
+      corpus: "vault",
       confidenceFloor: 60,
       labelFilter: "adr",
     });

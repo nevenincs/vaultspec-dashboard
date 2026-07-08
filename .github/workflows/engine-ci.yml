@@ -26,8 +26,17 @@ jobs:
         working-directory: engine
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Pin CI to the repo toolchain (engine/rust-toolchain.toml) instead of
+      # floating stable: the action exports RUSTUP_TOOLCHAIN, which overrides
+      # the file, so the pin must be read and passed explicitly
+      # (dashboard-packaging P03 reproducibility fix).
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:

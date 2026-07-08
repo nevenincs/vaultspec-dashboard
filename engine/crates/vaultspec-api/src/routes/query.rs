@@ -184,6 +184,80 @@ pub async fn vault_tree(
     ))
 }
 
+// --- GET /code-files?scope= ---------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct CodeFilesParams {
+    pub scope: String,
+    #[serde(default)]
+    pub cursor: Option<String>,
+    #[serde(default)]
+    pub page_size: Option<usize>,
+}
+
+/// The COMPLETE code-file listing (search-providers ADR: the one contract
+/// event). Projects every `code:` FILE node off the code corpus `LinkageGraph`
+/// — never the DOI-bounded graph slice — so the `files (code)` search provider
+/// can hold the whole set client-side and narrow it (the complete-paginated-set
+/// rule). Twin of `/vault-tree`: the same cursor pagination and envelope, over a
+/// filter-independent projection memoized per code generation
+/// (`CodeGraphCell::code_file_rows`); the handler paginates the cached slice per
+/// request. Freshness is lazy like the code graph query: a debounced source-tree
+/// fingerprint probe re-extracts only when the tree changed (ADR D6), off the
+/// async runtime because the walk/parse is blocking.
+pub async fn code_files(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<CodeFilesParams>,
+) -> ApiResult {
+    let cell = validate_scope(&state, &params.scope)?;
+    // Extraction is blocking CPU/IO (tree walk; full parse on a fingerprint
+    // miss) — run it off the runtime, mirroring the code graph query. A failure
+    // surfaces honestly (5xx) rather than serving a stale or empty lie.
+    let blocking_cell = cell.clone();
+    let graph =
+        tokio::task::spawn_blocking(move || blocking_cell.code.ensure_fresh(&blocking_cell.root))
+            .await
+            .map_err(|e| {
+                super::api_error(&state, StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            })?
+            .map_err(|e| {
+                super::api_error(
+                    &state,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("code corpus extraction failed: {e}"),
+                )
+            })?;
+    // The complete path-sorted listing, served from the per-generation memo
+    // (the projection runs over exactly the graph Arc just read).
+    let entries = cell.code.code_file_rows(&graph);
+    // Cursor pagination on the unbounded listing, clamped exactly like
+    // `/vault-tree`: a client-supplied page_size cannot defeat the cursor cap.
+    let page_size = params.page_size.unwrap_or(500).min(2000);
+    let (page, next_cursor) = engine_query::envelope::paginate(
+        &entries,
+        |e| e["path"].as_str().unwrap_or_default(),
+        params.cursor.as_deref(),
+        page_size,
+    );
+    // Honest truncation (ADR D8 counters): the ingest walk cap bounds the corpus
+    // at its file ceiling, so when the walk was capped the listing is NOT the
+    // complete source tree — state it rather than imply completeness. Null when
+    // the walk ran to completion (the common case). This is walk-cap truncation
+    // only; it is orthogonal to the per-page cursor (`next_cursor`).
+    let truncated = cell.code.stats_snapshot().filter(|s| s.capped).map(|s| {
+        json!({
+            "returned_files": s.files,
+            "reason": "source-tree walk cap: ingest stopped at its file ceiling; \
+                       files beyond it are absent from this listing",
+        })
+    });
+    Ok(super::envelope(
+        json!({"entries": page, "truncated": truncated}),
+        rag_tiers(&cell),
+        next_cursor,
+    ))
+}
+
 // --- POST /graph/query ----------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -204,6 +278,19 @@ pub struct GraphQueryBody {
     /// warm-started PPR). Absent = no focus (DOI == a-priori importance).
     #[serde(default)]
     pub focus: Option<String>,
+    /// Which dataset to serve (codebase-graphing ADR D5): `vault` (default,
+    /// absent = byte-identical to the pre-corpus contract) or `code` — the
+    /// DISCONNECTED code corpus. Unknown values are a typed 400.
+    #[serde(default)]
+    pub corpus: Option<String>,
+    /// CODE-CORPUS narrowing (ADR D5): keep only nodes under this
+    /// repo-relative directory prefix. Ignored (validated away) on `vault`.
+    #[serde(default)]
+    pub dir_prefix: Option<String>,
+    /// CODE-CORPUS narrowing: language wire tokens (`rust`, `typescript`,
+    /// `javascript`, `python`). Ignored (validated away) on `vault`.
+    #[serde(default)]
+    pub languages: Option<Vec<String>>,
 }
 
 /// Parse the `lens` request parameter, defaulting to the status lens when
@@ -462,6 +549,155 @@ mod bound_tests {
     }
 }
 
+/// The code-corpus branch of `/graph/query` (codebase-graphing ADR D5): the
+/// DISCONNECTED code dataset served through the SAME envelope, field set, and
+/// unconditional node ceiling as the vault corpus. Granularity maps one-to-one:
+/// the feature-class token serves the PACKAGE ROLLUP (package entry FILES +
+/// aggregated import meta-edges — the constellation analogue; every node is a
+/// file, code-graph-files-only), the document-class token serves FILE
+/// granularity. Freshness is lazy: a debounced source-tree fingerprint probe
+/// re-extracts only when the tree changed (ADR D6).
+async fn code_corpus_query(
+    state: &Arc<AppState>,
+    cell: &StdArc<ScopeCell>,
+    body: &GraphQueryBody,
+    granularity: Granularity,
+    lens: engine_query::salience::Lens,
+) -> ApiResult {
+    if body.as_of.is_some() {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            "the code corpus serves the present view only (`as_of` does not apply)".to_string(),
+        ));
+    }
+    // The vault Filter grammar does not apply to the code corpus (ADR D5) —
+    // EXCEPT the shared timeline facet (code-timeline-range ADR): a filter
+    // whose ONLY populated facets are `date_range` + `date_field: "modified"`
+    // narrows the code corpus by worktree-mtime day. Any other populated facet
+    // stays a typed validation error, never silently ignored; structural
+    // narrowing rides `dir_prefix` / `languages`.
+    let filter = body.filter.clone().unwrap_or_default();
+    let date_range = filter.date_range.clone();
+    let date_field = filter.date_field;
+    let mut residual = filter;
+    residual.date_range = None;
+    residual.date_field = engine_query::filter::DateField::default();
+    if residual != engine_query::filter::Filter::default() {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            "vault filter facets do not apply to the code corpus; narrow with \
+             `dir_prefix` / `languages` (only `date_range` + `date_field: \"modified\"` \
+             carry over)"
+                .to_string(),
+        ));
+    }
+    if date_range.is_some() && date_field != engine_query::filter::DateField::Modified {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            "the code corpus dates by worktree mtime: a code `date_range` requires \
+             `date_field: \"modified\"` (`created`/`stamped` are vault-document criteria)"
+                .to_string(),
+        ));
+    }
+    let narrow = engine_query::code::CodeNarrow {
+        dir_prefix: body.dir_prefix.clone(),
+        languages: body.languages.clone().unwrap_or_default(),
+        date_from: date_range.as_ref().and_then(|r| r.from.clone()),
+        date_to: date_range.as_ref().and_then(|r| r.to.clone()),
+    };
+    // Extraction is blocking CPU/IO work (tree walk; full parse on a miss),
+    // and so is the git recency fold (a bounded commit walk + status diff) —
+    // both off the async runtime, mirroring the declared-fold discipline.
+    let blocking_cell = cell.clone();
+    let (graph, recency) = tokio::task::spawn_blocking(move || {
+        let graph = blocking_cell.code.ensure_fresh(&blocking_cell.root)?;
+        let recency = blocking_cell.code.ensure_recency(&blocking_cell.root);
+        Ok::<_, String>((graph, recency))
+    })
+    .await
+    .map_err(|e| super::api_error(state, StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .map_err(|e| {
+        super::api_error(
+            state,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("code corpus extraction failed: {e}"),
+        )
+    })?;
+    // The DEFAULT rollup poll (the hot path) is served from the per-generation
+    // memo (review M1, derived-projections-memoize-on-the-graph-generation);
+    // a narrowed query or the file granularity flows through the projection
+    // per request, mirroring the vault's filtered-constellation split.
+    let mut slice = if granularity == Granularity::Feature
+        && narrow == engine_query::code::CodeNarrow::default()
+    {
+        (*cell
+            .code
+            .default_rollup(&graph, &cell.scope, recency.as_ref()))
+        .clone()
+    } else {
+        engine_query::code::code_graph_query(
+            &graph,
+            &cell.scope,
+            granularity == Granularity::Feature,
+            &narrow,
+            recency.as_deref(),
+        )
+    };
+    // The SAME unconditional ceiling as the vault corpus
+    // (graph-queries-are-bounded-by-default).
+    let truncated = bound_slice(&mut slice).map(|total| {
+        json!({
+            "total_nodes": total,
+            "returned_nodes": MAX_GRAPH_NODES,
+            "reason": "graph node ceiling: narrow with dir_prefix/languages; the \
+                       package rollup is the smallest view",
+        })
+    });
+    // Honest extraction counters (ADR D8): truncation and resolver accuracy are
+    // STATED on the wire, never implied away. Hand-built json (the stats struct
+    // lives in ingest-code, which carries no serde).
+    let extraction = cell.code.stats_snapshot().map(|s| {
+        json!({
+            "files": s.files,
+            "capped": s.capped,
+            "skipped_too_large": s.skipped_too_large,
+            "parse_errors": s.parse_errors,
+            "imports_total": s.imports_total,
+            "imports_internal": s.imports_internal,
+            "imports_external": s.imports_external,
+            "imports_unresolved": s.imports_unresolved,
+        })
+    });
+    // Field-set parity with the vault response (shape conformance, ADR D5):
+    // every vault field is present; `corpus`/`extraction`/`code_generation` are
+    // additive. No delta clock rides the code corpus in v1 (last_seq: null,
+    // like historical views); salience is a vault-document model (never
+    // partial here — nothing was omitted, so the flag is honestly false).
+    Ok(super::envelope(
+        json!({
+            "nodes": slice.nodes,
+            "edges": slice.edges,
+            "meta_edges": slice.meta_edges,
+            "filter": slice.filter,
+            "as_of": Value::Null,
+            "resolved_sha": Value::Null,
+            "interpretation": Value::Null,
+            "last_seq": Value::Null,
+            "truncated": truncated,
+            "lens": lens.as_str(),
+            "salience_partial": false,
+            "corpus": "code",
+            "extraction": extraction,
+            "code_generation": cell.code.generation.load(std::sync::atomic::Ordering::SeqCst),
+        }),
+        rag_tiers(cell),
+        None,
+    ))
+}
+
 pub async fn graph_query_route(
     State(state): State<Arc<AppState>>,
     Json(body): Json<GraphQueryBody>,
@@ -469,6 +705,35 @@ pub async fn graph_query_route(
     let cell = validate_scope(&state, &body.scope)?;
     let granularity = parse_granularity(&state, body.granularity.as_deref())?;
     let lens = parse_lens(&state, body.lens.as_deref())?;
+    // CORPUS DISPATCH (codebase-graphing ADR D5): `code` serves the
+    // DISCONNECTED code dataset through this same route and envelope; the
+    // default (`vault` / absent) path below is byte-identical to the
+    // pre-corpus contract. The two corpora are kept disjoint at the STORE
+    // (ScopeCell.graph vs ScopeCell.code), not at the URL.
+    match body.corpus.as_deref() {
+        None | Some("vault") => {
+            // The code-only narrowing grammar must not silently no-op on the
+            // vault corpus (ADR D5: corpus-mismatched facets are a typed
+            // validation error, never ignored).
+            if body.dir_prefix.is_some() || body.languages.is_some() {
+                return Err(super::api_error(
+                    &state,
+                    StatusCode::BAD_REQUEST,
+                    "`dir_prefix`/`languages` are code-corpus facets; they do not \
+                     apply to the vault corpus"
+                        .to_string(),
+                ));
+            }
+        }
+        Some("code") => return code_corpus_query(&state, &cell, &body, granularity, lens).await,
+        Some(other) => {
+            return Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!("unknown corpus `{other}` (expected `vault` or `code`)"),
+            ));
+        }
+    }
     let filter = body.filter.unwrap_or_default();
 
     // The as_of branch carries the resolution facts the response must echo
@@ -777,10 +1042,22 @@ pub async fn graph_embeddings(
     // the direct embedding scroll requires a RUNNING rag (a fresh-heartbeat-but-
     // dead service is honest absence, not a doomed scroll), and /health carries the
     // Qdrant version the D6 capability gate reads.
-    let probe = rag_client::client::probe_machine_state(
-        &vault_root,
-        std::time::Duration::from_millis(1500),
-    );
+    // Blocking /health probe — offload it off the async worker (RCR-001); a task
+    // join failure degrades the semantic tier (fail-closed), never a hang.
+    let probe = {
+        let vault_probe = vault_root.clone();
+        match tokio::task::spawn_blocking(move || {
+            rag_client::client::probe_machine_state(
+                &vault_probe,
+                std::time::Duration::from_millis(1500),
+            )
+        })
+        .await
+        {
+            Ok(p) => p,
+            Err(_) => return degraded_embeddings("rag probe task failed"),
+        }
+    };
     let (info, qdrant_version, schema_version) = match probe {
         rag_client::client::RagMachineState::Running { info, health } => {
             let schema_version = health.schema_version;
@@ -821,7 +1098,16 @@ pub async fn graph_embeddings(
             bearer: info.service_token.clone(),
             timeout: rag_client::control::READ_BUDGET,
         };
-        match rag_client::control::readiness(&readiness_transport) {
+        // Blocking /readiness read — offload it (RCR-001); a join failure degrades.
+        let readiness_result = match tokio::task::spawn_blocking(move || {
+            rag_client::control::readiness(&readiness_transport)
+        })
+        .await
+        {
+            Ok(r) => r,
+            Err(_) => return degraded_embeddings("rag /readiness task failed"),
+        };
+        match readiness_result {
             Ok(readiness) => {
                 let facts = rag_client::vectors::extract_storage_schema_facts(&readiness);
                 // `advertised = true`: /health already promised the contract, so the
@@ -848,13 +1134,32 @@ pub async fn graph_embeddings(
     // fails (rag service flaking) degrades to `0` (treated as "unknown"): the
     // Qdrant scroll below still serves whatever vectors exist.
     let semantic_epoch_started = Instant::now();
-    let semantic_epoch = {
-        let control = rag_client::client::LoopbackTransport {
-            port: info.port,
-            bearer: info.service_token.clone(),
-            timeout: rag_client::control::READ_BUDGET,
-        };
-        rag_client::control::semantic_epoch(&control).unwrap_or(0)
+    // Read the epoch through the shared short-TTL cache (rag-integration-hardening
+    // D3): a warm window serves without a `/jobs` round-trip, and a successful read
+    // here warms the same slot the `/search` freshness annotation reads. A
+    // cold/expired slot pays the one bounded `/jobs` read (offloaded, RCR-001); a
+    // join failure OR a rag error yields no epoch — the vector key falls back to `0`
+    // ("unknown", the existing behaviour) and the slot stays cold so `/search`
+    // reports absent rather than a fabricated `0`. A successfully-read epoch (a
+    // legitimate `0` included) is cached.
+    let semantic_epoch = match state.semantic_epoch_cache.fresh() {
+        Some(epoch) => epoch,
+        None => {
+            let control = rag_client::client::LoopbackTransport {
+                port: info.port,
+                bearer: info.service_token.clone(),
+                timeout: rag_client::control::READ_BUDGET,
+            };
+            let read =
+                tokio::task::spawn_blocking(move || rag_client::control::semantic_epoch(&control))
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok());
+            if let Some(epoch) = read {
+                state.semantic_epoch_cache.store(epoch);
+            }
+            read.unwrap_or(0)
+        }
     };
     let semantic_epoch_ms = semantic_epoch_started.elapsed().as_millis() as u64;
     // Embeddings are scrolled DIRECTLY from Qdrant's HTTP port (ADR D1), not rag's
@@ -887,35 +1192,49 @@ pub async fn graph_embeddings(
         }
         None => {
             let scroll_started = Instant::now();
-            let fresh =
-                match rag_client::vectors::read_embeddings(&transport, &collection, deadline) {
-                    Ok(vectors) => std::sync::Arc::new(vectors),
-                    Err(e) => {
-                        let failed_scroll_ms = scroll_started.elapsed().as_millis() as u64;
-                        // Qdrant was reachable through discovery but the scroll itself
-                        // failed (store down, timeout, shape-miss): semantic suggestions
-                        // are simply unavailable right now. Degrade the semantic tier (no
-                        // vectors), never a 500 — the stores layer reads availability from
-                        // tiers (ADR D7).
-                        let reason = rag_client::search::degradation_reason(&e);
-                        return Ok(super::envelope(
-                            json!({
-                                "embeddings": [],
-                                "generation": generation,
-                                "semantic_epoch": semantic_epoch,
-                                "truncated": Value::Null,
-                                "lens": lens.as_str(),
-                                "semantic_timing": {
-                                    "semantic_epoch_ms": semantic_epoch_ms,
-                                    "vector_cache_hit": false,
-                                    "vector_scroll_ms": failed_scroll_ms,
-                                },
-                            }),
-                            super::degraded_tiers(&cell, reason.as_str()),
-                            None,
-                        ));
-                    }
-                };
+            // The multi-page Qdrant scroll is the LONGEST blocking read in the rag
+            // path (its own multi-page wall-clock budget) — offload it off the async
+            // worker (RCR-001) so it cannot pin a runtime thread. A join failure and
+            // a scroll error both degrade the semantic tier (no vectors), never a 500.
+            let scroll_result = tokio::task::spawn_blocking(move || {
+                rag_client::vectors::read_embeddings(&transport, &collection, deadline)
+            })
+            .await;
+            let degraded_scroll = |cell: &ScopeCell, reason: &str, failed_scroll_ms: u64| {
+                // Qdrant was reachable through discovery but the scroll itself failed
+                // (store down, timeout, shape-miss, or the offload task): semantic
+                // suggestions are simply unavailable right now. Degrade the semantic
+                // tier (no vectors), never a 500 — the stores layer reads availability
+                // from tiers (ADR D7).
+                Ok(super::envelope(
+                    json!({
+                        "embeddings": [],
+                        "generation": generation,
+                        "semantic_epoch": semantic_epoch,
+                        "truncated": Value::Null,
+                        "lens": lens.as_str(),
+                        "semantic_timing": {
+                            "semantic_epoch_ms": semantic_epoch_ms,
+                            "vector_cache_hit": false,
+                            "vector_scroll_ms": failed_scroll_ms,
+                        },
+                    }),
+                    super::degraded_tiers(cell, reason),
+                    None,
+                ))
+            };
+            let fresh = match scroll_result {
+                Ok(Ok(vectors)) => std::sync::Arc::new(vectors),
+                Ok(Err(e)) => {
+                    let failed_scroll_ms = scroll_started.elapsed().as_millis() as u64;
+                    let reason = rag_client::search::degradation_reason(&e);
+                    return degraded_scroll(&cell, reason.as_str(), failed_scroll_ms);
+                }
+                Err(_) => {
+                    let failed_scroll_ms = scroll_started.elapsed().as_millis() as u64;
+                    return degraded_scroll(&cell, "vector scroll task failed", failed_scroll_ms);
+                }
+            };
             vector_scroll_ms = scroll_started.elapsed().as_millis() as u64;
             cell.store_embeddings(semantic_epoch, fresh.clone());
             fresh
@@ -987,11 +1306,56 @@ pub async fn pipeline(
 
 // --- GET /filters?scope= ----------------------------------------------------------
 
+#[derive(Deserialize)]
+pub struct FiltersParams {
+    pub scope: String,
+    /// Which corpus's facet vocabulary to serve (codebase-graphing ADR D5):
+    /// `vault` (default) or `code`. The route serves the ACTIVE corpus's
+    /// vocabulary only — never a mixed one.
+    #[serde(default)]
+    pub corpus: Option<String>,
+}
+
 pub async fn filters(
     State(state): State<Arc<AppState>>,
-    Query(params): Query<ScopeParam>,
+    Query(params): Query<FiltersParams>,
 ) -> ApiResult {
     let cell = validate_scope(&state, &params.scope)?;
+    match params.corpus.as_deref() {
+        None | Some("vault") => {}
+        Some("code") => {
+            // Serve the CODE corpus's own facet vocabulary (languages, module
+            // dirs) over a fresh-enough code graph; blocking work off-runtime.
+            let blocking_cell = cell.clone();
+            let graph = tokio::task::spawn_blocking(move || {
+                blocking_cell.code.ensure_fresh(&blocking_cell.root)
+            })
+            .await
+            .map_err(|e| {
+                super::api_error(&state, StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            })?
+            .map_err(|e| {
+                super::api_error(
+                    &state,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("code corpus extraction failed: {e}"),
+                )
+            })?;
+            let vocab = engine_query::code::code_filter_vocabulary(&graph);
+            return Ok(super::envelope(
+                json!({"vocabulary": vocab, "corpus": "code"}),
+                rag_tiers(&cell),
+                None,
+            ));
+        }
+        Some(other) => {
+            return Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!("unknown corpus `{other}` (expected `vault` or `code`)"),
+            ));
+        }
+    }
     // The vocabulary is generation-stable (it is a full-graph scan that only
     // changes on a rebuild), so it is memoized per generation on the cell
     // (cache-until-invalidated): a repeat `/filters` poll is a warm read, not a

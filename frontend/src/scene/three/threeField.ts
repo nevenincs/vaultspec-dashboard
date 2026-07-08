@@ -39,6 +39,7 @@ import {
 } from "three";
 
 import {
+  foldSceneDeltas,
   type SceneCommand,
   type SceneDelta,
   type SceneEdgeData,
@@ -63,8 +64,10 @@ import {
   sceneRuleColor,
 } from "./appearance";
 import { D3_FORCE_DEFAULTS, D3ForceSolver, type D3ForceParams } from "./d3ForceSolver";
+import { defaultPositionCache, type NodePosition } from "../positionCache";
+import { classifySwap } from "./swapClassifier";
 import { labelTextStyle } from "./labelStyle";
-import { uiScale } from "./uiScale";
+import { rootFontPx, uiScale } from "./uiScale";
 import { buildGlyphAtlas, glyphKeyForNode, type GlyphAtlas } from "./glyphAtlas";
 
 // Pointer hit tolerance in screen px at the 16px rem basis; UI-scaled at use.
@@ -79,6 +82,11 @@ const WARM_START_ALPHA = controlNumber("warmStartAlpha");
 /** Live-retune kick: the gentle re-energise for a force/size slider — re-settle in
  *  place, never the old violent global 0.5 re-explode. */
 const GENTLE_REHEAT_ALPHA = controlNumber("gentleReheatAlpha");
+/** Cold-start alpha + prewarm caps, schema-read here for the set-data energy
+ *  dispatch (proportional warm ramp toward cold; frozen swaps prep zero ticks). */
+const COLD_START_ALPHA = controlNumber("coldAlpha");
+const PREWARM_MAX_TICKS = controlNumber("prewarmMaxTicks");
+const PREWARM_BUDGET_MS = controlNumber("prewarmBudgetMs");
 /** Fit padding: a fixed, UI-scaled pixel margin reserved on EVERY edge when framing, so
  *  the framed graph never touches the canvas rim. A true pixel gap (zoom-independent),
  *  unlike a fractional factor whose apparent margin shrinks as the graph span grows; the
@@ -98,7 +106,7 @@ const PINCH_ZOOM_SENSITIVITY = controlNumber("pinchZoomSensitivity");
 // Autoframe (graph-autoframe): poll the graph bounds on an INTERVAL (not every frame) and
 // ease the camera to the fit when the frame drifts beyond a deadband — never per-frame, so
 // it can't fight the settle or jitter. Local interaction-tuning constants (dimensionless /
-// ms), mirroring NODE_RECEDE_MIX etc.; not user-tunable look params.
+// ms), mirroring NODE_RECEDE_HOVER etc.; not user-tunable look params.
 const AUTOFRAME_POLL_MS = 400; // bounds-poll cadence while autoframe is on
 const AUTOFRAME_EASE = 0.16; // per-frame lerp toward the target (smooth, not a snap)
 const AUTOFRAME_DEADBAND = 0.07; // min fractional frame change (center/zoom) to re-target
@@ -107,15 +115,42 @@ const AUTOFRAME_SETTLE_EPS = 0.004; // within this fraction of target → snap +
 const LABEL_BUDGET = controlNumber("labelBudget");
 const PULSE_RING_WIDTH = controlNumber("pulseRingWidth");
 const PULSE_RING_ALPHA = controlNumber("pulseRingAlpha");
-// Hover/selection emphasis — SUBTLE + theme-palette only (user goal): keep the
-// hover↔non-hover difference SMALL, every colour from the established Figma palette, no
-// black, no adhoc hex, gradient blends kept. De-emphasis is COLOUR-ONLY at full opacity: a
-// non-focus node mixes GENTLY toward the canvas background (node material uDimColor =
-// canvasBackground) so it recedes a touch without leaving its hue family; focus nodes keep
-// full category colour. Edges keep their category GRADIENT in every mode (no recolour); the
-// only emphasis is this gentle node recede + a thin accent focus ring. No glow, no near-black.
-const NODE_RECEDE_MIX = 0.3; // gentle non-focus mix toward the canvas bg (subtle de-emphasis)
+// Emphasis-state grammar (2026-07-03 graph-representation ADR): the three interaction
+// states differentiate by GRAMMAR, not hue. De-emphasis stays COLOUR-ONLY at full opacity
+// (a non-focus node mixes toward the canvas background, node material uDimColor =
+// canvasBackground; focus nodes keep full category colour; edges keep their category
+// GRADIENT in every mode, no recolour; no glow, no near-black) — but the recede DEPTH now
+// encodes the state: a transient hover recedes shallow, a durable selection (node ring or
+// feature-cluster spotlight) recedes deeper so it reads as the stronger state. The recede
+// is CONTINUOUS and eased (aDim carries the current mix fraction, tweened toward its
+// per-node target each frame) so every state change cross-fades instead of popping;
+// prefers-reduced-motion snaps instantly.
+const NODE_RECEDE_HOVER = 0.3; // shallow non-focus mix while a transient hover is active
+const NODE_RECEDE_SELECT = 0.5; // deeper non-focus mix under a durable selection/spotlight
+// Exponential-ease time constant for the emphasis cross-fade: ~95% settled in ~3τ ≈ 210ms
+// (the design motion window). Dimensionless attribute tween, not a user-tunable look param.
+const EMPHASIS_FADE_TAU_MS = 70;
+// Render-time position smoothing (graph-simulation-stability reference — the Quartz
+// mechanism): the displayed position eases toward the physics position by this fraction
+// per frame while anything is in motion, time-averaging Barnes-Hut/anneal jitter before
+// it reaches the screen; the settle then GLIDES out over ~15 frames instead of popping.
+// Fixed legibility constants, not user-tunable look params.
+const DISPLAY_LERP_K = 0.12; // display → physics fraction per frame
+const DISPLAY_SNAP_EPS = 0.01; // world units: within this of truth → snap exact + stop
+// Fixed-timestep sim accumulator: the solver targets 60 ticks/s in wall-clock terms —
+// a slow renderer runs bounded catch-up ticks per frame so anneal/stall budgets and the
+// felt settle duration stop depending on the frame rate.
+const SIM_TICK_MS = 1000 / 60;
+const SIM_MAX_CATCHUP_TICKS = 3;
 const FOCUS_RING_WIDTH_PX = 2; // thin accent focus ring on the hovered hub
+// Cluster-selection perimeter fence (emphasis-state-grammar ADR): the positive marker of
+// the durable feature-cluster selection — a convex padded hull (rounded n-gon) traced
+// around the visible cohort on the 2D overlay. Pad beyond the largest member's screen
+// radius; hairline accent stroke over a whisper fill; alpha rides the emphasis ease.
+const FENCE_PAD_PX = 12; // padding beyond the largest member radius (screen px at UI scale 1)
+const FENCE_STROKE_WIDTH_PX = 1.5; // fence perimeter stroke width
+const FENCE_STROKE_ALPHA = 0.85; // stroke opacity at full fence presence
+const FENCE_FILL_ALPHA = 0.06; // whisper interior fill (skipped under perf degradation)
 // Max canvas label width before ellipsis (screen px at UI scale 1; multiplied by
 // uiScale at draw). The bare canvas label is ELIDED here so an over-long title can
 // never paint an unbounded line across the field — the FULL title lives in the DOM
@@ -136,7 +171,7 @@ const LABEL_PILL_GAP_PX = 6; // gap from the node body to the pill
 // node size. Below LO the node is a plain dot (an icon would be sub-legible — the marks
 // are gated at 14px); above HI it is the full icon; between, the two cross-fade. The
 // icon quad is drawn a touch larger than the dot it replaces so the silhouette reads.
-// Local render constants (mirroring NODE_RECEDE_MIX / FOCUS_RING_WIDTH_PX above), not
+// Local render constants (mirroring NODE_RECEDE_HOVER / FOCUS_RING_WIDTH_PX above), not
 // schema knobs — they are fixed legibility thresholds, not user-tunable look params.
 // Icon-INSIDE-circle (graph-icon-inside-circle): the doc-type icon is drawn WITHIN the
 // filled disc as one composite mark, so its half-extent is a FRACTION of the node radius
@@ -167,6 +202,117 @@ const PERF_RESTORE_MS = 22;
 function hexCss(n: number): string {
   return "#" + (n & 0xffffff).toString(16).padStart(6, "0");
 }
+
+/** Reduced-motion gate for the emphasis cross-fade, fence ramp, and display lerp:
+ *  snap instead of ease. The MediaQueryList is created ONCE at module load (GPR-002 —
+ *  `applyDisplayLerp` reads this per frame, and `matchMedia()` allocates a fresh MQL
+ *  per call); `.matches` is a live view, so no change listener is needed. */
+const reducedMotionQuery =
+  typeof window !== "undefined" && window.matchMedia
+    ? window.matchMedia("(prefers-reduced-motion: reduce)")
+    : null;
+function prefersReducedMotion(): boolean {
+  return reducedMotionQuery?.matches ?? false;
+}
+
+export type ScreenPt = { x: number; y: number };
+
+/** Andrew monotone-chain convex hull over screen points. Returns the hull with a
+ *  POSITIVE shoelace winding in raw coordinate arithmetic (the invariant
+ *  `traceRoundedOffset`'s outward normals + arc sweeps rely on); collinear inputs
+ *  degrade to their 2-point extent, a single point to itself. Exported for tests. */
+export function convexHull(points: ScreenPt[]): ScreenPt[] {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  const uniq: ScreenPt[] = [];
+  for (const p of sorted) {
+    const last = uniq[uniq.length - 1];
+    if (!last || Math.abs(last.x - p.x) > 1e-6 || Math.abs(last.y - p.y) > 1e-6) {
+      uniq.push(p);
+    }
+  }
+  if (uniq.length <= 2) return uniq;
+  const cross = (o: ScreenPt, a: ScreenPt, b: ScreenPt) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: ScreenPt[] = [];
+  for (const p of uniq) {
+    while (
+      lower.length >= 2 &&
+      cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0
+    ) {
+      lower.pop();
+    }
+    lower.push(p);
+  }
+  const upper: ScreenPt[] = [];
+  for (let i = uniq.length - 1; i >= 0; i--) {
+    const p = uniq[i];
+    while (
+      upper.length >= 2 &&
+      cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0
+    ) {
+      upper.pop();
+    }
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
+
+/** Trace the Minkowski offset of a convex hull by `pad` into the current path — the
+ *  rounded n-gon perimeter fence: each edge pushed outward along its normal, each
+ *  vertex joined by an arc of radius `pad` (a disc offset natively rounds the
+ *  corners; never concave by construction). Degenerates cleanly: one point → a
+ *  circle, two points → a capsule. Requires the positive-shoelace winding
+ *  `convexHull` returns, whose outward normal is (dy, -dx). Exported for tests. */
+export function traceRoundedOffset(
+  ctx: CanvasRenderingContext2D,
+  hull: ScreenPt[],
+  pad: number,
+): void {
+  if (hull.length === 0) return;
+  if (hull.length === 1) {
+    ctx.arc(hull[0].x, hull[0].y, pad, 0, Math.PI * 2);
+    return;
+  }
+  const k = hull.length;
+  const normals: ScreenPt[] = [];
+  for (let i = 0; i < k; i++) {
+    const a = hull[i];
+    const b = hull[(i + 1) % k];
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    normals.push({ x: (b.y - a.y) / len, y: -(b.x - a.x) / len });
+  }
+  for (let i = 0; i < k; i++) {
+    const a = hull[i];
+    const b = hull[(i + 1) % k];
+    const n = normals[i];
+    const n2 = normals[(i + 1) % k];
+    const sx = a.x + n.x * pad;
+    const sy = a.y + n.y * pad;
+    if (i === 0) ctx.moveTo(sx, sy);
+    else ctx.lineTo(sx, sy);
+    ctx.lineTo(b.x + n.x * pad, b.y + n.y * pad);
+    // Convex + positive winding ⇒ every vertex turn is a ≤π increasing-angle sweep,
+    // which is exactly canvas arc's default (anticlockwise=false) direction.
+    ctx.arc(b.x, b.y, pad, Math.atan2(n.y, n.x), Math.atan2(n2.y, n2.x), false);
+  }
+}
+
+/** Memoized 2D-overlay token→CSS derivations (SGR-006), keyed on theme epoch +
+ *  root font size. */
+type OverlayThemeDerived = {
+  epoch: number;
+  fontPx: number;
+  ink: string;
+  accent: string;
+  highlight: string;
+  inkMuted: string;
+  pillFill: string;
+  pillBorder: string;
+  featureStyle: ReturnType<typeof labelTextStyle>;
+  docStyle: ReturnType<typeof labelTextStyle>;
+};
 
 /** Sanitize + fixed-length-elide a canvas label: collapse all whitespace runs (incl.
  *  newlines/tabs) to single spaces, trim, and cap to a FIXED character length with a
@@ -277,10 +423,10 @@ varying float vAA;
 void main() {
   float alpha = 1.0 - smoothstep(1.0 - vAA, 1.0, vEdge);
   if (alpha <= 0.0) discard;
-  // Emphasis is COLOUR-ONLY at full opacity (never an opacity fade). A focus node keeps its
-  // full category colour; a non-focus node (vDim > 0.5) mixes GENTLY toward uDimColor (the
-  // canvas background) so it recedes a touch — a small, subtle difference, no flat greyout.
-  vec3 col = vDim > 0.5 ? mix(vColor, uDimColor, ${glslFloat(NODE_RECEDE_MIX)}) : vColor;
+  // Emphasis is COLOUR-ONLY at full opacity (never an opacity fade). vDim carries the
+  // CURRENT eased recede fraction (0 = focus/full category colour; up to the hover or
+  // selection depth) — the CPU tween writes it per frame, so state changes cross-fade.
+  vec3 col = mix(vColor, uDimColor, clamp(vDim, 0.0, 1.0));
   gl_FragColor = vec4(col, alpha);
 }
 `;
@@ -413,8 +559,9 @@ void main() {
   // The icon sits INSIDE the filled disc as one composite mark: pick a CONTRASTING ink by
   // the disc colour's luminance — a paper knockout on a dark/saturated disc, dark ink on a
   // light disc — so the glyph is legible on ANY category fill. A de-emphasised node fades
-  // its icon with the receding disc.
-  float a = cov * vFade * (vDim > 0.5 ? 0.4 : 1.0);
+  // its icon with the receding disc — continuously, normalised by the deepest recede so a
+  // fully-receded selection-context icon sits at 0.4 and a hover-context icon stays softer.
+  float a = cov * vFade * mix(1.0, 0.4, clamp(vDim / ${glslFloat(NODE_RECEDE_SELECT)}, 0.0, 1.0));
   if (a <= 0.01) discard;
   float lum = dot(vColor, vec3(0.299, 0.587, 0.114));
   vec3 col = lum > 0.6 ? uIconInkDark : uIconInkLight;
@@ -473,21 +620,36 @@ export class ThreeField implements SceneFieldRenderer {
   private idToIndex = new Map<string, number>();
   private neighbors = new Map<string, Set<string>>();
   private featureCohort = new Map<string, Set<string>>();
+  // DISPLAY positions: feeds the GPU texture, overlays, and picking. The frame loop
+  // eases this toward `simPositions` (render-time lerp) so solver jitter is
+  // time-averaged before it reaches the screen; snapped exact on settle/data swap.
   private cpuPositions = new Float32Array(0);
+  // PHYSICS-truth positions: the solver pack target. Warm-start carries, layout
+  // persistence, and the next data swap's seed all read THIS, never the eased display.
+  private simPositions = new Float32Array(0);
+  private displayEasing = false;
+  private lastSimTs = 0;
 
   // interaction state
   private hoveredId: string | null = null;
   private selectedIds: ReadonlySet<string> = new Set();
-  // Visual-only feature META-HIGHLIGHT (#16): a SET of nodes shown with the hover-style
-  // soft emphasis (members keep full colour, non-members recede) but NO selection ring —
-  // distinct from `selectedIds`, which is enforced SINGLETON (the graph rings at most one).
-  private metaHighlightIds: ReadonlySet<string> = new Set();
   // DURABLE feature-cluster spotlight: the SELECTED FEATURE tag (feature-selection-global-
   // state). Stored as a tag — NOT a frozen id set — so the member cohort is re-derived from
   // `featureCohort` on every `setData`, surviving data refreshes. `null` = no feature spotlit.
   private spotlightFeatureTag: string | null = null;
   private pinnedIds: ReadonlySet<string> = new Set();
   private visibleNodeIds: ReadonlySet<string> | null = null;
+  // Emphasis cross-fade (emphasis-state-grammar ADR): per-node recede TARGETS; the frame
+  // loop eases the displayed aDim toward them (EMPHASIS_FADE_TAU_MS) while `emphasisAnim`
+  // holds the loop awake. Bounded: one float per node, reallocated with the node set.
+  private dimTarget = new Float32Array(0);
+  private emphasisAnim = false;
+  private lastEmphasisTs = 0;
+  // Cluster-selection fence presence: eased 0..1 alpha on the same clock. `fenceTag` lags
+  // the spotlight tag on clear so the fence can fade OUT over the departing cohort.
+  private fenceAlpha = 0;
+  private fenceTargetAlpha = 0;
+  private fenceTag: string | null = null;
 
   private params: D3ForceParams = { ...D3_FORCE_DEFAULTS };
   private appearance: AppearanceParams = { ...APPEARANCE_DEFAULTS };
@@ -499,11 +661,25 @@ export class ThreeField implements SceneFieldRenderer {
   private needsRender = false;
   private scheduled = false;
   private raf = 0;
+  // SGR-005 pointer-delta pick cache: the last hit test's screen point + result,
+  // valid only while nothing that affects a pick (positions, camera, data, size)
+  // has changed. `frame()` clears it on any dirty work and `setData` clears it on
+  // a node-set change, so a reuse is provably against an unchanged scene.
+  private lastPickSx = NaN;
+  private lastPickSy = NaN;
+  private lastPickId: string | null = null;
+  private pickCacheValid = false;
   // GL-context-restore attempt counter (bounded retry on webglcontextrestored).
   private glRestoreAttempts = 0;
   // FPS-adaptive LOD (perf hardening): EMA of render cost + a hysteresis-gated degraded flag.
   private frameMsEma = 0;
   private perfDegraded = false;
+  // SGR-006: the 2D overlay passes (drawLabels/renderMinimap) re-derive token→CSS
+  // hex strings + label text styles every frame, though they change only per THEME
+  // and per UI scale. `themeEpoch` bumps on `refresh-theme`; the cache re-derives
+  // when the epoch or the (cached) root font size changes — otherwise it is reused.
+  private themeEpoch = 0;
+  private overlayThemeCache: OverlayThemeDerived | null = null;
 
   private width = 1;
   private height = 1;
@@ -695,9 +871,16 @@ export class ThreeField implements SceneFieldRenderer {
     if (this.pulseTimer) clearTimeout(this.pulseTimer);
     this.pulseTimer = 0;
     this.scheduled = false;
+    // SGR-007 total teardown: disposeGraph() already tears down the node/edge
+    // meshes + materials + positionTex AND (via disposeGlyphs) the glyph mesh +
+    // material, so no retained mesh references the atlas texture disposed just
+    // below. Reset the atlas-failed latch too (mirroring rebuildGLResources), so a
+    // remount rebuilds the atlas cleanly through the normal set-data → buildGlyphs
+    // path rather than inheriting a stale "failed" flag.
     this.disposeGraph();
     this.glyphAtlas?.texture.dispose();
     this.glyphAtlas = null;
+    this.glyphAtlasFailed = false;
     this.detachMinimap?.();
     this.detachMinimap = null;
     this.minimapCanvas = null;
@@ -729,7 +912,7 @@ export class ThreeField implements SceneFieldRenderer {
    *  d3-force layout (cpuPositions/solver) is untouched and persists for the rebuild. */
   private onContextLost = (e: Event): void => {
     e.preventDefault();
-    this.running = false;
+    this.setRunning(false);
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.scheduled = false;
@@ -751,7 +934,11 @@ export class ThreeField implements SceneFieldRenderer {
         state: "ok",
         recoverable: true,
       });
-      this.running = true;
+      // Resume ticking only when there is genuinely unfinished settling (GPR-004):
+      // a restore over a SETTLED graph otherwise emitted a spurious sim-state
+      // true→false flicker, ran a ghost tick over fully-pinned nodes, and re-wrote
+      // the persisted layout blob for nothing. The repaint alone suffices there.
+      this.setRunning(this.solver !== null && !this.frozen && !this.solver.isSettled());
       this.requestRender();
     } catch (err) {
       this.glRestoreAttempts += 1;
@@ -815,26 +1002,25 @@ export class ThreeField implements SceneFieldRenderer {
   command(cmd: SceneCommand): void {
     switch (cmd.kind) {
       case "set-data":
-        this.setData(cmd.nodes, cmd.edges, cmd.reflow ?? false);
+        this.setData(
+          cmd.nodes,
+          cmd.edges,
+          cmd.reflow ?? false,
+          false,
+          cmd.reset ?? false,
+        );
         break;
       case "set-selected": {
         // SINGLETON enforcement (#16): the graph rings AT MOST ONE node — a >1-id
         // set-selected (the old feature-members multiselect the user rejected) collapses
         // to a single id. A node click already selects exactly one; feature emphasis goes
-        // through `set-meta-highlight`, never a multi-id selection.
+        // through `set-feature-spotlight`, never a multi-id selection.
         const first = cmd.ids.values().next().value;
         this.selectedIds = first === undefined ? new Set() : new Set([first]);
         this.applyEmphasis();
         this.requestRender();
         break;
       }
-      case "set-meta-highlight":
-        // Visual-only feature highlight (#16): soft hover-style emphasis of the member set,
-        // NO selection ring. Empty set clears it.
-        this.metaHighlightIds = new Set(cmd.ids);
-        this.applyEmphasis();
-        this.requestRender();
-        break;
       case "set-feature-spotlight": {
         // DURABLE feature-cluster spotlight (feature-selection-global-state): store the
         // selected feature TAG and emphasise its cohort (non-members recede), persisting
@@ -876,7 +1062,18 @@ export class ThreeField implements SceneFieldRenderer {
         // Resume/pause is energy-neutral: just toggle ticking, never re-pump heat.
         // (A fresh layout reheats via set-data; an explicit restart via reheatNow.)
         if (cmd.active) this.resume();
-        else this.running = false;
+        else this.setRunning(false);
+        break;
+      case "sim-play":
+        // Deliberate PLAY intent (the top-left play/pause control): a paused mid-flight
+        // settle RESUMES energy-neutrally; an already-settled layout gets the explicit
+        // named restart (reheatNow) — the sim then runs its cooling schedule and the
+        // settle transition auto-emits sim-state{running:false}, flipping the button
+        // back without any wall-clock timer. A frozen field ignores play (the chrome
+        // unfreezes first through the set-frozen seam).
+        if (this.frozen) break;
+        if (this.solver && !this.solver.isSettled()) this.resume();
+        else this.reheatNow();
         break;
       case "set-autoframe":
         this.setAutoframe(cmd.enabled);
@@ -889,9 +1086,9 @@ export class ThreeField implements SceneFieldRenderer {
         // WARM_ALPHA + woke every node, re-exploding a settled layout on every toggle.
         this.frozen = cmd.frozen;
         if (cmd.frozen) {
-          this.running = false;
+          this.setRunning(false);
         } else if (this.solver && !this.solver.isSettled()) {
-          this.running = true;
+          this.setRunning(true);
           this.wake();
         }
         break;
@@ -975,9 +1172,37 @@ export class ThreeField implements SceneFieldRenderer {
    *  are rare and user/OS-initiated, so a one-shot GL rebuild is the robust choice over
    *  threading a colour-only update through every bake site. */
   private refreshTheme(): void {
+    // SGR-006: a theme change invalidates the cached overlay CSS/style derivations.
+    this.themeEpoch += 1;
     this.rebuildGLResources();
     this.applyBackground();
     this.requestRender();
+  }
+
+  /** The 2D-overlay token→CSS derivations (ring/label/pill colours + per-role label
+   *  text styles), memoized per theme epoch and root font size (SGR-006). Recomputed
+   *  only when the theme flips (`refresh-theme`) or the UI scale changes; otherwise
+   *  the same object is reused across frames, avoiding per-frame getComputedStyle
+   *  reads, hex→string work, and label-style allocation. */
+  private overlayTheme(): OverlayThemeDerived {
+    const epoch = this.themeEpoch;
+    const fontPx = rootFontPx();
+    const cached = this.overlayThemeCache;
+    if (cached && cached.epoch === epoch && cached.fontPx === fontPx) return cached;
+    const derived = {
+      epoch,
+      fontPx,
+      ink: hexCss(inkColor()),
+      accent: hexCss(accentColor()),
+      highlight: hexCss(highlightColor()),
+      inkMuted: hexCss(inkMutedColor()),
+      pillFill: hexCss(canvasBackground()),
+      pillBorder: hexCss(sceneRuleColor()),
+      featureStyle: labelTextStyle("feature"),
+      docStyle: labelTextStyle("document"),
+    };
+    this.overlayThemeCache = derived;
+    return derived;
   }
 
   // --- data ----------------------------------------------------------------
@@ -986,6 +1211,8 @@ export class ThreeField implements SceneFieldRenderer {
     nodes: SceneNodeData[],
     edges: SceneEdgeData[],
     reflow = false,
+    deltaDriven = false,
+    reset = false,
   ): void {
     if (!this.renderer) return;
 
@@ -1009,16 +1236,25 @@ export class ThreeField implements SceneFieldRenderer {
     // live update; without this the graph re-explodes each time.
     const prevPos = new Map<string, { x: number; y: number }>();
     for (const [id, idx] of this.idToIndex) {
-      const x = this.cpuPositions[idx * 4];
-      const y = this.cpuPositions[idx * 4 + 1];
+      // Carry PHYSICS truth, never the eased display (a mid-glide swap must seed
+      // the next solver from where the nodes actually are, not where they render).
+      const x = this.simPositions[idx * 4];
+      const y = this.simPositions[idx * 4 + 1];
       if (Number.isFinite(x) && Number.isFinite(y)) prevPos.set(id, { x, y });
     }
+    // Capture the OUTGOING layout's settle state, temperature, and edge set before
+    // teardown: the pin-authoritative warm path is only valid over a SETTLED prior
+    // layout with an unchanged local topology, and both facts are gone after
+    // disposeGraph (settle-on-swap audit — mid-settle captures are a resume point,
+    // never an authoritative rest to pin).
+    const priorSettled = this.solver ? this.solver.isSettled() : true;
+    const priorAlpha = this.solver ? this.solver.alpha() : 0;
+    const prevBuiltEdges = this.builtEdges;
 
     this.disposeGraph();
 
     this.nodes = nodes;
     this.hoveredId = null;
-    this.metaHighlightIds = new Set(); // a data change clears a stale feature highlight (#16)
     this.visibleNodeIds = null;
     const n = nodes.length;
     if (n === 0) {
@@ -1067,9 +1303,11 @@ export class ThreeField implements SceneFieldRenderer {
     );
     const texSize = this.solver.texSize;
 
-    // The CPU positions ARE the texture's backing buffer: pack() writes into it and
-    // a single needsUpdate re-uploads — no per-frame copy and no GPU readback.
+    // The DISPLAY positions ARE the texture's backing buffer: a single needsUpdate
+    // re-uploads — no GPU readback. The solver packs into `simPositions` (physics
+    // truth); the frame loop eases the display toward it (render-time lerp).
     this.cpuPositions = new Float32Array(texSize * texSize * 4);
+    this.simPositions = new Float32Array(texSize * texSize * 4);
     this.positionTex = new DataTexture(
       this.cpuPositions,
       texSize,
@@ -1086,33 +1324,42 @@ export class ThreeField implements SceneFieldRenderer {
     // Warm-start: carry persisting nodes' positions over by id and seed each NEW node
     // next to a persisting neighbour (or near the carried centroid), so the solver
     // resumes the prior layout. WARM only when the carried set still DOMINATES (>= half
-    // the nodes) — an expansion or live update — with gentle alpha + NO camera refit so
-    // persistent nodes barely move and the user's view is preserved. COLD otherwise
-    // (first load, scope/lens switch, or a big partial-overlap change) — full off-screen
-    // prewarm + a one-time camera fit. The >=half gate matters: a partial-overlap that
-    // shares just a few ids must NOT warm, or its many new nodes under-settle at the low
-    // warm alpha into an off-screen clump with no refit (review: warm-start threshold).
-    let carried = 0;
-    let cx = 0;
-    let cy = 0;
-    for (const node of nodes) {
-      const p = prevPos.get(node.id);
-      if (p) {
-        carried++;
-        cx += p.x;
-        cy += p.y;
-      }
-    }
-    // A FILTER-driven reflow (set-data carrying `reflow`) warm-starts whenever ANY node
-    // carries over: a removal drops the filtered-out nodes and the carried survivors
-    // re-form in place; a re-add seeds the returning nodes by their carried neighbours.
-    // It deliberately bypasses the >=half cold gate (a filter that hides most nodes must
-    // NOT re-explode + refit) and preserves the user's camera. A pure data update keeps
-    // the >=half object-constancy gate.
-    const warm = reflow
-      ? nodes.length > 0 && carried > 0
-      : nodes.length > 0 && carried >= 0.5 * nodes.length;
+    // the nodes) — an expansion or live update — with NO camera refit so persistent
+    // nodes barely move and the user's view is preserved; a FILTER reflow warms on ANY
+    // carried id (a filter that hides most nodes must never re-explode + refit). COLD
+    // otherwise (first load, a big partial-overlap change) — full off-screen prewarm +
+    // a one-time camera fit — and ALWAYS on `reset` (a corpus switch's explicit cold
+    // contract, no longer left to incidental id-disjointness). The classifier also
+    // enforces the two warm-path preconditions the id-overlap gate cannot see
+    // (settle-on-swap audit): survivors pin ONLY over a settled prior layout, and
+    // changed-edge endpoints join the movable set so a same-id/different-edge swap
+    // (relations facet, timeline as-of, live edge deltas) re-relaxes instead of
+    // freezing the OLD topology's arrangement; the relax alpha ramps with the movable
+    // fraction so a many-new swap cannot under-settle at the gentle warm energy.
+    const swap = classifySwap({
+      nodeIds: nodes.map((node) => node.id),
+      carriedIds: new Set(prevPos.keys()),
+      prevEdges: prevBuiltEdges.map((e) => ({ src: e.srcId, dst: e.dstId })),
+      nextEdges: this.builtEdges.map((e) => ({ src: e.srcId, dst: e.dstId })),
+      reflow,
+      reset,
+      priorSettled,
+      warmStartAlpha: WARM_START_ALPHA,
+      coldAlpha: COLD_START_ALPHA,
+    });
+    const warm = swap.warm;
     if (warm) {
+      let carried = 0;
+      let cx = 0;
+      let cy = 0;
+      for (const node of nodes) {
+        const p = prevPos.get(node.id);
+        if (p) {
+          carried++;
+          cx += p.x;
+          cy += p.y;
+        }
+      }
       const centroid = { x: cx / carried, y: cy / carried };
       this.solver.seed((i) => {
         const node = nodes[i];
@@ -1131,23 +1378,70 @@ export class ThreeField implements SceneFieldRenderer {
         return { x: centroid.x + Math.cos(a) * r, y: centroid.y + Math.sin(a) * r };
       });
     }
-    // Off-screen settle before the first paint. The SETTLED LAYOUT IS AUTHORITATIVE: every
-    // WARM path — a filter reflow, an ego expansion, a live delta, a same-scope re-fetch —
-    // PINS the carried survivors and relaxes ONLY the genuinely-new nodes, so an additive
-    // change never re-simulates an already-settled node (the graph is static unless a node
-    // is explicitly dragged). A same-id-set update has no new nodes and so does ZERO ticks
-    // and moves nothing. This is the prewarmReflow discipline that was previously wired only
-    // to the filter `reflow` path; unifying it here removes the old plain-warm `prewarm` that
-    // `wakeAllFree()`d the whole graph and let the frozen-not-converged layout drift on every
-    // expansion/delta. A cold load (disjoint corpus — first load, scope/lens switch) runs
-    // full energy + a one-time fit. If prewarm hits its wall-clock budget the remainder
-    // finishes in the live loop; otherwise it freezes (idle GPU 0).
-    if (warm) {
-      this.solver.prewarmReflow((i) => !prevPos.has(nodes[i].id), WARM_START_ALPHA);
+    // Off-screen settle before the first paint. The SETTLED LAYOUT IS AUTHORITATIVE:
+    // a warm path over a settled prior layout — a filter reflow, an ego expansion, a
+    // live delta, a same-scope re-fetch — PINS the carried survivors and relaxes only
+    // the movable nodes (genuinely-new + changed-edge endpoints), so an additive
+    // change never re-simulates an already-settled node (the graph is static unless a
+    // node is explicitly dragged); a same-id-AND-same-edge update has nothing movable
+    // and does ZERO ticks. Authority holds ONLY for rest: a swap landing while the
+    // prior layout was still relaxing carries mid-settle positions, so it CONTINUES
+    // the settle globally (seeded, unpinned, at the hotter of the carried temperature
+    // and the proportional alpha) instead of pinning a half-converged tangle. A cold
+    // load runs full energy + a one-time fit. A FROZEN sim preps the energy state
+    // with zero ticks — the swap displays, and unfreeze resumes the pending settle —
+    // so a background set-data can never tick through the user's freeze. If prewarm
+    // hits its wall-clock budget the remainder finishes in the live loop; otherwise
+    // it freezes (idle GPU 0).
+    let prewarmTicks: number;
+    if (warm && !swap.continueSettle) {
+      prewarmTicks = this.solver.prewarmReflow(
+        (i) => swap.movableIds.has(nodes[i].id),
+        swap.startAlpha,
+        this.frozen ? 0 : undefined,
+      );
+    } else if (warm) {
+      prewarmTicks = this.solver.prewarm(
+        this.frozen ? 0 : PREWARM_MAX_TICKS,
+        PREWARM_BUDGET_MS,
+        Math.max(swap.startAlpha, Math.min(priorAlpha, COLD_START_ALPHA)),
+      );
     } else {
-      this.solver.prewarm();
+      // Persisted-base seed (graph-simulation-stability ADR): a COLD load (no
+      // in-memory carry — first visit, corpus reset, scope switch) opens at the
+      // last SETTLED equilibrium for this scope when one is persisted. Matching
+      // ids seed their converged positions and the anneal merely relaxes the
+      // topology diff, at a carry-proportional alpha (all-persisted ≈ the
+      // gentle warm start; none ≈ the full cold explode). Node ids are
+      // corpus-prefixed, so one per-scope blob serves both corpora.
+      let persistedCarried = 0;
+      const persisted =
+        this.positionCache && this.persistWorkspace !== null
+          ? this.positionCache.load(this.persistWorkspace, this.persistScope)
+          : null;
+      if (persisted && persisted.size > 0) {
+        this.solver.seed((i) => {
+          const p = persisted.get(nodes[i].id) ?? null;
+          if (p) persistedCarried++;
+          return p;
+        });
+      }
+      const movableFraction = n > 0 ? (n - persistedCarried) / n : 1;
+      const startAlpha = Math.min(
+        COLD_START_ALPHA,
+        WARM_START_ALPHA + (COLD_START_ALPHA - WARM_START_ALPHA) * movableFraction,
+      );
+      prewarmTicks = this.solver.prewarm(
+        this.frozen ? 0 : PREWARM_MAX_TICKS,
+        PREWARM_BUDGET_MS,
+        startAlpha,
+      );
     }
-    this.solver.pack(this.cpuPositions);
+    // A data swap SNAPS the display to physics truth (no cross-swap glide between
+    // unrelated geometries); the live loop's per-frame lerp takes over from here.
+    this.solver.pack(this.simPositions);
+    this.cpuPositions.set(this.simPositions);
+    this.displayEasing = false;
     this.uploadPositions();
     // Fit the camera ONCE on a cold load; a warm update preserves the user's view.
     if (!warm) this.fitToView();
@@ -1156,13 +1450,27 @@ export class ThreeField implements SceneFieldRenderer {
     if (this.pendingFocusId !== null && this.idToIndex.has(this.pendingFocusId)) {
       this.focusNode(this.pendingFocusId);
     }
-    this.running = !this.solver.isSettled();
-    // A data change (new corpus, filter reflow, ego expansion, live delta) is a STATE change:
-    // when autoframe is on, re-engage it so the new corpus reframes on load/filter — releasing
-    // any prior selection-frame or manual-nav suspension (#13 arbitration). The cold path
-    // already framed via fitToView above; this prompt poll handles the warm path and its
-    // deadband no-ops an unchanged frame.
-    this.reengageAutoframe();
+    // A frozen sim never resumes ticking from a data swap (the pending settle waits
+    // for unfreeze); otherwise run until the solver actually reaches rest.
+    this.setRunning(!this.frozen && !this.solver.isSettled());
+    // A swap that genuinely ticked and landed settled synchronously persists the
+    // layout here (the live loop's settle-transition persist never fires for it);
+    // a zero-tick same-topology swap writes nothing.
+    if (prewarmTicks > 0 && !this.frozen && this.solver.isSettled()) {
+      this.persistSettledLayout();
+    }
+    // A genuine state change (new corpus, filter reflow, ego expansion, explicit user
+    // action) re-engages autoframe when it is on, so the new corpus reframes on
+    // load/filter — releasing any prior selection-frame or manual-nav suspension (#13
+    // arbitration). The cold path already framed via fitToView above; this prompt poll
+    // handles the warm path and its deadband no-ops an unchanged frame.
+    //
+    // A DELTA-driven warm set-data (ambient SSE vault edits, folded in via applyDeltas) is
+    // NOT such a state change (GIR-012): re-engaging on it would clear a user's manual-nav
+    // suspension and yank the camera back to the whole-graph frame on any background edit.
+    // Skip re-engagement for deltas — an engaged (unsuspended) autoframe still tracks the
+    // new bounds via its interval poll, and a disengaged one stays where the user left it.
+    if (!deltaDriven) this.reengageAutoframe();
     // Re-apply emphasis against the freshly-rebuilt geometry so a DURABLE focus survives
     // the data reload: the feature-cluster spotlight (re-derived from the rebuilt
     // `featureCohort`) and any active node selection re-dim their non-members instead of
@@ -1177,18 +1485,12 @@ export class ThreeField implements SceneFieldRenderer {
    *  delta updates the graph in place without re-exploding the layout. */
   private applyDeltas(deltas: SceneDelta[]): void {
     if (!deltas || deltas.length === 0) return;
-    const nodeMap = new Map(this.nodes.map((n) => [n.id, n] as const));
-    const edgeMap = new Map(this.edgeData.map((e) => [e.id, e] as const));
-    for (const d of deltas) {
-      if (d.op === "remove") {
-        if (d.node) nodeMap.delete(d.node.id);
-        if (d.edge) edgeMap.delete(d.edge.id);
-      } else {
-        if (d.node) nodeMap.set(d.node.id, d.node);
-        if (d.edge) edgeMap.set(d.edge.id, d.edge);
-      }
-    }
-    this.setData([...nodeMap.values()], [...edgeMap.values()]);
+    // Fold via the shared helper so the field's set and the controller's held model
+    // (nodeCount/edgeCount) fold identically (GIR-006).
+    const { nodes, edges } = foldSceneDeltas(this.nodes, this.edgeData, deltas);
+    // reflow=false (normal warm gate), deltaDriven=true so an ambient delta never
+    // re-frames the camera (GIR-012).
+    this.setData(nodes, edges, false, true);
   }
 
   /** Transient cross-highlight (pulse): briefly ring the named nodes, then clear —
@@ -1204,10 +1506,51 @@ export class ThreeField implements SceneFieldRenderer {
     }, 900);
   }
 
-  /** Persistence scope (Stage calls this directly). No-op: warm-start keys on node
-   *  id, which is already scope-unique — a scope switch yields a disjoint id set, so
-   *  setData takes the cold path automatically. Mirrors CosmosField's no-op. */
-  setPersistenceScope(_workspace: string, _scope: string): void {}
+  // Persisted settled-layout base (graph-simulation-stability ADR): the bounded
+  // LRU PositionCache (built in W01.P02.S08, wired here) keyed per workspace +
+  // scope. In-memory warm-start still keys on node id; the cache is the
+  // CROSS-SESSION base a cold load seeds from.
+  private positionCache = defaultPositionCache();
+  private persistWorkspace: string | null = null;
+  private persistScope: string | null = null;
+
+  /** Persistence scope (Stage calls this directly): keys the persisted
+   *  settled-layout cache — the "pre-simulated base" a cold load opens at.
+   *  Node ids are corpus-prefixed and scope-unique, so one per-scope blob
+   *  serves both corpora. */
+  setPersistenceScope(workspace: string, scope: string): void {
+    this.persistWorkspace = workspace;
+    this.persistScope = scope;
+  }
+
+  /** Persist the settled layout as the next cold load's base — called only on
+   *  a genuine settle transition (the live loop's running→false edge, or a
+   *  swap that ticked and landed settled synchronously). Merged over the
+   *  scope's existing blob so the OTHER corpus's layout survives; the current
+   *  view's entries take precedence under the cache's entry cap. Best-effort
+   *  by design (the cache owns quota eviction and bounds). */
+  private persistSettledLayout(): void {
+    if (!this.positionCache || this.persistWorkspace === null) return;
+    if (!this.solver || this.idToIndex.size === 0) return;
+    const merged = new Map<string, NodePosition>();
+    for (const [id, idx] of this.idToIndex) {
+      // Persist PHYSICS truth: at the settle transition the display may still be
+      // mid-glide; the cache must hold the solver's converged positions.
+      const x = this.simPositions[idx * 4];
+      const y = this.simPositions[idx * 4 + 1];
+      if (Number.isFinite(x) && Number.isFinite(y)) merged.set(id, { x, y });
+    }
+    const existing = this.positionCache.load(this.persistWorkspace, this.persistScope);
+    for (const [id, p] of existing) {
+      if (!merged.has(id)) merged.set(id, p);
+    }
+    this.positionCache.save(
+      this.persistWorkspace,
+      this.persistScope,
+      merged,
+      Date.now(),
+    );
+  }
 
   private buildNodes(nodes: SceneNodeData[], texSize: number): void {
     const n = nodes.length;
@@ -1221,7 +1564,7 @@ export class ThreeField implements SceneFieldRenderer {
     nodes.forEach((node, i) => {
       aIndex[i] = i;
       aSize[i] = nodeWorldRadius(node, this.appearance);
-      const col = nodeColorNumber(node);
+      const col = nodeColorNumber(node, this.appearance);
       this.nodeColors[i] = col;
       tmp.set(col);
       aColor[i * 3] = tmp.r;
@@ -1243,7 +1586,7 @@ export class ThreeField implements SceneFieldRenderer {
     geom.instanceCount = n;
 
     // The node de-emphasis recede target is the canvas BACKGROUND (an established palette
-    // token, theme-adaptive): a non-focus node mixes gently toward it (NODE_RECEDE_MIX) so it
+    // token, theme-adaptive): a non-focus node mixes toward it (the eased aDim recede) so it
     // recedes into the paper a touch, at full alpha. No adhoc colour.
     const dim = new Color(canvasBackground());
     this.nodeMaterial = new ShaderMaterial({
@@ -1476,6 +1819,21 @@ export class ThreeField implements SceneFieldRenderer {
     this.builtEdges = [];
     this.edgeData = [];
     this.edgeBaseAlpha = new Float32Array(0);
+    // Clear the id/adjacency/position structures so an EMPTY graph is empty everywhere
+    // (GIR-008): the n===0 set-data path returns early WITHOUT rebuilding these, so a
+    // leftover idToIndex + cpuPositions would let emitAnchors resolve a tracked id and
+    // focusNode centre on a ghost node over a blank canvas. The non-empty path rebuilds
+    // all four before use (idToIndex, neighbors, featureCohort, cpuPositions), so
+    // clearing here is safe for both paths.
+    this.idToIndex = new Map();
+    this.neighbors = new Map();
+    this.featureCohort = new Map();
+    this.cpuPositions = new Float32Array(0);
+    this.simPositions = new Float32Array(0);
+    this.displayEasing = false;
+    // SGR-005: the node set + positions just changed, so any cached pick is stale
+    // — invalidate synchronously (a pick can run before the next frame clears it).
+    this.pickCacheValid = false;
   }
 
   /** Tear down the glyph mesh + material (the cached atlas texture survives, reused on
@@ -1525,35 +1883,46 @@ export class ThreeField implements SceneFieldRenderer {
       }
       return set;
     }
-    // Feature META-HIGHLIGHT (#16): lowest-precedence focus cohort — the highlighted
-    // member set is emphasised (non-members recede) with the SAME soft treatment as hover,
-    // but no ring (rings are keyed off selectedIds/hoveredId only). Only the members that
-    // are actually present contribute; an all-absent set yields no emphasis (returns null).
-    if (this.metaHighlightIds.size > 0) {
-      const set = new Set<string>();
-      for (const id of this.metaHighlightIds) {
-        if (this.idToIndex.has(id)) set.add(id);
-      }
-      return set.size > 0 ? set : null;
-    }
     return null;
   }
 
   private applyEmphasis(): void {
     if (!this.nodeMesh) return;
     const active = this.emphasisSet();
-    // NODES — binary colour-recede (graph/Hover parity): 0 = full category colour (a focus
-    // node OR no emphasis), 1 = de-emphasised (recede toward the warm ground, FULL alpha).
-    // A focus node keeps full saturation; the hovered hub's pop is the ring + glow.
-    const nodeDim = this.nodeMesh.geometry.getAttribute("aDim");
-    const glyphDim = this.glyphMesh?.geometry.getAttribute("aDim");
-    for (let i = 0; i < this.nodes.length; i++) {
-      const dimmed = active && !active.has(this.nodes[i].id) ? 1 : 0;
-      nodeDim.setX(i, dimmed);
-      glyphDim?.setX(i, dimmed); // the icon recedes with its circle
+    // NODES — continuous colour-recede (emphasis-state-grammar ADR): each node's TARGET
+    // recede fraction is 0 for a focus node (or no emphasis) and otherwise the depth of
+    // the ACTIVE state — shallow for a transient hover, deeper for a durable selection /
+    // feature spotlight, so the durable state reads stronger. The frame loop eases the
+    // displayed aDim toward these targets (cross-fade, never a pop); reduced motion snaps.
+    // De-emphasis stays colour-only at FULL alpha; a focus node keeps full saturation.
+    const depth = this.hoveredId ? NODE_RECEDE_HOVER : NODE_RECEDE_SELECT;
+    if (this.dimTarget.length !== this.nodes.length) {
+      this.dimTarget = new Float32Array(this.nodes.length);
     }
-    nodeDim.needsUpdate = true;
-    if (glyphDim) glyphDim.needsUpdate = true;
+    for (let i = 0; i < this.nodes.length; i++) {
+      this.dimTarget[i] = active && !active.has(this.nodes[i].id) ? depth : 0;
+    }
+    // Fence presence target: rises while a feature spotlight is set; on clear the tag is
+    // RETAINED (fenceTag) so the fade-out still knows its cohort, released at alpha 0.
+    if (this.spotlightFeatureTag) this.fenceTag = this.spotlightFeatureTag;
+    this.fenceTargetAlpha = this.spotlightFeatureTag ? 1 : 0;
+    if (prefersReducedMotion()) {
+      const nodeDim = this.nodeMesh.geometry.getAttribute("aDim");
+      const glyphDim = this.glyphMesh?.geometry.getAttribute("aDim");
+      for (let i = 0; i < this.nodes.length; i++) {
+        nodeDim.setX(i, this.dimTarget[i]);
+        glyphDim?.setX(i, this.dimTarget[i]); // the icon recedes with its circle
+      }
+      nodeDim.needsUpdate = true;
+      if (glyphDim) glyphDim.needsUpdate = true;
+      this.fenceAlpha = this.fenceTargetAlpha;
+      if (this.fenceAlpha === 0) this.fenceTag = null;
+      this.emphasisAnim = false;
+      return;
+    }
+    if (!this.emphasisAnim) this.lastEmphasisTs = performance.now();
+    this.emphasisAnim = true;
+    this.requestRender();
 
     // EDGES keep their category GRADIENT colour + confidence width in EVERY mode (built once
     // in buildEdges, never recoloured on hover/selection) — user goal: theme palette only,
@@ -1605,17 +1974,30 @@ export class ThreeField implements SceneFieldRenderer {
   private reheat(): void {
     if (this.frozen || !this.solver) return;
     this.solver.reheat(true);
-    this.running = true;
+    this.setRunning(true);
     this.wake();
   }
 
-  /** Resume / warm re-energise (pause→resume, freeze→unfreeze). A settled graph
-   *  nudged warm re-cools and re-freezes on its own. */
+  /** Resume ticking after a pause — ENERGY-NEUTRAL (GIR-002). Resumes an in-flight
+   *  settle WITHOUT pumping new heat; a graph already at rest stays exactly put. An
+   *  explicit re-energise is reheatNow()'s job, never resume()'s. Mirrors the set-frozen
+   *  unfreeze path so pause/resume and freeze/unfreeze behave identically.
+   *
+   *  This is the accepted stability design, not a limitation (ADR "graph simulation
+   *  stability model", Option B): a settled layout is a frozen-yet-authoritative state
+   *  held still by pinning, so resuming must NOT re-inject energy — doing so would
+   *  displace an at-rest layout for no user action. Every energy-injecting path is a
+   *  deliberate, named entry point (set-data warm-start, setForceParams retune,
+   *  reheatNow restart); resume is not one of them. The reserved Option-A anneal (make
+   *  rest a true force-field fixed point) is revisited only under the recorded re-open
+   *  trigger: at-rest displacement or contact micro-buzz recurring after these valves
+   *  close. */
   private resume(): void {
     if (this.frozen || !this.solver) return;
-    this.solver.reheat(false);
-    this.running = true;
-    this.wake();
+    if (!this.solver.isSettled()) {
+      this.setRunning(true);
+      this.wake();
+    }
   }
 
   reheatNow(): void {
@@ -1639,7 +2021,7 @@ export class ThreeField implements SceneFieldRenderer {
       // A floor (0.3×) keeps even a tiny nudge perceptibly responsive; the full gentle
       // alpha is reserved for a full-range change.
       this.solver.setParams(this.params, GENTLE_REHEAT_ALPHA * Math.max(0.3, frac));
-      this.running = true;
+      this.setRunning(true);
       this.wake();
       // A force-param (simulation) change reshapes the layout: when autoframe is on, bind to
       // it (re-engage even if a prior manual nav had disengaged). The running loop's poll then
@@ -1670,29 +2052,41 @@ export class ThreeField implements SceneFieldRenderer {
       this.appearance.edgeOpacityMax !== prev.edgeOpacityMax ||
       this.appearance.edgeColorMode !== prev.edgeColorMode;
     const iconsChanged = this.appearance.nodeIcons !== prev.nodeIcons;
+    // A node COLOUR MODE change (category ↔ recency heat, code-graph-heat ADR)
+    // re-bakes every baked colour consumer at once — node aColor, edge
+    // end-colours, glyph inks, minimap — via the proven refresh-theme rebuild
+    // (layout + selection preserved). One rebuild on a rare, deliberate toggle
+    // beats a bespoke partial-rewrite path that could drift from build truth.
+    // The rebuild re-derives sizes/edge widths from the merged appearance too,
+    // so it SUBSUMES the attribute rewrites below (they skip when it ran);
+    // solver collide radii and the icon visibility toggle still apply after.
+    const colorModeChanged = this.appearance.nodeColorMode !== prev.nodeColorMode;
+    if (colorModeChanged) this.rebuildGLResources();
 
     if (sizeChanged && this.nodeMesh) {
-      const aSize = this.nodeMesh.geometry.getAttribute("aSize");
-      const glyphSize = this.glyphMesh?.geometry.getAttribute("aSize");
-      for (let i = 0; i < this.nodes.length; i++) {
-        const r = nodeWorldRadius(this.nodes[i], this.appearance);
-        aSize.setX(i, r);
-        glyphSize?.setX(i, r); // the icon tracks the dot's size
+      if (!colorModeChanged) {
+        const aSize = this.nodeMesh.geometry.getAttribute("aSize");
+        const glyphSize = this.glyphMesh?.geometry.getAttribute("aSize");
+        for (let i = 0; i < this.nodes.length; i++) {
+          const r = nodeWorldRadius(this.nodes[i], this.appearance);
+          aSize.setX(i, r);
+          glyphSize?.setX(i, r); // the icon tracks the dot's size
+        }
+        aSize.needsUpdate = true;
+        if (glyphSize) glyphSize.needsUpdate = true;
       }
-      aSize.needsUpdate = true;
-      if (glyphSize) glyphSize.needsUpdate = true;
       // Node size is the collision body too: re-feed collide radii so spacing tracks
       // the drawn size (the solver rebuilds collide + gently reheats).
       if (this.solver) {
         this.solver.setRadii(
           this.nodes.map((node) => nodeWorldRadius(node, this.appearance)),
         );
-        this.running = true;
+        this.setRunning(true);
         this.wake();
       }
     }
 
-    if (edgeChanged && this.edgeMesh && this.edgeData.length > 0) {
+    if (edgeChanged && !colorModeChanged && this.edgeMesh && this.edgeData.length > 0) {
       const aWidth = this.edgeMesh.geometry.getAttribute("aWidthPx");
       const aColor = this.edgeMesh.geometry.getAttribute("aColor");
       const colA = new Color();
@@ -1757,13 +2151,15 @@ export class ThreeField implements SceneFieldRenderer {
   diagnose(ticks: number): { alpha: number[]; meanDisplacement: number[] } {
     const out = { alpha: [] as number[], meanDisplacement: [] as number[] };
     if (!this.solver) return out;
-    this.running = false;
+    this.setRunning(false);
     for (let t = 0; t < ticks; t++) {
       const m = this.solver.tick();
       out.alpha.push(+m.alpha.toFixed(5));
       out.meanDisplacement.push(+m.meanDisplacement.toFixed(4));
     }
-    this.solver.pack(this.cpuPositions);
+    this.solver.pack(this.simPositions);
+    this.cpuPositions.set(this.simPositions);
+    this.displayEasing = false;
     this.uploadPositions();
     this.requestRender();
     return out;
@@ -1772,6 +2168,17 @@ export class ThreeField implements SceneFieldRenderer {
   private requestRender(): void {
     this.needsRender = true;
     this.wake();
+  }
+
+  /** The ONE `running` mutation point: emits `sim-state` on every TRANSITION (never
+   *  per frame) so the chrome's play/pause control mirrors the sim's own truth —
+   *  including the auto-flip back to "play" when the cooling schedule settles. */
+  private setRunning(next: boolean): void {
+    if (this.running === next) return;
+    this.running = next;
+    // Fresh run → fresh accumulator epoch, so idle time never counts as catch-up.
+    if (next) this.lastSimTs = 0;
+    this.controller?.emit({ kind: "sim-state", running: next });
   }
 
   private wake(): void {
@@ -1786,13 +2193,42 @@ export class ThreeField implements SceneFieldRenderer {
     this.needsRender = false;
 
     if (this.solver && this.running) {
-      // One d3-force tick on the CPU, then mirror positions into the GPU texture.
+      // d3-force ticks on the CPU, then mirror positions into the GPU texture.
       // Freeze when the solver has cooled below alphaMin (and no drag holds it
-      // warm) — a real convergence stop that idles the GPU to zero.
-      this.solver.tick();
-      this.solver.pack(this.cpuPositions);
+      // warm) — a real convergence stop that idles the GPU to zero. The settle
+      // TRANSITION persists the layout as the next cold load's base
+      // (graph-simulation-stability ADR) — once per settle, never per frame.
+      //
+      // Fixed-timestep accumulator (sim-smoothness reference): the sim targets a
+      // 60Hz tick rate in WALL-CLOCK terms. A slow renderer (long frames) runs
+      // bounded catch-up ticks so the anneal/stall budgets and the felt settle
+      // duration stop depending on the frame rate; the catch-up cap keeps a
+      // pathological stall from spiraling the CPU.
+      const now = performance.now();
+      const elapsed = this.lastSimTs > 0 ? now - this.lastSimTs : SIM_TICK_MS;
+      this.lastSimTs = now;
+      const ticks = Math.max(
+        1,
+        Math.min(SIM_MAX_CATCHUP_TICKS, Math.round(elapsed / SIM_TICK_MS)),
+      );
+      for (let t = 0; t < ticks; t++) {
+        this.solver.tick();
+        if (!this.dragActive && this.solver.isSettled()) break;
+      }
+      this.solver.pack(this.simPositions);
+      this.applyDisplayLerp();
       this.uploadPositions();
-      if (!this.dragActive && this.solver.isSettled()) this.running = false;
+      if (!this.dragActive && this.solver.isSettled()) {
+        this.setRunning(false);
+        this.persistSettledLayout();
+      }
+      dirty = true;
+    } else if (this.displayEasing) {
+      // Physics is at rest (settled or paused) but the DISPLAY is still gliding
+      // toward it (render-time lerp): finish the glide, then snap to exact physics
+      // truth — the frozen layout stays authoritative on screen too.
+      this.applyDisplayLerp();
+      this.uploadPositions();
       dirty = true;
     }
 
@@ -1803,6 +2239,18 @@ export class ThreeField implements SceneFieldRenderer {
       easing = this.stepAutoframe();
       dirty = true;
     }
+
+    // Emphasis cross-fade (emphasis-state-grammar ADR): ease every node's displayed
+    // recede + the fence alpha toward their targets, holding the loop awake until settled.
+    if (this.emphasisAnim) {
+      this.stepEmphasisFade();
+      dirty = true;
+    }
+
+    // SGR-005: any dirty frame may have moved node positions (tick+pack), the
+    // camera (autoframe ease), the data, or the viewport (resize sets needsRender)
+    // — all pick inputs — so the pointer-delta pick cache is no longer valid.
+    if (dirty) this.pickCacheValid = false;
 
     // Skip the GPU render while the canvas host is HIDDEN (graph toggled off → host
     // display:none → 0×0, #11): the CPU sim above still advances so the layout settles
@@ -1817,8 +2265,97 @@ export class ThreeField implements SceneFieldRenderer {
       this.renderFrame();
       this.updatePerfLod(performance.now() - t0);
     }
-    if (this.running || this.needsRender || easing) this.wake();
+    if (
+      this.running ||
+      this.needsRender ||
+      easing ||
+      this.emphasisAnim ||
+      this.displayEasing
+    ) {
+      this.wake();
+    }
   };
+
+  /** Render-time position lerp (sim-smoothness reference — the Quartz mechanism):
+   *  ease the DISPLAY buffer (`cpuPositions`, feeding the GPU texture, overlays, and
+   *  picking) toward the physics truth (`simPositions`) each frame, time-averaging
+   *  solver jitter ~8x before it reaches the screen. The dragged node snaps (no
+   *  rubber-band under the cursor); prefers-reduced-motion snaps everything; once
+   *  every coordinate is within epsilon the display snaps to EXACT physics truth so
+   *  the frozen layout stays authoritative on screen. */
+  private applyDisplayLerp(): void {
+    const sim = this.simPositions;
+    const disp = this.cpuPositions;
+    if (sim.length === 0 || disp.length !== sim.length) return;
+    if (prefersReducedMotion()) {
+      disp.set(sim);
+      this.displayEasing = false;
+      return;
+    }
+    let maxErr = 0;
+    for (let i = 0; i < this.nodes.length; i++) {
+      const b = i * 4;
+      if (i === this.dragNodeIndex) {
+        disp[b] = sim[b];
+        disp[b + 1] = sim[b + 1];
+        continue;
+      }
+      for (let c = 0; c < 2; c++) {
+        const target = sim[b + c];
+        if (!Number.isFinite(target)) continue;
+        const cur = disp[b + c];
+        if (!Number.isFinite(cur)) {
+          disp[b + c] = target;
+          continue;
+        }
+        const next = cur + (target - cur) * DISPLAY_LERP_K;
+        const err = Math.abs(target - next);
+        if (err > maxErr) maxErr = err;
+        disp[b + c] = err < DISPLAY_SNAP_EPS ? target : next;
+      }
+    }
+    this.displayEasing = maxErr >= DISPLAY_SNAP_EPS;
+  }
+
+  /** One exponential-ease step of the emphasis cross-fade: move every node's displayed
+   *  aDim (and the fence alpha) toward its target; snap + stop once everything is within
+   *  epsilon. dt is clamped so a background-tab stall can't teleport past the ease. */
+  private stepEmphasisFade(): void {
+    const nodeDim = this.nodeMesh?.geometry.getAttribute("aDim");
+    if (!nodeDim) {
+      this.emphasisAnim = false;
+      return;
+    }
+    const glyphDim = this.glyphMesh?.geometry.getAttribute("aDim");
+    const now = performance.now();
+    const dt = Math.min(100, Math.max(0, now - this.lastEmphasisTs));
+    this.lastEmphasisTs = now;
+    const k = 1 - Math.exp(-dt / EMPHASIS_FADE_TAU_MS);
+    const EPS = 0.004;
+    let maxErr = 0;
+    for (let i = 0; i < this.nodes.length; i++) {
+      const target = this.dimTarget[i] ?? 0;
+      const cur = nodeDim.getX(i);
+      let next = cur + (target - cur) * k;
+      const err = Math.abs(target - next);
+      if (err < EPS) next = target;
+      else if (err > maxErr) maxErr = err;
+      nodeDim.setX(i, next);
+      glyphDim?.setX(i, next); // the icon recedes with its circle
+    }
+    let fenceNext = this.fenceAlpha + (this.fenceTargetAlpha - this.fenceAlpha) * k;
+    const fenceErr = Math.abs(this.fenceTargetAlpha - fenceNext);
+    if (fenceErr < EPS) fenceNext = this.fenceTargetAlpha;
+    else if (fenceErr > maxErr) maxErr = fenceErr;
+    this.fenceAlpha = fenceNext;
+    nodeDim.needsUpdate = true;
+    if (glyphDim) glyphDim.needsUpdate = true;
+    if (maxErr < EPS) {
+      this.emphasisAnim = false;
+      // The fade-out has fully landed: release the lagging fence cohort tag.
+      if (this.fenceTargetAlpha === 0) this.fenceTag = null;
+    }
+  }
 
   /**
    * FPS-adaptive LOD (perf hardening #5). Tracks an EMA of render cost and, with hysteresis
@@ -1881,7 +2418,13 @@ export class ThreeField implements SceneFieldRenderer {
     const scale = this.camera.zoom;
     for (const id of ctrl.trackedNodeIds()) {
       const i = this.idToIndex.get(id);
-      const p = i === undefined ? null : this.worldToScreen(i);
+      // A filtered-out node hides its DOM anchor (opened island / hover card) — the
+      // same visibleNodeIds mask the ring + label passes honor (GS-004) — so an overlay
+      // never floats over a node the filter has hidden. Selection/tracking survives the
+      // filter (desirable); only the ghost anchor is suppressed, and it re-emits when the
+      // filter releases the node — no state change.
+      const masked = this.visibleNodeIds !== null && !this.visibleNodeIds.has(id);
+      const p = i === undefined || masked ? null : this.worldToScreen(i);
       if (!p || p.x < 0 || p.x > this.width || p.y < 0 || p.y > this.height) {
         ctrl.emitAnchor(id, null);
       } else {
@@ -1904,15 +2447,27 @@ export class ThreeField implements SceneFieldRenderer {
     ctx.clearRect(0, 0, this.width, this.height);
     if (this.nodes.length === 0) return;
 
-    const ink = `#${inkColor().toString(16).padStart(6, "0")}`;
-    const accent = `#${accentColor().toString(16).padStart(6, "0")}`;
-    const highlight = `#${highlightColor().toString(16).padStart(6, "0")}`;
+    // SGR-006: theme/scale-derived colours + label styles from the per-epoch cache.
+    const {
+      ink,
+      accent,
+      highlight,
+      inkMuted,
+      pillFill,
+      pillBorder,
+      featureStyle,
+      docStyle,
+    } = this.overlayTheme();
     const ppw = this.pixelsPerWorld();
     // Screen-px UI-scale: ring gaps, stroke widths, and label offsets track the DOM.
     const s = uiScale();
     // The active emphasis set (hover/selection) drives the focus/context split for the
     // glow + label colours below — recomputed once per draw.
     const focus = this.emphasisSet();
+
+    // Cluster-selection perimeter fence (emphasis-state-grammar ADR) — drawn FIRST so
+    // rings and labels layer above it.
+    this.drawFence(ctx, accent, s, ppw);
 
     // Emphasis rings (under labels). Three theme-token treatments kept visually
     // distinct so hover, selection, and pin never read the same:
@@ -1925,6 +2480,12 @@ export class ThreeField implements SceneFieldRenderer {
     // ring while hovered.
     for (let i = 0; i < this.nodes.length; i++) {
       const id = this.nodes[i].id;
+      // A filtered-out node draws no emphasis ring (GS-004): the same visibleNodeIds
+      // mask the label pass (labelVisible) and picking already honor, and the node body
+      // scales to zero via aHidden. Selection/pin survives the filter (desirable) — only
+      // the ghost ring over the hidden node is suppressed; it reappears when the filter
+      // releases the node, no state change.
+      if (this.visibleNodeIds && !this.visibleNodeIds.has(id)) continue;
       const selected = this.selectedIds.has(id);
       const hovered = this.hoveredId === id;
       const pinned = this.pinnedIds.has(id);
@@ -1976,11 +2537,6 @@ export class ThreeField implements SceneFieldRenderer {
     // scale with the DOM under one UI scale — never a hardcoded px. Labels appear ONLY on
     // interaction (hover / select / pin, per labelVisible) and render as a design PILL
     // (drawLabelPill) — there are no ambient always-on labels.
-    const featureStyle = labelTextStyle("feature");
-    const docStyle = labelTextStyle("document");
-    const inkMuted = `#${inkMutedColor().toString(16).padStart(6, "0")}`;
-    const pillFill = `#${canvasBackground().toString(16).padStart(6, "0")}`;
-    const pillBorder = `#${sceneRuleColor().toString(16).padStart(6, "0")}`;
     ctx.textBaseline = "middle";
     // FPS-adaptive LOD: quarter the label clutter cap when frames are slow (updatePerfLod).
     let budget = this.perfDegraded
@@ -2031,6 +2587,54 @@ export class ThreeField implements SceneFieldRenderer {
       );
       budget--;
     }
+    ctx.globalAlpha = 1;
+  }
+
+  /** Cluster-selection perimeter fence (emphasis-state-grammar ADR): the positive marker
+   *  of the durable feature-cluster selection — a convex padded hull (rounded n-gon)
+   *  traced around the spotlit cohort's on-screen positions, accent-token stroke over a
+   *  whisper fill, its alpha riding the shared emphasis ease (fade in on select, fade out
+   *  over the departing cohort on clear via the lagging `fenceTag`). Gates on the
+   *  visibleNodeIds mask exactly as rings/anchors do (GS-004): a filtered-out member
+   *  contributes no hull point and an all-hidden cohort draws no fence. Re-traced per
+   *  frame so it tracks the live layout; the interior fill is skipped under perf
+   *  degradation (the overlay pass is the FPS-sensitive path). */
+  private drawFence(
+    ctx: CanvasRenderingContext2D,
+    accentCss: string,
+    s: number,
+    ppw: number,
+  ): void {
+    if (this.fenceAlpha <= 0.01 || !this.fenceTag) return;
+    const ids = new Set(this.featureCohort.get(this.fenceTag) ?? []);
+    const featureNodeId = `feature:${this.fenceTag}`;
+    if (this.idToIndex.has(featureNodeId)) ids.add(featureNodeId);
+    const pts: ScreenPt[] = [];
+    let maxR = 0;
+    for (const id of ids) {
+      const i = this.idToIndex.get(id);
+      if (i === undefined) continue;
+      if (this.visibleNodeIds && !this.visibleNodeIds.has(id)) continue;
+      const p = this.worldToScreen(i);
+      if (!p) continue;
+      const r = Math.max(3 * s, nodeWorldRadius(this.nodes[i], this.appearance) * ppw);
+      if (r > maxR) maxR = r;
+      pts.push(p);
+    }
+    if (pts.length === 0) return;
+    const pad = maxR + FENCE_PAD_PX * s;
+    ctx.beginPath();
+    traceRoundedOffset(ctx, convexHull(pts), pad);
+    ctx.closePath();
+    if (!this.perfDegraded) {
+      ctx.globalAlpha = FENCE_FILL_ALPHA * this.fenceAlpha;
+      ctx.fillStyle = accentCss;
+      ctx.fill();
+    }
+    ctx.globalAlpha = FENCE_STROKE_ALPHA * this.fenceAlpha;
+    ctx.strokeStyle = accentCss;
+    ctx.lineWidth = FENCE_STROKE_WIDTH_PX * s;
+    ctx.stroke();
     ctx.globalAlpha = 1;
   }
 
@@ -2543,7 +3147,7 @@ export class ThreeField implements SceneFieldRenderer {
     const count = this.solver?.count ?? 0;
     const dot = Math.max(1, Math.min(2.5, scale * 6));
     const r = dot / 2;
-    ctx.fillStyle = hexCss(inkMutedColor());
+    ctx.fillStyle = this.overlayTheme().inkMuted; // SGR-006: cached per theme epoch
     ctx.globalAlpha = 0.7;
     for (let i = 0; i < count; i++) {
       // Match the visibility-aware bounds: a filtered-out node is not drawn on the overview.
@@ -2569,7 +3173,7 @@ export class ThreeField implements SceneFieldRenderer {
     const right = toX(this.camera.position.x + halfW);
     const top = toY(this.camera.position.y + halfH);
     const bottom = toY(this.camera.position.y - halfH);
-    ctx.strokeStyle = hexCss(accentColor());
+    ctx.strokeStyle = this.overlayTheme().accent; // SGR-006: cached per theme epoch
     ctx.lineWidth = 1;
     ctx.strokeRect(
       Math.round(left) + 0.5,
@@ -2643,25 +3247,58 @@ export class ThreeField implements SceneFieldRenderer {
   private pickNodeAtScreen(sx: number, sy: number): string | null {
     // cpuPositions is the live source of truth (pack() runs every tick), so the
     // hit test is always current — no GPU readback.
+    //
+    // SGR-005 pointer-delta gate: pointermove fires at device rate, so a hover
+    // hold re-scans O(N) for a sub-pixel jiggle. When the pick cache is still
+    // valid (no dirty frame / setData since the last pick) and the pointer moved
+    // <1px, reuse the last result — provably correct because nothing that affects
+    // a pick (positions, camera, data, viewport) has changed in that window.
+    if (
+      this.pickCacheValid &&
+      (sx - this.lastPickSx) ** 2 + (sy - this.lastPickSy) ** 2 < 1
+    ) {
+      return this.lastPickId;
+    }
+
     const ppw = this.pixelsPerWorld();
+    // SGR-004/005: hoist the per-node loop invariants OUT of the scan. `uiScale()`
+    // is a forced computed-style read (now cached, but still hoisted to one call),
+    // and the camera half-extents + viewport feed the INLINED `worldToScreen`
+    // projection (same math as the method) so the loop carries no invariant work.
+    const pickRadiusScreen = PICK_RADIUS_PX * uiScale();
+    const halfW = (this.camera.right - this.camera.left) / 2 / this.camera.zoom;
+    const halfH = (this.camera.top - this.camera.bottom) / 2 / this.camera.zoom;
+    const camX = this.camera.position.x;
+    const camY = this.camera.position.y;
+    const width = this.width;
+    const height = this.height;
+
     let best: string | null = null;
     let bestDistSq = Infinity;
     for (let i = 0; i < this.nodes.length; i++) {
       if (this.visibleNodeIds && !this.visibleNodeIds.has(this.nodes[i].id)) continue;
-      const p = this.worldToScreen(i);
-      if (!p) continue;
+      const wx = this.cpuPositions[i * 4];
+      const wy = this.cpuPositions[i * 4 + 1];
+      if (!Number.isFinite(wx) || !Number.isFinite(wy)) continue;
+      const px = ((wx - camX) / halfW / 2 + 0.5) * width;
+      const py = (1 - ((wy - camY) / halfH / 2 + 0.5)) * height;
       const radius = Math.max(
-        PICK_RADIUS_PX * uiScale(),
+        pickRadiusScreen,
         nodeWorldRadius(this.nodes[i], this.appearance) * ppw,
       );
-      const dx = p.x - sx;
-      const dy = p.y - sy;
+      const dx = px - sx;
+      const dy = py - sy;
       const distSq = dx * dx + dy * dy;
       if (distSq <= radius * radius && distSq < bestDistSq) {
         bestDistSq = distSq;
         best = this.nodes[i].id;
       }
     }
+
+    this.lastPickSx = sx;
+    this.lastPickSy = sy;
+    this.lastPickId = best;
+    this.pickCacheValid = true;
     return best;
   }
 
@@ -2677,7 +3314,7 @@ export class ThreeField implements SceneFieldRenderer {
     // No global re-energise: the solver pins the grabbed node and wakes only its
     // link-neighbours within wakeRadius (the sleep/active-set model); every other
     // settled node stays pinned, so distant clusters do not move.
-    this.running = true;
+    this.setRunning(true);
     const w = this.screenToWorld(sx, sy);
     this.solver.setDrag(index, w.x, w.y);
     this.wake();
@@ -2689,7 +3326,7 @@ export class ThreeField implements SceneFieldRenderer {
     this.dragNodeIndex = -1;
     this.dragActive = false;
     // Keep ticking; the released neighbourhood re-settles via the solver, then sleeps.
-    this.running = true;
+    this.setRunning(true);
     this.wake();
   }
 

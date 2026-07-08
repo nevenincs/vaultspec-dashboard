@@ -1,5 +1,5 @@
+import { useMemo } from "react";
 import { create } from "zustand";
-import { useShallow } from "zustand/react/shallow";
 
 // Create-document chrome state: modal visibility, draft fields, and validation
 // feedback. The write itself stays in stores/server/useCreateDoc.
@@ -142,8 +142,16 @@ export function deriveCreateDocSubmission(draft: unknown): CreateDocSubmission {
 }
 
 export function useCreateDocChrome(): CreateDocChromeView {
-  return useCreateDocChromeStore(
-    useShallow((state) => normalizeCreateDocChromeView(state)),
+  // Select the RAW stable fields; derive the view in useMemo (stable-selectors) —
+  // never inside the selector, even under useShallow.
+  const open = useCreateDocChromeStore((state) => state.open);
+  const docType = useCreateDocChromeStore((state) => state.docType);
+  const feature = useCreateDocChromeStore((state) => state.feature);
+  const title = useCreateDocChromeStore((state) => state.title);
+  const error = useCreateDocChromeStore((state) => state.error);
+  return useMemo(
+    () => normalizeCreateDocChromeView({ open, docType, feature, title, error }),
+    [open, docType, feature, title, error],
   );
 }
 

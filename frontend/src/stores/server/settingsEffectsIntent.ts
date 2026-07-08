@@ -2,7 +2,8 @@ import { useCallback, useMemo, useRef } from "react";
 
 import { normalizeStringMember, useDashboardStateMutations } from "./dashboardState";
 import { normalizeDashboardTextFilter } from "./dashboardStateNormalization";
-import { GRAPH_GRANULARITIES } from "./engine";
+import { GRAPH_CORPORA, GRAPH_GRANULARITIES } from "./engine";
+import type { GraphCorpus } from "./engine";
 import { normalizeStoreScope } from "./scopeIdentity";
 
 export interface SettingsEffectsIntent {
@@ -27,6 +28,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export interface SettingsEffectsGraphDefaultsIntent {
   defaultGranularity: "feature" | "document";
+  corpus: GraphCorpus;
   confidenceFloor: number;
   labelFilter: string;
 }
@@ -52,8 +54,11 @@ export function normalizeSettingsEffectsGraphDefaults(
     return null;
   }
   if (typeof defaults.labelFilter !== "string") return null;
+  // Corpus tolerates absence (older engine / older cached defaults) — vault.
+  const corpus = normalizeStringMember(defaults.corpus, GRAPH_CORPORA) ?? "vault";
   return {
     defaultGranularity,
+    corpus,
     confidenceFloor,
     labelFilter: normalizeDashboardTextFilter(defaults.labelFilter) ?? "",
   };

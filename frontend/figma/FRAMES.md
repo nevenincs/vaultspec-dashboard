@@ -59,7 +59,7 @@ Existing (selected — the join is by name, so resolve any component by its Reac
 | `636:1920` | FrontmatterHeader | | `283:1170` | DocHeader (set) |
 | `807:3528` | DocTypeMark (set) | | `635:3190` | IconRail |
 | `635:3126` | Inspector | | `635:2489` | KeyboardShortcuts |
-| `545:1397` | LocationStrip | | `636:2144` | MinimapWidget |
+| `545:1397` | LocationStrip (retired in code — worktree-switcher-identity ADR) | | `636:2144` | MinimapWidget |
 | `636:2157` | Playhead | | `260:896` | PropertyRow |
 | `879:4125` | RagOpsConsole | | `636:1947` | RailFilterField |
 | `636:2152` | RangeSelect | | `650:1790` | SearchResultPill (set) |

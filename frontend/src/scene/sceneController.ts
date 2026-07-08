@@ -116,6 +116,32 @@ export interface SceneNodeData {
    * W01.P01.S04 lock discipline. The sigma.js fallback ignores it harmlessly.
    */
   salience?: number;
+  /**
+   * CODE corpus module identity (codebase-graphing CGR-002): the owning top-level
+   * `module` key, the 0..6 `moduleHue` ordered-palette index (or null for a
+   * long-tail module → the neutral `code` hue), and the path `depth`. Backend-
+   * served; drive the module-hue colour + depth gradient in `appearance.ts` and the
+   * code-corpus legend. Absent on vault nodes (the category colour applies instead).
+   */
+  module?: string;
+  moduleHue?: number | null;
+  depth?: number;
+  /**
+   * CODE corpus package identity (code-graph-files-only): true on the one file
+   * that DISPLAYS as its package (`__init__.py` / `mod.rs` / `lib.rs` /
+   * `index.*`) — the anchor treatment in `appearance.ts`. Absent on vault
+   * nodes and on plain member files. Additive/optional on the locked RL-1
+   * node-data surface, mirroring the `module`/`moduleHue` redline.
+   */
+  packageEntry?: boolean;
+  /**
+   * Engine-served recency percentile over the code corpus (code-graph-heat ADR):
+   * 0 = oldest worktree mtime, 1 = newest; a package-rollup representative
+   * carries its members' max. Drives the Recency node-color mode's theme-token
+   * heat ramp. Absent on undated files and on vault nodes (the cold end /
+   * category color applies).
+   */
+  recencyRank?: number;
   temporal?: { bucket: string };
   /**
    * Per-node semantic embedding vector (graph-representation ADR §4 amendment):
@@ -193,6 +219,37 @@ export interface SceneDelta {
   seq: number;
 }
 
+/**
+ * Fold an ordered delta batch into a held node/edge set, keyed by stable id: a
+ * `remove` deletes by id, an `add`/`change` upserts by id. Returns fresh arrays;
+ * the inputs are not mutated.
+ *
+ * Shared by the field renderer's `applyDeltas` and the controller's held-model
+ * update so the two stay consistent (GIR-006). It mirrors the renderer's in-place
+ * fold exactly — a removed node's incident edges are dropped only by their own
+ * `remove` deltas, matching what the field actually draws — so the controller's
+ * nodeCount/edgeCount reflect the rendered graph after a live splice, not a stale
+ * pre-splice set.
+ */
+export function foldSceneDeltas(
+  nodes: readonly SceneNodeData[],
+  edges: readonly SceneEdgeData[],
+  deltas: readonly SceneDelta[],
+): { nodes: SceneNodeData[]; edges: SceneEdgeData[] } {
+  const nodeMap = new Map(nodes.map((n) => [n.id, n] as const));
+  const edgeMap = new Map(edges.map((e) => [e.id, e] as const));
+  for (const d of deltas) {
+    if (d.op === "remove") {
+      if (d.node) nodeMap.delete(d.node.id);
+      if (d.edge) edgeMap.delete(d.edge.id);
+    } else {
+      if (d.node) nodeMap.set(d.node.id, d.node);
+      if (d.edge) edgeMap.set(d.edge.id, d.edge);
+    }
+  }
+  return { nodes: [...nodeMap.values()], edges: [...edgeMap.values()] };
+}
+
 export type SceneCommand =
   // `reflow` is an ADDITIVE optional flag (default undefined ≡ false preserves the
   // existing behaviour): a `reflow:true` set-data is a FILTER-driven topology change
@@ -201,11 +258,19 @@ export type SceneCommand =
   // the survivors — and never refits the camera, instead of the cold re-explode a
   // large drop would otherwise take. Powers the reflow filter mode (graph-controls
   // toggle); omit it and set-data behaves exactly as before.
+  //
+  // `reset` is the ADDITIVE explicit COLD contract (default undefined ≡ false): a
+  // `reset:true` set-data is a corpus identity change (the vault|code view-mode
+  // switch), so the field always takes the cold path — full prewarm + one-time
+  // camera fit — by INTENT rather than by the id-overlap heuristic happening to see
+  // disjoint id namespaces (settle-on-swap audit: the wipe+reload contract is
+  // stated, not emergent). `reset` wins over `reflow`.
   | {
       kind: "set-data";
       nodes: SceneNodeData[];
       edges: SceneEdgeData[];
       reflow?: boolean;
+      reset?: boolean;
     }
   | { kind: "apply-deltas"; deltas: SceneDelta[]; seq: number }
   // `animate` is an ADDITIVE optional flag on the locked seam (default undefined ≡
@@ -234,21 +299,15 @@ export type SceneCommand =
   // the node on the canvas. ADDITIVE to the locked union (dashboard-node-redesign;
   // mirrors the set-pinned additive shape) — no existing member renamed/removed.
   | { kind: "set-selected"; ids: ReadonlySet<string> }
-  // Visual-only META-HIGHLIGHT (#16): soft, hover-style emphasis of a SET of nodes (a
-  // rail-selected feature's members) — they keep full colour while non-members recede,
-  // exactly like a hover cohort, but with NO selection ring. DISTINCT from `set-selected`
-  // (which rings, and the scene enforces SINGLETON): a feature select emits `frame-nodes`
-  // (camera) + this, NEVER a multi-id `set-selected`. An empty set clears the highlight.
-  // Additive to the locked union — no existing member renamed/removed.
-  | { kind: "set-meta-highlight"; ids: ReadonlySet<string> }
   // DURABLE feature-cluster spotlight (feature-selection-global-state): the canonical
   // selection authority projects a SELECTED FEATURE here by its TAG (not a frozen id
   // set). The scene derives the member cohort from live `node.feature_tags` each render
   // and re-applies it on every `set-data`, so the spotlight SURVIVES data refreshes /
-  // SSE deltas / filter changes / lens switches — unlike `set-meta-highlight`, which is
-  // a one-shot id set cleared on the next data change. `tag: null` clears it. `frame`
+  // SSE deltas / filter changes / lens switches. `tag: null` clears it. `frame`
   // (default false) requests a ONE-SHOT camera frame to the cohort on a genuine change
   // (the rail feature-select frame, follow-gated); the durable re-apply never re-frames.
+  // (The prior one-shot `set-meta-highlight` id-set command this superseded was DELETED
+  // as a deliberate contract event — emphasis-state-grammar ADR 2026-07-03.)
   | { kind: "set-feature-spotlight"; tag: string | null; frame?: boolean }
   // Transient cross-highlight (G2.b): lift the named nodes briefly — the
   // timeline's event-click pulse. Additive seam amendment at S36.
@@ -270,6 +329,13 @@ export type SceneCommand =
   | { kind: "frame-nodes"; ids: ReadonlySet<string> }
   | { kind: "reset-view" }
   | { kind: "set-simulation-active"; active: boolean }
+  // Deliberate PLAY intent (graph sim play/pause control, 2026-07-03): run the sim NOW.
+  // Distinct from `set-simulation-active {active:true}` (energy-neutral resume, GIR-002):
+  // play RESUMES an in-flight paused settle, but on an already-settled layout it is the
+  // named explicit-restart entry point (`reheatNow`) — the one deliberate energy pump the
+  // simulation-stability ADR reserves for explicit user intent. A frozen field ignores it
+  // (the chrome unfreezes first). ADDITIVE to the locked union; no member changed.
+  | { kind: "sim-play" }
   // Three-native force tuning (replaces the retired set-cosmos-config): the
   // graph-controls sliders patch the field's d3-force params live.
   | { kind: "set-force-params"; params: GraphForceParams }
@@ -379,7 +445,16 @@ export type SceneEvent =
       requested: RepresentationMode;
       applied: RepresentationMode;
       downgradeReason?: string;
-    };
+    }
+  // --- sim play/pause (2026-07-03) -------------------------------------------
+  /**
+   * Emitted on every simulation run-state TRANSITION (start ticking ↔ settled/paused/
+   * frozen), never per frame. The chrome's play/pause control mirrors this into the
+   * graph-controls store, so the button state is sourced from the sim's own truth —
+   * it auto-flips to "play" when the cooling schedule settles the layout, without a
+   * wall-clock timer. Additive to the locked union; no existing member changed.
+   */
+  | { kind: "sim-state"; running: boolean };
 
 type SceneEventListener = (event: SceneEvent) => void;
 
@@ -462,6 +537,7 @@ export class SceneController {
         this.edges = cmd.edges;
         break;
       case "set-simulation-active":
+      case "sim-play":
         break;
       case "set-representation-mode":
         this._representationMode = cmd.mode;
@@ -472,9 +548,16 @@ export class SceneController {
           featureHulls: cmd.featureHulls,
         };
         break;
-      case "apply-deltas":
-        // Delta log (RL-3) applied by the field renderer.
+      case "apply-deltas": {
+        // Fold the delta batch into the held model so nodeCount/edgeCount stay truthful
+        // after a live splice (GIR-006). The field renderer applies the same fold to its
+        // own set below via foldSceneDeltas, so the two never diverge. The incremental
+        // solver rebuild (layout) remains the field renderer's concern.
+        const folded = foldSceneDeltas(this.nodes, this.edges, cmd.deltas);
+        this.nodes = folded.nodes;
+        this.edges = folded.edges;
         break;
+      }
       case "set-selected":
       case "focus-node":
       case "set-visibility":
@@ -526,11 +609,23 @@ export class SceneController {
     };
   }
 
+  // Last emitted sim run state (GPR-001): cached here so a bridge that (re)mounts
+  // can SEED its mirror instead of waiting for the next transition — a settle that
+  // fired while no listener was subscribed is otherwise lost and the play/pause
+  // chrome renders stale until the next genuine run-state change.
+  private _simRunning = false;
+
   /** Renderer-side dispatch — exposed for the spike and for tests. */
   emit(event: SceneEvent): void {
+    if (event.kind === "sim-state") this._simRunning = event.running;
     for (const listener of this.listeners) {
       listener(event);
     }
+  }
+
+  /** The last emitted sim run state — the mount-time seed for the chrome mirror. */
+  get simRunning(): boolean {
+    return this._simRunning;
   }
 
   /** Renderer-side registry read (RL-4) — the anchor driver's input. */

@@ -66,6 +66,7 @@ import {
   type RagProjectsState,
   type RagProjectSlot,
 } from "./ragControl";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 // --- pure interpreters (no render) ------------------------------------------------
 
@@ -857,15 +858,12 @@ describe("rag control plane (real engine broker)", () => {
       }),
       { wrapper },
     );
-    await waitFor(() => expect(result.current.svc.data).toBeDefined(), {
-      timeout: 6000,
-    });
-    await waitFor(() => expect(result.current.watcher.data).toBeDefined(), {
-      timeout: 6000,
-    });
-    await waitFor(() => expect(result.current.projects.data).toBeDefined(), {
-      timeout: 6000,
-    });
+    await waitFor(() => expect(result.current.svc.data).toBeDefined(), ENGINE_WAIT);
+    await waitFor(() => expect(result.current.watcher.data).toBeDefined(), ENGINE_WAIT);
+    await waitFor(
+      () => expect(result.current.projects.data).toBeDefined(),
+      ENGINE_WAIT,
+    );
     // Each read honors the broker degradation contract; none throws.
     expect(result.current.svc.isError).toBe(false);
     expect(result.current.watcher.isError).toBe(false);

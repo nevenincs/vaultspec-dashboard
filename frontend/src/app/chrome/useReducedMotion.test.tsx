@@ -4,6 +4,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { useReducedMotion } from "./useReducedMotion";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 describe("useReducedMotion", () => {
   afterEach(() => {
@@ -29,7 +30,7 @@ describe("useReducedMotion", () => {
 
     await waitFor(() => {
       expect(result.current).toBe(true);
-    });
+    }, ENGINE_WAIT);
 
     act(() => {
       document.documentElement.dataset.reduceMotion = "false";
@@ -37,6 +38,6 @@ describe("useReducedMotion", () => {
 
     await waitFor(() => {
       expect(result.current).toBe(false);
-    });
+    }, ENGINE_WAIT);
   });
 });

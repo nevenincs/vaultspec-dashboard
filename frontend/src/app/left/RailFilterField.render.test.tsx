@@ -26,6 +26,7 @@ import { queryClient } from "../../stores/server/queryClient";
 import { useViewStore } from "../../stores/view/viewStore";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { RailFilterField } from "./RailFilterField";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 const FILTER_LABEL = "filter the vault by feature";
 
@@ -81,7 +82,7 @@ describe("RailFilterField (the canonical feature filter)", () => {
       }),
     );
 
-    const input = await screen.findByLabelText(FILTER_LABEL);
+    const input = await screen.findByLabelText(FILTER_LABEL, undefined, ENGINE_WAIT);
     // A plain term becomes a substring glob (`*edge*`) over feature tags.
     fireEvent.change(input, { target: { value: "edge" } });
 
@@ -89,7 +90,7 @@ describe("RailFilterField (the canonical feature filter)", () => {
       const state = await createLiveClient().dashboardState(scope);
       expect(state.filters.feature_query).toEqual({ value: "*edge*", mode: "glob" });
       expect(state.filters.doc_types).toEqual([docType]);
-    });
+    }, ENGINE_WAIT);
   });
 
   it("clear cancels a pending feature-query write", async () => {
@@ -100,14 +101,14 @@ describe("RailFilterField (the canonical feature filter)", () => {
       }),
     );
 
-    const input = await screen.findByLabelText(FILTER_LABEL);
+    const input = await screen.findByLabelText(FILTER_LABEL, undefined, ENGINE_WAIT);
     fireEvent.change(input, { target: { value: "stale" } });
     fireEvent.click(screen.getByRole("button", { name: "clear search" }));
 
     await waitFor(async () => {
       const state = await createLiveClient().dashboardState(scope);
       expect(state.filters.feature_query).toBeUndefined();
-    });
+    }, ENGINE_WAIT);
 
     await new Promise((resolve) => setTimeout(resolve, 260));
 
@@ -132,7 +133,11 @@ describe("RailFilterField (the canonical feature filter)", () => {
       }),
     );
 
-    const input = (await screen.findByLabelText(FILTER_LABEL)) as HTMLInputElement;
+    const input = (await screen.findByLabelText(
+      FILTER_LABEL,
+      undefined,
+      ENGINE_WAIT,
+    )) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "stale" } });
 
     const canonical = await createLiveClient().patchDashboardState({
@@ -145,7 +150,7 @@ describe("RailFilterField (the canonical feature filter)", () => {
     );
 
     // The field echoes the inverse text of the canonical glob ("winner").
-    await waitFor(() => expect(input.value).toBe("winner"));
+    await waitFor(() => expect(input.value).toBe("winner"), ENGINE_WAIT);
     await new Promise((resolve) => setTimeout(resolve, 260));
 
     const afterDebounceWindow = await createLiveClient().dashboardState(scope);

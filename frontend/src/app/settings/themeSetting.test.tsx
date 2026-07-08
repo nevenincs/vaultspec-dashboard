@@ -10,9 +10,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
+import type { SettingsState } from "../../stores/server/engine";
 import { engineKeys } from "../../stores/server/queries";
 import { queryClient } from "../../stores/server/queryClient";
 import { CONSUMED_SETTING_KEYS } from "../../stores/server/settingsSelectors";
@@ -21,6 +22,7 @@ import {
   type ThemePreference,
 } from "../../platform/theme/themeController";
 import { useThemeSetting } from "./themeSetting";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function Harness() {
   const { preference, setPreference } = useThemeSetting();
@@ -49,10 +51,26 @@ function clickPreference(value: ThemePreference | "invalid") {
 async function waitForThemeSchema() {
   await waitFor(() => {
     expect(queryClient.getQueryData(engineKeys.settingsSchema())).toBeDefined();
-  });
+  }, ENGINE_WAIT);
 }
 
 describe("theme migrated into the settings model (W05)", () => {
+  // TIH-004 (write hygiene): these tests persist theme changes (incl. the
+  // non-default "dark") to the shared engine settings store; snapshot the global
+  // theme before the suite and restore it at teardown so a later suite never
+  // inherits this suite's writes.
+  let settingsSnapshot: SettingsState;
+  beforeAll(async () => {
+    settingsSnapshot = await engineClient.settings();
+  });
+  afterAll(async () => {
+    await engineClient
+      .putSettings({
+        key: CONSUMED_SETTING_KEYS.theme,
+        value: settingsSnapshot.global[CONSUMED_SETTING_KEYS.theme] ?? "system",
+      })
+      .catch(() => undefined);
+  });
   afterEach(() => {
     cleanup();
     queryClient.clear();
@@ -67,12 +85,12 @@ describe("theme migrated into the settings model (W05)", () => {
     // The controller applied data-theme immediately (no-FOUC optimistic path).
     await waitFor(() => {
       expect(document.documentElement.dataset.theme).toBe("dark");
-    });
+    }, ENGINE_WAIT);
     // The change persisted to the engine settings model (server is authoritative).
     await waitFor(async () => {
       const fresh = await engineClient.settings();
       expect(fresh.global.theme).toBe("dark");
-    });
+    }, ENGINE_WAIT);
   });
 
   it("reconciles the authoritative server theme onto the controller on load", async () => {
@@ -85,10 +103,10 @@ describe("theme migrated into the settings model (W05)", () => {
     // The reconcile effect applies the server value to the controller.
     await waitFor(() => {
       expect(document.documentElement.dataset.theme).toBe("light");
-    });
+    }, ENGINE_WAIT);
     await waitFor(() => {
       expect(screen.getByTestId("pref").textContent).toBe("light");
-    });
+    }, ENGINE_WAIT);
   });
 
   it("does not reconcile or write theme while authoritative settings are pending", async () => {
@@ -109,7 +127,7 @@ describe("theme migrated into the settings model (W05)", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("pref").textContent).toBe("dark");
-    });
+    }, ENGINE_WAIT);
     expect(document.documentElement.dataset.theme).toBe("dark");
 
     clickPreference("light");
@@ -129,7 +147,7 @@ describe("theme migrated into the settings model (W05)", () => {
     await waitForThemeSchema();
     await waitFor(() => {
       expect(screen.getByTestId("pref").textContent).toBe("system");
-    });
+    }, ENGINE_WAIT);
 
     clickPreference("invalid");
 
@@ -149,13 +167,13 @@ describe("theme migrated into the settings model (W05)", () => {
     renderHarness();
     await waitFor(() => {
       expect(document.documentElement.dataset.theme).toBe("dark");
-    });
+    }, ENGINE_WAIT);
     await waitForThemeSchema();
     clickPreference("light");
     // Settles on light; never gets stuck on dark.
     await waitFor(() => {
       expect(document.documentElement.dataset.theme).toBe("light");
-    });
+    }, ENGINE_WAIT);
     // Give any stray reconcile a chance to (wrongly) revert; it must stay light.
     await new Promise((r) => setTimeout(r, 50));
     expect(document.documentElement.dataset.theme).toBe("light");

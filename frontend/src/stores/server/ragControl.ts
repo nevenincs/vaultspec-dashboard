@@ -25,7 +25,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { create } from "zustand";
-import { useShallow } from "zustand/react/shallow";
 
 import {
   engineClient,
@@ -144,6 +143,10 @@ export interface RagStorageRollup {
   total_points: number;
   total_footprint_bytes: number;
   total_namespaces: number;
+  /** true when the survey returned fewer namespaces than `total_namespaces`
+   *  (bounded at the survey limit): the totals/counts are then a LOWER BOUND over
+   *  the returned slice, not exact machine totals (RCR-002). */
+  truncated: boolean;
   live_count: number;
   orphaned_count: number;
   namespaces: RagStorageNamespace[];
@@ -589,12 +592,15 @@ export function useRagReindexJobIdentity(scope: unknown): {
   acceptReceipt: (requestScope: unknown, requestSeq: unknown, jobId: unknown) => void;
 } {
   const normalizedScope = normalizeRagControlScope(scope);
-  const identity = useRagReindexJobStore(
-    useShallow((state) => ({
-      jobId: state.jobId,
-      beginRequest: state.beginRequest,
-      acceptReceipt: state.acceptReceipt,
-    })),
+  // Select the RAW stable slices (jobId + the two stable action fns); assemble the
+  // identity in useMemo (stable-selectors) — never build the object inside the
+  // selector, even under useShallow.
+  const jobId = useRagReindexJobStore((state) => state.jobId);
+  const beginRequest = useRagReindexJobStore((state) => state.beginRequest);
+  const acceptReceipt = useRagReindexJobStore((state) => state.acceptReceipt);
+  const identity = useMemo(
+    () => ({ jobId, beginRequest, acceptReceipt }),
+    [jobId, beginRequest, acceptReceipt],
   );
   const setScope = useRagReindexJobStore((state) => state.setScope);
   useEffect(() => {

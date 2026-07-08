@@ -9,6 +9,7 @@
 // passing test IS the contract-shape verification — there is no mock double.
 
 import {
+  adaptCodeFiles,
   adaptContent,
   adaptDashboardState,
   adaptFileTree,
@@ -42,8 +43,25 @@ const API_BASE = import.meta.env.DEV ? "/api" : "";
 
 // --- cross-cutting contract shapes (§2) ----------------------------------------
 
+/**
+ * The component compatibility handshake the engine attaches to a tier
+ * (dashboard-packaging D6): the sibling tool the tier rides on, the floor the
+ * dashboard declares for it, the probed version (null when unknowable — rag
+ * reports none), and the served floor verdict. All values are engine-served;
+ * the client only maps them to presentation.
+ */
+export interface TierComponent {
+  readonly name: string;
+  readonly floor: string;
+  readonly version: string | null;
+  readonly meets_floor?: boolean | null;
+}
+
 /** Every response carries a per-tier degradation block — truthful absence. */
-export type TiersBlock = Record<string, { available: boolean; reason?: string }>;
+export type TiersBlock = Record<
+  string,
+  { available: boolean; reason?: string; component?: TierComponent }
+>;
 
 /**
  * The canonical, ordered tier-name vocabulary (contract §2). The single source
@@ -154,6 +172,12 @@ export interface TierAvailability {
   degradedTiers: string[];
   /** Per-tier human reason the engine supplied, keyed by tier name. */
   reasons: Record<string, string>;
+  /** The served component handshake per inspected tier, when the engine
+   *  attached one (dashboard-packaging D6): advisory floor/version data for
+   *  status surfaces. Never folded into `degraded` — the engine's served
+   *  eligibility is the authority on what a below-floor component blocks.
+   *  Optional so composed availability shapes need not carry it. */
+  components?: Record<string, TierComponent>;
 }
 
 /**
@@ -169,17 +193,26 @@ export function readTierAvailability(
   tiers: TiersBlock | undefined,
   tierNames: readonly string[],
 ): TierAvailability {
-  if (!tiers) return { degraded: false, degradedTiers: [], reasons: {} };
+  if (!tiers)
+    return { degraded: false, degradedTiers: [], reasons: {}, components: {} };
   const degradedTiers: string[] = [];
   const reasons: Record<string, string> = {};
+  const components: Record<string, TierComponent> = {};
   for (const tier of tierNames) {
     const state = tiers[tier];
+    // The component handshake (dashboard-packaging D6) is exposed as served
+    // data, NOT folded into `degraded`: a below-floor core still reads fine —
+    // the engine's own served eligibility blocks the authoring verbs it
+    // cannot honor, and inventing a whole-tier client-side degradation would
+    // grey working read surfaces (P02 review). Surfaces that want to render
+    // component staleness (status chrome, settings) read `components`.
+    if (state?.component) components[tier] = state.component;
     if (state === undefined || state.available === false) {
       degradedTiers.push(tier);
       if (state?.reason) reasons[tier] = state.reason;
     }
   }
-  return { degraded: degradedTiers.length > 0, degradedTiers, reasons };
+  return { degraded: degradedTiers.length > 0, degradedTiers, reasons, components };
 }
 
 /**
@@ -268,6 +301,11 @@ export interface WorkspacesState {
 export interface VaultTreeEntry {
   path: string;
   doc_type: string;
+  /** The document's H1 title (engine-served on every vault-tree row); absent when
+   *  the document carries none. A match field for the files(vault) search
+   *  provider (search-providers ADR) — a document is findable by its title, not
+   *  just its stem. */
+  title?: string;
   feature_tags: string[];
   // All day-granular ISO strings ("YYYY-MM-DD") AFTER adaptation, so the rail's
   // date narrow compares them directly with the `date_range` bounds by the active
@@ -283,12 +321,59 @@ export interface VaultTreeEntry {
    *  reads. Present only on plan rows that carry checkbox progress; absent
    *  everywhere else so the left rail paints the honest not-started baseline. */
   progress?: { done: number; total: number };
+  /** Ingest-measured document weight (left-rail-tree-controls ADR D2): byte
+   *  length + whitespace-separated word count of the body. Absent on an older
+   *  engine or a node that carries none — honest absence, the rail renders
+   *  nothing (never a fabricated zero). */
+  size?: { bytes: number; words: number };
 }
 
 export interface VaultTreeResponse {
   entries: VaultTreeEntry[];
   tiers: TiersBlock;
 }
+
+// The complete code-file listing (search-providers ADR: the one contract event).
+// One minimal row per `code:` file node projected off the code corpus graph —
+// NOT the DOI-bounded graph slice — so the files(code) search provider narrows a
+// COMPLETE client-held listing (the complete-paginated-set rule), never a capped
+// slice that would silently miss files.
+export interface CodeFileEntry {
+  /** Repo-relative POSIX path — the node key and the display path. */
+  path: string;
+  /** The `code:{path}` graph node id, so a hit is directly navigable through
+   *  the shared open verb (no separate resolution). */
+  node_id: string;
+  /** The file's display title (a package-entry file shows its package name);
+   *  absent when the node carries none. */
+  title?: string;
+  /** Wire language token (`rust`/`typescript`/`javascript`/`python`), when the
+   *  path extension classifies; absent for an unclassified extension. */
+  lang?: string;
+}
+
+/** Honest walk-cap truncation (search-providers ADR / ADR D8): present only when
+ *  the ingest walk cap bounded the corpus, so the listing is NOT the complete
+ *  source tree. `null`/absent means the walk ran to completion. */
+export interface CodeFilesTruncation {
+  returned_files: number;
+  reason: string;
+}
+
+export interface CodeFilesResponse {
+  entries: CodeFileEntry[];
+  tiers: TiersBlock;
+  truncated: CodeFilesTruncation | null;
+}
+
+// The files(code) provider narrows the listing CLIENT-SIDE, so — exactly like the
+// vault tree — it must hold the COMPLETE set or a file beyond the first page can
+// never match. The route serves a memoized, filter-independent projection
+// paginated at `<= CODE_FILES_PAGE_SIZE`/page, so `codeFiles` walks the cursor to
+// completion. The page cap bounds the walk (bounded-by-default): 25 × 2000 =
+// 50,000 covers the engine's whole 50k source-file walk ceiling in one drain.
+const CODE_FILES_PAGE_SIZE = 2000;
+const CODE_FILES_MAX_PAGES = 25;
 
 // The rail narrows the vault tree CLIENT-SIDE (`narrowVaultRailEntries`), so it
 // must hold the COMPLETE listing or a feature whose documents fall beyond the
@@ -374,7 +459,7 @@ export interface ContentTruncated {
 }
 
 /** The bytes of one document or source file (GET /nodes/{id}/content data).
- *  `language_hint` is the engine's extension-derived grammar hint (the viewer
+ *  `language_hint` is the engine's path-derived grammar hint (the viewer
  *  maps it to a Shiki grammar, degrading to plain text on an unknown hint);
  *  `blob_hash` is the git-style blob oid that content-addresses the cache entry. */
 export interface ContentResponse {
@@ -384,7 +469,7 @@ export interface ContentResponse {
   blob_hash: string;
   /** Full byte length of the file (before any truncation). */
   byte_len: number;
-  /** Extension-derived highlighter grammar hint; null when none applies. */
+  /** Path-derived highlighter grammar hint; null when none applies. */
   language_hint: string | null;
   /** The (possibly truncated) UTF-8 text. */
   text: string;
@@ -418,11 +503,40 @@ export interface EngineNode {
   lifecycle?: { state: string; progress?: { done: number; total: number } };
   degree_by_tier?: Partial<Record<"declared" | "structural" | "temporal", number>>;
   /**
-   * Feature-convergence nodes only (constellation granularity, engine
-   * addendum S02): how many documents converge on the feature. Drives the
-   * center-of-gravity sizing (ADR D4.1); absent on document nodes.
+   * Aggregation anchors (constellation granularity, engine addendum S02): how
+   * many members converge on the node — documents for a feature convergence,
+   * member FILES for a code package-rollup representative
+   * (code-graph-files-only). Drives the center-of-gravity sizing (ADR D4.1);
+   * absent on document nodes and file-granularity code nodes.
    */
   member_count?: number;
+  /**
+   * CODE corpus (codebase-graphing CGR-002): served on code file nodes to
+   * drive module-identity colouring. `module` is the owning top-level module key;
+   * `module_hue` is the 0..6 ordered-palette index assigned to the top-seven
+   * modules by member count (`null` for the long-tail); `depth` is the path-segment
+   * depth. Backend-served + memoized per generation; absent on vault nodes.
+   */
+  module?: string;
+  module_hue?: number | null;
+  depth?: number;
+  /**
+   * CODE corpus package identity (code-graph-files-only): `package` is the
+   * directory of the package the file belongs to (`null` for a standalone
+   * file; `""` names the repository root); `package_entry` is true on the one
+   * file that DISPLAYS as its package (`__init__.py` / `mod.rs` / `lib.rs` /
+   * `index.*`) — the anchor the scene renders as the package.
+   */
+  package?: string | null;
+  package_entry?: boolean;
+  /**
+   * Engine-served recency percentile over the code corpus (code-graph-heat ADR):
+   * a dated file's worktree-mtime rank in [0, 1] (0 = oldest, 1 = newest); a
+   * package-rollup representative carries its members' max. Computed over the
+   * FULL pre-truncation set, stable under narrowing. Absent on undated files
+   * and vault nodes.
+   */
+  recency_rank?: number;
   /**
    * The authority register the node answers in (graph-node-semantics ADR):
    * `design` (ADR), `roadmap` (plan/feature), `evidence` (exec), `judgment`
@@ -600,6 +714,12 @@ export type DashboardTimelineMode =
 export const GRAPH_GRANULARITIES = ["document", "feature"] as const;
 export type GraphGranularity = (typeof GRAPH_GRANULARITIES)[number];
 
+// The active graph corpus / view mode (codebase-graphing ADR D7): which dataset
+// the whole graph surface renders — the vault knowledge graph (default) or the
+// disconnected code graph. Mirrors the engine `GraphCorpus` wire enum.
+export const GRAPH_CORPORA = ["vault", "code"] as const;
+export type GraphCorpus = (typeof GRAPH_CORPORA)[number];
+
 export const REPRESENTATION_MODES = [
   "connectivity",
   "temporal",
@@ -610,7 +730,7 @@ export const REPRESENTATION_MODES = [
 ] as const;
 export type RepresentationMode = (typeof REPRESENTATION_MODES)[number];
 
-export const DASHBOARD_PANEL_TABS = ["status", "changes", "search"] as const;
+export const DASHBOARD_PANEL_TABS = ["status", "changes"] as const;
 export type DashboardPanelTab = (typeof DASHBOARD_PANEL_TABS)[number];
 
 export interface DashboardPanelState {
@@ -633,6 +753,7 @@ export interface DashboardState extends DashboardSelection {
   date_range: DashboardDateRange;
   timeline_mode: DashboardTimelineMode;
   graph_granularity: GraphGranularity;
+  corpus: GraphCorpus;
   salience_lens: SalienceLens;
   salience_focus: string | null;
   representation_mode: RepresentationMode;
@@ -649,6 +770,7 @@ export interface DashboardStatePatch {
   date_range?: DashboardDateRange;
   timeline_mode?: DashboardTimelineMode;
   graph_granularity?: GraphGranularity;
+  corpus?: GraphCorpus;
   salience_lens?: SalienceLens;
   salience_focus?: string | null;
   representation_mode?: RepresentationMode;
@@ -1026,17 +1148,35 @@ export interface GraphDeltaEntry {
   granularity?: "document" | "feature";
 }
 
+/**
+ * Honest truncation for an over-ceiling diff (GIR-010, mirrors the graph-query /
+ * lineage / ego `truncated` shape). `returned_deltas` is always 0: the server
+ * degrades an over-ceiling diff to keyframe-only rather than ship a partial,
+ * non-self-consistent mutation log.
+ */
+export interface GraphDiffTruncated {
+  total_deltas: number;
+  returned_deltas: number;
+  reason: string;
+}
+
 export interface GraphDiffResponse {
   deltas: GraphDeltaEntry[];
   last_seq: number;
   tiers: TiersBlock;
+  /**
+   * Present (with `deltas` empty) when the server bounded an over-ceiling diff to
+   * keyframe-only. The client answers by re-keyframing, never by applying a
+   * partial log. Absent/null on an in-bounds diff.
+   */
+  truncated?: GraphDiffTruncated | null;
 }
 
 export interface GraphAsofResponse extends GraphSlice {
   /**
    * The requested timestamp echoed back. The engine returns the raw param as a
    * string when the caller passed a millisecond timestamp; callers must coerce
-   * to number before using as a timeline cursor (see timeTravel.ts scrubTo).
+   * to number before using as a timeline cursor.
    */
   t: string | number;
   /**
@@ -1468,9 +1608,45 @@ export interface SearchResult {
   node_id: string | null;
 }
 
+/**
+ * rag's native per-search freshness block (rag-integration-hardening ADR D3),
+ * forwarded VERBATIM by the engine on every `/search` success — the engine adds
+ * no staleness semantics of its own (engine-read-and-infer). Every field is
+ * optional so a sparse or older rag shape never breaks adaptation; consumers
+ * read freshness from this served truth, presentation-mapped only.
+ */
+export interface SearchIndexState {
+  /** The corpus this block describes (`vault` | `codebase`). */
+  source?: string;
+  /** Points indexed for the requested target. */
+  indexed_count?: number;
+  vault_count?: number;
+  code_count?: number;
+  /** The root rag actually indexed, vs the root the engine requested. When they
+   *  disagree (`target_matches === false`) the served results are for a different
+   *  root than the one asked for — a staleness the consumer can surface. */
+  indexed_target_root?: string;
+  requested_target_root?: string;
+  target_matches?: boolean;
+  /** rag's own index status word (e.g. `available`, `indexing`). */
+  status?: string;
+}
+
 export interface SearchResponse {
   results: SearchResult[];
   tiers: TiersBlock;
+  /** rag's freshness block, forwarded verbatim (ADR D3). Absent when the wire
+   *  carried no `index_state` (e.g. a degraded or empty search). */
+  index_state?: SearchIndexState;
+  /**
+   * The shared D4 semantic-index epoch the engine annotates on every success:
+   * a number when the short-TTL cache was warm, `null` when it was cold (an
+   * HONEST absent marker — freshness unknown, never a fabricated `0`), and
+   * `undefined` when the field was absent from the wire entirely (the degraded
+   * path emits no epoch). Downstream builds key one invalidation across search
+   * and embeddings on this value.
+   */
+  semantic_epoch?: number | null;
 }
 
 // --- session / settings (user-state-persistence W04.P08.S25) -----------------------------
@@ -1736,6 +1912,44 @@ export class EngineClient {
     return adaptVaultTree({ entries, tiers });
   }
 
+  async codeFiles(scope: string): Promise<CodeFilesResponse> {
+    // Walk the cursor to completion so the files(code) provider holds the WHOLE
+    // listing — it narrows client-side, so a partial first page silently drops
+    // every file beyond it. Each page is the route's max; the page cap bounds
+    // the walk. The walk-cap `truncated` block is generation-stable (identical
+    // on every page), so the last-seen value is the honest whole-listing truth.
+    const entries: unknown[] = [];
+    let tiers: unknown = {};
+    let truncated: unknown = null;
+    let cursor: string | undefined;
+    for (let page = 0; page < CODE_FILES_MAX_PAGES; page += 1) {
+      const body = await this.get<{
+        entries?: unknown[];
+        tiers?: unknown;
+        truncated?: unknown;
+        next_cursor?: string;
+      }>("/code-files", { scope, page_size: CODE_FILES_PAGE_SIZE, cursor });
+      if (Array.isArray(body.entries)) entries.push(...body.entries);
+      if (body.tiers !== undefined) tiers = body.tiers;
+      if (body.truncated !== undefined) truncated = body.truncated;
+      cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
+      if (cursor === undefined) break;
+    }
+    // The CLIENT walk cap is ALSO truncation: if the page loop exhausted its
+    // bound while a cursor still remained, files beyond it never loaded — an
+    // incomplete listing exactly like the engine's own walk cap. Surface it (when
+    // the server did not already report truncation) so the provider and palette
+    // can be honest rather than silently partial.
+    if (truncated === null && cursor !== undefined) {
+      truncated = {
+        returned_files: entries.length,
+        reason:
+          "client page-walk cap: the listing stopped at its page ceiling; files beyond it are absent",
+      };
+    }
+    return adaptCodeFiles({ entries, tiers, truncated });
+  }
+
   /** One bounded, ignore-aware directory level of the worktree file tree
    *  (dashboard-code-tree ADR): metadata only (no bytes), `path` defaults to the
    *  worktree root, `cursor` resumes a paginated level, `page_size` clamps a
@@ -1775,8 +1989,22 @@ export class EngineClient {
     lens?: SalienceLens;
     /** The DOI focus node id folded into the salience distance term. */
     focus?: string | null;
+    /** The active graph corpus (codebase-graphing ADR D5/D7): `vault` (default,
+     *  absent = byte-identical to the pre-corpus contract) or `code` — the
+     *  DISCONNECTED code graph. */
+    corpus?: GraphCorpus;
+    /** CODE-corpus narrowing (ADR D5): keep only nodes under this repo-relative
+     *  directory prefix. Rejected by the engine on the vault corpus. */
+    dir_prefix?: string;
+    /** CODE-corpus narrowing: language wire tokens. Rejected on the vault corpus. */
+    languages?: string[];
   }): Promise<GraphSlice> {
-    return adaptGraphSlice(await this.post("/graph/query", body));
+    // The code corpus is a DIFFERENT dataset (ADR D1): its `code:` file nodes
+    // are legitimate here, so the adapter's vault-only code-node exclusion
+    // must NOT fire. Tell the adapter which corpus it is adapting.
+    return adaptGraphSlice(await this.post("/graph/query", body), {
+      corpus: body.corpus ?? "vault",
+    });
   }
 
   /**
@@ -1803,8 +2031,13 @@ export class EngineClient {
     );
   }
 
-  async filters(scope: string): Promise<FiltersVocabulary> {
-    return adaptFilters(await this.get("/filters", { scope }));
+  async filters(scope: string, corpus?: "vault" | "code"): Promise<FiltersVocabulary> {
+    // The vocabulary is per-corpus (codebase-graphing ADR D5): the code corpus
+    // serves languages/dirs plus its mtime date span (code-timeline-range ADR).
+    // The vault request stays byte-identical (no corpus param).
+    return adaptFilters(
+      await this.get("/filters", corpus === "code" ? { scope, corpus } : { scope }),
+    );
   }
 
   async dashboardState(scope: string, signal?: AbortSignal): Promise<DashboardState> {
@@ -2071,10 +2304,20 @@ export class EngineClient {
       query: string;
       target?: "vault" | "code";
       filters?: Record<string, string>;
+      /** App-chosen result bound → rag's `top_k` (ADR D5); the engine rejects a
+       *  value above its `MAX_SEARCH_RESULTS` ceiling. */
+      max_results?: number;
     },
     signal?: AbortSignal,
   ): Promise<SearchResponse> {
-    return adaptSearch(await this.post("/search", body, signal)) as SearchResponse;
+    // The engine's `SearchBody` reads the corpus target from the wire field
+    // `type` (`#[serde(rename = "type")]`, rag's own vocabulary), NOT `target`.
+    // Serialize it as `type` so the engine actually receives the corpus — a
+    // `target` key is silently dropped and the search defaults to the vault
+    // corpus (the code target then never reaches rag).
+    const { target, ...rest } = body;
+    const wire = target === undefined ? rest : { ...rest, type: target };
+    return adaptSearch(await this.post("/search", wire, signal)) as SearchResponse;
   }
 
   // --- session / settings (W04.P08.S25) ------------------------------------

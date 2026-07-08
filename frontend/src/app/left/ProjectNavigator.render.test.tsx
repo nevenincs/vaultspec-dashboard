@@ -18,6 +18,7 @@ import {
 } from "../../stores/view/projectNavigatorChrome";
 import { liveScope } from "../../testing/liveClient";
 import { ProjectNavigator } from "./ProjectNavigator";
+import { ENGINE_WAIT } from "../../testing/timing";
 
 function renderNavigator() {
   return render(
@@ -51,7 +52,9 @@ describe("ProjectNavigator popup (live engine)", () => {
   it("opens as a modal with the history-management chrome", async () => {
     openProjectNavigator();
     renderNavigator();
-    expect(await screen.findByRole("dialog", { name: /switch project/i })).toBeTruthy();
+    expect(
+      await screen.findByRole("dialog", { name: /switch project/i }, ENGINE_WAIT),
+    ).toBeTruthy();
     // The management affordances are always present: register/open a project and
     // clear the whole history (the CRUD surface).
     expect(screen.getByRole("button", { name: /open project/i })).toBeTruthy();

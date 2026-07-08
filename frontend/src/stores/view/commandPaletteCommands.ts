@@ -29,6 +29,8 @@ import {
   focusFilterAction,
   newDocumentAction,
   resetFiltersAction,
+  resetSortingAction,
+  sortTreeActions,
   toggleFacetsAction,
 } from "./leftRailKeybindings";
 import {
@@ -52,7 +54,6 @@ import {
 } from "./graphCommands";
 import { useGraphControlsFrozen } from "./graphControlsChrome";
 import { getKeymapOverrides } from "./keymapDispatcher";
-import { focusRightRailSearch } from "./rightRailKeybindings";
 import { useShellPanelIntent } from "../server/panelStateIntent";
 import {
   type KeybindingOverrides,
@@ -297,6 +298,11 @@ export function buildLeftRailCommands(
       run: effects.collapseTree,
     },
     { ...resetFiltersAction(effects.resetFilters), family: "filters" },
+    // The vault tree's sort plane (left-rail-tree-controls ADR D3): one command
+    // per sort option + the reset, from the SAME shared builders the rail-top
+    // sort menu and the vault-section context menu consume.
+    ...sortTreeActions().map((action) => ({ ...action, family: "navigate" })),
+    { ...resetSortingAction(), family: "navigate" },
   ];
   return normalizedPaletteCommands(commands);
 }
@@ -819,7 +825,6 @@ export function useCommandPaletteCommandView(
         resetFilters: () => void resetFilters(),
         clearFeatureFilter: () => void clearFeatureFilter(),
         clearProjectHistory: () => void clearProjectHistory(),
-        focusRightRailSearch: () => focusRightRailSearch(rightPanelSetTab),
         setTheme: setThemePreference,
         runOp: (target, verb) => {
           runPaletteOp({ target, verb });

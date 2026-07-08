@@ -68,6 +68,27 @@ describe("EngineClient", () => {
     ]);
   });
 
+  it("posts the corpus target as the wire field `type`, not `target`", async () => {
+    // The engine's SearchBody reads the corpus from `type` (#[serde(rename =
+    // "type")]). A `target` key is silently dropped and the search defaults to
+    // the vault corpus, so the code target never reaches rag. This asserts the
+    // serialized body carries `type` and no stray `target`.
+    const { calls, fetchImpl } = recordingFetch({
+      data: { results: [] },
+      tiers: {},
+    });
+    const client = new EngineClient({ baseUrl: "/api", fetchImpl });
+    await client.search({ query: "timeline", target: "code" });
+    const body = JSON.parse(String(calls[0].init?.body));
+    expect(body.type).toBe("code");
+    expect(body).not.toHaveProperty("target");
+    // An omitted target posts neither key (the engine then defaults to vault).
+    await client.search({ query: "auth" });
+    const plain = JSON.parse(String(calls[1].init?.body));
+    expect(plain).not.toHaveProperty("type");
+    expect(plain).not.toHaveProperty("target");
+  });
+
   it("walks the vault-tree cursor to completion so the rail holds the whole listing", async () => {
     // The rail narrows the vault tree client-side, so a partial first page would
     // silently drop every feature whose documents sit beyond it (Issue #6: most

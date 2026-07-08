@@ -1,3 +1,4 @@
+import { normalizeSearchCorpus, type SearchCorpus } from "../server/searchProviders";
 import { useEffect } from "react";
 import { create } from "zustand";
 
@@ -22,14 +23,15 @@ export const COMMAND_PALETTE_KEYBINDING: KeybindingDef = {
   context: "global",
 };
 
-// The Cmd-K palette has THREE planes (command-palette-planes ADR), all modes of the
-// one overlay so "Command-K controls searching" holds:
+// The Cmd-K palette has THREE planes (command-palette-planes / search-providers
+// ADRs), all modes of the one overlay so "Command-K controls searching" holds:
 //   `command`  — the verb/navigation plane fed by the command-provider registry.
-//   `search`   — the rag-backed SEMANTIC search (meaning-ranked vault+code), with the
+//   `search`   — the one Search plane composing three providers (meaning + files by
+//                name, vault + code) into one ranked interleaved list, with the
 //                on-demand expanded reader split (figma SearchPalette 651:1771 / 652:1804).
-//   `document` — the LITERAL document finder over the vault tree (structural tier,
-//                rag-free), for "where is the thing named X". Stays available when the
-//                semantic tier is offline.
+//   `document` — the LITERAL document finder, a thin consumer of the files(vault)
+//                provider over the structural-tier vault tree, for "where is the
+//                thing named X". Stays available when the meaning source is offline.
 export type CommandPaletteMode = "command" | "search" | "document";
 
 export const SEARCH_PALETTE_ACTION_ID = "app:search";
@@ -88,6 +90,10 @@ export interface SearchPalettePresentationView {
   stateMode: SearchPaletteStateMode;
   emptyMessage: string | null;
   liveMessage: string;
+  /** A one-line footer note when a provider's listing was walk-capped, so name
+   *  matches may be missing files (search-providers ADR D1 / D8); null otherwise.
+   *  Rendered visibly AND in the live region (twin parity). */
+  incompleteNote: string | null;
   footerHints: {
     move: string;
     previousNext: string;
@@ -138,6 +144,7 @@ export function deriveSearchPalettePresentationView(context: {
   searchState: unknown;
   semanticOffline: unknown;
   error: unknown;
+  incomplete?: unknown;
 }): SearchPalettePresentationView {
   const query = normalizeCommandPaletteQuery(context.query);
   const expanded = normalizeSearchPaletteExpanded(context.expanded);
@@ -167,12 +174,21 @@ export function deriveSearchPalettePresentationView(context: {
     count > 0
       ? null
       : query.length === 0
-        ? "Search across your documents and code by meaning."
+        ? "Search across your documents and code."
         : context.searchState === "loading"
           ? "Searching documents and code"
           : context.semanticOffline === true
-            ? "Semantic search is offline — showing title and text matches."
+            ? "Full search is unavailable — showing name matches only."
             : `No matches for “${query}”.`;
+
+  // A walk-capped provider listing: the name matches may be missing files. One
+  // plain-language line, no mechanism words (search-providers ADR D1 / D8).
+  // Gated on an active query — at idle no matches are shown yet, so announcing
+  // missing matches would be premature.
+  const incompleteNote =
+    context.incomplete === true && query.length > 0
+      ? "Some files may be missing from name matches — the repository is very large."
+      : null;
 
   return {
     safeCursor,
@@ -188,12 +204,17 @@ export function deriveSearchPalettePresentationView(context: {
     }`,
     stateMode,
     emptyMessage,
+    // Screen-reader twin parity (search-providers ADR D3): the degraded sentence
+    // is announced ONLY when it is also the VISIBLE state (no results); once files
+    // rescue with results the SR announces the normal count message, matching the
+    // visible list instead of stranding a degraded copy with no on-screen twin.
     liveMessage:
       context.error === true
         ? "search request failed"
-        : context.semanticOffline === true
-          ? "semantic search offline — showing title and text matches"
+        : count === 0 && context.semanticOffline === true
+          ? "Full search is unavailable — showing name matches only."
           : resultCountLabel,
+    incompleteNote,
     footerHints: {
       move: "move",
       previousNext: "previous / next",
@@ -262,6 +283,8 @@ interface CommandPaletteState {
   searchCursor: number;
   /** Search mode: whether the on-demand reader split is revealed. */
   searchExpanded: boolean;
+  /** Search mode: the corpus separation control (all | docs | code). */
+  searchCorpus: SearchCorpus;
   armedCommandId: string | null;
   opsMessage: string | null;
   opsEpoch: number;
@@ -275,6 +298,7 @@ interface CommandPaletteState {
   setCursor: (cursor: unknown) => void;
   setSearchCursor: (cursor: unknown) => void;
   setSearchExpanded: (expanded: unknown) => void;
+  setSearchCorpus: (corpus: unknown) => void;
   setArmedCommandId: (commandId: unknown) => void;
   resetSurfaceState: () => void;
   resetOpsFeedback: () => void;
@@ -320,6 +344,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
   cursor: 0,
   searchCursor: 0,
   searchExpanded: false,
+  searchCorpus: "all",
   armedCommandId: null,
   opsMessage: null,
   opsEpoch: 0,
@@ -333,6 +358,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         cursor: 0,
         searchCursor: 0,
         searchExpanded: false,
+        searchCorpus: "all",
         armedCommandId: null,
         opsMessage: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
@@ -348,6 +374,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         cursor: 0,
         searchCursor: 0,
         searchExpanded: false,
+        searchCorpus: "all",
         armedCommandId: null,
         opsMessage: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
@@ -363,6 +390,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         cursor: 0,
         searchCursor: 0,
         searchExpanded: false,
+        searchCorpus: "all",
         armedCommandId: null,
         opsMessage: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
@@ -378,6 +406,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         cursor: 0,
         searchCursor: 0,
         searchExpanded: false,
+        searchCorpus: "all",
         armedCommandId: null,
         opsMessage: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
@@ -393,6 +422,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         cursor: 0,
         searchCursor: 0,
         searchExpanded: false,
+        searchCorpus: "all",
         armedCommandId: null,
         opsMessage: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
@@ -405,6 +435,9 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
     set({ searchCursor: normalizeSearchPaletteCursor(cursor) }),
   setSearchExpanded: (expanded) =>
     set({ searchExpanded: normalizeSearchPaletteExpanded(expanded) }),
+  // A corpus switch re-ranks the list, so the cursor restarts at the top.
+  setSearchCorpus: (corpus) =>
+    set({ searchCorpus: normalizeSearchCorpus(corpus), searchCursor: 0 }),
   setArmedCommandId: (commandId) =>
     set({ armedCommandId: normalizeCommandPaletteArmedCommandId(commandId) }),
   resetSurfaceState: () =>
@@ -413,6 +446,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
       cursor: 0,
       searchCursor: 0,
       searchExpanded: false,
+      searchCorpus: "all",
       armedCommandId: null,
     }),
   resetOpsFeedback: () =>
@@ -449,6 +483,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         cursor: 0,
         searchCursor: 0,
         searchExpanded: false,
+        searchCorpus: "all",
         armedCommandId: null,
         opsMessage: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
@@ -480,6 +515,10 @@ export function useSearchPaletteExpanded(): boolean {
   return useCommandPaletteStore((state) =>
     normalizeSearchPaletteExpanded(state.searchExpanded),
   );
+}
+
+export function useSearchPaletteCorpus(): SearchCorpus {
+  return useCommandPaletteStore((state) => normalizeSearchCorpus(state.searchCorpus));
 }
 
 export function useCommandPaletteQuery(): string {
@@ -522,6 +561,10 @@ export function setSearchPaletteCursor(cursor: unknown): void {
 
 export function setSearchPaletteExpanded(expanded: unknown): void {
   useCommandPaletteStore.getState().setSearchExpanded(expanded);
+}
+
+export function setSearchPaletteCorpus(corpus: unknown): void {
+  useCommandPaletteStore.getState().setSearchCorpus(corpus);
 }
 
 export function toggleCommandPalette(): void {

@@ -2,8 +2,7 @@
 // surface expands/collapses it through these named operations so the app layer
 // does not duplicate the mutation path.
 
-import { useEffect } from "react";
-import { useShallow } from "zustand/react/shallow";
+import { useEffect, useMemo } from "react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
 import {
@@ -21,6 +20,14 @@ export interface WorkingSetRowView {
   collapseLabel: string;
   rootClassName: string;
   collapseButtonClassName: string;
+  /** Present + true only when the chip's node is FILTERED OUT of the visible set
+   *  (GS-006): the chip is dimmed (rootClassName carries the dim utility) and carries the
+   *  `hiddenHint` affordance so the trail never implies a node is on stage that the active
+   *  filter has hidden. Absent when the node is visible (or no filter membership is
+   *  supplied), keeping the visible-row shape unchanged. */
+  hidden?: true;
+  /** Plain-language "hidden by filter" affordance, present only when `hidden`. */
+  hiddenHint?: string;
 }
 
 export interface WorkingSetView {
@@ -45,6 +52,13 @@ const WORKING_SET_COLLAPSE_BUTTON_CLASS =
   "flex items-center text-ink-faint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 const WORKING_SET_CLEAR_BUTTON_CLASS =
   "rounded-fg-pill border border-rule bg-paper-sunken px-fg-2 py-fg-0-5 text-caption text-ink-muted hover:text-ink transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+// A filter-hidden chip is DIMMED (the same opacity treatment the kit uses for a disabled
+// control) and carries a plain-language affordance, so the chip trail is honest: it never
+// renders a node at full strength that the active filter has hidden from the canvas
+// (GS-006). Presentation only — the working-set membership is unchanged, and releasing the
+// filter un-dims the chip with no state change.
+const WORKING_SET_ROW_HIDDEN_CLASS = "opacity-50";
+const WORKING_SET_HIDDEN_HINT = "Hidden by the active filter";
 
 export const WORKING_SET_KEYBINDING_GROUP = "Working set";
 export const WORKING_SET_EXPAND_SELECTION_ACTION_ID = "working-set:expand-selection";
@@ -81,28 +95,46 @@ export function normalizeWorkingSetIds(ids: readonly unknown[]): string[] {
 }
 
 export function useWorkingSet(): readonly string[] {
-  return useViewStore(useShallow((state) => normalizeWorkingSetIds(state.workingSet)));
+  // Select the RAW stable slice; derive in useMemo (stable-selectors) — never
+  // inside the selector, even under useShallow.
+  const workingSet = useViewStore((state) => state.workingSet);
+  return useMemo(() => normalizeWorkingSetIds(workingSet), [workingSet]);
 }
 
-export function workingSetRows(ids: readonly unknown[]): WorkingSetRowView[] {
+export function workingSetRows(
+  ids: readonly unknown[],
+  visibleNodeIds: ReadonlySet<string> | null = null,
+): WorkingSetRowView[] {
   return normalizeWorkingSetIds(ids).map((id) => {
     const label = nodeIdDisplayLabel(id);
+    // A chip is filter-hidden when a visibility membership is supplied AND its node is not
+    // in it. With no membership (null) nothing is dimmed — the visible-row shape is
+    // unchanged, so a mount that does not thread visibility behaves exactly as before.
+    const hidden = visibleNodeIds !== null && !visibleNodeIds.has(id);
     return {
       id,
       label,
       collapseLabel: `Collapse ${label}`,
-      rootClassName: WORKING_SET_ROW_CLASS,
+      rootClassName: hidden
+        ? `${WORKING_SET_ROW_CLASS} ${WORKING_SET_ROW_HIDDEN_CLASS}`
+        : WORKING_SET_ROW_CLASS,
       collapseButtonClassName: WORKING_SET_COLLAPSE_BUTTON_CLASS,
+      ...(hidden ? { hidden: true as const, hiddenHint: WORKING_SET_HIDDEN_HINT } : {}),
     };
   });
 }
 
-export function useWorkingSetRows(): WorkingSetRowView[] {
-  return workingSetRows(useWorkingSet());
+export function useWorkingSetRows(
+  visibleNodeIds: ReadonlySet<string> | null = null,
+): WorkingSetRowView[] {
+  return workingSetRows(useWorkingSet(), visibleNodeIds);
 }
 
-export function workingSetView(ids: readonly unknown[]): WorkingSetView {
-  const rows = workingSetRows(ids);
+export function workingSetView(
+  ids: readonly unknown[],
+  visibleNodeIds: ReadonlySet<string> | null = null,
+): WorkingSetView {
+  const rows = workingSetRows(ids, visibleNodeIds);
   return {
     rows,
     visible: rows.length > 0,
@@ -143,8 +175,14 @@ export function workingSetKeyAction(
   return null;
 }
 
-export function useWorkingSetView(): WorkingSetView {
-  return workingSetView(useWorkingSet());
+export function useWorkingSetView(
+  visibleNodeIds: ReadonlySet<string> | null = null,
+): WorkingSetView {
+  const ids = useWorkingSet();
+  // Derive OUTSIDE the store selector (stable-selectors): `ids` is the referentially
+  // stable normalized slice, `visibleNodeIds` is passed by the mount site; memoize the
+  // view on both so a consumer never sees a fresh object on an unrelated render.
+  return useMemo(() => workingSetView(ids, visibleNodeIds), [ids, visibleNodeIds]);
 }
 
 export function useWorkingSetKeybindings(selectedId: unknown): void {

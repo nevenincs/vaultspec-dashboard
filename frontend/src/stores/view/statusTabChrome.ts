@@ -15,8 +15,14 @@ export type StatusSectionId =
   | "open-issues"
   | "recent-prs"
   | "recent-commits"
-  // The machine-level rag operations console (rag-service-management ADR D7).
-  | "rag-ops";
+  // The machine-level search-service console (rag-service-management ADR D7)
+  // and its single Details fold (2026-07-03 redesign).
+  | "rag-ops"
+  | "rag-ops:details"
+  // The agentic-authoring review station (W03.P40): the human-in-the-loop review
+  // queue, rendered as an always-present rail section like the search-service
+  // console (independent of corpus state — it manages proposals, not the graph).
+  | "authoring-review";
 
 const STATUS_SECTION_IDS = [
   "changes",
@@ -30,6 +36,8 @@ const STATUS_SECTION_IDS = [
   "recent-prs",
   "recent-commits",
   "rag-ops",
+  "rag-ops:details",
+  "authoring-review",
 ] as const satisfies readonly StatusSectionId[];
 const STATUS_SECTION_ID_SET = new Set<string>(STATUS_SECTION_IDS);
 const DEFAULT_STATUS_SECTION_ID: StatusSectionId = "open-plans";

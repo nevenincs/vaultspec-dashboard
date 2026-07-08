@@ -5,6 +5,7 @@
 //! every working-tree-dependent query names its scope per request
 //! (contract §3).
 
+pub mod code;
 pub mod embeddings;
 pub mod envelope;
 pub mod events;

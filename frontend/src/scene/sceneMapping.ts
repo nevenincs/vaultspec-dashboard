@@ -55,6 +55,16 @@ export function engineNodeToScene(node: EngineNode): SceneNodeData {
     dates: node.dates,
     // Feature-convergence sizing input (S02 / ADR D4.1); absent on documents.
     memberCount: node.member_count,
+    // CODE corpus module identity (CGR-002): owning module, 0..6 hue index, depth.
+    module: node.module,
+    moduleHue: node.module_hue,
+    depth: node.depth,
+    // Package-entry files DISPLAY as their package (code-graph-files-only) ->
+    // the anchor treatment in appearance.ts.
+    packageEntry: node.package_entry === true ? true : undefined,
+    // Engine-served recency percentile (code-graph-heat) -> the Recency
+    // node-color heat ramp; absent on undated files and vault nodes.
+    recencyRank: typeof node.recency_rank === "number" ? node.recency_rank : undefined,
     // Per-lens salience (graph-node-salience) -> size + label priority; the
     // embedding feeds the semantic UMAP worker (graph-representation §4).
     salience: node.salience,

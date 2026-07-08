@@ -42,6 +42,29 @@ describe("loggingMiddleware", () => {
     expect(err?.error).toMatchObject({ message: "handler exploded" });
     cap.detach();
   });
+
+  it("logs and re-rejects an ASYNC handler failure (KAR-007)", async () => {
+    const cap = captureLogs();
+    const d = new Dispatcher();
+    d.use(loggingMiddleware);
+    d.register("async-boom", () => Promise.reject(new Error("async exploded")));
+    await expect(
+      d.dispatch({ type: "async-boom" }) as Promise<unknown>,
+    ).rejects.toThrowError("async exploded");
+    const err = cap.records.find((r) => r.level === "error");
+    expect(err?.message).toContain('action "async-boom" failed');
+    expect(err?.error).toMatchObject({ message: "async exploded" });
+    cap.detach();
+  });
+
+  it("passes an async handler's resolution through unchanged", async () => {
+    const d = new Dispatcher();
+    d.use(loggingMiddleware);
+    d.register("async-ok", () => Promise.resolve("done"));
+    await expect(d.dispatch({ type: "async-ok" }) as Promise<unknown>).resolves.toBe(
+      "done",
+    );
+  });
 });
 
 describe("traceMiddleware", () => {

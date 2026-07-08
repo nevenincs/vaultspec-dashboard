@@ -1,59 +1,27 @@
-//! Search forwarding (contract §8, D5.2): the engine carries **no search
-//! semantics** — rag's request vocabulary and response envelope transit
-//! verbatim. The single engine value-add: every result is annotated with
-//! the engine node id it maps to, so results click through into the graph.
+//! Search transport (rag-control-plane ADR D1, rag-integration-hardening D1):
+//! `/search` rides the resident rag service over the bounded loopback HTTP
+//! transport, exactly like the control verbs (`control.rs`) and the embedding
+//! scroll (`vectors.rs`). This module carries ZERO search semantics
+//! (`engine-read-and-infer`): the engine-built request body transits to rag
+//! VERBATIM and rag's flat response envelope returns VERBATIM as a
+//! `serde_json::Value`. Argument validation/bounding, the node-id annotation,
+//! and the `tiers` block are the BROKER's job (`vaultspec-api routes/ops.rs`),
+//! never this transport's.
 
-use engine_model::NodeId;
 use serde_json::Value;
 
 use crate::client::{RagError, RagTransport, Result};
 
-/// Map a rag source to an engine node id: vault stems → document nodes,
-/// paths → code-artifact nodes (the same correlation the event log uses).
-pub fn target_node_id(source: &str) -> NodeId {
-    use engine_model::{CanonicalKey, node_id};
-    let trimmed = source.trim_start_matches("./");
-    if let Some(stem) = trimmed
-        .strip_prefix(".vault/")
-        .and_then(|rest| rest.split('/').next_back())
-        .and_then(|file| file.strip_suffix(".md"))
-    {
-        node_id(&CanonicalKey::Document { stem })
-    } else if !trimmed.contains('/') && !trimmed.contains('.') {
-        // Bare stem (rag vault hits report stems, not paths).
-        node_id(&CanonicalKey::Document { stem: trimmed })
-    } else {
-        node_id(&CanonicalKey::CodeArtifact {
-            path: trimmed,
-            symbol: None,
-        })
-    }
-}
-
-/// Forward a search request body to rag verbatim and annotate each result
-/// with `node_id`. Everything else in the envelope passes through intact.
-pub fn forward_search(transport: &impl RagTransport, request_body: &str) -> Result<Value> {
-    let raw = transport.post_json("/search", request_body)?;
-    let mut envelope: Value = serde_json::from_str(&raw)?;
-
-    if let Some(results) = envelope
-        .pointer_mut("/data/results")
-        .and_then(Value::as_array_mut)
-    {
-        for result in results {
-            let node_id = result
-                .get("source")
-                .and_then(Value::as_str)
-                .map(|source| target_node_id(source).0);
-            if let Some(obj) = result.as_object_mut() {
-                obj.insert(
-                    "node_id".to_string(),
-                    node_id.map(Value::String).unwrap_or(Value::Null),
-                );
-            }
-        }
-    }
-    Ok(envelope)
+/// POST the engine-built search body to rag's `/search` on the resident service
+/// and return rag's response envelope verbatim. The body is forwarded exactly as
+/// the broker built it (rag's `{query, type, project_root, top_k, ...}`
+/// vocabulary); the flat response envelope (`{request_id, results, summary,
+/// timing, index_state, ...}`) parses back to a `Value` untouched. A non-JSON
+/// body (a future shape change) is a typed error the broker degrades the tier
+/// on, never a silent empty — mirroring `control::parse`.
+pub fn http_search(transport: &impl RagTransport, body: &Value) -> Result<Value> {
+    let raw = transport.post_json("/search", &body.to_string())?;
+    Ok(serde_json::from_str(&raw)?)
 }
 
 /// Map a transport-level failure to the truthful degradation reason the
@@ -70,37 +38,67 @@ pub fn degradation_reason(error: &RagError) -> String {
 mod tests {
     use super::*;
     use crate::client::test_support::FakeTransport;
+    use serde_json::json;
 
     #[test]
-    fn results_are_annotated_with_node_ids_and_envelope_passes_verbatim() {
+    fn body_transits_verbatim_and_envelope_returns_verbatim() {
+        // rag's real flat envelope: results at the top level, no CLI `{ok,
+        // command, data}` nesting. Every field must survive untouched — the
+        // crate adds nothing.
         let transport = FakeTransport::returning(vec![
-            r#"{"ok": true, "command": "search", "custom_field": "untouched",
-                "data": {"results": [
-                    {"source": ".vault/plan/2026-06-12-y-plan.md", "score": 0.9},
-                    {"source": "frontend/src/main.tsx", "score": 0.5},
-                    {"score": 0.1}
-                ]}}"#,
+            r#"{"request_id": "r-1", "summary": "2 hits",
+                "results": [
+                    {"id": "a", "path": ".vault/plan/x.md", "source": "vault", "score": 0.9},
+                    {"id": "b", "path": "frontend/src/main.tsx", "source": "codebase", "score": 0.5}
+                ],
+                "index_state": {"status": "ready", "indexed_count": 12},
+                "timing": {"total_ms": 7}}"#,
         ]);
-        let out = forward_search(&transport, r#"{"query": "graph", "type": "vault"}"#).unwrap();
+        let body = json!({
+            "query": "graph",
+            "type": "vault",
+            "project_root": "Y:\\code\\proj",
+            "top_k": 20
+        });
+        let out = http_search(&transport, &body).unwrap();
 
-        // Verbatim pass-through of everything rag said.
-        assert_eq!(out["custom_field"], "untouched");
-        assert_eq!(out["ok"], true);
+        // The envelope returns byte-for-byte equal to what rag said.
+        let expected: Value = serde_json::from_str(
+            r#"{"request_id": "r-1", "summary": "2 hits",
+                "results": [
+                    {"id": "a", "path": ".vault/plan/x.md", "source": "vault", "score": 0.9},
+                    {"id": "b", "path": "frontend/src/main.tsx", "source": "codebase", "score": 0.5}
+                ],
+                "index_state": {"status": "ready", "indexed_count": 12},
+                "timing": {"total_ms": 7}}"#,
+        )
+        .unwrap();
+        assert_eq!(out, expected, "rag's flat envelope returns verbatim");
 
-        let results = out["data"]["results"].as_array().unwrap();
-        assert_eq!(results[0]["node_id"], "doc:2026-06-12-y-plan");
-        assert_eq!(results[1]["node_id"], "code:frontend/src/main.tsx");
+        // The request body transited to /search exactly as the broker built it.
+        let call = &transport.calls.borrow()[0];
+        assert_eq!(call.0, "/search", "posts to rag's /search route");
         assert_eq!(
-            results[2]["node_id"],
-            Value::Null,
-            "sourceless hit: null, not missing"
+            serde_json::from_str::<Value>(&call.1).unwrap(),
+            body,
+            "the engine-built body transits verbatim"
         );
+    }
 
-        // The request body transited untouched.
-        assert_eq!(
-            transport.calls.borrow()[0].1,
-            r#"{"query": "graph", "type": "vault"}"#
-        );
+    #[test]
+    fn transport_error_propagates_typed_for_broker_degradation() {
+        // A transport-level failure is a typed RagError the broker maps to a
+        // degraded tier — never an Ok masking the fault.
+        let transport = FakeTransport::returning(vec![]);
+        let err = http_search(&transport, &json!({"query": "x"})).unwrap_err();
+        assert!(matches!(err, RagError::Protocol));
+    }
+
+    #[test]
+    fn a_non_json_body_is_a_typed_error_not_a_silent_empty() {
+        let transport = FakeTransport::returning(vec!["<html>bad gateway</html>"]);
+        let err = http_search(&transport, &json!({"query": "x"})).unwrap_err();
+        assert!(matches!(err, RagError::ServiceJson(_)));
     }
 
     #[test]

@@ -1,7 +1,5 @@
 import { useEffect } from "react";
 
-import { Search } from "lucide-react";
-
 import type { ActionDescriptor } from "../../platform/actions/action";
 import {
   type KeybindingDef,
@@ -13,7 +11,6 @@ import { registerKeyAction } from "./keymapDispatcher";
 import { RIGHT_RAIL_TABS, type RailTabId } from "./shellLayout";
 
 export const RIGHT_RAIL_KEYMAP_CONTEXT = "right-rail";
-export const RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID = "right-rail:focus-search";
 
 const RIGHT_RAIL_GROUP = "Right rail";
 
@@ -53,49 +50,7 @@ export function deriveRightRailKeybindings(): KeybindingDef[] {
           },
         ];
   });
-  return [
-    ...tabBindings,
-    {
-      id: RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
-      defaultChord: "Mod+Shift+S",
-      label: "Focus the right-rail search",
-      group: RIGHT_RAIL_GROUP,
-      context: "global",
-    },
-  ];
-}
-
-/** "Focus the right-rail search" — a store-only focus intent shared by the keymap and
- *  the palette (the unified action plane). The caller binds the effect (which switches
- *  to the search tab, then focuses the field). */
-export function rightRailFocusSearchAction(focusSearch: () => void): ActionDescriptor {
-  return {
-    id: RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
-    label: "Focus the right-rail search",
-    section: "navigate",
-    icon: Search,
-    run: focusSearch,
-  };
-}
-
-export function focusRightRailSearch(
-  setRightTab: (tab: RailTabId) => Promise<unknown>,
-): void {
-  void setRightTab("search").catch(() => undefined);
-  if (typeof queueMicrotask === "function") {
-    queueMicrotask(focusSearchField);
-  } else {
-    focusSearchField();
-  }
-}
-
-function focusSearchField(): void {
-  if (typeof document === "undefined") return;
-  const input = document.querySelector<HTMLInputElement>(
-    "[data-search-tab] [data-kit-search-input]",
-  );
-  input?.focus();
-  input?.select();
+  return tabBindings;
 }
 
 export function useRightRailKeybindings(): void {
@@ -122,13 +77,7 @@ export function useRightRailKeybindings(): void {
             ),
           ];
     });
-    const disposeFocusSearch = registerKeyAction(
-      RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
-      () => rightRailFocusSearchAction(() => focusRightRailSearch(setRightTab)),
-    );
-
     return () => {
-      disposeFocusSearch();
       for (const dispose of disposeTabs) dispose();
       disposeBindings();
     };
