@@ -715,14 +715,19 @@ fn derive_lineage(revisions: &[ChangesetAggregateRecord]) -> ProvenanceLineage {
     lineage
 }
 
-/// FAIL-SAFE parse of a P28 lineage token: `"<prefix><id>: <summary>"`. A changeset id
-/// carries no whitespace, so the first whitespace-delimited token after the prefix is the
-/// id (with a trailing `:` stripped). A summary that does not match the format, or an id
-/// that does not validate, yields `None` — never a crash, never a wrong link.
+/// FAIL-SAFE parse of a P28 lineage token: `"<prefix><id>: <summary>"`. P28 ALWAYS emits a
+/// COLON-TERMINATED id token, so the id is the first whitespace-delimited word after the
+/// prefix and it MUST carry the trailing `:` — the colon is REQUIRED, never optional. This
+/// is what distinguishes a real linkage from a plain-English summary that happens to open
+/// with the prefix word: `"Replaces the old plan"` (first token `the`, no colon) yields
+/// `None`, so an innocent author summary can never fabricate a false provenance link on the
+/// audit surface, even when the coincidental word is a syntactically valid changeset id. A
+/// missing prefix, a missing trailing colon, or an id that does not validate all yield
+/// `None` — never a crash, never a wrong link.
 fn parse_lineage_token(summary: &str, prefix: &str) -> Option<ChangesetId> {
     let rest = summary.strip_prefix(prefix)?;
     let token = rest.split_whitespace().next()?;
-    let id = token.strip_suffix(':').unwrap_or(token);
+    let id = token.strip_suffix(':')?;
     ChangesetId::new(id).ok()
 }
 
@@ -1521,6 +1526,25 @@ mod tests {
         assert!(parse_lineage_token("just a normal summary", "Replaces ").is_none());
         assert!(parse_lineage_token("Replaces bad!id: x", "Replaces ").is_none());
         assert!(parse_lineage_token("Replaces ", "Replaces ").is_none());
+
+        // COLLISION-ROBUST: a plain-English author summary that opens with the prefix word
+        // but carries NO colon-terminated id must NOT fabricate a false provenance link,
+        // even when the coincidental first word is a syntactically valid changeset id.
+        assert!(
+            parse_lineage_token("Replaces the old plan against current base", "Replaces ")
+                .is_none(),
+            "an innocent summary must not mint a false `replaces` link"
+        );
+        assert!(
+            parse_lineage_token("Superseded by newer guidance", "Superseded by ").is_none(),
+            "an innocent summary must not mint a false `superseded_by` link"
+        );
+        // The colon is REQUIRED and sufficient: a P28-shaped colon-terminated token parses.
+        assert_eq!(
+            parse_lineage_token("Replaces changeset_x: refresh the intro", "Replaces ")
+                .map(|id| id.as_str().to_string()),
+            Some("changeset_x".to_string())
+        );
     }
 
     #[test]
