@@ -787,16 +787,25 @@ fn materialize_drafts(
     })
 }
 
-fn store_preimages(uow: &UnitOfWork<'_>, preimages: &[PreimageRecord]) -> StoreResult<()> {
+/// Persist the preimages for a set of freshly materialized child operations. Shared by
+/// proposal creation, draft mutation, and explicit rebase (`rebase.rs`). A preimage is
+/// keyed by its stable id (`preimage:{changeset}:{child}`), so re-materializing the SAME
+/// child re-visits the SAME row: an equivalent capture (the draft-mutation case, where
+/// the base is unchanged) dedups; a CHANGED capture (the rebase case, where the base
+/// advanced) UPDATES the stored "before" to the rebased base so rollback material never
+/// goes stale. It never inserts a duplicate tuple, and never silently keeps a stale
+/// preimage.
+pub(crate) fn store_preimages(
+    uow: &UnitOfWork<'_>,
+    preimages: &[PreimageRecord],
+) -> StoreResult<()> {
     for preimage in preimages {
         if let Some(existing) = uow.snapshots().preimage(&preimage.preimage_id)? {
             if equivalent_preimage_payload(&existing, preimage) {
                 continue;
             }
-            return Err(StoreError::Snapshot(format!(
-                "preimage `{}` already exists with different payload",
-                preimage.preimage_id
-            )));
+            uow.snapshots().update_preimage(preimage)?;
+            continue;
         }
         uow.snapshots().store_preimage(preimage)?;
     }
@@ -1017,7 +1026,11 @@ fn receipt_id(
     .map_err(|err| StoreError::Idempotency(err.to_string()))
 }
 
-fn preimage_id(changeset_id: &ChangesetId, child_key: &str, _request_digest: &str) -> String {
+pub(crate) fn preimage_id(
+    changeset_id: &ChangesetId,
+    child_key: &str,
+    _request_digest: &str,
+) -> String {
     format!("preimage:{}:{}", changeset_id.as_str(), child_key)
 }
 

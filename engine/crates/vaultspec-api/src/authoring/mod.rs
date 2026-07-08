@@ -29,6 +29,7 @@ pub(crate) mod policy;
 pub(crate) mod principal;
 pub(crate) mod projections;
 pub(crate) mod proposal;
+pub(crate) mod rebase;
 pub(crate) mod response;
 pub(crate) mod rollback;
 pub(crate) mod routes;

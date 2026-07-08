@@ -443,6 +443,56 @@ impl SnapshotRepository<'_, '_> {
         Ok(())
     }
 
+    /// Update the stored preimage identified by `preimage_id` to a new "before" content,
+    /// keeping its (changeset, operation, document) identity fixed. The legitimate caller
+    /// is an explicit rebase re-materializing the same child against a NEW base, where the
+    /// pre-apply content legitimately changed; the retention record is upserted alongside
+    /// so rollback material stays consistent with the rebased base. The identity columns
+    /// are matched in the WHERE clause (never mutated), so a mismatched identity updates
+    /// nothing and errors rather than silently rewriting a different row.
+    pub fn update_preimage(&self, record: &PreimageRecord) -> StoreResult<()> {
+        let retention_record = record.retention_record()?;
+        self.uow.retention().upsert_record(&retention_record)?;
+        let document_ref_json = serde_json::to_string(&record.document)
+            .map_err(|err| StoreError::Snapshot(err.to_string()))?;
+        let updated = self.repo.execute(
+            "UPDATE authoring_document_preimages
+             SET document_ref_json = ?4, base_revision = ?5, blob_hash = ?6,
+                 payload_hash = ?7, payload_text = ?8, payload_bytes = ?9,
+                 captured_at_ms = ?10, retention_record_kind = ?11,
+                 retention_record_id = ?12
+             WHERE preimage_id = ?1
+               AND changeset_id = ?2
+               AND operation_id = ?3
+               AND document_node_id = ?13
+               AND document_path = ?14",
+            rusqlite::params![
+                record.preimage_id.as_str(),
+                record.changeset_id.as_str(),
+                record.operation_id.as_str(),
+                document_ref_json.as_str(),
+                record.base_revision.as_str(),
+                record.blob_hash.as_str(),
+                record.payload_hash.as_str(),
+                record.payload_text.as_str(),
+                record.payload_bytes,
+                record.captured_at_ms,
+                record.retention_record_kind.as_str(),
+                record.retention_record_id.as_str(),
+                record.document_node_id.as_str(),
+                record.document_path.as_str(),
+            ],
+        )?;
+        if updated != 1 {
+            return Err(StoreError::Snapshot(format!(
+                "preimage `{}` update matched no row for its existing (changeset, operation, \
+                 document) identity",
+                record.preimage_id
+            )));
+        }
+        Ok(())
+    }
+
     pub fn preimage(&self, preimage_id: &str) -> StoreResult<Option<PreimageRecord>> {
         validate_non_empty_store("preimage_id", preimage_id)?;
         let record = self.repo.query_optional(
