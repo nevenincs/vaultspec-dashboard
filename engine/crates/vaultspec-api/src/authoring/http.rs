@@ -768,6 +768,15 @@ fn command_error_response(state: &AppState, err: &StoreError) -> Response {
             "authoring_lease_refused",
             err.to_string(),
         ),
+        // A review-claim construction fault (empty id, malformed record, bad schema).
+        // Review-station POLICY refusals — claiming a held item, a non-holder release, an
+        // automated self-review — are eligibility VALUES on the success envelope, never
+        // this error, so a `ReviewStation` error is a genuine bad-request-shaped fault: 422.
+        StoreError::ReviewStation(_) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "authoring_review_station_refused",
+            err.to_string(),
+        ),
         // An authenticated principal that is not a registered/active actor is an
         // AUTHORIZATION refusal (the token resolved, but the actor cannot write) —
         // a 403, distinct from a bad request (422) or a store outage (503).

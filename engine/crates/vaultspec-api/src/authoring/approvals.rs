@@ -31,8 +31,8 @@ use super::ledger::{
     ChangesetAggregateRecord, ChangesetChildOperationInput, ChangesetRevisionInput,
 };
 use super::model::{
-    ActionEligibility, ActorKind, ActorRef, ApprovalId, ChangesetId, ChangesetStatus, CommandKind,
-    ProposalId, RevisionToken,
+    ActionEligibility, ActorKind, ActorRef, ApprovalId, ChangesetId, ChangesetKind,
+    ChangesetStatus, CommandKind, ProposalId, RevisionToken,
 };
 use super::store::retention::{
     LifecycleStatus, RetentionClass, RetentionRecord, RetentionRecordRef,
@@ -40,8 +40,8 @@ use super::store::retention::{
 use super::store::unit_of_work::{Repository, SqliteRepository, UnitOfWork};
 use super::store::{Result as StoreResult, StoreError};
 use super::transitions::{
-    ReviewDecisionFreshness, ValidationFreshness, approve_transition_eligibility,
-    reject_transition_eligibility,
+    ReviewDecisionFreshness, TransitionRequest, ValidationFreshness,
+    approve_transition_eligibility, reject_transition_eligibility, transition_eligibility,
 };
 
 const APPROVAL_SCHEMA: &str = "authoring.approval.v1";
@@ -289,25 +289,42 @@ pub fn review_decision_eligibility(
             approve_transition_eligibility(current, freshness, validation)
         }
         ApprovalDecision::Reject => reject_transition_eligibility(current, freshness, validation),
-        // Request-changes / edit-response review LOOPS are the Increment 5
-        // remainder (W05.P24, where the claimed review state activates). The V1
-        // subset is approve / reject only, so the decision variant exists for a
-        // stable contract but is RESERVED here — it returns a typed "not in V1"
-        // denial rather than transitioning the proposal.
-        ApprovalDecision::RequestChanges => ActionEligibility::denied(
-            CommandKind::EditProposal,
-            "request-changes and edit-response review loops are reserved for W05.P24 \
-             (Increment 5); the V1 approval subset is approve/reject only",
+        // Request-changes ACTIVATES the deferred W05.P23 remainder (W13.P24): the reviewer
+        // sends the proposal back for revision through the declared EditProposal arc
+        // (NeedsReview|Approved -> Draft / RollbackProposed), which stales the reviewed
+        // material. It is feedback, not an approval, so the self-approval ban does not
+        // apply; it is gated only by the transition arc — a terminal or non-reviewable head
+        // is refused as a denied value.
+        ApprovalDecision::RequestChanges => transition_eligibility(
+            TransitionRequest::new(
+                CommandKind::EditProposal,
+                current.kind,
+                current.status,
+                edit_proposal_target(current.kind),
+            )
+            .with_operation_count(current.operation_count),
         ),
     }
 }
 
-/// The status a permitted decision drives the changeset to.
-fn resulting_status(decision: ApprovalDecision) -> ChangesetStatus {
+/// The status a permitted decision drives the changeset to. Request-changes reuses the
+/// kind-aware EditProposal target so a rollback changeset returns to `RollbackProposed`,
+/// never an illegal `Draft`.
+fn resulting_status(decision: ApprovalDecision, kind: ChangesetKind) -> ChangesetStatus {
     match decision {
         ApprovalDecision::Approve => ChangesetStatus::Approved,
         ApprovalDecision::Reject => ChangesetStatus::Rejected,
-        ApprovalDecision::RequestChanges => ChangesetStatus::Draft,
+        ApprovalDecision::RequestChanges => edit_proposal_target(kind),
+    }
+}
+
+/// The revision-target the EditProposal arc drives a changeset back to for reviewer edits /
+/// request-changes: `Draft` for an authoring-like changeset, `RollbackProposed` for a
+/// rollback — matching `transitions::command_allows_transition` for `EditProposal`.
+fn edit_proposal_target(kind: ChangesetKind) -> ChangesetStatus {
+    match kind {
+        ChangesetKind::Authoring | ChangesetKind::Direct => ChangesetStatus::Draft,
+        ChangesetKind::Rollback => ChangesetStatus::RollbackProposed,
     }
 }
 
@@ -471,7 +488,7 @@ impl ApprovalRepository<'_, '_> {
         // provenance: the reviewer made this decision).
         let next = append_status_transition(
             &current,
-            resulting_status(decision),
+            resulting_status(decision, current.kind),
             reviewer,
             decided_at_ms,
         )?;
@@ -493,8 +510,11 @@ impl ApprovalRepository<'_, '_> {
         let lifecycle = match decision {
             ApprovalDecision::Approve => LifecycleStatus::Active,
             ApprovalDecision::Reject => LifecycleStatus::Rejected,
-            // Reserved (denied above), so never reached; keep the match total.
-            ApprovalDecision::RequestChanges => LifecycleStatus::Pending,
+            // Request-changes closes THIS review cycle (the proposal returns to draft/
+            // rollback-proposed for revision; a re-submission opens a fresh request), so its
+            // retention lifecycle is Superseded — decided evidence, no longer a protected
+            // pending request.
+            ApprovalDecision::RequestChanges => LifecycleStatus::Superseded,
         };
         self.register_retention(&request, lifecycle)?;
 
@@ -1221,7 +1241,7 @@ mod tests {
     }
 
     #[test]
-    fn request_changes_is_reserved_for_w05_not_decidable_in_v1() {
+    fn request_changes_returns_the_proposal_to_draft_under_the_reviewer() {
         let (_dir, mut store) = temp_store();
         let changeset_id = ChangesetId::new("changeset_1").unwrap();
         let proposal_id = ProposalId::new("proposal_1").unwrap();
@@ -1230,9 +1250,8 @@ mod tests {
         let revision = seed_needs_review(&mut store, &changeset_id, &author);
         request(&mut store, &proposal_id, &changeset_id, &revision);
 
-        // V1 subset is approve/reject only; request-changes returns a typed
-        // "reserved for W05.P24" denial and records NO decision (stable contract,
-        // deferred behavior).
+        // W13.P24 activates request-changes (the deferred W05.P23 remainder): the reviewer
+        // sends the proposal back for revision through the EditProposal arc.
         let outcome = decide(
             &mut store,
             CommandKind::EditProposal,
@@ -1242,18 +1261,26 @@ mod tests {
             40,
         )
         .unwrap();
-        assert!(!outcome.eligibility.allowed);
         assert!(
-            outcome
-                .eligibility
-                .reason
-                .as_deref()
-                .is_some_and(|reason| reason.contains("W05.P24"))
+            outcome.eligibility.allowed,
+            "request-changes is decidable: {:?}",
+            outcome.eligibility
         );
-        assert!(
-            outcome.record.decision.is_none(),
-            "a reserved decision records nothing"
-        );
+        let decision = outcome.record.decision.expect("a decision is recorded");
+        assert_eq!(decision.decision, ApprovalDecision::RequestChanges);
+        assert_eq!(decision.reviewer, reviewer);
+        assert_eq!(decision.resulting_status, ChangesetStatus::Draft);
+        assert_eq!(outcome.record.queue_state, ApprovalQueueState::Closed);
+
+        // The changeset is back to Draft under the REVIEWER's identity (a reviewer edit).
+        let latest = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.ledger().latest(&changeset_id)
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(latest.status, ChangesetStatus::Draft);
+        assert_eq!(latest.actor, reviewer);
     }
 
     #[test]

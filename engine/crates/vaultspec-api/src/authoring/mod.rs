@@ -31,6 +31,7 @@ pub(crate) mod projections;
 pub(crate) mod proposal;
 pub(crate) mod rebase;
 pub(crate) mod response;
+pub(crate) mod review;
 pub(crate) mod rollback;
 pub(crate) mod routes;
 pub(crate) mod security;
