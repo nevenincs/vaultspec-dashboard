@@ -57,7 +57,7 @@ Documents the scoop and cargo-binstall install paths in the README.
 
 Generates and submits the nevenincs.vaultspec manifests to microsoft/winget-pkgs, recording the reputation-cycle outcome.
 
-- [ ] `P04.S09` - generate the nevenincs.vaultspec portable-zip manifests with komac and submit the winget-pkgs PR, recording the submission outcome (research-record step); `.vault/exec/2026-07-08-distribution-channels`.
+- [x] `P04.S09` - generate the nevenincs.vaultspec portable-zip manifests with komac and submit the winget-pkgs PR, recording the submission outcome (research-record step); `.vault/exec/2026-07-08-distribution-channels`.
 
 ### Phase `P05` - verification
 
