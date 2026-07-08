@@ -51,8 +51,8 @@ use super::executor::{
 use super::ledger::ChangesetAggregateRecord;
 use super::model::{
     ActionEligibility, ActorId, ActorKind, ActorRef, ApplyState, ApprovalId, ChangesetId,
-    ChangesetStatus, CommandKind, IdempotencyKey, InterruptId, ProposalId, ReviewDecisionKind,
-    RevisionToken, RunId, SessionId, ToolCallId,
+    ChangesetStatus, CommandKind, DocumentRef, IdempotencyKey, InterruptId, ProposalId,
+    ReviewDecisionKind, RevisionToken, RunId, SessionId, ToolCallId,
 };
 use super::modes::{
     ModeAutoApprovalOutcome, OperationModeUpdate, scope_id_for_worktree, system_actor,
@@ -68,6 +68,7 @@ use super::proposal::{
     SubmitProposalRequest, TerminalProposalRequest, ValidateProposalRequest, validation_evidence,
 };
 use super::rollback::{RollbackOutcome, RollbackRequest, RollbackSourceChild};
+use super::security::{CommandAuthorization, authorize_command, tool_requester_kind_guard};
 use super::snapshots::SnapshotReader;
 use super::store::{Result as StoreResult, Store, StoreError};
 use super::tools::{
@@ -111,6 +112,25 @@ const TOKEN_UNKNOWN_KIND: &str = "authoring_actor_token_unknown";
 /// The authoring store could not be opened/read to resolve the principal — the
 /// authoring domain degrades honestly rather than the engine panicking.
 const STORE_UNAVAILABLE_KIND: &str = "authoring_store_unavailable";
+
+/// An authorization refusal: the principal RESOLVED (a live token), but the composed
+/// authorization engine ([`authorize_command`]) denied the command — an unregistered or
+/// deactivated actor, a stale delegator (confused-deputy fence), or a target outside the
+/// session's authorized scope. A distinct kind from the identity denials above
+/// (missing / unknown token → 401) and from a bad request (422): the actor is who they
+/// say, but lacks authority (403). The reason is authored id/path/token-free.
+const AUTHORIZATION_DENIED_KIND: &str = "authoring_authorization_denied";
+
+/// A genuine infrastructure failure raised while AUTHORIZING a command — never an
+/// authorization refusal (those are eligibility VALUES). Rendered redacted so no id,
+/// path, or token leaks from the authorization path.
+#[derive(Debug, Clone, Copy)]
+enum AuthorizationFault {
+    /// The authoring store could not be opened/read to run the authorization guards.
+    StoreUnavailable,
+    /// An authorization guard hit a backend fault reading the actor registry.
+    Backend,
+}
 
 /// The outcome of the principal middleware, carried in the request extensions.
 /// A command route reads this back through [`ResolvedCommand`]; a read route
@@ -207,6 +227,40 @@ impl ResolvedCommandRejection {
             ),
         }
     }
+
+    /// A resolved principal the authorization engine DENIED (unregistered/deactivated
+    /// actor, stale delegator). Surfaced as a 403 with the engine's id/path/token-free
+    /// reason. The scope guard cannot fire here (the extractor floor supplies no
+    /// targets); it runs in the handlers that carry drafted targets.
+    fn authorization_denied(state: &AppState, eligibility: &ActionEligibility) -> Self {
+        Self::enveloped(
+            state,
+            StatusCode::FORBIDDEN,
+            AUTHORIZATION_DENIED_KIND,
+            eligibility
+                .reason
+                .clone()
+                .unwrap_or_else(|| "the acting principal is not authorized".to_string()),
+        )
+    }
+
+    /// A genuine infrastructure fault while authorizing — redacted, tiers-bearing.
+    fn authorization_fault(state: &AppState, fault: AuthorizationFault) -> Self {
+        match fault {
+            AuthorizationFault::StoreUnavailable => Self::enveloped(
+                state,
+                StatusCode::SERVICE_UNAVAILABLE,
+                STORE_UNAVAILABLE_KIND,
+                "authoring store is unavailable".to_string(),
+            ),
+            AuthorizationFault::Backend => Self::enveloped(
+                state,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "authoring_internal_error",
+                "an internal authorization check could not be completed".to_string(),
+            ),
+        }
+    }
 }
 
 impl IntoResponse for ResolvedCommandRejection {
@@ -252,7 +306,21 @@ where
                 )
             })?;
 
-        Ok(ResolvedCommand::from_principal(principal, envelope))
+        let resolved = ResolvedCommand::from_principal(principal, envelope);
+        // W14.P42a — the route-layer authorization FLOOR. Every mutating command is
+        // constructed here and NOWHERE else, so running the standing + delegation guards
+        // ([`authorize_command`] with no scope/targets/origin) before returning refuses an
+        // unregistered, deactivated, or stale-delegated actor on EVERY mutating route with
+        // no bypass. The document-scope and review-authority guards run in the handlers
+        // that carry a session scope, drafted targets, or an origin author.
+        match run_authorization(state, resolved.command(), resolved.actor(), None, &[], None) {
+            Ok(eligibility) if eligibility.allowed => Ok(resolved),
+            Ok(eligibility) => Err(ResolvedCommandRejection::authorization_denied(
+                state,
+                &eligibility,
+            )),
+            Err(fault) => Err(ResolvedCommandRejection::authorization_fault(state, fault)),
+        }
     }
 }
 
@@ -925,6 +993,74 @@ fn denial_snapshot(state: &AppState, eligibility: &ActionEligibility) -> Respons
     super::response::snapshot(state, denial_value(eligibility)).into_response()
 }
 
+/// Run the composed authorization engine ([`authorize_command`]) for one mutating command
+/// over a bounded actor-registry read (W14.P42a). Standing + delegation always run; the
+/// document-scope guard runs when a bound `session_id` resolves a scope AND `targets` are
+/// supplied; the review-authority guard runs for approve/apply-class commands carrying an
+/// `origin_author`. A refusal is a VALUE (`Ok(ActionEligibility { allowed: false, .. })`);
+/// only a genuine infrastructure failure is `Err`. The identity read rides the command's
+/// own unit of work (the house pattern: a deferred transaction that commits empty).
+fn run_authorization(
+    state: &AppState,
+    command: CommandKind,
+    actor: &ActorRef,
+    session_id: Option<&SessionId>,
+    targets: &[&DocumentRef],
+    origin_author: Option<&ActorRef>,
+) -> Result<ActionEligibility, AuthorizationFault> {
+    let outcome = state.with_authoring_store(|store| {
+        // The authorization read rides a FIXED mutating command's unit of work (the house
+        // pattern the principal middleware uses: a deferred transaction that commits
+        // empty). Keying the UoW on the ACTUAL `command` would reject a non-mutating one
+        // (a read tool routed through `/execute`) as a read-only-unit-of-work fault; the
+        // real command is still what `authorize_command` decides against.
+        store.with_unit_of_work(CommandKind::CreateSession, |uow| {
+            let session_scope = match session_id {
+                Some(session_id) => uow
+                    .sessions()
+                    .session(session_id)?
+                    .map(|record| record.scope),
+                None => None,
+            };
+            let authorization = CommandAuthorization {
+                command,
+                actor,
+                session_scope: session_scope.as_deref(),
+                targets,
+                origin_author,
+            };
+            Ok(authorize_command(&uow.actors(), &authorization))
+        })
+    });
+    match outcome {
+        Ok(Ok(eligibility)) => Ok(eligibility),
+        // A `SecurityFault` is already redacted at the engine; never echoed.
+        Ok(Err(_security_fault)) => Err(AuthorizationFault::Backend),
+        Err(_store_error) => Err(AuthorizationFault::StoreUnavailable),
+    }
+}
+
+/// Render an authorization infrastructure fault as a redacted, tiers-bearing error for a
+/// handler that returns a [`Response`] (the extractor renders its own rejection shape).
+fn authorization_fault_response(state: &AppState, fault: AuthorizationFault) -> Response {
+    match fault {
+        AuthorizationFault::StoreUnavailable => super::response::typed_error(
+            state,
+            StatusCode::SERVICE_UNAVAILABLE,
+            STORE_UNAVAILABLE_KIND,
+            "authoring store is unavailable",
+        )
+        .into_response(),
+        AuthorizationFault::Backend => super::response::typed_error(
+            state,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "authoring_internal_error",
+            "an internal authorization check could not be completed",
+        )
+        .into_response(),
+    }
+}
+
 /// `POST /authoring/v1/proposals` — open a new authoring changeset (a Draft
 /// proposal). The wire `CreateProposalRequest` IS the domain input; the actor is
 /// the middleware-RESOLVED principal (ASA-010), never a body claim. The domain
@@ -934,6 +1070,11 @@ pub async fn create_proposal(
     command: ResolvedCommand<CreateProposalRequest>,
 ) -> Response {
     let now = now_ms();
+    // Standing + delegation are enforced at the ResolvedCommand extractor floor. The
+    // document-scope guard is NOT wired here: `DocumentRef::Existing.scope` (a
+    // worktree/workspace identifier) and the session's `scope` (a client-supplied label)
+    // are distinct namespaces today, so the guard cannot be soundly compared until the
+    // two are reconciled (a dedicated follow-up, not this authorization floor).
     let (actor, _command, idempotency_key, payload) = command.into_parts();
     let context = proposal_context(actor, idempotency_key, now);
     // The materializer reads the vault worktree (parent of `.vault`).
@@ -2105,6 +2246,16 @@ pub async fn execute_agent_tool_call(
     let tool = prepared.name;
     let tool_call_id = prepared.tool_call_id.clone();
 
+    // W14.P42a — authorization tool-requester guard: only a Human or an Agent may drive
+    // the semantic tool surface. A System actor's authority is the policy auto-approve
+    // lane and a ToolExecutor is an execution identity, not a requester; either is refused
+    // as a denial VALUE (never a fault), BEFORE the tool-permission gate records anything.
+    // This is distinct from the downstream per-call permission gate and risk-tier
+    // requirement, which still run for a permitted requester.
+    if let Some(denied) = tool_requester_kind_guard(actor.kind, tool) {
+        return denial_snapshot(&state, &denied);
+    }
+
     let worktree_root = state.active_workspace_root();
     let scope_id = scope_id_for_worktree(&worktree_root);
     let gate = state.with_authoring_store(|store| {
@@ -2187,6 +2338,29 @@ async fn dispatch_agent_tool_command(
     let tool = prepared.name;
     let command_kind = prepared.command;
     let reader = SnapshotReader::for_worktree(state.active_workspace_root());
+
+    // W14.P42a — the agent is the untrusted writer the standing/delegation guards target.
+    // A granted tool call dispatches its MAPPED backend command INTERNALLY (no second
+    // `ResolvedCommand` extraction), so authorize the mapped command kind EXPLICITLY here
+    // before its effect. A refusal rides the unified `/execute` envelope as a value. (The
+    // document-scope guard is not applied until the session/document scope namespaces are
+    // reconciled; an agent applying its own proposal is refused origin-keyed in the apply
+    // domain.)
+    match run_authorization(&state, command_kind, &actor, None, &[], None) {
+        Ok(eligibility) if eligibility.allowed => {}
+        Ok(eligibility) => {
+            return agent_tool_execute_response(
+                &state,
+                &tool_call_id,
+                tool,
+                command_kind,
+                &outcome,
+                StatusCode::OK,
+                denial_value(&eligibility),
+            );
+        }
+        Err(fault) => return authorization_fault_response(&state, fault),
+    }
 
     let (status, value) = match prepared.dispatch {
         PreparedToolDispatch::ReadContext { .. } | PreparedToolDispatch::SearchGraph { .. } => {
@@ -2615,6 +2789,9 @@ mod tests {
     #[tokio::test]
     async fn a_resolved_principal_and_a_valid_body_yield_the_server_actor() {
         let (_state_dir, state) = fixture_state();
+        // W14.P42a: the extractor now runs the standing floor, so the resolved actor
+        // must be a registered, active actor to extract a command.
+        register_actor(&state, &agent());
         let (_token_dir, principal) = resolved_principal(&agent());
 
         let command = extract(
@@ -4777,6 +4954,215 @@ mod tests {
         assert_eq!(
             envelope["data"]["tool_call_record"]["permitted"], true,
             "the read tool's permitted ToolCallRecord was recorded by the gate: {envelope}"
+        );
+    }
+
+    // ---- W14.P42a: route-layer authorization wiring --------------------------------
+
+    /// A resolvable actor whose delegation names an absent delegator — the delegation
+    /// standing guard (confused-deputy fence) must refuse it even though the actor itself
+    /// is registered and active.
+    fn delegated_agent() -> ActorRef {
+        ActorRef {
+            id: ActorId::new("agent:delegate").unwrap(),
+            kind: ActorKind::Agent,
+            delegated_by: Some(ActorId::new("human:absent").unwrap()),
+        }
+    }
+
+    /// A registered System actor: it passes the standing guard but is refused at the
+    /// tool-requester guard (a System actor's authority is the policy auto-approve lane,
+    /// never the semantic tool surface).
+    fn system_requester() -> ActorRef {
+        ActorRef {
+            id: ActorId::new("system:runner").unwrap(),
+            kind: ActorKind::System,
+            delegated_by: None,
+        }
+    }
+
+    /// Turn a `ROUTE_FIXTURES` path template into a concrete path against the authoring
+    /// sub-router: drop the `/authoring` nest prefix and substitute each `{param}` with a
+    /// valid concrete id (the authorization floor refuses before the handler reads it).
+    fn concrete_authoring_path(template: &str) -> String {
+        let stripped = template.strip_prefix("/authoring").unwrap_or(template);
+        stripped
+            .split('/')
+            .map(|segment| match segment {
+                "{changeset_id}" => "changeset_1",
+                "{approval_id}" => "approval_1",
+                "{tool_call_id}" => "tool_call_1",
+                "{interrupt_id}" => "interrupt_1",
+                "{run_id}" => "run_1",
+                "{session_id}" => "session_1",
+                other if other.starts_with('{') => "placeholder",
+                other => other,
+            })
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
+    /// COVERAGE GUARD: every MOUNTED mutating route refuses an unregistered actor at the
+    /// authorization floor — the no-bypass proof. A resolvable token whose actor was never
+    /// registered as active must be refused (403, `authoring_authorization_denied`) on one
+    /// representative route of every mutating family (all mutating routes share the single
+    /// `ResolvedCommand` extractor, so a per-family representative proves the floor). A
+    /// mutating family whose route is not yet mounted (leases, until its wiring point)
+    /// answers 404 and is skipped; when it mounts it falls under this assertion.
+    #[tokio::test]
+    async fn every_mounted_mutating_route_refuses_an_unregistered_actor() {
+        use crate::authoring::api::ROUTE_FIXTURES;
+
+        let (_dir, state) = fixture_state();
+        let stranger = ActorRef {
+            id: ActorId::new("agent:stranger").unwrap(),
+            kind: ActorKind::Agent,
+            delegated_by: None,
+        };
+        // A live, resolvable token — but the actor is NOT registered as an active actor.
+        let token = issue_token_in_state(&state, &stranger);
+
+        let mut seen_families = std::collections::HashSet::new();
+        let mut refused_routes = 0;
+        for fixture in ROUTE_FIXTURES.iter().filter(|fixture| fixture.mutating) {
+            // One representative route per family (request_fixture is family-keyed).
+            if !seen_families.insert(fixture.family) {
+                continue;
+            }
+            let path = concrete_authoring_path(fixture.path_template);
+            let router = authoring_router(state.clone()).with_state(state.clone());
+            let (status, envelope) =
+                post_authoring(router, &path, &token, request_fixture(fixture.family)).await;
+
+            if status == StatusCode::NOT_FOUND {
+                // The route is not yet mounted (a later W14.P42a wiring point).
+                continue;
+            }
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "mutating route {} {} must refuse an unregistered actor at the authorization floor: {envelope}",
+                fixture.method,
+                fixture.path_template,
+            );
+            assert_eq!(
+                envelope["error_kind"], AUTHORIZATION_DENIED_KIND,
+                "{}",
+                fixture.path_template
+            );
+            assert!(
+                envelope["tiers"]["semantic"]["available"].is_boolean(),
+                "the refusal rides the shared tiers envelope: {}",
+                fixture.path_template
+            );
+            refused_routes += 1;
+        }
+        assert!(
+            refused_routes >= 8,
+            "the guard must exercise the mounted mutating families (exercised {refused_routes})"
+        );
+    }
+
+    /// NEGATIVE: an unregistered actor is refused at the extractor floor with a redacted
+    /// 403 — never leaking the offending id, and never a store fault.
+    #[tokio::test]
+    async fn an_unregistered_actor_is_refused_before_the_handler() {
+        let (_dir, state) = fixture_state();
+        let stranger = ActorRef {
+            id: ActorId::new("agent:ghost").unwrap(),
+            kind: ActorKind::Agent,
+            delegated_by: None,
+        };
+        let token = issue_token_in_state(&state, &stranger);
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/proposals",
+            &token,
+            request_fixture(EndpointFamily::Proposal),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::FORBIDDEN, "{envelope}");
+        assert_eq!(envelope["error_kind"], AUTHORIZATION_DENIED_KIND);
+        assert!(
+            !envelope["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("agent:ghost"),
+            "the refusal reason must not echo the actor id: {envelope}"
+        );
+    }
+
+    /// NEGATIVE: a delegated command whose delegator is absent is refused (confused-deputy
+    /// fence) — the actor itself is registered and active, but its delegator is not.
+    #[tokio::test]
+    async fn a_delegated_command_with_an_absent_delegator_is_refused() {
+        let (_dir, state) = fixture_state();
+        // Delegation provenance lives on the TOKEN, never the actor record. Register the
+        // delegate's base identity (active), then mint a token that resolves to the
+        // delegated principal whose delegator `human:absent` is NEVER registered — the
+        // delegation standing guard (confused-deputy fence) must refuse.
+        let delegate_base = ActorRef {
+            id: ActorId::new("agent:delegate").unwrap(),
+            kind: ActorKind::Agent,
+            delegated_by: None,
+        };
+        register_actor(&state, &delegate_base);
+        let token = issue_token_in_state(&state, &delegated_agent());
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/sessions",
+            &token,
+            request_fixture(EndpointFamily::Session),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::FORBIDDEN, "{envelope}");
+        assert_eq!(envelope["error_kind"], AUTHORIZATION_DENIED_KIND);
+        assert!(
+            envelope["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("delegat"),
+            "the refusal names the delegation fence: {envelope}"
+        );
+    }
+
+    /// NEGATIVE: a registered System actor is refused from the semantic tool surface at
+    /// the `/execute` seam (tool-requester guard) — a denial VALUE on the unified envelope.
+    #[tokio::test]
+    async fn execute_refuses_a_system_actor_from_the_tool_surface() {
+        let (_dir, state) = fixture_state();
+        let system = system_requester();
+        // Registered active, so it passes the standing floor; the tool-requester guard
+        // then refuses it (only Human/Agent may drive the tool surface).
+        register_actor(&state, &system);
+        let token = issue_token_in_state(&state, &system);
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/runs/run_1/agent-tools/execute",
+            &token,
+            request_fixture(EndpointFamily::AgentToolExecute),
+        )
+        .await;
+
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "the tool-requester refusal is a denial VALUE: {envelope}"
+        );
+        assert_eq!(envelope["data"]["status"], "denied");
+        assert!(
+            envelope["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("tool surface")),
+            "the denial names the tool-surface guard: {envelope}"
         );
     }
 }
