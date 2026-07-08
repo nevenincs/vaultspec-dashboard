@@ -20,6 +20,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { createLiveClient, liveScope, liveTransport } from "../../testing/liveClient";
 import {
   AuthoringClient,
+  newIdempotencyKey,
   type AuthoringCommandOutcome,
   type CreateProposalPayload,
 } from "./authoring";
@@ -29,6 +30,30 @@ function liveAuthoringClient(): AuthoringClient {
 }
 
 const run = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+/** Create a durable authoring session over the wire (a proposal's `session_id`
+ *  must name an EXISTING session; the store has no session surface yet, so the
+ *  test adopts the wire contract directly). */
+async function createLiveSession(actorToken: string): Promise<string> {
+  const res = await liveTransport("/authoring/v1/sessions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-authoring-actor-token": actorToken,
+    },
+    body: JSON.stringify({
+      api_version: "v1",
+      command: "create_session",
+      idempotency_key: newIdempotencyKey("session-hp"),
+      payload: { scope: "worktree", title: "happy-path live session" },
+    }),
+  });
+  const body = (await res.json()) as { data?: { session_id?: string } };
+  if (!res.ok || typeof body.data?.session_id !== "string") {
+    throw new Error(`session create failed (${res.status}): ${JSON.stringify(body)}`);
+  }
+  return body.data.session_id;
+}
 
 // A prose research doc (distinct from the reject flow's target) — prose stays
 // schema-valid through submit validation + real set-body, and only THIS test
@@ -42,9 +67,12 @@ let baseRevision: string;
 let proposedBody: string;
 let coreReachable: boolean;
 
-function replaceProposal(changesetId: string): CreateProposalPayload {
+function replaceProposal(
+  sessionId: string,
+  changesetId: string,
+): CreateProposalPayload {
   return {
-    session_id: `session_hp_${run}`,
+    session_id: sessionId,
     changeset_id: changesetId,
     summary: "Add a happy-path note to the research doc",
     operations: [
@@ -104,10 +132,14 @@ describe("full authoring happy path (live)", () => {
     ).raw_token;
     const changesetId = `changeset_hp_${run}`;
 
-    // 1. CREATE (agent author).
-    const created = await client.createProposal(replaceProposal(changesetId), {
-      actorToken: authorToken,
-    });
+    // 1. CREATE (agent author) inside a real session.
+    const sessionId = await createLiveSession(authorToken);
+    const created = await client.createProposal(
+      replaceProposal(sessionId, changesetId),
+      {
+        actorToken: authorToken,
+      },
+    );
     expect(created.kind).toBe("ok");
     const queued = await client.projectProposal(changesetId);
     expect(queued?.proposal.changeset_id).toBe(changesetId);

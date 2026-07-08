@@ -47,11 +47,39 @@ let client: AuthoringClient;
 let baseRevision: string;
 let proposedBody: string;
 
+/** Create a durable authoring session over the wire and return its
+ *  server-minted id. The session registry made sessions first-class — a
+ *  proposal's `session_id` must name an EXISTING session — and the store has
+ *  no session surface yet, so the test adopts the wire contract directly. */
+async function createLiveSession(actorToken: string): Promise<string> {
+  const res = await liveTransport("/authoring/v1/sessions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-authoring-actor-token": actorToken,
+    },
+    body: JSON.stringify({
+      api_version: "v1",
+      command: "create_session",
+      idempotency_key: newIdempotencyKey("session-live"),
+      payload: { scope: "worktree", title: "live-test session" },
+    }),
+  });
+  const body = (await res.json()) as { data?: { session_id?: string } };
+  if (!res.ok || typeof body.data?.session_id !== "string") {
+    throw new Error(`session create failed (${res.status}): ${JSON.stringify(body)}`);
+  }
+  return body.data.session_id;
+}
+
 /** A whole-document replace proposal against the real fixture target: its current
  *  body + one appended paragraph. */
-function replaceProposal(changesetId: string): CreateProposalPayload {
+function replaceProposal(
+  sessionId: string,
+  changesetId: string,
+): CreateProposalPayload {
   return {
-    session_id: `session_${run}`,
+    session_id: sessionId,
     changeset_id: changesetId,
     summary: "Add a walking-skeleton note to the research doc",
     operations: [
@@ -133,10 +161,14 @@ describe("human-in-the-loop review flow (live)", () => {
 
     const changesetId = `changeset_${run}`;
 
-    // 1. CREATE the draft proposal (agent author).
-    const created = await client.createProposal(replaceProposal(changesetId), {
-      actorToken: authorToken,
-    });
+    // 1. CREATE the draft proposal (agent author) inside a real session.
+    const sessionId = await createLiveSession(authorToken);
+    const created = await client.createProposal(
+      replaceProposal(sessionId, changesetId),
+      {
+        actorToken: authorToken,
+      },
+    );
     expect(created.kind).toBe("ok");
 
     // It now shows up in the backend-served review DETAIL (the review station's
@@ -229,7 +261,10 @@ describe("human-in-the-loop review flow (live)", () => {
     ).raw_token;
     const changesetId = `changeset_idem_${run}`;
     const key = newIdempotencyKey("idem-live");
-    const payload = replaceProposal(changesetId);
+    // One session for BOTH sends: the create's idempotency digest covers the
+    // payload, so the replay must carry the identical session id.
+    const sessionId = await createLiveSession(authorToken);
+    const payload = replaceProposal(sessionId, changesetId);
 
     const first = await client.createProposal(payload, {
       actorToken: authorToken,
