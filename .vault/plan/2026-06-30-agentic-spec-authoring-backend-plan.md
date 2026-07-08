@@ -500,9 +500,9 @@ Conditional remainder of the Increment 1 whole-document-only subset: build secti
 
 Enforce policy before any human or agent command mutates authoring state or requests apply. Folds in the Increment 1 actor-model remainder: service identities and delegated scopes, deferred from W05.P19's minimal-actor subset.
 
-- [ ] `W13.P20.S96` - Ground Authorization engine and scope guards requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W13.P20.S97` - Implement authorization checks, scope guards, dangerous-tool guards, policy failures, and safe error redaction; `engine/crates/vaultspec-api/src/authoring/security.rs`.
-- [ ] `W13.P20.S98` - Add authorization tests for forbidden document scope, forbidden tool, stale actor, unauthorized apply, redacted error, and allowed delegated command; `engine/crates/vaultspec-api/src/authoring/security.rs`.
+- [x] `W13.P20.S96` - Ground Authorization engine and scope guards requirements into the phase checklist; `.vault/adr/`.
+- [x] `W13.P20.S97` - Implement authorization checks, scope guards, dangerous-tool guards, policy failures, and safe error redaction; `engine/crates/vaultspec-api/src/authoring/security.rs`.
+- [x] `W13.P20.S98` - Add authorization tests for forbidden document scope, forbidden tool, stale actor, unauthorized apply, redacted error, and allowed delegated command; `engine/crates/vaultspec-api/src/authoring/security.rs`.
 - [ ] `W13.P20.S99` - Run Authorization engine and scope guards code review and record the phase audit; `.vault/audit/`.
 - [ ] `W13.P20.S100` - Verify unauthorized humans and agents cannot mutate state through tests and manual negative API checks; `engine/crates/vaultspec-api/src/authoring/security.rs`.
 
