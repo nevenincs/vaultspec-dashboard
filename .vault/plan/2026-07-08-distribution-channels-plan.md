@@ -51,7 +51,7 @@ Seeds the in-repo bucket manifest and wires the automated per-release bump throu
 
 Documents the scoop and cargo-binstall install paths in the README.
 
-- [ ] `P03.S08` - document the scoop bucket add and cargo binstall --git install paths, replacing the crates-io-shaped binstall posture; `README.md`.
+- [x] `P03.S08` - document the scoop bucket add and cargo binstall --git install paths, replacing the crates-io-shaped binstall posture; `README.md`.
 
 ### Phase `P04` - winget submission
 
