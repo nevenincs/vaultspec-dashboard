@@ -24,6 +24,7 @@ related:
   - '[[2026-07-08-distribution-channels-P05-S12]]'
   - '[[2026-07-08-distribution-channels-P05-summary]]'
   - '[[2026-07-08-distribution-channels-adr]]'
+  - '[[2026-07-08-distribution-channels-audit]]'
   - '[[2026-07-08-distribution-channels-plan]]'
 ---
 
@@ -36,6 +37,10 @@ Auto-generated index of all documents tagged with `#distribution-channels`.
 ### adr
 
 - `2026-07-08-distribution-channels-adr` - `distribution-channels` adr: `scoop, cargo-binstall, and winget over the shipped artifacts - and a boundary-clean embed` | (**status:** `accepted`)
+
+### audit
+
+- `2026-07-08-distribution-channels-audit` - `distribution-channels` audit: `review and execution-truth closure`
 
 ### exec
 

@@ -196,6 +196,9 @@ pub(crate) const API_PREFIXES: &[&str] = &[
     "/authoring",
     "/search",
     "/ops",
+    // Rides ahead of the in-flight provisioning plane (shared-tree commit
+    // sweep, kept deliberately): this list is a bearer boundary, and the
+    // /provision routes must never land without their prefix already gated.
     "/provision",
     "/health",
     "/session",
