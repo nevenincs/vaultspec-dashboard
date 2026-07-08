@@ -18,6 +18,7 @@ pub(crate) mod executor;
 pub(crate) mod http;
 pub(crate) mod interrupts;
 pub(crate) mod langgraph;
+pub(crate) mod leases;
 pub(crate) mod ledger;
 pub(crate) mod model;
 pub(crate) mod modes;

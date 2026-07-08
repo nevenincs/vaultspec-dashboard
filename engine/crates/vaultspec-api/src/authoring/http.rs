@@ -759,6 +759,15 @@ fn command_error_response(state: &AppState, err: &StoreError) -> Response {
             "authoring_session_refused",
             err.to_string(),
         ),
+        // A lease construction fault (empty scope, malformed id, bad schema). Lease
+        // POLICY refusals — concurrent acquire, non-owner release, stale fencing token —
+        // are eligibility VALUES on the success envelope, never this error, so a
+        // `Lease` error is a genuine bad-request-shaped refusal: a 422.
+        StoreError::Lease(_) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "authoring_lease_refused",
+            err.to_string(),
+        ),
         // An authenticated principal that is not a registered/active actor is an
         // AUTHORIZATION refusal (the token resolved, but the actor cannot write) —
         // a 403, distinct from a bad request (422) or a store outage (503).
