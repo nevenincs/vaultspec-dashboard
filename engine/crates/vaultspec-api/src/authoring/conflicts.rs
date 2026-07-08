@@ -388,8 +388,9 @@ fn detect_overlapping_hunks(
 }
 
 /// The stable node id of an existing target, or `None` for a target with no fixed
-/// document identity to fence against (a provisional create).
-fn existing_node_id(document: &DocumentRef) -> Option<String> {
+/// document identity to fence against (a provisional create). Shared with the apply-side
+/// advisory fencing check so the acquire and apply lease scopes derive from one convention.
+pub(crate) fn existing_node_id(document: &DocumentRef) -> Option<String> {
     match document {
         DocumentRef::Existing { node_id, .. } => Some(node_id.clone()),
         DocumentRef::MaterializedResult { reviewed, .. } => existing_node_id(reviewed),

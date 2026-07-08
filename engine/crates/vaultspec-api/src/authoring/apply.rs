@@ -38,8 +38,10 @@ use serde::{Deserialize, Serialize};
 
 use super::api::ChangesetOperationKind;
 use super::approvals::{V1_POLICY_VERSION, automated_self_approval_blocker};
+use super::conflicts::{document_lease_scope, existing_node_id};
 use super::core_adapter::{CoreAdapter, CoreCapability, CoreInvocation, WriteArgs};
 use super::events::{apply_recorded_event, apply_started_event};
+use super::leases::validate_fencing_token;
 use super::ledger::{
     ChangesetAggregateRecord, ChangesetChildOperationInput, ChangesetRevisionInput,
 };
@@ -99,6 +101,10 @@ pub struct ApplyRequest<'a> {
     pub proposal_id: &'a ProposalId,
     pub actor: &'a ActorRef,
     pub idempotency_key: &'a IdempotencyKey,
+    /// The ADVISORY fencing token (W13.P26) the applying actor presents. Enforced ONLY
+    /// when a live lease holds the target document's scope: a `None` or stale token against
+    /// a live lease is refused as a denial value; with no live lease the apply proceeds.
+    pub fencing_token: Option<i64>,
     pub now_ms: i64,
 }
 
@@ -400,6 +406,35 @@ fn preflight_in_uow(
             child.child_key
         ))));
     };
+
+    // ADVISORY fencing (W13.P26, wired W14.P42a). A lease NEVER establishes correctness,
+    // so a scope with NO live lease applies unfenced. But when a live lease DOES hold this
+    // document's scope, the apply must present the lease's CURRENT fencing token — a stale
+    // token (a superseded holder) or an absent token is fenced out as a denial VALUE, never
+    // a fault. The scope key is the SAME per-document convention P27 conflict detection
+    // uses (`document_lease_scope`), so acquire and apply agree on the fenced scope.
+    if let Some(node_id) = existing_node_id(&document) {
+        let lease_scope = document_lease_scope(worktree_root, &node_id);
+        let current_lease = uow.leases().current(&lease_scope)?;
+        if current_lease
+            .as_ref()
+            .is_some_and(|lease| lease.is_active(request.now_ms))
+        {
+            let fence = match request.fencing_token {
+                Some(token) => {
+                    validate_fencing_token(current_lease.as_ref(), token, request.now_ms)
+                }
+                None => ActionEligibility::denied(
+                    CommandKind::RequestApply,
+                    "a live lease holds this document; the apply must present the current \
+                     fencing token",
+                ),
+            };
+            if !fence.allowed {
+                return Ok(Ok(Preflight::Denied(fence)));
+            }
+        }
+    }
     let base_blob_hash = materialized.base.blob_hash.clone();
     let core_base_blob_hash = full_file_blob_hash(worktree_root, &document_path, &base_blob_hash);
     let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
@@ -928,6 +963,7 @@ mod tests {
     use crate::authoring::approvals::{
         ApprovalDecision, ApprovalRequestInput, ReviewDecisionInput, ReviewedTuple,
     };
+    use crate::authoring::leases::{AcquireLeaseInput, LeasePurpose, LeaseRecord};
     use crate::authoring::model::{ActorId, ActorKind, ApprovalId, ChangesetKind, SessionId};
     use crate::authoring::operations::MaterializedProposalOperation;
     use crate::authoring::snapshots::{PreimageCaptureRequest, SnapshotReader};
@@ -1213,6 +1249,7 @@ mod tests {
                 proposal_id: &proposal_id,
                 actor,
                 idempotency_key: &key,
+                fencing_token: None,
                 now_ms: now,
             },
         )
@@ -1226,6 +1263,152 @@ mod tests {
                 Ok(uow.ledger().latest(&changeset_id)?.unwrap().status)
             })
             .unwrap()
+    }
+
+    /// Apply presenting a specific advisory fencing token (or `None`), so the apply-side
+    /// fence (W14.P42a) can be exercised against a seeded lease.
+    fn apply_with_token(
+        fx: &mut Fx,
+        adapter: &CoreAdapter,
+        actor: &ActorRef,
+        key: &str,
+        now: i64,
+        fencing_token: Option<i64>,
+    ) -> ApplyOutcome {
+        let key = IdempotencyKey::new(key).unwrap();
+        let root = fx.root.clone();
+        let changeset_id = fx.changeset_id.clone();
+        let proposal_id = fx.proposal_id.clone();
+        apply_changeset(
+            &mut fx.store,
+            adapter,
+            &root,
+            ApplyRequest {
+                changeset_id: &changeset_id,
+                proposal_id: &proposal_id,
+                actor,
+                idempotency_key: &key,
+                fencing_token,
+                now_ms: now,
+            },
+        )
+        .unwrap()
+    }
+
+    /// Seed a live advisory lease on the apply target's per-document scope, held by
+    /// `holder`, returning the issued lease record (its `fencing_token` is the current one).
+    fn seed_lease(fx: &mut Fx, holder: &ActorRef, now: i64) -> LeaseRecord {
+        let scope = document_lease_scope(&fx.root, "doc:apply-demo");
+        fx.store
+            .with_unit_of_work(CommandKind::AcquireLease, |uow| {
+                uow.leases().acquire_lease(AcquireLeaseInput {
+                    scope_id: scope,
+                    purpose: LeasePurpose::WholeDocument,
+                    holder: holder.clone(),
+                    idempotency_key: format!("idem:lease:{}", holder.id.as_str()),
+                    created_at_ms: now,
+                    ttl_ms: None,
+                })
+            })
+            .unwrap()
+            .record
+            .expect("a fresh acquisition records a lease")
+    }
+
+    #[test]
+    fn a_live_lease_fences_an_apply_without_the_current_token() {
+        let mut fx = setup(true);
+        let applier = fx.applier.clone();
+        // A DIFFERENT active actor holds a live lease on the target document's scope.
+        let holder = actor("human:reviewer", ActorKind::Human);
+        let token = seed_lease(&mut fx, &holder, 90).fencing_token;
+        assert!(token >= 1, "a fresh lease issues a monotonic token");
+
+        // Editor A applies presenting NO token against the live lease → refused as a value,
+        // and the ledger does not advance.
+        let tokenless = apply_with_token(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:notoken",
+            100,
+            None,
+        );
+        assert!(
+            !tokenless.eligibility.allowed,
+            "a live lease fences a tokenless apply"
+        );
+        assert!(tokenless.receipt.is_none());
+        assert!(
+            tokenless
+                .eligibility
+                .reason
+                .as_ref()
+                .is_some_and(|reason| reason.contains("fencing token")),
+            "the denial names the fencing token: {:?}",
+            tokenless.eligibility.reason
+        );
+        assert_eq!(
+            ledger_status(&mut fx),
+            ChangesetStatus::Approved,
+            "the fenced apply left the ledger untouched"
+        );
+
+        // A STALE token (not the scope's current one) is fenced too.
+        let stale = apply_with_token(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:stale",
+            101,
+            Some(token + 5),
+        );
+        assert!(!stale.eligibility.allowed, "a stale token is fenced out");
+
+        // Presenting the CURRENT token proceeds — the fence is token-based (additive to the
+        // revision checks), so a holder's current token finalizes the apply.
+        let ok = apply_with_token(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:token",
+            102,
+            Some(token),
+        );
+        assert!(ok.eligibility.allowed, "{:?}", ok.eligibility.reason);
+        assert_eq!(
+            ok.receipt
+                .expect("the fenced-through apply records a receipt")
+                .state,
+            ApplyState::Applied
+        );
+    }
+
+    #[test]
+    fn an_apply_with_no_live_lease_proceeds_unfenced() {
+        let mut fx = setup(true);
+        let applier = fx.applier.clone();
+        // No lease on the scope: advisory fencing requires none, so a tokenless apply lands.
+        let outcome = apply_with_token(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:nolease",
+            100,
+            None,
+        );
+        assert!(
+            outcome.eligibility.allowed,
+            "{:?}",
+            outcome.eligibility.reason
+        );
+        assert_eq!(
+            outcome
+                .receipt
+                .expect("an unfenced apply records a receipt")
+                .state,
+            ApplyState::Applied
+        );
     }
 
     fn outbox_events(fx: &mut Fx) -> Vec<OutboxEvent> {
@@ -1407,6 +1590,7 @@ mod tests {
                 proposal_id: &proposal_id,
                 actor: &applier,
                 idempotency_key: &key,
+                fencing_token: None,
                 now_ms: 100,
             },
         )
@@ -1638,6 +1822,7 @@ mod tests {
                         proposal_id: &proposal_id,
                         actor: &applier,
                         idempotency_key: &key,
+                        fencing_token: None,
                         now_ms: 100,
                     },
                 )

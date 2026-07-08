@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use super::leases::LeasePurpose;
 use super::model::{
     ActorId, ActorKind, ActorRef, ApprovalId, ChangesetId, CommandKind, DocumentRef,
     IdempotencyKey, LeaseId, ProvisionalCollisionStatus, ReceiptId, ReceiptRef, ReviewDecisionKind,
@@ -493,6 +494,12 @@ pub struct ReviewDecisionRequest {
 pub struct ApplyRequest {
     pub changeset_id: ChangesetId,
     pub approval_id: ApprovalId,
+    /// The ADVISORY fencing token (W13.P26) the applying actor presents. Optional and
+    /// CONSUMED (not an accepted-but-ignored field): the apply preflight enforces it only
+    /// when a live lease holds the target document's scope — a stale or absent token
+    /// against a live lease is refused as a denial value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fencing_token: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -512,12 +519,34 @@ pub struct RollbackChildSource {
     pub source_child_key: String,
 }
 
+/// Acquire (or re-acquire) an advisory lease on a target document's scope. The server
+/// derives the per-document lease scope from the active workspace + the target's node id
+/// (the P27 `document_lease_scope` convention), so acquire and apply-time fencing agree on
+/// the fenced scope. The holder is the middleware-resolved principal, never a body claim;
+/// the fencing token is issued server-side and returned in the response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct LeaseRequest {
-    pub lease_id: LeaseId,
+pub struct LeaseAcquireRequest {
     pub target: DocumentRef,
-    pub ttl_ms: u64,
+    pub purpose: LeasePurpose,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl_ms: Option<u64>,
+}
+
+/// Renew a live advisory lease's TTL window (owner-only; the fencing token is unchanged).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LeaseRenewRequest {
+    pub target: DocumentRef,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl_ms: Option<u64>,
+}
+
+/// Release a live advisory lease (owner-only).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LeaseReleaseRequest {
+    pub target: DocumentRef,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -709,6 +738,7 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
             ApplyRequest {
                 changeset_id: changeset_id(),
                 approval_id: approval_id(),
+                fencing_token: None,
             },
         )),
         EndpointFamily::Rollback => command_value(CommandEnvelope::new(
@@ -747,10 +777,10 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
         EndpointFamily::Lease => command_value(CommandEnvelope::new(
             CommandKind::AcquireLease,
             idempotency_key("idem:lease:acquire"),
-            LeaseRequest {
-                lease_id: LeaseId::new("lease_1").unwrap(),
+            LeaseAcquireRequest {
                 target: existing_document_fixture(),
-                ttl_ms: 30_000,
+                purpose: LeasePurpose::WholeDocument,
+                ttl_ms: Some(30_000),
             },
         )),
         EndpointFamily::Stream => read_value(StreamSubscribeRequest { last_seq: Some(41) }),

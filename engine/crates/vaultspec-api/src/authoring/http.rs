@@ -36,19 +36,21 @@ use super::api::{
     ApplyRequest as ApplyRequestDto, CancelRunRequest, ChangesetChildOperationDraft,
     CommandEnvelope, CreateProposalRequest, CreateSessionRequest,
     DirectWriteRequest as DirectWriteRequestDto, InterruptResumeRequest, IssueActorTokenRequest,
-    ResumeRunRequest, ReviewDecisionRequest, RollbackRequest as RollbackRequestDto,
-    SetOperationModeRequest, StartPromptTurnRequest, SubmitForReviewRequest,
-    ToolPermissionDecisionRequest,
+    LeaseAcquireRequest, LeaseReleaseRequest, LeaseRenewRequest, ResumeRunRequest,
+    ReviewDecisionRequest, RollbackRequest as RollbackRequestDto, SetOperationModeRequest,
+    StartPromptTurnRequest, SubmitForReviewRequest, ToolPermissionDecisionRequest,
 };
 use super::apply::{ApplyError, ApplyOutcome, ApplyRequest};
 use super::approvals::{
     ApprovalDecision, ApprovalError, ApprovalOutcome, ApprovalRequestInput, ApprovalRequestRecord,
     ReviewDecisionInput, ReviewedTuple, V1_POLICY_VERSION,
 };
+use super::conflicts::{document_lease_scope, existing_node_id};
 use super::core_adapter::CoreAdapter;
 use super::executor::{
     ExecuteDisposition, ExecuteOutcome, ExecuteToolCallRequest, execute_tool_call,
 };
+use super::leases::{AcquireLeaseInput, LeaseOutcome};
 use super::ledger::ChangesetAggregateRecord;
 use super::model::{
     ActionEligibility, ActorId, ActorKind, ActorRef, ApplyState, ApprovalId, ChangesetId,
@@ -507,6 +509,12 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/v1/rollback-proposals", post(create_rollback))
         .route("/v1/mode", post(set_operation_mode))
         .route("/v1/direct-writes", post(direct_write))
+        // Advisory leases (W13.P26, wired W14.P42a): acquire / renew / release a
+        // per-document lease + its monotonic fencing token. Mutating → standing-authorized
+        // by the extractor floor.
+        .route("/v1/leases", post(acquire_lease))
+        .route("/v1/leases/renew", post(renew_lease))
+        .route("/v1/leases/release", post(release_lease))
         // The bootstrap seam: mint a per-principal actor token. Machine-bearer-gated
         // by the app router; the permissive principal layer never blocks it (it uses
         // a plain JSON body, not the ResolvedCommand extractor).
@@ -1668,6 +1676,9 @@ async fn mode_after_submit(
                         proposal_id: &approval.proposal_id,
                         actor: &system,
                         idempotency_key: &key,
+                        // The system auto-apply presents no fencing token; advisory fencing
+                        // refuses it only if a live human/agent lease holds the target.
+                        fencing_token: None,
                         now_ms: now,
                     },
                 )
@@ -2022,6 +2033,131 @@ fn direct_write_outcome_response(
     super::response::snapshot(state, data).into_response()
 }
 
+// --- advisory leases (W13.P26, wired W14.P42a) --------------------------------
+
+/// The per-document lease scope for a target: the SAME P27 `document_lease_scope`
+/// convention (`{scope_id_for_worktree}::{node_id}`) the apply-time fencing check derives,
+/// so acquire and apply agree on the fenced scope. `None` for a target with no fixed
+/// document identity (a provisional create), which cannot be leased.
+fn lease_scope_for_target(state: &AppState, target: &DocumentRef) -> Option<String> {
+    existing_node_id(target)
+        .map(|node_id| document_lease_scope(&state.active_workspace_root(), &node_id))
+}
+
+/// The typed bad-request for a lease command whose target has no leasable document identity.
+fn lease_target_invalid(state: &AppState) -> Response {
+    super::response::typed_error(
+        state,
+        StatusCode::BAD_REQUEST,
+        REQUEST_INVALID_KIND,
+        "an advisory lease requires an existing document target",
+    )
+    .into_response()
+}
+
+/// Map a lease operation outcome to its enveloped VALUE: allowed vs a denial value (a
+/// concurrent-acquire block, a non-owner renew/release, an expired lease) with the scope's
+/// current lease row — including the monotonic fencing token a holder presents at apply.
+fn lease_outcome_value(outcome: &LeaseOutcome) -> Value {
+    json!({
+        "status": if outcome.eligibility.allowed { "allowed" } else { "denied" },
+        "allowed": outcome.eligibility.allowed,
+        "command": outcome.eligibility.command,
+        "reason": outcome.eligibility.reason,
+        "replayed": outcome.replayed,
+        "lease": outcome.record.as_ref().map(|record| json!({
+            "scope_id": record.scope_id,
+            "purpose": record.purpose,
+            "holder": record.holder,
+            "fencing_token": record.fencing_token,
+            "state": record.state,
+            "acquired_at_ms": record.acquired_at_ms,
+            "expires_at_ms": record.expires_at_ms,
+        })),
+    })
+}
+
+fn lease_outcome_response(state: &AppState, outcome: &LeaseOutcome) -> Response {
+    super::response::snapshot(state, lease_outcome_value(outcome)).into_response()
+}
+
+/// `POST /authoring/v1/leases` — acquire (or idempotently re-acquire) an advisory lease on
+/// a target document's scope. A concurrent hold by another actor rides the 200 envelope as
+/// a denial value; a fresh acquisition returns the lease row with its monotonic fencing
+/// token. The holder is the middleware-resolved principal, never a body claim.
+pub async fn acquire_lease(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<LeaseAcquireRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let scope_id = match lease_scope_for_target(&state, &payload.target) {
+        Some(scope_id) => scope_id,
+        None => return lease_target_invalid(&state),
+    };
+    let input = AcquireLeaseInput {
+        scope_id,
+        purpose: payload.purpose,
+        holder: actor,
+        idempotency_key: idempotency_key.as_str().to_string(),
+        created_at_ms: now,
+        ttl_ms: payload.ttl_ms.map(|ttl| ttl as i64),
+    };
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::AcquireLease, |uow| {
+            uow.leases().acquire_lease(input)
+        })
+    }) {
+        Ok(outcome) => lease_outcome_response(&state, &outcome),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `POST /authoring/v1/leases/renew` — extend a live lease's TTL (owner-only; the fencing
+/// token is unchanged). A non-owner or lapsed renewal is a denial value.
+pub async fn renew_lease(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<LeaseRenewRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, _idempotency_key, payload) = command.into_parts();
+    let scope_id = match lease_scope_for_target(&state, &payload.target) {
+        Some(scope_id) => scope_id,
+        None => return lease_target_invalid(&state),
+    };
+    let ttl_ms = payload.ttl_ms.map(|ttl| ttl as i64);
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::RenewLease, |uow| {
+            uow.leases().renew_lease(&scope_id, &actor, ttl_ms, now)
+        })
+    }) {
+        Ok(outcome) => lease_outcome_response(&state, &outcome),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `POST /authoring/v1/leases/release` — release a live lease (owner-only). A non-owner
+/// release is refused as a value and leaves the lease held by its owner.
+pub async fn release_lease(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<LeaseReleaseRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, _idempotency_key, payload) = command.into_parts();
+    let scope_id = match lease_scope_for_target(&state, &payload.target) {
+        Some(scope_id) => scope_id,
+        None => return lease_target_invalid(&state),
+    };
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::ReleaseLease, |uow| {
+            uow.leases().release_lease(&scope_id, &actor, now)
+        })
+    }) {
+        Ok(outcome) => lease_outcome_response(&state, &outcome),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
 // --- apply (the one side-effecting command) -----------------------------------
 
 /// Map an `ApplyError` FAULT to a `StoreError` for the shared taxonomy. Policy
@@ -2081,6 +2217,9 @@ async fn apply_changeset_body(
     payload: ApplyRequestDto,
 ) -> Result<(StatusCode, Value), Response> {
     let changeset_id = payload.changeset_id.clone();
+    // The ADVISORY fencing token the applying actor presents (W13.P26); enforced by the
+    // apply preflight only when a live lease holds the target document's scope.
+    let presented_fencing_token = payload.fencing_token;
 
     // The proposal + approval are derived 1:1 from the changeset (V1). The wire
     // approval id must NAME that derived approval — a coherence check that the
@@ -2114,6 +2253,7 @@ async fn apply_changeset_body(
                     proposal_id: &proposal_id,
                     actor: &actor,
                     idempotency_key: &idempotency_key,
+                    fencing_token: presented_fencing_token,
                     now_ms: now,
                 },
             )
@@ -4366,6 +4506,7 @@ mod tests {
             payload: ApplyRequestDto {
                 changeset_id: ChangesetId::new(changeset).unwrap(),
                 approval_id: ApprovalId::new(approval).unwrap(),
+                fencing_token: None,
             },
         };
         ResolvedCommand::from_principal(principal, envelope)
@@ -5308,6 +5449,123 @@ mod tests {
                 .as_str()
                 .is_some_and(|reason| reason.contains("scope")),
             "the denial names the scope fence: {envelope}"
+        );
+    }
+
+    // ---- W14.P42a S258: advisory lease routes --------------------------------------
+
+    fn lease_target() -> DocumentRef {
+        DocumentRef::Existing {
+            scope: "scope_a".to_string(),
+            node_id: "doc:adr-1".to_string(),
+            stem: "adr-1".to_string(),
+            path: ".vault/adr/adr-1.md".to_string(),
+            doc_type: "adr".to_string(),
+            base_revision: RevisionToken::new("blob:base").unwrap(),
+        }
+    }
+
+    fn lease_acquire_body(idem: &str) -> Value {
+        serde_json::to_value(CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::AcquireLease,
+            idempotency_key: IdempotencyKey::new(idem).unwrap(),
+            payload: LeaseAcquireRequest {
+                target: lease_target(),
+                purpose: super::super::leases::LeasePurpose::WholeDocument,
+                ttl_ms: Some(60_000),
+            },
+        })
+        .unwrap()
+    }
+
+    fn lease_release_body(idem: &str) -> Value {
+        serde_json::to_value(CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::ReleaseLease,
+            idempotency_key: IdempotencyKey::new(idem).unwrap(),
+            payload: LeaseReleaseRequest {
+                target: lease_target(),
+            },
+        })
+        .unwrap()
+    }
+
+    /// The acquire route issues a lease row carrying the monotonic fencing token a holder
+    /// later presents at apply — a fresh, held lease under the resolved principal.
+    #[tokio::test]
+    async fn acquire_lease_route_returns_a_held_lease_and_fencing_token() {
+        let (_dir, state) = fixture_state();
+        let holder = agent();
+        register_actor(&state, &holder);
+        let token = issue_token_in_state(&state, &holder);
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/leases",
+            &token,
+            lease_acquire_body("idem:lease:a1"),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{envelope}");
+        assert_eq!(envelope["data"]["status"], "allowed");
+        assert_eq!(envelope["data"]["lease"]["state"], "held");
+        assert!(
+            envelope["data"]["lease"]["fencing_token"]
+                .as_i64()
+                .is_some_and(|fencing_token| fencing_token >= 1),
+            "a fresh lease issues a monotonic fencing token: {envelope}"
+        );
+        assert!(envelope["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    /// A second actor holding no lease cannot release another holder's live lease — the
+    /// release is a denial VALUE and the lease stands.
+    #[tokio::test]
+    async fn a_non_owner_lease_release_is_refused_as_a_value() {
+        let (_dir, state) = fixture_state();
+        let owner = agent();
+        let other = human_reviewer();
+        register_actor(&state, &owner);
+        register_actor(&state, &other);
+        let owner_token = issue_token_in_state(&state, &owner);
+        let other_token = issue_token_in_state(&state, &other);
+
+        // The owner acquires the lease.
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (acquire_status, acquire_envelope) = post_authoring(
+            router,
+            "/v1/leases",
+            &owner_token,
+            lease_acquire_body("idem:lease:own"),
+        )
+        .await;
+        assert_eq!(acquire_status, StatusCode::OK, "{acquire_envelope}");
+        assert_eq!(acquire_envelope["data"]["status"], "allowed");
+
+        // A different, standing actor tries to release it → refused as a value.
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/leases/release",
+            &other_token,
+            lease_release_body("idem:lease:rel"),
+        )
+        .await;
+
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "a non-owner release is a denial VALUE, not a fault: {envelope}"
+        );
+        assert_eq!(envelope["data"]["status"], "denied");
+        assert!(
+            envelope["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("holder")),
+            "the denial names the owner-only rule: {envelope}"
         );
     }
 }
