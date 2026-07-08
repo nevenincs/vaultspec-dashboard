@@ -14,6 +14,7 @@ pub(crate) mod core_adapter;
 pub(crate) mod direct_write;
 pub(crate) mod documents;
 pub(crate) mod events;
+pub(crate) mod executor;
 pub(crate) mod http;
 pub(crate) mod interrupts;
 pub(crate) mod langgraph;
