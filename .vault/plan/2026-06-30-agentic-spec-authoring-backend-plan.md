@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#agentic-spec-authoring-backend'
 date: '2026-06-30'
-modified: '2026-07-07'
+modified: '2026-07-08'
 tier: L4
 related:
   - '[[2026-07-02-agentic-spec-authoring-backend-reference]]'
@@ -29,6 +29,16 @@ related:
   - '[[2026-06-29-langgraph-approval-document-editing-research]]'
   - '[[2026-06-29-zed-acp-document-authoring-research]]'
 ---
+
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 <!-- RETIRED: W04, W05, W06, W07, W08, W09, P12, P29, P37, S56, S57, S58, S59, S60, S141, S142, S143, S144, S145, S181, S182, S183, S184, S185 -->
 
@@ -406,9 +416,9 @@ Expose context, search, propose, validate, request approval, cancel, and request
 
 Make dangerous or scoped agent tools produce durable permission requests and stable review decisions.
 
-- [ ] `W12.P22.S106` - Ground Tool permission request flow requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W12.P22.S107` - Implement tool permission request creation, claim, decision, expiry, replay, and audit record handling; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
-- [ ] `W12.P22.S108` - Add permission tests for approved tool, rejected tool, expired request, replayed decision, and multiple simultaneous requests; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
+- [x] `W12.P22.S106` - Ground Tool permission request flow requirements into the phase checklist; `.vault/adr/`.
+- [x] `W12.P22.S107` - Implement tool permission request creation, claim, decision, expiry, replay, and audit record handling; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
+- [x] `W12.P22.S108` - Add permission tests for approved tool, rejected tool, expired request, replayed decision, and multiple simultaneous requests; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
 - [ ] `W12.P22.S109` - Run Tool permission request flow code review and record the phase audit; `.vault/audit/`.
 - [ ] `W12.P22.S110` - Verify agent tools cannot proceed past permission gates without durable human decisions; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
 
@@ -416,9 +426,9 @@ Make dangerous or scoped agent tools produce durable permission requests and sta
 
 Normalize interrupts, permission requests, changeset approvals, and replay-safe tool-call records by stable IDs.
 
-- [ ] `W12.P32.S156` - Ground Interrupt resume and tool-call records requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W12.P32.S157` - Implement interrupt normalization, resume-by-interrupt-id commands, tool-call records, decision payloads, and replay handling; `engine/crates/vaultspec-api/src/authoring/interrupts.rs`.
-- [ ] `W12.P32.S158` - Add interrupt tests for multiple interrupts, stable resume IDs, replayed tool call, rejected permission, approved proposal, and stale decision; `engine/crates/vaultspec-api/src/authoring/interrupts.rs`.
+- [x] `W12.P32.S156` - Ground Interrupt resume and tool-call records requirements into the phase checklist; `.vault/adr/`.
+- [x] `W12.P32.S157` - Implement interrupt normalization, resume-by-interrupt-id commands, tool-call records, decision payloads, and replay handling; `engine/crates/vaultspec-api/src/authoring/interrupts.rs`.
+- [x] `W12.P32.S158` - Add interrupt tests for multiple interrupts, stable resume IDs, replayed tool call, rejected permission, approved proposal, and stale decision; `engine/crates/vaultspec-api/src/authoring/interrupts.rs`.
 - [ ] `W12.P32.S159` - Run Interrupt resume and tool-call records code review and record the phase audit; `.vault/audit/`.
 - [ ] `W12.P32.S160` - Verify human decisions resume the intended interrupt by stable ID through tests and manual LangGraph fixture replay; `engine/crates/vaultspec-api/src/authoring/interrupts.rs`.
 
@@ -426,9 +436,9 @@ Normalize interrupts, permission requests, changeset approvals, and replay-safe 
 
 Deferred remainder of the Increment 3 stream subset: bounded generation and token channels, plus transcript compaction hooks, now that the agent runtime is producing real generations to bound.
 
-- [ ] `W12.P44.S236` - Ground Bounded generation channels and transcript compaction requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W12.P44.S237` - Implement bounded generation and token channels plus transcript compaction hooks deferred from the Increment 3 stream subset; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
-- [ ] `W12.P44.S238` - Add tests for token retention caps, compacted transcripts, and frontend cursor restoration of generation channels; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
+- [x] `W12.P44.S236` - Ground Bounded generation channels and transcript compaction requirements into the phase checklist; `.vault/adr/`.
+- [x] `W12.P44.S237` - Implement bounded generation and token channels plus transcript compaction hooks deferred from the Increment 3 stream subset; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
+- [x] `W12.P44.S238` - Add tests for token retention caps, compacted transcripts, and frontend cursor restoration of generation channels; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
 - [ ] `W12.P44.S239` - Run Bounded generation channels and transcript compaction code review and record the phase audit; `.vault/audit/`.
 - [ ] `W12.P44.S240` - Verify generation and token channels stay bounded and transcripts compact without discarding lifecycle truth; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
 
@@ -436,9 +446,9 @@ Deferred remainder of the Increment 3 stream subset: bounded generation and toke
 
 Run a LangGraph-backed fixture against semantic backend tools and approval interrupts.
 
-- [ ] `W12.P41.S201` - Ground LangGraph agent fixture against backend commands requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W12.P41.S202` - Implement a LangGraph authoring fixture that creates proposals, pauses for approval, resumes, and requests apply through backend commands; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
-- [ ] `W12.P41.S203` - Add fixture tests for proposal creation, permission interrupt, approval interrupt, resume by interrupt ID, rejected tool, and cancelled run; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
+- [x] `W12.P41.S201` - Ground LangGraph agent fixture against backend commands requirements into the phase checklist; `.vault/adr/`.
+- [x] `W12.P41.S202` - Implement a LangGraph authoring fixture that creates proposals, pauses for approval, resumes, and requests apply through backend commands; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
+- [x] `W12.P41.S203` - Add fixture tests for proposal creation, permission interrupt, approval interrupt, resume by interrupt ID, rejected tool, and cancelled run; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
 - [ ] `W12.P41.S204` - Run LangGraph agent fixture against backend commands code review and record the phase audit; `.vault/audit/`.
 - [ ] `W12.P41.S205` - Verify the Increment 4 demo: a real LangGraph fixture drafts a proposal, pauses on a tool-permission interrupt, resumes by interrupt id, requests approval, and, in autonomous mode, sees its work applied and listed after-the-fact; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
 
