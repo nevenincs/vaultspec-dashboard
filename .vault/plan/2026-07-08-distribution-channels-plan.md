@@ -43,9 +43,9 @@ Moves the rust-embed target inside the crate (staged assets/spa) so the api crat
 
 Seeds the in-repo bucket manifest and wires the automated per-release bump through dist's post-announce seam.
 
-- [ ] `P02.S05` - seed the scoop manifest at the current release (versioned url, sha256 hash, bin, homepage, checkver github, autoupdate with the url.sha256 idiom); `bucket/vaultspec.json`.
-- [ ] `P02.S06` - add the scoop-bump post-announce workflow (workflow_call plan input, version extraction, sha256 fetch, manifest rewrite, chore commit to main); `.github/workflows/scoop-bump.yml`.
-- [ ] `P02.S07` - register the post-announce job in the dist config and regenerate the release workflow; `dist-workspace.toml`.
+- [x] `P02.S05` - seed the scoop manifest at the current release (versioned url, sha256 hash, bin, homepage, checkver github, autoupdate with the url.sha256 idiom); `bucket/vaultspec.json`.
+- [x] `P02.S06` - add the scoop-bump post-announce workflow (workflow_call plan input, version extraction, sha256 fetch, manifest rewrite, chore commit to main); `.github/workflows/scoop-bump.yml`.
+- [x] `P02.S07` - register the post-announce job in the dist config and regenerate the release workflow; `dist-workspace.toml`.
 
 ### Phase `P03` - channel docs
 

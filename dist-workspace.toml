@@ -28,3 +28,7 @@ features = ["embed-spa"]
 github-build-setup = "release-build-setup.yml"
 # Validate this release config on PRs without building artifacts.
 pr-run-mode = "plan"
+# After the GitHub Release publishes, bump the in-repo scoop manifest to the
+# released version (distribution-channels ADR: `scoop update` reads the
+# COMMITTED manifest, so freshness is a per-release commit, automated here).
+post-announce-jobs = ["./scoop-bump"]

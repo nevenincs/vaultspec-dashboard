@@ -309,3 +309,12 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+
+  custom-scoop-bump:
+    needs:
+      - plan
+      - announce
+    uses: ./.github/workflows/scoop-bump.yml
+    with:
+      plan: ${{ needs.plan.outputs.val }}
+    secrets: inherit
