@@ -470,9 +470,9 @@ Coordinate active editing with scoped advisory leases, renewals, expirations, re
 
 Detect stale bases, overlapping operations, anchor drift, policy conflicts, and conflicted review states.
 
-- [ ] `W13.P27.S131` - Ground Base-revision conflict detection requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W13.P27.S132` - Implement base revision checks, overlap detection, anchor drift detection, policy conflict checks, and conflict reason projection; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
-- [ ] `W13.P27.S133` - Add conflict tests for stale base, overlapping hunks, stale whole-document draft, anchor drift, policy conflict, and no-conflict paths; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
+- [x] `W13.P27.S131` - Ground Base-revision conflict detection requirements into the phase checklist; `.vault/adr/`.
+- [x] `W13.P27.S132` - Implement base revision checks, overlap detection, anchor drift detection, policy conflict checks, and conflict reason projection; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
+- [x] `W13.P27.S133` - Add conflict tests for stale base, overlapping hunks, stale whole-document draft, anchor drift, policy conflict, and no-conflict paths; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
 - [ ] `W13.P27.S134` - Run Base-revision conflict detection code review and record the phase audit; `.vault/audit/`.
 - [ ] `W13.P27.S135` - Verify conflicts are deterministic and reviewable through tests and manual concurrent edit checks; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
 
