@@ -226,7 +226,6 @@ pub fn rebase_proposal(
             &request.changeset_id,
             &drafts,
             context.now_ms,
-            &request_digest,
         )?;
         let record = ChangesetAggregateRecord::new(ChangesetRevisionInput {
             changeset_id: request.changeset_id.clone(),
@@ -509,14 +508,15 @@ fn materialize_carried_drafts(
     changeset_id: &ChangesetId,
     drafts: &[ChangesetChildOperationDraft],
     now_ms: i64,
-    request_digest: &str,
 ) -> StoreResult<Vec<ChangesetChildOperationInput>> {
     let mut preimages = Vec::with_capacity(drafts.len());
     let mut children = Vec::with_capacity(drafts.len());
     for draft in drafts {
         let preimage = reader
             .capture_preimage(PreimageCaptureRequest {
-                preimage_id: preimage_id(changeset_id, &draft.child_key, request_digest),
+                // The shared `preimage_id` derives a stable id from changeset + child and
+                // ignores its third arg, so no request digest is threaded here.
+                preimage_id: preimage_id(changeset_id, &draft.child_key, ""),
                 changeset_id: changeset_id.as_str().to_string(),
                 operation_id: draft.child_key.clone(),
                 document: draft.target.document.clone(),
@@ -646,15 +646,6 @@ fn receipt_id(
         digest_suffix(request_digest)
     ))
     .map_err(|err| StoreError::Idempotency(err.to_string()))
-}
-
-fn rebase_preimage_id(changeset_id: &ChangesetId, child_key: &str, request_digest: &str) -> String {
-    format!(
-        "preimage:{}:{}:rebase:{}",
-        changeset_id.as_str(),
-        child_key,
-        digest_suffix(request_digest)
-    )
 }
 
 fn digest_suffix(digest: &str) -> &str {
