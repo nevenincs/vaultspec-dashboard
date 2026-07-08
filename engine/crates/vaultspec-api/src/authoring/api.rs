@@ -10,6 +10,7 @@ use super::model::{
     IdempotencyKey, LeaseId, ProvisionalCollisionStatus, ReceiptId, ReceiptRef, ReviewDecisionKind,
     RevisionToken, RunId, SessionId,
 };
+use super::permissions::ToolPermissionDecisionKind;
 use super::policy::OperationMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +33,8 @@ pub enum EndpointFamily {
     Lease,
     Stream,
     Recovery,
+    ToolPermission,
+    Interrupt,
 }
 
 impl EndpointFamily {
@@ -47,6 +50,8 @@ impl EndpointFamily {
         Self::Lease,
         Self::Stream,
         Self::Recovery,
+        Self::ToolPermission,
+        Self::Interrupt,
     ];
 }
 
@@ -218,6 +223,34 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
         mutating: false,
         idempotency_required: false,
         negative_contract_cases: &["bad_last_seq", "unknown_session"],
+    },
+    // W12.P41 A2: the human decision on a queued tool-permission request.
+    RouteFixture {
+        family: EndpointFamily::ToolPermission,
+        method: "POST",
+        path_template: "/authoring/v1/agent-tools/{tool_call_id}/permission-decision",
+        command: Some(CommandKind::RequestToolPermission),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &[
+            "missing_idempotency_key",
+            "unknown_tool_call",
+            "unknown_field",
+        ],
+    },
+    // W12.P41 A2: resume a paused run by resolving its interrupt (P32, replay-safe).
+    RouteFixture {
+        family: EndpointFamily::Interrupt,
+        method: "POST",
+        path_template: "/authoring/v1/interrupts/{interrupt_id}/resume",
+        command: Some(CommandKind::ResumeRun),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &[
+            "missing_idempotency_key",
+            "unknown_interrupt",
+            "unknown_field",
+        ],
     },
 ];
 
@@ -604,6 +637,24 @@ pub struct AuthoringEventDto {
     pub payload: Value,
 }
 
+/// The human decision on a queued tool-permission request (W12.P41). The reviewer is
+/// the server-held principal (ASA-010), never a body claim.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolPermissionDecisionRequest {
+    pub decision: ToolPermissionDecisionKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+}
+
+/// Resume a paused run by resolving its interrupt with an opaque domain decision
+/// payload (W12.P41, P32 resolve-by-id — replay-safe).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InterruptResumeRequest {
+    pub decision: Value,
+}
+
 pub fn request_fixture(family: EndpointFamily) -> Value {
     match family {
         EndpointFamily::Session => command_value(CommandEnvelope::new(
@@ -722,12 +773,30 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
             run_id: Some(RunId::new("run_1").unwrap()),
             last_seq: Some(41),
         }),
+        EndpointFamily::ToolPermission => command_value(CommandEnvelope::new(
+            CommandKind::RequestToolPermission,
+            idempotency_key("idem:tool-permission:decide"),
+            ToolPermissionDecisionRequest {
+                decision: ToolPermissionDecisionKind::Approve,
+                comment: Some("approved".to_string()),
+            },
+        )),
+        EndpointFamily::Interrupt => command_value(CommandEnvelope::new(
+            CommandKind::ResumeRun,
+            idempotency_key("idem:interrupt:resume"),
+            InterruptResumeRequest {
+                decision: json!({ "approve": true }),
+            },
+        )),
     }
 }
 
 pub fn response_fixture(family: EndpointFamily) -> Value {
     let aggregate = match family {
-        EndpointFamily::Session | EndpointFamily::Recovery => AggregateRef::Session {
+        EndpointFamily::Session
+        | EndpointFamily::Recovery
+        | EndpointFamily::ToolPermission
+        | EndpointFamily::Interrupt => AggregateRef::Session {
             session_id: session_id(),
         },
         EndpointFamily::Document => AggregateRef::Document {

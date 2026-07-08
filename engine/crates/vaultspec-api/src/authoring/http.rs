@@ -34,9 +34,10 @@ use serde_json::json;
 use super::actors::{ActorDisplayMetadata, ActorRecordInput};
 use super::api::{
     ApplyRequest as ApplyRequestDto, CancelRunRequest, CommandEnvelope, CreateProposalRequest,
-    CreateSessionRequest, DirectWriteRequest as DirectWriteRequestDto, IssueActorTokenRequest,
-    ResumeRunRequest, ReviewDecisionRequest, RollbackRequest as RollbackRequestDto,
-    SetOperationModeRequest, StartPromptTurnRequest, SubmitForReviewRequest,
+    CreateSessionRequest, DirectWriteRequest as DirectWriteRequestDto, InterruptResumeRequest,
+    IssueActorTokenRequest, ResumeRunRequest, ReviewDecisionRequest,
+    RollbackRequest as RollbackRequestDto, SetOperationModeRequest, StartPromptTurnRequest,
+    SubmitForReviewRequest, ToolPermissionDecisionRequest,
 };
 use super::apply::{ApplyError, ApplyOutcome, ApplyRequest};
 use super::approvals::{
@@ -47,8 +48,8 @@ use super::core_adapter::CoreAdapter;
 use super::ledger::ChangesetAggregateRecord;
 use super::model::{
     ActionEligibility, ActorId, ActorKind, ActorRef, ApplyState, ApprovalId, ChangesetId,
-    ChangesetStatus, CommandKind, IdempotencyKey, ProposalId, ReviewDecisionKind, RevisionToken,
-    RunId, SessionId,
+    ChangesetStatus, CommandKind, IdempotencyKey, InterruptId, ProposalId, ReviewDecisionKind,
+    RevisionToken, RunId, SessionId, ToolCallId,
 };
 use super::modes::{
     ModeAutoApprovalOutcome, OperationModeUpdate, scope_id_for_worktree, system_actor,
@@ -387,6 +388,14 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/v1/recovery", get(super::stream::recovery))
         .route("/v1/agent-tools", get(agent_tool_catalog))
         .route("/v1/agent-tools/prepare", post(prepare_agent_tool_call))
+        .route(
+            "/v1/agent-tools/{tool_call_id}/permission-decision",
+            post(decide_tool_permission),
+        )
+        .route(
+            "/v1/interrupts/{interrupt_id}/resume",
+            post(resume_interrupt),
+        )
         .route("/v1/sessions", get(list_sessions).post(create_session))
         .route("/v1/sessions/{session_id}", get(get_session))
         .route("/v1/sessions/{session_id}/turns", post(start_prompt_turn))
@@ -487,6 +496,100 @@ fn tool_error_response(state: &AppState, err: &ToolError) -> Response {
         &err.to_string(),
     )
     .into_response()
+}
+
+/// `POST /authoring/v1/agent-tools/{tool_call_id}/permission-decision` — a human
+/// grants or rejects a queued tool-permission request (W12.P41). The reviewer is the
+/// server-resolved principal (ASA-010), never a body claim. Reviewer authority is the
+/// P22-R1 gate reused verbatim inside `submit_decision` (human-only, not the requester
+/// nor its delegate) — an authority denial rides the 200 envelope as a value
+/// (denials-are-values); only a genuine fault (unknown request, conflicting decision)
+/// is a non-200.
+pub async fn decide_tool_permission(
+    State(state): State<Arc<AppState>>,
+    Path(tool_call_id): Path<ToolCallId>,
+    command: ResolvedCommand<ToolPermissionDecisionRequest>,
+) -> Response {
+    let now = now_ms();
+    let (reviewer, _command, _idempotency_key, payload) = command.into_parts();
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::RequestToolPermission, |uow| {
+            uow.tool_permissions()
+                .submit_decision(
+                    &tool_call_id,
+                    payload.decision,
+                    &reviewer,
+                    payload.comment,
+                    now,
+                )
+                .map_err(permission_error_to_store)
+        })
+    }) {
+        Ok(outcome) => tool_permission_outcome_response(&state, outcome),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `POST /authoring/v1/interrupts/{interrupt_id}/resume` — resume a paused run by
+/// resolving its interrupt BY ID (W12.P41, P32). Replay-safe: an already-resolved
+/// interrupt returns its recorded decision unchanged (never re-decides). The decision
+/// payload is opaque domain JSON.
+pub async fn resume_interrupt(
+    State(state): State<Arc<AppState>>,
+    Path(interrupt_id): Path<InterruptId>,
+    command: ResolvedCommand<InterruptResumeRequest>,
+) -> Response {
+    let now = now_ms();
+    let (_actor, _command, _idempotency_key, payload) = command.into_parts();
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::ResumeRun, |uow| {
+            uow.interrupts()
+                .resolve_interrupt(&interrupt_id, payload.decision.to_string(), now)
+        })
+    }) {
+        Ok(outcome) => super::response::snapshot(
+            &state,
+            json!({
+                "status": "resumed",
+                "replayed": outcome.replayed,
+                "interrupt": outcome.record,
+            }),
+        )
+        .into_response(),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// A tool-permission decision outcome as a tiered 200 value: the served eligibility
+/// (granted or a distinct denial reason), the durable record, and whether the decision
+/// replayed an earlier one.
+fn tool_permission_outcome_response(
+    state: &AppState,
+    outcome: super::permissions::ToolPermissionOutcome,
+) -> Response {
+    super::response::snapshot(
+        state,
+        json!({
+            "status": if outcome.eligibility.allowed { "granted" } else { "denied" },
+            "command": outcome.eligibility.command,
+            "allowed": outcome.eligibility.allowed,
+            "reason": outcome.eligibility.reason,
+            "replayed": outcome.replayed,
+            "record": outcome.record,
+        }),
+    )
+    .into_response()
+}
+
+/// Map a `PermissionError` fault to the shared `StoreError` taxonomy so the one
+/// `command_error_response` mapping applies: a store fault keeps its precise status
+/// (e.g. an unregistered actor stays a 403), while an unknown request or a not-permitted
+/// decision surfaces as a tool-permission refusal (422).
+fn permission_error_to_store(err: super::permissions::PermissionError) -> StoreError {
+    match err {
+        super::permissions::PermissionError::Store(store) => store,
+        other => StoreError::Permission(other.to_string()),
+    }
 }
 
 /// `POST /authoring/v1/sessions` — create a durable authoring workflow session.
@@ -3854,5 +3957,138 @@ mod tests {
 
         let unknown = probe_body(probe_router(state), Some("deadbeef")).await;
         assert_eq!(unknown, "denied:unknown");
+    }
+
+    // ---- W12.P41 A2: tool-permission decision + interrupt resume routes -------------
+
+    fn seed_pending_permission(state: &AppState, requester: &ActorRef, tool_call_id: &str) {
+        state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::RequestToolPermission, |uow| {
+                    uow.tool_permissions().request_permission(
+                        super::super::permissions::ToolPermissionRequestInput {
+                            tool_call_id: ToolCallId::new(tool_call_id).unwrap(),
+                            tool: super::super::tools::SemanticToolName::ProposeChangeset,
+                            scope_id: "worktree".to_string(),
+                            requester: requester.clone(),
+                            scope_mode: super::super::policy::OperationMode::Manual,
+                            session_override: None,
+                            idempotency_key: format!("idem:seed:{tool_call_id}"),
+                            created_at_ms: now_ms(),
+                            ttl_ms: None,
+                        },
+                    )?;
+                    Ok(())
+                })
+            })
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn permission_decision_route_grants_a_queued_request_and_is_tiered() {
+        let (_dir, state) = fixture_state();
+        let requester = agent();
+        let reviewer = human_reviewer();
+        register_actor(&state, &requester);
+        register_actor(&state, &reviewer);
+        let reviewer_token = issue_token_in_state(&state, &reviewer);
+        seed_pending_permission(&state, &requester, "call_route_grant");
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/agent-tools/call_route_grant/permission-decision",
+            &reviewer_token,
+            request_fixture(EndpointFamily::ToolPermission),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(envelope["data"]["status"], "granted");
+        assert_eq!(envelope["data"]["allowed"], true);
+        assert!(envelope["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    #[tokio::test]
+    async fn permission_decision_route_refuses_a_requester_self_decision_as_a_value() {
+        // The requester (an agent) cannot decide its own request (P22-R1). The denial
+        // rides the 200 envelope as a value, never a fault.
+        let (_dir, state) = fixture_state();
+        let requester = agent();
+        register_actor(&state, &requester);
+        let requester_token = issue_token_in_state(&state, &requester);
+        seed_pending_permission(&state, &requester, "call_route_self");
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/agent-tools/call_route_self/permission-decision",
+            &requester_token,
+            request_fixture(EndpointFamily::ToolPermission),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "a denial is a value, not a fault");
+        assert_eq!(envelope["data"]["status"], "denied");
+        assert_eq!(envelope["data"]["allowed"], false);
+        assert!(
+            envelope["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("human")),
+            "reviewer-authority denial: {envelope}"
+        );
+    }
+
+    #[tokio::test]
+    async fn interrupt_resume_route_resolves_by_id_and_replays() {
+        let (_dir, state) = fixture_state();
+        let reviewer = human_reviewer();
+        register_actor(&state, &reviewer);
+        let token = issue_token_in_state(&state, &reviewer);
+
+        // Seed a paused run's interrupt to resolve by id.
+        state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::ResumeRun, |uow| {
+                    uow.interrupts().record_interrupt(
+                        super::super::interrupts::RecordInterruptInput {
+                            interrupt_id: InterruptId::new("interrupt_route_1").unwrap(),
+                            run_id: RunId::new("run_route_1").unwrap(),
+                            kind: super::super::interrupts::InterruptKind::ChangesetApproval,
+                            tool_call_id: None,
+                            proposal_id: None,
+                            idempotency_key: "idem:seed:interrupt".to_string(),
+                            created_at_ms: now_ms(),
+                        },
+                    )?;
+                    Ok(())
+                })
+            })
+            .unwrap();
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/interrupts/interrupt_route_1/resume",
+            &token,
+            request_fixture(EndpointFamily::Interrupt),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(envelope["data"]["status"], "resumed");
+        assert_eq!(envelope["data"]["replayed"], false);
+        assert_eq!(envelope["data"]["interrupt"]["resume_state"], "resolved");
+
+        // A second resume of the same id replays the recorded decision (never re-decides).
+        let router = authoring_router(state.clone()).with_state(state);
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/interrupts/interrupt_route_1/resume",
+            &token,
+            request_fixture(EndpointFamily::Interrupt),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(envelope["data"]["replayed"], true);
     }
 }
