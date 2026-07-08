@@ -347,7 +347,8 @@ mod tests {
     use super::super::store::Store;
     use super::super::store::outbox::{AppendDecision, OutboxEventDraft};
     use super::super::store::retention::{
-        LifecycleStatus, PayloadState, RetentionClass, RetentionRecord, RetentionRecordRef,
+        CompactionDecision, CompactionRequest, LifecycleStatus, PayloadState, RetentionClass,
+        RetentionRecord, RetentionRecordRef,
     };
     use super::*;
 
@@ -781,6 +782,34 @@ mod tests {
             payload_state(&mut store, "authoring_approval", "approval_pending"),
             PayloadState::Full,
             "a pending approval is never discarded by generation-transcript compaction",
+        );
+
+        // Even if a pending approval were directly targeted for compaction, the retention
+        // engine BLOCKS it (protected product state) — the protection is a hard refusal,
+        // not merely an out-of-scope class filter.
+        let decision = store
+            .with_unit_of_work(CommandKind::EditProposal, |uow| {
+                uow.retention().compact_record(CompactionRequest {
+                    record_ref: RetentionRecordRef::new("authoring_approval", "approval_pending")
+                        .unwrap(),
+                    run_id: "run:compact".to_string(),
+                    marker_id: "run:compact:direct".to_string(),
+                    now_ms: now,
+                    summary_json: Some("{\"summary\":\"x\"}".to_string()),
+                    summary_hash: Some("hash:x".to_string()),
+                    allow_rollback_limitation: false,
+                    rollback_unavailable_reason: None,
+                })
+            })
+            .unwrap();
+        assert!(
+            matches!(decision, CompactionDecision::Blocked(_)),
+            "a directly-targeted pending approval must be Blocked, not compacted: {decision:?}"
+        );
+        assert_eq!(
+            payload_state(&mut store, "authoring_approval", "approval_pending"),
+            PayloadState::Full,
+            "the pending approval payload stays Full after the blocked attempt",
         );
     }
 
