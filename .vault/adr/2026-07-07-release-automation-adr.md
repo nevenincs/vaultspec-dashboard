@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#release-automation'
 date: '2026-07-07'
-modified: '2026-07-07'
+modified: '2026-07-08'
 related:
   - "[[2026-07-04-dashboard-packaging-adr]]"
   - "[[2026-07-04-dashboard-packaging-research]]"
@@ -47,6 +47,8 @@ High-level layering only. A `release-please.yml` workflow runs the action on pus
 ## Rationale
 
 The artifact pipeline was never the cumbersome part; tag production was. Automating it with a release PR removes all four human steps and their mismatch failure mode, makes the changelog a build product, and strengthens rather than weakens the gating property the packaging ADR established: the release PR itself must pass the verification workflows before it can merge, so tags are minted only from verified main. Keeping dist unchanged preserves the reviewed, locally-verified artifact path; the two tools meet at exactly one seam - the tag - which is why the composition is safe. Choosing release-please over release-plz trades a slightly better technical fit for operational familiarity in a single-maintainer project, with the fallback named rather than implied. Reintroducing release-please does not reverse D7: what P04 deleted was an orphaned, mistyped artifact of the retired wheel; what returns is a correctly-typed, actually-invoked releaser layered in front of the flow D7 built.
+
+AMENDED (2026-07-08, first live release): two integration facts the v0.1.1 run surfaced. (1) release-please CREATES the GitHub Release (changelog as body) when it mints the tag, so dist MUST run with `create-release = false` and upload into it - the default collides on a duplicate create (the v0.1.1 host-job failure, fixed in `e8f054ff1a`). (2) The `github-build-setup` steps fragment must live OUTSIDE `.github/workflows/` (dist inlines it at generate time from any path) - GitHub parses anything in that directory as a workflow and registers a red zero-second run on every push. The full loop is since PROVEN live: release-PR merge -> tag -> five-target upload -> post-announce scoop bump -> end-user scoop install of the new version.
 
 ## Consequences
 
