@@ -210,10 +210,13 @@ async fn create_session(state: &Arc<AppState>, bearer: &str, actor_token: &str) 
         .to_string()
 }
 
-fn document(base_revision: &str) -> Value {
+/// The target document ref. `scope` must be the SERVER-AUTHORITATIVE scope
+/// token of the served worktree (`engine_model::scope_token`) — the W14.P42a
+/// document-scope guard denies a target claiming any other scope.
+fn document(scope: &str, base_revision: &str) -> Value {
     json!({
         "kind": "existing",
-        "scope": "worktree",
+        "scope": scope,
         "node_id": "doc:e2e-plan",
         "stem": "e2e-plan",
         "path": DOC_PATH,
@@ -222,7 +225,17 @@ fn document(base_revision: &str) -> Value {
     })
 }
 
-fn create_body(session_id: &str, changeset: &str, idem: &str, base_revision: &str) -> Value {
+fn scope_token_of(state: &std::sync::Arc<AppState>) -> String {
+    engine_model::scope_token(&state.workspace_root)
+}
+
+fn create_body(
+    session_id: &str,
+    scope: &str,
+    changeset: &str,
+    idem: &str,
+    base_revision: &str,
+) -> Value {
     json!({
         "api_version": "v1",
         "command": "create_proposal",
@@ -235,7 +248,7 @@ fn create_body(session_id: &str, changeset: &str, idem: &str, base_revision: &st
                 "child_key": "child_1",
                 "operation": "replace_body",
                 "target": {
-                    "document": document(base_revision),
+                    "document": document(scope, base_revision),
                     "base_revision": base_revision,
                     "current_revision": base_revision,
                 },
@@ -285,11 +298,17 @@ async fn create_and_submit(
         "/authoring/v1/proposals",
         bearer,
         Some(agent),
-        Some(create_body(&session, changeset, "idem:create", base)),
+        Some(create_body(
+            &session,
+            &scope_token_of(state),
+            changeset,
+            "idem:create",
+            base,
+        )),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "create: {body}");
-    assert_eq!(body["data"]["status"], "draft");
+    assert_eq!(body["data"]["status"], "draft", "create outcome: {body}");
     let revision = body["data"]["changeset_revision"]
         .as_str()
         .expect("create returns the draft revision")
@@ -455,6 +474,7 @@ async fn principal_denials_missing_and_unknown_are_401() {
         None,
         Some(create_body(
             "session_unused",
+            "scope_unused",
             "changeset_noauth",
             "idem:x",
             &base,
@@ -477,6 +497,7 @@ async fn principal_denials_missing_and_unknown_are_401() {
         Some("deadbeefdeadbeef"),
         Some(create_body(
             "session_unused",
+            "scope_unused",
             "changeset_badauth",
             "idem:x",
             &base,
@@ -506,6 +527,7 @@ async fn a_stale_expected_revision_is_a_409() {
         Some(&agent),
         Some(create_body(
             &session,
+            &scope_token_of(&state),
             "changeset_stale",
             "idem:create",
             &base,
@@ -549,7 +571,13 @@ async fn an_idempotent_create_replays_the_same_receipt() {
         "/authoring/v1/proposals",
         &bearer,
         Some(&agent),
-        Some(create_body(&session, "changeset_dup", "idem:dup", &base)),
+        Some(create_body(
+            &session,
+            &scope_token_of(&state),
+            "changeset_dup",
+            "idem:dup",
+            &base,
+        )),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{first}");
@@ -561,7 +589,13 @@ async fn an_idempotent_create_replays_the_same_receipt() {
         "/authoring/v1/proposals",
         &bearer,
         Some(&agent),
-        Some(create_body(&session, "changeset_dup", "idem:dup", &base)),
+        Some(create_body(
+            &session,
+            &scope_token_of(&state),
+            "changeset_dup",
+            "idem:dup",
+            &base,
+        )),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{second}");
