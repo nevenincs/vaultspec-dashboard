@@ -36,6 +36,9 @@ use super::api::ChangesetOperationKind;
 use super::approvals::{
     ApprovalDecision, ApprovalQueueState, ApprovalRequestRecord, V1_POLICY_VERSION,
 };
+use super::conflicts::{
+    ConflictReport, MAX_CONFLICT_HELD_LEASES, MAX_CONFLICT_SIBLINGS, detect_conflicts,
+};
 use super::ledger::{ChangesetAggregateRecord, ChangesetChildOperationRecord};
 use super::model::{
     ActionEligibility, ActorRef, ApprovalId, ChangesetId, ChangesetKind, ChangesetStatus,
@@ -727,6 +730,31 @@ impl ProjectionRepository<'_, '_> {
             proposal,
             review_documents,
         }))
+    }
+
+    /// The backend-served base-revision CONFLICT REPORT for one changeset (W13.P27), a
+    /// pure read ADDITIVE to the existing cheap `conflict` field on the proposal
+    /// projection: the full deterministic detector over the CURRENT worktree, the live
+    /// sibling proposals (overlap), and the held advisory leases (policy collision). `None`
+    /// when the changeset does not exist. `now_ms` gates lease activeness.
+    pub fn conflict_report(
+        &self,
+        changeset_id: &ChangesetId,
+        worktree_root: &Path,
+        now_ms: i64,
+    ) -> Result<Option<ConflictReport>> {
+        let Some(subject) = self.uow.ledger().latest(changeset_id)? else {
+            return Ok(None);
+        };
+        let live_siblings = self.uow.ledger().latest_changesets(MAX_CONFLICT_SIBLINGS)?;
+        let held_leases = self.uow.leases().list_leases(MAX_CONFLICT_HELD_LEASES)?;
+        Ok(Some(detect_conflicts(
+            worktree_root,
+            &subject,
+            &live_siblings,
+            &held_leases,
+            now_ms,
+        )))
     }
 
     /// The backend-served action eligibility for the changeset's CURRENT status.

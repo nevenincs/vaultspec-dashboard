@@ -410,6 +410,52 @@ pub async fn project_proposal(
     }
 }
 
+/// `GET /authoring/v1/proposals/{changeset_id}/conflicts` — the backend-served
+/// base-revision CONFLICT REPORT (W13.P27), a pure read ADDITIVE to the cheap `conflict`
+/// field on the proposal projection (its served shape is unchanged). Detects stale bases,
+/// stale whole-document drafts, overlapping-hunk siblings, anchor drift, and advisory-lease
+/// policy collisions over the current worktree + the live corpus. No principal required
+/// (reads are unauthenticated); a projection failure degrades to a typed 503.
+pub async fn proposal_conflicts(
+    State(state): State<Arc<AppState>>,
+    Path(changeset_id): Path<String>,
+) -> Response {
+    let changeset_id = match ChangesetId::new(&changeset_id) {
+        Ok(id) => id,
+        Err(err) => {
+            return super::response::typed_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                REQUEST_INVALID_KIND,
+                &format!("invalid changeset id: {err}"),
+            )
+            .into_response();
+        }
+    };
+    let now = now_ms();
+    let worktree_root = state.active_workspace_root();
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            uow.projections()
+                .conflict_report(&changeset_id, &worktree_root, now)
+                .map_err(|ProjectionError::Store(err)| err)
+        })
+    }) {
+        Ok(Some(report)) => {
+            let data = serde_json::to_value(report).expect("conflict report serializes");
+            super::response::snapshot(&state, data).into_response()
+        }
+        Ok(None) => super::response::typed_error(
+            &state,
+            StatusCode::NOT_FOUND,
+            "authoring_proposal_not_found",
+            "no such changeset",
+        )
+        .into_response(),
+        Err(err) => store_unavailable(&state, &err),
+    }
+}
+
 /// `GET /authoring/v1/proposals/{changeset_id}/snapshot` — the full changeset
 /// revision history + latest aggregate + latest validation record (the
 /// lower-level read behind the review projection). The domain `ProposalSnapshot`
@@ -496,6 +542,10 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route(
             "/v1/proposals/{changeset_id}/snapshot",
             get(proposal_snapshot),
+        )
+        .route(
+            "/v1/proposals/{changeset_id}/conflicts",
+            get(proposal_conflicts),
         )
         .route(
             "/v1/proposals/{changeset_id}/submit",
@@ -3840,6 +3890,78 @@ mod tests {
         let body = json_body(response).await;
         assert_eq!(status, StatusCode::OK, "submit failed: {body}");
         body
+    }
+
+    // ---- W14.P42a S259: conflict serve route ---------------------------------------
+
+    /// The conflict route serves an HONEST empty report for a proposal whose base is still
+    /// current — the "your base is current" value the review view renders directly.
+    #[tokio::test]
+    async fn conflict_report_route_serves_no_conflict_for_a_current_base() {
+        let (dir, state) = fixture_state();
+        let _submitted = create_then_submit(&state, dir.path(), "changeset_conflict_clean").await;
+
+        let response = proposal_conflicts(
+            State(state.clone()),
+            axum::extract::Path("changeset_conflict_clean".to_string()),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["has_conflict"], false, "{body}");
+        assert_eq!(body["data"]["findings"], json!([]));
+        assert!(body["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    /// The conflict route serves a base-staleness finding when the target document was
+    /// edited out-of-band since the proposal was drafted (ADDITIVE to the cheap `conflict`
+    /// field; the served detail is the full deterministic report).
+    #[tokio::test]
+    async fn conflict_report_route_serves_a_stale_base_conflict() {
+        let (dir, state) = fixture_state();
+        let _submitted = create_then_submit(&state, dir.path(), "changeset_conflict_stale").await;
+        // An out-of-band edit to the target document since the proposal was drafted.
+        std::fs::write(
+            dir.path().join(".vault/plan/operation-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-07-06'\n---\n\n# Plan\n\nedited out of band\n",
+        )
+        .unwrap();
+
+        let response = proposal_conflicts(
+            State(state.clone()),
+            axum::extract::Path("changeset_conflict_stale".to_string()),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(
+            body["data"]["has_conflict"], true,
+            "a stale base is a served conflict: {body}"
+        );
+        let kind = body["data"]["findings"][0]["kind"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(
+            kind == "stale_base_revision" || kind == "stale_whole_document_draft",
+            "the finding names the stale base: {body}"
+        );
+    }
+
+    /// A read of the conflict route for an unknown changeset is a typed 404, like the
+    /// proposal projection route.
+    #[tokio::test]
+    async fn conflict_report_route_for_an_unknown_changeset_is_a_typed_404() {
+        let (_dir, state) = fixture_state();
+        let response = proposal_conflicts(
+            State(state.clone()),
+            axum::extract::Path("changeset_absent".to_string()),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = json_body(response).await;
+        assert_eq!(body["error_kind"], "authoring_proposal_not_found");
     }
 
     fn child_input_from_latest(

@@ -40,6 +40,16 @@ use super::modes::scope_id_for_worktree;
 use super::operations::ReviewDiffHunk;
 use super::policy::{RiskClass, operation_risk};
 
+/// The bounded corpus of candidate sibling proposals a conflict scan reads for overlap
+/// detection (resource-bounds: a hard cap at the call site). A store past this is scanned
+/// only up to the cap; overlap beyond it is deferred, never silently unbounded.
+pub const MAX_CONFLICT_SIBLINGS: u32 = 256;
+
+/// The bounded page of held advisory leases a conflict serve reads for policy-collision
+/// detection (resource-bounds). The lease table holds one row per scope, so this is
+/// inherently bounded by the leased-scope count.
+pub const MAX_CONFLICT_HELD_LEASES: u32 = 512;
+
 /// The class of a detected base-revision conflict. Each variant is a DISTINCT reason a
 /// proposal's base is no longer safe to apply, surfaced as a served value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
