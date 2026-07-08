@@ -44,10 +44,13 @@ scoop install vaultspec
 ```
 
 Rust users can install without crates.io via
-[cargo-binstall](https://github.com/cargo-bins/cargo-binstall)'s git mode:
+[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) (its `--git`
+mode expects a repo-root manifest, so point it at the `engine/` workspace of
+a clone instead):
 
 ```bash
-cargo binstall --git https://github.com/nevenincs/vaultspec-dashboard vaultspec-cli
+git clone --depth 1 https://github.com/nevenincs/vaultspec-dashboard
+cargo binstall --manifest-path vaultspec-dashboard/engine vaultspec-cli
 ```
 
 Every release asset ships with a `.sha256` checksum file; verify downloads

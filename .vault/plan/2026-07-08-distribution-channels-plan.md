@@ -63,9 +63,9 @@ Generates and submits the nevenincs.vaultspec manifests to microsoft/winget-pkgs
 
 Proves the channels end to end: staged-asset packaged build, a real scoop install from the bucket, and a binstall git-mode resolution.
 
-- [ ] `P05.S10` - verify the feature-on build and tests against the staged crate assets, packaged artifact serving standalone; `engine/crates/vaultspec-api`.
-- [ ] `P05.S11` - verify a real scoop install and uninstall from the in-repo bucket on this machine; `bucket/vaultspec.json`.
-- [ ] `P05.S12` - verify cargo binstall git-mode resolves and installs the published artifact; `.vault/exec/2026-07-08-distribution-channels`.
+- [x] `P05.S10` - verify the feature-on build and tests against the staged crate assets, packaged artifact serving standalone; `engine/crates/vaultspec-api`.
+- [x] `P05.S11` - verify a real scoop install and uninstall from the in-repo bucket on this machine; `bucket/vaultspec.json`.
+- [x] `P05.S12` - verify cargo binstall git-mode resolves and installs the published artifact; `.vault/exec/2026-07-08-distribution-channels`.
 
 ## Parallelization
 
