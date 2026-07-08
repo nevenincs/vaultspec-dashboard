@@ -33,11 +33,12 @@ use serde_json::{Value, json};
 
 use super::actors::{ActorDisplayMetadata, ActorRecordInput};
 use super::api::{
-    ApplyRequest as ApplyRequestDto, CancelRunRequest, CommandEnvelope, CreateProposalRequest,
-    CreateSessionRequest, DirectWriteRequest as DirectWriteRequestDto, InterruptResumeRequest,
-    IssueActorTokenRequest, ResumeRunRequest, ReviewDecisionRequest,
-    RollbackRequest as RollbackRequestDto, SetOperationModeRequest, StartPromptTurnRequest,
-    SubmitForReviewRequest, ToolPermissionDecisionRequest,
+    ApplyRequest as ApplyRequestDto, CancelRunRequest, ChangesetChildOperationDraft,
+    CommandEnvelope, CreateProposalRequest, CreateSessionRequest,
+    DirectWriteRequest as DirectWriteRequestDto, InterruptResumeRequest, IssueActorTokenRequest,
+    ResumeRunRequest, ReviewDecisionRequest, RollbackRequest as RollbackRequestDto,
+    SetOperationModeRequest, StartPromptTurnRequest, SubmitForReviewRequest,
+    ToolPermissionDecisionRequest,
 };
 use super::apply::{ApplyError, ApplyOutcome, ApplyRequest};
 use super::approvals::{
@@ -993,39 +994,40 @@ fn denial_snapshot(state: &AppState, eligibility: &ActionEligibility) -> Respons
     super::response::snapshot(state, denial_value(eligibility)).into_response()
 }
 
+/// The SERVER-AUTHORITATIVE authorized scope for a mutating command: the active
+/// workspace's `scope_token`. This is the EXACT identifier `DocumentResolver` writes into
+/// `DocumentRef::Existing.scope`, so a target claiming a different worktree path is a
+/// cross-workspace claim the scope guard refuses. Parity is load-bearing — `engine_model`
+/// `scope_token` (what `DocumentResolver` uses), never the mode layer's simpler
+/// `scope_id_for_worktree` (which diverges on the Windows extended-length prefix).
+fn active_authorized_scope(state: &AppState) -> String {
+    engine_model::scope_token(&state.active_workspace_root())
+}
+
 /// Run the composed authorization engine ([`authorize_command`]) for one mutating command
 /// over a bounded actor-registry read (W14.P42a). Standing + delegation always run; the
-/// document-scope guard runs when a bound `session_id` resolves a scope AND `targets` are
-/// supplied; the review-authority guard runs for approve/apply-class commands carrying an
+/// document-scope guard runs when an `authorized_scope` is supplied AND `targets` are
+/// present; the review-authority guard runs for approve/apply-class commands carrying an
 /// `origin_author`. A refusal is a VALUE (`Ok(ActionEligibility { allowed: false, .. })`);
-/// only a genuine infrastructure failure is `Err`. The identity read rides the command's
-/// own unit of work (the house pattern: a deferred transaction that commits empty).
+/// only a genuine infrastructure failure is `Err`. The identity read rides a FIXED
+/// mutating command's unit of work (the house pattern: a deferred transaction that commits
+/// empty) — keying it on the ACTUAL `command` would reject a non-mutating one (a read tool
+/// routed through `/execute`) as a read-only-unit-of-work fault; the real command is still
+/// what `authorize_command` decides against.
 fn run_authorization(
     state: &AppState,
     command: CommandKind,
     actor: &ActorRef,
-    session_id: Option<&SessionId>,
+    authorized_scope: Option<&str>,
     targets: &[&DocumentRef],
     origin_author: Option<&ActorRef>,
 ) -> Result<ActionEligibility, AuthorizationFault> {
     let outcome = state.with_authoring_store(|store| {
-        // The authorization read rides a FIXED mutating command's unit of work (the house
-        // pattern the principal middleware uses: a deferred transaction that commits
-        // empty). Keying the UoW on the ACTUAL `command` would reject a non-mutating one
-        // (a read tool routed through `/execute`) as a read-only-unit-of-work fault; the
-        // real command is still what `authorize_command` decides against.
         store.with_unit_of_work(CommandKind::CreateSession, |uow| {
-            let session_scope = match session_id {
-                Some(session_id) => uow
-                    .sessions()
-                    .session(session_id)?
-                    .map(|record| record.scope),
-                None => None,
-            };
             let authorization = CommandAuthorization {
                 command,
                 actor,
-                session_scope: session_scope.as_deref(),
+                authorized_scope,
                 targets,
                 origin_author,
             };
@@ -1070,12 +1072,16 @@ pub async fn create_proposal(
     command: ResolvedCommand<CreateProposalRequest>,
 ) -> Response {
     let now = now_ms();
-    // Standing + delegation are enforced at the ResolvedCommand extractor floor. The
-    // document-scope guard is NOT wired here: `DocumentRef::Existing.scope` (a
-    // worktree/workspace identifier) and the session's `scope` (a client-supplied label)
-    // are distinct namespaces today, so the guard cannot be soundly compared until the
-    // two are reconciled (a dedicated follow-up, not this authorization floor).
-    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let (actor, command_kind, idempotency_key, payload) = command.into_parts();
+    // W14.P42a — document-scope guard: fence every drafted target against the active
+    // workspace's SERVER-AUTHORITATIVE authorized scope. Standing + delegation already
+    // cleared at the extractor floor; a target claiming a different workspace is a denial
+    // VALUE on the 200 envelope (denials-are-values), never a fault.
+    if let Some(denied) =
+        authorize_targets_or_deny(&state, command_kind, &actor, &payload.operations)
+    {
+        return denied;
+    }
     let context = proposal_context(actor, idempotency_key, now);
     // The materializer reads the vault worktree (parent of `.vault`).
     let reader = SnapshotReader::for_worktree(state.active_workspace_root());
@@ -1084,6 +1090,37 @@ pub async fn create_proposal(
     }) {
         Ok(result) => proposal_result_response(&state, result),
         Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// Fence a mutating command's client-supplied operation targets against the active
+/// workspace's authorized scope (W14.P42a document-scope guard). Standing + delegation are
+/// already enforced at the extractor floor; this adds the target/scope dimension for the
+/// handlers that carry drafted `DocumentRef` targets. Returns the denial `Response` when a
+/// target is out of scope (a value) or authorization faults (redacted), or `None` when the
+/// command may proceed.
+fn authorize_targets_or_deny(
+    state: &AppState,
+    command: CommandKind,
+    actor: &ActorRef,
+    operations: &[ChangesetChildOperationDraft],
+) -> Option<Response> {
+    let authorized_scope = active_authorized_scope(state);
+    let targets: Vec<&DocumentRef> = operations
+        .iter()
+        .map(|operation| &operation.target.document)
+        .collect();
+    match run_authorization(
+        state,
+        command,
+        actor,
+        Some(&authorized_scope),
+        &targets,
+        None,
+    ) {
+        Ok(eligibility) if eligibility.allowed => None,
+        Ok(eligibility) => Some(denial_snapshot(state, &eligibility)),
+        Err(fault) => Some(authorization_fault_response(state, fault)),
     }
 }
 
@@ -1117,7 +1154,7 @@ async fn mutate_proposal_draft(
         }
     };
     let now = now_ms();
-    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let (actor, command_kind, idempotency_key, payload) = command.into_parts();
     if payload.changeset_id != changeset_id {
         return super::response::typed_error(
             &state,
@@ -1126,6 +1163,13 @@ async fn mutate_proposal_draft(
             "path changeset id does not match the request body",
         )
         .into_response();
+    }
+    // W14.P42a — document-scope guard: fence the appended/replaced targets against the
+    // active workspace's authorized scope, the same as create.
+    if let Some(denied) =
+        authorize_targets_or_deny(&state, command_kind, &actor, &payload.operations)
+    {
+        return denied;
     }
     let context = proposal_context(actor, idempotency_key, now);
     match dispatch_draft_mutation(&state, context, payload, route) {
@@ -2339,14 +2383,40 @@ async fn dispatch_agent_tool_command(
     let command_kind = prepared.command;
     let reader = SnapshotReader::for_worktree(state.active_workspace_root());
 
-    // W14.P42a — the agent is the untrusted writer the standing/delegation guards target.
-    // A granted tool call dispatches its MAPPED backend command INTERNALLY (no second
-    // `ResolvedCommand` extraction), so authorize the mapped command kind EXPLICITLY here
-    // before its effect. A refusal rides the unified `/execute` envelope as a value. (The
-    // document-scope guard is not applied until the session/document scope namespaces are
-    // reconciled; an agent applying its own proposal is refused origin-keyed in the apply
-    // domain.)
-    match run_authorization(&state, command_kind, &actor, None, &[], None) {
+    // W14.P42a — the agent is the untrusted writer the standing/delegation/scope guards
+    // target. A granted tool call dispatches its MAPPED backend command INTERNALLY (no
+    // second `ResolvedCommand` extraction), so authorize the mapped command EXPLICITLY here
+    // before its effect: standing + delegation always, plus the document-scope guard over
+    // the drafted targets of a create/append/replace against the active workspace's
+    // authorized scope. A refusal rides the unified `/execute` envelope as a value. (An
+    // agent applying its own proposal is refused origin-keyed in the apply domain.)
+    let authorized_scope = active_authorized_scope(&state);
+    let scope_targets: Vec<&DocumentRef> = match &prepared.dispatch {
+        PreparedToolDispatch::ProposeChangeset { dispatch } => match dispatch {
+            ProposeChangesetDispatch::Create { command } => command
+                .payload
+                .operations
+                .iter()
+                .map(|operation| &operation.target.document)
+                .collect(),
+            ProposeChangesetDispatch::Append { input, .. }
+            | ProposeChangesetDispatch::Replace { input, .. } => input
+                .operations
+                .iter()
+                .map(|operation| &operation.target.document)
+                .collect(),
+        },
+        _ => Vec::new(),
+    };
+    let scope_arg = (!scope_targets.is_empty()).then_some(authorized_scope.as_str());
+    match run_authorization(
+        &state,
+        command_kind,
+        &actor,
+        scope_arg,
+        &scope_targets,
+        None,
+    ) {
         Ok(eligibility) if eligibility.allowed => {}
         Ok(eligibility) => {
             return agent_tool_execute_response(
@@ -5163,6 +5233,81 @@ mod tests {
                 .as_str()
                 .is_some_and(|reason| reason.contains("tool surface")),
             "the denial names the tool-surface guard: {envelope}"
+        );
+    }
+
+    /// A create-proposal body whose single operation targets an EXISTING document claiming
+    /// `foreign_scope` — a spoofed cross-workspace target the document-scope guard refuses.
+    fn create_proposal_targeting_scope(changeset_id: &str, foreign_scope: &str) -> Value {
+        serde_json::to_value(CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::CreateProposal,
+            idempotency_key: IdempotencyKey::new("idem:create:crossscope").unwrap(),
+            payload: CreateProposalRequest {
+                session_id: SessionId::new("session_cross_1").unwrap(),
+                changeset_id: ChangesetId::new(changeset_id).unwrap(),
+                summary: "targets a document by scope".to_string(),
+                operations: vec![ChangesetChildOperationDraft {
+                    child_key: "child_1".to_string(),
+                    operation: ChangesetOperationKind::ReplaceBody,
+                    target: TargetRevisionFence {
+                        document: DocumentRef::Existing {
+                            scope: foreign_scope.to_string(),
+                            node_id: "doc:adr-1".to_string(),
+                            stem: "adr-1".to_string(),
+                            path: ".vault/adr/adr-1.md".to_string(),
+                            doc_type: "adr".to_string(),
+                            base_revision: RevisionToken::new("blob:base").unwrap(),
+                        },
+                        base_revision: Some(RevisionToken::new("blob:base").unwrap()),
+                        current_revision: None,
+                    },
+                    draft: DraftMutation {
+                        mode: DraftMode::WholeDocument,
+                        body: "rewritten body".to_string(),
+                    },
+                }],
+            },
+        })
+        .unwrap()
+    }
+
+    /// NEGATIVE (the real confused-deputy fence): a create whose target claims a DIFFERENT
+    /// worktree path than the active workspace is refused by the document-scope guard as a
+    /// 200 denial VALUE — the actor is registered and standing, so the refusal is a command
+    /// outcome, never a fault. (A legitimate same-workspace create is verified by
+    /// `create_proposal_opens_a_draft_changeset_under_the_resolved_actor`, which resolves a
+    /// real document in the active workspace and now passes the scope guard before creating.)
+    #[tokio::test]
+    async fn create_proposal_refuses_a_cross_workspace_target() {
+        let (_dir, state) = fixture_state();
+        let author = agent();
+        register_actor(&state, &author);
+        let token = issue_token_in_state(&state, &author);
+
+        // A target scope that can never equal the active workspace's scope_token.
+        let foreign_scope = "/some/other/worktree";
+        assert_ne!(
+            foreign_scope,
+            active_authorized_scope(&state),
+            "the spoofed scope must differ from the active workspace"
+        );
+        let body = create_proposal_targeting_scope("changeset_cross_1", foreign_scope);
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, envelope) = post_authoring(router, "/v1/proposals", &token, body).await;
+
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "a scope refusal is a denial VALUE, not a fault: {envelope}"
+        );
+        assert_eq!(envelope["data"]["status"], "denied");
+        assert!(
+            envelope["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("scope")),
+            "the denial names the scope fence: {envelope}"
         );
     }
 }

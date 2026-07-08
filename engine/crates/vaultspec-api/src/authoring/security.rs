@@ -73,14 +73,20 @@ fn redact_fault(_error: &StoreError) -> SecurityFault {
 }
 
 /// The authorization context for one command: the resolved actor (from the principal
-/// seam), the session's authorized scope (if the command binds one), the command's
-/// target documents, and — for approve/apply-class commands — the proposal's origin
-/// author (so review authority can be checked). Borrowed; the engine holds nothing.
+/// seam), the command's AUTHORIZED SCOPE (the workspace the request is bound to, when the
+/// command carries targets), the command's target documents, and — for approve/apply-class
+/// commands — the proposal's origin author (so review authority can be checked). Borrowed;
+/// the engine holds nothing.
+///
+/// `authorized_scope` is SERVER-AUTHORITATIVE, not a client/session value: the caller
+/// supplies the active workspace's `scope_token` (the same identifier that populates
+/// `DocumentRef::Existing.scope`), so the scope guard fences a target claiming a DIFFERENT
+/// workspace than the one the request operates on.
 #[derive(Debug, Clone)]
 pub struct CommandAuthorization<'a> {
     pub command: CommandKind,
     pub actor: &'a ActorRef,
-    pub session_scope: Option<&'a str>,
+    pub authorized_scope: Option<&'a str>,
     pub targets: &'a [&'a DocumentRef],
     pub origin_author: Option<&'a ActorRef>,
 }
@@ -142,20 +148,20 @@ pub fn delegation_standing_guard(
     Ok(None)
 }
 
-/// Every target document must lie inside the session's authorized scope — the SCOPE
-/// GUARD the phase is named for. A target whose existing scope differs from the bound
-/// session scope is refused (a delegate acting outside its delegated workspace). Walks
-/// the composite `DocumentRef` shapes to their underlying existing scope; a
-/// `ProvisionalCreate` has no existing scope to fence, so it is not constrained here.
-/// Pure; denials are values.
+/// Every target document must lie inside the AUTHORIZED SCOPE — the SCOPE GUARD the phase
+/// is named for. A target whose existing scope differs from the authorized (workspace)
+/// scope is refused (a delegate acting outside its authorized workspace, or a spoofed
+/// cross-workspace target). Walks the composite `DocumentRef` shapes to their underlying
+/// existing scope; a `ProvisionalCreate` has no existing scope to fence, so it is not
+/// constrained here. Pure; denials are values.
 pub fn document_scope_guard(
-    session_scope: &str,
+    authorized_scope: &str,
     targets: &[&DocumentRef],
     command: CommandKind,
 ) -> Option<ActionEligibility> {
     for target in targets {
         if let Some(target_scope) = existing_scope(target)
-            && target_scope != session_scope
+            && target_scope != authorized_scope
         {
             return Some(ActionEligibility::denied(
                 command,
@@ -228,8 +234,8 @@ pub fn authorize_command(
     if let Some(denied) = delegation_standing_guard(actors, ctx.actor, ctx.command)? {
         return Ok(denied);
     }
-    if let Some(session_scope) = ctx.session_scope
-        && let Some(denied) = document_scope_guard(session_scope, ctx.targets, ctx.command)
+    if let Some(authorized_scope) = ctx.authorized_scope
+        && let Some(denied) = document_scope_guard(authorized_scope, ctx.targets, ctx.command)
     {
         return Ok(denied);
     }
@@ -321,7 +327,7 @@ mod tests {
         let ctx = CommandAuthorization {
             command: CommandKind::CreateProposal,
             actor: &author,
-            session_scope: Some("scope_a"),
+            authorized_scope: Some("scope_a"),
             targets: &targets,
             origin_author: None,
         };
@@ -383,7 +389,7 @@ mod tests {
         let ctx = CommandAuthorization {
             command: CommandKind::CreateProposal,
             actor: &stale,
-            session_scope: None,
+            authorized_scope: None,
             targets: &[],
             origin_author: None,
         };
@@ -427,7 +433,7 @@ mod tests {
         let ctx = CommandAuthorization {
             command: CommandKind::RequestApply,
             actor: &author,
-            session_scope: None,
+            authorized_scope: None,
             targets: &[],
             origin_author: Some(&author),
         };
@@ -513,7 +519,7 @@ mod tests {
         let ctx = CommandAuthorization {
             command: CommandKind::CreateProposal,
             actor: &delegate,
-            session_scope: Some("scope_a"),
+            authorized_scope: Some("scope_a"),
             targets: &targets,
             origin_author: None,
         };
