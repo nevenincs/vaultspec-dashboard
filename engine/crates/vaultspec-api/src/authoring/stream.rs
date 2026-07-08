@@ -1,9 +1,14 @@
-//! Authoring lifecycle stream and recovery surface (W11.P34).
+//! Authoring lifecycle stream and recovery surface (W11.P34, W12.P44).
 //!
 //! Lifecycle truth is replayed from the durable transactional outbox. Generation
-//! tokens and live progress frames remain non-authoritative and are deferred to
-//! the bounded generation phase; this module only exposes lifecycle replay,
-//! explicit gaps, and snapshot-plus-next-sequence recovery.
+//! tokens and live progress frames remain NON-AUTHORITATIVE: clients recover truth
+//! through lifecycle replay or the tiered snapshot, never from raw frames
+//! (streaming-events-outbox ADR). W12.P44 lands the deferred generation remainder:
+//! BOUNDED generation channels (token/trace frames served under a hard per-page cap
+//! with an explicit truncation gap) and the durable TRANSCRIPT COMPACTION hook —
+//! terminal, past-due generation transcripts summarize by retention policy WITHOUT
+//! ever touching pending approvals or rollback preimages (authoring-retention-is-
+//! explicit; the retention engine enforces the protection).
 #![allow(dead_code)]
 
 use std::convert::Infallible;
@@ -19,11 +24,24 @@ use serde_json::{Value, json};
 use super::events::projector_feed_page;
 use super::model::{CommandKind, RunId, SessionId};
 use super::projections::ProjectionError;
+use super::store::retention::CompactionRunSummary;
 use super::store::{StoreError, unit_of_work::UnitOfWork};
-use crate::app::AppState;
+use crate::app::{AppState, now_ms};
 
 pub(crate) const LIFECYCLE_REPLAY_PAGE_CAP: u32 = 128;
-pub(crate) const GENERATION_CHANNEL_PLACEHOLDER_CAP: u32 = 0;
+
+/// The hard per-page cap on non-authoritative generation frames (token chunks and
+/// tool traces). A channel that produces more than this in one page is truncated to
+/// the cap with an explicit `dropped` count — raw frames are never allowed to grow
+/// unbounded (resource-bounds: every accumulator bounded at creation).
+pub(crate) const GENERATION_CHANNEL_FRAME_CAP: u32 = 256;
+
+/// The bounded number of due generation transcripts one compaction sweep summarizes.
+pub(crate) const GENERATION_TRANSCRIPT_COMPACTION_MAX: u32 = 64;
+
+/// The stable summary hash a policy-driven generation-transcript compaction records
+/// on each summarized transcript (the sweep replaces full payload with a summary).
+pub(crate) const GENERATION_TRANSCRIPT_SUMMARY_HASH: &str = "generation-transcript-summary-v1";
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct EventStreamParams {
@@ -106,6 +124,7 @@ pub(crate) async fn recovery(
         }
     };
 
+    let now = now_ms();
     let data = state.with_authoring_store(|store| {
         store.with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
             let latest_outbox_seq = uow.outbox().latest_seq()?;
@@ -125,6 +144,7 @@ pub(crate) async fn recovery(
                 }
                 (None, None) => None,
             };
+            let generation_channels = generation_channels_snapshot(uow, latest_outbox_seq, now)?;
             Ok(json!({
                 "api_version": "v1",
                 "family": "recovery",
@@ -134,11 +154,7 @@ pub(crate) async fn recovery(
                 "snapshot": {
                     "proposals": proposals,
                     "session": session_snapshot,
-                    "generation_channels": {
-                        "implemented": false,
-                        "cap": GENERATION_CHANNEL_PLACEHOLDER_CAP,
-                        "authoritative": false,
-                    }
+                    "generation_channels": generation_channels
                 }
             }))
         })
@@ -208,6 +224,89 @@ fn lifecycle_replay_events(uow: &UnitOfWork<'_>, last_seq: i64) -> Result<Vec<Ev
     Ok(rendered)
 }
 
+/// The bounded, NON-AUTHORITATIVE generation-channel descriptor for the recovery
+/// snapshot (W12.P44). It advertises the token + trace channels, their hard frame
+/// cap, the cursor a frontend restores generation subscription from (aligned to the
+/// lifecycle recovery point — generation truth is recovered through lifecycle replay,
+/// not raw frames), and a READ-ONLY summary of the durable transcript retention +
+/// compaction state. It never triggers compaction: that is a mutation and cannot run
+/// on this read-only recovery path.
+fn generation_channels_snapshot(
+    uow: &UnitOfWork<'_>,
+    latest_outbox_seq: i64,
+    now_ms: i64,
+) -> Result<Value, StoreError> {
+    let retention = uow.retention().status(now_ms)?;
+    // Generation subscription restores from the same point lifecycle recovery resumes:
+    // a reconnecting client resubscribes to live frames here and recovers authoritative
+    // truth via lifecycle replay from `next_generation_seq`.
+    let next_generation_seq = latest_outbox_seq.saturating_add(1);
+    Ok(json!({
+        "implemented": true,
+        "authoritative": false,
+        "frame_cap": GENERATION_CHANNEL_FRAME_CAP,
+        "channels": {
+            "token": { "cap": GENERATION_CHANNEL_FRAME_CAP, "authoritative": false },
+            "trace": { "cap": GENERATION_CHANNEL_FRAME_CAP, "authoritative": false }
+        },
+        "cursor": { "next_generation_seq": next_generation_seq },
+        "transcripts": {
+            "total": retention.total_records,
+            "protected": retention.protected_records,
+            "due_for_compaction": retention.compactable_due_records,
+            "compacted": retention.compacted_records,
+            "compaction_max_per_sweep": GENERATION_TRANSCRIPT_COMPACTION_MAX
+        }
+    }))
+}
+
+/// The TRANSCRIPT COMPACTION hook (W12.P44): summarize terminal, past-due generation
+/// transcripts by retention policy, bounded to at most [`GENERATION_TRANSCRIPT_COMPACTION_MAX`]
+/// per sweep. It delegates to the retention engine, which by construction compacts
+/// ONLY `generation_transcript`/`review_material` records in a terminal lifecycle
+/// state — pending approvals (protected product state), audit receipts, non-terminal
+/// records, and rollback preimages are skipped, never discarded. A mutation: it must
+/// run inside a mutating unit of work, never the read-only recovery path.
+fn compact_generation_transcripts(
+    uow: &UnitOfWork<'_>,
+    run_id: &RunId,
+    now_ms: i64,
+) -> Result<CompactionRunSummary, StoreError> {
+    uow.retention().compact_due(
+        run_id.as_str(),
+        now_ms,
+        GENERATION_TRANSCRIPT_COMPACTION_MAX,
+        GENERATION_TRANSCRIPT_SUMMARY_HASH,
+    )
+}
+
+/// One bounded page of non-authoritative generation frames: the served frames capped
+/// at [`GENERATION_CHANNEL_FRAME_CAP`], plus the count dropped past the cap. Raw
+/// generation frames are transient and never durably accumulated; this is the serve-
+/// time bound that keeps a noisy token/trace channel from crowding out product state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BoundedGenerationPage {
+    pub served: Vec<Value>,
+    pub dropped: usize,
+}
+
+/// Cap a batch of generation frames at the hard per-page frame cap, reporting how many
+/// were dropped past it so the channel signals truncation rather than growing unbounded.
+pub(crate) fn bounded_generation_page(frames: Vec<Value>) -> BoundedGenerationPage {
+    let cap = GENERATION_CHANNEL_FRAME_CAP as usize;
+    let total = frames.len();
+    if total <= cap {
+        return BoundedGenerationPage {
+            served: frames,
+            dropped: 0,
+        };
+    }
+    BoundedGenerationPage {
+        served: frames.into_iter().take(cap).collect(),
+        dropped: total - cap,
+    }
+}
+
 fn validate_recovery_params(params: &RecoveryParams) -> Result<(), String> {
     if params.last_seq.is_some_and(|seq| seq < 0) {
         return Err("last_seq must be non-negative".to_string());
@@ -241,12 +340,56 @@ mod tests {
     use super::super::events::{
         LifecycleAggregateKind, LifecycleEventInput, LifecycleEventKind, lifecycle_event_draft,
     };
+    use super::super::model::RunId;
     use super::super::model::{
         ActorId, ActorKind, ActorRef, CommandKind, IdempotencyKey, SessionId,
     };
     use super::super::store::Store;
     use super::super::store::outbox::{AppendDecision, OutboxEventDraft};
+    use super::super::store::retention::{
+        LifecycleStatus, PayloadState, RetentionClass, RetentionRecord, RetentionRecordRef,
+    };
     use super::*;
+
+    fn seed_retention(
+        store: &mut Store,
+        kind: &str,
+        id: &str,
+        class: RetentionClass,
+        status: LifecycleStatus,
+        compact_after_ms: Option<i64>,
+        now: i64,
+    ) {
+        store
+            .with_unit_of_work(CommandKind::EditProposal, |uow| {
+                let mut record = RetentionRecord::new(
+                    RetentionRecordRef::new(kind, id).unwrap(),
+                    kind,
+                    id,
+                    class,
+                    status,
+                    format!("hash:{id}"),
+                    now,
+                )
+                .unwrap();
+                record.compact_after_ms = compact_after_ms;
+                uow.retention().upsert_record(&record)?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    fn payload_state(store: &mut Store, kind: &str, id: &str) -> PayloadState {
+        store
+            .with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
+                Ok(uow
+                    .retention()
+                    .record(&RetentionRecordRef::new(kind, id).unwrap())?
+                    .expect("retention record exists")
+                    .payload_state)
+            })
+            .unwrap()
+    }
 
     fn fixture_state() -> (tempfile::TempDir, Arc<AppState>) {
         let dir = tempfile::tempdir().unwrap();
@@ -489,18 +632,25 @@ mod tests {
         assert_eq!(body["data"]["latest_outbox_seq"], 1);
         assert_eq!(body["data"]["next_seq"], 2);
         assert_eq!(body["data"]["requested_last_seq"], 0);
+        let channels = &body["data"]["snapshot"]["generation_channels"];
+        assert_eq!(channels["implemented"], true);
         assert_eq!(
-            body["data"]["snapshot"]["generation_channels"]["implemented"],
-            false
+            channels["authoritative"], false,
+            "generation is never authoritative"
+        );
+        assert_eq!(channels["frame_cap"], GENERATION_CHANNEL_FRAME_CAP);
+        assert_eq!(
+            channels["channels"]["token"]["cap"],
+            GENERATION_CHANNEL_FRAME_CAP
         );
         assert_eq!(
-            body["data"]["snapshot"]["generation_channels"]["cap"],
-            GENERATION_CHANNEL_PLACEHOLDER_CAP
+            channels["channels"]["trace"]["cap"],
+            GENERATION_CHANNEL_FRAME_CAP
         );
-        assert_eq!(
-            body["data"]["snapshot"]["generation_channels"]["authoritative"],
-            false
-        );
+        // Frontend cursor restoration: the generation cursor aligns to the lifecycle
+        // recovery point (latest_outbox_seq=1 → next=2).
+        assert_eq!(channels["cursor"]["next_generation_seq"], 2);
+        assert!(channels["transcripts"]["total"].is_number());
         assert!(body["tiers"]["semantic"]["available"].is_boolean());
     }
 
@@ -566,5 +716,101 @@ mod tests {
         assert_eq!(body["data"]["latest_outbox_seq"], 0);
         assert_eq!(body["data"]["next_seq"], 1);
         assert!(body["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    // ---- W12.P44 bounded generation channels + transcript compaction -----------------
+
+    #[test]
+    fn generation_frames_stay_bounded_at_the_cap() {
+        let cap = GENERATION_CHANNEL_FRAME_CAP as usize;
+
+        // A page at or under the cap is served whole with nothing dropped.
+        let under = bounded_generation_page(vec![json!({"t": "x"}); cap]);
+        assert_eq!(under.served.len(), cap);
+        assert_eq!(under.dropped, 0);
+
+        // A noisy channel past the cap is truncated to the cap with the overflow counted
+        // — raw frames never grow unbounded.
+        let over = bounded_generation_page(vec![json!({"t": "x"}); cap + 5]);
+        assert_eq!(over.served.len(), cap);
+        assert_eq!(over.dropped, 5);
+    }
+
+    #[test]
+    fn terminal_transcript_compacts_while_pending_approval_is_retained() {
+        let (_dir, _path, mut store) = temp_store();
+        let now = 10_000_000;
+
+        // A terminal, past-due generation transcript — the compactable target.
+        seed_retention(
+            &mut store,
+            "authoring_prompt_turn",
+            "turn_terminal",
+            RetentionClass::GenerationTranscript,
+            LifecycleStatus::Superseded,
+            Some(now - 1),
+            now,
+        );
+        // A live pending approval as protected product state — lifecycle truth that must
+        // never be compacted away, even though it is past the same due horizon.
+        seed_retention(
+            &mut store,
+            "authoring_approval",
+            "approval_pending",
+            RetentionClass::ProtectedProductState,
+            LifecycleStatus::Active,
+            Some(now - 1),
+            now,
+        );
+
+        let summary = store
+            .with_unit_of_work(CommandKind::EditProposal, |uow| {
+                compact_generation_transcripts(uow, &RunId::new("run:compact").unwrap(), now)
+            })
+            .unwrap();
+
+        assert_eq!(
+            summary.compacted_count, 1,
+            "the terminal generation transcript is summarized"
+        );
+        assert_eq!(
+            payload_state(&mut store, "authoring_prompt_turn", "turn_terminal"),
+            PayloadState::Summarized,
+        );
+        assert_eq!(
+            payload_state(&mut store, "authoring_approval", "approval_pending"),
+            PayloadState::Full,
+            "a pending approval is never discarded by generation-transcript compaction",
+        );
+    }
+
+    #[test]
+    fn non_terminal_generation_transcript_is_retained_in_full() {
+        let (_dir, _path, mut store) = temp_store();
+        let now = 10_000_000;
+
+        // An Active (non-terminal) transcript, even past its due horizon, is retained in
+        // full — only terminal (rejected/superseded/expired) transcripts compact.
+        seed_retention(
+            &mut store,
+            "authoring_prompt_turn",
+            "turn_active",
+            RetentionClass::GenerationTranscript,
+            LifecycleStatus::Active,
+            Some(now - 1),
+            now,
+        );
+
+        let summary = store
+            .with_unit_of_work(CommandKind::EditProposal, |uow| {
+                compact_generation_transcripts(uow, &RunId::new("run:noop").unwrap(), now)
+            })
+            .unwrap();
+
+        assert_eq!(summary.compacted_count, 0);
+        assert_eq!(
+            payload_state(&mut store, "authoring_prompt_turn", "turn_active"),
+            PayloadState::Full,
+        );
     }
 }
