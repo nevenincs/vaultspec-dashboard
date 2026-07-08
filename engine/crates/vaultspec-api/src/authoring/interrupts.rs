@@ -34,13 +34,17 @@ use super::tools::SemanticToolName;
 const INTERRUPT_SCHEMA: &str = "authoring.interrupt.v1";
 const TOOL_CALL_SCHEMA: &str = "authoring.tool_call.v1";
 
-/// What a LangGraph interrupt asks a human to decide (langgraph-integration ADR): a
-/// bounded `tool_permission` action, or the final `changeset_approval`.
+/// What a LangGraph interrupt asks a human to decide. V1 raises exactly one kind: a
+/// bounded `tool_permission` action (the executor gate). Product changeset approval is
+/// review-station STATE keyed by `proposal_id` (approval-gates ADR), decided async via
+/// the review-decision route — NOT a run-suspending interrupt — so no changeset-approval
+/// interrupt kind is constructed anywhere. (The langgraph-integration ADR sketches a
+/// `changeset_approval_request` interrupt payload for a future pause-on-approval node;
+/// that kind returns with its wiring if/when such a node is built.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InterruptKind {
     ToolPermission,
-    ChangesetApproval,
 }
 
 /// Whether an interrupt still awaits a human decision or has been resolved.
@@ -63,10 +67,13 @@ pub struct InterruptRecord {
     pub interrupt_id: InterruptId,
     pub run_id: RunId,
     pub kind: InterruptKind,
-    /// The tool call this interrupt gates (a `tool_permission` interrupt).
+    /// The tool call this interrupt gates. Set for every V1 interrupt (the sole
+    /// `tool_permission` kind).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<ToolCallId>,
-    /// The proposal this interrupt gates (a `changeset_approval` interrupt).
+    /// The proposal an interrupt gates. Reserved: always `None` in V1 (product
+    /// approval is review-station state, not an interrupt); a future pause-on-approval
+    /// node would set it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proposal_id: Option<ProposalId>,
     pub resume_state: InterruptResumeState,
@@ -142,8 +149,8 @@ pub fn tool_execution_permitted(
     tool_execution_gate(tool, permission).allowed
 }
 
-/// Input to record a raised interrupt. A `tool_permission` interrupt carries the gated
-/// `tool_call_id`; a `changeset_approval` interrupt carries the gated `proposal_id`.
+/// Input to record a raised interrupt. The sole V1 `tool_permission` interrupt carries
+/// the gated `tool_call_id`; `proposal_id` is reserved (always `None` today).
 #[derive(Debug, Clone)]
 pub struct RecordInterruptInput {
     pub interrupt_id: InterruptId,
@@ -476,7 +483,6 @@ fn read_tool_call(json: &str) -> StoreResult<ToolCallRecord> {
 fn interrupt_kind_column(kind: InterruptKind) -> &'static str {
     match kind {
         InterruptKind::ToolPermission => "tool_permission",
-        InterruptKind::ChangesetApproval => "changeset_approval",
     }
 }
 
@@ -613,7 +619,7 @@ mod tests {
 
     // ---- durable interrupt + tool-call records (S158) --------------------------------
 
-    use crate::authoring::model::{CommandKind, InterruptId, ProposalId, RunId};
+    use crate::authoring::model::{CommandKind, InterruptId, RunId};
     use crate::authoring::store::Store;
 
     fn temp_store() -> (tempfile::TempDir, Store) {
@@ -635,10 +641,8 @@ mod tests {
                     interrupt_id: InterruptId::new(interrupt_id).unwrap(),
                     run_id: RunId::new(run_id).unwrap(),
                     kind,
-                    tool_call_id: matches!(kind, InterruptKind::ToolPermission)
-                        .then(|| ToolCallId::new("call_1").unwrap()),
-                    proposal_id: matches!(kind, InterruptKind::ChangesetApproval)
-                        .then(|| ProposalId::new("cs_1").unwrap()),
+                    tool_call_id: Some(ToolCallId::new("call_1").unwrap()),
+                    proposal_id: None,
                     idempotency_key: format!("idem:{interrupt_id}"),
                     created_at_ms: now,
                 }))
@@ -680,7 +684,7 @@ mod tests {
             &mut store,
             "interrupt:run1/b",
             "run:1",
-            InterruptKind::ChangesetApproval,
+            InterruptKind::ToolPermission,
             11,
         );
 
@@ -770,7 +774,7 @@ mod tests {
                 &mut store,
                 "interrupt:run4/a",
                 "run:4",
-                InterruptKind::ChangesetApproval,
+                InterruptKind::ToolPermission,
                 10,
             );
         }
@@ -782,8 +786,8 @@ mod tests {
             })
             .unwrap();
         let record = found.expect("interrupt survives reopen");
-        assert_eq!(record.kind, InterruptKind::ChangesetApproval);
-        assert_eq!(record.proposal_id.as_ref().unwrap().as_str(), "cs_1");
+        assert_eq!(record.kind, InterruptKind::ToolPermission);
+        assert_eq!(record.tool_call_id.as_ref().unwrap().as_str(), "call_1");
         assert!(!record.is_resolved());
     }
 

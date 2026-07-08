@@ -4470,7 +4470,7 @@ mod tests {
         register_actor(&state, &reviewer);
         let token = issue_token_in_state(&state, &reviewer);
 
-        // Seed a paused run's interrupt to resolve by id.
+        // Seed a paused run's interrupt to resolve by id (the sole V1 kind).
         state
             .with_authoring_store(|store| {
                 store.with_unit_of_work(CommandKind::ResumeRun, |uow| {
@@ -4478,8 +4478,8 @@ mod tests {
                         super::super::interrupts::RecordInterruptInput {
                             interrupt_id: InterruptId::new("interrupt_route_1").unwrap(),
                             run_id: RunId::new("run_route_1").unwrap(),
-                            kind: super::super::interrupts::InterruptKind::ChangesetApproval,
-                            tool_call_id: None,
+                            kind: super::super::interrupts::InterruptKind::ToolPermission,
+                            tool_call_id: Some(ToolCallId::new("call_route_seed").unwrap()),
                             proposal_id: None,
                             idempotency_key: "idem:seed:interrupt".to_string(),
                             created_at_ms: now_ms(),

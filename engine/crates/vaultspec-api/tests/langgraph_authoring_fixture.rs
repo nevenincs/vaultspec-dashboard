@@ -334,13 +334,14 @@ async fn execute(
     .await
 }
 
-/// Grant a queued tool-permission request as a human reviewer (P22-R1: never the
-/// requester, never an agent).
-async fn grant_permission(
+/// Decide a queued tool-permission request as a human reviewer (P22-R1: never the
+/// requester, never an agent). `decision` is the wire value (`approve` / `reject`).
+async fn decide_permission(
     state: &Arc<AppState>,
     bearer: &str,
     reviewer_token: &str,
     tool_call_id: &str,
+    decision: &str,
 ) -> (StatusCode, Value) {
     send(
         router(state),
@@ -352,10 +353,20 @@ async fn grant_permission(
             "api_version": "v1",
             "command": "request_tool_permission",
             "idempotency_key": format!("idem:decide:{tool_call_id}"),
-            "payload": { "decision": "approve", "comment": "granted" },
+            "payload": { "decision": decision, "comment": "decided" },
         })),
     )
     .await
+}
+
+/// Grant a queued tool-permission request as a human reviewer.
+async fn grant_permission(
+    state: &Arc<AppState>,
+    bearer: &str,
+    reviewer_token: &str,
+    tool_call_id: &str,
+) -> (StatusCode, Value) {
+    decide_permission(state, bearer, reviewer_token, tool_call_id, "approve").await
 }
 
 #[tokio::test]
@@ -715,4 +726,297 @@ async fn execute_matrix_readonly_free_mutating_gated_granted_dispatches_replay_n
         replay["data"]["result"]["status"], "cancelled",
         "the re-drive dedups to the same terminal cancellation (no double-apply): {replay}"
     );
+}
+
+#[tokio::test]
+async fn agent_run_loop_rejected_tool_is_a_terminal_refusal_that_never_dispatches() {
+    let (dir, state, base, _core_ready) = worktree_state();
+    let _keep = &dir;
+    let bearer = state.bearer.clone();
+
+    let agent = issue_token(&state, &bearer, "agent:writer", "agent").await;
+    let reviewer = issue_token(&state, &bearer, "human:reviewer", "human").await;
+    let session = create_session(&state, &bearer, &agent).await;
+    let run_id = start_run(&state, &bearer, &agent, &session).await;
+
+    let tool_call_id = "call_loop_reject";
+    let body = execute_body(
+        "create_proposal",
+        tool_call_id,
+        "propose_changeset",
+        propose_create_input(&session, "changeset_reject", &base),
+    );
+
+    // 1. SUSPEND — a mutating tool without a grant opens a Pending permission.
+    let (status, suspended) = execute(&state, &bearer, &agent, &run_id, body.clone()).await;
+    assert_eq!(status, StatusCode::OK, "suspend: {suspended}");
+    assert_eq!(suspended["data"]["disposition"], "awaiting_permission");
+
+    // 2. REJECT — a distinct human reviewer REJECTS the queued request. The rejection
+    //    is a decided (denied) value on the 200 envelope, never a fault.
+    let (status, decision) =
+        decide_permission(&state, &bearer, &reviewer, tool_call_id, "reject").await;
+    assert_eq!(status, StatusCode::OK, "reject is a 200 value: {decision}");
+    assert_eq!(decision["data"]["status"], "denied");
+    assert_eq!(decision["data"]["allowed"], false);
+
+    // 3. RE-EXECUTE — the same tool_call_id is now a TERMINAL REFUSAL: disposition
+    //    "refused", eligibility a denied VALUE on 200, NO dispatch, and the refusal is
+    //    recorded (permitted=false with a reason).
+    let (status, refused) = execute(&state, &bearer, &agent, &run_id, body.clone()).await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "a refusal is a 200 value: {refused}"
+    );
+    assert_eq!(refused["data"]["disposition"], "refused");
+    assert_eq!(refused["data"]["eligibility"]["allowed"], false);
+    assert!(
+        refused["data"]["eligibility"]["reason"].is_string(),
+        "the refusal carries the domain reason: {refused}"
+    );
+    assert_eq!(
+        refused["data"]["result"],
+        Value::Null,
+        "a refused tool call dispatches nothing"
+    );
+    assert_eq!(
+        refused["data"]["tool_call_record"]["permitted"], false,
+        "the refusal is recorded as a terminal permitted=false tool-call record: {refused}"
+    );
+    assert!(
+        refused["data"]["tool_call_record"]["refusal_reason"].is_string(),
+        "the refusal record carries its reason: {refused}"
+    );
+
+    // 4. REPLAY — a further replay of the refused tool_call_id stays terminal:
+    //    disposition "already_handled" (replayed), still no dispatch.
+    let (status, replay) = execute(&state, &bearer, &agent, &run_id, body).await;
+    assert_eq!(status, StatusCode::OK, "{replay}");
+    assert_eq!(replay["data"]["disposition"], "already_handled");
+    assert_eq!(
+        replay["data"]["replayed"], true,
+        "the refusal replays: {replay}"
+    );
+    assert_eq!(replay["data"]["eligibility"]["allowed"], false);
+    assert_eq!(
+        replay["data"]["result"],
+        Value::Null,
+        "a replayed refusal never dispatches"
+    );
+
+    // No side effect at the corpus: the rejected tool created NOTHING.
+    let (status, list) = send(
+        router(&state),
+        "GET",
+        "/authoring/v1/proposals",
+        &bearer,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "list: {list}");
+    let created = list["data"]["items"]
+        .as_array()
+        .expect("items array")
+        .iter()
+        .any(|item| item["changeset_id"] == "changeset_reject");
+    assert!(
+        !created,
+        "a rejected tool call never created its changeset: {list}"
+    );
+}
+
+/// A `create_proposal` command body for the dedicated `POST /v1/proposals` route (the
+/// direct-client draft path, distinct from the `propose_changeset` tool alias — no
+/// `operation` discriminant).
+fn create_draft_body(session: &str, changeset: &str, idem: &str, base_revision: &str) -> Value {
+    json!({
+        "api_version": "v1",
+        "command": "create_proposal",
+        "idempotency_key": idem,
+        "payload": {
+            "session_id": session,
+            "changeset_id": changeset,
+            "summary": "draft for review-station approval",
+            "operations": [{
+                "child_key": "child_1",
+                "operation": "replace_body",
+                "target": {
+                    "document": document(base_revision),
+                    "base_revision": base_revision,
+                    "current_revision": base_revision,
+                },
+                "draft": { "mode": "whole_document", "body": NEW_BODY },
+            }],
+        }
+    })
+}
+
+#[tokio::test]
+async fn manual_mode_request_approval_is_review_station_state_not_a_suspending_interrupt() {
+    // MODEL 2 (approval-gates ADR): a changeset approval is review-station STATE keyed
+    // by proposal_id, decided async via the review-decision route — NOT a run-suspending
+    // interrupt. In the DEFAULT manual mode, request_approval (a Mutating tool) suspends
+    // ONLY on its own tool-permission gate; once granted it DISPATCHES to submit — the
+    // proposal enters NeedsReview and the run does NOT pause on any approval interrupt
+    // (there is no changeset-approval interrupt kind — it is structurally impossible).
+    let (dir, state, base, core_ready) = worktree_state();
+    let _keep = &dir;
+    let bearer = state.bearer.clone();
+
+    let agent = issue_token(&state, &bearer, "agent:writer", "agent").await;
+    let reviewer = issue_token(&state, &bearer, "human:reviewer", "human").await;
+    let session = create_session(&state, &bearer, &agent).await;
+    let run_id = start_run(&state, &bearer, &agent, &session).await;
+    let changeset = "changeset_review_station";
+
+    // Draft the proposal via the dedicated route (a normal client action).
+    let (status, created) = send(
+        router(&state),
+        "POST",
+        "/authoring/v1/proposals",
+        &bearer,
+        Some(&agent),
+        Some(create_draft_body(
+            &session,
+            changeset,
+            "idem:rs:create",
+            &base,
+        )),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "create draft: {created}");
+    assert_eq!(created["data"]["status"], "draft");
+    let draft_revision = created["data"]["changeset_revision"]
+        .as_str()
+        .expect("draft revision")
+        .to_string();
+
+    let approval_tool = "call_review_station_approval";
+    let approval_body = execute_body(
+        "submit_for_review",
+        approval_tool,
+        "request_approval",
+        json!({
+            "changeset_id": changeset,
+            "expected_revision": draft_revision,
+            "summary": "please review",
+        }),
+    );
+
+    // 1. request_approval in MANUAL mode SUSPENDS on its own tool-permission gate (a
+    //    Mutating tool), surfacing the tool-permission interrupt id — NOT an approval.
+    let (status, suspended) =
+        execute(&state, &bearer, &agent, &run_id, approval_body.clone()).await;
+    assert_eq!(status, StatusCode::OK, "suspend: {suspended}");
+    assert_eq!(suspended["data"]["disposition"], "awaiting_permission");
+    assert!(
+        suspended["data"]["interrupt_id"].as_str().is_some(),
+        "the suspend is a tool-permission interrupt (the sole kind): {suspended}"
+    );
+
+    // 2. A human grants the request_approval TOOL permission (not the changeset).
+    let (status, decision) = grant_permission(&state, &bearer, &reviewer, approval_tool).await;
+    assert_eq!(status, StatusCode::OK, "grant tool permission: {decision}");
+    assert_eq!(decision["data"]["status"], "granted");
+
+    // 3. Re-execute → DISPATCHES the submit composite: the proposal enters NeedsReview.
+    //    The run does NOT suspend again (no approval interrupt) — Model 2 is a state
+    //    transition, and manual mode does NOT auto-approve.
+    let (status, submitted) = execute(&state, &bearer, &agent, &run_id, approval_body).await;
+    assert_eq!(status, StatusCode::OK, "dispatch submit: {submitted}");
+    assert_eq!(
+        submitted["data"]["disposition"], "dispatched",
+        "granted request_approval dispatches (no second suspend on approval): {submitted}"
+    );
+    assert_eq!(submitted["data"]["command"], "submit_for_review");
+    assert_eq!(submitted["data"]["result"]["status"], "submitted");
+    assert_eq!(
+        submitted["data"]["result"]["mode"]["auto_approval"]["status"], "not_applicable",
+        "manual mode does NOT auto-approve — it awaits an async human review decision: {submitted}"
+    );
+    let proposal_id = submitted["data"]["result"]["proposal_id"]
+        .as_str()
+        .expect("proposal id")
+        .to_string();
+    let approval_id = submitted["data"]["result"]["approval"]["approval_id"]
+        .as_str()
+        .expect("approval id")
+        .to_string();
+    let reviewed_revision = submitted["data"]["result"]["reviewed_revision"]
+        .as_str()
+        .expect("reviewed revision")
+        .to_string();
+
+    // 4. The proposal is REVIEW-STATION STATE: NeedsReview, awaiting a human decision.
+    let (status, detail) = send(
+        router(&state),
+        "GET",
+        &format!("/authoring/v1/proposals/{changeset}"),
+        &bearer,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "proposal detail: {detail}");
+    assert_eq!(
+        detail["data"]["proposal"]["status"], "needs_review",
+        "request_approval moved the proposal to review-station NeedsReview state: {detail}"
+    );
+
+    // 5. A human decides ASYNC via the review-decision route (approve).
+    let (status, decided) = send(
+        router(&state),
+        "POST",
+        &format!("/authoring/v1/reviews/{}/decisions", pct(&approval_id)),
+        &bearer,
+        Some(&reviewer),
+        Some(json!({
+            "api_version": "v1",
+            "command": "approve",
+            "idempotency_key": "idem:rs:decision",
+            "payload": {
+                "proposal_id": proposal_id,
+                "approval_id": approval_id,
+                "decision": "approve",
+                "reviewed_revision": reviewed_revision,
+                "comment": "lgtm",
+            }
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "review decision: {decided}");
+    assert_eq!(decided["data"]["status"], "decided");
+    assert_eq!(
+        decided["data"]["approval"]["decision"]["decision"],
+        "approve"
+    );
+
+    // 6. The approved review-station proposal then applies (real core lands the write).
+    let (status, applied) = send(
+        router(&state),
+        "POST",
+        "/authoring/v1/apply-requests",
+        &bearer,
+        Some(&reviewer),
+        Some(json!({
+            "api_version": "v1",
+            "command": "request_apply",
+            "idempotency_key": "idem:rs:apply",
+            "payload": { "changeset_id": changeset, "approval_id": approval_id }
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "apply: {applied}");
+    assert!(
+        applied["data"]["receipt"].is_object(),
+        "the review-station decision drives an apply receipt: {applied}"
+    );
+    if core_ready {
+        assert_eq!(
+            applied["data"]["child_outcome"], "applied",
+            "a real core applies the reviewed changeset: {applied}"
+        );
+    }
 }
