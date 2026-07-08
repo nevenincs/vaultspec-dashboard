@@ -31,8 +31,6 @@
 //! until a human decides — never a terminal record, so a later grant lets the same
 //! `tool_call_id` proceed. An explicitly rejected/expired permission is a terminal
 //! refusal.
-#![allow(dead_code)]
-
 use ingest_struct::reader::blob_oid;
 
 use super::interrupts::{

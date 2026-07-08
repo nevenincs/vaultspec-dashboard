@@ -35,6 +35,7 @@ pub enum EndpointFamily {
     Recovery,
     ToolPermission,
     Interrupt,
+    AgentToolExecute,
 }
 
 impl EndpointFamily {
@@ -52,6 +53,7 @@ impl EndpointFamily {
         Self::Recovery,
         Self::ToolPermission,
         Self::Interrupt,
+        Self::AgentToolExecute,
     ];
 }
 
@@ -251,6 +253,18 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
             "unknown_interrupt",
             "unknown_field",
         ],
+    },
+    // W12.P41 A3b: the agent-tool executor run loop — a semantic tool call resolves
+    // through the P22/P32 gate and, when granted, dispatches to the mapped backend
+    // command (here `create_proposal`, the `propose_changeset`/create alias).
+    RouteFixture {
+        family: EndpointFamily::AgentToolExecute,
+        method: "POST",
+        path_template: "/authoring/v1/runs/{run_id}/agent-tools/execute",
+        command: Some(CommandKind::CreateProposal),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &["missing_idempotency_key", "unknown_tool", "unknown_field"],
     },
 ];
 
@@ -676,35 +690,7 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
         EndpointFamily::Proposal => command_value(CommandEnvelope::new(
             CommandKind::CreateProposal,
             idempotency_key("idem:proposal:create"),
-            CreateProposalRequest {
-                session_id: session_id(),
-                changeset_id: changeset_id(),
-                summary: "Rewrite the ADR introduction".to_string(),
-                operations: vec![
-                    ChangesetChildOperationDraft {
-                        child_key: "child_1".to_string(),
-                        operation: ChangesetOperationKind::ReplaceBody,
-                        target: target_revision_fence(
-                            existing_document_fixture(),
-                            Some("blob:abc123"),
-                            Some("blob:abc123"),
-                        ),
-                        draft: DraftMutation {
-                            mode: DraftMode::WholeDocument,
-                            body: "draft body".to_string(),
-                        },
-                    },
-                    ChangesetChildOperationDraft {
-                        child_key: "child_2".to_string(),
-                        operation: ChangesetOperationKind::CreateDocument,
-                        target: target_revision_fence(provisional_document_fixture(), None, None),
-                        draft: DraftMutation {
-                            mode: DraftMode::WholeDocument,
-                            body: "new document body".to_string(),
-                        },
-                    },
-                ],
-            },
+            create_proposal_request_fixture(),
         )),
         EndpointFamily::Review => command_value(CommandEnvelope::new(
             CommandKind::Approve,
@@ -788,6 +774,22 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
                 decision: json!({ "approve": true }),
             },
         )),
+        // W12.P41 A3b: the route body is a bare `AgentToolCall` (not a domain DTO),
+        // riding the SAME `CommandEnvelope` wire wrapper as every other command route
+        // (`ResolvedCommand<AgentToolCall>` deserializes `CommandEnvelope<AgentToolCall>`).
+        // Built by hand (rather than importing `tools::AgentToolCall`) so `api.rs` stays
+        // the foundational, one-way-depended-on module — `tools.rs` depends on `api.rs`,
+        // never the reverse.
+        EndpointFamily::AgentToolExecute => command_value(CommandEnvelope::new(
+            CommandKind::CreateProposal,
+            idempotency_key("idem:agent-tool:execute"),
+            json!({
+                "tool_call_id": "tool_call_1",
+                "name": "propose_changeset",
+                "idempotency_key": "idem:propose:create",
+                "input": propose_changeset_create_input(),
+            }),
+        )),
     }
 }
 
@@ -802,11 +804,12 @@ pub fn response_fixture(family: EndpointFamily) -> Value {
         EndpointFamily::Document => AggregateRef::Document {
             document: existing_document_fixture(),
         },
-        EndpointFamily::Proposal | EndpointFamily::Apply | EndpointFamily::DirectWrite => {
-            AggregateRef::Changeset {
-                changeset_id: changeset_id(),
-            }
-        }
+        EndpointFamily::Proposal
+        | EndpointFamily::Apply
+        | EndpointFamily::DirectWrite
+        | EndpointFamily::AgentToolExecute => AggregateRef::Changeset {
+            changeset_id: changeset_id(),
+        },
         EndpointFamily::Review => AggregateRef::Approval {
             approval_id: approval_id(),
         },
@@ -887,6 +890,52 @@ fn command_value<T: Serialize>(request: CommandEnvelope<T>) -> Value {
 
 fn read_value<T: Serialize>(payload: T) -> Value {
     serde_json::to_value(ReadEnvelope::new(payload)).expect("read fixture serializes")
+}
+
+/// The `create_proposal` request fixture: one `ReplaceBody` op over an existing
+/// document + one `CreateDocument` op over a provisional one. Shared by the
+/// `Proposal` family's request fixture AND the `AgentToolExecute` family's
+/// `propose_changeset`/create tool-input fixture, so the two never drift.
+fn create_proposal_request_fixture() -> CreateProposalRequest {
+    CreateProposalRequest {
+        session_id: session_id(),
+        changeset_id: changeset_id(),
+        summary: "Rewrite the ADR introduction".to_string(),
+        operations: vec![
+            ChangesetChildOperationDraft {
+                child_key: "child_1".to_string(),
+                operation: ChangesetOperationKind::ReplaceBody,
+                target: target_revision_fence(
+                    existing_document_fixture(),
+                    Some("blob:abc123"),
+                    Some("blob:abc123"),
+                ),
+                draft: DraftMutation {
+                    mode: DraftMode::WholeDocument,
+                    body: "draft body".to_string(),
+                },
+            },
+            ChangesetChildOperationDraft {
+                child_key: "child_2".to_string(),
+                operation: ChangesetOperationKind::CreateDocument,
+                target: target_revision_fence(provisional_document_fixture(), None, None),
+                draft: DraftMutation {
+                    mode: DraftMode::WholeDocument,
+                    body: "new document body".to_string(),
+                },
+            },
+        ],
+    }
+}
+
+/// The `propose_changeset`/create semantic-tool input: the `CreateProposalRequest`
+/// fixture flattened alongside the tool's `operation` discriminant tag (the wire
+/// shape `tools::ProposeChangesetInput::Create` expects).
+fn propose_changeset_create_input() -> Value {
+    let mut value = serde_json::to_value(create_proposal_request_fixture())
+        .expect("create-proposal fixture serializes");
+    value["operation"] = json!("create");
+    value
 }
 
 fn actor_fixture() -> ActorRef {
