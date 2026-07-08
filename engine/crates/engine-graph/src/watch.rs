@@ -184,6 +184,17 @@ fn collect(
     seen: &mut HashSet<PathBuf>,
 ) {
     if let Ok(event) = event {
+        // READS are never corpus changes. On Linux, inotify reports Access
+        // (open/close) events for every directory a scan opens — including
+        // the rebuild's OWN corpus walk — so treating them as dirt makes
+        // each rebuild schedule the next: an endless walk→access→rebuild
+        // loop (CI quiescence failure 2026-07-08; ~20 directory paths per
+        // window, one rebuild per debounce, forever). Windows emits no
+        // access events, which is why the loop never reproduced there.
+        // Only creations, modifications, removals, and renames re-ingest.
+        if matches!(event.kind, notify::EventKind::Access(_)) {
+            return;
+        }
         for path in event.paths {
             // Engine-owned cache/log zones under `.vault/` are SKIPPED: the
             // engine's own `put_artifact` writes (the SQLite cache + its
@@ -415,6 +426,33 @@ mod tests {
         assert!(!is_git_noise_path(Path::new(
             "/ws/main/.vault/plan/index.md"
         )));
+    }
+
+    #[test]
+    fn collect_drops_access_events_entirely() {
+        // Linux inotify reports Access (open/close) for every directory a
+        // scan opens — including the rebuild's OWN corpus walk — so an
+        // access event treated as dirt makes each rebuild schedule the next
+        // (the CI quiescence loop, 2026-07-08). Reads are never corpus
+        // changes; only create/modify/remove/rename re-ingest.
+        let doc = Path::new("/ws/main/.vault/plan/2026-06-14-x-plan.md");
+        let mut dirty = Vec::new();
+        let mut seen = HashSet::new();
+        collect(
+            Ok(notify::Event {
+                kind: notify::EventKind::Access(notify::event::AccessKind::Open(
+                    notify::event::AccessMode::Read,
+                )),
+                paths: vec![doc.to_path_buf()],
+                attrs: Default::default(),
+            }),
+            &mut dirty,
+            &mut seen,
+        );
+        assert!(dirty.is_empty(), "an access event never dirties: {dirty:?}");
+        // The same path as a MODIFY still dirties.
+        collect(event_for(doc), &mut dirty, &mut seen);
+        assert_eq!(dirty.len(), 1, "a modify event dirties");
     }
 
     #[test]
