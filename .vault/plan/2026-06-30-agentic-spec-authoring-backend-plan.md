@@ -480,11 +480,11 @@ Detect stale bases, overlapping operations, anchor drift, policy conflicts, and 
 
 Provide explicit user-visible flows for rebase, supersede, cancel, and replacement proposal creation.
 
-- [ ] `W13.P28.S136` - Ground Explicit rebase and supersession commands requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W13.P28.S137` - Implement rebase commands, supersession commands, replacement proposal creation, stale input checks, and conflict carry-forward; `engine/crates/vaultspec-api/src/authoring/rebase.rs`.
-- [ ] `W13.P28.S138` - Add rebase tests for successful rebase, failed rebase, superseded proposal, cancelled original, and replayed rebase request; `engine/crates/vaultspec-api/src/authoring/rebase.rs`.
+- [x] `W13.P28.S136` - Ground Explicit rebase and supersession commands requirements into the phase checklist; `.vault/adr/`.
+- [x] `W13.P28.S137` - Implement rebase commands, supersession commands, replacement proposal creation, stale input checks, and conflict carry-forward; `engine/crates/vaultspec-api/src/authoring/rebase.rs`.
+- [x] `W13.P28.S138` - Add rebase tests for successful rebase, failed rebase, superseded proposal, cancelled original, and replayed rebase request; `engine/crates/vaultspec-api/src/authoring/rebase.rs`.
 - [ ] `W13.P28.S139` - Run Explicit rebase and supersession commands code review and record the phase audit; `.vault/audit/`.
-- [ ] `W13.P28.S140` - Verify stale proposals only advance through explicit rebase or supersession decisions; `engine/crates/vaultspec-api/src/authoring/rebase.rs`.
+- [x] `W13.P28.S140` - Verify stale proposals only advance through explicit rebase or supersession decisions; `engine/crates/vaultspec-api/src/authoring/rebase.rs`.
 
 ### Phase `W13.P45` - Section-scoped proposal operations (W03.P13 remainder, conditional)
 
