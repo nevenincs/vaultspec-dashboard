@@ -64,6 +64,7 @@ const TARGET_PATH = ".vault/research/2026-01-04-beta-research.md";
 
 let client: AuthoringClient;
 let baseRevision: string;
+let scopeToken: string;
 let proposedBody: string;
 let coreReachable: boolean;
 
@@ -82,7 +83,7 @@ function replaceProposal(
         target: {
           document: {
             kind: "existing",
-            scope: "worktree",
+            scope: scopeToken,
             node_id: TARGET_NODE_ID,
             stem: TARGET_STEM,
             path: TARGET_PATH,
@@ -101,6 +102,7 @@ function replaceProposal(
 beforeAll(async () => {
   client = liveAuthoringClient();
   const scope = await liveScope();
+  scopeToken = scope;
   const engine = createLiveClient();
   // The core-availability gate for the real-apply leg (read from the served
   // status, never guessed). The setup installs a vaultspec workspace, so this is

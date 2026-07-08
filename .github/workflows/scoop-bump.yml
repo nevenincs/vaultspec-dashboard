@@ -1,0 +1,53 @@
+# Post-announce scoop-manifest bump (distribution-channels ADR): dist calls
+# this AFTER the GitHub Release publishes (`post-announce-jobs` in
+# dist-workspace.toml). `scoop update` reads the COMMITTED manifest — scoop's
+# checkver/autoupdate stanzas only serve maintainer tooling — so each release
+# must land one bump commit. The released tag is read from the dist plan
+# (passed as the `plan` workflow_call input); the hash comes from the
+# published per-asset .sha256. The commit type is changelog-hidden (`chore`)
+# so release-please treats it as noise.
+
+name: scoop-bump
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Bump bucket/vaultspec.json to the released version
+        shell: bash
+        env:
+          PLAN: ${{ inputs.plan }}
+        run: |
+          set -euo pipefail
+          TAG=$(printf '%s' "$PLAN" | jq -r '.announcement_tag')
+          VERSION="${TAG#v}"
+          ASSET="vaultspec-cli-x86_64-pc-windows-msvc.zip"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"
+          HASH=$(curl --proto '=https' --tlsv1.2 -sSfL "${URL}.sha256" | cut -d' ' -f1)
+          test -n "$VERSION" && test -n "$HASH"
+          jq --arg v "$VERSION" --arg u "$URL" --arg h "$HASH" \
+            '.version = $v | .url = $u | .hash = $h' \
+            bucket/vaultspec.json > bucket/vaultspec.json.tmp
+          mv bucket/vaultspec.json.tmp bucket/vaultspec.json
+          if git diff --quiet -- bucket/vaultspec.json; then
+            echo "manifest already at ${VERSION}; nothing to bump"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bucket/vaultspec.json
+          git commit -m "chore(scoop): bump manifest to ${TAG}"
+          git push origin main

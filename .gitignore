@@ -108,6 +108,9 @@ frontend/.playwright-cli/
 
 # Rust engine workspace
 engine/target/
+# Staged SPA embed source (distribution-channels ADR: built by the package
+# recipe / CI build step, compiled into the binary, never committed)
+engine/crates/vaultspec-api/assets/
 
 # Node dependencies (root + any nested package)
 node_modules/

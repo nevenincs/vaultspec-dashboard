@@ -20,7 +20,7 @@ use super::model::CommandKind;
 pub const DB_FILENAME: &str = "authoring-state.sqlite3";
 const AUTHORING_DATA_DIR: &str = "authoring-state";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-const SCHEMA_VERSION: i64 = 16;
+const SCHEMA_VERSION: i64 = 18;
 const STORE_KIND: &str = "vaultspec_authoring";
 
 const METADATA_SCHEMA: &str = "
@@ -946,6 +946,94 @@ SET schema_version = 16
 WHERE singleton = 1;
 ";
 
+// W13.P26: advisory leases + fencing tokens (concurrency-leases-conflicts ADR). A single
+// FRESH additive table (no CHECK-widen, no table recreate — nothing FK-references it),
+// keyed by `scope_id` so each scope holds exactly ONE lease row that acquire/renew/
+// release/expire update in place. This makes the table structurally bounded (one row per
+// distinct scope ever leased) and makes the per-scope `fencing_token` durably monotonic:
+// it strictly increments on every fresh acquisition and never resets, because the row
+// persists across release→re-acquire and expiry→re-acquire. Leases are advisory and
+// self-expiring, so they carry NO retention/compaction lifecycle; the background janitor
+// (a later-phase advisory) reclaims `released`/`expired` rows as a pure reclaimer.
+const LEASE_SCHEMA: &str = "
+CREATE TABLE authoring_leases (
+    scope_id                     TEXT NOT NULL,
+    lease_id                     TEXT NOT NULL,
+    purpose                      TEXT NOT NULL CHECK (
+        purpose IN (
+            'destructive',
+            'whole_document',
+            'rename',
+            'archive',
+            'long_running_rewrite'
+        )
+    ),
+    state                        TEXT NOT NULL CHECK (
+        state IN ('held', 'released', 'expired')
+    ),
+    holder_actor_id              TEXT NOT NULL,
+    holder_actor_kind            TEXT NOT NULL,
+    holder_delegated_by_actor_id TEXT NOT NULL DEFAULT '',
+    fencing_token                INTEGER NOT NULL CHECK (fencing_token > 0),
+    idempotency_key              TEXT NOT NULL,
+    record_json                  TEXT NOT NULL,
+    acquired_at_ms               INTEGER NOT NULL,
+    expires_at_ms                INTEGER NOT NULL,
+    updated_at_ms                INTEGER NOT NULL,
+    PRIMARY KEY (scope_id)
+) WITHOUT ROWID;
+
+CREATE INDEX idx_authoring_leases_state
+    ON authoring_leases (state, expires_at_ms);
+CREATE INDEX idx_authoring_leases_holder
+    ON authoring_leases (holder_actor_id, holder_actor_kind);
+
+UPDATE authoring_store_metadata
+SET schema_version = 17
+WHERE singleton = 1;
+";
+
+// W13.P24: advisory review-station claims (review-station-state ADR). A single FRESH
+// additive table (no CHECK-widen, no table recreate) keyed by `changeset_id` so each
+// changeset holds exactly ONE claim row that claim/release/respond/expire update in place.
+// A claim is ADVISORY assignment, NOT authority (review-claims-are-not-authority): the
+// four-state served item (`queued`/`claimed`/`decision_submitted`/`closed`) is a
+// projection COMPOSITION of the approval decision-lifecycle and this claim overlay, so the
+// `claimed` fact is a separate advisory record rather than a widened approval queue state.
+// Like the advisory lease, a claim is TTL-bounded and reclaimed expire-on-read, so it
+// carries no retention/compaction lifecycle; a `released`/`expired` row persists (one row
+// per changeset) until re-claimed.
+const REVIEW_CLAIM_SCHEMA: &str = "
+CREATE TABLE authoring_review_claims (
+    changeset_id                   TEXT NOT NULL,
+    claim_id                       TEXT NOT NULL,
+    purpose                        TEXT NOT NULL CHECK (
+        purpose IN ('review', 'clarify')
+    ),
+    state                          TEXT NOT NULL CHECK (
+        state IN ('held', 'released', 'expired')
+    ),
+    reviewer_actor_id              TEXT NOT NULL,
+    reviewer_actor_kind            TEXT NOT NULL,
+    reviewer_delegated_by_actor_id TEXT NOT NULL DEFAULT '',
+    idempotency_key                TEXT NOT NULL,
+    record_json                    TEXT NOT NULL,
+    claimed_at_ms                  INTEGER NOT NULL,
+    expires_at_ms                  INTEGER NOT NULL,
+    updated_at_ms                  INTEGER NOT NULL,
+    PRIMARY KEY (changeset_id)
+) WITHOUT ROWID;
+
+CREATE INDEX idx_authoring_review_claims_state
+    ON authoring_review_claims (state, expires_at_ms);
+CREATE INDEX idx_authoring_review_claims_reviewer
+    ON authoring_review_claims (reviewer_actor_id, reviewer_actor_kind);
+
+UPDATE authoring_store_metadata
+SET schema_version = 18
+WHERE singleton = 1;
+";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Migration {
     version: i64,
@@ -1034,6 +1122,16 @@ const MIGRATIONS: &[Migration] = &[
         name: "create_authoring_interrupts_and_tool_call_records",
         sql: INTERRUPT_AND_TOOL_CALL_SCHEMA,
     },
+    Migration {
+        version: 17,
+        name: "create_authoring_leases",
+        sql: LEASE_SCHEMA,
+    },
+    Migration {
+        version: 18,
+        name: "create_authoring_review_claims",
+        sql: REVIEW_CLAIM_SCHEMA,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1085,6 +1183,10 @@ pub enum StoreError {
     Mode(String),
     #[error("authoring tool permission error: {0}")]
     Permission(String),
+    #[error("authoring lease error: {0}")]
+    Lease(String),
+    #[error("authoring review station error: {0}")]
+    ReviewStation(String),
     #[error("authoring session error: {0}")]
     Session(String),
     #[error("command {command:?} is read-only and cannot open a mutating unit of work")]
@@ -1418,6 +1520,14 @@ mod tests {
                         version: 16,
                         name: "create_authoring_interrupts_and_tool_call_records".to_string(),
                     },
+                    AppliedMigration {
+                        version: 17,
+                        name: "create_authoring_leases".to_string(),
+                    },
+                    AppliedMigration {
+                        version: 18,
+                        name: "create_authoring_review_claims".to_string(),
+                    },
                 ]
             );
             let table_count: i64 = store
@@ -1447,19 +1557,21 @@ mod tests {
                            'authoring_runs',
                            'authoring_tool_permission_requests',
                            'authoring_interrupts',
-                           'authoring_tool_call_records'
+                           'authoring_tool_call_records',
+                           'authoring_leases',
+                           'authoring_review_claims'
                         )",
                     [],
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(table_count, 21);
+            assert_eq!(table_count, 23);
         }
 
         let reopened = Store::open_at(&path).expect("authoring store reopens");
         let metadata = reopened.schema_metadata().unwrap();
         assert_eq!(metadata.schema_version, SCHEMA_VERSION);
-        assert_eq!(metadata.applied_migrations.len(), 16);
+        assert_eq!(metadata.applied_migrations.len(), 18);
     }
 
     #[test]

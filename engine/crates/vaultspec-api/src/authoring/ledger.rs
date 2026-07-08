@@ -461,6 +461,30 @@ impl LedgerRepository<'_, '_> {
         row.map(|record| self.attach_children(record)).transpose()
     }
 
+    /// The latest aggregate of every changeset (one row per `changeset_id`), newest first,
+    /// bounded by `cap`. Shared by conflict detection (live siblings for overlap) and the
+    /// apply preflight so both read the same bounded corpus of candidate proposals.
+    pub fn latest_changesets(&self, cap: u32) -> StoreResult<Vec<ChangesetAggregateRecord>> {
+        let ids = self.repo.query_collect(
+            "SELECT changeset_id
+             FROM authoring_changeset_revisions
+             GROUP BY changeset_id
+             ORDER BY MAX(seq) DESC
+             LIMIT ?1",
+            [cap],
+            |row| row.get::<_, String>(0),
+        )?;
+        let mut records = Vec::with_capacity(ids.len());
+        for raw_id in ids {
+            let changeset_id =
+                ChangesetId::new(&raw_id).map_err(|err| StoreError::Ledger(err.to_string()))?;
+            if let Some(record) = self.latest(&changeset_id)? {
+                records.push(record);
+            }
+        }
+        Ok(records)
+    }
+
     /// The ORIGIN revision — the FIRST revision of the changeset chain. Its
     /// `actor` is the proposing (origin) author, which is DISTINCT from
     /// `latest().actor` once a reviewer appends a decision revision. The

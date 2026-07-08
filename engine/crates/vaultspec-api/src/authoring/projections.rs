@@ -36,6 +36,9 @@ use super::api::ChangesetOperationKind;
 use super::approvals::{
     ApprovalDecision, ApprovalQueueState, ApprovalRequestRecord, V1_POLICY_VERSION,
 };
+use super::conflicts::{
+    ConflictReport, MAX_CONFLICT_HELD_LEASES, MAX_CONFLICT_SIBLINGS, detect_conflicts,
+};
 use super::ledger::{ChangesetAggregateRecord, ChangesetChildOperationRecord};
 use super::model::{
     ActionEligibility, ActorRef, ApprovalId, ChangesetId, ChangesetKind, ChangesetStatus,
@@ -484,10 +487,23 @@ impl ProjectionRepository<'_, '_> {
             statuses.add(row.record.status);
         }
 
+        // The `claimed` count is the review-station four-state composition (W13.P24): an
+        // undecided (`queued`) approval whose changeset holds an advisory claim counts as
+        // `claimed`, not `queued`. The claim is a separate advisory overlay, so this reads
+        // the held-claim set and reclassifies. `held` reflects durable assignment; a
+        // held-but-past-TTL row is reconciled expire-on-read on its next touch (matching the
+        // advisory-lease listing), so this corpus rollup needs no clock.
+        let held_claims = self.uow.review_station().held_claim_changeset_ids()?;
         let latest_approvals = self.latest_approval_records()?;
         let mut queues = ApprovalQueueCounts::default();
         for approval in latest_approvals {
-            queues.add(approval.queue_state);
+            if approval.queue_state == ApprovalQueueState::Queued
+                && held_claims.contains(approval.changeset_id.as_str())
+            {
+                queues.claimed += 1;
+            } else {
+                queues.add(approval.queue_state);
+            }
         }
 
         Ok(ReviewCountProjection {
@@ -714,6 +730,31 @@ impl ProjectionRepository<'_, '_> {
             proposal,
             review_documents,
         }))
+    }
+
+    /// The backend-served base-revision CONFLICT REPORT for one changeset (W13.P27), a
+    /// pure read ADDITIVE to the existing cheap `conflict` field on the proposal
+    /// projection: the full deterministic detector over the CURRENT worktree, the live
+    /// sibling proposals (overlap), and the held advisory leases (policy collision). `None`
+    /// when the changeset does not exist. `now_ms` gates lease activeness.
+    pub fn conflict_report(
+        &self,
+        changeset_id: &ChangesetId,
+        worktree_root: &Path,
+        now_ms: i64,
+    ) -> Result<Option<ConflictReport>> {
+        let Some(subject) = self.uow.ledger().latest(changeset_id)? else {
+            return Ok(None);
+        };
+        let live_siblings = self.uow.ledger().latest_changesets(MAX_CONFLICT_SIBLINGS)?;
+        let held_leases = self.uow.leases().list_leases(MAX_CONFLICT_HELD_LEASES)?;
+        Ok(Some(detect_conflicts(
+            worktree_root,
+            &subject,
+            &live_siblings,
+            &held_leases,
+            now_ms,
+        )))
     }
 
     /// The backend-served action eligibility for the changeset's CURRENT status.

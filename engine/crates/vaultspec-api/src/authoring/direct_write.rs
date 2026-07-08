@@ -538,6 +538,9 @@ pub fn execute_direct_write(
             proposal_id: &ids.proposal_id,
             actor,
             idempotency_key: &step_key(idempotency_key, "apply")?,
+            // The human editor save presents no lease token; advisory fencing refuses it
+            // only if a live lease holds the target document.
+            fencing_token: None,
             now_ms,
         },
     )

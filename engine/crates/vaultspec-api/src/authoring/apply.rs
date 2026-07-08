@@ -38,8 +38,12 @@ use serde::{Deserialize, Serialize};
 
 use super::api::ChangesetOperationKind;
 use super::approvals::{V1_POLICY_VERSION, automated_self_approval_blocker};
+use super::conflicts::{
+    MAX_CONFLICT_SIBLINGS, detect_conflicts, document_lease_scope, existing_node_id,
+};
 use super::core_adapter::{CoreAdapter, CoreCapability, CoreInvocation, WriteArgs};
 use super::events::{apply_recorded_event, apply_started_event};
+use super::leases::validate_fencing_token;
 use super::ledger::{
     ChangesetAggregateRecord, ChangesetChildOperationInput, ChangesetRevisionInput,
 };
@@ -99,6 +103,10 @@ pub struct ApplyRequest<'a> {
     pub proposal_id: &'a ProposalId,
     pub actor: &'a ActorRef,
     pub idempotency_key: &'a IdempotencyKey,
+    /// The ADVISORY fencing token (W13.P26) the applying actor presents. Enforced ONLY
+    /// when a live lease holds the target document's scope: a `None` or stale token against
+    /// a live lease is refused as a denial value; with no live lease the apply proceeds.
+    pub fencing_token: Option<i64>,
     pub now_ms: i64,
 }
 
@@ -375,6 +383,24 @@ fn preflight_in_uow(
         return Ok(Ok(Preflight::Denied(eligibility)));
     }
 
+    // Base-revision conflict gate (W13.P27, wired W14.P42a). Consult the conflict detector
+    // over the CURRENT worktree + live sibling proposals: a stale base, a stale whole-
+    // document draft, an overlapping-hunk sibling, or an anchor drift refuses the apply as
+    // a denial VALUE (no lease ever bypasses a revision check). Leases are passed EMPTY
+    // here: the advisory-lease dimension (`PolicyConflict`) is owned by S258's fencing
+    // (which admits the current token holder) and keys on the proposing actor, so gating
+    // apply on it would over-refuse a legitimate token-holder apply; the served conflict
+    // route surfaces it for the reviewer.
+    let live_siblings = uow.ledger().latest_changesets(MAX_CONFLICT_SIBLINGS)?;
+    let conflict_report =
+        detect_conflicts(worktree_root, &latest, &live_siblings, &[], request.now_ms);
+    if let Some(finding) = conflict_report.findings.first() {
+        return Ok(Ok(Preflight::Denied(ActionEligibility::denied(
+            CommandKind::RequestApply,
+            finding.reason.clone(),
+        ))));
+    }
+
     // The single materialized child → the write invocation.
     let child = &latest.children[0];
     if child.operation != ChangesetOperationKind::ReplaceBody {
@@ -400,6 +426,35 @@ fn preflight_in_uow(
             child.child_key
         ))));
     };
+
+    // ADVISORY fencing (W13.P26, wired W14.P42a). A lease NEVER establishes correctness
+    // (leases-never-replace-revision-checks): the revision fence is the anti-stale-write
+    // floor, and correctness must not depend on an unexpired lease. So the fence bites ONLY
+    // a PRESENTED token that is stale/below the scope's current one (P26 monotonicity fences
+    // a superseded editor out); an ABSENT token is a non-participant and PROCEEDS — omitting
+    // the token gains nothing because a stale write is still caught by the revision check,
+    // and denying it would strand every legitimate approved apply (system, direct-write, and
+    // /execute all present no token). The scope key is the SAME per-document convention P27
+    // conflict detection uses (`document_lease_scope`), so acquire and apply agree on it.
+    if let Some(node_id) = existing_node_id(&document) {
+        let lease_scope = document_lease_scope(worktree_root, &node_id);
+        let current_lease = uow.leases().current(&lease_scope)?;
+        if current_lease
+            .as_ref()
+            .is_some_and(|lease| lease.is_active(request.now_ms))
+        {
+            let fence = match request.fencing_token {
+                Some(token) => {
+                    validate_fencing_token(current_lease.as_ref(), token, request.now_ms)
+                }
+                // Advisory: no token presented → not fencing-participating → proceed.
+                None => ActionEligibility::allowed(CommandKind::RequestApply),
+            };
+            if !fence.allowed {
+                return Ok(Ok(Preflight::Denied(fence)));
+            }
+        }
+    }
     let base_blob_hash = materialized.base.blob_hash.clone();
     let core_base_blob_hash = full_file_blob_hash(worktree_root, &document_path, &base_blob_hash);
     let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
@@ -928,6 +983,7 @@ mod tests {
     use crate::authoring::approvals::{
         ApprovalDecision, ApprovalRequestInput, ReviewDecisionInput, ReviewedTuple,
     };
+    use crate::authoring::leases::{AcquireLeaseInput, LeasePurpose, LeaseRecord};
     use crate::authoring::model::{ActorId, ActorKind, ApprovalId, ChangesetKind, SessionId};
     use crate::authoring::operations::MaterializedProposalOperation;
     use crate::authoring::snapshots::{PreimageCaptureRequest, SnapshotReader};
@@ -1193,6 +1249,58 @@ mod tests {
         CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_millis(300))
     }
 
+    /// A core that LANDS the materialized write (copies `NEW_BODY` into the target during
+    /// the invoke) and THEN hangs past the deadline — the realistic "killed but the write
+    /// already landed" sequence. The mutation happens DURING invoke (after the preflight
+    /// conflict gate, which sees the base), so it never masquerades as a pre-apply stale
+    /// base. The body is staged in Rust (no shell escaping); the core copies it in place.
+    fn landing_timeout_adapter(worktree_root: &Path) -> CoreAdapter {
+        std::fs::write(worktree_root.join(".landing-source"), NEW_BODY).unwrap();
+        let invocation = if cfg!(windows) {
+            vec![
+                "powershell".to_string(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!(
+                    "& {{ Copy-Item '.landing-source' '{DOC_PATH}' -Force; Start-Sleep -Seconds 30 }}"
+                ),
+            ]
+        } else {
+            vec![
+                "sh".to_string(),
+                "-c".into(),
+                format!("cp .landing-source '{DOC_PATH}'; sleep 30"),
+            ]
+        };
+        // A longer deadline than the bare hang: the mutation must COMPLETE (past a cold
+        // shell/PowerShell start) before the kill; the process is still sleeping at the
+        // deadline, so the invoke is still an OUTCOME-INDETERMINATE Timeout.
+        CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_millis(2500))
+    }
+
+    /// A core that REMOVES the target during the invoke and then hangs — the "killed, and
+    /// the post-state is now unreadable" sequence. The removal happens DURING invoke (after
+    /// the preflight, which sees the intact base), so the fail-closed post-verify path is
+    /// exercised without an artificial pre-apply anchor drift.
+    fn removing_timeout_adapter() -> CoreAdapter {
+        let invocation = if cfg!(windows) {
+            vec![
+                "powershell".to_string(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!("& {{ Remove-Item '{DOC_PATH}' -Force; Start-Sleep -Seconds 30 }}"),
+            ]
+        } else {
+            vec![
+                "sh".to_string(),
+                "-c".into(),
+                format!("rm '{DOC_PATH}'; sleep 30"),
+            ]
+        };
+        // A longer deadline than the bare hang so the removal COMPLETES before the kill.
+        CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_millis(2500))
+    }
+
     fn apply(
         fx: &mut Fx,
         adapter: &CoreAdapter,
@@ -1213,6 +1321,7 @@ mod tests {
                 proposal_id: &proposal_id,
                 actor,
                 idempotency_key: &key,
+                fencing_token: None,
                 now_ms: now,
             },
         )
@@ -1226,6 +1335,214 @@ mod tests {
                 Ok(uow.ledger().latest(&changeset_id)?.unwrap().status)
             })
             .unwrap()
+    }
+
+    /// Apply presenting a specific advisory fencing token (or `None`), so the apply-side
+    /// fence (W14.P42a) can be exercised against a seeded lease.
+    fn apply_with_token(
+        fx: &mut Fx,
+        adapter: &CoreAdapter,
+        actor: &ActorRef,
+        key: &str,
+        now: i64,
+        fencing_token: Option<i64>,
+    ) -> ApplyOutcome {
+        let key = IdempotencyKey::new(key).unwrap();
+        let root = fx.root.clone();
+        let changeset_id = fx.changeset_id.clone();
+        let proposal_id = fx.proposal_id.clone();
+        apply_changeset(
+            &mut fx.store,
+            adapter,
+            &root,
+            ApplyRequest {
+                changeset_id: &changeset_id,
+                proposal_id: &proposal_id,
+                actor,
+                idempotency_key: &key,
+                fencing_token,
+                now_ms: now,
+            },
+        )
+        .unwrap()
+    }
+
+    /// Seed a live advisory lease on the apply target's per-document scope, held by
+    /// `holder`, returning the issued lease record (its `fencing_token` is the current one).
+    fn seed_lease(fx: &mut Fx, holder: &ActorRef, now: i64) -> LeaseRecord {
+        let scope = document_lease_scope(&fx.root, "doc:apply-demo");
+        fx.store
+            .with_unit_of_work(CommandKind::AcquireLease, |uow| {
+                uow.leases().acquire_lease(AcquireLeaseInput {
+                    scope_id: scope,
+                    purpose: LeasePurpose::WholeDocument,
+                    holder: holder.clone(),
+                    idempotency_key: format!("idem:lease:{}", holder.id.as_str()),
+                    created_at_ms: now,
+                    ttl_ms: None,
+                })
+            })
+            .unwrap()
+            .record
+            .expect("a fresh acquisition records a lease")
+    }
+
+    #[test]
+    fn a_live_lease_fences_a_stale_presented_token_but_admits_the_current_one() {
+        let mut fx = setup(true);
+        let applier = fx.applier.clone();
+        // A DIFFERENT active actor holds a live lease on the target document's scope.
+        let holder = actor("human:reviewer", ActorKind::Human);
+        let token = seed_lease(&mut fx, &holder, 90).fencing_token;
+        assert!(token >= 1, "a fresh lease issues a monotonic token");
+
+        // A PRESENTED token that is not the scope's current one is fenced out (P26
+        // monotonicity), and the ledger does not advance.
+        let stale = apply_with_token(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:stale",
+            100,
+            Some(token + 5),
+        );
+        assert!(
+            !stale.eligibility.allowed,
+            "a stale presented token is fenced out"
+        );
+        assert!(stale.receipt.is_none());
+        assert!(
+            stale
+                .eligibility
+                .reason
+                .as_ref()
+                .is_some_and(|reason| reason.contains("fencing token")),
+            "the denial names the fencing token: {:?}",
+            stale.eligibility.reason
+        );
+        assert_eq!(
+            ledger_status(&mut fx),
+            ChangesetStatus::Approved,
+            "the fenced apply left the ledger untouched"
+        );
+
+        // Presenting the CURRENT token proceeds — a holder's current token finalizes.
+        let ok = apply_with_token(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:token",
+            101,
+            Some(token),
+        );
+        assert!(ok.eligibility.allowed, "{:?}", ok.eligibility.reason);
+        assert_eq!(
+            ok.receipt
+                .expect("the fenced-through apply records a receipt")
+                .state,
+            ApplyState::Applied
+        );
+    }
+
+    #[test]
+    fn an_absent_token_under_a_live_lease_proceeds() {
+        let mut fx = setup(true);
+        let applier = fx.applier.clone();
+        // A different active actor holds a live lease, but the applier presents NO token.
+        let holder = actor("human:reviewer", ActorKind::Human);
+        let _token = seed_lease(&mut fx, &holder, 90).fencing_token;
+
+        // ADVISORY: an absent token is a non-participant — the apply PROCEEDS. Leases never
+        // gate correctness; the revision check is the anti-stale-write floor. Denying it
+        // would strand every approved apply (system / direct-write / execute present none).
+        let outcome = apply_with_token(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:absent",
+            100,
+            None,
+        );
+        assert!(
+            outcome.eligibility.allowed,
+            "{:?}",
+            outcome.eligibility.reason
+        );
+        assert_eq!(
+            outcome
+                .receipt
+                .expect("the unfenced apply records a receipt")
+                .state,
+            ApplyState::Applied
+        );
+    }
+
+    #[test]
+    fn an_apply_with_no_live_lease_proceeds_unfenced() {
+        let mut fx = setup(true);
+        let applier = fx.applier.clone();
+        // No lease on the scope: advisory fencing requires none, so a tokenless apply lands.
+        let outcome = apply_with_token(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:nolease",
+            100,
+            None,
+        );
+        assert!(
+            outcome.eligibility.allowed,
+            "{:?}",
+            outcome.eligibility.reason
+        );
+        assert_eq!(
+            outcome
+                .receipt
+                .expect("an unfenced apply records a receipt")
+                .state,
+            ApplyState::Applied
+        );
+    }
+
+    #[test]
+    fn an_out_of_band_edit_conflicts_and_refuses_the_apply_as_a_value() {
+        let mut fx = setup(true);
+        let applier = fx.applier.clone();
+        // An out-of-band edit changes the target document since the proposal was drafted:
+        // its base is now stale (and the new content is NOT the proposal's result). The
+        // apply preflight consults the conflict detector and REFUSES as a denial VALUE (no
+        // receipt), never clobbering the out-of-band change. No lease bypasses this — the
+        // revision check is the correctness floor.
+        std::fs::write(
+            &fx.doc_file,
+            "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\n---\n\n# apply demo\n\nsomeone else edited this\n",
+        )
+        .unwrap();
+
+        let outcome = apply(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:conflict",
+            100,
+        );
+        assert!(
+            !outcome.eligibility.allowed,
+            "a stale base refuses the apply as a value"
+        );
+        assert!(
+            outcome.receipt.is_none(),
+            "a preflight conflict denial carries no receipt (the core never ran)"
+        );
+        assert!(
+            outcome.eligibility.reason.is_some(),
+            "the denial carries the conflict reason"
+        );
+        assert_eq!(
+            ledger_status(&mut fx),
+            ChangesetStatus::Approved,
+            "the refused apply left the ledger untouched"
+        );
     }
 
     fn outbox_events(fx: &mut Fx) -> Vec<OutboxEvent> {
@@ -1407,6 +1724,7 @@ mod tests {
                 proposal_id: &proposal_id,
                 actor: &applier,
                 idempotency_key: &key,
+                fencing_token: None,
                 now_ms: 100,
             },
         )
@@ -1480,11 +1798,12 @@ mod tests {
     #[test]
     fn an_indeterminate_kill_whose_write_landed_is_recorded_applied() {
         let mut fx = setup(true);
-        // Simulate "the killed core (or its surviving grandchild) DID finish the
-        // write": the target file already holds the materialized content.
-        std::fs::write(&fx.doc_file, NEW_BODY).unwrap();
+        // Simulate "the killed core (or its surviving grandchild) DID finish the write":
+        // the adapter lands the materialized content DURING the invoke, then is killed —
+        // so the preflight (which runs first) sees the intact base, not a stale one.
         let applier = fx.applier.clone();
-        let outcome = apply(&mut fx, &timeout_adapter(), &applier, "idem:apply:1", 100);
+        let adapter = landing_timeout_adapter(&fx.root);
+        let outcome = apply(&mut fx, &adapter, &applier, "idem:apply:1", 100);
         let receipt = outcome.receipt.unwrap();
         assert_eq!(
             receipt.state,
@@ -1518,10 +1837,12 @@ mod tests {
     #[test]
     fn an_indeterminate_kill_with_unreadable_post_state_fails_closed() {
         let mut fx = setup(true);
-        // The document cannot be read post-attempt: never forge Applied.
-        std::fs::remove_file(&fx.doc_file).unwrap();
+        // The document is removed DURING the invoke (then the core is killed), so the
+        // post-state cannot be read: never forge Applied. The preflight ran first against
+        // the intact base, so this is a genuine fail-closed, not a pre-apply anchor drift.
         let applier = fx.applier.clone();
-        let outcome = apply(&mut fx, &timeout_adapter(), &applier, "idem:apply:1", 100);
+        let adapter = removing_timeout_adapter();
+        let outcome = apply(&mut fx, &adapter, &applier, "idem:apply:1", 100);
         let receipt = outcome.receipt.unwrap();
         assert_eq!(
             receipt.state,
@@ -1638,6 +1959,7 @@ mod tests {
                         proposal_id: &proposal_id,
                         actor: &applier,
                         idempotency_key: &key,
+                        fencing_token: None,
                         now_ms: 100,
                     },
                 )

@@ -138,6 +138,9 @@ jobs:
           set -euo pipefail
           npm --prefix frontend ci
           npm --prefix frontend run build
+          rm -rf engine/crates/vaultspec-api/assets/spa
+          mkdir -p engine/crates/vaultspec-api/assets
+          cp -r frontend/dist engine/crates/vaultspec-api/assets/spa
         shell: "bash"
       - name: Install dist
         run: ${{ matrix.install_dist.run }}
@@ -306,3 +309,12 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+
+  custom-scoop-bump:
+    needs:
+      - plan
+      - announce
+    uses: ./.github/workflows/scoop-bump.yml
+    with:
+      plan: ${{ needs.plan.outputs.val }}
+    secrets: inherit

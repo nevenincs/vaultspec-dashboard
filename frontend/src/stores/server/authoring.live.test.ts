@@ -45,6 +45,7 @@ const TARGET_PATH = ".vault/research/2026-01-01-alpha-research.md";
 
 let client: AuthoringClient;
 let baseRevision: string;
+let scopeToken: string;
 let proposedBody: string;
 
 /** Create a durable authoring session over the wire and return its
@@ -89,7 +90,7 @@ function replaceProposal(
         target: {
           document: {
             kind: "existing",
-            scope: "worktree",
+            scope: scopeToken,
             node_id: TARGET_NODE_ID,
             stem: TARGET_STEM,
             path: TARGET_PATH,
@@ -111,6 +112,7 @@ beforeAll(async () => {
   // worktree the authoring domain also reads — so create + submit fence against the
   // same base, and the proposed body is a valid doc (original + one paragraph).
   const scope = await liveScope();
+  scopeToken = scope;
   const content = await createLiveClient().content(TARGET_NODE_ID, scope);
   baseRevision = `blob:${content.blob_hash}`;
   proposedBody = `${content.text.replace(/\n+$/, "")}\n\nAppended by the review-station walking skeleton.\n`;

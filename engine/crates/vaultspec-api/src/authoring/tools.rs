@@ -57,6 +57,11 @@ impl SemanticToolName {
         }
     }
 
+    /// Resolve a semantic tool from its wire name (the inverse of [`Self::as_str`]).
+    pub(crate) fn from_wire(name: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|tool| tool.as_str() == name)
+    }
+
     pub fn command(self) -> CommandKind {
         match self {
             Self::ReadContext => CommandKind::ReadContext,

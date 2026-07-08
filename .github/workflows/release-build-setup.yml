@@ -11,8 +11,14 @@
 - name: Build the SPA bundle for embedding
   # bash on every matrix runner: pwsh only checks native exit codes at script
   # end, so a failed `npm ci` would not halt before the build (P03 review).
+  # The bundle is staged INSIDE the api crate (distribution-channels ADR:
+  # boundary-clean embed) — the rust-embed folder is crate-relative and a
+  # feature-on build without staging is a compile error.
   shell: bash
   run: |
     set -euo pipefail
     npm --prefix frontend ci
     npm --prefix frontend run build
+    rm -rf engine/crates/vaultspec-api/assets/spa
+    mkdir -p engine/crates/vaultspec-api/assets
+    cp -r frontend/dist engine/crates/vaultspec-api/assets/spa

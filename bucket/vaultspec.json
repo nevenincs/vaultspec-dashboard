@@ -1,0 +1,16 @@
+{
+    "version": "0.1.0",
+    "description": "Unified dashboard UI for the vaultspec ecosystem",
+    "homepage": "https://github.com/nevenincs/vaultspec-dashboard",
+    "license": "MIT",
+    "url": "https://github.com/nevenincs/vaultspec-dashboard/releases/download/v0.1.0/vaultspec-cli-x86_64-pc-windows-msvc.zip",
+    "hash": "157b69cf13396e7f4ecafb71c7c863ea3a397090966e7d560347905d5d56aae8",
+    "bin": "vaultspec.exe",
+    "checkver": "github",
+    "autoupdate": {
+        "url": "https://github.com/nevenincs/vaultspec-dashboard/releases/download/v$version/vaultspec-cli-x86_64-pc-windows-msvc.zip",
+        "hash": {
+            "url": "$url.sha256"
+        }
+    }
+}

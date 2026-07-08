@@ -29,30 +29,38 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use ingest_struct::reader::blob_oid;
 use serde::de::DeserializeOwned;
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::actors::{ActorDisplayMetadata, ActorRecordInput};
 use super::api::{
-    ApplyRequest as ApplyRequestDto, CancelRunRequest, CommandEnvelope, CreateProposalRequest,
-    CreateSessionRequest, DirectWriteRequest as DirectWriteRequestDto, IssueActorTokenRequest,
-    ResumeRunRequest, ReviewDecisionRequest, RollbackRequest as RollbackRequestDto,
-    SetOperationModeRequest, StartPromptTurnRequest, SubmitForReviewRequest,
+    ApplyRequest as ApplyRequestDto, CancelRunRequest, ChangesetChildOperationDraft,
+    CommandEnvelope, CreateProposalRequest, CreateSessionRequest,
+    DirectWriteRequest as DirectWriteRequestDto, InterruptResumeRequest, IssueActorTokenRequest,
+    LeaseAcquireRequest, LeaseReleaseRequest, LeaseRenewRequest, ResumeRunRequest,
+    ReviewDecisionRequest, RollbackRequest as RollbackRequestDto, SetOperationModeRequest,
+    StartPromptTurnRequest, SubmitForReviewRequest, ToolPermissionDecisionRequest,
 };
 use super::apply::{ApplyError, ApplyOutcome, ApplyRequest};
 use super::approvals::{
     ApprovalDecision, ApprovalError, ApprovalOutcome, ApprovalRequestInput, ApprovalRequestRecord,
     ReviewDecisionInput, ReviewedTuple, V1_POLICY_VERSION,
 };
+use super::conflicts::{document_lease_scope, existing_node_id};
 use super::core_adapter::CoreAdapter;
+use super::executor::{
+    ExecuteDisposition, ExecuteOutcome, ExecuteToolCallRequest, execute_tool_call,
+};
+use super::leases::{AcquireLeaseInput, LeaseOutcome};
 use super::ledger::ChangesetAggregateRecord;
 use super::model::{
     ActionEligibility, ActorId, ActorKind, ActorRef, ApplyState, ApprovalId, ChangesetId,
-    ChangesetStatus, CommandKind, IdempotencyKey, ProposalId, ReviewDecisionKind, RevisionToken,
-    RunId, SessionId,
+    ChangesetStatus, CommandKind, DocumentRef, IdempotencyKey, InterruptId, ProposalId,
+    ReviewDecisionKind, RevisionToken, RunId, SessionId, ToolCallId,
 };
 use super::modes::{
     ModeAutoApprovalOutcome, OperationModeUpdate, scope_id_for_worktree, system_actor,
 };
+use super::policy::ToolRiskTier;
 use super::principal::{
     AUTHORING_ACTOR_TOKEN_HEADER, AuthenticatedPrincipal, PrincipalDenial, ResolvedCommand,
     resolve_principal,
@@ -60,12 +68,16 @@ use super::principal::{
 use super::projections::ProjectionError;
 use super::proposal::{
     DraftProposalRequest, ProposalCommandContext, ProposalCommandOutcome, ProposalCommandResult,
-    SubmitProposalRequest, ValidateProposalRequest, validation_evidence,
+    SubmitProposalRequest, TerminalProposalRequest, ValidateProposalRequest, validation_evidence,
 };
 use super::rollback::{RollbackOutcome, RollbackRequest, RollbackSourceChild};
+use super::security::{CommandAuthorization, authorize_command, tool_requester_kind_guard};
 use super::snapshots::SnapshotReader;
 use super::store::{Result as StoreResult, Store, StoreError};
-use super::tools::{AgentToolCall, ToolError};
+use super::tools::{
+    AgentToolCall, CancelProposalAlias, DraftAlias, PreparedToolCall, PreparedToolDispatch,
+    ProposeChangesetDispatch, SemanticToolName, ToolError, ValidateProposalToolInput,
+};
 use super::transitions::ValidationFreshness;
 use crate::app::{AppState, now_ms};
 
@@ -103,6 +115,25 @@ const TOKEN_UNKNOWN_KIND: &str = "authoring_actor_token_unknown";
 /// The authoring store could not be opened/read to resolve the principal — the
 /// authoring domain degrades honestly rather than the engine panicking.
 const STORE_UNAVAILABLE_KIND: &str = "authoring_store_unavailable";
+
+/// An authorization refusal: the principal RESOLVED (a live token), but the composed
+/// authorization engine ([`authorize_command`]) denied the command — an unregistered or
+/// deactivated actor, a stale delegator (confused-deputy fence), or a target outside the
+/// session's authorized scope. A distinct kind from the identity denials above
+/// (missing / unknown token → 401) and from a bad request (422): the actor is who they
+/// say, but lacks authority (403). The reason is authored id/path/token-free.
+const AUTHORIZATION_DENIED_KIND: &str = "authoring_authorization_denied";
+
+/// A genuine infrastructure failure raised while AUTHORIZING a command — never an
+/// authorization refusal (those are eligibility VALUES). Rendered redacted so no id,
+/// path, or token leaks from the authorization path.
+#[derive(Debug, Clone, Copy)]
+enum AuthorizationFault {
+    /// The authoring store could not be opened/read to run the authorization guards.
+    StoreUnavailable,
+    /// An authorization guard hit a backend fault reading the actor registry.
+    Backend,
+}
 
 /// The outcome of the principal middleware, carried in the request extensions.
 /// A command route reads this back through [`ResolvedCommand`]; a read route
@@ -199,6 +230,40 @@ impl ResolvedCommandRejection {
             ),
         }
     }
+
+    /// A resolved principal the authorization engine DENIED (unregistered/deactivated
+    /// actor, stale delegator). Surfaced as a 403 with the engine's id/path/token-free
+    /// reason. The scope guard cannot fire here (the extractor floor supplies no
+    /// targets); it runs in the handlers that carry drafted targets.
+    fn authorization_denied(state: &AppState, eligibility: &ActionEligibility) -> Self {
+        Self::enveloped(
+            state,
+            StatusCode::FORBIDDEN,
+            AUTHORIZATION_DENIED_KIND,
+            eligibility
+                .reason
+                .clone()
+                .unwrap_or_else(|| "the acting principal is not authorized".to_string()),
+        )
+    }
+
+    /// A genuine infrastructure fault while authorizing — redacted, tiers-bearing.
+    fn authorization_fault(state: &AppState, fault: AuthorizationFault) -> Self {
+        match fault {
+            AuthorizationFault::StoreUnavailable => Self::enveloped(
+                state,
+                StatusCode::SERVICE_UNAVAILABLE,
+                STORE_UNAVAILABLE_KIND,
+                "authoring store is unavailable".to_string(),
+            ),
+            AuthorizationFault::Backend => Self::enveloped(
+                state,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "authoring_internal_error",
+                "an internal authorization check could not be completed".to_string(),
+            ),
+        }
+    }
 }
 
 impl IntoResponse for ResolvedCommandRejection {
@@ -244,7 +309,21 @@ where
                 )
             })?;
 
-        Ok(ResolvedCommand::from_principal(principal, envelope))
+        let resolved = ResolvedCommand::from_principal(principal, envelope);
+        // W14.P42a — the route-layer authorization FLOOR. Every mutating command is
+        // constructed here and NOWHERE else, so running the standing + delegation guards
+        // ([`authorize_command`] with no scope/targets/origin) before returning refuses an
+        // unregistered, deactivated, or stale-delegated actor on EVERY mutating route with
+        // no bypass. The document-scope and review-authority guards run in the handlers
+        // that carry a session scope, drafted targets, or an origin author.
+        match run_authorization(state, resolved.command(), resolved.actor(), None, &[], None) {
+            Ok(eligibility) if eligibility.allowed => Ok(resolved),
+            Ok(eligibility) => Err(ResolvedCommandRejection::authorization_denied(
+                state,
+                &eligibility,
+            )),
+            Err(fault) => Err(ResolvedCommandRejection::authorization_fault(state, fault)),
+        }
     }
 }
 
@@ -331,6 +410,52 @@ pub async fn project_proposal(
     }
 }
 
+/// `GET /authoring/v1/proposals/{changeset_id}/conflicts` — the backend-served
+/// base-revision CONFLICT REPORT (W13.P27), a pure read ADDITIVE to the cheap `conflict`
+/// field on the proposal projection (its served shape is unchanged). Detects stale bases,
+/// stale whole-document drafts, overlapping-hunk siblings, anchor drift, and advisory-lease
+/// policy collisions over the current worktree + the live corpus. No principal required
+/// (reads are unauthenticated); a projection failure degrades to a typed 503.
+pub async fn proposal_conflicts(
+    State(state): State<Arc<AppState>>,
+    Path(changeset_id): Path<String>,
+) -> Response {
+    let changeset_id = match ChangesetId::new(&changeset_id) {
+        Ok(id) => id,
+        Err(err) => {
+            return super::response::typed_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                REQUEST_INVALID_KIND,
+                &format!("invalid changeset id: {err}"),
+            )
+            .into_response();
+        }
+    };
+    let now = now_ms();
+    let worktree_root = state.active_workspace_root();
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            uow.projections()
+                .conflict_report(&changeset_id, &worktree_root, now)
+                .map_err(|ProjectionError::Store(err)| err)
+        })
+    }) {
+        Ok(Some(report)) => {
+            let data = serde_json::to_value(report).expect("conflict report serializes");
+            super::response::snapshot(&state, data).into_response()
+        }
+        Ok(None) => super::response::typed_error(
+            &state,
+            StatusCode::NOT_FOUND,
+            "authoring_proposal_not_found",
+            "no such changeset",
+        )
+        .into_response(),
+        Err(err) => store_unavailable(&state, &err),
+    }
+}
+
 /// `GET /authoring/v1/proposals/{changeset_id}/snapshot` — the full changeset
 /// revision history + latest aggregate + latest validation record (the
 /// lower-level read behind the review projection). The domain `ProposalSnapshot`
@@ -387,11 +512,23 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/v1/recovery", get(super::stream::recovery))
         .route("/v1/agent-tools", get(agent_tool_catalog))
         .route("/v1/agent-tools/prepare", post(prepare_agent_tool_call))
+        .route(
+            "/v1/agent-tools/{tool_call_id}/permission-decision",
+            post(decide_tool_permission),
+        )
+        .route(
+            "/v1/interrupts/{interrupt_id}/resume",
+            post(resume_interrupt),
+        )
         .route("/v1/sessions", get(list_sessions).post(create_session))
         .route("/v1/sessions/{session_id}", get(get_session))
         .route("/v1/sessions/{session_id}/turns", post(start_prompt_turn))
         .route("/v1/runs/{run_id}/cancel", post(cancel_run))
         .route("/v1/runs/{run_id}/resume", post(resume_run))
+        .route(
+            "/v1/runs/{run_id}/agent-tools/execute",
+            post(execute_agent_tool_call),
+        )
         .route("/v1/proposals", get(list_proposals).post(create_proposal))
         .route("/v1/proposals/{changeset_id}", get(project_proposal))
         .route(
@@ -407,6 +544,10 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
             get(proposal_snapshot),
         )
         .route(
+            "/v1/proposals/{changeset_id}/conflicts",
+            get(proposal_conflicts),
+        )
+        .route(
             "/v1/proposals/{changeset_id}/submit",
             post(submit_for_review),
         )
@@ -418,6 +559,12 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/v1/rollback-proposals", post(create_rollback))
         .route("/v1/mode", post(set_operation_mode))
         .route("/v1/direct-writes", post(direct_write))
+        // Advisory leases (W13.P26, wired W14.P42a): acquire / renew / release a
+        // per-document lease + its monotonic fencing token. Mutating → standing-authorized
+        // by the extractor floor.
+        .route("/v1/leases", post(acquire_lease))
+        .route("/v1/leases/renew", post(renew_lease))
+        .route("/v1/leases/release", post(release_lease))
         // The bootstrap seam: mint a per-principal actor token. Machine-bearer-gated
         // by the app router; the permissive principal layer never blocks it (it uses
         // a plain JSON body, not the ResolvedCommand extractor).
@@ -487,6 +634,100 @@ fn tool_error_response(state: &AppState, err: &ToolError) -> Response {
         &err.to_string(),
     )
     .into_response()
+}
+
+/// `POST /authoring/v1/agent-tools/{tool_call_id}/permission-decision` — a human
+/// grants or rejects a queued tool-permission request (W12.P41). The reviewer is the
+/// server-resolved principal (ASA-010), never a body claim. Reviewer authority is the
+/// P22-R1 gate reused verbatim inside `submit_decision` (human-only, not the requester
+/// nor its delegate) — an authority denial rides the 200 envelope as a value
+/// (denials-are-values); only a genuine fault (unknown request, conflicting decision)
+/// is a non-200.
+pub async fn decide_tool_permission(
+    State(state): State<Arc<AppState>>,
+    Path(tool_call_id): Path<ToolCallId>,
+    command: ResolvedCommand<ToolPermissionDecisionRequest>,
+) -> Response {
+    let now = now_ms();
+    let (reviewer, _command, _idempotency_key, payload) = command.into_parts();
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::RequestToolPermission, |uow| {
+            uow.tool_permissions()
+                .submit_decision(
+                    &tool_call_id,
+                    payload.decision,
+                    &reviewer,
+                    payload.comment,
+                    now,
+                )
+                .map_err(permission_error_to_store)
+        })
+    }) {
+        Ok(outcome) => tool_permission_outcome_response(&state, outcome),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `POST /authoring/v1/interrupts/{interrupt_id}/resume` — resume a paused run by
+/// resolving its interrupt BY ID (W12.P41, P32). Replay-safe: an already-resolved
+/// interrupt returns its recorded decision unchanged (never re-decides). The decision
+/// payload is opaque domain JSON.
+pub async fn resume_interrupt(
+    State(state): State<Arc<AppState>>,
+    Path(interrupt_id): Path<InterruptId>,
+    command: ResolvedCommand<InterruptResumeRequest>,
+) -> Response {
+    let now = now_ms();
+    let (_actor, _command, _idempotency_key, payload) = command.into_parts();
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::ResumeRun, |uow| {
+            uow.interrupts()
+                .resolve_interrupt(&interrupt_id, payload.decision.to_string(), now)
+        })
+    }) {
+        Ok(outcome) => super::response::snapshot(
+            &state,
+            json!({
+                "status": "resumed",
+                "replayed": outcome.replayed,
+                "interrupt": outcome.record,
+            }),
+        )
+        .into_response(),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// A tool-permission decision outcome as a tiered 200 value: the served eligibility
+/// (granted or a distinct denial reason), the durable record, and whether the decision
+/// replayed an earlier one.
+fn tool_permission_outcome_response(
+    state: &AppState,
+    outcome: super::permissions::ToolPermissionOutcome,
+) -> Response {
+    super::response::snapshot(
+        state,
+        json!({
+            "status": if outcome.eligibility.allowed { "granted" } else { "denied" },
+            "command": outcome.eligibility.command,
+            "allowed": outcome.eligibility.allowed,
+            "reason": outcome.eligibility.reason,
+            "replayed": outcome.replayed,
+            "record": outcome.record,
+        }),
+    )
+    .into_response()
+}
+
+/// Map a `PermissionError` fault to the shared `StoreError` taxonomy so the one
+/// `command_error_response` mapping applies: a store fault keeps its precise status
+/// (e.g. an unregistered actor stays a 403), while an unknown request or a not-permitted
+/// decision surfaces as a tool-permission refusal (422).
+fn permission_error_to_store(err: super::permissions::PermissionError) -> StoreError {
+    match err {
+        super::permissions::PermissionError::Store(store) => store,
+        other => StoreError::Permission(other.to_string()),
+    }
 }
 
 /// `POST /authoring/v1/sessions` — create a durable authoring workflow session.
@@ -645,6 +886,24 @@ fn command_error_response(state: &AppState, err: &StoreError) -> Response {
             "authoring_session_refused",
             err.to_string(),
         ),
+        // A lease construction fault (empty scope, malformed id, bad schema). Lease
+        // POLICY refusals — concurrent acquire, non-owner release, stale fencing token —
+        // are eligibility VALUES on the success envelope, never this error, so a
+        // `Lease` error is a genuine bad-request-shaped refusal: a 422.
+        StoreError::Lease(_) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "authoring_lease_refused",
+            err.to_string(),
+        ),
+        // A review-claim construction fault (empty id, malformed record, bad schema).
+        // Review-station POLICY refusals — claiming a held item, a non-holder release, an
+        // automated self-review — are eligibility VALUES on the success envelope, never
+        // this error, so a `ReviewStation` error is a genuine bad-request-shaped fault: 422.
+        StoreError::ReviewStation(_) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "authoring_review_station_refused",
+            err.to_string(),
+        ),
         // An authenticated principal that is not a registered/active actor is an
         // AUTHORIZATION refusal (the token resolved, but the actor cannot write) —
         // a 403, distinct from a bad request (422) or a store outage (503).
@@ -676,33 +935,80 @@ fn command_error_response(state: &AppState, err: &StoreError) -> Response {
     super::response::typed_error(state, status, kind, &message).into_response()
 }
 
-/// Map a completed proposal command to its enveloped response: an accepted
-/// outcome and an idempotent replay both serve the outcome snapshot (200); a
-/// still-in-flight prior attempt returns 202 so the client continues rather than
-/// re-issuing; an eligibility DENIAL rides the 200 success envelope as a denied
-/// value (denials-are-values), never a 4xx fault.
-fn proposal_result_response(state: &AppState, result: ProposalCommandResult) -> Response {
+/// Map a completed proposal command to its status + VALUE: an accepted outcome and
+/// an idempotent replay both serve the outcome (200); a still-in-flight prior
+/// attempt is 202 so the client continues rather than re-issuing; an eligibility
+/// DENIAL rides the 200 success envelope as a denied value (denials-are-values),
+/// never a 4xx fault. Shared by every proposal-command route AND the `/execute`
+/// agent-tool seam — one result mapping, no drift.
+fn proposal_result_value(result: &ProposalCommandResult) -> (StatusCode, Value) {
     match result {
-        ProposalCommandResult::Accepted { outcome, .. } => {
-            let data = serde_json::to_value(&outcome).expect("proposal outcome serializes");
-            super::response::snapshot(state, data).into_response()
-        }
-        ProposalCommandResult::Replayed { idempotency } => {
-            let data = idempotency
+        ProposalCommandResult::Accepted { outcome, .. } => (
+            StatusCode::OK,
+            serde_json::to_value(outcome).expect("proposal outcome serializes"),
+        ),
+        ProposalCommandResult::Replayed { idempotency } => (
+            StatusCode::OK,
+            idempotency
                 .outcome
-                .map(|outcome| outcome.payload)
-                .unwrap_or_else(|| json!({ "status": "replayed" }));
-            super::response::snapshot(state, data).into_response()
+                .as_ref()
+                .map(|outcome| outcome.payload.clone())
+                .unwrap_or_else(|| json!({ "status": "replayed" })),
+        ),
+        ProposalCommandResult::InFlight { .. } => {
+            (StatusCode::ACCEPTED, json!({ "status": "in_flight" }))
         }
-        ProposalCommandResult::InFlight { .. } => (
-            StatusCode::ACCEPTED,
-            super::response::snapshot(state, json!({ "status": "in_flight" })),
-        )
-            .into_response(),
         // Denials are VALUES: an eligibility refusal rides the SUCCESS envelope
         // (200) as a denied decision carrying the domain reason, never a 4xx fault
         // (denials-are-values ADR; errors are faults).
-        ProposalCommandResult::Denied { eligibility } => denial_snapshot(state, &eligibility),
+        ProposalCommandResult::Denied { eligibility } => {
+            (StatusCode::OK, denial_value(eligibility))
+        }
+    }
+}
+
+fn proposal_result_response(state: &AppState, result: ProposalCommandResult) -> Response {
+    let (status, value) = proposal_result_value(&result);
+    (status, super::response::snapshot(state, value)).into_response()
+}
+
+/// The shared `ProposalCommandContext` shape every proposal-command call site
+/// builds — a bounded in-flight reservation + a bounded replay-retention window.
+fn proposal_context(
+    actor: ActorRef,
+    idempotency_key: IdempotencyKey,
+    now: i64,
+) -> ProposalCommandContext {
+    ProposalCommandContext {
+        actor,
+        idempotency_key,
+        now_ms: now,
+        in_flight_expires_at_ms: Some(now + COMMAND_IN_FLIGHT_TTL_MS),
+        outcome_expires_at_ms: Some(now + COMMAND_OUTCOME_TTL_MS),
+    }
+}
+
+/// Map a completed session command to its status + VALUE. Shared by every
+/// session-command route AND the `/execute` agent-tool seam.
+fn session_result_value(result: &super::session::SessionCommandResult) -> (StatusCode, Value) {
+    match result {
+        super::session::SessionCommandResult::Accepted { outcome, .. }
+        | super::session::SessionCommandResult::Replayed { outcome, .. } => (
+            StatusCode::OK,
+            serde_json::to_value(outcome).expect("session outcome serializes"),
+        ),
+        super::session::SessionCommandResult::InFlight { idempotency } => (
+            StatusCode::ACCEPTED,
+            json!({
+                "status": "in_flight",
+                "command": idempotency.key_scope.command,
+                "idempotency_key": idempotency.key_scope.key,
+                "scope": {
+                    "kind": idempotency.scope.kind,
+                    "id": idempotency.scope.id,
+                },
+            }),
+        ),
     }
 }
 
@@ -710,29 +1016,8 @@ fn session_result_response(
     state: &AppState,
     result: super::session::SessionCommandResult,
 ) -> Response {
-    match result {
-        super::session::SessionCommandResult::Accepted { outcome, .. }
-        | super::session::SessionCommandResult::Replayed { outcome, .. } => {
-            let data = serde_json::to_value(&outcome).expect("session outcome serializes");
-            super::response::snapshot(state, data).into_response()
-        }
-        super::session::SessionCommandResult::InFlight { idempotency } => (
-            StatusCode::ACCEPTED,
-            super::response::snapshot(
-                state,
-                json!({
-                    "status": "in_flight",
-                    "command": idempotency.key_scope.command,
-                    "idempotency_key": idempotency.key_scope.key,
-                    "scope": {
-                        "kind": idempotency.scope.kind,
-                        "id": idempotency.scope.id,
-                    },
-                }),
-            ),
-        )
-            .into_response(),
-    }
+    let (status, value) = session_result_value(&result);
+    (status, super::response::snapshot(state, value)).into_response()
 }
 
 fn session_context(
@@ -749,20 +1034,91 @@ fn session_context(
     }
 }
 
-/// A denied eligibility as a 200 SUCCESS-envelope value (denials-are-values ADR):
+/// A denied eligibility as a 200 SUCCESS-envelope VALUE (denials-are-values ADR):
 /// the shared shape every command surface uses for a refusal — status, the command
-/// it refused, and the domain reason.
+/// it refused, and the domain reason. The value form is reused by every per-command
+/// result mapper (`proposal_result_value`, `session_result_value`, ...) AND by the
+/// `/execute` agent-tool seam, so a denial never drifts between surfaces.
+fn denial_value(eligibility: &ActionEligibility) -> Value {
+    json!({
+        "status": "denied",
+        "command": eligibility.command,
+        "allowed": eligibility.allowed,
+        "reason": eligibility.reason,
+    })
+}
+
 fn denial_snapshot(state: &AppState, eligibility: &ActionEligibility) -> Response {
-    super::response::snapshot(
-        state,
-        json!({
-            "status": "denied",
-            "command": eligibility.command,
-            "allowed": eligibility.allowed,
-            "reason": eligibility.reason,
-        }),
-    )
-    .into_response()
+    super::response::snapshot(state, denial_value(eligibility)).into_response()
+}
+
+/// The SERVER-AUTHORITATIVE authorized scope for a mutating command: the active
+/// workspace's `scope_token`. This is the EXACT identifier `DocumentResolver` writes into
+/// `DocumentRef::Existing.scope`, so a target claiming a different worktree path is a
+/// cross-workspace claim the scope guard refuses. Parity is load-bearing — `engine_model`
+/// `scope_token` (what `DocumentResolver` uses), never the mode layer's simpler
+/// `scope_id_for_worktree` (which diverges on the Windows extended-length prefix).
+fn active_authorized_scope(state: &AppState) -> String {
+    engine_model::scope_token(&state.active_workspace_root())
+}
+
+/// Run the composed authorization engine ([`authorize_command`]) for one mutating command
+/// over a bounded actor-registry read (W14.P42a). Standing + delegation always run; the
+/// document-scope guard runs when an `authorized_scope` is supplied AND `targets` are
+/// present; the review-authority guard runs for approve/apply-class commands carrying an
+/// `origin_author`. A refusal is a VALUE (`Ok(ActionEligibility { allowed: false, .. })`);
+/// only a genuine infrastructure failure is `Err`. The identity read rides a FIXED
+/// mutating command's unit of work (the house pattern: a deferred transaction that commits
+/// empty) — keying it on the ACTUAL `command` would reject a non-mutating one (a read tool
+/// routed through `/execute`) as a read-only-unit-of-work fault; the real command is still
+/// what `authorize_command` decides against.
+fn run_authorization(
+    state: &AppState,
+    command: CommandKind,
+    actor: &ActorRef,
+    authorized_scope: Option<&str>,
+    targets: &[&DocumentRef],
+    origin_author: Option<&ActorRef>,
+) -> Result<ActionEligibility, AuthorizationFault> {
+    let outcome = state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::CreateSession, |uow| {
+            let authorization = CommandAuthorization {
+                command,
+                actor,
+                authorized_scope,
+                targets,
+                origin_author,
+            };
+            Ok(authorize_command(&uow.actors(), &authorization))
+        })
+    });
+    match outcome {
+        Ok(Ok(eligibility)) => Ok(eligibility),
+        // A `SecurityFault` is already redacted at the engine; never echoed.
+        Ok(Err(_security_fault)) => Err(AuthorizationFault::Backend),
+        Err(_store_error) => Err(AuthorizationFault::StoreUnavailable),
+    }
+}
+
+/// Render an authorization infrastructure fault as a redacted, tiers-bearing error for a
+/// handler that returns a [`Response`] (the extractor renders its own rejection shape).
+fn authorization_fault_response(state: &AppState, fault: AuthorizationFault) -> Response {
+    match fault {
+        AuthorizationFault::StoreUnavailable => super::response::typed_error(
+            state,
+            StatusCode::SERVICE_UNAVAILABLE,
+            STORE_UNAVAILABLE_KIND,
+            "authoring store is unavailable",
+        )
+        .into_response(),
+        AuthorizationFault::Backend => super::response::typed_error(
+            state,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "authoring_internal_error",
+            "an internal authorization check could not be completed",
+        )
+        .into_response(),
+    }
 }
 
 /// `POST /authoring/v1/proposals` — open a new authoring changeset (a Draft
@@ -774,14 +1130,17 @@ pub async fn create_proposal(
     command: ResolvedCommand<CreateProposalRequest>,
 ) -> Response {
     let now = now_ms();
-    let (actor, _command, idempotency_key, payload) = command.into_parts();
-    let context = ProposalCommandContext {
-        actor,
-        idempotency_key,
-        now_ms: now,
-        in_flight_expires_at_ms: Some(now + COMMAND_IN_FLIGHT_TTL_MS),
-        outcome_expires_at_ms: Some(now + COMMAND_OUTCOME_TTL_MS),
-    };
+    let (actor, command_kind, idempotency_key, payload) = command.into_parts();
+    // W14.P42a — document-scope guard: fence every drafted target against the active
+    // workspace's SERVER-AUTHORITATIVE authorized scope. Standing + delegation already
+    // cleared at the extractor floor; a target claiming a different workspace is a denial
+    // VALUE on the 200 envelope (denials-are-values), never a fault.
+    if let Some(denied) =
+        authorize_targets_or_deny(&state, command_kind, &actor, &payload.operations)
+    {
+        return denied;
+    }
+    let context = proposal_context(actor, idempotency_key, now);
     // The materializer reads the vault worktree (parent of `.vault`).
     let reader = SnapshotReader::for_worktree(state.active_workspace_root());
     match state.with_authoring_store(|store| {
@@ -789,6 +1148,37 @@ pub async fn create_proposal(
     }) {
         Ok(result) => proposal_result_response(&state, result),
         Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// Fence a mutating command's client-supplied operation targets against the active
+/// workspace's authorized scope (W14.P42a document-scope guard). Standing + delegation are
+/// already enforced at the extractor floor; this adds the target/scope dimension for the
+/// handlers that carry drafted `DocumentRef` targets. Returns the denial `Response` when a
+/// target is out of scope (a value) or authorization faults (redacted), or `None` when the
+/// command may proceed.
+fn authorize_targets_or_deny(
+    state: &AppState,
+    command: CommandKind,
+    actor: &ActorRef,
+    operations: &[ChangesetChildOperationDraft],
+) -> Option<Response> {
+    let authorized_scope = active_authorized_scope(state);
+    let targets: Vec<&DocumentRef> = operations
+        .iter()
+        .map(|operation| &operation.target.document)
+        .collect();
+    match run_authorization(
+        state,
+        command,
+        actor,
+        Some(&authorized_scope),
+        &targets,
+        None,
+    ) {
+        Ok(eligibility) if eligibility.allowed => None,
+        Ok(eligibility) => Some(denial_snapshot(state, &eligibility)),
+        Err(fault) => Some(authorization_fault_response(state, fault)),
     }
 }
 
@@ -822,7 +1212,7 @@ async fn mutate_proposal_draft(
         }
     };
     let now = now_ms();
-    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let (actor, command_kind, idempotency_key, payload) = command.into_parts();
     if payload.changeset_id != changeset_id {
         return super::response::typed_error(
             &state,
@@ -832,21 +1222,35 @@ async fn mutate_proposal_draft(
         )
         .into_response();
     }
-    let context = ProposalCommandContext {
-        actor,
-        idempotency_key,
-        now_ms: now,
-        in_flight_expires_at_ms: Some(now + COMMAND_IN_FLIGHT_TTL_MS),
-        outcome_expires_at_ms: Some(now + COMMAND_OUTCOME_TTL_MS),
-    };
-    let reader = SnapshotReader::for_worktree(state.active_workspace_root());
-    match state.with_authoring_store(|store| match route {
-        DraftRoute::Append => super::proposal::append_draft(store, &reader, context, payload),
-        DraftRoute::Replace => super::proposal::replace_draft(store, &reader, context, payload),
-    }) {
+    // W14.P42a — document-scope guard: fence the appended/replaced targets against the
+    // active workspace's authorized scope, the same as create.
+    if let Some(denied) =
+        authorize_targets_or_deny(&state, command_kind, &actor, &payload.operations)
+    {
+        return denied;
+    }
+    let context = proposal_context(actor, idempotency_key, now);
+    match dispatch_draft_mutation(&state, context, payload, route) {
         Ok(result) => proposal_result_response(&state, result),
         Err(err) => command_error_response(&state, &err),
     }
+}
+
+/// The append/replace draft dispatch: builds its own worktree-scoped reader and
+/// routes to the shipped `append_draft`/`replace_draft` domain handler. Shared by
+/// the `/append`/`/replace` HTTP routes AND the `/execute` agent-tool seam's
+/// `propose_changeset` append/replace aliases — one implementation, no drift.
+fn dispatch_draft_mutation(
+    state: &Arc<AppState>,
+    context: ProposalCommandContext,
+    request: DraftProposalRequest,
+    route: DraftRoute,
+) -> StoreResult<ProposalCommandResult> {
+    let reader = SnapshotReader::for_worktree(state.active_workspace_root());
+    state.with_authoring_store(|store| match route {
+        DraftRoute::Append => super::proposal::append_draft(store, &reader, context, request),
+        DraftRoute::Replace => super::proposal::replace_draft(store, &reader, context, request),
+    })
 }
 
 /// `POST /authoring/v1/proposals/{changeset_id}/append` — append operations to a draft
@@ -980,6 +1384,55 @@ fn approval_err_to_store(err: ApprovalError) -> StoreError {
     }
 }
 
+/// Fetch a changeset's latest ledger revision, or a typed `StaleRevision` fault
+/// naming `action` (the caller's verb) when the changeset has no history at all.
+/// Shared by the submit composition's own lookup AND the standalone
+/// `validate_proposal` agent-tool dispatch, so the two never resolve "latest" two
+/// different ways.
+fn latest_changeset_revision(
+    store: &mut Store,
+    changeset_id: &ChangesetId,
+    action: &str,
+) -> StoreResult<ChangesetAggregateRecord> {
+    store
+        .with_unit_of_work(CommandKind::ValidateProposal, |uow| {
+            uow.ledger().latest(changeset_id)
+        })?
+        .ok_or_else(|| {
+            StoreError::StaleRevision(format!(
+                "changeset `{changeset_id}` has no proposal history to {action}"
+            ))
+        })
+}
+
+/// Validate a drafted proposal against BACKEND-DERIVED worktree evidence
+/// (`validation_evidence`) — the client never supplies validation material. This is
+/// the SAME derivation + leaf-command call the submit composition's validate step
+/// uses; the standalone `validate_proposal` agent-tool dispatch reuses it verbatim so
+/// the two paths can never drift.
+fn validate_proposal_from_worktree(
+    store: &mut Store,
+    reader: &SnapshotReader,
+    context: ProposalCommandContext,
+    changeset_id: &ChangesetId,
+    expected_revision: RevisionToken,
+    summary: String,
+    latest: &ChangesetAggregateRecord,
+) -> StoreResult<ProposalCommandResult> {
+    let (current_revisions, chunk_evidence) = validation_evidence(reader, latest)?;
+    super::proposal::validate_proposal(
+        store,
+        context,
+        ValidateProposalRequest {
+            changeset_id: changeset_id.clone(),
+            expected_revision,
+            summary,
+            current_revisions,
+            chunk_evidence,
+        },
+    )
+}
+
 /// The submit composition: validate the drafted proposal (evidence derived from the
 /// live worktree), submit it for review, and open its approval request — all
 /// SERVER-SIDE, each step idempotent under the composed keys. A denial at validate
@@ -995,15 +1448,7 @@ fn submit_for_review_composed(
 ) -> StoreResult<SubmitComposite> {
     // 1. VALIDATE — derive the evidence from the live worktree so the client never
     //    supplies validation material (the "compose validation server-side" rule).
-    let latest = store
-        .with_unit_of_work(CommandKind::ValidateProposal, |uow| {
-            uow.ledger().latest(changeset_id)
-        })?
-        .ok_or_else(|| {
-            StoreError::StaleRevision(format!(
-                "changeset `{changeset_id}` has no proposal history to submit"
-            ))
-        })?;
+    let latest = latest_changeset_revision(store, changeset_id, "submit")?;
 
     // R1 PARTIAL-SUBMIT WEDGE HEAL: the composition is three units of work, so a
     // crash between the submit and the approval-open leaves the head in NeedsReview
@@ -1020,23 +1465,14 @@ fn submit_for_review_composed(
         return Ok(replay);
     }
 
-    let (current_revisions, chunk_evidence) = validation_evidence(reader, &latest)?;
-    let validate = super::proposal::validate_proposal(
+    let validate = validate_proposal_from_worktree(
         store,
-        ProposalCommandContext {
-            actor: actor.clone(),
-            idempotency_key: step_key(idempotency_key, "validate")?,
-            now_ms: now,
-            in_flight_expires_at_ms: Some(now + COMMAND_IN_FLIGHT_TTL_MS),
-            outcome_expires_at_ms: Some(now + COMMAND_OUTCOME_TTL_MS),
-        },
-        ValidateProposalRequest {
-            changeset_id: changeset_id.clone(),
-            expected_revision: payload.expected_revision.clone(),
-            summary: payload.summary.clone(),
-            current_revisions,
-            chunk_evidence,
-        },
+        reader,
+        proposal_context(actor.clone(), step_key(idempotency_key, "validate")?, now),
+        changeset_id,
+        payload.expected_revision.clone(),
+        payload.summary.clone(),
+        &latest,
     )?;
     let validated = match reduce_step(validate)? {
         StepOutcome::Outcome { outcome, .. } => outcome,
@@ -1051,13 +1487,7 @@ fn submit_for_review_composed(
     // 2. SUBMIT — move the validated proposal to NeedsReview under its new revision.
     let submit = super::proposal::submit_for_review(
         store,
-        ProposalCommandContext {
-            actor: actor.clone(),
-            idempotency_key: step_key(idempotency_key, "submit")?,
-            now_ms: now,
-            in_flight_expires_at_ms: Some(now + COMMAND_IN_FLIGHT_TTL_MS),
-            outcome_expires_at_ms: Some(now + COMMAND_OUTCOME_TTL_MS),
-        },
+        proposal_context(actor.clone(), step_key(idempotency_key, "submit")?, now),
         SubmitProposalRequest {
             changeset_id: changeset_id.clone(),
             expected_revision: validated.changeset_revision.clone(),
@@ -1296,6 +1726,9 @@ async fn mode_after_submit(
                         proposal_id: &approval.proposal_id,
                         actor: &system,
                         idempotency_key: &key,
+                        // The system auto-apply presents no fencing token; advisory fencing
+                        // refuses it only if a live human/agent lease holds the target.
+                        fencing_token: None,
                         now_ms: now,
                     },
                 )
@@ -1317,22 +1750,18 @@ async fn mode_after_submit(
     })?
 }
 
-/// Map a composed submit outcome to its enveloped response: a denial rides the 200
-/// success envelope as a value; a still-in-flight step returns 202; a completed
-/// submit (or idempotent replay) serves the reviewed revision + derived ids + the
-/// opened approval the reviewer drives the decision from.
-fn submit_composite_response(
-    state: &AppState,
+/// Map a composed submit outcome to its status + VALUE: a denial rides the 200
+/// success envelope as a value; a still-in-flight step is 202; a completed submit
+/// (or idempotent replay) serves the reviewed revision + derived ids + the opened
+/// approval the reviewer drives the decision from. Shared by the `/submit` route AND
+/// the `/execute` agent-tool seam's `request_approval` alias.
+fn submit_composite_value(
     composite: SubmitComposite,
     mode_outcome: Option<ModePostSubmitOutcome>,
-) -> Response {
+) -> (StatusCode, Value) {
     match composite {
-        SubmitComposite::Denied(eligibility) => denial_snapshot(state, &eligibility),
-        SubmitComposite::InFlight => (
-            StatusCode::ACCEPTED,
-            super::response::snapshot(state, json!({ "status": "in_flight" })),
-        )
-            .into_response(),
+        SubmitComposite::Denied(eligibility) => (StatusCode::OK, denial_value(&eligibility)),
+        SubmitComposite::InFlight => (StatusCode::ACCEPTED, json!({ "status": "in_flight" })),
         SubmitComposite::Submitted {
             changeset_id,
             needs_review_revision,
@@ -1340,8 +1769,8 @@ fn submit_composite_response(
             proposal_id,
             approval,
             replayed,
-        } => super::response::snapshot(
-            state,
+        } => (
+            StatusCode::OK,
             json!({
                 "status": if replayed { "replayed" } else { "submitted" },
                 "changeset_id": changeset_id.as_str(),
@@ -1351,9 +1780,17 @@ fn submit_composite_response(
                 "approval": approval,
                 "mode": mode_post_submit_value(mode_outcome),
             }),
-        )
-        .into_response(),
+        ),
     }
+}
+
+fn submit_composite_response(
+    state: &AppState,
+    composite: SubmitComposite,
+    mode_outcome: Option<ModePostSubmitOutcome>,
+) -> Response {
+    let (status, value) = submit_composite_value(composite, mode_outcome);
+    (status, super::response::snapshot(state, value)).into_response()
 }
 
 fn mode_post_submit_value(outcome: Option<ModePostSubmitOutcome>) -> serde_json::Value {
@@ -1646,6 +2083,131 @@ fn direct_write_outcome_response(
     super::response::snapshot(state, data).into_response()
 }
 
+// --- advisory leases (W13.P26, wired W14.P42a) --------------------------------
+
+/// The per-document lease scope for a target: the SAME P27 `document_lease_scope`
+/// convention (`{scope_id_for_worktree}::{node_id}`) the apply-time fencing check derives,
+/// so acquire and apply agree on the fenced scope. `None` for a target with no fixed
+/// document identity (a provisional create), which cannot be leased.
+fn lease_scope_for_target(state: &AppState, target: &DocumentRef) -> Option<String> {
+    existing_node_id(target)
+        .map(|node_id| document_lease_scope(&state.active_workspace_root(), &node_id))
+}
+
+/// The typed bad-request for a lease command whose target has no leasable document identity.
+fn lease_target_invalid(state: &AppState) -> Response {
+    super::response::typed_error(
+        state,
+        StatusCode::BAD_REQUEST,
+        REQUEST_INVALID_KIND,
+        "an advisory lease requires an existing document target",
+    )
+    .into_response()
+}
+
+/// Map a lease operation outcome to its enveloped VALUE: allowed vs a denial value (a
+/// concurrent-acquire block, a non-owner renew/release, an expired lease) with the scope's
+/// current lease row — including the monotonic fencing token a holder presents at apply.
+fn lease_outcome_value(outcome: &LeaseOutcome) -> Value {
+    json!({
+        "status": if outcome.eligibility.allowed { "allowed" } else { "denied" },
+        "allowed": outcome.eligibility.allowed,
+        "command": outcome.eligibility.command,
+        "reason": outcome.eligibility.reason,
+        "replayed": outcome.replayed,
+        "lease": outcome.record.as_ref().map(|record| json!({
+            "scope_id": record.scope_id,
+            "purpose": record.purpose,
+            "holder": record.holder,
+            "fencing_token": record.fencing_token,
+            "state": record.state,
+            "acquired_at_ms": record.acquired_at_ms,
+            "expires_at_ms": record.expires_at_ms,
+        })),
+    })
+}
+
+fn lease_outcome_response(state: &AppState, outcome: &LeaseOutcome) -> Response {
+    super::response::snapshot(state, lease_outcome_value(outcome)).into_response()
+}
+
+/// `POST /authoring/v1/leases` — acquire (or idempotently re-acquire) an advisory lease on
+/// a target document's scope. A concurrent hold by another actor rides the 200 envelope as
+/// a denial value; a fresh acquisition returns the lease row with its monotonic fencing
+/// token. The holder is the middleware-resolved principal, never a body claim.
+pub async fn acquire_lease(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<LeaseAcquireRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let scope_id = match lease_scope_for_target(&state, &payload.target) {
+        Some(scope_id) => scope_id,
+        None => return lease_target_invalid(&state),
+    };
+    let input = AcquireLeaseInput {
+        scope_id,
+        purpose: payload.purpose,
+        holder: actor,
+        idempotency_key: idempotency_key.as_str().to_string(),
+        created_at_ms: now,
+        ttl_ms: payload.ttl_ms.map(|ttl| ttl as i64),
+    };
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::AcquireLease, |uow| {
+            uow.leases().acquire_lease(input)
+        })
+    }) {
+        Ok(outcome) => lease_outcome_response(&state, &outcome),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `POST /authoring/v1/leases/renew` — extend a live lease's TTL (owner-only; the fencing
+/// token is unchanged). A non-owner or lapsed renewal is a denial value.
+pub async fn renew_lease(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<LeaseRenewRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, _idempotency_key, payload) = command.into_parts();
+    let scope_id = match lease_scope_for_target(&state, &payload.target) {
+        Some(scope_id) => scope_id,
+        None => return lease_target_invalid(&state),
+    };
+    let ttl_ms = payload.ttl_ms.map(|ttl| ttl as i64);
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::RenewLease, |uow| {
+            uow.leases().renew_lease(&scope_id, &actor, ttl_ms, now)
+        })
+    }) {
+        Ok(outcome) => lease_outcome_response(&state, &outcome),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `POST /authoring/v1/leases/release` — release a live lease (owner-only). A non-owner
+/// release is refused as a value and leaves the lease held by its owner.
+pub async fn release_lease(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<LeaseReleaseRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, _idempotency_key, payload) = command.into_parts();
+    let scope_id = match lease_scope_for_target(&state, &payload.target) {
+        Some(scope_id) => scope_id,
+        None => return lease_target_invalid(&state),
+    };
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::ReleaseLease, |uow| {
+            uow.leases().release_lease(&scope_id, &actor, now)
+        })
+    }) {
+        Ok(outcome) => lease_outcome_response(&state, &outcome),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
 // --- apply (the one side-effecting command) -----------------------------------
 
 /// Map an `ApplyError` FAULT to a `StoreError` for the shared taxonomy. Policy
@@ -1684,28 +2246,46 @@ pub async fn apply_changeset(
 ) -> Response {
     let now = now_ms();
     let (actor, _command, idempotency_key, payload) = command.into_parts();
+    match apply_changeset_body(state.clone(), actor, idempotency_key, now, payload).await {
+        Ok((status, value)) => (status, super::response::snapshot(&state, value)).into_response(),
+        Err(response) => response,
+    }
+}
+
+/// The apply dispatch BODY: resolve the proposal id (derived 1:1 from the changeset)
+/// and the changeset's current approval id from the ledger, enforce the
+/// caller-named-the-right-approval coherence check, then drive `apply::apply_changeset`
+/// under a blocking thread (per apply.rs's lock discipline). Shared by the
+/// `/apply-requests` route AND the `/execute` agent-tool seam's `request_apply` tool —
+/// one resolution, no drift. `Ok` carries the success status + VALUE for the caller to
+/// envelope; `Err` carries an already fully-built fault `Response` to return AS-IS.
+async fn apply_changeset_body(
+    state: Arc<AppState>,
+    actor: ActorRef,
+    idempotency_key: IdempotencyKey,
+    now: i64,
+    payload: ApplyRequestDto,
+) -> Result<(StatusCode, Value), Response> {
     let changeset_id = payload.changeset_id.clone();
+    // The ADVISORY fencing token the applying actor presents (W13.P26); enforced by the
+    // apply preflight only when a live lease holds the target document's scope.
+    let presented_fencing_token = payload.fencing_token;
 
     // The proposal + approval are derived 1:1 from the changeset (V1). The wire
     // approval id must NAME that derived approval — a coherence check that the
     // client is applying the approval it was handed at submit.
-    let proposal_id = match derive_proposal_id(&changeset_id) {
-        Ok(id) => id,
-        Err(err) => return command_error_response(&state, &err),
-    };
-    let expected_approval = match latest_approval_id_for_apply(&state, &proposal_id, &changeset_id)
-    {
-        Ok(id) => id,
-        Err(err) => return command_error_response(&state, &err),
-    };
+    let proposal_id =
+        derive_proposal_id(&changeset_id).map_err(|err| command_error_response(&state, &err))?;
+    let expected_approval = latest_approval_id_for_apply(&state, &proposal_id, &changeset_id)
+        .map_err(|err| command_error_response(&state, &err))?;
     if payload.approval_id != expected_approval {
-        return super::response::typed_error(
+        return Err(super::response::typed_error(
             &state,
             StatusCode::BAD_REQUEST,
             REQUEST_INVALID_KIND,
             "apply approval id does not match the changeset's approval",
         )
-        .into_response();
+        .into_response());
     }
 
     let worktree_root = state.active_workspace_root();
@@ -1723,6 +2303,7 @@ pub async fn apply_changeset(
                     proposal_id: &proposal_id,
                     actor: &actor,
                     idempotency_key: &idempotency_key,
+                    fencing_token: presented_fencing_token,
                     now_ms: now,
                 },
             )
@@ -1732,18 +2313,18 @@ pub async fn apply_changeset(
     .await;
 
     match joined {
-        Ok(Ok(outcome)) => apply_outcome_response(&state, outcome),
-        Ok(Err(err)) => command_error_response(&state, &err),
+        Ok(Ok(outcome)) => Ok(apply_outcome_value(&outcome)),
+        Ok(Err(err)) => Err(command_error_response(&state, &err)),
         // The blocking task itself panicked: the write outcome is UNKNOWN. Report a
         // typed indeterminate (never a forged success or failure).
-        Err(_join) => super::response::typed_error(
+        Err(_join) => Err(super::response::typed_error(
             &state,
             StatusCode::INTERNAL_SERVER_ERROR,
             "authoring_apply_indeterminate",
             "the apply attempt did not complete; its outcome is indeterminate — \
              re-query the changeset before retrying",
         )
-        .into_response(),
+        .into_response()),
     }
 }
 
@@ -1763,34 +2344,423 @@ fn latest_approval_id_for_apply(
     derive_approval_id(changeset_id)
 }
 
-/// Map an apply outcome to its enveloped response: a preflight denial rides the 200
-/// success envelope as a value; a still-in-flight prior attempt returns 202; a
-/// completed attempt serves the durable receipt (whose `state` reports Applied vs
-/// Failed — a recorded business failure is not a fault).
-fn apply_outcome_response(state: &AppState, outcome: ApplyOutcome) -> Response {
+/// Map an apply outcome to its status + VALUE: a preflight denial rides the 200
+/// success envelope as a value; a still-in-flight prior attempt is 202; a completed
+/// attempt serves the durable receipt (whose `state` reports Applied vs Failed — a
+/// recorded business failure is not a fault). Shared by the `/apply-requests` route
+/// AND the `/execute` agent-tool seam's `request_apply` tool.
+fn apply_outcome_value(outcome: &ApplyOutcome) -> (StatusCode, Value) {
     if !outcome.eligibility.allowed {
-        return denial_snapshot(state, &outcome.eligibility);
+        return (StatusCode::OK, denial_value(&outcome.eligibility));
     }
     if outcome.in_flight {
-        return (
-            StatusCode::ACCEPTED,
-            super::response::snapshot(state, json!({ "status": "in_flight" })),
-        )
-            .into_response();
+        return (StatusCode::ACCEPTED, json!({ "status": "in_flight" }));
     }
     let child_outcome = outcome.receipt.as_ref().map(|receipt| match receipt.state {
         ApplyState::Applied => "applied",
         _ => "failed",
     });
-    super::response::snapshot(
-        state,
+    (
+        StatusCode::OK,
         json!({
             "status": if outcome.replayed { "replayed" } else { "recorded" },
             "child_outcome": child_outcome,
             "receipt": outcome.receipt,
         }),
     )
-    .into_response()
+}
+
+fn apply_outcome_response(state: &AppState, outcome: ApplyOutcome) -> Response {
+    let (status, value) = apply_outcome_value(&outcome);
+    (status, super::response::snapshot(state, value)).into_response()
+}
+
+// --- agent-tool executor seam (W12.P41 A3b) ------------------------------------
+
+/// A command-dispatch idempotency key deterministically derived from the tool
+/// call's id (bounded via `blob_oid`, so an at-cap `tool_call_id` can never overflow
+/// `IdempotencyKey`'s cap). Effectively-once: a re-drive of the SAME `tool_call_id`
+/// reuses this SAME key, so the dispatched command's own idempotency dedups a
+/// completed dispatch and heals a crash-lost one (the executor's re-drive contract).
+fn agent_tool_command_key(tool_call_id: &ToolCallId) -> StoreResult<IdempotencyKey> {
+    IdempotencyKey::new(format!(
+        "agent-tool-execute:{}",
+        blob_oid(tool_call_id.as_str().as_bytes())
+    ))
+    .map_err(|err| StoreError::Idempotency(format!("agent tool command key: {err}")))
+}
+
+/// `propose_changeset`'s append/replace aliases carry a `DraftAlias` (the tool's
+/// flattened wire shape); the shared draft-mutation dispatch expects the domain
+/// `DraftProposalRequest`. The fields are 1:1 — this is the ONE conversion site.
+fn draft_request_from_alias(alias: DraftAlias) -> DraftProposalRequest {
+    DraftProposalRequest {
+        changeset_id: alias.changeset_id,
+        expected_revision: alias.expected_revision,
+        summary: alias.summary,
+        operations: alias.operations,
+    }
+}
+
+/// The unified `/execute` envelope VALUE: which tool ran, the executor's disposition
+/// (`dispatched` / `awaiting_permission` / `refused` / `already_handled`), the served
+/// eligibility (a value even on refusal), whether this call replayed a prior terminal
+/// record, the durable `ToolCallRecord` the seam wrote (when terminal), and the
+/// per-command RESULT (the dispatched command's own outcome value, the prepared read
+/// descriptor for a read tool, or `null` when nothing dispatched).
+fn agent_tool_execute_envelope(
+    tool_call_id: &ToolCallId,
+    tool: SemanticToolName,
+    command: CommandKind,
+    outcome: &ExecuteOutcome,
+    result: Value,
+) -> Value {
+    // The raised `interrupt_id` is surfaced ONLY on the awaiting arm (structurally
+    // present exactly when suspended), so a wire client resumes-by-id via
+    // `/v1/interrupts/{interrupt_id}/resume` with no internal-derivation coupling (F1);
+    // every other disposition serves it as `null`.
+    let (disposition, interrupt_id) = match &outcome.disposition {
+        ExecuteDisposition::Dispatch(_) => ("dispatched", None),
+        ExecuteDisposition::AwaitingPermission { interrupt_id } => {
+            ("awaiting_permission", Some(interrupt_id))
+        }
+        ExecuteDisposition::Refused => ("refused", None),
+        ExecuteDisposition::AlreadyHandled => ("already_handled", None),
+    };
+    json!({
+        "tool_call_id": tool_call_id,
+        "tool": tool,
+        "command": command,
+        "disposition": disposition,
+        "interrupt_id": interrupt_id,
+        "eligibility": outcome.eligibility,
+        "replayed": outcome.replayed,
+        "tool_call_record": outcome.tool_call_record,
+        "result": result,
+    })
+}
+
+fn agent_tool_execute_response(
+    state: &AppState,
+    tool_call_id: &ToolCallId,
+    tool: SemanticToolName,
+    command: CommandKind,
+    outcome: &ExecuteOutcome,
+    status: StatusCode,
+    result: Value,
+) -> Response {
+    let value = agent_tool_execute_envelope(tool_call_id, tool, command, outcome, result);
+    (status, super::response::snapshot(state, value)).into_response()
+}
+
+/// `POST /authoring/v1/runs/{run_id}/agent-tools/execute` — the P41 tool-call
+/// executor run loop wired to HTTP (W12.P41 A3b). `prepare_tool_call` resolves the
+/// semantic tool call to its typed dispatch shape (S152); `executor::execute_tool_call`
+/// runs the P22/P32 gate (record-before-dispatch, effectively-once by `tool_call_id`,
+/// denials-are-values). A GRANTED mutating/dangerous dispatch routes to the SAME
+/// dedicated command body every purpose-built route uses — one implementation per
+/// command, no drift. A read tool never dispatches a command: the gate records its
+/// permitted `ToolCallRecord` and the caller serves the prepared read descriptor; the
+/// caller pulls the read itself through the dedicated read routes. The actor is the
+/// server-resolved principal (ASA-010), never a body claim.
+pub async fn execute_agent_tool_call(
+    State(state): State<Arc<AppState>>,
+    Path(run_id): Path<RunId>,
+    command: ResolvedCommand<AgentToolCall>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, idempotency_key, mut payload) = command.into_parts();
+    if payload.idempotency_key.is_none() {
+        payload.idempotency_key = Some(idempotency_key);
+    }
+    let prepared = match super::tools::prepare_tool_call(payload) {
+        Ok(prepared) => prepared,
+        Err(err) => return tool_error_response(&state, &err),
+    };
+    let tool = prepared.name;
+    let tool_call_id = prepared.tool_call_id.clone();
+
+    // W14.P42a — authorization tool-requester guard: only a Human or an Agent may drive
+    // the semantic tool surface. A System actor's authority is the policy auto-approve
+    // lane and a ToolExecutor is an execution identity, not a requester; either is refused
+    // as a denial VALUE (never a fault), BEFORE the tool-permission gate records anything.
+    // This is distinct from the downstream per-call permission gate and risk-tier
+    // requirement, which still run for a permitted requester.
+    if let Some(denied) = tool_requester_kind_guard(actor.kind, tool) {
+        return denial_snapshot(&state, &denied);
+    }
+
+    let worktree_root = state.active_workspace_root();
+    let scope_id = scope_id_for_worktree(&worktree_root);
+    let gate = state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::RequestToolPermission, |uow| {
+            let scope_mode = uow.modes().current_mode(&scope_id)?;
+            execute_tool_call(
+                uow,
+                &ExecuteToolCallRequest {
+                    tool,
+                    tool_call_id: tool_call_id.clone(),
+                    run_id: run_id.clone(),
+                    requester: actor.clone(),
+                    scope_id: scope_id.clone(),
+                    scope_mode,
+                    session_override: None,
+                    idempotency_key: tool_call_id.as_str().to_string(),
+                    now_ms: now,
+                    ttl_ms: None,
+                },
+            )
+        })
+    });
+    let outcome = match gate {
+        Ok(outcome) => outcome,
+        Err(err) => return command_error_response(&state, &err),
+    };
+
+    // A read/context tool never dispatches a command: the gate above already
+    // recorded its permitted `ToolCallRecord`. Serve the prepared read descriptor —
+    // the caller pulls the read itself through the dedicated read routes.
+    if prepared.risk_tier == ToolRiskTier::ReadOnly {
+        let result = json!(prepared.dispatch);
+        return agent_tool_execute_response(
+            &state,
+            &tool_call_id,
+            tool,
+            prepared.command,
+            &outcome,
+            StatusCode::OK,
+            result,
+        );
+    }
+
+    if outcome.should_dispatch().is_none() {
+        // Awaiting permission, refused, or an already-handled refusal: denials (and
+        // suspensions) are values — nothing dispatches, and this still rides a 200.
+        return agent_tool_execute_response(
+            &state,
+            &tool_call_id,
+            tool,
+            prepared.command,
+            &outcome,
+            StatusCode::OK,
+            Value::Null,
+        );
+    }
+
+    let command_key = match agent_tool_command_key(&tool_call_id) {
+        Ok(key) => key,
+        Err(err) => return command_error_response(&state, &err),
+    };
+    dispatch_agent_tool_command(state, actor, command_key, now, prepared, outcome).await
+}
+
+/// Dispatch a GRANTED (fresh or re-driven) semantic tool call to the SAME command
+/// body every dedicated route uses, under a command idempotency key deterministically
+/// derived from `tool_call_id` (`agent_tool_command_key`) — effectively-once. A
+/// genuine `StoreError` fault escapes immediately as the SAME typed fault response the
+/// dedicated route would serve; a successful dispatch's status + value ride the
+/// unified `/execute` envelope.
+async fn dispatch_agent_tool_command(
+    state: Arc<AppState>,
+    actor: ActorRef,
+    command_key: IdempotencyKey,
+    now: i64,
+    prepared: PreparedToolCall,
+    outcome: ExecuteOutcome,
+) -> Response {
+    let tool_call_id = prepared.tool_call_id.clone();
+    let tool = prepared.name;
+    let command_kind = prepared.command;
+    let reader = SnapshotReader::for_worktree(state.active_workspace_root());
+
+    // W14.P42a — the agent is the untrusted writer the standing/delegation/scope guards
+    // target. A granted tool call dispatches its MAPPED backend command INTERNALLY (no
+    // second `ResolvedCommand` extraction), so authorize the mapped command EXPLICITLY here
+    // before its effect: standing + delegation always, plus the document-scope guard over
+    // the drafted targets of a create/append/replace against the active workspace's
+    // authorized scope. A refusal rides the unified `/execute` envelope as a value. (An
+    // agent applying its own proposal is refused origin-keyed in the apply domain.)
+    let authorized_scope = active_authorized_scope(&state);
+    let scope_targets: Vec<&DocumentRef> = match &prepared.dispatch {
+        PreparedToolDispatch::ProposeChangeset { dispatch } => match dispatch {
+            ProposeChangesetDispatch::Create { command } => command
+                .payload
+                .operations
+                .iter()
+                .map(|operation| &operation.target.document)
+                .collect(),
+            ProposeChangesetDispatch::Append { input, .. }
+            | ProposeChangesetDispatch::Replace { input, .. } => input
+                .operations
+                .iter()
+                .map(|operation| &operation.target.document)
+                .collect(),
+        },
+        _ => Vec::new(),
+    };
+    let scope_arg = (!scope_targets.is_empty()).then_some(authorized_scope.as_str());
+    match run_authorization(
+        &state,
+        command_kind,
+        &actor,
+        scope_arg,
+        &scope_targets,
+        None,
+    ) {
+        Ok(eligibility) if eligibility.allowed => {}
+        Ok(eligibility) => {
+            return agent_tool_execute_response(
+                &state,
+                &tool_call_id,
+                tool,
+                command_kind,
+                &outcome,
+                StatusCode::OK,
+                denial_value(&eligibility),
+            );
+        }
+        Err(fault) => return authorization_fault_response(&state, fault),
+    }
+
+    let (status, value) = match prepared.dispatch {
+        PreparedToolDispatch::ReadContext { .. } | PreparedToolDispatch::SearchGraph { .. } => {
+            unreachable!("read-only tools never reach command dispatch (handled by the caller)")
+        }
+        PreparedToolDispatch::ProposeChangeset { dispatch } => match dispatch {
+            ProposeChangesetDispatch::Create { command } => {
+                let context = proposal_context(actor, command_key, now);
+                match state.with_authoring_store(|store| {
+                    super::proposal::create_proposal(store, &reader, context, command.payload)
+                }) {
+                    Ok(result) => proposal_result_value(&result),
+                    Err(err) => return command_error_response(&state, &err),
+                }
+            }
+            ProposeChangesetDispatch::Append { input, .. } => {
+                let context = proposal_context(actor, command_key, now);
+                match dispatch_draft_mutation(
+                    &state,
+                    context,
+                    draft_request_from_alias(input),
+                    DraftRoute::Append,
+                ) {
+                    Ok(result) => proposal_result_value(&result),
+                    Err(err) => return command_error_response(&state, &err),
+                }
+            }
+            ProposeChangesetDispatch::Replace { input, .. } => {
+                let context = proposal_context(actor, command_key, now);
+                match dispatch_draft_mutation(
+                    &state,
+                    context,
+                    draft_request_from_alias(input),
+                    DraftRoute::Replace,
+                ) {
+                    Ok(result) => proposal_result_value(&result),
+                    Err(err) => return command_error_response(&state, &err),
+                }
+            }
+        },
+        PreparedToolDispatch::ValidateProposal { input, .. } => {
+            let ValidateProposalToolInput {
+                changeset_id,
+                expected_revision,
+                summary,
+            } = input;
+            let context = proposal_context(actor, command_key, now);
+            match state.with_authoring_store(|store| {
+                let latest = latest_changeset_revision(store, &changeset_id, "validate")?;
+                validate_proposal_from_worktree(
+                    store,
+                    &reader,
+                    context,
+                    &changeset_id,
+                    expected_revision,
+                    summary,
+                    &latest,
+                )
+            }) {
+                Ok(result) => proposal_result_value(&result),
+                Err(err) => return command_error_response(&state, &err),
+            }
+        }
+        PreparedToolDispatch::RequestApproval {
+            changeset_id,
+            command,
+        } => {
+            let composite = state.with_authoring_store(|store| {
+                submit_for_review_composed(
+                    store,
+                    &reader,
+                    &actor,
+                    &command_key,
+                    now,
+                    &changeset_id,
+                    &command.payload,
+                )
+            });
+            match composite {
+                Ok(composite) => {
+                    match mode_after_submit(state.clone(), &composite, command_key.clone(), now)
+                        .await
+                    {
+                        Ok(mode_outcome) => submit_composite_value(composite, mode_outcome),
+                        Err(err) => return command_error_response(&state, &err),
+                    }
+                }
+                Err(err) => return command_error_response(&state, &err),
+            }
+        }
+        PreparedToolDispatch::CancelProposal { input, .. } => {
+            let CancelProposalAlias {
+                changeset_id,
+                expected_revision,
+                summary,
+            } = input;
+            let context = proposal_context(actor, command_key, now);
+            match state.with_authoring_store(|store| {
+                super::proposal::cancel_proposal(
+                    store,
+                    context,
+                    TerminalProposalRequest {
+                        changeset_id,
+                        expected_revision,
+                        summary,
+                    },
+                )
+            }) {
+                Ok(result) => proposal_result_value(&result),
+                Err(err) => return command_error_response(&state, &err),
+            }
+        }
+        PreparedToolDispatch::CancelRun { run_id, command } => {
+            let context = session_context(actor, command_key, now);
+            match state.with_authoring_store(|store| {
+                super::session::cancel_run(store, context, run_id, command.payload)
+            }) {
+                Ok(result) => session_result_value(&result),
+                Err(err) => return command_error_response(&state, &err),
+            }
+        }
+        PreparedToolDispatch::RequestApply { command } => {
+            match apply_changeset_body(state.clone(), actor, command_key, now, command.payload)
+                .await
+            {
+                Ok(value) => value,
+                Err(response) => return response,
+            }
+        }
+    };
+
+    agent_tool_execute_response(
+        &state,
+        &tool_call_id,
+        tool,
+        command_kind,
+        &outcome,
+        status,
+        value,
+    )
 }
 
 // --- rollback (generate an inverse proposal) ----------------------------------
@@ -2079,6 +3049,9 @@ mod tests {
     #[tokio::test]
     async fn a_resolved_principal_and_a_valid_body_yield_the_server_actor() {
         let (_state_dir, state) = fixture_state();
+        // W14.P42a: the extractor now runs the standing floor, so the resolved actor
+        // must be a registered, active actor to extract a command.
+        register_actor(&state, &agent());
         let (_token_dir, principal) = resolved_principal(&agent());
 
         let command = extract(
@@ -2919,6 +3892,78 @@ mod tests {
         body
     }
 
+    // ---- W14.P42a S259: conflict serve route ---------------------------------------
+
+    /// The conflict route serves an HONEST empty report for a proposal whose base is still
+    /// current — the "your base is current" value the review view renders directly.
+    #[tokio::test]
+    async fn conflict_report_route_serves_no_conflict_for_a_current_base() {
+        let (dir, state) = fixture_state();
+        let _submitted = create_then_submit(&state, dir.path(), "changeset_conflict_clean").await;
+
+        let response = proposal_conflicts(
+            State(state.clone()),
+            axum::extract::Path("changeset_conflict_clean".to_string()),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["has_conflict"], false, "{body}");
+        assert_eq!(body["data"]["findings"], json!([]));
+        assert!(body["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    /// The conflict route serves a base-staleness finding when the target document was
+    /// edited out-of-band since the proposal was drafted (ADDITIVE to the cheap `conflict`
+    /// field; the served detail is the full deterministic report).
+    #[tokio::test]
+    async fn conflict_report_route_serves_a_stale_base_conflict() {
+        let (dir, state) = fixture_state();
+        let _submitted = create_then_submit(&state, dir.path(), "changeset_conflict_stale").await;
+        // An out-of-band edit to the target document since the proposal was drafted.
+        std::fs::write(
+            dir.path().join(".vault/plan/operation-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-07-06'\n---\n\n# Plan\n\nedited out of band\n",
+        )
+        .unwrap();
+
+        let response = proposal_conflicts(
+            State(state.clone()),
+            axum::extract::Path("changeset_conflict_stale".to_string()),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(
+            body["data"]["has_conflict"], true,
+            "a stale base is a served conflict: {body}"
+        );
+        let kind = body["data"]["findings"][0]["kind"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(
+            kind == "stale_base_revision" || kind == "stale_whole_document_draft",
+            "the finding names the stale base: {body}"
+        );
+    }
+
+    /// A read of the conflict route for an unknown changeset is a typed 404, like the
+    /// proposal projection route.
+    #[tokio::test]
+    async fn conflict_report_route_for_an_unknown_changeset_is_a_typed_404() {
+        let (_dir, state) = fixture_state();
+        let response = proposal_conflicts(
+            State(state.clone()),
+            axum::extract::Path("changeset_absent".to_string()),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = json_body(response).await;
+        assert_eq!(body["error_kind"], "authoring_proposal_not_found");
+    }
+
     fn child_input_from_latest(
         child: &crate::authoring::ledger::ChangesetChildOperationRecord,
     ) -> ChangesetChildOperationInput {
@@ -3583,6 +4628,7 @@ mod tests {
             payload: ApplyRequestDto {
                 changeset_id: ChangesetId::new(changeset).unwrap(),
                 approval_id: ApprovalId::new(approval).unwrap(),
+                fencing_token: None,
             },
         };
         ResolvedCommand::from_principal(principal, envelope)
@@ -3854,5 +4900,794 @@ mod tests {
 
         let unknown = probe_body(probe_router(state), Some("deadbeef")).await;
         assert_eq!(unknown, "denied:unknown");
+    }
+
+    // ---- W12.P41 A2: tool-permission decision + interrupt resume routes -------------
+
+    fn seed_pending_permission(state: &AppState, requester: &ActorRef, tool_call_id: &str) {
+        state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::RequestToolPermission, |uow| {
+                    uow.tool_permissions().request_permission(
+                        super::super::permissions::ToolPermissionRequestInput {
+                            tool_call_id: ToolCallId::new(tool_call_id).unwrap(),
+                            tool: super::super::tools::SemanticToolName::ProposeChangeset,
+                            scope_id: "worktree".to_string(),
+                            requester: requester.clone(),
+                            scope_mode: super::super::policy::OperationMode::Manual,
+                            session_override: None,
+                            idempotency_key: format!("idem:seed:{tool_call_id}"),
+                            created_at_ms: now_ms(),
+                            ttl_ms: None,
+                        },
+                    )?;
+                    Ok(())
+                })
+            })
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn permission_decision_route_grants_a_queued_request_and_is_tiered() {
+        let (_dir, state) = fixture_state();
+        let requester = agent();
+        let reviewer = human_reviewer();
+        register_actor(&state, &requester);
+        register_actor(&state, &reviewer);
+        let reviewer_token = issue_token_in_state(&state, &reviewer);
+        seed_pending_permission(&state, &requester, "call_route_grant");
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/agent-tools/call_route_grant/permission-decision",
+            &reviewer_token,
+            request_fixture(EndpointFamily::ToolPermission),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(envelope["data"]["status"], "granted");
+        assert_eq!(envelope["data"]["allowed"], true);
+        assert!(envelope["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    #[tokio::test]
+    async fn permission_decision_route_refuses_a_requester_self_decision_as_a_value() {
+        // The requester (an agent) cannot decide its own request (P22-R1). The denial
+        // rides the 200 envelope as a value, never a fault.
+        let (_dir, state) = fixture_state();
+        let requester = agent();
+        register_actor(&state, &requester);
+        let requester_token = issue_token_in_state(&state, &requester);
+        seed_pending_permission(&state, &requester, "call_route_self");
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/agent-tools/call_route_self/permission-decision",
+            &requester_token,
+            request_fixture(EndpointFamily::ToolPermission),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "a denial is a value, not a fault");
+        assert_eq!(envelope["data"]["status"], "denied");
+        assert_eq!(envelope["data"]["allowed"], false);
+        assert!(
+            envelope["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("human")),
+            "reviewer-authority denial: {envelope}"
+        );
+    }
+
+    #[tokio::test]
+    async fn interrupt_resume_route_resolves_by_id_and_replays() {
+        let (_dir, state) = fixture_state();
+        let reviewer = human_reviewer();
+        register_actor(&state, &reviewer);
+        let token = issue_token_in_state(&state, &reviewer);
+
+        // Seed a paused run's interrupt to resolve by id (the sole V1 kind).
+        state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::ResumeRun, |uow| {
+                    uow.interrupts().record_interrupt(
+                        super::super::interrupts::RecordInterruptInput {
+                            interrupt_id: InterruptId::new("interrupt_route_1").unwrap(),
+                            run_id: RunId::new("run_route_1").unwrap(),
+                            kind: super::super::interrupts::InterruptKind::ToolPermission,
+                            tool_call_id: Some(ToolCallId::new("call_route_seed").unwrap()),
+                            proposal_id: None,
+                            idempotency_key: "idem:seed:interrupt".to_string(),
+                            created_at_ms: now_ms(),
+                        },
+                    )?;
+                    Ok(())
+                })
+            })
+            .unwrap();
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/interrupts/interrupt_route_1/resume",
+            &token,
+            request_fixture(EndpointFamily::Interrupt),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(envelope["data"]["status"], "resumed");
+        assert_eq!(envelope["data"]["replayed"], false);
+        assert_eq!(envelope["data"]["interrupt"]["resume_state"], "resolved");
+
+        // A second resume of the same id replays the recorded decision (never re-decides).
+        let router = authoring_router(state.clone()).with_state(state);
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/interrupts/interrupt_route_1/resume",
+            &token,
+            request_fixture(EndpointFamily::Interrupt),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(envelope["data"]["replayed"], true);
+    }
+
+    // ---- W12.P41 A3b: the agent-tool executor `/execute` route ----------------
+
+    /// Start a real prompt turn over the `session_http_1` session `register_actor`
+    /// seeds, returning the fresh `run_id` — the executor's ONLY per-run dependency
+    /// (the gate itself never validates the run exists; only a dispatched mutating
+    /// command like `cancel_run` does).
+    async fn seed_run(state: &Arc<AppState>, token: &str) -> RunId {
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/sessions/session_http_1/turns",
+            token,
+            json!({
+                "api_version": "v1",
+                "command": "start_prompt_turn",
+                "idempotency_key": "idem:execute-tests:seed-run",
+                "payload": { "prompt": "draft a plan" }
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "seed run: {envelope}");
+        RunId::new(envelope["data"]["run_id"].as_str().expect("run_id")).unwrap()
+    }
+
+    fn execute_cancel_run_body(tool_call_id: &str, idem: &str, run_id: &RunId) -> Value {
+        json!({
+            "api_version": "v1",
+            "command": "cancel_run",
+            "idempotency_key": idem,
+            "payload": {
+                "tool_call_id": tool_call_id,
+                "name": "cancel",
+                "idempotency_key": format!("idem:tool:{tool_call_id}"),
+                "input": {
+                    "target": "run",
+                    "run_id": run_id.as_str(),
+                    "reason": "no longer needed"
+                }
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn execute_route_suspends_an_ungranted_mutating_tool_as_a_200_value() {
+        // Denials-are-values (and suspensions ride the same contract): a mutating
+        // tool call without a granted permission opens a Pending request and
+        // suspends — never a 4xx fault.
+        let (_dir, state) = fixture_state();
+        let requester = agent();
+        register_actor(&state, &requester);
+        let token = issue_token_in_state(&state, &requester);
+        let run_id = seed_run(&state, &token).await;
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            &format!("/v1/runs/{run_id}/agent-tools/execute"),
+            &token,
+            execute_cancel_run_body("call_execute_suspend", "idem:execute:suspend", &run_id),
+        )
+        .await;
+
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "a suspension is a 200 value: {envelope}"
+        );
+        assert_eq!(envelope["data"]["disposition"], "awaiting_permission");
+        assert_eq!(envelope["data"]["eligibility"]["allowed"], false);
+        assert_eq!(
+            envelope["data"]["result"],
+            Value::Null,
+            "nothing dispatched"
+        );
+        assert!(
+            envelope["data"]["tool_call_record"].is_null(),
+            "an awaiting call is not yet a terminal tool-call record: {envelope}"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_route_dispatches_a_granted_mutating_tool_and_redrives_effectively_once() {
+        let (_dir, state) = fixture_state();
+        let requester = agent();
+        let reviewer = human_reviewer();
+        register_actor(&state, &requester);
+        register_actor(&state, &reviewer);
+        let requester_token = issue_token_in_state(&state, &requester);
+        let reviewer_token = issue_token_in_state(&state, &reviewer);
+        let run_id = seed_run(&state, &requester_token).await;
+        let tool_call_id = "call_execute_redrive";
+        let body = execute_cancel_run_body(tool_call_id, "idem:execute:redrive", &run_id);
+
+        // First attempt opens the Pending permission and suspends.
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, suspended) = post_authoring(
+            router,
+            &format!("/v1/runs/{run_id}/agent-tools/execute"),
+            &requester_token,
+            body.clone(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(suspended["data"]["disposition"], "awaiting_permission");
+
+        // The reviewer grants the queued permission (P22-R1: never the requester).
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, decision) = post_authoring(
+            router,
+            &format!("/v1/agent-tools/{tool_call_id}/permission-decision"),
+            &reviewer_token,
+            request_fixture(EndpointFamily::ToolPermission),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(decision["data"]["status"], "granted");
+
+        // Re-executing the SAME tool_call_id now dispatches: the run cancels.
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, first) = post_authoring(
+            router,
+            &format!("/v1/runs/{run_id}/agent-tools/execute"),
+            &requester_token,
+            body.clone(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{first}");
+        assert_eq!(first["data"]["disposition"], "dispatched");
+        assert_eq!(first["data"]["replayed"], false);
+        assert_eq!(first["data"]["result"]["status"], "cancelled");
+        assert_eq!(first["data"]["tool_call_record"]["permitted"], true);
+
+        // EFFECTIVELY-ONCE: a retry of the same tool_call_id RE-DRIVES the dispatch
+        // (the executor's own `replayed` flag flips true) while the dispatched
+        // command's OWN idempotency key — deterministically derived from
+        // `tool_call_id` — dedups the completed dispatch, so the run is never
+        // double-cancelled (no double-apply).
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, second) = post_authoring(
+            router,
+            &format!("/v1/runs/{run_id}/agent-tools/execute"),
+            &requester_token,
+            body,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{second}");
+        assert_eq!(second["data"]["disposition"], "dispatched");
+        assert_eq!(
+            second["data"]["replayed"], true,
+            "the executor re-drives: {second}"
+        );
+        assert_eq!(second["data"]["result"]["status"], "cancelled");
+
+        // No double-apply: the run's cancellation receipt is unchanged (a single
+        // terminal cancellation, not a second recorded event).
+        let run = state
+            .with_authoring_store(|store| {
+                store.with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
+                    uow.sessions().run(&run_id)
+                })
+            })
+            .unwrap()
+            .expect("the run exists");
+        assert_eq!(
+            run.status,
+            super::super::session::RunStatus::Cancelled,
+            "the run cancelled exactly once"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_route_derives_the_actor_from_the_resolved_principal_never_the_body() {
+        // ASA-010: `AgentToolCall` carries no actor field at all (deny_unknown_fields
+        // would reject one) — the queued permission's requester can only have come
+        // from the server-resolved principal.
+        let (_dir, state) = fixture_state();
+        let requester = agent();
+        register_actor(&state, &requester);
+        let token = issue_token_in_state(&state, &requester);
+        let run_id = seed_run(&state, &token).await;
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            &format!("/v1/runs/{run_id}/agent-tools/execute"),
+            &token,
+            execute_cancel_run_body(
+                "call_execute_principal_seam",
+                "idem:execute:principal-seam",
+                &run_id,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{envelope}");
+        assert_eq!(envelope["data"]["disposition"], "awaiting_permission");
+
+        let permission = state
+            .with_authoring_store(|store| {
+                store.with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
+                    uow.tool_permissions().latest_for_tool_call(
+                        &ToolCallId::new("call_execute_principal_seam").unwrap(),
+                    )
+                })
+            })
+            .unwrap()
+            .expect("a permission request was opened");
+        assert_eq!(
+            permission.requester, requester,
+            "the requester is the server-resolved principal, never a body claim"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_route_read_tool_records_the_call_and_serves_the_prepared_descriptor() {
+        // A read tool never dispatches a command: the gate records its permitted
+        // `ToolCallRecord` and the caller serves the prepared descriptor — the
+        // read itself is pulled through the dedicated read routes.
+        let (_dir, state) = fixture_state();
+        let requester = agent();
+        register_actor(&state, &requester);
+        let token = issue_token_in_state(&state, &requester);
+        let run_id = seed_run(&state, &token).await;
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            &format!("/v1/runs/{run_id}/agent-tools/execute"),
+            &token,
+            json!({
+                "api_version": "v1",
+                "command": "read_context",
+                "idempotency_key": "idem:execute:read",
+                "payload": {
+                    "tool_call_id": "call_execute_read_1",
+                    "name": "read_context",
+                    "input": { "target": "session", "session_id": "session_http_1" }
+                }
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{envelope}");
+        assert_eq!(envelope["data"]["disposition"], "dispatched");
+        assert_eq!(envelope["data"]["eligibility"]["allowed"], true);
+        assert_eq!(envelope["data"]["result"]["kind"], "read_context");
+        assert_eq!(
+            envelope["data"]["result"]["input"]["target"], "session",
+            "the prepared read descriptor is served, not a command outcome: {envelope}"
+        );
+        assert_eq!(
+            envelope["data"]["tool_call_record"]["permitted"], true,
+            "the read tool's permitted ToolCallRecord was recorded by the gate: {envelope}"
+        );
+    }
+
+    // ---- W14.P42a: route-layer authorization wiring --------------------------------
+
+    /// A resolvable actor whose delegation names an absent delegator — the delegation
+    /// standing guard (confused-deputy fence) must refuse it even though the actor itself
+    /// is registered and active.
+    fn delegated_agent() -> ActorRef {
+        ActorRef {
+            id: ActorId::new("agent:delegate").unwrap(),
+            kind: ActorKind::Agent,
+            delegated_by: Some(ActorId::new("human:absent").unwrap()),
+        }
+    }
+
+    /// A registered System actor: it passes the standing guard but is refused at the
+    /// tool-requester guard (a System actor's authority is the policy auto-approve lane,
+    /// never the semantic tool surface).
+    fn system_requester() -> ActorRef {
+        ActorRef {
+            id: ActorId::new("system:runner").unwrap(),
+            kind: ActorKind::System,
+            delegated_by: None,
+        }
+    }
+
+    /// Turn a `ROUTE_FIXTURES` path template into a concrete path against the authoring
+    /// sub-router: drop the `/authoring` nest prefix and substitute each `{param}` with a
+    /// valid concrete id (the authorization floor refuses before the handler reads it).
+    fn concrete_authoring_path(template: &str) -> String {
+        let stripped = template.strip_prefix("/authoring").unwrap_or(template);
+        stripped
+            .split('/')
+            .map(|segment| match segment {
+                "{changeset_id}" => "changeset_1",
+                "{approval_id}" => "approval_1",
+                "{tool_call_id}" => "tool_call_1",
+                "{interrupt_id}" => "interrupt_1",
+                "{run_id}" => "run_1",
+                "{session_id}" => "session_1",
+                other if other.starts_with('{') => "placeholder",
+                other => other,
+            })
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
+    /// COVERAGE GUARD: every MOUNTED mutating route refuses an unregistered actor at the
+    /// authorization floor — the no-bypass proof. A resolvable token whose actor was never
+    /// registered as active must be refused (403, `authoring_authorization_denied`) on one
+    /// representative route of every mutating family (all mutating routes share the single
+    /// `ResolvedCommand` extractor, so a per-family representative proves the floor). A
+    /// mutating family whose route is not yet mounted (leases, until its wiring point)
+    /// answers 404 and is skipped; when it mounts it falls under this assertion.
+    #[tokio::test]
+    async fn every_mounted_mutating_route_refuses_an_unregistered_actor() {
+        use crate::authoring::api::ROUTE_FIXTURES;
+
+        let (_dir, state) = fixture_state();
+        let stranger = ActorRef {
+            id: ActorId::new("agent:stranger").unwrap(),
+            kind: ActorKind::Agent,
+            delegated_by: None,
+        };
+        // A live, resolvable token — but the actor is NOT registered as an active actor.
+        let token = issue_token_in_state(&state, &stranger);
+
+        let mut seen_families = std::collections::HashSet::new();
+        let mut refused_routes = 0;
+        for fixture in ROUTE_FIXTURES.iter().filter(|fixture| fixture.mutating) {
+            // One representative route per family (request_fixture is family-keyed).
+            if !seen_families.insert(fixture.family) {
+                continue;
+            }
+            let path = concrete_authoring_path(fixture.path_template);
+            let router = authoring_router(state.clone()).with_state(state.clone());
+            let (status, envelope) =
+                post_authoring(router, &path, &token, request_fixture(fixture.family)).await;
+
+            if status == StatusCode::NOT_FOUND {
+                // The route is not yet mounted (a later W14.P42a wiring point).
+                continue;
+            }
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "mutating route {} {} must refuse an unregistered actor at the authorization floor: {envelope}",
+                fixture.method,
+                fixture.path_template,
+            );
+            assert_eq!(
+                envelope["error_kind"], AUTHORIZATION_DENIED_KIND,
+                "{}",
+                fixture.path_template
+            );
+            assert!(
+                envelope["tiers"]["semantic"]["available"].is_boolean(),
+                "the refusal rides the shared tiers envelope: {}",
+                fixture.path_template
+            );
+            refused_routes += 1;
+        }
+        assert!(
+            refused_routes >= 8,
+            "the guard must exercise the mounted mutating families (exercised {refused_routes})"
+        );
+    }
+
+    /// NEGATIVE: an unregistered actor is refused at the extractor floor with a redacted
+    /// 403 — never leaking the offending id, and never a store fault.
+    #[tokio::test]
+    async fn an_unregistered_actor_is_refused_before_the_handler() {
+        let (_dir, state) = fixture_state();
+        let stranger = ActorRef {
+            id: ActorId::new("agent:ghost").unwrap(),
+            kind: ActorKind::Agent,
+            delegated_by: None,
+        };
+        let token = issue_token_in_state(&state, &stranger);
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/proposals",
+            &token,
+            request_fixture(EndpointFamily::Proposal),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::FORBIDDEN, "{envelope}");
+        assert_eq!(envelope["error_kind"], AUTHORIZATION_DENIED_KIND);
+        assert!(
+            !envelope["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("agent:ghost"),
+            "the refusal reason must not echo the actor id: {envelope}"
+        );
+    }
+
+    /// NEGATIVE: a delegated command whose delegator is absent is refused (confused-deputy
+    /// fence) — the actor itself is registered and active, but its delegator is not.
+    #[tokio::test]
+    async fn a_delegated_command_with_an_absent_delegator_is_refused() {
+        let (_dir, state) = fixture_state();
+        // Delegation provenance lives on the TOKEN, never the actor record. Register the
+        // delegate's base identity (active), then mint a token that resolves to the
+        // delegated principal whose delegator `human:absent` is NEVER registered — the
+        // delegation standing guard (confused-deputy fence) must refuse.
+        let delegate_base = ActorRef {
+            id: ActorId::new("agent:delegate").unwrap(),
+            kind: ActorKind::Agent,
+            delegated_by: None,
+        };
+        register_actor(&state, &delegate_base);
+        let token = issue_token_in_state(&state, &delegated_agent());
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/sessions",
+            &token,
+            request_fixture(EndpointFamily::Session),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::FORBIDDEN, "{envelope}");
+        assert_eq!(envelope["error_kind"], AUTHORIZATION_DENIED_KIND);
+        assert!(
+            envelope["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("delegat"),
+            "the refusal names the delegation fence: {envelope}"
+        );
+    }
+
+    /// NEGATIVE: a registered System actor is refused from the semantic tool surface at
+    /// the `/execute` seam (tool-requester guard) — a denial VALUE on the unified envelope.
+    #[tokio::test]
+    async fn execute_refuses_a_system_actor_from_the_tool_surface() {
+        let (_dir, state) = fixture_state();
+        let system = system_requester();
+        // Registered active, so it passes the standing floor; the tool-requester guard
+        // then refuses it (only Human/Agent may drive the tool surface).
+        register_actor(&state, &system);
+        let token = issue_token_in_state(&state, &system);
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/runs/run_1/agent-tools/execute",
+            &token,
+            request_fixture(EndpointFamily::AgentToolExecute),
+        )
+        .await;
+
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "the tool-requester refusal is a denial VALUE: {envelope}"
+        );
+        assert_eq!(envelope["data"]["status"], "denied");
+        assert!(
+            envelope["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("tool surface")),
+            "the denial names the tool-surface guard: {envelope}"
+        );
+    }
+
+    /// A create-proposal body whose single operation targets an EXISTING document claiming
+    /// `foreign_scope` — a spoofed cross-workspace target the document-scope guard refuses.
+    fn create_proposal_targeting_scope(changeset_id: &str, foreign_scope: &str) -> Value {
+        serde_json::to_value(CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::CreateProposal,
+            idempotency_key: IdempotencyKey::new("idem:create:crossscope").unwrap(),
+            payload: CreateProposalRequest {
+                session_id: SessionId::new("session_cross_1").unwrap(),
+                changeset_id: ChangesetId::new(changeset_id).unwrap(),
+                summary: "targets a document by scope".to_string(),
+                operations: vec![ChangesetChildOperationDraft {
+                    child_key: "child_1".to_string(),
+                    operation: ChangesetOperationKind::ReplaceBody,
+                    target: TargetRevisionFence {
+                        document: DocumentRef::Existing {
+                            scope: foreign_scope.to_string(),
+                            node_id: "doc:adr-1".to_string(),
+                            stem: "adr-1".to_string(),
+                            path: ".vault/adr/adr-1.md".to_string(),
+                            doc_type: "adr".to_string(),
+                            base_revision: RevisionToken::new("blob:base").unwrap(),
+                        },
+                        base_revision: Some(RevisionToken::new("blob:base").unwrap()),
+                        current_revision: None,
+                    },
+                    draft: DraftMutation {
+                        mode: DraftMode::WholeDocument,
+                        body: "rewritten body".to_string(),
+                    },
+                }],
+            },
+        })
+        .unwrap()
+    }
+
+    /// NEGATIVE (the real confused-deputy fence): a create whose target claims a DIFFERENT
+    /// worktree path than the active workspace is refused by the document-scope guard as a
+    /// 200 denial VALUE — the actor is registered and standing, so the refusal is a command
+    /// outcome, never a fault. (A legitimate same-workspace create is verified by
+    /// `create_proposal_opens_a_draft_changeset_under_the_resolved_actor`, which resolves a
+    /// real document in the active workspace and now passes the scope guard before creating.)
+    #[tokio::test]
+    async fn create_proposal_refuses_a_cross_workspace_target() {
+        let (_dir, state) = fixture_state();
+        let author = agent();
+        register_actor(&state, &author);
+        let token = issue_token_in_state(&state, &author);
+
+        // A target scope that can never equal the active workspace's scope_token.
+        let foreign_scope = "/some/other/worktree";
+        assert_ne!(
+            foreign_scope,
+            active_authorized_scope(&state),
+            "the spoofed scope must differ from the active workspace"
+        );
+        let body = create_proposal_targeting_scope("changeset_cross_1", foreign_scope);
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, envelope) = post_authoring(router, "/v1/proposals", &token, body).await;
+
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "a scope refusal is a denial VALUE, not a fault: {envelope}"
+        );
+        assert_eq!(envelope["data"]["status"], "denied");
+        assert!(
+            envelope["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("scope")),
+            "the denial names the scope fence: {envelope}"
+        );
+    }
+
+    // ---- W14.P42a S258: advisory lease routes --------------------------------------
+
+    fn lease_target() -> DocumentRef {
+        DocumentRef::Existing {
+            scope: "scope_a".to_string(),
+            node_id: "doc:adr-1".to_string(),
+            stem: "adr-1".to_string(),
+            path: ".vault/adr/adr-1.md".to_string(),
+            doc_type: "adr".to_string(),
+            base_revision: RevisionToken::new("blob:base").unwrap(),
+        }
+    }
+
+    fn lease_acquire_body(idem: &str) -> Value {
+        serde_json::to_value(CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::AcquireLease,
+            idempotency_key: IdempotencyKey::new(idem).unwrap(),
+            payload: LeaseAcquireRequest {
+                target: lease_target(),
+                purpose: super::super::leases::LeasePurpose::WholeDocument,
+                ttl_ms: Some(60_000),
+            },
+        })
+        .unwrap()
+    }
+
+    fn lease_release_body(idem: &str) -> Value {
+        serde_json::to_value(CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::ReleaseLease,
+            idempotency_key: IdempotencyKey::new(idem).unwrap(),
+            payload: LeaseReleaseRequest {
+                target: lease_target(),
+            },
+        })
+        .unwrap()
+    }
+
+    /// The acquire route issues a lease row carrying the monotonic fencing token a holder
+    /// later presents at apply — a fresh, held lease under the resolved principal.
+    #[tokio::test]
+    async fn acquire_lease_route_returns_a_held_lease_and_fencing_token() {
+        let (_dir, state) = fixture_state();
+        let holder = agent();
+        register_actor(&state, &holder);
+        let token = issue_token_in_state(&state, &holder);
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/leases",
+            &token,
+            lease_acquire_body("idem:lease:a1"),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{envelope}");
+        assert_eq!(envelope["data"]["status"], "allowed");
+        assert_eq!(envelope["data"]["lease"]["state"], "held");
+        assert!(
+            envelope["data"]["lease"]["fencing_token"]
+                .as_i64()
+                .is_some_and(|fencing_token| fencing_token >= 1),
+            "a fresh lease issues a monotonic fencing token: {envelope}"
+        );
+        assert!(envelope["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    /// A second actor holding no lease cannot release another holder's live lease — the
+    /// release is a denial VALUE and the lease stands.
+    #[tokio::test]
+    async fn a_non_owner_lease_release_is_refused_as_a_value() {
+        let (_dir, state) = fixture_state();
+        let owner = agent();
+        let other = human_reviewer();
+        register_actor(&state, &owner);
+        register_actor(&state, &other);
+        let owner_token = issue_token_in_state(&state, &owner);
+        let other_token = issue_token_in_state(&state, &other);
+
+        // The owner acquires the lease.
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (acquire_status, acquire_envelope) = post_authoring(
+            router,
+            "/v1/leases",
+            &owner_token,
+            lease_acquire_body("idem:lease:own"),
+        )
+        .await;
+        assert_eq!(acquire_status, StatusCode::OK, "{acquire_envelope}");
+        assert_eq!(acquire_envelope["data"]["status"], "allowed");
+
+        // A different, standing actor tries to release it → refused as a value.
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/leases/release",
+            &other_token,
+            lease_release_body("idem:lease:rel"),
+        )
+        .await;
+
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "a non-owner release is a denial VALUE, not a fault: {envelope}"
+        );
+        assert_eq!(envelope["data"]["status"], "denied");
+        assert!(
+            envelope["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("holder")),
+            "the denial names the owner-only rule: {envelope}"
+        );
     }
 }

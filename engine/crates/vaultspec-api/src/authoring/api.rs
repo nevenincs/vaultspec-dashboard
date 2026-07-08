@@ -5,11 +5,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use super::leases::LeasePurpose;
 use super::model::{
     ActorId, ActorKind, ActorRef, ApprovalId, ChangesetId, CommandKind, DocumentRef,
     IdempotencyKey, LeaseId, ProvisionalCollisionStatus, ReceiptId, ReceiptRef, ReviewDecisionKind,
     RevisionToken, RunId, SessionId,
 };
+use super::permissions::ToolPermissionDecisionKind;
 use super::policy::OperationMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +34,9 @@ pub enum EndpointFamily {
     Lease,
     Stream,
     Recovery,
+    ToolPermission,
+    Interrupt,
+    AgentToolExecute,
 }
 
 impl EndpointFamily {
@@ -47,6 +52,9 @@ impl EndpointFamily {
         Self::Lease,
         Self::Stream,
         Self::Recovery,
+        Self::ToolPermission,
+        Self::Interrupt,
+        Self::AgentToolExecute,
     ];
 }
 
@@ -218,6 +226,46 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
         mutating: false,
         idempotency_required: false,
         negative_contract_cases: &["bad_last_seq", "unknown_session"],
+    },
+    // W12.P41 A2: the human decision on a queued tool-permission request.
+    RouteFixture {
+        family: EndpointFamily::ToolPermission,
+        method: "POST",
+        path_template: "/authoring/v1/agent-tools/{tool_call_id}/permission-decision",
+        command: Some(CommandKind::RequestToolPermission),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &[
+            "missing_idempotency_key",
+            "unknown_tool_call",
+            "unknown_field",
+        ],
+    },
+    // W12.P41 A2: resume a paused run by resolving its interrupt (P32, replay-safe).
+    RouteFixture {
+        family: EndpointFamily::Interrupt,
+        method: "POST",
+        path_template: "/authoring/v1/interrupts/{interrupt_id}/resume",
+        command: Some(CommandKind::ResumeRun),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &[
+            "missing_idempotency_key",
+            "unknown_interrupt",
+            "unknown_field",
+        ],
+    },
+    // W12.P41 A3b: the agent-tool executor run loop — a semantic tool call resolves
+    // through the P22/P32 gate and, when granted, dispatches to the mapped backend
+    // command (here `create_proposal`, the `propose_changeset`/create alias).
+    RouteFixture {
+        family: EndpointFamily::AgentToolExecute,
+        method: "POST",
+        path_template: "/authoring/v1/runs/{run_id}/agent-tools/execute",
+        command: Some(CommandKind::CreateProposal),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &["missing_idempotency_key", "unknown_tool", "unknown_field"],
     },
 ];
 
@@ -446,6 +494,12 @@ pub struct ReviewDecisionRequest {
 pub struct ApplyRequest {
     pub changeset_id: ChangesetId,
     pub approval_id: ApprovalId,
+    /// The ADVISORY fencing token (W13.P26) the applying actor presents. Optional and
+    /// CONSUMED (not an accepted-but-ignored field): the apply preflight enforces it only
+    /// when a live lease holds the target document's scope — a stale or absent token
+    /// against a live lease is refused as a denial value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fencing_token: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -465,12 +519,34 @@ pub struct RollbackChildSource {
     pub source_child_key: String,
 }
 
+/// Acquire (or re-acquire) an advisory lease on a target document's scope. The server
+/// derives the per-document lease scope from the active workspace + the target's node id
+/// (the P27 `document_lease_scope` convention), so acquire and apply-time fencing agree on
+/// the fenced scope. The holder is the middleware-resolved principal, never a body claim;
+/// the fencing token is issued server-side and returned in the response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct LeaseRequest {
-    pub lease_id: LeaseId,
+pub struct LeaseAcquireRequest {
     pub target: DocumentRef,
-    pub ttl_ms: u64,
+    pub purpose: LeasePurpose,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl_ms: Option<u64>,
+}
+
+/// Renew a live advisory lease's TTL window (owner-only; the fencing token is unchanged).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LeaseRenewRequest {
+    pub target: DocumentRef,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl_ms: Option<u64>,
+}
+
+/// Release a live advisory lease (owner-only).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LeaseReleaseRequest {
+    pub target: DocumentRef,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -604,6 +680,24 @@ pub struct AuthoringEventDto {
     pub payload: Value,
 }
 
+/// The human decision on a queued tool-permission request (W12.P41). The reviewer is
+/// the server-held principal (ASA-010), never a body claim.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolPermissionDecisionRequest {
+    pub decision: ToolPermissionDecisionKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+}
+
+/// Resume a paused run by resolving its interrupt with an opaque domain decision
+/// payload (W12.P41, P32 resolve-by-id — replay-safe).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InterruptResumeRequest {
+    pub decision: Value,
+}
+
 pub fn request_fixture(family: EndpointFamily) -> Value {
     match family {
         EndpointFamily::Session => command_value(CommandEnvelope::new(
@@ -625,35 +719,7 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
         EndpointFamily::Proposal => command_value(CommandEnvelope::new(
             CommandKind::CreateProposal,
             idempotency_key("idem:proposal:create"),
-            CreateProposalRequest {
-                session_id: session_id(),
-                changeset_id: changeset_id(),
-                summary: "Rewrite the ADR introduction".to_string(),
-                operations: vec![
-                    ChangesetChildOperationDraft {
-                        child_key: "child_1".to_string(),
-                        operation: ChangesetOperationKind::ReplaceBody,
-                        target: target_revision_fence(
-                            existing_document_fixture(),
-                            Some("blob:abc123"),
-                            Some("blob:abc123"),
-                        ),
-                        draft: DraftMutation {
-                            mode: DraftMode::WholeDocument,
-                            body: "draft body".to_string(),
-                        },
-                    },
-                    ChangesetChildOperationDraft {
-                        child_key: "child_2".to_string(),
-                        operation: ChangesetOperationKind::CreateDocument,
-                        target: target_revision_fence(provisional_document_fixture(), None, None),
-                        draft: DraftMutation {
-                            mode: DraftMode::WholeDocument,
-                            body: "new document body".to_string(),
-                        },
-                    },
-                ],
-            },
+            create_proposal_request_fixture(),
         )),
         EndpointFamily::Review => command_value(CommandEnvelope::new(
             CommandKind::Approve,
@@ -672,6 +738,7 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
             ApplyRequest {
                 changeset_id: changeset_id(),
                 approval_id: approval_id(),
+                fencing_token: None,
             },
         )),
         EndpointFamily::Rollback => command_value(CommandEnvelope::new(
@@ -710,10 +777,10 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
         EndpointFamily::Lease => command_value(CommandEnvelope::new(
             CommandKind::AcquireLease,
             idempotency_key("idem:lease:acquire"),
-            LeaseRequest {
-                lease_id: LeaseId::new("lease_1").unwrap(),
+            LeaseAcquireRequest {
                 target: existing_document_fixture(),
-                ttl_ms: 30_000,
+                purpose: LeasePurpose::WholeDocument,
+                ttl_ms: Some(30_000),
             },
         )),
         EndpointFamily::Stream => read_value(StreamSubscribeRequest { last_seq: Some(41) }),
@@ -722,22 +789,57 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
             run_id: Some(RunId::new("run_1").unwrap()),
             last_seq: Some(41),
         }),
+        EndpointFamily::ToolPermission => command_value(CommandEnvelope::new(
+            CommandKind::RequestToolPermission,
+            idempotency_key("idem:tool-permission:decide"),
+            ToolPermissionDecisionRequest {
+                decision: ToolPermissionDecisionKind::Approve,
+                comment: Some("approved".to_string()),
+            },
+        )),
+        EndpointFamily::Interrupt => command_value(CommandEnvelope::new(
+            CommandKind::ResumeRun,
+            idempotency_key("idem:interrupt:resume"),
+            InterruptResumeRequest {
+                decision: json!({ "approve": true }),
+            },
+        )),
+        // W12.P41 A3b: the route body is a bare `AgentToolCall` (not a domain DTO),
+        // riding the SAME `CommandEnvelope` wire wrapper as every other command route
+        // (`ResolvedCommand<AgentToolCall>` deserializes `CommandEnvelope<AgentToolCall>`).
+        // Built by hand (rather than importing `tools::AgentToolCall`) so `api.rs` stays
+        // the foundational, one-way-depended-on module — `tools.rs` depends on `api.rs`,
+        // never the reverse.
+        EndpointFamily::AgentToolExecute => command_value(CommandEnvelope::new(
+            CommandKind::CreateProposal,
+            idempotency_key("idem:agent-tool:execute"),
+            json!({
+                "tool_call_id": "tool_call_1",
+                "name": "propose_changeset",
+                "idempotency_key": "idem:propose:create",
+                "input": propose_changeset_create_input(),
+            }),
+        )),
     }
 }
 
 pub fn response_fixture(family: EndpointFamily) -> Value {
     let aggregate = match family {
-        EndpointFamily::Session | EndpointFamily::Recovery => AggregateRef::Session {
+        EndpointFamily::Session
+        | EndpointFamily::Recovery
+        | EndpointFamily::ToolPermission
+        | EndpointFamily::Interrupt => AggregateRef::Session {
             session_id: session_id(),
         },
         EndpointFamily::Document => AggregateRef::Document {
             document: existing_document_fixture(),
         },
-        EndpointFamily::Proposal | EndpointFamily::Apply | EndpointFamily::DirectWrite => {
-            AggregateRef::Changeset {
-                changeset_id: changeset_id(),
-            }
-        }
+        EndpointFamily::Proposal
+        | EndpointFamily::Apply
+        | EndpointFamily::DirectWrite
+        | EndpointFamily::AgentToolExecute => AggregateRef::Changeset {
+            changeset_id: changeset_id(),
+        },
         EndpointFamily::Review => AggregateRef::Approval {
             approval_id: approval_id(),
         },
@@ -818,6 +920,52 @@ fn command_value<T: Serialize>(request: CommandEnvelope<T>) -> Value {
 
 fn read_value<T: Serialize>(payload: T) -> Value {
     serde_json::to_value(ReadEnvelope::new(payload)).expect("read fixture serializes")
+}
+
+/// The `create_proposal` request fixture: one `ReplaceBody` op over an existing
+/// document + one `CreateDocument` op over a provisional one. Shared by the
+/// `Proposal` family's request fixture AND the `AgentToolExecute` family's
+/// `propose_changeset`/create tool-input fixture, so the two never drift.
+fn create_proposal_request_fixture() -> CreateProposalRequest {
+    CreateProposalRequest {
+        session_id: session_id(),
+        changeset_id: changeset_id(),
+        summary: "Rewrite the ADR introduction".to_string(),
+        operations: vec![
+            ChangesetChildOperationDraft {
+                child_key: "child_1".to_string(),
+                operation: ChangesetOperationKind::ReplaceBody,
+                target: target_revision_fence(
+                    existing_document_fixture(),
+                    Some("blob:abc123"),
+                    Some("blob:abc123"),
+                ),
+                draft: DraftMutation {
+                    mode: DraftMode::WholeDocument,
+                    body: "draft body".to_string(),
+                },
+            },
+            ChangesetChildOperationDraft {
+                child_key: "child_2".to_string(),
+                operation: ChangesetOperationKind::CreateDocument,
+                target: target_revision_fence(provisional_document_fixture(), None, None),
+                draft: DraftMutation {
+                    mode: DraftMode::WholeDocument,
+                    body: "new document body".to_string(),
+                },
+            },
+        ],
+    }
+}
+
+/// The `propose_changeset`/create semantic-tool input: the `CreateProposalRequest`
+/// fixture flattened alongside the tool's `operation` discriminant tag (the wire
+/// shape `tools::ProposeChangesetInput::Create` expects).
+fn propose_changeset_create_input() -> Value {
+    let mut value = serde_json::to_value(create_proposal_request_fixture())
+        .expect("create-proposal fixture serializes");
+    value["operation"] = json!("create");
+    value
 }
 
 fn actor_fixture() -> ActorRef {

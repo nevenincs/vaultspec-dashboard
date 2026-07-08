@@ -203,6 +203,24 @@ impl ActorRepository<'_, '_> {
         row.map(validate_actor_row).transpose()
     }
 
+    /// Every registered record sharing an actor id, across kinds. An `ActorRef`
+    /// carries a `delegated_by` id WITHOUT its kind, so the authorization engine
+    /// (`security`) resolves a delegating principal's standing by id alone. Bounded
+    /// read (the `(actor_id, actor_kind)` primary key admits at most one row per
+    /// kind), returned in deterministic kind order.
+    pub fn records_by_actor_id(&self, actor_id: &ActorId) -> Result<Vec<ActorRecord>> {
+        let rows = self.repo.query_collect(
+            "SELECT actor_id, actor_kind, display_name, display_summary, status,
+                    provenance_key, created_at_ms, updated_at_ms, record_json
+             FROM authoring_actor_records
+             WHERE actor_id = ?1
+             ORDER BY actor_kind",
+            rusqlite::params![actor_id.as_str()],
+            read_actor_row,
+        )?;
+        rows.into_iter().map(validate_actor_row).collect()
+    }
+
     pub fn ensure_active(&self, actor: &ActorRef) -> Result<ActorRecord> {
         let record = self.record(actor)?.ok_or_else(|| {
             StoreError::Actor(format!(

@@ -35,6 +35,24 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nevenincs/vaultspec-das
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/vaultspec-cli-installer.ps1 | iex"
 ```
 
+[Scoop](https://scoop.sh) users (Windows) can install from this repo's
+built-in bucket:
+
+```powershell
+scoop bucket add vaultspec https://github.com/nevenincs/vaultspec-dashboard
+scoop install vaultspec
+```
+
+Rust users can install without crates.io via
+[cargo-binstall](https://github.com/cargo-bins/cargo-binstall) (its `--git`
+mode expects a repo-root manifest, so point it at the `engine/` workspace of
+a clone instead):
+
+```bash
+git clone --depth 1 https://github.com/nevenincs/vaultspec-dashboard
+cargo binstall --manifest-path vaultspec-dashboard/engine vaultspec-cli
+```
+
 Every release asset ships with a `.sha256` checksum file; verify downloads
 with `sha256sum -c <asset>.sha256`.
 
