@@ -20,7 +20,7 @@ use super::model::CommandKind;
 pub const DB_FILENAME: &str = "authoring-state.sqlite3";
 const AUTHORING_DATA_DIR: &str = "authoring-state";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-const SCHEMA_VERSION: i64 = 15;
+const SCHEMA_VERSION: i64 = 16;
 const STORE_KIND: &str = "vaultspec_authoring";
 
 const METADATA_SCHEMA: &str = "
@@ -889,6 +889,63 @@ SET schema_version = 15
 WHERE singleton = 1;
 ";
 
+// W12.P32: durable interrupt + tool-call records (langgraph-integration ADR). Both are
+// PRODUCT state that must survive independently of LangGraph checkpoint pruning, so they
+// live in the authoring store, not the checkpointer. Two fresh additive tables (no
+// CHECK-widen, no table recreate). `authoring_interrupts` is keyed by a STABLE
+// `interrupt_id` so simultaneous interrupts resume BY ID, never by position;
+// `authoring_tool_call_records` snapshots the executor-gate outcome per tool call. Both
+// are bounded by their unique business key and indexed by run for the resume listing.
+const INTERRUPT_AND_TOOL_CALL_SCHEMA: &str = "
+CREATE TABLE authoring_interrupts (
+    seq              INTEGER PRIMARY KEY AUTOINCREMENT,
+    interrupt_id     TEXT NOT NULL,
+    run_id           TEXT NOT NULL,
+    kind             TEXT NOT NULL CHECK (
+        kind IN ('tool_permission', 'changeset_approval')
+    ),
+    tool_call_id     TEXT,
+    proposal_id      TEXT,
+    resume_state     TEXT NOT NULL CHECK (
+        resume_state IN ('pending', 'resolved')
+    ),
+    decision         TEXT,
+    idempotency_key  TEXT NOT NULL,
+    record_json      TEXT NOT NULL,
+    created_at_ms    INTEGER NOT NULL,
+    updated_at_ms    INTEGER NOT NULL,
+    UNIQUE (interrupt_id)
+);
+
+CREATE INDEX idx_authoring_interrupts_run
+    ON authoring_interrupts (run_id, seq);
+CREATE INDEX idx_authoring_interrupts_state
+    ON authoring_interrupts (resume_state, seq);
+
+CREATE TABLE authoring_tool_call_records (
+    seq              INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool_call_id     TEXT NOT NULL,
+    run_id           TEXT NOT NULL,
+    tool_name        TEXT NOT NULL,
+    risk_tier        TEXT NOT NULL CHECK (
+        risk_tier IN ('read_only', 'mutating', 'dangerous')
+    ),
+    permitted        INTEGER NOT NULL CHECK (permitted IN (0, 1)),
+    refusal_reason   TEXT,
+    record_json      TEXT NOT NULL,
+    created_at_ms    INTEGER NOT NULL,
+    updated_at_ms    INTEGER NOT NULL,
+    UNIQUE (tool_call_id)
+);
+
+CREATE INDEX idx_authoring_tool_call_records_run
+    ON authoring_tool_call_records (run_id, seq);
+
+UPDATE authoring_store_metadata
+SET schema_version = 16
+WHERE singleton = 1;
+";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Migration {
     version: i64,
@@ -971,6 +1028,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 15,
         name: "widen_changeset_kind_for_direct",
         sql: CHANGESET_KIND_DIRECT_SCHEMA,
+    },
+    Migration {
+        version: 16,
+        name: "create_authoring_interrupts_and_tool_call_records",
+        sql: INTERRUPT_AND_TOOL_CALL_SCHEMA,
     },
 ];
 
@@ -1352,6 +1414,10 @@ mod tests {
                         version: 15,
                         name: "widen_changeset_kind_for_direct".to_string(),
                     },
+                    AppliedMigration {
+                        version: 16,
+                        name: "create_authoring_interrupts_and_tool_call_records".to_string(),
+                    },
                 ]
             );
             let table_count: i64 = store
@@ -1379,19 +1445,21 @@ mod tests {
                            'authoring_sessions',
                            'authoring_prompt_turns',
                            'authoring_runs',
-                           'authoring_tool_permission_requests'
+                           'authoring_tool_permission_requests',
+                           'authoring_interrupts',
+                           'authoring_tool_call_records'
                         )",
                     [],
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(table_count, 19);
+            assert_eq!(table_count, 21);
         }
 
         let reopened = Store::open_at(&path).expect("authoring store reopens");
         let metadata = reopened.schema_metadata().unwrap();
         assert_eq!(metadata.schema_version, SCHEMA_VERSION);
-        assert_eq!(metadata.applied_migrations.len(), 15);
+        assert_eq!(metadata.applied_migrations.len(), 16);
     }
 
     #[test]
@@ -1489,9 +1557,10 @@ mod tests {
         )
         .unwrap();
 
-        // Run v15 (the widen migration) over the populated store.
+        // Run the remaining migrations (v15 widen + the additive v16) over the populated
+        // store; the chain settles at the current SCHEMA_VERSION.
         run_migrations(&conn, MIGRATIONS).unwrap();
-        assert_eq!(user_version(&conn).unwrap(), 15);
+        assert_eq!(user_version(&conn).unwrap(), SCHEMA_VERSION);
 
         // Every populated column survived the recreate, including actor-provenance.
         let (kind, summary, actor_id, prov): (String, String, String, String) = conn
