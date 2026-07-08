@@ -237,14 +237,19 @@ fn spawn_watcher(cell: &Arc<ScopeCell>) {
     // trailing edge), so no change is lost — only redundant rebuilds are shed.
     // An unbounded channel here let a large `git checkout` / bulk copy queue N
     // sequential rebuilds, each driving the (now bounded, B1) core subprocess.
-    let (dirty_tx, mut dirty_rx) = tokio::sync::mpsc::channel::<usize>(1);
+    let (dirty_tx, mut dirty_rx) =
+        tokio::sync::mpsc::channel::<(usize, Vec<std::path::PathBuf>)>(1);
     let watch_handle = match engine_graph::watch::watch(
         &engine_graph::watch::watch_roots(&cell.root),
         std::time::Duration::from_millis(2000),
         move |paths| {
             // Non-blocking: full channel ⇒ a rebuild is already pending ⇒ drop
             // (coalesce). A closed channel ⇒ the cell was evicted ⇒ drop.
-            let _ = dirty_tx.try_send(paths.len());
+            // Carry a BOUNDED sample of the dirtied paths so the rebuild log
+            // names its trigger (DF-4 visibility: an unexplained rebuild loop
+            // is undiagnosable from a bare count).
+            let sample: Vec<std::path::PathBuf> = paths.iter().take(3).cloned().collect();
+            let _ = dirty_tx.try_send((paths.len(), sample));
         },
     ) {
         Ok(handle) => handle,
@@ -287,13 +292,24 @@ fn spawn_watcher(cell: &Arc<ScopeCell>) {
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
         let weak = Arc::downgrade(cell);
         handle.spawn(async move {
-            while dirty_rx.recv().await.is_some() {
+            while let Some((dirty_count, dirty_sample)) = dirty_rx.recv().await {
                 // Upgrade per batch: a `None` means the cell was evicted
                 // (strong count hit 0) between this dirty event and now — stop
                 // rebuilding a dead scope and let the task exit.
                 let Some(cell) = weak.upgrade() else {
                     break;
                 };
+                // Name the trigger (DF-4): a rebuild loop with no visible
+                // cause is undiagnosable from outside; the sample is bounded
+                // at the sender.
+                eprintln!(
+                    "vaultspec serve: rebuild: {dirty_count} dirty path(s), e.g. {}",
+                    dirty_sample
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
                 // Rebuild failures are LOGGED, never silently swallowed
                 // (DF-4): a contended store is a wait-and-retry on the next
                 // dirty batch, not a death. `rebuild_and_swap` commits the
