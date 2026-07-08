@@ -488,13 +488,13 @@ Provide explicit user-visible flows for rebase, supersede, cancel, and replaceme
 
 ### Phase `W13.P45` - Section-scoped proposal operations (W03.P13 remainder, conditional)
 
-Conditional remainder of the Increment 1 whole-document-only subset: build section-scoped and atomic-hunk operations, selectors, and selected preimages IF skeleton evidence shows agents need sub-document edits; otherwise this phase defers out of the campaign with its trigger recorded in the plan Description.
+Section-scoped proposal operations, conditional on skeleton evidence that agents need sub-document edits. DEFERRED OUT (2026-07-08): Increments 1-5, including the LangGraph agent runtime, produced no consumer needing sub-document edits; V1 materialization is whole-document ReplaceBody only and the paired chunk/selector API is itself deferred (change-format ADR ASA-003). Section-scoped operations are inapplicable in V1. Return trigger: the first agent or editor workflow requiring an exact-resolving sub-document or atomic-hunk edit.
 
-- [ ] `W13.P45.S241` - Ground Section-scoped proposal operations requirements into the phase checklist, and record whether skeleton evidence warrants this work; `.vault/adr/`.
+- [x] `W13.P45.S241` - Ground Section-scoped proposal operations requirements into the phase checklist, and record whether skeleton evidence warrants this work; `.vault/adr/`.
 - [ ] `W13.P45.S242` - Implement section-scoped and atomic-hunk operation payloads, selectors, and selected preimages, gated on skeleton evidence that agents need sub-document edits; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
 - [ ] `W13.P45.S243` - Add tests for atomic hunk operations, selector resolution, selected preimage capture, and invalid range cases; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
 - [ ] `W13.P45.S244` - Run Section-scoped proposal operations code review and record the phase audit; `.vault/audit/`.
-- [ ] `W13.P45.S245` - Verify section-scoped edits are reviewable and safe, or record that skeleton evidence did not warrant this work and the phase defers out of the campaign; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
+- [x] `W13.P45.S245` - Verify section-scoped edits are reviewable and safe, or record that skeleton evidence did not warrant this work and the phase defers out of the campaign; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
 
 ### Phase `W13.P20` - Authorization engine and scope guards
 
@@ -518,9 +518,9 @@ Serve review queues, claims, clarification, reviewer edits, audit records, redac
 
 ### Phase `W13.P46` - Per-operation rollback inverses (W08.P38 remainder, evidence-gated)
 
-Evidence-gated remainder of the Increment 1 whole-document rollback subset: per-operation rollback inverse logic, enabled per operation kind only as need appears from real usage.
+Per-operation rollback inverses, evidence-gated on real usage need. DEFERRED OUT (2026-07-08): V1 applies only whole-document ReplaceBody, already covered by the delivered whole-document preimage-restore rollback (W08.P38); no other operation kind is appliable in V1, so none needs a per-operation inverse (the honest rollback_available=false + reason + manual-repair contract covers them). Return trigger: enable a specific inverse the first time that operation kind becomes appliable and real usage rolls one back. NOTE: S250 is the Increment-5 acceptance demo over the concurrency+security stack, satisfiable against the committed stack - verify at Increment-5, not a defer.
 
-- [ ] `W13.P46.S246` - Ground Per-operation rollback inverses requirements into the phase checklist, and record whether real usage warrants this work; `.vault/adr/`.
+- [x] `W13.P46.S246` - Ground Per-operation rollback inverses requirements into the phase checklist, and record whether real usage warrants this work; `.vault/adr/`.
 - [ ] `W13.P46.S247` - Implement per-operation rollback inverse logic beyond whole-document preimage restore, enabled per operation kind only as need appears from real usage; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
 - [ ] `W13.P46.S248` - Add inverse-logic tests per enabled operation kind, covering delete inverse, rename inverse, and remaining honest unavailable-reason cases; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
 - [ ] `W13.P46.S249` - Run Per-operation rollback inverses code review and record the phase audit; `.vault/audit/`.
