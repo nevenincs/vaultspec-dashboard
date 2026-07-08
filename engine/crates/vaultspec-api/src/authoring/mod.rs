@@ -33,6 +33,7 @@ pub(crate) mod rebase;
 pub(crate) mod response;
 pub(crate) mod rollback;
 pub(crate) mod routes;
+pub(crate) mod security;
 pub(crate) mod session;
 pub(crate) mod snapshots;
 pub(crate) mod store;
