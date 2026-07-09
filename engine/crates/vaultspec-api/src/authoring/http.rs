@@ -70,6 +70,10 @@ use super::proposal::{
     DraftProposalRequest, ProposalCommandContext, ProposalCommandOutcome, ProposalCommandResult,
     SubmitProposalRequest, TerminalProposalRequest, ValidateProposalRequest, validation_evidence,
 };
+use super::rebase::{
+    CreateReplacementProposalRequest, RebaseProposalRequest, ReplacementProposalResult,
+    create_replacement_proposal, rebase_proposal,
+};
 use super::rollback::{RollbackOutcome, RollbackRequest, RollbackSourceChild};
 use super::security::{CommandAuthorization, authorize_command, tool_requester_kind_guard};
 use super::snapshots::SnapshotReader;
@@ -539,6 +543,13 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
             "/v1/proposals/{changeset_id}/replace",
             post(replace_proposal_draft),
         )
+        // Explicit rebase / supersession (W13.P28, wired W14.P42a): advance a stale
+        // proposal only through a reviewed decision. Both mutating → floor-authorized.
+        .route(
+            "/v1/proposals/{changeset_id}/rebase",
+            post(rebase_changeset),
+        )
+        .route("/v1/replacement-proposals", post(create_replacement))
         .route(
             "/v1/proposals/{changeset_id}/snapshot",
             get(proposal_snapshot),
@@ -1271,6 +1282,92 @@ pub async fn replace_proposal_draft(
     command: ResolvedCommand<DraftProposalRequest>,
 ) -> Response {
     mutate_proposal_draft(state, changeset_id, command, DraftRoute::Replace).await
+}
+
+// --- explicit rebase / supersession (W13.P28, wired W14.P42a) ------------------
+
+/// `POST /authoring/v1/proposals/{changeset_id}/rebase` — rebase a CONFLICTED changeset
+/// onto the current document state in place, producing a fresh reviewable `Draft`
+/// revision. Mirrors the draft-mutation shape: the path changeset id must match the body
+/// (coherence), and the domain handler owns its own idempotency + unit of work. A
+/// non-conflicted head or an anchor-drift child rides the 200 envelope as a denial VALUE; a
+/// stale `expected_revision` is a typed conflict fault. The actor is the middleware-resolved
+/// principal (standing already cleared at the extractor floor).
+pub async fn rebase_changeset(
+    State(state): State<Arc<AppState>>,
+    Path(changeset_id): Path<String>,
+    command: ResolvedCommand<RebaseProposalRequest>,
+) -> Response {
+    let changeset_id = match ChangesetId::new(&changeset_id) {
+        Ok(id) => id,
+        Err(err) => {
+            return super::response::typed_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                REQUEST_INVALID_KIND,
+                &format!("invalid changeset id: {err}"),
+            )
+            .into_response();
+        }
+    };
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    if payload.changeset_id != changeset_id {
+        return super::response::typed_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            REQUEST_INVALID_KIND,
+            "path changeset id does not match the request body",
+        )
+        .into_response();
+    }
+    let context = proposal_context(actor, idempotency_key, now);
+    let worktree_root = state.active_workspace_root();
+    match state
+        .with_authoring_store(|store| rebase_proposal(store, &worktree_root, context, payload))
+    {
+        Ok(result) => proposal_result_response(&state, result),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// Map a two-legged replacement outcome to a response that surfaces BOTH legs faithfully:
+/// the create (`replacement`) leg drives the HTTP status, and the value carries the
+/// replacement result plus the supersession result (`null` when the create did not land, so
+/// the source was never superseded). A denied/in-flight create is visibly distinct from a
+/// completed supersede.
+fn replacement_result_response(state: &AppState, result: ReplacementProposalResult) -> Response {
+    let (status, replacement_value) = proposal_result_value(&result.replacement);
+    let supersession_value = result
+        .supersession
+        .as_ref()
+        .map(|supersession| proposal_result_value(supersession).1);
+    let value = json!({
+        "replacement": replacement_value,
+        "supersession": supersession_value,
+    });
+    (status, super::response::snapshot(state, value)).into_response()
+}
+
+/// `POST /authoring/v1/replacement-proposals` — supersede a stale-but-not-conflicted source
+/// with a fresh candidate seeded from its carried-forward operations. The source id is in
+/// the request body (there is no single path resource — the command spans two changesets).
+/// CREATE-then-SUPERSEDE: the source is never superseded unless the replacement create
+/// landed. The actor is the middleware-resolved principal.
+pub async fn create_replacement(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<CreateReplacementProposalRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let context = proposal_context(actor, idempotency_key, now);
+    let worktree_root = state.active_workspace_root();
+    match state.with_authoring_store(|store| {
+        create_replacement_proposal(store, &worktree_root, context, payload)
+    }) {
+        Ok(result) => replacement_result_response(&state, result),
+        Err(err) => command_error_response(&state, &err),
+    }
 }
 
 // --- submit for review (composite: validate + submit + open approval) ---------
@@ -3962,6 +4059,304 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = json_body(response).await;
         assert_eq!(body["error_kind"], "authoring_proposal_not_found");
+    }
+
+    // ---- W14.P42a S260: explicit rebase / replacement routes ------------------------
+
+    fn latest_changeset_revision_for_test(
+        state: &AppState,
+        changeset_id: &ChangesetId,
+    ) -> RevisionToken {
+        state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                    Ok(uow
+                        .ledger()
+                        .latest(changeset_id)?
+                        .expect("changeset exists")
+                        .changeset_revision)
+                })
+            })
+            .unwrap()
+    }
+
+    fn changeset_status_for_test(state: &AppState, changeset_id: &ChangesetId) -> ChangesetStatus {
+        state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                    Ok(uow
+                        .ledger()
+                        .latest(changeset_id)?
+                        .expect("changeset exists")
+                        .status)
+                })
+            })
+            .unwrap()
+    }
+
+    /// The out-of-band base a rebase / replacement is regenerated against.
+    const EDITED_PLAN_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-07-06'\n---\n\n# Plan\n\nedited out of band\n";
+
+    fn rebase_command(
+        principal: AuthenticatedPrincipal,
+        changeset: &str,
+        expected: &RevisionToken,
+        idem: &str,
+    ) -> ResolvedCommand<RebaseProposalRequest> {
+        ResolvedCommand::from_principal(
+            principal,
+            CommandEnvelope {
+                api_version: ApiVersion::V1,
+                command: CommandKind::Rebase,
+                idempotency_key: IdempotencyKey::new(idem).unwrap(),
+                payload: RebaseProposalRequest {
+                    changeset_id: ChangesetId::new(changeset).unwrap(),
+                    expected_revision: expected.clone(),
+                    summary: "rebase onto the current base".to_string(),
+                },
+            },
+        )
+    }
+
+    fn replacement_command(
+        principal: AuthenticatedPrincipal,
+        source: &str,
+        source_expected: &RevisionToken,
+        replacement: &str,
+        idem: &str,
+    ) -> ResolvedCommand<CreateReplacementProposalRequest> {
+        ResolvedCommand::from_principal(
+            principal,
+            CommandEnvelope {
+                api_version: ApiVersion::V1,
+                command: CommandKind::Supersede,
+                idempotency_key: IdempotencyKey::new(idem).unwrap(),
+                payload: CreateReplacementProposalRequest {
+                    source_changeset_id: ChangesetId::new(source).unwrap(),
+                    source_expected_revision: source_expected.clone(),
+                    replacement_changeset_id: ChangesetId::new(replacement).unwrap(),
+                    summary: "regenerate against the current base".to_string(),
+                },
+            },
+        )
+    }
+
+    /// Create a Draft changeset (via the create handler) and drive it through the real arcs
+    /// to a `Conflicted` head (a failed apply attempt), returning the conflicted revision.
+    async fn create_and_drive_to_conflicted(
+        state: &Arc<AppState>,
+        root: &std::path::Path,
+        changeset: &str,
+    ) -> RevisionToken {
+        register_actor(state, &agent());
+        let (_d, principal) = resolved_principal(&agent());
+        let created = create_proposal(
+            State(state.clone()),
+            create_command(
+                principal,
+                root,
+                changeset,
+                &format!("idem:create:{changeset}"),
+            ),
+        )
+        .await;
+        assert_eq!(created.status(), StatusCode::OK);
+        let changeset_id = ChangesetId::new(changeset).unwrap();
+        for (offset, status) in [
+            ChangesetStatus::Proposed,
+            ChangesetStatus::NeedsReview,
+            ChangesetStatus::Approved,
+            ChangesetStatus::Applying,
+            ChangesetStatus::Conflicted,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            append_status_revision_for_test(state, &changeset_id, status, 200 + offset as i64);
+        }
+        latest_changeset_revision_for_test(state, &changeset_id)
+    }
+
+    #[tokio::test]
+    async fn rebase_route_rebases_a_conflicted_changeset_to_a_fresh_draft_and_replays() {
+        let (dir, state) = fixture_state();
+        let conflicted_rev =
+            create_and_drive_to_conflicted(&state, dir.path(), "changeset_rebase_ok").await;
+        // An out-of-band edit stales the conflicted child's recorded base.
+        std::fs::write(
+            dir.path().join(".vault/plan/operation-plan.md"),
+            EDITED_PLAN_BODY,
+        )
+        .unwrap();
+
+        let (_d2, p2) = resolved_principal(&agent());
+        let response = rebase_changeset(
+            State(state.clone()),
+            axum::extract::Path("changeset_rebase_ok".to_string()),
+            rebase_command(p2, "changeset_rebase_ok", &conflicted_rev, "idem:rebase:ok"),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["status"], "draft", "{body}");
+        assert_eq!(body["data"]["command"], "rebase");
+        assert_eq!(body["data"]["changeset_id"], "changeset_rebase_ok");
+
+        let changeset_id = ChangesetId::new("changeset_rebase_ok").unwrap();
+        let after_rebase = latest_changeset_revision_for_test(&state, &changeset_id);
+
+        // A REPLAY under the same idempotency key does NOT append a second revision.
+        let (_d3, p3) = resolved_principal(&agent());
+        let replay = rebase_changeset(
+            State(state.clone()),
+            axum::extract::Path("changeset_rebase_ok".to_string()),
+            rebase_command(p3, "changeset_rebase_ok", &conflicted_rev, "idem:rebase:ok"),
+        )
+        .await;
+        assert_eq!(replay.status(), StatusCode::OK);
+        assert_eq!(
+            latest_changeset_revision_for_test(&state, &changeset_id),
+            after_rebase,
+            "a replayed rebase appends no second revision (idempotent)"
+        );
+    }
+
+    #[tokio::test]
+    async fn rebase_route_denies_a_non_conflicted_head_as_a_value() {
+        let (dir, state) = fixture_state();
+        // create_then_submit drives to NeedsReview — a non-conflicted head with no rebase arc.
+        let _ = create_then_submit(&state, dir.path(), "changeset_rebase_nc").await;
+        let changeset_id = ChangesetId::new("changeset_rebase_nc").unwrap();
+        let revision = latest_changeset_revision_for_test(&state, &changeset_id);
+
+        let (_d, p) = resolved_principal(&agent());
+        let response = rebase_changeset(
+            State(state.clone()),
+            axum::extract::Path("changeset_rebase_nc".to_string()),
+            rebase_command(p, "changeset_rebase_nc", &revision, "idem:rebase:nc"),
+        )
+        .await;
+
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "a non-conflicted rebase is a denial VALUE, not a fault"
+        );
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["status"], "denied", "{body}");
+    }
+
+    #[tokio::test]
+    async fn rebase_route_rejects_a_stale_expected_revision_as_a_409() {
+        let (dir, state) = fixture_state();
+        let _ = create_then_submit(&state, dir.path(), "changeset_rebase_stale").await;
+
+        let (_d, p) = resolved_principal(&agent());
+        let response = rebase_changeset(
+            State(state.clone()),
+            axum::extract::Path("changeset_rebase_stale".to_string()),
+            rebase_command(
+                p,
+                "changeset_rebase_stale",
+                &RevisionToken::new("proposal:not-the-head").unwrap(),
+                "idem:rebase:stale",
+            ),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body = json_body(response).await;
+        assert_eq!(body["error_kind"], "authoring_stale_revision");
+    }
+
+    #[tokio::test]
+    async fn rebase_route_rejects_a_path_body_changeset_mismatch() {
+        let (_dir, state) = fixture_state();
+        let (_d, p) = resolved_principal(&agent());
+        // The body names a DIFFERENT changeset than the path — a coherence 400.
+        let response = rebase_changeset(
+            State(state.clone()),
+            axum::extract::Path("changeset_path".to_string()),
+            rebase_command(
+                p,
+                "changeset_body",
+                &RevisionToken::new("proposal:rev1").unwrap(),
+                "idem:rebase:mismatch",
+            ),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = json_body(response).await;
+        assert_eq!(body["error_kind"], REQUEST_INVALID_KIND);
+    }
+
+    #[tokio::test]
+    async fn replacement_route_supersedes_the_source_and_creates_a_candidate() {
+        let (dir, state) = fixture_state();
+        register_actor(&state, &agent());
+        let (_d, principal) = resolved_principal(&agent());
+        let created = create_proposal(
+            State(state.clone()),
+            create_command(
+                principal,
+                dir.path(),
+                "changeset_repl_src",
+                "idem:create:repl",
+            ),
+        )
+        .await;
+        assert_eq!(created.status(), StatusCode::OK);
+
+        // Drive the source to a non-terminal, non-conflicted head (NeedsReview) — no rebase
+        // arc, so replacement is the explicit path.
+        let source = ChangesetId::new("changeset_repl_src").unwrap();
+        append_status_revision_for_test(&state, &source, ChangesetStatus::Proposed, 201);
+        append_status_revision_for_test(&state, &source, ChangesetStatus::NeedsReview, 202);
+        let source_rev = latest_changeset_revision_for_test(&state, &source);
+        // An out-of-band edit staled the source base.
+        std::fs::write(
+            dir.path().join(".vault/plan/operation-plan.md"),
+            EDITED_PLAN_BODY,
+        )
+        .unwrap();
+
+        let (_d2, p2) = resolved_principal(&agent());
+        let response = create_replacement(
+            State(state.clone()),
+            replacement_command(
+                p2,
+                "changeset_repl_src",
+                &source_rev,
+                "changeset_repl_new",
+                "idem:repl",
+            ),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        // BOTH legs are surfaced: a fresh Draft candidate + the source superseded.
+        assert_eq!(body["data"]["replacement"]["status"], "draft", "{body}");
+        assert_eq!(
+            body["data"]["replacement"]["changeset_id"],
+            "changeset_repl_new"
+        );
+        assert_eq!(
+            body["data"]["supersession"]["status"], "superseded",
+            "the source was superseded: {body}"
+        );
+
+        // The durable heads confirm both legs.
+        assert_eq!(
+            changeset_status_for_test(&state, &source),
+            ChangesetStatus::Superseded
+        );
+        assert_eq!(
+            changeset_status_for_test(&state, &ChangesetId::new("changeset_repl_new").unwrap()),
+            ChangesetStatus::Draft
+        );
     }
 
     fn child_input_from_latest(

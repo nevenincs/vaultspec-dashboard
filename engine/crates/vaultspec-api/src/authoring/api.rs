@@ -13,6 +13,7 @@ use super::model::{
 };
 use super::permissions::ToolPermissionDecisionKind;
 use super::policy::OperationMode;
+use super::rebase::{CreateReplacementProposalRequest, RebaseProposalRequest};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -37,6 +38,8 @@ pub enum EndpointFamily {
     ToolPermission,
     Interrupt,
     AgentToolExecute,
+    Rebase,
+    Replacement,
 }
 
 impl EndpointFamily {
@@ -55,6 +58,8 @@ impl EndpointFamily {
         Self::ToolPermission,
         Self::Interrupt,
         Self::AgentToolExecute,
+        Self::Rebase,
+        Self::Replacement,
     ];
 }
 
@@ -266,6 +271,35 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
         mutating: true,
         idempotency_required: true,
         negative_contract_cases: &["missing_idempotency_key", "unknown_tool", "unknown_field"],
+    },
+    // W14.P42a S260: explicit rebase of a conflicted changeset in place (P28).
+    RouteFixture {
+        family: EndpointFamily::Rebase,
+        method: "POST",
+        path_template: "/authoring/v1/proposals/{changeset_id}/rebase",
+        command: Some(CommandKind::Rebase),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &[
+            "missing_idempotency_key",
+            "stale_expected_revision",
+            "path_body_changeset_mismatch",
+            "unknown_field",
+        ],
+    },
+    // W14.P42a S260: supersede a stale-but-not-conflicted source with a fresh candidate (P28).
+    RouteFixture {
+        family: EndpointFamily::Replacement,
+        method: "POST",
+        path_template: "/authoring/v1/replacement-proposals",
+        command: Some(CommandKind::Supersede),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &[
+            "missing_idempotency_key",
+            "stale_source_revision",
+            "unknown_field",
+        ],
     },
 ];
 
@@ -820,6 +854,25 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
                 "input": propose_changeset_create_input(),
             }),
         )),
+        EndpointFamily::Rebase => command_value(CommandEnvelope::new(
+            CommandKind::Rebase,
+            idempotency_key("idem:rebase:1"),
+            RebaseProposalRequest {
+                changeset_id: changeset_id(),
+                expected_revision: revision("proposal:rev1"),
+                summary: "rebase onto the current base".to_string(),
+            },
+        )),
+        EndpointFamily::Replacement => command_value(CommandEnvelope::new(
+            CommandKind::Supersede,
+            idempotency_key("idem:replacement:1"),
+            CreateReplacementProposalRequest {
+                source_changeset_id: changeset_id(),
+                source_expected_revision: revision("proposal:rev1"),
+                replacement_changeset_id: ChangesetId::new("changeset_replacement_1").unwrap(),
+                summary: "supersede the stale source".to_string(),
+            },
+        )),
     }
 }
 
@@ -837,8 +890,12 @@ pub fn response_fixture(family: EndpointFamily) -> Value {
         EndpointFamily::Proposal
         | EndpointFamily::Apply
         | EndpointFamily::DirectWrite
-        | EndpointFamily::AgentToolExecute => AggregateRef::Changeset {
+        | EndpointFamily::AgentToolExecute
+        | EndpointFamily::Rebase => AggregateRef::Changeset {
             changeset_id: changeset_id(),
+        },
+        EndpointFamily::Replacement => AggregateRef::Changeset {
+            changeset_id: ChangesetId::new("changeset_replacement_1").unwrap(),
         },
         EndpointFamily::Review => AggregateRef::Approval {
             approval_id: approval_id(),
