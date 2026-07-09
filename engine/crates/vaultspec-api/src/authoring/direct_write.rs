@@ -118,6 +118,50 @@ impl DirectWriteStatus {
     }
 }
 
+/// WHY a `Denied` direct-write outcome was refused, machine-readable (W05.P14)
+/// — replaces the frontend's fragile substring match on `eligibility.reason`
+/// text (a backend reason-WORDING change could silently break it). Set from a
+/// STRUCTURED source at the SAME point the reason string is built — a
+/// `ConflictKind` finding (via `apply::ApplyDenialKind`), or a classification
+/// this module already knows by construction (the scope pin, the actor-kind
+/// gate) — never by re-matching the reason text here either. Only meaningful
+/// when `status == Denied`; every OTHER status carries `None`. A `Denied`
+/// outcome ALWAYS carries `Some(_)` here, defaulting to `Other` rather than
+/// omitting the field — the frontend can match on one concrete value, never
+/// `null`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DirectWriteDenialKind {
+    /// A `Rename`'s target stem, or a `CreateDocument`'s predicted path,
+    /// already resolves to a (different) document
+    /// (`ConflictKind::RenameTargetCollision` / `CreateDocumentPathCollision`).
+    PathCollision,
+    /// The target's base revision is behind the current worktree (an
+    /// out-of-band edit landed since materialize) — reachable here only if a
+    /// future reason-wording change stops matching the internal Conflict-vs-
+    /// Denied routing's own (unchanged, still string-based) staleness check;
+    /// today this case resolves to `DirectWriteStatus::Conflict` instead,
+    /// with the richer `DirectWriteConflict` detail, before `denial_kind` is
+    /// ever read.
+    StaleBase,
+    /// The scope pin (W02.P06) did not match the server's active workspace.
+    ScopeMismatch,
+    /// The actor is not human; direct editor saves require a human actor.
+    ForbiddenActor,
+    /// An automated actor was refused approving/applying its own proposal
+    /// (`automated_self_approval_blocker`). Included for schema completeness
+    /// and parity with the standard propose/approve route's own vocabulary;
+    /// STRUCTURALLY UNREACHABLE via direct-write today, since the actor-kind
+    /// gate above already requires a human actor before either the approval
+    /// or apply stage runs, and the blocker only fires for an automated one.
+    SelfApproval,
+    /// A denial with no clean structured classification available (e.g. an
+    /// approval-freshness refusal, a stale-validation-digest refusal, or any
+    /// future denial reason this module has not been taught to classify).
+    /// Honest, not a guess — never force-fit into one of the above.
+    Other,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DirectWriteAuthority {
@@ -163,6 +207,11 @@ pub struct DirectWriteRecord {
     pub conflict: Option<DirectWriteConflict>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub eligibility: Option<ActionEligibility>,
+    /// The structured denial classification (W05.P14) — see
+    /// [`DirectWriteDenialKind`]'s doc for the "always `Some` when `Denied`"
+    /// discipline.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub denial_kind: Option<DirectWriteDenialKind>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub approval: Option<ApprovalRequestRecord>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -192,6 +241,11 @@ pub struct DirectWriteOutcome {
     pub conflict: Option<DirectWriteConflict>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub eligibility: Option<ActionEligibility>,
+    /// The structured denial classification (W05.P14) — see
+    /// [`DirectWriteDenialKind`]'s doc for the "always `Some` when `Denied`"
+    /// discipline.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub denial_kind: Option<DirectWriteDenialKind>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub record: Option<DirectWriteRecord>,
 }
@@ -503,6 +557,7 @@ fn scope_pin_mismatch(
             "the requested scope does not match the server's active workspace; re-check \
              which workspace is active before retrying",
         )),
+        denial_kind: Some(DirectWriteDenialKind::ScopeMismatch),
         record: None,
     })
 }
@@ -554,6 +609,7 @@ pub fn execute_direct_write(
             started: Instant::now(),
             conflict: None,
             eligibility: Some(eligibility),
+            denial_kind: Some(DirectWriteDenialKind::ForbiddenActor),
             approval: None,
             apply_receipt: None,
             now_ms,
@@ -618,6 +674,7 @@ pub fn execute_direct_write(
                     started: Instant::now(),
                     conflict: Some(conflict),
                     eligibility: Some(eligibility),
+                    denial_kind: None,
                     approval: None,
                     apply_receipt: None,
                     now_ms,
@@ -685,6 +742,7 @@ pub fn execute_direct_write(
             started,
             conflict: Some(conflict),
             eligibility: Some(eligibility),
+            denial_kind: None,
             approval: None,
             apply_receipt: None,
             now_ms,
@@ -706,6 +764,11 @@ pub fn execute_direct_write(
     };
     let approval = ensure_human_approval(store, actor, idempotency_key, now_ms, &ids, &review)?;
     if !approval.eligibility.allowed {
+        // `ApprovalOutcome` carries no structured sub-classification for WHY an
+        // approval was denied (validation-freshness, policy-version mismatch, a
+        // cancelled linked run, ...) — `SelfApproval` cannot apply here either
+        // (direct-write's actor is gated to `Human` earlier, and the blocker
+        // only fires for an automated approver). Honest `Other`, not a guess.
         return Ok(DirectWriteOutcome {
             status: DirectWriteStatus::Denied,
             replayed: false,
@@ -718,6 +781,7 @@ pub fn execute_direct_write(
             apply_in_flight: false,
             conflict: None,
             eligibility: Some(approval.eligibility),
+            denial_kind: Some(DirectWriteDenialKind::Other),
             record: None,
         });
     }
@@ -779,12 +843,14 @@ pub fn execute_direct_write(
                 started,
                 conflict: Some(conflict),
                 eligibility: Some(apply.eligibility),
+                denial_kind: None,
                 approval: Some(approval.record),
                 apply_receipt: None,
                 now_ms,
             });
             return persist_outcome(store, record, false, apply.replayed);
         }
+        let denial_kind = map_apply_denial_kind(apply.denial_kind);
         return Ok(DirectWriteOutcome {
             status: DirectWriteStatus::Denied,
             replayed: false,
@@ -797,6 +863,7 @@ pub fn execute_direct_write(
             apply_in_flight: apply.in_flight,
             conflict: None,
             eligibility: Some(apply.eligibility),
+            denial_kind: Some(denial_kind),
             record: None,
         });
     }
@@ -814,6 +881,7 @@ pub fn execute_direct_write(
             apply_in_flight: true,
             conflict: None,
             eligibility: Some(apply.eligibility),
+            denial_kind: None,
             record: None,
         });
     }
@@ -837,6 +905,7 @@ pub fn execute_direct_write(
         started,
         conflict: None,
         eligibility: None,
+        denial_kind: None,
         approval: Some(approval.record),
         apply_receipt: apply.receipt,
         now_ms,
@@ -952,6 +1021,7 @@ struct DirectRecordInput<'a> {
     started: Instant,
     conflict: Option<DirectWriteConflict>,
     eligibility: Option<ActionEligibility>,
+    denial_kind: Option<DirectWriteDenialKind>,
     approval: Option<ApprovalRequestRecord>,
     apply_receipt: Option<ApplyReceipt>,
     now_ms: i64,
@@ -975,6 +1045,7 @@ fn direct_record(input: DirectRecordInput<'_>) -> DirectWriteRecord {
         direct_elapsed_ms: elapsed_ms(input.started),
         conflict: input.conflict,
         eligibility: input.eligibility,
+        denial_kind: input.denial_kind,
         approval: input.approval,
         apply_receipt: input.apply_receipt,
         created_at_ms: input.now_ms,
@@ -1055,6 +1126,7 @@ fn outcome_from_record(
             .eligibility
             .clone()
             .or_else(|| Some(ActionEligibility::allowed(CommandKind::DirectWrite))),
+        denial_kind: record.denial_kind,
         record: Some(record),
     }
 }
@@ -1093,7 +1165,22 @@ fn in_flight_outcome(ids: &DirectWriteIds) -> DirectWriteOutcome {
         apply_in_flight: true,
         conflict: None,
         eligibility: Some(ActionEligibility::allowed(CommandKind::DirectWrite)),
+        denial_kind: None,
         record: None,
+    }
+}
+
+/// Map the apply-preflight's structured classification (W05.P14) onto the
+/// direct-write wire vocabulary. `None` (an apply denial the preflight could
+/// not classify — e.g. a stale approval/validation-digest refusal) collapses
+/// to `Other` — a `Denied` outcome ALWAYS carries a concrete `denial_kind`,
+/// never omits it.
+fn map_apply_denial_kind(kind: Option<super::apply::ApplyDenialKind>) -> DirectWriteDenialKind {
+    match kind {
+        Some(super::apply::ApplyDenialKind::PathCollision) => DirectWriteDenialKind::PathCollision,
+        Some(super::apply::ApplyDenialKind::StaleBase) => DirectWriteDenialKind::StaleBase,
+        Some(super::apply::ApplyDenialKind::SelfApproval) => DirectWriteDenialKind::SelfApproval,
+        None => DirectWriteDenialKind::Other,
     }
 }
 
@@ -1985,6 +2072,12 @@ mod tests {
                 .is_some_and(|reason| reason.contains("agents must propose changesets")),
             "agent denial carries the direct-save provenance reason: {agent_denial:?}"
         );
+        // W05.P14: the structured discriminator is set from the actor-kind gate
+        // ITSELF, not by re-matching the reason text above.
+        assert_eq!(
+            agent_denial.denial_kind,
+            Some(DirectWriteDenialKind::ForbiddenActor)
+        );
         assert!(
             existing_record(
                 &mut fx.store,
@@ -1994,6 +2087,119 @@ mod tests {
             .unwrap()
             .is_some(),
             "agent denial must create a replayable direct-write value record"
+        );
+    }
+
+    // W05.P14: `denial_kind` is set from the STRUCTURED `ConflictKind` finding a
+    // rename/create-path collision produces, never by matching the reason text —
+    // proven here by two collisions whose reason WORDING is completely different
+    // ("proposed stem" vs "predicted create path") yet both classify identically.
+
+    #[test]
+    fn direct_write_denies_a_rename_target_collision_with_a_structured_denial_kind() {
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup();
+        // A different document already occupies the stem the rename targets.
+        std::fs::write(
+            fx.root.join(".vault/plan/direct-save-plan-taken.md"),
+            "occupied\n",
+        )
+        .unwrap();
+        let human = fx.human.clone();
+        let base_hash = fx.base_hash.clone();
+
+        let outcome = execute_direct_write(
+            &mut fx.store,
+            &CoreAdapter::detect(),
+            &fx.root,
+            &human,
+            &IdempotencyKey::new("idem:direct:rename:collision").unwrap(),
+            100,
+            DirectWriteRequest {
+                doc_ref: Some(DOC_PATH.to_string()),
+                operation: ChangesetOperationKind::Rename,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: Some("direct-save-plan-taken".to_string()),
+                create: None,
+                expected_blob_hash: Some(base_hash),
+                summary: Some("editor rename save".to_string()),
+                scope: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(outcome.status, DirectWriteStatus::Denied, "{outcome:?}");
+        assert_eq!(
+            outcome.denial_kind,
+            Some(DirectWriteDenialKind::PathCollision)
+        );
+        assert!(
+            outcome
+                .eligibility
+                .as_ref()
+                .and_then(|eligibility| eligibility.reason.as_deref())
+                .is_some_and(|reason| reason.contains("already exists at the proposed stem")),
+            "{outcome:?}"
+        );
+    }
+
+    #[test]
+    fn direct_write_denies_a_create_document_path_collision_with_a_structured_denial_kind() {
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup();
+        // now_ms=100 falls on the 1970-01-01 UTC calendar day (`ms_to_date_key`),
+        // which is the deterministic create date threaded through materialization —
+        // a document already occupies the create's PREDICTED path for that day.
+        std::fs::create_dir_all(fx.root.join(".vault/plan")).unwrap();
+        std::fs::write(
+            fx.root
+                .join(".vault/plan/1970-01-01-collide-create-plan.md"),
+            "occupied\n",
+        )
+        .unwrap();
+        let human = fx.human.clone();
+
+        let outcome = execute_direct_write(
+            &mut fx.store,
+            &CoreAdapter::detect(),
+            &fx.root,
+            &human,
+            &IdempotencyKey::new("idem:direct:create:collision").unwrap(),
+            100,
+            DirectWriteRequest {
+                doc_ref: None,
+                operation: ChangesetOperationKind::CreateDocument,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: None,
+                create: Some(DirectWriteCreateParams {
+                    doc_type: "plan".to_string(),
+                    feature: "collide-create".to_string(),
+                    title: "Collide Create".to_string(),
+                    related: Vec::new(),
+                }),
+                expected_blob_hash: None,
+                summary: Some("editor new document".to_string()),
+                scope: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(outcome.status, DirectWriteStatus::Denied, "{outcome:?}");
+        assert_eq!(
+            outcome.denial_kind,
+            Some(DirectWriteDenialKind::PathCollision)
+        );
+        assert!(
+            outcome
+                .eligibility
+                .as_ref()
+                .and_then(|eligibility| eligibility.reason.as_deref())
+                .is_some_and(
+                    |reason| reason.contains("already exists at the predicted create path")
+                ),
+            "{outcome:?}"
         );
     }
 

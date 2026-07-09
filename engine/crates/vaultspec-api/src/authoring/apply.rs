@@ -182,6 +182,45 @@ pub struct ApplyChildReceipt {
     pub result_stem: Option<String>,
 }
 
+/// WHY an apply-preflight denied, when structurally known (W05.P14) — set at
+/// the SAME point the `ActionEligibility` reason string is built, from the
+/// SAME structured source (a `ConflictKind` finding, or the self-approval
+/// blocker), never derived by matching the reason text afterward. `None`
+/// (every OTHER preflight denial: multi-child, transition-ineligible,
+/// unsupported operation kind, stale fencing token) is an honest
+/// "unclassified" — a caller collapses it to its own generic/`other` value,
+/// never a guess.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ApplyDenialKind {
+    /// `ConflictKind::RenameTargetCollision` / `CreateDocumentPathCollision`.
+    PathCollision,
+    /// `ConflictKind::StaleBaseRevision` / `StaleWholeDocumentDraft`.
+    StaleBase,
+    /// The automated-self-approval blocker (`automated_self_approval_blocker`)
+    /// refused an automated actor applying its own (or a delegated) proposal.
+    SelfApproval,
+}
+
+/// The two `ConflictKind` classes a caller needs to distinguish structurally
+/// (W05.P14); every other `ConflictKind` (`OverlappingHunks`, `AnchorDrift`,
+/// `PolicyConflict` — none of which the apply preflight's EMPTY-lease
+/// `detect_conflicts` call can even produce for `PolicyConflict`) is honestly
+/// unclassified here, not force-fit into one of these two.
+fn classify_conflict_kind(kind: super::conflicts::ConflictKind) -> Option<ApplyDenialKind> {
+    use super::conflicts::ConflictKind;
+    match kind {
+        ConflictKind::RenameTargetCollision | ConflictKind::CreateDocumentPathCollision => {
+            Some(ApplyDenialKind::PathCollision)
+        }
+        ConflictKind::StaleBaseRevision | ConflictKind::StaleWholeDocumentDraft => {
+            Some(ApplyDenialKind::StaleBase)
+        }
+        ConflictKind::OverlappingHunks
+        | ConflictKind::AnchorDrift
+        | ConflictKind::PolicyConflict => None,
+    }
+}
+
 /// The command outcome. A policy denial carries `eligibility.denied` and no
 /// receipt; a completed attempt (success OR recorded failure) carries a receipt.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,6 +232,9 @@ pub struct ApplyOutcome {
     /// True when a prior attempt for this key is still in flight (continue, do not
     /// re-apply).
     pub in_flight: bool,
+    /// The structured reason a `Preflight::Denied` fired, when known (W05.P14).
+    /// `None` for every non-denial outcome and for an unclassified denial.
+    pub(crate) denial_kind: Option<ApplyDenialKind>,
 }
 
 impl ApplyReceipt {
@@ -222,6 +264,7 @@ pub fn apply_changeset(
                 receipt: Some(*receipt),
                 replayed: true,
                 in_flight: false,
+                denial_kind: None,
             });
         }
         Preflight::InFlight => {
@@ -230,14 +273,16 @@ pub fn apply_changeset(
                 receipt: None,
                 replayed: false,
                 in_flight: true,
+                denial_kind: None,
             });
         }
-        Preflight::Denied(eligibility) => {
+        Preflight::Denied(eligibility, denial_kind) => {
             return Ok(ApplyOutcome {
                 eligibility,
                 receipt: None,
                 replayed: false,
                 in_flight: false,
+                denial_kind,
             });
         }
         Preflight::Reclaim(prep) => {
@@ -258,6 +303,7 @@ pub fn apply_changeset(
                 receipt: Some(receipt),
                 replayed: false,
                 in_flight: false,
+                denial_kind: None,
             });
         }
         Preflight::Proceed(prep) => prep,
@@ -278,6 +324,7 @@ pub fn apply_changeset(
         receipt: Some(receipt),
         replayed: false,
         in_flight: false,
+        denial_kind: None,
     })
 }
 
@@ -308,7 +355,9 @@ struct ApplyPrep {
 enum Preflight {
     Replay(Box<ApplyReceipt>),
     InFlight,
-    Denied(ActionEligibility),
+    /// The eligibility denial, plus its structured classification when known
+    /// (W05.P14) — `None` for an unclassified denial.
+    Denied(ActionEligibility, Option<ApplyDenialKind>),
     Proceed(Box<ApplyPrep>),
     /// A prior attempt crashed between stage A and stage C, its in-flight
     /// reservation has EXPIRED, and the head is wedged in `Applying`. Resume
@@ -366,15 +415,18 @@ fn preflight_in_uow(
 
     // GATE (no state mutated yet, so a denial leaks nothing).
     if latest.operation_count != 1 {
-        return Ok(Ok(Preflight::Denied(ActionEligibility::denied(
-            CommandKind::RequestApply,
-            format!(
-                "V1 apply supports exactly one child operation; changeset carries {} \
-                 (multi-child materialization is deferred until core provides a batch \
-                 transaction)",
-                latest.operation_count
+        return Ok(Ok(Preflight::Denied(
+            ActionEligibility::denied(
+                CommandKind::RequestApply,
+                format!(
+                    "V1 apply supports exactly one child operation; changeset carries {} \
+                     (multi-child materialization is deferred until core provides a batch \
+                     transaction)",
+                    latest.operation_count
+                ),
             ),
-        ))));
+            None,
+        )));
     }
 
     // Apply-authorization: the automated-self-approval ban keyed on the ORIGIN
@@ -386,7 +438,10 @@ fn preflight_in_uow(
     if let Some(denied) =
         automated_self_approval_blocker(CommandKind::RequestApply, request.actor, &origin.actor)
     {
-        return Ok(Ok(Preflight::Denied(denied)));
+        return Ok(Ok(Preflight::Denied(
+            denied,
+            Some(ApplyDenialKind::SelfApproval),
+        )));
     }
 
     // Lifecycle + approval-freshness + validation-status gate.
@@ -399,7 +454,7 @@ fn preflight_in_uow(
     let eligibility =
         apply_transition_eligibility(&latest, approval_freshness, validation_freshness);
     if !eligibility.allowed {
-        return Ok(Ok(Preflight::Denied(eligibility)));
+        return Ok(Ok(Preflight::Denied(eligibility, None)));
     }
 
     // Base-revision conflict gate (W13.P27, wired W14.P42a). Consult the conflict detector
@@ -414,10 +469,10 @@ fn preflight_in_uow(
     let conflict_report =
         detect_conflicts(worktree_root, &latest, &live_siblings, &[], request.now_ms);
     if let Some(finding) = conflict_report.findings.first() {
-        return Ok(Ok(Preflight::Denied(ActionEligibility::denied(
-            CommandKind::RequestApply,
-            finding.reason.clone(),
-        ))));
+        return Ok(Ok(Preflight::Denied(
+            ActionEligibility::denied(CommandKind::RequestApply, finding.reason.clone()),
+            classify_conflict_kind(finding.kind),
+        )));
     }
 
     // The single materialized child → the write invocation.
@@ -429,14 +484,17 @@ fn preflight_in_uow(
             | ChangesetOperationKind::Rename
             | ChangesetOperationKind::CreateDocument
     ) {
-        return Ok(Ok(Preflight::Denied(ActionEligibility::denied(
-            CommandKind::RequestApply,
-            format!(
-                "V1 apply materializes only whole-document body replacement, frontmatter \
-                 edits, rename, and document creation; operation `{:?}` is not yet supported",
-                child.operation
+        return Ok(Ok(Preflight::Denied(
+            ActionEligibility::denied(
+                CommandKind::RequestApply,
+                format!(
+                    "V1 apply materializes only whole-document body replacement, frontmatter \
+                     edits, rename, and document creation; operation `{:?}` is not yet supported",
+                    child.operation
+                ),
             ),
-        ))));
+            None,
+        )));
     }
     let Some(materialized) = child.materialized_operation.as_ref() else {
         return Ok(Err(ApplyError::MissingMaterialization {
@@ -496,7 +554,7 @@ fn preflight_in_uow(
                 None => ActionEligibility::allowed(CommandKind::RequestApply),
             };
             if !fence.allowed {
-                return Ok(Ok(Preflight::Denied(fence)));
+                return Ok(Ok(Preflight::Denied(fence, None)));
             }
         }
     }

@@ -3900,6 +3900,8 @@ mod tests {
                 .as_str()
                 .is_some_and(|reason| reason.contains("agents must propose changesets"))
         );
+        // W05.P14: the wire discriminator, set from the actor-kind gate itself.
+        assert_eq!(body["data"]["denial_kind"], "forbidden_actor");
         assert!(body["tiers"]["semantic"]["available"].is_boolean());
         assert!(
             !body.to_string().contains("route denied body"),
@@ -4071,6 +4073,8 @@ mod tests {
                 |reason| reason.contains("does not match the server's active workspace")
             )
         );
+        // W05.P14: the wire discriminator, set at the scope-pin check itself.
+        assert_eq!(body["data"]["denial_kind"], "scope_mismatch");
         assert!(
             !body.to_string().contains("completely/different/workspace"),
             "the denial must never echo the foreign scope back onto the wire: {body}"
@@ -5961,6 +5965,7 @@ mod tests {
             receipt: None,
             replayed: false,
             in_flight: false,
+            denial_kind: None,
         };
         let response = apply_outcome_response(&state, outcome);
 
@@ -5983,6 +5988,7 @@ mod tests {
             receipt: None,
             replayed: false,
             in_flight: true,
+            denial_kind: None,
         };
         let response = apply_outcome_response(&state, outcome);
 
