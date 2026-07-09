@@ -42,7 +42,9 @@ any state through the live wired API, and whether every wired engine is both rea
 and enforcing. Sibling build-phase findings already persisted for W10, W11, W12.P25, and
 W12.P30 live in the 2026-07-06 audit, and for W12.P31 in the 2026-07-07 audit; this doc
 closes the remaining W12.P22/P32/P41/P44 and W13.P20/P24/P26/P27/P28 review and verify
-rows and records the wiring verification and Increment-5/6 acceptance.
+rows and records the wiring verification and Increment-5/6 acceptance. It also records the
+W14.P43 final-gate evidence, release readiness, and epic-completion assessment for the
+Increment-6 closeout.
 
 ## Findings
 
@@ -151,6 +153,47 @@ authoring fixture that drafts a proposal, pauses on a tool-permission interrupt,
 interrupt id, requests approval, and in autonomous mode sees its work applied and listed
 after the fact.
 
+### w14-p43-final-gate-green | info | the full automated gate passes across the authoring epic
+
+The Increment-6 final gate ran green across every automated surface. The authoring
+crate's Rust suite passed at 626 library tests plus every integration binary (the
+cross-engine acceptance suite, the vertical-slices real-vaultspec-core apply test, the
+LangGraph authoring fixture, and the route/corpus/search binaries), zero failures, over
+the shared worktree that also carries an unrelated in-progress provision lane which
+compiles clean. The frontend lint gate passed on formatting, type-check, the pixel-scan
+with an empty allowlist, token drift, and the Figma name contract. The frontend
+production build succeeded, and the frontend test suite passed at 2708 of 2708 across 298
+files running online against a real engine origin. The vault checks are clean for the
+authoring feature after the feature index was rebuilt to include this audit; the remaining
+whole-vault schema warnings and errors all belong to unrelated features and predate this
+epic.
+
+### w14-p43-release-readiness | info | the authoring backend is release-ready at the mechanism level with one honestly-scoped deferral
+
+The authoring backend ships the full propose-review-approve-apply-rollback lifecycle for
+humans and agents, wire-driveable end to end with identity, idempotency, denial, advisory
+concurrency, conflict detection, review-station queues, provenance redaction, streaming
+recovery, the LangGraph agent runtime, and the operation-mode policy matrix — every phase
+adversarially reviewed with required revisions landed and re-checked. The engine-wiring
+phase closed the authorization no-bypass floor and made every engine both reachable and
+enforcing. One scope boundary is carried honestly rather than overclaimed: the direct-write
+MECHANISM is ledger-authoritative, but the live editor-save UI still writes through the
+un-ledgered sibling passthrough, and the other lifecycle verbs never touch the ledger — so
+the product-level cutover of the editor save is a return-triggered follow-on recorded in
+the W14.P47 phase intent, not a completed retirement. Release notes and operator guidance
+should state that the direct-changeset path is enabled by default (a corrupt capability
+file fails closed) and that the editor-UI cutover is the next planned step.
+
+### w14-p43-epic-completion | info | the plan reaches its reachable target with six evidence-gated deferrals
+
+The plan reaches 244 of 250 steps. The six unchecked steps are the build, test, and review
+rows of the two evidence-gated conditional phases — section-scoped proposal operations and
+per-operation rollback inverses — both documented DEFERRED-OUT with return triggers because
+V1 materialization is whole-document only and no consumer produced the sub-document-edit or
+per-operation-inverse need that would warrant them. Leaving them unchecked is the honest
+representation: they are justified deferrals, not a false completion. Every non-deferred
+step is done, reviewed, and gated green.
+
 ## Recommendations
 
 - Add the two missing endpoint-family and route-fixture entries for the lease renew and
@@ -161,6 +204,12 @@ after the fact.
 - Retire the orphan client-supplied session scope now that the document-scope guard is
   server-authoritative, and relocate the document lease scope helper to sit beside the other
   scope conventions.
-- Carry the final release-readiness and epic-closeout audit under W14.P43 once the
-  broker-retirement and restart-replay-reconnect acceptance phases land, referencing this
-  audit for the engine-wiring verification.
+- Scope and execute the product-level editor-save cutover as its own phase: route the
+  editor save through the ledgered direct-changeset path (a per-editing-session actor-token
+  bootstrap, direct-write conflict UX, and the editor write-seam test rewrites), and decide
+  separately whether the remaining sibling write verbs should be ledgered. This is the
+  return trigger recorded in the W14.P47 phase intent.
+- Widen the actor-registration route to admit the tool-executor actor kind, or record the
+  human/agent/system subset as a deliberate V1 boundary, so the tool-requester-kind guard's
+  tool-executor branch becomes wire-reachable for end-to-end coverage rather than only
+  unit-covered.
