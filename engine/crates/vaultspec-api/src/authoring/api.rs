@@ -547,17 +547,66 @@ pub struct SetOperationModeRequest {
 
 /// Wire payload for `POST /authoring/v1/direct-writes`: a human editor save
 /// routed through the authoring ledger. The actor is still middleware-resolved
-/// from the principal token; the payload names only the target and optimistic
-/// editor base.
+/// from the principal token; the payload names the target, the operation
+/// kind, and that kind's own payload (W02.P06 generalizes this beyond
+/// whole-document body replacement) — mirroring how a propose draft
+/// (`ChangesetChildOperationDraft`/`DraftMutation`) carries each kind: one
+/// discriminator field plus optional per-kind payload fields, `None`/empty for
+/// every kind that does not use them (no accepted-but-ignored field, the same
+/// R1 discipline the propose draft enforces).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DirectWriteRequest {
-    #[serde(rename = "ref")]
-    pub doc_ref: String,
+    /// The existing document targeted by `ReplaceBody`/`EditFrontmatter`/
+    /// `Rename`. Absent for `CreateDocument`, which names its target through
+    /// `create` instead (there is no existing document to reference).
+    #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
+    pub doc_ref: Option<String>,
+    pub operation: ChangesetOperationKind,
+    /// `ReplaceBody` payload. Empty for every other kind.
+    #[serde(default)]
     pub body: String,
-    pub expected_blob_hash: String,
+    /// `EditFrontmatter` payload. `None` for every other kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frontmatter: Option<FrontmatterEditFields>,
+    /// `Rename` payload — the target stem. `None` for every other kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_stem: Option<String>,
+    /// `CreateDocument` payload. `None` for every other kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub create: Option<DirectWriteCreateParams>,
+    /// The optimistic editor base for an existing-document operation —
+    /// required for `ReplaceBody`/`EditFrontmatter`/`Rename`, absent for
+    /// `CreateDocument` (nothing exists yet to fence against).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_blob_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
+    /// The OPTIONAL scope pin (W02.P06, closing the W01.P02 review): the
+    /// workspace scope id (`scope_id_for_worktree`, the SAME string a client
+    /// already sees served back on e.g. the `/authoring/v1/mode` response)
+    /// the editor was looking at when it issued this save. When present, it
+    /// MUST match the server's CURRENT active workspace or the save is
+    /// refused as a denial value — never silently applied against a
+    /// different worktree after a scope-switch race. Absent proceeds against
+    /// whatever is currently active (backward-compatible; restores the
+    /// retired legacy `/ops/core` write's scope immunity).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+}
+
+/// `CreateDocument`'s direct-write payload: the typed create params a human
+/// editor's "new document" save supplies, mirroring `DocumentRef::
+/// ProvisionalCreate`'s own fields (minus the server-assigned
+/// `provisional_doc_id`/`collision_status`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DirectWriteCreateParams {
+    pub doc_type: String,
+    pub feature: String,
+    pub title: String,
+    #[serde(default)]
+    pub related: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -882,10 +931,15 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
             CommandKind::DirectWrite,
             idempotency_key("idem:direct-write"),
             DirectWriteRequest {
-                doc_ref: ".vault/adr/adr-1.md".to_string(),
+                doc_ref: Some(".vault/adr/adr-1.md".to_string()),
+                operation: ChangesetOperationKind::ReplaceBody,
                 body: "directly saved body".to_string(),
-                expected_blob_hash: "abc123abc123abc123abc123abc123abc123abcd".to_string(),
+                frontmatter: None,
+                new_stem: None,
+                create: None,
+                expected_blob_hash: Some("abc123abc123abc123abc123abc123abc123abcd".to_string()),
                 summary: Some("Editor save".to_string()),
+                scope: None,
             },
         )),
         EndpointFamily::Lease => command_value(CommandEnvelope::new(
@@ -1446,10 +1500,13 @@ mod tests {
         let direct: CommandEnvelope<DirectWriteRequest> =
             serde_json::from_value(request_fixture(EndpointFamily::DirectWrite)).unwrap();
         assert_eq!(direct.command, CommandKind::DirectWrite);
-        assert_eq!(direct.payload.doc_ref, ".vault/adr/adr-1.md");
         assert_eq!(
-            direct.payload.expected_blob_hash,
-            "abc123abc123abc123abc123abc123abc123abcd"
+            direct.payload.doc_ref.as_deref(),
+            Some(".vault/adr/adr-1.md")
+        );
+        assert_eq!(
+            direct.payload.expected_blob_hash.as_deref(),
+            Some("abc123abc123abc123abc123abc123abc123abcd")
         );
 
         let rollback: CommandEnvelope<RollbackRequest> =

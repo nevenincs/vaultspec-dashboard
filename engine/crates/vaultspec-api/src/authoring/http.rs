@@ -3618,19 +3618,106 @@ mod tests {
         assert!(prepared["tiers"]["semantic"]["available"].is_boolean());
     }
 
-    fn direct_write_envelope(doc_ref: &str, body: &str, expected: &str, idem: &str) -> Value {
+    fn direct_write_envelope_for(payload: DirectWriteRequest, idem: &str) -> Value {
         serde_json::to_value(CommandEnvelope {
             api_version: ApiVersion::V1,
             command: CommandKind::DirectWrite,
             idempotency_key: IdempotencyKey::new(idem).unwrap(),
-            payload: DirectWriteRequest {
-                doc_ref: doc_ref.to_string(),
-                body: body.to_string(),
-                expected_blob_hash: expected.to_string(),
-                summary: Some("route editor save".to_string()),
-            },
+            payload,
         })
         .unwrap()
+    }
+
+    fn direct_write_envelope(doc_ref: &str, body: &str, expected: &str, idem: &str) -> Value {
+        direct_write_envelope_for(
+            DirectWriteRequest {
+                doc_ref: Some(doc_ref.to_string()),
+                operation: ChangesetOperationKind::ReplaceBody,
+                body: body.to_string(),
+                frontmatter: None,
+                new_stem: None,
+                create: None,
+                expected_blob_hash: Some(expected.to_string()),
+                summary: Some("route editor save".to_string()),
+                scope: None,
+            },
+            idem,
+        )
+    }
+
+    fn direct_write_frontmatter_envelope(
+        doc_ref: &str,
+        date: &str,
+        expected: &str,
+        idem: &str,
+    ) -> Value {
+        direct_write_envelope_for(
+            DirectWriteRequest {
+                doc_ref: Some(doc_ref.to_string()),
+                operation: ChangesetOperationKind::EditFrontmatter,
+                body: String::new(),
+                frontmatter: Some(super::super::api::FrontmatterEditFields {
+                    date: Some(date.to_string()),
+                    tags: None,
+                    related: None,
+                }),
+                new_stem: None,
+                create: None,
+                expected_blob_hash: Some(expected.to_string()),
+                summary: Some("route editor frontmatter save".to_string()),
+                scope: None,
+            },
+            idem,
+        )
+    }
+
+    fn direct_write_rename_envelope(
+        doc_ref: &str,
+        new_stem: &str,
+        expected: &str,
+        idem: &str,
+    ) -> Value {
+        direct_write_envelope_for(
+            DirectWriteRequest {
+                doc_ref: Some(doc_ref.to_string()),
+                operation: ChangesetOperationKind::Rename,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: Some(new_stem.to_string()),
+                create: None,
+                expected_blob_hash: Some(expected.to_string()),
+                summary: Some("route editor rename save".to_string()),
+                scope: None,
+            },
+            idem,
+        )
+    }
+
+    fn direct_write_create_envelope(
+        doc_type: &str,
+        feature: &str,
+        title: &str,
+        idem: &str,
+    ) -> Value {
+        direct_write_envelope_for(
+            DirectWriteRequest {
+                doc_ref: None,
+                operation: ChangesetOperationKind::CreateDocument,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: None,
+                create: Some(super::super::api::DirectWriteCreateParams {
+                    doc_type: doc_type.to_string(),
+                    feature: feature.to_string(),
+                    title: title.to_string(),
+                    related: Vec::new(),
+                }),
+                expected_blob_hash: None,
+                summary: Some("route editor new document".to_string()),
+                scope: None,
+            },
+            idem,
+        )
     }
 
     async fn post_authoring(
@@ -3840,6 +3927,171 @@ mod tests {
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body["error_kind"], REQUEST_INVALID_KIND);
+    }
+
+    #[tokio::test]
+    async fn direct_write_route_applies_a_frontmatter_edit_through_the_real_core() {
+        let (dir, state) = fixture_state_with_core();
+        let human = human_reviewer();
+        register_actor(&state, &human);
+        let token = issue_token_in_state(&state, &human);
+        let base = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-07-06'\n---\n\n# Plan\n\nbase\n";
+        let router = authoring_router(state.clone()).with_state(state);
+
+        let (status, body) = post_authoring(
+            router,
+            "/v1/direct-writes",
+            &token,
+            direct_write_frontmatter_envelope(
+                "operation-plan",
+                "2026-08-08",
+                &blob_oid(base.as_bytes()),
+                "idem:route:frontmatter",
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["data"]["status"], "applied");
+        let saved =
+            std::fs::read_to_string(dir.path().join(".vault/plan/operation-plan.md")).unwrap();
+        assert!(saved.contains("date: '2026-08-08'"), "{saved}");
+    }
+
+    #[tokio::test]
+    async fn direct_write_route_applies_a_rename_through_the_real_core() {
+        let (dir, state) = fixture_state_with_core();
+        let human = human_reviewer();
+        register_actor(&state, &human);
+        let token = issue_token_in_state(&state, &human);
+        let base = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-07-06'\n---\n\n# Plan\n\nbase\n";
+        let router = authoring_router(state.clone()).with_state(state);
+
+        let (status, body) = post_authoring(
+            router,
+            "/v1/direct-writes",
+            &token,
+            direct_write_rename_envelope(
+                "operation-plan",
+                "operation-plan-renamed",
+                &blob_oid(base.as_bytes()),
+                "idem:route:rename",
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["data"]["status"], "applied");
+        assert!(!dir.path().join(".vault/plan/operation-plan.md").exists());
+        assert!(
+            dir.path()
+                .join(".vault/plan/operation-plan-renamed.md")
+                .exists()
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_write_route_applies_a_create_document_through_the_real_core() {
+        let (dir, state) = fixture_state_with_core();
+        let human = human_reviewer();
+        register_actor(&state, &human);
+        let token = issue_token_in_state(&state, &human);
+        let router = authoring_router(state.clone()).with_state(state);
+
+        let (status, body) = post_authoring(
+            router,
+            "/v1/direct-writes",
+            &token,
+            direct_write_create_envelope(
+                "plan",
+                "http-direct-create",
+                "HTTP Direct Create",
+                "idem:route:create",
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["data"]["status"], "applied");
+        assert!(
+            body["data"]["record"]["apply_receipt"]["child"]["outcome"] == "applied",
+            "{body}"
+        );
+        // The real vaultspec-core `vault add` scaffolded a document under the
+        // feature's plan directory — the exact filename is core's own
+        // {date}-{feature}-{doc_type}.md convention (W02.P05), not predictable
+        // here; assert on directory contents instead of a literal path.
+        let plan_dir = dir.path().join(".vault/plan");
+        let scaffolded = std::fs::read_dir(&plan_dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .any(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .contains("http-direct-create")
+            });
+        assert!(
+            scaffolded,
+            "the real vaultspec-core create must land under {}: {:?}",
+            plan_dir.display(),
+            std::fs::read_dir(&plan_dir)
+                .unwrap()
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.file_name())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_write_route_refuses_a_mismatched_scope_pin_as_a_redacted_denial() {
+        let (_dir, state) = fixture_state();
+        register_actor(&state, &human_reviewer());
+        let token = issue_token_in_state(&state, &human_reviewer());
+        let doc_ref = ".vault/plan/2026-06-30-authoring-http-plan.md";
+        let base = "---\ntags:\n  - '#plan'\n  - '#authoring'\n---\n\nbody\n";
+        let mut envelope = direct_write_envelope(
+            doc_ref,
+            "route body",
+            &blob_oid(base.as_bytes()),
+            "idem:route:scope-mismatch",
+        );
+        envelope["payload"]["scope"] = json!("/a/completely/different/workspace");
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, body) = post_authoring(router, "/v1/direct-writes", &token, envelope).await;
+
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "a scope mismatch is a denial VALUE: {body}"
+        );
+        assert_eq!(body["data"]["status"], "denied");
+        assert!(
+            body["data"]["eligibility"]["reason"].as_str().is_some_and(
+                |reason| reason.contains("does not match the server's active workspace")
+            )
+        );
+        assert!(
+            !body.to_string().contains("completely/different/workspace"),
+            "the denial must never echo the foreign scope back onto the wire: {body}"
+        );
+        // No ledger side effect: the mismatch is refused before ANY changeset
+        // or direct-write record exists for this idempotency key.
+        let marker = state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::DirectWrite, |uow| {
+                    uow.direct_writes().record_by_actor_key(
+                        &human_reviewer(),
+                        &IdempotencyKey::new("idem:route:scope-mismatch").unwrap(),
+                    )
+                })
+            })
+            .unwrap();
+        assert!(
+            marker.is_none(),
+            "a scope-pin mismatch must not persist a direct-write record"
+        );
     }
 
     #[tokio::test]

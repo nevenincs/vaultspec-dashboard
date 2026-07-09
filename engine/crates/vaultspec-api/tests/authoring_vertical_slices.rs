@@ -711,6 +711,7 @@ async fn direct_write_route_is_ledger_authoritative_with_no_capability_file() {
             "idempotency_key": "idem:direct:e2e",
             "payload": {
                 "ref": DOC_PATH,
+                "operation": "replace_body",
                 "body": DIRECT_NEW_BODY,
                 "expected_blob_hash": base.trim_start_matches("blob:"),
                 "summary": "e2e direct save",

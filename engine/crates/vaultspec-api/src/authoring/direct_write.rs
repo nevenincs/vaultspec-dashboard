@@ -20,7 +20,8 @@ use serde::{Deserialize, Serialize};
 use super::actors::actor_kind_name;
 use super::api::{
     ChangesetChildOperationDraft, ChangesetOperationKind, CreateProposalRequest,
-    CreateSessionRequest, DirectWriteRequest, DraftMode, DraftMutation, TargetRevisionFence,
+    CreateSessionRequest, DirectWriteCreateParams, DirectWriteRequest, DraftMode, DraftMutation,
+    FrontmatterEditFields, TargetRevisionFence,
 };
 use super::apply::{self, ApplyError, ApplyReceipt, ApplyRequest};
 use super::approvals::{
@@ -32,8 +33,10 @@ use super::documents::{DocumentResolver, ExistingDocumentLookup};
 use super::ledger::ChangesetAggregateRecord;
 use super::model::{
     ActionEligibility, ActorKind, ActorRef, ApplyState, ApprovalId, ChangesetId, ChangesetStatus,
-    CommandKind, DocumentRef, IdempotencyKey, ProposalId, ReceiptId, RevisionToken, SessionId,
+    CommandKind, DocumentRef, IdempotencyKey, ProposalId, ProvisionalCollisionStatus, ReceiptId,
+    RevisionToken, SessionId,
 };
+use super::modes::scope_id_for_worktree;
 use super::proposal::{
     ProposalCommandContext, ProposalCommandOutcome, ProposalCommandResult, SubmitProposalRequest,
     ValidateProposalRequest, validation_evidence,
@@ -275,6 +278,226 @@ impl DirectWriteRepository<'_, '_> {
     }
 }
 
+/// The validated, kind-dispatched direct-write operation — built from the
+/// wire `DirectWriteRequest` EARLY (before any store mutation), mirroring the
+/// R1 "no accepted-but-ignored field" discipline the propose draft's own
+/// per-kind materializers already enforce (`operations.rs`). A malformed
+/// field combination (e.g. `frontmatter` set for a `ReplaceBody` request, or
+/// `ref` present for `CreateDocument`) fails loud here, never silently.
+enum DirectOperationInput {
+    ReplaceBody {
+        doc_ref: String,
+        expected_blob_hash: String,
+        body: String,
+    },
+    EditFrontmatter {
+        doc_ref: String,
+        expected_blob_hash: String,
+        fields: FrontmatterEditFields,
+    },
+    Rename {
+        doc_ref: String,
+        expected_blob_hash: String,
+        new_stem: String,
+    },
+    CreateDocument {
+        params: DirectWriteCreateParams,
+    },
+}
+
+fn validate_operation(payload: &DirectWriteRequest) -> StoreResult<DirectOperationInput> {
+    let unexpected = |field: &str| {
+        StoreError::Validation(format!(
+            "direct write operation `{:?}` does not accept `{field}`",
+            payload.operation
+        ))
+    };
+    match payload.operation {
+        ChangesetOperationKind::ReplaceBody => {
+            if payload.frontmatter.is_some() {
+                return Err(unexpected("frontmatter"));
+            }
+            if payload.new_stem.is_some() {
+                return Err(unexpected("new_stem"));
+            }
+            if payload.create.is_some() {
+                return Err(unexpected("create"));
+            }
+            Ok(DirectOperationInput::ReplaceBody {
+                doc_ref: require_doc_ref(payload)?,
+                expected_blob_hash: require_expected_blob_hash(payload)?,
+                body: payload.body.clone(),
+            })
+        }
+        ChangesetOperationKind::EditFrontmatter => {
+            if !payload.body.is_empty() {
+                return Err(unexpected("body"));
+            }
+            if payload.new_stem.is_some() {
+                return Err(unexpected("new_stem"));
+            }
+            if payload.create.is_some() {
+                return Err(unexpected("create"));
+            }
+            let fields = payload.frontmatter.clone().ok_or_else(|| {
+                StoreError::Validation(
+                    "direct write `edit_frontmatter` requires `frontmatter`".to_string(),
+                )
+            })?;
+            Ok(DirectOperationInput::EditFrontmatter {
+                doc_ref: require_doc_ref(payload)?,
+                expected_blob_hash: require_expected_blob_hash(payload)?,
+                fields,
+            })
+        }
+        ChangesetOperationKind::Rename => {
+            if !payload.body.is_empty() {
+                return Err(unexpected("body"));
+            }
+            if payload.frontmatter.is_some() {
+                return Err(unexpected("frontmatter"));
+            }
+            if payload.create.is_some() {
+                return Err(unexpected("create"));
+            }
+            let new_stem = payload.new_stem.clone().ok_or_else(|| {
+                StoreError::Validation("direct write `rename` requires `new_stem`".to_string())
+            })?;
+            Ok(DirectOperationInput::Rename {
+                doc_ref: require_doc_ref(payload)?,
+                expected_blob_hash: require_expected_blob_hash(payload)?,
+                new_stem,
+            })
+        }
+        ChangesetOperationKind::CreateDocument => {
+            if payload.doc_ref.is_some() {
+                return Err(unexpected("ref"));
+            }
+            if payload.expected_blob_hash.is_some() {
+                return Err(unexpected("expected_blob_hash"));
+            }
+            if !payload.body.is_empty() {
+                return Err(unexpected("body"));
+            }
+            if payload.frontmatter.is_some() {
+                return Err(unexpected("frontmatter"));
+            }
+            if payload.new_stem.is_some() {
+                return Err(unexpected("new_stem"));
+            }
+            let params = payload.create.clone().ok_or_else(|| {
+                StoreError::Validation(
+                    "direct write `create_document` requires `create`".to_string(),
+                )
+            })?;
+            Ok(DirectOperationInput::CreateDocument { params })
+        }
+        other => Err(StoreError::Validation(format!(
+            "direct write does not support operation kind `{other:?}`"
+        ))),
+    }
+}
+
+fn require_doc_ref(payload: &DirectWriteRequest) -> StoreResult<String> {
+    payload
+        .doc_ref
+        .clone()
+        .ok_or_else(|| StoreError::Validation("direct write requires `ref`".to_string()))
+}
+
+fn require_expected_blob_hash(payload: &DirectWriteRequest) -> StoreResult<String> {
+    let value = payload.expected_blob_hash.as_deref().ok_or_else(|| {
+        StoreError::Validation("direct write requires `expected_blob_hash`".to_string())
+    })?;
+    validate_blob_hash(value)
+}
+
+/// A best-effort, unresolved echo of what the request named as its target —
+/// used for audit metadata BEFORE (or without ever) resolving a real
+/// document, never asserted to be a canonical path.
+fn operation_document_ref(operation: &DirectOperationInput) -> String {
+    match operation {
+        DirectOperationInput::ReplaceBody { doc_ref, .. }
+        | DirectOperationInput::EditFrontmatter { doc_ref, .. }
+        | DirectOperationInput::Rename { doc_ref, .. } => doc_ref.clone(),
+        DirectOperationInput::CreateDocument { params } => {
+            format!("create:{}/{}", params.doc_type, params.feature)
+        }
+    }
+}
+
+/// The record's `expected_blob_hash` — the requested base fence for an
+/// existing-document kind, or the git-style empty-blob hash for
+/// `CreateDocument` (the SAME phantom "diff from nothing" sentinel
+/// `operations.rs::materialize_create_document` uses — never a claim that a
+/// real prior state existed).
+fn operation_expected_blob_hash(operation: &DirectOperationInput) -> String {
+    match operation {
+        DirectOperationInput::ReplaceBody {
+            expected_blob_hash, ..
+        }
+        | DirectOperationInput::EditFrontmatter {
+            expected_blob_hash, ..
+        }
+        | DirectOperationInput::Rename {
+            expected_blob_hash, ..
+        } => expected_blob_hash.clone(),
+        DirectOperationInput::CreateDocument { .. } => blob_oid(b""),
+    }
+}
+
+/// The record's `target_blob_hash` — a REAL prediction only for
+/// `ReplaceBody` (core reproduces the streamed body byte-for-byte). Every
+/// other kind is core-authoritative over the resulting bytes (the SAME
+/// reasoning `apply.rs`'s kind-gated post-verify already established), so a
+/// client-computed "target" hash would be an unsound claim; this stays the
+/// phantom empty-blob sentinel rather than a fabricated prediction.
+fn operation_target_blob_hash(operation: &DirectOperationInput) -> String {
+    match operation {
+        DirectOperationInput::ReplaceBody { body, .. } => blob_oid(body.as_bytes()),
+        DirectOperationInput::EditFrontmatter { .. }
+        | DirectOperationInput::Rename { .. }
+        | DirectOperationInput::CreateDocument { .. } => blob_oid(b""),
+    }
+}
+
+/// The W02.P06 scope pin: `None` when the request carries no pin (proceed
+/// against whatever is active, backward-compatible) or when it matches the
+/// server's CURRENT active scope. `Some(outcome)` is an EPHEMERAL denial
+/// value — never persisted to this workspace's `direct_writes` table, since
+/// a mismatched pin may not even name a scope this server's ledger owns, and
+/// a stale persisted denial would wrongly outlive a legitimate later retry
+/// once the client catches up to the correct scope. The reason NEVER echoes
+/// the foreign scope string back onto the wire.
+fn scope_pin_mismatch(
+    worktree_root: &Path,
+    requested_scope: Option<&str>,
+) -> Option<DirectWriteOutcome> {
+    let requested_scope = requested_scope?;
+    let active_scope = scope_id_for_worktree(worktree_root);
+    if requested_scope == active_scope {
+        return None;
+    }
+    Some(DirectWriteOutcome {
+        status: DirectWriteStatus::Denied,
+        replayed: false,
+        changeset_id: None,
+        proposal_id: None,
+        approval_id: None,
+        approval: None,
+        apply_receipt: None,
+        apply_replayed: false,
+        apply_in_flight: false,
+        conflict: None,
+        eligibility: Some(ActionEligibility::denied(
+            CommandKind::DirectWrite,
+            "the requested scope does not match the server's active workspace; re-check \
+             which workspace is active before retrying",
+        )),
+        record: None,
+    })
+}
+
 pub fn execute_direct_write(
     store: &mut Store,
     adapter: &CoreAdapter,
@@ -294,17 +517,15 @@ pub fn execute_direct_write(
         return Ok(outcome_from_record(record, true, true));
     }
 
-    let expected_blob_hash = validate_blob_hash(&payload.expected_blob_hash)?;
-    let target_blob_hash = blob_oid(payload.body.as_bytes());
+    if let Some(mismatch) = scope_pin_mismatch(worktree_root, payload.scope.as_deref()) {
+        return Ok(mismatch);
+    }
 
-    let reader = SnapshotReader::for_worktree(worktree_root);
-    let resolver = DocumentResolver::for_worktree(worktree_root);
-    let resolved = resolve_existing_document(&resolver, &payload.doc_ref)?;
-    let actual_snapshot = reader
-        .capture_existing(&resolved)
-        .map_err(|err| StoreError::Snapshot(err.to_string()))?;
-
+    let operation = validate_operation(&payload)?;
     let ids = DirectWriteIds::new(actor, idempotency_key)?;
+    let document_ref = operation_document_ref(&operation);
+    let expected_blob_hash = operation_expected_blob_hash(&operation);
+    let target_blob_hash = operation_target_blob_hash(&operation);
 
     if actor.kind != ActorKind::Human {
         let eligibility = ActionEligibility::denied(
@@ -314,8 +535,8 @@ pub fn execute_direct_write(
         let record = direct_record(DirectRecordInput {
             status: DirectWriteStatus::Denied,
             ids,
-            payload_doc_ref: payload.doc_ref,
-            document_path: actual_snapshot.path,
+            payload_doc_ref: document_ref,
+            document_path: String::new(),
             expected_blob_hash,
             target_blob_hash,
             actor,
@@ -331,43 +552,85 @@ pub fn execute_direct_write(
         return persist_outcome(store, record, false, false);
     }
 
-    if actual_snapshot.blob_hash != expected_blob_hash {
-        let conflict = DirectWriteConflict {
-            document_ref: payload.doc_ref.clone(),
-            document_path: actual_snapshot.path.clone(),
-            expected_blob_hash: expected_blob_hash.clone(),
-            actual_blob_hash: actual_snapshot.blob_hash,
-            target_blob_hash: target_blob_hash.clone(),
-        };
-        let eligibility = ActionEligibility::denied(
-            CommandKind::DirectWrite,
-            "expected_blob_hash is stale for the current document",
-        );
-        let record = direct_record(DirectRecordInput {
-            status: DirectWriteStatus::Conflict,
-            ids,
-            payload_doc_ref: payload.doc_ref,
-            document_path: actual_snapshot.path,
+    let reader = SnapshotReader::for_worktree(worktree_root);
+    let resolver = DocumentResolver::for_worktree(worktree_root);
+
+    // Resolve + pre-check staleness for the three existing-document kinds
+    // (the SAME base-revision fence, regardless of what the write does to the
+    // document once it lands) — pre-checked HERE so a stale save reports the
+    // clean `Conflict` VALUE the ADR requires, rather than a hard validation
+    // FAULT surfacing from deep inside the materializer.
+    // `CreateDocument` has nothing to resolve or stale-check: its collision
+    // class (the predicted path already occupied) is caught at APPLY-TIME
+    // preflight instead — the SAME `detect_conflicts` check the standard
+    // propose flow already relies on (W02.P05's `CreateDocumentPathCollision`).
+    let existing_target = match &operation {
+        DirectOperationInput::ReplaceBody {
+            doc_ref,
             expected_blob_hash,
-            target_blob_hash,
-            actor,
-            idempotency_key,
-            request_digest,
-            started: Instant::now(),
-            conflict: Some(conflict),
-            eligibility: Some(eligibility),
-            approval: None,
-            apply_receipt: None,
-            now_ms,
-        });
-        return persist_outcome(store, record, false, false);
-    }
+            ..
+        }
+        | DirectOperationInput::EditFrontmatter {
+            doc_ref,
+            expected_blob_hash,
+            ..
+        }
+        | DirectOperationInput::Rename {
+            doc_ref,
+            expected_blob_hash,
+            ..
+        } => {
+            let resolved = resolve_existing_document(&resolver, doc_ref)?;
+            let actual_snapshot = reader
+                .capture_existing(&resolved)
+                .map_err(|err| StoreError::Snapshot(err.to_string()))?;
+            if &actual_snapshot.blob_hash != expected_blob_hash {
+                let conflict = DirectWriteConflict {
+                    document_ref: doc_ref.clone(),
+                    document_path: actual_snapshot.path.clone(),
+                    expected_blob_hash: expected_blob_hash.clone(),
+                    actual_blob_hash: actual_snapshot.blob_hash,
+                    target_blob_hash: target_blob_hash.clone(),
+                };
+                let eligibility = ActionEligibility::denied(
+                    CommandKind::DirectWrite,
+                    "expected_blob_hash is stale for the current document",
+                );
+                let record = direct_record(DirectRecordInput {
+                    status: DirectWriteStatus::Conflict,
+                    ids,
+                    payload_doc_ref: document_ref,
+                    document_path: conflict.document_path.clone(),
+                    expected_blob_hash: expected_blob_hash.clone(),
+                    target_blob_hash,
+                    actor,
+                    idempotency_key,
+                    request_digest,
+                    started: Instant::now(),
+                    conflict: Some(conflict),
+                    eligibility: Some(eligibility),
+                    approval: None,
+                    apply_receipt: None,
+                    now_ms,
+                });
+                return persist_outcome(store, record, false, false);
+            }
+            Some((
+                with_base_revision(resolved, expected_blob_hash)?,
+                actual_snapshot.path,
+            ))
+        }
+        DirectOperationInput::CreateDocument { .. } => None,
+    };
 
     let started = Instant::now();
-    let summary = direct_summary(payload.summary.as_deref(), &payload.doc_ref);
-    let fenced_document = with_base_revision(resolved, &expected_blob_hash)?;
+    let summary = direct_summary(payload.summary.as_deref(), &document_ref);
     ensure_direct_session(store, actor, idempotency_key, now_ms, &ids)?;
 
+    let draft = build_draft(
+        &operation,
+        existing_target.as_ref().map(|(doc, _)| doc.clone()),
+    );
     if ensure_proposal_created(
         store,
         &reader,
@@ -376,21 +639,26 @@ pub fn execute_direct_write(
         now_ms,
         &ids,
         DirectProposalInput {
-            summary: &summary,
-            document: fenced_document,
-            body: payload.body,
+            summary: summary.clone(),
+            draft,
         },
     )? {
         return Ok(in_flight_outcome(&ids));
     }
 
-    if let Some(conflict) = refreshed_conflict(
-        worktree_root,
-        &reader,
-        &payload.doc_ref,
-        &expected_blob_hash,
-        &target_blob_hash,
-    )? {
+    // The race window between the pre-check above and the propose write —
+    // existing-document kinds only, mirroring the pre-check's own scope.
+    if let DirectOperationInput::ReplaceBody { doc_ref, .. }
+    | DirectOperationInput::EditFrontmatter { doc_ref, .. }
+    | DirectOperationInput::Rename { doc_ref, .. } = &operation
+        && let Some(conflict) = refreshed_conflict(
+            worktree_root,
+            &reader,
+            doc_ref,
+            &expected_blob_hash,
+            &target_blob_hash,
+        )?
+    {
         let eligibility = ActionEligibility::denied(
             CommandKind::DirectWrite,
             "expected_blob_hash is stale for the current document",
@@ -398,7 +666,7 @@ pub fn execute_direct_write(
         let record = direct_record(DirectRecordInput {
             status: DirectWriteStatus::Conflict,
             ids,
-            payload_doc_ref: payload.doc_ref,
+            payload_doc_ref: document_ref,
             document_path: conflict.document_path.clone(),
             expected_blob_hash,
             target_blob_hash,
@@ -463,30 +731,36 @@ pub fn execute_direct_write(
     .map_err(apply_err_to_store)?;
 
     if !apply.eligibility.allowed {
-        if apply
-            .eligibility
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("base") || reason.contains("stale"))
+        if let DirectOperationInput::ReplaceBody { doc_ref, .. }
+        | DirectOperationInput::EditFrontmatter { doc_ref, .. }
+        | DirectOperationInput::Rename { doc_ref, .. } = &operation
+            && apply
+                .eligibility
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("base") || reason.contains("stale"))
         {
             let conflict = refreshed_conflict(
                 worktree_root,
                 &reader,
-                &payload.doc_ref,
+                doc_ref,
                 &expected_blob_hash,
                 &target_blob_hash,
             )?
             .unwrap_or(DirectWriteConflict {
-                document_ref: payload.doc_ref.clone(),
-                document_path: actual_snapshot.path.clone(),
+                document_ref: doc_ref.clone(),
+                document_path: existing_target
+                    .as_ref()
+                    .map(|(_, path)| path.clone())
+                    .unwrap_or_default(),
                 expected_blob_hash: expected_blob_hash.clone(),
-                actual_blob_hash: actual_snapshot.blob_hash.clone(),
+                actual_blob_hash: expected_blob_hash.clone(),
                 target_blob_hash: target_blob_hash.clone(),
             });
             let record = direct_record(DirectRecordInput {
                 status: DirectWriteStatus::Conflict,
                 ids,
-                payload_doc_ref: payload.doc_ref,
+                payload_doc_ref: document_ref,
                 document_path: conflict.document_path.clone(),
                 expected_blob_hash,
                 target_blob_hash,
@@ -540,11 +814,12 @@ pub fn execute_direct_write(
         _ => DirectWriteStatus::Failed,
     };
     let apply_replayed = apply.replayed;
+    let document_path = existing_target.map(|(_, path)| path).unwrap_or_default();
     let record = direct_record(DirectRecordInput {
         status,
         ids,
-        payload_doc_ref: payload.doc_ref,
-        document_path: actual_snapshot.path,
+        payload_doc_ref: document_ref,
+        document_path,
         expected_blob_hash,
         target_blob_hash,
         actor,
@@ -558,6 +833,101 @@ pub fn execute_direct_write(
         now_ms,
     });
     persist_outcome(store, record, false, apply_replayed)
+}
+
+/// Build the `ChangesetChildOperationDraft` for one direct-write operation —
+/// reusing the SAME propose-side shape `materialize_drafts` (W02.P05a)
+/// dispatches on, so a direct-write save is materialized through the
+/// IDENTICAL per-kind materializers the standard propose flow uses, never a
+/// re-implementation. `existing_document` is the base-revision-fenced target
+/// for the three existing-document kinds (`None` for `CreateDocument`, whose
+/// target is a `ProvisionalCreate` ref built here instead).
+fn build_draft(
+    operation: &DirectOperationInput,
+    existing_document: Option<DocumentRef>,
+) -> ChangesetChildOperationDraft {
+    match operation {
+        DirectOperationInput::ReplaceBody { body, .. } => {
+            let document = existing_document.expect("ReplaceBody resolves an existing document");
+            ChangesetChildOperationDraft {
+                child_key: "direct_write".to_string(),
+                operation: ChangesetOperationKind::ReplaceBody,
+                target: TargetRevisionFence {
+                    base_revision: base_revision(&document),
+                    current_revision: base_revision(&document),
+                    document,
+                },
+                draft: DraftMutation {
+                    mode: DraftMode::WholeDocument,
+                    body: body.clone(),
+                    frontmatter: None,
+                    new_stem: None,
+                },
+            }
+        }
+        DirectOperationInput::EditFrontmatter { fields, .. } => {
+            let document =
+                existing_document.expect("EditFrontmatter resolves an existing document");
+            ChangesetChildOperationDraft {
+                child_key: "direct_write".to_string(),
+                operation: ChangesetOperationKind::EditFrontmatter,
+                target: TargetRevisionFence {
+                    base_revision: base_revision(&document),
+                    current_revision: base_revision(&document),
+                    document,
+                },
+                draft: DraftMutation {
+                    mode: DraftMode::WholeDocument,
+                    body: String::new(),
+                    frontmatter: Some(fields.clone()),
+                    new_stem: None,
+                },
+            }
+        }
+        DirectOperationInput::Rename { new_stem, .. } => {
+            let document = existing_document.expect("Rename resolves an existing document");
+            ChangesetChildOperationDraft {
+                child_key: "direct_write".to_string(),
+                operation: ChangesetOperationKind::Rename,
+                target: TargetRevisionFence {
+                    base_revision: base_revision(&document),
+                    current_revision: base_revision(&document),
+                    document,
+                },
+                draft: DraftMutation {
+                    mode: DraftMode::WholeDocument,
+                    body: String::new(),
+                    frontmatter: None,
+                    new_stem: Some(new_stem.clone()),
+                },
+            }
+        }
+        DirectOperationInput::CreateDocument { params } => {
+            let document = DocumentRef::ProvisionalCreate {
+                provisional_doc_id: format!("direct:{}:{}", params.doc_type, params.feature),
+                doc_type: params.doc_type.clone(),
+                feature: params.feature.clone(),
+                title: params.title.clone(),
+                collision_status: ProvisionalCollisionStatus::Unknown,
+                proposed_stem: None,
+            };
+            ChangesetChildOperationDraft {
+                child_key: "direct_write".to_string(),
+                operation: ChangesetOperationKind::CreateDocument,
+                target: TargetRevisionFence {
+                    document,
+                    base_revision: None,
+                    current_revision: None,
+                },
+                draft: DraftMutation {
+                    mode: DraftMode::WholeDocument,
+                    body: String::new(),
+                    frontmatter: None,
+                    new_stem: None,
+                },
+            }
+        }
+    }
 }
 
 struct DirectRecordInput<'a> {
@@ -758,12 +1128,15 @@ fn direct_session_receipt_id(ids: &DirectWriteIds) -> StoreResult<ReceiptId> {
     .map_err(|err| StoreError::Session(err.to_string()))
 }
 
-struct DirectProposalInput<'a> {
-    summary: &'a str,
-    document: DocumentRef,
-    body: String,
+struct DirectProposalInput {
+    summary: String,
+    draft: ChangesetChildOperationDraft,
 }
 
+/// Open the direct-changeset draft through `create_direct_proposal`, which
+/// routes into the SAME `materialize_drafts` per-kind dispatch (W02.P05a)
+/// the standard propose surface uses — a direct-write save is materialized
+/// through the IDENTICAL per-kind materializers, never a re-implementation.
 fn ensure_proposal_created(
     store: &mut Store,
     reader: &SnapshotReader,
@@ -771,7 +1144,7 @@ fn ensure_proposal_created(
     idempotency_key: &IdempotencyKey,
     now_ms: i64,
     ids: &DirectWriteIds,
-    input: DirectProposalInput<'_>,
+    input: DirectProposalInput,
 ) -> StoreResult<bool> {
     let result = super::proposal::create_direct_proposal(
         store,
@@ -780,22 +1153,8 @@ fn ensure_proposal_created(
         CreateProposalRequest {
             session_id: ids.session_id.clone(),
             changeset_id: ids.changeset_id.clone(),
-            summary: input.summary.to_string(),
-            operations: vec![ChangesetChildOperationDraft {
-                child_key: "direct_write_body".to_string(),
-                operation: ChangesetOperationKind::ReplaceBody,
-                target: TargetRevisionFence {
-                    document: input.document.clone(),
-                    base_revision: base_revision(&input.document),
-                    current_revision: base_revision(&input.document),
-                },
-                draft: DraftMutation {
-                    mode: DraftMode::WholeDocument,
-                    body: input.body,
-                    frontmatter: None,
-                    new_stem: None,
-                },
-            }],
+            summary: input.summary,
+            operations: vec![input.draft],
         },
     )?;
     match reduce_step(result)? {
@@ -1378,10 +1737,15 @@ mod tests {
 
     fn request(expected_blob_hash: &str, body: &str) -> DirectWriteRequest {
         DirectWriteRequest {
-            doc_ref: DOC_PATH.to_string(),
+            doc_ref: Some(DOC_PATH.to_string()),
+            operation: ChangesetOperationKind::ReplaceBody,
             body: body.to_string(),
-            expected_blob_hash: expected_blob_hash.to_string(),
+            frontmatter: None,
+            new_stem: None,
+            create: None,
+            expected_blob_hash: Some(expected_blob_hash.to_string()),
             summary: Some("editor save".to_string()),
+            scope: None,
         }
     }
 
@@ -1463,7 +1827,7 @@ mod tests {
         );
 
         let changeset_id = outcome.changeset_id.as_ref().unwrap().clone();
-        let preimage_id = format!("preimage:{}:direct_write_body", changeset_id.as_str());
+        let preimage_id = format!("preimage:{}:direct_write", changeset_id.as_str());
         let (preimage, projection, ledger_kind) = fx
             .store
             .with_unit_of_work(CommandKind::CreateProposal, |uow| {
