@@ -148,12 +148,12 @@ Rewire the create-document mutation hook and its dialog trigger from the legacy 
 
 The direct-write create outcome carries no field naming the actually-created document: record.document_path resolves an existing target (always empty for a create, which has none), and DocumentRef::MaterializedResult — the modeled variant that WOULD carry result_node_id/result_path, with a projection reader already ready in projections.rs — is dormant scaffolding never constructed at CreateDocument apply completion. Discovered in W03.P09 (2026-07-09): the create succeeds and the new document appears in the vault tree (queries invalidate), but the frontend cannot auto-navigate to it (nodeId is null), a UX regression versus the legacy /ops/core/create path which returned the new identity. This phase wires MaterializedResult into CreateDocument's apply completion so the create outcome + apply receipt echo the real path/stem/node-id, then restores the frontend auto-open. Backend scaffolding already exists; this is wiring, not new modeling.
 
-- [ ] `W03.P09a.S87` - Ground CreateDocument identity-echo requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P09a.S88` - Wire MaterializedResult into CreateDocument apply completion so the create outcome and apply receipt echo the created document result_node_id/result_path/result_stem; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
-- [ ] `W03.P09a.S89` - Restore the frontend create auto-open: read the echoed new-document identity from the direct-write outcome and navigate to it in CreateDocButton; `frontend/src/app/stage/CreateDocButton.tsx`.
-- [ ] `W03.P09a.S90` - Add tests for the echoed create identity end to end (backend outcome carries the real path, frontend auto-opens the created document); `engine/crates/vaultspec-api/src/authoring/apply.rs`.
-- [ ] `W03.P09a.S91` - Run CreateDocument identity-echo code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P09a.S92` - Verify a ledgered create echoes the new document identity and the create dialog auto-opens it, restoring parity with the legacy path; `frontend/src/app/stage/CreateDocButton.tsx`.
+- [x] `W03.P09a.S87` - Ground CreateDocument identity-echo requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P09a.S88` - Wire MaterializedResult into CreateDocument apply completion so the create outcome and apply receipt echo the created document result_node_id/result_path/result_stem; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [x] `W03.P09a.S89` - Restore the frontend create auto-open: read the echoed new-document identity from the direct-write outcome and navigate to it in CreateDocButton; `frontend/src/app/stage/CreateDocButton.tsx`.
+- [x] `W03.P09a.S90` - Add tests for the echoed create identity end to end (backend outcome carries the real path, frontend auto-opens the created document); `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [x] `W03.P09a.S91` - Run CreateDocument identity-echo code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P09a.S92` - Verify a ledgered create echoes the new document identity and the create dialog auto-opens it, restoring parity with the legacy path; `frontend/src/app/stage/CreateDocButton.tsx`.
 
 ### Phase `W03.P10` - Relate/link rewire and dead-hook removal
 
