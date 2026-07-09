@@ -487,13 +487,15 @@ describe("useRenameDoc — direct-write request construction", () => {
 });
 
 describe("useCreateDoc — direct-write request construction", () => {
-  it("builds an `operation: create_document` direct-write request (create params + scope pin, NO ref/expected_blob_hash) carrying the bootstrapped actor token, and resolves `created`", async () => {
+  it("builds an `operation: create_document` direct-write request (create params + scope pin, NO ref/expected_blob_hash) carrying the bootstrapped actor token, and resolves `created` with the SERVER-echoed identity (W03.P09a)", async () => {
     const spy = vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
       kind: "applied",
       changesetId: "changeset_4",
-      documentPath: null,
-      blobHash: null,
+      documentPath: ".vault/research/2026-07-09-alpha-research.md",
+      blobHash: "new-hash",
       replayed: false,
+      resultNodeId: "doc:2026-07-09-alpha-research",
+      resultStem: "2026-07-09-alpha-research",
       tiers: TIERS,
     } satisfies DirectWriteOutcome);
 
@@ -522,9 +524,34 @@ describe("useCreateDoc — direct-write request construction", () => {
       { actorToken: "test-actor-token" },
     );
     expect(res.result.kind).toBe("created");
-    // KNOWN backend gap (W03.P09): the direct-write outcome does not carry the
-    // server-computed path/stem for a create, so identity stays unresolved —
-    // the CALLER (CreateDocButton) must still treat this as SUCCESS.
+    if (res.result.kind === "created") {
+      expect(res.result.path).toBe(".vault/research/2026-07-09-alpha-research.md");
+      expect(res.result.stem).toBe("2026-07-09-alpha-research");
+    }
+    // The echoed `resultNodeId` restores auto-open — never client-predicted.
+    expect(res.nodeId).toBe("doc:2026-07-09-alpha-research");
+  });
+
+  it("still resolves `created` (never a false refusal) when the apply receipt reports no identity — the engine's fail-closed edge case", async () => {
+    vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "applied",
+      changesetId: "changeset_5",
+      documentPath: null,
+      blobHash: null,
+      replayed: false,
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
+    const { result } = renderHook(() => useCreateDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      scope: "Y:/repo",
+      docType: "research",
+      feature: "alpha",
+    });
+
+    expect(res.result.kind).toBe("created");
     expect(res.nodeId).toBeNull();
   });
 

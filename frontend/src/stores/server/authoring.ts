@@ -484,7 +484,11 @@ export interface DirectWriteConflict {
  * stale optimistic base) and `denied` (an ineligible actor — e.g. a non-human
  * principal) ride the success (200) envelope as VALUES, never a thrown fault.
  * `applied` carries the changeset id + the new blob hash the editor adopts as
- * its next optimistic-concurrency base.
+ * its next optimistic-concurrency base. `resultNodeId`/`resultStem` (W03.P09a)
+ * are populated ONLY for a successfully-applied `create_document` — the
+ * server-resolved identity of the newly-created document (`apply_receipt.
+ * child.result_node_id`/`result_stem`), letting the create dialog auto-open it
+ * without predicting a stem client-side; `undefined` for every other kind.
  */
 export type DirectWriteOutcome =
   | {
@@ -493,6 +497,8 @@ export type DirectWriteOutcome =
       documentPath: string | null;
       blobHash: string | null;
       replayed: boolean;
+      resultNodeId?: string;
+      resultStem?: string;
       tiers: TiersBlock;
     }
   | { kind: "conflict"; conflict: DirectWriteConflict; tiers: TiersBlock }
@@ -919,8 +925,14 @@ export function adaptDirectWriteOutcome(raw: unknown): DirectWriteOutcome {
   return {
     kind: "applied",
     changesetId: asStr(r.changeset_id) ?? "",
-    documentPath: asStr(record.document_path) ?? null,
+    // `child.document_path` is the apply receipt's resolved path — populated
+    // for EVERY kind including `create_document` (W03.P09a, re-resolved from
+    // the created document's real identity); `record.document_path` stays the
+    // fallback for a sparser response.
+    documentPath: asStr(child.document_path) ?? asStr(record.document_path) ?? null,
     blobHash: asStr(child.observed_result_blob_hash) ?? null,
+    resultNodeId: asStr(child.result_node_id),
+    resultStem: asStr(child.result_stem),
     replayed: asBool(r.replayed),
     tiers,
   };

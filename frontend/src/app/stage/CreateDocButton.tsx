@@ -43,12 +43,15 @@ export function CreateDocButton() {
       },
       {
         onSuccess: ({ result, nodeId }) => {
-          // A `created` result IS success even when `nodeId` is null (the
-          // direct-write route does not echo `vault add`'s server-computed
-          // stem back — a known backend gap, tracked separately): the
-          // document exists either way, so this never renders a false
-          // "refused" for a genuine success. Only auto-open the tab when the
-          // identity is actually known.
+          // A `created` result IS success even on the rare `nodeId === null`
+          // (W03.P09a: the apply receipt echoes the server-resolved
+          // `result_node_id`/`result_stem` for a landed create — never
+          // client-predicted — but the engine's re-resolve is fail-closed: if
+          // the created stem somehow doesn't resolve despite `Applied`, it
+          // reports no identity rather than forging one). Either way the
+          // document exists, so this never renders a false "refused" for a
+          // genuine success — auto-open the tab only when the identity is
+          // actually known.
           if (result.kind === "created") {
             if (nodeId) void openDocTab(nodeId, "markdown", scope);
             resetCreateDocChrome();

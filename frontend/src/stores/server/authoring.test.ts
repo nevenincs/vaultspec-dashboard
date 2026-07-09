@@ -689,6 +689,36 @@ describe("adaptDirectWriteOutcome (ledgered-edit-migration W01.P02)", () => {
       expect(outcome.blobHash).toBe("new-hash");
       expect(outcome.documentPath).toBe(".vault/adr/x.md");
       expect(outcome.replayed).toBe(false);
+      // A ReplaceBody/EditFrontmatter/Rename apply never echoes a create
+      // identity — `resultNodeId`/`resultStem` stay undefined.
+      expect(outcome.resultNodeId).toBeUndefined();
+      expect(outcome.resultStem).toBeUndefined();
+    }
+  });
+
+  it("reads the echoed create-document identity off a landed create's apply receipt (W03.P09a)", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "applied",
+      replayed: false,
+      changeset_id: "changeset_create",
+      apply_receipt: {
+        child: {
+          document_path: ".vault/research/2026-07-09-alpha-research.md",
+          result_node_id: "doc:2026-07-09-alpha-research",
+          result_stem: "2026-07-09-alpha-research",
+        },
+      },
+      tiers: availableTiers,
+    });
+
+    expect(outcome.kind).toBe("applied");
+    if (outcome.kind === "applied") {
+      // The apply receipt's `document_path` (populated for a landed create)
+      // is preferred over the top-level record's (which stays empty for
+      // create, per direct_write.rs's own `existing_target`-only derivation).
+      expect(outcome.documentPath).toBe(".vault/research/2026-07-09-alpha-research.md");
+      expect(outcome.resultNodeId).toBe("doc:2026-07-09-alpha-research");
+      expect(outcome.resultStem).toBe("2026-07-09-alpha-research");
     }
   });
 

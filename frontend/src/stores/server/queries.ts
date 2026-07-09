@@ -6554,23 +6554,14 @@ export function normalizeCreateDocArgs(args: unknown): NormalizedCreateDocArgs {
  * self-approved direct changeset, not the legacy `create` ops dispatch. Sends
  * the target `scope` as the direct-write scope pin, same as Save/frontmatter/
  * rename. Resolves with `{ result, nodeId }` where `result` is the typed
- * `OpsWriteResult` and `nodeId` is the synthesized `doc:<stem>` id.
- *
- * IDENTITY GAP: `vault add` names the created file itself (the client sends no
- * `ref`/predicted stem — there is nothing sound to predict client-side, same
- * discipline as the request side), and unlike the legacy `/ops/core/create`
- * response, the direct-write outcome carries NO field naming the real created
- * path/stem for a `create_document` operation (`document_path` stays empty
- * for this kind on both the top-level record and the apply receipt — traced
- * in the engine, not yet wired). So a `created` result's `path`/`stem` are
- * EMPTY and `nodeId` is `null` even on success — this is a KNOWN backend gap
- * (a future `MaterializedResult` document-ref wiring, already scaffolded in
- * `projections.rs`, would close it), not a refusal. Callers MUST branch on
- * `result.kind === "created"` alone for success, not on `nodeId` being
- * non-null (see `CreateDocButton.tsx`). `conflict`/`refused` (including a
- * predicted-create-path collision, `CreateDocumentPathCollision`) is a typed
- * result the caller drives UI state from — NOT a thrown error; only a
- * transport fault, or the actor-token fail-safe (`requireActorToken`),
+ * `OpsWriteResult` and `nodeId` is the SERVER-echoed `doc:<stem>` id (W03.P09a
+ * — `vault add` names the created file itself; the client never predicted a
+ * stem, and now doesn't need to: the apply receipt echoes the real
+ * `result_node_id`/`result_stem`/`document_path` for a landed create,
+ * re-resolved server-side, never client-guessed). `conflict`/`refused`
+ * (including a predicted-create-path collision, `CreateDocumentPathCollision`)
+ * is a typed result the caller drives UI state from — NOT a thrown error;
+ * only a transport fault, or the actor-token fail-safe (`requireActorToken`),
  * rejects. On a `created` outcome the same vault-mutation read surfaces are
  * invalidated as a save (a new doc can introduce tree rows, graph nodes,
  * filter facets, search hits, and git change entries).
@@ -6606,10 +6597,17 @@ export function useCreateDoc() {
         { actorToken: requireActorToken() },
       );
       if (outcome.kind === "applied") {
+        // W03.P09a: the apply receipt now echoes the created document's real
+        // identity (server-resolved, never client-predicted) —
+        // `resultNodeId` is already the full `doc:<stem>` id.
         return {
-          result: { kind: "created", path: "", stem: "" },
+          result: {
+            kind: "created",
+            path: outcome.documentPath ?? "",
+            stem: outcome.resultStem ?? "",
+          },
           tiers: outcome.tiers,
-          nodeId: null,
+          nodeId: outcome.resultNodeId ?? null,
         };
       }
       if (outcome.kind === "conflict") {
