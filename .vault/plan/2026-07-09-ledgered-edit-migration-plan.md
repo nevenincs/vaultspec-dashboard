@@ -115,12 +115,12 @@ Rewire the frontmatter panel, rename affordance, create dialog, and relate/link 
 
 Rewire the frontmatter panel's mutation hook from the legacy set-frontmatter ops dispatch to the operation-typed direct-edit route.
 
-- [ ] `W03.P07.S38` - Ground frontmatter-panel direct-write cutover requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P07.S39` - Rewire useSetFrontmatter to mint the editor actor token and call the operation-typed direct-edit route instead of the legacy set-frontmatter ops dispatch; `frontend/src/stores/server/queries.ts`.
-- [ ] `W03.P07.S40` - Add tests for the ledgered frontmatter save happy path, denied/conflicted outcomes, and the removal of the legacy set-frontmatter dispatch; `frontend/src/stores/server/editorMutations.test.ts`.
-- [ ] `W03.P07.S80` - Rewrite editorWriteSeam.test.tsx's useSetFrontmatter request-construction coverage to spy the authoring direct-write call instead of the legacy dispatchOps set-frontmatter op, covering the happy path and denied/conflicted outcomes; `frontend/src/stores/server/editorWriteSeam.test.tsx`.
-- [ ] `W03.P07.S41` - Run Frontmatter panel rewire code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P07.S42` - Verify a frontmatter panel edit produces a changeset with provenance and no live path still calls the legacy set-frontmatter write route; `frontend/src/stores/server/opsActions.ts`.
+- [x] `W03.P07.S38` - Ground frontmatter-panel direct-write cutover requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P07.S39` - Rewire useSetFrontmatter to mint the editor actor token and call the operation-typed direct-edit route instead of the legacy set-frontmatter ops dispatch; `frontend/src/stores/server/queries.ts`.
+- [x] `W03.P07.S40` - Add tests for the ledgered frontmatter save happy path, denied/conflicted outcomes, and the removal of the legacy set-frontmatter dispatch; `frontend/src/stores/server/editorMutations.test.ts`.
+- [x] `W03.P07.S80` - Rewrite editorWriteSeam.test.tsx's useSetFrontmatter request-construction coverage to spy the authoring direct-write call instead of the legacy dispatchOps set-frontmatter op, covering the happy path and denied/conflicted outcomes; `frontend/src/stores/server/editorWriteSeam.test.tsx`.
+- [x] `W03.P07.S41` - Run Frontmatter panel rewire code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P07.S42` - Verify a frontmatter panel edit produces a changeset with provenance and no live path still calls the legacy set-frontmatter write route; `frontend/src/stores/server/opsActions.ts`.
 
 ### Phase `W03.P08` - Rename affordance rewire
 
