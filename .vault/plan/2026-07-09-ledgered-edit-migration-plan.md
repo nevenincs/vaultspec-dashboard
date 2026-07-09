@@ -79,12 +79,12 @@ Wire validation, materialization, preimage capture, apply, and rollback for rena
 
 Wire validation, materialization, and apply for document creation through the existing CreateDocument core-adapter capability, honestly recording rollback_available=false with a reason since creation has no preimage.
 
-- [ ] `W02.P05.S26` - Ground CreateDocument validation and honest non-rollback-eligible recording requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W02.P05.S27` - Implement CreateDocument draft validation accepting the operation kind and its typed create-params payload shape; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
-- [ ] `W02.P05.S28` - Implement CreateDocument materialization and apply through the CreateDocument core-adapter capability, recording rollback_available=false with a reason since there is no preimage; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
-- [ ] `W02.P05.S29` - Add tests for CreateDocument validation, apply, duplicate-stem conflict, and the honest non-rollback-eligible outcome; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
-- [ ] `W02.P05.S30` - Run CreateDocument apply wiring code review and record the phase audit; `.vault/audit/`.
-- [ ] `W02.P05.S31` - Verify a proposed CreateDocument changeset applies, scaffolds a real vault document, and reports rollback_available=false with an honest reason; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [x] `W02.P05.S26` - Ground CreateDocument validation and honest non-rollback-eligible recording requirements into the phase checklist; `.vault/adr/`.
+- [x] `W02.P05.S27` - Implement CreateDocument draft validation accepting the operation kind and its typed create-params payload shape; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
+- [x] `W02.P05.S28` - Implement CreateDocument materialization and apply through the CreateDocument core-adapter capability, recording rollback_available=false with a reason since there is no preimage; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [x] `W02.P05.S29` - Add tests for CreateDocument validation, apply, duplicate-stem conflict, and the honest non-rollback-eligible outcome; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [x] `W02.P05.S30` - Run CreateDocument apply wiring code review and record the phase audit; `.vault/audit/`.
+- [x] `W02.P05.S31` - Verify a proposed CreateDocument changeset applies, scaffolds a real vault document, and reports rollback_available=false with an honest reason; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
 
 ### Phase `W02.P05a` - Propose-side operation-kind generalization
 
