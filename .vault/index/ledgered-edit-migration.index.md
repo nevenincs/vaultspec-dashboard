@@ -7,6 +7,7 @@ date: '2026-07-09'
 modified: '2026-07-09'
 related:
   - '[[2026-07-09-ledgered-edit-migration-adr]]'
+  - '[[2026-07-09-ledgered-edit-migration-audit]]'
   - '[[2026-07-09-ledgered-edit-migration-plan]]'
   - '[[2026-07-09-ledgered-edit-migration-reference]]'
 ---
@@ -20,6 +21,10 @@ Auto-generated index of all documents tagged with `#ledgered-edit-migration`.
 ### adr
 
 - `2026-07-09-ledgered-edit-migration-adr` - `ledgered-edit-migration` adr: `Route every document edit through the ledgered authoring backend and retire the /ops/core write path` | (**status:** `accepted`)
+
+### audit
+
+- `2026-07-09-ledgered-edit-migration-audit` - `ledgered-edit-migration` audit: `Final gate and epic closeout`
 
 ### plan
 
