@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 use ingest_struct::reader::blob_oid;
 use serde::{Deserialize, Serialize};
 
-use super::api::ChangesetOperationKind;
+use super::api::{ChangesetOperationKind, FrontmatterEditFields};
 use super::approvals::{V1_POLICY_VERSION, automated_self_approval_blocker};
 use super::conflicts::{
     MAX_CONFLICT_SIBLINGS, detect_conflicts, document_lease_scope, existing_node_id,
@@ -283,6 +283,11 @@ struct ApplyPrep {
     document_path: String,
     base_blob_hash: String,
     expected_result_blob_hash: String,
+    /// HOW to verify the write landed on an indeterminate-kill / crash-recovery
+    /// post-verify — see [`PostVerifyExpectation`]. NEVER derive `Applied` from
+    /// `expected_result_blob_hash` directly for a core-authoritative kind; go
+    /// through this.
+    post_verify: PostVerifyExpectation,
     invocation: CoreInvocation,
 }
 
@@ -470,6 +475,10 @@ fn preflight_in_uow(
         Ok(invocation) => invocation,
         Err(err) => return Ok(Err(err)),
     };
+    let post_verify = match post_verify_expectation(child.operation, materialized) {
+        Ok(post_verify) => post_verify,
+        Err(err) => return Ok(Err(err)),
+    };
 
     // Reserve the attempt, then append the `Applying` revision under the applying
     // actor (records that materialization started — restart visibility). A
@@ -523,6 +532,7 @@ fn preflight_in_uow(
         document_path,
         base_blob_hash,
         expected_result_blob_hash,
+        post_verify,
         invocation,
     }))))
 }
@@ -600,41 +610,91 @@ fn resolve_outcome(
     }
 }
 
-/// Resolve a child outcome by RE-VERIFYING the document post-state against the
-/// expected result blob hash — no core invoke. Shared by the indeterminate-kill
-/// path and the P36-R1 crash-recovery reclaim. FAILS CLOSED: records `Applied`
-/// only when the post-state provably matches; an unreadable post-state is
-/// `Failed`, never a forged success. `reason` is a redacted, leak-free prefix.
+/// Resolve a child outcome by RE-VERIFYING the document post-state — no core
+/// invoke. Shared by the indeterminate-kill path and the P36-R1 crash-recovery
+/// reclaim. Dispatches on [`ApplyPrep::post_verify`] so a core-authoritative
+/// write (e.g. `EditFrontmatter`) is verified SEMANTICALLY rather than against
+/// a preview-derived hash core never received (see the type's docs — a
+/// preview-hash comparison there would spuriously report a landed write as
+/// not-landed, since core computes its own bytes). FAILS CLOSED either way:
+/// records `Applied` only when the post-state provably matches; an unreadable
+/// post-state is `Failed`, never a forged success. `reason` is a redacted,
+/// leak-free prefix.
 fn post_state_resolution(worktree_root: &Path, prep: &ApplyPrep, reason: &str) -> ChildResolution {
-    match read_blob_hash(worktree_root, &prep.document) {
-        Ok(observed) if observed == prep.expected_result_blob_hash => ChildResolution {
-            outcome: ApplyChildOutcome::Applied,
-            observed_result_blob_hash: Some(observed),
-            core_status: None,
-            core_schema: None,
-            resolved_via_post_verify: true,
-            diagnostic: Some(format!("{reason}; post-state re-verified the write landed")),
-        },
-        Ok(observed) => ChildResolution {
-            outcome: ApplyChildOutcome::Failed,
-            observed_result_blob_hash: Some(observed),
-            core_status: None,
-            core_schema: None,
-            resolved_via_post_verify: true,
-            diagnostic: Some(format!(
-                "{reason}; post-state re-verified the write did NOT land"
-            )),
-        },
-        Err(_) => ChildResolution {
-            outcome: ApplyChildOutcome::Failed,
-            observed_result_blob_hash: None,
-            core_status: None,
-            core_schema: None,
-            resolved_via_post_verify: true,
-            diagnostic: Some(format!(
-                "{reason}; post-state could not be re-verified (recorded not-applied, fail-closed)"
-            )),
-        },
+    match &prep.post_verify {
+        PostVerifyExpectation::ExactBlobHash(expected) => {
+            match read_blob_hash(worktree_root, &prep.document) {
+                Ok(observed) if &observed == expected => ChildResolution {
+                    outcome: ApplyChildOutcome::Applied,
+                    observed_result_blob_hash: Some(observed),
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!("{reason}; post-state re-verified the write landed")),
+                },
+                Ok(observed) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: Some(observed),
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state re-verified the write did NOT land"
+                    )),
+                },
+                Err(_) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: None,
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state could not be re-verified (recorded not-applied, \
+                         fail-closed)"
+                    )),
+                },
+            }
+        }
+        PostVerifyExpectation::FrontmatterFields(fields) => {
+            match read_document_text(worktree_root, &prep.document) {
+                Ok(text) if super::operations::frontmatter_fields_match(&text, fields) => {
+                    ChildResolution {
+                        outcome: ApplyChildOutcome::Applied,
+                        observed_result_blob_hash: read_blob_hash(worktree_root, &prep.document)
+                            .ok(),
+                        core_status: None,
+                        core_schema: None,
+                        resolved_via_post_verify: true,
+                        diagnostic: Some(format!(
+                            "{reason}; post-state re-verified the intended frontmatter fields \
+                             landed"
+                        )),
+                    }
+                }
+                Ok(_) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: read_blob_hash(worktree_root, &prep.document).ok(),
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state re-verified the intended frontmatter fields did \
+                         NOT land"
+                    )),
+                },
+                Err(_) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: None,
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state could not be re-verified (recorded not-applied, \
+                         fail-closed)"
+                    )),
+                },
+            }
+        }
     }
 }
 
@@ -692,6 +752,10 @@ fn build_reclaim_prep(
         Ok(invocation) => invocation,
         Err(err) => return Ok(Err(err)),
     };
+    let post_verify = match post_verify_expectation(child.operation, materialized) {
+        Ok(post_verify) => post_verify,
+        Err(err) => return Ok(Err(err)),
+    };
     Ok(Ok(Preflight::Reclaim(Box::new(ApplyPrep {
         reservation,
         receipt_id,
@@ -705,6 +769,7 @@ fn build_reclaim_prep(
         document_path,
         base_blob_hash,
         expected_result_blob_hash,
+        post_verify,
         invocation,
     }))))
 }
@@ -861,6 +926,16 @@ fn read_blob_hash(worktree_root: &Path, document: &DocumentRef) -> StoreResult<S
         .map_err(|err| StoreError::Snapshot(err.to_string()))
 }
 
+/// Read a document's CURRENT text from the worktree — the semantic-post-verify
+/// sibling of [`read_blob_hash`], used when the write is core-authoritative and
+/// verification must inspect content rather than compare a preview-derived hash.
+fn read_document_text(worktree_root: &Path, document: &DocumentRef) -> StoreResult<String> {
+    SnapshotReader::for_worktree(PathBuf::from(worktree_root))
+        .capture_existing(document)
+        .map(|snapshot| snapshot.text)
+        .map_err(|err| StoreError::Snapshot(err.to_string()))
+}
+
 /// Select the core-adapter capability + build its argv for one materialized
 /// child, keyed on the operation kind. The ONE place apply chooses HOW a
 /// materialized operation is written: `ReplaceBody` streams the whole-document
@@ -904,6 +979,58 @@ fn build_write_invocation(
     };
     CoreInvocation::write(capability, document_path, args)
         .map_err(|err| ApplyError::Internal(format!("invocation build failed: {err}")))
+}
+
+/// HOW to verify, post-write, that a materialized child's write actually
+/// landed — keyed on the SAME operation kind [`build_write_invocation`]
+/// dispatches on, because the two questions are coupled: verification is sound
+/// only when it checks what the invocation ACTUALLY asked core to produce.
+///
+/// `ExactBlobHash` applies when the apply invocation streams the SAME bytes
+/// the whole-document preview computed (`ReplaceBody` → `SetBody` stdin): core
+/// reproduces the preview byte-for-byte, so a blob-hash match is a sound proof
+/// of landing.
+///
+/// `FrontmatterFields` applies whenever core is AUTHORITATIVE over the written
+/// bytes (`EditFrontmatter` → `SetFrontmatter` computes its own serialization
+/// from typed flags, never receiving the preview text at all). A
+/// preview-derived hash can NEVER soundly verify such a write — core's real
+/// bytes need not match the Rust-side preview's quoting/spacing/line-ending
+/// choices even when the write landed correctly — so verification instead
+/// RE-READS the post-state document and confirms the intended field values are
+/// present (`operations::frontmatter_fields_match`), never comparing
+/// whole-document bytes. A new core-authoritative operation kind (rename,
+/// create) needs its own semantic variant here, mirroring this one, not a
+/// forced fit into `ExactBlobHash`.
+enum PostVerifyExpectation {
+    ExactBlobHash(String),
+    FrontmatterFields(FrontmatterEditFields),
+}
+
+/// Build the [`PostVerifyExpectation`] for one materialized child, keyed on
+/// operation kind exactly like [`build_write_invocation`] — the two MUST stay
+/// coupled (see the type's docs), so both are chosen from the SAME match here
+/// at the call site alongside the invocation, never independently re-derived.
+fn post_verify_expectation(
+    operation: ChangesetOperationKind,
+    materialized: &super::operations::MaterializedProposalOperation,
+) -> Result<PostVerifyExpectation> {
+    match operation {
+        ChangesetOperationKind::ReplaceBody => Ok(PostVerifyExpectation::ExactBlobHash(
+            materialized.target_snapshot.payload_hash.clone(),
+        )),
+        ChangesetOperationKind::EditFrontmatter => {
+            let fields = materialized.frontmatter_edit.clone().ok_or_else(|| {
+                ApplyError::Internal(
+                    "materialized EditFrontmatter child carries no field-level payload".to_string(),
+                )
+            })?;
+            Ok(PostVerifyExpectation::FrontmatterFields(fields))
+        }
+        other => Err(ApplyError::Internal(format!(
+            "apply has no post-verify expectation for operation `{other:?}`"
+        ))),
+    }
 }
 
 fn existing_path(document: &DocumentRef) -> Option<String> {
@@ -1007,6 +1134,8 @@ fn validation_freshness(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
+    use std::sync::Mutex;
     use std::time::Duration;
 
     use crate::authoring::actors::{ActorDisplayMetadata, ActorRecordInput};
@@ -1444,6 +1573,362 @@ mod tests {
             applier,
             expected_result_blob_hash,
         }
+    }
+
+    // --- W02.P03-R1: EditFrontmatter against the REAL core (kind-gated post-verify) ---
+
+    /// Serializes the tests that spawn the REAL `vaultspec-core` subprocess
+    /// (mirrors `direct_write::tests::REAL_CORE_TEST_LOCK`).
+    static REAL_CORE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    const LIVE_FRONTMATTER_DOC_PATH: &str = ".vault/plan/apply-frontmatter-live-demo.md";
+    const LIVE_FRONTMATTER_BASE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-01-01'\n---\n\n# apply live frontmatter demo\n\nbase content\n";
+    const LIVE_FRONTMATTER_NEW_DATE: &str = "2026-02-06";
+
+    fn git(root: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .current_dir(root)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "apply-live")
+            .env("GIT_AUTHOR_EMAIL", "apply-live@example.invalid")
+            .env("GIT_COMMITTER_NAME", "apply-live")
+            .env("GIT_COMMITTER_EMAIL", "apply-live@example.invalid")
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn scaffold_vaultspec_workspace(root: &Path) {
+        let output = Command::new("uv")
+            .current_dir(root)
+            .args([
+                "run",
+                "--no-sync",
+                "vaultspec-core",
+                "install",
+                "--target",
+                ".",
+            ])
+            .output()
+            .expect("vaultspec-core install command runs");
+        assert!(
+            output.status.success() && root.join(".vaultspec").is_dir(),
+            "real vaultspec-core install must succeed for live-core apply tests: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// The `setup_frontmatter` sibling that scaffolds a REAL git + vaultspec
+    /// workspace (rather than a bare tempdir) so the apply invocation can be
+    /// driven against the genuine `vaultspec-core` binary — the only way to
+    /// prove the kind-gated post-verify (R1) against core's ACTUAL
+    /// `set-frontmatter` write, not a mocked envelope.
+    fn setup_live_frontmatter() -> Fx {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        git(&root, &["init", "-b", "main", "."]);
+        let doc_file = root.join(LIVE_FRONTMATTER_DOC_PATH);
+        std::fs::create_dir_all(doc_file.parent().unwrap()).unwrap();
+        std::fs::write(&doc_file, LIVE_FRONTMATTER_BASE_BODY).unwrap();
+        scaffold_vaultspec_workspace(&root);
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "apply live frontmatter fixture"]);
+
+        let mut store = Store::open(&root.join(".vault")).unwrap();
+        let changeset_id = ChangesetId::new("changeset_apply_fm_live_1").unwrap();
+        let proposal_id = ProposalId::new("proposal_apply_fm_live_1").unwrap();
+        let origin = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let applier = actor("human:applier", ActorKind::Human);
+
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                for (id, kind) in [
+                    ("agent:author", ActorKind::Agent),
+                    ("human:reviewer", ActorKind::Human),
+                    ("human:applier", ActorKind::Human),
+                ] {
+                    uow.actors().put_record(ActorRecordInput::active(
+                        actor(id, kind),
+                        ActorDisplayMetadata::new(id, None),
+                        1,
+                    ))?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        let reader = SnapshotReader::for_worktree(root.clone());
+        let seed_doc = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: "doc:apply-frontmatter-live-demo".to_string(),
+            stem: "apply-frontmatter-live-demo".to_string(),
+            path: LIVE_FRONTMATTER_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: RevisionToken::new("blob:seed").unwrap(),
+        };
+        let base_probe = reader.capture_existing(&seed_doc).unwrap();
+        let document = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: "doc:apply-frontmatter-live-demo".to_string(),
+            stem: "apply-frontmatter-live-demo".to_string(),
+            path: LIVE_FRONTMATTER_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: base_probe.revision.clone(),
+        };
+        let base_snapshot = reader.capture_existing(&document).unwrap();
+        let preimage = reader
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: "preimage_fm_live_1".to_string(),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: "child_1".to_string(),
+                document: document.clone(),
+                captured_at_ms: 5,
+            })
+            .unwrap();
+        let draft = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::EditFrontmatter,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(base_probe.revision.clone()),
+                current_revision: Some(base_probe.revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: Some(crate::authoring::api::FrontmatterEditFields {
+                    date: Some(LIVE_FRONTMATTER_NEW_DATE.to_string()),
+                    tags: None,
+                    related: None,
+                }),
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
+
+        let current_observation =
+            CurrentRevisionObservation::from_snapshot("child_1", &base_snapshot);
+        let validation_record = validate_changeset_material(
+            std::slice::from_ref(&materialized),
+            &[current_observation],
+            &[],
+            6,
+        )
+        .unwrap();
+        assert!(
+            validation_record.approval_ready,
+            "fixture validation must be approval-ready: {:?}",
+            validation_record.status
+        );
+        let validation_digest = validation_record.validation_digest.clone();
+
+        let child_input = ChangesetChildOperationInput::from_materialized(
+            materialized,
+            validation_record.material_digest.clone(),
+            validation_digest.clone(),
+        );
+
+        let reviewed_revision = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                let draft_rev = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: None,
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::Draft,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live frontmatter demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 10,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&draft_rev)?;
+                let needs_review = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: Some(draft_rev.changeset_revision.clone()),
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::NeedsReview,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live frontmatter demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 20,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&needs_review)?;
+                uow.validations().store_record(&validation_record)?;
+                Ok(needs_review.changeset_revision)
+            })
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+                Ok(uow.approvals().request_approval(ApprovalRequestInput {
+                    approval_id: ApprovalId::new("approval_apply_fm_live_1").unwrap(),
+                    proposal_id: proposal_id.clone(),
+                    changeset_id: changeset_id.clone(),
+                    reviewed: ReviewedTuple {
+                        proposal_revision: reviewed_revision.clone(),
+                        validation_digest: validation_digest.clone(),
+                        policy_version: V1_POLICY_VERSION.to_string(),
+                    },
+                    idempotency_key: "idem:request:fm:live:1".to_string(),
+                    created_at_ms: 30,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::Approve, |uow| {
+                Ok(uow.approvals().submit_decision(ReviewDecisionInput {
+                    proposal_id: &proposal_id,
+                    decision: ApprovalDecision::Approve,
+                    reviewer: &reviewer,
+                    validation: ValidationFreshness::fresh(),
+                    current_validation_digest: &validation_digest,
+                    current_policy_version: V1_POLICY_VERSION,
+                    run_cancelled: false,
+                    comment: None,
+                    decided_at_ms: 40,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        Fx {
+            _dir: dir,
+            store,
+            root,
+            doc_file,
+            changeset_id,
+            proposal_id,
+            origin,
+            applier,
+            expected_result_blob_hash,
+        }
+    }
+
+    /// A REAL `vaultspec-core` `set-frontmatter` invocation, wrapped to LAND the
+    /// write and THEN hang past the deadline — the realistic "core is
+    /// core-authoritative AND was killed after actually finishing" sequence R1
+    /// fixes. Runs the genuine core subprocess to completion (a REAL frontmatter
+    /// write lands on disk, in `worktree_root`), then sleeps well past the
+    /// timeout so the apply-level `CoreAdapter` still observes a Timeout
+    /// (OUTCOME-INDETERMINATE). The trailing forwarded argv (the `CoreInvocation`
+    /// this test's `apply_changeset` call built) is intentionally unused here —
+    /// this wrapper hardcodes the SAME real command directly, mirroring
+    /// `landing_timeout_adapter`'s synthetic-mutation pattern but with a genuine
+    /// core subprocess instead of a file copy.
+    fn landing_frontmatter_timeout_adapter(doc_ref: &str, date: &str) -> CoreAdapter {
+        let invocation = if cfg!(windows) {
+            vec![
+                "powershell".to_string(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!(
+                    "& {{ uv run --no-sync vaultspec-core vault set-frontmatter '{doc_ref}' \
+                     --date '{date}' --json | Out-Null; Start-Sleep -Seconds 30 }}"
+                ),
+            ]
+        } else {
+            vec![
+                "sh".to_string(),
+                "-c".into(),
+                format!(
+                    "uv run --no-sync vaultspec-core vault set-frontmatter '{doc_ref}' \
+                     --date '{date}' --json >/dev/null 2>&1; sleep 30"
+                ),
+            ]
+        };
+        // A generous deadline: the wrapped command is a REAL `uv run` subprocess
+        // (venv resolution + Python startup), not a synthetic file mutation, so it
+        // needs materially more slack than `landing_timeout_adapter`'s 2.5s.
+        CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
+    }
+
+    #[test]
+    fn edit_frontmatter_apply_against_the_real_core_is_recognized_applied() {
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_frontmatter();
+        let applier = fx.applier.clone();
+        let adapter = CoreAdapter::detect();
+        let outcome = apply(&mut fx, &adapter, &applier, "idem:apply:fm:live:1", 100);
+        assert!(
+            outcome.eligibility.allowed,
+            "{:?}",
+            outcome.eligibility.reason
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an applied frontmatter changeset yields a receipt");
+        assert_eq!(receipt.state, ApplyState::Applied, "{receipt:?}");
+        assert_eq!(receipt.child.outcome, ApplyChildOutcome::Applied);
+        assert!(
+            !receipt.child.resolved_via_post_verify,
+            "a clean success completes via the envelope, never the recovery path"
+        );
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        let saved = std::fs::read_to_string(&fx.doc_file).unwrap();
+        assert!(
+            saved.contains(LIVE_FRONTMATTER_NEW_DATE),
+            "the REAL vaultspec-core set-frontmatter write landed the requested date: {saved}"
+        );
+    }
+
+    #[test]
+    fn edit_frontmatter_indeterminate_kill_after_a_real_landed_write_is_recognized_applied() {
+        // THE R1 falsifier: core is AUTHORITATIVE over an EditFrontmatter write's
+        // exact bytes (it computes its own serialization from typed flags, never
+        // receiving the Rust-side preview text). A preview-hash post-verify would
+        // spuriously report this REAL, landed write as "did NOT land" because
+        // core's real bytes need not match the preview's byte-for-byte guess.
+        // The semantic post-verify (`operations::frontmatter_fields_match`) must
+        // recognize it Applied regardless.
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_frontmatter();
+        let applier = fx.applier.clone();
+        let adapter = landing_frontmatter_timeout_adapter(
+            LIVE_FRONTMATTER_DOC_PATH,
+            LIVE_FRONTMATTER_NEW_DATE,
+        );
+        let outcome = apply(
+            &mut fx,
+            &adapter,
+            &applier,
+            "idem:apply:fm:live:kill:1",
+            100,
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an indeterminate kill still resolves to a terminal receipt");
+        assert_eq!(
+            receipt.state,
+            ApplyState::Applied,
+            "the REAL landed frontmatter write must be recognized Applied via semantic \
+             post-verify, not a preview-hash mismatch: {receipt:?}"
+        );
+        assert!(receipt.child.resolved_via_post_verify);
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        let saved = std::fs::read_to_string(&fx.doc_file).unwrap();
+        assert!(
+            saved.contains(LIVE_FRONTMATTER_NEW_DATE),
+            "the real core write is actually on disk: {saved}"
+        );
     }
 
     fn envelope_adapter(status: &str) -> CoreAdapter {
