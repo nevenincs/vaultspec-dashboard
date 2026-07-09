@@ -88,6 +88,11 @@ import {
   tiersFromQuery,
 } from "./engine";
 import type { SalienceLens } from "./engine";
+import {
+  authoringClient,
+  requireActorToken,
+  type DirectWriteOutcome,
+} from "./authoring";
 import { dispatchOps } from "./opsActions";
 import {
   deriveEditorialTitle,
@@ -351,6 +356,17 @@ export const engineKeys = {
   // active session and one settings document per workspace, so a single stable
   // key each. Mutations invalidate exactly these.
   session: () => [...engineKeys.all, "session"] as const,
+  // The provisioning status projection (project-provisioning ADR): keyed by the
+  // resolved target so a per-workspace/worktree status caches independently.
+  provisionStatus: (workspace?: string, worktree?: string) =>
+    [
+      ...engineKeys.all,
+      "provision",
+      "status",
+      workspace ?? "active",
+      worktree ?? "root",
+    ] as const,
+  provisionJob: (id: string) => [...engineKeys.all, "provision", "job", id] as const,
   settings: () => [...engineKeys.all, "settings"] as const,
   // The settings schema registry (dashboard-settings): engine-owned and stable
   // for a workspace, so a single key. Read rarely, cached long; the dialog reads
@@ -6059,19 +6075,31 @@ export function usePutSettings() {
 
 // --- document write/create mutations (document-editor backend) -------------------
 //
-// The save/create/frontmatter mutations the editor drives. They run through the
-// ONE platform ops-dispatch seam (`dispatchOps`, opsActions) — NOT a direct
-// engine-client call — so every vault mutation stays logged, traced, and centrally
-// guardable, exactly like the rag control verbs (dashboard-layer-ownership: the app
-// layer never reaches the engine client itself). The dispatch resolves with the
-// brokered `OpsResult`; `adaptOpsWrite` interprets the sibling envelope's `status`
-// + `data` into the typed `OpsWriteResult` (saved / conflict / refused / created),
-// branching on those fields and NEVER on the HTTP code (the wire returns 200 for
-// both success and business-refusal). A conflict/refusal is a typed result the
-// caller drives editor state from — NOT a thrown error — so the mutation resolves
-// (never rejects) on a business outcome; only a transport fault (a tiers-bearing
-// EngineError) rejects. Concurrency rides the read's echoed `blob_hash`; degradation
-// is read from the result's tiers, never guessed from transport
+// The create/frontmatter/rename mutations still run through the legacy platform
+// ops-dispatch seam (`dispatchOps`, opsActions) — NOT a direct engine-client call —
+// so every vault mutation stays logged, traced, and centrally guardable, exactly
+// like the rag control verbs (dashboard-layer-ownership: the app layer never
+// reaches the engine client itself). The dispatch resolves with the brokered
+// `OpsResult`; `adaptOpsWrite` interprets the sibling envelope's `status` + `data`
+// into the typed `OpsWriteResult` (saved / conflict / refused / created), branching
+// on those fields and NEVER on the HTTP code (the wire returns 200 for both success
+// and business-refusal).
+//
+// The Save button's body write (`useSaveBody`) is CUT OVER (ledgered-edit-migration
+// W01.P02): it no longer dispatches `set-body` through this legacy seam — it calls
+// the authoring store's ledgered `directWrite` route, which self-approves the
+// human's own manual save server-side and records it as an auditable changeset with
+// provenance. `directWriteResultToOpsResult` maps that outcome back onto the SAME
+// `OpsWriteResult` shape below so the editor lifecycle (`applyEditorWriteResult`)
+// is unchanged by the swap. The remaining verbs (set-frontmatter, rename, create)
+// stay on the legacy seam until their own phases wire them to the ledger.
+//
+// Either way, a conflict/refusal is a typed result the caller drives editor state
+// from — NOT a thrown error — so the mutation resolves (never rejects) on a
+// business outcome; only a transport fault (a tiers-bearing EngineError) or the
+// actor-token fail-safe (`requireActorToken`, no identity bootstrapped) rejects.
+// Concurrency rides the read's echoed `blob_hash`; degradation is read from the
+// result's tiers, never guessed from transport
 // (degradation-is-read-from-tiers-not-guessed-from-errors).
 
 /** Strip the `doc:` prefix from a node id to recover the document STEM the write
@@ -6315,29 +6343,107 @@ export function invalidateScopedSemanticReads(
 }
 
 /**
- * Save the open document's body (`set-body`). Resolves with the typed
+ * Map a `directWrite` outcome onto the shared `OpsWriteResult` shape the editor
+ * save lifecycle already consumes (`applyEditorWriteResult`), so the Save
+ * button's cutover to the ledgered route is invisible to the view layer above
+ * this store. The direct-write conflict's `target_blob_hash` (the blob the save
+ * would have produced had the base still matched) is not carried through — the
+ * editor conflict UX has only ever rendered `expected`/`actual`.
+ */
+function directWriteResultToOpsResult(outcome: DirectWriteOutcome): {
+  result: OpsWriteResult;
+  tiers: TiersBlock;
+} {
+  if (outcome.kind === "applied") {
+    return {
+      result: {
+        kind: "saved",
+        path: outcome.documentPath ?? "",
+        blobHash: outcome.blobHash ?? "",
+        checks: [],
+      },
+      tiers: outcome.tiers,
+    };
+  }
+  if (outcome.kind === "conflict") {
+    return {
+      result: {
+        kind: "conflict",
+        expected: outcome.conflict.expected_blob_hash,
+        actual: outcome.conflict.actual_blob_hash,
+        path: outcome.conflict.document_path,
+      },
+      tiers: outcome.tiers,
+    };
+  }
+  if (outcome.kind === "denied") {
+    return {
+      result: {
+        kind: "refused",
+        checks: [],
+        errors: [outcome.reason ?? "the direct editor save was denied"],
+      },
+      tiers: outcome.tiers,
+    };
+  }
+  if (outcome.kind === "failed") {
+    return {
+      result: {
+        kind: "refused",
+        checks: [],
+        errors: [outcome.reason ?? "the direct editor save failed"],
+      },
+      tiers: outcome.tiers,
+    };
+  }
+  if (outcome.kind === "in_flight") {
+    return {
+      result: {
+        kind: "refused",
+        checks: [],
+        errors: [
+          "a prior save for this document is still in flight — try again shortly",
+        ],
+      },
+      tiers: outcome.tiers,
+    };
+  }
+
+  const exhaustive: never = outcome;
+  return exhaustive;
+}
+
+/**
+ * Save the open document's body through the authoring ledger's `directWrite`
+ * route (ledgered-edit-migration W01.P02) — a self-approved direct changeset,
+ * not the legacy `set-body` ops dispatch. Resolves with the typed
  * `OpsWriteResult` — a `conflict` (the optimistic blob-hash base went stale) or a
- * `refused` (a validation rejection) is a typed result the caller drives editor
- * state from, NOT a thrown error; only a transport fault rejects. On a `saved`
- * outcome the vault-mutation read surfaces are invalidated so the next read
- * returns the new blob, graph generation, tree rows, git dirty/change state, and
- * graph-derived projections. The new `blob_hash` is echoed in the result for the
- * caller to adopt as the next optimistic-concurrency base.
+ * `refused` (a validation rejection, denial, or in-flight collision) is a typed
+ * result the caller drives editor state from, NOT a thrown error; only a
+ * transport fault, or the actor-token fail-safe (no identity bootstrapped —
+ * `requireActorToken`), rejects. On a `saved` outcome the vault-mutation read
+ * surfaces are invalidated so the next read returns the new blob, graph
+ * generation, tree rows, git dirty/change state, and graph-derived projections.
+ * The new `blob_hash` is echoed in the result for the caller to adopt as the next
+ * optimistic-concurrency base.
  */
 export function useSaveBody() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: SaveBodyArgs) => {
+    mutationFn: async (args: SaveBodyArgs) => {
       const normalized = normalizeSaveBodyArgs(args);
       if (normalized.ref === null) {
-        return Promise.resolve(refusedWriteResult("Missing document id"));
+        return refusedWriteResult("Missing document id");
       }
-      return runWriteOp("set-body", {
-        scope: normalized.scope ?? undefined,
-        ref: normalized.ref,
-        body: normalized.text,
-        expected_blob_hash: normalized.baseBlobHash,
-      });
+      const outcome = await authoringClient.directWrite(
+        {
+          ref: normalized.ref,
+          body: normalized.text,
+          expected_blob_hash: normalized.baseBlobHash,
+        },
+        { actorToken: requireActorToken() },
+      );
+      return directWriteResultToOpsResult(outcome);
     },
     onSuccess: ({ result }, args) => {
       const normalized = normalizeSaveBodyArgs(args);

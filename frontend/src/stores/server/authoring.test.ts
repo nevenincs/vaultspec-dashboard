@@ -16,6 +16,7 @@ import {
   adaptAuthoringRecovery,
   adaptAuthoringStatus,
   adaptAuthoringStreamFrame,
+  adaptDirectWriteOutcome,
   adaptProposalDetail,
   adaptProposalList,
   adaptProposalProjection,
@@ -665,5 +666,100 @@ describe("newIdempotencyKey", () => {
     expect(a.startsWith("idem:")).toBe(true);
     // The wire IdempotencyKey grammar allows ascii alnum + _-:./ only.
     expect(a).toMatch(/^[A-Za-z0-9_:./-]+$/);
+  });
+});
+
+describe("adaptDirectWriteOutcome (ledgered-edit-migration W01.P02)", () => {
+  it("reads a terminal applied outcome, including the observed post-state blob hash", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "applied",
+      replayed: false,
+      changeset_id: "changeset_1",
+      apply_receipt: {
+        child: { observed_result_blob_hash: "new-hash" },
+      },
+      record: { document_path: ".vault/adr/x.md" },
+      tiers: availableTiers,
+    });
+
+    expect(outcome.kind).toBe("applied");
+    if (outcome.kind === "applied") {
+      expect(outcome.changesetId).toBe("changeset_1");
+      expect(outcome.blobHash).toBe("new-hash");
+      expect(outcome.documentPath).toBe(".vault/adr/x.md");
+      expect(outcome.replayed).toBe(false);
+    }
+  });
+
+  it("reads a conflict outcome's 3-way blob-hash shape as a VALUE, never a fault", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "conflict",
+      conflict: {
+        document_ref: "2026-01-01-alpha-research",
+        document_path: ".vault/research/2026-01-01-alpha-research.md",
+        expected_blob_hash: "old-hash",
+        actual_blob_hash: "drifted-hash",
+        target_blob_hash: "would-have-been-hash",
+      },
+      tiers: availableTiers,
+    });
+
+    expect(outcome.kind).toBe("conflict");
+    if (outcome.kind === "conflict") {
+      expect(outcome.conflict.expected_blob_hash).toBe("old-hash");
+      expect(outcome.conflict.actual_blob_hash).toBe("drifted-hash");
+      expect(outcome.conflict.target_blob_hash).toBe("would-have-been-hash");
+    }
+  });
+
+  it("reads a denied outcome's reason off the served eligibility", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "denied",
+      eligibility: {
+        command: "direct_write",
+        allowed: false,
+        reason:
+          "direct editor saves require a human actor; agents must propose changesets",
+      },
+      tiers: availableTiers,
+    });
+
+    expect(outcome.kind).toBe("denied");
+    if (outcome.kind === "denied") {
+      expect(outcome.reason).toContain("agents must propose changesets");
+    }
+  });
+
+  it("reads a failed outcome's redacted diagnostic off the apply receipt's child", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "failed",
+      apply_receipt: {
+        child: { diagnostic: "core_write_rejected" },
+      },
+      tiers: availableTiers,
+    });
+
+    expect(outcome.kind).toBe("failed");
+    if (outcome.kind === "failed") {
+      expect(outcome.reason).toBe("core_write_rejected");
+    }
+  });
+
+  it("reads an in-flight outcome as a value with no data to render yet", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "in_flight",
+      tiers: availableTiers,
+    });
+    expect(outcome.kind).toBe("in_flight");
+  });
+
+  it("floors a sparse/absent body so a malformed response never crashes the save UX", () => {
+    const outcome = adaptDirectWriteOutcome(undefined);
+    expect(outcome.kind).toBe("applied");
+    if (outcome.kind === "applied") {
+      expect(outcome.changesetId).toBe("");
+      expect(outcome.blobHash).toBeNull();
+      expect(outcome.documentPath).toBeNull();
+    }
   });
 });

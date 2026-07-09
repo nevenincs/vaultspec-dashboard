@@ -149,6 +149,65 @@ describe("useEnsureCurrentEditorIdentity — a fresh editing session auto-mints"
     expect(spy).not.toHaveBeenCalled();
     expect(getActorToken()).toBeNull();
   });
+
+  it("backs off exponentially on a persistently-failing mint instead of hot-looping the actor-token endpoint (bounded retry)", async () => {
+    vi.useFakeTimers();
+    try {
+      const spy = vi
+        .spyOn(authoringClient, "issueActorToken")
+        .mockRejectedValue(new Error("actor-token service unavailable"));
+
+      renderHook(() => useEnsureCurrentEditorIdentity(true), {
+        wrapper: wrapper(new QueryClient()),
+      });
+
+      // The FIRST attempt fires immediately — no backoff before any failure.
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      expect(spy).toHaveBeenCalledTimes(1);
+
+      // Well inside the base backoff window (250ms): no re-fire yet — this is
+      // exactly the hot-loop the fix closes (previously an immediate re-fire).
+      await act(() => vi.advanceTimersByTimeAsync(200));
+      expect(spy).toHaveBeenCalledTimes(1);
+
+      // Past the base window: exactly one retry fires.
+      await act(() => vi.advanceTimersByTimeAsync(100));
+      expect(spy).toHaveBeenCalledTimes(2);
+
+      // The NEXT retry doubles the backoff (~500ms) — still well short of it.
+      await act(() => vi.advanceTimersByTimeAsync(400));
+      expect(spy).toHaveBeenCalledTimes(2);
+
+      // Past the doubled window: the third attempt fires.
+      await act(() => vi.advanceTimersByTimeAsync(200));
+      expect(spy).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resets the backoff once a mint succeeds, so a LATER failure starts fresh", async () => {
+    vi.useFakeTimers();
+    try {
+      const spy = vi
+        .spyOn(authoringClient, "issueActorToken")
+        .mockRejectedValueOnce(new Error("transient failure"))
+        .mockResolvedValueOnce(issuedToken("token-recovered"));
+
+      renderHook(() => useEnsureCurrentEditorIdentity(true), {
+        wrapper: wrapper(new QueryClient()),
+      });
+
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      expect(spy).toHaveBeenCalledTimes(1);
+      // The retry (base backoff ~250ms) succeeds.
+      await act(() => vi.advanceTimersByTimeAsync(300));
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(getActorToken()).toBe("token-recovered");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("the editor and the review station resolve to the SAME principal", () => {

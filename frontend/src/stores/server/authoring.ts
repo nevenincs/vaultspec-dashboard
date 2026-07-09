@@ -22,7 +22,7 @@
 // The store consumes the SERVED projection shapes unchanged (no new client
 // model); it maps only presentation. Wire values stay snake_case as served.
 
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import {
   keepPreviousData,
   queryOptions,
@@ -401,6 +401,51 @@ export interface RollbackPayload {
   reason: string;
 }
 
+/** `POST /authoring/v1/direct-writes` payload — a human editor save routed
+ *  through the ledger as a self-approved direct changeset. The route composes
+ *  create-proposal → validate → submit → human self-approve → apply
+ *  SERVER-SIDE, so the client sends only the target + the editor's optimistic
+ *  base (the actor token resolves the human principal). */
+export interface DirectWritePayload {
+  ref: string;
+  body: string;
+  expected_blob_hash: string;
+  summary?: string;
+}
+
+/** The conflict the direct-write route serves when the target moved since the
+ *  editor's optimistic base: `expected` is the editor's stale base, `actual`
+ *  is the blob now on disk, `target` is the blob the save would have produced
+ *  had the base still matched. */
+export interface DirectWriteConflict {
+  document_ref: string;
+  document_path: string;
+  expected_blob_hash: string;
+  actual_blob_hash: string;
+  target_blob_hash: string;
+}
+
+/**
+ * The interpreted direct-write outcome. DENIALS ARE VALUES: `conflict` (a
+ * stale optimistic base) and `denied` (an ineligible actor — e.g. a non-human
+ * principal) ride the success (200) envelope as VALUES, never a thrown fault.
+ * `applied` carries the changeset id + the new blob hash the editor adopts as
+ * its next optimistic-concurrency base.
+ */
+export type DirectWriteOutcome =
+  | {
+      kind: "applied";
+      changesetId: string;
+      documentPath: string | null;
+      blobHash: string | null;
+      replayed: boolean;
+      tiers: TiersBlock;
+    }
+  | { kind: "conflict"; conflict: DirectWriteConflict; tiers: TiersBlock }
+  | { kind: "denied"; reason: string | null; tiers: TiersBlock }
+  | { kind: "failed"; reason: string | null; tiers: TiersBlock }
+  | { kind: "in_flight"; tiers: TiersBlock };
+
 /** `POST /authoring/v1/actor-tokens` payload (machine-bearer-gated bootstrap). */
 export interface IssueActorTokenPayload {
   actor: ActorRef;
@@ -778,6 +823,55 @@ export function interpretCommandOutcome(raw: unknown): AuthoringCommandOutcome {
   return { kind: "ok", status: status ?? "ok", data, tiers };
 }
 
+/**
+ * Interpret a direct-write command's flat unwrapped body into a
+ * `DirectWriteOutcome`. The status vocabulary is the direct-write route's own
+ * (`applied|failed|in_flight|conflict|denied`), distinct from the generic
+ * command outcome's — `conflict` and `denied` ride the SUCCESS envelope as
+ * VALUES (denials-are-values), never faults.
+ */
+export function adaptDirectWriteOutcome(raw: unknown): DirectWriteOutcome {
+  const r: Rec = isRec(raw) ? raw : {};
+  const tiers = asTiers(r.tiers);
+  const status = asStr(r.status);
+  if (status === "in_flight") return { kind: "in_flight", tiers };
+  if (status === "conflict") {
+    const c: Rec = isRec(r.conflict) ? r.conflict : {};
+    return {
+      kind: "conflict",
+      conflict: {
+        document_ref: asStr(c.document_ref) ?? "",
+        document_path: asStr(c.document_path) ?? "",
+        expected_blob_hash: asStr(c.expected_blob_hash) ?? "",
+        actual_blob_hash: asStr(c.actual_blob_hash) ?? "",
+        target_blob_hash: asStr(c.target_blob_hash) ?? "",
+      },
+      tiers,
+    };
+  }
+  if (status === "denied") {
+    const eligibility: Rec = isRec(r.eligibility) ? r.eligibility : {};
+    return { kind: "denied", reason: asStr(eligibility.reason) ?? null, tiers };
+  }
+  if (status === "failed") {
+    const receipt: Rec = isRec(r.apply_receipt) ? r.apply_receipt : {};
+    const child: Rec = isRec(receipt.child) ? receipt.child : {};
+    return { kind: "failed", reason: asStr(child.diagnostic) ?? null, tiers };
+  }
+  // "applied" — the terminal accepted save.
+  const record: Rec = isRec(r.record) ? r.record : {};
+  const receipt: Rec = isRec(r.apply_receipt) ? r.apply_receipt : {};
+  const child: Rec = isRec(receipt.child) ? receipt.child : {};
+  return {
+    kind: "applied",
+    changesetId: asStr(r.changeset_id) ?? "",
+    documentPath: asStr(record.document_path) ?? null,
+    blobHash: asStr(child.observed_result_blob_hash) ?? null,
+    replayed: asBool(r.replayed),
+    tiers,
+  };
+}
+
 // --- degradation read (from tiers + the typed store-unavailable error) ----------
 
 /** The interpreted authoring degradation a consumer renders. `storeUnavailable`
@@ -982,6 +1076,30 @@ export class AuthoringClient {
       record: r.record ?? null,
       tiers: asTiers(r.tiers),
     };
+  }
+
+  // --- direct editor save (the Save button, ledgered-edit-migration W01.P02) ---
+
+  /** `POST /authoring/v1/direct-writes` — route a human editor save through the
+   *  authoring ledger as a self-approved direct changeset. The route composes
+   *  create-proposal → validate → submit → human self-approve → apply
+   *  SERVER-SIDE (one call replaces the legacy `/ops/core` set-body write). */
+  async directWrite(
+    payload: DirectWritePayload,
+    opts: CommandOptions,
+  ): Promise<DirectWriteOutcome> {
+    const envelope = {
+      api_version: "v1",
+      command: "direct_write",
+      idempotency_key: opts.idempotencyKey ?? newIdempotencyKey(),
+      payload,
+    };
+    const body = await this.postJson(
+      "/authoring/v1/direct-writes",
+      envelope,
+      this.withActor(opts.actorToken),
+    );
+    return adaptDirectWriteOutcome(body);
   }
 
   // --- mutating commands (denials are values) ---
@@ -1616,19 +1734,48 @@ export function useCurrentEditorIdentity(): CurrentEditorIdentity {
  *  `enabled` turns true with no token yet). This is the fail-safe's proactive
  *  half — the reactive half is `requireActorToken()` below, which still throws
  *  if the mint hasn't resolved, so an edit attempted with no identity is
- *  refused, never silently dropped. */
+ *  refused, never silently dropped.
+ *
+ *  A failing mint backs off exponentially rather than hot-looping the
+ *  actor-token endpoint while the editing session stays open — the SAME
+ *  backoff shape as the lifecycle stream's reconnect retry
+ *  (`authoringStreamRetryDelay`): the first attempt fires immediately, every
+ *  subsequent attempt after a failure doubles from
+ *  `AUTHORING_STREAM_RETRY_BASE_MS`, capped at `AUTHORING_STREAM_RETRY_MAX_MS`.
+ *  The attempt counter resets once a mint succeeds. */
 export function useEnsureCurrentEditorIdentity(enabled = true): CurrentEditorIdentity {
   const identity = useCurrentEditorIdentity();
-  const { hasToken, bootstrapping, bootstrap } = identity;
+  const { hasToken, bootstrapping, bootstrapError, bootstrap } = identity;
+  const retryAttemptRef = useRef(0);
+
   useEffect(() => {
-    if (enabled && !hasToken && !bootstrapping) bootstrap();
-  }, [enabled, hasToken, bootstrapping, bootstrap]);
+    if (hasToken) retryAttemptRef.current = 0;
+  }, [hasToken]);
+
+  useEffect(() => {
+    if (!enabled || hasToken || bootstrapping) return;
+    if (!bootstrapError) {
+      // No prior failure yet: mint immediately (the original "auto-mints on
+      // mount" behavior) — this attempt does not consume the backoff budget.
+      const timer = setTimeout(bootstrap, 0);
+      return () => clearTimeout(timer);
+    }
+    // A prior failure: back off before the next attempt, then advance the
+    // counter for whichever attempt comes after this one.
+    const attempt = retryAttemptRef.current;
+    retryAttemptRef.current = attempt + 1;
+    const timer = setTimeout(bootstrap, authoringStreamRetryDelay(attempt));
+    return () => clearTimeout(timer);
+  }, [enabled, hasToken, bootstrapping, bootstrapError, bootstrap]);
+
   return identity;
 }
 
 /** Require the bootstrapped session actor token, or throw a clear error the
- *  command mutation surfaces (a command needs a resolved principal). */
-function requireActorToken(): string {
+ *  command mutation surfaces (a command needs a resolved principal). Exported
+ *  so a cross-store mutation (e.g. `useSaveBody`'s direct-write call) shares
+ *  the SAME fail-safe refusal, rather than re-deriving its own null check. */
+export function requireActorToken(): string {
   const token = getActorToken();
   if (!token) {
     throw new Error(

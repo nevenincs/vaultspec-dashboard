@@ -283,3 +283,64 @@ describe("human-in-the-loop review flow (live)", () => {
     expect(replay.kind).toBe("ok");
   });
 });
+
+// Direct editor save (ledgered-edit-migration W01.P02): the Save button's
+// self-approving single-call route. Both cases below are NON-MUTATING (a
+// denial and a stale-base conflict never materialize a write), so they are
+// safe alongside the reject-only flow above without disturbing the shared
+// scratch fixture's `alpha-research` content other live suites may also read.
+// The real-apply leg (core write + rollback) is proven by the backend's own
+// real-applied-receipt e2e; this file stays read-safe.
+describe("direct editor save (live)", () => {
+  it("denies a non-human actor's direct write without mutating the document", async () => {
+    const engine = createLiveClient();
+    const content = await engine.content(TARGET_NODE_ID, scopeToken);
+    const agentToken = (
+      await client.issueActorToken({
+        actor: { id: `agent:dw-${run}`, kind: "agent" },
+      })
+    ).raw_token;
+
+    const outcome = await client.directWrite(
+      {
+        ref: TARGET_STEM,
+        body: `${content.text}\nan agent may never direct-write\n`,
+        expected_blob_hash: content.blob_hash,
+      },
+      { actorToken: agentToken },
+    );
+
+    expect(outcome.kind).toBe("denied");
+    if (outcome.kind === "denied") {
+      expect(outcome.reason ?? "").toContain("human actor");
+    }
+    // Never mutated: the current blob is unchanged.
+    const after = await engine.content(TARGET_NODE_ID, scopeToken);
+    expect(after.blob_hash).toBe(content.blob_hash);
+  });
+
+  it("resolves a stale optimistic base as a `conflict` VALUE, never a thrown fault", async () => {
+    const humanToken = (
+      await client.issueActorToken({
+        actor: { id: `human:dw-conflict-${run}`, kind: "human" },
+      })
+    ).raw_token;
+
+    const outcome = await client.directWrite(
+      {
+        ref: TARGET_STEM,
+        body: "irrelevant body — the base is deliberately stale",
+        expected_blob_hash: "0000000000000000000000000000000000000000",
+      },
+      { actorToken: humanToken },
+    );
+
+    expect(outcome.kind).toBe("conflict");
+    if (outcome.kind === "conflict") {
+      expect(outcome.conflict.expected_blob_hash).toBe(
+        "0000000000000000000000000000000000000000",
+      );
+      expect(outcome.conflict.actual_blob_hash.length).toBeGreaterThan(0);
+    }
+  });
+});

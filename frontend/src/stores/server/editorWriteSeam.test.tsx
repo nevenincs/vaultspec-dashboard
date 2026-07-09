@@ -1,24 +1,37 @@
 // @vitest-environment happy-dom
 //
-// The editor WRITE seam — the REQUEST side (document-editor backend, S22).
+// The editor WRITE seam — the REQUEST side (document-editor backend, S22; the
+// Save button's body write cut over to the ledger at ledgered-edit-migration
+// W01.P02).
 //
 // The RESPONSE side (the wire `{data, tiers}` envelope → typed `OpsWriteResult`)
 // is covered against CAPTURED LIVE samples in `liveAdapters.test.ts`. This file
 // covers the complementary REQUEST side: that `useSaveBody` / `useSetFrontmatter`
-// CONSTRUCT the correct write op — the verb, the stem-derived `ref`, the
-// optimistic `expected_blob_hash` base, and the scope — and that the hook resolves
-// (never throws) on a business outcome, mapping it to the typed result.
+// CONSTRUCT the correct write — for `useSaveBody`, the direct-write route's
+// ref/body/expected_blob_hash + the bootstrapped actor token; for
+// `useSetFrontmatter` (still on the legacy verb), the write op — and that each
+// hook resolves (never throws) on a business outcome, mapping it to the typed
+// result.
 //
-// This is NOT the tautological mock-engine test the no-mocks migration removed: the
-// dispatch seam (`dispatchOps`) is spied to CAPTURE the outgoing request and return
-// a fixture shaped like the live wire (sourced from the captured samples). The unit
-// under test is OUR request construction + result wiring, not a faked engine verb.
+// This is NOT the tautological mock-engine test the no-mocks migration removed:
+// `useSetFrontmatter` spies the legacy dispatch seam (`dispatchOps`); `useSaveBody`
+// spies the authoring store's `directWrite` client method. Both CAPTURE the
+// outgoing request and return a fixture shaped like the live wire (the
+// direct-write shape matches `authoring.live.test.ts`'s captured contract). The
+// unit under test is OUR request construction + result wiring, not a faked
+// engine verb.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  authoringClient,
+  getActorToken,
+  setActorToken,
+  type DirectWriteOutcome,
+} from "./authoring";
 import { dispatchOps } from "./opsActions";
 import { useSaveBody, useSetFrontmatter } from "./queries";
 
@@ -54,15 +67,26 @@ beforeEach(() => {
   mockDispatch.mockReset();
 });
 
-describe("useSaveBody — set-body request construction", () => {
-  it("builds a set-body write op (stem ref + optimistic base + scope) and resolves `saved`", async () => {
-    mockDispatch.mockResolvedValue(
-      opsResult({
-        schema: "vaultspec.vault.set-body.v1",
-        status: "updated",
-        data: { path: ".vault/adr/x.md", blob_hash: "new-hash", checks: [] },
-      }),
-    );
+describe("useSaveBody — direct-write request construction", () => {
+  beforeEach(() => {
+    setActorToken("test-actor-token");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setActorToken(null);
+  });
+
+  it("builds a direct-write request (stem ref + body + optimistic base) carrying the bootstrapped actor token, and resolves `saved`", async () => {
+    const spy = vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "applied",
+      changesetId: "changeset_1",
+      documentPath: ".vault/adr/x.md",
+      blobHash: "new-hash",
+      replayed: false,
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
     const { result } = renderHook(() => useSaveBody(), {
       wrapper: wrapper(new QueryClient()),
     });
@@ -72,36 +96,35 @@ describe("useSaveBody — set-body request construction", () => {
       text: "the new body text",
       baseBlobHash: "old-hash",
     });
-    expect(mockDispatch).toHaveBeenCalledWith({
-      target: "core",
-      verb: "set-body",
-      mode: "write",
-      body: {
-        scope: "Y:/repo",
+
+    expect(spy).toHaveBeenCalledWith(
+      {
         ref: "2026-01-01-alpha-research",
         body: "the new body text",
         expected_blob_hash: "old-hash",
       },
-    });
+      { actorToken: "test-actor-token" },
+    );
     expect(res.result.kind).toBe("saved");
     if (res.result.kind === "saved") {
       expect(res.result.blobHash).toBe("new-hash");
+      expect(res.result.path).toBe(".vault/adr/x.md");
     }
   });
 
-  it("maps a blob-hash conflict envelope to a `conflict` result (resolves, never throws), scope omitted when null", async () => {
-    mockDispatch.mockResolvedValue(
-      opsResult({
-        schema: "vaultspec.vault.set-body.v1",
-        status: "failed",
-        data: {
-          conflict: true,
-          expected: "old-hash",
-          actual: "drifted-hash",
-          path: ".vault/adr/x.md",
-        },
-      }),
-    );
+  it("maps a direct-write conflict outcome to a `conflict` result (resolves, never throws)", async () => {
+    vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "conflict",
+      conflict: {
+        document_ref: "2026-01-01-alpha-research",
+        document_path: ".vault/adr/x.md",
+        expected_blob_hash: "old-hash",
+        actual_blob_hash: "drifted-hash",
+        target_blob_hash: "would-have-been-hash",
+      },
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
     const { result } = renderHook(() => useSaveBody(), {
       wrapper: wrapper(new QueryClient()),
     });
@@ -111,14 +134,58 @@ describe("useSaveBody — set-body request construction", () => {
       text: "t",
       baseBlobHash: "old-hash",
     });
+
     expect(res.result.kind).toBe("conflict");
     if (res.result.kind === "conflict") {
       expect(res.result.expected).toBe("old-hash");
       expect(res.result.actual).toBe("drifted-hash");
+      expect(res.result.path).toBe(".vault/adr/x.md");
     }
-    // scope null collapses to undefined (not sent as a literal null)
-    const sent = mockDispatch.mock.calls[0][0] as { body: { scope?: string } };
-    expect(sent.body.scope).toBeUndefined();
+  });
+
+  it("maps a direct-write denial outcome to a `refused` result carrying the served reason (resolves, never throws)", async () => {
+    vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "denied",
+      reason:
+        "direct editor saves require a human actor; agents must propose changesets",
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
+    const { result } = renderHook(() => useSaveBody(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      nodeId: "doc:x",
+      scope: null,
+      text: "t",
+      baseBlobHash: "old-hash",
+    });
+
+    expect(res.result.kind).toBe("refused");
+    if (res.result.kind === "refused") {
+      expect(res.result.errors[0]).toContain("agents must propose changesets");
+    }
+  });
+
+  it("refuses (never silently drops) a save attempted with no bootstrapped actor token — the fail-safe", async () => {
+    const spy = vi.spyOn(authoringClient, "directWrite");
+    setActorToken(null);
+    expect(getActorToken()).toBeNull();
+
+    const { result } = renderHook(() => useSaveBody(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+
+    await expect(
+      result.current.mutateAsync({
+        nodeId: "doc:2026-01-01-alpha-research",
+        scope: "Y:/repo",
+        text: "the new body text",
+        baseBlobHash: "old-hash",
+      }),
+    ).rejects.toThrow(/no authoring actor token is bootstrapped/);
+    // The fail-safe refuses BEFORE any request fires.
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 
