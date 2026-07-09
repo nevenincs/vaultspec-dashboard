@@ -126,12 +126,12 @@ Rewire the frontmatter panel's mutation hook from the legacy set-frontmatter ops
 
 Rewire the rename mutation hook from the legacy ops dispatch to the operation-typed direct-edit route.
 
-- [ ] `W03.P08.S43` - Ground rename-affordance direct-write cutover requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P08.S44` - Rewire useRenameDoc to mint the editor actor token and call the operation-typed direct-edit route instead of the legacy rename ops dispatch; `frontend/src/stores/server/queries.ts`.
-- [ ] `W03.P08.S45` - Add tests for the ledgered rename happy path, denied/conflicted outcomes, and the removal of the legacy rename dispatch; `frontend/src/stores/server/editorMutations.test.ts`.
-- [ ] `W03.P08.S81` - Add editorWriteSeam.test.tsx request-construction coverage for useRenameDoc against the authoring direct-write call, covering the happy path and denied/conflicted outcomes; `frontend/src/stores/server/editorWriteSeam.test.tsx`.
-- [ ] `W03.P08.S46` - Run Rename affordance rewire code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P08.S47` - Verify a rename produces a changeset with provenance and no live path still calls the legacy rename write route; `frontend/src/stores/server/opsActions.ts`.
+- [x] `W03.P08.S43` - Ground rename-affordance direct-write cutover requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P08.S44` - Rewire useRenameDoc to mint the editor actor token and call the operation-typed direct-edit route instead of the legacy rename ops dispatch; `frontend/src/stores/server/queries.ts`.
+- [x] `W03.P08.S45` - Add tests for the ledgered rename happy path, denied/conflicted outcomes, and the removal of the legacy rename dispatch; `frontend/src/stores/server/editorMutations.test.ts`.
+- [x] `W03.P08.S81` - Add editorWriteSeam.test.tsx request-construction coverage for useRenameDoc against the authoring direct-write call, covering the happy path and denied/conflicted outcomes; `frontend/src/stores/server/editorWriteSeam.test.tsx`.
+- [x] `W03.P08.S46` - Run Rename affordance rewire code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P08.S47` - Verify a rename produces a changeset with provenance and no live path still calls the legacy rename write route; `frontend/src/stores/server/opsActions.ts`.
 
 ### Phase `W03.P09` - Create dialog rewire
 
