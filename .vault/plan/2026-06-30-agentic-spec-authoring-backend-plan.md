@@ -569,11 +569,11 @@ Operation-modes ADR transition gate: flip the editor save to direct-changesets b
 
 Close the epic with full backend, frontend, vault, documentation, operational, and review gates.
 
-- [ ] `W14.P43.S211` - Ground Final gate audit and release readiness requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W14.P43.S212` - Update release documentation, operator notes, implementation evidence, and final audit materials for the authoring backend; `.vault/audit/`.
-- [ ] `W14.P43.S213` - Run Rust tests, frontend typecheck, frontend tests, frontend build, vault checks, manual acceptance, documentation audit, and code review; `.`.
-- [ ] `W14.P43.S214` - Run Final gate audit and release readiness code review and record the phase audit; `.vault/audit/`.
-- [ ] `W14.P43.S215` - Verify the epic is complete only when all automated gates pass and manual acceptance evidence is recorded; `.`.
+- [x] `W14.P43.S211` - Ground Final gate audit and release readiness requirements into the phase checklist; `.vault/adr/`.
+- [x] `W14.P43.S212` - Update release documentation, operator notes, implementation evidence, and final audit materials for the authoring backend; `.vault/audit/`.
+- [x] `W14.P43.S213` - Run Rust tests, frontend typecheck, frontend tests, frontend build, vault checks, manual acceptance, documentation audit, and code review; `.`.
+- [x] `W14.P43.S214` - Run Final gate audit and release readiness code review and record the phase audit; `.vault/audit/`.
+- [x] `W14.P43.S215` - Verify the epic is complete only when all automated gates pass and manual acceptance evidence is recorded; `.`.
 
 ## Description
 
