@@ -3,15 +3,17 @@
 // The editor WRITE seam — the REQUEST side (document-editor backend, S22; the
 // Save button's body write cut over to the ledger at ledgered-edit-migration
 // W01.P02, the frontmatter panel at W03.P07, the rename affordance at W03.P08,
-// all generalized to the operation-typed `directWrite` route at W02.P06).
+// the create dialog at W03.P09, all generalized to the operation-typed
+// `directWrite` route at W02.P06).
 //
 // The RESPONSE side (the wire `{data, tiers}` envelope → typed `OpsWriteResult`)
 // is covered against CAPTURED LIVE samples in `liveAdapters.test.ts`. This file
 // covers the complementary REQUEST side: that `useSaveBody` / `useSetFrontmatter`
-// / `useRenameDoc` CONSTRUCT the correct `directWrite` payload — the `operation`
-// discriminator, ref/body/frontmatter/new_stem/expected_blob_hash, the scope
-// pin, and the bootstrapped actor token — and that each hook resolves (never
-// throws) on a business outcome, mapping it to the typed result.
+// / `useRenameDoc` / `useCreateDoc` CONSTRUCT the correct `directWrite` payload
+// — the `operation` discriminator,
+// ref/body/frontmatter/new_stem/create/expected_blob_hash, the scope pin, and
+// the bootstrapped actor token — and that each hook resolves (never throws) on
+// a business outcome, mapping it to the typed result.
 //
 // This is NOT the tautological mock-engine test the no-mocks migration removed:
 // every hook spies the authoring store's `directWrite` client method, CAPTURING
@@ -31,7 +33,7 @@ import {
   setActorToken,
   type DirectWriteOutcome,
 } from "./authoring";
-import { useRenameDoc, useSaveBody, useSetFrontmatter } from "./queries";
+import { useCreateDoc, useRenameDoc, useSaveBody, useSetFrontmatter } from "./queries";
 
 const TIERS = {
   declared: { available: true },
@@ -478,6 +480,111 @@ describe("useRenameDoc — direct-write request construction", () => {
         scope: "Y:/repo",
         to: "new-stem",
         expectedBlobHash: "old-hash",
+      }),
+    ).rejects.toThrow(/no authoring actor token is bootstrapped/);
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("useCreateDoc — direct-write request construction", () => {
+  it("builds an `operation: create_document` direct-write request (create params + scope pin, NO ref/expected_blob_hash) carrying the bootstrapped actor token, and resolves `created`", async () => {
+    const spy = vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "applied",
+      changesetId: "changeset_4",
+      documentPath: null,
+      blobHash: null,
+      replayed: false,
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
+    const { result } = renderHook(() => useCreateDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      scope: "Y:/repo",
+      docType: "research",
+      feature: "alpha",
+      title: "New note",
+      related: ["existing-stem"],
+    });
+
+    expect(spy).toHaveBeenCalledWith(
+      {
+        operation: "create_document",
+        create: {
+          doc_type: "research",
+          feature: "alpha",
+          title: "New note",
+          related: ["existing-stem"],
+        },
+        scope: "Y:/repo",
+      },
+      { actorToken: "test-actor-token" },
+    );
+    expect(res.result.kind).toBe("created");
+    // KNOWN backend gap (W03.P09): the direct-write outcome does not carry the
+    // server-computed path/stem for a create, so identity stays unresolved —
+    // the CALLER (CreateDocButton) must still treat this as SUCCESS.
+    expect(res.nodeId).toBeNull();
+  });
+
+  it("maps a predicted-create-path collision denial to a `refused` result carrying the reason in `checks`", async () => {
+    vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "denied",
+      reason:
+        "a document already exists at the predicted create path `.vault/research/2026-07-09-alpha-research.md`; core refuses to overwrite it",
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
+    const { result } = renderHook(() => useCreateDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      scope: "Y:/repo",
+      docType: "research",
+      feature: "alpha",
+    });
+
+    expect(res.result.kind).toBe("refused");
+    if (res.result.kind === "refused") {
+      expect(res.result.errors[0]).toContain(
+        "already exists at the predicted create path",
+      );
+      expect(res.result.checks).toHaveLength(1);
+      expect((res.result.checks[0] as { severity?: string }).severity).toBe("error");
+    }
+    expect(res.nodeId).toBeNull();
+  });
+
+  it("refuses client-side (never dispatches) when doc type or feature is missing", async () => {
+    const spy = vi.spyOn(authoringClient, "directWrite");
+
+    const { result } = renderHook(() => useCreateDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      scope: "Y:/repo",
+      docType: "",
+      feature: "alpha",
+    });
+
+    expect(res.result.kind).toBe("refused");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("refuses (never silently drops) a create attempted with no bootstrapped actor token — the fail-safe", async () => {
+    const spy = vi.spyOn(authoringClient, "directWrite");
+    setActorToken(null);
+
+    const { result } = renderHook(() => useCreateDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+
+    await expect(
+      result.current.mutateAsync({
+        scope: "Y:/repo",
+        docType: "research",
+        feature: "alpha",
       }),
     ).rejects.toThrow(/no authoring actor token is bootstrapped/);
     expect(spy).not.toHaveBeenCalled();

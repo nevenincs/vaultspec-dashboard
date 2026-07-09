@@ -4,20 +4,21 @@
 // (document-editor backend, W03). These are PURE store/selector logic, exercised
 // directly — no engine surface, no double.
 //
-// NOTE — the editor WRITE seam (useSaveBody / useSetFrontmatter routed through
-// the authoring ledger's `directWrite`; useCreateDoc still on the legacy
-// `/ops/core/create`) is split across three files, with NO faked-verb mock (the
-// tautology the no-mocks migration removed):
+// NOTE — the editor WRITE seam (useSaveBody / useSetFrontmatter / useRenameDoc
+// / useCreateDoc, all routed through the authoring ledger's `directWrite`) is
+// split across three files, with NO faked-verb mock (the tautology the
+// no-mocks migration removed):
 //   • RESPONSE side — `liveAdapters.test.ts` runs `adaptOpsWrite` over CAPTURED
-//     LIVE wire samples (saved / conflict / refused / created).
+//     LIVE wire samples (the legacy shape `archive`/`link` still ride).
 //   • REQUEST side — `editorWriteSeam.test.tsx` proves the hooks construct the
-//     correct request (the `directWrite` operation discriminator + per-kind
-//     fields + scope pin for save/frontmatter; the legacy write op for create)
-//     and resolve the typed result, spying the dispatch seam (the response is a
-//     captured-shape fixture, not a faked engine verb).
+//     correct `directWrite` request (the operation discriminator + per-kind
+//     fields + scope pin) and resolve the typed result, spying the client
+//     method (the response is a captured-shape fixture, not a faked engine
+//     verb).
 //   • EDITOR STATE — this file: the bounded slice + `applyEditorWriteResult`.
-// Both write paths land on the SAME `OpsWriteResult`/`applyEditorWriteResult`
-// shape, so this file's coverage is unchanged by which route materializes it.
+// Every kind lands on the SAME `OpsWriteResult`/`applyEditorWriteResult` shape
+// (rename maps to its own `RenameDocResult`), so this file's coverage is
+// unchanged by which route materializes it.
 
 import { describe, expect, it } from "vitest";
 

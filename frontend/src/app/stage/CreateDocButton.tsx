@@ -1,9 +1,10 @@
-// The "New document" create affordance: maps a UI action onto the engine's POST
-// create broker (`useCreateDoc` → dispatchOps `create` → `/ops/core/create` →
-// `vault add`). Layer law: dumb `app/` chrome — it drives the stores create
-// mutation (the sole wire client), reads chrome draft through a view seam, and
-// opens the created doc through the tab seam; it never touches the engine client,
-// raw view store, raw `tiers`, or identity parsing.
+// The "New document" create affordance: maps a UI action onto the authoring
+// ledger's direct-write route (`useCreateDoc` → `directWrite({operation:
+// "create_document"})`). Layer law: dumb `app/` chrome — it drives the stores
+// create mutation (the sole wire client), reads chrome draft through a view
+// seam, and opens the created doc through the tab seam when its identity is
+// known; it never touches the engine client, raw view store, raw `tiers`, or
+// identity parsing.
 
 import { useActiveScope, useCreateDoc } from "../../stores/server/queries";
 import {
@@ -42,8 +43,14 @@ export function CreateDocButton() {
       },
       {
         onSuccess: ({ result, nodeId }) => {
-          if (result.kind === "created" && nodeId) {
-            void openDocTab(nodeId, "markdown", scope);
+          // A `created` result IS success even when `nodeId` is null (the
+          // direct-write route does not echo `vault add`'s server-computed
+          // stem back — a known backend gap, tracked separately): the
+          // document exists either way, so this never renders a false
+          // "refused" for a genuine success. Only auto-open the tab when the
+          // identity is actually known.
+          if (result.kind === "created") {
+            if (nodeId) void openDocTab(nodeId, "markdown", scope);
             resetCreateDocChrome();
           } else {
             setCreateDocError("Create refused — check the feature/title");

@@ -81,7 +81,6 @@ import {
   CANONICAL_TIERS,
   DEFAULT_SALIENCE_LENS,
   EngineError,
-  adaptOpsWrite,
   envelopeData,
   engineClient,
   readTierAvailability,
@@ -6075,29 +6074,20 @@ export function usePutSettings() {
 
 // --- document write/create mutations (document-editor backend) -------------------
 //
-// The rename/create mutations still run through the legacy platform
-// ops-dispatch seam (`dispatchOps`, opsActions) — NOT a direct engine-client call —
-// so every vault mutation stays logged, traced, and centrally guardable, exactly
-// like the rag control verbs (dashboard-layer-ownership: the app layer never
-// reaches the engine client itself). The dispatch resolves with the brokered
-// `OpsResult`; `adaptOpsWrite` interprets the sibling envelope's `status` + `data`
-// into the typed `OpsWriteResult` (saved / conflict / refused / created), branching
-// on those fields and NEVER on the HTTP code (the wire returns 200 for both success
-// and business-refusal).
-//
-// The Save button's body write (`useSaveBody`, ledgered-edit-migration W01.P02) and
-// the frontmatter panel (`useSetFrontmatter`, W03.P07) are CUT OVER: neither
-// dispatches through this legacy seam anymore — both call the authoring store's
-// ledgered `directWrite` route (`operation: "replace_body"` /
-// `"edit_frontmatter"`), which self-approves the human's own manual save
-// server-side and records it as an auditable changeset with provenance, PINNED to
-// the doc's `scope` so a save that races a scope-switch is refused rather than
-// silently landing in the wrong worktree. `directWriteResultToOpsResult` maps that
-// outcome back onto the SAME `OpsWriteResult` shape below so the editor lifecycle
-// (`applyEditorWriteResult`) is unchanged by the swap. Rename and create stay on
-// the legacy seam until their own phases wire them to the ledger (the
-// now-single-caller `runWriteOp` wrapper both used to share was retired with them —
-// rename never used it; it dispatches its own `RenameDocResult` shape directly).
+// Save, frontmatter, rename, and create ALL route through the authoring
+// ledger's `directWrite` route (`operation: "replace_body"` /
+// `"edit_frontmatter"` / `"rename"` / `"create_document"`,
+// ledgered-edit-migration W01.P02 / W03.P07 / W03.P08 / W03.P09) — a
+// self-approving direct changeset, not the legacy `/ops/core` ops-dispatch
+// seam. `directWriteResultToOpsResult` maps the body/frontmatter outcome onto
+// the SAME `OpsWriteResult` shape the editor lifecycle already consumes
+// (`applyEditorWriteResult`); rename and create each map their own outcome
+// shape locally (`RenameDocResult`, `OpsWriteResult`'s `created` variant). Every
+// direct-write kind PINS the doc's `scope`, so a mutation that races a
+// scope-switch is refused rather than silently landing in the wrong worktree.
+// Only `archive`/`link` (feature-archive, relate) still dispatch through the
+// legacy `dispatchOps` seam — the ops-dispatch write mode itself is now dead
+// in practice (no live caller), left alive per the ADR's staged W04 removal.
 //
 // Either way, a conflict/refusal is a typed result the caller drives editor state
 // from — NOT a thrown error — so the mutation resolves (never rejects) on a
@@ -6561,13 +6551,31 @@ export function normalizeCreateDocArgs(args: unknown): NormalizedCreateDocArgs {
 }
 
 /**
- * Create a new document (`create`). Resolves with `{ result, nodeId }` where
- * `result` is the typed `OpsWriteResult` (`created` on success, carrying the new
- * doc's `path` + `stem`; `refused` on a validation rejection) and `nodeId` is the
- * synthesized `doc:<stem>` id (null when the create was refused). On a `created`
- * outcome the same vault-mutation read surfaces are invalidated as a save (a new
- * doc can introduce tree rows, graph nodes, filter facets, search hits, and git
- * change entries).
+ * Create a new document through the authoring ledger's `directWrite` route
+ * (`operation: "create_document"`, ledgered-edit-migration W03.P09) — a
+ * self-approved direct changeset, not the legacy `create` ops dispatch. Sends
+ * the target `scope` as the direct-write scope pin, same as Save/frontmatter/
+ * rename. Resolves with `{ result, nodeId }` where `result` is the typed
+ * `OpsWriteResult` and `nodeId` is the synthesized `doc:<stem>` id.
+ *
+ * IDENTITY GAP: `vault add` names the created file itself (the client sends no
+ * `ref`/predicted stem — there is nothing sound to predict client-side, same
+ * discipline as the request side), and unlike the legacy `/ops/core/create`
+ * response, the direct-write outcome carries NO field naming the real created
+ * path/stem for a `create_document` operation (`document_path` stays empty
+ * for this kind on both the top-level record and the apply receipt — traced
+ * in the engine, not yet wired). So a `created` result's `path`/`stem` are
+ * EMPTY and `nodeId` is `null` even on success — this is a KNOWN backend gap
+ * (a future `MaterializedResult` document-ref wiring, already scaffolded in
+ * `projections.rs`, would close it), not a refusal. Callers MUST branch on
+ * `result.kind === "created"` alone for success, not on `nodeId` being
+ * non-null (see `CreateDocButton.tsx`). `conflict`/`refused` (including a
+ * predicted-create-path collision, `CreateDocumentPathCollision`) is a typed
+ * result the caller drives UI state from — NOT a thrown error; only a
+ * transport fault, or the actor-token fail-safe (`requireActorToken`),
+ * rejects. On a `created` outcome the same vault-mutation read surfaces are
+ * invalidated as a save (a new doc can introduce tree rows, graph nodes,
+ * filter facets, search hits, and git change entries).
  */
 export function useCreateDoc() {
   const queryClient = useQueryClient();
@@ -6586,21 +6594,46 @@ export function useCreateDoc() {
           nodeId: null,
         };
       }
-      const ops: OpsResult = await dispatchOps({
-        target: "core",
-        verb: "create",
-        mode: "create",
-        body: {
-          scope: normalized.scope ?? undefined,
-          doc_type: normalized.docType,
-          feature: normalized.feature,
-          title: normalized.title,
-          related: normalized.related,
+      const outcome = await authoringClient.directWrite(
+        {
+          operation: "create_document",
+          create: {
+            doc_type: normalized.docType,
+            feature: normalized.feature,
+            title: normalized.title ?? "",
+            related: normalized.related,
+          },
+          scope: normalized.scope,
         },
-      });
-      const result = adaptOpsWrite(ops);
-      const nodeId = result.kind === "created" ? docNodeIdFromStem(result.stem) : null;
-      return { result, tiers: ops.tiers, nodeId };
+        { actorToken: requireActorToken() },
+      );
+      if (outcome.kind === "applied") {
+        return {
+          result: { kind: "created", path: "", stem: "" },
+          tiers: outcome.tiers,
+          nodeId: null,
+        };
+      }
+      if (outcome.kind === "conflict") {
+        return {
+          result: {
+            kind: "conflict",
+            expected: outcome.conflict.expected_blob_hash,
+            actual: outcome.conflict.actual_blob_hash,
+          },
+          tiers: outcome.tiers,
+          nodeId: null,
+        };
+      }
+      const reason =
+        outcome.kind === "denied" || outcome.kind === "failed"
+          ? (outcome.reason ?? "Create refused")
+          : "a prior create for this document is still in flight — try again shortly";
+      return {
+        result: directWriteRefusedResult(reason),
+        tiers: outcome.tiers,
+        nodeId: null,
+      };
     },
     onSuccess: ({ result }, args) => {
       const normalized = normalizeCreateDocArgs(args);
