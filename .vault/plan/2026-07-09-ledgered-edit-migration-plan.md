@@ -174,12 +174,12 @@ Re-scope feature-archive and autofix as sanctioned non-ledgered vault-maintenanc
 
 Re-scope feature-archive and autofix as sanctioned non-ledgered vault-maintenance operations, removed from the editor's edit affordances and documented as out-of-ledger by design with a return trigger.
 
-- [ ] `W04.P11.S60` - Ground the non-ledgered vault-maintenance operation boundary and return-trigger requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W04.P11.S61` - Remove feature-archive and autofix from the editor's edit affordances and surface them only on a clearly-labeled separated admin path; `frontend/src/stores/server/opsActions.ts`.
-- [ ] `W04.P11.S62` - Update the ops whitelist labels and dispatch documentation to state feature-archive and autofix are non-ledgered vault-maintenance operations, not document edits; `frontend/src/stores/server/opsActions.ts`.
-- [ ] `W04.P11.S63` - Add tests confirming feature-archive and autofix are unreachable from editor edit surfaces and remain reachable only from the admin path; `frontend/src/stores/server/opsActions.test.ts`.
-- [ ] `W04.P11.S64` - Run Vault-maintenance re-scope code review and record the phase audit; `.vault/audit/`.
-- [ ] `W04.P11.S65` - Verify no editor edit affordance can trigger feature-archive or autofix and both remain available on the admin surface; `frontend/src/stores/server/opsActions.ts`.
+- [x] `W04.P11.S60` - Ground the non-ledgered vault-maintenance operation boundary and return-trigger requirements into the phase checklist; `.vault/adr/`.
+- [x] `W04.P11.S61` - Remove feature-archive and autofix from the editor's edit affordances and surface them only on a clearly-labeled separated admin path; `frontend/src/stores/server/opsActions.ts`.
+- [x] `W04.P11.S62` - Update the ops whitelist labels and dispatch documentation to state feature-archive and autofix are non-ledgered vault-maintenance operations, not document edits; `frontend/src/stores/server/opsActions.ts`.
+- [x] `W04.P11.S63` - Add tests confirming feature-archive and autofix are unreachable from editor edit surfaces and remain reachable only from the admin path; `frontend/src/stores/server/opsActions.test.ts`.
+- [x] `W04.P11.S64` - Run Vault-maintenance re-scope code review and record the phase audit; `.vault/audit/`.
+- [x] `W04.P11.S65` - Verify no editor edit affordance can trigger feature-archive or autofix and both remain available on the admin surface; `frontend/src/stores/server/opsActions.ts`.
 
 ### Phase `W04.P12` - Legacy write-path removal
 
