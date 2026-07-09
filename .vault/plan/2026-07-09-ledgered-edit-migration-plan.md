@@ -67,13 +67,13 @@ Wire validation, materialization, preimage capture, apply, rollback, and conflic
 
 Wire validation, materialization, preimage capture, apply, and rollback for rename operations through the existing Rename core-adapter capability, treating rename as a destructive risk class with a rename-back inverse.
 
-- [ ] `W02.P04.S19` - Ground Rename validation, destructive risk classification, and rename-back rollback requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W02.P04.S20` - Implement Rename draft validation accepting the operation kind and its target-stem payload shape; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
-- [ ] `W02.P04.S21` - Implement Rename materialization, preimage capture, and apply through the Rename core-adapter capability; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
-- [ ] `W02.P04.S22` - Implement Rename conflict detection and rename-back rollback; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
-- [ ] `W02.P04.S23` - Add tests for Rename validation, apply, path-collision conflict, and rename-back rollback; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
-- [ ] `W02.P04.S24` - Run Rename apply wiring code review and record the phase audit; `.vault/audit/`.
-- [ ] `W02.P04.S25` - Verify a proposed Rename changeset applies, records provenance, and rolls back to the original stem; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
+- [x] `W02.P04.S19` - Ground Rename validation, destructive risk classification, and rename-back rollback requirements into the phase checklist; `.vault/adr/`.
+- [x] `W02.P04.S20` - Implement Rename draft validation accepting the operation kind and its target-stem payload shape; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
+- [x] `W02.P04.S21` - Implement Rename materialization, preimage capture, and apply through the Rename core-adapter capability; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [x] `W02.P04.S22` - Implement Rename conflict detection and rename-back rollback; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
+- [x] `W02.P04.S23` - Add tests for Rename validation, apply, path-collision conflict, and rename-back rollback; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [x] `W02.P04.S24` - Run Rename apply wiring code review and record the phase audit; `.vault/audit/`.
+- [x] `W02.P04.S25` - Verify a proposed Rename changeset applies, records provenance, and rolls back to the original stem; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
 
 ### Phase `W02.P05` - CreateDocument apply wiring
 
