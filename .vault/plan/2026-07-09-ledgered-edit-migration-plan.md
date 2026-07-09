@@ -224,9 +224,9 @@ The frontend routes a rename/create path-collision by substring-matching the bac
 
 A ledgered CreateDocument ships non-rollback-eligible (honest rollback_available=false with reason) because its inverse is a document delete and the ledger has no delete verb. Resolve the gap: vaultspec-core exposes no single-document delete/remove verb (its vault verbs are set-body/set-frontmatter/edit/rename/add/link), and the authoring boundary forbids raw-fs or git deletes, so a compliant delete-inverse is gated on an upstream vaultspec-core capability. Determine the feasibility definitively, file the coordination ask toward vaultspec-core, and record the disposition; the ADR's non-invertible deferral stands until the upstream verb lands.
 
-- [ ] `W05.P15.S99` - Ground the CreateDocument delete-inverse feasibility against vaultspec-core's verb surface and the authoring boundary; `.vault/adr/`.
-- [ ] `W05.P15.S100` - File the vaultspec-core single-document-delete coordination ask and record the delete-inverse disposition in the feature reference; `.vault/reference/`.
-- [ ] `W05.P15.S101` - Verify the disposition is recorded and CreateDocument's honest non-rollback-eligible state is preserved until the upstream verb lands; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
+- [x] `W05.P15.S99` - Ground the CreateDocument delete-inverse feasibility against vaultspec-core's verb surface and the authoring boundary; `.vault/adr/`.
+- [x] `W05.P15.S100` - File the vaultspec-core single-document-delete coordination ask and record the delete-inverse disposition in the feature reference; `.vault/reference/`.
+- [x] `W05.P15.S101` - Verify the disposition is recorded and CreateDocument's honest non-rollback-eligible state is preserved until the upstream verb lands; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
 
 ## Description
 

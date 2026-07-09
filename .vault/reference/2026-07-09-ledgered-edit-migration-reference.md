@@ -134,3 +134,29 @@ permanent vault-maintenance actions per the ADR; they stay on `/ops/core/archive
   and sends the full list through `directWrite({operation:"edit_frontmatter"})`.
 - create: no prior document to fence against — no preimage; rollback would be a delete,
   which the ledger has no verb for; ships non-rollback-eligible with an honest reason.
+
+### Post-migration follow-on dispositions (W05)
+
+- **Structured direct-write denial discriminator (W05.P14):** the frontend routed a
+  rename/create path-collision by substring-matching the backend's denial reason text; the
+  hardening carries a machine-readable `denial_kind` on the direct-write outcome so both
+  sides stop reason-sniffing.
+- **CreateDocument delete-inverse (W05.P15) — UPSTREAM-GATED, not buildable here.** A
+  ledgered create is non-rollback-eligible because its only inverse is a document delete,
+  and the disposition confirms the gap is genuinely upstream: `vaultspec-core`'s `vault`
+  surface has NO single-document delete/remove verb (its mutating verbs are `set-body`,
+  `set-frontmatter`, `edit`, `rename`, `add`, `link`; the only removal is `feature archive`,
+  which is feature-scoped/multi-document and is the retained non-ledgered maintenance op,
+  not a per-document inverse). The authoring boundary forbids reaching the vault by any
+  path other than the `vaultspec-core` adapter — no raw-filesystem delete, no git mutation
+  — so a compliant CreateDocument rollback-inverse CANNOT be built in this repository. It
+  is a Tier-3 coordination ask to FILE toward the `vaultspec-core` project: expose a
+  bounded single-document delete verb (`vault delete <ref>` / `vault rm`) that the core
+  adapter can broker as a new `CoreCapability`, after which a `CreateDocument` source rolls
+  back by generating a delete changeset and `create_rollback_eligibility` admits it.
+  Verified intact until then: create stays honestly non-rollback-eligible
+  (`create_rollback_eligibility`'s admit-list is ReplaceBody | EditFrontmatter | Rename;
+  `create_document_source_has_no_v1_inverse_and_offers_manual_repair` in `rollback.rs`),
+  offering an honest `rollback_available=false` + reason + manual-repair, exactly as the
+  ADR deferred. RETURN TRIGGER: the day `vaultspec-core` ships a single-document delete
+  verb, wire the `CoreCapability` + the delete-inverse rollback and admit CreateDocument.
