@@ -578,6 +578,12 @@ interface VaultTreeRowProps {
   count?: number;
   /** Trailing meta text (a document's date / weight cluster). */
   meta?: string;
+  /** Compact (touch) second meta line: the authored date + the plain-language
+   *  review-status WORD (ADR acceptance / plan progress), rendered UNDER the title
+   *  instead of the desktop trailing one-value + shape-mark (mobile-enrichment ADR
+   *  D2). Leaf rows only, compact viewport only; desktop stays single-line and its
+   *  one-meta-value + hover-tooltip law is untouched. */
+  subMeta?: ReactNode;
   /** A leaf's review-state signal (plan progress pip, ADR status token),
    *  rendered just before the trailing meta (left-rail-tree-controls ADR D1). */
   signal?: ReactNode;
@@ -612,6 +618,7 @@ function VaultTreeRow({
   expanded = false,
   count,
   meta,
+  subMeta,
   signal,
   tooltip,
   highlighted = false,
@@ -703,13 +710,29 @@ function VaultTreeRow({
       >
         <DocTypeMark kind={markKind} size={ICON_PX} />
       </span>
-      <span
-        className={`min-w-0 flex-1 truncate text-body ${
-          highlighted ? "text-accent-text" : "text-ink"
-        }`}
-      >
-        {label}
-      </span>
+      {subMeta ? (
+        // Compact leaf (mobile-enrichment ADR D2): title over an inline meta line —
+        // authored date + plain-language status word — so the review state and date
+        // read WITHOUT a hover tooltip on touch.
+        <span className="flex min-w-0 flex-1 flex-col gap-fg-0-5">
+          <span
+            className={`truncate text-body ${highlighted ? "text-accent-text" : "text-ink"}`}
+          >
+            {label}
+          </span>
+          <span className="flex items-center gap-fg-1-5 truncate text-meta">
+            {subMeta}
+          </span>
+        </span>
+      ) : (
+        <span
+          className={`min-w-0 flex-1 truncate text-body ${
+            highlighted ? "text-accent-text" : "text-ink"
+          }`}
+        >
+          {label}
+        </span>
+      )}
       {count !== undefined && (
         <span className="shrink-0 text-meta text-ink-faint" data-tabular>
           {count}
@@ -1056,6 +1079,53 @@ function docSignal(entry: VaultTreeEntry): ReactNode {
   return null;
 }
 
+/** The compact (touch) second meta line (mobile-enrichment ADR D2): the authored
+ *  date plus the plain-language review-status WORD — an ADR's acceptance
+ *  (Accepted / Proposed / Superseded / …) or a plan's progress (done of total) —
+ *  surfaced INLINE under the title so the fact is legible without the desktop hover
+ *  tooltip. Served facts only (`wire-contract`: the engine serves `status` /
+ *  `progress`; this maps presentation only); honest absence renders just the date,
+ *  or nothing. */
+function docCompactSubMeta(entry: VaultTreeEntry): ReactNode | undefined {
+  const date = docDateLabel(entry.dates.created ?? entry.dates.modified);
+  const pillClass = "shrink-0 rounded-fg-xs bg-paper-sunken px-fg-1";
+  let status: ReactNode = null;
+  if (entry.doc_type === "adr" && entry.status) {
+    status = (
+      <span
+        className={`${pillClass} ${adrStatusToneClass(entry.status)}`}
+        data-adr-status={entry.status}
+      >
+        {adrStatusLabel(entry.status)}
+      </span>
+    );
+  } else if (entry.doc_type === "plan") {
+    const planState = planStatus(entry.progress);
+    const label = entry.progress
+      ? `${entry.progress.done} of ${entry.progress.total}`
+      : planStatusLabel(planState);
+    status = (
+      <span
+        className={`${pillClass} ${planStatusToneClass(planState)}`}
+        data-plan-status={planState}
+      >
+        {label}
+      </span>
+    );
+  }
+  if (!date && !status) return undefined;
+  return (
+    <>
+      {date && (
+        <span className="shrink-0 text-ink-faint" data-doc-date>
+          {date}
+        </span>
+      )}
+      {status}
+    </>
+  );
+}
+
 /** The leaf's trailing meta: ONE value — the active sort key's field — so the
  *  title always leads and never collapses under a meta cluster (the 16rem rail
  *  cannot hold title + date + weight at depth). Default (recency/name) shows the
@@ -1108,6 +1178,11 @@ function DocumentRow({
   onOpen,
   nav,
 }: DocumentRowProps) {
+  // Compact (touch) surfaces the review metadata INLINE as a second line
+  // (mobile-enrichment ADR D2); desktop keeps the one-value + shape-mark + hover
+  // tooltip. The compact line replaces the desktop trailing signal/meta so the row
+  // never carries both.
+  const compact = useViewportClass() === "compact";
   return (
     <VaultTreeRow
       navKey={navKey}
@@ -1115,8 +1190,9 @@ function DocumentRow({
       label={docDisplayTitle(entry.path)}
       markKind={docType}
       expandable={false}
-      signal={docSignal(entry)}
-      meta={docMetaLabel(entry, sortKey)}
+      signal={compact ? undefined : docSignal(entry)}
+      meta={compact ? undefined : docMetaLabel(entry, sortKey)}
+      subMeta={compact ? docCompactSubMeta(entry) : undefined}
       tooltip={docTooltipLabel(entry)}
       highlighted={highlighted}
       onActivate={onClick}
