@@ -159,12 +159,12 @@ The direct-write create outcome carries no field naming the actually-created doc
 
 Model relate/link as a frontmatter edit on the source document's related list through the ledgered path, and remove the dead relate/archive mutation hooks that never reach a live surface.
 
-- [ ] `W03.P10.S54` - Ground relate/link-as-frontmatter-edit modeling and dead-hook removal requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P10.S55` - Rewire relateToSelectionAction to compose the related list mutation as a frontmatter edit dispatched through the operation-typed direct-edit route; `frontend/src/app/menus/sharedActions.ts`.
-- [ ] `W03.P10.S56` - Remove the dead useRelateDoc and useArchiveFeature mutation hooks that never reach a live editor surface; `frontend/src/stores/server/queries.ts`.
-- [ ] `W03.P10.S57` - Add sharedActions.test.ts coverage for the relate/link-as-frontmatter-edit request construction against the authoring direct-write call, covering the happy path and denied/conflicted outcomes; `frontend/src/app/menus/sharedActions.test.ts`.
-- [ ] `W03.P10.S58` - Run Relate/link rewire and dead-hook removal code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P10.S59` - Verify relating two documents produces a changeset with provenance and no live path still calls the legacy link write route; `frontend/src/stores/server/opsActions.ts`.
+- [x] `W03.P10.S54` - Ground relate/link-as-frontmatter-edit modeling and dead-hook removal requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P10.S55` - Rewire relateToSelectionAction to compose the related list mutation as a frontmatter edit dispatched through the operation-typed direct-edit route; `frontend/src/app/menus/sharedActions.ts`.
+- [x] `W03.P10.S56` - Remove the dead useRelateDoc and useArchiveFeature mutation hooks that never reach a live editor surface; `frontend/src/stores/server/queries.ts`.
+- [x] `W03.P10.S57` - Add sharedActions.test.ts coverage for the relate/link-as-frontmatter-edit request construction against the authoring direct-write call, covering the happy path and denied/conflicted outcomes; `frontend/src/app/menus/sharedActions.test.ts`.
+- [x] `W03.P10.S58` - Run Relate/link rewire and dead-hook removal code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P10.S59` - Verify relating two documents produces a changeset with provenance and no live path still calls the legacy link write route; `frontend/src/stores/server/opsActions.ts`.
 
 ## Wave `W04` - Maintenance re-scope, legacy removal, and final gate
 
