@@ -168,6 +168,13 @@ describe("useSaveBody — direct-write request construction", () => {
     expect(res.result.kind).toBe("refused");
     if (res.result.kind === "refused") {
       expect(res.result.errors[0]).toContain("does not match");
+      // The advisories panel reads ONLY `checks` (conformanceChecksOf) — a
+      // denial that lands solely in `errors` renders a silently blank panel.
+      expect(res.result.checks).toHaveLength(1);
+      expect((res.result.checks[0] as { message?: string }).message).toContain(
+        "does not match",
+      );
+      expect((res.result.checks[0] as { severity?: string }).severity).toBe("error");
     }
   });
 
@@ -287,6 +294,16 @@ describe("useSetFrontmatter — direct-write request construction", () => {
     expect(res.result.kind).toBe("refused");
     if (res.result.kind === "refused") {
       expect(res.result.errors[0]).toContain("resolves to no document");
+      // The advisories panel reads ONLY `checks` (conformanceChecksOf) — a
+      // frontmatter refusal that lands solely in `errors` renders a silently
+      // blank "Conformance advisories" panel (the exact regression vs. the
+      // legacy set-frontmatter path, which put structured messages in `checks`).
+      expect(res.result.checks).toHaveLength(1);
+      expect((res.result.checks[0] as { message?: string }).message).toContain(
+        "resolves to no document",
+      );
+      expect((res.result.checks[0] as { severity?: string }).severity).toBe("error");
+      expect((res.result.checks[0] as { fixable?: boolean }).fixable).toBe(false);
     }
   });
 

@@ -6330,7 +6330,22 @@ export function invalidateScopedSemanticReads(
  * this store. The direct-write conflict's `target_blob_hash` (the blob the save
  * would have produced had the base still matched) is not carried through — the
  * editor conflict UX has only ever rendered `expected`/`actual`.
+ *
+ * A `refused` result's reason rides BOTH `errors` and `checks` — the editor's
+ * advisories panel (`conformanceChecksOf`, stores/view/editor.ts) reads only
+ * `checks`, mirroring the one-entry `{severity, message, fixable}` shape
+ * `applyRenameEditorResult`'s collision branch already uses — so a denied
+ * (e.g. a scope-pin mismatch, a non-human actor) or failed direct write is
+ * never a silently blank advisories panel.
  */
+function directWriteRefusedResult(reason: string): OpsWriteResult {
+  return {
+    kind: "refused",
+    checks: [{ severity: "error", message: reason, fixable: false }],
+    errors: [reason],
+  };
+}
+
 function directWriteResultToOpsResult(outcome: DirectWriteOutcome): {
   result: OpsWriteResult;
   tiers: TiersBlock;
@@ -6359,33 +6374,25 @@ function directWriteResultToOpsResult(outcome: DirectWriteOutcome): {
   }
   if (outcome.kind === "denied") {
     return {
-      result: {
-        kind: "refused",
-        checks: [],
-        errors: [outcome.reason ?? "the direct editor save was denied"],
-      },
+      result: directWriteRefusedResult(
+        outcome.reason ?? "the direct editor save was denied",
+      ),
       tiers: outcome.tiers,
     };
   }
   if (outcome.kind === "failed") {
     return {
-      result: {
-        kind: "refused",
-        checks: [],
-        errors: [outcome.reason ?? "the direct editor save failed"],
-      },
+      result: directWriteRefusedResult(
+        outcome.reason ?? "the direct editor save failed",
+      ),
       tiers: outcome.tiers,
     };
   }
   if (outcome.kind === "in_flight") {
     return {
-      result: {
-        kind: "refused",
-        checks: [],
-        errors: [
-          "a prior save for this document is still in flight — try again shortly",
-        ],
-      },
+      result: directWriteRefusedResult(
+        "a prior save for this document is still in flight — try again shortly",
+      ),
       tiers: outcome.tiers,
     };
   }
