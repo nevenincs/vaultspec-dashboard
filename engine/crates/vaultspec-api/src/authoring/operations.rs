@@ -5,6 +5,7 @@
 //! plus review diffs. Section-scoped and atomic-hunk operations are deferred.
 #![allow(dead_code)]
 
+use ingest_struct::reader::blob_oid;
 use serde::{Deserialize, Serialize};
 
 use super::api::{
@@ -80,6 +81,15 @@ pub enum OperationError {
         child_key: String,
         reason: &'static str,
     },
+    #[error(
+        "operation `{child_key}` create target must be a provisional (not-yet-existing) document"
+    )]
+    UnsupportedCreateTarget { child_key: String },
+    #[error("operation `{child_key}` create requires a non-empty `{field}`")]
+    MissingCreateParam {
+        child_key: String,
+        field: &'static str,
+    },
     #[error("snapshot: {0}")]
     Snapshot(#[from] SnapshotError),
 }
@@ -110,6 +120,17 @@ pub struct MaterializedProposalOperation {
     /// every other operation kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rename_edit: Option<String>,
+    /// The ISO `yyyy-mm-dd` date a `CreateDocument` apply passes to core's
+    /// `--date` flag (W02.P05), FIXED at materialize time rather than
+    /// recomputed at apply/reclaim time. Core's own scaffold naming convention
+    /// (`{date}-{feature}-{doc_type}.md`) makes this the load-bearing input to
+    /// BOTH the write invocation and the identity-bearing post-verify's
+    /// predicted path — pinning it here is what keeps the two in agreement
+    /// across a crash-recovery reclaim, which reconstructs everything from this
+    /// SAME durable `materialized_operation` rather than reading wall-clock
+    /// "now" a second time. `None` for every other operation kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub create_document_date: Option<String>,
 }
 
 impl MaterializedProposalOperation {
@@ -127,8 +148,7 @@ impl MaterializedProposalOperation {
             base_snapshot,
             preimage,
             target_text,
-            None,
-            None,
+            OperationKindExtras::default(),
         )
     }
 
@@ -158,8 +178,10 @@ impl MaterializedProposalOperation {
             base_snapshot,
             preimage,
             target_text,
-            Some(fields),
-            None,
+            OperationKindExtras {
+                frontmatter_edit: Some(fields),
+                ..Default::default()
+            },
         )
     }
 
@@ -190,10 +212,111 @@ impl MaterializedProposalOperation {
             base_snapshot,
             preimage,
             target_text,
-            None,
-            Some(new_stem),
+            OperationKindExtras {
+                rename_edit: Some(new_stem),
+                ..Default::default()
+            },
         )
     }
+
+    /// Materialize a `CreateDocument` draft (W02.P05): the ODD ONE OUT — there
+    /// is NO existing document to read, NO base revision to fence, and NO
+    /// real preimage to capture, because the target does not exist yet. This
+    /// is why CreateDocument does NOT call `validate_target_and_preimage`
+    /// (that shared fence hard-requires an EXISTING document) and takes no
+    /// `base_snapshot`/`preimage` arguments unlike every other materializer.
+    ///
+    /// It STILL converges on the shared `finish_materialization` tail — every
+    /// downstream consumer of `MaterializedProposalOperation`
+    /// (`validate_changeset_material`, apply, projections, review) treats the
+    /// type uniformly regardless of operation kind, and changing that shape
+    /// would be a much larger, invasive refactor for no functional gain here.
+    /// The `base`/`preimage` it supplies are explicitly PHANTOM: an in-memory-
+    /// only, NEVER-PERSISTED "diff from nothing" (empty text, the git-style
+    /// empty-blob hash) — never a real captured preimage. Every field is
+    /// internally self-consistent (same document ref, same phantom revision,
+    /// same empty hash), so the cross-checks `validation.rs` runs between
+    /// `base`/`preimage`/`target_snapshot`/`review_diff` pass honestly; they
+    /// never claim a real prior state existed. `rollback_available=false`
+    /// downstream (`transitions::create_rollback_eligibility` already excludes
+    /// `CreateDocument` outright, independent of preimage presence) reflects
+    /// the truth: there is nothing to restore.
+    ///
+    /// `created_at_ms` fixes the ISO date used for BOTH the predicted path
+    /// AND (later, at apply time) core's own `--date` flag: core's `vault add`
+    /// accepts no caller-chosen stem — it ALWAYS derives the filename from its
+    /// own documented `{date}-{feature}-{doc_type}.md` naming convention — so a
+    /// caller-supplied `proposed_stem` cannot predict what core will actually
+    /// write. Fixing the date here (once, durably, at materialize time) is what
+    /// makes the predicted path a pure function of the materialized operation
+    /// alone: the SAME value a crash-recovery reclaim reads back from the
+    /// ledger, never a value recomputed against wall-clock "now" a second time.
+    pub fn materialize_create_document(
+        changeset_id: &ChangesetId,
+        draft: ChangesetChildOperationDraft,
+        created_at_ms: i64,
+    ) -> Result<Self> {
+        let (doc_type, feature, _title) = validate_create_document_draft(&draft)?;
+        let created_at_date = format_date_yyyy_mm_dd(created_at_ms);
+        let predicted_path = format!(".vault/{doc_type}/{created_at_date}-{feature}-{doc_type}.md");
+        let empty_hash = blob_oid(b"");
+        let phantom_revision = RevisionToken::new(format!("blob:{empty_hash}"))
+            .expect("an empty-blob revision token is always a valid RevisionToken");
+        let phantom_base = RevisionSnapshot {
+            document: draft.target.document.clone(),
+            path: predicted_path,
+            revision: phantom_revision.clone(),
+            blob_hash: empty_hash.clone(),
+            text: String::new(),
+            byte_len: 0,
+            base_revision_matches: true,
+        };
+        let phantom_preimage_id = format!(
+            "phantom-create:{}:{}",
+            changeset_id.as_str(),
+            draft.child_key
+        );
+        let phantom_preimage = PreimageRecord {
+            preimage_id: phantom_preimage_id.clone(),
+            changeset_id: changeset_id.as_str().to_string(),
+            operation_id: draft.child_key.clone(),
+            document: draft.target.document.clone(),
+            document_node_id: String::new(),
+            document_path: phantom_base.path.clone(),
+            base_revision: phantom_revision,
+            blob_hash: empty_hash.clone(),
+            payload_hash: empty_hash,
+            payload_text: String::new(),
+            payload_bytes: 0,
+            captured_at_ms: created_at_ms,
+            retention_record_kind: "preimage".to_string(),
+            retention_record_id: phantom_preimage_id,
+        };
+        let target_text = draft.draft.body.clone();
+        finish_materialization(
+            changeset_id,
+            draft,
+            &phantom_base,
+            &phantom_preimage,
+            target_text,
+            OperationKindExtras {
+                create_document_date: Some(created_at_date),
+                ..Default::default()
+            },
+        )
+    }
+}
+
+/// The operation-kind-specific payload `finish_materialization` threads through
+/// unchanged onto `MaterializedProposalOperation` — bundled into one parameter
+/// (rather than three trailing `Option`s) so the shared tail stays under the
+/// argument-count lint without losing the "at most one is ever `Some`" shape
+/// each kind's own materializer already documents on the struct fields.
+#[derive(Default)]
+struct OperationKindExtras {
+    frontmatter_edit: Option<FrontmatterEditFields>,
+    rename_edit: Option<String>,
+    create_document_date: Option<String>,
 }
 
 /// Shared materialization tail: build the target snapshot + review diff from
@@ -209,9 +332,13 @@ fn finish_materialization(
     base_snapshot: &RevisionSnapshot,
     preimage: &PreimageRecord,
     target_text: String,
-    frontmatter_edit: Option<FrontmatterEditFields>,
-    rename_edit: Option<String>,
+    extras: OperationKindExtras,
 ) -> Result<MaterializedProposalOperation> {
+    let OperationKindExtras {
+        frontmatter_edit,
+        rename_edit,
+        create_document_date,
+    } = extras;
     let target_snapshot = TargetSnapshot::from_text(
         base_snapshot.document.clone(),
         base_snapshot.revision.clone(),
@@ -229,6 +356,7 @@ fn finish_materialization(
         preimage: OperationPreimageRef::from(preimage),
         frontmatter_edit,
         rename_edit,
+        create_document_date,
     })
 }
 
@@ -464,6 +592,83 @@ fn validate_rename_stem(child_key: &str, stem: &str) -> Result<()> {
         });
     }
     Ok(())
+}
+
+/// Validate a `CreateDocument` draft (W02.P05): the operation kind and its
+/// typed create-params payload — `doc_type`/`feature`/`title` from the target's
+/// `ProvisionalCreate` ref. `proposed_stem` (when present) is advisory-only —
+/// core's `vault add` accepts no caller-chosen stem; it always derives the
+/// filename from its own `{date}-{feature}-{doc_type}.md` convention, so a
+/// caller-supplied stem cannot predict what core will actually write and is
+/// never required here (the predicted path instead derives from a
+/// materialize-time-fixed date; see `materialize_create_document`). Returns
+/// the validated params so the caller materializes without re-deriving them.
+fn validate_create_document_draft(
+    draft: &ChangesetChildOperationDraft,
+) -> Result<(&str, &str, &str)> {
+    if draft.child_key.trim().is_empty() {
+        return Err(OperationError::EmptyChildKey);
+    }
+    let child_key = draft.child_key.clone();
+    if draft.operation != ChangesetOperationKind::CreateDocument {
+        return Err(OperationError::UnsupportedOperationKind {
+            child_key,
+            operation: draft.operation,
+        });
+    }
+    if draft.draft.mode != DraftMode::WholeDocument {
+        return Err(OperationError::UnsupportedDraftMode {
+            child_key,
+            mode: draft.draft.mode,
+        });
+    }
+    let DocumentRef::ProvisionalCreate {
+        doc_type,
+        feature,
+        title,
+        ..
+    } = &draft.target.document
+    else {
+        return Err(OperationError::UnsupportedCreateTarget { child_key });
+    };
+    if doc_type.trim().is_empty() {
+        return Err(OperationError::MissingCreateParam {
+            child_key,
+            field: "doc_type",
+        });
+    }
+    if feature.trim().is_empty() {
+        return Err(OperationError::MissingCreateParam {
+            child_key,
+            field: "feature",
+        });
+    }
+    if title.trim().is_empty() {
+        return Err(OperationError::MissingCreateParam {
+            child_key,
+            field: "title",
+        });
+    }
+    Ok((doc_type.as_str(), feature.as_str(), title.as_str()))
+}
+
+/// Format a UTC millisecond timestamp as an ISO `yyyy-mm-dd` civil date via the
+/// standard proleptic-Gregorian day-count algorithm (Howard Hinnant's
+/// `civil_from_days`) — a single calendar conversion does not earn a `chrono`/
+/// `time` dependency (and this crate's `Cargo.lock` is out of scope to touch).
+fn format_date_yyyy_mm_dd(epoch_ms: i64) -> String {
+    let days = epoch_ms.div_euclid(86_400_000);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
 }
 
 /// Reject a field value that would corrupt the frontmatter block it lands in: an
@@ -972,6 +1177,7 @@ mod tests {
     use super::*;
     use crate::authoring::api::{DraftMutation, TargetRevisionFence};
     use crate::authoring::documents::{DocumentResolver, ExistingDocumentLookup};
+    use crate::authoring::model::ProvisionalCollisionStatus;
     use crate::authoring::snapshots::{PreimageCaptureRequest, SnapshotReader};
 
     fn write_doc(root: &Path, rel: &str, body: &str) {
@@ -2155,5 +2361,191 @@ mod tests {
                 } if found == operation
             ));
         }
+    }
+
+    // --- W02.P05: CreateDocument validation + materialization --------------
+
+    const CREATE_FIXED_CREATED_AT_MS: i64 = 1_768_435_200_000; // 2026-01-15T00:00:00Z
+    const CREATE_FIXED_DATE: &str = "2026-01-15";
+
+    fn provisional_document(doc_type: &str, feature: &str, title: &str) -> DocumentRef {
+        DocumentRef::ProvisionalCreate {
+            provisional_doc_id: "provisional_1".to_string(),
+            doc_type: doc_type.to_string(),
+            feature: feature.to_string(),
+            title: title.to_string(),
+            collision_status: ProvisionalCollisionStatus::Unknown,
+            proposed_stem: None,
+        }
+    }
+
+    fn create_draft_for(document: DocumentRef, body: &str) -> ChangesetChildOperationDraft {
+        ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::CreateDocument,
+            target: TargetRevisionFence {
+                document,
+                base_revision: None,
+                current_revision: None,
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: body.to_string(),
+                frontmatter: None,
+                new_stem: None,
+            },
+        }
+    }
+
+    #[test]
+    fn create_document_materializes_a_deterministic_predicted_path_from_a_phantom_base() {
+        let draft = create_draft_for(
+            provisional_document("plan", "operation-plan-feature", "A New Plan"),
+            "preview body\n",
+        );
+        let materialized = MaterializedProposalOperation::materialize_create_document(
+            &changeset_id(),
+            draft,
+            CREATE_FIXED_CREATED_AT_MS,
+        )
+        .unwrap();
+
+        assert_eq!(
+            materialized.operation,
+            ChangesetOperationKind::CreateDocument
+        );
+        assert_eq!(
+            materialized.create_document_date.as_deref(),
+            Some(CREATE_FIXED_DATE),
+            "the date is fixed at materialize time, not recomputed at apply/reclaim time"
+        );
+        let empty_hash = blob_oid(b"");
+        assert_eq!(
+            materialized.base.blob_hash, empty_hash,
+            "the phantom base is an explicit 'diff from nothing', never a real prior state"
+        );
+        assert_eq!(materialized.preimage.payload_hash, empty_hash);
+        assert_eq!(materialized.preimage.payload_bytes, 0);
+        assert_eq!(
+            materialized.target_snapshot.payload_text, "preview body\n",
+            "the preview text is the draft body, carried for review only — never sent to core"
+        );
+        assert!(
+            materialized.review_diff.changed,
+            "a non-empty preview against the phantom empty base is a real (preview-only) diff"
+        );
+        assert!(materialized.frontmatter_edit.is_none());
+        assert!(materialized.rename_edit.is_none());
+    }
+
+    #[test]
+    fn create_document_rejects_a_non_provisional_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", "body\n");
+        let existing = resolved_doc(root);
+        let draft = create_draft_for(existing, "preview\n");
+
+        let err = MaterializedProposalOperation::materialize_create_document(
+            &changeset_id(),
+            draft,
+            CREATE_FIXED_CREATED_AT_MS,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::UnsupportedCreateTarget { .. }
+        ));
+    }
+
+    #[test]
+    fn create_document_rejects_a_rename_draft_shape() {
+        let draft = ChangesetChildOperationDraft {
+            operation: ChangesetOperationKind::Rename,
+            ..create_draft_for(
+                provisional_document("plan", "operation-plan-feature", "A New Plan"),
+                "preview\n",
+            )
+        };
+
+        let err = MaterializedProposalOperation::materialize_create_document(
+            &changeset_id(),
+            draft,
+            CREATE_FIXED_CREATED_AT_MS,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::UnsupportedOperationKind {
+                operation: ChangesetOperationKind::Rename,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn create_document_rejects_missing_create_params() {
+        for (doc_type, feature, title, expected_field) in [
+            ("", "operation-plan-feature", "A New Plan", "doc_type"),
+            ("plan", "", "A New Plan", "feature"),
+            ("plan", "operation-plan-feature", "", "title"),
+        ] {
+            let draft =
+                create_draft_for(provisional_document(doc_type, feature, title), "preview\n");
+            let err = MaterializedProposalOperation::materialize_create_document(
+                &changeset_id(),
+                draft,
+                CREATE_FIXED_CREATED_AT_MS,
+            )
+            .unwrap_err();
+            assert!(
+                matches!(
+                    &err,
+                    OperationError::MissingCreateParam { field, .. } if *field == expected_field
+                ),
+                "expected a MissingCreateParam(`{expected_field}`), got {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn create_document_materialization_passes_the_shared_validation_cross_checks() {
+        // The phantom base/preimage are internally self-consistent enough that
+        // `validate_changeset_material`'s cross-checks (base/preimage/target
+        // agreement) pass honestly — they never claim a real prior state
+        // existed, but every field they DO assert against each other lines up.
+        use crate::authoring::validation::{
+            CurrentRevisionObservation, validate_changeset_material,
+        };
+
+        let document = provisional_document("plan", "operation-plan-feature", "A New Plan");
+        let draft = create_draft_for(document.clone(), "preview\n");
+        let materialized = MaterializedProposalOperation::materialize_create_document(
+            &changeset_id(),
+            draft,
+            CREATE_FIXED_CREATED_AT_MS,
+        )
+        .unwrap();
+
+        let empty_hash = blob_oid(b"");
+        let phantom_revision = RevisionToken::new(format!("blob:{empty_hash}")).unwrap();
+        let observation = CurrentRevisionObservation {
+            child_key: "child_1".to_string(),
+            document,
+            revision: phantom_revision,
+            blob_hash: empty_hash,
+        };
+        let record = validate_changeset_material(
+            std::slice::from_ref(&materialized),
+            &[observation],
+            &[],
+            6,
+        )
+        .unwrap();
+        assert!(
+            record.approval_ready,
+            "a well-formed CreateDocument draft must be approval-ready: {:?}",
+            record.status
+        );
     }
 }

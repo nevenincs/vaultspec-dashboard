@@ -389,11 +389,19 @@ enum CarriedDrafts {
 }
 
 /// Carry every child of `source` forward onto the CURRENT document state, preserving the
-/// drafted body while re-basing against the fresh revision. Reuses the P27 detector to
-/// classify the source: an `AnchorDrift` finding cannot be auto-rebased and denies the
-/// command. Only existing-document, materialized `ReplaceBody` children (the V1
-/// materialization subset) are carry-forwardable; anything else denies rather than
-/// silently dropping the edit intent.
+/// drafted body (or, for a rename, the drafted target stem) while re-basing against the
+/// fresh revision. Reuses the P27 detector to classify the source: an `AnchorDrift`
+/// finding cannot be auto-rebased and denies the command. Only existing-document,
+/// materialized `ReplaceBody`/`Rename` children are carry-forwardable; anything else
+/// denies rather than silently dropping the edit intent.
+///
+/// `CreateDocument` (W02.P05) is denied here too, at the VERY FIRST check (its target is
+/// a `ProvisionalCreate`, never `DocumentRef::Existing`) — deliberately, not an
+/// oversight: a create has no prior REVISION to rebase against (nothing existed to drift
+/// from), so "carry forward onto the current base" is not a meaningful operation for it.
+/// A `Conflicted` create-in-progress is an honest DENY (see
+/// `create_document_child_is_denied_carry_forward_not_dropped` below), never a silent
+/// drop of the child from the carried set.
 fn carry_forward_drafts(
     worktree_root: &Path,
     source: &ChangesetAggregateRecord,
@@ -1740,5 +1748,122 @@ mod tests {
         let rebased = latest_record(&mut store, &rollback_id);
         assert_eq!(rebased.kind, ChangesetKind::Rollback);
         assert_eq!(rebased.status, ChangesetStatus::RollbackProposed);
+    }
+
+    // --- W02.P05: CreateDocument is denied carry-forward, not dropped -------
+
+    fn materialized_create_document_child(
+        changeset_id: &ChangesetId,
+        child_key: &str,
+    ) -> ChangesetChildOperationInput {
+        let document = DocumentRef::ProvisionalCreate {
+            provisional_doc_id: format!("provisional:{child_key}"),
+            doc_type: "plan".to_string(),
+            feature: "create-rebase-probe".to_string(),
+            title: "A New Plan".to_string(),
+            collision_status: crate::authoring::model::ProvisionalCollisionStatus::Unknown,
+            proposed_stem: None,
+        };
+        let draft = ChangesetChildOperationDraft {
+            child_key: child_key.to_string(),
+            operation: ChangesetOperationKind::CreateDocument,
+            target: TargetRevisionFence {
+                document,
+                base_revision: None,
+                current_revision: None,
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: "preview\n".to_string(),
+                frontmatter: None,
+                new_stem: None,
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_create_document(
+            changeset_id,
+            draft,
+            1_768_435_200_000, // 2026-01-15T00:00:00Z, fixed
+        )
+        .unwrap();
+        ChangesetChildOperationInput::from_materialized(
+            materialized,
+            format!("material:{child_key}"),
+            format!("validation:{child_key}"),
+        )
+    }
+
+    #[test]
+    fn create_document_child_is_denied_carry_forward_not_dropped() {
+        // A create has no prior REVISION to rebase against (nothing existed to
+        // drift from), so it is denied at rebase's VERY FIRST carry-forward
+        // check — never silently dropped from the carried set, and never a
+        // crash. Drive a changeset carrying a `CreateDocument` child to a
+        // `Conflicted` head (the only status `rebase_proposal` acts on) via
+        // hand-appended revisions, mirroring the rollback-lineage test above.
+        let (dir, mut store) = temp_store();
+        let root = dir.path();
+
+        let create_id = changeset_id("changeset_create_rebase_probe");
+        let child = materialized_create_document_child(&create_id, "child_1");
+        let mut previous: Option<ChangesetAggregateRecord> = None;
+        for (offset, status) in [
+            ChangesetStatus::Draft,
+            ChangesetStatus::NeedsReview,
+            ChangesetStatus::Approved,
+            ChangesetStatus::Applying,
+            ChangesetStatus::Conflicted,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let record = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                changeset_id: create_id.clone(),
+                previous_revision: previous.as_ref().map(|r| r.changeset_revision.clone()),
+                kind: ChangesetKind::Authoring,
+                status,
+                session_id: Some(session_id()),
+                actor: actor(),
+                summary: format!("create rebase probe to {status:?}"),
+                children: vec![child.clone()],
+                created_at_ms: 100 + offset as i64,
+            })
+            .unwrap();
+            store
+                .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                    uow.ledger().append_revision(&record)
+                })
+                .unwrap();
+            previous = Some(record);
+        }
+        let conflicted = previous.expect("create rebase probe reached conflicted");
+        assert_eq!(conflicted.status, ChangesetStatus::Conflicted);
+
+        let eligibility = denied(
+            rebase_proposal(
+                &mut store,
+                root,
+                context("idem:rebase:create-probe", 300),
+                RebaseProposalRequest {
+                    changeset_id: create_id.clone(),
+                    expected_revision: conflicted.changeset_revision.clone(),
+                    summary: "rebase a conflicted create".to_string(),
+                },
+            )
+            .unwrap(),
+        );
+        assert!(!eligibility.allowed);
+        let reason = eligibility.reason.unwrap_or_default();
+        assert!(
+            reason.contains("only existing-document operations are rebaseable"),
+            "a CreateDocument child must be denied with an honest reason, not silently \
+             dropped or crashed: {reason}"
+        );
+
+        // The head is UNCHANGED — no new revision was appended, and the child's
+        // materialized operation (the drafted create) is still there.
+        let head = latest_record(&mut store, &create_id);
+        assert_eq!(head.changeset_revision, conflicted.changeset_revision);
+        assert_eq!(head.status, ChangesetStatus::Conflicted);
+        assert_eq!(head.children.len(), 1);
     }
 }

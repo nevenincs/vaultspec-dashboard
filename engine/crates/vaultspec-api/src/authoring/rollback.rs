@@ -258,23 +258,44 @@ pub fn generate_rollback(
                 // now occupies that stem" — a stem can be vacated by a LATER
                 // rename and then reoccupied. Refuse, fail-closed, if the
                 // ledger shows the stem was renamed AWAY from after this
-                // source applied: that proves the current occupant (if any) is
-                // NOT provably the document this rollback should touch.
-                if let Some(breaking_changeset) =
-                    stem_lineage_moved_on(uow, &new_stem, source.created_at_ms)?
-                {
-                    return Ok(RollbackOutcome::unavailable(
-                        ActionEligibility::denied(
-                            CommandKind::CreateRollback,
-                            format!(
-                                "rollback_unavailable: the stem `{new_stem}` this rename \
-                                 targeted has since been renamed away (by changeset \
-                                 `{breaking_changeset}`); the current occupant cannot be \
-                                 confirmed as this rollback's document"
+                // source applied (or if the scan cannot even PROVE it wasn't):
+                // that proves the current occupant (if any) is NOT provably
+                // the document this rollback should touch.
+                match stem_lineage_check(
+                    uow,
+                    &new_stem,
+                    source.created_at_ms,
+                    MAX_ROLLBACK_LINEAGE_SCAN,
+                )? {
+                    StemLineageCheck::Clear => {}
+                    StemLineageCheck::Broken(breaking_changeset) => {
+                        return Ok(RollbackOutcome::unavailable(
+                            ActionEligibility::denied(
+                                CommandKind::CreateRollback,
+                                format!(
+                                    "rollback_unavailable: the stem `{new_stem}` this rename \
+                                     targeted has since been renamed away (by changeset \
+                                     `{breaking_changeset}`); the current occupant cannot be \
+                                     confirmed as this rollback's document"
+                                ),
                             ),
-                        ),
-                        Some(manual_repair(&request)),
-                    ));
+                            Some(manual_repair(&request)),
+                        ));
+                    }
+                    StemLineageCheck::Unconfirmable => {
+                        return Ok(RollbackOutcome::unavailable(
+                            ActionEligibility::denied(
+                                CommandKind::CreateRollback,
+                                format!(
+                                    "rollback_unavailable: cannot confirm the stem `{new_stem}` \
+                                     lineage is unbroken (too many changesets applied since this \
+                                     rename to scan); the current occupant cannot be confirmed \
+                                     as this rollback's document"
+                                ),
+                            ),
+                            Some(manual_repair(&request)),
+                        ));
+                    }
                 }
                 match resolver.resolve_existing(ExistingDocumentLookup::Stem(new_stem.clone())) {
                     Ok(current_ref) => current_ref,
@@ -416,6 +437,23 @@ pub fn generate_rollback(
 /// scans (resource-bounds: mirrors `conflicts::MAX_CONFLICT_SIBLINGS`).
 const MAX_ROLLBACK_LINEAGE_SCAN: u32 = 256;
 
+/// The result of a [`stem_lineage_check`] scan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StemLineageCheck {
+    /// No later rename moved a document away from the stem, AND the scan
+    /// window reached back far enough (past `since_ms`) to be CERTAIN of
+    /// that — a bounded scan alone cannot claim "clear" honestly otherwise.
+    Clear,
+    /// A specific later-applied Rename moved a document away from the stem.
+    Broken(ChangesetId),
+    /// The scan window was exhausted (hit its cap) before reaching back to
+    /// `since_ms` — there may be MORE changesets, also newer than `since_ms`,
+    /// that fell outside the cap and were never inspected. Absence of a break
+    /// cannot be proven, so this refuses exactly like `Broken`: it is NEVER
+    /// treated as `Clear`.
+    Unconfirmable,
+}
+
 /// Whether `stem` has been renamed AWAY from by a Rename that applied AFTER
 /// `since_ms` — a stem-lineage break. Node ids are stem-derived (`doc:<stem>`),
 /// so a stem can be VACATED by one rename and later REOCCUPIED by an entirely
@@ -423,20 +461,24 @@ const MAX_ROLLBACK_LINEAGE_SCAN: u32 = 256;
 /// never distinguish the two. A later-applied Rename whose OWN target (the
 /// stem it moved FROM) equals `stem` proves the document this rollback's
 /// forward rename placed there has since moved on, so the current occupant
-/// (if any) cannot be confirmed as this rollback's document. Returns the
-/// breaking changeset id when found.
+/// (if any) cannot be confirmed as this rollback's document.
 ///
-/// Bounded and best-effort (mirrors every other bounded conflict scan in this
-/// codebase): a break beyond the scan cap is not detected. This is an
-/// acceptable residual — a missed break degrades to the PRE-GUARD behavior
-/// (the risk this guard exists to close), never to something worse, and the
-/// cap is generous for a realistic ledger.
-fn stem_lineage_moved_on(
+/// Bounded (`cap`, mirroring every other bounded conflict scan in this
+/// codebase) but FAIL-CLOSED about its own boundedness: `latest_changesets`
+/// returns each changeset's LATEST revision ordered by insertion sequence,
+/// most-recent-first, so if the window fills up (`cap` candidates returned)
+/// and even the OLDEST of them is still newer than `since_ms`, there may be
+/// MORE later-applied changesets beyond the cap that were never inspected —
+/// absence of a break cannot be claimed. That case returns `Unconfirmable`,
+/// never a silent `Clear` (a missed break masquerading as safety would defeat
+/// the whole guard).
+fn stem_lineage_check(
     uow: &UnitOfWork<'_>,
     stem: &str,
     since_ms: i64,
-) -> StoreResult<Option<ChangesetId>> {
-    let candidates = uow.ledger().latest_changesets(MAX_ROLLBACK_LINEAGE_SCAN)?;
+    cap: u32,
+) -> StoreResult<StemLineageCheck> {
+    let candidates = uow.ledger().latest_changesets(cap)?;
     for candidate in &candidates {
         if candidate.status != ChangesetStatus::Applied || candidate.created_at_ms <= since_ms {
             continue;
@@ -452,11 +494,18 @@ fn stem_lineage_moved_on(
                 continue;
             };
             if from_stem == stem {
-                return Ok(Some(candidate.changeset_id.clone()));
+                return Ok(StemLineageCheck::Broken(candidate.changeset_id.clone()));
             }
         }
     }
-    Ok(None)
+    if candidates.len() as u32 == cap
+        && candidates
+            .last()
+            .is_some_and(|oldest| oldest.created_at_ms > since_ms)
+    {
+        return Ok(StemLineageCheck::Unconfirmable);
+    }
+    Ok(StemLineageCheck::Clear)
 }
 
 fn manual_repair(request: &RollbackRequest<'_>) -> ManualRepairProposal {
@@ -1370,6 +1419,73 @@ mod tests {
             still_at_b, "content of E\n",
             "E's document must not have been renamed by the refused rollback"
         );
+    }
+
+    #[test]
+    fn stem_lineage_scan_refuses_when_the_window_is_exhausted_before_reaching_the_source() {
+        // W02.P05 fold-in (the P04 review LOW): a truncated scan must never
+        // silently report `Clear` — with a TINY cap, seeding more
+        // later-applied, unrelated candidates than the cap fills the window
+        // before it can reach back to `since_ms`, so absence of an away-move
+        // cannot be proven.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let mut store = temp_store(root);
+        let author = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let since_ms = 50;
+        let cap = 2;
+
+        // 3 unrelated Applied changesets, ALL newer than `since_ms`, none of
+        // which touch the probed stem — with `cap = 2` the window fills
+        // before reaching all 3.
+        for i in 0..3 {
+            let changeset_id = ChangesetId::new(format!("changeset_filler_{i}")).unwrap();
+            let doc = existing_doc(
+                &format!("filler-{i}"),
+                &RevisionToken::new(format!("blob:filler{i}")).unwrap(),
+            );
+            let child = {
+                let doc = doc.clone();
+                move || {
+                    child_input(
+                        &format!("child_{i}"),
+                        ChangesetOperationKind::ReplaceBody,
+                        doc.clone(),
+                    )
+                }
+            };
+            seed_applied_source_at(
+                &mut store,
+                &changeset_id,
+                &author,
+                &reviewer,
+                child,
+                None,
+                100 + i * 100,
+            );
+        }
+
+        let result = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                stem_lineage_check(uow, "probe-stem", since_ms, cap)
+            })
+            .unwrap();
+        assert_eq!(
+            result,
+            StemLineageCheck::Unconfirmable,
+            "a truncated scan must refuse, never silently claim Clear"
+        );
+
+        // A cap generous enough to reach back past `since_ms` (here, more than
+        // the 3 filler changesets) correctly reports Clear — the truncation
+        // guard does not over-refuse once the window is genuinely sufficient.
+        let clear_result = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                stem_lineage_check(uow, "probe-stem", since_ms, 256)
+            })
+            .unwrap();
+        assert_eq!(clear_result, StemLineageCheck::Clear);
     }
 
     #[test]

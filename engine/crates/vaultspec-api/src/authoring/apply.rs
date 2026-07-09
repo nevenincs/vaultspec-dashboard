@@ -413,12 +413,13 @@ fn preflight_in_uow(
         ChangesetOperationKind::ReplaceBody
             | ChangesetOperationKind::EditFrontmatter
             | ChangesetOperationKind::Rename
+            | ChangesetOperationKind::CreateDocument
     ) {
         return Ok(Ok(Preflight::Denied(ActionEligibility::denied(
             CommandKind::RequestApply,
             format!(
                 "V1 apply materializes only whole-document body replacement, frontmatter \
-                 edits, and rename; operation `{:?}` is not yet supported",
+                 edits, rename, and document creation; operation `{:?}` is not yet supported",
                 child.operation
             ),
         ))));
@@ -430,12 +431,30 @@ fn preflight_in_uow(
         }));
     };
     let document = materialized.target.document.clone();
-    let Some(document_path) = existing_path(&document) else {
-        return Ok(Err(ApplyError::Internal(format!(
-            "materialized child `{}` target is not an existing document",
-            child.child_key
-        ))));
-    };
+    // CreateDocument has NO EXISTING PATH (nothing exists yet) and NO real base
+    // blob to fence against (`materialized.base.blob_hash` is the PHANTOM
+    // empty-content hash operations.rs documents) — it takes the ONLY early
+    // branch here; every other kind shares the existing-document path/blob-hash
+    // derivation below.
+    let (document_path, base_blob_hash, core_base_blob_hash) =
+        if child.operation == ChangesetOperationKind::CreateDocument {
+            (
+                String::new(),
+                materialized.base.blob_hash.clone(),
+                String::new(),
+            )
+        } else {
+            let Some(document_path) = existing_path(&document) else {
+                return Ok(Err(ApplyError::Internal(format!(
+                    "materialized child `{}` target is not an existing document",
+                    child.child_key
+                ))));
+            };
+            let base_blob_hash = materialized.base.blob_hash.clone();
+            let core_base_blob_hash =
+                full_file_blob_hash(worktree_root, &document_path, &base_blob_hash);
+            (document_path, base_blob_hash, core_base_blob_hash)
+        };
 
     // ADVISORY fencing (W13.P26, wired W14.P42a). A lease NEVER establishes correctness
     // (leases-never-replace-revision-checks): the revision fence is the anti-stale-write
@@ -446,6 +465,8 @@ fn preflight_in_uow(
     // and denying it would strand every legitimate approved apply (system, direct-write, and
     // /execute all present no token). The scope key is the SAME per-document convention P27
     // conflict detection uses (`document_lease_scope`), so acquire and apply agree on it.
+    // A `ProvisionalCreate` target carries no node id, so this block naturally
+    // no-ops for CreateDocument — nothing to fence, nothing existed to lease.
     if let Some(node_id) = existing_node_id(&document) {
         let lease_scope = document_lease_scope(worktree_root, &node_id);
         let current_lease = uow.leases().current(&lease_scope)?;
@@ -465,8 +486,6 @@ fn preflight_in_uow(
             }
         }
     }
-    let base_blob_hash = materialized.base.blob_hash.clone();
-    let core_base_blob_hash = full_file_blob_hash(worktree_root, &document_path, &base_blob_hash);
     let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
     let invocation = match build_write_invocation(
         child.operation,
@@ -739,6 +758,91 @@ fn post_state_resolution(worktree_root: &Path, prep: &ApplyPrep, reason: &str) -
                 },
             }
         }
+        PostVerifyExpectation::CreatedAt {
+            expected_stem,
+            expected_path,
+            expected_feature_tag,
+        } => {
+            // See the `CreatedAt` type doc for why resolving at the
+            // DETERMINISTIC predicted path is sound identity proof here (core
+            // refuses to overwrite + duplicate-path conflict detection), with
+            // the feature-tag re-read as defense-in-depth "expected scaffold
+            // shape" beyond bare existence.
+            let created = resolve_by_stem(worktree_root, expected_stem);
+            let created_path = created.as_ref().and_then(|document| match document {
+                DocumentRef::Existing { path, .. } => Some(path.clone()),
+                _ => None,
+            });
+            match (&created, created_path) {
+                (Some(created_ref), Some(path)) if &path == expected_path => {
+                    match read_document_text(worktree_root, created_ref) {
+                        Ok(text) if text.contains(expected_feature_tag.as_str()) => {
+                            ChildResolution {
+                                outcome: ApplyChildOutcome::Applied,
+                                observed_result_blob_hash: read_blob_hash(
+                                    worktree_root,
+                                    created_ref,
+                                )
+                                .ok(),
+                                core_status: None,
+                                core_schema: None,
+                                resolved_via_post_verify: true,
+                                diagnostic: Some(format!(
+                                    "{reason}; post-state re-verified the create of \
+                                     `{expected_stem}` landed at the expected path with the \
+                                     expected scaffold shape"
+                                )),
+                            }
+                        }
+                        Ok(_) => ChildResolution {
+                            outcome: ApplyChildOutcome::Failed,
+                            observed_result_blob_hash: None,
+                            core_status: None,
+                            core_schema: None,
+                            resolved_via_post_verify: true,
+                            diagnostic: Some(format!(
+                                "{reason}; a document resolves at the expected path but its \
+                                 frontmatter does not carry the expected feature tag \
+                                 (fail-closed)"
+                            )),
+                        },
+                        Err(_) => ChildResolution {
+                            outcome: ApplyChildOutcome::Failed,
+                            observed_result_blob_hash: None,
+                            core_status: None,
+                            core_schema: None,
+                            resolved_via_post_verify: true,
+                            diagnostic: Some(format!(
+                                "{reason}; post-state could not be re-verified (recorded \
+                                 not-applied, fail-closed)"
+                            )),
+                        },
+                    }
+                }
+                (Some(_), _) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: None,
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; a document resolves at `{expected_stem}` but not at the \
+                         expected path `{expected_path}` (fail-closed)"
+                    )),
+                },
+                (None, _) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: None,
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state re-verified the create of `{expected_stem}` did \
+                         NOT land"
+                    )),
+                },
+            }
+        }
     }
 }
 
@@ -774,12 +878,25 @@ fn build_reclaim_prep(
         }));
     };
     let document = materialized.target.document.clone();
-    let Some(document_path) = existing_path(&document) else {
-        return Ok(Err(ApplyError::Internal(format!(
-            "wedged child `{}` target is not an existing document",
-            child.child_key
-        ))));
-    };
+    let (document_path, base_blob_hash, core_base_blob_hash) =
+        if child.operation == ChangesetOperationKind::CreateDocument {
+            (
+                String::new(),
+                materialized.base.blob_hash.clone(),
+                String::new(),
+            )
+        } else {
+            let Some(document_path) = existing_path(&document) else {
+                return Ok(Err(ApplyError::Internal(format!(
+                    "wedged child `{}` target is not an existing document",
+                    child.child_key
+                ))));
+            };
+            let base_blob_hash = materialized.base.blob_hash.clone();
+            let core_base_blob_hash =
+                full_file_blob_hash(worktree_root, &document_path, &base_blob_hash);
+            (document_path, base_blob_hash, core_base_blob_hash)
+        };
     // The materialized (approved) revision the wedged Applying followed.
     let source_revision = applying
         .previous_revision
@@ -789,8 +906,6 @@ fn build_reclaim_prep(
         .receipt_id
         .clone()
         .unwrap_or_else(|| receipt_id_for(request.changeset_id, &source_revision));
-    let base_blob_hash = materialized.base.blob_hash.clone();
-    let core_base_blob_hash = full_file_blob_hash(worktree_root, &document_path, &base_blob_hash);
     let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
     let reservation = InFlightReservation {
         key_scope: key_scope.clone(),
@@ -1005,6 +1120,31 @@ fn build_write_invocation(
     document_path: &str,
     core_base_blob_hash: String,
 ) -> Result<CoreInvocation> {
+    // CreateDocument is NOT a `write` over an existing doc ref at all — it is
+    // its own `CoreInvocation` constructor (`vault add`, no `document_path`,
+    // no `--expected-blob-hash`, no stdin body), so it takes the ONLY early
+    // return here rather than being forced into the `CoreInvocation::write`
+    // shape every other kind shares below.
+    if operation == ChangesetOperationKind::CreateDocument {
+        let DocumentRef::ProvisionalCreate {
+            doc_type,
+            feature,
+            title,
+            ..
+        } = &materialized.target.document
+        else {
+            return Err(ApplyError::Internal(
+                "materialized CreateDocument child target is not a provisional create".to_string(),
+            ));
+        };
+        let Some(date) = materialized.create_document_date.as_deref() else {
+            return Err(ApplyError::Internal(
+                "materialized CreateDocument child carries no fixed create date".to_string(),
+            ));
+        };
+        return CoreInvocation::create_document(doc_type, feature, Some(title.as_str()), date, &[])
+            .map_err(|err| ApplyError::Internal(format!("invocation build failed: {err}")));
+    }
     let (capability, args) = match operation {
         ChangesetOperationKind::ReplaceBody => (
             CoreCapability::SetBody,
@@ -1076,10 +1216,42 @@ fn build_write_invocation(
 /// against carries the OLD path, which the rename just moved the file away
 /// from. Verification instead re-resolves by STEM: the document now exists at
 /// the new stem and no longer exists at the old one.
+///
+/// `CreatedAt` applies to `CreateDocument` — core generates the scaffold from
+/// a doc-type template we cannot predict byte-for-byte (no base to preview
+/// against, no preimage), so a blob-hash compare is never sound. Nor is a bare
+/// "a document now exists at the target stem" check sound in general — that
+/// is the stem-identity-aliasing class of bug the Rename rollback lineage
+/// guard exists to close. What closes it here is different from Rename's
+/// fix (create has no rollback to alias across): the predicted path is a
+/// DETERMINISTIC function of the materialized operation alone
+/// (`create_document_date` + `feature` + `doc_type`, fixed once at
+/// materialize time — see `operations::materialize_create_document`), core
+/// itself REFUSES to overwrite an existing document (this invocation never
+/// passes `--force`), and duplicate-path conflict detection denies two LIVE
+/// changesets from ever targeting the same predicted path. Together those
+/// mean at most ONE successful create can ever land at `expected_path`, so
+/// resolving there is sound identity proof — the same trust `RenamedTo`
+/// places in path resolution. A frontmatter feature-tag re-read adds
+/// defense-in-depth ("expected scaffold shape", not bare existence) against a
+/// resolved document that happens to occupy the exact predicted path but was
+/// never this create's own scaffold. Crucially, none of `expected_path`/
+/// `expected_stem`/`expected_feature_tag` depend on wall-clock "now" at
+/// verify time — a crash-recovery reclaim recomputes the IDENTICAL values
+/// from the SAME durable `materialized_operation`, unlike a freshness flag
+/// captured once and never safely recomputable.
 enum PostVerifyExpectation {
     ExactBlobHash(String),
     FrontmatterFields(FrontmatterEditFields),
-    RenamedTo { old_stem: String, new_stem: String },
+    RenamedTo {
+        old_stem: String,
+        new_stem: String,
+    },
+    CreatedAt {
+        expected_stem: String,
+        expected_path: String,
+        expected_feature_tag: String,
+    },
 }
 
 /// Build the [`PostVerifyExpectation`] for one materialized child, keyed on
@@ -1114,6 +1286,29 @@ fn post_verify_expectation(
             Ok(PostVerifyExpectation::RenamedTo {
                 old_stem: old_stem.clone(),
                 new_stem,
+            })
+        }
+        ChangesetOperationKind::CreateDocument => {
+            let DocumentRef::ProvisionalCreate {
+                doc_type, feature, ..
+            } = &materialized.target.document
+            else {
+                return Err(ApplyError::Internal(
+                    "materialized CreateDocument child target is not a provisional create"
+                        .to_string(),
+                ));
+            };
+            let Some(date) = materialized.create_document_date.as_deref() else {
+                return Err(ApplyError::Internal(
+                    "materialized CreateDocument child carries no fixed create date".to_string(),
+                ));
+            };
+            let expected_stem = format!("{date}-{feature}-{doc_type}");
+            let expected_path = format!(".vault/{doc_type}/{expected_stem}.md");
+            Ok(PostVerifyExpectation::CreatedAt {
+                expected_stem,
+                expected_path,
+                expected_feature_tag: format!("#{feature}"),
             })
         }
         other => Err(ApplyError::Internal(format!(
@@ -1235,7 +1430,9 @@ mod tests {
         ApprovalDecision, ApprovalRequestInput, ReviewDecisionInput, ReviewedTuple,
     };
     use crate::authoring::leases::{AcquireLeaseInput, LeasePurpose, LeaseRecord};
-    use crate::authoring::model::{ActorId, ActorKind, ApprovalId, ChangesetKind, SessionId};
+    use crate::authoring::model::{
+        ActorId, ActorKind, ApprovalId, ChangesetKind, ProvisionalCollisionStatus, SessionId,
+    };
     use crate::authoring::operations::MaterializedProposalOperation;
     use crate::authoring::snapshots::{PreimageCaptureRequest, SnapshotReader};
     use crate::authoring::store::Store;
@@ -2309,6 +2506,319 @@ mod tests {
 
         assert!(!fx.doc_file.exists());
         assert!(fx.root.join(LIVE_RENAME_RENAMED_DOC_PATH).exists());
+    }
+
+    // --- W02.P05: CreateDocument against the REAL core ----------------------
+
+    const LIVE_CREATE_DOC_TYPE: &str = "plan";
+    const LIVE_CREATE_FEATURE: &str = "apply-create-live-demo";
+    // A FIXED historical timestamp, never "now" — core's `vault add` accepts
+    // an explicit `--date` override (confirmed against the real binary), so
+    // pinning a stable date keeps this test's predicted path independent of
+    // the day it happens to run on, exactly like `materialize_create_document`
+    // fixes the date once at materialize time rather than reading a clock at
+    // verify time.
+    const LIVE_CREATE_CREATED_AT_MS: i64 = 1_768_435_200_000; // 2026-01-15T00:00:00Z
+    const LIVE_CREATE_DATE: &str = "2026-01-15";
+    const LIVE_CREATE_STEM: &str = "2026-01-15-apply-create-live-demo-plan";
+    const LIVE_CREATE_DOC_PATH: &str = ".vault/plan/2026-01-15-apply-create-live-demo-plan.md";
+
+    /// The `setup_live_rename` sibling for `CreateDocument`: a REAL git +
+    /// vaultspec workspace, an APPROVED single-child `CreateDocument`
+    /// changeset ready to apply against the genuine `vaultspec-core` binary.
+    /// Unlike every other kind, there is NO base document to write first —
+    /// nothing exists yet.
+    fn setup_live_create() -> Fx {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        git(&root, &["init", "-b", "main", "."]);
+        scaffold_vaultspec_workspace(&root);
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "apply live create fixture"]);
+
+        let mut store = Store::open(&root.join(".vault")).unwrap();
+        let changeset_id = ChangesetId::new("changeset_apply_cr_live_1").unwrap();
+        let proposal_id = ProposalId::new("proposal_apply_cr_live_1").unwrap();
+        let origin = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let applier = actor("human:applier", ActorKind::Human);
+
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                for (id, kind) in [
+                    ("agent:author", ActorKind::Agent),
+                    ("human:reviewer", ActorKind::Human),
+                    ("human:applier", ActorKind::Human),
+                ] {
+                    uow.actors().put_record(ActorRecordInput::active(
+                        actor(id, kind),
+                        ActorDisplayMetadata::new(id, None),
+                        1,
+                    ))?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        let provisional_document = DocumentRef::ProvisionalCreate {
+            provisional_doc_id: "provisional_apply_cr_live_1".to_string(),
+            doc_type: LIVE_CREATE_DOC_TYPE.to_string(),
+            feature: LIVE_CREATE_FEATURE.to_string(),
+            title: "Apply Live Create Demo".to_string(),
+            collision_status: ProvisionalCollisionStatus::Unknown,
+            proposed_stem: None,
+        };
+        let draft = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::CreateDocument,
+            target: TargetRevisionFence {
+                document: provisional_document.clone(),
+                base_revision: None,
+                current_revision: None,
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: "preview body (never sent to core; a real create's scaffold comes \
+                       from core's own doc-type template)"
+                    .to_string(),
+                frontmatter: None,
+                new_stem: None,
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_create_document(
+            &changeset_id,
+            draft,
+            LIVE_CREATE_CREATED_AT_MS,
+        )
+        .unwrap();
+        assert_eq!(
+            materialized.create_document_date.as_deref(),
+            Some(LIVE_CREATE_DATE),
+            "the fixed timestamp must format to the fixed date the test's expected path uses"
+        );
+        let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
+
+        // A CurrentRevisionObservation matching the SAME phantom "diff from
+        // nothing" values `materialize_create_document` used internally (empty
+        // text, the git-style empty-blob hash) — required because
+        // `validate_current_revision` BLOCKS approval-readiness on a missing
+        // observation for ANY operation kind, create included.
+        let empty_hash = blob_oid(b"");
+        let phantom_revision = RevisionToken::new(format!("blob:{empty_hash}")).unwrap();
+        let current_observation = CurrentRevisionObservation {
+            child_key: "child_1".to_string(),
+            document: provisional_document,
+            revision: phantom_revision,
+            blob_hash: empty_hash,
+        };
+        let validation_record = validate_changeset_material(
+            std::slice::from_ref(&materialized),
+            &[current_observation],
+            &[],
+            6,
+        )
+        .unwrap();
+        assert!(
+            validation_record.approval_ready,
+            "fixture validation must be approval-ready: {:?}",
+            validation_record.status
+        );
+        let validation_digest = validation_record.validation_digest.clone();
+
+        let child_input = ChangesetChildOperationInput::from_materialized(
+            materialized,
+            validation_record.material_digest.clone(),
+            validation_digest.clone(),
+        );
+
+        let reviewed_revision = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                let draft_rev = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: None,
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::Draft,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live create demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 10,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&draft_rev)?;
+                let needs_review = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: Some(draft_rev.changeset_revision.clone()),
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::NeedsReview,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live create demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 20,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&needs_review)?;
+                uow.validations().store_record(&validation_record)?;
+                Ok(needs_review.changeset_revision)
+            })
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+                Ok(uow.approvals().request_approval(ApprovalRequestInput {
+                    approval_id: ApprovalId::new("approval_apply_cr_live_1").unwrap(),
+                    proposal_id: proposal_id.clone(),
+                    changeset_id: changeset_id.clone(),
+                    reviewed: ReviewedTuple {
+                        proposal_revision: reviewed_revision.clone(),
+                        validation_digest: validation_digest.clone(),
+                        policy_version: V1_POLICY_VERSION.to_string(),
+                    },
+                    idempotency_key: "idem:request:cr:live:1".to_string(),
+                    created_at_ms: 30,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::Approve, |uow| {
+                Ok(uow.approvals().submit_decision(ReviewDecisionInput {
+                    proposal_id: &proposal_id,
+                    decision: ApprovalDecision::Approve,
+                    reviewer: &reviewer,
+                    validation: ValidationFreshness::fresh(),
+                    current_validation_digest: &validation_digest,
+                    current_policy_version: V1_POLICY_VERSION,
+                    run_cancelled: false,
+                    comment: None,
+                    decided_at_ms: 40,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        Fx {
+            _dir: dir,
+            store,
+            root: root.clone(),
+            doc_file: root.join(LIVE_CREATE_DOC_PATH),
+            changeset_id,
+            proposal_id,
+            origin,
+            applier,
+            expected_result_blob_hash,
+        }
+    }
+
+    /// A REAL `vaultspec-core` `vault add` invocation, wrapped to LAND the
+    /// scaffold and THEN hang past the deadline — mirrors
+    /// `landing_rename_timeout_adapter` for `CreateDocument`'s own
+    /// core-authoritative post-verify. Carries the SAME `--date` override
+    /// `build_write_invocation` would send, so the real scaffold lands at the
+    /// exact predicted path the test asserts against.
+    fn landing_create_timeout_adapter(
+        doc_type: &str,
+        feature: &str,
+        title: &str,
+        date: &str,
+    ) -> CoreAdapter {
+        let invocation = if cfg!(windows) {
+            vec![
+                "powershell".to_string(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!(
+                    "& {{ uv run --no-sync vaultspec-core vault add '{doc_type}' --feature \
+                     '{feature}' --title '{title}' --date '{date}' --json | Out-Null; \
+                     Start-Sleep -Seconds 30 }}"
+                ),
+            ]
+        } else {
+            vec![
+                "sh".to_string(),
+                "-c".into(),
+                format!(
+                    "uv run --no-sync vaultspec-core vault add '{doc_type}' --feature \
+                     '{feature}' --title '{title}' --date '{date}' --json >/dev/null 2>&1; \
+                     sleep 30"
+                ),
+            ]
+        };
+        CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
+    }
+
+    #[test]
+    fn create_document_apply_against_the_real_core_is_recognized_applied() {
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_create();
+        let applier = fx.applier.clone();
+        let adapter = CoreAdapter::detect();
+        let outcome = apply(&mut fx, &adapter, &applier, "idem:apply:cr:live:1", 100);
+        assert!(
+            outcome.eligibility.allowed,
+            "{:?}",
+            outcome.eligibility.reason
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an applied create changeset yields a receipt");
+        assert_eq!(receipt.state, ApplyState::Applied, "{receipt:?}");
+        assert_eq!(receipt.child.outcome, ApplyChildOutcome::Applied);
+        assert!(
+            !receipt.child.resolved_via_post_verify,
+            "a clean success completes via the envelope, never the recovery path"
+        );
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        assert!(
+            fx.doc_file.exists(),
+            "the REAL vaultspec-core `vault add` scaffolded the document"
+        );
+    }
+
+    #[test]
+    fn create_document_indeterminate_kill_after_a_real_landed_create_is_recognized_applied() {
+        // THE R1 pattern applied to CreateDocument: core is core-authoritative
+        // over the ENTIRE scaffold (a doc-type template this engine cannot
+        // predict) — there is no preview hash to compare, and a bare
+        // "something now exists at the target stem" check would be exactly
+        // the stem-identity-aliasing bug class the Rename rollback lineage
+        // guard closes. The identity-bearing `CreatedAt` verify (a
+        // DETERMINISTIC predicted path fixed at materialize time, plus a
+        // frontmatter feature-tag re-read) must recognize a REAL, landed
+        // `vault add` regardless of the reclaim recomputing everything from
+        // the SAME durable `materialized_operation`.
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_create();
+        let applier = fx.applier.clone();
+        let adapter = landing_create_timeout_adapter(
+            LIVE_CREATE_DOC_TYPE,
+            LIVE_CREATE_FEATURE,
+            "Apply Live Create Demo",
+            LIVE_CREATE_DATE,
+        );
+        let outcome = apply(
+            &mut fx,
+            &adapter,
+            &applier,
+            "idem:apply:cr:live:kill:1",
+            100,
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an indeterminate kill still resolves to a terminal receipt");
+        assert_eq!(
+            receipt.state,
+            ApplyState::Applied,
+            "the REAL landed create must be recognized Applied via the identity-bearing \
+             post-verify: {receipt:?}"
+        );
+        assert!(receipt.child.resolved_via_post_verify);
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        assert!(fx.doc_file.exists());
     }
 
     /// A REAL `vaultspec-core` `set-frontmatter` invocation, wrapped to LAND the
