@@ -549,21 +549,21 @@ The W12/W13 engines (authorization authorize_command, lease fencing validate_fen
 
 Prove restart recovery, event replay, browser reconnect, duplicate retry, and unauthorized command behavior across the whole system.
 
-- [ ] `W14.P42.S206` - Ground Restart replay reconnect and security negatives requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W14.P42.S207` - Implement acceptance scenarios for restart, replay, reconnect, duplicate retry, unauthorized actor, forbidden scope, and forbidden tool flows; `frontend/e2e/authoring.spec.ts`.
-- [ ] `W14.P42.S208` - Add end-to-end tests covering dashboard recovery, stream gap recovery, backend restart, security negatives, and multi-client conflict recovery; `frontend/e2e/authoring.spec.ts`.
-- [ ] `W14.P42.S209` - Run Restart replay reconnect and security negatives code review and record the phase audit; `.vault/audit/`.
-- [ ] `W14.P42.S210` - Verify recovery and security-negative scenarios pass through automated tests and manual acceptance checks; `frontend/e2e/authoring.spec.ts`.
+- [x] `W14.P42.S206` - Ground Restart replay reconnect and security negatives requirements into the phase checklist; `.vault/adr/`.
+- [x] `W14.P42.S207` - Implement acceptance scenarios for restart, replay, reconnect, duplicate retry, unauthorized actor, forbidden scope, and forbidden tool flows; `frontend/e2e/authoring.spec.ts`.
+- [x] `W14.P42.S208` - Add end-to-end tests covering dashboard recovery, stream gap recovery, backend restart, security negatives, and multi-client conflict recovery; `frontend/e2e/authoring.spec.ts`.
+- [x] `W14.P42.S209` - Run Restart replay reconnect and security negatives code review and record the phase audit; `.vault/audit/`.
+- [x] `W14.P42.S210` - Verify recovery and security-negative scenarios pass through automated tests and manual acceptance checks; `frontend/e2e/authoring.spec.ts`.
 
 ### Phase `W14.P47` - Legacy write-broker retirement
 
 Operation-modes ADR transition gate: flip the editor save to direct-changesets by default once Increment 2 parity evidence holds, and retire the dual /ops/core write path as a planned step, not an indefinite tolerance. SCOPE BOUNDARY (2026-07-09): this phase retires the direct-write MECHANISM's legacy branch — the dead dual-run/LegacyComparison measurement machinery is removed, the capability default flips to direct-changeset-authoritative, and the mechanism is proven fully ledger-sourced (a save surfaces as a kind=direct changeset through the same review-station projection as any other, with preimage, provenance, and rollback). PRODUCT-LEVEL CUTOVER DEFERRED: the live editor-save button still writes through the un-ledgered /ops/core sibling passthrough (set-body), and the other /ops/core write verbs (set-frontmatter, rename, create, archive, link) never touch the ledger either. Rewiring the editor UI to the ledgered direct-changeset path is a materially larger frontend feature with undesigned product/security surface (a per-editing-session actor-token bootstrap, direct-write conflict UX, editorWriteSeam/editorMutations test rewrites) beyond this phase's declared direct_write.rs scope, so S255's 'no un-ledgered write path remains' is honestly TRUE of the mechanism but NOT YET true at the product level. Return trigger: a decision to route the editor save (and, separately, the remaining lifecycle verbs) through the ledger, scoped as its own phase.
 
-- [ ] `W14.P47.S251` - Ground Legacy write-broker retirement requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W14.P47.S252` - Flip the editor save to the direct-changeset path by default once Increment 2 latency and conflict-UX parity evidence holds, and remove the legacy /ops/core dual-run branch; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
-- [ ] `W14.P47.S253` - Add regression tests confirming the editor save path is single-sourced through the ledger with no un-ledgered write path remaining; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
-- [ ] `W14.P47.S254` - Run Legacy write-broker retirement code review and record the phase audit; `.vault/audit/`.
-- [ ] `W14.P47.S255` - Verify every vault document mutation, human or agent, enters history as a changeset with preimage and provenance, and no un-ledgered write path remains; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
+- [x] `W14.P47.S251` - Ground Legacy write-broker retirement requirements into the phase checklist; `.vault/adr/`.
+- [x] `W14.P47.S252` - Flip the editor save to the direct-changeset path by default once Increment 2 latency and conflict-UX parity evidence holds, and remove the legacy /ops/core dual-run branch; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
+- [x] `W14.P47.S253` - Add regression tests confirming the editor save path is single-sourced through the ledger with no un-ledgered write path remaining; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
+- [x] `W14.P47.S254` - Run Legacy write-broker retirement code review and record the phase audit; `.vault/audit/`.
+- [x] `W14.P47.S255` - Verify every vault document mutation, human or agent, enters history as a changeset with preimage and provenance, and no un-ledgered write path remains; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
 
 ### Phase `W14.P43` - Final gate audit and release readiness
 
