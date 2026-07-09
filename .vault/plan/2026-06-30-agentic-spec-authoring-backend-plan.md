@@ -409,8 +409,8 @@ Expose context, search, propose, validate, request approval, cancel, and request
 - [x] `W12.P31.S151` - Ground Semantic agent tool aliases requirements into the phase checklist; `.vault/adr/`.
 - [x] `W12.P31.S152` - Implement the semantic agent tool catalog, tool schemas, bounded scope validation, and command dispatch aliases; `engine/crates/vaultspec-api/src/authoring/tools.rs`.
 - [x] `W12.P31.S153` - Add tool tests for read context, search, propose, validate, approval request, cancel, apply request, and rejected core-shaped verb; `engine/crates/vaultspec-api/src/authoring/tools.rs`.
-- [ ] `W12.P31.S154` - Run Semantic agent tool aliases code review and record the phase audit; `.vault/audit/`.
-- [ ] `W12.P31.S155` - Verify agents can call semantic tools but cannot invoke direct core writes; `engine/crates/vaultspec-api/src/authoring/tools.rs`.
+- [x] `W12.P31.S154` - Run Semantic agent tool aliases code review and record the phase audit; `.vault/audit/`.
+- [x] `W12.P31.S155` - Verify agents can call semantic tools but cannot invoke direct core writes; `engine/crates/vaultspec-api/src/authoring/tools.rs`.
 
 ### Phase `W12.P22` - Tool permission request flow
 
@@ -419,8 +419,8 @@ Make dangerous or scoped agent tools produce durable permission requests and sta
 - [x] `W12.P22.S106` - Ground Tool permission request flow requirements into the phase checklist; `.vault/adr/`.
 - [x] `W12.P22.S107` - Implement tool permission request creation, claim, decision, expiry, replay, and audit record handling; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
 - [x] `W12.P22.S108` - Add permission tests for approved tool, rejected tool, expired request, replayed decision, and multiple simultaneous requests; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
-- [ ] `W12.P22.S109` - Run Tool permission request flow code review and record the phase audit; `.vault/audit/`.
-- [ ] `W12.P22.S110` - Verify agent tools cannot proceed past permission gates without durable human decisions; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
+- [x] `W12.P22.S109` - Run Tool permission request flow code review and record the phase audit; `.vault/audit/`.
+- [x] `W12.P22.S110` - Verify agent tools cannot proceed past permission gates without durable human decisions; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
 
 ### Phase `W12.P32` - Interrupt resume and tool-call records
 
@@ -429,8 +429,8 @@ Normalize interrupts, permission requests, changeset approvals, and replay-safe 
 - [x] `W12.P32.S156` - Ground Interrupt resume and tool-call records requirements into the phase checklist; `.vault/adr/`.
 - [x] `W12.P32.S157` - Implement interrupt normalization, resume-by-interrupt-id commands, tool-call records, decision payloads, and replay handling; `engine/crates/vaultspec-api/src/authoring/interrupts.rs`.
 - [x] `W12.P32.S158` - Add interrupt tests for multiple interrupts, stable resume IDs, replayed tool call, rejected permission, approved proposal, and stale decision; `engine/crates/vaultspec-api/src/authoring/interrupts.rs`.
-- [ ] `W12.P32.S159` - Run Interrupt resume and tool-call records code review and record the phase audit; `.vault/audit/`.
-- [ ] `W12.P32.S160` - Verify human decisions resume the intended interrupt by stable ID through tests and manual LangGraph fixture replay; `engine/crates/vaultspec-api/src/authoring/interrupts.rs`.
+- [x] `W12.P32.S159` - Run Interrupt resume and tool-call records code review and record the phase audit; `.vault/audit/`.
+- [x] `W12.P32.S160` - Verify human decisions resume the intended interrupt by stable ID through tests and manual LangGraph fixture replay; `engine/crates/vaultspec-api/src/authoring/interrupts.rs`.
 
 ### Phase `W12.P44` - Bounded generation channels and transcript compaction (W07.P34 remainder)
 
@@ -439,8 +439,8 @@ Deferred remainder of the Increment 3 stream subset: bounded generation and toke
 - [x] `W12.P44.S236` - Ground Bounded generation channels and transcript compaction requirements into the phase checklist; `.vault/adr/`.
 - [x] `W12.P44.S237` - Implement bounded generation and token channels plus transcript compaction hooks deferred from the Increment 3 stream subset; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
 - [x] `W12.P44.S238` - Add tests for token retention caps, compacted transcripts, and frontend cursor restoration of generation channels; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
-- [ ] `W12.P44.S239` - Run Bounded generation channels and transcript compaction code review and record the phase audit; `.vault/audit/`.
-- [ ] `W12.P44.S240` - Verify generation and token channels stay bounded and transcripts compact without discarding lifecycle truth; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
+- [x] `W12.P44.S239` - Run Bounded generation channels and transcript compaction code review and record the phase audit; `.vault/audit/`.
+- [x] `W12.P44.S240` - Verify generation and token channels stay bounded and transcripts compact without discarding lifecycle truth; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
 
 ### Phase `W12.P41` - LangGraph agent fixture against backend commands
 
@@ -449,8 +449,8 @@ Run a LangGraph-backed fixture against semantic backend tools and approval inter
 - [x] `W12.P41.S201` - Ground LangGraph agent fixture against backend commands requirements into the phase checklist; `.vault/adr/`.
 - [x] `W12.P41.S202` - Implement a LangGraph authoring fixture that creates proposals, pauses for approval, resumes, and requests apply through backend commands; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
 - [x] `W12.P41.S203` - Add fixture tests for proposal creation, permission interrupt, manual-mode approval as review-station state (not a suspending interrupt), resume by interrupt ID, rejected tool, and cancelled run; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
-- [ ] `W12.P41.S204` - Run LangGraph agent fixture against backend commands code review and record the phase audit; `.vault/audit/`.
-- [ ] `W12.P41.S205` - Verify the Increment 4 demo: a real LangGraph fixture drafts a proposal, pauses on a tool-permission interrupt, resumes by interrupt id, requests approval, and, in autonomous mode, sees its work applied and listed after-the-fact; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
+- [x] `W12.P41.S204` - Run LangGraph agent fixture against backend commands code review and record the phase audit; `.vault/audit/`.
+- [x] `W12.P41.S205` - Verify the Increment 4 demo: a real LangGraph fixture drafts a proposal, pauses on a tool-permission interrupt, resumes by interrupt id, requests approval, and, in autonomous mode, sees its work applied and listed after-the-fact; `engine/crates/vaultspec-api/tests/langgraph_authoring_fixture.rs`.
 
 ## Wave `W13` - Increment 5 - Concurrency, review depth, and security hardening
 
@@ -463,8 +463,8 @@ Coordinate active editing with scoped advisory leases, renewals, expirations, re
 - [x] `W13.P26.S126` - Ground Advisory leases and fencing tokens requirements into the phase checklist; `.vault/adr/`.
 - [x] `W13.P26.S127` - Implement acquire, renew, release, expire, list, and fencing-token validation for scoped authoring leases; `engine/crates/vaultspec-api/src/authoring/leases.rs`.
 - [x] `W13.P26.S128` - Add lease tests for renewal, expiry, bad scope, concurrent acquisition, stale fencing token, and release by non-owner; `engine/crates/vaultspec-api/src/authoring/leases.rs`.
-- [ ] `W13.P26.S129` - Run Advisory leases and fencing tokens code review and record the phase audit; `.vault/audit/`.
-- [ ] `W13.P26.S130` - Verify two editors receive deterministic lease and fencing outcomes through tests and manual concurrent API checks; `engine/crates/vaultspec-api/src/authoring/leases.rs`.
+- [x] `W13.P26.S129` - Run Advisory leases and fencing tokens code review and record the phase audit; `.vault/audit/`.
+- [x] `W13.P26.S130` - Verify two editors receive deterministic lease and fencing outcomes through tests and manual concurrent API checks; `engine/crates/vaultspec-api/src/authoring/leases.rs`.
 
 ### Phase `W13.P27` - Base-revision conflict detection
 
@@ -473,8 +473,8 @@ Detect stale bases, overlapping operations, anchor drift, policy conflicts, and 
 - [x] `W13.P27.S131` - Ground Base-revision conflict detection requirements into the phase checklist; `.vault/adr/`.
 - [x] `W13.P27.S132` - Implement base revision checks, overlap detection, anchor drift detection, policy conflict checks, and conflict reason projection; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
 - [x] `W13.P27.S133` - Add conflict tests for stale base, overlapping hunks, stale whole-document draft, anchor drift, policy conflict, and no-conflict paths; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
-- [ ] `W13.P27.S134` - Run Base-revision conflict detection code review and record the phase audit; `.vault/audit/`.
-- [ ] `W13.P27.S135` - Verify conflicts are deterministic and reviewable through tests and manual concurrent edit checks; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
+- [x] `W13.P27.S134` - Run Base-revision conflict detection code review and record the phase audit; `.vault/audit/`.
+- [x] `W13.P27.S135` - Verify conflicts are deterministic and reviewable through tests and manual concurrent edit checks; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
 
 ### Phase `W13.P28` - Explicit rebase and supersession commands
 
@@ -483,7 +483,7 @@ Provide explicit user-visible flows for rebase, supersede, cancel, and replaceme
 - [x] `W13.P28.S136` - Ground Explicit rebase and supersession commands requirements into the phase checklist; `.vault/adr/`.
 - [x] `W13.P28.S137` - Implement rebase commands, supersession commands, replacement proposal creation, stale input checks, and conflict carry-forward; `engine/crates/vaultspec-api/src/authoring/rebase.rs`.
 - [x] `W13.P28.S138` - Add rebase tests for successful rebase, failed rebase, superseded proposal, cancelled original, and replayed rebase request; `engine/crates/vaultspec-api/src/authoring/rebase.rs`.
-- [ ] `W13.P28.S139` - Run Explicit rebase and supersession commands code review and record the phase audit; `.vault/audit/`.
+- [x] `W13.P28.S139` - Run Explicit rebase and supersession commands code review and record the phase audit; `.vault/audit/`.
 - [x] `W13.P28.S140` - Verify stale proposals only advance through explicit rebase or supersession decisions; `engine/crates/vaultspec-api/src/authoring/rebase.rs`.
 
 ### Phase `W13.P45` - Section-scoped proposal operations (W03.P13 remainder, conditional)
@@ -503,8 +503,8 @@ Enforce policy before any human or agent command mutates authoring state or requ
 - [x] `W13.P20.S96` - Ground Authorization engine and scope guards requirements into the phase checklist; `.vault/adr/`.
 - [x] `W13.P20.S97` - Implement authorization checks, scope guards, dangerous-tool guards, policy failures, and safe error redaction; `engine/crates/vaultspec-api/src/authoring/security.rs`.
 - [x] `W13.P20.S98` - Add authorization tests for forbidden document scope, forbidden tool, stale actor, unauthorized apply, redacted error, and allowed delegated command; `engine/crates/vaultspec-api/src/authoring/security.rs`.
-- [ ] `W13.P20.S99` - Run Authorization engine and scope guards code review and record the phase audit; `.vault/audit/`.
-- [ ] `W13.P20.S100` - Verify unauthorized humans and agents cannot mutate state through tests and manual negative API checks; `engine/crates/vaultspec-api/src/authoring/security.rs`.
+- [x] `W13.P20.S99` - Run Authorization engine and scope guards code review and record the phase audit; `.vault/audit/`.
+- [x] `W13.P20.S100` - Verify unauthorized humans and agents cannot mutate state through tests and manual negative API checks; `engine/crates/vaultspec-api/src/authoring/security.rs`.
 
 ### Phase `W13.P24` - Review station queues and provenance audit
 
@@ -513,8 +513,8 @@ Serve review queues, claims, clarification, reviewer edits, audit records, redac
 - [x] `W13.P24.S116` - Ground Review station queues and provenance audit requirements into the phase checklist; `.vault/adr/`.
 - [x] `W13.P24.S117` - Implement review queue projections, claim handling, clarification responses, reviewer edits, audit records, redaction, and provenance queries; `engine/crates/vaultspec-api/src/authoring/review.rs`.
 - [x] `W13.P24.S118` - Add review station tests for pending queues, claims, release, clarification, reviewer edits, redacted audit records, and bounded query results; `engine/crates/vaultspec-api/src/authoring/review.rs`.
-- [ ] `W13.P24.S119` - Run Review station queues and provenance audit code review and record the phase audit; `.vault/audit/`.
-- [ ] `W13.P24.S120` - Verify review station state and provenance are backend-served through tests and manual queue checks; `engine/crates/vaultspec-api/src/authoring/review.rs`.
+- [x] `W13.P24.S119` - Run Review station queues and provenance audit code review and record the phase audit; `.vault/audit/`.
+- [x] `W13.P24.S120` - Verify review station state and provenance are backend-served through tests and manual queue checks; `engine/crates/vaultspec-api/src/authoring/review.rs`.
 
 ### Phase `W13.P46` - Per-operation rollback inverses (W08.P38 remainder, evidence-gated)
 
@@ -524,7 +524,7 @@ Per-operation rollback inverses, evidence-gated on real usage need. DEFERRED OUT
 - [ ] `W13.P46.S247` - Implement per-operation rollback inverse logic beyond whole-document preimage restore, enabled per operation kind only as need appears from real usage; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
 - [ ] `W13.P46.S248` - Add inverse-logic tests per enabled operation kind, covering delete inverse, rename inverse, and remaining honest unavailable-reason cases; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
 - [ ] `W13.P46.S249` - Run Per-operation rollback inverses code review and record the phase audit; `.vault/audit/`.
-- [ ] `W13.P46.S250` - Verify the Increment 5 demo: two concurrent writers, one human and one agent, on one document, with lease coordination visible, stale proposal conflicts deterministically, explicit rebase producing a fresh reviewable candidate, and an unauthorized actor refused with a redacted error; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
+- [x] `W13.P46.S250` - Verify the Increment 5 demo: two concurrent writers, one human and one agent, on one document, with lease coordination visible, stale proposal conflicts deterministically, explicit rebase producing a fresh reviewable candidate, and an unauthorized actor refused with a redacted error; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
 
 ## Wave `W14` - Increment 6 - Acceptance, retirement, and release
 
@@ -540,10 +540,10 @@ The W12/W13 engines (authorization authorize_command, lease fencing validate_fen
 - [x] `W14.P42a.S259` - Serve detect_conflicts via a route and projection and consult it in the apply preflight; `engine/crates/vaultspec-api/src/authoring/http.rs`.
 - [x] `W14.P42a.S260` - Register the rebase and replacement-proposal routes over rebase_proposal and create_replacement_proposal; `engine/crates/vaultspec-api/src/authoring/http.rs`.
 - [x] `W14.P42a.S261` - Register the review-station queue, claims, respond, and provenance routes and flip submit_review_decision Edit and Respond onto the review-station respond path; `engine/crates/vaultspec-api/src/authoring/http.rs`.
-- [ ] `W14.P42a.S262` - Drive compact_generation_transcripts via an apply or append-time hook or a bounded periodic sweep; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
-- [ ] `W14.P42a.S263` - Add negative-path and integration tests over the live API for unauthorized, forbidden-scope, and forbidden-tool refusals, served stale conflicts, and rebase and review-station round-trips; `engine/crates/vaultspec-api/tests/`.
-- [ ] `W14.P42a.S264` - Run engine-wiring code review and record the phase audit; `.vault/audit/`.
-- [ ] `W14.P42a.S265` - Verify unauthorized humans and agents cannot mutate state through the live API and every wired engine is reachable and enforcing; `engine/crates/vaultspec-api/src/authoring/http.rs`.
+- [x] `W14.P42a.S262` - Drive compact_generation_transcripts via an apply or append-time hook or a bounded periodic sweep; `engine/crates/vaultspec-api/src/authoring/stream.rs`.
+- [x] `W14.P42a.S263` - Add negative-path and integration tests over the live API for unauthorized, forbidden-scope, and forbidden-tool refusals, served stale conflicts, and rebase and review-station round-trips; `engine/crates/vaultspec-api/tests/`.
+- [x] `W14.P42a.S264` - Run engine-wiring code review and record the phase audit; `.vault/audit/`.
+- [x] `W14.P42a.S265` - Verify unauthorized humans and agents cannot mutate state through the live API and every wired engine is reachable and enforcing; `engine/crates/vaultspec-api/src/authoring/http.rs`.
 
 ### Phase `W14.P42` - Restart replay reconnect and security negatives
 
