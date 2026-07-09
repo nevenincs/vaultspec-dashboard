@@ -10,6 +10,7 @@ related:
   - '[[2026-07-09-ledgered-edit-migration-audit]]'
   - '[[2026-07-09-ledgered-edit-migration-plan]]'
   - '[[2026-07-09-ledgered-edit-migration-reference]]'
+  - '[[2026-07-10-ledgered-edit-migration-audit]]'
 ---
 
 # `ledgered-edit-migration` feature index
@@ -25,6 +26,7 @@ Auto-generated index of all documents tagged with `#ledgered-edit-migration`.
 ### audit
 
 - `2026-07-09-ledgered-edit-migration-audit` - `ledgered-edit-migration` audit: `Final gate and epic closeout`
+- `2026-07-10-ledgered-edit-migration-audit` - `ledgered-edit-migration` audit: `W05 post-migration hardening closeout`
 
 ### plan
 

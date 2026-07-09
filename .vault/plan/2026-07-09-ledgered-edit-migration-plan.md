@@ -213,12 +213,12 @@ The two follow-ons recorded in the epic closeout audit, now driven to completion
 
 The frontend routes a rename/create path-collision by substring-matching the backend's denial reason text (RENAME_COLLISION_REASON_HINT 'already exists at the proposed stem'), mirroring the backend's own conflict-vs-denied reason-sniffing (contains base/stale). This is fragile: a backend reason-wording change silently breaks collision detection (falls through to a generic refusal). Carry the structured denial kind through to the direct-write outcome so the frontend reads a machine-readable discriminator instead of matching prose, and both sides stop reason-sniffing.
 
-- [ ] `W05.P14.S93` - Ground the structured-denial-discriminator design: trace where the collision conflict kind is known and lost to a reason string; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
-- [ ] `W05.P14.S94` - Carry a machine-readable denial-kind discriminator (path-collision, stale-base, scope-mismatch, forbidden-actor) onto the direct-write outcome instead of only the reason string; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
-- [ ] `W05.P14.S95` - Rewire the frontend rename and create outcome mapping to route on the structured discriminator instead of substring-matching the reason text; `retire RENAME_COLLISION_REASON_HINT; `frontend/src/stores/server/queries.ts`.
-- [ ] `W05.P14.S96` - Add tests proving the backend tags the discriminator and the frontend routes collision without reason-sniffing; `frontend/src/stores/server/editorWriteSeam.test.tsx`.
-- [ ] `W05.P14.S97` - Run Structured direct-write denial discriminator code review and record the phase audit; `.vault/audit/`.
-- [ ] `W05.P14.S98` - Verify a rename/create collision routes to the collision UI on the structured discriminator alone, with a reason-wording change no longer able to break detection; `frontend/src/stores/server/queries.ts`.
+- [x] `W05.P14.S93` - Ground the structured-denial-discriminator design: trace where the collision conflict kind is known and lost to a reason string; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
+- [x] `W05.P14.S94` - Carry a machine-readable denial-kind discriminator (path-collision, stale-base, scope-mismatch, forbidden-actor) onto the direct-write outcome instead of only the reason string; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
+- [x] `W05.P14.S95` - Rewire the frontend rename and create outcome mapping to route on the structured discriminator instead of substring-matching the reason text; `retire RENAME_COLLISION_REASON_HINT; `frontend/src/stores/server/queries.ts`.
+- [x] `W05.P14.S96` - Add tests proving the backend tags the discriminator and the frontend routes collision without reason-sniffing; `frontend/src/stores/server/editorWriteSeam.test.tsx`.
+- [x] `W05.P14.S97` - Run Structured direct-write denial discriminator code review and record the phase audit; `.vault/audit/`.
+- [x] `W05.P14.S98` - Verify a rename/create collision routes to the collision UI on the structured discriminator alone, with a reason-wording change no longer able to break detection; `frontend/src/stores/server/queries.ts`.
 
 ### Phase `W05.P15` - CreateDocument rollback-inverse disposition
 
