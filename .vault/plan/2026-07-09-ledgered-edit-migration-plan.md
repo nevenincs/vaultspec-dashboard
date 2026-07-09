@@ -137,12 +137,12 @@ Rewire the rename mutation hook from the legacy ops dispatch to the operation-ty
 
 Rewire the create-document mutation hook and its dialog trigger from the legacy ops create dispatch to the operation-typed direct-edit route.
 
-- [ ] `W03.P09.S48` - Ground create-dialog direct-write cutover requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W03.P09.S49` - Rewire useCreateDoc to mint the editor actor token and call the operation-typed direct-edit route instead of the legacy create ops dispatch; `frontend/src/stores/server/queries.ts`.
-- [ ] `W03.P09.S50` - Update the create-document dialog trigger to surface the ledgered create outcome, including the honest non-rollback-eligible state; `frontend/src/app/stage/CreateDocButton.tsx`.
-- [ ] `W03.P09.S51` - Add editorWriteSeam.test.tsx request-construction coverage for useCreateDoc against the authoring direct-write call, covering the happy path and denied/conflicted outcomes; `frontend/src/stores/server/editorWriteSeam.test.tsx`.
-- [ ] `W03.P09.S52` - Run Create dialog rewire code review and record the phase audit; `.vault/audit/`.
-- [ ] `W03.P09.S53` - Verify a document creation produces a changeset with provenance and no live path still calls the legacy create write route; `frontend/src/stores/server/opsActions.ts`.
+- [x] `W03.P09.S48` - Ground create-dialog direct-write cutover requirements into the phase checklist; `.vault/adr/`.
+- [x] `W03.P09.S49` - Rewire useCreateDoc to mint the editor actor token and call the operation-typed direct-edit route instead of the legacy create ops dispatch; `frontend/src/stores/server/queries.ts`.
+- [x] `W03.P09.S50` - Update the create-document dialog trigger to surface the ledgered create outcome, including the honest non-rollback-eligible state; `frontend/src/app/stage/CreateDocButton.tsx`.
+- [x] `W03.P09.S51` - Add editorWriteSeam.test.tsx request-construction coverage for useCreateDoc against the authoring direct-write call, covering the happy path and denied/conflicted outcomes; `frontend/src/stores/server/editorWriteSeam.test.tsx`.
+- [x] `W03.P09.S52` - Run Create dialog rewire code review and record the phase audit; `.vault/audit/`.
+- [x] `W03.P09.S53` - Verify a document creation produces a changeset with provenance and no live path still calls the legacy create write route; `frontend/src/stores/server/opsActions.ts`.
 
 ### Phase `W03.P09a` - CreateDocument identity echo
 
