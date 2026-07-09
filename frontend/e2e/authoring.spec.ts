@@ -21,7 +21,8 @@
 //                            `gap` frame naming `next_recovery_seq`; the client
 //                            recovers via GET /authoring/v1/recovery.
 //   duplicate retry        -> the SAME idempotency key replays the recorded
-//                            receipt (`data.replayed`) instead of re-executing.
+//                            receipt (`data.status: "replayed"`, the SAME
+//                            `receipt.receipt_id`) instead of re-executing.
 //   unauthorized actor     -> an unknown actor token is a redacted 401.
 //   forbidden scope        -> a target claiming a foreign workspace is a
 //                            redacted denial VALUE (never a fault).
@@ -31,12 +32,14 @@
 //                            principal on the live actor-token route, so it is
 //                            not wire-reachable here — see the test's note).
 //   multi-client conflict  -> two agents race the same document; the loser's
-//                            apply is refused, then recovers via a fresh
-//                            proposal against the new base (the engine's own
-//                            module note: the wire-reachable rebase outcome is
-//                            the deterministic gate, not a positive
-//                            Conflicted -> Draft resolve, which is unit-covered
-//                            only — see `authoring/rebase.rs`).
+//                            apply is refused with no receipt, then recovers
+//                            via a fresh replacement proposal against the new
+//                            base (the correct recovery for a stale-but-not-
+//                            `Conflicted` changeset — rebase requires a
+//                            `Conflicted` status this changeset never reaches
+//                            over the wire post-conflict-preflight; rebase's
+//                            own deterministic gating is covered engine-side in
+//                            `authoring_p42a_acceptance.rs`, not restated here).
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -366,22 +369,6 @@ test("two racing clients: the loser's apply is refused and recovers via a fresh 
     field(refused.data, "receipt"),
     "a conflict-refused apply never reaches the core",
   ).toBeUndefined();
-
-  // The explicit rebase route is live-wired and deterministically gated (the
-  // engine's own module note: a positive Conflicted -> Draft resolve is not
-  // wire-reachable post-conflict-preflight, so this asserts the reachable gate,
-  // not the positive transition). The refused apply above already advanced the
-  // changeset's revision (the conflict-preflight denial is itself a recorded
-  // transition), so the rebase fence must key off the CURRENT revision, not
-  // the one captured back at submit time.
-  const currentRevision = await client.currentRevision("changeset_race_loser");
-  const rebaseAttempt = await client.rebase(
-    agentB,
-    "changeset_race_loser",
-    currentRevision,
-    "idem:rebase:race-loser",
-  );
-  expect(rebaseAttempt.status, rebaseAttempt.raw).toBe(200);
 
   // The honest recovery path: B abandons the stale proposal and re-proposes
   // against the NEW base, then successfully proceeds through the same lifecycle.
