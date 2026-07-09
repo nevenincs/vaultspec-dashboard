@@ -153,43 +153,18 @@ describe("EngineClient", () => {
     );
   });
 
-  it("posts the explicit scope through document write and create ops", async () => {
+  it("posts the explicit scope through the retained archive maintenance op", async () => {
     const { calls, fetchImpl } = recordingFetch({
-      data: { envelope: { status: "updated", data: {} } },
+      data: { envelope: { status: "archived", data: {} } },
       tiers: {},
     });
     const client = new EngineClient({ baseUrl: "/api", fetchImpl });
 
-    await client.opsCoreWrite("set-body", {
-      scope: "wt-1",
-      ref: "2026-06-17-plan",
-      body: "# plan\n",
-      expected_blob_hash: "c245aabbccddeeff00112233445566778899aabb",
-    });
-    await client.opsCoreCreate({
-      scope: "wt-1",
-      doc_type: "plan",
-      feature: "scope-boundary",
-    });
+    await client.opsCoreArchive({ scope: "wt-1", feature: "scope-boundary" });
 
-    expect(calls.map((call) => call.url)).toEqual([
-      "/api/ops/core/set-body/write",
-      "/api/ops/core/create",
-    ]);
+    expect(calls.map((call) => call.url)).toEqual(["/api/ops/core/archive"]);
     expect(calls[0].init?.body).toBe(
-      JSON.stringify({
-        scope: "wt-1",
-        ref: "2026-06-17-plan",
-        body: "# plan\n",
-        expected_blob_hash: "c245aabbccddeeff00112233445566778899aabb",
-      }),
-    );
-    expect(calls[1].init?.body).toBe(
-      JSON.stringify({
-        scope: "wt-1",
-        doc_type: "plan",
-        feature: "scope-boundary",
-      }),
+      JSON.stringify({ scope: "wt-1", feature: "scope-boundary" }),
     );
   });
 

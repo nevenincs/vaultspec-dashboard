@@ -6,15 +6,14 @@
 //
 // NOTE — the editor WRITE seam (useSaveBody / useSetFrontmatter / useRenameDoc
 // / useCreateDoc, all routed through the authoring ledger's `directWrite`) is
-// split across three files, with NO faked-verb mock (the tautology the
+// split across two files, with NO faked-verb mock (the tautology the
 // no-mocks migration removed):
-//   • RESPONSE side — `liveAdapters.test.ts` runs `adaptOpsWrite` over CAPTURED
-//     LIVE wire samples (the legacy shape `archive`/`link` still ride).
-//   • REQUEST side — `editorWriteSeam.test.tsx` proves the hooks construct the
-//     correct `directWrite` request (the operation discriminator + per-kind
-//     fields + scope pin) and resolve the typed result, spying the client
-//     method (the response is a captured-shape fixture, not a faked engine
-//     verb).
+//   • REQUEST + RESPONSE side — `editorWriteSeam.test.tsx` proves the hooks
+//     construct the correct `directWrite` request (the operation discriminator
+//     + per-kind fields + scope pin), spying the client method, and that the
+//     `directWriteResultToOpsResult` / `directWriteRefusedResult` mapping
+//     resolves it onto the typed `OpsWriteResult` the editor consumes (the
+//     response is a captured-shape fixture, not a faked engine verb).
 //   • EDITOR STATE — this file: the bounded slice + `applyEditorWriteResult`.
 // Every kind lands on the SAME `OpsWriteResult`/`applyEditorWriteResult` shape
 // (rename maps to its own `RenameDocResult`), so this file's coverage is

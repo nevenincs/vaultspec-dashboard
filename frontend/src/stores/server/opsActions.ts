@@ -9,36 +9,36 @@ import { appDispatcher } from "../../platform/dispatch/middleware";
 import {
   engineClient,
   type OpsArchiveBody,
-  type OpsCreateBody,
   type OpsAutofixBody,
-  type OpsLinkBody,
   type OpsResult,
-  type OpsWriteBody,
 } from "./engine";
 
 export const OPS_ACTION = "ops:run";
 export const OPS_VERB_MAX_CHARS = 128;
 export const OPS_BODY_STRING_MAX_CHARS = 4096;
-export const OPS_BODY_CONTENT_MAX_CHARS = 512 * 1024;
-export const OPS_BODY_STRING_LIST_MAX_ITEMS = 256;
 
 export interface OpsPayload {
   target: "core" | "rag";
   verb: string;
   /**
    * The dispatch mode for a `core` target (document-editor backend): `control`
-   * (default) runs the argument-free `opsCore` control verb; `write` runs a
-   * document mutation (`set-body` | `set-frontmatter` | `edit` | `rename`) against
-   * `/ops/core/{verb}/write`; `create` runs `/ops/core/create`; `archive` runs
-   * `/ops/core/archive` (feature-scoped `vault feature archive`); `link` runs
-   * `/ops/core/link` (`vault link add <src> <dst>`). The write/create/archive/link
-   * modes carry their payload in `body`. A `rag` target ignores `mode` (it always
-   * forwards `body` to the brokered control verb).
+   * (default) runs the argument-free `opsCore` control verb; `archive` runs
+   * `/ops/core/archive` (feature-scoped `vault feature archive`); `autofix` runs
+   * `/ops/core/autofix` (feature-scoped `vault check all --fix`). These are the
+   * two RETAINED vault-maintenance operations (ledgered-edit-migration ADR — a
+   * multi-document/bulk op with no single target does not fit the per-document
+   * ledger). Every genuine content edit (set-body/set-frontmatter/rename/create/
+   * relate-link) is ledgered instead (`stores/server/authoring.ts`
+   * `directWrite()`), so the legacy `write`/`create`/`link` modes this seam used
+   * to carry are RETIRED (ledgered-edit-migration W04.P12) — this dispatcher
+   * whitelists only `archive`/`autofix`/argument-free control verbs now. A `rag`
+   * target ignores `mode` (it always forwards `body` to the brokered control
+   * verb).
    */
-  mode?: "control" | "write" | "create" | "archive" | "link" | "autofix";
+  mode?: "control" | "archive" | "autofix";
   /** Optional validated args. For a `rag` control verb: the reindex/watcher/evict
-   *  args (rag-control-plane). For a `core` `write`/`create` mode: the
-   *  `OpsWriteBody` / `OpsCreateBody` document-mutation payload. Absent for an
+   *  args (rag-control-plane). For a `core` `archive`/`autofix` mode: the
+   *  `OpsArchiveBody` / `OpsAutofixBody` maintenance payload. Absent for an
    *  argument-free control verb. */
   body?: unknown;
 }
@@ -71,10 +71,7 @@ const OPS_RAG_CONTROL_VERBS = new Set([
   "project-evict",
 ]);
 
-const OPS_CORE_WRITE_VERBS = new Set(["set-body", "set-frontmatter", "edit", "rename"]);
-const OPS_CORE_CREATE_VERB = "create";
 const OPS_CORE_ARCHIVE_VERB = "feature-archive";
-const OPS_CORE_LINK_VERB = "link-add";
 const OPS_CORE_AUTOFIX_VERB = "autofix";
 
 export function isOpsWhitelistIntent(
@@ -119,14 +116,7 @@ function isOpsTarget(value: unknown): value is OpsPayload["target"] {
 }
 
 function isOpsMode(value: unknown): value is NonNullable<OpsPayload["mode"]> {
-  return (
-    value === "control" ||
-    value === "write" ||
-    value === "create" ||
-    value === "archive" ||
-    value === "link" ||
-    value === "autofix"
-  );
+  return value === "control" || value === "archive" || value === "autofix";
 }
 
 function isBoundedString(
@@ -150,59 +140,9 @@ function isOptionalString(
   return value === undefined || isBoundedString(value, maxChars);
 }
 
-function isOptionalStringArray(value: unknown): value is string[] | undefined {
-  return (
-    value === undefined ||
-    (Array.isArray(value) &&
-      value.length <= OPS_BODY_STRING_LIST_MAX_ITEMS &&
-      value.every((entry) => isBoundedString(entry)))
-  );
-}
-
-function isOpsWriteBodyForVerb(verb: string, body: unknown): body is OpsWriteBody {
-  if (!isRecord(body)) return false;
-  if (!isNonEmptyString(body.ref)) return false;
-  if (
-    !isOptionalString(body.scope) ||
-    !isOptionalString(body.body, OPS_BODY_CONTENT_MAX_CHARS) ||
-    !isOptionalString(body.expected_blob_hash) ||
-    !isOptionalString(body.date) ||
-    !isOptionalString(body.to) ||
-    !isOptionalStringArray(body.tags) ||
-    !isOptionalStringArray(body.related)
-  ) {
-    return false;
-  }
-  if (verb === "set-body" || verb === "edit") {
-    return isBoundedString(body.body, OPS_BODY_CONTENT_MAX_CHARS);
-  }
-  if (verb === "rename") return isNonEmptyString(body.to);
-  return verb === "set-frontmatter";
-}
-
-function isOpsCreateBody(body: unknown): body is OpsCreateBody {
-  if (!isRecord(body)) return false;
-  return (
-    isNonEmptyString(body.doc_type) &&
-    isNonEmptyString(body.feature) &&
-    isOptionalString(body.scope) &&
-    isOptionalString(body.title) &&
-    isOptionalStringArray(body.related)
-  );
-}
-
 function isOpsArchiveBody(body: unknown): body is OpsArchiveBody {
   if (!isRecord(body)) return false;
   return isNonEmptyString(body.feature) && isOptionalString(body.scope);
-}
-
-function isOpsLinkBody(body: unknown): body is OpsLinkBody {
-  if (!isRecord(body)) return false;
-  return (
-    isNonEmptyString(body.src) &&
-    isNonEmptyString(body.dst) &&
-    isOptionalString(body.scope)
-  );
 }
 
 function isOpsAutofixBody(body: unknown): body is OpsAutofixBody {
@@ -281,19 +221,8 @@ export function isOpsDispatchIntent(payload: unknown): payload is OpsPayload {
   const verb = normalizedVerb;
   const mode = payload.mode;
   if (target === "core") {
-    if (mode === "write") {
-      return (
-        OPS_CORE_WRITE_VERBS.has(verb) && isOpsWriteBodyForVerb(verb, payload.body)
-      );
-    }
-    if (mode === "create") {
-      return verb === OPS_CORE_CREATE_VERB && isOpsCreateBody(payload.body);
-    }
     if (mode === "archive") {
       return verb === OPS_CORE_ARCHIVE_VERB && isOpsArchiveBody(payload.body);
-    }
-    if (mode === "link") {
-      return verb === OPS_CORE_LINK_VERB && isOpsLinkBody(payload.body);
     }
     if (mode === "autofix") {
       return verb === OPS_CORE_AUTOFIX_VERB && isOpsAutofixBody(payload.body);
@@ -321,9 +250,12 @@ function assertOpsDispatchIntent(payload: unknown): asserts payload is OpsPayloa
 
 // Register the terminal effect once (module load): run the whitelisted verb
 // against the engine ops proxy. Cache invalidation stays with the caller so the
-// handler is a pure manipulation effect. Document write/create (document-editor
-// backend) routes through the same seam so vault mutations stay logged, traced,
-// and centrally guardable — the app layer never reaches the engine client itself.
+// handler is a pure manipulation effect. The RETAINED vault-maintenance ops
+// (archive/autofix) route through this seam so their mutations stay logged,
+// traced, and centrally guardable — the app layer never reaches the engine
+// client itself. Every genuine content edit is ledgered instead
+// (ledgered-edit-migration W04.P12 retired the `write`/`create`/`link` modes
+// this seam used to carry).
 appDispatcher.register<OpsPayload>(OPS_ACTION, (action) => {
   const payload = action.payload as unknown;
   if (!payload) throw new Error("ops:run dispatched without a payload");
@@ -332,14 +264,8 @@ appDispatcher.register<OpsPayload>(OPS_ACTION, (action) => {
     return engineClient.opsRag(payload.verb, payload.body ?? {});
   }
   switch (payload.mode) {
-    case "write":
-      return engineClient.opsCoreWrite(payload.verb, payload.body as OpsWriteBody);
-    case "create":
-      return engineClient.opsCoreCreate(payload.body as OpsCreateBody);
     case "archive":
       return engineClient.opsCoreArchive(payload.body as OpsArchiveBody);
-    case "link":
-      return engineClient.opsCoreLink(payload.body as OpsLinkBody);
     case "autofix":
       return engineClient.opsCoreAutofix(payload.body as OpsAutofixBody);
     default:
