@@ -40,6 +40,7 @@ pub enum EndpointFamily {
     AgentToolExecute,
     Rebase,
     Replacement,
+    ReviewClaim,
 }
 
 impl EndpointFamily {
@@ -60,6 +61,7 @@ impl EndpointFamily {
         Self::AgentToolExecute,
         Self::Rebase,
         Self::Replacement,
+        Self::ReviewClaim,
     ];
 }
 
@@ -298,6 +300,21 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
         negative_contract_cases: &[
             "missing_idempotency_key",
             "stale_source_revision",
+            "unknown_field",
+        ],
+    },
+    // W14.P42a S261: advisory review-station claim (P24). The claim route represents the
+    // family; release/respond share it (mounted, floor-authorized) like the lease actions.
+    RouteFixture {
+        family: EndpointFamily::ReviewClaim,
+        method: "POST",
+        path_template: "/authoring/v1/review-claims",
+        command: Some(CommandKind::ClaimReview),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &[
+            "missing_idempotency_key",
+            "claim_contended",
             "unknown_field",
         ],
     },
@@ -581,6 +598,34 @@ pub struct LeaseRenewRequest {
 #[serde(deny_unknown_fields)]
 pub struct LeaseReleaseRequest {
     pub target: DocumentRef,
+}
+
+/// Claim (or idempotently re-claim) a changeset's advisory review item (W13.P24). The
+/// claim purpose is always `review` (set server-side); the reviewer is the middleware-
+/// resolved principal. A contended claim (a live claim by a different reviewer) rides the
+/// 200 envelope as a denial value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewClaimRequest {
+    pub changeset_id: ChangesetId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl_ms: Option<u64>,
+}
+
+/// Release a held review claim (holder-only).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewReleaseRequest {
+    pub changeset_id: ChangesetId,
+}
+
+/// Record a clarification response on a held review item (holder-only; status-preserving —
+/// the item stays `claimed` while the exchange runs).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewRespondRequest {
+    pub changeset_id: ChangesetId,
+    pub comment: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -873,6 +918,14 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
                 summary: "supersede the stale source".to_string(),
             },
         )),
+        EndpointFamily::ReviewClaim => command_value(CommandEnvelope::new(
+            CommandKind::ClaimReview,
+            idempotency_key("idem:review-claim:1"),
+            ReviewClaimRequest {
+                changeset_id: changeset_id(),
+                ttl_ms: Some(900_000),
+            },
+        )),
     }
 }
 
@@ -891,7 +944,8 @@ pub fn response_fixture(family: EndpointFamily) -> Value {
         | EndpointFamily::Apply
         | EndpointFamily::DirectWrite
         | EndpointFamily::AgentToolExecute
-        | EndpointFamily::Rebase => AggregateRef::Changeset {
+        | EndpointFamily::Rebase
+        | EndpointFamily::ReviewClaim => AggregateRef::Changeset {
             changeset_id: changeset_id(),
         },
         EndpointFamily::Replacement => AggregateRef::Changeset {
