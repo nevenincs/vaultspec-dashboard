@@ -10,6 +10,16 @@ related:
   - '[[2026-06-30-agentic-spec-authoring-backend-plan]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
+
 # `ledgered-edit-migration` plan
 
 ## Wave `W01` - Editor identity and Save cutover
@@ -20,22 +30,22 @@ Bootstrap a first-class editor actor identity and wire the highest-leverage, low
 
 Generalize the review station's token issuance into a shared current-editor human identity, so an editing session mints one human actor token via the machine-bearer-gated issue route before any ledgered edit can fire.
 
-- [ ] `W01.P01.S01` - Ground editor actor-token bootstrap and human self-approval legality requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W01.P01.S02` - Implement a shared current-editor human identity hook that generalizes the review station's actor-token issuance for a plain editing session; `frontend/src/stores/server/authoring.ts`.
-- [ ] `W01.P01.S03` - Add tests for token bootstrap, fail-safe refusal of an edit with no identity, and the same principal being visible across the editor and the review station; `frontend/src/stores/server/authoring.ts`.
-- [ ] `W01.P01.S04` - Run Editor actor-token bootstrap code review and record the phase audit; `.vault/audit/`.
-- [ ] `W01.P01.S05` - Verify a fresh editing session mints one human actor token before any ledgered edit can fire; `frontend/src/app/viewer/MarkdownDocView.tsx`.
+- [x] `W01.P01.S01` - Ground editor actor-token bootstrap and human self-approval legality requirements into the phase checklist; `.vault/adr/`.
+- [x] `W01.P01.S02` - Implement a shared current-editor human identity hook that generalizes the review station's actor-token issuance for a plain editing session; `frontend/src/stores/server/authoring.ts`.
+- [x] `W01.P01.S03` - Add tests for token bootstrap, fail-safe refusal of an edit with no identity, and the same principal being visible across the editor and the review station; `frontend/src/stores/server/authoring.ts`.
+- [x] `W01.P01.S04` - Run Editor actor-token bootstrap code review and record the phase audit; `.vault/audit/`.
+- [x] `W01.P01.S05` - Verify a fresh editing session mints one human actor token before any ledgered edit can fire; `frontend/src/app/viewer/MarkdownDocView.tsx`.
 
 ### Phase `W01.P02` - Save button body cutover to the direct-write route
 
 Add a direct-write client method to the authoring store and replace the Save button's legacy set-body ops dispatch with the existing self-approving body-replacement route, surfacing its conflict shape in the editor UX.
 
-- [ ] `W01.P02.S06` - Ground direct-write route contract and legacy set-body dispatch replacement requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W01.P02.S07` - Implement a directWrite client method on the authoring store and wire the Save button to mint its actor token and call POST /authoring/v1/direct-writes; `frontend/src/stores/server/authoring.ts`.
-- [ ] `W01.P02.S08` - Remove useSaveBody's legacy ops:run set-body/write dispatch and surface the direct-write conflict shape in the editor save UX; `frontend/src/stores/server/queries.ts`.
-- [ ] `W01.P02.S09` - Rewrite editorWriteSeam.test.tsx's useSaveBody request-construction coverage to spy the authoring direct-write call instead of the legacy dispatchOps set-body op, covering the happy path and denied/conflicted outcomes; `frontend/src/stores/server/editorWriteSeam.test.tsx`.
-- [ ] `W01.P02.S10` - Run Save button body cutover code review and record the phase audit; `.vault/audit/`.
-- [ ] `W01.P02.S11` - Verify the Save button's body edit produces a changeset with provenance and no live path still calls the legacy set-body write route; `frontend/src/stores/server/opsActions.ts`.
+- [x] `W01.P02.S06` - Ground direct-write route contract and legacy set-body dispatch replacement requirements into the phase checklist; `.vault/adr/`.
+- [x] `W01.P02.S07` - Implement a directWrite client method on the authoring store and wire the Save button to mint its actor token and call POST /authoring/v1/direct-writes; `frontend/src/stores/server/authoring.ts`.
+- [x] `W01.P02.S08` - Remove useSaveBody's legacy ops:run set-body/write dispatch and surface the direct-write conflict shape in the editor save UX; `frontend/src/stores/server/queries.ts`.
+- [x] `W01.P02.S09` - Rewrite editorWriteSeam.test.tsx's useSaveBody request-construction coverage to spy the authoring direct-write call instead of the legacy dispatchOps set-body op, covering the happy path and denied/conflicted outcomes; `frontend/src/stores/server/editorWriteSeam.test.tsx`.
+- [x] `W01.P02.S10` - Run Save button body cutover code review and record the phase audit; `.vault/audit/`.
+- [x] `W01.P02.S11` - Verify the Save button's body edit produces a changeset with provenance and no live path still calls the legacy set-body write route; `frontend/src/stores/server/opsActions.ts`.
 
 ## Wave `W02` - Backend operation-kind apply wiring
 
