@@ -4013,33 +4013,32 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["data"]["status"], "applied");
+        let child = &body["data"]["record"]["apply_receipt"]["child"];
+        assert_eq!(child["outcome"], "applied", "{body}");
+
+        // W03.P09a: the outcome now ECHOES the created document's real
+        // identity (path/node-id/stem) — the frontend auto-open restore
+        // reads this instead of guessing core's date-slug filename
+        // convention client-side. Assert on the ECHOED identity, then use
+        // it (not a re-derived guess) to confirm the file landed for real.
+        let document_path = child["document_path"]
+            .as_str()
+            .expect("an applied create echoes its real document_path");
         assert!(
-            body["data"]["record"]["apply_receipt"]["child"]["outcome"] == "applied",
-            "{body}"
+            document_path.contains("http-direct-create"),
+            "{document_path}"
         );
-        // The real vaultspec-core `vault add` scaffolded a document under the
-        // feature's plan directory — the exact filename is core's own
-        // {date}-{feature}-{doc_type}.md convention (W02.P05), not predictable
-        // here; assert on directory contents instead of a literal path.
-        let plan_dir = dir.path().join(".vault/plan");
-        let scaffolded = std::fs::read_dir(&plan_dir)
-            .unwrap()
-            .filter_map(|entry| entry.ok())
-            .any(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .contains("http-direct-create")
-            });
+        let result_stem = child["result_stem"]
+            .as_str()
+            .expect("an applied create echoes its real result_stem");
+        assert!(result_stem.contains("http-direct-create"), "{result_stem}");
+        assert_eq!(
+            child["result_node_id"].as_str(),
+            Some(format!("doc:{result_stem}").as_str())
+        );
         assert!(
-            scaffolded,
-            "the real vaultspec-core create must land under {}: {:?}",
-            plan_dir.display(),
-            std::fs::read_dir(&plan_dir)
-                .unwrap()
-                .filter_map(|entry| entry.ok())
-                .map(|entry| entry.file_name())
-                .collect::<Vec<_>>()
+            dir.path().join(document_path).exists(),
+            "the real vaultspec-core create must land at the ECHOED document_path: {document_path}"
         );
     }
 

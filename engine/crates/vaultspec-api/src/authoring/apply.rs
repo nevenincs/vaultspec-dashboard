@@ -166,6 +166,20 @@ pub struct ApplyChildReceipt {
     /// A REDACTED failure category (never raw stderr/body/paths), when failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagnostic: Option<String>,
+    /// The created document's stable node id (W03.P09a) — `Some` only for a
+    /// successfully-applied `CreateDocument` child (`None` for every other
+    /// kind/outcome; `document_path` above already names an existing-doc
+    /// kind's target, and a not-landed create has no identity to report).
+    /// Lets a consumer (the direct-write outcome's frontend auto-open
+    /// restore) resolve the new document without re-deriving its predicted
+    /// path client-side — the SAME identity `PostVerifyExpectation::
+    /// CreatedAt` already confirmed to recognize `Applied`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_node_id: Option<String>,
+    /// The created document's stem, alongside `result_node_id`. Same
+    /// `None`-for-every-other-case rule.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_stem: Option<String>,
 }
 
 /// The command outcome. A policy denial carries `eligibility.denied` and no
@@ -237,7 +251,7 @@ pub fn apply_changeset(
                 "a prior apply attempt was interrupted and its reservation expired",
             );
             let receipt = store.with_unit_of_work(CommandKind::RequestApply, |uow| {
-                complete_in_uow(uow, &prep, resolution, request.now_ms)
+                complete_in_uow(uow, worktree_root, &prep, resolution, request.now_ms)
             })??;
             return Ok(ApplyOutcome {
                 eligibility: ActionEligibility::allowed(CommandKind::RequestApply),
@@ -257,7 +271,7 @@ pub fn apply_changeset(
     // Stage C — completion: append the terminal revision, record the receipt,
     // register retention, publish. One unit of work; all-or-nothing.
     let receipt = store.with_unit_of_work(CommandKind::RequestApply, |uow| {
-        complete_in_uow(uow, &prep, resolution, request.now_ms)
+        complete_in_uow(uow, worktree_root, &prep, resolution, request.now_ms)
     })??;
     Ok(ApplyOutcome {
         eligibility: ActionEligibility::allowed(CommandKind::RequestApply),
@@ -945,8 +959,47 @@ fn build_reclaim_prep(
     }))))
 }
 
+/// A landed `CreateDocument` child's REAL identity (W03.P09a).
+struct CreatedDocumentIdentity {
+    path: String,
+    node_id: String,
+    stem: String,
+}
+
+/// Resolve a landed `CreateDocument` child's REAL identity — from the SAME
+/// predicted stem `PostVerifyExpectation::CreatedAt` already confirmed to
+/// recognize `Applied`, re-resolved HERE (never cached from prep time, since
+/// `prep.document`/`prep.document_path` carry nothing real for a create —
+/// there was nothing to resolve when the attempt was prepared). `None` for
+/// every other post-verify kind (self-guarded), or — fail-closed, never
+/// forged — if the stem somehow no longer resolves despite the outcome
+/// reading `Applied`.
+fn resolve_created_document(
+    worktree_root: &Path,
+    prep: &ApplyPrep,
+) -> Option<CreatedDocumentIdentity> {
+    let PostVerifyExpectation::CreatedAt { expected_stem, .. } = &prep.post_verify else {
+        return None;
+    };
+    let DocumentRef::Existing {
+        node_id,
+        stem,
+        path,
+        ..
+    } = resolve_by_stem(worktree_root, expected_stem)?
+    else {
+        return None;
+    };
+    Some(CreatedDocumentIdentity {
+        path,
+        node_id,
+        stem,
+    })
+}
+
 fn complete_in_uow(
     uow: &UnitOfWork<'_>,
+    worktree_root: &Path,
     prep: &ApplyPrep,
     resolution: ChildResolution,
     now_ms: i64,
@@ -955,6 +1008,23 @@ fn complete_in_uow(
         ApplyChildOutcome::Applied => (ChangesetStatus::Applied, ApplyState::Applied),
         ApplyChildOutcome::Failed => (ChangesetStatus::Failed, ApplyState::Failed),
     };
+    // W03.P09a: a landed `CreateDocument` has no identity in `prep` (nothing
+    // existed to resolve at prep time) — re-resolve it NOW, from the SAME
+    // predicted stem `PostVerifyExpectation::CreatedAt` already confirmed,
+    // so the receipt echoes the new document's real path/node-id/stem
+    // instead of leaving them empty. `None` for every other kind/outcome
+    // (self-guarded inside the helper), so `document_path` falls back to
+    // `prep.document_path` exactly as before this change.
+    let created_document = (resolution.outcome == ApplyChildOutcome::Applied)
+        .then(|| resolve_created_document(worktree_root, prep))
+        .flatten();
+    let document_path = created_document
+        .as_ref()
+        .map(|created| created.path.clone())
+        .unwrap_or_else(|| prep.document_path.clone());
+    let (result_node_id, result_stem) = created_document
+        .map(|created| (Some(created.node_id), Some(created.stem)))
+        .unwrap_or((None, None));
 
     {
         // Append the terminal revision from the Applying base (single-child, content
@@ -980,7 +1050,7 @@ fn complete_in_uow(
             state: apply_state,
             child: ApplyChildReceipt {
                 child_key: prep.child_key.clone(),
-                document_path: prep.document_path.clone(),
+                document_path,
                 outcome: resolution.outcome,
                 base_blob_hash: prep.base_blob_hash.clone(),
                 expected_result_blob_hash: prep.expected_result_blob_hash.clone(),
@@ -989,6 +1059,8 @@ fn complete_in_uow(
                 core_schema: resolution.core_schema.clone(),
                 resolved_via_post_verify: resolution.resolved_via_post_verify,
                 diagnostic: resolution.diagnostic.clone(),
+                result_node_id,
+                result_stem,
             },
             actor: prep.actor.clone(),
             idempotency_key: prep.idempotency_key.as_str().to_string(),
@@ -2776,6 +2848,15 @@ mod tests {
             fx.doc_file.exists(),
             "the REAL vaultspec-core `vault add` scaffolded the document"
         );
+        // W03.P09a: the receipt echoes the created document's REAL identity
+        // (previously always empty/None for a create) — never re-derived
+        // client-side, no client-predictable filename guess needed.
+        assert_eq!(receipt.child.document_path, LIVE_CREATE_DOC_PATH);
+        assert_eq!(receipt.child.result_stem.as_deref(), Some(LIVE_CREATE_STEM));
+        assert_eq!(
+            receipt.child.result_node_id.as_deref(),
+            Some(format!("doc:{LIVE_CREATE_STEM}").as_str())
+        );
     }
 
     #[test]
@@ -2819,6 +2900,16 @@ mod tests {
         assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
 
         assert!(fx.doc_file.exists());
+        // W03.P09a: the crash-recovery/reclaim path resolves the SAME real
+        // identity `resolve_outcome`'s happy path does (via the SAME
+        // `resolve_created_document` helper) — not just "recognized
+        // Applied" but the receipt actually echoes it.
+        assert_eq!(receipt.child.document_path, LIVE_CREATE_DOC_PATH);
+        assert_eq!(receipt.child.result_stem.as_deref(), Some(LIVE_CREATE_STEM));
+        assert_eq!(
+            receipt.child.result_node_id.as_deref(),
+            Some(format!("doc:{LIVE_CREATE_STEM}").as_str())
+        );
     }
 
     /// A REAL `vaultspec-core` `set-frontmatter` invocation, wrapped to LAND the
