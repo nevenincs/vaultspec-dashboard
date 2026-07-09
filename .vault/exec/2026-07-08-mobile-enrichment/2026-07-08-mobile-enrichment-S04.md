@@ -9,39 +9,6 @@ related:
   - "[[2026-07-08-mobile-enrichment-plan]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #exec) and one feature tag.
-     Replace mobile-enrichment with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     step_id is the originating Step's canonical identifier, e.g. S01.
-     The S04 and 2026-07-08-mobile-enrichment-plan placeholders are machine-filled by
-     `vaultspec-core vault add exec`; do not fill them by hand.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
-     parent plan.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
-<!-- STEP RECORD:
-     This file represents one Step from the originating plan. Identified
-     by its canonical leaf identifier (S##) and ancestor display path.
-     The D4: edge-swipe back gesture in the compact reader (widget-intrinsic) routing the same doc-scoped unsaved-draft guard as tap-back and ## Scope
-
-- `frontend/src/app/shell/CompactDocReader.tsx` placeholders below are machine-filled
-     by `vaultspec-core vault add exec` from the originating Step row;
-     do not fill them by hand. -->
-
 # D4: edge-swipe back gesture in the compact reader (widget-intrinsic) routing the same doc-scoped unsaved-draft guard as tap-back
 
 ## Scope
@@ -59,6 +26,15 @@ An edge-swipe pops the reader with the SAME guarded close as the tap-back contro
 
 ## Notes
 
-Real-device verification (iOS system-back-gesture + scroll-intent interplay) is pending — the jsdom suite cannot exercise a pointer gesture; recorded as an ADR D4 consequence.
+Hardening decided in ADR D7: pointer capture is REJECTED (it would starve the reader's
+own scroll child of pointer events); the gesture ships with `touch-action: pan-y` +
+the vertical-intent yield in the move handler, which is the committed form.
 
-<!-- Incidents. Data loss. Difficulties; persistent failures. Skipped work. Scaffolds left in code. Failures. -->
+The real-device gap the vitest suite cannot exercise is closed for merge by this manual
+verification checklist (run on iOS Safari + Android Chrome before a mobile release):
+
+- [ ] A leading-edge horizontal swipe pops the open reader back to Browse.
+- [ ] A vertical scroll inside the reader body does NOT trigger back.
+- [ ] A diagonal drag yields to scroll (never a partial back-slide).
+- [ ] With a dirty editor draft, the swipe arms the discard confirm (parity with tap-back).
+- [ ] The OS left-edge back-gesture (iOS) and the app edge-swipe do not double-fire.

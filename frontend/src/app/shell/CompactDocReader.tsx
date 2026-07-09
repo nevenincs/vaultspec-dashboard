@@ -146,7 +146,9 @@ function DocReaderPane({
     );
   }
 
-  const trail = buildDocTrail(view.header);
+  // Drop the "Vault" root on compact so the doc-type / title pair reads without
+  // ellipsizing every crumb in the narrow reader chrome (ADR D6).
+  const trail = buildDocTrail(view.header, { includeRoot: false });
   return (
     <div
       className="absolute inset-0 z-40 flex flex-col bg-paper animate-fade-in"

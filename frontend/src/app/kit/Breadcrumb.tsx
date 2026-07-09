@@ -23,9 +23,13 @@ export function Breadcrumb({ items, className = "" }: BreadcrumbProps) {
         {items.map((item, i) => {
           const isLast = i === items.length - 1;
           return (
+            // Ancestor crumbs stay whole (shrink-0) so only the CURRENT (last)
+            // segment truncates — the trail never degrades to "Va… / Decisi… /
+            // title…" in a narrow reader (mobile-enrichment ADR D6). The wide
+            // desktop reader is unaffected (ancestor labels are short).
             <li
               key={`${item.label}-${i}`}
-              className="flex min-w-0 items-center gap-fg-1-5"
+              className={`flex items-center gap-fg-1-5 ${isLast ? "min-w-0" : "shrink-0"}`}
             >
               {isLast ? (
                 <span aria-current="page" className="truncate font-medium text-ink">
@@ -35,7 +39,7 @@ export function Breadcrumb({ items, className = "" }: BreadcrumbProps) {
                 <button
                   type="button"
                   onClick={item.onSelect}
-                  className="truncate rounded-fg-xs text-ink-muted transition-colors duration-ui-fast ease-settle hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                  className="whitespace-nowrap rounded-fg-xs text-ink-muted transition-colors duration-ui-fast ease-settle hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                 >
                   {item.label}
                 </button>

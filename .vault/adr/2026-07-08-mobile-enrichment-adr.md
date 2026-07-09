@@ -194,6 +194,38 @@ toward the frame.
 v1 D2 (compact IA), D2t (timeline minimode), and D4 (graph not navigable) are
 explicitly NOT revised by this ADR.
 
+**D6 — Compact reader breadcrumb legibility (follow-on, post-review).** The
+canonical three-item trail (D3) over-truncates on a compact reader: the breadcrumb
+shares a 390px chrome bar with the View/Edit toggle, and the primitive ellipsizes
+every segment equally, so the live trail reads "Va… / Decisi… / title…". On
+compact the reader drops the low-value "Vault" ROOT (a `buildDocTrail` option),
+carrying the doc-type / title pair, and the shared `Breadcrumb` keeps ANCESTOR
+crumbs whole while only the current (title) segment truncates. The desktop
+`DocPanel` keeps the full three-item trail; ancestor-whole is a strict improvement
+on the wide desktop reader (ancestor labels are short), not a regression. View-layer
+only: `viewer/docTrail.ts` + `CompactDocReader.tsx` + the `Breadcrumb` kit
+primitive.
+
+**D7 — Edge-swipe hardening and verification closure (follow-on).** Pointer capture
+is REJECTED: `setPointerCapture` would route every subsequent pointer event to the
+swipe container and starve the reader's own scroll child, while the gesture already
+yields to vertical intent in its move handler and `touch-action: pan-y` cedes
+vertical scrolling to the browser. The D4 gesture ships in its committed form. The
+real-device gap the vitest suite cannot exercise is closed for merge by a documented
+manual-verification checklist on the S04 execution record (iOS Safari + Android
+Chrome: edge-swipe pops the reader; a body vertical-scroll does not trigger back; a
+diagonal drag yields to scroll; the OS left-edge back-gesture and the app edge-swipe
+do not double-fire). No code change beyond the shipped hardening.
+
+**D8 — Desktop LeftRail tree-guide design parity (follow-on).** `TreeBrowser`
+already renders the tree-level indent guide and per-level indentation for BOTH
+desktop and mobile; only the desktop `LeftRail` Figma frames omit the guide. The
+desktop frames gain the guide hairline so the binding design matches the shipped
+code (the mobile Browse frame already carries it, added during design
+consolidation). Figma-only edit — the code is already correct — under the
+design-system rule that Figma binds and code/frame disagreements reconcile toward
+parity.
+
 ## Rationale
 
 All four gaps sit strictly in the presentation layer over data the engine already

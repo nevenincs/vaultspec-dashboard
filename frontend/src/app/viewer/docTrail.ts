@@ -20,9 +20,18 @@ const DOC_TYPE_CRUMB: Record<string, string> = {
 };
 
 /** Build the canonical Vault / <doc-type> / <title> trail from the preserved
- *  stores header model — the binding reader path (455:1117). */
-export function buildDocTrail(header: MarkdownHeaderView): BreadcrumbItem[] {
-  const items: BreadcrumbItem[] = [{ label: "Vault" }];
+ *  stores header model — the binding reader path (455:1117).
+ *
+ *  `includeRoot` (default true) prepends the "Vault" root. The compact reader
+ *  passes `false` (mobile-enrichment ADR D6): in the narrow 390px reader chrome the
+ *  root is the least informative segment, and dropping it leaves the doc-type /
+ *  title pair enough room to read without ellipsizing every crumb. */
+export function buildDocTrail(
+  header: MarkdownHeaderView,
+  opts: { includeRoot?: boolean } = {},
+): BreadcrumbItem[] {
+  const { includeRoot = true } = opts;
+  const items: BreadcrumbItem[] = includeRoot ? [{ label: "Vault" }] : [];
   const type = header.categoryLabel;
   if (type) {
     items.push({

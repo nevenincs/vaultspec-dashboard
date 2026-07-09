@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#mobile-enrichment'
 date: '2026-07-08'
-modified: '2026-07-09'
+modified: '2026-07-10'
 tier: L1
 related:
   - '[[2026-07-08-mobile-enrichment-adr]]'
@@ -27,6 +27,9 @@ related:
 - [x] `S04` - D4: edge-swipe back gesture in the compact reader (widget-intrinsic) routing the same doc-scoped unsaved-draft guard as tap-back; `frontend/src/app/shell/CompactDocReader.tsx`.
 - [x] `S05` - Add a live-engine compact guard test asserting the ADR-status word and date render inline (the tooltip-only regression is otherwise silent); `frontend/src/app/left/VaultBrowser.compact.render.test.tsx`.
 - [x] `S06` - Verify: full frontend lint gate green, live @390px visual parity against the binding Figma frames, and code review closeout; `frontend/`.
+- [x] `S07` - D6: compact reader breadcrumb legibility — drop the Vault root on compact and keep ancestor crumbs whole so only the title truncates (no more Va… / Decisi… / title…); `frontend/src/app/kit/Breadcrumb.tsx`.
+- [x] `S08` - D7: edge-swipe hardening decided — pointer-capture rejected, touch-action pan-y shipped; `real-device gap closed via a documented manual-verify checklist on the S04 record; `frontend/src/app/shell/CompactDocReader.tsx`.
+- [x] `S09` - D8: desktop LeftRail tree-level indent guide added to the Figma design (SectionBody), matching the shipped code and the mobile Browse frame — Figma-only, no code change; `figma:SlhonORmySdoSMTQgDWw3w`.
 ## Description
 
 Ratifies the accepted `mobile-enrichment` ADR: four view-layer enrichments to the
