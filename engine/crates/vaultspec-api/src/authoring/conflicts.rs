@@ -419,11 +419,17 @@ fn child_hunks(child: &ChangesetChildOperationRecord) -> Option<&[ReviewDiffHunk
     (!hunks.is_empty()).then_some(hunks)
 }
 
-/// Whether a child is a whole-document `replace_body` draft. In the V1 subset a
-/// materialized replace-body operation is always whole-document (the only materialized
-/// shape `operations.rs` produces), so a present materialization is the signal.
+/// Whether a child is a whole-document-shaped draft: `replace_body` or (W02.P03)
+/// `edit_frontmatter` — both materialize a whole-document preview (`operations.rs`
+/// `finish_materialization`), so a present materialization is the signal either
+/// way. A stale base therefore reports `StaleWholeDocumentDraft` for a frontmatter
+/// edit exactly as it does for a body replace, never the generic partial-base
+/// finding, and the pair participates in cross-proposal hunk-overlap detection.
 fn is_whole_document_replace(child: &ChangesetChildOperationRecord) -> bool {
-    child.operation == ChangesetOperationKind::ReplaceBody && child.materialized_operation.is_some()
+    matches!(
+        child.operation,
+        ChangesetOperationKind::ReplaceBody | ChangesetOperationKind::EditFrontmatter
+    ) && child.materialized_operation.is_some()
 }
 
 /// Whether a child does collision-prone work the ADR's advisory leases coordinate:
@@ -558,9 +564,66 @@ mod tests {
             draft: DraftMutation {
                 mode: DraftMode::WholeDocument,
                 body: new_body.to_string(),
+                frontmatter: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(
+            changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        ChangesetChildOperationInput::from_materialized(
+            materialized,
+            format!("material:{child_key}"),
+            format!("validation:{child_key}"),
+        )
+    }
+
+    /// A materialized `edit_frontmatter` child (W02.P03) against the CURRENT worktree
+    /// frontmatter of `stem`, setting `date`. Mirrors `materialized_child` so a
+    /// frontmatter edit exercises the SAME whole-document-relevance conflict path.
+    fn materialized_frontmatter_child(
+        root: &Path,
+        changeset_id: &ChangesetId,
+        stem: &str,
+        child_key: &str,
+        date: &str,
+    ) -> ChangesetChildOperationInput {
+        let document = resolve(root, stem);
+        let base_snapshot = SnapshotReader::for_worktree(root)
+            .require_current_base(&document)
+            .unwrap();
+        let preimage = SnapshotReader::for_worktree(root)
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: format!("preimage:{}:{child_key}", changeset_id.as_str()),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: child_key.to_string(),
+                document: document.clone(),
+                captured_at_ms: 100,
+            })
+            .unwrap();
+        let revision = existing_base(&document);
+        let draft = ChangesetChildOperationDraft {
+            child_key: child_key.to_string(),
+            operation: ChangesetOperationKind::EditFrontmatter,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(revision.clone()),
+                current_revision: Some(revision),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: Some(crate::authoring::api::FrontmatterEditFields {
+                    date: Some(date.to_string()),
+                    tags: None,
+                    related: None,
+                }),
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
             changeset_id,
             draft,
             &base_snapshot,
@@ -699,6 +762,53 @@ mod tests {
         );
         assert_eq!(finding.child_key, "child_1");
         assert_ne!(finding.reviewed_base_revision, finding.current_revision);
+    }
+
+    #[test]
+    fn stale_frontmatter_draft_is_detected_as_whole_document_stale_like_a_body_replace() {
+        // W02.P03: `is_whole_document_replace` broadened to `edit_frontmatter`, so a
+        // stale frontmatter draft reports `StaleWholeDocumentDraft` — the SAME
+        // relevance a stale `replace_body` draft gets — never the generic partial
+        // `StaleBaseRevision` finding.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/whole-doc-fm-plan.md",
+            "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\nbody\n",
+        );
+        let child = materialized_frontmatter_child(
+            root,
+            &ChangesetId::new("changeset:whole-doc-fm").unwrap(),
+            "whole-doc-fm-plan",
+            "child_1",
+            "2026-02-06",
+        );
+        let cs = changeset(
+            "changeset:whole-doc-fm",
+            actor("agent:author"),
+            ChangesetStatus::Proposed,
+            vec![child],
+        );
+
+        // An out-of-band edit lands after the frontmatter draft was materialized.
+        write_doc(
+            root,
+            ".vault/plan/whole-doc-fm-plan.md",
+            "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\nrewritten body\n",
+        );
+
+        let report = detect_conflicts(root, &cs, &[], &[], NOW_MS);
+
+        assert!(report.has_conflict());
+        assert_eq!(report.findings.len(), 1, "{report:?}");
+        let finding = &report.findings[0];
+        assert_eq!(
+            finding.kind,
+            ConflictKind::StaleWholeDocumentDraft,
+            "a stale frontmatter draft reports distinctly from a partial stale base"
+        );
+        assert_eq!(finding.child_key, "child_1");
     }
 
     #[test]

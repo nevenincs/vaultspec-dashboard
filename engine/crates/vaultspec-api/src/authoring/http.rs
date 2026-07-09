@@ -3948,6 +3948,7 @@ mod tests {
                     draft: DraftMutation {
                         mode: DraftMode::WholeDocument,
                         body: "---\ntags:\n  - '#plan'\n---\n\n# Plan\n\nnew body\n".to_string(),
+                        frontmatter: None,
                     },
                 }],
             },
@@ -3995,6 +3996,7 @@ mod tests {
                     draft: DraftMutation {
                         mode: DraftMode::WholeDocument,
                         body: body.to_string(),
+                        frontmatter: None,
                     },
                 }],
             },
@@ -6512,6 +6514,7 @@ mod tests {
                     draft: DraftMutation {
                         mode: DraftMode::WholeDocument,
                         body: "rewritten body".to_string(),
+                        frontmatter: None,
                     },
                 }],
             },

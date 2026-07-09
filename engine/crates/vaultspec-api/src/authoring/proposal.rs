@@ -1189,6 +1189,7 @@ mod tests {
             draft: DraftMutation {
                 mode: DraftMode::WholeDocument,
                 body: body.into(),
+                frontmatter: None,
             },
         }
     }

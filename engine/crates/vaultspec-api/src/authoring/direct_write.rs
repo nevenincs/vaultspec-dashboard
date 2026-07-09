@@ -792,6 +792,7 @@ fn ensure_proposal_created(
                 draft: DraftMutation {
                     mode: DraftMode::WholeDocument,
                     body: input.body,
+                    frontmatter: None,
                 },
             }],
         },

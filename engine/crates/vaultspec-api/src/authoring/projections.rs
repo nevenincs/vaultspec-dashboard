@@ -1616,6 +1616,7 @@ mod tests {
             draft: DraftMutation {
                 mode: DraftMode::WholeDocument,
                 body: new_body.to_string(),
+                frontmatter: None,
             },
         };
         let preimage = SnapshotReader::for_worktree(root)

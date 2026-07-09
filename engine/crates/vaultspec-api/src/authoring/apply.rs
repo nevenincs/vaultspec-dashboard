@@ -403,12 +403,15 @@ fn preflight_in_uow(
 
     // The single materialized child → the write invocation.
     let child = &latest.children[0];
-    if child.operation != ChangesetOperationKind::ReplaceBody {
+    if !matches!(
+        child.operation,
+        ChangesetOperationKind::ReplaceBody | ChangesetOperationKind::EditFrontmatter
+    ) {
         return Ok(Ok(Preflight::Denied(ActionEligibility::denied(
             CommandKind::RequestApply,
             format!(
-                "V1 apply materializes only whole-document body replacement; operation \
-                 `{:?}` is not yet supported",
+                "V1 apply materializes only whole-document body replacement and frontmatter \
+                 edits; operation `{:?}` is not yet supported",
                 child.operation
             ),
         ))));
@@ -458,22 +461,14 @@ fn preflight_in_uow(
     let base_blob_hash = materialized.base.blob_hash.clone();
     let core_base_blob_hash = full_file_blob_hash(worktree_root, &document_path, &base_blob_hash);
     let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
-    let body = materialized.target_snapshot.payload_text.clone();
-    let invocation = match CoreInvocation::write(
-        CoreCapability::SetBody,
+    let invocation = match build_write_invocation(
+        child.operation,
+        materialized,
         &document_path,
-        WriteArgs {
-            expected_blob_hash: Some(core_base_blob_hash),
-            body: Some(body),
-            ..Default::default()
-        },
+        core_base_blob_hash,
     ) {
         Ok(invocation) => invocation,
-        Err(err) => {
-            return Ok(Err(ApplyError::Internal(format!(
-                "invocation build failed: {err}"
-            ))));
-        }
+        Err(err) => return Ok(Err(err)),
     };
 
     // Reserve the attempt, then append the `Applying` revision under the applying
@@ -688,21 +683,14 @@ fn build_reclaim_prep(
         receipt_id: receipt_id.clone(),
     };
     // Built for prep uniformity; the reclaim path never invokes it (no re-write).
-    let invocation = match CoreInvocation::write(
-        CoreCapability::SetBody,
+    let invocation = match build_write_invocation(
+        child.operation,
+        materialized,
         &document_path,
-        WriteArgs {
-            expected_blob_hash: Some(core_base_blob_hash),
-            body: Some(materialized.target_snapshot.payload_text.clone()),
-            ..Default::default()
-        },
+        core_base_blob_hash,
     ) {
         Ok(invocation) => invocation,
-        Err(err) => {
-            return Ok(Err(ApplyError::Internal(format!(
-                "reclaim invocation build failed: {err}"
-            ))));
-        }
+        Err(err) => return Ok(Err(err)),
     };
     Ok(Ok(Preflight::Reclaim(Box::new(ApplyPrep {
         reservation,
@@ -871,6 +859,51 @@ fn read_blob_hash(worktree_root: &Path, document: &DocumentRef) -> StoreResult<S
         .capture_existing(document)
         .map(|snapshot| snapshot.blob_hash)
         .map_err(|err| StoreError::Snapshot(err.to_string()))
+}
+
+/// Select the core-adapter capability + build its argv for one materialized
+/// child, keyed on the operation kind. The ONE place apply chooses HOW a
+/// materialized operation is written: `ReplaceBody` streams the whole-document
+/// preview to `SetBody`'s stdin; `EditFrontmatter` forwards its field-level
+/// payload (threaded from the draft through `materialized.frontmatter_edit`) to
+/// `SetFrontmatter`'s typed flags — never a body. A new operation kind (rename,
+/// create) extends this match, not a duplicated invocation-build call site.
+fn build_write_invocation(
+    operation: ChangesetOperationKind,
+    materialized: &super::operations::MaterializedProposalOperation,
+    document_path: &str,
+    core_base_blob_hash: String,
+) -> Result<CoreInvocation> {
+    let (capability, args) = match operation {
+        ChangesetOperationKind::ReplaceBody => (
+            CoreCapability::SetBody,
+            WriteArgs {
+                expected_blob_hash: Some(core_base_blob_hash),
+                body: Some(materialized.target_snapshot.payload_text.clone()),
+                ..Default::default()
+            },
+        ),
+        ChangesetOperationKind::EditFrontmatter => {
+            let fields = materialized.frontmatter_edit.clone().unwrap_or_default();
+            (
+                CoreCapability::SetFrontmatter,
+                WriteArgs {
+                    expected_blob_hash: Some(core_base_blob_hash),
+                    date: fields.date,
+                    tags: fields.tags.unwrap_or_default(),
+                    related: fields.related.unwrap_or_default(),
+                    ..Default::default()
+                },
+            )
+        }
+        other => {
+            return Err(ApplyError::Internal(format!(
+                "apply invocation build has no capability mapping for operation `{other:?}`"
+            )));
+        }
+    };
+    CoreInvocation::write(capability, document_path, args)
+        .map_err(|err| ApplyError::Internal(format!("invocation build failed: {err}")))
 }
 
 fn existing_path(document: &DocumentRef) -> Option<String> {
@@ -1091,6 +1124,7 @@ mod tests {
             draft: DraftMutation {
                 mode: DraftMode::WholeDocument,
                 body: NEW_BODY.to_string(),
+                frontmatter: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(
@@ -1180,6 +1214,207 @@ mod tests {
 
         if approve {
             // The distinct human reviewer approves — appends the Approved revision.
+            store
+                .with_unit_of_work(CommandKind::Approve, |uow| {
+                    Ok(uow.approvals().submit_decision(ReviewDecisionInput {
+                        proposal_id: &proposal_id,
+                        decision: ApprovalDecision::Approve,
+                        reviewer: &reviewer,
+                        validation: ValidationFreshness::fresh(),
+                        current_validation_digest: &validation_digest,
+                        current_policy_version: V1_POLICY_VERSION,
+                        run_cancelled: false,
+                        comment: None,
+                        decided_at_ms: 40,
+                    }))
+                })
+                .unwrap()
+                .unwrap();
+        }
+
+        Fx {
+            _dir: dir,
+            store,
+            root,
+            doc_file,
+            changeset_id,
+            proposal_id,
+            origin,
+            applier,
+            expected_result_blob_hash,
+        }
+    }
+
+    const FRONTMATTER_BASE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-01-01'\n---\n\n# apply demo\n\nbase content\n";
+    const FRONTMATTER_DOC_PATH: &str = ".vault/plan/apply-frontmatter-demo.md";
+
+    /// The `setup` sibling for an `EditFrontmatter` child (W02.P03): the SAME
+    /// Draft->NeedsReview->Approve scaffolding, materialized through
+    /// `materialize_edit_frontmatter` instead of `materialize_replace_body`.
+    fn setup_frontmatter(approve: bool) -> Fx {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let doc_file = root
+            .join(".vault")
+            .join("plan")
+            .join("apply-frontmatter-demo.md");
+        std::fs::create_dir_all(doc_file.parent().unwrap()).unwrap();
+        std::fs::write(&doc_file, FRONTMATTER_BASE_BODY).unwrap();
+
+        let mut store = Store::open(&root.join(".vault")).unwrap();
+        let changeset_id = ChangesetId::new("changeset_apply_fm_1").unwrap();
+        let proposal_id = ProposalId::new("proposal_apply_fm_1").unwrap();
+        let origin = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let applier = actor("human:applier", ActorKind::Human);
+
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                for (id, kind) in [
+                    ("agent:author", ActorKind::Agent),
+                    ("human:reviewer", ActorKind::Human),
+                    ("human:applier", ActorKind::Human),
+                ] {
+                    uow.actors().put_record(ActorRecordInput::active(
+                        actor(id, kind),
+                        ActorDisplayMetadata::new(id, None),
+                        1,
+                    ))?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        let reader = SnapshotReader::for_worktree(root.clone());
+        let seed_doc = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: "doc:apply-frontmatter-demo".to_string(),
+            stem: "apply-frontmatter-demo".to_string(),
+            path: FRONTMATTER_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: RevisionToken::new("blob:seed").unwrap(),
+        };
+        let base_probe = reader.capture_existing(&seed_doc).unwrap();
+        let base_revision = base_probe.revision.clone();
+        let document = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: "doc:apply-frontmatter-demo".to_string(),
+            stem: "apply-frontmatter-demo".to_string(),
+            path: FRONTMATTER_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: base_revision.clone(),
+        };
+        let base_snapshot = reader.capture_existing(&document).unwrap();
+        let preimage = reader
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: "preimage_fm_1".to_string(),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: "child_1".to_string(),
+                document: document.clone(),
+                captured_at_ms: 5,
+            })
+            .unwrap();
+        let draft = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::EditFrontmatter,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(base_revision.clone()),
+                current_revision: Some(base_revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: Some(crate::authoring::api::FrontmatterEditFields {
+                    date: Some("2026-02-06".to_string()),
+                    tags: None,
+                    related: None,
+                }),
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
+
+        let current_observation =
+            CurrentRevisionObservation::from_snapshot("child_1", &base_snapshot);
+        let validation_record = validate_changeset_material(
+            std::slice::from_ref(&materialized),
+            &[current_observation],
+            &[],
+            6,
+        )
+        .unwrap();
+        assert!(
+            validation_record.approval_ready,
+            "fixture validation must be approval-ready: {:?}",
+            validation_record.status
+        );
+        let validation_digest = validation_record.validation_digest.clone();
+
+        let child_input = ChangesetChildOperationInput::from_materialized(
+            materialized,
+            validation_record.material_digest.clone(),
+            validation_digest.clone(),
+        );
+
+        let reviewed_revision = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                let draft_rev = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: None,
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::Draft,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply frontmatter demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 10,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&draft_rev)?;
+                let needs_review = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: Some(draft_rev.changeset_revision.clone()),
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::NeedsReview,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply frontmatter demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 20,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&needs_review)?;
+                uow.validations().store_record(&validation_record)?;
+                Ok(needs_review.changeset_revision)
+            })
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+                Ok(uow.approvals().request_approval(ApprovalRequestInput {
+                    approval_id: ApprovalId::new("approval_apply_fm_1").unwrap(),
+                    proposal_id: proposal_id.clone(),
+                    changeset_id: changeset_id.clone(),
+                    reviewed: ReviewedTuple {
+                        proposal_revision: reviewed_revision.clone(),
+                        validation_digest: validation_digest.clone(),
+                        policy_version: V1_POLICY_VERSION.to_string(),
+                    },
+                    idempotency_key: "idem:request:fm:1".to_string(),
+                    created_at_ms: 30,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        if approve {
             store
                 .with_unit_of_work(CommandKind::Approve, |uow| {
                     Ok(uow.approvals().submit_decision(ReviewDecisionInput {
@@ -2031,6 +2266,153 @@ mod tests {
         assert_eq!(
             replay.receipt.unwrap().result_revision,
             receipt.result_revision
+        );
+    }
+
+    // --- W02.P03: EditFrontmatter apply wiring ------------------------------
+
+    #[test]
+    fn build_write_invocation_selects_set_frontmatter_capability_and_field_level_flags() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let doc_file = root.join(".vault").join("plan").join("fm-invocation.md");
+        std::fs::create_dir_all(doc_file.parent().unwrap()).unwrap();
+        std::fs::write(
+            &doc_file,
+            "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\nbody\n",
+        )
+        .unwrap();
+
+        let reader = SnapshotReader::for_worktree(root.to_path_buf());
+        let seed_doc = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: "doc:fm-invocation".to_string(),
+            stem: "fm-invocation".to_string(),
+            path: ".vault/plan/fm-invocation.md".to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: RevisionToken::new("blob:seed").unwrap(),
+        };
+        let base_probe = reader.capture_existing(&seed_doc).unwrap();
+        let document = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: "doc:fm-invocation".to_string(),
+            stem: "fm-invocation".to_string(),
+            path: ".vault/plan/fm-invocation.md".to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: base_probe.revision.clone(),
+        };
+        let base_snapshot = reader.capture_existing(&document).unwrap();
+        let preimage = reader
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: "preimage_fm_inv".to_string(),
+                changeset_id: "changeset_fm_inv".to_string(),
+                operation_id: "child_1".to_string(),
+                document: document.clone(),
+                captured_at_ms: 1,
+            })
+            .unwrap();
+        let draft = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::EditFrontmatter,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(base_snapshot.revision.clone()),
+                current_revision: Some(base_snapshot.revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: Some(crate::authoring::api::FrontmatterEditFields {
+                    date: Some("2026-02-06".to_string()),
+                    tags: Some(vec!["#plan".to_string(), "#new-tag".to_string()]),
+                    related: None,
+                }),
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &ChangesetId::new("changeset_fm_inv").unwrap(),
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+
+        let invocation = build_write_invocation(
+            ChangesetOperationKind::EditFrontmatter,
+            &materialized,
+            &existing_path(&document).unwrap(),
+            "a".repeat(40),
+        )
+        .unwrap();
+
+        assert_eq!(invocation.capability(), CoreCapability::SetFrontmatter);
+        assert!(
+            !invocation.has_body(),
+            "a frontmatter edit never streams a body to core"
+        );
+        assert!(invocation.argv().contains(&"--date".to_string()));
+        assert!(invocation.argv().contains(&"2026-02-06".to_string()));
+        assert!(invocation.argv().contains(&"--tags".to_string()));
+        assert!(invocation.argv().contains(&"#new-tag".to_string()));
+    }
+
+    #[test]
+    fn edit_frontmatter_apply_materializes_once_and_records_an_applied_receipt() {
+        let mut fx = setup_frontmatter(true);
+        let applier = fx.applier.clone();
+        let outcome = apply(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:apply:fm:1",
+            100,
+        );
+        assert!(
+            outcome.eligibility.allowed,
+            "{:?}",
+            outcome.eligibility.reason
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an applied frontmatter changeset yields a receipt");
+        assert_eq!(receipt.state, ApplyState::Applied);
+        assert_eq!(receipt.child.outcome, ApplyChildOutcome::Applied);
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+    }
+
+    #[test]
+    fn edit_frontmatter_out_of_band_edit_conflicts_and_refuses_the_apply_as_a_value() {
+        let mut fx = setup_frontmatter(true);
+        let applier = fx.applier.clone();
+        // An out-of-band edit lands on the target after the frontmatter draft was
+        // materialized: the base is now stale, so the base-revision conflict gate
+        // (generalized to `EditFrontmatter` by the `is_whole_document_replace`
+        // broadening in conflicts.rs) refuses the apply as a denial VALUE.
+        std::fs::write(
+            &fx.doc_file,
+            "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\n# apply demo\n\nsomeone else edited this\n",
+        )
+        .unwrap();
+
+        let outcome = apply(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:apply:fm:conflict",
+            100,
+        );
+        assert!(
+            !outcome.eligibility.allowed,
+            "a stale base refuses the frontmatter apply as a value"
+        );
+        assert!(
+            outcome.receipt.is_none(),
+            "a preflight conflict denial carries no receipt (the core never ran)"
+        );
+        assert_eq!(
+            ledger_status(&mut fx),
+            ChangesetStatus::Approved,
+            "the refused apply left the ledger untouched"
         );
     }
 }

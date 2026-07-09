@@ -467,6 +467,34 @@ pub struct TargetRevisionFence {
 pub struct DraftMutation {
     pub mode: DraftMode,
     pub body: String,
+    /// The field-level payload for `EditFrontmatter` (W02.P03): the `date`/`tags`/
+    /// `related` values the `SetFrontmatter` core capability accepts, edited
+    /// individually rather than by reconstructing the whole document text.
+    /// `None`/absent for every other operation kind; `body` carries no meaning for
+    /// a field-level edit and must be empty (R1: no accepted-but-ignored field).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frontmatter: Option<FrontmatterEditFields>,
+}
+
+/// The `EditFrontmatter` field-level payload: exactly the fields the
+/// `SetFrontmatter` core capability supports (`--date`, `--tags`, `--related`).
+/// Each field is edited only when present; an absent field is left untouched by
+/// both the materialized preview and the apply-time core write.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrontmatterEditFields {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub related: Option<Vec<String>>,
+}
+
+impl FrontmatterEditFields {
+    pub fn is_empty(&self) -> bool {
+        self.date.is_none() && self.tags.is_none() && self.related.is_none()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1054,6 +1082,7 @@ fn create_proposal_request_fixture() -> CreateProposalRequest {
                 draft: DraftMutation {
                     mode: DraftMode::WholeDocument,
                     body: "draft body".to_string(),
+                    frontmatter: None,
                 },
             },
             ChangesetChildOperationDraft {
@@ -1063,6 +1092,7 @@ fn create_proposal_request_fixture() -> CreateProposalRequest {
                 draft: DraftMutation {
                     mode: DraftMode::WholeDocument,
                     body: "new document body".to_string(),
+                    frontmatter: None,
                 },
             },
         ],

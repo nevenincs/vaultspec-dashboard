@@ -871,6 +871,7 @@ mod tests {
             draft: DraftMutation {
                 mode: DraftMode::WholeDocument,
                 body: "---\ntags:\n  - '#plan'\n---\n\nnew body\n".to_string(),
+                frontmatter: None,
             },
         };
         let operation = MaterializedProposalOperation::materialize_replace_body(

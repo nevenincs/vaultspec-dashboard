@@ -1388,6 +1388,7 @@ mod tests {
                 draft: DraftMutation {
                     mode: DraftMode::WholeDocument,
                     body: "# Tool alias\n".to_string(),
+                    frontmatter: None,
                 },
             }],
         };

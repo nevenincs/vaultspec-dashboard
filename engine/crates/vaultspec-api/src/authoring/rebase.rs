@@ -490,6 +490,7 @@ fn carry_forward_drafts(
             draft: DraftMutation {
                 mode: DraftMode::WholeDocument,
                 body: operation.target_snapshot.payload_text.clone(),
+                frontmatter: None,
             },
         });
     }
@@ -770,6 +771,7 @@ mod tests {
                 draft: DraftMutation {
                     mode: DraftMode::WholeDocument,
                     body: body.into(),
+                    frontmatter: None,
                 },
             }],
         }
@@ -811,6 +813,7 @@ mod tests {
             draft: DraftMutation {
                 mode: DraftMode::WholeDocument,
                 body: body.to_string(),
+                frontmatter: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(

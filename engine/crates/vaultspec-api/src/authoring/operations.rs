@@ -8,7 +8,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::api::{
-    ChangesetChildOperationDraft, ChangesetOperationKind, DraftMode, TargetRevisionFence,
+    ChangesetChildOperationDraft, ChangesetOperationKind, DraftMode, FrontmatterEditFields,
+    TargetRevisionFence,
 };
 use super::model::{ChangesetId, DocumentRef, RevisionToken};
 use super::snapshots::{
@@ -57,6 +58,21 @@ pub enum OperationError {
     StaleBaseSnapshot { child_key: String },
     #[error("operation `{child_key}` preimage does not match the captured base snapshot")]
     PreimageMismatch { child_key: String },
+    #[error(
+        "operation `{child_key}` frontmatter edit must carry no body text (field-level payload only)"
+    )]
+    UnexpectedBodyPayload { child_key: String },
+    #[error(
+        "operation `{child_key}` frontmatter edit must set at least one field (date, tags, or related)"
+    )]
+    EmptyFrontmatterPayload { child_key: String },
+    #[error("operation `{child_key}` frontmatter field `{field}` value must not contain a newline")]
+    InvalidFrontmatterValue {
+        child_key: String,
+        field: &'static str,
+    },
+    #[error("operation `{child_key}` target document has no frontmatter block to edit")]
+    MissingFrontmatterBlock { child_key: String },
     #[error("snapshot: {0}")]
     Snapshot(#[from] SnapshotError),
 }
@@ -74,6 +90,13 @@ pub struct MaterializedProposalOperation {
     pub target_snapshot: TargetSnapshot,
     pub review_diff: ReviewDiffProjection,
     pub preimage: OperationPreimageRef,
+    /// The field-level payload an `EditFrontmatter` apply carries through to the
+    /// `SetFrontmatter` core capability (W02.P03) — the SAME operation-kind-typed
+    /// value the draft supplied, threaded through the ledger so apply-time
+    /// invocation-building never re-derives it from the whole-document preview.
+    /// `None` for every other operation kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frontmatter_edit: Option<FrontmatterEditFields>,
 }
 
 impl MaterializedProposalOperation {
@@ -84,23 +107,80 @@ impl MaterializedProposalOperation {
         preimage: &PreimageRecord,
     ) -> Result<Self> {
         validate_replace_body_draft(changeset_id, &draft, base_snapshot, preimage)?;
-        let target_snapshot = TargetSnapshot::from_text(
-            base_snapshot.document.clone(),
-            base_snapshot.revision.clone(),
-            draft.draft.body.clone(),
-        )?;
-        let review_diff = ReviewDiffProjection::from_snapshots(base_snapshot, &target_snapshot)?;
-        Ok(Self {
-            changeset_id: changeset_id.clone(),
-            child_key: draft.child_key,
-            operation: draft.operation,
-            target: draft.target,
-            base: base_snapshot.metadata(),
-            target_snapshot,
-            review_diff,
-            preimage: OperationPreimageRef::from(preimage),
-        })
+        let target_text = draft.draft.body.clone();
+        finish_materialization(
+            changeset_id,
+            draft,
+            base_snapshot,
+            preimage,
+            target_text,
+            None,
+        )
     }
+
+    /// Materialize an `EditFrontmatter` draft (W02.P03): validate the field-level
+    /// payload, build a whole-document PREVIEW by surgically rewriting only the
+    /// named frontmatter fields (every other byte — the body, every untouched
+    /// frontmatter line — is carried over unchanged), and produce the SAME
+    /// review-diff/preimage-anchored shape `materialize_replace_body` does, so
+    /// validation (`validate_frontmatter`), the review diff, and conflict
+    /// detection treat a frontmatter edit exactly like a whole-document replace.
+    /// The preview is a best-effort projection for review/validation/fail-closed
+    /// post-verify ONLY: the actual write always runs through the `SetFrontmatter`
+    /// core capability at apply time, which is authoritative over the exact bytes.
+    pub fn materialize_edit_frontmatter(
+        changeset_id: &ChangesetId,
+        draft: ChangesetChildOperationDraft,
+        base_snapshot: &RevisionSnapshot,
+        preimage: &PreimageRecord,
+    ) -> Result<Self> {
+        let fields =
+            validate_edit_frontmatter_draft(changeset_id, &draft, base_snapshot, preimage)?.clone();
+        let target_text =
+            rewrite_frontmatter_fields(&draft.child_key, &base_snapshot.text, &fields)?;
+        finish_materialization(
+            changeset_id,
+            draft,
+            base_snapshot,
+            preimage,
+            target_text,
+            Some(fields),
+        )
+    }
+}
+
+/// Shared materialization tail: build the target snapshot + review diff from
+/// `target_text` and assemble the `MaterializedProposalOperation`. Every
+/// operation-kind-specific materializer validates its own payload shape and
+/// derives its own `target_text`, then converges here — the ONE place the
+/// preview/preimage/review-diff shape is assembled, so a new operation kind
+/// (rename, create) extends by adding a `target_text` derivation, not a
+/// duplicated tail.
+fn finish_materialization(
+    changeset_id: &ChangesetId,
+    draft: ChangesetChildOperationDraft,
+    base_snapshot: &RevisionSnapshot,
+    preimage: &PreimageRecord,
+    target_text: String,
+    frontmatter_edit: Option<FrontmatterEditFields>,
+) -> Result<MaterializedProposalOperation> {
+    let target_snapshot = TargetSnapshot::from_text(
+        base_snapshot.document.clone(),
+        base_snapshot.revision.clone(),
+        target_text,
+    )?;
+    let review_diff = ReviewDiffProjection::from_snapshots(base_snapshot, &target_snapshot)?;
+    Ok(MaterializedProposalOperation {
+        changeset_id: changeset_id.clone(),
+        child_key: draft.child_key,
+        operation: draft.operation,
+        target: draft.target,
+        base: base_snapshot.metadata(),
+        target_snapshot,
+        review_diff,
+        preimage: OperationPreimageRef::from(preimage),
+        frontmatter_edit,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -222,6 +302,87 @@ fn validate_replace_body_draft(
             mode: draft.draft.mode,
         });
     }
+    validate_target_and_preimage(changeset_id, child_key, draft, base_snapshot, preimage)
+}
+
+/// Validate an `EditFrontmatter` draft (W02.P03): the operation kind, its
+/// field-level payload shape, and the SAME target-fence + preimage checks every
+/// operation kind shares. `body` carries no meaning for a field-level edit and
+/// must be empty (R1: no accepted-but-ignored field). Returns the validated
+/// fields so the caller materializes without re-deriving them.
+fn validate_edit_frontmatter_draft<'a>(
+    changeset_id: &ChangesetId,
+    draft: &'a ChangesetChildOperationDraft,
+    base_snapshot: &RevisionSnapshot,
+    preimage: &PreimageRecord,
+) -> Result<&'a FrontmatterEditFields> {
+    if draft.child_key.trim().is_empty() {
+        return Err(OperationError::EmptyChildKey);
+    }
+    let child_key = draft.child_key.clone();
+    if draft.operation != ChangesetOperationKind::EditFrontmatter {
+        return Err(OperationError::UnsupportedOperationKind {
+            child_key,
+            operation: draft.operation,
+        });
+    }
+    if draft.draft.mode != DraftMode::WholeDocument {
+        return Err(OperationError::UnsupportedDraftMode {
+            child_key,
+            mode: draft.draft.mode,
+        });
+    }
+    if !draft.draft.body.is_empty() {
+        return Err(OperationError::UnexpectedBodyPayload { child_key });
+    }
+    let Some(fields) = draft.draft.frontmatter.as_ref() else {
+        return Err(OperationError::EmptyFrontmatterPayload { child_key });
+    };
+    if fields.is_empty() {
+        return Err(OperationError::EmptyFrontmatterPayload { child_key });
+    }
+    validate_frontmatter_values(&child_key, fields)?;
+    validate_target_and_preimage(changeset_id, child_key, draft, base_snapshot, preimage)?;
+    Ok(fields)
+}
+
+/// Reject a field value that would corrupt the frontmatter block it lands in: an
+/// embedded newline splices a second line into the rewritten preview. Mirrors the
+/// core adapter's own flag-injection discipline at the boundary the preview
+/// shares with (`date`/`tags`/`related`).
+fn validate_frontmatter_values(child_key: &str, fields: &FrontmatterEditFields) -> Result<()> {
+    let check = |field: &'static str, value: &str| -> Result<()> {
+        if value.contains('\n') || value.contains('\r') {
+            return Err(OperationError::InvalidFrontmatterValue {
+                child_key: child_key.to_string(),
+                field,
+            });
+        }
+        Ok(())
+    };
+    if let Some(date) = &fields.date {
+        check("date", date)?;
+    }
+    for value in fields.tags.iter().flatten() {
+        check("tags", value)?;
+    }
+    for value in fields.related.iter().flatten() {
+        check("related", value)?;
+    }
+    Ok(())
+}
+
+/// The target-revision fence + preimage checks EVERY operation kind shares
+/// (existing target, base/current revision match, document identity, snapshot
+/// freshness, preimage recovery-identity). Each operation-kind validator checks
+/// its own operation-kind + payload-shape constraints first, then converges here.
+fn validate_target_and_preimage(
+    changeset_id: &ChangesetId,
+    child_key: String,
+    draft: &ChangesetChildOperationDraft,
+    base_snapshot: &RevisionSnapshot,
+    preimage: &PreimageRecord,
+) -> Result<()> {
     let DocumentRef::Existing { base_revision, .. } = &draft.target.document else {
         return Err(OperationError::UnsupportedTarget { child_key });
     };
@@ -288,6 +449,118 @@ fn validate_preimage(
         return Err(OperationError::PreimageMismatch { child_key });
     }
     Ok(())
+}
+
+/// Build the `EditFrontmatter` whole-document PREVIEW: surgically rewrite only
+/// the named fields (`date`/`tags`/`related`) in `text`'s frontmatter block,
+/// carrying every other line — the body, every untouched frontmatter field —
+/// over byte-for-byte. Mirrors the `SetFrontmatter` core capability's own
+/// contract ("edit selected frontmatter fields, keeping the body byte-for-byte");
+/// it is a PREVIEW for review/validation/fail-closed post-verify, never the
+/// authoritative write (the core adapter performs the real write at apply time).
+fn rewrite_frontmatter_fields(
+    child_key: &str,
+    text: &str,
+    fields: &FrontmatterEditFields,
+) -> Result<String> {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let missing_block = || OperationError::MissingFrontmatterBlock {
+        child_key: child_key.to_string(),
+    };
+    if lines.first().map(|line| line.trim_end_matches('\r')) != Some("---") {
+        return Err(missing_block());
+    }
+    let close_index = lines
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find(|(_, line)| line.trim_end_matches('\r') == "---")
+        .map(|(index, _)| index)
+        .ok_or_else(missing_block)?;
+
+    let mut fm_lines: Vec<String> = lines[1..close_index]
+        .iter()
+        .map(|line| (*line).to_string())
+        .collect();
+    if let Some(value) = &fields.date {
+        set_scalar_frontmatter_field(&mut fm_lines, "date", value);
+    }
+    if let Some(values) = &fields.tags {
+        set_list_frontmatter_field(&mut fm_lines, "tags", values);
+    }
+    if let Some(values) = &fields.related {
+        set_list_frontmatter_field(&mut fm_lines, "related", values);
+    }
+
+    let mut rebuilt = Vec::with_capacity(lines.len());
+    rebuilt.push("---".to_string());
+    rebuilt.extend(fm_lines);
+    rebuilt.push("---".to_string());
+    rebuilt.extend(
+        lines[close_index + 1..]
+            .iter()
+            .map(|line| (*line).to_string()),
+    );
+    Ok(rebuilt.join("\n"))
+}
+
+/// Replace (or append) a scalar frontmatter field's line, quoting the value the
+/// same way the vault's own scaffolded frontmatter quotes dates (`date: 'value'`).
+/// A single-quote in `value` is YAML-escaped (doubled) so the rewritten line
+/// stays valid YAML.
+fn set_scalar_frontmatter_field(lines: &mut Vec<String>, key: &str, value: &str) {
+    let escaped = value.replace('\'', "''");
+    let line = format!("{key}: '{escaped}'");
+    match lines
+        .iter()
+        .position(|line| is_frontmatter_field_key(line, key))
+    {
+        Some(index) => lines[index] = line,
+        None => lines.push(line),
+    }
+}
+
+/// Replace (or append) a list frontmatter field's block (`key:` + its indented
+/// `- 'item'` continuation lines), quoting each item the same way the vault's
+/// own scaffolded frontmatter quotes list entries.
+fn set_list_frontmatter_field(lines: &mut Vec<String>, key: &str, values: &[String]) {
+    let mut block = vec![format!("{key}:")];
+    block.extend(
+        values
+            .iter()
+            .map(|value| format!("  - '{}'", value.replace('\'', "''"))),
+    );
+    match frontmatter_field_block_range(lines, key) {
+        Some((start, end)) => {
+            lines.splice(start..end, block);
+        }
+        None => lines.extend(block),
+    }
+}
+
+/// True when `line` is the top-level `key:` field header — a bare key at column
+/// zero, never an indented continuation line (which belongs to a DIFFERENT key's
+/// block, never this one's).
+fn is_frontmatter_field_key(line: &str, key: &str) -> bool {
+    let trimmed = line.trim_end_matches('\r');
+    if trimmed.starts_with([' ', '\t']) {
+        return false;
+    }
+    matches!(trimmed.split_once(':'), Some((found, _)) if found == key)
+}
+
+/// The `[start, end)` line range of `key`'s block: its header line plus every
+/// following indented continuation line, or `None` when the key is absent.
+fn frontmatter_field_block_range(lines: &[String], key: &str) -> Option<(usize, usize)> {
+    let start = lines
+        .iter()
+        .position(|line| is_frontmatter_field_key(line, key))?;
+    let mut end = start + 1;
+    while end < lines.len() && lines[end].starts_with([' ', '\t']) && !lines[end].trim().is_empty()
+    {
+        end += 1;
+    }
+    Some((start, end))
 }
 
 fn build_diff_hunks(base_lines: &[String], target_lines: &[String]) -> Vec<ReviewDiffHunk> {
@@ -529,6 +802,28 @@ mod tests {
             draft: DraftMutation {
                 mode,
                 body: body.to_string(),
+                frontmatter: None,
+            },
+        }
+    }
+
+    fn frontmatter_draft_for(
+        document: DocumentRef,
+        fields: FrontmatterEditFields,
+    ) -> ChangesetChildOperationDraft {
+        let revision = base_revision(&document);
+        ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::EditFrontmatter,
+            target: TargetRevisionFence {
+                document,
+                base_revision: Some(revision.clone()),
+                current_revision: Some(revision),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: Some(fields),
             },
         }
     }
@@ -799,6 +1094,7 @@ mod tests {
             draft: DraftMutation {
                 mode: DraftMode::WholeDocument,
                 body: "new\n".to_string(),
+                frontmatter: None,
             },
         };
 
@@ -1122,5 +1418,327 @@ mod tests {
                 .sum::<usize>()
                 <= REVIEW_DIFF_BYTE_CAP
         );
+    }
+
+    // --- W02.P03: EditFrontmatter validation + materialization -------------
+
+    #[test]
+    fn edit_frontmatter_materializes_a_whole_document_preview_with_only_named_fields_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/operation-plan.md",
+            "---\ntags:\n  - '#plan'\n  - '#operation-plan'\ndate: '2026-01-01'\nrelated:\n  - '[[old-link]]'\n---\n\n# body\n\nunchanged prose\n",
+        );
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let draft = frontmatter_draft_for(
+            snapshot.document.clone(),
+            FrontmatterEditFields {
+                date: Some("2026-02-06".to_string()),
+                tags: None,
+                related: Some(vec!["[[new-link]]".to_string()]),
+            },
+        );
+
+        let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap();
+
+        assert_eq!(
+            materialized.operation,
+            ChangesetOperationKind::EditFrontmatter
+        );
+        let preview = &materialized.target_snapshot.payload_text;
+        assert!(
+            preview.contains("date: '2026-02-06'"),
+            "the named date field is rewritten: {preview}"
+        );
+        assert!(
+            preview.contains("related:\n  - '[[new-link]]'"),
+            "the named related field is rewritten: {preview}"
+        );
+        assert!(
+            preview.contains("tags:\n  - '#plan'\n  - '#operation-plan'"),
+            "an untouched field is carried over byte-for-byte: {preview}"
+        );
+        assert!(
+            preview.ends_with("# body\n\nunchanged prose\n"),
+            "the body is carried over byte-for-byte: {preview}"
+        );
+        assert!(
+            materialized.review_diff.changed,
+            "a frontmatter edit produces a non-empty review diff"
+        );
+        assert_eq!(
+            materialized.frontmatter_edit,
+            Some(FrontmatterEditFields {
+                date: Some("2026-02-06".to_string()),
+                tags: None,
+                related: Some(vec!["[[new-link]]".to_string()]),
+            }),
+            "the field-level payload threads through for apply-time invocation-building"
+        );
+    }
+
+    #[test]
+    fn edit_frontmatter_inserts_a_field_absent_from_the_base_document() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/operation-plan.md",
+            "---\ntags:\n  - '#plan'\n---\n\nbody\n",
+        );
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let draft = frontmatter_draft_for(
+            snapshot.document.clone(),
+            FrontmatterEditFields {
+                date: Some("2026-02-06".to_string()),
+                tags: None,
+                related: None,
+            },
+        );
+
+        let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap();
+
+        assert!(
+            materialized
+                .target_snapshot
+                .payload_text
+                .contains("date: '2026-02-06'"),
+            "an absent field is appended to the frontmatter block: {}",
+            materialized.target_snapshot.payload_text
+        );
+    }
+
+    #[test]
+    fn edit_frontmatter_rejects_a_replace_body_draft_shape() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/operation-plan.md",
+            "---\ntags:\n  - '#plan'\n---\n\nbody\n",
+        );
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let draft = draft_for(
+            snapshot.document.clone(),
+            ChangesetOperationKind::ReplaceBody,
+            DraftMode::WholeDocument,
+            "after\n",
+        );
+
+        let err = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::UnsupportedOperationKind {
+                operation: ChangesetOperationKind::ReplaceBody,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn edit_frontmatter_rejects_a_non_empty_body_payload() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/operation-plan.md",
+            "---\ntags:\n  - '#plan'\n---\n\nbody\n",
+        );
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let mut draft = frontmatter_draft_for(
+            snapshot.document.clone(),
+            FrontmatterEditFields {
+                date: Some("2026-02-06".to_string()),
+                tags: None,
+                related: None,
+            },
+        );
+        draft.draft.body = "unexpected body text".to_string();
+
+        let err = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(err, OperationError::UnexpectedBodyPayload { .. }));
+    }
+
+    #[test]
+    fn edit_frontmatter_rejects_an_absent_or_empty_field_payload() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/operation-plan.md",
+            "---\ntags:\n  - '#plan'\n---\n\nbody\n",
+        );
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+
+        let mut no_payload =
+            frontmatter_draft_for(snapshot.document.clone(), FrontmatterEditFields::default());
+        no_payload.draft.frontmatter = None;
+        let err = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id(),
+            no_payload,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::EmptyFrontmatterPayload { .. }
+        ));
+
+        let empty_payload =
+            frontmatter_draft_for(snapshot.document.clone(), FrontmatterEditFields::default());
+        let err = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id(),
+            empty_payload,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::EmptyFrontmatterPayload { .. }
+        ));
+    }
+
+    #[test]
+    fn edit_frontmatter_rejects_a_newline_embedded_in_a_field_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/operation-plan.md",
+            "---\ntags:\n  - '#plan'\n---\n\nbody\n",
+        );
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let draft = frontmatter_draft_for(
+            snapshot.document.clone(),
+            FrontmatterEditFields {
+                date: Some("2026-02-06\ninjected: true".to_string()),
+                tags: None,
+                related: None,
+            },
+        );
+
+        let err = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::InvalidFrontmatterValue { field: "date", .. }
+        ));
+    }
+
+    #[test]
+    fn edit_frontmatter_rejects_a_document_with_no_frontmatter_block() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/operation-plan.md",
+            "# no frontmatter here\n",
+        );
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let draft = frontmatter_draft_for(
+            snapshot.document.clone(),
+            FrontmatterEditFields {
+                date: Some("2026-02-06".to_string()),
+                tags: None,
+                related: None,
+            },
+        );
+
+        let err = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::MissingFrontmatterBlock { .. }
+        ));
+    }
+
+    #[test]
+    fn section_and_destructive_kinds_are_deferred_from_edit_frontmatter_materialization() {
+        // EditFrontmatter's own materializer accepts only its own kind, exactly as
+        // materialize_replace_body accepts only ReplaceBody (`W03.P13` subset).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/operation-plan.md",
+            "---\ntags:\n  - '#plan'\n---\n\nbody\n",
+        );
+        let snapshot = base_snapshot(root);
+
+        for operation in [
+            ChangesetOperationKind::SectionEdit,
+            ChangesetOperationKind::Archive,
+            ChangesetOperationKind::Unarchive,
+            ChangesetOperationKind::Rename,
+            ChangesetOperationKind::Link,
+            ChangesetOperationKind::CreateDocument,
+        ] {
+            let draft = draft_for(
+                snapshot.document.clone(),
+                operation,
+                DraftMode::WholeDocument,
+                "after\n",
+            );
+            let preimage = preimage_record(root);
+            let err = MaterializedProposalOperation::materialize_edit_frontmatter(
+                &changeset_id(),
+                draft,
+                &snapshot,
+                &preimage,
+            )
+            .unwrap_err();
+            assert!(matches!(
+                err,
+                OperationError::UnsupportedOperationKind {
+                    operation: found,
+                    ..
+                } if found == operation
+            ));
+        }
     }
 }

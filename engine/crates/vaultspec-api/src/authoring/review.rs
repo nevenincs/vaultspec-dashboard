@@ -1013,6 +1013,7 @@ mod tests {
                         draft: DraftMutation {
                             mode: DraftMode::WholeDocument,
                             body: body.to_string(),
+                            frontmatter: None,
                         },
                     }],
                 },
@@ -1500,6 +1501,7 @@ mod tests {
                         draft: DraftMutation {
                             mode: DraftMode::WholeDocument,
                             body: valid_body("edited"),
+                            frontmatter: None,
                         },
                     }],
                 },

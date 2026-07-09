@@ -237,6 +237,7 @@ pub fn generate_rollback(
             draft: DraftMutation {
                 mode: DraftMode::WholeDocument,
                 body: source_preimage.payload_text.clone(),
+                frontmatter: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(
@@ -866,6 +867,92 @@ mod tests {
                 .is_some_and(|reason| reason.contains("not applied")),
             "the reason names the unapplied source: {:?}",
             outcome.eligibility.reason
+        );
+    }
+
+    #[test]
+    fn frontmatter_edit_rolls_back_by_restoring_the_source_preimage() {
+        // W02.P03.S18: an EditFrontmatter source is invertible exactly like a body
+        // edit — the eligibility matrix (transitions.rs) already admits it, and
+        // generation restores the SAME preimage-payload-as-ReplaceBody inverse
+        // regardless of the source operation kind.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let before_rev = write_doc(
+            root,
+            "rollback-fm",
+            "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\nbefore\n",
+        );
+        let mut store = temp_store(root);
+        let source = ChangesetId::new("changeset_fm_1").unwrap();
+        let author = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let doc = existing_doc("rollback-fm", &before_rev);
+        let preimage = source_preimage_record(root, &source, "child_1", doc.clone());
+        let child = {
+            let doc = doc.clone();
+            move || {
+                child_input(
+                    "child_1",
+                    ChangesetOperationKind::EditFrontmatter,
+                    doc.clone(),
+                )
+            }
+        };
+        seed_applied_source(
+            &mut store,
+            &source,
+            &author,
+            &reviewer,
+            child,
+            Some(preimage),
+        );
+        // The forward edit landed: the worktree now reads the rewritten frontmatter.
+        write_doc(
+            root,
+            "rollback-fm",
+            "---\ntags:\n  - '#plan'\ndate: '2026-02-06'\n---\n\nafter\n",
+        );
+
+        let outcome = generate(
+            &mut store,
+            root,
+            &source,
+            &["child_1"],
+            "idem:rollback:fm:1",
+        );
+
+        assert!(
+            outcome.eligibility.allowed,
+            "reason: {:?}",
+            outcome.eligibility.reason
+        );
+        assert!(!outcome.replayed);
+        assert!(outcome.manual_repair.is_none());
+        let rollback_id = outcome.changeset_id.expect("rollback changeset generated");
+
+        let rollback = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                Ok(uow.ledger().latest(&rollback_id)?.unwrap())
+            })
+            .unwrap();
+        assert_eq!(rollback.kind, ChangesetKind::Rollback);
+        assert_eq!(rollback.status, ChangesetStatus::RollbackProposed);
+        assert_eq!(rollback.operation_count, 1);
+        let materialized = rollback.children[0]
+            .materialized_operation
+            .as_ref()
+            .expect("rollback child is materialized");
+        assert_eq!(
+            materialized.target_snapshot.payload_text,
+            "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\nbefore\n",
+            "rollback restores the EXACT preimage, not a re-derived frontmatter merge"
+        );
+        assert_eq!(
+            materialized.operation,
+            ChangesetOperationKind::ReplaceBody,
+            "the preimage-restore inverse is always a whole-document replace, \
+             regardless of the source operation kind"
         );
     }
 }
