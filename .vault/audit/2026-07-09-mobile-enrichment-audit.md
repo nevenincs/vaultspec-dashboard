@@ -82,8 +82,10 @@ canvas/graph touch anywhere in the diff.
 
 ## Recommendations
 
-- All four review findings are addressed in the working tree; the full lint gate and the
-  live-engine compact guard test are green. Land the revision commit.
+- All four review findings were addressed and the revision landed; the reviewer's
+  independent re-check of the working-tree diff returned **PASS** (HIGH resolved, no new
+  issues, no regressions), contingent on the green lint gate and live guard test — both
+  confirmed green. Review CLOSED.
 - Carry the D4 real-device verification (iOS system-back / scroll-intent) as the one open
   item beyond merge, per ADR D4.
 - No rule promotion warranted from this review; the findings were feature-local intent/a11y
