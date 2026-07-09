@@ -480,6 +480,21 @@ export interface DirectWriteConflict {
 }
 
 /**
+ * The structured WHY behind a `denied` direct-write outcome (W05.P14), matching
+ * the backend `DirectWriteDenialKind` enum verbatim. Replaces reason-text
+ * substring matching (`RENAME_COLLISION_REASON_HINT`, retired): a `denied`
+ * outcome ALWAYS carries one of these (the backend defaults to `"other"` rather
+ * than omitting it), so a caller routes on `denialKind`, never on the prose.
+ */
+export type DirectWriteDenialKind =
+  | "path_collision"
+  | "stale_base"
+  | "scope_mismatch"
+  | "forbidden_actor"
+  | "self_approval"
+  | "other";
+
+/**
  * The interpreted direct-write outcome. DENIALS ARE VALUES: `conflict` (a
  * stale optimistic base) and `denied` (an ineligible actor — e.g. a non-human
  * principal) ride the success (200) envelope as VALUES, never a thrown fault.
@@ -502,7 +517,12 @@ export type DirectWriteOutcome =
       tiers: TiersBlock;
     }
   | { kind: "conflict"; conflict: DirectWriteConflict; tiers: TiersBlock }
-  | { kind: "denied"; reason: string | null; tiers: TiersBlock }
+  | {
+      kind: "denied";
+      reason: string | null;
+      denialKind?: DirectWriteDenialKind;
+      tiers: TiersBlock;
+    }
   | { kind: "failed"; reason: string | null; tiers: TiersBlock }
   | { kind: "in_flight"; tiers: TiersBlock };
 
@@ -555,6 +575,22 @@ const asBool = (v: unknown): boolean => v === true;
 const asNum = (v: unknown, fallback = 0): number =>
   typeof v === "number" && Number.isFinite(v) ? v : fallback;
 const asTiers = (v: unknown): TiersBlock => (isRec(v) ? (v as TiersBlock) : {});
+
+const DIRECT_WRITE_DENIAL_KINDS: readonly DirectWriteDenialKind[] = [
+  "path_collision",
+  "stale_base",
+  "scope_mismatch",
+  "forbidden_actor",
+  "self_approval",
+  "other",
+];
+/** Narrow the served `denial_kind` string to the closed union, tolerant of an
+ *  absent/unrecognized value (a future backend variant this client hasn't been
+ *  taught yet degrades to `undefined`, not a thrown parse fault). */
+const asDenialKind = (v: unknown): DirectWriteDenialKind | undefined =>
+  DIRECT_WRITE_DENIAL_KINDS.includes(v as DirectWriteDenialKind)
+    ? (v as DirectWriteDenialKind)
+    : undefined;
 
 export const AUTHORING_STREAM_SEQ_MAX = Number.MAX_SAFE_INTEGER;
 export const AUTHORING_STREAM_REOPEN_MS = 1_000;
@@ -911,7 +947,12 @@ export function adaptDirectWriteOutcome(raw: unknown): DirectWriteOutcome {
   }
   if (status === "denied") {
     const eligibility: Rec = isRec(r.eligibility) ? r.eligibility : {};
-    return { kind: "denied", reason: asStr(eligibility.reason) ?? null, tiers };
+    return {
+      kind: "denied",
+      reason: asStr(eligibility.reason) ?? null,
+      denialKind: asDenialKind(r.denial_kind),
+      tiers,
+    };
   }
   if (status === "failed") {
     const receipt: Rec = isRec(r.apply_receipt) ? r.apply_receipt : {};

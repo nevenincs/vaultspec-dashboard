@@ -761,6 +761,46 @@ describe("adaptDirectWriteOutcome (ledgered-edit-migration W01.P02)", () => {
     }
   });
 
+  it("reads the structured `denial_kind` off a denied outcome (W05.P14)", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "denied",
+      eligibility: {
+        command: "direct_write",
+        allowed: false,
+        reason:
+          "a document already exists at the proposed stem `new-stem`; rename would collide",
+      },
+      denial_kind: "path_collision",
+      tiers: availableTiers,
+    });
+
+    expect(outcome.kind).toBe("denied");
+    if (outcome.kind === "denied") {
+      expect(outcome.denialKind).toBe("path_collision");
+    }
+  });
+
+  it("tolerates an absent or unrecognized `denial_kind` (a future backend variant this client hasn't been taught) by leaving it undefined, never throwing", () => {
+    const absent = adaptDirectWriteOutcome({
+      status: "denied",
+      eligibility: { command: "direct_write", allowed: false, reason: "refused" },
+      tiers: availableTiers,
+    });
+    expect(absent.kind).toBe("denied");
+    if (absent.kind === "denied") expect(absent.denialKind).toBeUndefined();
+
+    const unrecognized = adaptDirectWriteOutcome({
+      status: "denied",
+      eligibility: { command: "direct_write", allowed: false, reason: "refused" },
+      denial_kind: "a-future-kind-this-client-does-not-know",
+      tiers: availableTiers,
+    });
+    expect(unrecognized.kind).toBe("denied");
+    if (unrecognized.kind === "denied") {
+      expect(unrecognized.denialKind).toBeUndefined();
+    }
+  });
+
   it("reads a failed outcome's redacted diagnostic off the apply receipt's child", () => {
     const outcome = adaptDirectWriteOutcome({
       status: "failed",

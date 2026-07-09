@@ -6,14 +6,17 @@
 // the create dialog at W03.P09, all generalized to the operation-typed
 // `directWrite` route at W02.P06).
 //
-// The RESPONSE side (the wire `{data, tiers}` envelope → typed `OpsWriteResult`)
-// is covered against CAPTURED LIVE samples in `liveAdapters.test.ts`. This file
-// covers the complementary REQUEST side: that `useSaveBody` / `useSetFrontmatter`
-// / `useRenameDoc` / `useCreateDoc` CONSTRUCT the correct `directWrite` payload
-// — the `operation` discriminator,
+// The RESPONSE side (the raw `adaptDirectWriteOutcome` mapping off the wire
+// `{data, tiers}` envelope) is covered directly in `authoring.test.ts`. This
+// file covers the complementary REQUEST side: that `useSaveBody` /
+// `useSetFrontmatter` / `useRenameDoc` / `useCreateDoc` CONSTRUCT the correct
+// `directWrite` payload — the `operation` discriminator,
 // ref/body/frontmatter/new_stem/create/expected_blob_hash, the scope pin, and
 // the bootstrapped actor token — and that each hook resolves (never throws) on
-// a business outcome, mapping it to the typed result.
+// a business outcome, mapping the typed `DirectWriteOutcome` (spied off the
+// client, a captured-shape fixture) onto its own typed result — including
+// routing a rename/create path collision on the served structured
+// `denialKind` (W05.P14), never a reason-text substring match.
 //
 // This is NOT the tautological mock-engine test the no-mocks migration removed:
 // every hook spies the authoring store's `directWrite` client method, CAPTURING
@@ -398,11 +401,12 @@ describe("useRenameDoc — direct-write request construction", () => {
     }
   });
 
-  it("maps a rename-target-collision denial to the `collision` result (resolves, never throws) — the apply-time RenameTargetCollision finding", async () => {
+  it("maps a rename-target-collision denial to the `collision` result on the structured `denialKind` (resolves, never throws) — the apply-time RenameTargetCollision finding", async () => {
     vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
       kind: "denied",
       reason:
         "a document already exists at the proposed stem `new-stem`; rename would collide",
+      denialKind: "path_collision",
       tiers: TIERS,
     } satisfies DirectWriteOutcome);
 
@@ -422,11 +426,38 @@ describe("useRenameDoc — direct-write request construction", () => {
     }
   });
 
-  it("maps every OTHER denial reason to a `refused` result carrying the reason in `checks` (the advisories panel reads only `checks`)", async () => {
+  it('still routes to `collision` on `denialKind: "path_collision"` even with a REWORDED reason string — proving the routing is structural, not a reason-text match', async () => {
+    vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "denied",
+      reason: "the target filename is already taken by another document",
+      denialKind: "path_collision",
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
+    const { result } = renderHook(() => useRenameDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      nodeId: "doc:old-stem",
+      scope: null,
+      to: "new-stem",
+      expectedBlobHash: "old-hash",
+    });
+
+    expect(res.result.kind).toBe("collision");
+    if (res.result.kind === "collision") {
+      expect(res.result.message).toBe(
+        "the target filename is already taken by another document",
+      );
+    }
+  });
+
+  it("maps every OTHER denial kind to a `refused` result carrying the reason in `checks` (the advisories panel reads only `checks`)", async () => {
     vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
       kind: "denied",
       reason:
         "direct editor saves require a human actor; agents must propose changesets",
+      denialKind: "forbidden_actor",
       tiers: TIERS,
     } satisfies DirectWriteOutcome);
 
@@ -448,6 +479,27 @@ describe("useRenameDoc — direct-write request construction", () => {
         "agents must propose changesets",
       );
     }
+  });
+
+  it('maps a denial with `denialKind: "other"` (or an absent kind) to `refused`, never `collision`', async () => {
+    vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "denied",
+      reason: "a lease is held by another writer",
+      denialKind: "other",
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
+    const { result } = renderHook(() => useRenameDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      nodeId: "doc:old-stem",
+      scope: null,
+      to: "new-stem",
+      expectedBlobHash: "old-hash",
+    });
+
+    expect(res.result.kind).toBe("refused");
   });
 
   it("refuses client-side (never sends an empty expected_blob_hash) when no optimistic base is supplied", async () => {
@@ -555,11 +607,12 @@ describe("useCreateDoc — direct-write request construction", () => {
     expect(res.nodeId).toBeNull();
   });
 
-  it("maps a predicted-create-path collision denial to a `refused` result carrying the reason in `checks`", async () => {
+  it('maps a predicted-create-path collision denial (`denialKind: "path_collision"`) to a `refused` result carrying the reason in `checks` — `OpsWriteResult` has no distinct `collision` kind for create', async () => {
     vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
       kind: "denied",
       reason:
         "a document already exists at the predicted create path `.vault/research/2026-07-09-alpha-research.md`; core refuses to overwrite it",
+      denialKind: "path_collision",
       tiers: TIERS,
     } satisfies DirectWriteOutcome);
 
@@ -579,6 +632,31 @@ describe("useCreateDoc — direct-write request construction", () => {
       );
       expect(res.result.checks).toHaveLength(1);
       expect((res.result.checks[0] as { severity?: string }).severity).toBe("error");
+    }
+    expect(res.nodeId).toBeNull();
+  });
+
+  it("maps a create denial with `denialKind: \"other\"` to the SAME `refused` result shape (create's denial surface doesn't branch on the structured kind)", async () => {
+    vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "denied",
+      reason:
+        "direct editor saves require a human actor; agents must propose changesets",
+      denialKind: "forbidden_actor",
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
+    const { result } = renderHook(() => useCreateDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      scope: "Y:/repo",
+      docType: "research",
+      feature: "alpha",
+    });
+
+    expect(res.result.kind).toBe("refused");
+    if (res.result.kind === "refused") {
+      expect(res.result.errors[0]).toContain("agents must propose changesets");
     }
     expect(res.nodeId).toBeNull();
   });

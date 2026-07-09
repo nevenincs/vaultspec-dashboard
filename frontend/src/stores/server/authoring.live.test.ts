@@ -371,6 +371,7 @@ describe("direct editor save (live)", () => {
       // requested scope string back onto the wire.
       expect(outcome.reason ?? "").not.toContain(foreignScope);
       expect(outcome.reason ?? "").toContain("does not match");
+      expect(outcome.denialKind).toBe("scope_mismatch");
     }
   });
 
@@ -400,6 +401,9 @@ describe("direct editor save (live)", () => {
     expect(outcome.kind).toBe("denied");
     if (outcome.kind === "denied") {
       expect(outcome.reason ?? "").toContain("already exists at the proposed stem");
+      // W05.P14: the live wire now carries the structured discriminator the
+      // frontend routes on, not just the reason prose.
+      expect(outcome.denialKind).toBe("path_collision");
     }
     // Never mutated: the source doc's blob is unchanged.
     const after = await engine.content(TARGET_NODE_ID, scopeToken);

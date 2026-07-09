@@ -6559,12 +6559,14 @@ export function normalizeCreateDocArgs(args: unknown): NormalizedCreateDocArgs {
  * stem, and now doesn't need to: the apply receipt echoes the real
  * `result_node_id`/`result_stem`/`document_path` for a landed create,
  * re-resolved server-side, never client-guessed). `conflict`/`refused`
- * (including a predicted-create-path collision, `CreateDocumentPathCollision`)
- * is a typed result the caller drives UI state from — NOT a thrown error;
- * only a transport fault, or the actor-token fail-safe (`requireActorToken`),
- * rejects. On a `created` outcome the same vault-mutation read surfaces are
- * invalidated as a save (a new doc can introduce tree rows, graph nodes,
- * filter facets, search hits, and git change entries).
+ * (including a predicted-create-path collision, structurally tagged
+ * `denialKind === "path_collision"` — W05.P14, never a reason-text substring
+ * match) is a typed result the caller drives UI state from — NOT a thrown
+ * error; only a transport fault, or the actor-token fail-safe
+ * (`requireActorToken`), rejects. On a `created` outcome the same vault-
+ * mutation read surfaces are invalidated as a save (a new doc can introduce
+ * tree rows, graph nodes, filter facets, search hits, and git change
+ * entries).
  */
 export function useCreateDoc() {
   const queryClient = useQueryClient();
@@ -6621,6 +6623,11 @@ export function useCreateDoc() {
           nodeId: null,
         };
       }
+      // A predicted-create-path collision (`denialKind === "path_collision"`,
+      // W05.P14) rides the same denied-status VALUE as every other denial and
+      // folds into the SAME refused-with-checks result below: `OpsWriteResult`
+      // (unlike rename's `RenameDocResult`) carries no distinct `collision`
+      // kind for create, so there is no separate branch to route to.
       const reason =
         outcome.kind === "denied" || outcome.kind === "failed"
           ? (outcome.reason ?? "Create refused")
@@ -6699,23 +6706,6 @@ function refusedRenameResult(message: string): {
 }
 
 /**
- * The stable substring the backend's `RenameTargetCollision` finding carries
- * (`conflicts.rs`: `"a document already exists at the proposed stem ...;
- * rename would collide"`). A rename-target collision is caught only at
- * APPLY-TIME preflight (there is no pre-materialization stem-availability
- * check, mirroring `CreateDocument`'s collision class), so it rides the
- * direct-write route's `denied` status — NOT `conflict` (`conflict` is
- * reserved for the pre-apply STALE-BASE race the same route shares with
- * `replace_body`/`edit_frontmatter`). This substring match discriminates the
- * specific collision denial from every other denial reason (a non-human
- * actor, a scope-pin mismatch, a lease conflict, …) so it renders through the
- * SAME `collision` UX the legacy op's structured `data.collision === true`
- * flag used to drive — continuing the same reason-text-matching technique the
- * backend itself already uses to route `conflict` vs `denied` for this route.
- */
-const RENAME_COLLISION_REASON_HINT = "already exists at the proposed stem";
-
-/**
  * Rename a document's file through the authoring ledger's `directWrite` route
  * (`operation: "rename"`, ledgered-edit-migration W03.P08) — a self-approved
  * direct changeset, not the legacy `rename` ops dispatch. Sends the open doc's
@@ -6725,11 +6715,13 @@ const RENAME_COLLISION_REASON_HINT = "already exists at the proposed stem";
  * and the watcher re-ingests) — `incomingRewritten` is not carried by the
  * direct-write outcome and floors to 0 (no consumer reads it today). A
  * `conflict` (a stale optimistic base) / `collision` (the target stem is
- * occupied) / `refused` (every other denial/failure/in-flight collision) is a
- * typed result the caller drives editor state from — NOT a thrown error; only
- * a transport fault, or the actor-token fail-safe (`requireActorToken`),
- * rejects. The same vault-mutation read surfaces are invalidated as a save (a
- * rename changes tree rows, the content key, graph nodes, and git entries).
+ * occupied, routed on the served structured `denialKind === "path_collision"`
+ * — W05.P14, never a reason-text substring match) / `refused` (every other
+ * denial/failure/in-flight collision) is a typed result the caller drives
+ * editor state from — NOT a thrown error; only a transport fault, or the
+ * actor-token fail-safe (`requireActorToken`), rejects. The same vault-
+ * mutation read surfaces are invalidated as a save (a rename changes tree
+ * rows, the content key, graph nodes, and git entries).
  */
 export function useRenameDoc() {
   const queryClient = useQueryClient();
@@ -6776,10 +6768,7 @@ export function useRenameDoc() {
           expected: outcome.conflict.expected_blob_hash,
           actual: outcome.conflict.actual_blob_hash,
         };
-      } else if (
-        (outcome.kind === "denied" || outcome.kind === "failed") &&
-        (outcome.reason ?? "").includes(RENAME_COLLISION_REASON_HINT)
-      ) {
+      } else if (outcome.kind === "denied" && outcome.denialKind === "path_collision") {
         result = {
           kind: "collision",
           message: outcome.reason ?? "Target already exists",
