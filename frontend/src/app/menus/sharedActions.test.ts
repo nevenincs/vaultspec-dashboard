@@ -60,7 +60,7 @@ describe("relateToSelectionAction", () => {
     ).toBe("already this document");
   });
 
-  it("dispatches link-add for a distinct focused document", () => {
+  it("dispatches the relate action (edit_frontmatter read-modify-write) for a distinct focused document", () => {
     const a = relateToSelectionAction({
       id,
       srcStem: "a",
@@ -69,13 +69,20 @@ describe("relateToSelectionAction", () => {
     });
     expect(a.disabled).toBeUndefined();
     expect(a.dispatch).toEqual({
-      type: "ops:run",
-      payload: {
-        target: "core",
-        verb: "link-add",
-        mode: "link",
-        body: { scope: "wt", src: "a", dst: "b" },
-      },
+      type: "relate:link",
+      payload: { src: "a", dst: "b", scope: "wt" },
+    });
+  });
+
+  it("passes a null scope through as-is (no coercion) when the source carries none", () => {
+    const a = relateToSelectionAction({
+      id,
+      srcStem: "a",
+      ctx: { timeTravel: false, selectedNodeId: "doc:b" },
+    });
+    expect(a.dispatch).toEqual({
+      type: "relate:link",
+      payload: { src: "a", dst: "b", scope: null },
     });
   });
 });

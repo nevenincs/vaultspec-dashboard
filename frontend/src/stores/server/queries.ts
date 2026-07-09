@@ -81,7 +81,6 @@ import {
   CANONICAL_TIERS,
   DEFAULT_SALIENCE_LENS,
   EngineError,
-  envelopeData,
   engineClient,
   readTierAvailability,
   tiersFromQuery,
@@ -92,7 +91,6 @@ import {
   requireActorToken,
   type DirectWriteOutcome,
 } from "./authoring";
-import { dispatchOps } from "./opsActions";
 import {
   deriveEditorialTitle,
   sanitizeHeadingText,
@@ -6640,97 +6638,6 @@ export function useCreateDoc() {
       if (result.kind === "created") {
         invalidateAfterVaultMutation(queryClient, normalized.scope);
       }
-    },
-  });
-}
-
-/** Args for {@link useArchiveFeature}: the worktree scope and the feature tag to
- *  archive (`vaultspec-core vault feature archive <tag>`). */
-export interface ArchiveFeatureArgs {
-  scope?: unknown;
-  feature: unknown;
-}
-
-export interface ArchiveFeatureResult {
-  ok: boolean;
-  scope: string | null;
-  feature: string;
-}
-
-/**
- * Archive a completed feature's documents through the brokered ops seam
- * (`dispatchOps` → `/ops/core/archive` → `vault feature archive`). FEATURE-SCOPED
- * (the only archive grain vaultspec-core has). On a non-`failed` envelope the
- * vault tree + graph are invalidated so the rail and stage drop the archived
- * documents; the watcher's re-ingest + generation bump corroborate. A `failed`
- * envelope (e.g. unknown tag) leaves the cache untouched. The mutation reads the
- * sibling envelope `status`, never the HTTP code (every ops outcome is a 200).
- */
-export function useArchiveFeature() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (args: ArchiveFeatureArgs): Promise<ArchiveFeatureResult> => {
-      const scope = normalizeGitDiffArg(args.scope) ?? null;
-      const feature = typeof args.feature === "string" ? args.feature.trim() : "";
-      if (feature.length === 0) return { ok: false, scope, feature };
-      const ops: OpsResult = await dispatchOps({
-        target: "core",
-        verb: "feature-archive",
-        mode: "archive",
-        body: { scope: scope ?? undefined, feature },
-      });
-      const { status } = envelopeData(ops.envelope);
-      return { ok: ops.ok && status !== "failed", scope, feature };
-    },
-    onSuccess: (result) => {
-      if (result.ok) invalidateAfterVaultMutation(queryClient, result.scope);
-    },
-  });
-}
-
-/** Args for {@link useRelateDoc}: the worktree scope and the source/target
- *  document stems of a `related:` edge (`vaultspec-core vault link add`). */
-export interface RelateDocArgs {
-  scope?: unknown;
-  src: unknown;
-  dst: unknown;
-}
-
-export interface RelateDocResult {
-  ok: boolean;
-  scope: string | null;
-}
-
-/**
- * Add a `related:` edge between two documents through the brokered ops seam
- * (`dispatchOps` → `/ops/core/link` → `vault link add <src> <dst>`). Idempotent
- * (the sibling exits 0 when the edge already exists) and refuses a dangling target.
- * On a non-`failed` envelope the vault tree + graph are invalidated so the new
- * edge appears; the watcher's re-ingest + generation bump corroborate. A `failed`
- * envelope leaves the cache untouched. Reads the sibling envelope `status`, never
- * the HTTP code.
- */
-export function useRelateDoc() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (args: RelateDocArgs): Promise<RelateDocResult> => {
-      const scope = normalizeGitDiffArg(args.scope) ?? null;
-      const src = typeof args.src === "string" ? args.src.trim() : "";
-      const dst = typeof args.dst === "string" ? args.dst.trim() : "";
-      if (src.length === 0 || dst.length === 0 || src === dst) {
-        return { ok: false, scope };
-      }
-      const ops: OpsResult = await dispatchOps({
-        target: "core",
-        verb: "link-add",
-        mode: "link",
-        body: { scope: scope ?? undefined, src, dst },
-      });
-      const { status } = envelopeData(ops.envelope);
-      return { ok: ops.ok && status !== "failed", scope };
-    },
-    onSuccess: (result) => {
-      if (result.ok) invalidateAfterVaultMutation(queryClient, result.scope);
     },
   });
 }

@@ -15,6 +15,7 @@ import { Archive, ArrowUpRight, Link2, Wrench } from "lucide-react";
 import type { ActionDescriptor } from "../../platform/actions/action";
 import type { ActionContext } from "../../platform/actions/registry";
 import { OPS_ACTION } from "../../stores/server/opsActions";
+import { RELATE_ACTION, type RelatePayload } from "../../stores/server/relateActions";
 import { openMenuNodeIsland } from "../../stores/view/menuActions";
 
 const DOC_NODE_PREFIX = "doc:";
@@ -88,10 +89,14 @@ export interface RelateToSelectionOptions {
 
 /**
  * "Relate to focused node": add a `related:` edge from a source document to the
- * currently selected document (`vault link add`), routed through the ops seam. A
- * pure derived-state consumer — it reads the target from `ctx.selectedNodeId` and
- * renders disabled-with-reason when there is no focused document, the source/focus
- * is not a document, or the focus is the same document. Mutating → `disabledInTimeTravel`.
+ * currently selected document, routed through the authoring ledger's
+ * direct-write route (`operation: "edit_frontmatter"` on the source, per the
+ * ADR — link is not a bespoke verb; the read-modify-write against the
+ * source's current `related:` list lives in the registered `RELATE_ACTION`
+ * dispatch effect, not here). A pure derived-state consumer — it reads the
+ * target from `ctx.selectedNodeId` and renders disabled-with-reason when there
+ * is no focused document, the source/focus is not a document, or the focus is
+ * the same document. Mutating → `disabledInTimeTravel`.
  */
 export function relateToSelectionAction(
   opts: RelateToSelectionOptions,
@@ -120,13 +125,12 @@ export function relateToSelectionAction(
   return {
     ...base,
     dispatch: {
-      type: OPS_ACTION,
+      type: RELATE_ACTION,
       payload: {
-        target: "core",
-        verb: "link-add",
-        mode: "link",
-        body: { scope: opts.scope ?? undefined, src: opts.srcStem, dst: dstStem },
-      },
+        src: opts.srcStem,
+        dst: dstStem,
+        scope: opts.scope ?? null,
+      } satisfies RelatePayload,
     },
   };
 }

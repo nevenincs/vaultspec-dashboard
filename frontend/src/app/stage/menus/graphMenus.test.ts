@@ -75,8 +75,8 @@ describe("graphNodeMenu (canonical node resolver)", () => {
     );
     expect(relate.disabled).toBeUndefined();
     expect(relate.dispatch).toMatchObject({
-      type: "ops:run",
-      payload: { verb: "link-add", mode: "link", body: { src: "alpha", dst: "beta" } },
+      type: "relate:link",
+      payload: { src: "alpha", dst: "beta" },
     });
     // A non-feature node cannot archive.
     expect(find(graphNodeMenu(base), "node:archive-feature").disabled).toBe(true);
