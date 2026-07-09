@@ -1038,7 +1038,17 @@ WHERE singleton = 1;
 // retired (direct-changeset is the sole editor-save materializer) — the column
 // that recorded a legacy `/ops/core` comparison outcome per save has no writer
 // left, so it is dropped rather than kept as a permanently-`not_run` fossil.
+// A dual-run-era row's `record_json` blob may still carry a `"legacy": {...}`
+// key (the field WAS serialized under `skip_serializing_if = "Option::is_none"`
+// whenever dual-run recorded a comparison); `DirectWriteRecord` keeps
+// `deny_unknown_fields` deliberately (the strict wire contract is not loosened
+// to paper over stale data), so the blob is sanitized in place — `json_remove`
+// is a no-op where the key is already absent.
 const DROP_DIRECT_WRITE_LEGACY_STATUS_SCHEMA: &str = "
+UPDATE authoring_direct_write_records
+SET record_json = json_remove(record_json, '$.legacy')
+WHERE json_extract(record_json, '$.legacy') IS NOT NULL;
+
 ALTER TABLE authoring_direct_write_records DROP COLUMN legacy_status;
 
 UPDATE authoring_store_metadata
@@ -1749,6 +1759,118 @@ mod tests {
             orphan.is_err(),
             "child FK to a missing parent must still be rejected after the recreate"
         );
+    }
+
+    #[test]
+    fn v19_migration_sanitizes_a_populated_dual_run_era_record_and_drops_legacy_status() {
+        // W14.P47 review finding (CONFIRMED MEDIUM): a dual-run-era direct-write row's
+        // `record_json` blob can still carry a `"legacy": {...}` key (the field WAS
+        // serialized whenever dual-run recorded a comparison). `DirectWriteRecord`
+        // keeps `deny_unknown_fields` deliberately, so v19 must sanitize the blob IN
+        // PLACE, not just drop the now-writerless column — a populated store is the
+        // only fixture that catches this (an empty `clean_open` migration does not).
+        let (_dir, path) = temp_db();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(METADATA_SCHEMA).unwrap();
+        // Migrate up to v18 — the shape a real dual-run-era store carries just before v19.
+        for migration in &MIGRATIONS[..18] {
+            let tx = conn.unchecked_transaction().unwrap();
+            tx.execute_batch(migration.sql).unwrap();
+            tx.execute(
+                "INSERT INTO authoring_schema_migrations
+                    (version, name, applied_at_ms)
+                 VALUES
+                    (?1, ?2, 1)",
+                (migration.version, migration.name),
+            )
+            .unwrap();
+            tx.pragma_update(None, "user_version", migration.version)
+                .unwrap();
+            tx.commit().unwrap();
+        }
+
+        // A dual-run-era row: every field a CURRENT `DirectWriteRecord` requires, PLUS
+        // the retired `"legacy"` key a v18-and-earlier dual-run save would have written.
+        let mut record_value = serde_json::json!({
+            "schema_version": "authoring.direct_write_record.v1",
+            "status": "applied",
+            "changeset_id": "direct:legacy1",
+            "proposal_id": "proposal:legacy1",
+            "approval_id": "approval:legacy1",
+            "document_ref": "doc:legacy-plan",
+            "document_path": ".vault/plan/legacy-plan.md",
+            "expected_blob_hash": "0000000000000000000000000000000000000a",
+            "target_blob_hash": "0000000000000000000000000000000000000b",
+            "actor": { "id": "human:legacy", "kind": "human" },
+            "idempotency_key": "idem:legacy:1",
+            "request_digest": "digest-legacy-1",
+            "authoritative_path": "direct_changeset",
+            "direct_elapsed_ms": 5,
+            "created_at_ms": 10,
+            "updated_at_ms": 10,
+        });
+        record_value["legacy"] = serde_json::json!({
+            "schema_version": "authoring.direct_write_legacy_comparison.v1",
+            "status": "measured",
+            "elapsed_ms": 12,
+            "conflict": false,
+        });
+        let record_json = record_value.to_string();
+        assert!(
+            record_json.contains("\"legacy\""),
+            "the seeded dual-run-era row must carry the retired legacy key: {record_json}"
+        );
+
+        conn.execute(
+            "INSERT INTO authoring_direct_write_records
+                (changeset_id, proposal_id, approval_id, document_ref, document_path,
+                 expected_blob_hash, target_blob_hash, actor_id, actor_kind,
+                 idempotency_key, request_digest, authoritative_path, direct_elapsed_ms,
+                 legacy_status, apply_status, apply_receipt_id, record_json, created_at_ms,
+                 updated_at_ms)
+             VALUES
+                ('direct:legacy1', 'proposal:legacy1', 'approval:legacy1', 'doc:legacy-plan',
+                 '.vault/plan/legacy-plan.md', '0000000000000000000000000000000000000a',
+                 '0000000000000000000000000000000000000b', 'human:legacy', 'human',
+                 'idem:legacy:1', 'digest-legacy-1', 'direct_changeset', 5,
+                 'measured', 'applied', NULL, ?1, 10, 10)",
+            rusqlite::params![record_json],
+        )
+        .unwrap();
+
+        // Run the remaining migrations (the v19 sanitize + column drop) over the
+        // populated store; the chain settles at the current SCHEMA_VERSION.
+        run_migrations(&conn, MIGRATIONS).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), SCHEMA_VERSION);
+
+        // The now-writerless column is gone.
+        assert!(
+            conn.prepare("SELECT legacy_status FROM authoring_direct_write_records")
+                .is_err(),
+            "the retired legacy_status column must be dropped"
+        );
+
+        // The row survived, and the blob is sanitized: the `legacy` key is gone AND
+        // the blob decodes cleanly through the CURRENT `deny_unknown_fields` shape —
+        // the discipline gate an empty-store migration test cannot exercise.
+        let sanitized_json: String = conn
+            .query_row(
+                "SELECT record_json FROM authoring_direct_write_records WHERE changeset_id = 'direct:legacy1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            !sanitized_json.contains("\"legacy\""),
+            "the sanitized blob must not carry the retired legacy key: {sanitized_json}"
+        );
+        let decoded: super::super::direct_write::DirectWriteRecord =
+            serde_json::from_str(&sanitized_json).expect(
+                "a sanitized dual-run-era record must decode through the current \
+                 deny_unknown_fields shape",
+            );
+        assert_eq!(decoded.changeset_id.as_str(), "direct:legacy1");
     }
 
     #[test]
