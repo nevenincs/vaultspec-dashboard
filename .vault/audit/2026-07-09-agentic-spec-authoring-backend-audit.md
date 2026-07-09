@@ -156,11 +156,12 @@ after the fact.
 ### w14-p43-final-gate-green | info | the full automated gate passes across the authoring epic
 
 The Increment-6 final gate ran green across every automated surface. The authoring
-crate's Rust suite passed at 626 library tests plus every integration binary (the
-cross-engine acceptance suite, the vertical-slices real-vaultspec-core apply test, the
-LangGraph authoring fixture, and the route/corpus/search binaries), zero failures, over
-the shared worktree that also carries an unrelated in-progress provision lane which
-compiles clean. The frontend lint gate passed on formatting, type-check, the pixel-scan
+crate's own committed library suite passed at 609 tests (the shared-tree run reported 626
+inclusive of the co-resident, unrelated in-progress provision lane's ~17 tests, which are
+not part of this epic and compile clean alongside it), plus every integration binary (the
+cross-engine acceptance suite at 5, the vertical-slices real-vaultspec-core apply test at
+7, the LangGraph authoring fixture at 5, and the route/corpus/search binaries), zero
+failures. The frontend lint gate passed on formatting, type-check, the pixel-scan
 with an empty allowlist, token drift, and the Figma name contract. The frontend
 production build succeeded, and the frontend test suite passed at 2708 of 2708 across 298
 files running online against a real engine origin. The vault checks are clean for the
