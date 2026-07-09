@@ -36,7 +36,6 @@ use super::model::{
     CommandKind, DocumentRef, IdempotencyKey, ProposalId, ProvisionalCollisionStatus, ReceiptId,
     RevisionToken, SessionId,
 };
-use super::modes::scope_id_for_worktree;
 use super::proposal::{
     ProposalCommandContext, ProposalCommandOutcome, ProposalCommandResult, SubmitProposalRequest,
     ValidateProposalRequest, validation_evidence,
@@ -469,12 +468,22 @@ fn operation_target_blob_hash(operation: &DirectOperationInput) -> String {
 /// a stale persisted denial would wrongly outlive a legitimate later retry
 /// once the client catches up to the correct scope. The reason NEVER echoes
 /// the foreign scope string back onto the wire.
+///
+/// Compares against `engine_model::scope_token`, NOT the mode layer's
+/// simpler `modes::scope_id_for_worktree` — the SAME parity `http.rs`'s
+/// `active_authorized_scope` doc already warns about: `scope_token` strips
+/// the Windows extended-length `\\?\` prefix and is the identity the
+/// frontend's `useActiveScope()`/`/map` actually sources its pin from
+/// (`DocumentResolver` writes the same token into `DocumentRef::Existing.
+/// scope`). The two normalizations coincide on a prefix-free path (every
+/// temp-dir test root), which is why this diverging comparison went
+/// undetected until a real extended-length workspace root exercised it.
 fn scope_pin_mismatch(
     worktree_root: &Path,
     requested_scope: Option<&str>,
 ) -> Option<DirectWriteOutcome> {
     let requested_scope = requested_scope?;
-    let active_scope = scope_id_for_worktree(worktree_root);
+    let active_scope = engine_model::scope_token(worktree_root);
     if requested_scope == active_scope {
         return None;
     }

@@ -4095,6 +4095,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn direct_write_route_a_matching_scope_pin_proceeds_and_applies_through_the_real_core() {
+        // The positive-path proof the mismatch test above does NOT cover: a
+        // pin carrying the identity the FRONTEND actually sends
+        // (`engine_model::scope_token`, not `modes::scope_id_for_worktree` —
+        // see `scope_pin_mismatch`'s doc) must PROCEED, not be denied.
+        let (dir, state) = fixture_state_with_core();
+        let human = human_reviewer();
+        register_actor(&state, &human);
+        let token = issue_token_in_state(&state, &human);
+        let base = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-07-06'\n---\n\n# Plan\n\nbase\n";
+        let mut envelope = direct_write_envelope(
+            ".vault/plan/operation-plan.md",
+            "# Plan\n\nscope-pinned body\n",
+            &blob_oid(base.as_bytes()),
+            "idem:route:scope-match",
+        );
+        envelope["payload"]["scope"] = json!(engine_model::scope_token(dir.path()));
+        let router = authoring_router(state.clone()).with_state(state);
+
+        let (status, body) = post_authoring(router, "/v1/direct-writes", &token, envelope).await;
+
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(
+            body["data"]["status"], "applied",
+            "a scope pin matching engine_model::scope_token must proceed and apply through \
+             the real core: {body}"
+        );
+        let saved =
+            std::fs::read_to_string(dir.path().join(".vault/plan/operation-plan.md")).unwrap();
+        assert!(saved.contains("scope-pinned body"), "{saved}");
+    }
+
+    #[test]
+    fn scope_token_and_scope_id_for_worktree_diverge_on_a_windows_extended_length_root() {
+        // Documents the regression class the two tests above guard against:
+        // on a `\\?\`-prefixed root (the form a real, long/canonicalized
+        // Windows workspace path can carry), `engine_model::scope_token`
+        // strips the prefix while `modes::scope_id_for_worktree` does not —
+        // comparing a frontend-sent pin against the WRONG one of these two
+        // would wrongly deny every save on such a root. Prefix-free roots
+        // (every temp-dir test above) coincide either way, which is exactly
+        // why this divergence went undetected until a real extended-length
+        // root exercised it.
+        let extended = std::path::Path::new(r"\\?\C:\Users\example\long-workspace-root");
+        let token = engine_model::scope_token(extended);
+        let mode_scope = scope_id_for_worktree(extended);
+        assert_ne!(
+            token, mode_scope,
+            "the two normalizations must diverge on an extended-length root — this is \
+             precisely why `scope_pin_mismatch` must compare against `scope_token`, never \
+             `scope_id_for_worktree`"
+        );
+        assert!(!token.starts_with("//?/"), "{token}");
+        assert!(mode_scope.starts_with("//?/"), "{mode_scope}");
+    }
+
+    #[tokio::test]
     async fn authoring_status_reports_enabled_direct_write_capability_through_router() {
         let (_dir, state) = fixture_state();
         let router = authoring_router(state.clone()).with_state(state);
