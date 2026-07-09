@@ -55,13 +55,13 @@ Extend validation, materialization, preimage capture, apply, rollback, and confl
 
 Wire validation, materialization, preimage capture, apply, rollback, and conflict detection for frontmatter edits through the existing SetFrontmatter core-adapter capability.
 
-- [ ] `W02.P03.S12` - Ground EditFrontmatter validation, materialization, and rollback requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W02.P03.S13` - Implement EditFrontmatter draft validation accepting the operation kind and its field-level payload shape; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
-- [ ] `W02.P03.S14` - Implement EditFrontmatter materialization, preimage capture, and apply through the SetFrontmatter core-adapter capability; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
-- [ ] `W02.P03.S15` - Implement EditFrontmatter conflict detection and preimage-restore rollback; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
-- [ ] `W02.P03.S16` - Add tests for EditFrontmatter validation, apply, base-revision conflict, and preimage-restore rollback; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
-- [ ] `W02.P03.S17` - Run EditFrontmatter apply wiring code review and record the phase audit; `.vault/audit/`.
-- [ ] `W02.P03.S18` - Verify a proposed EditFrontmatter changeset applies, records provenance, and rolls back to the exact preimage; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
+- [x] `W02.P03.S12` - Ground EditFrontmatter validation, materialization, and rollback requirements into the phase checklist; `.vault/adr/`.
+- [x] `W02.P03.S13` - Implement EditFrontmatter draft validation accepting the operation kind and its field-level payload shape; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
+- [x] `W02.P03.S14` - Implement EditFrontmatter materialization, preimage capture, and apply through the SetFrontmatter core-adapter capability; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [x] `W02.P03.S15` - Implement EditFrontmatter conflict detection and preimage-restore rollback; `engine/crates/vaultspec-api/src/authoring/conflicts.rs`.
+- [x] `W02.P03.S16` - Add tests for EditFrontmatter validation, apply, base-revision conflict, and preimage-restore rollback; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [x] `W02.P03.S17` - Run EditFrontmatter apply wiring code review and record the phase audit; `.vault/audit/`.
+- [x] `W02.P03.S18` - Verify a proposed EditFrontmatter changeset applies, records provenance, and rolls back to the exact preimage; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
 
 ### Phase `W02.P04` - Rename apply wiring
 
