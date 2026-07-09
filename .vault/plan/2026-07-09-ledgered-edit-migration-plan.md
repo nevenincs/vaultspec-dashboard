@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#ledgered-edit-migration'
 date: '2026-07-09'
-modified: '2026-07-09'
+modified: '2026-07-10'
 tier: L3
 related:
   - '[[2026-07-09-ledgered-edit-migration-adr]]'
@@ -204,6 +204,29 @@ Run the full Rust and frontend gates plus live e2e verification, confirm release
 - [x] `W04.P13.S77` - Live-verify the four migrated edit surfaces (Save, frontmatter, rename, create) and relate/link end to end against a running dashboard, confirming each produces a changeset with provenance; `frontend/src/app/viewer/MarkdownDocView.tsx`.
 - [x] `W04.P13.S78` - Run Final gate and epic audit code review and record the closing audit for the ledgered-edit-migration feature; `.vault/audit/`.
 - [x] `W04.P13.S79` - Verify every Step in the plan is closed and no product edit surface dispatches through the retired /ops/core write path; `.vault/plan/`.
+
+## Wave `W05` - Post-migration hardening
+
+The two follow-ons recorded in the epic closeout audit, now driven to completion: replace the direct-write collision reason-substring matching with a structured wire discriminator, and resolve the CreateDocument rollback-inverse gap. Added 2026-07-09 after the epic reached 92/92; both were named as hardening/deferral in the closeout, not defects.
+
+### Phase `W05.P14` - Structured direct-write denial discriminator
+
+The frontend routes a rename/create path-collision by substring-matching the backend's denial reason text (RENAME_COLLISION_REASON_HINT 'already exists at the proposed stem'), mirroring the backend's own conflict-vs-denied reason-sniffing (contains base/stale). This is fragile: a backend reason-wording change silently breaks collision detection (falls through to a generic refusal). Carry the structured denial kind through to the direct-write outcome so the frontend reads a machine-readable discriminator instead of matching prose, and both sides stop reason-sniffing.
+
+- [ ] `W05.P14.S93` - Ground the structured-denial-discriminator design: trace where the collision conflict kind is known and lost to a reason string; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
+- [ ] `W05.P14.S94` - Carry a machine-readable denial-kind discriminator (path-collision, stale-base, scope-mismatch, forbidden-actor) onto the direct-write outcome instead of only the reason string; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
+- [ ] `W05.P14.S95` - Rewire the frontend rename and create outcome mapping to route on the structured discriminator instead of substring-matching the reason text; `retire RENAME_COLLISION_REASON_HINT; `frontend/src/stores/server/queries.ts`.
+- [ ] `W05.P14.S96` - Add tests proving the backend tags the discriminator and the frontend routes collision without reason-sniffing; `frontend/src/stores/server/editorWriteSeam.test.tsx`.
+- [ ] `W05.P14.S97` - Run Structured direct-write denial discriminator code review and record the phase audit; `.vault/audit/`.
+- [ ] `W05.P14.S98` - Verify a rename/create collision routes to the collision UI on the structured discriminator alone, with a reason-wording change no longer able to break detection; `frontend/src/stores/server/queries.ts`.
+
+### Phase `W05.P15` - CreateDocument rollback-inverse disposition
+
+A ledgered CreateDocument ships non-rollback-eligible (honest rollback_available=false with reason) because its inverse is a document delete and the ledger has no delete verb. Resolve the gap: vaultspec-core exposes no single-document delete/remove verb (its vault verbs are set-body/set-frontmatter/edit/rename/add/link), and the authoring boundary forbids raw-fs or git deletes, so a compliant delete-inverse is gated on an upstream vaultspec-core capability. Determine the feasibility definitively, file the coordination ask toward vaultspec-core, and record the disposition; the ADR's non-invertible deferral stands until the upstream verb lands.
+
+- [ ] `W05.P15.S99` - Ground the CreateDocument delete-inverse feasibility against vaultspec-core's verb surface and the authoring boundary; `.vault/adr/`.
+- [ ] `W05.P15.S100` - File the vaultspec-core single-document-delete coordination ask and record the delete-inverse disposition in the feature reference; `.vault/reference/`.
+- [ ] `W05.P15.S101` - Verify the disposition is recorded and CreateDocument's honest non-rollback-eligible state is preserved until the upstream verb lands; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
 
 ## Description
 
