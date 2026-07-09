@@ -73,17 +73,37 @@ export function WorkspaceSwitcherSheet({
   open,
   onDismiss,
 }: WorkspaceSwitcherSheetProps) {
-  const { pickerView, projectRows, activateRow, swapProject } = useWorktreePickerView();
+  const {
+    pickerView,
+    recentRows,
+    projectRows,
+    activateRow,
+    activateRecent,
+    swapProject,
+  } = useWorktreePickerView();
   const rows = pickerView.rows;
   const showProjects = projectRows.length > 1;
 
+  // Guard FIRST, dismiss only when the switch proceeds: a dirty draft keeps the sheet
+  // open behind the discard confirm (parity with the desktop picker, which never
+  // pre-closes — the popover collapses only as a side effect of a successful switch).
   const chooseWorktree = (row: (typeof rows)[number]) => {
-    onDismiss();
-    guardUnsavedDiscard(() => activateRow(row));
+    guardUnsavedDiscard(() => {
+      onDismiss();
+      activateRow(row);
+    });
+  };
+  const chooseRecent = (recent: (typeof recentRows)[number]) => {
+    guardUnsavedDiscard(() => {
+      onDismiss();
+      activateRecent(recent);
+    });
   };
   const chooseProject = (project: (typeof projectRows)[number]) => {
-    onDismiss();
-    guardUnsavedDiscard(() => swapProject(project.id));
+    guardUnsavedDiscard(() => {
+      onDismiss();
+      swapProject(project.id);
+    });
   };
   const addProject = () => {
     onDismiss();
@@ -93,6 +113,29 @@ export function WorkspaceSwitcherSheet({
   return (
     <BottomSheet open={open} onDismiss={onDismiss} title="Switch workspace">
       <div className="flex flex-col gap-fg-1 pb-fg-2">
+        {/* Recent — the cross-project, active-location-first jump list the ADR's D1
+            mandates (the fastest re-orientation path on a phone). Only shown when the
+            projection carries recents. */}
+        {recentRows.length > 0 && (
+          <>
+            <p className={EYEBROW_CLASS}>Recent</p>
+            <ul className="flex flex-col gap-fg-0-5">
+              {recentRows.map((recent) => (
+                <li key={recent.key}>
+                  <SwitcherRow
+                    Icon={GitBranch}
+                    label={recent.label}
+                    active={recent.isActive}
+                    disabled={!recent.selectable}
+                    ariaLabel={recent.ariaLabel}
+                    title={recent.title}
+                    onClick={() => chooseRecent(recent)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         <p className={EYEBROW_CLASS}>Worktrees</p>
         <ul className="flex flex-col gap-fg-0-5">
           {rows.map((row) => (

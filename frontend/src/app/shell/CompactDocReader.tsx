@@ -21,6 +21,7 @@
 // reads no raw `tiers`.
 
 import {
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useRef,
@@ -123,9 +124,12 @@ function DocReaderPane({
     [nodeId],
   );
   const swipe = useEdgeSwipeBack(back);
-  const swipeStyle = swipe.dragX
-    ? { transform: `translateX(${swipe.dragX}px)` }
-    : undefined;
+  // `pan-y` lets the browser own vertical scroll while the gesture claims horizontal
+  // travel, so the edge-swipe never fights the reader's own scrolling.
+  const swipeStyle: CSSProperties = {
+    touchAction: "pan-y",
+    ...(swipe.dragX ? { transform: `translateX(${swipe.dragX}px)` } : {}),
+  };
 
   if (view.state === "code") {
     return (

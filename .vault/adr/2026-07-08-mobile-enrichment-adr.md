@@ -11,7 +11,7 @@ related:
   - '[[2026-06-22-mobile-responsive-layout-audit]]'
 ---
 
-# `mobile-enrichment` adr: `compact dashboard enrichment` | (**status:** `proposed`)
+# `mobile-enrichment` adr: `compact dashboard enrichment` | (**status:** `accepted`)
 
 ## Problem Statement
 
