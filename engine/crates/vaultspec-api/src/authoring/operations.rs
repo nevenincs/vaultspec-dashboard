@@ -73,6 +73,13 @@ pub enum OperationError {
     },
     #[error("operation `{child_key}` target document has no frontmatter block to edit")]
     MissingFrontmatterBlock { child_key: String },
+    #[error("operation `{child_key}` rename must carry a target stem (field-level payload only)")]
+    MissingRenameStem { child_key: String },
+    #[error("operation `{child_key}` rename target stem is invalid: {reason}")]
+    InvalidRenameStem {
+        child_key: String,
+        reason: &'static str,
+    },
     #[error("snapshot: {0}")]
     Snapshot(#[from] SnapshotError),
 }
@@ -97,6 +104,12 @@ pub struct MaterializedProposalOperation {
     /// `None` for every other operation kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frontmatter_edit: Option<FrontmatterEditFields>,
+    /// The target stem a `Rename` apply carries through to the `Rename` core
+    /// capability (W02.P04) — the SAME `new_stem` the draft supplied, threaded
+    /// through the ledger for the same reason `frontmatter_edit` is. `None` for
+    /// every other operation kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rename_edit: Option<String>,
 }
 
 impl MaterializedProposalOperation {
@@ -114,6 +127,7 @@ impl MaterializedProposalOperation {
             base_snapshot,
             preimage,
             target_text,
+            None,
             None,
         )
     }
@@ -145,6 +159,39 @@ impl MaterializedProposalOperation {
             preimage,
             target_text,
             Some(fields),
+            None,
+        )
+    }
+
+    /// Materialize a `Rename` draft (W02.P04): validate the target-stem payload,
+    /// and build a whole-document PREVIEW whose text is the base text UNCHANGED
+    /// — a rename touches identity (stem/path), never content, so there is
+    /// nothing to diff. The preview still exists (rather than being skipped)
+    /// because `validate_changeset_material`'s `validate_frontmatter` check runs
+    /// unconditionally over every materialized operation's `target_snapshot`,
+    /// and because the shared preimage/base-revision fence
+    /// (`validate_target_and_preimage`) needs a real base snapshot regardless of
+    /// operation kind. The resulting review diff is trivially empty
+    /// (`changed == false`) — correct, since a rename has no content delta to
+    /// show a reviewer; the target stem itself is the reviewable change,
+    /// carried in `rename_edit`.
+    pub fn materialize_rename(
+        changeset_id: &ChangesetId,
+        draft: ChangesetChildOperationDraft,
+        base_snapshot: &RevisionSnapshot,
+        preimage: &PreimageRecord,
+    ) -> Result<Self> {
+        let new_stem =
+            validate_rename_draft(changeset_id, &draft, base_snapshot, preimage)?.to_string();
+        let target_text = base_snapshot.text.clone();
+        finish_materialization(
+            changeset_id,
+            draft,
+            base_snapshot,
+            preimage,
+            target_text,
+            None,
+            Some(new_stem),
         )
     }
 }
@@ -163,6 +210,7 @@ fn finish_materialization(
     preimage: &PreimageRecord,
     target_text: String,
     frontmatter_edit: Option<FrontmatterEditFields>,
+    rename_edit: Option<String>,
 ) -> Result<MaterializedProposalOperation> {
     let target_snapshot = TargetSnapshot::from_text(
         base_snapshot.document.clone(),
@@ -180,6 +228,7 @@ fn finish_materialization(
         review_diff,
         preimage: OperationPreimageRef::from(preimage),
         frontmatter_edit,
+        rename_edit,
     })
 }
 
@@ -344,6 +393,77 @@ fn validate_edit_frontmatter_draft<'a>(
     validate_frontmatter_values(&child_key, fields)?;
     validate_target_and_preimage(changeset_id, child_key, draft, base_snapshot, preimage)?;
     Ok(fields)
+}
+
+/// Validate a `Rename` draft (W02.P04): the operation kind, its target-stem
+/// payload shape, and the SAME target-fence + preimage checks every operation
+/// kind shares. `body` carries no meaning for a rename and must be empty (R1,
+/// same discipline as `EditFrontmatter`). Returns the validated new stem so the
+/// caller materializes without re-deriving it.
+fn validate_rename_draft<'a>(
+    changeset_id: &ChangesetId,
+    draft: &'a ChangesetChildOperationDraft,
+    base_snapshot: &RevisionSnapshot,
+    preimage: &PreimageRecord,
+) -> Result<&'a str> {
+    if draft.child_key.trim().is_empty() {
+        return Err(OperationError::EmptyChildKey);
+    }
+    let child_key = draft.child_key.clone();
+    if draft.operation != ChangesetOperationKind::Rename {
+        return Err(OperationError::UnsupportedOperationKind {
+            child_key,
+            operation: draft.operation,
+        });
+    }
+    if draft.draft.mode != DraftMode::WholeDocument {
+        return Err(OperationError::UnsupportedDraftMode {
+            child_key,
+            mode: draft.draft.mode,
+        });
+    }
+    if !draft.draft.body.is_empty() {
+        return Err(OperationError::UnexpectedBodyPayload { child_key });
+    }
+    let Some(new_stem) = draft.draft.new_stem.as_deref() else {
+        return Err(OperationError::MissingRenameStem { child_key });
+    };
+    validate_rename_stem(&child_key, new_stem)?;
+    let DocumentRef::Existing {
+        stem: current_stem, ..
+    } = &draft.target.document
+    else {
+        return Err(OperationError::UnsupportedTarget { child_key });
+    };
+    if new_stem == current_stem {
+        return Err(OperationError::InvalidRenameStem {
+            child_key,
+            reason: "must differ from the document's current stem",
+        });
+    }
+    validate_target_and_preimage(changeset_id, child_key, draft, base_snapshot, preimage)?;
+    Ok(new_stem)
+}
+
+/// A bare, identity-bearing rename target stem: non-empty, no path separator,
+/// no leading `-`, no `..` traversal, no `.md` suffix — the SAME grammar the
+/// core adapter's own `validate_stem` enforces at the argv boundary, checked
+/// here too so a malformed stem fails at draft validation, before a
+/// materialized preview or a core invocation is ever built.
+fn validate_rename_stem(child_key: &str, stem: &str) -> Result<()> {
+    let bad = stem.is_empty()
+        || stem.starts_with('-')
+        || stem.contains('/')
+        || stem.contains('\\')
+        || stem.contains("..")
+        || stem.ends_with(".md");
+    if bad {
+        return Err(OperationError::InvalidRenameStem {
+            child_key: child_key.to_string(),
+            reason: "must be a bare stem (no path separator, no leading `-`, no `..`, no `.md`)",
+        });
+    }
+    Ok(())
 }
 
 /// Reject a field value that would corrupt the frontmatter block it lands in: an
@@ -899,6 +1019,7 @@ mod tests {
                 mode,
                 body: body.to_string(),
                 frontmatter: None,
+                new_stem: None,
             },
         }
     }
@@ -920,6 +1041,26 @@ mod tests {
                 mode: DraftMode::WholeDocument,
                 body: String::new(),
                 frontmatter: Some(fields),
+                new_stem: None,
+            },
+        }
+    }
+
+    fn rename_draft_for(document: DocumentRef, new_stem: &str) -> ChangesetChildOperationDraft {
+        let revision = base_revision(&document);
+        ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::Rename,
+            target: TargetRevisionFence {
+                document,
+                base_revision: Some(revision.clone()),
+                current_revision: Some(revision),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: Some(new_stem.to_string()),
             },
         }
     }
@@ -1191,6 +1332,7 @@ mod tests {
                 mode: DraftMode::WholeDocument,
                 body: "new\n".to_string(),
                 frontmatter: None,
+                new_stem: None,
             },
         };
 
@@ -1822,6 +1964,183 @@ mod tests {
             );
             let preimage = preimage_record(root);
             let err = MaterializedProposalOperation::materialize_edit_frontmatter(
+                &changeset_id(),
+                draft,
+                &snapshot,
+                &preimage,
+            )
+            .unwrap_err();
+            assert!(matches!(
+                err,
+                OperationError::UnsupportedOperationKind {
+                    operation: found,
+                    ..
+                } if found == operation
+            ));
+        }
+    }
+
+    // --- W02.P04: Rename validation + materialization ----------------------
+
+    #[test]
+    fn rename_materializes_an_unchanged_content_preview_carrying_the_new_stem() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", "unchanged body\n");
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let draft = rename_draft_for(snapshot.document.clone(), "operation-plan-renamed");
+
+        let materialized = MaterializedProposalOperation::materialize_rename(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap();
+
+        assert_eq!(materialized.operation, ChangesetOperationKind::Rename);
+        assert_eq!(
+            materialized.target_snapshot.payload_text, "unchanged body\n",
+            "a rename touches identity, never content"
+        );
+        assert!(
+            !materialized.review_diff.changed,
+            "a rename's review diff is trivially empty (no content delta)"
+        );
+        assert_eq!(
+            materialized.rename_edit.as_deref(),
+            Some("operation-plan-renamed"),
+            "the target stem threads through for apply-time invocation-building"
+        );
+    }
+
+    #[test]
+    fn rename_rejects_a_replace_body_draft_shape() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", "body\n");
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let draft = draft_for(
+            snapshot.document.clone(),
+            ChangesetOperationKind::ReplaceBody,
+            DraftMode::WholeDocument,
+            "after\n",
+        );
+
+        let err = MaterializedProposalOperation::materialize_rename(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::UnsupportedOperationKind {
+                operation: ChangesetOperationKind::ReplaceBody,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn rename_rejects_a_non_empty_body_payload() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", "body\n");
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let mut draft = rename_draft_for(snapshot.document.clone(), "operation-plan-renamed");
+        draft.draft.body = "unexpected body text".to_string();
+
+        let err = MaterializedProposalOperation::materialize_rename(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(err, OperationError::UnexpectedBodyPayload { .. }));
+    }
+
+    #[test]
+    fn rename_rejects_a_missing_target_stem() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", "body\n");
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let mut draft = rename_draft_for(snapshot.document.clone(), "operation-plan-renamed");
+        draft.draft.new_stem = None;
+
+        let err = MaterializedProposalOperation::materialize_rename(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(err, OperationError::MissingRenameStem { .. }));
+    }
+
+    #[test]
+    fn rename_rejects_a_malformed_or_self_target_stem() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", "body\n");
+        let snapshot = base_snapshot(root);
+
+        for bad_stem in [
+            "",
+            "-leading-dash",
+            "has/slash",
+            "has\\backslash",
+            "has..dots",
+            "trailing.md",
+            "operation-plan", // same as the current stem: a no-op, not a rename
+        ] {
+            let preimage = preimage_record(root);
+            let draft = rename_draft_for(snapshot.document.clone(), bad_stem);
+            let err = MaterializedProposalOperation::materialize_rename(
+                &changeset_id(),
+                draft,
+                &snapshot,
+                &preimage,
+            )
+            .unwrap_err();
+            assert!(
+                matches!(err, OperationError::InvalidRenameStem { .. }),
+                "stem `{bad_stem}` should be rejected, got {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn section_and_destructive_kinds_are_deferred_from_rename_materialization() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", "body\n");
+        let snapshot = base_snapshot(root);
+
+        for operation in [
+            ChangesetOperationKind::SectionEdit,
+            ChangesetOperationKind::Archive,
+            ChangesetOperationKind::Unarchive,
+            ChangesetOperationKind::ReplaceBody,
+            ChangesetOperationKind::Link,
+            ChangesetOperationKind::EditFrontmatter,
+            ChangesetOperationKind::CreateDocument,
+        ] {
+            let draft = draft_for(
+                snapshot.document.clone(),
+                operation,
+                DraftMode::WholeDocument,
+                "after\n",
+            );
+            let preimage = preimage_record(root);
+            let err = MaterializedProposalOperation::materialize_rename(
                 &changeset_id(),
                 draft,
                 &snapshot,

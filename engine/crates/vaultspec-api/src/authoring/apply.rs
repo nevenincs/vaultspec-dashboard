@@ -410,13 +410,15 @@ fn preflight_in_uow(
     let child = &latest.children[0];
     if !matches!(
         child.operation,
-        ChangesetOperationKind::ReplaceBody | ChangesetOperationKind::EditFrontmatter
+        ChangesetOperationKind::ReplaceBody
+            | ChangesetOperationKind::EditFrontmatter
+            | ChangesetOperationKind::Rename
     ) {
         return Ok(Ok(Preflight::Denied(ActionEligibility::denied(
             CommandKind::RequestApply,
             format!(
-                "V1 apply materializes only whole-document body replacement and frontmatter \
-                 edits; operation `{:?}` is not yet supported",
+                "V1 apply materializes only whole-document body replacement, frontmatter \
+                 edits, and rename; operation `{:?}` is not yet supported",
                 child.operation
             ),
         ))));
@@ -695,7 +697,61 @@ fn post_state_resolution(worktree_root: &Path, prep: &ApplyPrep, reason: &str) -
                 },
             }
         }
+        PostVerifyExpectation::RenamedTo { old_stem, new_stem } => {
+            // A rename is core-authoritative over the exact bytes AND the path —
+            // there is no blob to compare against `prep.document`, whose PATH is
+            // now STALE (the file moved). The only sound post-state proof is
+            // re-resolving by STEM: the document now exists at `new_stem` and no
+            // longer exists at `old_stem`.
+            let landed = resolve_by_stem(worktree_root, new_stem);
+            let old_still_resolves = resolve_by_stem(worktree_root, old_stem).is_some();
+            match landed {
+                Some(renamed) if !old_still_resolves => ChildResolution {
+                    outcome: ApplyChildOutcome::Applied,
+                    observed_result_blob_hash: read_blob_hash(worktree_root, &renamed).ok(),
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state re-verified the rename to `{new_stem}` landed"
+                    )),
+                },
+                Some(_) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: None,
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; a document resolves at `{new_stem}` but the original stem \
+                         `{old_stem}` still resolves too (ambiguous, fail-closed)"
+                    )),
+                },
+                None => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: None,
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state re-verified the rename to `{new_stem}` did NOT land"
+                    )),
+                },
+            }
+        }
     }
+}
+
+/// Re-resolve a document by STEM in the current worktree — the path-independent
+/// primitive `PostVerifyExpectation::RenamedTo` verifies against, since a
+/// rename's recorded `DocumentRef` carries a now-stale path. `None` when no
+/// document currently resolves at `stem`.
+fn resolve_by_stem(worktree_root: &Path, stem: &str) -> Option<DocumentRef> {
+    super::documents::DocumentResolver::for_worktree(worktree_root)
+        .resolve_existing(super::documents::ExistingDocumentLookup::Stem(
+            stem.to_string(),
+        ))
+        .ok()
 }
 
 /// Reconstruct an [`ApplyPrep`] from a changeset WEDGED in `Applying` whose
@@ -971,6 +1027,17 @@ fn build_write_invocation(
                 },
             )
         }
+        ChangesetOperationKind::Rename => {
+            let new_stem = materialized.rename_edit.clone().unwrap_or_default();
+            (
+                CoreCapability::Rename,
+                WriteArgs {
+                    expected_blob_hash: Some(core_base_blob_hash),
+                    new_stem: Some(new_stem),
+                    ..Default::default()
+                },
+            )
+        }
         other => {
             return Err(ApplyError::Internal(format!(
                 "apply invocation build has no capability mapping for operation `{other:?}`"
@@ -1002,9 +1069,17 @@ fn build_write_invocation(
 /// whole-document bytes. A new core-authoritative operation kind (rename,
 /// create) needs its own semantic variant here, mirroring this one, not a
 /// forced fit into `ExactBlobHash`.
+///
+/// `RenamedTo` applies to `Rename` — ALSO core-authoritative (core computes
+/// the target path/cascade, not just bytes), and doubly unsound for a
+/// blob-hash compare: the recorded `DocumentRef` the hash would be checked
+/// against carries the OLD path, which the rename just moved the file away
+/// from. Verification instead re-resolves by STEM: the document now exists at
+/// the new stem and no longer exists at the old one.
 enum PostVerifyExpectation {
     ExactBlobHash(String),
     FrontmatterFields(FrontmatterEditFields),
+    RenamedTo { old_stem: String, new_stem: String },
 }
 
 /// Build the [`PostVerifyExpectation`] for one materialized child, keyed on
@@ -1026,6 +1101,20 @@ fn post_verify_expectation(
                 )
             })?;
             Ok(PostVerifyExpectation::FrontmatterFields(fields))
+        }
+        ChangesetOperationKind::Rename => {
+            let new_stem = materialized.rename_edit.clone().ok_or_else(|| {
+                ApplyError::Internal("materialized Rename child carries no target stem".to_string())
+            })?;
+            let DocumentRef::Existing { stem: old_stem, .. } = &materialized.target.document else {
+                return Err(ApplyError::Internal(
+                    "materialized Rename child target is not an existing document".to_string(),
+                ));
+            };
+            Ok(PostVerifyExpectation::RenamedTo {
+                old_stem: old_stem.clone(),
+                new_stem,
+            })
         }
         other => Err(ApplyError::Internal(format!(
             "apply has no post-verify expectation for operation `{other:?}`"
@@ -1254,6 +1343,7 @@ mod tests {
                 mode: DraftMode::WholeDocument,
                 body: NEW_BODY.to_string(),
                 frontmatter: None,
+                new_stem: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(
@@ -1459,6 +1549,7 @@ mod tests {
                     tags: None,
                     related: None,
                 }),
+                new_stem: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
@@ -1707,6 +1798,7 @@ mod tests {
                     tags: None,
                     related: None,
                 }),
+                new_stem: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
@@ -1819,6 +1911,404 @@ mod tests {
             applier,
             expected_result_blob_hash,
         }
+    }
+
+    #[test]
+    fn edit_frontmatter_tags_order_is_preserved_by_the_real_core_write() {
+        // P03-review follow-on: `frontmatter_fields_match` compares list fields
+        // as ORDERED `Vec` equality. Source inspection of vaultspec-core's
+        // `_serialise_block_list`/`resolve_related_inputs` confirmed order is
+        // preserved (never sorted/deduped-out-of-order), but that was never
+        // exercised against the REAL binary — this falsifier closes the gap.
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        git(&root, &["init", "-b", "main", "."]);
+        let doc_path = ".vault/plan/apply-tags-order-live-demo.md";
+        let doc_file = root.join(doc_path);
+        std::fs::create_dir_all(doc_file.parent().unwrap()).unwrap();
+        // A conformant vault frontmatter (one directory tag, one feature tag, a
+        // date) — core refuses a non-conformant write outright, so the fixture
+        // must already satisfy its own hygiene checks. `date` is untouched by
+        // this `--tags`-only edit, so it must already be valid.
+        std::fs::write(
+            &doc_file,
+            "---\ntags:\n  - '#plan'\n  - '#zz-test-feature'\ndate: '2026-01-01'\n---\n\nbody\n",
+        )
+        .unwrap();
+        scaffold_vaultspec_workspace(&root);
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "tags order fixture"]);
+
+        // Reversed from the directory-then-feature convention above, so a real
+        // reorder (e.g. a canonicalizing sort) would be caught.
+        let ordered_tags = vec!["#zz-test-feature".to_string(), "#plan".to_string()];
+        let invocation = CoreInvocation::write(
+            CoreCapability::SetFrontmatter,
+            doc_path,
+            WriteArgs {
+                tags: ordered_tags.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let adapter = CoreAdapter::detect();
+        let envelope = adapter.invoke(&root, &invocation).unwrap();
+        assert!(envelope.is_success(), "{:?}", envelope.raw);
+
+        let saved = std::fs::read_to_string(&doc_file).unwrap();
+        // The real core write must preserve the REQUESTED order, never sort or
+        // otherwise reorder it.
+        let positions: Vec<usize> = ordered_tags
+            .iter()
+            .map(|tag| {
+                saved
+                    .find(tag.as_str())
+                    .unwrap_or_else(|| panic!("tag `{tag}` missing from: {saved}"))
+            })
+            .collect();
+        assert!(
+            positions.windows(2).all(|pair| pair[0] < pair[1]),
+            "tags must appear in the REQUESTED order in the real written file: {saved}"
+        );
+
+        // The kind-gated post-verify's ordered-Vec-equality comparison must
+        // recognize the exact ordering the real core wrote.
+        let fields = crate::authoring::api::FrontmatterEditFields {
+            date: None,
+            tags: Some(ordered_tags),
+            related: None,
+        };
+        assert!(
+            crate::authoring::operations::frontmatter_fields_match(&saved, &fields),
+            "post-verify must recognize the real core's tags ordering: {saved}"
+        );
+    }
+
+    #[test]
+    fn edit_frontmatter_a_mismatched_or_not_landed_write_fails_closed() {
+        // P03-review follow-on: the `false → Failed` direction of the semantic
+        // post-verify was structurally guaranteed but never directly exercised
+        // for frontmatter. Pin it at the `frontmatter_fields_match` unit level
+        // (mismatch → false) alongside the tolerant-quoting positive case
+        // (→ true), so the fail-closed property is locked independent of any
+        // subprocess timing.
+        let matching = "---\ntags:\n  - '#plan'\ndate: \"2026-02-06\"\n---\n\nbody\n";
+        let mismatched = "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\nbody\n";
+        let not_landed_at_all = "---\ntags:\n  - '#plan'\n---\n\nbody\n";
+        let fields = crate::authoring::api::FrontmatterEditFields {
+            date: Some("2026-02-06".to_string()),
+            tags: None,
+            related: None,
+        };
+
+        assert!(
+            crate::authoring::operations::frontmatter_fields_match(matching, &fields),
+            "a double-quoted value core might write must still compare equal (tolerant quoting)"
+        );
+        assert!(
+            !crate::authoring::operations::frontmatter_fields_match(mismatched, &fields),
+            "a stale/unrelated value must NOT be recognized as landed (fail-closed)"
+        );
+        assert!(
+            !crate::authoring::operations::frontmatter_fields_match(not_landed_at_all, &fields),
+            "an absent field must NOT be recognized as landed (fail-closed)"
+        );
+    }
+
+    // --- W02.P04: Rename against the REAL core -----------------------------
+
+    const LIVE_RENAME_OLD_STEM: &str = "apply-rename-live-demo";
+    const LIVE_RENAME_NEW_STEM: &str = "apply-rename-live-demo-renamed";
+    const LIVE_RENAME_DOC_PATH: &str = ".vault/plan/apply-rename-live-demo.md";
+    const LIVE_RENAME_RENAMED_DOC_PATH: &str = ".vault/plan/apply-rename-live-demo-renamed.md";
+    const LIVE_RENAME_BASE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\n---\n\n# apply live rename demo\n\nbase content\n";
+
+    /// The `setup_live_frontmatter` sibling for `Rename`: a REAL git +
+    /// vaultspec workspace, an APPROVED single-child `Rename` changeset ready
+    /// to apply against the genuine `vaultspec-core` binary.
+    fn setup_live_rename() -> Fx {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        git(&root, &["init", "-b", "main", "."]);
+        let doc_file = root.join(LIVE_RENAME_DOC_PATH);
+        std::fs::create_dir_all(doc_file.parent().unwrap()).unwrap();
+        std::fs::write(&doc_file, LIVE_RENAME_BASE_BODY).unwrap();
+        scaffold_vaultspec_workspace(&root);
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "apply live rename fixture"]);
+
+        let mut store = Store::open(&root.join(".vault")).unwrap();
+        let changeset_id = ChangesetId::new("changeset_apply_rn_live_1").unwrap();
+        let proposal_id = ProposalId::new("proposal_apply_rn_live_1").unwrap();
+        let origin = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let applier = actor("human:applier", ActorKind::Human);
+
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                for (id, kind) in [
+                    ("agent:author", ActorKind::Agent),
+                    ("human:reviewer", ActorKind::Human),
+                    ("human:applier", ActorKind::Human),
+                ] {
+                    uow.actors().put_record(ActorRecordInput::active(
+                        actor(id, kind),
+                        ActorDisplayMetadata::new(id, None),
+                        1,
+                    ))?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        let reader = SnapshotReader::for_worktree(root.clone());
+        let seed_doc = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: format!("doc:{LIVE_RENAME_OLD_STEM}"),
+            stem: LIVE_RENAME_OLD_STEM.to_string(),
+            path: LIVE_RENAME_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: RevisionToken::new("blob:seed").unwrap(),
+        };
+        let base_probe = reader.capture_existing(&seed_doc).unwrap();
+        let document = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: format!("doc:{LIVE_RENAME_OLD_STEM}"),
+            stem: LIVE_RENAME_OLD_STEM.to_string(),
+            path: LIVE_RENAME_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: base_probe.revision.clone(),
+        };
+        let base_snapshot = reader.capture_existing(&document).unwrap();
+        let preimage = reader
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: "preimage_rn_live_1".to_string(),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: "child_1".to_string(),
+                document: document.clone(),
+                captured_at_ms: 5,
+            })
+            .unwrap();
+        let draft = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::Rename,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(base_probe.revision.clone()),
+                current_revision: Some(base_probe.revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: Some(LIVE_RENAME_NEW_STEM.to_string()),
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_rename(
+            &changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
+
+        let current_observation =
+            CurrentRevisionObservation::from_snapshot("child_1", &base_snapshot);
+        let validation_record = validate_changeset_material(
+            std::slice::from_ref(&materialized),
+            &[current_observation],
+            &[],
+            6,
+        )
+        .unwrap();
+        assert!(
+            validation_record.approval_ready,
+            "fixture validation must be approval-ready: {:?}",
+            validation_record.status
+        );
+        let validation_digest = validation_record.validation_digest.clone();
+
+        let child_input = ChangesetChildOperationInput::from_materialized(
+            materialized,
+            validation_record.material_digest.clone(),
+            validation_digest.clone(),
+        );
+
+        let reviewed_revision = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                let draft_rev = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: None,
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::Draft,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live rename demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 10,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&draft_rev)?;
+                let needs_review = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: Some(draft_rev.changeset_revision.clone()),
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::NeedsReview,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live rename demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 20,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&needs_review)?;
+                uow.validations().store_record(&validation_record)?;
+                Ok(needs_review.changeset_revision)
+            })
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+                Ok(uow.approvals().request_approval(ApprovalRequestInput {
+                    approval_id: ApprovalId::new("approval_apply_rn_live_1").unwrap(),
+                    proposal_id: proposal_id.clone(),
+                    changeset_id: changeset_id.clone(),
+                    reviewed: ReviewedTuple {
+                        proposal_revision: reviewed_revision.clone(),
+                        validation_digest: validation_digest.clone(),
+                        policy_version: V1_POLICY_VERSION.to_string(),
+                    },
+                    idempotency_key: "idem:request:rn:live:1".to_string(),
+                    created_at_ms: 30,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::Approve, |uow| {
+                Ok(uow.approvals().submit_decision(ReviewDecisionInput {
+                    proposal_id: &proposal_id,
+                    decision: ApprovalDecision::Approve,
+                    reviewer: &reviewer,
+                    validation: ValidationFreshness::fresh(),
+                    current_validation_digest: &validation_digest,
+                    current_policy_version: V1_POLICY_VERSION,
+                    run_cancelled: false,
+                    comment: None,
+                    decided_at_ms: 40,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        Fx {
+            _dir: dir,
+            store,
+            root,
+            doc_file,
+            changeset_id,
+            proposal_id,
+            origin,
+            applier,
+            expected_result_blob_hash,
+        }
+    }
+
+    /// A REAL `vaultspec-core` `rename` invocation, wrapped to LAND the write and
+    /// THEN hang past the deadline — mirrors `landing_frontmatter_timeout_adapter`
+    /// for `Rename`'s own core-authoritative post-verify.
+    fn landing_rename_timeout_adapter(doc_ref: &str, new_stem: &str) -> CoreAdapter {
+        let invocation = if cfg!(windows) {
+            vec![
+                "powershell".to_string(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!(
+                    "& {{ uv run --no-sync vaultspec-core vault rename '{doc_ref}' --to \
+                     '{new_stem}' --json | Out-Null; Start-Sleep -Seconds 30 }}"
+                ),
+            ]
+        } else {
+            vec![
+                "sh".to_string(),
+                "-c".into(),
+                format!(
+                    "uv run --no-sync vaultspec-core vault rename '{doc_ref}' --to '{new_stem}' \
+                     --json >/dev/null 2>&1; sleep 30"
+                ),
+            ]
+        };
+        CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
+    }
+
+    #[test]
+    fn rename_apply_against_the_real_core_is_recognized_applied() {
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_rename();
+        let applier = fx.applier.clone();
+        let adapter = CoreAdapter::detect();
+        let outcome = apply(&mut fx, &adapter, &applier, "idem:apply:rn:live:1", 100);
+        assert!(
+            outcome.eligibility.allowed,
+            "{:?}",
+            outcome.eligibility.reason
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an applied rename changeset yields a receipt");
+        assert_eq!(receipt.state, ApplyState::Applied, "{receipt:?}");
+        assert_eq!(receipt.child.outcome, ApplyChildOutcome::Applied);
+        assert!(
+            !receipt.child.resolved_via_post_verify,
+            "a clean success completes via the envelope, never the recovery path"
+        );
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        assert!(
+            !fx.doc_file.exists(),
+            "the REAL vaultspec-core rename moved the document away from the old path"
+        );
+        assert!(
+            fx.root.join(LIVE_RENAME_RENAMED_DOC_PATH).exists(),
+            "the REAL vaultspec-core rename landed the document at the new path"
+        );
+    }
+
+    #[test]
+    fn rename_indeterminate_kill_after_a_real_landed_rename_is_recognized_applied() {
+        // THE R1 pattern applied to Rename: core is core-authoritative over BOTH
+        // the write and the path move — the recorded `DocumentRef` the OLD
+        // preview-hash-shaped verify would check carries the OLD (now-stale)
+        // path. Semantic post-verify (re-resolve by stem) must recognize a REAL,
+        // landed rename regardless.
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_rename();
+        let applier = fx.applier.clone();
+        let adapter = landing_rename_timeout_adapter(LIVE_RENAME_DOC_PATH, LIVE_RENAME_NEW_STEM);
+        let outcome = apply(
+            &mut fx,
+            &adapter,
+            &applier,
+            "idem:apply:rn:live:kill:1",
+            100,
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an indeterminate kill still resolves to a terminal receipt");
+        assert_eq!(
+            receipt.state,
+            ApplyState::Applied,
+            "the REAL landed rename must be recognized Applied via semantic post-verify: \
+             {receipt:?}"
+        );
+        assert!(receipt.child.resolved_via_post_verify);
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        assert!(!fx.doc_file.exists());
+        assert!(fx.root.join(LIVE_RENAME_RENAMED_DOC_PATH).exists());
     }
 
     /// A REAL `vaultspec-core` `set-frontmatter` invocation, wrapped to LAND the
@@ -2812,6 +3302,7 @@ mod tests {
                     tags: Some(vec!["#plan".to_string(), "#new-tag".to_string()]),
                     related: None,
                 }),
+                new_stem: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(

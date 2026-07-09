@@ -1190,6 +1190,7 @@ mod tests {
                 mode: DraftMode::WholeDocument,
                 body: body.into(),
                 frontmatter: None,
+                new_stem: None,
             },
         }
     }

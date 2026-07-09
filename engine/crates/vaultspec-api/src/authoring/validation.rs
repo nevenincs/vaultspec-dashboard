@@ -1056,6 +1056,7 @@ mod tests {
                 mode: DraftMode::WholeDocument,
                 body: body.to_string(),
                 frontmatter: None,
+                new_stem: None,
             },
         }
     }

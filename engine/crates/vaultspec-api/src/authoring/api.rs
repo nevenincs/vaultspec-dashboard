@@ -474,6 +474,13 @@ pub struct DraftMutation {
     /// a field-level edit and must be empty (R1: no accepted-but-ignored field).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frontmatter: Option<FrontmatterEditFields>,
+    /// The field-level payload for `Rename` (W02.P04): the target stem the
+    /// `Rename` core capability accepts (`--to`). A bare, identity-bearing stem
+    /// — never a path. `None`/absent for every other operation kind; `body`
+    /// carries no meaning for a rename and must be empty (R1 discipline, same
+    /// as `frontmatter`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_stem: Option<String>,
 }
 
 /// The `EditFrontmatter` field-level payload: exactly the fields the
@@ -1083,6 +1090,7 @@ fn create_proposal_request_fixture() -> CreateProposalRequest {
                     mode: DraftMode::WholeDocument,
                     body: "draft body".to_string(),
                     frontmatter: None,
+                    new_stem: None,
                 },
             },
             ChangesetChildOperationDraft {
@@ -1093,6 +1101,7 @@ fn create_proposal_request_fixture() -> CreateProposalRequest {
                     mode: DraftMode::WholeDocument,
                     body: "new document body".to_string(),
                     frontmatter: None,
+                    new_stem: None,
                 },
             },
         ],

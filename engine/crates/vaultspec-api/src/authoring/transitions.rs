@@ -608,12 +608,14 @@ pub fn create_rollback_eligibility(
     }
     if !matches!(
         child.operation,
-        ChangesetOperationKind::ReplaceBody | ChangesetOperationKind::EditFrontmatter
+        ChangesetOperationKind::ReplaceBody
+            | ChangesetOperationKind::EditFrontmatter
+            | ChangesetOperationKind::Rename
     ) {
         return ActionEligibility::denied(
             CommandKind::CreateRollback,
             format!(
-                "rollback_unavailable: operation `{:?}` has no V1 preimage-restore inverse",
+                "rollback_unavailable: operation `{:?}` has no V1 inverse",
                 child.operation
             ),
         );

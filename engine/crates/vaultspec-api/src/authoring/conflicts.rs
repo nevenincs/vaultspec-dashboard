@@ -32,7 +32,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use super::api::ChangesetOperationKind;
-use super::documents::{DocumentResolver, ExistingDocumentLookup};
+use super::documents::{DocumentResolveError, DocumentResolver, ExistingDocumentLookup};
 use super::leases::LeaseRecord;
 use super::ledger::{ChangesetAggregateRecord, ChangesetChildOperationRecord};
 use super::model::{ActorRef, ChangesetId, DocumentRef, RevisionToken};
@@ -75,6 +75,10 @@ pub enum ConflictKind {
     /// the revision floor; this surfaces the coordination collision the ADR's advisory
     /// leases exist to reduce.
     PolicyConflict,
+    /// A `Rename` child's PROPOSED target stem already resolves to a different
+    /// document (W02.P04) — a rename-specific collision distinct from every base/
+    /// identity finding above, since it is about the DESTINATION, not the source.
+    RenameTargetCollision,
 }
 
 impl ConflictKind {
@@ -87,6 +91,7 @@ impl ConflictKind {
             Self::OverlappingHunks => 2,
             Self::AnchorDrift => 3,
             Self::PolicyConflict => 4,
+            Self::RenameTargetCollision => 5,
         }
     }
 }
@@ -194,6 +199,7 @@ pub fn detect_conflicts(
             now_ms,
             &mut findings,
         );
+        detect_child_rename_collision(&resolver, child, &mut findings);
     }
 
     detect_overlapping_hunks(changeset, live_siblings, &mut findings);
@@ -343,6 +349,49 @@ fn detect_child_policy_conflict(
             conflicting_changeset_id: None,
             conflicting_child_key: None,
             lease_holder: Some(lease.holder.clone()),
+        });
+    }
+}
+
+/// A `Rename` target-stem collision: a document already exists at the PROPOSED
+/// new stem (W02.P04). Reuses `DocumentResolver::rename_target`'s OWN
+/// collision check — the SAME check the eventual core `--to` write would hit —
+/// rather than re-deriving resolve-and-compare logic here.
+fn detect_child_rename_collision(
+    resolver: &DocumentResolver,
+    child: &ChangesetChildOperationRecord,
+    findings: &mut Vec<ConflictFinding>,
+) {
+    if child.operation != ChangesetOperationKind::Rename {
+        return;
+    }
+    let Some(new_stem) = child
+        .materialized_operation
+        .as_ref()
+        .and_then(|operation| operation.rename_edit.clone())
+    else {
+        return;
+    };
+    let DocumentRef::Existing { path, .. } = &child.target.document else {
+        return;
+    };
+    if let Err(DocumentResolveError::DuplicateStem { stem, .. }) =
+        resolver.rename_target(child.target.document.clone(), new_stem)
+    {
+        findings.push(ConflictFinding {
+            child_key: child.child_key.clone(),
+            kind: ConflictKind::RenameTargetCollision,
+            reason: format!(
+                "a document already exists at the proposed stem `{stem}`; rename would collide"
+            ),
+            document: child.target.document.clone(),
+            reviewed_base_revision: None,
+            current_revision: None,
+            recorded_path: Some(path.clone()),
+            current_path: None,
+            conflicting_changeset_id: None,
+            conflicting_child_key: None,
+            lease_holder: None,
         });
     }
 }
@@ -565,6 +614,7 @@ mod tests {
                 mode: DraftMode::WholeDocument,
                 body: new_body.to_string(),
                 frontmatter: None,
+                new_stem: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(
@@ -621,9 +671,63 @@ mod tests {
                     tags: None,
                     related: None,
                 }),
+                new_stem: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
+            changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        ChangesetChildOperationInput::from_materialized(
+            materialized,
+            format!("material:{child_key}"),
+            format!("validation:{child_key}"),
+        )
+    }
+
+    /// A materialized `rename` child (W02.P04) proposing to rename `stem` to
+    /// `new_stem`. Mirrors `materialized_frontmatter_child` so a rename
+    /// exercises the SAME conflict-record shape.
+    fn materialized_rename_child(
+        root: &Path,
+        changeset_id: &ChangesetId,
+        stem: &str,
+        child_key: &str,
+        new_stem: &str,
+    ) -> ChangesetChildOperationInput {
+        let document = resolve(root, stem);
+        let base_snapshot = SnapshotReader::for_worktree(root)
+            .require_current_base(&document)
+            .unwrap();
+        let preimage = SnapshotReader::for_worktree(root)
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: format!("preimage:{}:{child_key}", changeset_id.as_str()),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: child_key.to_string(),
+                document: document.clone(),
+                captured_at_ms: 100,
+            })
+            .unwrap();
+        let revision = existing_base(&document);
+        let draft = ChangesetChildOperationDraft {
+            child_key: child_key.to_string(),
+            operation: ChangesetOperationKind::Rename,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(revision.clone()),
+                current_revision: Some(revision),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: Some(new_stem.to_string()),
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_rename(
             changeset_id,
             draft,
             &base_snapshot,
@@ -1086,6 +1190,69 @@ mod tests {
         assert!(
             serde_json::from_value::<ConflictReport>(tampered).is_err(),
             "unknown finding fields are rejected on the wire"
+        );
+    }
+
+    #[test]
+    fn rename_target_stem_collision_is_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/rename-source.md", "source body\n");
+        // A DIFFERENT document already occupies the proposed target stem.
+        write_doc(root, ".vault/plan/rename-target.md", "occupied\n");
+
+        let child = materialized_rename_child(
+            root,
+            &ChangesetId::new("changeset:rename-collision").unwrap(),
+            "rename-source",
+            "child_1",
+            "rename-target",
+        );
+        let cs = changeset(
+            "changeset:rename-collision",
+            actor("agent:author"),
+            ChangesetStatus::Proposed,
+            vec![child],
+        );
+
+        let report = detect_conflicts(root, &cs, &[], &[], NOW_MS);
+
+        assert!(report.has_conflict());
+        assert_eq!(report.findings.len(), 1, "{report:?}");
+        let finding = &report.findings[0];
+        assert_eq!(finding.kind, ConflictKind::RenameTargetCollision);
+        assert_eq!(finding.child_key, "child_1");
+        assert_eq!(
+            finding.recorded_path.as_deref(),
+            Some(".vault/plan/rename-source.md")
+        );
+    }
+
+    #[test]
+    fn rename_to_a_free_stem_reports_no_conflict() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/rename-source-clean.md", "source body\n");
+
+        let child = materialized_rename_child(
+            root,
+            &ChangesetId::new("changeset:rename-clean").unwrap(),
+            "rename-source-clean",
+            "child_1",
+            "rename-target-clean",
+        );
+        let cs = changeset(
+            "changeset:rename-clean",
+            actor("agent:author"),
+            ChangesetStatus::Proposed,
+            vec![child],
+        );
+
+        let report = detect_conflicts(root, &cs, &[], &[], NOW_MS);
+
+        assert!(
+            !report.has_conflict(),
+            "a free target stem is not a collision: {report:?}"
         );
     }
 }

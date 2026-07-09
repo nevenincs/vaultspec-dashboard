@@ -793,6 +793,7 @@ fn ensure_proposal_created(
                     mode: DraftMode::WholeDocument,
                     body: input.body,
                     frontmatter: None,
+                    new_stem: None,
                 },
             }],
         },
