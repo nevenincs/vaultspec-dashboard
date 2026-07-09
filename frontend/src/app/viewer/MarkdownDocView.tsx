@@ -19,6 +19,7 @@ import {
   useSetFrontmatter,
   type ContentView,
 } from "../../stores/server/queries";
+import { useEnsureCurrentEditorIdentity } from "../../stores/server/authoring";
 import { docStemFromNodeId } from "../menus/sharedActions";
 import { dispatchOps } from "../../stores/server/opsActions";
 import { openContextMenu } from "../../stores/view/contextMenu";
@@ -100,6 +101,12 @@ export function MarkdownDocView({
   );
   const editor = useDocumentEditorView(nodeId);
   const editorChrome = useMarkdownEditorChromeView(nodeId, documentEditor.properties);
+  // A fresh editing session mints the shared human actor token before any
+  // ledgered edit can fire (ledgered-edit-migration ADR, W01.P01): the Save/
+  // frontmatter dispatch itself stays on the legacy write path until W01.P02
+  // rewires it, but the identity bootstrap starts here so it is already resolved
+  // by the time that cutover lands.
+  useEnsureCurrentEditorIdentity(editor.isEditing);
 
   const saveBody = useSaveBody();
   const setFrontmatter = useSetFrontmatter();

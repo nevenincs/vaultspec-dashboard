@@ -22,7 +22,7 @@
 // The store consumes the SERVED projection shapes unchanged (no new client
 // model); it maps only presentation. Wire values stay snake_case as served.
 
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   keepPreviousData,
   queryOptions,
@@ -1557,6 +1557,73 @@ export function useIssueActorToken() {
       if (issued.raw_token) setActorToken(issued.raw_token);
     },
   });
+}
+
+// --- current-editor identity (shared editor + review-station bootstrap) --------
+//
+// The ledgered-edit-migration ADR chose a first-class, shared editor identity
+// over an anonymous per-edit token: the SAME human principal must be coherent
+// across a plain editing session and the review station. This generalizes what
+// was previously the review station's private, hardcoded-actor issuance into one
+// hook both surfaces consume.
+
+/** The shared human principal a plain editing session and the review station
+ *  both bootstrap through `issueActorToken` — one local-operator identity, not a
+ *  fresh anonymous actor per edit. */
+export const CURRENT_EDITOR_ACTOR: ActorRef = {
+  id: "human:local-operator",
+  kind: "human",
+};
+
+/** The current-editor identity: whether a human actor token is bootstrapped for
+ *  this session, plus the bootstrap/sign-out actions. */
+export interface CurrentEditorIdentity {
+  /** A human actor token is bootstrapped for this session. */
+  hasToken: boolean;
+  /** A bootstrap mint is in flight. */
+  bootstrapping: boolean;
+  /** The bootstrap mint's error, if the last attempt failed. */
+  bootstrapError: Error | null;
+  /** Mint the shared human actor token. No-op while already bootstrapped or a
+   *  mint is already in flight. */
+  bootstrap(): void;
+  /** Clear the session's token (sign out). */
+  signOut(): void;
+}
+
+/** The shared current-editor identity: bootstrap/read the ONE human actor token
+ *  an editing session and the review station both resolve to. Both surfaces call
+ *  this rather than each minting their own actor, so signing in from either one
+ *  is visible from the other. */
+export function useCurrentEditorIdentity(): CurrentEditorIdentity {
+  const hasToken = useHasActorToken();
+  const issue = useIssueActorToken();
+  const bootstrap = useCallback(() => {
+    if (hasToken || issue.isPending) return;
+    issue.mutate({ actor: CURRENT_EDITOR_ACTOR });
+  }, [hasToken, issue]);
+  return {
+    hasToken,
+    bootstrapping: issue.isPending,
+    bootstrapError: issue.error,
+    bootstrap,
+    signOut: () => setActorToken(null),
+  };
+}
+
+/** Ensure a fresh editing session holds the bootstrapped human actor token
+ *  BEFORE any ledgered edit can fire: auto-mints on mount (and whenever
+ *  `enabled` turns true with no token yet). This is the fail-safe's proactive
+ *  half — the reactive half is `requireActorToken()` below, which still throws
+ *  if the mint hasn't resolved, so an edit attempted with no identity is
+ *  refused, never silently dropped. */
+export function useEnsureCurrentEditorIdentity(enabled = true): CurrentEditorIdentity {
+  const identity = useCurrentEditorIdentity();
+  const { hasToken, bootstrapping, bootstrap } = identity;
+  useEffect(() => {
+    if (enabled && !hasToken && !bootstrapping) bootstrap();
+  }, [enabled, hasToken, bootstrapping, bootstrap]);
+  return identity;
 }
 
 /** Require the bootstrapped session actor token, or throw a clear error the

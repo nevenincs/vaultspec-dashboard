@@ -23,11 +23,10 @@
 import { useState } from "react";
 
 import {
-  setActorToken,
   useApplyChangeset,
   useCreateRollback,
+  useCurrentEditorIdentity,
   useHasActorToken,
-  useIssueActorToken,
   useReviewDecision,
   useReviewStationView,
   useSubmitForReview,
@@ -40,11 +39,6 @@ import {
 } from "../../stores/server/authoring";
 import { Badge, Button, SectionLabel, Skeleton, SkeletonRow, StateBlock } from "../kit";
 import { DiffPanel } from "./DiffPanel";
-
-// The reviewer principal the bootstrap provisions — a HUMAN actor distinct from
-// any agent author (the automated-self-approval ban is a real gate the reviewer
-// must clear by being a different, human, principal; security-provenance ADR).
-const REVIEWER_ACTOR = { id: "human:reviewer", kind: "human" as const };
 
 /** Wire status token → plain label. Frontend maps only presentation
  *  (display-state-is-backend-served); the served token stays authoritative. */
@@ -112,22 +106,18 @@ function staleLabel(proposal: ProposalProjection): string {
 
 // --- reviewer identity ----------------------------------------------------------
 
-/** The reviewer identity control: bootstrap a per-principal actor token (the
- *  human-reviewer credential every command presents), or show the signed-in
- *  reviewer with a sign-out. Without it, no command can resolve a principal. */
+/** The reviewer identity control: bootstrap the shared current-editor human
+ *  actor token (the SAME principal a plain editing session bootstraps —
+ *  ledgered-edit-migration ADR), or show the signed-in reviewer with a
+ *  sign-out. Without it, no command can resolve a principal. */
 function ReviewerIdentity() {
-  const hasToken = useHasActorToken();
-  const issue = useIssueActorToken();
+  const identity = useCurrentEditorIdentity();
 
-  if (hasToken) {
+  if (identity.hasToken) {
     return (
       <div className="flex items-center gap-fg-2 text-meta text-ink-muted">
         <span data-reviewer-signed-in>Signed in as reviewer</span>
-        <Button
-          variant="ghost"
-          onClick={() => setActorToken(null)}
-          data-reviewer-signout
-        >
+        <Button variant="ghost" onClick={identity.signOut} data-reviewer-signout>
           Sign out
         </Button>
       </div>
@@ -136,11 +126,11 @@ function ReviewerIdentity() {
   return (
     <Button
       variant="secondary"
-      disabled={issue.isPending}
-      onClick={() => issue.mutate({ actor: REVIEWER_ACTOR })}
+      disabled={identity.bootstrapping}
+      onClick={identity.bootstrap}
       data-reviewer-signin
     >
-      {issue.isPending ? "Signing in…" : "Sign in as reviewer"}
+      {identity.bootstrapping ? "Signing in…" : "Sign in as reviewer"}
     </Button>
   );
 }
