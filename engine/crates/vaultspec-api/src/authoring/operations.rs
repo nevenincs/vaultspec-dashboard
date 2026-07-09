@@ -257,7 +257,7 @@ impl MaterializedProposalOperation {
         created_at_ms: i64,
     ) -> Result<Self> {
         let (doc_type, feature, _title) = validate_create_document_draft(&draft)?;
-        let created_at_date = format_date_yyyy_mm_dd(created_at_ms);
+        let created_at_date = engine_query::lineage::ms_to_date_key(created_at_ms);
         let predicted_path = format!(".vault/{doc_type}/{created_at_date}-{feature}-{doc_type}.md");
         let empty_hash = blob_oid(b"");
         let phantom_revision = RevisionToken::new(format!("blob:{empty_hash}"))
@@ -650,25 +650,6 @@ fn validate_create_document_draft(
         });
     }
     Ok((doc_type.as_str(), feature.as_str(), title.as_str()))
-}
-
-/// Format a UTC millisecond timestamp as an ISO `yyyy-mm-dd` civil date via the
-/// standard proleptic-Gregorian day-count algorithm (Howard Hinnant's
-/// `civil_from_days`) — a single calendar conversion does not earn a `chrono`/
-/// `time` dependency (and this crate's `Cargo.lock` is out of scope to touch).
-fn format_date_yyyy_mm_dd(epoch_ms: i64) -> String {
-    let days = epoch_ms.div_euclid(86_400_000);
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    format!("{y:04}-{m:02}-{d:02}")
 }
 
 /// Reject a field value that would corrupt the frontmatter block it lands in: an
