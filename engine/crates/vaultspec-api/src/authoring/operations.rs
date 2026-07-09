@@ -259,9 +259,7 @@ impl MaterializedProposalOperation {
         let (doc_type, feature, _title) = validate_create_document_draft(&draft)?;
         let created_at_date = engine_query::lineage::ms_to_date_key(created_at_ms);
         let predicted_path = format!(".vault/{doc_type}/{created_at_date}-{feature}-{doc_type}.md");
-        let empty_hash = blob_oid(b"");
-        let phantom_revision = RevisionToken::new(format!("blob:{empty_hash}"))
-            .expect("an empty-blob revision token is always a valid RevisionToken");
+        let (empty_hash, phantom_revision) = create_document_phantom_base();
         let phantom_base = RevisionSnapshot {
             document: draft.target.document.clone(),
             path: predicted_path,
@@ -305,6 +303,23 @@ impl MaterializedProposalOperation {
             },
         )
     }
+}
+
+/// The phantom "diff from nothing" base a `CreateDocument` draft materializes
+/// and validates against: the git-style empty-blob hash and its matching
+/// revision token. Neither claims a real prior state existed — it is an
+/// in-memory-only sentinel, never persisted. `materialize_create_document`
+/// (the materialize-time phantom base/preimage) and `proposal::
+/// validation_evidence` (the validate-time phantom observation) BOTH call
+/// this ONE helper rather than each deriving it inline, so the two stay in
+/// agreement BY CONSTRUCTION — a future change to one can never silently
+/// desync from the other (the exact propose/apply-mismatch class the P05a/
+/// P06 reviews flagged).
+pub(crate) fn create_document_phantom_base() -> (String, RevisionToken) {
+    let empty_hash = blob_oid(b"");
+    let phantom_revision = RevisionToken::new(format!("blob:{empty_hash}"))
+        .expect("an empty-blob revision token is always a valid RevisionToken");
+    (empty_hash, phantom_revision)
 }
 
 /// The operation-kind-specific payload `finish_materialization` threads through

@@ -442,15 +442,14 @@ pub fn validation_evidence(
             ))
         })?;
         // CreateDocument (W02.P05a) has no existing document to re-observe — the
-        // SAME phantom "diff from nothing" values `materialize_create_document`
-        // fixed internally, never a live worktree read.
+        // shared `create_document_phantom_base` helper, never a live worktree
+        // read (see its doc for why this must be the SAME derivation
+        // `materialize_create_document` uses).
         if matches!(
             operation.target_snapshot.document,
             DocumentRef::ProvisionalCreate { .. }
         ) {
-            let empty_hash = blob_oid(b"");
-            let phantom_revision = RevisionToken::new(format!("blob:{empty_hash}"))
-                .expect("an empty-blob revision token is always a valid RevisionToken");
+            let (empty_hash, phantom_revision) = super::operations::create_document_phantom_base();
             current_revisions.push(CurrentRevisionObservation {
                 child_key: child.child_key.clone(),
                 document: operation.target_snapshot.document.clone(),
