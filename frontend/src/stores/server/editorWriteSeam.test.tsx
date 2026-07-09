@@ -2,19 +2,19 @@
 //
 // The editor WRITE seam — the REQUEST side (document-editor backend, S22; the
 // Save button's body write cut over to the ledger at ledgered-edit-migration
-// W01.P02, the frontmatter panel at W03.P07, both generalized to the
-// operation-typed `directWrite` route at W02.P06).
+// W01.P02, the frontmatter panel at W03.P07, the rename affordance at W03.P08,
+// all generalized to the operation-typed `directWrite` route at W02.P06).
 //
 // The RESPONSE side (the wire `{data, tiers}` envelope → typed `OpsWriteResult`)
 // is covered against CAPTURED LIVE samples in `liveAdapters.test.ts`. This file
 // covers the complementary REQUEST side: that `useSaveBody` / `useSetFrontmatter`
-// CONSTRUCT the correct `directWrite` payload — the `operation` discriminator,
-// ref/body/frontmatter/expected_blob_hash, the scope pin, and the bootstrapped
-// actor token — and that each hook resolves (never throws) on a business
-// outcome, mapping it to the typed result.
+// / `useRenameDoc` CONSTRUCT the correct `directWrite` payload — the `operation`
+// discriminator, ref/body/frontmatter/new_stem/expected_blob_hash, the scope
+// pin, and the bootstrapped actor token — and that each hook resolves (never
+// throws) on a business outcome, mapping it to the typed result.
 //
 // This is NOT the tautological mock-engine test the no-mocks migration removed:
-// both hooks spy the authoring store's `directWrite` client method, CAPTURING
+// every hook spies the authoring store's `directWrite` client method, CAPTURING
 // the outgoing request and returning a fixture shaped like the live wire (the
 // direct-write shape matches `authoring.live.test.ts`'s captured contract). The
 // unit under test is OUR request construction + result wiring, not a faked
@@ -31,7 +31,7 @@ import {
   setActorToken,
   type DirectWriteOutcome,
 } from "./authoring";
-import { useSaveBody, useSetFrontmatter } from "./queries";
+import { useRenameDoc, useSaveBody, useSetFrontmatter } from "./queries";
 
 const TIERS = {
   declared: { available: true },
@@ -321,6 +321,163 @@ describe("useSetFrontmatter — direct-write request construction", () => {
         scope: "Y:/repo",
         tags: ["#adr"],
         baseBlobHash: "base-h",
+      }),
+    ).rejects.toThrow(/no authoring actor token is bootstrapped/);
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("useRenameDoc — direct-write request construction", () => {
+  it("builds an `operation: rename` direct-write request (ref + new_stem + optimistic base + scope pin) carrying the bootstrapped actor token, and resolves `renamed`", async () => {
+    const spy = vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "applied",
+      changesetId: "changeset_3",
+      documentPath: ".vault/adr/new-stem.md",
+      blobHash: "new-hash",
+      replayed: false,
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
+    const { result } = renderHook(() => useRenameDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      nodeId: "doc:old-stem",
+      scope: "Y:/repo",
+      to: "new-stem",
+      expectedBlobHash: "old-hash",
+    });
+
+    expect(spy).toHaveBeenCalledWith(
+      {
+        operation: "rename",
+        ref: "old-stem",
+        new_stem: "new-stem",
+        expected_blob_hash: "old-hash",
+        scope: "Y:/repo",
+      },
+      { actorToken: "test-actor-token" },
+    );
+    expect(res.result.kind).toBe("renamed");
+    if (res.result.kind === "renamed") {
+      expect(res.result.oldNodeId).toBe("doc:old-stem");
+      expect(res.result.newNodeId).toBe("doc:new-stem");
+      expect(res.result.newBlobHash).toBe("new-hash");
+    }
+  });
+
+  it("maps a direct-write conflict outcome (a stale optimistic base) to a `conflict` result (resolves, never throws)", async () => {
+    vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "conflict",
+      conflict: {
+        document_ref: "old-stem",
+        document_path: ".vault/adr/old-stem.md",
+        expected_blob_hash: "old-hash",
+        actual_blob_hash: "drifted-hash",
+        target_blob_hash: "would-have-been-hash",
+      },
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
+    const { result } = renderHook(() => useRenameDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      nodeId: "doc:old-stem",
+      scope: null,
+      to: "new-stem",
+      expectedBlobHash: "old-hash",
+    });
+
+    expect(res.result.kind).toBe("conflict");
+    if (res.result.kind === "conflict") {
+      expect(res.result.expected).toBe("old-hash");
+      expect(res.result.actual).toBe("drifted-hash");
+    }
+  });
+
+  it("maps a rename-target-collision denial to the `collision` result (resolves, never throws) — the apply-time RenameTargetCollision finding", async () => {
+    vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "denied",
+      reason:
+        "a document already exists at the proposed stem `new-stem`; rename would collide",
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
+    const { result } = renderHook(() => useRenameDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      nodeId: "doc:old-stem",
+      scope: null,
+      to: "new-stem",
+      expectedBlobHash: "old-hash",
+    });
+
+    expect(res.result.kind).toBe("collision");
+    if (res.result.kind === "collision") {
+      expect(res.result.message).toContain("already exists at the proposed stem");
+    }
+  });
+
+  it("maps every OTHER denial reason to a `refused` result carrying the reason in `checks` (the advisories panel reads only `checks`)", async () => {
+    vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "denied",
+      reason:
+        "direct editor saves require a human actor; agents must propose changesets",
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
+    const { result } = renderHook(() => useRenameDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      nodeId: "doc:old-stem",
+      scope: null,
+      to: "new-stem",
+      expectedBlobHash: "old-hash",
+    });
+
+    expect(res.result.kind).toBe("refused");
+    if (res.result.kind === "refused") {
+      expect(res.result.message).toContain("agents must propose changesets");
+      expect(res.result.checks).toHaveLength(1);
+      expect((res.result.checks[0] as { message?: string }).message).toContain(
+        "agents must propose changesets",
+      );
+    }
+  });
+
+  it("refuses client-side (never sends an empty expected_blob_hash) when no optimistic base is supplied", async () => {
+    const spy = vi.spyOn(authoringClient, "directWrite");
+
+    const { result } = renderHook(() => useRenameDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      nodeId: "doc:old-stem",
+      scope: "Y:/repo",
+      to: "new-stem",
+    });
+
+    expect(res.result.kind).toBe("refused");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("refuses (never silently drops) a rename attempted with no bootstrapped actor token — the fail-safe", async () => {
+    const spy = vi.spyOn(authoringClient, "directWrite");
+    setActorToken(null);
+
+    const { result } = renderHook(() => useRenameDoc(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+
+    await expect(
+      result.current.mutateAsync({
+        nodeId: "doc:old-stem",
+        scope: "Y:/repo",
+        to: "new-stem",
+        expectedBlobHash: "old-hash",
       }),
     ).rejects.toThrow(/no authoring actor token is bootstrapped/);
     expect(spy).not.toHaveBeenCalled();

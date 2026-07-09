@@ -373,4 +373,36 @@ describe("direct editor save (live)", () => {
       expect(outcome.reason ?? "").toContain("does not match");
     }
   });
+
+  it("refuses a rename to an occupied stem as a `denied` VALUE carrying the RenameTargetCollision reason (W03.P08)", async () => {
+    // Non-mutating: the target-stem collision refuses at apply-time preflight,
+    // before any write — never materializes, so `alpha-research` stays pristine
+    // for the reject-only flow above.
+    const engine = createLiveClient();
+    const content = await engine.content(TARGET_NODE_ID, scopeToken);
+    const humanToken = (
+      await client.issueActorToken({
+        actor: { id: `human:dw-rename-collision-${run}`, kind: "human" },
+      })
+    ).raw_token;
+
+    const outcome = await client.directWrite(
+      {
+        operation: "rename",
+        ref: TARGET_STEM,
+        // A stem the fixture vault already occupies (2026-01-05-beta-adr.md).
+        new_stem: "2026-01-05-beta-adr",
+        expected_blob_hash: content.blob_hash,
+      },
+      { actorToken: humanToken },
+    );
+
+    expect(outcome.kind).toBe("denied");
+    if (outcome.kind === "denied") {
+      expect(outcome.reason ?? "").toContain("already exists at the proposed stem");
+    }
+    // Never mutated: the source doc's blob is unchanged.
+    const after = await engine.content(TARGET_NODE_ID, scopeToken);
+    expect(after.blob_hash).toBe(content.blob_hash);
+  });
 });

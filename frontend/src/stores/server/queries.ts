@@ -6761,14 +6761,37 @@ function refusedRenameResult(message: string): {
 }
 
 /**
- * Rename a document's file (`rename`) through the ONE ops-dispatch seam — the new
- * stem becomes the document's identity. On a `renamed` outcome the caller re-keys
- * the open editor/tab from `oldNodeId` to `newNodeId` (the engine has already
- * re-pointed incoming `related:` links, and the watcher re-ingests). A
- * `conflict`/`collision`/`refused` is a typed result the caller drives editor
- * state from — NOT a thrown error; only a transport fault rejects. The same
- * vault-mutation read surfaces are invalidated as a save (a rename changes tree
- * rows, the content key, graph nodes, and git entries).
+ * The stable substring the backend's `RenameTargetCollision` finding carries
+ * (`conflicts.rs`: `"a document already exists at the proposed stem ...;
+ * rename would collide"`). A rename-target collision is caught only at
+ * APPLY-TIME preflight (there is no pre-materialization stem-availability
+ * check, mirroring `CreateDocument`'s collision class), so it rides the
+ * direct-write route's `denied` status — NOT `conflict` (`conflict` is
+ * reserved for the pre-apply STALE-BASE race the same route shares with
+ * `replace_body`/`edit_frontmatter`). This substring match discriminates the
+ * specific collision denial from every other denial reason (a non-human
+ * actor, a scope-pin mismatch, a lease conflict, …) so it renders through the
+ * SAME `collision` UX the legacy op's structured `data.collision === true`
+ * flag used to drive — continuing the same reason-text-matching technique the
+ * backend itself already uses to route `conflict` vs `denied` for this route.
+ */
+const RENAME_COLLISION_REASON_HINT = "already exists at the proposed stem";
+
+/**
+ * Rename a document's file through the authoring ledger's `directWrite` route
+ * (`operation: "rename"`, ledgered-edit-migration W03.P08) — a self-approved
+ * direct changeset, not the legacy `rename` ops dispatch. Sends the open doc's
+ * `scope` as the direct-write scope pin, same as Save/frontmatter. On a
+ * `renamed` outcome the caller re-keys the open editor/tab from `oldNodeId` to
+ * `newNodeId` (the engine has already re-pointed incoming `related:` links,
+ * and the watcher re-ingests) — `incomingRewritten` is not carried by the
+ * direct-write outcome and floors to 0 (no consumer reads it today). A
+ * `conflict` (a stale optimistic base) / `collision` (the target stem is
+ * occupied) / `refused` (every other denial/failure/in-flight collision) is a
+ * typed result the caller drives editor state from — NOT a thrown error; only
+ * a transport fault, or the actor-token fail-safe (`requireActorToken`),
+ * rejects. The same vault-mutation read surfaces are invalidated as a save (a
+ * rename changes tree rows, the content key, graph nodes, and git entries).
  */
 export function useRenameDoc() {
   const queryClient = useQueryClient();
@@ -6783,48 +6806,58 @@ export function useRenameDoc() {
       if (normalized.to.length === 0) {
         return refusedRenameResult("Rename target is required");
       }
-      const ops: OpsResult = await dispatchOps({
-        target: "core",
-        verb: "rename",
-        mode: "write",
-        body: {
-          scope: normalized.scope ?? undefined,
+      // The direct-write route REQUIRES `expected_blob_hash` for rename (unlike
+      // the legacy op, which tolerated an absent fence) — refuse client-side
+      // rather than sending an empty string, which the backend 422s as a
+      // malformed request rather than a graceful denial VALUE.
+      if (!normalized.expectedBlobHash) {
+        return refusedRenameResult("Missing the pre-rename optimistic base");
+      }
+      const outcome = await authoringClient.directWrite(
+        {
+          operation: "rename",
           ref: normalized.ref,
-          to: normalized.to,
+          new_stem: normalized.to,
           expected_blob_hash: normalized.expectedBlobHash,
+          scope: normalized.scope,
         },
-      });
-      const { status, data } = envelopeData(ops.envelope);
+        { actorToken: requireActorToken() },
+      );
       let result: RenameDocResult;
-      if (status === "updated") {
+      if (outcome.kind === "applied") {
         result = {
           kind: "renamed",
           oldNodeId: normalized.nodeId,
           newNodeId: docNodeIdFromStem(normalized.to),
-          newBlobHash: typeof data.new_blob_hash === "string" ? data.new_blob_hash : "",
-          incomingRewritten:
-            typeof data.incoming_rewritten === "number" ? data.incoming_rewritten : 0,
+          newBlobHash: outcome.blobHash ?? "",
+          incomingRewritten: 0,
         };
-      } else if (data.conflict === true) {
+      } else if (outcome.kind === "conflict") {
         result = {
           kind: "conflict",
-          expected: typeof data.expected === "string" ? data.expected : "",
-          actual: typeof data.actual === "string" ? data.actual : "",
+          expected: outcome.conflict.expected_blob_hash,
+          actual: outcome.conflict.actual_blob_hash,
         };
-      } else if (data.collision === true) {
+      } else if (
+        (outcome.kind === "denied" || outcome.kind === "failed") &&
+        (outcome.reason ?? "").includes(RENAME_COLLISION_REASON_HINT)
+      ) {
         result = {
           kind: "collision",
-          message:
-            typeof data.message === "string" ? data.message : "Target already exists",
+          message: outcome.reason ?? "Target already exists",
         };
       } else {
+        const reason =
+          outcome.kind === "denied" || outcome.kind === "failed"
+            ? (outcome.reason ?? "Rename refused")
+            : "a prior rename for this document is still in flight — try again shortly";
         result = {
           kind: "refused",
-          message: typeof data.message === "string" ? data.message : "Rename refused",
-          checks: Array.isArray(data.checks) ? data.checks : [],
+          message: reason,
+          checks: [{ severity: "error", message: reason, fixable: false }],
         };
       }
-      return { result, tiers: ops.tiers };
+      return { result, tiers: outcome.tiers };
     },
     onSuccess: ({ result }, args) => {
       const normalized = normalizeRenameDocArgs(args);
