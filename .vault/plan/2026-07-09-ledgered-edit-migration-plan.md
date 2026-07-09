@@ -198,12 +198,12 @@ Delete the migrated /ops/core write routes and handlers, the frontend ops write/
 
 Run the full Rust and frontend gates plus live e2e verification, confirm release readiness, and close the migration with an epic audit.
 
-- [ ] `W04.P13.S74` - Ground the migration's Verification criteria and release-readiness bar into the phase checklist; `.vault/adr/`.
-- [ ] `W04.P13.S75` - Run the full Rust gate (cargo fmt --check + clippy + tests) across the authoring and routes crates touched by the migration; `engine/`.
-- [ ] `W04.P13.S76` - Run the full frontend gate (eslint + prettier + tsc + vitest against the live engine) across the stores, app, and menu surfaces touched by the migration; `frontend/`.
-- [ ] `W04.P13.S77` - Live-verify the four migrated edit surfaces (Save, frontmatter, rename, create) and relate/link end to end against a running dashboard, confirming each produces a changeset with provenance; `frontend/src/app/viewer/MarkdownDocView.tsx`.
-- [ ] `W04.P13.S78` - Run Final gate and epic audit code review and record the closing audit for the ledgered-edit-migration feature; `.vault/audit/`.
-- [ ] `W04.P13.S79` - Verify every Step in the plan is closed and no product edit surface dispatches through the retired /ops/core write path; `.vault/plan/`.
+- [x] `W04.P13.S74` - Ground the migration's Verification criteria and release-readiness bar into the phase checklist; `.vault/adr/`.
+- [x] `W04.P13.S75` - Run the full Rust gate (cargo fmt --check + clippy + tests) across the authoring and routes crates touched by the migration; `engine/`.
+- [x] `W04.P13.S76` - Run the full frontend gate (eslint + prettier + tsc + vitest against the live engine) across the stores, app, and menu surfaces touched by the migration; `frontend/`.
+- [x] `W04.P13.S77` - Live-verify the four migrated edit surfaces (Save, frontmatter, rename, create) and relate/link end to end against a running dashboard, confirming each produces a changeset with provenance; `frontend/src/app/viewer/MarkdownDocView.tsx`.
+- [x] `W04.P13.S78` - Run Final gate and epic audit code review and record the closing audit for the ledgered-edit-migration feature; `.vault/audit/`.
+- [x] `W04.P13.S79` - Verify every Step in the plan is closed and no product edit surface dispatches through the retired /ops/core write path; `.vault/plan/`.
 
 ## Description
 
