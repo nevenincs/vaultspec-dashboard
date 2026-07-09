@@ -71,8 +71,6 @@ pub fn enabled_status_data(state: &AppState) -> Value {
             "apply": true,
             "rollback": true,
             "direct_write": direct.enabled,
-            "direct_write_dual_run": direct.dual_run,
-            "direct_write_authority": direct.authority_label(),
             // Deferred to later increments.
             "sessions": true,
             "leases": false,
@@ -110,10 +108,20 @@ mod tests {
         assert_eq!(body["data"]["route_family"], super::super::ROUTE_FAMILY);
         assert_eq!(body["data"]["capabilities"]["proposals"], true);
         assert_eq!(body["data"]["capabilities"]["apply"], true);
-        assert_eq!(body["data"]["capabilities"]["direct_write"], false);
-        assert_eq!(
-            body["data"]["capabilities"]["direct_write_authority"],
-            "legacy_core"
+        // Direct-changeset is the sole editor-save path, on by default (W14.P47);
+        // no capability file is present in this fixture.
+        assert_eq!(body["data"]["capabilities"]["direct_write"], true);
+        assert!(
+            body["data"]["capabilities"]
+                .get("direct_write_dual_run")
+                .is_none(),
+            "the retired dual_run capability flag must not be served"
+        );
+        assert!(
+            body["data"]["capabilities"]
+                .get("direct_write_authority")
+                .is_none(),
+            "the retired legacy-authority capability flag must not be served"
         );
         assert!(
             body["tiers"]["semantic"]["available"].is_boolean(),
@@ -122,20 +130,15 @@ mod tests {
     }
 
     #[test]
-    fn enabled_status_reports_backend_direct_write_capabilities() {
+    fn enabled_status_reports_the_capability_kill_switch() {
         let (dir, state) = fixture_state();
         super::super::direct_write::DirectWriteCapabilities::write_for_tests(
             dir.path(),
-            super::super::direct_write::DirectWriteCapabilities::direct_dual_run(),
+            super::super::direct_write::DirectWriteCapabilities::disabled(),
         );
         let Json(body) = enabled_status(&state);
 
-        assert_eq!(body["data"]["capabilities"]["direct_write"], true);
-        assert_eq!(body["data"]["capabilities"]["direct_write_dual_run"], true);
-        assert_eq!(
-            body["data"]["capabilities"]["direct_write_authority"],
-            "direct_changeset"
-        );
+        assert_eq!(body["data"]["capabilities"]["direct_write"], false);
     }
 
     #[test]

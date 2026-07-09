@@ -20,7 +20,7 @@ use super::model::CommandKind;
 pub const DB_FILENAME: &str = "authoring-state.sqlite3";
 const AUTHORING_DATA_DIR: &str = "authoring-state";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-const SCHEMA_VERSION: i64 = 18;
+const SCHEMA_VERSION: i64 = 19;
 const STORE_KIND: &str = "vaultspec_authoring";
 
 const METADATA_SCHEMA: &str = "
@@ -1034,6 +1034,18 @@ SET schema_version = 18
 WHERE singleton = 1;
 ";
 
+// W14.P47: the direct-write dual-run/legacy-comparison measurement machinery is
+// retired (direct-changeset is the sole editor-save materializer) — the column
+// that recorded a legacy `/ops/core` comparison outcome per save has no writer
+// left, so it is dropped rather than kept as a permanently-`not_run` fossil.
+const DROP_DIRECT_WRITE_LEGACY_STATUS_SCHEMA: &str = "
+ALTER TABLE authoring_direct_write_records DROP COLUMN legacy_status;
+
+UPDATE authoring_store_metadata
+SET schema_version = 19
+WHERE singleton = 1;
+";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Migration {
     version: i64,
@@ -1131,6 +1143,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 18,
         name: "create_authoring_review_claims",
         sql: REVIEW_CLAIM_SCHEMA,
+    },
+    Migration {
+        version: 19,
+        name: "drop_authoring_direct_write_legacy_status",
+        sql: DROP_DIRECT_WRITE_LEGACY_STATUS_SCHEMA,
     },
 ];
 
@@ -1528,6 +1545,10 @@ mod tests {
                         version: 18,
                         name: "create_authoring_review_claims".to_string(),
                     },
+                    AppliedMigration {
+                        version: 19,
+                        name: "drop_authoring_direct_write_legacy_status".to_string(),
+                    },
                 ]
             );
             let table_count: i64 = store
@@ -1571,7 +1592,7 @@ mod tests {
         let reopened = Store::open_at(&path).expect("authoring store reopens");
         let metadata = reopened.schema_metadata().unwrap();
         assert_eq!(metadata.schema_version, SCHEMA_VERSION);
-        assert_eq!(metadata.applied_migrations.len(), 18);
+        assert_eq!(metadata.applied_migrations.len(), 19);
     }
 
     #[test]

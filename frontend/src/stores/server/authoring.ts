@@ -95,9 +95,6 @@ export interface ActorRef {
 /** Operation-mode policy vocabulary served by the backend. */
 export type OperationMode = "manual" | "assisted" | "autonomous";
 
-/** Backend-owned direct-write authority label served by `/authoring/status`. */
-export type DirectWriteAuthority = "legacy_core" | "direct_changeset";
-
 /** Changeset risk class served by the approval policy matrix. */
 export type RiskClass = "non_destructive" | "destructive";
 
@@ -288,9 +285,10 @@ export interface AuthoringStatusCapabilities {
   review: boolean;
   apply: boolean;
   rollback: boolean;
+  /** Whether direct-changeset editor saves are enabled — a pure kill switch
+   *  (on by default); direct-changeset is the sole editor-save path, so no
+   *  legacy/dual-run authority flag remains (W14.P47). */
   direct_write: boolean;
-  direct_write_dual_run: boolean;
-  direct_write_authority: DirectWriteAuthority;
   sessions: boolean;
   leases: boolean;
   streams: boolean;
@@ -644,10 +642,6 @@ export function adaptProposalSnapshot(raw: unknown): ProposalSnapshotResult {
   };
 }
 
-function adaptDirectWriteAuthority(raw: unknown): DirectWriteAuthority {
-  return raw === "direct_changeset" ? "direct_changeset" : "legacy_core";
-}
-
 export function adaptAuthoringStatus(raw: unknown): AuthoringStatus {
   const r: Rec = isRec(raw) ? raw : {};
   const capabilities: Rec = isRec(r.capabilities) ? r.capabilities : {};
@@ -663,10 +657,6 @@ export function adaptAuthoringStatus(raw: unknown): AuthoringStatus {
       apply: asBool(capabilities.apply),
       rollback: asBool(capabilities.rollback),
       direct_write: asBool(capabilities.direct_write),
-      direct_write_dual_run: asBool(capabilities.direct_write_dual_run),
-      direct_write_authority: adaptDirectWriteAuthority(
-        capabilities.direct_write_authority,
-      ),
       sessions: asBool(capabilities.sessions),
       leases: asBool(capabilities.leases),
       streams: asBool(capabilities.streams),

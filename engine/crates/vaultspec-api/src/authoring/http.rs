@@ -2312,9 +2312,9 @@ fn mode_update_response(state: &AppState, scope_id: &str, update: OperationModeU
 // --- direct editor save -------------------------------------------------------
 
 /// `POST /authoring/v1/direct-writes` — route a human editor save through the
-/// authoring ledger as a self-approved direct changeset. The direct path is
-/// authoritative for the live worktree; the legacy core write is measured only
-/// against an isolated temporary copy inside the domain handler.
+/// authoring ledger as a self-approved direct changeset. Direct-changeset is
+/// the sole materializer (W14.P47 retired the legacy `/ops/core` dual-run
+/// comparison); `capabilities.enabled` is a pure kill switch, on by default.
 pub async fn direct_write(
     State(state): State<Arc<AppState>>,
     command: ResolvedCommand<DirectWriteRequestDto>,
@@ -2333,9 +2333,7 @@ pub async fn direct_write(
 
     let worktree_root = state.active_workspace_root();
     let capabilities = super::direct_write::DirectWriteCapabilities::for_worktree(&worktree_root);
-    if !capabilities.enabled
-        || capabilities.authority != super::direct_write::DirectWriteAuthorityMode::DirectChangeset
-    {
+    if !capabilities.enabled {
         return super::response::typed_error(
             &state,
             StatusCode::SERVICE_UNAVAILABLE,
@@ -3696,8 +3694,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn direct_write_route_is_disabled_until_backend_capability_file_enables_it() {
+    async fn direct_write_route_is_enabled_by_default_with_no_capability_file() {
+        // Uses the CORE-scaffolded fixture (not the bare `fixture_state()`): with
+        // no capability file, direct-changeset is authoritative by default, so
+        // this save must reach a real APPLIED receipt through the real core.
+        let (dir, state) = fixture_state_with_core();
+        let human = human_reviewer();
+        register_actor(&state, &human);
+        let token = issue_token_in_state(&state, &human);
+        let doc_ref = ".vault/plan/operation-plan.md";
+        let base = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-07-06'\n---\n\n# Plan\n\nbase\n";
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, body) = post_authoring(
+            router,
+            "/v1/direct-writes",
+            &token,
+            direct_write_envelope(
+                doc_ref,
+                "# Plan\n\nroute body\n",
+                &blob_oid(base.as_bytes()),
+                "idem:route:on-by-default",
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["data"]["status"], "applied");
+        assert!(
+            body["data"].get("legacy").is_none(),
+            "the retired legacy comparison must not appear on the outcome: {body}"
+        );
+        let Json(status_body) = super::super::response::enabled_status(&state);
+        assert_eq!(status_body["data"]["capabilities"]["direct_write"], true);
+        assert!(
+            !dir.path()
+                .join(".vault/data/authoring-state/direct-write-capabilities.json")
+                .exists(),
+            "the enabled default is read, not synthesized by creating config"
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_write_route_is_disabled_by_the_capability_kill_switch() {
         let (dir, state) = fixture_state();
+        super::super::direct_write::DirectWriteCapabilities::write_for_tests(
+            dir.path(),
+            super::super::direct_write::DirectWriteCapabilities::disabled(),
+        );
         let human = human_reviewer();
         register_actor(&state, &human);
         let token = issue_token_in_state(&state, &human);
@@ -3737,21 +3781,11 @@ mod tests {
 
         let Json(status_body) = super::super::response::enabled_status(&state);
         assert_eq!(status_body["data"]["capabilities"]["direct_write"], false);
-        assert!(
-            !dir.path()
-                .join(".vault/data/authoring-state/direct-write-capabilities.json")
-                .exists(),
-            "the disabled default is read, not synthesized by creating config"
-        );
     }
 
     #[tokio::test]
     async fn direct_write_route_uses_actor_token_and_records_agent_denial_as_value() {
-        let (dir, state) = fixture_state();
-        super::super::direct_write::DirectWriteCapabilities::write_for_tests(
-            dir.path(),
-            super::super::direct_write::DirectWriteCapabilities::direct_dual_run(),
-        );
+        let (_dir, state) = fixture_state();
         register_actor(&state, &agent());
         let token = issue_token_in_state(&state, &agent());
         let doc_ref = ".vault/plan/2026-06-30-authoring-http-plan.md";
@@ -3788,11 +3822,7 @@ mod tests {
 
     #[tokio::test]
     async fn direct_write_route_rejects_the_wrong_command_kind_before_execution() {
-        let (dir, state) = fixture_state();
-        super::super::direct_write::DirectWriteCapabilities::write_for_tests(
-            dir.path(),
-            super::super::direct_write::DirectWriteCapabilities::direct_dual_run(),
-        );
+        let (_dir, state) = fixture_state();
         register_actor(&state, &human_reviewer());
         let token = issue_token_in_state(&state, &human_reviewer());
         let doc_ref = ".vault/plan/2026-06-30-authoring-http-plan.md";
@@ -3814,11 +3844,7 @@ mod tests {
 
     #[tokio::test]
     async fn authoring_status_reports_enabled_direct_write_capability_through_router() {
-        let (dir, state) = fixture_state();
-        super::super::direct_write::DirectWriteCapabilities::write_for_tests(
-            dir.path(),
-            super::super::direct_write::DirectWriteCapabilities::direct_dual_run(),
-        );
+        let (_dir, state) = fixture_state();
         let router = authoring_router(state.clone()).with_state(state);
         let response = router
             .oneshot(
@@ -3834,10 +3860,17 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = json_body(response).await;
         assert_eq!(body["data"]["capabilities"]["direct_write"], true);
-        assert_eq!(body["data"]["capabilities"]["direct_write_dual_run"], true);
-        assert_eq!(
-            body["data"]["capabilities"]["direct_write_authority"],
-            "direct_changeset"
+        assert!(
+            body["data"]["capabilities"]
+                .get("direct_write_dual_run")
+                .is_none(),
+            "the retired dual_run capability flag must not be served: {body}"
+        );
+        assert!(
+            body["data"]["capabilities"]
+                .get("direct_write_authority")
+                .is_none(),
+            "the retired legacy-authority capability flag must not be served: {body}"
         );
     }
 

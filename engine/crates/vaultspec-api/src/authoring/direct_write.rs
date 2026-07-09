@@ -1,19 +1,21 @@
-//! Direct human editor-save composition (W10.P49).
+//! Direct human editor-save composition (W10.P49, retired to sole authority
+//! W14.P47).
 //!
-//! The direct write path is a transition-state adapter for the existing editor
-//! save. It makes the ledger path authoritative while the legacy `/ops/core`
-//! write is measured only against an isolated temporary worktree. It does not
-//! create a second live materializer.
+//! The direct-changeset path is the editor save's ONE materializer: it opens a
+//! self-approved `kind=direct` changeset and applies it through the same
+//! `apply_changeset` every other changeset uses. The legacy `/ops/core`
+//! dual-run comparison this module measured against during the transition
+//! (latency + conflict-UX parity, agentic-operation-modes ADR) is retired —
+//! there is no second write path to compare against or fall back to.
 #![allow(dead_code)]
 
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::path::Path;
+use std::time::Instant;
 
 use ingest_struct::reader::blob_oid;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use super::actors::actor_kind_name;
 use super::api::{
@@ -25,7 +27,7 @@ use super::approvals::{
     ApprovalDecision, ApprovalError, ApprovalRequestInput, ApprovalRequestRecord,
     ReviewDecisionInput, ReviewedTuple, V1_POLICY_VERSION,
 };
-use super::core_adapter::{CoreAdapter, CoreCapability, CoreInvocation, WriteArgs};
+use super::core_adapter::CoreAdapter;
 use super::documents::{DocumentResolver, ExistingDocumentLookup};
 use super::ledger::ChangesetAggregateRecord;
 use super::model::{
@@ -36,56 +38,46 @@ use super::proposal::{
     ProposalCommandContext, ProposalCommandOutcome, ProposalCommandResult, SubmitProposalRequest,
     ValidateProposalRequest, validation_evidence,
 };
-use super::snapshots::{RevisionSnapshot, SnapshotReader};
+use super::snapshots::SnapshotReader;
 use super::store::unit_of_work::{Repository, SqliteRepository, UnitOfWork};
 use super::store::{Result as StoreResult, Store, StoreError};
 use super::transitions::ValidationFreshness;
 use super::validation::ValidationStatusRecord;
 
 const DIRECT_WRITE_RECORD_SCHEMA: &str = "authoring.direct_write_record.v1";
-const LEGACY_COMPARISON_SCHEMA: &str = "authoring.direct_write_legacy_comparison.v1";
 const DIRECT_WRITE_CAPABILITIES_FILE: &str =
     ".vault/data/authoring-state/direct-write-capabilities.json";
 const COMMAND_IN_FLIGHT_TTL_MS: i64 = 60_000;
 const COMMAND_OUTCOME_TTL_MS: i64 = 24 * 3_600 * 1_000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DirectWriteAuthorityMode {
-    LegacyCore,
-    DirectChangeset,
-}
-
+/// The direct-write feature gate. Direct-changeset is the SOLE editor-save
+/// path (no legacy alternative remains), so `enabled` is a pure kill switch —
+/// ON by default, overridable by hand-editing the capability file to `false`
+/// (the same transition-era ops story the P49-R2 review banked as an advisory:
+/// an admin route/setting seam should eventually own this).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DirectWriteCapabilities {
     pub enabled: bool,
-    pub dual_run: bool,
-    pub authority: DirectWriteAuthorityMode,
 }
 
 impl DirectWriteCapabilities {
     pub fn disabled() -> Self {
-        Self {
-            enabled: false,
-            dual_run: false,
-            authority: DirectWriteAuthorityMode::LegacyCore,
-        }
+        Self { enabled: false }
     }
 
-    pub fn direct_dual_run() -> Self {
-        Self {
-            enabled: true,
-            dual_run: true,
-            authority: DirectWriteAuthorityMode::DirectChangeset,
-        }
+    pub fn enabled() -> Self {
+        Self { enabled: true }
     }
 
     pub fn for_worktree(worktree_root: &Path) -> Self {
         let path = worktree_root.join(DIRECT_WRITE_CAPABILITIES_FILE);
         let Ok(raw) = fs::read_to_string(path) else {
-            return Self::disabled();
+            // No capability file: direct-changeset is authoritative by default.
+            return Self::enabled();
         };
+        // A present-but-unparseable file is an explicit admin artifact gone
+        // stale — fail closed rather than silently reverting to the default.
         serde_json::from_str(&raw).unwrap_or_else(|_| Self::disabled())
     }
 
@@ -99,13 +91,6 @@ impl DirectWriteCapabilities {
             serde_json::to_string_pretty(&capabilities).expect("capabilities serialize"),
         )
         .expect("direct-write capabilities write");
-    }
-
-    pub fn authority_label(self) -> &'static str {
-        match self.authority {
-            DirectWriteAuthorityMode::LegacyCore => "legacy_core",
-            DirectWriteAuthorityMode::DirectChangeset => "direct_changeset",
-        }
     }
 }
 
@@ -145,43 +130,6 @@ impl DirectWriteAuthority {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LegacyComparisonStatus {
-    Measured,
-    CoreConflict,
-    CoreFailed,
-    AdapterError,
-    SetupFailed,
-}
-
-impl LegacyComparisonStatus {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Measured => "measured",
-            Self::CoreConflict => "core_conflict",
-            Self::CoreFailed => "core_failed",
-            Self::AdapterError => "adapter_error",
-            Self::SetupFailed => "setup_failed",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LegacyComparison {
-    pub schema_version: String,
-    pub status: LegacyComparisonStatus,
-    pub elapsed_ms: i64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub core_status: Option<String>,
-    pub conflict: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub observed_blob_hash: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub diagnostic: Option<String>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DirectWriteConflict {
@@ -209,8 +157,6 @@ pub struct DirectWriteRecord {
     pub request_digest: String,
     pub authoritative_path: DirectWriteAuthority,
     pub direct_elapsed_ms: i64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub legacy: Option<LegacyComparison>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conflict: Option<DirectWriteConflict>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -240,8 +186,6 @@ pub struct DirectWriteOutcome {
     pub apply_receipt: Option<ApplyReceipt>,
     pub apply_replayed: bool,
     pub apply_in_flight: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub legacy: Option<LegacyComparison>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conflict: Option<DirectWriteConflict>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -296,13 +240,12 @@ impl DirectWriteRepository<'_, '_> {
                 (changeset_id, proposal_id, approval_id, document_ref, document_path,
                  expected_blob_hash, target_blob_hash, actor_id, actor_kind,
                  idempotency_key, request_digest, authoritative_path, direct_elapsed_ms,
-                 legacy_status, apply_status, apply_receipt_id, record_json, created_at_ms,
+                 apply_status, apply_receipt_id, record_json, created_at_ms,
                  updated_at_ms)
              VALUES
-                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
              ON CONFLICT(changeset_id) DO UPDATE SET
                 direct_elapsed_ms = excluded.direct_elapsed_ms,
-                legacy_status = excluded.legacy_status,
                 apply_status = excluded.apply_status,
                 apply_receipt_id = excluded.apply_receipt_id,
                 record_json = excluded.record_json,
@@ -321,11 +264,6 @@ impl DirectWriteRepository<'_, '_> {
                 record.request_digest.as_str(),
                 record.authoritative_path.as_str(),
                 record.direct_elapsed_ms,
-                record
-                    .legacy
-                    .as_ref()
-                    .map(|legacy| legacy.status.as_str())
-                    .unwrap_or("not_run"),
                 record.status.as_str(),
                 receipt_id,
                 json,
@@ -359,7 +297,6 @@ pub fn execute_direct_write(
     let expected_blob_hash = validate_blob_hash(&payload.expected_blob_hash)?;
     let target_blob_hash = blob_oid(payload.body.as_bytes());
 
-    let capabilities = DirectWriteCapabilities::for_worktree(worktree_root);
     let reader = SnapshotReader::for_worktree(worktree_root);
     let resolver = DocumentResolver::for_worktree(worktree_root);
     let resolved = resolve_existing_document(&resolver, &payload.doc_ref)?;
@@ -385,7 +322,6 @@ pub fn execute_direct_write(
             idempotency_key,
             request_digest,
             started: Instant::now(),
-            legacy: None,
             conflict: None,
             eligibility: Some(eligibility),
             approval: None,
@@ -396,8 +332,6 @@ pub fn execute_direct_write(
     }
 
     if actual_snapshot.blob_hash != expected_blob_hash {
-        // Early conflict: SKIP the legacy comparison entirely (P49-R2) — a save that is
-        // going to conflict pays no per-save `.vaultspec` copy + core-subprocess tax.
         let conflict = DirectWriteConflict {
             document_ref: payload.doc_ref.clone(),
             document_path: actual_snapshot.path.clone(),
@@ -420,7 +354,6 @@ pub fn execute_direct_write(
             idempotency_key,
             request_digest,
             started: Instant::now(),
-            legacy: None,
             conflict: Some(conflict),
             eligibility: Some(eligibility),
             approval: None,
@@ -429,21 +362,6 @@ pub fn execute_direct_write(
         });
         return persist_outcome(store, record, false, false);
     }
-
-    // Non-conflicting save: run the legacy comparison ONLY under dual_run (P49-R2) —
-    // dual_run:false must not pay the legacy `/ops/core` tax on every save.
-    let legacy = if capabilities.dual_run {
-        Some(compare_legacy(
-            adapter,
-            worktree_root,
-            &payload.doc_ref,
-            &actual_snapshot,
-            &payload.body,
-            &expected_blob_hash,
-        ))
-    } else {
-        None
-    };
 
     let started = Instant::now();
     let summary = direct_summary(payload.summary.as_deref(), &payload.doc_ref);
@@ -463,7 +381,7 @@ pub fn execute_direct_write(
             body: payload.body,
         },
     )? {
-        return Ok(in_flight_outcome(&ids, legacy.clone()));
+        return Ok(in_flight_outcome(&ids));
     }
 
     if let Some(conflict) = refreshed_conflict(
@@ -488,7 +406,6 @@ pub fn execute_direct_write(
             idempotency_key,
             request_digest,
             started,
-            legacy: legacy.clone(),
             conflict: Some(conflict),
             eligibility: Some(eligibility),
             approval: None,
@@ -508,7 +425,7 @@ pub fn execute_direct_write(
         &summary,
     )? {
         ReviewOpen::Ready(review) => review,
-        ReviewOpen::InFlight => return Ok(in_flight_outcome(&ids, legacy.clone())),
+        ReviewOpen::InFlight => return Ok(in_flight_outcome(&ids)),
     };
     let approval = ensure_human_approval(store, actor, idempotency_key, now_ms, &ids, &review)?;
     if !approval.eligibility.allowed {
@@ -522,7 +439,6 @@ pub fn execute_direct_write(
             apply_receipt: None,
             apply_replayed: false,
             apply_in_flight: false,
-            legacy: legacy.clone(),
             conflict: None,
             eligibility: Some(approval.eligibility),
             record: None,
@@ -578,7 +494,6 @@ pub fn execute_direct_write(
                 idempotency_key,
                 request_digest,
                 started,
-                legacy: legacy.clone(),
                 conflict: Some(conflict),
                 eligibility: Some(apply.eligibility),
                 approval: Some(approval.record),
@@ -597,7 +512,6 @@ pub fn execute_direct_write(
             apply_receipt: None,
             apply_replayed: apply.replayed,
             apply_in_flight: apply.in_flight,
-            legacy: legacy.clone(),
             conflict: None,
             eligibility: Some(apply.eligibility),
             record: None,
@@ -615,7 +529,6 @@ pub fn execute_direct_write(
             apply_receipt: None,
             apply_replayed: apply.replayed,
             apply_in_flight: true,
-            legacy: legacy.clone(),
             conflict: None,
             eligibility: Some(apply.eligibility),
             record: None,
@@ -638,7 +551,6 @@ pub fn execute_direct_write(
         idempotency_key,
         request_digest,
         started,
-        legacy: legacy.clone(),
         conflict: None,
         eligibility: None,
         approval: Some(approval.record),
@@ -659,7 +571,6 @@ struct DirectRecordInput<'a> {
     idempotency_key: &'a IdempotencyKey,
     request_digest: String,
     started: Instant,
-    legacy: Option<LegacyComparison>,
     conflict: Option<DirectWriteConflict>,
     eligibility: Option<ActionEligibility>,
     approval: Option<ApprovalRequestRecord>,
@@ -683,7 +594,6 @@ fn direct_record(input: DirectRecordInput<'_>) -> DirectWriteRecord {
         request_digest: input.request_digest,
         authoritative_path: DirectWriteAuthority::DirectChangeset,
         direct_elapsed_ms: elapsed_ms(input.started),
-        legacy: input.legacy,
         conflict: input.conflict,
         eligibility: input.eligibility,
         approval: input.approval,
@@ -761,7 +671,6 @@ fn outcome_from_record(
         apply_receipt: record.apply_receipt.clone(),
         apply_replayed,
         apply_in_flight: false,
-        legacy: record.legacy.clone(),
         conflict: record.conflict.clone(),
         eligibility: record
             .eligibility
@@ -792,7 +701,7 @@ fn terminal_approval_id(record: &DirectWriteRecord) -> Option<ApprovalId> {
     }
 }
 
-fn in_flight_outcome(ids: &DirectWriteIds, legacy: Option<LegacyComparison>) -> DirectWriteOutcome {
+fn in_flight_outcome(ids: &DirectWriteIds) -> DirectWriteOutcome {
     DirectWriteOutcome {
         status: DirectWriteStatus::InFlight,
         replayed: false,
@@ -803,7 +712,6 @@ fn in_flight_outcome(ids: &DirectWriteIds, legacy: Option<LegacyComparison>) -> 
         apply_receipt: None,
         apply_replayed: false,
         apply_in_flight: true,
-        legacy: legacy.clone(),
         conflict: None,
         eligibility: Some(ActionEligibility::allowed(CommandKind::DirectWrite)),
         record: None,
@@ -1227,154 +1135,6 @@ fn validation_freshness(
     }
 }
 
-fn compare_legacy(
-    adapter: &CoreAdapter,
-    worktree_root: &Path,
-    doc_ref: &str,
-    snapshot: &RevisionSnapshot,
-    body: &str,
-    expected_blob_hash: &str,
-) -> LegacyComparison {
-    let started = Instant::now();
-    let temp = match TempWorktree::from_snapshot(worktree_root, snapshot) {
-        Ok(temp) => temp,
-        Err(err) => {
-            return legacy_result(
-                LegacyComparisonStatus::SetupFailed,
-                started,
-                None,
-                false,
-                None,
-                Some(err.to_string()),
-            );
-        }
-    };
-    let invocation = match CoreInvocation::write(
-        CoreCapability::SetBody,
-        doc_ref,
-        WriteArgs {
-            expected_blob_hash: Some(expected_blob_hash.to_string()),
-            body: Some(body.to_string()),
-            ..WriteArgs::default()
-        },
-    ) {
-        Ok(invocation) => invocation,
-        Err(err) => {
-            return legacy_result(
-                LegacyComparisonStatus::AdapterError,
-                started,
-                None,
-                false,
-                None,
-                Some(err.wire_reason()),
-            );
-        }
-    };
-    match adapter.invoke(temp.path(), &invocation) {
-        Ok(envelope) => {
-            let conflict = json_bool_field(&envelope.raw, "conflict").unwrap_or(false);
-            let observed = json_string_field(&envelope.raw, "blob_hash");
-            let status = if envelope.is_success() {
-                LegacyComparisonStatus::Measured
-            } else if conflict {
-                LegacyComparisonStatus::CoreConflict
-            } else {
-                LegacyComparisonStatus::CoreFailed
-            };
-            legacy_result(
-                status,
-                started,
-                Some(envelope.status),
-                conflict,
-                observed,
-                None,
-            )
-        }
-        Err(err) => legacy_result(
-            LegacyComparisonStatus::AdapterError,
-            started,
-            None,
-            false,
-            None,
-            Some(err.wire_reason()),
-        ),
-    }
-}
-
-fn legacy_result(
-    status: LegacyComparisonStatus,
-    started: Instant,
-    core_status: Option<String>,
-    conflict: bool,
-    observed_blob_hash: Option<String>,
-    diagnostic: Option<String>,
-) -> LegacyComparison {
-    LegacyComparison {
-        schema_version: LEGACY_COMPARISON_SCHEMA.to_string(),
-        status,
-        elapsed_ms: elapsed_ms(started),
-        core_status,
-        conflict,
-        observed_blob_hash,
-        diagnostic,
-    }
-}
-
-struct TempWorktree {
-    path: PathBuf,
-}
-
-impl TempWorktree {
-    fn from_snapshot(worktree_root: &Path, snapshot: &RevisionSnapshot) -> std::io::Result<Self> {
-        let unique = format!(
-            "vaultspec-direct-write-{}-{}-{}",
-            std::process::id(),
-            now_nanos(),
-            blob_oid(snapshot.path.as_bytes())
-        );
-        let root = std::env::temp_dir().join(unique);
-        copy_dir_recursive(&worktree_root.join(".vaultspec"), &root.join(".vaultspec"))?;
-        let target = root.join(&snapshot.path);
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(target, &snapshot.text)?;
-        Ok(Self { path: root })
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-fn copy_dir_recursive(source: &Path, target: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(target)?;
-    for entry in fs::read_dir(source)? {
-        let entry = entry?;
-        let source_path = entry.path();
-        let target_path = target.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_dir_recursive(&source_path, &target_path)?;
-        } else {
-            fs::copy(&source_path, &target_path)?;
-        }
-    }
-    Ok(())
-}
-
-impl Drop for TempWorktree {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.path);
-    }
-}
-
-fn now_nanos() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or_default()
-}
-
 fn resolve_existing_document(
     resolver: &DocumentResolver,
     doc_ref: &str,
@@ -1501,40 +1261,13 @@ fn apply_err_to_store(err: ApplyError) -> StoreError {
     }
 }
 
-fn json_string_field(value: &Value, field: &str) -> Option<String> {
-    match value {
-        Value::Object(map) => map
-            .get(field)
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .or_else(|| {
-                map.values()
-                    .find_map(|child| json_string_field(child, field))
-            }),
-        Value::Array(items) => items
-            .iter()
-            .find_map(|child| json_string_field(child, field)),
-        _ => None,
-    }
-}
-
-fn json_bool_field(value: &Value, field: &str) -> Option<bool> {
-    match value {
-        Value::Object(map) => map
-            .get(field)
-            .and_then(Value::as_bool)
-            .or_else(|| map.values().find_map(|child| json_bool_field(child, field))),
-        Value::Array(items) => items.iter().find_map(|child| json_bool_field(child, field)),
-        _ => None,
-    }
-}
-
 fn elapsed_ms(started: Instant) -> i64 {
     started.elapsed().as_millis().min(i64::MAX as u128) as i64
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
     use std::process::Command;
     use std::sync::Mutex;
 
@@ -1672,14 +1405,10 @@ mod tests {
     }
 
     #[test]
-    fn human_direct_save_self_approves_captures_preimage_and_records_dual_run() {
+    fn human_direct_save_self_approves_captures_preimage_and_ledgers_kind_direct() {
         let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
         let mut fx = setup();
-        // dual_run ON → the legacy comparison is recorded (P49-R2 gates it on dual_run).
-        DirectWriteCapabilities::write_for_tests(
-            &fx.root,
-            DirectWriteCapabilities::direct_dual_run(),
-        );
+        // No capability file: direct-changeset is authoritative by default (W14.P47).
         let human = fx.human.clone();
         let base_hash = fx.base_hash.clone();
         let outcome = direct_save(
@@ -1705,15 +1434,6 @@ mod tests {
         assert_eq!(record.expected_blob_hash, base_hash);
         assert_eq!(record.target_blob_hash, blob_oid(NEW_BODY.as_bytes()));
         assert!(record.direct_elapsed_ms >= 0);
-        let legacy = record.legacy.as_ref().expect("legacy comparison recorded");
-        assert_eq!(legacy.status, LegacyComparisonStatus::Measured);
-        assert_eq!(legacy.core_status.as_deref(), Some("updated"));
-        assert!(!legacy.conflict);
-        assert!(
-            legacy.observed_blob_hash.is_some(),
-            "legacy comparison records the observed result shape"
-        );
-        assert!(legacy.elapsed_ms >= 0);
 
         let approval = outcome.approval.as_ref().expect("approval is served");
         let decision = approval.decision.as_ref().expect("approval was decided");
@@ -1902,34 +1622,57 @@ mod tests {
         );
     }
 
+    // W14.P47 (S253): the dual-run/legacy-comparison surface is fully retired, not
+    // just unused — a capability payload naming the retired fields must fail closed
+    // (deny_unknown_fields), and a served record/outcome must carry no legacy key.
+    // Regression guards against silently reintroducing the dual-write bridge.
     #[test]
-    fn direct_save_skips_legacy_when_dual_run_disabled() {
+    fn direct_write_capabilities_reject_the_retired_dual_run_and_authority_fields() {
+        let legacy_shaped = serde_json::json!({
+            "enabled": true,
+            "dual_run": true,
+            "authority": "direct_changeset",
+        });
+        let decoded: Result<DirectWriteCapabilities, _> = serde_json::from_value(legacy_shaped);
+        assert!(
+            decoded.is_err(),
+            "a capability payload naming retired dual_run/authority fields must not decode"
+        );
+
+        let canonical: DirectWriteCapabilities =
+            serde_json::from_value(serde_json::json!({ "enabled": true })).unwrap();
+        assert_eq!(canonical, DirectWriteCapabilities::enabled());
+    }
+
+    #[test]
+    fn direct_write_outcome_carries_no_legacy_key_on_the_wire() {
         let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
         let mut fx = setup();
-        // No capabilities file → dual_run defaults OFF. A successful (non-conflict) save
-        // must NOT pay the legacy comparison tax (P49-R2): the save still applies, but
-        // no legacy `/ops/core` comparison is recorded.
         let human = fx.human.clone();
         let base_hash = fx.base_hash.clone();
         let outcome = direct_save(
             &mut fx,
             &human,
-            "idem:direct:nodual:1",
+            "idem:direct:no-legacy-wire:1",
             &base_hash,
             NEW_BODY,
             100,
         );
         assert_eq!(outcome.status, DirectWriteStatus::Applied);
-        let record = outcome.record.as_ref().expect("direct record is served");
+        let serialized = serde_json::to_value(&outcome).unwrap();
         assert!(
-            record.legacy.is_none(),
-            "dual_run OFF must skip the legacy comparison: {:?}",
-            record.legacy
+            serialized.get("legacy").is_none(),
+            "the retired legacy comparison must not appear on the outcome wire shape: {serialized}"
+        );
+        let record = serialized.get("record").expect("record is served");
+        assert!(
+            record.get("legacy").is_none(),
+            "the retired legacy comparison must not appear on the record wire shape: {record}"
         );
     }
 
     #[test]
-    fn stale_expected_blob_hash_conflicts_and_skips_legacy_and_does_not_apply() {
+    fn stale_expected_blob_hash_conflicts_and_does_not_apply() {
         let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
         let mut fx = setup();
         let human = fx.human.clone();
@@ -1953,15 +1696,6 @@ mod tests {
         assert_eq!(conflict.expected_blob_hash, base_hash);
         assert_eq!(conflict.actual_blob_hash, concurrent_hash);
         assert_eq!(conflict.target_blob_hash, blob_oid(NEW_BODY.as_bytes()));
-
-        // P49-R2: the early-conflict path SKIPS the legacy comparison — no per-save
-        // `.vaultspec` copy + core-subprocess tax on a save that is going to conflict.
-        // The blob-hash fence catches the conflict without the legacy comparator.
-        assert!(
-            outcome.legacy.is_none(),
-            "the early-conflict path skips the legacy comparison: {:?}",
-            outcome.legacy
-        );
         assert_eq!(
             std::fs::read_to_string(fx.root.join(DOC_PATH)).unwrap(),
             CONCURRENT_BODY,

@@ -52,7 +52,7 @@ afterEach(() => {
 });
 
 describe("adaptAuthoringStatus", () => {
-  it("consumes backend-served direct-write capability and authority flags", () => {
+  it("consumes the backend-served direct-write capability flag", () => {
     const status = adaptAuthoringStatus({
       feature: "agentic-spec-authoring-backend",
       enabled: true,
@@ -65,8 +65,6 @@ describe("adaptAuthoringStatus", () => {
         apply: true,
         rollback: true,
         direct_write: true,
-        direct_write_dual_run: true,
-        direct_write_authority: "direct_changeset",
         sessions: false,
         leases: false,
         streams: false,
@@ -77,22 +75,18 @@ describe("adaptAuthoringStatus", () => {
 
     expect(status.enabled).toBe(true);
     expect(status.capabilities.direct_write).toBe(true);
-    expect(status.capabilities.direct_write_dual_run).toBe(true);
-    expect(status.capabilities.direct_write_authority).toBe("direct_changeset");
     expect(status.capabilities.proposals).toBe(true);
     expect(status.tiers).toBe(availableTiers);
   });
 
-  it("floors sparse direct-write status to the disabled legacy authority", () => {
+  it("floors a sparse direct-write status to disabled", () => {
     const status = adaptAuthoringStatus({
-      capabilities: { direct_write_authority: "unknown" },
+      capabilities: {},
     });
 
     expect(status.enabled).toBe(false);
     expect(status.status).toBe("disabled");
     expect(status.capabilities.direct_write).toBe(false);
-    expect(status.capabilities.direct_write_dual_run).toBe(false);
-    expect(status.capabilities.direct_write_authority).toBe("legacy_core");
   });
 });
 
