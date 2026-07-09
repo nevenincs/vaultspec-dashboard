@@ -260,20 +260,25 @@ fn generation_channels_snapshot(
     }))
 }
 
-/// The TRANSCRIPT COMPACTION hook (W12.P44): summarize terminal, past-due generation
-/// transcripts by retention policy, bounded to at most [`GENERATION_TRANSCRIPT_COMPACTION_MAX`]
-/// per sweep. It delegates to the retention engine, which by construction compacts
-/// ONLY `generation_transcript`/`review_material` records in a terminal lifecycle
-/// state — pending approvals (protected product state), audit receipts, non-terminal
-/// records, and rollback preimages are skipped, never discarded. A mutation: it must
-/// run inside a mutating unit of work, never the read-only recovery path.
-fn compact_generation_transcripts(
+/// The TRANSCRIPT COMPACTION hook (W12.P44, driven W14.P42a S262): summarize terminal,
+/// past-due generation transcripts by retention policy, bounded to at most
+/// [`GENERATION_TRANSCRIPT_COMPACTION_MAX`] per sweep. It delegates to the retention engine,
+/// which by construction compacts ONLY `generation_transcript`/`review_material` records in
+/// a terminal lifecycle state — pending approvals (protected product state), audit receipts,
+/// non-terminal records, and rollback preimages are skipped, never discarded. A mutation: it
+/// must run inside a mutating unit of work, never the read-only recovery path. Driven
+/// OPPORTUNISTICALLY from the `start_prompt_turn` boundary (`session`) — one bounded sweep
+/// per real turn, no background loop.
+pub(crate) fn compact_generation_transcripts(
     uow: &UnitOfWork<'_>,
-    run_id: &RunId,
+    compaction_run_id: &str,
     now_ms: i64,
 ) -> Result<CompactionRunSummary, StoreError> {
+    // `compaction_run_id` keys the durable compaction-run audit row, so it must be UNIQUE
+    // per sweep — the driver passes the per-command receipt id (unique per genuine command;
+    // a replay skips the hook), never a bare run id that a joining turn would collide on.
     uow.retention().compact_due(
-        run_id.as_str(),
+        compaction_run_id,
         now_ms,
         GENERATION_TRANSCRIPT_COMPACTION_MAX,
         GENERATION_TRANSCRIPT_SUMMARY_HASH,
@@ -340,7 +345,6 @@ mod tests {
     use super::super::events::{
         LifecycleAggregateKind, LifecycleEventInput, LifecycleEventKind, lifecycle_event_draft,
     };
-    use super::super::model::RunId;
     use super::super::model::{
         ActorId, ActorKind, ActorRef, CommandKind, IdempotencyKey, SessionId,
     };
@@ -766,7 +770,7 @@ mod tests {
 
         let summary = store
             .with_unit_of_work(CommandKind::EditProposal, |uow| {
-                compact_generation_transcripts(uow, &RunId::new("run:compact").unwrap(), now)
+                compact_generation_transcripts(uow, "run:compact", now)
             })
             .unwrap();
 
@@ -832,7 +836,7 @@ mod tests {
 
         let summary = store
             .with_unit_of_work(CommandKind::EditProposal, |uow| {
-                compact_generation_transcripts(uow, &RunId::new("run:noop").unwrap(), now)
+                compact_generation_transcripts(uow, "run:noop", now)
             })
             .unwrap();
 

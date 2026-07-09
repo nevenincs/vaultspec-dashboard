@@ -975,6 +975,20 @@ pub fn start_prompt_turn(
                         json!({ "run": run }),
                     )?;
                 }
+                // W14.P42a S262 — OPPORTUNISTIC compaction. A new prompt turn is the natural
+                // activity boundary at which prior turns' generation transcripts have reached
+                // a terminal lifecycle and become past-due, so one bounded `compact_due` sweep
+                // runs inside THIS existing turn-creation unit of work (no background loop,
+                // self-throttled to real turns, capped per sweep). Protected product state
+                // (pending approvals) and rollback material are excluded by the retention
+                // engine's due-set by construction, never compacted here. The compaction
+                // audit key is the per-command receipt id (unique — a turn joining an active
+                // run shares the run id, so keying on the run id would collide).
+                super::stream::compact_generation_transcripts(
+                    uow,
+                    receipt_id.as_str(),
+                    context.now_ms,
+                )?;
                 let snapshot = uow.sessions().snapshot(&session_id, Some(&run.run_id))?;
                 Ok(SessionCommandOutcome {
                     schema_version: OUTCOME_SCHEMA.to_string(),
@@ -1561,6 +1575,9 @@ mod tests {
     use super::super::proposal::ProposalCommandContext;
     use super::super::snapshots::SnapshotReader;
     use super::super::store::Store;
+    use super::super::store::retention::{
+        LifecycleStatus, PayloadState, RetentionClass, RetentionRecord, RetentionRecordRef,
+    };
     use super::*;
 
     fn temp_store() -> (tempfile::TempDir, PathBuf, Store) {
@@ -1636,6 +1653,116 @@ mod tests {
                 uow.outbox().latest_seq()
             })
             .unwrap()
+    }
+
+    fn seed_retention(
+        store: &mut Store,
+        kind: &str,
+        id: &str,
+        class: RetentionClass,
+        status: LifecycleStatus,
+        compact_after_ms: Option<i64>,
+        now: i64,
+    ) {
+        store
+            .with_unit_of_work(CommandKind::EditProposal, |uow| {
+                let mut record = RetentionRecord::new(
+                    RetentionRecordRef::new(kind, id).unwrap(),
+                    kind,
+                    id,
+                    class,
+                    status,
+                    format!("hash:{id}"),
+                    now,
+                )
+                .unwrap();
+                record.compact_after_ms = compact_after_ms;
+                uow.retention().upsert_record(&record)?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    fn payload_state(store: &mut Store, kind: &str, id: &str) -> PayloadState {
+        store
+            .with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
+                Ok(uow
+                    .retention()
+                    .record(&RetentionRecordRef::new(kind, id).unwrap())?
+                    .expect("retention record exists")
+                    .payload_state)
+            })
+            .unwrap()
+    }
+
+    /// S262: the compaction driver, exercised through the LIVE prompt-turn boundary (not a
+    /// direct `compact_due` call). Starting a prompt turn runs one bounded sweep that
+    /// summarizes a terminal generation transcript WHILE a co-located pending-approval
+    /// protected-product-state record stays Full — the P44 invariant realized through the
+    /// wiring.
+    #[test]
+    fn the_prompt_turn_hook_compacts_a_terminal_transcript_and_retains_a_pending_approval() {
+        let (_dir, _path, mut store) = temp_store();
+        let actor = actor();
+        register_actor(&mut store, &actor);
+        let now = 10_000_000;
+
+        let session_id = SessionId::new("session_compaction").unwrap();
+        store
+            .with_unit_of_work(CommandKind::CreateSession, |uow| {
+                uow.sessions().create_session(
+                    session_id.clone(),
+                    session_request("Compaction session"),
+                    actor.clone(),
+                    1_000,
+                )?;
+                Ok(())
+            })
+            .unwrap();
+
+        // A terminal, past-due generation transcript (compactable) and a live pending
+        // approval as protected product state (must be RETAINED), both past the due horizon.
+        seed_retention(
+            &mut store,
+            "authoring_prompt_turn",
+            "turn_terminal",
+            RetentionClass::GenerationTranscript,
+            LifecycleStatus::Superseded,
+            Some(now - 1),
+            now,
+        );
+        seed_retention(
+            &mut store,
+            "authoring_approval",
+            "approval_pending",
+            RetentionClass::ProtectedProductState,
+            LifecycleStatus::Active,
+            Some(now - 1),
+            now,
+        );
+
+        // Drive the LIVE hook: starting a prompt turn runs one bounded compaction sweep in
+        // its own turn-creation unit of work.
+        accepted(
+            start_prompt_turn(
+                &mut store,
+                context(&actor, "idem:turn:compact", now),
+                session_id,
+                turn_request("please continue"),
+            )
+            .unwrap(),
+        );
+
+        assert_eq!(
+            payload_state(&mut store, "authoring_prompt_turn", "turn_terminal"),
+            PayloadState::Summarized,
+            "the prompt-turn hook compacted the terminal generation transcript"
+        );
+        assert_eq!(
+            payload_state(&mut store, "authoring_approval", "approval_pending"),
+            PayloadState::Full,
+            "the hook never compacts a pending approval (protected product state)"
+        );
     }
 
     #[test]
