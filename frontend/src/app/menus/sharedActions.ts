@@ -5,10 +5,17 @@
 // re-deriving the dispatch payload and the disabled-state logic. A label/effect or
 // backend-verb change lands in one place and every surface inherits it.
 //
-// App layer: these build `ActionDescriptor`s that dispatch through the ONE ops
-// seam (OPS_ACTION → appDispatcher → engine /ops/core/*). They read only their
-// arguments + the injected ActionContext (selectedNodeId), never a store — so they
-// stay pure and unit-testable.
+// App layer: these build `ActionDescriptor`s that dispatch through the app-wide
+// seam — `relateToSelectionAction` through the ledgered `RELATE_ACTION`
+// (relateActions.ts, ledgered-edit-migration W03.P10: a per-document
+// `edit_frontmatter` changeset), `autofixFeatureAction`/`archiveFeatureAction`
+// through the legacy `OPS_ACTION` (→ engine `/ops/core/*`). The latter two are
+// DELIBERATELY non-ledgered: per the ledgered-edit-migration ADR, feature-archive
+// (multi-document) and autofix (bulk repair, no single target) don't fit the
+// per-document V1 changeset shape and are re-scoped as vault-MAINTENANCE
+// operations, not document edits — retained on `/ops/core`, not migrated, not
+// deleted. They read only their arguments + the injected ActionContext
+// (selectedNodeId), never a store — so they stay pure and unit-testable.
 
 import { Archive, ArrowUpRight, Link2, Wrench } from "lucide-react";
 
@@ -148,7 +155,13 @@ export interface AutofixFeatureOptions {
  * (`POST /ops/core/autofix`), routed through the ops seam. A bulk write, so it carries
  * `confirm` (arm-to-confirm) and `disabledInTimeTravel`; non-destructive, so it sits in
  * the `transform` section, not `danger`. Disabled-with-reason when the feature cannot be
- * derived (a non-feature node).
+ * derived (a non-feature node — this is a FEATURE-level maintenance action, never enabled
+ * on a plain document node).
+ *
+ * DELIBERATELY out-of-ledger (ledgered-edit-migration ADR): a bulk repair over every
+ * document under a feature tag has no single target, so it does not fit the per-document
+ * V1 changeset shape the ledger requires. Stays on `/ops/core/autofix` — not migrated,
+ * not deleted; this is a vault-maintenance operation, not a document edit.
  */
 export function autofixFeatureAction(opts: AutofixFeatureOptions): ActionDescriptor {
   const base = {
@@ -188,7 +201,14 @@ export interface ArchiveFeatureOptions {
  * "Archive feature": retire a completed feature's documents (`vault feature
  * archive`), routed through the ops seam. Destructive → carries `confirm` (the
  * menu/palette arm-to-confirm guard) and `disabledInTimeTravel`. Disabled-with-
- * reason when the feature cannot be derived.
+ * reason when the feature cannot be derived (a FEATURE-level maintenance action,
+ * never enabled on a plain document node).
+ *
+ * DELIBERATELY out-of-ledger (ledgered-edit-migration ADR): archiving touches
+ * every document under a feature tag — a multi-document operation the
+ * single-child V1 changeset shape cannot represent. Stays on
+ * `/ops/core/archive` — not migrated, not deleted; this is a vault-maintenance
+ * operation, not a document edit.
  */
 export function archiveFeatureAction(opts: ArchiveFeatureOptions): ActionDescriptor {
   const base = {

@@ -22,6 +22,13 @@ Every mutation funnels through one seam: `dispatchOps()` in `stores/server/opsAc
 -> `appDispatcher` -> `engineClient.opsCore*` in `stores/server/engine.ts` -> `POST
 /ops/core/*`.
 
+STATUS as of W04.P11: this block is the W01 GROUNDING SNAPSHOT (the starting state) —
+Save/frontmatter/rename/create/relate have since migrated to the ledger (W01.P02, W03.P07
+-P10) and no longer match the bullets below; see the "Semantic hard cases" section for
+their current (DONE/CONFIRMED) status. Only autofix-feature/archive-feature and the inline
+autofix genuinely still describe the CURRENT state — they are DELIBERATELY retained here,
+not stale.
+
 - Editor Save (body): `app/viewer/MarkdownDocView.tsx` `saveBody = useSaveBody()`; hook in
   `stores/server/queries.ts` `useSaveBody` -> `runWriteOp`; verb `set-body`, mode `write`.
 - Frontmatter panel: `MarkdownDocView.tsx` `setFrontmatter = useSetFrontmatter()`; hook
@@ -38,7 +45,7 @@ Every mutation funnels through one seam: `dispatchOps()` in `stores/server/opsAc
   `archiveFeatureAction` (context menu); direct `dispatchOps`; verbs `autofix` /
   `feature-archive`, modes `autofix` / `archive`.
 - DEAD hooks (no live callers outside tests): `useArchiveFeature`, `useRelateDoc` in
-  `queries.ts` — remove.
+  `queries.ts` — removed (W03.P10).
 - Types: `Ops{Write,Create,Archive,Link,Autofix}Body` + `OpsResult` in `engine.ts`; client
   methods `opsCore{Write,Create,Archive,Link,Autofix}` in `engine.ts`.
 
@@ -95,19 +102,35 @@ Route registrations in `engine/crates/vaultspec-api/src/lib.rs`: `/ops/core/{ver
 `routes/ops.rs`: `ops_core_write`, `ops_core_autofix`, `ops_core_archive`,
 `ops_core_unarchive`, `ops_core_link`, `ops_core_create`. `CORE_WRITE_WHITELIST` in
 `ops.rs` = set-body, set-frontmatter, edit, rename. KEEP the read control verbs
-(`CORE_WHITELIST` = vault-check, vault-stats). Frontend deletion targets: `opsActions.ts`
-write/create/archive/link/autofix modes + the dispatch switch; `engine.ts` `opsCore*` write
-methods + `Ops*Body` types; `queries.ts` `runWriteOp` + the edit hooks; `sharedActions.ts`
-the three ops-dispatching builders; the inline autofix in `MarkdownDocView.tsx`; pinning
-tests `engine.test.ts`, `opsActions.test.ts`, `editorMutations.test.ts`,
-`editorWriteSeam.test.tsx`.
+(`CORE_WHITELIST` = vault-check, vault-stats). Frontend deletion targets (W04.P12): the
+`write`/`create` `dispatchOps` modes (now dead in practice — W03 rewired
+save/frontmatter/rename/create/relate off them; `opsActions.ts`'s dispatch switch keeps
+`archive`/`autofix` alive) + `engine.ts` `opsCore{Write,Create}` write methods +
+`Ops{Write,Create}Body` types; `queries.ts` `runWriteOp`/`adaptOpsWrite` (already removed,
+W03.P07/P09) + the migrated hooks; `sharedActions.ts`'s now-retired relate builder
+(migrated to the ledgered `RELATE_ACTION`, W03.P10); pinning tests `engine.test.ts`,
+`opsActions.test.ts`, `editorMutations.test.ts`, `editorWriteSeam.test.tsx`.
+**`archiveFeatureAction`/`autofixFeatureAction` (`sharedActions.ts`) and the inline autofix
+(`MarkdownDocView.tsx`) are NOT deletion targets** — confirmed re-scoped (W04.P11) as
+permanent vault-maintenance actions per the ADR; they stay on `/ops/core/archive` and
+`/ops/core/autofix` (which also stay — `KEEP`, not delete) indefinitely.
 
 ### Semantic hard cases (per the ADR)
 
 - feature-archive: multi-document (every doc under a tag) — does NOT fit the single-child
-  V1 changeset model; re-scoped as a non-ledgered maintenance operation.
-- autofix: bulk repair (`vault check all --fix`), no single target — non-ledgered maintenance.
+  V1 changeset model; re-scoped as a non-ledgered maintenance operation. CONFIRMED
+  (W04.P11): `archiveFeatureAction` stays on `/ops/core/archive`, gated to feature nodes,
+  labeled `Archive feature "{feature}"`, `danger` section (destructive, arm-to-confirm).
+- autofix: bulk repair (`vault check all --fix`), no single target — non-ledgered
+  maintenance. CONFIRMED (W04.P11): both `autofixFeatureAction` (context menu, feature
+  nodes) and the inline advisories-bar fix (`MarkdownDocView.tsx`, doc-scoped fix over the
+  doc's FEATURE) stay on `/ops/core/autofix`; the inline button's visible label now names
+  the feature (`Fix "{feature}" conformance`, not just the tooltip) so it reads as
+  feature-wide maintenance rather than a document edit, consistent with the context-menu
+  phrasing.
 - link-add: mutates the source doc's `related:` list — modeled as a frontmatter edit
-  (`EditFrontmatter`) through the ledger, not a bespoke verb.
+  (`EditFrontmatter`) through the ledger, not a bespoke verb. DONE (W03.P10):
+  `relateActions.ts`'s `RELATE_ACTION` reads the source's current `related:` + blob hash
+  and sends the full list through `directWrite({operation:"edit_frontmatter"})`.
 - create: no prior document to fence against — no preimage; rollback would be a delete,
   which the ledger has no verb for; ships non-rollback-eligible with an honest reason.

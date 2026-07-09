@@ -282,7 +282,15 @@ export function MarkdownDocView({
             </span>
             {/* Fix conformance for this document's feature (vault check all --fix
                 --feature), routed through the ops dispatch seam. Feature-scoped (the
-                sibling's only fix grain); the watcher re-ingests the fixed docs. */}
+                sibling's only fix grain); the watcher re-ingests the fixed docs.
+                DELIBERATELY out-of-ledger (ledgered-edit-migration ADR): a bulk
+                repair over every document under the feature has no single target,
+                so it does not fit the per-document V1 changeset shape — stays on
+                `/ops/core/autofix`, a vault-maintenance action, not a document
+                edit, even though it renders inside the editor's advisories bar.
+                The visible label names the feature (not just the tooltip),
+                mirroring `autofixFeatureAction`'s context-menu phrasing so the
+                same maintenance action reads consistently everywhere it appears. */}
             {(() => {
               const feature = featureFromDocTags(editorChrome.frontmatterDraft.tags);
               return (
@@ -304,7 +312,9 @@ export function MarkdownDocView({
                     }).catch(() => undefined);
                   }}
                 >
-                  Fix conformance
+                  {feature === null
+                    ? "Fix conformance"
+                    : `Fix “${feature}” conformance`}
                 </Button>
               );
             })()}
