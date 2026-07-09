@@ -6075,7 +6075,7 @@ export function usePutSettings() {
 
 // --- document write/create mutations (document-editor backend) -------------------
 //
-// The create/frontmatter/rename mutations still run through the legacy platform
+// The rename/create mutations still run through the legacy platform
 // ops-dispatch seam (`dispatchOps`, opsActions) — NOT a direct engine-client call —
 // so every vault mutation stays logged, traced, and centrally guardable, exactly
 // like the rag control verbs (dashboard-layer-ownership: the app layer never
@@ -6085,14 +6085,19 @@ export function usePutSettings() {
 // on those fields and NEVER on the HTTP code (the wire returns 200 for both success
 // and business-refusal).
 //
-// The Save button's body write (`useSaveBody`) is CUT OVER (ledgered-edit-migration
-// W01.P02): it no longer dispatches `set-body` through this legacy seam — it calls
-// the authoring store's ledgered `directWrite` route, which self-approves the
-// human's own manual save server-side and records it as an auditable changeset with
-// provenance. `directWriteResultToOpsResult` maps that outcome back onto the SAME
-// `OpsWriteResult` shape below so the editor lifecycle (`applyEditorWriteResult`)
-// is unchanged by the swap. The remaining verbs (set-frontmatter, rename, create)
-// stay on the legacy seam until their own phases wire them to the ledger.
+// The Save button's body write (`useSaveBody`, ledgered-edit-migration W01.P02) and
+// the frontmatter panel (`useSetFrontmatter`, W03.P07) are CUT OVER: neither
+// dispatches through this legacy seam anymore — both call the authoring store's
+// ledgered `directWrite` route (`operation: "replace_body"` /
+// `"edit_frontmatter"`), which self-approves the human's own manual save
+// server-side and records it as an auditable changeset with provenance, PINNED to
+// the doc's `scope` so a save that races a scope-switch is refused rather than
+// silently landing in the wrong worktree. `directWriteResultToOpsResult` maps that
+// outcome back onto the SAME `OpsWriteResult` shape below so the editor lifecycle
+// (`applyEditorWriteResult`) is unchanged by the swap. Rename and create stay on
+// the legacy seam until their own phases wire them to the ledger (the
+// now-single-caller `runWriteOp` wrapper both used to share was retired with them —
+// rename never used it; it dispatches its own `RenameDocResult` shape directly).
 //
 // Either way, a conflict/refusal is a typed result the caller drives editor state
 // from — NOT a thrown error — so the mutation resolves (never rejects) on a
@@ -6107,30 +6112,6 @@ export function usePutSettings() {
  *  that already holds a bare stem is tolerated. */
 export function stemFromNodeId(nodeId: string): string {
   return nodeId.startsWith("doc:") ? nodeId.slice("doc:".length) : nodeId;
-}
-
-/** Run a write op through the ops-dispatch seam and interpret its result; surface
- *  the brokered tiers alongside the typed outcome so the caller can read
- *  degradation from tiers (never from transport). */
-async function runWriteOp(
-  verb: string,
-  body: {
-    scope?: string;
-    ref: string;
-    body?: string;
-    expected_blob_hash?: string;
-    date?: string;
-    tags?: string[];
-    related?: string[];
-  },
-): Promise<{ result: OpsWriteResult; tiers: TiersBlock }> {
-  const ops: OpsResult = await dispatchOps({
-    target: "core",
-    verb,
-    mode: "write",
-    body,
-  });
-  return { result: adaptOpsWrite(ops), tiers: ops.tiers };
 }
 
 /** The arguments to a body save: the open doc's node id + scope, the new text, and
@@ -6415,8 +6396,11 @@ function directWriteResultToOpsResult(outcome: DirectWriteOutcome): {
 
 /**
  * Save the open document's body through the authoring ledger's `directWrite`
- * route (ledgered-edit-migration W01.P02) — a self-approved direct changeset,
- * not the legacy `set-body` ops dispatch. Resolves with the typed
+ * route (`operation: "replace_body"`, ledgered-edit-migration W01.P02 /
+ * W02.P06) — a self-approved direct changeset, not the legacy `set-body` ops
+ * dispatch. Sends the open doc's `scope` as the direct-write scope PIN, so a
+ * save that races a scope-switch is refused as a redacted denial rather than
+ * silently landing in the wrong worktree. Resolves with the typed
  * `OpsWriteResult` — a `conflict` (the optimistic blob-hash base went stale) or a
  * `refused` (a validation rejection, denial, or in-flight collision) is a typed
  * result the caller drives editor state from, NOT a thrown error; only a
@@ -6437,9 +6421,11 @@ export function useSaveBody() {
       }
       const outcome = await authoringClient.directWrite(
         {
+          operation: "replace_body",
           ref: normalized.ref,
           body: normalized.text,
           expected_blob_hash: normalized.baseBlobHash,
+          scope: normalized.scope,
         },
         { actorToken: requireActorToken() },
       );
@@ -6492,28 +6478,41 @@ export function normalizeSetFrontmatterArgs(
 }
 
 /**
- * Set the open document's frontmatter (`set-frontmatter`): date / tags / related.
- * Same typed-result discipline as `useSaveBody` — a `conflict`/`refused` resolves
- * (never throws); a frontmatter validation refusal arrives as a `refused` carrying
- * the `checks` + `errors` so the editor explains the rejection without parsing
- * prose. Invalidates the shared vault-mutation read surfaces on a successful save.
+ * Set the open document's frontmatter (date / tags / related) through the
+ * authoring ledger's `directWrite` route (`operation: "edit_frontmatter"`,
+ * ledgered-edit-migration W03.P07) — a self-approved direct changeset, not
+ * the legacy `set-frontmatter` ops dispatch. Sends the open doc's `scope` as
+ * the direct-write scope pin, same as `useSaveBody`. Same typed-result
+ * discipline — a `conflict`/`refused` resolves (never throws); a frontmatter
+ * validation refusal (or a denial, or an in-flight collision) arrives as a
+ * `refused` carrying the served reason so the editor explains the rejection
+ * without parsing prose; only a transport fault, or the actor-token fail-safe
+ * (`requireActorToken`), rejects. Invalidates the shared vault-mutation read
+ * surfaces on a successful save.
  */
 export function useSetFrontmatter() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: SetFrontmatterArgs) => {
+    mutationFn: async (args: SetFrontmatterArgs) => {
       const normalized = normalizeSetFrontmatterArgs(args);
       if (normalized.ref === null) {
-        return Promise.resolve(refusedWriteResult("Missing document id"));
+        return refusedWriteResult("Missing document id");
       }
-      return runWriteOp("set-frontmatter", {
-        scope: normalized.scope ?? undefined,
-        ref: normalized.ref,
-        expected_blob_hash: normalized.baseBlobHash,
-        date: normalized.date,
-        tags: normalized.tags,
-        related: normalized.related,
-      });
+      const outcome = await authoringClient.directWrite(
+        {
+          operation: "edit_frontmatter",
+          ref: normalized.ref,
+          frontmatter: {
+            date: normalized.date,
+            tags: normalized.tags,
+            related: normalized.related,
+          },
+          expected_blob_hash: normalized.baseBlobHash,
+          scope: normalized.scope,
+        },
+        { actorToken: requireActorToken() },
+      );
+      return directWriteResultToOpsResult(outcome);
     },
     onSuccess: ({ result }, args) => {
       const normalized = normalizeSetFrontmatterArgs(args);

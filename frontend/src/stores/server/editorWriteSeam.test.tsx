@@ -2,21 +2,20 @@
 //
 // The editor WRITE seam — the REQUEST side (document-editor backend, S22; the
 // Save button's body write cut over to the ledger at ledgered-edit-migration
-// W01.P02).
+// W01.P02, the frontmatter panel at W03.P07, both generalized to the
+// operation-typed `directWrite` route at W02.P06).
 //
 // The RESPONSE side (the wire `{data, tiers}` envelope → typed `OpsWriteResult`)
 // is covered against CAPTURED LIVE samples in `liveAdapters.test.ts`. This file
 // covers the complementary REQUEST side: that `useSaveBody` / `useSetFrontmatter`
-// CONSTRUCT the correct write — for `useSaveBody`, the direct-write route's
-// ref/body/expected_blob_hash + the bootstrapped actor token; for
-// `useSetFrontmatter` (still on the legacy verb), the write op — and that each
-// hook resolves (never throws) on a business outcome, mapping it to the typed
-// result.
+// CONSTRUCT the correct `directWrite` payload — the `operation` discriminator,
+// ref/body/frontmatter/expected_blob_hash, the scope pin, and the bootstrapped
+// actor token — and that each hook resolves (never throws) on a business
+// outcome, mapping it to the typed result.
 //
 // This is NOT the tautological mock-engine test the no-mocks migration removed:
-// `useSetFrontmatter` spies the legacy dispatch seam (`dispatchOps`); `useSaveBody`
-// spies the authoring store's `directWrite` client method. Both CAPTURE the
-// outgoing request and return a fixture shaped like the live wire (the
+// both hooks spy the authoring store's `directWrite` client method, CAPTURING
+// the outgoing request and returning a fixture shaped like the live wire (the
 // direct-write shape matches `authoring.live.test.ts`'s captured contract). The
 // unit under test is OUR request construction + result wiring, not a faked
 // engine verb.
@@ -32,15 +31,7 @@ import {
   setActorToken,
   type DirectWriteOutcome,
 } from "./authoring";
-import { dispatchOps } from "./opsActions";
 import { useSaveBody, useSetFrontmatter } from "./queries";
-
-vi.mock("./opsActions", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./opsActions")>()),
-  dispatchOps: vi.fn(),
-}));
-
-const mockDispatch = vi.mocked(dispatchOps);
 
 const TIERS = {
   declared: { available: true },
@@ -49,35 +40,22 @@ const TIERS = {
   semantic: { available: true },
 };
 
-/** The flat `OpsResult` the client transport hands the adapter: the inner
- *  `{schema,status,data}` envelope plus the brokered tiers (matches the live wire
- *  shape the captured samples in liveAdapters.test.ts assert). */
-function opsResult(envelope: Record<string, unknown>) {
-  return { envelope, tiers: TIERS } as unknown as Awaited<
-    ReturnType<typeof dispatchOps>
-  >;
-}
-
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client }, children);
 }
 
 beforeEach(() => {
-  mockDispatch.mockReset();
+  setActorToken("test-actor-token");
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  setActorToken(null);
 });
 
 describe("useSaveBody — direct-write request construction", () => {
-  beforeEach(() => {
-    setActorToken("test-actor-token");
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    setActorToken(null);
-  });
-
-  it("builds a direct-write request (stem ref + body + optimistic base) carrying the bootstrapped actor token, and resolves `saved`", async () => {
+  it("builds an `operation: replace_body` direct-write request (stem ref + body + optimistic base + scope pin) carrying the bootstrapped actor token, and resolves `saved`", async () => {
     const spy = vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
       kind: "applied",
       changesetId: "changeset_1",
@@ -99,9 +77,11 @@ describe("useSaveBody — direct-write request construction", () => {
 
     expect(spy).toHaveBeenCalledWith(
       {
+        operation: "replace_body",
         ref: "2026-01-01-alpha-research",
         body: "the new body text",
         expected_blob_hash: "old-hash",
+        scope: "Y:/repo",
       },
       { actorToken: "test-actor-token" },
     );
@@ -110,6 +90,30 @@ describe("useSaveBody — direct-write request construction", () => {
       expect(res.result.blobHash).toBe("new-hash");
       expect(res.result.path).toBe(".vault/adr/x.md");
     }
+  });
+
+  it("sends `scope: null` as-is (no coercion) when the open doc carries no scope", async () => {
+    const spy = vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "applied",
+      changesetId: "changeset_1",
+      documentPath: null,
+      blobHash: "new-hash",
+      replayed: false,
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
+    const { result } = renderHook(() => useSaveBody(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    await result.current.mutateAsync({
+      nodeId: "doc:x",
+      scope: null,
+      text: "t",
+      baseBlobHash: "old-hash",
+    });
+
+    const sent = spy.mock.calls[0][0] as { scope?: string | null };
+    expect(sent.scope).toBeNull();
   });
 
   it("maps a direct-write conflict outcome to a `conflict` result (resolves, never throws)", async () => {
@@ -143,11 +147,11 @@ describe("useSaveBody — direct-write request construction", () => {
     }
   });
 
-  it("maps a direct-write denial outcome to a `refused` result carrying the served reason (resolves, never throws)", async () => {
+  it("maps a direct-write denial outcome to a `refused` result carrying the served reason (resolves, never throws) — covers the scope-pin-mismatch denial too", async () => {
     vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
       kind: "denied",
       reason:
-        "direct editor saves require a human actor; agents must propose changesets",
+        "the requested scope does not match the server's active workspace; re-check which workspace is active before retrying",
       tiers: TIERS,
     } satisfies DirectWriteOutcome);
 
@@ -156,14 +160,14 @@ describe("useSaveBody — direct-write request construction", () => {
     });
     const res = await result.current.mutateAsync({
       nodeId: "doc:x",
-      scope: null,
+      scope: "Y:/repo",
       text: "t",
       baseBlobHash: "old-hash",
     });
 
     expect(res.result.kind).toBe("refused");
     if (res.result.kind === "refused") {
-      expect(res.result.errors[0]).toContain("agents must propose changesets");
+      expect(res.result.errors[0]).toContain("does not match");
     }
   });
 
@@ -189,15 +193,17 @@ describe("useSaveBody — direct-write request construction", () => {
   });
 });
 
-describe("useSetFrontmatter — set-frontmatter request construction", () => {
-  it("builds a set-frontmatter write op carrying date/tags/related + base, and resolves `saved`", async () => {
-    mockDispatch.mockResolvedValue(
-      opsResult({
-        schema: "vaultspec.vault.set-frontmatter.v1",
-        status: "set",
-        data: { path: ".vault/adr/x.md", blob_hash: "h2", checks: [] },
-      }),
-    );
+describe("useSetFrontmatter — direct-write request construction", () => {
+  it("builds an `operation: edit_frontmatter` direct-write request (ref + frontmatter fields + optimistic base + scope pin) carrying the bootstrapped actor token, and resolves `saved`", async () => {
+    const spy = vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "applied",
+      changesetId: "changeset_2",
+      documentPath: ".vault/adr/x.md",
+      blobHash: "h2",
+      replayed: false,
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
     const { result } = renderHook(() => useSetFrontmatter(), {
       wrapper: wrapper(new QueryClient()),
     });
@@ -209,35 +215,41 @@ describe("useSetFrontmatter — set-frontmatter request construction", () => {
       related: ["[[2026-06-12-dashboard-foundation-adr]]"],
       baseBlobHash: "base-h",
     });
-    expect(mockDispatch).toHaveBeenCalledWith({
-      target: "core",
-      verb: "set-frontmatter",
-      mode: "write",
-      body: {
-        scope: "Y:/repo",
+
+    expect(spy).toHaveBeenCalledWith(
+      {
+        operation: "edit_frontmatter",
         ref: "2026-06-12-dashboard-gui-adr",
+        frontmatter: {
+          date: "2026-06-18",
+          tags: ["#adr", "#dashboard-gui"],
+          related: ["[[2026-06-12-dashboard-foundation-adr]]"],
+        },
         expected_blob_hash: "base-h",
-        date: "2026-06-18",
-        tags: ["#adr", "#dashboard-gui"],
-        related: ["[[2026-06-12-dashboard-foundation-adr]]"],
+        scope: "Y:/repo",
       },
-    });
+      { actorToken: "test-actor-token" },
+    );
     expect(res.result.kind).toBe("saved");
+    if (res.result.kind === "saved") {
+      expect(res.result.blobHash).toBe("h2");
+      expect(res.result.path).toBe(".vault/adr/x.md");
+    }
   });
 
-  it("maps a frontmatter refusal to a `refused` result carrying checks + errors", async () => {
-    mockDispatch.mockResolvedValue(
-      opsResult({
-        schema: "vaultspec.vault.set-frontmatter.v1",
-        status: "failed",
-        data: {
-          refused: true,
-          checks: [{ message: "related link resolves to no document" }],
-          errors: ["related link `missing` resolves to no document"],
-          path: ".vault/adr/x.md",
-        },
-      }),
-    );
+  it("maps a direct-write conflict outcome to a `conflict` result (resolves, never throws)", async () => {
+    vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "conflict",
+      conflict: {
+        document_ref: "s",
+        document_path: ".vault/adr/s.md",
+        expected_blob_hash: "b",
+        actual_blob_hash: "drifted-hash",
+        target_blob_hash: "would-have-been-hash",
+      },
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
     const { result } = renderHook(() => useSetFrontmatter(), {
       wrapper: wrapper(new QueryClient()),
     });
@@ -247,10 +259,53 @@ describe("useSetFrontmatter — set-frontmatter request construction", () => {
       tags: ["#x"],
       baseBlobHash: "b",
     });
+
+    expect(res.result.kind).toBe("conflict");
+    if (res.result.kind === "conflict") {
+      expect(res.result.expected).toBe("b");
+      expect(res.result.actual).toBe("drifted-hash");
+    }
+  });
+
+  it("maps a frontmatter validation denial to a `refused` result carrying the served reason", async () => {
+    vi.spyOn(authoringClient, "directWrite").mockResolvedValue({
+      kind: "denied",
+      reason: "related link `missing` resolves to no document",
+      tiers: TIERS,
+    } satisfies DirectWriteOutcome);
+
+    const { result } = renderHook(() => useSetFrontmatter(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    const res = await result.current.mutateAsync({
+      nodeId: "doc:s",
+      scope: null,
+      tags: ["#x"],
+      baseBlobHash: "b",
+    });
+
     expect(res.result.kind).toBe("refused");
     if (res.result.kind === "refused") {
       expect(res.result.errors[0]).toContain("resolves to no document");
-      expect(res.result.checks).toHaveLength(1);
     }
+  });
+
+  it("refuses (never silently drops) a frontmatter save attempted with no bootstrapped actor token — the fail-safe", async () => {
+    const spy = vi.spyOn(authoringClient, "directWrite");
+    setActorToken(null);
+
+    const { result } = renderHook(() => useSetFrontmatter(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+
+    await expect(
+      result.current.mutateAsync({
+        nodeId: "doc:2026-06-12-dashboard-gui-adr",
+        scope: "Y:/repo",
+        tags: ["#adr"],
+        baseBlobHash: "base-h",
+      }),
+    ).rejects.toThrow(/no authoring actor token is bootstrapped/);
+    expect(spy).not.toHaveBeenCalled();
   });
 });

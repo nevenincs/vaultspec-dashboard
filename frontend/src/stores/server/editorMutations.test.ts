@@ -4,18 +4,20 @@
 // (document-editor backend, W03). These are PURE store/selector logic, exercised
 // directly — no engine surface, no double.
 //
-// NOTE — the editor WRITE seam (useSaveBody / useSetFrontmatter / useCreateDoc →
-// `/ops/core/{set-body,set-frontmatter,create}`) is split across three files, with
-// NO faked-verb mock (the tautology the no-mocks migration removed):
+// NOTE — the editor WRITE seam (useSaveBody / useSetFrontmatter routed through
+// the authoring ledger's `directWrite`; useCreateDoc still on the legacy
+// `/ops/core/create`) is split across three files, with NO faked-verb mock (the
+// tautology the no-mocks migration removed):
 //   • RESPONSE side — `liveAdapters.test.ts` runs `adaptOpsWrite` over CAPTURED
 //     LIVE wire samples (saved / conflict / refused / created).
 //   • REQUEST side — `editorWriteSeam.test.tsx` proves the hooks construct the
-//     correct write op (verb, stem-derived `ref`, optimistic `expected_blob_hash`,
-//     scope) and resolve the typed result, spying the dispatch seam (the response
-//     is a captured-shape fixture, not a faked engine verb).
+//     correct request (the `directWrite` operation discriminator + per-kind
+//     fields + scope pin for save/frontmatter; the legacy write op for create)
+//     and resolve the typed result, spying the dispatch seam (the response is a
+//     captured-shape fixture, not a faked engine verb).
 //   • EDITOR STATE — this file: the bounded slice + `applyEditorWriteResult`.
-// The verbs ship in vaultspec-core 0.1.32 (they 502'd on 0.1.31); the remaining
-// LIVE end-to-end round-trip against a write-safe fixture vault is plan step S21.
+// Both write paths land on the SAME `OpsWriteResult`/`applyEditorWriteResult`
+// shape, so this file's coverage is unchanged by which route materializes it.
 
 import { describe, expect, it } from "vitest";
 

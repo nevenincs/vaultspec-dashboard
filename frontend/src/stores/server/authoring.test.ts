@@ -24,6 +24,7 @@ import {
   advanceAuthoringStreamSeq,
   applyAuthoringRecovery,
   authoringKeys,
+  directWriteWirePayload,
   getAuthoringStreamCursor,
   handleAuthoringStreamChunk,
   interpretCommandOutcome,
@@ -761,5 +762,88 @@ describe("adaptDirectWriteOutcome (ledgered-edit-migration W01.P02)", () => {
       expect(outcome.blobHash).toBeNull();
       expect(outcome.documentPath).toBeNull();
     }
+  });
+});
+
+describe("directWriteWirePayload (ledgered-edit-migration W02.P06 generalization)", () => {
+  it("marshals `replace_body` sending only ref/body/expected_blob_hash (+ common scope/summary)", () => {
+    const wire = directWriteWirePayload({
+      operation: "replace_body",
+      ref: "2026-01-01-alpha-research",
+      body: "the new body",
+      expected_blob_hash: "old-hash",
+      scope: "Y:/repo",
+      summary: "save",
+    });
+
+    expect(wire).toEqual({
+      operation: "replace_body",
+      scope: "Y:/repo",
+      summary: "save",
+      ref: "2026-01-01-alpha-research",
+      body: "the new body",
+      expected_blob_hash: "old-hash",
+    });
+    // No accepted-but-ignored fields from the other kinds leak through.
+    expect(wire.frontmatter).toBeUndefined();
+    expect(wire.new_stem).toBeUndefined();
+    expect(wire.create).toBeUndefined();
+  });
+
+  it("marshals `edit_frontmatter` sending only ref/frontmatter/expected_blob_hash — never `body`", () => {
+    const wire = directWriteWirePayload({
+      operation: "edit_frontmatter",
+      ref: "2026-06-12-dashboard-gui-adr",
+      frontmatter: { date: "2026-06-18", tags: ["#adr"] },
+      expected_blob_hash: "base-h",
+      scope: "Y:/repo",
+    });
+
+    expect(wire).toEqual({
+      operation: "edit_frontmatter",
+      scope: "Y:/repo",
+      summary: undefined,
+      ref: "2026-06-12-dashboard-gui-adr",
+      frontmatter: { date: "2026-06-18", tags: ["#adr"] },
+      expected_blob_hash: "base-h",
+    });
+    expect(wire.body).toBeUndefined();
+  });
+
+  it("marshals `rename` sending only ref/new_stem/expected_blob_hash", () => {
+    const wire = directWriteWirePayload({
+      operation: "rename",
+      ref: "old-stem",
+      new_stem: "new-stem",
+      expected_blob_hash: "base-h",
+    });
+
+    expect(wire).toEqual({
+      operation: "rename",
+      scope: undefined,
+      summary: undefined,
+      ref: "old-stem",
+      new_stem: "new-stem",
+      expected_blob_hash: "base-h",
+    });
+    expect(wire.body).toBeUndefined();
+    expect(wire.frontmatter).toBeUndefined();
+  });
+
+  it("marshals `create_document` sending only `create` — never `ref`/`expected_blob_hash` (the backend refuses either as unexpected)", () => {
+    const wire = directWriteWirePayload({
+      operation: "create_document",
+      create: { doc_type: "research", feature: "alpha", title: "New note" },
+    });
+
+    expect(wire).toEqual({
+      operation: "create_document",
+      scope: undefined,
+      summary: undefined,
+      create: { doc_type: "research", feature: "alpha", title: "New note" },
+    });
+    expect(wire.ref).toBeUndefined();
+    expect(wire.expected_blob_hash).toBeUndefined();
+    expect(wire.body).toBeUndefined();
   });
 });

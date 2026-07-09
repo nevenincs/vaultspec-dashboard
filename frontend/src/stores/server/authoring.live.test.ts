@@ -303,6 +303,7 @@ describe("direct editor save (live)", () => {
 
     const outcome = await client.directWrite(
       {
+        operation: "replace_body",
         ref: TARGET_STEM,
         body: `${content.text}\nan agent may never direct-write\n`,
         expected_blob_hash: content.blob_hash,
@@ -328,6 +329,7 @@ describe("direct editor save (live)", () => {
 
     const outcome = await client.directWrite(
       {
+        operation: "replace_body",
         ref: TARGET_STEM,
         body: "irrelevant body — the base is deliberately stale",
         expected_blob_hash: "0000000000000000000000000000000000000000",
@@ -341,6 +343,34 @@ describe("direct editor save (live)", () => {
         "0000000000000000000000000000000000000000",
       );
       expect(outcome.conflict.actual_blob_hash.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("refuses a scope-pin mismatch as a redacted denial VALUE, never echoing the foreign scope (W02.P06)", async () => {
+    const humanToken = (
+      await client.issueActorToken({
+        actor: { id: `human:dw-scope-${run}`, kind: "human" },
+      })
+    ).raw_token;
+    const foreignScope = "a-scope-this-server-does-not-own";
+
+    const outcome = await client.directWrite(
+      {
+        operation: "replace_body",
+        ref: TARGET_STEM,
+        body: "irrelevant body — the scope pin refuses before any write",
+        expected_blob_hash: "0000000000000000000000000000000000000000",
+        scope: foreignScope,
+      },
+      { actorToken: humanToken },
+    );
+
+    expect(outcome.kind).toBe("denied");
+    if (outcome.kind === "denied") {
+      // Redacted: the reason explains the refusal without echoing the
+      // requested scope string back onto the wire.
+      expect(outcome.reason ?? "").not.toContain(foreignScope);
+      expect(outcome.reason ?? "").toContain("does not match");
     }
   });
 });

@@ -401,17 +401,71 @@ export interface RollbackPayload {
   reason: string;
 }
 
-/** `POST /authoring/v1/direct-writes` payload — a human editor save routed
- *  through the ledger as a self-approved direct changeset. The route composes
- *  create-proposal → validate → submit → human self-approve → apply
- *  SERVER-SIDE, so the client sends only the target + the editor's optimistic
- *  base (the actor token resolves the human principal). */
-export interface DirectWritePayload {
-  ref: string;
-  body: string;
-  expected_blob_hash: string;
-  summary?: string;
+/** `POST /authoring/v1/direct-writes` frontmatter fields (the `edit_frontmatter`
+ *  operation's payload). Every field is optional — only the ones the editor
+ *  actually changed are sent. */
+export interface DirectWriteFrontmatterFields {
+  date?: string;
+  tags?: string[];
+  related?: string[];
 }
+
+/** `POST /authoring/v1/direct-writes` create-document params (the
+ *  `create_document` operation's payload). */
+export interface DirectWriteCreateParams {
+  doc_type: string;
+  feature: string;
+  title: string;
+  related?: string[];
+}
+
+/**
+ * `POST /authoring/v1/direct-writes` payload — a human editor save routed
+ * through the ledger as a self-approved direct changeset, generalized to every
+ * content kind the route materializes (ledgered-edit-migration W02.P06). The
+ * route composes create-proposal → validate → submit → human self-approve →
+ * apply SERVER-SIDE; the client sends only the `operation` discriminator + the
+ * fields THAT kind uses — never an accepted-but-ignored field (the backend
+ * refuses a mismatched field at validation, e.g. `frontmatter` set on a
+ * `replace_body` request).
+ *
+ * `scope` is the OPTIONAL scope pin (the same worktree-scope string already
+ * threaded through the app as `scope`/`MapWorktree.id`, e.g.
+ * `SaveBodyArgs.scope`): when present it must match the server's current
+ * active workspace or the save is refused as a denial value, closing the
+ * scope-switch race a save with no pin is silently exposed to.
+ */
+export type DirectWritePayload =
+  | {
+      operation: "replace_body";
+      ref: string;
+      body: string;
+      expected_blob_hash: string;
+      scope?: string | null;
+      summary?: string;
+    }
+  | {
+      operation: "edit_frontmatter";
+      ref: string;
+      frontmatter: DirectWriteFrontmatterFields;
+      expected_blob_hash: string;
+      scope?: string | null;
+      summary?: string;
+    }
+  | {
+      operation: "rename";
+      ref: string;
+      new_stem: string;
+      expected_blob_hash: string;
+      scope?: string | null;
+      summary?: string;
+    }
+  | {
+      operation: "create_document";
+      create: DirectWriteCreateParams;
+      scope?: string | null;
+      summary?: string;
+    };
 
 /** The conflict the direct-write route serves when the target moved since the
  *  editor's optimistic base: `expected` is the editor's stale base, `actual`
@@ -872,6 +926,51 @@ export function adaptDirectWriteOutcome(raw: unknown): DirectWriteOutcome {
   };
 }
 
+/**
+ * Marshal a `DirectWritePayload` onto the wire `DirectWriteRequest` shape —
+ * `operation` + ONLY the fields that kind uses (never an accepted-but-ignored
+ * field: the backend refuses a mismatched combination at validation, so
+ * sending, say, `frontmatter` on a `replace_body` request would be a live
+ * fault, not a harmless no-op). `scope` (the optional scope pin) and
+ * `summary` are common to every kind.
+ */
+export function directWriteWirePayload(payload: DirectWritePayload): Rec {
+  const common: Rec = {
+    operation: payload.operation,
+    scope: payload.scope ?? undefined,
+    summary: payload.summary,
+  };
+  switch (payload.operation) {
+    case "replace_body":
+      return {
+        ...common,
+        ref: payload.ref,
+        body: payload.body,
+        expected_blob_hash: payload.expected_blob_hash,
+      };
+    case "edit_frontmatter":
+      return {
+        ...common,
+        ref: payload.ref,
+        frontmatter: payload.frontmatter,
+        expected_blob_hash: payload.expected_blob_hash,
+      };
+    case "rename":
+      return {
+        ...common,
+        ref: payload.ref,
+        new_stem: payload.new_stem,
+        expected_blob_hash: payload.expected_blob_hash,
+      };
+    case "create_document":
+      return { ...common, create: payload.create };
+    default: {
+      const exhaustive: never = payload;
+      return exhaustive;
+    }
+  }
+}
+
 // --- degradation read (from tiers + the typed store-unavailable error) ----------
 
 /** The interpreted authoring degradation a consumer renders. `storeUnavailable`
@@ -1078,12 +1177,14 @@ export class AuthoringClient {
     };
   }
 
-  // --- direct editor save (the Save button, ledgered-edit-migration W01.P02) ---
+  // --- direct editor save (every content kind, ledgered-edit-migration W02.P06) --
 
   /** `POST /authoring/v1/direct-writes` — route a human editor save through the
-   *  authoring ledger as a self-approved direct changeset. The route composes
-   *  create-proposal → validate → submit → human self-approve → apply
-   *  SERVER-SIDE (one call replaces the legacy `/ops/core` set-body write). */
+   *  authoring ledger as a self-approved direct changeset, for any of the
+   *  generalized content kinds (body/frontmatter/rename/create). The route
+   *  composes create-proposal → validate → submit → human self-approve →
+   *  apply SERVER-SIDE (one call replaces what used to be a legacy `/ops/core`
+   *  write per kind). */
   async directWrite(
     payload: DirectWritePayload,
     opts: CommandOptions,
@@ -1092,7 +1193,7 @@ export class AuthoringClient {
       api_version: "v1",
       command: "direct_write",
       idempotency_key: opts.idempotencyKey ?? newIdempotencyKey(),
-      payload,
+      payload: directWriteWirePayload(payload),
     };
     const body = await this.postJson(
       "/authoring/v1/direct-writes",
