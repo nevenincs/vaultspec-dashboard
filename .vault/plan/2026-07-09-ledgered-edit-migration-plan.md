@@ -185,14 +185,14 @@ Re-scope feature-archive and autofix as sanctioned non-ledgered vault-maintenanc
 
 Delete the migrated /ops/core write routes and handlers, the frontend ops write/create/link dispatch modes, the opsCore write client methods and their body types, and the tests pinning the legacy shape, keeping the read control verbs and retained maintenance ops intact.
 
-- [ ] `W04.P12.S66` - Ground the true-cutover legacy removal scope (write routes, dispatch modes, client methods, pinning tests) into the phase checklist; `.vault/adr/`.
-- [ ] `W04.P12.S67` - Delete the ops_core_write, ops_core_create, and ops_core_link handlers and their lib.rs route registrations for the migrated content verbs; `engine/crates/vaultspec-api/src/routes/ops.rs`.
-- [ ] `W04.P12.S68` - Delete the frontend write, create, and link ops dispatch modes and their payload types, keeping the retained archive and autofix modes; `frontend/src/stores/server/opsActions.ts`.
-- [ ] `W04.P12.S69` - Delete the opsCoreWrite, opsCoreCreate, and opsCoreLink client methods and the Ops*Body write/create/link types, keeping the retained control, archive, and autofix methods; `frontend/src/stores/server/engine.ts`.
-- [ ] `W04.P12.S70` - Update the pinning tests to assert the legacy write/create/link shapes are gone and only the retained read and maintenance verbs remain; `frontend/src/stores/server/engine.test.ts`.
-- [ ] `W04.P12.S73` - Update opsActions.test.ts to assert the write/create/link dispatch modes are gone and only control, archive, and autofix modes remain reachable; `frontend/src/stores/server/opsActions.test.ts`.
-- [ ] `W04.P12.S71` - Run Legacy write-path removal code review and record the phase audit; `.vault/audit/`.
-- [ ] `W04.P12.S72` - Verify /ops/core/{verb}/write, /ops/core/create, and /ops/core/link are gone from the served route table while vault-check, vault-stats, archive, and autofix remain; `engine/crates/vaultspec-api/src/lib.rs`.
+- [x] `W04.P12.S66` - Ground the true-cutover legacy removal scope (write routes, dispatch modes, client methods, pinning tests) into the phase checklist; `.vault/adr/`.
+- [x] `W04.P12.S67` - Delete the ops_core_write, ops_core_create, and ops_core_link handlers and their lib.rs route registrations for the migrated content verbs; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `W04.P12.S68` - Delete the frontend write, create, and link ops dispatch modes and their payload types, keeping the retained archive and autofix modes; `frontend/src/stores/server/opsActions.ts`.
+- [x] `W04.P12.S69` - Delete the opsCoreWrite, opsCoreCreate, and opsCoreLink client methods and the Ops*Body write/create/link types, keeping the retained control, archive, and autofix methods; `frontend/src/stores/server/engine.ts`.
+- [x] `W04.P12.S70` - Update the pinning tests to assert the legacy write/create/link shapes are gone and only the retained read and maintenance verbs remain; `frontend/src/stores/server/engine.test.ts`.
+- [x] `W04.P12.S73` - Update opsActions.test.ts to assert the write/create/link dispatch modes are gone and only control, archive, and autofix modes remain reachable; `frontend/src/stores/server/opsActions.test.ts`.
+- [x] `W04.P12.S71` - Run Legacy write-path removal code review and record the phase audit; `.vault/audit/`.
+- [x] `W04.P12.S72` - Verify /ops/core/{verb}/write, /ops/core/create, and /ops/core/link are gone from the served route table while vault-check, vault-stats, archive, and autofix remain; `engine/crates/vaultspec-api/src/lib.rs`.
 
 ### Phase `W04.P13` - Final gate and epic audit
 
