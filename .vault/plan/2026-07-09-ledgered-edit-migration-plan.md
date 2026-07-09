@@ -100,12 +100,12 @@ The apply-side wiring (P03 EditFrontmatter, P04 Rename, P05 CreateDocument) make
 
 Generalize the single-call self-approving direct-write composition so frontmatter, rename, and create-document each get a human-save path symmetric with the existing body-replacement route.
 
-- [ ] `W02.P06.S32` - Ground operation-typed direct-edit route symmetry and self-approval requirements into the phase checklist; `.vault/adr/`.
-- [ ] `W02.P06.S33` - Generalize DirectWriteRequest to carry the EditFrontmatter, Rename, and CreateDocument payload shapes alongside body replacement; `engine/crates/vaultspec-api/src/authoring/api.rs`.
-- [ ] `W02.P06.S34` - Generalize execute_direct_write to compose propose, self-approve, and apply for the newly-wired operation kinds through the same single-call route; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
-- [ ] `W02.P06.S35` - Add route tests for direct-write frontmatter, rename, and create requests, covering success, denial, and conflict outcomes; `engine/crates/vaultspec-api/src/authoring/http.rs`.
-- [ ] `W02.P06.S36` - Run Operation-typed direct-edit route code review and record the phase audit; `.vault/audit/`.
-- [ ] `W02.P06.S37` - Verify POST /authoring/v1/direct-writes accepts a human-save request for every wired content operation kind end to end; `engine/crates/vaultspec-api/src/authoring/http.rs`.
+- [x] `W02.P06.S32` - Ground operation-typed direct-edit route symmetry and self-approval requirements into the phase checklist; `.vault/adr/`.
+- [x] `W02.P06.S33` - Generalize DirectWriteRequest to carry the EditFrontmatter, Rename, and CreateDocument payload shapes alongside body replacement; `engine/crates/vaultspec-api/src/authoring/api.rs`.
+- [x] `W02.P06.S34` - Generalize execute_direct_write to compose propose, self-approve, and apply for the newly-wired operation kinds through the same single-call route; `engine/crates/vaultspec-api/src/authoring/direct_write.rs`.
+- [x] `W02.P06.S35` - Add route tests for direct-write frontmatter, rename, and create requests, covering success, denial, and conflict outcomes; `engine/crates/vaultspec-api/src/authoring/http.rs`.
+- [x] `W02.P06.S36` - Run Operation-typed direct-edit route code review and record the phase audit; `.vault/audit/`.
+- [x] `W02.P06.S37` - Verify POST /authoring/v1/direct-writes accepts a human-save request for every wired content operation kind end to end; `engine/crates/vaultspec-api/src/authoring/http.rs`.
 
 ## Wave `W03` - Frontend rewire of the remaining content edits
 
