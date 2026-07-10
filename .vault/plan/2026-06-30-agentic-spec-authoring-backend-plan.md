@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#agentic-spec-authoring-backend'
 date: '2026-06-30'
-modified: '2026-07-09'
+modified: '2026-07-10'
 tier: L4
 related:
   - '[[2026-07-02-agentic-spec-authoring-backend-reference]]'
@@ -29,6 +29,16 @@ related:
   - '[[2026-06-29-langgraph-approval-document-editing-research]]'
   - '[[2026-06-29-zed-acp-document-authoring-research]]'
 ---
+
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 <!-- RETIRED: W04, W05, W06, W07, W08, W09, P12, P29, P37, S56, S57, S58, S59, S60, S141, S142, S143, S144, S145, S181, S182, S183, S184, S185 -->
 
@@ -511,9 +521,9 @@ Serve review queues, claims, clarification, reviewer edits, audit records, redac
 Per-operation rollback inverses, evidence-gated on real usage need. DEFERRED OUT (2026-07-08): V1 applies only whole-document ReplaceBody, already covered by the delivered whole-document preimage-restore rollback (W08.P38); no other operation kind is appliable in V1, so none needs a per-operation inverse (the honest rollback_available=false + reason + manual-repair contract covers them). Return trigger: enable a specific inverse the first time that operation kind becomes appliable and real usage rolls one back. NOTE: S250 is the Increment-5 acceptance demo over the concurrency+security stack, satisfiable against the committed stack - verify at Increment-5, not a defer.
 
 - [x] `W13.P46.S246` - Ground Per-operation rollback inverses requirements into the phase checklist, and record whether real usage warrants this work; `.vault/adr/`.
-- [ ] `W13.P46.S247` - Implement per-operation rollback inverse logic beyond whole-document preimage restore, enabled per operation kind only as need appears from real usage; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
-- [ ] `W13.P46.S248` - Add inverse-logic tests per enabled operation kind, covering delete inverse, rename inverse, and remaining honest unavailable-reason cases; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
-- [ ] `W13.P46.S249` - Run Per-operation rollback inverses code review and record the phase audit; `.vault/audit/`.
+- [x] `W13.P46.S247` - Implement per-operation rollback inverse logic beyond whole-document preimage restore, enabled per operation kind only as need appears from real usage; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
+- [x] `W13.P46.S248` - Add inverse-logic tests per enabled operation kind, covering delete inverse, rename inverse, and remaining honest unavailable-reason cases; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
+- [x] `W13.P46.S249` - Run Per-operation rollback inverses code review and record the phase audit; `.vault/audit/`.
 - [x] `W13.P46.S250` - Verify the Increment 5 demo: two concurrent writers, one human and one agent, on one document, with lease coordination visible, stale proposal conflicts deterministically, explicit rebase producing a fresh reviewable candidate, and an unauthorized actor refused with a redacted error; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
 
 ## Wave `W14` - Increment 6 - Acceptance, retirement, and release
