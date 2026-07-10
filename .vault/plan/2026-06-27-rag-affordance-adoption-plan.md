@@ -3,12 +3,12 @@ tags:
   - '#plan'
   - '#rag-affordance-adoption'
 date: '2026-06-27'
-modified: '2026-06-27'
+modified: '2026-07-03'
 tier: L2
 related:
   - '[[2026-06-27-rag-affordance-adoption-adr]]'
+  - '[[2026-06-27-rag-affordance-adoption-research]]'
 ---
-
 # `rag-affordance-adoption` plan
 
 Adopt rag's machine-global discovery pointer (a new discovery candidate) and its idempotent JSON start (version-tolerant, with rag's authoritative failure reason).

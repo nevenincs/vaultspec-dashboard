@@ -108,6 +108,8 @@ frontend/.playwright-cli/
 
 # Rust engine workspace
 engine/target/
+# Root-level cargo/packaging build output (cargo-dist writes target/distrib here)
+/target/
 # Staged SPA embed source (distribution-channels ADR: built by the package
 # recipe / CI build step, compiled into the binary, never committed)
 engine/crates/vaultspec-api/assets/

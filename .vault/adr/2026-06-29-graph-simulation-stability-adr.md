@@ -3,11 +3,11 @@ tags:
   - '#adr'
   - '#graph-simulation-stability'
 date: '2026-06-29'
-modified: '2026-06-29'
+modified: '2026-07-03'
 related:
   - "[[2026-06-29-graph-simulation-stability-research]]"
+  - '[[2026-07-03-graph-simulation-stability-research]]'
 ---
-
 # `graph-simulation-stability` adr: `the settled layout is authoritative: additive set-data pins survivors and relaxes only new nodes` | (**status:** `accepted`)
 
 ## Problem Statement

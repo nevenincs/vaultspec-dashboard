@@ -3,21 +3,11 @@ tags:
   - '#plan'
   - '#test-infra-hardening'
 date: '2026-07-02'
-modified: '2026-07-02'
+modified: '2026-07-03'
 tier: L2
 related:
   - '[[2026-07-02-test-infra-hardening-audit]]'
 ---
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `test-infra-hardening` plan
 
@@ -58,13 +48,6 @@ Remediation of the test-infra-hardening audit (TIH-002/003 HIGH, TIH-004 MED, TI
 
 ## Steps
 
-
-
-
-
-
-
 ## Parallelization
-
 
 ## Verification

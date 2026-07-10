@@ -8,29 +8,7 @@ related:
   - "[[2026-07-03-graph-simulation-stability-adr]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #research) and one feature tag.
-     Replace graph-simulation-stability with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar]]'.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
 # `graph-simulation-stability` research: `jitter root cause measurement`
-
-<!-- Brief description of what was researched, why, and how it relates to
-`graph-simulation-stability`. -->
 
 User report after the anneal landed: the live simulation sits in a persistent
 jitter state, INCLUDING edgeless free-floating nodes — pointing at a
