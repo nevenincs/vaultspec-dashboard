@@ -16,6 +16,7 @@ import {
   adaptAuthoringRecovery,
   adaptAuthoringStatus,
   adaptAuthoringStreamFrame,
+  adaptDirectWriteOutcome,
   adaptProposalDetail,
   adaptProposalList,
   adaptProposalProjection,
@@ -23,6 +24,7 @@ import {
   advanceAuthoringStreamSeq,
   applyAuthoringRecovery,
   authoringKeys,
+  directWriteWirePayload,
   getAuthoringStreamCursor,
   handleAuthoringStreamChunk,
   interpretCommandOutcome,
@@ -52,7 +54,7 @@ afterEach(() => {
 });
 
 describe("adaptAuthoringStatus", () => {
-  it("consumes backend-served direct-write capability and authority flags", () => {
+  it("consumes the backend-served direct-write capability flag", () => {
     const status = adaptAuthoringStatus({
       feature: "agentic-spec-authoring-backend",
       enabled: true,
@@ -65,8 +67,6 @@ describe("adaptAuthoringStatus", () => {
         apply: true,
         rollback: true,
         direct_write: true,
-        direct_write_dual_run: true,
-        direct_write_authority: "direct_changeset",
         sessions: false,
         leases: false,
         streams: false,
@@ -77,22 +77,18 @@ describe("adaptAuthoringStatus", () => {
 
     expect(status.enabled).toBe(true);
     expect(status.capabilities.direct_write).toBe(true);
-    expect(status.capabilities.direct_write_dual_run).toBe(true);
-    expect(status.capabilities.direct_write_authority).toBe("direct_changeset");
     expect(status.capabilities.proposals).toBe(true);
     expect(status.tiers).toBe(availableTiers);
   });
 
-  it("floors sparse direct-write status to the disabled legacy authority", () => {
+  it("floors a sparse direct-write status to disabled", () => {
     const status = adaptAuthoringStatus({
-      capabilities: { direct_write_authority: "unknown" },
+      capabilities: {},
     });
 
     expect(status.enabled).toBe(false);
     expect(status.status).toBe("disabled");
     expect(status.capabilities.direct_write).toBe(false);
-    expect(status.capabilities.direct_write_dual_run).toBe(false);
-    expect(status.capabilities.direct_write_authority).toBe("legacy_core");
   });
 });
 
@@ -671,5 +667,253 @@ describe("newIdempotencyKey", () => {
     expect(a.startsWith("idem:")).toBe(true);
     // The wire IdempotencyKey grammar allows ascii alnum + _-:./ only.
     expect(a).toMatch(/^[A-Za-z0-9_:./-]+$/);
+  });
+});
+
+describe("adaptDirectWriteOutcome (ledgered-edit-migration W01.P02)", () => {
+  it("reads a terminal applied outcome, including the observed post-state blob hash", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "applied",
+      replayed: false,
+      changeset_id: "changeset_1",
+      apply_receipt: {
+        child: { observed_result_blob_hash: "new-hash" },
+      },
+      record: { document_path: ".vault/adr/x.md" },
+      tiers: availableTiers,
+    });
+
+    expect(outcome.kind).toBe("applied");
+    if (outcome.kind === "applied") {
+      expect(outcome.changesetId).toBe("changeset_1");
+      expect(outcome.blobHash).toBe("new-hash");
+      expect(outcome.documentPath).toBe(".vault/adr/x.md");
+      expect(outcome.replayed).toBe(false);
+      // A ReplaceBody/EditFrontmatter/Rename apply never echoes a create
+      // identity — `resultNodeId`/`resultStem` stay undefined.
+      expect(outcome.resultNodeId).toBeUndefined();
+      expect(outcome.resultStem).toBeUndefined();
+    }
+  });
+
+  it("reads the echoed create-document identity off a landed create's apply receipt (W03.P09a)", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "applied",
+      replayed: false,
+      changeset_id: "changeset_create",
+      apply_receipt: {
+        child: {
+          document_path: ".vault/research/2026-07-09-alpha-research.md",
+          result_node_id: "doc:2026-07-09-alpha-research",
+          result_stem: "2026-07-09-alpha-research",
+        },
+      },
+      tiers: availableTiers,
+    });
+
+    expect(outcome.kind).toBe("applied");
+    if (outcome.kind === "applied") {
+      // The apply receipt's `document_path` (populated for a landed create)
+      // is preferred over the top-level record's (which stays empty for
+      // create, per direct_write.rs's own `existing_target`-only derivation).
+      expect(outcome.documentPath).toBe(".vault/research/2026-07-09-alpha-research.md");
+      expect(outcome.resultNodeId).toBe("doc:2026-07-09-alpha-research");
+      expect(outcome.resultStem).toBe("2026-07-09-alpha-research");
+    }
+  });
+
+  it("reads a conflict outcome's 3-way blob-hash shape as a VALUE, never a fault", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "conflict",
+      conflict: {
+        document_ref: "2026-01-01-alpha-research",
+        document_path: ".vault/research/2026-01-01-alpha-research.md",
+        expected_blob_hash: "old-hash",
+        actual_blob_hash: "drifted-hash",
+        target_blob_hash: "would-have-been-hash",
+      },
+      tiers: availableTiers,
+    });
+
+    expect(outcome.kind).toBe("conflict");
+    if (outcome.kind === "conflict") {
+      expect(outcome.conflict.expected_blob_hash).toBe("old-hash");
+      expect(outcome.conflict.actual_blob_hash).toBe("drifted-hash");
+      expect(outcome.conflict.target_blob_hash).toBe("would-have-been-hash");
+    }
+  });
+
+  it("reads a denied outcome's reason off the served eligibility", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "denied",
+      eligibility: {
+        command: "direct_write",
+        allowed: false,
+        reason:
+          "direct editor saves require a human actor; agents must propose changesets",
+      },
+      tiers: availableTiers,
+    });
+
+    expect(outcome.kind).toBe("denied");
+    if (outcome.kind === "denied") {
+      expect(outcome.reason).toContain("agents must propose changesets");
+    }
+  });
+
+  it("reads the structured `denial_kind` off a denied outcome (W05.P14)", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "denied",
+      eligibility: {
+        command: "direct_write",
+        allowed: false,
+        reason:
+          "a document already exists at the proposed stem `new-stem`; rename would collide",
+      },
+      denial_kind: "path_collision",
+      tiers: availableTiers,
+    });
+
+    expect(outcome.kind).toBe("denied");
+    if (outcome.kind === "denied") {
+      expect(outcome.denialKind).toBe("path_collision");
+    }
+  });
+
+  it("tolerates an absent or unrecognized `denial_kind` (a future backend variant this client hasn't been taught) by leaving it undefined, never throwing", () => {
+    const absent = adaptDirectWriteOutcome({
+      status: "denied",
+      eligibility: { command: "direct_write", allowed: false, reason: "refused" },
+      tiers: availableTiers,
+    });
+    expect(absent.kind).toBe("denied");
+    if (absent.kind === "denied") expect(absent.denialKind).toBeUndefined();
+
+    const unrecognized = adaptDirectWriteOutcome({
+      status: "denied",
+      eligibility: { command: "direct_write", allowed: false, reason: "refused" },
+      denial_kind: "a-future-kind-this-client-does-not-know",
+      tiers: availableTiers,
+    });
+    expect(unrecognized.kind).toBe("denied");
+    if (unrecognized.kind === "denied") {
+      expect(unrecognized.denialKind).toBeUndefined();
+    }
+  });
+
+  it("reads a failed outcome's redacted diagnostic off the apply receipt's child", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "failed",
+      apply_receipt: {
+        child: { diagnostic: "core_write_rejected" },
+      },
+      tiers: availableTiers,
+    });
+
+    expect(outcome.kind).toBe("failed");
+    if (outcome.kind === "failed") {
+      expect(outcome.reason).toBe("core_write_rejected");
+    }
+  });
+
+  it("reads an in-flight outcome as a value with no data to render yet", () => {
+    const outcome = adaptDirectWriteOutcome({
+      status: "in_flight",
+      tiers: availableTiers,
+    });
+    expect(outcome.kind).toBe("in_flight");
+  });
+
+  it("floors a sparse/absent body so a malformed response never crashes the save UX", () => {
+    const outcome = adaptDirectWriteOutcome(undefined);
+    expect(outcome.kind).toBe("applied");
+    if (outcome.kind === "applied") {
+      expect(outcome.changesetId).toBe("");
+      expect(outcome.blobHash).toBeNull();
+      expect(outcome.documentPath).toBeNull();
+    }
+  });
+});
+
+describe("directWriteWirePayload (ledgered-edit-migration W02.P06 generalization)", () => {
+  it("marshals `replace_body` sending only ref/body/expected_blob_hash (+ common scope/summary)", () => {
+    const wire = directWriteWirePayload({
+      operation: "replace_body",
+      ref: "2026-01-01-alpha-research",
+      body: "the new body",
+      expected_blob_hash: "old-hash",
+      scope: "Y:/repo",
+      summary: "save",
+    });
+
+    expect(wire).toEqual({
+      operation: "replace_body",
+      scope: "Y:/repo",
+      summary: "save",
+      ref: "2026-01-01-alpha-research",
+      body: "the new body",
+      expected_blob_hash: "old-hash",
+    });
+    // No accepted-but-ignored fields from the other kinds leak through.
+    expect(wire.frontmatter).toBeUndefined();
+    expect(wire.new_stem).toBeUndefined();
+    expect(wire.create).toBeUndefined();
+  });
+
+  it("marshals `edit_frontmatter` sending only ref/frontmatter/expected_blob_hash — never `body`", () => {
+    const wire = directWriteWirePayload({
+      operation: "edit_frontmatter",
+      ref: "2026-06-12-dashboard-gui-adr",
+      frontmatter: { date: "2026-06-18", tags: ["#adr"] },
+      expected_blob_hash: "base-h",
+      scope: "Y:/repo",
+    });
+
+    expect(wire).toEqual({
+      operation: "edit_frontmatter",
+      scope: "Y:/repo",
+      summary: undefined,
+      ref: "2026-06-12-dashboard-gui-adr",
+      frontmatter: { date: "2026-06-18", tags: ["#adr"] },
+      expected_blob_hash: "base-h",
+    });
+    expect(wire.body).toBeUndefined();
+  });
+
+  it("marshals `rename` sending only ref/new_stem/expected_blob_hash", () => {
+    const wire = directWriteWirePayload({
+      operation: "rename",
+      ref: "old-stem",
+      new_stem: "new-stem",
+      expected_blob_hash: "base-h",
+    });
+
+    expect(wire).toEqual({
+      operation: "rename",
+      scope: undefined,
+      summary: undefined,
+      ref: "old-stem",
+      new_stem: "new-stem",
+      expected_blob_hash: "base-h",
+    });
+    expect(wire.body).toBeUndefined();
+    expect(wire.frontmatter).toBeUndefined();
+  });
+
+  it("marshals `create_document` sending only `create` — never `ref`/`expected_blob_hash` (the backend refuses either as unexpected)", () => {
+    const wire = directWriteWirePayload({
+      operation: "create_document",
+      create: { doc_type: "research", feature: "alpha", title: "New note" },
+    });
+
+    expect(wire).toEqual({
+      operation: "create_document",
+      scope: undefined,
+      summary: undefined,
+      create: { doc_type: "research", feature: "alpha", title: "New note" },
+    });
+    expect(wire.ref).toBeUndefined();
+    expect(wire.expected_blob_hash).toBeUndefined();
+    expect(wire.body).toBeUndefined();
   });
 });

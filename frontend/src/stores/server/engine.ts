@@ -1224,56 +1224,30 @@ export interface OpsResult {
   tiers: TiersBlock;
 }
 
-// --- §6 vault write/create ops (document-editor backend) -------------------------
+// --- §6 vault maintenance ops (document-editor backend) --------------------------
 //
-// Document mutation goes through the engine's brokered core-ops front door, which
-// forwards vaultspec-core's sibling `{schema, status, data}` envelope VERBATIM
-// under `data.envelope` with the tiers block (engine-read-and-infer: the engine
-// owns no vault-write semantics — it forwards core's verb result). Writes hit
-// `POST /ops/core/{verb}/write` (verb ∈ set-body | set-frontmatter | edit |
-// rename); create hits `POST /ops/core/create`. BOTH success and business-refusal
-// return HTTP 200 — the client branches on the sibling envelope's `status` + the inner
+// Feature-archive and conformance-autofix go through the engine's brokered
+// core-ops front door, which forwards vaultspec-core's sibling `{schema, status,
+// data}` envelope VERBATIM under `data.envelope` with the tiers block
+// (engine-read-and-infer: the engine owns no vault-write semantics — it forwards
+// core's verb result). Archive hits `POST /ops/core/archive`; autofix hits
+// `POST /ops/core/autofix`. BOTH success and business-refusal return HTTP 200 —
+// the client branches on the sibling envelope's `status` + the inner
 // `conflict`/`refused`/`checks` fields, NEVER on the HTTP code (a transport error
 // is a tiers-bearing EngineError, distinct from a refusal).
-
-/** The body of a write op (`set-body` | `set-frontmatter` | `edit` | `rename`). `ref` is the
- *  doc STEM (the `doc:` prefix stripped from the node id). `body` carries the new
- *  document text for `set-body`/`edit`; the frontmatter fields carry the new
- *  metadata for `set-frontmatter`. `expected_blob_hash` is the optimistic-
- *  concurrency token echoed from the last read's `blob_hash`; a mismatch is the
- *  conflict the editor reconciles (never a silent overwrite). */
-export interface OpsWriteBody {
-  scope?: string;
-  ref: string;
-  body?: string;
-  expected_blob_hash?: string;
-  date?: string;
-  tags?: string[];
-  related?: string[];
-  /** The new identity-bearing stem for the `rename` verb (forwarded as `--to`). */
-  to?: string;
-}
-
-/** The body of a create op (`POST /ops/core/create`). */
-export interface OpsCreateBody {
-  scope?: string;
-  doc_type: string;
-  feature: string;
-  title?: string;
-  related?: string[];
-}
+//
+// Every genuine document CONTENT edit (set-body/set-frontmatter/rename/create/
+// relate-link) is ledgered instead (`stores/server/authoring.ts` `directWrite()`)
+// — the `write`/`create`/`link` verbs this seam used to carry are RETIRED
+// (ledgered-edit-migration W04.P12). Archive and autofix are DELIBERATELY
+// retained here: per the ADR, a multi-document archive and a bulk no-single-
+// target autofix don't fit the per-document V1 changeset shape, so they stay
+// vault-maintenance operations, never ledgered.
 
 /** The body of a feature-archive op (`POST /ops/core/archive`). */
 export interface OpsArchiveBody {
   scope?: string;
   feature: string;
-}
-
-/** The body of a relate op (`POST /ops/core/link` → `vault link add <src> <dst>`). */
-export interface OpsLinkBody {
-  scope?: string;
-  src: string;
-  dst: string;
 }
 
 /** The body of a conformance-autofix op (`POST /ops/core/autofix` →
@@ -1284,18 +1258,23 @@ export interface OpsAutofixBody {
 }
 
 /**
- * The typed, discriminated result of a write/create op, interpreted by
- * `adaptOpsWrite` from the sibling envelope's `status` + `data` fields (never the
- * HTTP code). Four outcomes the write/create stores seam exposes:
- *  - `saved`    — `set-body`/`edit`/`set-frontmatter` succeeded; the new
- *                 `blobHash` is the next optimistic-concurrency base, and `checks`
- *                 carries any non-fatal advisory checks. Consumed by the editor
- *                 save lifecycle.
+ * The typed, discriminated result of a document write/create — the shared
+ * result vocabulary the ledgered direct-write stores mutations
+ * (`useSaveBody`/`useSetFrontmatter`/`useCreateDoc`, `stores/server/queries.ts`
+ * `directWriteResultToOpsResult`) map their outcome onto, and the editor
+ * lifecycle (`stores/view/editor.ts` `EditorWriteResult`) consumes. Predates the
+ * ledger (originally interpreted from the legacy `/ops/core/{verb}/write` sibling
+ * envelope by the now-retired `adaptOpsWrite`, ledgered-edit-migration W04.P12);
+ * kept as the shape itself, still live and load-bearing. Four outcomes:
+ *  - `saved`    — a body/frontmatter save succeeded; the new `blobHash` is the
+ *                 next optimistic-concurrency base, and `checks` carries any
+ *                 non-fatal advisory checks. Consumed by the editor save
+ *                 lifecycle.
  *  - `conflict` — the `expected_blob_hash` did not match the on-disk blob
  *                 (someone else wrote); `expected`/`actual` drive the editor
  *                 reconcile UI.
- *  - `refused`  — a frontmatter (or other) validation refusal; `checks`/`errors`
- *                 explain why the write was rejected without parsing prose.
+ *  - `refused`  — a validation refusal or denial; `checks`/`errors` explain why
+ *                 the write was rejected without parsing prose.
  *  - `created`  — a `create` succeeded; the new doc's `path` + `stem`. Consumed
  *                 by the create-doc flow, not by the editor save lifecycle.
  */
@@ -1307,7 +1286,10 @@ export type OpsWriteResult =
 
 /** Narrow the sibling envelope (`{schema, status, data}`) the engine forwards
  *  verbatim under `data.envelope`. The transport already unwrapped `{data, tiers}`
- *  onto the flat `OpsResult` shape, so `envelope` here is that sibling object. */
+ *  onto the flat `OpsResult` shape, so `envelope` here is that sibling object.
+ *  Still used by the RETAINED maintenance ops (archive/autofix,
+ *  `menuActionOutcome.ts`'s `opsRefusalReason`) — every content-edit consumer
+ *  that used to read it (the legacy write/create path) is ledgered now. */
 export function envelopeData(envelope: unknown): {
   status?: string;
   data: Record<string, unknown>;
@@ -1320,52 +1302,6 @@ export function envelopeData(envelope: unknown): {
       ? (env.data as Record<string, unknown>)
       : {};
   return { status, data };
-}
-
-const asString = (v: unknown): string => (typeof v === "string" ? v : "");
-
-/**
- * Interpret a write/create `OpsResult` into the typed `OpsWriteResult`, branching
- * on the sibling envelope's `status` + the inner `data` fields, NEVER on an HTTP
- * code (the wire returns 200 for both success and business-refusal). A blob-hash
- * conflict (`data.conflict === true`) and a validation refusal (`data.refused ===
- * true`) are distinct non-fatal outcomes the editor reconciles, NOT thrown errors;
- * an unrecognized failure shape degrades to a `refused` with the message it
- * carries so the caller still surfaces it honestly rather than swallowing it.
- */
-export function adaptOpsWrite(result: OpsResult): OpsWriteResult {
-  const { status, data } = envelopeData(result.envelope);
-  // A conflict and a refusal both ride a `status: "failed"` envelope; the inner
-  // `conflict`/`refused` flags discriminate them (branch on data, not HTTP).
-  if (data.conflict === true) {
-    return {
-      kind: "conflict",
-      expected: asString(data.expected),
-      actual: asString(data.actual),
-      path: typeof data.path === "string" ? data.path : undefined,
-    };
-  }
-  if (data.refused === true) {
-    return {
-      kind: "refused",
-      checks: Array.isArray(data.checks) ? data.checks : [],
-      errors: Array.isArray(data.errors)
-        ? data.errors.filter((e): e is string => typeof e === "string")
-        : [],
-      path: typeof data.path === "string" ? data.path : undefined,
-    };
-  }
-  if (status === "created") {
-    return { kind: "created", path: asString(data.path), stem: asString(data.stem) };
-  }
-  // Any non-failed write status (`updated` / `set` / `ok`) with no conflict/refusal
-  // flag is a successful save; the new blob hash is the next concurrency base.
-  return {
-    kind: "saved",
-    path: asString(data.path),
-    blobHash: asString(data.blob_hash),
-    checks: Array.isArray(data.checks) ? data.checks : [],
-  };
 }
 
 // --- read-only /ops/git pass-through (dashboard-pipeline-wire W04) ---------------------
@@ -2204,45 +2140,23 @@ export class EngineClient {
     return this.post(`/ops/rag/${encodeURIComponent(verb)}`, body);
   }
 
-  /** A document WRITE op (document-editor backend): `set-body` | `set-frontmatter`
-   *  | `edit` | `rename` against `POST /ops/core/{verb}/write`. The engine forwards core's
-   *  `{schema, status, data}` envelope VERBATIM under `data.envelope` with the
-   *  tiers block (engine-read-and-infer), HTTP 200 for both success and business-
-   *  refusal; the caller interprets the outcome via `adaptOpsWrite`, branching on
-   *  the envelope status + data, never the HTTP code. */
-  opsCoreWrite(verb: string, body: OpsWriteBody): Promise<OpsResult> {
-    return this.post(`/ops/core/${encodeURIComponent(verb)}/write`, body);
-  }
-
-  /** A document CREATE op (document-editor backend): `POST /ops/core/create`. The
-   *  engine forwards core's `vaultspec.vault.add.v1` `created` envelope verbatim
-   *  under `data.envelope` with the tiers block; `adaptOpsWrite` yields the new
-   *  doc's path + stem. */
-  opsCoreCreate(body: OpsCreateBody): Promise<OpsResult> {
-    return this.post("/ops/core/create", body);
-  }
-
   /** A feature-archive op: `POST /ops/core/archive` forwards
    *  `vaultspec-core vault feature archive <tag>`. The engine validates/bounds the
    *  feature token and forwards core's envelope VERBATIM under `data.envelope` with
    *  the tiers block (engine-read-and-infer); HTTP 200 for both a success and a
-   *  business refusal (e.g. unknown tag), the caller branching on the envelope. */
+   *  business refusal (e.g. unknown tag), the caller branching on the envelope.
+   *  RETAINED (ledgered-edit-migration ADR): a multi-document vault-maintenance
+   *  op, not a document edit — stays on this brokered seam, never ledgered. */
   opsCoreArchive(body: OpsArchiveBody): Promise<OpsResult> {
     return this.post("/ops/core/archive", body);
-  }
-
-  /** A relate op: `POST /ops/core/link` forwards `vault link add <src> <dst>` to
-   *  add a `related:` edge. The engine validates/bounds the two stems and forwards
-   *  core's envelope VERBATIM under `data.envelope` with the tiers block; HTTP 200
-   *  for both a success and a business refusal (e.g. a dangling target). */
-  opsCoreLink(body: OpsLinkBody): Promise<OpsResult> {
-    return this.post("/ops/core/link", body);
   }
 
   /** A conformance-autofix op: `POST /ops/core/autofix` forwards
    *  `vault check all --fix --feature <tag>`. Feature-scoped (the only fix grain
    *  the sibling exposes); the engine validates/bounds the feature token and
-   *  forwards core's envelope verbatim under `data.envelope`. */
+   *  forwards core's envelope verbatim under `data.envelope`. RETAINED
+   *  (ledgered-edit-migration ADR): a bulk vault-maintenance op with no single
+   *  target, not a document edit — stays on this brokered seam, never ledgered. */
   opsCoreAutofix(body: OpsAutofixBody): Promise<OpsResult> {
     return this.post("/ops/core/autofix", body);
   }

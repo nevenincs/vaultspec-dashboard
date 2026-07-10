@@ -6,7 +6,7 @@
 //! route handlers.
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use engine_model::ScopeRef;
 use ingest_struct::reader::{DocumentBody, StructError, blob_oid};
@@ -177,6 +177,13 @@ impl SnapshotReader {
             root: root.into(),
             scope: ScopeRef::Ref { name: name.into() },
         }
+    }
+
+    /// The worktree root this reader was bound to (W02.P04) — needed by a
+    /// caller that must ALSO resolve document identities (e.g. a rename's
+    /// rollback re-resolving by node id), not just read snapshots.
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     pub fn capture_existing(&self, document: &DocumentRef) -> Result<RevisionSnapshot> {

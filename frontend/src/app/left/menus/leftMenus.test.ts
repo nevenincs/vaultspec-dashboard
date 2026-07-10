@@ -168,7 +168,7 @@ describe("vaultDocMenu", () => {
     expect(relate?.dispatch).toBeUndefined();
   });
 
-  it("relate dispatches a link-add op when a DIFFERENT document is focused", () => {
+  it("relate dispatches the relate action when a DIFFERENT document is focused", () => {
     const actions = vaultDocMenu(
       {
         kind: "vault-doc",
@@ -183,13 +183,8 @@ describe("vaultDocMenu", () => {
     expect(relate?.disabled).toBeUndefined();
     expect(relate?.disabledInTimeTravel).toBe(true);
     expect(relate?.dispatch).toEqual({
-      type: "ops:run",
-      payload: {
-        target: "core",
-        verb: "link-add",
-        mode: "link",
-        body: { scope: "scope-a", src: "my-stem", dst: "other-stem" },
-      },
+      type: "relate:link",
+      payload: { src: "my-stem", dst: "other-stem", scope: "scope-a" },
     });
   });
 

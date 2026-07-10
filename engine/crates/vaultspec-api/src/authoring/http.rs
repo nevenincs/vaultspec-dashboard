@@ -37,8 +37,9 @@ use super::api::{
     CommandEnvelope, CreateProposalRequest, CreateSessionRequest,
     DirectWriteRequest as DirectWriteRequestDto, InterruptResumeRequest, IssueActorTokenRequest,
     LeaseAcquireRequest, LeaseReleaseRequest, LeaseRenewRequest, ResumeRunRequest,
-    ReviewDecisionRequest, RollbackRequest as RollbackRequestDto, SetOperationModeRequest,
-    StartPromptTurnRequest, SubmitForReviewRequest, ToolPermissionDecisionRequest,
+    ReviewClaimRequest, ReviewDecisionRequest, ReviewReleaseRequest, ReviewRespondRequest,
+    RollbackRequest as RollbackRequestDto, SetOperationModeRequest, StartPromptTurnRequest,
+    SubmitForReviewRequest, ToolPermissionDecisionRequest,
 };
 use super::apply::{ApplyError, ApplyOutcome, ApplyRequest};
 use super::approvals::{
@@ -69,6 +70,13 @@ use super::projections::ProjectionError;
 use super::proposal::{
     DraftProposalRequest, ProposalCommandContext, ProposalCommandOutcome, ProposalCommandResult,
     SubmitProposalRequest, TerminalProposalRequest, ValidateProposalRequest, validation_evidence,
+};
+use super::rebase::{
+    CreateReplacementProposalRequest, RebaseProposalRequest, ReplacementProposalResult,
+    create_replacement_proposal, rebase_proposal,
+};
+use super::review::{
+    ClaimReviewInput, MAX_PROVENANCE_ENTRIES, ReviewClaimOutcome, ReviewClaimPurpose,
 };
 use super::rollback::{RollbackOutcome, RollbackRequest, RollbackSourceChild};
 use super::security::{CommandAuthorization, authorize_command, tool_requester_kind_guard};
@@ -539,6 +547,13 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
             "/v1/proposals/{changeset_id}/replace",
             post(replace_proposal_draft),
         )
+        // Explicit rebase / supersession (W13.P28, wired W14.P42a): advance a stale
+        // proposal only through a reviewed decision. Both mutating → floor-authorized.
+        .route(
+            "/v1/proposals/{changeset_id}/rebase",
+            post(rebase_changeset),
+        )
+        .route("/v1/replacement-proposals", post(create_replacement))
         .route(
             "/v1/proposals/{changeset_id}/snapshot",
             get(proposal_snapshot),
@@ -548,6 +563,10 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
             get(proposal_conflicts),
         )
         .route(
+            "/v1/proposals/{changeset_id}/provenance",
+            get(proposal_provenance),
+        )
+        .route(
             "/v1/proposals/{changeset_id}/submit",
             post(submit_for_review),
         )
@@ -555,6 +574,13 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
             "/v1/reviews/{approval_id}/decisions",
             post(submit_review_decision),
         )
+        // Review-station (W13.P24, wired W14.P42a): the human review queue + advisory
+        // claim/release/respond. The changeset id rides the body (mirroring the lease
+        // action routes) to avoid a path-param clash with `/reviews/{approval_id}`.
+        .route("/v1/review-queue", get(review_queue))
+        .route("/v1/review-claims", post(claim_review))
+        .route("/v1/review-claims/release", post(release_review))
+        .route("/v1/review-claims/respond", post(respond_review))
         .route("/v1/apply-requests", post(apply_changeset))
         .route("/v1/rollback-proposals", post(create_rollback))
         .route("/v1/mode", post(set_operation_mode))
@@ -1273,6 +1299,92 @@ pub async fn replace_proposal_draft(
     mutate_proposal_draft(state, changeset_id, command, DraftRoute::Replace).await
 }
 
+// --- explicit rebase / supersession (W13.P28, wired W14.P42a) ------------------
+
+/// `POST /authoring/v1/proposals/{changeset_id}/rebase` — rebase a CONFLICTED changeset
+/// onto the current document state in place, producing a fresh reviewable `Draft`
+/// revision. Mirrors the draft-mutation shape: the path changeset id must match the body
+/// (coherence), and the domain handler owns its own idempotency + unit of work. A
+/// non-conflicted head or an anchor-drift child rides the 200 envelope as a denial VALUE; a
+/// stale `expected_revision` is a typed conflict fault. The actor is the middleware-resolved
+/// principal (standing already cleared at the extractor floor).
+pub async fn rebase_changeset(
+    State(state): State<Arc<AppState>>,
+    Path(changeset_id): Path<String>,
+    command: ResolvedCommand<RebaseProposalRequest>,
+) -> Response {
+    let changeset_id = match ChangesetId::new(&changeset_id) {
+        Ok(id) => id,
+        Err(err) => {
+            return super::response::typed_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                REQUEST_INVALID_KIND,
+                &format!("invalid changeset id: {err}"),
+            )
+            .into_response();
+        }
+    };
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    if payload.changeset_id != changeset_id {
+        return super::response::typed_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            REQUEST_INVALID_KIND,
+            "path changeset id does not match the request body",
+        )
+        .into_response();
+    }
+    let context = proposal_context(actor, idempotency_key, now);
+    let worktree_root = state.active_workspace_root();
+    match state
+        .with_authoring_store(|store| rebase_proposal(store, &worktree_root, context, payload))
+    {
+        Ok(result) => proposal_result_response(&state, result),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// Map a two-legged replacement outcome to a response that surfaces BOTH legs faithfully:
+/// the create (`replacement`) leg drives the HTTP status, and the value carries the
+/// replacement result plus the supersession result (`null` when the create did not land, so
+/// the source was never superseded). A denied/in-flight create is visibly distinct from a
+/// completed supersede.
+fn replacement_result_response(state: &AppState, result: ReplacementProposalResult) -> Response {
+    let (status, replacement_value) = proposal_result_value(&result.replacement);
+    let supersession_value = result
+        .supersession
+        .as_ref()
+        .map(|supersession| proposal_result_value(supersession).1);
+    let value = json!({
+        "replacement": replacement_value,
+        "supersession": supersession_value,
+    });
+    (status, super::response::snapshot(state, value)).into_response()
+}
+
+/// `POST /authoring/v1/replacement-proposals` — supersede a stale-but-not-conflicted source
+/// with a fresh candidate seeded from its carried-forward operations. The source id is in
+/// the request body (there is no single path resource — the command spans two changesets).
+/// CREATE-then-SUPERSEDE: the source is never superseded unless the replacement create
+/// landed. The actor is the middleware-resolved principal.
+pub async fn create_replacement(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<CreateReplacementProposalRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let context = proposal_context(actor, idempotency_key, now);
+    let worktree_root = state.active_workspace_root();
+    match state.with_authoring_store(|store| {
+        create_replacement_proposal(store, &worktree_root, context, payload)
+    }) {
+        Ok(result) => replacement_result_response(&state, result),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
 // --- submit for review (composite: validate + submit + open approval) ---------
 
 /// The reduced outcome of one composed proposal command: its recorded outcome
@@ -1847,21 +1959,21 @@ pub async fn submit_review_decision(
         )
         .into_response();
     }
+    // FLIP (W14.P42a S261): `Respond` is a claim-based CLARIFICATION exchange, not an
+    // approval decision — it never submits a decision and preserves the changeset status.
+    // Route it to the review-station engine, resolving the changeset from the approval.
+    if matches!(payload.decision, ReviewDecisionKind::Respond) {
+        return respond_via_review_decision(&state, &actor, &payload, now);
+    }
     let decision = match payload.decision {
         ReviewDecisionKind::Approve => ApprovalDecision::Approve,
         ReviewDecisionKind::Reject => ApprovalDecision::Reject,
-        // Edit / Respond (request-changes + edit-response review loops) are reserved
-        // for W05.P24; the V1 review subset is approve/reject only. This rides the
-        // success envelope as a denial value (denials-are-values), never a fault.
-        ReviewDecisionKind::Edit | ReviewDecisionKind::Respond => {
-            return denial_snapshot(
-                &state,
-                &ActionEligibility::denied(
-                    CommandKind::EditProposal,
-                    "request-changes and edit-response review loops are reserved for W05.P24; \
-                     the V1 review subset is approve/reject only",
-                ),
-            );
+        // FLIP: `Edit` → the request-changes / reviewer-edit loop. It flows through the SAME
+        // approval engine as approve/reject; `submit_decision` applies the EditProposal arc
+        // (NeedsReview|Approved -> Draft), staling the prior approval.
+        ReviewDecisionKind::Edit => ApprovalDecision::RequestChanges,
+        ReviewDecisionKind::Respond => {
+            unreachable!("respond is routed to the review station above")
         }
     };
     let command_kind = match decision {
@@ -1937,6 +2049,201 @@ pub async fn submit_review_decision(
     }
 }
 
+// --- review station: queue, claims, provenance (W13.P24, wired W14.P42a) -------
+
+/// Map a review-claim operation outcome to its enveloped VALUE: allowed vs a denial value (a
+/// contended claim, a non-holder release/respond, a self-review ban) with the item's current
+/// advisory claim row (its holder, live window, and latest clarification exchange).
+fn review_claim_outcome_value(outcome: &ReviewClaimOutcome) -> Value {
+    json!({
+        "status": if outcome.eligibility.allowed { "allowed" } else { "denied" },
+        "allowed": outcome.eligibility.allowed,
+        "command": outcome.eligibility.command,
+        "reason": outcome.eligibility.reason,
+        "replayed": outcome.replayed,
+        "claim": outcome.record.as_ref().map(|record| json!({
+            "changeset_id": record.changeset_id,
+            "state": record.state,
+            "purpose": record.purpose,
+            "reviewer": record.reviewer,
+            "claimed_at_ms": record.claimed_at_ms,
+            "expires_at_ms": record.expires_at_ms,
+            "latest_clarification": record.latest_clarification,
+        })),
+    })
+}
+
+fn review_claim_outcome_response(state: &AppState, outcome: &ReviewClaimOutcome) -> Response {
+    super::response::snapshot(state, review_claim_outcome_value(outcome)).into_response()
+}
+
+/// `POST /authoring/v1/review-claims` — advisory claim of a changeset's review item. A live
+/// claim by a DIFFERENT reviewer rides the 200 envelope as a denial value; the self-review
+/// ban (an automated proposer cannot review its own work) is a denial too. The reviewer is
+/// the middleware-resolved principal.
+pub async fn claim_review(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<ReviewClaimRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let input = ClaimReviewInput {
+        changeset_id: payload.changeset_id,
+        purpose: ReviewClaimPurpose::Review,
+        reviewer: actor,
+        idempotency_key: idempotency_key.as_str().to_string(),
+        now_ms: now,
+        ttl_ms: payload.ttl_ms.map(|ttl| ttl as i64),
+    };
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::ClaimReview, |uow| {
+            uow.review_station().claim(input)
+        })
+    }) {
+        Ok(outcome) => review_claim_outcome_response(&state, &outcome),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `POST /authoring/v1/review-claims/release` — release a held review claim (holder-only; a
+/// non-holder release is a denial value and leaves the claim held by its owner).
+pub async fn release_review(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<ReviewReleaseRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, _idempotency_key, payload) = command.into_parts();
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::ReleaseReview, |uow| {
+            uow.review_station()
+                .release(&payload.changeset_id, &actor, now)
+        })
+    }) {
+        Ok(outcome) => review_claim_outcome_response(&state, &outcome),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `POST /authoring/v1/review-claims/respond` — record a clarification response on a held
+/// item (holder-only; status-preserving — the item stays `claimed`). A non-holder or an
+/// absent/expired claim is a denial value.
+pub async fn respond_review(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<ReviewRespondRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, _idempotency_key, payload) = command.into_parts();
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::Respond, |uow| {
+            uow.review_station()
+                .respond(&payload.changeset_id, &actor, payload.comment, now)
+        })
+    }) {
+        Ok(outcome) => review_claim_outcome_response(&state, &outcome),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// The `Respond` review-decision flip: a clarification exchange over the review-station
+/// engine, resolving the changeset from the approval. It never submits an approval decision
+/// and preserves the changeset status. An absent comment is a denial value.
+fn respond_via_review_decision(
+    state: &AppState,
+    actor: &ActorRef,
+    payload: &ReviewDecisionRequest,
+    now: i64,
+) -> Response {
+    let Some(comment) = payload.comment.clone() else {
+        return denial_snapshot(
+            state,
+            &ActionEligibility::denied(
+                CommandKind::Respond,
+                "a clarification response requires a comment",
+            ),
+        );
+    };
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::Respond, |uow| {
+            let approval = uow
+                .approvals()
+                .latest_for_proposal(&payload.proposal_id)?
+                .ok_or_else(|| {
+                    StoreError::Approval(format!(
+                        "no approval request exists for proposal `{}`",
+                        payload.proposal_id
+                    ))
+                })?;
+            uow.review_station()
+                .respond(&approval.changeset_id, actor, comment, now)
+        })
+    }) {
+        Ok(outcome) => review_claim_outcome_response(state, &outcome),
+        Err(err) => command_error_response(state, &err),
+    }
+}
+
+/// `GET /authoring/v1/review-queue` — the bounded review-station queue (needs-review work
+/// waiting for humans) with each item's composed four-state and advisory claim overlay. No
+/// principal required (reads are unauthenticated); a store failure degrades to a typed 503.
+pub async fn review_queue(State(state): State<Arc<AppState>>) -> Response {
+    let now = now_ms();
+    let worktree_root = state.active_workspace_root();
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            uow.review_station().review_queue(&worktree_root, now)
+        })
+    }) {
+        Ok(projection) => super::response::snapshot(
+            &state,
+            serde_json::to_value(projection).expect("review queue projection serializes"),
+        )
+        .into_response(),
+        Err(err) => store_unavailable(&state, &err),
+    }
+}
+
+/// `GET /authoring/v1/proposals/{changeset_id}/provenance` — the bounded, REDACTED
+/// provenance trail for one changeset: the append-only revision chain, the reviewer's
+/// decision, and the structured lineage. Redaction is structural — only material FINGERPRINTS
+/// (id + content hash + byte length) are surfaced, never bodies. 404 for an unknown changeset.
+pub async fn proposal_provenance(
+    State(state): State<Arc<AppState>>,
+    Path(changeset_id): Path<String>,
+) -> Response {
+    let changeset_id = match ChangesetId::new(&changeset_id) {
+        Ok(id) => id,
+        Err(err) => {
+            return super::response::typed_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                REQUEST_INVALID_KIND,
+                &format!("invalid changeset id: {err}"),
+            )
+            .into_response();
+        }
+    };
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            uow.review_station()
+                .changeset_provenance(&changeset_id, MAX_PROVENANCE_ENTRIES)
+        })
+    }) {
+        Ok(Some(trail)) => super::response::snapshot(
+            &state,
+            serde_json::to_value(trail).expect("provenance trail serializes"),
+        )
+        .into_response(),
+        Ok(None) => super::response::typed_error(
+            &state,
+            StatusCode::NOT_FOUND,
+            "authoring_proposal_not_found",
+            "no such changeset",
+        )
+        .into_response(),
+        Err(err) => store_unavailable(&state, &err),
+    }
+}
+
 /// Map an approval decision outcome to its enveloped response: a refused decision
 /// (the self-approval ban, a stale/ineligible review) rides the 200 success
 /// envelope as a denied value; a permitted decision serves the durable approval.
@@ -2005,9 +2312,9 @@ fn mode_update_response(state: &AppState, scope_id: &str, update: OperationModeU
 // --- direct editor save -------------------------------------------------------
 
 /// `POST /authoring/v1/direct-writes` — route a human editor save through the
-/// authoring ledger as a self-approved direct changeset. The direct path is
-/// authoritative for the live worktree; the legacy core write is measured only
-/// against an isolated temporary copy inside the domain handler.
+/// authoring ledger as a self-approved direct changeset. Direct-changeset is
+/// the sole materializer (W14.P47 retired the legacy `/ops/core` dual-run
+/// comparison); `capabilities.enabled` is a pure kill switch, on by default.
 pub async fn direct_write(
     State(state): State<Arc<AppState>>,
     command: ResolvedCommand<DirectWriteRequestDto>,
@@ -2026,9 +2333,7 @@ pub async fn direct_write(
 
     let worktree_root = state.active_workspace_root();
     let capabilities = super::direct_write::DirectWriteCapabilities::for_worktree(&worktree_root);
-    if !capabilities.enabled
-        || capabilities.authority != super::direct_write::DirectWriteAuthorityMode::DirectChangeset
-    {
+    if !capabilities.enabled {
         return super::response::typed_error(
             &state,
             StatusCode::SERVICE_UNAVAILABLE,
@@ -3313,19 +3618,106 @@ mod tests {
         assert!(prepared["tiers"]["semantic"]["available"].is_boolean());
     }
 
-    fn direct_write_envelope(doc_ref: &str, body: &str, expected: &str, idem: &str) -> Value {
+    fn direct_write_envelope_for(payload: DirectWriteRequest, idem: &str) -> Value {
         serde_json::to_value(CommandEnvelope {
             api_version: ApiVersion::V1,
             command: CommandKind::DirectWrite,
             idempotency_key: IdempotencyKey::new(idem).unwrap(),
-            payload: DirectWriteRequest {
-                doc_ref: doc_ref.to_string(),
-                body: body.to_string(),
-                expected_blob_hash: expected.to_string(),
-                summary: Some("route editor save".to_string()),
-            },
+            payload,
         })
         .unwrap()
+    }
+
+    fn direct_write_envelope(doc_ref: &str, body: &str, expected: &str, idem: &str) -> Value {
+        direct_write_envelope_for(
+            DirectWriteRequest {
+                doc_ref: Some(doc_ref.to_string()),
+                operation: ChangesetOperationKind::ReplaceBody,
+                body: body.to_string(),
+                frontmatter: None,
+                new_stem: None,
+                create: None,
+                expected_blob_hash: Some(expected.to_string()),
+                summary: Some("route editor save".to_string()),
+                scope: None,
+            },
+            idem,
+        )
+    }
+
+    fn direct_write_frontmatter_envelope(
+        doc_ref: &str,
+        date: &str,
+        expected: &str,
+        idem: &str,
+    ) -> Value {
+        direct_write_envelope_for(
+            DirectWriteRequest {
+                doc_ref: Some(doc_ref.to_string()),
+                operation: ChangesetOperationKind::EditFrontmatter,
+                body: String::new(),
+                frontmatter: Some(super::super::api::FrontmatterEditFields {
+                    date: Some(date.to_string()),
+                    tags: None,
+                    related: None,
+                }),
+                new_stem: None,
+                create: None,
+                expected_blob_hash: Some(expected.to_string()),
+                summary: Some("route editor frontmatter save".to_string()),
+                scope: None,
+            },
+            idem,
+        )
+    }
+
+    fn direct_write_rename_envelope(
+        doc_ref: &str,
+        new_stem: &str,
+        expected: &str,
+        idem: &str,
+    ) -> Value {
+        direct_write_envelope_for(
+            DirectWriteRequest {
+                doc_ref: Some(doc_ref.to_string()),
+                operation: ChangesetOperationKind::Rename,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: Some(new_stem.to_string()),
+                create: None,
+                expected_blob_hash: Some(expected.to_string()),
+                summary: Some("route editor rename save".to_string()),
+                scope: None,
+            },
+            idem,
+        )
+    }
+
+    fn direct_write_create_envelope(
+        doc_type: &str,
+        feature: &str,
+        title: &str,
+        idem: &str,
+    ) -> Value {
+        direct_write_envelope_for(
+            DirectWriteRequest {
+                doc_ref: None,
+                operation: ChangesetOperationKind::CreateDocument,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: None,
+                create: Some(super::super::api::DirectWriteCreateParams {
+                    doc_type: doc_type.to_string(),
+                    feature: feature.to_string(),
+                    title: title.to_string(),
+                    related: Vec::new(),
+                }),
+                expected_blob_hash: None,
+                summary: Some("route editor new document".to_string()),
+                scope: None,
+            },
+            idem,
+        )
     }
 
     async fn post_authoring(
@@ -3389,8 +3781,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn direct_write_route_is_disabled_until_backend_capability_file_enables_it() {
+    async fn direct_write_route_is_enabled_by_default_with_no_capability_file() {
+        // Uses the CORE-scaffolded fixture (not the bare `fixture_state()`): with
+        // no capability file, direct-changeset is authoritative by default, so
+        // this save must reach a real APPLIED receipt through the real core.
+        let (dir, state) = fixture_state_with_core();
+        let human = human_reviewer();
+        register_actor(&state, &human);
+        let token = issue_token_in_state(&state, &human);
+        let doc_ref = ".vault/plan/operation-plan.md";
+        let base = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-07-06'\n---\n\n# Plan\n\nbase\n";
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, body) = post_authoring(
+            router,
+            "/v1/direct-writes",
+            &token,
+            direct_write_envelope(
+                doc_ref,
+                "# Plan\n\nroute body\n",
+                &blob_oid(base.as_bytes()),
+                "idem:route:on-by-default",
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["data"]["status"], "applied");
+        assert!(
+            body["data"].get("legacy").is_none(),
+            "the retired legacy comparison must not appear on the outcome: {body}"
+        );
+        let Json(status_body) = super::super::response::enabled_status(&state);
+        assert_eq!(status_body["data"]["capabilities"]["direct_write"], true);
+        assert!(
+            !dir.path()
+                .join(".vault/data/authoring-state/direct-write-capabilities.json")
+                .exists(),
+            "the enabled default is read, not synthesized by creating config"
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_write_route_is_disabled_by_the_capability_kill_switch() {
         let (dir, state) = fixture_state();
+        super::super::direct_write::DirectWriteCapabilities::write_for_tests(
+            dir.path(),
+            super::super::direct_write::DirectWriteCapabilities::disabled(),
+        );
         let human = human_reviewer();
         register_actor(&state, &human);
         let token = issue_token_in_state(&state, &human);
@@ -3430,21 +3868,11 @@ mod tests {
 
         let Json(status_body) = super::super::response::enabled_status(&state);
         assert_eq!(status_body["data"]["capabilities"]["direct_write"], false);
-        assert!(
-            !dir.path()
-                .join(".vault/data/authoring-state/direct-write-capabilities.json")
-                .exists(),
-            "the disabled default is read, not synthesized by creating config"
-        );
     }
 
     #[tokio::test]
     async fn direct_write_route_uses_actor_token_and_records_agent_denial_as_value() {
-        let (dir, state) = fixture_state();
-        super::super::direct_write::DirectWriteCapabilities::write_for_tests(
-            dir.path(),
-            super::super::direct_write::DirectWriteCapabilities::direct_dual_run(),
-        );
+        let (_dir, state) = fixture_state();
         register_actor(&state, &agent());
         let token = issue_token_in_state(&state, &agent());
         let doc_ref = ".vault/plan/2026-06-30-authoring-http-plan.md";
@@ -3472,6 +3900,8 @@ mod tests {
                 .as_str()
                 .is_some_and(|reason| reason.contains("agents must propose changesets"))
         );
+        // W05.P14: the wire discriminator, set from the actor-kind gate itself.
+        assert_eq!(body["data"]["denial_kind"], "forbidden_actor");
         assert!(body["tiers"]["semantic"]["available"].is_boolean());
         assert!(
             !body.to_string().contains("route denied body"),
@@ -3481,11 +3911,7 @@ mod tests {
 
     #[tokio::test]
     async fn direct_write_route_rejects_the_wrong_command_kind_before_execution() {
-        let (dir, state) = fixture_state();
-        super::super::direct_write::DirectWriteCapabilities::write_for_tests(
-            dir.path(),
-            super::super::direct_write::DirectWriteCapabilities::direct_dual_run(),
-        );
+        let (_dir, state) = fixture_state();
         register_actor(&state, &human_reviewer());
         let token = issue_token_in_state(&state, &human_reviewer());
         let doc_ref = ".vault/plan/2026-06-30-authoring-http-plan.md";
@@ -3506,12 +3932,231 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authoring_status_reports_enabled_direct_write_capability_through_router() {
-        let (dir, state) = fixture_state();
-        super::super::direct_write::DirectWriteCapabilities::write_for_tests(
-            dir.path(),
-            super::super::direct_write::DirectWriteCapabilities::direct_dual_run(),
+    async fn direct_write_route_applies_a_frontmatter_edit_through_the_real_core() {
+        let (dir, state) = fixture_state_with_core();
+        let human = human_reviewer();
+        register_actor(&state, &human);
+        let token = issue_token_in_state(&state, &human);
+        let base = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-07-06'\n---\n\n# Plan\n\nbase\n";
+        let router = authoring_router(state.clone()).with_state(state);
+
+        let (status, body) = post_authoring(
+            router,
+            "/v1/direct-writes",
+            &token,
+            direct_write_frontmatter_envelope(
+                "operation-plan",
+                "2026-08-08",
+                &blob_oid(base.as_bytes()),
+                "idem:route:frontmatter",
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["data"]["status"], "applied");
+        let saved =
+            std::fs::read_to_string(dir.path().join(".vault/plan/operation-plan.md")).unwrap();
+        assert!(saved.contains("date: '2026-08-08'"), "{saved}");
+    }
+
+    #[tokio::test]
+    async fn direct_write_route_applies_a_rename_through_the_real_core() {
+        let (dir, state) = fixture_state_with_core();
+        let human = human_reviewer();
+        register_actor(&state, &human);
+        let token = issue_token_in_state(&state, &human);
+        let base = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-07-06'\n---\n\n# Plan\n\nbase\n";
+        let router = authoring_router(state.clone()).with_state(state);
+
+        let (status, body) = post_authoring(
+            router,
+            "/v1/direct-writes",
+            &token,
+            direct_write_rename_envelope(
+                "operation-plan",
+                "operation-plan-renamed",
+                &blob_oid(base.as_bytes()),
+                "idem:route:rename",
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["data"]["status"], "applied");
+        assert!(!dir.path().join(".vault/plan/operation-plan.md").exists());
+        assert!(
+            dir.path()
+                .join(".vault/plan/operation-plan-renamed.md")
+                .exists()
         );
+    }
+
+    #[tokio::test]
+    async fn direct_write_route_applies_a_create_document_through_the_real_core() {
+        let (dir, state) = fixture_state_with_core();
+        let human = human_reviewer();
+        register_actor(&state, &human);
+        let token = issue_token_in_state(&state, &human);
+        let router = authoring_router(state.clone()).with_state(state);
+
+        let (status, body) = post_authoring(
+            router,
+            "/v1/direct-writes",
+            &token,
+            direct_write_create_envelope(
+                "plan",
+                "http-direct-create",
+                "HTTP Direct Create",
+                "idem:route:create",
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["data"]["status"], "applied");
+        let child = &body["data"]["record"]["apply_receipt"]["child"];
+        assert_eq!(child["outcome"], "applied", "{body}");
+
+        // W03.P09a: the outcome now ECHOES the created document's real
+        // identity (path/node-id/stem) — the frontend auto-open restore
+        // reads this instead of guessing core's date-slug filename
+        // convention client-side. Assert on the ECHOED identity, then use
+        // it (not a re-derived guess) to confirm the file landed for real.
+        let document_path = child["document_path"]
+            .as_str()
+            .expect("an applied create echoes its real document_path");
+        assert!(
+            document_path.contains("http-direct-create"),
+            "{document_path}"
+        );
+        let result_stem = child["result_stem"]
+            .as_str()
+            .expect("an applied create echoes its real result_stem");
+        assert!(result_stem.contains("http-direct-create"), "{result_stem}");
+        assert_eq!(
+            child["result_node_id"].as_str(),
+            Some(format!("doc:{result_stem}").as_str())
+        );
+        assert!(
+            dir.path().join(document_path).exists(),
+            "the real vaultspec-core create must land at the ECHOED document_path: {document_path}"
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_write_route_refuses_a_mismatched_scope_pin_as_a_redacted_denial() {
+        let (_dir, state) = fixture_state();
+        register_actor(&state, &human_reviewer());
+        let token = issue_token_in_state(&state, &human_reviewer());
+        let doc_ref = ".vault/plan/2026-06-30-authoring-http-plan.md";
+        let base = "---\ntags:\n  - '#plan'\n  - '#authoring'\n---\n\nbody\n";
+        let mut envelope = direct_write_envelope(
+            doc_ref,
+            "route body",
+            &blob_oid(base.as_bytes()),
+            "idem:route:scope-mismatch",
+        );
+        envelope["payload"]["scope"] = json!("/a/completely/different/workspace");
+        let router = authoring_router(state.clone()).with_state(state.clone());
+
+        let (status, body) = post_authoring(router, "/v1/direct-writes", &token, envelope).await;
+
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "a scope mismatch is a denial VALUE: {body}"
+        );
+        assert_eq!(body["data"]["status"], "denied");
+        assert!(
+            body["data"]["eligibility"]["reason"].as_str().is_some_and(
+                |reason| reason.contains("does not match the server's active workspace")
+            )
+        );
+        // W05.P14: the wire discriminator, set at the scope-pin check itself.
+        assert_eq!(body["data"]["denial_kind"], "scope_mismatch");
+        assert!(
+            !body.to_string().contains("completely/different/workspace"),
+            "the denial must never echo the foreign scope back onto the wire: {body}"
+        );
+        // No ledger side effect: the mismatch is refused before ANY changeset
+        // or direct-write record exists for this idempotency key.
+        let marker = state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::DirectWrite, |uow| {
+                    uow.direct_writes().record_by_actor_key(
+                        &human_reviewer(),
+                        &IdempotencyKey::new("idem:route:scope-mismatch").unwrap(),
+                    )
+                })
+            })
+            .unwrap();
+        assert!(
+            marker.is_none(),
+            "a scope-pin mismatch must not persist a direct-write record"
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_write_route_a_matching_scope_pin_proceeds_and_applies_through_the_real_core() {
+        // The positive-path proof the mismatch test above does NOT cover: a
+        // pin carrying the identity the FRONTEND actually sends
+        // (`engine_model::scope_token`, not `modes::scope_id_for_worktree` —
+        // see `scope_pin_mismatch`'s doc) must PROCEED, not be denied.
+        let (dir, state) = fixture_state_with_core();
+        let human = human_reviewer();
+        register_actor(&state, &human);
+        let token = issue_token_in_state(&state, &human);
+        let base = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-07-06'\n---\n\n# Plan\n\nbase\n";
+        let mut envelope = direct_write_envelope(
+            ".vault/plan/operation-plan.md",
+            "# Plan\n\nscope-pinned body\n",
+            &blob_oid(base.as_bytes()),
+            "idem:route:scope-match",
+        );
+        envelope["payload"]["scope"] = json!(engine_model::scope_token(dir.path()));
+        let router = authoring_router(state.clone()).with_state(state);
+
+        let (status, body) = post_authoring(router, "/v1/direct-writes", &token, envelope).await;
+
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(
+            body["data"]["status"], "applied",
+            "a scope pin matching engine_model::scope_token must proceed and apply through \
+             the real core: {body}"
+        );
+        let saved =
+            std::fs::read_to_string(dir.path().join(".vault/plan/operation-plan.md")).unwrap();
+        assert!(saved.contains("scope-pinned body"), "{saved}");
+    }
+
+    #[test]
+    fn scope_token_and_scope_id_for_worktree_diverge_on_a_windows_extended_length_root() {
+        // Documents the regression class the two tests above guard against:
+        // on a `\\?\`-prefixed root (the form a real, long/canonicalized
+        // Windows workspace path can carry), `engine_model::scope_token`
+        // strips the prefix while `modes::scope_id_for_worktree` does not —
+        // comparing a frontend-sent pin against the WRONG one of these two
+        // would wrongly deny every save on such a root. Prefix-free roots
+        // (every temp-dir test above) coincide either way, which is exactly
+        // why this divergence went undetected until a real extended-length
+        // root exercised it.
+        let extended = std::path::Path::new(r"\\?\C:\Users\example\long-workspace-root");
+        let token = engine_model::scope_token(extended);
+        let mode_scope = scope_id_for_worktree(extended);
+        assert_ne!(
+            token, mode_scope,
+            "the two normalizations must diverge on an extended-length root — this is \
+             precisely why `scope_pin_mismatch` must compare against `scope_token`, never \
+             `scope_id_for_worktree`"
+        );
+        assert!(!token.starts_with("//?/"), "{token}");
+        assert!(mode_scope.starts_with("//?/"), "{mode_scope}");
+    }
+
+    #[tokio::test]
+    async fn authoring_status_reports_enabled_direct_write_capability_through_router() {
+        let (_dir, state) = fixture_state();
         let router = authoring_router(state.clone()).with_state(state);
         let response = router
             .oneshot(
@@ -3527,10 +4172,17 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = json_body(response).await;
         assert_eq!(body["data"]["capabilities"]["direct_write"], true);
-        assert_eq!(body["data"]["capabilities"]["direct_write_dual_run"], true);
-        assert_eq!(
-            body["data"]["capabilities"]["direct_write_authority"],
-            "direct_changeset"
+        assert!(
+            body["data"]["capabilities"]
+                .get("direct_write_dual_run")
+                .is_none(),
+            "the retired dual_run capability flag must not be served: {body}"
+        );
+        assert!(
+            body["data"]["capabilities"]
+                .get("direct_write_authority")
+                .is_none(),
+            "the retired legacy-authority capability flag must not be served: {body}"
         );
     }
 
@@ -3608,6 +4260,8 @@ mod tests {
                     draft: DraftMutation {
                         mode: DraftMode::WholeDocument,
                         body: "---\ntags:\n  - '#plan'\n---\n\n# Plan\n\nnew body\n".to_string(),
+                        frontmatter: None,
+                        new_stem: None,
                     },
                 }],
             },
@@ -3655,6 +4309,8 @@ mod tests {
                     draft: DraftMutation {
                         mode: DraftMode::WholeDocument,
                         body: body.to_string(),
+                        frontmatter: None,
+                        new_stem: None,
                     },
                 }],
             },
@@ -3962,6 +4618,650 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = json_body(response).await;
         assert_eq!(body["error_kind"], "authoring_proposal_not_found");
+    }
+
+    // ---- W14.P42a S260: explicit rebase / replacement routes ------------------------
+
+    fn latest_changeset_revision_for_test(
+        state: &AppState,
+        changeset_id: &ChangesetId,
+    ) -> RevisionToken {
+        state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                    Ok(uow
+                        .ledger()
+                        .latest(changeset_id)?
+                        .expect("changeset exists")
+                        .changeset_revision)
+                })
+            })
+            .unwrap()
+    }
+
+    fn changeset_status_for_test(state: &AppState, changeset_id: &ChangesetId) -> ChangesetStatus {
+        state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                    Ok(uow
+                        .ledger()
+                        .latest(changeset_id)?
+                        .expect("changeset exists")
+                        .status)
+                })
+            })
+            .unwrap()
+    }
+
+    /// The out-of-band base a rebase / replacement is regenerated against.
+    const EDITED_PLAN_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-07-06'\n---\n\n# Plan\n\nedited out of band\n";
+
+    fn rebase_command(
+        principal: AuthenticatedPrincipal,
+        changeset: &str,
+        expected: &RevisionToken,
+        idem: &str,
+    ) -> ResolvedCommand<RebaseProposalRequest> {
+        ResolvedCommand::from_principal(
+            principal,
+            CommandEnvelope {
+                api_version: ApiVersion::V1,
+                command: CommandKind::Rebase,
+                idempotency_key: IdempotencyKey::new(idem).unwrap(),
+                payload: RebaseProposalRequest {
+                    changeset_id: ChangesetId::new(changeset).unwrap(),
+                    expected_revision: expected.clone(),
+                    summary: "rebase onto the current base".to_string(),
+                },
+            },
+        )
+    }
+
+    fn replacement_command(
+        principal: AuthenticatedPrincipal,
+        source: &str,
+        source_expected: &RevisionToken,
+        replacement: &str,
+        idem: &str,
+    ) -> ResolvedCommand<CreateReplacementProposalRequest> {
+        ResolvedCommand::from_principal(
+            principal,
+            CommandEnvelope {
+                api_version: ApiVersion::V1,
+                command: CommandKind::Supersede,
+                idempotency_key: IdempotencyKey::new(idem).unwrap(),
+                payload: CreateReplacementProposalRequest {
+                    source_changeset_id: ChangesetId::new(source).unwrap(),
+                    source_expected_revision: source_expected.clone(),
+                    replacement_changeset_id: ChangesetId::new(replacement).unwrap(),
+                    summary: "regenerate against the current base".to_string(),
+                },
+            },
+        )
+    }
+
+    /// Create a Draft changeset (via the create handler) and drive it through the real arcs
+    /// to a `Conflicted` head (a failed apply attempt), returning the conflicted revision.
+    async fn create_and_drive_to_conflicted(
+        state: &Arc<AppState>,
+        root: &std::path::Path,
+        changeset: &str,
+    ) -> RevisionToken {
+        register_actor(state, &agent());
+        let (_d, principal) = resolved_principal(&agent());
+        let created = create_proposal(
+            State(state.clone()),
+            create_command(
+                principal,
+                root,
+                changeset,
+                &format!("idem:create:{changeset}"),
+            ),
+        )
+        .await;
+        assert_eq!(created.status(), StatusCode::OK);
+        let changeset_id = ChangesetId::new(changeset).unwrap();
+        for (offset, status) in [
+            ChangesetStatus::Proposed,
+            ChangesetStatus::NeedsReview,
+            ChangesetStatus::Approved,
+            ChangesetStatus::Applying,
+            ChangesetStatus::Conflicted,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            append_status_revision_for_test(state, &changeset_id, status, 200 + offset as i64);
+        }
+        latest_changeset_revision_for_test(state, &changeset_id)
+    }
+
+    #[tokio::test]
+    async fn rebase_route_rebases_a_conflicted_changeset_to_a_fresh_draft_and_replays() {
+        let (dir, state) = fixture_state();
+        let conflicted_rev =
+            create_and_drive_to_conflicted(&state, dir.path(), "changeset_rebase_ok").await;
+        // An out-of-band edit stales the conflicted child's recorded base.
+        std::fs::write(
+            dir.path().join(".vault/plan/operation-plan.md"),
+            EDITED_PLAN_BODY,
+        )
+        .unwrap();
+
+        let (_d2, p2) = resolved_principal(&agent());
+        let response = rebase_changeset(
+            State(state.clone()),
+            axum::extract::Path("changeset_rebase_ok".to_string()),
+            rebase_command(p2, "changeset_rebase_ok", &conflicted_rev, "idem:rebase:ok"),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["status"], "draft", "{body}");
+        assert_eq!(body["data"]["command"], "rebase");
+        assert_eq!(body["data"]["changeset_id"], "changeset_rebase_ok");
+
+        let changeset_id = ChangesetId::new("changeset_rebase_ok").unwrap();
+        let after_rebase = latest_changeset_revision_for_test(&state, &changeset_id);
+
+        // A REPLAY under the same idempotency key does NOT append a second revision.
+        let (_d3, p3) = resolved_principal(&agent());
+        let replay = rebase_changeset(
+            State(state.clone()),
+            axum::extract::Path("changeset_rebase_ok".to_string()),
+            rebase_command(p3, "changeset_rebase_ok", &conflicted_rev, "idem:rebase:ok"),
+        )
+        .await;
+        assert_eq!(replay.status(), StatusCode::OK);
+        assert_eq!(
+            latest_changeset_revision_for_test(&state, &changeset_id),
+            after_rebase,
+            "a replayed rebase appends no second revision (idempotent)"
+        );
+    }
+
+    #[tokio::test]
+    async fn rebase_route_denies_a_non_conflicted_head_as_a_value() {
+        let (dir, state) = fixture_state();
+        // create_then_submit drives to NeedsReview — a non-conflicted head with no rebase arc.
+        let _ = create_then_submit(&state, dir.path(), "changeset_rebase_nc").await;
+        let changeset_id = ChangesetId::new("changeset_rebase_nc").unwrap();
+        let revision = latest_changeset_revision_for_test(&state, &changeset_id);
+
+        let (_d, p) = resolved_principal(&agent());
+        let response = rebase_changeset(
+            State(state.clone()),
+            axum::extract::Path("changeset_rebase_nc".to_string()),
+            rebase_command(p, "changeset_rebase_nc", &revision, "idem:rebase:nc"),
+        )
+        .await;
+
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "a non-conflicted rebase is a denial VALUE, not a fault"
+        );
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["status"], "denied", "{body}");
+    }
+
+    #[tokio::test]
+    async fn rebase_route_rejects_a_stale_expected_revision_as_a_409() {
+        let (dir, state) = fixture_state();
+        let _ = create_then_submit(&state, dir.path(), "changeset_rebase_stale").await;
+
+        let (_d, p) = resolved_principal(&agent());
+        let response = rebase_changeset(
+            State(state.clone()),
+            axum::extract::Path("changeset_rebase_stale".to_string()),
+            rebase_command(
+                p,
+                "changeset_rebase_stale",
+                &RevisionToken::new("proposal:not-the-head").unwrap(),
+                "idem:rebase:stale",
+            ),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body = json_body(response).await;
+        assert_eq!(body["error_kind"], "authoring_stale_revision");
+    }
+
+    #[tokio::test]
+    async fn rebase_route_rejects_a_path_body_changeset_mismatch() {
+        let (_dir, state) = fixture_state();
+        let (_d, p) = resolved_principal(&agent());
+        // The body names a DIFFERENT changeset than the path — a coherence 400.
+        let response = rebase_changeset(
+            State(state.clone()),
+            axum::extract::Path("changeset_path".to_string()),
+            rebase_command(
+                p,
+                "changeset_body",
+                &RevisionToken::new("proposal:rev1").unwrap(),
+                "idem:rebase:mismatch",
+            ),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = json_body(response).await;
+        assert_eq!(body["error_kind"], REQUEST_INVALID_KIND);
+    }
+
+    #[tokio::test]
+    async fn replacement_route_supersedes_the_source_and_creates_a_candidate() {
+        let (dir, state) = fixture_state();
+        register_actor(&state, &agent());
+        let (_d, principal) = resolved_principal(&agent());
+        let created = create_proposal(
+            State(state.clone()),
+            create_command(
+                principal,
+                dir.path(),
+                "changeset_repl_src",
+                "idem:create:repl",
+            ),
+        )
+        .await;
+        assert_eq!(created.status(), StatusCode::OK);
+
+        // Drive the source to a non-terminal, non-conflicted head (NeedsReview) — no rebase
+        // arc, so replacement is the explicit path.
+        let source = ChangesetId::new("changeset_repl_src").unwrap();
+        append_status_revision_for_test(&state, &source, ChangesetStatus::Proposed, 201);
+        append_status_revision_for_test(&state, &source, ChangesetStatus::NeedsReview, 202);
+        let source_rev = latest_changeset_revision_for_test(&state, &source);
+        // An out-of-band edit staled the source base.
+        std::fs::write(
+            dir.path().join(".vault/plan/operation-plan.md"),
+            EDITED_PLAN_BODY,
+        )
+        .unwrap();
+
+        let (_d2, p2) = resolved_principal(&agent());
+        let response = create_replacement(
+            State(state.clone()),
+            replacement_command(
+                p2,
+                "changeset_repl_src",
+                &source_rev,
+                "changeset_repl_new",
+                "idem:repl",
+            ),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        // BOTH legs are surfaced: a fresh Draft candidate + the source superseded.
+        assert_eq!(body["data"]["replacement"]["status"], "draft", "{body}");
+        assert_eq!(
+            body["data"]["replacement"]["changeset_id"],
+            "changeset_repl_new"
+        );
+        assert_eq!(
+            body["data"]["supersession"]["status"], "superseded",
+            "the source was superseded: {body}"
+        );
+
+        // The durable heads confirm both legs.
+        assert_eq!(
+            changeset_status_for_test(&state, &source),
+            ChangesetStatus::Superseded
+        );
+        assert_eq!(
+            changeset_status_for_test(&state, &ChangesetId::new("changeset_repl_new").unwrap()),
+            ChangesetStatus::Draft
+        );
+    }
+
+    // ---- W14.P42a S261: review-station routes + Edit/Respond flip -------------------
+
+    fn human_reviewer_b() -> ActorRef {
+        ActorRef {
+            id: ActorId::new("human:reviewer-b").unwrap(),
+            kind: ActorKind::Human,
+            delegated_by: None,
+        }
+    }
+
+    fn review_claim_body(changeset: &str, idem: &str) -> Value {
+        serde_json::to_value(CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::ClaimReview,
+            idempotency_key: IdempotencyKey::new(idem).unwrap(),
+            payload: ReviewClaimRequest {
+                changeset_id: ChangesetId::new(changeset).unwrap(),
+                ttl_ms: None,
+            },
+        })
+        .unwrap()
+    }
+
+    fn review_release_body(changeset: &str, idem: &str) -> Value {
+        serde_json::to_value(CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::ReleaseReview,
+            idempotency_key: IdempotencyKey::new(idem).unwrap(),
+            payload: ReviewReleaseRequest {
+                changeset_id: ChangesetId::new(changeset).unwrap(),
+            },
+        })
+        .unwrap()
+    }
+
+    fn review_respond_body(changeset: &str, comment: &str, idem: &str) -> Value {
+        serde_json::to_value(CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::Respond,
+            idempotency_key: IdempotencyKey::new(idem).unwrap(),
+            payload: ReviewRespondRequest {
+                changeset_id: ChangesetId::new(changeset).unwrap(),
+                comment: comment.to_string(),
+            },
+        })
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_second_reviewer_claim_is_blocked_as_a_value() {
+        let (dir, state) = fixture_state();
+        let _ = create_then_submit(&state, dir.path(), "changeset_claim_contend").await;
+        let (reviewer_a, reviewer_b) = (human_reviewer(), human_reviewer_b());
+        register_actor(&state, &reviewer_a);
+        register_actor(&state, &reviewer_b);
+        let token_a = issue_token_in_state(&state, &reviewer_a);
+        let token_b = issue_token_in_state(&state, &reviewer_b);
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status_a, envelope_a) = post_authoring(
+            router,
+            "/v1/review-claims",
+            &token_a,
+            review_claim_body("changeset_claim_contend", "idem:claim:a"),
+        )
+        .await;
+        assert_eq!(status_a, StatusCode::OK, "{envelope_a}");
+        assert_eq!(envelope_a["data"]["status"], "allowed");
+        assert_eq!(envelope_a["data"]["claim"]["state"], "held");
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status_b, envelope_b) = post_authoring(
+            router,
+            "/v1/review-claims",
+            &token_b,
+            review_claim_body("changeset_claim_contend", "idem:claim:b"),
+        )
+        .await;
+        assert_eq!(
+            status_b,
+            StatusCode::OK,
+            "a contended claim is a denial VALUE: {envelope_b}"
+        );
+        assert_eq!(envelope_b["data"]["status"], "denied");
+        assert!(
+            envelope_b["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("different reviewer")),
+            "the denial names the contention: {envelope_b}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_automated_self_review_claim_is_refused() {
+        let (dir, state) = fixture_state();
+        // The proposer is `agent()` (registered by create_then_submit).
+        let _ = create_then_submit(&state, dir.path(), "changeset_claim_self").await;
+        let agent_token = issue_token_in_state(&state, &agent());
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/review-claims",
+            &agent_token,
+            review_claim_body("changeset_claim_self", "idem:claim:self"),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(envelope["data"]["status"], "denied", "{envelope}");
+        assert!(
+            envelope["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("its own")),
+            "the self-review ban is named: {envelope}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_non_holder_review_release_is_refused() {
+        let (dir, state) = fixture_state();
+        let _ = create_then_submit(&state, dir.path(), "changeset_claim_rel").await;
+        let (reviewer_a, reviewer_b) = (human_reviewer(), human_reviewer_b());
+        register_actor(&state, &reviewer_a);
+        register_actor(&state, &reviewer_b);
+        let token_a = issue_token_in_state(&state, &reviewer_a);
+        let token_b = issue_token_in_state(&state, &reviewer_b);
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status_a, _) = post_authoring(
+            router,
+            "/v1/review-claims",
+            &token_a,
+            review_claim_body("changeset_claim_rel", "idem:claim:a"),
+        )
+        .await;
+        assert_eq!(status_a, StatusCode::OK);
+
+        // Reviewer B cannot release A's claim.
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status_b, envelope_b) = post_authoring(
+            router,
+            "/v1/review-claims/release",
+            &token_b,
+            review_release_body("changeset_claim_rel", "idem:release:b"),
+        )
+        .await;
+        assert_eq!(status_b, StatusCode::OK, "a non-holder release is a value");
+        assert_eq!(envelope_b["data"]["status"], "denied");
+        assert!(
+            envelope_b["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("holding")),
+            "the holder-only rule is named: {envelope_b}"
+        );
+    }
+
+    #[tokio::test]
+    async fn respond_records_a_clarification_and_keeps_the_item_claimed() {
+        let (dir, state) = fixture_state();
+        let _ = create_then_submit(&state, dir.path(), "changeset_claim_resp").await;
+        let reviewer = human_reviewer();
+        register_actor(&state, &reviewer);
+        let token = issue_token_in_state(&state, &reviewer);
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status_claim, _) = post_authoring(
+            router,
+            "/v1/review-claims",
+            &token,
+            review_claim_body("changeset_claim_resp", "idem:claim:resp"),
+        )
+        .await;
+        assert_eq!(status_claim, StatusCode::OK);
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, envelope) = post_authoring(
+            router,
+            "/v1/review-claims/respond",
+            &token,
+            review_respond_body(
+                "changeset_claim_resp",
+                "please clarify the scope",
+                "idem:respond",
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK, "{envelope}");
+        assert_eq!(envelope["data"]["status"], "allowed");
+        assert_eq!(
+            envelope["data"]["claim"]["state"], "held",
+            "the item stays claimed while the exchange runs: {envelope}"
+        );
+        assert_eq!(
+            envelope["data"]["claim"]["latest_clarification"]["comment"],
+            "please clarify the scope"
+        );
+    }
+
+    #[tokio::test]
+    async fn review_queue_route_serves_the_needs_review_items_bounded() {
+        let (dir, state) = fixture_state();
+        let _ = create_then_submit(&state, dir.path(), "changeset_queue_1").await;
+
+        let response = review_queue(State(state.clone())).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["cap"], 200);
+        assert_eq!(body["data"]["truncated"], false);
+        let items = body["data"]["items"].as_array().expect("items array");
+        assert!(!items.is_empty(), "the needs-review item is queued: {body}");
+        assert!(
+            ["queued", "claimed", "decision_submitted", "closed"]
+                .contains(&items[0]["station_state"].as_str().unwrap_or_default()),
+            "the item carries a composed four-state: {body}"
+        );
+        assert!(body["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    #[tokio::test]
+    async fn provenance_route_serves_a_bounded_redacted_trail() {
+        let (dir, state) = fixture_state();
+        let _ = create_then_submit(&state, dir.path(), "changeset_prov_1").await;
+
+        let response = proposal_provenance(
+            State(state.clone()),
+            axum::extract::Path("changeset_prov_1".to_string()),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["changeset_id"], "changeset_prov_1");
+        assert_eq!(body["data"]["cap"], 200);
+        let entries = body["data"]["entries"].as_array().expect("entries array");
+        assert!(
+            !entries.is_empty(),
+            "the trail has revision entries: {body}"
+        );
+        // Redaction: any material ref surfaces id + content hash + byte length ONLY.
+        for entry in entries {
+            for material in entry["materials"].as_array().expect("materials array") {
+                assert!(material["id"].is_string());
+                assert!(material["content_hash"].is_string());
+                assert!(material["byte_len"].is_number());
+            }
+        }
+        // The trail never leaks a raw document body (only fingerprints).
+        assert!(
+            !body.to_string().to_lowercase().contains("new body"),
+            "provenance must not leak a raw document body: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn request_changes_edit_flips_needs_review_to_draft_no_longer_reserved() {
+        let (dir, state) = fixture_state();
+        let submitted = create_then_submit(&state, dir.path(), "changeset_edit_1").await;
+        let proposal_id = submitted["data"]["proposal_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let approval_id = submitted["data"]["approval"]["approval_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let reviewed = submitted["data"]["reviewed_revision"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // A distinct human reviewer requests changes (the Edit flip).
+        register_actor(&state, &human_reviewer());
+        let (_d, reviewer) = resolved_principal(&human_reviewer());
+        let response = submit_review_decision(
+            State(state.clone()),
+            axum::extract::Path(approval_id.clone()),
+            decision_command(
+                reviewer,
+                &approval_id,
+                &proposal_id,
+                &reviewed,
+                ReviewDecisionKind::Edit,
+            ),
+        )
+        .await;
+
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Edit is no longer the reserved denial"
+        );
+        // The EditProposal arc returned the changeset to Draft (staling the prior approval).
+        assert_eq!(
+            changeset_status_for_test(&state, &ChangesetId::new("changeset_edit_1").unwrap()),
+            ChangesetStatus::Draft,
+            "request-changes flips NeedsReview -> Draft"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_respond_decision_routes_to_the_clarification_engine_not_the_reserved_denial() {
+        let (dir, state) = fixture_state();
+        let submitted = create_then_submit(&state, dir.path(), "changeset_respond_1").await;
+        let proposal_id = submitted["data"]["proposal_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let approval_id = submitted["data"]["approval"]["approval_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let reviewed = submitted["data"]["reviewed_revision"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        register_actor(&state, &human_reviewer());
+        let (_d, reviewer) = resolved_principal(&human_reviewer());
+        // No claim is held, so the clarification engine denies with its OWN reason — proving
+        // the flip reaches review_station.respond, not the retired "reserved for W05.P24".
+        let response = submit_review_decision(
+            State(state.clone()),
+            axum::extract::Path(approval_id.clone()),
+            decision_command(
+                reviewer,
+                &approval_id,
+                &proposal_id,
+                &reviewed,
+                ReviewDecisionKind::Respond,
+            ),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["status"], "denied");
+        assert!(
+            body["data"]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("clarification")),
+            "Respond reaches the clarification engine: {body}"
+        );
     }
 
     fn child_input_from_latest(
@@ -4665,6 +5965,7 @@ mod tests {
             receipt: None,
             replayed: false,
             in_flight: false,
+            denial_kind: None,
         };
         let response = apply_outcome_response(&state, outcome);
 
@@ -4687,6 +5988,7 @@ mod tests {
             receipt: None,
             replayed: false,
             in_flight: true,
+            denial_kind: None,
         };
         let response = apply_outcome_response(&state, outcome);
 
@@ -5528,6 +6830,8 @@ mod tests {
                     draft: DraftMutation {
                         mode: DraftMode::WholeDocument,
                         body: "rewritten body".to_string(),
+                        frontmatter: None,
+                        new_stem: None,
                     },
                 }],
             },

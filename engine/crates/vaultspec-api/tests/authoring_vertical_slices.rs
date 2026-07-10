@@ -678,3 +678,122 @@ async fn applying_an_unapproved_changeset_is_a_200_denial() {
         "the denial carries the domain reason: {body}"
     );
 }
+
+/// W14.P47 (S253/S255): the editor-save path is single-sourced through the
+/// ledger over the REAL router — no legacy `/ops/core` dual-write, and
+/// direct-changeset is authoritative with NO capability file present (the
+/// P47 default flip). Drives the actual `/v1/direct-writes` command, then
+/// confirms the resulting changeset is a normal, rollback-eligible ledger
+/// entry rather than a side effect only the direct-write side table knows
+/// about.
+#[tokio::test]
+async fn direct_write_route_is_ledger_authoritative_with_no_capability_file() {
+    let (dir, state, base, core_ready) = worktree_state();
+    let _keep = &dir;
+    let bearer = state.bearer.clone();
+    let human = issue_token(&state, &bearer, "human:author", "human").await;
+
+    // Direct-write's `ReplaceBody` composes over the document's EXISTING
+    // frontmatter (`vault set-body` preserves it) — body-only, like the
+    // direct_write.rs unit fixture's `NEW_BODY`, not the frontmatter-carrying
+    // `NEW_BODY` this file's create-proposal flow sends.
+    const DIRECT_NEW_BODY: &str = "# e2e plan\n\ndirect-saved body\n";
+
+    let (status, body) = send(
+        router(&state),
+        "POST",
+        "/authoring/v1/direct-writes",
+        &bearer,
+        Some(&human),
+        Some(json!({
+            "api_version": "v1",
+            "command": "direct_write",
+            "idempotency_key": "idem:direct:e2e",
+            "payload": {
+                "ref": DOC_PATH,
+                "operation": "replace_body",
+                "body": DIRECT_NEW_BODY,
+                "expected_blob_hash": base.trim_start_matches("blob:"),
+                "summary": "e2e direct save",
+            }
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "direct write is enveloped: {body}");
+
+    // The retired dual-run/legacy-authority surface must not resurface on the wire.
+    assert!(
+        body["data"].get("legacy").is_none(),
+        "the retired legacy comparison must not appear on the direct-write outcome: {body}"
+    );
+    if let Some(record) = body["data"].get("record") {
+        assert!(
+            record.get("legacy").is_none(),
+            "the retired legacy comparison must not appear on the direct-write record: {record}"
+        );
+    }
+
+    // No capability file was written for this worktree — direct-changeset is
+    // authoritative by default (W14.P47), so the save must not be refused.
+    assert_ne!(
+        body["data"]["status"], "denied",
+        "the default capability state must not refuse a human direct save: {body}"
+    );
+
+    if core_ready {
+        assert_eq!(
+            body["data"]["status"], "applied",
+            "a real vaultspec workspace must yield an APPLIED direct save: {body}"
+        );
+        let changeset_id = body["data"]["changeset_id"]
+            .as_str()
+            .expect("an applied direct save names its changeset")
+            .to_string();
+        assert!(changeset_id.starts_with("direct:"));
+
+        // The direct save is a NORMAL ledger entry, not a side channel: the review
+        // station's own projection route sees it, self-describing as kind=direct
+        // with rollback available — exactly what a proposed-and-approved changeset
+        // looks like, satisfying "no un-ledgered write path remains".
+        let (status, projection) = send(
+            router(&state),
+            "GET",
+            &format!("/authoring/v1/proposals/{}", pct(&changeset_id)),
+            &bearer,
+            Some(&human),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "direct save projects: {projection}");
+        assert_eq!(projection["data"]["proposal"]["status"], "applied");
+        assert_eq!(projection["data"]["proposal"]["kind"], "direct");
+        assert_eq!(
+            projection["data"]["proposal"]["rollback"]["available"], true,
+            "an applied direct save remains a legal rollback source: {projection}"
+        );
+    }
+
+    // The capability status itself is served ON by default, with no served
+    // legacy/dual-run flags.
+    let (status, status_body) = send(
+        router(&state),
+        "GET",
+        "/authoring/status",
+        &bearer,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status_body["data"]["capabilities"]["direct_write"], true);
+    assert!(
+        status_body["data"]["capabilities"]
+            .get("direct_write_dual_run")
+            .is_none()
+    );
+    assert!(
+        status_body["data"]["capabilities"]
+            .get("direct_write_authority")
+            .is_none()
+    );
+}

@@ -16,7 +16,7 @@
 // here (ADR D4 — not mounted on a cold compact load), so the dock workspace is
 // absent from this branch.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useActiveScope } from "../../stores/server/queries";
 import { setCompactSurface, useCompactSurface } from "../../stores/view/compactSurface";
@@ -32,6 +32,7 @@ import { BottomTabBar, type CompactSurface } from "./BottomTabBar";
 import { CompactDocReader } from "./CompactDocReader";
 import { CompactTimeline } from "./CompactTimeline";
 import { MobileTopBar } from "./MobileTopBar";
+import { WorkspaceSwitcherSheet } from "./WorkspaceSwitcherSheet";
 
 const SURFACE_TITLE: Record<string, string> = {
   browse: "Browse",
@@ -44,6 +45,9 @@ export function CompactAppShell() {
   const scope = useActiveScope();
   const filterOpen = useFilterSidebarOpen();
   const mainRef = useRef<HTMLElement>(null);
+  // The workspace switcher sheet (ADR D1) is opened only from the Browse top-bar
+  // title trigger, so its open state is local chrome (no cross-surface need).
+  const [switcherOpen, setSwitcherOpen] = useState(false);
 
   // Place initial focus on the pane once on mount so the compact page never loads
   // with focus on `<body>` (the APG always-have-a-focused-element floor; parity
@@ -104,7 +108,16 @@ export function CompactAppShell() {
       >
         Skip to content
       </a>
-      <MobileTopBar title={title} actions={actions} />
+      <MobileTopBar
+        title={title}
+        actions={actions}
+        // On Browse the title IS the worktree name — make it the workspace-switcher
+        // trigger (ADR D1). Other surfaces keep a plain heading.
+        onTitleActivate={surface === "browse" ? () => setSwitcherOpen(true) : undefined}
+        titleActivateLabel={
+          surface === "browse" ? `${worktree} — switch workspace` : undefined
+        }
+      />
       <main
         ref={mainRef}
         id="stage"
@@ -120,6 +133,11 @@ export function CompactAppShell() {
       {/* Sliding document reader (D5): full-screen over the pane + tab bar when a
           document is open; the back control pops it. */}
       <CompactDocReader />
+      {/* Workspace switcher (ADR D1): opened from the Browse title trigger. */}
+      <WorkspaceSwitcherSheet
+        open={switcherOpen}
+        onDismiss={() => setSwitcherOpen(false)}
+      />
     </div>
   );
 }

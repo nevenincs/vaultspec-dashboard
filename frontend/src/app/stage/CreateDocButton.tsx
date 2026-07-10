@@ -1,9 +1,10 @@
-// The "New document" create affordance: maps a UI action onto the engine's POST
-// create broker (`useCreateDoc` → dispatchOps `create` → `/ops/core/create` →
-// `vault add`). Layer law: dumb `app/` chrome — it drives the stores create
-// mutation (the sole wire client), reads chrome draft through a view seam, and
-// opens the created doc through the tab seam; it never touches the engine client,
-// raw view store, raw `tiers`, or identity parsing.
+// The "New document" create affordance: maps a UI action onto the authoring
+// ledger's direct-write route (`useCreateDoc` → `directWrite({operation:
+// "create_document"})`). Layer law: dumb `app/` chrome — it drives the stores
+// create mutation (the sole wire client), reads chrome draft through a view
+// seam, and opens the created doc through the tab seam when its identity is
+// known; it never touches the engine client, raw view store, raw `tiers`, or
+// identity parsing.
 
 import { useActiveScope, useCreateDoc } from "../../stores/server/queries";
 import {
@@ -42,8 +43,17 @@ export function CreateDocButton() {
       },
       {
         onSuccess: ({ result, nodeId }) => {
-          if (result.kind === "created" && nodeId) {
-            void openDocTab(nodeId, "markdown", scope);
+          // A `created` result IS success even on the rare `nodeId === null`
+          // (W03.P09a: the apply receipt echoes the server-resolved
+          // `result_node_id`/`result_stem` for a landed create — never
+          // client-predicted — but the engine's re-resolve is fail-closed: if
+          // the created stem somehow doesn't resolve despite `Applied`, it
+          // reports no identity rather than forging one). Either way the
+          // document exists, so this never renders a false "refused" for a
+          // genuine success — auto-open the tab only when the identity is
+          // actually known.
+          if (result.kind === "created") {
+            if (nodeId) void openDocTab(nodeId, "markdown", scope);
             resetCreateDocChrome();
           } else {
             setCreateDocError("Create refused — check the feature/title");

@@ -157,13 +157,23 @@ impl CoreInvocation {
         self.body.is_some()
     }
 
-    /// Build a `vault add <doc_type> --feature <feature> [--title <t>]
-    /// [--related <r>]*` invocation. Every field is validated BEFORE it can reach
-    /// the argv (the injection-guard surface): no token is ever read as a flag.
+    /// Build a `vault add <doc_type> --feature <feature> [--title <t>] [--date
+    /// <d>] [--related <r>]*` invocation. Every field is validated BEFORE it can
+    /// reach the argv (the injection-guard surface): no token is ever read as a
+    /// flag.
+    ///
+    /// `date` is ALWAYS passed explicitly (never left to core's own wall clock):
+    /// core's own scaffold naming convention is `{date}-{feature}-{doc_type}.md`
+    /// (documented, not this adapter's to serialize), so pinning the date the
+    /// materialized operation already fixed is what makes the apply-time
+    /// invocation and the identity-bearing post-verify agree on the SAME
+    /// predicted path — never a wall-clock race between "the date `build_write_
+    /// invocation` computed" and "the date `post_verify_expectation` computed".
     pub(crate) fn create_document(
         doc_type: &str,
         feature: &str,
         title: Option<&str>,
+        date: &str,
         related: &[String],
     ) -> Result<Self, CoreAdapterError> {
         let capability = CoreCapability::CreateDocument;
@@ -175,6 +185,8 @@ impl CoreInvocation {
             argv.push("--title".into());
             argv.push(validate_flag_safe("title", t)?);
         }
+        argv.push("--date".into());
+        argv.push(validate_flag_safe("date", date)?);
         for r in related {
             argv.push("--related".into());
             argv.push(validate_flag_safe("related", r)?);
@@ -734,6 +746,7 @@ mod tests {
             "adr",
             "agentic-spec-authoring-backend",
             Some("A decision"),
+            "2026-07-09",
             &["[[some-research]]".to_string()],
         )
         .unwrap();
@@ -748,6 +761,8 @@ mod tests {
                 "agentic-spec-authoring-backend",
                 "--title",
                 "A decision",
+                "--date",
+                "2026-07-09",
                 "--related",
                 "[[some-research]]",
             ]
@@ -815,10 +830,13 @@ mod tests {
     fn validation_rejects_injection_shaped_inputs() {
         // Flag-shaped / out-of-grammar tokens, path traversal, drive prefixes,
         // bad blob hashes, and unsafe rename stems all fail BEFORE any spawn.
-        assert!(CoreInvocation::create_document("--evil", "f", None, &[]).is_err());
-        assert!(CoreInvocation::create_document("adr", "bad feature", None, &[]).is_err());
+        assert!(CoreInvocation::create_document("--evil", "f", None, "2026-07-09", &[]).is_err());
         assert!(
-            CoreInvocation::create_document("adr", "f", Some("-inject"), &[]).is_err(),
+            CoreInvocation::create_document("adr", "bad feature", None, "2026-07-09", &[]).is_err()
+        );
+        assert!(
+            CoreInvocation::create_document("adr", "f", Some("-inject"), "2026-07-09", &[])
+                .is_err(),
             "a flag-shaped title is rejected"
         );
         assert!(

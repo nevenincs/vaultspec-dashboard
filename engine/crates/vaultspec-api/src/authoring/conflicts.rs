@@ -32,7 +32,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use super::api::ChangesetOperationKind;
-use super::documents::{DocumentResolver, ExistingDocumentLookup};
+use super::documents::{DocumentResolveError, DocumentResolver, ExistingDocumentLookup};
 use super::leases::LeaseRecord;
 use super::ledger::{ChangesetAggregateRecord, ChangesetChildOperationRecord};
 use super::model::{ActorRef, ChangesetId, DocumentRef, RevisionToken};
@@ -75,6 +75,18 @@ pub enum ConflictKind {
     /// the revision floor; this surfaces the coordination collision the ADR's advisory
     /// leases exist to reduce.
     PolicyConflict,
+    /// A `Rename` child's PROPOSED target stem already resolves to a different
+    /// document (W02.P04) — a rename-specific collision distinct from every base/
+    /// identity finding above, since it is about the DESTINATION, not the source.
+    RenameTargetCollision,
+    /// A `CreateDocument` child's DETERMINISTIC predicted path (`create_document_date`
+    /// combined with `feature` and `doc_type`, fixed at materialize time — W02.P05)
+    /// already resolves to a document in the current worktree, OR a DIFFERENT live
+    /// sibling changeset's `CreateDocument` child predicts the SAME path. Either way,
+    /// core's `vault add` (which this apply invocation never passes `--force` to) can
+    /// land at most ONE of them — surfaced proactively here rather than left to a bare
+    /// apply-time refusal.
+    CreateDocumentPathCollision,
 }
 
 impl ConflictKind {
@@ -87,6 +99,8 @@ impl ConflictKind {
             Self::OverlappingHunks => 2,
             Self::AnchorDrift => 3,
             Self::PolicyConflict => 4,
+            Self::RenameTargetCollision => 5,
+            Self::CreateDocumentPathCollision => 6,
         }
     }
 }
@@ -192,6 +206,14 @@ pub fn detect_conflicts(
             child,
             held_leases,
             now_ms,
+            &mut findings,
+        );
+        detect_child_rename_collision(&resolver, child, &mut findings);
+        detect_child_create_document_collision(
+            &resolver,
+            changeset,
+            child,
+            live_siblings,
             &mut findings,
         );
     }
@@ -347,6 +369,143 @@ fn detect_child_policy_conflict(
     }
 }
 
+/// A `Rename` target-stem collision: a document already exists at the PROPOSED
+/// new stem (W02.P04). Reuses `DocumentResolver::rename_target`'s OWN
+/// collision check — the SAME check the eventual core `--to` write would hit —
+/// rather than re-deriving resolve-and-compare logic here.
+fn detect_child_rename_collision(
+    resolver: &DocumentResolver,
+    child: &ChangesetChildOperationRecord,
+    findings: &mut Vec<ConflictFinding>,
+) {
+    if child.operation != ChangesetOperationKind::Rename {
+        return;
+    }
+    let Some(new_stem) = child
+        .materialized_operation
+        .as_ref()
+        .and_then(|operation| operation.rename_edit.clone())
+    else {
+        return;
+    };
+    let DocumentRef::Existing { path, .. } = &child.target.document else {
+        return;
+    };
+    if let Err(DocumentResolveError::DuplicateStem { stem, .. }) =
+        resolver.rename_target(child.target.document.clone(), new_stem)
+    {
+        findings.push(ConflictFinding {
+            child_key: child.child_key.clone(),
+            kind: ConflictKind::RenameTargetCollision,
+            reason: format!(
+                "a document already exists at the proposed stem `{stem}`; rename would collide"
+            ),
+            document: child.target.document.clone(),
+            reviewed_base_revision: None,
+            current_revision: None,
+            recorded_path: Some(path.clone()),
+            current_path: None,
+            conflicting_changeset_id: None,
+            conflicting_child_key: None,
+            lease_holder: None,
+        });
+    }
+}
+
+/// The deterministic `(stem, path)` a `CreateDocument` child's apply invocation is
+/// predicted to land at, derived the SAME way `apply.rs`'s `CreatedAt` post-verify
+/// derives it — from the materialized operation's own fixed `create_document_date`
+/// plus its target's `feature`/`doc_type`. `None` when the child is not a
+/// `CreateDocument`, or carries no materialized operation / fixed date yet (an
+/// unmaterialized draft has nothing to collide against).
+fn create_document_predicted_path(
+    child: &ChangesetChildOperationRecord,
+) -> Option<(String, String)> {
+    if child.operation != ChangesetOperationKind::CreateDocument {
+        return None;
+    }
+    let materialized = child.materialized_operation.as_ref()?;
+    let date = materialized.create_document_date.as_deref()?;
+    let DocumentRef::ProvisionalCreate {
+        doc_type, feature, ..
+    } = &child.target.document
+    else {
+        return None;
+    };
+    let stem = format!("{date}-{feature}-{doc_type}");
+    let path = format!(".vault/{doc_type}/{stem}.md");
+    Some((stem, path))
+}
+
+/// A `CreateDocument` predicted-path collision (W02.P05): the DETERMINISTIC path this
+/// child's apply invocation would target already resolves to a document in the current
+/// worktree, OR a DIFFERENT live sibling changeset's `CreateDocument` child predicts the
+/// SAME path. Either finding means at most one of the colliding creates can ever land —
+/// core refuses to overwrite an existing document, and this apply invocation never
+/// passes `--force`.
+fn detect_child_create_document_collision(
+    resolver: &DocumentResolver,
+    changeset: &ChangesetAggregateRecord,
+    child: &ChangesetChildOperationRecord,
+    live_siblings: &[ChangesetAggregateRecord],
+    findings: &mut Vec<ConflictFinding>,
+) {
+    let Some((stem, path)) = create_document_predicted_path(child) else {
+        return;
+    };
+    if resolver
+        .resolve_existing(ExistingDocumentLookup::Stem(stem.clone()))
+        .is_ok()
+    {
+        findings.push(ConflictFinding {
+            child_key: child.child_key.clone(),
+            kind: ConflictKind::CreateDocumentPathCollision,
+            reason: format!(
+                "a document already exists at the predicted create path `{path}`; core \
+                 refuses to overwrite it"
+            ),
+            document: child.target.document.clone(),
+            reviewed_base_revision: None,
+            current_revision: None,
+            recorded_path: None,
+            current_path: Some(path),
+            conflicting_changeset_id: None,
+            conflicting_child_key: None,
+            lease_holder: None,
+        });
+        return;
+    }
+    for sibling in live_siblings {
+        if sibling.changeset_id == changeset.changeset_id || sibling.status.is_terminal() {
+            continue;
+        }
+        for sibling_child in &sibling.children {
+            let Some((sibling_stem, _)) = create_document_predicted_path(sibling_child) else {
+                continue;
+            };
+            if sibling_stem != stem {
+                continue;
+            }
+            findings.push(ConflictFinding {
+                child_key: child.child_key.clone(),
+                kind: ConflictKind::CreateDocumentPathCollision,
+                reason: format!(
+                    "a different live proposal's create predicts the SAME path `{path}`; only \
+                     one can land"
+                ),
+                document: child.target.document.clone(),
+                reviewed_base_revision: None,
+                current_revision: None,
+                recorded_path: None,
+                current_path: Some(path.clone()),
+                conflicting_changeset_id: Some(sibling.changeset_id.clone()),
+                conflicting_child_key: Some(sibling_child.child_key.clone()),
+                lease_holder: None,
+            });
+        }
+    }
+}
+
 /// Cross-proposal overlap: for each of this changeset's children with recorded review
 /// hunks, any LIVE sibling changeset (non-terminal, distinct id) whose child targets
 /// the SAME document identity over an intersecting base line range is a conflict. The
@@ -419,11 +578,17 @@ fn child_hunks(child: &ChangesetChildOperationRecord) -> Option<&[ReviewDiffHunk
     (!hunks.is_empty()).then_some(hunks)
 }
 
-/// Whether a child is a whole-document `replace_body` draft. In the V1 subset a
-/// materialized replace-body operation is always whole-document (the only materialized
-/// shape `operations.rs` produces), so a present materialization is the signal.
+/// Whether a child is a whole-document-shaped draft: `replace_body` or (W02.P03)
+/// `edit_frontmatter` — both materialize a whole-document preview (`operations.rs`
+/// `finish_materialization`), so a present materialization is the signal either
+/// way. A stale base therefore reports `StaleWholeDocumentDraft` for a frontmatter
+/// edit exactly as it does for a body replace, never the generic partial-base
+/// finding, and the pair participates in cross-proposal hunk-overlap detection.
 fn is_whole_document_replace(child: &ChangesetChildOperationRecord) -> bool {
-    child.operation == ChangesetOperationKind::ReplaceBody && child.materialized_operation.is_some()
+    matches!(
+        child.operation,
+        ChangesetOperationKind::ReplaceBody | ChangesetOperationKind::EditFrontmatter
+    ) && child.materialized_operation.is_some()
 }
 
 /// Whether a child does collision-prone work the ADR's advisory leases coordinate:
@@ -558,9 +723,121 @@ mod tests {
             draft: DraftMutation {
                 mode: DraftMode::WholeDocument,
                 body: new_body.to_string(),
+                frontmatter: None,
+                new_stem: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(
+            changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        ChangesetChildOperationInput::from_materialized(
+            materialized,
+            format!("material:{child_key}"),
+            format!("validation:{child_key}"),
+        )
+    }
+
+    /// A materialized `edit_frontmatter` child (W02.P03) against the CURRENT worktree
+    /// frontmatter of `stem`, setting `date`. Mirrors `materialized_child` so a
+    /// frontmatter edit exercises the SAME whole-document-relevance conflict path.
+    fn materialized_frontmatter_child(
+        root: &Path,
+        changeset_id: &ChangesetId,
+        stem: &str,
+        child_key: &str,
+        date: &str,
+    ) -> ChangesetChildOperationInput {
+        let document = resolve(root, stem);
+        let base_snapshot = SnapshotReader::for_worktree(root)
+            .require_current_base(&document)
+            .unwrap();
+        let preimage = SnapshotReader::for_worktree(root)
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: format!("preimage:{}:{child_key}", changeset_id.as_str()),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: child_key.to_string(),
+                document: document.clone(),
+                captured_at_ms: 100,
+            })
+            .unwrap();
+        let revision = existing_base(&document);
+        let draft = ChangesetChildOperationDraft {
+            child_key: child_key.to_string(),
+            operation: ChangesetOperationKind::EditFrontmatter,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(revision.clone()),
+                current_revision: Some(revision),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: Some(crate::authoring::api::FrontmatterEditFields {
+                    date: Some(date.to_string()),
+                    tags: None,
+                    related: None,
+                }),
+                new_stem: None,
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
+            changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        ChangesetChildOperationInput::from_materialized(
+            materialized,
+            format!("material:{child_key}"),
+            format!("validation:{child_key}"),
+        )
+    }
+
+    /// A materialized `rename` child (W02.P04) proposing to rename `stem` to
+    /// `new_stem`. Mirrors `materialized_frontmatter_child` so a rename
+    /// exercises the SAME conflict-record shape.
+    fn materialized_rename_child(
+        root: &Path,
+        changeset_id: &ChangesetId,
+        stem: &str,
+        child_key: &str,
+        new_stem: &str,
+    ) -> ChangesetChildOperationInput {
+        let document = resolve(root, stem);
+        let base_snapshot = SnapshotReader::for_worktree(root)
+            .require_current_base(&document)
+            .unwrap();
+        let preimage = SnapshotReader::for_worktree(root)
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: format!("preimage:{}:{child_key}", changeset_id.as_str()),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: child_key.to_string(),
+                document: document.clone(),
+                captured_at_ms: 100,
+            })
+            .unwrap();
+        let revision = existing_base(&document);
+        let draft = ChangesetChildOperationDraft {
+            child_key: child_key.to_string(),
+            operation: ChangesetOperationKind::Rename,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(revision.clone()),
+                current_revision: Some(revision),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: Some(new_stem.to_string()),
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_rename(
             changeset_id,
             draft,
             &base_snapshot,
@@ -699,6 +976,53 @@ mod tests {
         );
         assert_eq!(finding.child_key, "child_1");
         assert_ne!(finding.reviewed_base_revision, finding.current_revision);
+    }
+
+    #[test]
+    fn stale_frontmatter_draft_is_detected_as_whole_document_stale_like_a_body_replace() {
+        // W02.P03: `is_whole_document_replace` broadened to `edit_frontmatter`, so a
+        // stale frontmatter draft reports `StaleWholeDocumentDraft` — the SAME
+        // relevance a stale `replace_body` draft gets — never the generic partial
+        // `StaleBaseRevision` finding.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/whole-doc-fm-plan.md",
+            "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\nbody\n",
+        );
+        let child = materialized_frontmatter_child(
+            root,
+            &ChangesetId::new("changeset:whole-doc-fm").unwrap(),
+            "whole-doc-fm-plan",
+            "child_1",
+            "2026-02-06",
+        );
+        let cs = changeset(
+            "changeset:whole-doc-fm",
+            actor("agent:author"),
+            ChangesetStatus::Proposed,
+            vec![child],
+        );
+
+        // An out-of-band edit lands after the frontmatter draft was materialized.
+        write_doc(
+            root,
+            ".vault/plan/whole-doc-fm-plan.md",
+            "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\nrewritten body\n",
+        );
+
+        let report = detect_conflicts(root, &cs, &[], &[], NOW_MS);
+
+        assert!(report.has_conflict());
+        assert_eq!(report.findings.len(), 1, "{report:?}");
+        let finding = &report.findings[0];
+        assert_eq!(
+            finding.kind,
+            ConflictKind::StaleWholeDocumentDraft,
+            "a stale frontmatter draft reports distinctly from a partial stale base"
+        );
+        assert_eq!(finding.child_key, "child_1");
     }
 
     #[test]
@@ -976,6 +1300,233 @@ mod tests {
         assert!(
             serde_json::from_value::<ConflictReport>(tampered).is_err(),
             "unknown finding fields are rejected on the wire"
+        );
+    }
+
+    #[test]
+    fn rename_target_stem_collision_is_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/rename-source.md", "source body\n");
+        // A DIFFERENT document already occupies the proposed target stem.
+        write_doc(root, ".vault/plan/rename-target.md", "occupied\n");
+
+        let child = materialized_rename_child(
+            root,
+            &ChangesetId::new("changeset:rename-collision").unwrap(),
+            "rename-source",
+            "child_1",
+            "rename-target",
+        );
+        let cs = changeset(
+            "changeset:rename-collision",
+            actor("agent:author"),
+            ChangesetStatus::Proposed,
+            vec![child],
+        );
+
+        let report = detect_conflicts(root, &cs, &[], &[], NOW_MS);
+
+        assert!(report.has_conflict());
+        assert_eq!(report.findings.len(), 1, "{report:?}");
+        let finding = &report.findings[0];
+        assert_eq!(finding.kind, ConflictKind::RenameTargetCollision);
+        assert_eq!(finding.child_key, "child_1");
+        assert_eq!(
+            finding.recorded_path.as_deref(),
+            Some(".vault/plan/rename-source.md")
+        );
+    }
+
+    #[test]
+    fn rename_to_a_free_stem_reports_no_conflict() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/rename-source-clean.md", "source body\n");
+
+        let child = materialized_rename_child(
+            root,
+            &ChangesetId::new("changeset:rename-clean").unwrap(),
+            "rename-source-clean",
+            "child_1",
+            "rename-target-clean",
+        );
+        let cs = changeset(
+            "changeset:rename-clean",
+            actor("agent:author"),
+            ChangesetStatus::Proposed,
+            vec![child],
+        );
+
+        let report = detect_conflicts(root, &cs, &[], &[], NOW_MS);
+
+        assert!(
+            !report.has_conflict(),
+            "a free target stem is not a collision: {report:?}"
+        );
+    }
+
+    // --- W02.P05: CreateDocument predicted-path collision -------------------
+
+    /// A materialized `create_document` child (W02.P05) whose deterministic
+    /// predicted path derives from `created_at_ms`/`feature`/`doc_type` — no
+    /// worktree read needed to build it, unlike every other materializer here.
+    fn materialized_create_child(
+        changeset_id: &ChangesetId,
+        doc_type: &str,
+        feature: &str,
+        title: &str,
+        child_key: &str,
+        created_at_ms: i64,
+    ) -> ChangesetChildOperationInput {
+        let document = DocumentRef::ProvisionalCreate {
+            provisional_doc_id: format!("provisional:{child_key}"),
+            doc_type: doc_type.to_string(),
+            feature: feature.to_string(),
+            title: title.to_string(),
+            collision_status: crate::authoring::model::ProvisionalCollisionStatus::Unknown,
+            proposed_stem: None,
+        };
+        let draft = ChangesetChildOperationDraft {
+            child_key: child_key.to_string(),
+            operation: ChangesetOperationKind::CreateDocument,
+            target: TargetRevisionFence {
+                document,
+                base_revision: None,
+                current_revision: None,
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: "preview\n".to_string(),
+                frontmatter: None,
+                new_stem: None,
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_create_document(
+            changeset_id,
+            draft,
+            created_at_ms,
+        )
+        .unwrap();
+        ChangesetChildOperationInput::from_materialized(
+            materialized,
+            format!("material:{child_key}"),
+            format!("validation:{child_key}"),
+        )
+    }
+
+    const CREATE_COLLISION_CREATED_AT_MS: i64 = 1_768_435_200_000; // 2026-01-15T00:00:00Z
+
+    #[test]
+    fn create_document_path_collision_with_the_current_worktree_is_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        // A document already occupies the create's DETERMINISTIC predicted path.
+        write_doc(
+            root,
+            ".vault/plan/2026-01-15-create-collision-feature-plan.md",
+            "occupied\n",
+        );
+
+        let child = materialized_create_child(
+            &ChangesetId::new("changeset:create-collision").unwrap(),
+            "plan",
+            "create-collision-feature",
+            "A New Plan",
+            "child_1",
+            CREATE_COLLISION_CREATED_AT_MS,
+        );
+        let cs = changeset(
+            "changeset:create-collision",
+            actor("agent:author"),
+            ChangesetStatus::Proposed,
+            vec![child],
+        );
+
+        let report = detect_conflicts(root, &cs, &[], &[], NOW_MS);
+
+        assert!(report.has_conflict());
+        assert_eq!(report.findings.len(), 1, "{report:?}");
+        let finding = &report.findings[0];
+        assert_eq!(finding.kind, ConflictKind::CreateDocumentPathCollision);
+        assert_eq!(
+            finding.current_path.as_deref(),
+            Some(".vault/plan/2026-01-15-create-collision-feature-plan.md")
+        );
+    }
+
+    #[test]
+    fn create_document_path_collision_with_a_live_sibling_is_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let sibling_child = materialized_create_child(
+            &ChangesetId::new("changeset:create-sibling").unwrap(),
+            "plan",
+            "create-sibling-feature",
+            "Sibling's Plan",
+            "child_1",
+            CREATE_COLLISION_CREATED_AT_MS,
+        );
+        let sibling = changeset(
+            "changeset:create-sibling",
+            actor("agent:other"),
+            ChangesetStatus::Proposed,
+            vec![sibling_child],
+        );
+
+        let child = materialized_create_child(
+            &ChangesetId::new("changeset:create-mine").unwrap(),
+            "plan",
+            "create-sibling-feature",
+            "My Plan",
+            "child_1",
+            CREATE_COLLISION_CREATED_AT_MS,
+        );
+        let cs = changeset(
+            "changeset:create-mine",
+            actor("agent:author"),
+            ChangesetStatus::Proposed,
+            vec![child],
+        );
+
+        let report = detect_conflicts(root, &cs, &[sibling], &[], NOW_MS);
+
+        assert!(report.has_conflict());
+        assert_eq!(report.findings.len(), 1, "{report:?}");
+        let finding = &report.findings[0];
+        assert_eq!(finding.kind, ConflictKind::CreateDocumentPathCollision);
+        assert_eq!(
+            finding.conflicting_changeset_id,
+            Some(ChangesetId::new("changeset:create-sibling").unwrap())
+        );
+    }
+
+    #[test]
+    fn create_document_to_a_free_path_reports_no_conflict() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let child = materialized_create_child(
+            &ChangesetId::new("changeset:create-clean").unwrap(),
+            "plan",
+            "create-clean-feature",
+            "A New Plan",
+            "child_1",
+            CREATE_COLLISION_CREATED_AT_MS,
+        );
+        let cs = changeset(
+            "changeset:create-clean",
+            actor("agent:author"),
+            ChangesetStatus::Proposed,
+            vec![child],
+        );
+
+        let report = detect_conflicts(root, &cs, &[], &[], NOW_MS);
+
+        assert!(
+            !report.has_conflict(),
+            "a free predicted path is not a collision: {report:?}"
         );
     }
 }

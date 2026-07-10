@@ -14,10 +14,9 @@
 import type { IDockviewPanelProps } from "dockview";
 
 import { useDockDocPanelView } from "../../stores/view/tabs";
-import type { MarkdownHeaderView } from "../../stores/server/queries";
 import type { ViewerSurface } from "../../stores/view/viewStore";
-import type { BreadcrumbItem } from "../kit";
 import { CodeViewer } from "../viewer/CodeViewer";
+import { buildDocTrail } from "../viewer/docTrail";
 import { MarkdownDocView } from "../viewer/MarkdownDocView";
 
 export interface DocPanelParams {
@@ -25,32 +24,6 @@ export interface DocPanelParams {
   nodeId: string;
   /** Which surface to render. Only `markdown` is editable; `code` is read-only. */
   surface: ViewerSurface;
-}
-
-/** Plain-language display labels for the breadcrumb's doc-type segment, matching
- *  the binding reader chrome (e.g. an ADR reads "Decisions", not "adr"). */
-const DOC_TYPE_CRUMB: Record<string, string> = {
-  adr: "Decisions",
-  research: "Research",
-  plan: "Plans",
-  exec: "Execution",
-  audit: "Audits",
-  reference: "Reference",
-  index: "Index",
-};
-
-/** Build the chrome breadcrumb trail (Vault / <doc-type> / <title>) from the
- *  preserved stores header model — the binding reader path (455:1117). */
-function docTrail(header: MarkdownHeaderView): BreadcrumbItem[] {
-  const items: BreadcrumbItem[] = [{ label: "Vault" }];
-  const type = header.categoryLabel;
-  if (type) {
-    items.push({
-      label: DOC_TYPE_CRUMB[type] ?? type.charAt(0).toUpperCase() + type.slice(1),
-    });
-  }
-  items.push({ label: header.title });
-  return items;
 }
 
 export function DocPanel(props: IDockviewPanelProps<DocPanelParams>) {
@@ -74,7 +47,7 @@ export function DocPanel(props: IDockviewPanelProps<DocPanelParams>) {
           nodeId={view.nodeId}
           content={view.content}
           scope={view.scope}
-          trail={docTrail(view.header)}
+          trail={buildDocTrail(view.header)}
         />
       </div>
     </section>

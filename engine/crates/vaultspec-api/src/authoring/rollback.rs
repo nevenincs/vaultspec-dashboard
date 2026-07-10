@@ -9,14 +9,20 @@
 //! its receipts, or its events; the source at most gains a derived `rolled_back`
 //! projection elsewhere.
 //!
-//! V1 IS PREIMAGE-RESTORE ONLY (ASA-003, narrowing the ADR's per-operation matrix
-//! to the evidenced need): a body or frontmatter edit rolls back by restoring the
-//! stored whole-document PREIMAGE against the CURRENT base — the one inverse
-//! deterministic from already-retained material, materialized as a whole-document
-//! `ReplaceBody`. Every other applied operation kind (create, rename, link,
-//! archive/unarchive, section edit) — and any case whose required preimage was
-//! never captured or was compacted — is `rollback_available=false` with an honest
-//! reason (from [`super::transitions::create_rollback_eligibility`]) plus a
+//! V1 NARROWS THE ADR'S PER-OPERATION MATRIX TO THE EVIDENCED NEED (ASA-003):
+//! only kinds with a DETERMINISTIC inverse from already-retained material are
+//! invertible. A body or frontmatter edit rolls back by restoring the stored
+//! whole-document PREIMAGE against the CURRENT base, materialized as a
+//! whole-document `ReplaceBody`. A `Rename` (W02.P04) rolls back by a
+//! RENAME-BACK — a genuine `Rename` inverse to the ORIGINAL stem the source was
+//! proposed FROM, never a preimage-restore (a `ReplaceBody`-of-preimage rollback
+//! of a rename would write the old content to the OLD path while the document
+//! still lives at the NEW one, producing a duplicate — the inverse of an
+//! identity move is another identity move, never a body write). Every other
+//! applied operation kind (create, link, archive/unarchive, section edit) — and
+//! any case whose required preimage was never captured or was compacted — is
+//! `rollback_available=false` with an honest reason (from
+//! [`super::transitions::create_rollback_eligibility`]) plus a
 //! [`ManualRepairProposal`] hook: the backend offers a manual repair, never a
 //! guessed inverse.
 //!
@@ -34,6 +40,7 @@ use super::api::{
     ChangesetChildOperationDraft, ChangesetOperationKind, DraftMode, DraftMutation,
     TargetRevisionFence,
 };
+use super::documents::{DocumentResolver, ExistingDocumentLookup};
 use super::ledger::{
     ChangesetAggregateRecord, ChangesetChildOperationInput, ChangesetRevisionInput,
 };
@@ -203,55 +210,207 @@ pub fn generate_rollback(
         let source_preimage =
             source_preimage.expect("eligibility guarantees the source preimage is present");
 
-        // Materialize the inverse as a whole-document ReplaceBody: restore the
-        // source preimage's payload against the CURRENT base (the document may have
-        // advanced since the source applied; the apply-time fence re-checks it).
         let source_document = source_child.target.document.clone();
-        let current = reader
-            .capture_existing(&source_document)
-            .map_err(|err| StoreError::Snapshot(err.to_string()))?;
-        let rollback_document = document_at_revision(&source_document, current.revision.clone());
-        let base_snapshot = reader
-            .require_current_base(&rollback_document)
-            .map_err(|err| StoreError::Snapshot(err.to_string()))?;
-
+        let DocumentRef::Existing {
+            node_id: source_node_id,
+            stem: original_stem,
+            ..
+        } = &source_document
+        else {
+            return Ok(RollbackOutcome::unavailable(
+                ActionEligibility::denied(
+                    CommandKind::CreateRollback,
+                    "rollback_unavailable: source target is not an existing document",
+                ),
+                Some(manual_repair(&request)),
+            ));
+        };
+        let resolver = DocumentResolver::for_worktree(reader.root());
         let child_key = source_child.child_key.clone();
+
+        // Resolve the document's CURRENT identity to fence + preimage-anchor
+        // against. NODE ID IS STEM-DERIVED (`doc:<stem>`), so it is stable
+        // ONLY for a source that never changed identity (body/frontmatter): a
+        // Rename source's OLD node id no longer resolves post-apply (the file
+        // moved) — that failure is exactly `AnchorDrift`'s signal elsewhere,
+        // never a valid "current identity" here. A Rename source is instead
+        // resolved by the NEW STEM its own materialized operation recorded
+        // (`rename_edit`) — the forward apply's authoritative record of where
+        // it moved the document TO.
+        let current_ref = match source_child.operation {
+            ChangesetOperationKind::Rename => {
+                let Some(new_stem) = source_child
+                    .materialized_operation
+                    .as_ref()
+                    .and_then(|operation| operation.rename_edit.clone())
+                else {
+                    return Ok(RollbackOutcome::unavailable(
+                        ActionEligibility::denied(
+                            CommandKind::CreateRollback,
+                            "rollback_unavailable: rename source carries no recorded target stem",
+                        ),
+                        Some(manual_repair(&request)),
+                    ));
+                };
+                // LINEAGE GUARD: node ids are STEM-DERIVED, so resolving the
+                // current occupant of `new_stem` alone cannot distinguish
+                // "this rename's own target" from "whatever unrelated document
+                // now occupies that stem" — a stem can be vacated by a LATER
+                // rename and then reoccupied. Refuse, fail-closed, if the
+                // ledger shows the stem was renamed AWAY from after this
+                // source applied (or if the scan cannot even PROVE it wasn't):
+                // that proves the current occupant (if any) is NOT provably
+                // the document this rollback should touch.
+                match stem_lineage_check(
+                    uow,
+                    &new_stem,
+                    source.created_at_ms,
+                    MAX_ROLLBACK_LINEAGE_SCAN,
+                )? {
+                    StemLineageCheck::Clear => {}
+                    StemLineageCheck::Broken(breaking_changeset) => {
+                        return Ok(RollbackOutcome::unavailable(
+                            ActionEligibility::denied(
+                                CommandKind::CreateRollback,
+                                format!(
+                                    "rollback_unavailable: the stem `{new_stem}` this rename \
+                                     targeted has since been renamed away (by changeset \
+                                     `{breaking_changeset}`); the current occupant cannot be \
+                                     confirmed as this rollback's document"
+                                ),
+                            ),
+                            Some(manual_repair(&request)),
+                        ));
+                    }
+                    StemLineageCheck::Unconfirmable => {
+                        return Ok(RollbackOutcome::unavailable(
+                            ActionEligibility::denied(
+                                CommandKind::CreateRollback,
+                                format!(
+                                    "rollback_unavailable: cannot confirm the stem `{new_stem}` \
+                                     lineage is unbroken (too many changesets applied since this \
+                                     rename to scan); the current occupant cannot be confirmed \
+                                     as this rollback's document"
+                                ),
+                            ),
+                            Some(manual_repair(&request)),
+                        ));
+                    }
+                }
+                match resolver.resolve_existing(ExistingDocumentLookup::Stem(new_stem.clone())) {
+                    Ok(current_ref) => current_ref,
+                    Err(err) => {
+                        return Ok(RollbackOutcome::unavailable(
+                            ActionEligibility::denied(
+                                CommandKind::CreateRollback,
+                                format!(
+                                    "rollback_unavailable: renamed target `{new_stem}` no \
+                                     longer resolves ({err})"
+                                ),
+                            ),
+                            Some(manual_repair(&request)),
+                        ));
+                    }
+                }
+            }
+            _ => {
+                match resolver
+                    .resolve_existing(ExistingDocumentLookup::NodeId(source_node_id.clone()))
+                {
+                    Ok(current_ref) => current_ref,
+                    Err(err) => {
+                        return Ok(RollbackOutcome::unavailable(
+                            ActionEligibility::denied(
+                                CommandKind::CreateRollback,
+                                format!(
+                                    "rollback_unavailable: source identity no longer resolves \
+                                     ({err})"
+                                ),
+                            ),
+                            Some(manual_repair(&request)),
+                        ));
+                    }
+                }
+            }
+        };
+        let base_snapshot = reader
+            .require_current_base(&current_ref)
+            .map_err(|err| StoreError::Snapshot(err.to_string()))?;
+        let target = TargetRevisionFence {
+            document: current_ref.clone(),
+            base_revision: Some(base_snapshot.revision.clone()),
+            current_revision: Some(base_snapshot.revision.clone()),
+        };
         let inverse_preimage = reader
             .capture_preimage(PreimageCaptureRequest {
                 preimage_id: rollback_preimage_id(&rollback_id, &child_key),
                 changeset_id: rollback_id.as_str().to_string(),
                 operation_id: child_key.clone(),
-                document: rollback_document.clone(),
+                document: current_ref.clone(),
                 captured_at_ms: request.now_ms,
             })
             .map_err(|err| StoreError::Snapshot(err.to_string()))?;
 
-        let draft = ChangesetChildOperationDraft {
-            child_key: child_key.clone(),
-            operation: ChangesetOperationKind::ReplaceBody,
-            target: TargetRevisionFence {
-                document: rollback_document.clone(),
-                base_revision: Some(current.revision.clone()),
-                current_revision: Some(current.revision.clone()),
-            },
-            draft: DraftMutation {
-                mode: DraftMode::WholeDocument,
-                body: source_preimage.payload_text.clone(),
-            },
+        let (operation, materialized) = match source_child.operation {
+            ChangesetOperationKind::Rename => {
+                // RENAME-BACK: the forward rename already moved the document
+                // to `current_ref` (the NEW stem), so the inverse is a Rename
+                // back to the ORIGINAL stem the source was proposed FROM —
+                // never a preimage-restore ReplaceBody, which would write the
+                // old content to the OLD path while the document still lives
+                // at the NEW one, producing a duplicate.
+                let draft = ChangesetChildOperationDraft {
+                    child_key: child_key.clone(),
+                    operation: ChangesetOperationKind::Rename,
+                    target: target.clone(),
+                    draft: DraftMutation {
+                        mode: DraftMode::WholeDocument,
+                        body: String::new(),
+                        frontmatter: None,
+                        new_stem: Some(original_stem.clone()),
+                    },
+                };
+                let materialized = MaterializedProposalOperation::materialize_rename(
+                    &rollback_id,
+                    draft,
+                    &base_snapshot,
+                    &inverse_preimage,
+                )
+                .map_err(|err| StoreError::Validation(err.to_string()))?;
+                (ChangesetOperationKind::Rename, materialized)
+            }
+            _ => {
+                // Preimage-restore: body/frontmatter edits invert by restoring
+                // the stored whole-document preimage against the current base
+                // (the document may have advanced since the source applied;
+                // the apply-time fence re-checks it).
+                let draft = ChangesetChildOperationDraft {
+                    child_key: child_key.clone(),
+                    operation: ChangesetOperationKind::ReplaceBody,
+                    target: target.clone(),
+                    draft: DraftMutation {
+                        mode: DraftMode::WholeDocument,
+                        body: source_preimage.payload_text.clone(),
+                        frontmatter: None,
+                        new_stem: None,
+                    },
+                };
+                let materialized = MaterializedProposalOperation::materialize_replace_body(
+                    &rollback_id,
+                    draft,
+                    &base_snapshot,
+                    &inverse_preimage,
+                )
+                .map_err(|err| StoreError::Validation(err.to_string()))?;
+                (ChangesetOperationKind::ReplaceBody, materialized)
+            }
         };
-        let materialized = MaterializedProposalOperation::materialize_replace_body(
-            &rollback_id,
-            draft.clone(),
-            &base_snapshot,
-            &inverse_preimage,
-        )
-        .map_err(|err| StoreError::Validation(err.to_string()))?;
         uow.snapshots().store_preimage(&inverse_preimage)?;
 
         let child_input = ChangesetChildOperationInput {
             child_key,
-            operation: ChangesetOperationKind::ReplaceBody,
-            target: draft.target.clone(),
+            operation,
+            target,
             materialized_operation: Some(materialized),
             material_digest: None,
             validation_digest: None,
@@ -272,6 +431,81 @@ pub fn generate_rollback(
 
         Ok(RollbackOutcome::generated(&record))
     })
+}
+
+/// The bounded corpus of candidate changesets a rollback stem-lineage check
+/// scans (resource-bounds: mirrors `conflicts::MAX_CONFLICT_SIBLINGS`).
+const MAX_ROLLBACK_LINEAGE_SCAN: u32 = 256;
+
+/// The result of a [`stem_lineage_check`] scan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StemLineageCheck {
+    /// No later rename moved a document away from the stem, AND the scan
+    /// window reached back far enough (past `since_ms`) to be CERTAIN of
+    /// that — a bounded scan alone cannot claim "clear" honestly otherwise.
+    Clear,
+    /// A specific later-applied Rename moved a document away from the stem.
+    Broken(ChangesetId),
+    /// The scan window was exhausted (hit its cap) before reaching back to
+    /// `since_ms` — there may be MORE changesets, also newer than `since_ms`,
+    /// that fell outside the cap and were never inspected. Absence of a break
+    /// cannot be proven, so this refuses exactly like `Broken`: it is NEVER
+    /// treated as `Clear`.
+    Unconfirmable,
+}
+
+/// Whether `stem` has been renamed AWAY from by a Rename that applied AFTER
+/// `since_ms` — a stem-lineage break. Node ids are stem-derived (`doc:<stem>`),
+/// so a stem can be VACATED by one rename and later REOCCUPIED by an entirely
+/// unrelated document; resolving "the current occupant of `stem`" alone can
+/// never distinguish the two. A later-applied Rename whose OWN target (the
+/// stem it moved FROM) equals `stem` proves the document this rollback's
+/// forward rename placed there has since moved on, so the current occupant
+/// (if any) cannot be confirmed as this rollback's document.
+///
+/// Bounded (`cap`, mirroring every other bounded conflict scan in this
+/// codebase) but FAIL-CLOSED about its own boundedness: `latest_changesets`
+/// returns each changeset's LATEST revision ordered by insertion sequence,
+/// most-recent-first, so if the window fills up (`cap` candidates returned)
+/// and even the OLDEST of them is still newer than `since_ms`, there may be
+/// MORE later-applied changesets beyond the cap that were never inspected —
+/// absence of a break cannot be claimed. That case returns `Unconfirmable`,
+/// never a silent `Clear` (a missed break masquerading as safety would defeat
+/// the whole guard).
+fn stem_lineage_check(
+    uow: &UnitOfWork<'_>,
+    stem: &str,
+    since_ms: i64,
+    cap: u32,
+) -> StoreResult<StemLineageCheck> {
+    let candidates = uow.ledger().latest_changesets(cap)?;
+    for candidate in &candidates {
+        if candidate.status != ChangesetStatus::Applied || candidate.created_at_ms <= since_ms {
+            continue;
+        }
+        for child in &candidate.children {
+            if child.operation != ChangesetOperationKind::Rename {
+                continue;
+            }
+            let DocumentRef::Existing {
+                stem: from_stem, ..
+            } = &child.target.document
+            else {
+                continue;
+            };
+            if from_stem == stem {
+                return Ok(StemLineageCheck::Broken(candidate.changeset_id.clone()));
+            }
+        }
+    }
+    if candidates.len() as u32 == cap
+        && candidates
+            .last()
+            .is_some_and(|oldest| oldest.created_at_ms > since_ms)
+    {
+        return Ok(StemLineageCheck::Unconfirmable);
+    }
+    Ok(StemLineageCheck::Clear)
 }
 
 fn manual_repair(request: &RollbackRequest<'_>) -> ManualRepairProposal {
@@ -303,29 +537,6 @@ fn rollback_changeset_id(source: &ChangesetId, idempotency_key: &IdempotencyKey)
 
 fn rollback_preimage_id(rollback_id: &ChangesetId, child_key: &str) -> String {
     format!("preimage:{}:{}", rollback_id.as_str(), child_key)
-}
-
-/// Rebuild an existing document reference at a different base revision (the current
-/// worktree revision), leaving a provisional/other ref unchanged.
-fn document_at_revision(document: &DocumentRef, revision: RevisionToken) -> DocumentRef {
-    match document {
-        DocumentRef::Existing {
-            scope,
-            node_id,
-            stem,
-            path,
-            doc_type,
-            ..
-        } => DocumentRef::Existing {
-            scope: scope.clone(),
-            node_id: node_id.clone(),
-            stem: stem.clone(),
-            path: path.clone(),
-            doc_type: doc_type.clone(),
-            base_revision: revision,
-        },
-        other => other.clone(),
-    }
 }
 
 /// The source changeset's stored preimage for a child (operation id == child key),
@@ -510,6 +721,58 @@ mod tests {
                     };
                     let revision =
                         record(changeset_id, previous.clone(), status, actor, child(), at);
+                    uow.ledger().append_revision(&revision)?;
+                    previous = Some(revision.changeset_revision.clone());
+                }
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    /// The `seed_applied_source` sibling with a caller-chosen time BASE
+    /// (W02.P04-R1): needed to seed MULTIPLE sequential changesets with
+    /// strictly increasing `created_at_ms` (the stem-lineage guard orders on
+    /// it), which the hardcoded-timestamp `seed_applied_source` cannot do.
+    fn seed_applied_source_at(
+        store: &mut Store,
+        changeset_id: &ChangesetId,
+        author: &ActorRef,
+        reviewer: &ActorRef,
+        child: impl Fn() -> ChangesetChildOperationInput,
+        source_preimage: Option<PreimageRecord>,
+        base_ms: i64,
+    ) {
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                if let Some(preimage) = &source_preimage {
+                    uow.snapshots().store_preimage(preimage)?;
+                }
+                let mut previous: Option<RevisionToken> = None;
+                for (status, offset) in [
+                    (ChangesetStatus::Draft, 0),
+                    (ChangesetStatus::NeedsReview, 1),
+                    (ChangesetStatus::Approved, 2),
+                    (ChangesetStatus::Applying, 3),
+                    (ChangesetStatus::Applied, 4),
+                ] {
+                    let actor = if matches!(
+                        status,
+                        ChangesetStatus::Approved
+                            | ChangesetStatus::Applying
+                            | ChangesetStatus::Applied
+                    ) {
+                        reviewer
+                    } else {
+                        author
+                    };
+                    let revision = record(
+                        changeset_id,
+                        previous.clone(),
+                        status,
+                        actor,
+                        child(),
+                        base_ms + offset,
+                    );
                     uow.ledger().append_revision(&revision)?;
                     previous = Some(revision.changeset_revision.clone());
                 }
@@ -800,7 +1063,11 @@ mod tests {
     }
 
     #[test]
-    fn rename_source_has_no_v1_inverse_and_offers_manual_repair() {
+    fn rename_source_without_a_preimage_is_unavailable_with_manual_repair() {
+        // W02.P04: Rename now HAS a V1 inverse (rename-back), so eligibility no
+        // longer denies it as unsupported — but a preimage is still required
+        // uniformly (the SAME gate every invertible kind shares), and this
+        // source never captured one.
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         let mut store = temp_store(root);
@@ -818,17 +1085,407 @@ mod tests {
 
         assert!(!outcome.eligibility.allowed);
         assert!(
+            outcome.eligibility.reason.as_deref().is_some_and(|reason| {
+                reason.contains("rollback_unavailable") && reason.contains("preimage")
+            }),
+            "the reason names the missing preimage, not an unsupported inverse: {:?}",
+            outcome.eligibility.reason
+        );
+        assert!(outcome.manual_repair.is_some());
+    }
+
+    #[test]
+    fn rename_rolls_back_by_renaming_back_to_the_original_stem() {
+        // W02.P04.S25: a Rename source is invertible by a genuine RENAME-BACK,
+        // never a preimage-restore ReplaceBody (which would duplicate content
+        // at the stale old path while the document still lives at the new one).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let source = ChangesetId::new("changeset_rename_1").unwrap();
+
+        // Materialize the FORWARD rename's own record while the document still
+        // lives at the OLD stem (mirroring what the real apply path records:
+        // `target.document` is the pre-rename identity, `rename_edit` is the
+        // proposed new stem).
+        write_doc(root, "rollback-old-name", "before rename\n");
+        let old_doc = DocumentResolver::for_worktree(root)
+            .resolve_existing(ExistingDocumentLookup::Stem(
+                "rollback-old-name".to_string(),
+            ))
+            .unwrap();
+        let base_snapshot = SnapshotReader::for_worktree(root)
+            .require_current_base(&old_doc)
+            .unwrap();
+        let preimage = source_preimage_record(root, &source, "child_1", old_doc.clone());
+        let forward_draft = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::Rename,
+            target: TargetRevisionFence {
+                document: old_doc.clone(),
+                base_revision: Some(base_snapshot.revision.clone()),
+                current_revision: Some(base_snapshot.revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: Some("rollback-new-name".to_string()),
+            },
+        };
+        let forward_materialized = MaterializedProposalOperation::materialize_rename(
+            &source,
+            forward_draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        let forward_child = ChangesetChildOperationInput::from_materialized(
+            forward_materialized,
+            "material:child_1".to_string(),
+            "validation:child_1".to_string(),
+        );
+
+        // NOW simulate the forward rename having landed: the file moves from
+        // the OLD path to the NEW one.
+        std::fs::rename(
+            root.join(".vault/plan/rollback-old-name.md"),
+            root.join(".vault/plan/rollback-new-name.md"),
+        )
+        .unwrap();
+
+        let mut store = temp_store(root);
+        let author = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        seed_applied_source(
+            &mut store,
+            &source,
+            &author,
+            &reviewer,
+            || forward_child.clone(),
+            Some(preimage.clone()),
+        );
+
+        let outcome = generate(
+            &mut store,
+            root,
+            &source,
+            &["child_1"],
+            "idem:rollback:rename:1",
+        );
+
+        assert!(
+            outcome.eligibility.allowed,
+            "reason: {:?}",
+            outcome.eligibility.reason
+        );
+        assert!(!outcome.replayed);
+        assert!(outcome.manual_repair.is_none());
+        let rollback_id = outcome.changeset_id.expect("rollback changeset generated");
+
+        let rollback = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                Ok(uow.ledger().latest(&rollback_id)?.unwrap())
+            })
+            .unwrap();
+        assert_eq!(rollback.kind, ChangesetKind::Rollback);
+        assert_eq!(rollback.status, ChangesetStatus::RollbackProposed);
+        assert_eq!(rollback.operation_count, 1);
+        assert_eq!(
+            rollback.children[0].operation,
+            ChangesetOperationKind::Rename
+        );
+        let materialized = rollback.children[0]
+            .materialized_operation
+            .as_ref()
+            .expect("rollback child is materialized");
+        assert_eq!(
+            materialized.operation,
+            ChangesetOperationKind::Rename,
+            "a rename's inverse is a rename-back, never a body write"
+        );
+        assert_eq!(
+            materialized.rename_edit.as_deref(),
+            Some("rollback-old-name"),
+            "the inverse targets the ORIGINAL stem the source was proposed from"
+        );
+        let DocumentRef::Existing { stem, .. } = &materialized.target.document else {
+            panic!("rollback target must be an existing document");
+        };
+        assert_eq!(
+            stem, "rollback-new-name",
+            "the inverse's SOURCE is the document's CURRENT (post-forward-rename) identity"
+        );
+    }
+
+    #[test]
+    fn rename_rollback_refuses_when_the_stem_was_renamed_away_and_reused() {
+        // W02.P04-R1 falsifier: node ids are STEM-DERIVED, so resolving "the
+        // current occupant of a stem" cannot confirm it is THIS rollback's
+        // document — the stem may have been vacated by a LATER rename and then
+        // reoccupied by an UNRELATED document. Sequence: C1 renames A->B
+        // (applied); C2 renames B->D (applied — the doc C1 placed at B moves
+        // away); C3 renames a DIFFERENT document E->B (applied — B is legally
+        // vacant, so this succeeds). Rolling back C1 must REFUSE, fail-closed,
+        // never silently rename E's document (now at B) back to A.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let author = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let mut store = temp_store(root);
+
+        // --- C1: rename A -> B ---
+        write_doc(root, "rollback-lineage-a", "content of A\n");
+        let doc_a = DocumentResolver::for_worktree(root)
+            .resolve_existing(ExistingDocumentLookup::Stem(
+                "rollback-lineage-a".to_string(),
+            ))
+            .unwrap();
+        let c1 = ChangesetId::new("changeset_lineage_c1").unwrap();
+        let base_a = SnapshotReader::for_worktree(root)
+            .require_current_base(&doc_a)
+            .unwrap();
+        let preimage_a = source_preimage_record(root, &c1, "child_1", doc_a.clone());
+        let draft_c1 = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::Rename,
+            target: TargetRevisionFence {
+                document: doc_a.clone(),
+                base_revision: Some(base_a.revision.clone()),
+                current_revision: Some(base_a.revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: Some("rollback-lineage-b".to_string()),
+            },
+        };
+        let materialized_c1 =
+            MaterializedProposalOperation::materialize_rename(&c1, draft_c1, &base_a, &preimage_a)
+                .unwrap();
+        let child_c1 = ChangesetChildOperationInput::from_materialized(
+            materialized_c1,
+            "material:child_1".to_string(),
+            "validation:child_1".to_string(),
+        );
+        std::fs::rename(
+            root.join(".vault/plan/rollback-lineage-a.md"),
+            root.join(".vault/plan/rollback-lineage-b.md"),
+        )
+        .unwrap();
+        seed_applied_source_at(
+            &mut store,
+            &c1,
+            &author,
+            &reviewer,
+            || child_c1.clone(),
+            Some(preimage_a.clone()),
+            100,
+        );
+
+        // --- C2: rename B -> D (the doc C1 placed at B moves AWAY) ---
+        let doc_b = DocumentResolver::for_worktree(root)
+            .resolve_existing(ExistingDocumentLookup::Stem(
+                "rollback-lineage-b".to_string(),
+            ))
+            .unwrap();
+        let c2 = ChangesetId::new("changeset_lineage_c2").unwrap();
+        let base_b = SnapshotReader::for_worktree(root)
+            .require_current_base(&doc_b)
+            .unwrap();
+        let preimage_b = source_preimage_record(root, &c2, "child_1", doc_b.clone());
+        let draft_c2 = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::Rename,
+            target: TargetRevisionFence {
+                document: doc_b.clone(),
+                base_revision: Some(base_b.revision.clone()),
+                current_revision: Some(base_b.revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: Some("rollback-lineage-d".to_string()),
+            },
+        };
+        let materialized_c2 =
+            MaterializedProposalOperation::materialize_rename(&c2, draft_c2, &base_b, &preimage_b)
+                .unwrap();
+        let child_c2 = ChangesetChildOperationInput::from_materialized(
+            materialized_c2,
+            "material:child_1".to_string(),
+            "validation:child_1".to_string(),
+        );
+        std::fs::rename(
+            root.join(".vault/plan/rollback-lineage-b.md"),
+            root.join(".vault/plan/rollback-lineage-d.md"),
+        )
+        .unwrap();
+        seed_applied_source_at(
+            &mut store,
+            &c2,
+            &author,
+            &reviewer,
+            || child_c2.clone(),
+            None,
+            200,
+        );
+
+        // --- C3: rename a DIFFERENT document E -> B (B is legally vacant now) ---
+        write_doc(root, "rollback-lineage-e", "content of E\n");
+        let doc_e = DocumentResolver::for_worktree(root)
+            .resolve_existing(ExistingDocumentLookup::Stem(
+                "rollback-lineage-e".to_string(),
+            ))
+            .unwrap();
+        let c3 = ChangesetId::new("changeset_lineage_c3").unwrap();
+        let base_e = SnapshotReader::for_worktree(root)
+            .require_current_base(&doc_e)
+            .unwrap();
+        let preimage_e = source_preimage_record(root, &c3, "child_1", doc_e.clone());
+        let draft_c3 = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::Rename,
+            target: TargetRevisionFence {
+                document: doc_e.clone(),
+                base_revision: Some(base_e.revision.clone()),
+                current_revision: Some(base_e.revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: Some("rollback-lineage-b".to_string()),
+            },
+        };
+        let materialized_c3 =
+            MaterializedProposalOperation::materialize_rename(&c3, draft_c3, &base_e, &preimage_e)
+                .unwrap();
+        let child_c3 = ChangesetChildOperationInput::from_materialized(
+            materialized_c3,
+            "material:child_1".to_string(),
+            "validation:child_1".to_string(),
+        );
+        std::fs::rename(
+            root.join(".vault/plan/rollback-lineage-e.md"),
+            root.join(".vault/plan/rollback-lineage-b.md"),
+        )
+        .unwrap();
+        seed_applied_source_at(
+            &mut store,
+            &c3,
+            &author,
+            &reviewer,
+            || child_c3.clone(),
+            None,
+            300,
+        );
+
+        // Stem B now holds E's document; stem A is vacant; stem D holds the
+        // document C1 originally placed at A.
+        let outcome = generate(
+            &mut store,
+            root,
+            &c1,
+            &["child_1"],
+            "idem:rollback:lineage:1",
+        );
+
+        assert!(
+            !outcome.eligibility.allowed,
+            "a reused stem must refuse rollback, fail-closed"
+        );
+        assert!(
             outcome
                 .eligibility
                 .reason
                 .as_deref()
-                .is_some_and(
-                    |reason| reason.contains("rollback_unavailable") && reason.contains("inverse")
-                ),
-            "the reason names the unimplemented rename inverse: {:?}",
+                .is_some_and(|reason| reason.contains("rollback_unavailable")
+                    && reason.contains("renamed away")),
+            "{:?}",
             outcome.eligibility.reason
         );
         assert!(outcome.manual_repair.is_some());
+
+        // E's document must be UNTOUCHED: still at stem B, never moved to A.
+        assert!(
+            !root.join(".vault/plan/rollback-lineage-a.md").exists(),
+            "the refused rollback must not have created anything at the vacated stem"
+        );
+        let still_at_b =
+            std::fs::read_to_string(root.join(".vault/plan/rollback-lineage-b.md")).unwrap();
+        assert_eq!(
+            still_at_b, "content of E\n",
+            "E's document must not have been renamed by the refused rollback"
+        );
+    }
+
+    #[test]
+    fn stem_lineage_scan_refuses_when_the_window_is_exhausted_before_reaching_the_source() {
+        // W02.P05 fold-in (the P04 review LOW): a truncated scan must never
+        // silently report `Clear` — with a TINY cap, seeding more
+        // later-applied, unrelated candidates than the cap fills the window
+        // before it can reach back to `since_ms`, so absence of an away-move
+        // cannot be proven.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let mut store = temp_store(root);
+        let author = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let since_ms = 50;
+        let cap = 2;
+
+        // 3 unrelated Applied changesets, ALL newer than `since_ms`, none of
+        // which touch the probed stem — with `cap = 2` the window fills
+        // before reaching all 3.
+        for i in 0..3 {
+            let changeset_id = ChangesetId::new(format!("changeset_filler_{i}")).unwrap();
+            let doc = existing_doc(
+                &format!("filler-{i}"),
+                &RevisionToken::new(format!("blob:filler{i}")).unwrap(),
+            );
+            let child = {
+                let doc = doc.clone();
+                move || {
+                    child_input(
+                        &format!("child_{i}"),
+                        ChangesetOperationKind::ReplaceBody,
+                        doc.clone(),
+                    )
+                }
+            };
+            seed_applied_source_at(
+                &mut store,
+                &changeset_id,
+                &author,
+                &reviewer,
+                child,
+                None,
+                100 + i * 100,
+            );
+        }
+
+        let result = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                stem_lineage_check(uow, "probe-stem", since_ms, cap)
+            })
+            .unwrap();
+        assert_eq!(
+            result,
+            StemLineageCheck::Unconfirmable,
+            "a truncated scan must refuse, never silently claim Clear"
+        );
+
+        // A cap generous enough to reach back past `since_ms` (here, more than
+        // the 3 filler changesets) correctly reports Clear — the truncation
+        // guard does not over-refuse once the window is genuinely sufficient.
+        let clear_result = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                stem_lineage_check(uow, "probe-stem", since_ms, 256)
+            })
+            .unwrap();
+        assert_eq!(clear_result, StemLineageCheck::Clear);
     }
 
     #[test]
@@ -866,6 +1523,92 @@ mod tests {
                 .is_some_and(|reason| reason.contains("not applied")),
             "the reason names the unapplied source: {:?}",
             outcome.eligibility.reason
+        );
+    }
+
+    #[test]
+    fn frontmatter_edit_rolls_back_by_restoring_the_source_preimage() {
+        // W02.P03.S18: an EditFrontmatter source is invertible exactly like a body
+        // edit — the eligibility matrix (transitions.rs) already admits it, and
+        // generation restores the SAME preimage-payload-as-ReplaceBody inverse
+        // regardless of the source operation kind.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let before_rev = write_doc(
+            root,
+            "rollback-fm",
+            "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\nbefore\n",
+        );
+        let mut store = temp_store(root);
+        let source = ChangesetId::new("changeset_fm_1").unwrap();
+        let author = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let doc = existing_doc("rollback-fm", &before_rev);
+        let preimage = source_preimage_record(root, &source, "child_1", doc.clone());
+        let child = {
+            let doc = doc.clone();
+            move || {
+                child_input(
+                    "child_1",
+                    ChangesetOperationKind::EditFrontmatter,
+                    doc.clone(),
+                )
+            }
+        };
+        seed_applied_source(
+            &mut store,
+            &source,
+            &author,
+            &reviewer,
+            child,
+            Some(preimage),
+        );
+        // The forward edit landed: the worktree now reads the rewritten frontmatter.
+        write_doc(
+            root,
+            "rollback-fm",
+            "---\ntags:\n  - '#plan'\ndate: '2026-02-06'\n---\n\nafter\n",
+        );
+
+        let outcome = generate(
+            &mut store,
+            root,
+            &source,
+            &["child_1"],
+            "idem:rollback:fm:1",
+        );
+
+        assert!(
+            outcome.eligibility.allowed,
+            "reason: {:?}",
+            outcome.eligibility.reason
+        );
+        assert!(!outcome.replayed);
+        assert!(outcome.manual_repair.is_none());
+        let rollback_id = outcome.changeset_id.expect("rollback changeset generated");
+
+        let rollback = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                Ok(uow.ledger().latest(&rollback_id)?.unwrap())
+            })
+            .unwrap();
+        assert_eq!(rollback.kind, ChangesetKind::Rollback);
+        assert_eq!(rollback.status, ChangesetStatus::RollbackProposed);
+        assert_eq!(rollback.operation_count, 1);
+        let materialized = rollback.children[0]
+            .materialized_operation
+            .as_ref()
+            .expect("rollback child is materialized");
+        assert_eq!(
+            materialized.target_snapshot.payload_text,
+            "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\nbefore\n",
+            "rollback restores the EXACT preimage, not a re-derived frontmatter merge"
+        );
+        assert_eq!(
+            materialized.operation,
+            ChangesetOperationKind::ReplaceBody,
+            "the preimage-restore inverse is always a whole-document replace, \
+             regardless of the source operation kind"
         );
     }
 }

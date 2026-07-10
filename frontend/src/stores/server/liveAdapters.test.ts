@@ -5,8 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { adaptOpsWrite } from "./engine";
-import type { OpsResult, SearchResult } from "./engine";
+import type { SearchResult } from "./engine";
 import {
   adaptCodeFiles,
   adaptFilters,
@@ -87,122 +86,6 @@ describe("unwrapEnvelope", () => {
   it("passes already-adapted flat bodies through unchanged", () => {
     const body = { entries: [], tiers: TIERS };
     expect(unwrapEnvelope(body)).toBe(body);
-  });
-});
-
-// The document write/create ops (document-editor backend). Each sample below is a
-// REAL post-engine-wrap, pre-unwrap wire body the live `POST /ops/core/...` front
-// door serves — the engine forwards core's sibling `{schema, status, data}`
-// envelope VERBATIM under `data.envelope` with the tiers block, HTTP 200 for BOTH
-// success and business-refusal. Feeding each through the SAME `unwrapEnvelope` +
-// `adaptOpsWrite` path the client uses proves the adapter interprets the live
-// shape, not just a copied fixture: the unwrap flattens
-// `{data:{envelope}, tiers}` onto the `OpsResult`, and `adaptOpsWrite` discriminates
-// on the envelope `status` + inner `data` fields, NEVER on an HTTP code.
-
-describe("adaptOpsWrite (captured live wire samples)", () => {
-  /** Replicate the client transport: unwrap the `{data, tiers}` envelope onto the
-   *  flat `OpsResult` the adapter consumes. */
-  const toResult = (wire: unknown): OpsResult => unwrapEnvelope(wire) as OpsResult;
-
-  it("interprets a set-body success envelope as a `saved` result", () => {
-    const wire = {
-      data: {
-        envelope: {
-          schema: "vaultspec.vault.set-body.v1",
-          status: "updated",
-          data: { path: ".vault/adr/x.md", blob_hash: "c245abc", checks: [] },
-        },
-      },
-      tiers: TIERS,
-    };
-    const result = adaptOpsWrite(toResult(wire));
-    expect(result.kind).toBe("saved");
-    if (result.kind === "saved") {
-      expect(result.path).toBe(".vault/adr/x.md");
-      expect(result.blobHash).toBe("c245abc");
-      expect(result.checks).toEqual([]);
-    }
-  });
-
-  it("interprets a blob-hash conflict envelope as a `conflict` result (200, not an HTTP error)", () => {
-    const wire = {
-      data: {
-        envelope: {
-          schema: "vaultspec.vault.set-body.v1",
-          status: "failed",
-          data: {
-            message: "Blob-hash conflict: the document changed since it was read",
-            conflict: true,
-            expected: "aaaa",
-            actual: "bbbb",
-            path: ".vault/adr/x.md",
-          },
-        },
-      },
-      tiers: TIERS,
-    };
-    const result = adaptOpsWrite(toResult(wire));
-    expect(result.kind).toBe("conflict");
-    if (result.kind === "conflict") {
-      expect(result.expected).toBe("aaaa");
-      expect(result.actual).toBe("bbbb");
-      expect(result.path).toBe(".vault/adr/x.md");
-    }
-  });
-
-  it("interprets a frontmatter refusal envelope as a `refused` result", () => {
-    const wire = {
-      data: {
-        envelope: {
-          schema: "vaultspec.vault.set-frontmatter.v1",
-          status: "failed",
-          data: {
-            path: ".vault/adr/x.md",
-            refused: true,
-            checks: [
-              {
-                path: ".vault/adr/x.md",
-                message: "related link `missing` resolves to no document",
-                severity: "error",
-                check: "frontmatter",
-              },
-            ],
-            errors: ["related link `missing` resolves to no document"],
-          },
-        },
-      },
-      tiers: TIERS,
-    };
-    const result = adaptOpsWrite(toResult(wire));
-    expect(result.kind).toBe("refused");
-    if (result.kind === "refused") {
-      expect(result.checks).toHaveLength(1);
-      expect(result.errors[0]).toContain("resolves to no document");
-      expect(result.path).toBe(".vault/adr/x.md");
-    }
-  });
-
-  it("interprets a create envelope as a `created` result", () => {
-    const wire = {
-      data: {
-        envelope: {
-          schema: "vaultspec.vault.add.v1",
-          status: "created",
-          data: {
-            path: ".vault/research/2026-06-16-x-research.md",
-            stem: "2026-06-16-x-research",
-          },
-        },
-      },
-      tiers: TIERS,
-    };
-    const result = adaptOpsWrite(toResult(wire));
-    expect(result.kind).toBe("created");
-    if (result.kind === "created") {
-      expect(result.path).toBe(".vault/research/2026-06-16-x-research.md");
-      expect(result.stem).toBe("2026-06-16-x-research");
-    }
   });
 });
 

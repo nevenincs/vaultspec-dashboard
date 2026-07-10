@@ -266,6 +266,13 @@ pub struct CompactionRunSummary {
     pub limited_count: usize,
 }
 
+/// The bounded cap on the durable compaction-run audit table (resource-bounds: an
+/// only-growing SQLite table must carry a prune). `compact_due` keeps only the most-recent
+/// runs and prunes older audit rows, so even sustained real compaction activity cannot grow
+/// the table without limit. This bounds only the coarse run-level audit log; the
+/// per-record compaction MARKERS (their provenance) are retained under record retention.
+const MAX_COMPACTION_RUN_AUDIT_ROWS: i64 = 512;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackupExport {
     pub export_id: String,
@@ -578,21 +585,31 @@ impl RetentionRepository<'_, '_> {
         if remaining > 0 {
             limited_count = remaining;
         }
-        self.repo.execute(
-            "INSERT INTO authoring_compaction_runs
-                (run_id, started_at_ms, completed_at_ms, max_rows,
-                 compacted_count, skipped_count, limited_count, status)
-             VALUES
-                (?1, ?2, ?2, ?3, ?4, ?5, ?6, 'completed')",
-            (
-                run_id.as_str(),
-                now_ms,
-                i64::from(max_rows),
-                compacted_count as i64,
-                skipped_count as i64,
-                limited_count as i64,
-            ),
-        )?;
+        // Record a durable audit row ONLY when the sweep actually did something. S262 drives
+        // this hook once per genuine prompt turn, and MOST turns are pure no-ops (nothing
+        // newly due); an unconditional insert would grow the run table ~one row per turn
+        // forever (resource-bounds: no only-growing table without a prune). A no-op sweep
+        // (nothing compacted, skipped, or still-limited) writes nothing.
+        if compacted_count + skipped_count + limited_count > 0 {
+            self.repo.execute(
+                "INSERT INTO authoring_compaction_runs
+                    (run_id, started_at_ms, completed_at_ms, max_rows,
+                     compacted_count, skipped_count, limited_count, status)
+                 VALUES
+                    (?1, ?2, ?2, ?3, ?4, ?5, ?6, 'completed')",
+                (
+                    run_id.as_str(),
+                    now_ms,
+                    i64::from(max_rows),
+                    compacted_count as i64,
+                    skipped_count as i64,
+                    limited_count as i64,
+                ),
+            )?;
+            // And even real compaction activity cannot grow the audit table without limit:
+            // keep only the most-recent rows.
+            self.prune_compaction_runs(MAX_COMPACTION_RUN_AUDIT_ROWS)?;
+        }
         Ok(CompactionRunSummary {
             run_id,
             compacted_count,
@@ -846,6 +863,35 @@ impl RetentionRepository<'_, '_> {
             |row| row.get::<_, i64>(0),
         )?;
         Ok(count as usize)
+    }
+
+    /// The number of durable compaction-run audit rows. Bounded by
+    /// [`MAX_COMPACTION_RUN_AUDIT_ROWS`]; a no-op sweep contributes none.
+    pub fn compaction_run_count(&self) -> Result<usize> {
+        let count = self.repo.query_row(
+            "SELECT count(*) FROM authoring_compaction_runs",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        Ok(count as usize)
+    }
+
+    /// Prune the compaction-run audit table to its most-recent `keep` rows (by completion
+    /// time, `run_id` tie-broken), returning how many rows were removed. This is the bounded
+    /// DELETE that keeps the only-growing audit table within
+    /// [`MAX_COMPACTION_RUN_AUDIT_ROWS`]; `compact_due` calls it after every real sweep.
+    fn prune_compaction_runs(&self, keep: i64) -> Result<usize> {
+        let pruned = self.repo.execute(
+            "DELETE FROM authoring_compaction_runs
+             WHERE run_id NOT IN (
+                 SELECT run_id
+                 FROM authoring_compaction_runs
+                 ORDER BY completed_at_ms DESC, run_id DESC
+                 LIMIT ?1
+             )",
+            [keep.max(0)],
+        )?;
+        Ok(pruned)
     }
 }
 
@@ -1248,6 +1294,16 @@ mod tests {
         assert_eq!(summary.compacted_count, 1);
         assert_eq!(summary.limited_count, 0);
 
+        let runs = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.retention().compaction_run_count()
+            })
+            .unwrap();
+        assert_eq!(
+            runs, 1,
+            "a sweep that did work records exactly one audit row"
+        );
+
         let compacted = store
             .with_unit_of_work(CommandKind::CreateProposal, |uow| {
                 uow.retention().record(&transcript.record_ref)
@@ -1292,6 +1348,80 @@ mod tests {
             .unwrap();
         assert_eq!(status.compacted_records, 1);
         assert_eq!(status.compactable_due_records, 2);
+    }
+
+    #[test]
+    fn no_op_sweep_records_no_compaction_run_audit_row() {
+        let (_dir, mut store) = temp_store();
+        // Nothing is due: a pure no-op sweep must write NO audit row. S262 drives this hook
+        // once per prompt turn and most turns are no-ops, so an unconditional insert would
+        // grow the run table ~one row per turn forever (resource-bounds).
+        let summary = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.retention()
+                    .compact_due("compact:noop", 100, 10, "summary:noop")
+            })
+            .unwrap();
+        assert_eq!(summary.compacted_count, 0);
+        assert_eq!(summary.skipped_count, 0);
+        assert_eq!(summary.limited_count, 0);
+
+        let runs = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.retention().compaction_run_count()
+            })
+            .unwrap();
+        assert_eq!(runs, 0, "a no-op sweep records no compaction-run audit row");
+    }
+
+    #[test]
+    fn compaction_run_audit_table_is_bounded_by_prune() {
+        let (_dir, mut store) = temp_store();
+        // Five REAL sweeps (each compacts one terminal transcript) accumulate five rows; the
+        // inline prune keeps up to MAX_COMPACTION_RUN_AUDIT_ROWS, so all five survive here.
+        for idx in 1..=5_i64 {
+            let mut transcript = record(
+                "generation_transcript",
+                &format!("prune_transcript_{idx}"),
+                RetentionClass::GenerationTranscript,
+                LifecycleStatus::Rejected,
+                &format!("hash:prune:{idx}"),
+            );
+            transcript.compact_after_ms = Some(100);
+            upsert(&mut store, &transcript);
+            let summary = store
+                .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                    uow.retention().compact_due(
+                        format!("compact:prune:{idx}"),
+                        200 + idx,
+                        10,
+                        "summary:prune",
+                    )
+                })
+                .unwrap();
+            assert_eq!(summary.compacted_count, 1);
+        }
+        let before = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.retention().compaction_run_count()
+            })
+            .unwrap();
+        assert_eq!(before, 5, "five real sweeps accumulate five audit rows");
+
+        // The bounded DELETE keeps only the most-recent rows — the same prune `compact_due`
+        // applies with the production cap, exercised here at a small bound.
+        let (pruned, after) = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                let pruned = uow.retention().prune_compaction_runs(3)?;
+                let after = uow.retention().compaction_run_count()?;
+                Ok((pruned, after))
+            })
+            .unwrap();
+        assert_eq!(pruned, 2, "the two oldest audit rows are pruned");
+        assert_eq!(
+            after, 3,
+            "the audit table is bounded to the most-recent rows"
+        );
     }
 
     #[test]

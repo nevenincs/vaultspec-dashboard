@@ -81,14 +81,16 @@ import {
   CANONICAL_TIERS,
   DEFAULT_SALIENCE_LENS,
   EngineError,
-  adaptOpsWrite,
-  envelopeData,
   engineClient,
   readTierAvailability,
   tiersFromQuery,
 } from "./engine";
 import type { SalienceLens } from "./engine";
-import { dispatchOps } from "./opsActions";
+import {
+  authoringClient,
+  requireActorToken,
+  type DirectWriteOutcome,
+} from "./authoring";
 import {
   deriveEditorialTitle,
   sanitizeHeadingText,
@@ -351,6 +353,17 @@ export const engineKeys = {
   // active session and one settings document per workspace, so a single stable
   // key each. Mutations invalidate exactly these.
   session: () => [...engineKeys.all, "session"] as const,
+  // The provisioning status projection (project-provisioning ADR): keyed by the
+  // resolved target so a per-workspace/worktree status caches independently.
+  provisionStatus: (workspace?: string, worktree?: string) =>
+    [
+      ...engineKeys.all,
+      "provision",
+      "status",
+      workspace ?? "active",
+      worktree ?? "root",
+    ] as const,
+  provisionJob: (id: string) => [...engineKeys.all, "provision", "job", id] as const,
   settings: () => [...engineKeys.all, "settings"] as const,
   // The settings schema registry (dashboard-settings): engine-owned and stable
   // for a workspace, so a single key. Read rarely, cached long; the dialog reads
@@ -6059,19 +6072,27 @@ export function usePutSettings() {
 
 // --- document write/create mutations (document-editor backend) -------------------
 //
-// The save/create/frontmatter mutations the editor drives. They run through the
-// ONE platform ops-dispatch seam (`dispatchOps`, opsActions) — NOT a direct
-// engine-client call — so every vault mutation stays logged, traced, and centrally
-// guardable, exactly like the rag control verbs (dashboard-layer-ownership: the app
-// layer never reaches the engine client itself). The dispatch resolves with the
-// brokered `OpsResult`; `adaptOpsWrite` interprets the sibling envelope's `status`
-// + `data` into the typed `OpsWriteResult` (saved / conflict / refused / created),
-// branching on those fields and NEVER on the HTTP code (the wire returns 200 for
-// both success and business-refusal). A conflict/refusal is a typed result the
-// caller drives editor state from — NOT a thrown error — so the mutation resolves
-// (never rejects) on a business outcome; only a transport fault (a tiers-bearing
-// EngineError) rejects. Concurrency rides the read's echoed `blob_hash`; degradation
-// is read from the result's tiers, never guessed from transport
+// Save, frontmatter, rename, and create ALL route through the authoring
+// ledger's `directWrite` route (`operation: "replace_body"` /
+// `"edit_frontmatter"` / `"rename"` / `"create_document"`,
+// ledgered-edit-migration W01.P02 / W03.P07 / W03.P08 / W03.P09) — a
+// self-approving direct changeset, not the legacy `/ops/core` ops-dispatch
+// seam. `directWriteResultToOpsResult` maps the body/frontmatter outcome onto
+// the SAME `OpsWriteResult` shape the editor lifecycle already consumes
+// (`applyEditorWriteResult`); rename and create each map their own outcome
+// shape locally (`RenameDocResult`, `OpsWriteResult`'s `created` variant). Every
+// direct-write kind PINS the doc's `scope`, so a mutation that races a
+// scope-switch is refused rather than silently landing in the wrong worktree.
+// Only `archive`/`link` (feature-archive, relate) still dispatch through the
+// legacy `dispatchOps` seam — the ops-dispatch write mode itself is now dead
+// in practice (no live caller), left alive per the ADR's staged W04 removal.
+//
+// Either way, a conflict/refusal is a typed result the caller drives editor state
+// from — NOT a thrown error — so the mutation resolves (never rejects) on a
+// business outcome; only a transport fault (a tiers-bearing EngineError) or the
+// actor-token fail-safe (`requireActorToken`, no identity bootstrapped) rejects.
+// Concurrency rides the read's echoed `blob_hash`; degradation is read from the
+// result's tiers, never guessed from transport
 // (degradation-is-read-from-tiers-not-guessed-from-errors).
 
 /** Strip the `doc:` prefix from a node id to recover the document STEM the write
@@ -6079,30 +6100,6 @@ export function usePutSettings() {
  *  that already holds a bare stem is tolerated. */
 export function stemFromNodeId(nodeId: string): string {
   return nodeId.startsWith("doc:") ? nodeId.slice("doc:".length) : nodeId;
-}
-
-/** Run a write op through the ops-dispatch seam and interpret its result; surface
- *  the brokered tiers alongside the typed outcome so the caller can read
- *  degradation from tiers (never from transport). */
-async function runWriteOp(
-  verb: string,
-  body: {
-    scope?: string;
-    ref: string;
-    body?: string;
-    expected_blob_hash?: string;
-    date?: string;
-    tags?: string[];
-    related?: string[];
-  },
-): Promise<{ result: OpsWriteResult; tiers: TiersBlock }> {
-  const ops: OpsResult = await dispatchOps({
-    target: "core",
-    verb,
-    mode: "write",
-    body,
-  });
-  return { result: adaptOpsWrite(ops), tiers: ops.tiers };
 }
 
 /** The arguments to a body save: the open doc's node id + scope, the new text, and
@@ -6315,29 +6312,119 @@ export function invalidateScopedSemanticReads(
 }
 
 /**
- * Save the open document's body (`set-body`). Resolves with the typed
+ * Map a `directWrite` outcome onto the shared `OpsWriteResult` shape the editor
+ * save lifecycle already consumes (`applyEditorWriteResult`), so the Save
+ * button's cutover to the ledgered route is invisible to the view layer above
+ * this store. The direct-write conflict's `target_blob_hash` (the blob the save
+ * would have produced had the base still matched) is not carried through — the
+ * editor conflict UX has only ever rendered `expected`/`actual`.
+ *
+ * A `refused` result's reason rides BOTH `errors` and `checks` — the editor's
+ * advisories panel (`conformanceChecksOf`, stores/view/editor.ts) reads only
+ * `checks`, mirroring the one-entry `{severity, message, fixable}` shape
+ * `applyRenameEditorResult`'s collision branch already uses — so a denied
+ * (e.g. a scope-pin mismatch, a non-human actor) or failed direct write is
+ * never a silently blank advisories panel.
+ */
+function directWriteRefusedResult(reason: string): OpsWriteResult {
+  return {
+    kind: "refused",
+    checks: [{ severity: "error", message: reason, fixable: false }],
+    errors: [reason],
+  };
+}
+
+function directWriteResultToOpsResult(outcome: DirectWriteOutcome): {
+  result: OpsWriteResult;
+  tiers: TiersBlock;
+} {
+  if (outcome.kind === "applied") {
+    return {
+      result: {
+        kind: "saved",
+        path: outcome.documentPath ?? "",
+        blobHash: outcome.blobHash ?? "",
+        checks: [],
+      },
+      tiers: outcome.tiers,
+    };
+  }
+  if (outcome.kind === "conflict") {
+    return {
+      result: {
+        kind: "conflict",
+        expected: outcome.conflict.expected_blob_hash,
+        actual: outcome.conflict.actual_blob_hash,
+        path: outcome.conflict.document_path,
+      },
+      tiers: outcome.tiers,
+    };
+  }
+  if (outcome.kind === "denied") {
+    return {
+      result: directWriteRefusedResult(
+        outcome.reason ?? "the direct editor save was denied",
+      ),
+      tiers: outcome.tiers,
+    };
+  }
+  if (outcome.kind === "failed") {
+    return {
+      result: directWriteRefusedResult(
+        outcome.reason ?? "the direct editor save failed",
+      ),
+      tiers: outcome.tiers,
+    };
+  }
+  if (outcome.kind === "in_flight") {
+    return {
+      result: directWriteRefusedResult(
+        "a prior save for this document is still in flight — try again shortly",
+      ),
+      tiers: outcome.tiers,
+    };
+  }
+
+  const exhaustive: never = outcome;
+  return exhaustive;
+}
+
+/**
+ * Save the open document's body through the authoring ledger's `directWrite`
+ * route (`operation: "replace_body"`, ledgered-edit-migration W01.P02 /
+ * W02.P06) — a self-approved direct changeset, not the legacy `set-body` ops
+ * dispatch. Sends the open doc's `scope` as the direct-write scope PIN, so a
+ * save that races a scope-switch is refused as a redacted denial rather than
+ * silently landing in the wrong worktree. Resolves with the typed
  * `OpsWriteResult` — a `conflict` (the optimistic blob-hash base went stale) or a
- * `refused` (a validation rejection) is a typed result the caller drives editor
- * state from, NOT a thrown error; only a transport fault rejects. On a `saved`
- * outcome the vault-mutation read surfaces are invalidated so the next read
- * returns the new blob, graph generation, tree rows, git dirty/change state, and
- * graph-derived projections. The new `blob_hash` is echoed in the result for the
- * caller to adopt as the next optimistic-concurrency base.
+ * `refused` (a validation rejection, denial, or in-flight collision) is a typed
+ * result the caller drives editor state from, NOT a thrown error; only a
+ * transport fault, or the actor-token fail-safe (no identity bootstrapped —
+ * `requireActorToken`), rejects. On a `saved` outcome the vault-mutation read
+ * surfaces are invalidated so the next read returns the new blob, graph
+ * generation, tree rows, git dirty/change state, and graph-derived projections.
+ * The new `blob_hash` is echoed in the result for the caller to adopt as the next
+ * optimistic-concurrency base.
  */
 export function useSaveBody() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: SaveBodyArgs) => {
+    mutationFn: async (args: SaveBodyArgs) => {
       const normalized = normalizeSaveBodyArgs(args);
       if (normalized.ref === null) {
-        return Promise.resolve(refusedWriteResult("Missing document id"));
+        return refusedWriteResult("Missing document id");
       }
-      return runWriteOp("set-body", {
-        scope: normalized.scope ?? undefined,
-        ref: normalized.ref,
-        body: normalized.text,
-        expected_blob_hash: normalized.baseBlobHash,
-      });
+      const outcome = await authoringClient.directWrite(
+        {
+          operation: "replace_body",
+          ref: normalized.ref,
+          body: normalized.text,
+          expected_blob_hash: normalized.baseBlobHash,
+          scope: normalized.scope,
+        },
+        { actorToken: requireActorToken() },
+      );
+      return directWriteResultToOpsResult(outcome);
     },
     onSuccess: ({ result }, args) => {
       const normalized = normalizeSaveBodyArgs(args);
@@ -6386,28 +6473,41 @@ export function normalizeSetFrontmatterArgs(
 }
 
 /**
- * Set the open document's frontmatter (`set-frontmatter`): date / tags / related.
- * Same typed-result discipline as `useSaveBody` — a `conflict`/`refused` resolves
- * (never throws); a frontmatter validation refusal arrives as a `refused` carrying
- * the `checks` + `errors` so the editor explains the rejection without parsing
- * prose. Invalidates the shared vault-mutation read surfaces on a successful save.
+ * Set the open document's frontmatter (date / tags / related) through the
+ * authoring ledger's `directWrite` route (`operation: "edit_frontmatter"`,
+ * ledgered-edit-migration W03.P07) — a self-approved direct changeset, not
+ * the legacy `set-frontmatter` ops dispatch. Sends the open doc's `scope` as
+ * the direct-write scope pin, same as `useSaveBody`. Same typed-result
+ * discipline — a `conflict`/`refused` resolves (never throws); a frontmatter
+ * validation refusal (or a denial, or an in-flight collision) arrives as a
+ * `refused` carrying the served reason so the editor explains the rejection
+ * without parsing prose; only a transport fault, or the actor-token fail-safe
+ * (`requireActorToken`), rejects. Invalidates the shared vault-mutation read
+ * surfaces on a successful save.
  */
 export function useSetFrontmatter() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: SetFrontmatterArgs) => {
+    mutationFn: async (args: SetFrontmatterArgs) => {
       const normalized = normalizeSetFrontmatterArgs(args);
       if (normalized.ref === null) {
-        return Promise.resolve(refusedWriteResult("Missing document id"));
+        return refusedWriteResult("Missing document id");
       }
-      return runWriteOp("set-frontmatter", {
-        scope: normalized.scope ?? undefined,
-        ref: normalized.ref,
-        expected_blob_hash: normalized.baseBlobHash,
-        date: normalized.date,
-        tags: normalized.tags,
-        related: normalized.related,
-      });
+      const outcome = await authoringClient.directWrite(
+        {
+          operation: "edit_frontmatter",
+          ref: normalized.ref,
+          frontmatter: {
+            date: normalized.date,
+            tags: normalized.tags,
+            related: normalized.related,
+          },
+          expected_blob_hash: normalized.baseBlobHash,
+          scope: normalized.scope,
+        },
+        { actorToken: requireActorToken() },
+      );
+      return directWriteResultToOpsResult(outcome);
     },
     onSuccess: ({ result }, args) => {
       const normalized = normalizeSetFrontmatterArgs(args);
@@ -6449,13 +6549,24 @@ export function normalizeCreateDocArgs(args: unknown): NormalizedCreateDocArgs {
 }
 
 /**
- * Create a new document (`create`). Resolves with `{ result, nodeId }` where
- * `result` is the typed `OpsWriteResult` (`created` on success, carrying the new
- * doc's `path` + `stem`; `refused` on a validation rejection) and `nodeId` is the
- * synthesized `doc:<stem>` id (null when the create was refused). On a `created`
- * outcome the same vault-mutation read surfaces are invalidated as a save (a new
- * doc can introduce tree rows, graph nodes, filter facets, search hits, and git
- * change entries).
+ * Create a new document through the authoring ledger's `directWrite` route
+ * (`operation: "create_document"`, ledgered-edit-migration W03.P09) — a
+ * self-approved direct changeset, not the legacy `create` ops dispatch. Sends
+ * the target `scope` as the direct-write scope pin, same as Save/frontmatter/
+ * rename. Resolves with `{ result, nodeId }` where `result` is the typed
+ * `OpsWriteResult` and `nodeId` is the SERVER-echoed `doc:<stem>` id (W03.P09a
+ * — `vault add` names the created file itself; the client never predicted a
+ * stem, and now doesn't need to: the apply receipt echoes the real
+ * `result_node_id`/`result_stem`/`document_path` for a landed create,
+ * re-resolved server-side, never client-guessed). `conflict`/`refused`
+ * (including a predicted-create-path collision, structurally tagged
+ * `denialKind === "path_collision"` — W05.P14, never a reason-text substring
+ * match) is a typed result the caller drives UI state from — NOT a thrown
+ * error; only a transport fault, or the actor-token fail-safe
+ * (`requireActorToken`), rejects. On a `created` outcome the same vault-
+ * mutation read surfaces are invalidated as a save (a new doc can introduce
+ * tree rows, graph nodes, filter facets, search hits, and git change
+ * entries).
  */
 export function useCreateDoc() {
   const queryClient = useQueryClient();
@@ -6474,118 +6585,64 @@ export function useCreateDoc() {
           nodeId: null,
         };
       }
-      const ops: OpsResult = await dispatchOps({
-        target: "core",
-        verb: "create",
-        mode: "create",
-        body: {
-          scope: normalized.scope ?? undefined,
-          doc_type: normalized.docType,
-          feature: normalized.feature,
-          title: normalized.title,
-          related: normalized.related,
+      const outcome = await authoringClient.directWrite(
+        {
+          operation: "create_document",
+          create: {
+            doc_type: normalized.docType,
+            feature: normalized.feature,
+            title: normalized.title ?? "",
+            related: normalized.related,
+          },
+          scope: normalized.scope,
         },
-      });
-      const result = adaptOpsWrite(ops);
-      const nodeId = result.kind === "created" ? docNodeIdFromStem(result.stem) : null;
-      return { result, tiers: ops.tiers, nodeId };
+        { actorToken: requireActorToken() },
+      );
+      if (outcome.kind === "applied") {
+        // W03.P09a: the apply receipt now echoes the created document's real
+        // identity (server-resolved, never client-predicted) —
+        // `resultNodeId` is already the full `doc:<stem>` id.
+        return {
+          result: {
+            kind: "created",
+            path: outcome.documentPath ?? "",
+            stem: outcome.resultStem ?? "",
+          },
+          tiers: outcome.tiers,
+          nodeId: outcome.resultNodeId ?? null,
+        };
+      }
+      if (outcome.kind === "conflict") {
+        return {
+          result: {
+            kind: "conflict",
+            expected: outcome.conflict.expected_blob_hash,
+            actual: outcome.conflict.actual_blob_hash,
+          },
+          tiers: outcome.tiers,
+          nodeId: null,
+        };
+      }
+      // A predicted-create-path collision (`denialKind === "path_collision"`,
+      // W05.P14) rides the same denied-status VALUE as every other denial and
+      // folds into the SAME refused-with-checks result below: `OpsWriteResult`
+      // (unlike rename's `RenameDocResult`) carries no distinct `collision`
+      // kind for create, so there is no separate branch to route to.
+      const reason =
+        outcome.kind === "denied" || outcome.kind === "failed"
+          ? (outcome.reason ?? "Create refused")
+          : "a prior create for this document is still in flight — try again shortly";
+      return {
+        result: directWriteRefusedResult(reason),
+        tiers: outcome.tiers,
+        nodeId: null,
+      };
     },
     onSuccess: ({ result }, args) => {
       const normalized = normalizeCreateDocArgs(args);
       if (result.kind === "created") {
         invalidateAfterVaultMutation(queryClient, normalized.scope);
       }
-    },
-  });
-}
-
-/** Args for {@link useArchiveFeature}: the worktree scope and the feature tag to
- *  archive (`vaultspec-core vault feature archive <tag>`). */
-export interface ArchiveFeatureArgs {
-  scope?: unknown;
-  feature: unknown;
-}
-
-export interface ArchiveFeatureResult {
-  ok: boolean;
-  scope: string | null;
-  feature: string;
-}
-
-/**
- * Archive a completed feature's documents through the brokered ops seam
- * (`dispatchOps` → `/ops/core/archive` → `vault feature archive`). FEATURE-SCOPED
- * (the only archive grain vaultspec-core has). On a non-`failed` envelope the
- * vault tree + graph are invalidated so the rail and stage drop the archived
- * documents; the watcher's re-ingest + generation bump corroborate. A `failed`
- * envelope (e.g. unknown tag) leaves the cache untouched. The mutation reads the
- * sibling envelope `status`, never the HTTP code (every ops outcome is a 200).
- */
-export function useArchiveFeature() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (args: ArchiveFeatureArgs): Promise<ArchiveFeatureResult> => {
-      const scope = normalizeGitDiffArg(args.scope) ?? null;
-      const feature = typeof args.feature === "string" ? args.feature.trim() : "";
-      if (feature.length === 0) return { ok: false, scope, feature };
-      const ops: OpsResult = await dispatchOps({
-        target: "core",
-        verb: "feature-archive",
-        mode: "archive",
-        body: { scope: scope ?? undefined, feature },
-      });
-      const { status } = envelopeData(ops.envelope);
-      return { ok: ops.ok && status !== "failed", scope, feature };
-    },
-    onSuccess: (result) => {
-      if (result.ok) invalidateAfterVaultMutation(queryClient, result.scope);
-    },
-  });
-}
-
-/** Args for {@link useRelateDoc}: the worktree scope and the source/target
- *  document stems of a `related:` edge (`vaultspec-core vault link add`). */
-export interface RelateDocArgs {
-  scope?: unknown;
-  src: unknown;
-  dst: unknown;
-}
-
-export interface RelateDocResult {
-  ok: boolean;
-  scope: string | null;
-}
-
-/**
- * Add a `related:` edge between two documents through the brokered ops seam
- * (`dispatchOps` → `/ops/core/link` → `vault link add <src> <dst>`). Idempotent
- * (the sibling exits 0 when the edge already exists) and refuses a dangling target.
- * On a non-`failed` envelope the vault tree + graph are invalidated so the new
- * edge appears; the watcher's re-ingest + generation bump corroborate. A `failed`
- * envelope leaves the cache untouched. Reads the sibling envelope `status`, never
- * the HTTP code.
- */
-export function useRelateDoc() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (args: RelateDocArgs): Promise<RelateDocResult> => {
-      const scope = normalizeGitDiffArg(args.scope) ?? null;
-      const src = typeof args.src === "string" ? args.src.trim() : "";
-      const dst = typeof args.dst === "string" ? args.dst.trim() : "";
-      if (src.length === 0 || dst.length === 0 || src === dst) {
-        return { ok: false, scope };
-      }
-      const ops: OpsResult = await dispatchOps({
-        target: "core",
-        verb: "link-add",
-        mode: "link",
-        body: { scope: scope ?? undefined, src, dst },
-      });
-      const { status } = envelopeData(ops.envelope);
-      return { ok: ops.ok && status !== "failed", scope };
-    },
-    onSuccess: (result) => {
-      if (result.ok) invalidateAfterVaultMutation(queryClient, result.scope);
     },
   });
 }
@@ -6649,13 +6706,21 @@ function refusedRenameResult(message: string): {
 }
 
 /**
- * Rename a document's file (`rename`) through the ONE ops-dispatch seam — the new
- * stem becomes the document's identity. On a `renamed` outcome the caller re-keys
- * the open editor/tab from `oldNodeId` to `newNodeId` (the engine has already
- * re-pointed incoming `related:` links, and the watcher re-ingests). A
- * `conflict`/`collision`/`refused` is a typed result the caller drives editor
- * state from — NOT a thrown error; only a transport fault rejects. The same
- * vault-mutation read surfaces are invalidated as a save (a rename changes tree
+ * Rename a document's file through the authoring ledger's `directWrite` route
+ * (`operation: "rename"`, ledgered-edit-migration W03.P08) — a self-approved
+ * direct changeset, not the legacy `rename` ops dispatch. Sends the open doc's
+ * `scope` as the direct-write scope pin, same as Save/frontmatter. On a
+ * `renamed` outcome the caller re-keys the open editor/tab from `oldNodeId` to
+ * `newNodeId` (the engine has already re-pointed incoming `related:` links,
+ * and the watcher re-ingests) — `incomingRewritten` is not carried by the
+ * direct-write outcome and floors to 0 (no consumer reads it today). A
+ * `conflict` (a stale optimistic base) / `collision` (the target stem is
+ * occupied, routed on the served structured `denialKind === "path_collision"`
+ * — W05.P14, never a reason-text substring match) / `refused` (every other
+ * denial/failure/in-flight collision) is a typed result the caller drives
+ * editor state from — NOT a thrown error; only a transport fault, or the
+ * actor-token fail-safe (`requireActorToken`), rejects. The same vault-
+ * mutation read surfaces are invalidated as a save (a rename changes tree
  * rows, the content key, graph nodes, and git entries).
  */
 export function useRenameDoc() {
@@ -6671,48 +6736,55 @@ export function useRenameDoc() {
       if (normalized.to.length === 0) {
         return refusedRenameResult("Rename target is required");
       }
-      const ops: OpsResult = await dispatchOps({
-        target: "core",
-        verb: "rename",
-        mode: "write",
-        body: {
-          scope: normalized.scope ?? undefined,
+      // The direct-write route REQUIRES `expected_blob_hash` for rename (unlike
+      // the legacy op, which tolerated an absent fence) — refuse client-side
+      // rather than sending an empty string, which the backend 422s as a
+      // malformed request rather than a graceful denial VALUE.
+      if (!normalized.expectedBlobHash) {
+        return refusedRenameResult("Missing the pre-rename optimistic base");
+      }
+      const outcome = await authoringClient.directWrite(
+        {
+          operation: "rename",
           ref: normalized.ref,
-          to: normalized.to,
+          new_stem: normalized.to,
           expected_blob_hash: normalized.expectedBlobHash,
+          scope: normalized.scope,
         },
-      });
-      const { status, data } = envelopeData(ops.envelope);
+        { actorToken: requireActorToken() },
+      );
       let result: RenameDocResult;
-      if (status === "updated") {
+      if (outcome.kind === "applied") {
         result = {
           kind: "renamed",
           oldNodeId: normalized.nodeId,
           newNodeId: docNodeIdFromStem(normalized.to),
-          newBlobHash: typeof data.new_blob_hash === "string" ? data.new_blob_hash : "",
-          incomingRewritten:
-            typeof data.incoming_rewritten === "number" ? data.incoming_rewritten : 0,
+          newBlobHash: outcome.blobHash ?? "",
+          incomingRewritten: 0,
         };
-      } else if (data.conflict === true) {
+      } else if (outcome.kind === "conflict") {
         result = {
           kind: "conflict",
-          expected: typeof data.expected === "string" ? data.expected : "",
-          actual: typeof data.actual === "string" ? data.actual : "",
+          expected: outcome.conflict.expected_blob_hash,
+          actual: outcome.conflict.actual_blob_hash,
         };
-      } else if (data.collision === true) {
+      } else if (outcome.kind === "denied" && outcome.denialKind === "path_collision") {
         result = {
           kind: "collision",
-          message:
-            typeof data.message === "string" ? data.message : "Target already exists",
+          message: outcome.reason ?? "Target already exists",
         };
       } else {
+        const reason =
+          outcome.kind === "denied" || outcome.kind === "failed"
+            ? (outcome.reason ?? "Rename refused")
+            : "a prior rename for this document is still in flight — try again shortly";
         result = {
           kind: "refused",
-          message: typeof data.message === "string" ? data.message : "Rename refused",
-          checks: Array.isArray(data.checks) ? data.checks : [],
+          message: reason,
+          checks: [{ severity: "error", message: reason, fixable: false }],
         };
       }
-      return { result, tiers: ops.tiers };
+      return { result, tiers: outcome.tiers };
     },
     onSuccess: ({ result }, args) => {
       const normalized = normalizeRenameDocArgs(args);

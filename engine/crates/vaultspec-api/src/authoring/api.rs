@@ -13,6 +13,7 @@ use super::model::{
 };
 use super::permissions::ToolPermissionDecisionKind;
 use super::policy::OperationMode;
+use super::rebase::{CreateReplacementProposalRequest, RebaseProposalRequest};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -37,6 +38,9 @@ pub enum EndpointFamily {
     ToolPermission,
     Interrupt,
     AgentToolExecute,
+    Rebase,
+    Replacement,
+    ReviewClaim,
 }
 
 impl EndpointFamily {
@@ -55,6 +59,9 @@ impl EndpointFamily {
         Self::ToolPermission,
         Self::Interrupt,
         Self::AgentToolExecute,
+        Self::Rebase,
+        Self::Replacement,
+        Self::ReviewClaim,
     ];
 }
 
@@ -267,6 +274,50 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
         idempotency_required: true,
         negative_contract_cases: &["missing_idempotency_key", "unknown_tool", "unknown_field"],
     },
+    // W14.P42a S260: explicit rebase of a conflicted changeset in place (P28).
+    RouteFixture {
+        family: EndpointFamily::Rebase,
+        method: "POST",
+        path_template: "/authoring/v1/proposals/{changeset_id}/rebase",
+        command: Some(CommandKind::Rebase),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &[
+            "missing_idempotency_key",
+            "stale_expected_revision",
+            "path_body_changeset_mismatch",
+            "unknown_field",
+        ],
+    },
+    // W14.P42a S260: supersede a stale-but-not-conflicted source with a fresh candidate (P28).
+    RouteFixture {
+        family: EndpointFamily::Replacement,
+        method: "POST",
+        path_template: "/authoring/v1/replacement-proposals",
+        command: Some(CommandKind::Supersede),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &[
+            "missing_idempotency_key",
+            "stale_source_revision",
+            "unknown_field",
+        ],
+    },
+    // W14.P42a S261: advisory review-station claim (P24). The claim route represents the
+    // family; release/respond share it (mounted, floor-authorized) like the lease actions.
+    RouteFixture {
+        family: EndpointFamily::ReviewClaim,
+        method: "POST",
+        path_template: "/authoring/v1/review-claims",
+        command: Some(CommandKind::ClaimReview),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &[
+            "missing_idempotency_key",
+            "claim_contended",
+            "unknown_field",
+        ],
+    },
 ];
 
 /// The wire envelope for a mutating authoring command. It carries NO actor
@@ -416,6 +467,41 @@ pub struct TargetRevisionFence {
 pub struct DraftMutation {
     pub mode: DraftMode,
     pub body: String,
+    /// The field-level payload for `EditFrontmatter` (W02.P03): the `date`/`tags`/
+    /// `related` values the `SetFrontmatter` core capability accepts, edited
+    /// individually rather than by reconstructing the whole document text.
+    /// `None`/absent for every other operation kind; `body` carries no meaning for
+    /// a field-level edit and must be empty (R1: no accepted-but-ignored field).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frontmatter: Option<FrontmatterEditFields>,
+    /// The field-level payload for `Rename` (W02.P04): the target stem the
+    /// `Rename` core capability accepts (`--to`). A bare, identity-bearing stem
+    /// — never a path. `None`/absent for every other operation kind; `body`
+    /// carries no meaning for a rename and must be empty (R1 discipline, same
+    /// as `frontmatter`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_stem: Option<String>,
+}
+
+/// The `EditFrontmatter` field-level payload: exactly the fields the
+/// `SetFrontmatter` core capability supports (`--date`, `--tags`, `--related`).
+/// Each field is edited only when present; an absent field is left untouched by
+/// both the materialized preview and the apply-time core write.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrontmatterEditFields {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub related: Option<Vec<String>>,
+}
+
+impl FrontmatterEditFields {
+    pub fn is_empty(&self) -> bool {
+        self.date.is_none() && self.tags.is_none() && self.related.is_none()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -461,17 +547,66 @@ pub struct SetOperationModeRequest {
 
 /// Wire payload for `POST /authoring/v1/direct-writes`: a human editor save
 /// routed through the authoring ledger. The actor is still middleware-resolved
-/// from the principal token; the payload names only the target and optimistic
-/// editor base.
+/// from the principal token; the payload names the target, the operation
+/// kind, and that kind's own payload (W02.P06 generalizes this beyond
+/// whole-document body replacement) — mirroring how a propose draft
+/// (`ChangesetChildOperationDraft`/`DraftMutation`) carries each kind: one
+/// discriminator field plus optional per-kind payload fields, `None`/empty for
+/// every kind that does not use them (no accepted-but-ignored field, the same
+/// R1 discipline the propose draft enforces).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DirectWriteRequest {
-    #[serde(rename = "ref")]
-    pub doc_ref: String,
+    /// The existing document targeted by `ReplaceBody`/`EditFrontmatter`/
+    /// `Rename`. Absent for `CreateDocument`, which names its target through
+    /// `create` instead (there is no existing document to reference).
+    #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
+    pub doc_ref: Option<String>,
+    pub operation: ChangesetOperationKind,
+    /// `ReplaceBody` payload. Empty for every other kind.
+    #[serde(default)]
     pub body: String,
-    pub expected_blob_hash: String,
+    /// `EditFrontmatter` payload. `None` for every other kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frontmatter: Option<FrontmatterEditFields>,
+    /// `Rename` payload — the target stem. `None` for every other kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_stem: Option<String>,
+    /// `CreateDocument` payload. `None` for every other kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub create: Option<DirectWriteCreateParams>,
+    /// The optimistic editor base for an existing-document operation —
+    /// required for `ReplaceBody`/`EditFrontmatter`/`Rename`, absent for
+    /// `CreateDocument` (nothing exists yet to fence against).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_blob_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
+    /// The OPTIONAL scope pin (W02.P06, closing the W01.P02 review): the
+    /// workspace scope id (`scope_id_for_worktree`, the SAME string a client
+    /// already sees served back on e.g. the `/authoring/v1/mode` response)
+    /// the editor was looking at when it issued this save. When present, it
+    /// MUST match the server's CURRENT active workspace or the save is
+    /// refused as a denial value — never silently applied against a
+    /// different worktree after a scope-switch race. Absent proceeds against
+    /// whatever is currently active (backward-compatible; restores the
+    /// retired legacy `/ops/core` write's scope immunity).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+}
+
+/// `CreateDocument`'s direct-write payload: the typed create params a human
+/// editor's "new document" save supplies, mirroring `DocumentRef::
+/// ProvisionalCreate`'s own fields (minus the server-assigned
+/// `provisional_doc_id`/`collision_status`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DirectWriteCreateParams {
+    pub doc_type: String,
+    pub feature: String,
+    pub title: String,
+    #[serde(default)]
+    pub related: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -547,6 +682,34 @@ pub struct LeaseRenewRequest {
 #[serde(deny_unknown_fields)]
 pub struct LeaseReleaseRequest {
     pub target: DocumentRef,
+}
+
+/// Claim (or idempotently re-claim) a changeset's advisory review item (W13.P24). The
+/// claim purpose is always `review` (set server-side); the reviewer is the middleware-
+/// resolved principal. A contended claim (a live claim by a different reviewer) rides the
+/// 200 envelope as a denial value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewClaimRequest {
+    pub changeset_id: ChangesetId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl_ms: Option<u64>,
+}
+
+/// Release a held review claim (holder-only).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewReleaseRequest {
+    pub changeset_id: ChangesetId,
+}
+
+/// Record a clarification response on a held review item (holder-only; status-preserving —
+/// the item stays `claimed` while the exchange runs).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewRespondRequest {
+    pub changeset_id: ChangesetId,
+    pub comment: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -768,10 +931,15 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
             CommandKind::DirectWrite,
             idempotency_key("idem:direct-write"),
             DirectWriteRequest {
-                doc_ref: ".vault/adr/adr-1.md".to_string(),
+                doc_ref: Some(".vault/adr/adr-1.md".to_string()),
+                operation: ChangesetOperationKind::ReplaceBody,
                 body: "directly saved body".to_string(),
-                expected_blob_hash: "abc123abc123abc123abc123abc123abc123abcd".to_string(),
+                frontmatter: None,
+                new_stem: None,
+                create: None,
+                expected_blob_hash: Some("abc123abc123abc123abc123abc123abc123abcd".to_string()),
                 summary: Some("Editor save".to_string()),
+                scope: None,
             },
         )),
         EndpointFamily::Lease => command_value(CommandEnvelope::new(
@@ -820,6 +988,33 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
                 "input": propose_changeset_create_input(),
             }),
         )),
+        EndpointFamily::Rebase => command_value(CommandEnvelope::new(
+            CommandKind::Rebase,
+            idempotency_key("idem:rebase:1"),
+            RebaseProposalRequest {
+                changeset_id: changeset_id(),
+                expected_revision: revision("proposal:rev1"),
+                summary: "rebase onto the current base".to_string(),
+            },
+        )),
+        EndpointFamily::Replacement => command_value(CommandEnvelope::new(
+            CommandKind::Supersede,
+            idempotency_key("idem:replacement:1"),
+            CreateReplacementProposalRequest {
+                source_changeset_id: changeset_id(),
+                source_expected_revision: revision("proposal:rev1"),
+                replacement_changeset_id: ChangesetId::new("changeset_replacement_1").unwrap(),
+                summary: "supersede the stale source".to_string(),
+            },
+        )),
+        EndpointFamily::ReviewClaim => command_value(CommandEnvelope::new(
+            CommandKind::ClaimReview,
+            idempotency_key("idem:review-claim:1"),
+            ReviewClaimRequest {
+                changeset_id: changeset_id(),
+                ttl_ms: Some(900_000),
+            },
+        )),
     }
 }
 
@@ -837,8 +1032,13 @@ pub fn response_fixture(family: EndpointFamily) -> Value {
         EndpointFamily::Proposal
         | EndpointFamily::Apply
         | EndpointFamily::DirectWrite
-        | EndpointFamily::AgentToolExecute => AggregateRef::Changeset {
+        | EndpointFamily::AgentToolExecute
+        | EndpointFamily::Rebase
+        | EndpointFamily::ReviewClaim => AggregateRef::Changeset {
             changeset_id: changeset_id(),
+        },
+        EndpointFamily::Replacement => AggregateRef::Changeset {
+            changeset_id: ChangesetId::new("changeset_replacement_1").unwrap(),
         },
         EndpointFamily::Review => AggregateRef::Approval {
             approval_id: approval_id(),
@@ -943,6 +1143,8 @@ fn create_proposal_request_fixture() -> CreateProposalRequest {
                 draft: DraftMutation {
                     mode: DraftMode::WholeDocument,
                     body: "draft body".to_string(),
+                    frontmatter: None,
+                    new_stem: None,
                 },
             },
             ChangesetChildOperationDraft {
@@ -952,6 +1154,8 @@ fn create_proposal_request_fixture() -> CreateProposalRequest {
                 draft: DraftMutation {
                     mode: DraftMode::WholeDocument,
                     body: "new document body".to_string(),
+                    frontmatter: None,
+                    new_stem: None,
                 },
             },
         ],
@@ -1296,10 +1500,13 @@ mod tests {
         let direct: CommandEnvelope<DirectWriteRequest> =
             serde_json::from_value(request_fixture(EndpointFamily::DirectWrite)).unwrap();
         assert_eq!(direct.command, CommandKind::DirectWrite);
-        assert_eq!(direct.payload.doc_ref, ".vault/adr/adr-1.md");
         assert_eq!(
-            direct.payload.expected_blob_hash,
-            "abc123abc123abc123abc123abc123abc123abcd"
+            direct.payload.doc_ref.as_deref(),
+            Some(".vault/adr/adr-1.md")
+        );
+        assert_eq!(
+            direct.payload.expected_blob_hash.as_deref(),
+            Some("abc123abc123abc123abc123abc123abc123abcd")
         );
 
         let rollback: CommandEnvelope<RollbackRequest> =

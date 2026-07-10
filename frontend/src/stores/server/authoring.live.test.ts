@@ -283,3 +283,130 @@ describe("human-in-the-loop review flow (live)", () => {
     expect(replay.kind).toBe("ok");
   });
 });
+
+// Direct editor save (ledgered-edit-migration W01.P02): the Save button's
+// self-approving single-call route. Both cases below are NON-MUTATING (a
+// denial and a stale-base conflict never materialize a write), so they are
+// safe alongside the reject-only flow above without disturbing the shared
+// scratch fixture's `alpha-research` content other live suites may also read.
+// The real-apply leg (core write + rollback) is proven by the backend's own
+// real-applied-receipt e2e; this file stays read-safe.
+describe("direct editor save (live)", () => {
+  it("denies a non-human actor's direct write without mutating the document", async () => {
+    const engine = createLiveClient();
+    const content = await engine.content(TARGET_NODE_ID, scopeToken);
+    const agentToken = (
+      await client.issueActorToken({
+        actor: { id: `agent:dw-${run}`, kind: "agent" },
+      })
+    ).raw_token;
+
+    const outcome = await client.directWrite(
+      {
+        operation: "replace_body",
+        ref: TARGET_STEM,
+        body: `${content.text}\nan agent may never direct-write\n`,
+        expected_blob_hash: content.blob_hash,
+      },
+      { actorToken: agentToken },
+    );
+
+    expect(outcome.kind).toBe("denied");
+    if (outcome.kind === "denied") {
+      expect(outcome.reason ?? "").toContain("human actor");
+    }
+    // Never mutated: the current blob is unchanged.
+    const after = await engine.content(TARGET_NODE_ID, scopeToken);
+    expect(after.blob_hash).toBe(content.blob_hash);
+  });
+
+  it("resolves a stale optimistic base as a `conflict` VALUE, never a thrown fault", async () => {
+    const humanToken = (
+      await client.issueActorToken({
+        actor: { id: `human:dw-conflict-${run}`, kind: "human" },
+      })
+    ).raw_token;
+
+    const outcome = await client.directWrite(
+      {
+        operation: "replace_body",
+        ref: TARGET_STEM,
+        body: "irrelevant body — the base is deliberately stale",
+        expected_blob_hash: "0000000000000000000000000000000000000000",
+      },
+      { actorToken: humanToken },
+    );
+
+    expect(outcome.kind).toBe("conflict");
+    if (outcome.kind === "conflict") {
+      expect(outcome.conflict.expected_blob_hash).toBe(
+        "0000000000000000000000000000000000000000",
+      );
+      expect(outcome.conflict.actual_blob_hash.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("refuses a scope-pin mismatch as a redacted denial VALUE, never echoing the foreign scope (W02.P06)", async () => {
+    const humanToken = (
+      await client.issueActorToken({
+        actor: { id: `human:dw-scope-${run}`, kind: "human" },
+      })
+    ).raw_token;
+    const foreignScope = "a-scope-this-server-does-not-own";
+
+    const outcome = await client.directWrite(
+      {
+        operation: "replace_body",
+        ref: TARGET_STEM,
+        body: "irrelevant body — the scope pin refuses before any write",
+        expected_blob_hash: "0000000000000000000000000000000000000000",
+        scope: foreignScope,
+      },
+      { actorToken: humanToken },
+    );
+
+    expect(outcome.kind).toBe("denied");
+    if (outcome.kind === "denied") {
+      // Redacted: the reason explains the refusal without echoing the
+      // requested scope string back onto the wire.
+      expect(outcome.reason ?? "").not.toContain(foreignScope);
+      expect(outcome.reason ?? "").toContain("does not match");
+      expect(outcome.denialKind).toBe("scope_mismatch");
+    }
+  });
+
+  it("refuses a rename to an occupied stem as a `denied` VALUE carrying the RenameTargetCollision reason (W03.P08)", async () => {
+    // Non-mutating: the target-stem collision refuses at apply-time preflight,
+    // before any write — never materializes, so `alpha-research` stays pristine
+    // for the reject-only flow above.
+    const engine = createLiveClient();
+    const content = await engine.content(TARGET_NODE_ID, scopeToken);
+    const humanToken = (
+      await client.issueActorToken({
+        actor: { id: `human:dw-rename-collision-${run}`, kind: "human" },
+      })
+    ).raw_token;
+
+    const outcome = await client.directWrite(
+      {
+        operation: "rename",
+        ref: TARGET_STEM,
+        // A stem the fixture vault already occupies (2026-01-05-beta-adr.md).
+        new_stem: "2026-01-05-beta-adr",
+        expected_blob_hash: content.blob_hash,
+      },
+      { actorToken: humanToken },
+    );
+
+    expect(outcome.kind).toBe("denied");
+    if (outcome.kind === "denied") {
+      expect(outcome.reason ?? "").toContain("already exists at the proposed stem");
+      // W05.P14: the live wire now carries the structured discriminator the
+      // frontend routes on, not just the reason prose.
+      expect(outcome.denialKind).toBe("path_collision");
+    }
+    // Never mutated: the source doc's blob is unchanged.
+    const after = await engine.content(TARGET_NODE_ID, scopeToken);
+    expect(after.blob_hash).toBe(content.blob_hash);
+  });
+});

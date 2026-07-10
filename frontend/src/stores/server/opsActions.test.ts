@@ -5,8 +5,6 @@ import { liveTransport } from "../../testing/liveClient";
 import { engineClient } from "./engine";
 import {
   OPS_ACTION,
-  OPS_BODY_CONTENT_MAX_CHARS,
-  OPS_BODY_STRING_LIST_MAX_ITEMS,
   OPS_BODY_STRING_MAX_CHARS,
   OPS_VERB_MAX_CHARS,
   dispatchOps,
@@ -78,6 +76,9 @@ describe("ops dispatch adoption (B-1)", () => {
     ).toBe(false);
     expect(isOpsDispatchIntent({ target: "core", verb: "vault-check" })).toBe(true);
     expect(isOpsDispatchIntent({ target: "core", verb: "set-body" })).toBe(false);
+    // The `write`/`create` modes are retired (ledgered-edit-migration W04.P12):
+    // every content edit is ledgered through `directWrite()` now, so a `write` or
+    // `create` mode is an unrecognized mode and refuses regardless of verb/body.
     expect(
       isOpsDispatchIntent({
         target: "core",
@@ -85,17 +86,6 @@ describe("ops dispatch adoption (B-1)", () => {
         mode: "write",
         body: { ref: "plan", body: "" },
       }),
-    ).toBe(true);
-    expect(
-      isOpsDispatchIntent({
-        target: "core",
-        verb: "rename",
-        mode: "write",
-        body: { ref: "old-plan", to: "new-plan" },
-      }),
-    ).toBe(true);
-    expect(
-      isOpsDispatchIntent({ target: "core", verb: "delete-everything", mode: "write" }),
     ).toBe(false);
     expect(
       isOpsDispatchIntent({
@@ -103,42 +93,6 @@ describe("ops dispatch adoption (B-1)", () => {
         verb: "create",
         mode: "create",
         body: { doc_type: "plan", feature: "state" },
-      }),
-    ).toBe(true);
-    expect(
-      isOpsDispatchIntent({ target: "core", verb: "set-body", mode: "create" }),
-    ).toBe(false);
-    expect(
-      isOpsDispatchIntent({
-        target: "core",
-        verb: "rename",
-        mode: "write",
-        body: { ref: "old-plan", to: "x".repeat(OPS_BODY_STRING_MAX_CHARS + 1) },
-      }),
-    ).toBe(false);
-    expect(
-      isOpsDispatchIntent({
-        target: "core",
-        verb: "set-body",
-        mode: "write",
-        body: {
-          ref: "plan",
-          body: "x".repeat(OPS_BODY_CONTENT_MAX_CHARS + 1),
-        },
-      }),
-    ).toBe(false);
-    expect(
-      isOpsDispatchIntent({
-        target: "core",
-        verb: "set-frontmatter",
-        mode: "write",
-        body: {
-          ref: "plan",
-          tags: Array.from(
-            { length: OPS_BODY_STRING_LIST_MAX_ITEMS + 1 },
-            (_, index) => `tag-${index}`,
-          ),
-        },
       }),
     ).toBe(false);
     expect(
@@ -213,7 +167,7 @@ describe("ops dispatch adoption (B-1)", () => {
     ).toBe(false);
   });
 
-  it("rejects malformed core write/create bodies before transport", async () => {
+  it("rejects malformed core archive/autofix bodies before transport", async () => {
     const calls: string[] = [];
     engineClient.useTransport((input, init) => {
       if (String(input).includes("/ops/")) calls.push(String(input));
@@ -221,57 +175,37 @@ describe("ops dispatch adoption (B-1)", () => {
     });
 
     expect(() =>
-      dispatchOps({ target: "core", verb: "set-body", mode: "write" }),
-    ).toThrow("operation is not dispatch-whitelisted: core:set-body");
+      dispatchOps({
+        target: "core",
+        verb: "feature-archive",
+        mode: "archive",
+        body: {},
+      }),
+    ).toThrow("operation is not dispatch-whitelisted: core:feature-archive");
     expect(() =>
       dispatchOps({
         target: "core",
-        verb: "rename",
-        mode: "write",
-        body: { ref: "old-plan", to: "" },
+        verb: "feature-archive",
+        mode: "archive",
+        body: { feature: "x".repeat(OPS_BODY_STRING_MAX_CHARS + 1) },
       }),
-    ).toThrow("operation is not dispatch-whitelisted: core:rename");
+    ).toThrow("operation is not dispatch-whitelisted: core:feature-archive");
     expect(() =>
       dispatchOps({
         target: "core",
-        verb: "create",
-        mode: "create",
-        body: { doc_type: "plan" },
+        verb: "autofix",
+        mode: "autofix",
+        body: {},
       }),
-    ).toThrow("operation is not dispatch-whitelisted: core:create");
+    ).toThrow("operation is not dispatch-whitelisted: core:autofix");
     expect(() =>
       dispatchOps({
         target: "core",
-        verb: "rename",
-        mode: "write",
-        body: {
-          ref: "old-plan",
-          to: "x".repeat(OPS_BODY_STRING_MAX_CHARS + 1),
-        },
+        verb: "autofix",
+        mode: "autofix",
+        body: { feature: "dashboard", scope: 42 },
       }),
-    ).toThrow("operation is not dispatch-whitelisted: core:rename");
-    expect(() =>
-      dispatchOps({
-        target: "core",
-        verb: "set-body",
-        mode: "write",
-        body: {
-          ref: "plan",
-          body: "x".repeat(OPS_BODY_CONTENT_MAX_CHARS + 1),
-        },
-      }),
-    ).toThrow("operation is not dispatch-whitelisted: core:set-body");
-    expect(() =>
-      dispatchOps({
-        target: "core",
-        verb: "create",
-        mode: "create",
-        body: {
-          doc_type: "plan",
-          feature: "x".repeat(OPS_BODY_STRING_MAX_CHARS + 1),
-        },
-      }),
-    ).toThrow("operation is not dispatch-whitelisted: core:create");
+    ).toThrow("operation is not dispatch-whitelisted: core:autofix");
 
     expect(calls).toEqual([]);
   });
@@ -372,7 +306,7 @@ describe("ops dispatch adoption (B-1)", () => {
     expect(calls).toEqual([]);
   });
 
-  it("rejects non-dispatch-whitelisted core write/create verbs before transport", async () => {
+  it("rejects retired write/create modes and non-whitelisted core verbs before transport", async () => {
     const calls: string[] = [];
     engineClient.useTransport((input, init) => {
       if (String(input).includes("/ops/")) calls.push(String(input));

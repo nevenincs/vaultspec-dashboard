@@ -1055,6 +1055,8 @@ mod tests {
             draft: DraftMutation {
                 mode: DraftMode::WholeDocument,
                 body: body.to_string(),
+                frontmatter: None,
+                new_stem: None,
             },
         }
     }

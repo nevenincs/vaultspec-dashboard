@@ -65,12 +65,8 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/authoring/status",
     "/search",
     "/ops/core/{verb}",
-    "/ops/core/{verb}/write",
-    "/ops/core/create",
     "/ops/core/autofix",
     "/ops/core/archive",
-    "/ops/core/unarchive",
-    "/ops/core/link",
     "/ops/rag/{verb}",
     "/ops/rag/storage/{verb}",
     "/ops/git/{verb}",
@@ -168,37 +164,18 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/search", post(routes::ops::search))
         .route("/ops/core/{verb}", post(routes::ops::ops_core))
-        // The core WRITE channel (W02): forward a whitelisted
-        // `vaultspec-core vault {set-body,set-frontmatter,edit}` verb through the
-        // bounded stdin-writing sibling runner so the editor can save documents.
-        // Read-and-infer: the engine validates, bounds, streams the body to the
-        // OWNING sibling's stdin, and forwards its envelope verbatim — a
-        // conflict/refusal (`status:"failed"`) and a success both ride one 200.
-        .route("/ops/core/{verb}/write", post(routes::ops::ops_core_write))
-        // The core CREATE channel (W02): forward
-        // `vaultspec-core vault add <type> --feature <tag> [--title] [--related]`
-        // through the bounded sibling runner so the editor can scaffold a new
-        // document. No stdin body — typed create params only. Read-and-infer: the
-        // engine validates, bounds, and forwards the sibling's envelope verbatim;
-        // a `status:"created"` success and a `status:"failed"` refusal ride one
-        // 200, the client branching on `envelope.status`. The static `create`
-        // segment is registered after `/ops/core/{verb}` so matchit prefers it.
-        .route("/ops/core/create", post(routes::ops::ops_core_create))
         // Feature-scoped conformance autofix (W04.P06.S15): forwards
         // `vault check all --fix --feature <tag>` so the editor's fixable
         // advisories can be repaired through the broker; watcher re-ingests.
+        // RETAINED vault-maintenance op (out-of-ledger by design, W04.P11 ADR):
+        // every CONTENT edit verb (write/create/link/unarchive) is ledgered
+        // through `/authoring/*` (W02-W04); this route family is not.
         .route("/ops/core/autofix", post(routes::ops::ops_core_autofix))
         // Feature archive: forwards `vault feature archive <tag>` so the left rail
         // can retire a completed feature's documents through the broker. Feature-
         // scoped (the only archive grain vaultspec-core has); watcher re-ingests.
+        // RETAINED vault-maintenance op — see the autofix route's note above.
         .route("/ops/core/archive", post(routes::ops::ops_core_archive))
-        // Unarchive: forwards `vault feature unarchive <tag>` — the reversibility
-        // half of archive (mutation/destruction audit D5), so a feature retirement
-        // is undoable in-product, not a one-way door.
-        .route("/ops/core/unarchive", post(routes::ops::ops_core_unarchive))
-        // Relate: forwards `vault link add <src> <dst>` so the dashboard can add a
-        // `related:` edge between two documents through the broker; watcher re-ingests.
-        .route("/ops/core/link", post(routes::ops::ops_core_link))
         // The brokered rag control plane (rag-control-plane ADR D2): GET for the
         // read verbs (service-state, jobs, watcher, projects, readiness, logs,
         // metrics), POST for the control verbs (reindex trigger, watcher

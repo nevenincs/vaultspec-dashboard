@@ -389,11 +389,19 @@ enum CarriedDrafts {
 }
 
 /// Carry every child of `source` forward onto the CURRENT document state, preserving the
-/// drafted body while re-basing against the fresh revision. Reuses the P27 detector to
-/// classify the source: an `AnchorDrift` finding cannot be auto-rebased and denies the
-/// command. Only existing-document, materialized `ReplaceBody` children (the V1
-/// materialization subset) are carry-forwardable; anything else denies rather than
-/// silently dropping the edit intent.
+/// drafted body (or, for a rename, the drafted target stem) while re-basing against the
+/// fresh revision. Reuses the P27 detector to classify the source: an `AnchorDrift`
+/// finding cannot be auto-rebased and denies the command. Only existing-document,
+/// materialized `ReplaceBody`/`Rename` children are carry-forwardable; anything else
+/// denies rather than silently dropping the edit intent.
+///
+/// `CreateDocument` (W02.P05) is denied here too, at the VERY FIRST check (its target is
+/// a `ProvisionalCreate`, never `DocumentRef::Existing`) — deliberately, not an
+/// oversight: a create has no prior REVISION to rebase against (nothing existed to drift
+/// from), so "carry forward onto the current base" is not a meaningful operation for it.
+/// A `Conflicted` create-in-progress is an honest DENY (see
+/// `create_document_child_is_denied_carry_forward_not_dropped` below), never a silent
+/// drop of the child from the carried set.
 fn carry_forward_drafts(
     worktree_root: &Path,
     source: &ChangesetAggregateRecord,
@@ -439,18 +447,24 @@ fn carry_forward_drafts(
                 ),
             ));
         };
-        if child.operation != ChangesetOperationKind::ReplaceBody {
+        if !matches!(
+            child.operation,
+            ChangesetOperationKind::ReplaceBody | ChangesetOperationKind::Rename
+        ) {
             return CarriedDrafts::Denied(ActionEligibility::denied(
                 command,
                 format!(
-                    "cannot carry forward child `{}`: only whole-document replace-body \
-                     operations are rebaseable in V1 (found `{:?}`)",
+                    "cannot carry forward child `{}`: only whole-document replace-body and \
+                     rename operations are rebaseable in V1 (found `{:?}`)",
                     child.child_key, child.operation
                 ),
             ));
         }
         // Re-resolve the target to the CURRENT worktree revision. Anchor drift was ruled
         // out above; a resolve failure here would be the same class, so it denies too.
+        // The DRAFTED node id is still valid to resolve by here (unlike a rollback's
+        // post-APPLY resolution): a rebase re-materializes a NOT-YET-APPLIED draft, so
+        // a Rename child's proposed move never actually happened on disk.
         let current = match resolver
             .resolve_existing(ExistingDocumentLookup::NodeId(node_id.clone()))
         {
@@ -478,19 +492,43 @@ fn carry_forward_drafts(
                 ),
             ));
         };
-        // PRESERVE the drafted body; RE-BASE onto the current revision.
+        // PRESERVE the drafted intent (body for a replace, target stem for a
+        // rename); RE-BASE onto the current revision.
+        let draft_mutation = match child.operation {
+            ChangesetOperationKind::Rename => {
+                let Some(new_stem) = operation.rename_edit.clone() else {
+                    return CarriedDrafts::Denied(ActionEligibility::denied(
+                        command,
+                        format!(
+                            "cannot carry forward child `{}`: rename carries no recorded \
+                             target stem",
+                            child.child_key
+                        ),
+                    ));
+                };
+                DraftMutation {
+                    mode: DraftMode::WholeDocument,
+                    body: String::new(),
+                    frontmatter: None,
+                    new_stem: Some(new_stem),
+                }
+            }
+            _ => DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: operation.target_snapshot.payload_text.clone(),
+                frontmatter: None,
+                new_stem: None,
+            },
+        };
         drafts.push(ChangesetChildOperationDraft {
             child_key: child.child_key.clone(),
-            operation: ChangesetOperationKind::ReplaceBody,
+            operation: child.operation,
             target: TargetRevisionFence {
                 document: current.clone(),
                 base_revision: Some(current_revision.clone()),
                 current_revision: Some(current_revision.clone()),
             },
-            draft: DraftMutation {
-                mode: DraftMode::WholeDocument,
-                body: operation.target_snapshot.payload_text.clone(),
-            },
+            draft: draft_mutation,
         });
     }
     CarriedDrafts::Ready(drafts)
@@ -526,12 +564,22 @@ fn materialize_carried_drafts(
         let base_snapshot = reader
             .require_current_base(&draft.target.document)
             .map_err(|err| StoreError::Snapshot(err.to_string()))?;
-        let operation = MaterializedProposalOperation::materialize_replace_body(
-            changeset_id,
-            draft.clone(),
-            &base_snapshot,
-            &preimage,
-        )
+        // Dispatch on the carried draft's OWN operation kind — mirrors
+        // `apply::build_write_invocation`'s per-kind selection.
+        let operation = match draft.operation {
+            ChangesetOperationKind::Rename => MaterializedProposalOperation::materialize_rename(
+                changeset_id,
+                draft.clone(),
+                &base_snapshot,
+                &preimage,
+            ),
+            _ => MaterializedProposalOperation::materialize_replace_body(
+                changeset_id,
+                draft.clone(),
+                &base_snapshot,
+                &preimage,
+            ),
+        }
         .map_err(|err| StoreError::Validation(err.to_string()))?;
         preimages.push(preimage);
         children.push(ChangesetChildOperationInput {
@@ -770,6 +818,8 @@ mod tests {
                 draft: DraftMutation {
                     mode: DraftMode::WholeDocument,
                     body: body.into(),
+                    frontmatter: None,
+                    new_stem: None,
                 },
             }],
         }
@@ -811,9 +861,63 @@ mod tests {
             draft: DraftMutation {
                 mode: DraftMode::WholeDocument,
                 body: body.to_string(),
+                frontmatter: None,
+                new_stem: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(
+            changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        ChangesetChildOperationInput::from_materialized(
+            materialized,
+            format!("material:{child_key}"),
+            format!("validation:{child_key}"),
+        )
+    }
+
+    /// A materialized `Rename` child (W02.P04 carry-forward coverage), mirroring
+    /// `materialized_child`'s ReplaceBody pattern.
+    fn materialized_rename_child(
+        root: &Path,
+        changeset_id: &ChangesetId,
+        stem: &str,
+        child_key: &str,
+        new_stem: &str,
+    ) -> ChangesetChildOperationInput {
+        let document = resolved_doc(root, stem);
+        let revision = base_revision(&document);
+        let base_snapshot = SnapshotReader::for_worktree(root)
+            .require_current_base(&document)
+            .unwrap();
+        let preimage = SnapshotReader::for_worktree(root)
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: format!("preimage:{}:{child_key}", changeset_id.as_str()),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: child_key.to_string(),
+                document: document.clone(),
+                captured_at_ms: 100,
+            })
+            .unwrap();
+        let draft = ChangesetChildOperationDraft {
+            child_key: child_key.to_string(),
+            operation: ChangesetOperationKind::Rename,
+            target: TargetRevisionFence {
+                document,
+                base_revision: Some(revision.clone()),
+                current_revision: Some(revision),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: Some(new_stem.to_string()),
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_rename(
             changeset_id,
             draft,
             &base_snapshot,
@@ -995,6 +1099,101 @@ mod tests {
         assert_ne!(
             operation.target_snapshot.base_revision,
             conflicted_child_base
+        );
+    }
+
+    #[test]
+    fn successful_rebase_carries_forward_a_rename_by_re_targeting_the_same_new_stem() {
+        // W02.P04 follow-on: carry-forward previously hardcoded ReplaceBody only
+        // (rebase.rs:442 pre-fix); a Conflicted Rename source must re-materialize
+        // against the fresh base while PRESERVING the proposed target stem —
+        // never dropping the rename intent, never silently downgrading to a
+        // body write.
+        let (dir, mut store) = temp_store();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/rebase-rename-plan.md",
+            &valid_body("base one"),
+        );
+        let id = changeset_id("changeset_rebase_rename");
+
+        let rename_child = materialized_rename_child(
+            root,
+            &id,
+            "rebase-rename-plan",
+            "child_1",
+            "rebase-rename-plan-renamed",
+        );
+        let draft_rev = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+            changeset_id: id.clone(),
+            previous_revision: None,
+            kind: ChangesetKind::Authoring,
+            status: ChangesetStatus::Draft,
+            session_id: Some(session_id()),
+            actor: actor(),
+            summary: "rename proposal".to_string(),
+            children: vec![rename_child],
+            created_at_ms: 10,
+        })
+        .unwrap();
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                uow.ledger().append_revision(&draft_rev)
+            })
+            .unwrap();
+
+        let conflicted_child_base = base_revision(&resolved_doc(root, "rebase-rename-plan"));
+        drive_to_conflicted(&mut store, &id, 100);
+        let conflicted = latest_record(&mut store, &id);
+        assert_eq!(conflicted.status, ChangesetStatus::Conflicted);
+
+        // An out-of-band CONTENT edit lands, staling the recorded base (the
+        // rename never physically happened — it was never applied — so this is
+        // ordinary content staleness, not anchor drift).
+        write_doc(
+            root,
+            ".vault/plan/rebase-rename-plan.md",
+            &valid_body("base two changed"),
+        );
+        let current_base = base_revision(&resolved_doc(root, "rebase-rename-plan"));
+        assert_ne!(current_base, conflicted_child_base);
+
+        let outcome = accepted(
+            rebase_proposal(
+                &mut store,
+                root,
+                context("idem:rebase:rename", 200),
+                RebaseProposalRequest {
+                    changeset_id: id.clone(),
+                    expected_revision: conflicted.changeset_revision.clone(),
+                    summary: "rebase onto current base".to_string(),
+                },
+            )
+            .unwrap(),
+        );
+
+        assert_eq!(outcome.command, CommandKind::Rebase);
+        assert_eq!(outcome.status, ChangesetStatus::Draft);
+        let rebased = latest_record(&mut store, &id);
+        let child = &rebased.children[0];
+        assert_eq!(
+            child.operation,
+            ChangesetOperationKind::Rename,
+            "the carried-forward child stays a Rename, never downgraded to a body write"
+        );
+        let operation = child
+            .materialized_operation
+            .as_ref()
+            .expect("rebased child is re-materialized");
+        assert_eq!(
+            operation.rename_edit.as_deref(),
+            Some("rebase-rename-plan-renamed"),
+            "the PROPOSED target stem is preserved across the rebase"
+        );
+        assert_eq!(
+            operation.target_snapshot.base_revision, current_base,
+            "the child is re-based onto the current worktree revision"
         );
     }
 
@@ -1549,5 +1748,122 @@ mod tests {
         let rebased = latest_record(&mut store, &rollback_id);
         assert_eq!(rebased.kind, ChangesetKind::Rollback);
         assert_eq!(rebased.status, ChangesetStatus::RollbackProposed);
+    }
+
+    // --- W02.P05: CreateDocument is denied carry-forward, not dropped -------
+
+    fn materialized_create_document_child(
+        changeset_id: &ChangesetId,
+        child_key: &str,
+    ) -> ChangesetChildOperationInput {
+        let document = DocumentRef::ProvisionalCreate {
+            provisional_doc_id: format!("provisional:{child_key}"),
+            doc_type: "plan".to_string(),
+            feature: "create-rebase-probe".to_string(),
+            title: "A New Plan".to_string(),
+            collision_status: crate::authoring::model::ProvisionalCollisionStatus::Unknown,
+            proposed_stem: None,
+        };
+        let draft = ChangesetChildOperationDraft {
+            child_key: child_key.to_string(),
+            operation: ChangesetOperationKind::CreateDocument,
+            target: TargetRevisionFence {
+                document,
+                base_revision: None,
+                current_revision: None,
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: "preview\n".to_string(),
+                frontmatter: None,
+                new_stem: None,
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_create_document(
+            changeset_id,
+            draft,
+            1_768_435_200_000, // 2026-01-15T00:00:00Z, fixed
+        )
+        .unwrap();
+        ChangesetChildOperationInput::from_materialized(
+            materialized,
+            format!("material:{child_key}"),
+            format!("validation:{child_key}"),
+        )
+    }
+
+    #[test]
+    fn create_document_child_is_denied_carry_forward_not_dropped() {
+        // A create has no prior REVISION to rebase against (nothing existed to
+        // drift from), so it is denied at rebase's VERY FIRST carry-forward
+        // check — never silently dropped from the carried set, and never a
+        // crash. Drive a changeset carrying a `CreateDocument` child to a
+        // `Conflicted` head (the only status `rebase_proposal` acts on) via
+        // hand-appended revisions, mirroring the rollback-lineage test above.
+        let (dir, mut store) = temp_store();
+        let root = dir.path();
+
+        let create_id = changeset_id("changeset_create_rebase_probe");
+        let child = materialized_create_document_child(&create_id, "child_1");
+        let mut previous: Option<ChangesetAggregateRecord> = None;
+        for (offset, status) in [
+            ChangesetStatus::Draft,
+            ChangesetStatus::NeedsReview,
+            ChangesetStatus::Approved,
+            ChangesetStatus::Applying,
+            ChangesetStatus::Conflicted,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let record = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                changeset_id: create_id.clone(),
+                previous_revision: previous.as_ref().map(|r| r.changeset_revision.clone()),
+                kind: ChangesetKind::Authoring,
+                status,
+                session_id: Some(session_id()),
+                actor: actor(),
+                summary: format!("create rebase probe to {status:?}"),
+                children: vec![child.clone()],
+                created_at_ms: 100 + offset as i64,
+            })
+            .unwrap();
+            store
+                .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                    uow.ledger().append_revision(&record)
+                })
+                .unwrap();
+            previous = Some(record);
+        }
+        let conflicted = previous.expect("create rebase probe reached conflicted");
+        assert_eq!(conflicted.status, ChangesetStatus::Conflicted);
+
+        let eligibility = denied(
+            rebase_proposal(
+                &mut store,
+                root,
+                context("idem:rebase:create-probe", 300),
+                RebaseProposalRequest {
+                    changeset_id: create_id.clone(),
+                    expected_revision: conflicted.changeset_revision.clone(),
+                    summary: "rebase a conflicted create".to_string(),
+                },
+            )
+            .unwrap(),
+        );
+        assert!(!eligibility.allowed);
+        let reason = eligibility.reason.unwrap_or_default();
+        assert!(
+            reason.contains("only existing-document operations are rebaseable"),
+            "a CreateDocument child must be denied with an honest reason, not silently \
+             dropped or crashed: {reason}"
+        );
+
+        // The head is UNCHANGED — no new revision was appended, and the child's
+        // materialized operation (the drafted create) is still there.
+        let head = latest_record(&mut store, &create_id);
+        assert_eq!(head.changeset_revision, conflicted.changeset_revision);
+        assert_eq!(head.status, ChangesetStatus::Conflicted);
+        assert_eq!(head.children.len(), 1);
     }
 }

@@ -10,6 +10,8 @@
 
 import type { ComponentType, ReactNode } from "react";
 
+import { ChevronDown } from "lucide-react";
+
 import { ChevronLeft } from "../kit/glyphs";
 
 export interface MobileTopBarAction {
@@ -29,6 +31,11 @@ export interface MobileTopBarProps {
   /** When set, a leading back control is shown (slide-back). */
   onBack?: () => void;
   backLabel?: string;
+  /** When set, the title becomes a tap-target with a trailing chevron — the compact
+   *  workspace-switcher trigger (mobile-enrichment ADR D1). */
+  onTitleActivate?: () => void;
+  /** Accessible name for the title trigger (defaults to the title + a hint). */
+  titleActivateLabel?: string;
   /** Trailing icon actions, right-aligned. */
   actions?: readonly MobileTopBarAction[];
 }
@@ -67,6 +74,8 @@ export function MobileTopBar({
   title,
   onBack,
   backLabel = "Back",
+  onTitleActivate,
+  titleActivateLabel,
   actions,
 }: MobileTopBarProps) {
   return (
@@ -79,7 +88,29 @@ export function MobileTopBar({
           <ChevronLeft size={20} />
         </IconSlot>
       )}
-      <h1 className="min-w-0 flex-1 truncate text-title text-ink">{title}</h1>
+      {onTitleActivate ? (
+        // Title-as-trigger (ADR D1): the worktree name opens the workspace switcher.
+        // The interactive trigger stays wrapped in an <h1> (display:contents so it
+        // adds no box) so the compact landing surface keeps its level-1 heading for
+        // assistive tech — the accessible name is interactive AND a heading. A
+        // tap-target (min 44px via the bar) with a trailing disclosure chevron that
+        // hugs the name, so the affordance never floats from a short one.
+        <h1 className="contents">
+          <button
+            type="button"
+            data-mobile-title-trigger
+            onClick={onTitleActivate}
+            aria-haspopup="dialog"
+            aria-label={titleActivateLabel ?? `${title} — switch workspace`}
+            className="flex min-w-0 flex-1 items-center gap-fg-1 rounded-fg-sm py-fg-1 text-left transition-colors duration-ui-fast ease-settle outline-none hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          >
+            <span className="min-w-0 truncate text-title text-ink">{title}</span>
+            <ChevronDown size={16} aria-hidden className="shrink-0 text-ink-muted" />
+          </button>
+        </h1>
+      ) : (
+        <h1 className="min-w-0 flex-1 truncate text-title text-ink">{title}</h1>
+      )}
       {actions?.map((action) =>
         action.text != null ? (
           <button

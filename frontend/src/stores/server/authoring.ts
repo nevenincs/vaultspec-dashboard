@@ -22,7 +22,7 @@
 // The store consumes the SERVED projection shapes unchanged (no new client
 // model); it maps only presentation. Wire values stay snake_case as served.
 
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import {
   keepPreviousData,
   queryOptions,
@@ -94,9 +94,6 @@ export interface ActorRef {
 
 /** Operation-mode policy vocabulary served by the backend. */
 export type OperationMode = "manual" | "assisted" | "autonomous";
-
-/** Backend-owned direct-write authority label served by `/authoring/status`. */
-export type DirectWriteAuthority = "legacy_core" | "direct_changeset";
 
 /** Changeset risk class served by the approval policy matrix. */
 export type RiskClass = "non_destructive" | "destructive";
@@ -288,9 +285,10 @@ export interface AuthoringStatusCapabilities {
   review: boolean;
   apply: boolean;
   rollback: boolean;
+  /** Whether direct-changeset editor saves are enabled — a pure kill switch
+   *  (on by default); direct-changeset is the sole editor-save path, so no
+   *  legacy/dual-run authority flag remains (W14.P47). */
   direct_write: boolean;
-  direct_write_dual_run: boolean;
-  direct_write_authority: DirectWriteAuthority;
   sessions: boolean;
   leases: boolean;
   streams: boolean;
@@ -403,6 +401,131 @@ export interface RollbackPayload {
   reason: string;
 }
 
+/** `POST /authoring/v1/direct-writes` frontmatter fields (the `edit_frontmatter`
+ *  operation's payload). Every field is optional — only the ones the editor
+ *  actually changed are sent. */
+export interface DirectWriteFrontmatterFields {
+  date?: string;
+  tags?: string[];
+  related?: string[];
+}
+
+/** `POST /authoring/v1/direct-writes` create-document params (the
+ *  `create_document` operation's payload). */
+export interface DirectWriteCreateParams {
+  doc_type: string;
+  feature: string;
+  title: string;
+  related?: string[];
+}
+
+/**
+ * `POST /authoring/v1/direct-writes` payload — a human editor save routed
+ * through the ledger as a self-approved direct changeset, generalized to every
+ * content kind the route materializes (ledgered-edit-migration W02.P06). The
+ * route composes create-proposal → validate → submit → human self-approve →
+ * apply SERVER-SIDE; the client sends only the `operation` discriminator + the
+ * fields THAT kind uses — never an accepted-but-ignored field (the backend
+ * refuses a mismatched field at validation, e.g. `frontmatter` set on a
+ * `replace_body` request).
+ *
+ * `scope` is the OPTIONAL scope pin (the same worktree-scope string already
+ * threaded through the app as `scope`/`MapWorktree.id`, e.g.
+ * `SaveBodyArgs.scope`): when present it must match the server's current
+ * active workspace or the save is refused as a denial value, closing the
+ * scope-switch race a save with no pin is silently exposed to.
+ */
+export type DirectWritePayload =
+  | {
+      operation: "replace_body";
+      ref: string;
+      body: string;
+      expected_blob_hash: string;
+      scope?: string | null;
+      summary?: string;
+    }
+  | {
+      operation: "edit_frontmatter";
+      ref: string;
+      frontmatter: DirectWriteFrontmatterFields;
+      expected_blob_hash: string;
+      scope?: string | null;
+      summary?: string;
+    }
+  | {
+      operation: "rename";
+      ref: string;
+      new_stem: string;
+      expected_blob_hash: string;
+      scope?: string | null;
+      summary?: string;
+    }
+  | {
+      operation: "create_document";
+      create: DirectWriteCreateParams;
+      scope?: string | null;
+      summary?: string;
+    };
+
+/** The conflict the direct-write route serves when the target moved since the
+ *  editor's optimistic base: `expected` is the editor's stale base, `actual`
+ *  is the blob now on disk, `target` is the blob the save would have produced
+ *  had the base still matched. */
+export interface DirectWriteConflict {
+  document_ref: string;
+  document_path: string;
+  expected_blob_hash: string;
+  actual_blob_hash: string;
+  target_blob_hash: string;
+}
+
+/**
+ * The structured WHY behind a `denied` direct-write outcome (W05.P14), matching
+ * the backend `DirectWriteDenialKind` enum verbatim. Replaces reason-text
+ * substring matching (`RENAME_COLLISION_REASON_HINT`, retired): a `denied`
+ * outcome ALWAYS carries one of these (the backend defaults to `"other"` rather
+ * than omitting it), so a caller routes on `denialKind`, never on the prose.
+ */
+export type DirectWriteDenialKind =
+  | "path_collision"
+  | "stale_base"
+  | "scope_mismatch"
+  | "forbidden_actor"
+  | "self_approval"
+  | "other";
+
+/**
+ * The interpreted direct-write outcome. DENIALS ARE VALUES: `conflict` (a
+ * stale optimistic base) and `denied` (an ineligible actor — e.g. a non-human
+ * principal) ride the success (200) envelope as VALUES, never a thrown fault.
+ * `applied` carries the changeset id + the new blob hash the editor adopts as
+ * its next optimistic-concurrency base. `resultNodeId`/`resultStem` (W03.P09a)
+ * are populated ONLY for a successfully-applied `create_document` — the
+ * server-resolved identity of the newly-created document (`apply_receipt.
+ * child.result_node_id`/`result_stem`), letting the create dialog auto-open it
+ * without predicting a stem client-side; `undefined` for every other kind.
+ */
+export type DirectWriteOutcome =
+  | {
+      kind: "applied";
+      changesetId: string;
+      documentPath: string | null;
+      blobHash: string | null;
+      replayed: boolean;
+      resultNodeId?: string;
+      resultStem?: string;
+      tiers: TiersBlock;
+    }
+  | { kind: "conflict"; conflict: DirectWriteConflict; tiers: TiersBlock }
+  | {
+      kind: "denied";
+      reason: string | null;
+      denialKind?: DirectWriteDenialKind;
+      tiers: TiersBlock;
+    }
+  | { kind: "failed"; reason: string | null; tiers: TiersBlock }
+  | { kind: "in_flight"; tiers: TiersBlock };
+
 /** `POST /authoring/v1/actor-tokens` payload (machine-bearer-gated bootstrap). */
 export interface IssueActorTokenPayload {
   actor: ActorRef;
@@ -452,6 +575,22 @@ const asBool = (v: unknown): boolean => v === true;
 const asNum = (v: unknown, fallback = 0): number =>
   typeof v === "number" && Number.isFinite(v) ? v : fallback;
 const asTiers = (v: unknown): TiersBlock => (isRec(v) ? (v as TiersBlock) : {});
+
+const DIRECT_WRITE_DENIAL_KINDS: readonly DirectWriteDenialKind[] = [
+  "path_collision",
+  "stale_base",
+  "scope_mismatch",
+  "forbidden_actor",
+  "self_approval",
+  "other",
+];
+/** Narrow the served `denial_kind` string to the closed union, tolerant of an
+ *  absent/unrecognized value (a future backend variant this client hasn't been
+ *  taught yet degrades to `undefined`, not a thrown parse fault). */
+const asDenialKind = (v: unknown): DirectWriteDenialKind | undefined =>
+  DIRECT_WRITE_DENIAL_KINDS.includes(v as DirectWriteDenialKind)
+    ? (v as DirectWriteDenialKind)
+    : undefined;
 
 export const AUTHORING_STREAM_SEQ_MAX = Number.MAX_SAFE_INTEGER;
 export const AUTHORING_STREAM_REOPEN_MS = 1_000;
@@ -644,10 +783,6 @@ export function adaptProposalSnapshot(raw: unknown): ProposalSnapshotResult {
   };
 }
 
-function adaptDirectWriteAuthority(raw: unknown): DirectWriteAuthority {
-  return raw === "direct_changeset" ? "direct_changeset" : "legacy_core";
-}
-
 export function adaptAuthoringStatus(raw: unknown): AuthoringStatus {
   const r: Rec = isRec(raw) ? raw : {};
   const capabilities: Rec = isRec(r.capabilities) ? r.capabilities : {};
@@ -663,10 +798,6 @@ export function adaptAuthoringStatus(raw: unknown): AuthoringStatus {
       apply: asBool(capabilities.apply),
       rollback: asBool(capabilities.rollback),
       direct_write: asBool(capabilities.direct_write),
-      direct_write_dual_run: asBool(capabilities.direct_write_dual_run),
-      direct_write_authority: adaptDirectWriteAuthority(
-        capabilities.direct_write_authority,
-      ),
       sessions: asBool(capabilities.sessions),
       leases: asBool(capabilities.leases),
       streams: asBool(capabilities.streams),
@@ -786,6 +917,111 @@ export function interpretCommandOutcome(raw: unknown): AuthoringCommandOutcome {
   }
   const { tiers: _tiers, ...data } = r;
   return { kind: "ok", status: status ?? "ok", data, tiers };
+}
+
+/**
+ * Interpret a direct-write command's flat unwrapped body into a
+ * `DirectWriteOutcome`. The status vocabulary is the direct-write route's own
+ * (`applied|failed|in_flight|conflict|denied`), distinct from the generic
+ * command outcome's — `conflict` and `denied` ride the SUCCESS envelope as
+ * VALUES (denials-are-values), never faults.
+ */
+export function adaptDirectWriteOutcome(raw: unknown): DirectWriteOutcome {
+  const r: Rec = isRec(raw) ? raw : {};
+  const tiers = asTiers(r.tiers);
+  const status = asStr(r.status);
+  if (status === "in_flight") return { kind: "in_flight", tiers };
+  if (status === "conflict") {
+    const c: Rec = isRec(r.conflict) ? r.conflict : {};
+    return {
+      kind: "conflict",
+      conflict: {
+        document_ref: asStr(c.document_ref) ?? "",
+        document_path: asStr(c.document_path) ?? "",
+        expected_blob_hash: asStr(c.expected_blob_hash) ?? "",
+        actual_blob_hash: asStr(c.actual_blob_hash) ?? "",
+        target_blob_hash: asStr(c.target_blob_hash) ?? "",
+      },
+      tiers,
+    };
+  }
+  if (status === "denied") {
+    const eligibility: Rec = isRec(r.eligibility) ? r.eligibility : {};
+    return {
+      kind: "denied",
+      reason: asStr(eligibility.reason) ?? null,
+      denialKind: asDenialKind(r.denial_kind),
+      tiers,
+    };
+  }
+  if (status === "failed") {
+    const receipt: Rec = isRec(r.apply_receipt) ? r.apply_receipt : {};
+    const child: Rec = isRec(receipt.child) ? receipt.child : {};
+    return { kind: "failed", reason: asStr(child.diagnostic) ?? null, tiers };
+  }
+  // "applied" — the terminal accepted save.
+  const record: Rec = isRec(r.record) ? r.record : {};
+  const receipt: Rec = isRec(r.apply_receipt) ? r.apply_receipt : {};
+  const child: Rec = isRec(receipt.child) ? receipt.child : {};
+  return {
+    kind: "applied",
+    changesetId: asStr(r.changeset_id) ?? "",
+    // `child.document_path` is the apply receipt's resolved path — populated
+    // for EVERY kind including `create_document` (W03.P09a, re-resolved from
+    // the created document's real identity); `record.document_path` stays the
+    // fallback for a sparser response.
+    documentPath: asStr(child.document_path) ?? asStr(record.document_path) ?? null,
+    blobHash: asStr(child.observed_result_blob_hash) ?? null,
+    resultNodeId: asStr(child.result_node_id),
+    resultStem: asStr(child.result_stem),
+    replayed: asBool(r.replayed),
+    tiers,
+  };
+}
+
+/**
+ * Marshal a `DirectWritePayload` onto the wire `DirectWriteRequest` shape —
+ * `operation` + ONLY the fields that kind uses (never an accepted-but-ignored
+ * field: the backend refuses a mismatched combination at validation, so
+ * sending, say, `frontmatter` on a `replace_body` request would be a live
+ * fault, not a harmless no-op). `scope` (the optional scope pin) and
+ * `summary` are common to every kind.
+ */
+export function directWriteWirePayload(payload: DirectWritePayload): Rec {
+  const common: Rec = {
+    operation: payload.operation,
+    scope: payload.scope ?? undefined,
+    summary: payload.summary,
+  };
+  switch (payload.operation) {
+    case "replace_body":
+      return {
+        ...common,
+        ref: payload.ref,
+        body: payload.body,
+        expected_blob_hash: payload.expected_blob_hash,
+      };
+    case "edit_frontmatter":
+      return {
+        ...common,
+        ref: payload.ref,
+        frontmatter: payload.frontmatter,
+        expected_blob_hash: payload.expected_blob_hash,
+      };
+    case "rename":
+      return {
+        ...common,
+        ref: payload.ref,
+        new_stem: payload.new_stem,
+        expected_blob_hash: payload.expected_blob_hash,
+      };
+    case "create_document":
+      return { ...common, create: payload.create };
+    default: {
+      const exhaustive: never = payload;
+      return exhaustive;
+    }
+  }
 }
 
 // --- degradation read (from tiers + the typed store-unavailable error) ----------
@@ -992,6 +1228,32 @@ export class AuthoringClient {
       record: r.record ?? null,
       tiers: asTiers(r.tiers),
     };
+  }
+
+  // --- direct editor save (every content kind, ledgered-edit-migration W02.P06) --
+
+  /** `POST /authoring/v1/direct-writes` — route a human editor save through the
+   *  authoring ledger as a self-approved direct changeset, for any of the
+   *  generalized content kinds (body/frontmatter/rename/create). The route
+   *  composes create-proposal → validate → submit → human self-approve →
+   *  apply SERVER-SIDE (one call replaces what used to be a legacy `/ops/core`
+   *  write per kind). */
+  async directWrite(
+    payload: DirectWritePayload,
+    opts: CommandOptions,
+  ): Promise<DirectWriteOutcome> {
+    const envelope = {
+      api_version: "v1",
+      command: "direct_write",
+      idempotency_key: opts.idempotencyKey ?? newIdempotencyKey(),
+      payload: directWriteWirePayload(payload),
+    };
+    const body = await this.postJson(
+      "/authoring/v1/direct-writes",
+      envelope,
+      this.withActor(opts.actorToken),
+    );
+    return adaptDirectWriteOutcome(body);
   }
 
   // --- mutating commands (denials are values) ---
@@ -1569,9 +1831,105 @@ export function useIssueActorToken() {
   });
 }
 
+// --- current-editor identity (shared editor + review-station bootstrap) --------
+//
+// The ledgered-edit-migration ADR chose a first-class, shared editor identity
+// over an anonymous per-edit token: the SAME human principal must be coherent
+// across a plain editing session and the review station. This generalizes what
+// was previously the review station's private, hardcoded-actor issuance into one
+// hook both surfaces consume.
+
+/** The shared human principal a plain editing session and the review station
+ *  both bootstrap through `issueActorToken` — one local-operator identity, not a
+ *  fresh anonymous actor per edit. */
+export const CURRENT_EDITOR_ACTOR: ActorRef = {
+  id: "human:local-operator",
+  kind: "human",
+};
+
+/** The current-editor identity: whether a human actor token is bootstrapped for
+ *  this session, plus the bootstrap/sign-out actions. */
+export interface CurrentEditorIdentity {
+  /** A human actor token is bootstrapped for this session. */
+  hasToken: boolean;
+  /** A bootstrap mint is in flight. */
+  bootstrapping: boolean;
+  /** The bootstrap mint's error, if the last attempt failed. */
+  bootstrapError: Error | null;
+  /** Mint the shared human actor token. No-op while already bootstrapped or a
+   *  mint is already in flight. */
+  bootstrap(): void;
+  /** Clear the session's token (sign out). */
+  signOut(): void;
+}
+
+/** The shared current-editor identity: bootstrap/read the ONE human actor token
+ *  an editing session and the review station both resolve to. Both surfaces call
+ *  this rather than each minting their own actor, so signing in from either one
+ *  is visible from the other. */
+export function useCurrentEditorIdentity(): CurrentEditorIdentity {
+  const hasToken = useHasActorToken();
+  const issue = useIssueActorToken();
+  const bootstrap = useCallback(() => {
+    if (hasToken || issue.isPending) return;
+    issue.mutate({ actor: CURRENT_EDITOR_ACTOR });
+  }, [hasToken, issue]);
+  return {
+    hasToken,
+    bootstrapping: issue.isPending,
+    bootstrapError: issue.error,
+    bootstrap,
+    signOut: () => setActorToken(null),
+  };
+}
+
+/** Ensure a fresh editing session holds the bootstrapped human actor token
+ *  BEFORE any ledgered edit can fire: auto-mints on mount (and whenever
+ *  `enabled` turns true with no token yet). This is the fail-safe's proactive
+ *  half — the reactive half is `requireActorToken()` below, which still throws
+ *  if the mint hasn't resolved, so an edit attempted with no identity is
+ *  refused, never silently dropped.
+ *
+ *  A failing mint backs off exponentially rather than hot-looping the
+ *  actor-token endpoint while the editing session stays open — the SAME
+ *  backoff shape as the lifecycle stream's reconnect retry
+ *  (`authoringStreamRetryDelay`): the first attempt fires immediately, every
+ *  subsequent attempt after a failure doubles from
+ *  `AUTHORING_STREAM_RETRY_BASE_MS`, capped at `AUTHORING_STREAM_RETRY_MAX_MS`.
+ *  The attempt counter resets once a mint succeeds. */
+export function useEnsureCurrentEditorIdentity(enabled = true): CurrentEditorIdentity {
+  const identity = useCurrentEditorIdentity();
+  const { hasToken, bootstrapping, bootstrapError, bootstrap } = identity;
+  const retryAttemptRef = useRef(0);
+
+  useEffect(() => {
+    if (hasToken) retryAttemptRef.current = 0;
+  }, [hasToken]);
+
+  useEffect(() => {
+    if (!enabled || hasToken || bootstrapping) return;
+    if (!bootstrapError) {
+      // No prior failure yet: mint immediately (the original "auto-mints on
+      // mount" behavior) — this attempt does not consume the backoff budget.
+      const timer = setTimeout(bootstrap, 0);
+      return () => clearTimeout(timer);
+    }
+    // A prior failure: back off before the next attempt, then advance the
+    // counter for whichever attempt comes after this one.
+    const attempt = retryAttemptRef.current;
+    retryAttemptRef.current = attempt + 1;
+    const timer = setTimeout(bootstrap, authoringStreamRetryDelay(attempt));
+    return () => clearTimeout(timer);
+  }, [enabled, hasToken, bootstrapping, bootstrapError, bootstrap]);
+
+  return identity;
+}
+
 /** Require the bootstrapped session actor token, or throw a clear error the
- *  command mutation surfaces (a command needs a resolved principal). */
-function requireActorToken(): string {
+ *  command mutation surfaces (a command needs a resolved principal). Exported
+ *  so a cross-store mutation (e.g. `useSaveBody`'s direct-write call) shares
+ *  the SAME fail-safe refusal, rather than re-deriving its own null check. */
+export function requireActorToken(): string {
   const token = getActorToken();
   if (!token) {
     throw new Error(

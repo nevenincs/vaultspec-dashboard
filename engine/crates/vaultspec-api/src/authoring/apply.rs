@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 use ingest_struct::reader::blob_oid;
 use serde::{Deserialize, Serialize};
 
-use super::api::ChangesetOperationKind;
+use super::api::{ChangesetOperationKind, FrontmatterEditFields};
 use super::approvals::{V1_POLICY_VERSION, automated_self_approval_blocker};
 use super::conflicts::{
     MAX_CONFLICT_SIBLINGS, detect_conflicts, document_lease_scope, existing_node_id,
@@ -166,6 +166,59 @@ pub struct ApplyChildReceipt {
     /// A REDACTED failure category (never raw stderr/body/paths), when failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagnostic: Option<String>,
+    /// The created document's stable node id (W03.P09a) — `Some` only for a
+    /// successfully-applied `CreateDocument` child (`None` for every other
+    /// kind/outcome; `document_path` above already names an existing-doc
+    /// kind's target, and a not-landed create has no identity to report).
+    /// Lets a consumer (the direct-write outcome's frontend auto-open
+    /// restore) resolve the new document without re-deriving its predicted
+    /// path client-side — the SAME identity `PostVerifyExpectation::
+    /// CreatedAt` already confirmed to recognize `Applied`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_node_id: Option<String>,
+    /// The created document's stem, alongside `result_node_id`. Same
+    /// `None`-for-every-other-case rule.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_stem: Option<String>,
+}
+
+/// WHY an apply-preflight denied, when structurally known (W05.P14) — set at
+/// the SAME point the `ActionEligibility` reason string is built, from the
+/// SAME structured source (a `ConflictKind` finding, or the self-approval
+/// blocker), never derived by matching the reason text afterward. `None`
+/// (every OTHER preflight denial: multi-child, transition-ineligible,
+/// unsupported operation kind, stale fencing token) is an honest
+/// "unclassified" — a caller collapses it to its own generic/`other` value,
+/// never a guess.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ApplyDenialKind {
+    /// `ConflictKind::RenameTargetCollision` / `CreateDocumentPathCollision`.
+    PathCollision,
+    /// `ConflictKind::StaleBaseRevision` / `StaleWholeDocumentDraft`.
+    StaleBase,
+    /// The automated-self-approval blocker (`automated_self_approval_blocker`)
+    /// refused an automated actor applying its own (or a delegated) proposal.
+    SelfApproval,
+}
+
+/// The two `ConflictKind` classes a caller needs to distinguish structurally
+/// (W05.P14); every other `ConflictKind` (`OverlappingHunks`, `AnchorDrift`,
+/// `PolicyConflict` — none of which the apply preflight's EMPTY-lease
+/// `detect_conflicts` call can even produce for `PolicyConflict`) is honestly
+/// unclassified here, not force-fit into one of these two.
+fn classify_conflict_kind(kind: super::conflicts::ConflictKind) -> Option<ApplyDenialKind> {
+    use super::conflicts::ConflictKind;
+    match kind {
+        ConflictKind::RenameTargetCollision | ConflictKind::CreateDocumentPathCollision => {
+            Some(ApplyDenialKind::PathCollision)
+        }
+        ConflictKind::StaleBaseRevision | ConflictKind::StaleWholeDocumentDraft => {
+            Some(ApplyDenialKind::StaleBase)
+        }
+        ConflictKind::OverlappingHunks
+        | ConflictKind::AnchorDrift
+        | ConflictKind::PolicyConflict => None,
+    }
 }
 
 /// The command outcome. A policy denial carries `eligibility.denied` and no
@@ -179,6 +232,9 @@ pub struct ApplyOutcome {
     /// True when a prior attempt for this key is still in flight (continue, do not
     /// re-apply).
     pub in_flight: bool,
+    /// The structured reason a `Preflight::Denied` fired, when known (W05.P14).
+    /// `None` for every non-denial outcome and for an unclassified denial.
+    pub(crate) denial_kind: Option<ApplyDenialKind>,
 }
 
 impl ApplyReceipt {
@@ -208,6 +264,7 @@ pub fn apply_changeset(
                 receipt: Some(*receipt),
                 replayed: true,
                 in_flight: false,
+                denial_kind: None,
             });
         }
         Preflight::InFlight => {
@@ -216,14 +273,16 @@ pub fn apply_changeset(
                 receipt: None,
                 replayed: false,
                 in_flight: true,
+                denial_kind: None,
             });
         }
-        Preflight::Denied(eligibility) => {
+        Preflight::Denied(eligibility, denial_kind) => {
             return Ok(ApplyOutcome {
                 eligibility,
                 receipt: None,
                 replayed: false,
                 in_flight: false,
+                denial_kind,
             });
         }
         Preflight::Reclaim(prep) => {
@@ -237,13 +296,14 @@ pub fn apply_changeset(
                 "a prior apply attempt was interrupted and its reservation expired",
             );
             let receipt = store.with_unit_of_work(CommandKind::RequestApply, |uow| {
-                complete_in_uow(uow, &prep, resolution, request.now_ms)
+                complete_in_uow(uow, worktree_root, &prep, resolution, request.now_ms)
             })??;
             return Ok(ApplyOutcome {
                 eligibility: ActionEligibility::allowed(CommandKind::RequestApply),
                 receipt: Some(receipt),
                 replayed: false,
                 in_flight: false,
+                denial_kind: None,
             });
         }
         Preflight::Proceed(prep) => prep,
@@ -257,13 +317,14 @@ pub fn apply_changeset(
     // Stage C — completion: append the terminal revision, record the receipt,
     // register retention, publish. One unit of work; all-or-nothing.
     let receipt = store.with_unit_of_work(CommandKind::RequestApply, |uow| {
-        complete_in_uow(uow, &prep, resolution, request.now_ms)
+        complete_in_uow(uow, worktree_root, &prep, resolution, request.now_ms)
     })??;
     Ok(ApplyOutcome {
         eligibility: ActionEligibility::allowed(CommandKind::RequestApply),
         receipt: Some(receipt),
         replayed: false,
         in_flight: false,
+        denial_kind: None,
     })
 }
 
@@ -283,13 +344,20 @@ struct ApplyPrep {
     document_path: String,
     base_blob_hash: String,
     expected_result_blob_hash: String,
+    /// HOW to verify the write landed on an indeterminate-kill / crash-recovery
+    /// post-verify — see [`PostVerifyExpectation`]. NEVER derive `Applied` from
+    /// `expected_result_blob_hash` directly for a core-authoritative kind; go
+    /// through this.
+    post_verify: PostVerifyExpectation,
     invocation: CoreInvocation,
 }
 
 enum Preflight {
     Replay(Box<ApplyReceipt>),
     InFlight,
-    Denied(ActionEligibility),
+    /// The eligibility denial, plus its structured classification when known
+    /// (W05.P14) — `None` for an unclassified denial.
+    Denied(ActionEligibility, Option<ApplyDenialKind>),
     Proceed(Box<ApplyPrep>),
     /// A prior attempt crashed between stage A and stage C, its in-flight
     /// reservation has EXPIRED, and the head is wedged in `Applying`. Resume
@@ -347,15 +415,18 @@ fn preflight_in_uow(
 
     // GATE (no state mutated yet, so a denial leaks nothing).
     if latest.operation_count != 1 {
-        return Ok(Ok(Preflight::Denied(ActionEligibility::denied(
-            CommandKind::RequestApply,
-            format!(
-                "V1 apply supports exactly one child operation; changeset carries {} \
-                 (multi-child materialization is deferred until core provides a batch \
-                 transaction)",
-                latest.operation_count
+        return Ok(Ok(Preflight::Denied(
+            ActionEligibility::denied(
+                CommandKind::RequestApply,
+                format!(
+                    "V1 apply supports exactly one child operation; changeset carries {} \
+                     (multi-child materialization is deferred until core provides a batch \
+                     transaction)",
+                    latest.operation_count
+                ),
             ),
-        ))));
+            None,
+        )));
     }
 
     // Apply-authorization: the automated-self-approval ban keyed on the ORIGIN
@@ -367,7 +438,10 @@ fn preflight_in_uow(
     if let Some(denied) =
         automated_self_approval_blocker(CommandKind::RequestApply, request.actor, &origin.actor)
     {
-        return Ok(Ok(Preflight::Denied(denied)));
+        return Ok(Ok(Preflight::Denied(
+            denied,
+            Some(ApplyDenialKind::SelfApproval),
+        )));
     }
 
     // Lifecycle + approval-freshness + validation-status gate.
@@ -380,7 +454,7 @@ fn preflight_in_uow(
     let eligibility =
         apply_transition_eligibility(&latest, approval_freshness, validation_freshness);
     if !eligibility.allowed {
-        return Ok(Ok(Preflight::Denied(eligibility)));
+        return Ok(Ok(Preflight::Denied(eligibility, None)));
     }
 
     // Base-revision conflict gate (W13.P27, wired W14.P42a). Consult the conflict detector
@@ -395,23 +469,32 @@ fn preflight_in_uow(
     let conflict_report =
         detect_conflicts(worktree_root, &latest, &live_siblings, &[], request.now_ms);
     if let Some(finding) = conflict_report.findings.first() {
-        return Ok(Ok(Preflight::Denied(ActionEligibility::denied(
-            CommandKind::RequestApply,
-            finding.reason.clone(),
-        ))));
+        return Ok(Ok(Preflight::Denied(
+            ActionEligibility::denied(CommandKind::RequestApply, finding.reason.clone()),
+            classify_conflict_kind(finding.kind),
+        )));
     }
 
     // The single materialized child → the write invocation.
     let child = &latest.children[0];
-    if child.operation != ChangesetOperationKind::ReplaceBody {
-        return Ok(Ok(Preflight::Denied(ActionEligibility::denied(
-            CommandKind::RequestApply,
-            format!(
-                "V1 apply materializes only whole-document body replacement; operation \
-                 `{:?}` is not yet supported",
-                child.operation
+    if !matches!(
+        child.operation,
+        ChangesetOperationKind::ReplaceBody
+            | ChangesetOperationKind::EditFrontmatter
+            | ChangesetOperationKind::Rename
+            | ChangesetOperationKind::CreateDocument
+    ) {
+        return Ok(Ok(Preflight::Denied(
+            ActionEligibility::denied(
+                CommandKind::RequestApply,
+                format!(
+                    "V1 apply materializes only whole-document body replacement, frontmatter \
+                     edits, rename, and document creation; operation `{:?}` is not yet supported",
+                    child.operation
+                ),
             ),
-        ))));
+            None,
+        )));
     }
     let Some(materialized) = child.materialized_operation.as_ref() else {
         return Ok(Err(ApplyError::MissingMaterialization {
@@ -420,12 +503,30 @@ fn preflight_in_uow(
         }));
     };
     let document = materialized.target.document.clone();
-    let Some(document_path) = existing_path(&document) else {
-        return Ok(Err(ApplyError::Internal(format!(
-            "materialized child `{}` target is not an existing document",
-            child.child_key
-        ))));
-    };
+    // CreateDocument has NO EXISTING PATH (nothing exists yet) and NO real base
+    // blob to fence against (`materialized.base.blob_hash` is the PHANTOM
+    // empty-content hash operations.rs documents) — it takes the ONLY early
+    // branch here; every other kind shares the existing-document path/blob-hash
+    // derivation below.
+    let (document_path, base_blob_hash, core_base_blob_hash) =
+        if child.operation == ChangesetOperationKind::CreateDocument {
+            (
+                String::new(),
+                materialized.base.blob_hash.clone(),
+                String::new(),
+            )
+        } else {
+            let Some(document_path) = existing_path(&document) else {
+                return Ok(Err(ApplyError::Internal(format!(
+                    "materialized child `{}` target is not an existing document",
+                    child.child_key
+                ))));
+            };
+            let base_blob_hash = materialized.base.blob_hash.clone();
+            let core_base_blob_hash =
+                full_file_blob_hash(worktree_root, &document_path, &base_blob_hash);
+            (document_path, base_blob_hash, core_base_blob_hash)
+        };
 
     // ADVISORY fencing (W13.P26, wired W14.P42a). A lease NEVER establishes correctness
     // (leases-never-replace-revision-checks): the revision fence is the anti-stale-write
@@ -436,6 +537,8 @@ fn preflight_in_uow(
     // and denying it would strand every legitimate approved apply (system, direct-write, and
     // /execute all present no token). The scope key is the SAME per-document convention P27
     // conflict detection uses (`document_lease_scope`), so acquire and apply agree on it.
+    // A `ProvisionalCreate` target carries no node id, so this block naturally
+    // no-ops for CreateDocument — nothing to fence, nothing existed to lease.
     if let Some(node_id) = existing_node_id(&document) {
         let lease_scope = document_lease_scope(worktree_root, &node_id);
         let current_lease = uow.leases().current(&lease_scope)?;
@@ -451,29 +554,23 @@ fn preflight_in_uow(
                 None => ActionEligibility::allowed(CommandKind::RequestApply),
             };
             if !fence.allowed {
-                return Ok(Ok(Preflight::Denied(fence)));
+                return Ok(Ok(Preflight::Denied(fence, None)));
             }
         }
     }
-    let base_blob_hash = materialized.base.blob_hash.clone();
-    let core_base_blob_hash = full_file_blob_hash(worktree_root, &document_path, &base_blob_hash);
     let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
-    let body = materialized.target_snapshot.payload_text.clone();
-    let invocation = match CoreInvocation::write(
-        CoreCapability::SetBody,
+    let invocation = match build_write_invocation(
+        child.operation,
+        materialized,
         &document_path,
-        WriteArgs {
-            expected_blob_hash: Some(core_base_blob_hash),
-            body: Some(body),
-            ..Default::default()
-        },
+        core_base_blob_hash,
     ) {
         Ok(invocation) => invocation,
-        Err(err) => {
-            return Ok(Err(ApplyError::Internal(format!(
-                "invocation build failed: {err}"
-            ))));
-        }
+        Err(err) => return Ok(Err(err)),
+    };
+    let post_verify = match post_verify_expectation(child.operation, materialized) {
+        Ok(post_verify) => post_verify,
+        Err(err) => return Ok(Err(err)),
     };
 
     // Reserve the attempt, then append the `Applying` revision under the applying
@@ -528,6 +625,7 @@ fn preflight_in_uow(
         document_path,
         base_blob_hash,
         expected_result_blob_hash,
+        post_verify,
         invocation,
     }))))
 }
@@ -605,42 +703,231 @@ fn resolve_outcome(
     }
 }
 
-/// Resolve a child outcome by RE-VERIFYING the document post-state against the
-/// expected result blob hash — no core invoke. Shared by the indeterminate-kill
-/// path and the P36-R1 crash-recovery reclaim. FAILS CLOSED: records `Applied`
-/// only when the post-state provably matches; an unreadable post-state is
-/// `Failed`, never a forged success. `reason` is a redacted, leak-free prefix.
+/// Resolve a child outcome by RE-VERIFYING the document post-state — no core
+/// invoke. Shared by the indeterminate-kill path and the P36-R1 crash-recovery
+/// reclaim. Dispatches on [`ApplyPrep::post_verify`] so a core-authoritative
+/// write (e.g. `EditFrontmatter`) is verified SEMANTICALLY rather than against
+/// a preview-derived hash core never received (see the type's docs — a
+/// preview-hash comparison there would spuriously report a landed write as
+/// not-landed, since core computes its own bytes). FAILS CLOSED either way:
+/// records `Applied` only when the post-state provably matches; an unreadable
+/// post-state is `Failed`, never a forged success. `reason` is a redacted,
+/// leak-free prefix.
 fn post_state_resolution(worktree_root: &Path, prep: &ApplyPrep, reason: &str) -> ChildResolution {
-    match read_blob_hash(worktree_root, &prep.document) {
-        Ok(observed) if observed == prep.expected_result_blob_hash => ChildResolution {
-            outcome: ApplyChildOutcome::Applied,
-            observed_result_blob_hash: Some(observed),
-            core_status: None,
-            core_schema: None,
-            resolved_via_post_verify: true,
-            diagnostic: Some(format!("{reason}; post-state re-verified the write landed")),
-        },
-        Ok(observed) => ChildResolution {
-            outcome: ApplyChildOutcome::Failed,
-            observed_result_blob_hash: Some(observed),
-            core_status: None,
-            core_schema: None,
-            resolved_via_post_verify: true,
-            diagnostic: Some(format!(
-                "{reason}; post-state re-verified the write did NOT land"
-            )),
-        },
-        Err(_) => ChildResolution {
-            outcome: ApplyChildOutcome::Failed,
-            observed_result_blob_hash: None,
-            core_status: None,
-            core_schema: None,
-            resolved_via_post_verify: true,
-            diagnostic: Some(format!(
-                "{reason}; post-state could not be re-verified (recorded not-applied, fail-closed)"
-            )),
-        },
+    match &prep.post_verify {
+        PostVerifyExpectation::ExactBlobHash(expected) => {
+            match read_blob_hash(worktree_root, &prep.document) {
+                Ok(observed) if &observed == expected => ChildResolution {
+                    outcome: ApplyChildOutcome::Applied,
+                    observed_result_blob_hash: Some(observed),
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!("{reason}; post-state re-verified the write landed")),
+                },
+                Ok(observed) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: Some(observed),
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state re-verified the write did NOT land"
+                    )),
+                },
+                Err(_) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: None,
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state could not be re-verified (recorded not-applied, \
+                         fail-closed)"
+                    )),
+                },
+            }
+        }
+        PostVerifyExpectation::FrontmatterFields(fields) => {
+            match read_document_text(worktree_root, &prep.document) {
+                Ok(text) if super::operations::frontmatter_fields_match(&text, fields) => {
+                    ChildResolution {
+                        outcome: ApplyChildOutcome::Applied,
+                        observed_result_blob_hash: read_blob_hash(worktree_root, &prep.document)
+                            .ok(),
+                        core_status: None,
+                        core_schema: None,
+                        resolved_via_post_verify: true,
+                        diagnostic: Some(format!(
+                            "{reason}; post-state re-verified the intended frontmatter fields \
+                             landed"
+                        )),
+                    }
+                }
+                Ok(_) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: read_blob_hash(worktree_root, &prep.document).ok(),
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state re-verified the intended frontmatter fields did \
+                         NOT land"
+                    )),
+                },
+                Err(_) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: None,
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state could not be re-verified (recorded not-applied, \
+                         fail-closed)"
+                    )),
+                },
+            }
+        }
+        PostVerifyExpectation::RenamedTo { old_stem, new_stem } => {
+            // A rename is core-authoritative over the exact bytes AND the path —
+            // there is no blob to compare against `prep.document`, whose PATH is
+            // now STALE (the file moved). The only sound post-state proof is
+            // re-resolving by STEM: the document now exists at `new_stem` and no
+            // longer exists at `old_stem`.
+            let landed = resolve_by_stem(worktree_root, new_stem);
+            let old_still_resolves = resolve_by_stem(worktree_root, old_stem).is_some();
+            match landed {
+                Some(renamed) if !old_still_resolves => ChildResolution {
+                    outcome: ApplyChildOutcome::Applied,
+                    observed_result_blob_hash: read_blob_hash(worktree_root, &renamed).ok(),
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state re-verified the rename to `{new_stem}` landed"
+                    )),
+                },
+                Some(_) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: None,
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; a document resolves at `{new_stem}` but the original stem \
+                         `{old_stem}` still resolves too (ambiguous, fail-closed)"
+                    )),
+                },
+                None => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: None,
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state re-verified the rename to `{new_stem}` did NOT land"
+                    )),
+                },
+            }
+        }
+        PostVerifyExpectation::CreatedAt {
+            expected_stem,
+            expected_path,
+            expected_feature_tag,
+        } => {
+            // See the `CreatedAt` type doc for why resolving at the
+            // DETERMINISTIC predicted path is sound identity proof here (core
+            // refuses to overwrite + duplicate-path conflict detection), with
+            // the feature-tag re-read as defense-in-depth "expected scaffold
+            // shape" beyond bare existence.
+            let created = resolve_by_stem(worktree_root, expected_stem);
+            let created_path = created.as_ref().and_then(|document| match document {
+                DocumentRef::Existing { path, .. } => Some(path.clone()),
+                _ => None,
+            });
+            match (&created, created_path) {
+                (Some(created_ref), Some(path)) if &path == expected_path => {
+                    match read_document_text(worktree_root, created_ref) {
+                        Ok(text) if text.contains(expected_feature_tag.as_str()) => {
+                            ChildResolution {
+                                outcome: ApplyChildOutcome::Applied,
+                                observed_result_blob_hash: read_blob_hash(
+                                    worktree_root,
+                                    created_ref,
+                                )
+                                .ok(),
+                                core_status: None,
+                                core_schema: None,
+                                resolved_via_post_verify: true,
+                                diagnostic: Some(format!(
+                                    "{reason}; post-state re-verified the create of \
+                                     `{expected_stem}` landed at the expected path with the \
+                                     expected scaffold shape"
+                                )),
+                            }
+                        }
+                        Ok(_) => ChildResolution {
+                            outcome: ApplyChildOutcome::Failed,
+                            observed_result_blob_hash: None,
+                            core_status: None,
+                            core_schema: None,
+                            resolved_via_post_verify: true,
+                            diagnostic: Some(format!(
+                                "{reason}; a document resolves at the expected path but its \
+                                 frontmatter does not carry the expected feature tag \
+                                 (fail-closed)"
+                            )),
+                        },
+                        Err(_) => ChildResolution {
+                            outcome: ApplyChildOutcome::Failed,
+                            observed_result_blob_hash: None,
+                            core_status: None,
+                            core_schema: None,
+                            resolved_via_post_verify: true,
+                            diagnostic: Some(format!(
+                                "{reason}; post-state could not be re-verified (recorded \
+                                 not-applied, fail-closed)"
+                            )),
+                        },
+                    }
+                }
+                (Some(_), _) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: None,
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; a document resolves at `{expected_stem}` but not at the \
+                         expected path `{expected_path}` (fail-closed)"
+                    )),
+                },
+                (None, _) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: None,
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state re-verified the create of `{expected_stem}` did \
+                         NOT land"
+                    )),
+                },
+            }
+        }
     }
+}
+
+/// Re-resolve a document by STEM in the current worktree — the path-independent
+/// primitive `PostVerifyExpectation::RenamedTo` verifies against, since a
+/// rename's recorded `DocumentRef` carries a now-stale path. `None` when no
+/// document currently resolves at `stem`.
+fn resolve_by_stem(worktree_root: &Path, stem: &str) -> Option<DocumentRef> {
+    super::documents::DocumentResolver::for_worktree(worktree_root)
+        .resolve_existing(super::documents::ExistingDocumentLookup::Stem(
+            stem.to_string(),
+        ))
+        .ok()
 }
 
 /// Reconstruct an [`ApplyPrep`] from a changeset WEDGED in `Applying` whose
@@ -663,12 +950,25 @@ fn build_reclaim_prep(
         }));
     };
     let document = materialized.target.document.clone();
-    let Some(document_path) = existing_path(&document) else {
-        return Ok(Err(ApplyError::Internal(format!(
-            "wedged child `{}` target is not an existing document",
-            child.child_key
-        ))));
-    };
+    let (document_path, base_blob_hash, core_base_blob_hash) =
+        if child.operation == ChangesetOperationKind::CreateDocument {
+            (
+                String::new(),
+                materialized.base.blob_hash.clone(),
+                String::new(),
+            )
+        } else {
+            let Some(document_path) = existing_path(&document) else {
+                return Ok(Err(ApplyError::Internal(format!(
+                    "wedged child `{}` target is not an existing document",
+                    child.child_key
+                ))));
+            };
+            let base_blob_hash = materialized.base.blob_hash.clone();
+            let core_base_blob_hash =
+                full_file_blob_hash(worktree_root, &document_path, &base_blob_hash);
+            (document_path, base_blob_hash, core_base_blob_hash)
+        };
     // The materialized (approved) revision the wedged Applying followed.
     let source_revision = applying
         .previous_revision
@@ -678,8 +978,6 @@ fn build_reclaim_prep(
         .receipt_id
         .clone()
         .unwrap_or_else(|| receipt_id_for(request.changeset_id, &source_revision));
-    let base_blob_hash = materialized.base.blob_hash.clone();
-    let core_base_blob_hash = full_file_blob_hash(worktree_root, &document_path, &base_blob_hash);
     let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
     let reservation = InFlightReservation {
         key_scope: key_scope.clone(),
@@ -688,21 +986,18 @@ fn build_reclaim_prep(
         receipt_id: receipt_id.clone(),
     };
     // Built for prep uniformity; the reclaim path never invokes it (no re-write).
-    let invocation = match CoreInvocation::write(
-        CoreCapability::SetBody,
+    let invocation = match build_write_invocation(
+        child.operation,
+        materialized,
         &document_path,
-        WriteArgs {
-            expected_blob_hash: Some(core_base_blob_hash),
-            body: Some(materialized.target_snapshot.payload_text.clone()),
-            ..Default::default()
-        },
+        core_base_blob_hash,
     ) {
         Ok(invocation) => invocation,
-        Err(err) => {
-            return Ok(Err(ApplyError::Internal(format!(
-                "reclaim invocation build failed: {err}"
-            ))));
-        }
+        Err(err) => return Ok(Err(err)),
+    };
+    let post_verify = match post_verify_expectation(child.operation, materialized) {
+        Ok(post_verify) => post_verify,
+        Err(err) => return Ok(Err(err)),
     };
     Ok(Ok(Preflight::Reclaim(Box::new(ApplyPrep {
         reservation,
@@ -717,12 +1012,52 @@ fn build_reclaim_prep(
         document_path,
         base_blob_hash,
         expected_result_blob_hash,
+        post_verify,
         invocation,
     }))))
 }
 
+/// A landed `CreateDocument` child's REAL identity (W03.P09a).
+struct CreatedDocumentIdentity {
+    path: String,
+    node_id: String,
+    stem: String,
+}
+
+/// Resolve a landed `CreateDocument` child's REAL identity — from the SAME
+/// predicted stem `PostVerifyExpectation::CreatedAt` already confirmed to
+/// recognize `Applied`, re-resolved HERE (never cached from prep time, since
+/// `prep.document`/`prep.document_path` carry nothing real for a create —
+/// there was nothing to resolve when the attempt was prepared). `None` for
+/// every other post-verify kind (self-guarded), or — fail-closed, never
+/// forged — if the stem somehow no longer resolves despite the outcome
+/// reading `Applied`.
+fn resolve_created_document(
+    worktree_root: &Path,
+    prep: &ApplyPrep,
+) -> Option<CreatedDocumentIdentity> {
+    let PostVerifyExpectation::CreatedAt { expected_stem, .. } = &prep.post_verify else {
+        return None;
+    };
+    let DocumentRef::Existing {
+        node_id,
+        stem,
+        path,
+        ..
+    } = resolve_by_stem(worktree_root, expected_stem)?
+    else {
+        return None;
+    };
+    Some(CreatedDocumentIdentity {
+        path,
+        node_id,
+        stem,
+    })
+}
+
 fn complete_in_uow(
     uow: &UnitOfWork<'_>,
+    worktree_root: &Path,
     prep: &ApplyPrep,
     resolution: ChildResolution,
     now_ms: i64,
@@ -731,6 +1066,23 @@ fn complete_in_uow(
         ApplyChildOutcome::Applied => (ChangesetStatus::Applied, ApplyState::Applied),
         ApplyChildOutcome::Failed => (ChangesetStatus::Failed, ApplyState::Failed),
     };
+    // W03.P09a: a landed `CreateDocument` has no identity in `prep` (nothing
+    // existed to resolve at prep time) — re-resolve it NOW, from the SAME
+    // predicted stem `PostVerifyExpectation::CreatedAt` already confirmed,
+    // so the receipt echoes the new document's real path/node-id/stem
+    // instead of leaving them empty. `None` for every other kind/outcome
+    // (self-guarded inside the helper), so `document_path` falls back to
+    // `prep.document_path` exactly as before this change.
+    let created_document = (resolution.outcome == ApplyChildOutcome::Applied)
+        .then(|| resolve_created_document(worktree_root, prep))
+        .flatten();
+    let document_path = created_document
+        .as_ref()
+        .map(|created| created.path.clone())
+        .unwrap_or_else(|| prep.document_path.clone());
+    let (result_node_id, result_stem) = created_document
+        .map(|created| (Some(created.node_id), Some(created.stem)))
+        .unwrap_or((None, None));
 
     {
         // Append the terminal revision from the Applying base (single-child, content
@@ -756,7 +1108,7 @@ fn complete_in_uow(
             state: apply_state,
             child: ApplyChildReceipt {
                 child_key: prep.child_key.clone(),
-                document_path: prep.document_path.clone(),
+                document_path,
                 outcome: resolution.outcome,
                 base_blob_hash: prep.base_blob_hash.clone(),
                 expected_result_blob_hash: prep.expected_result_blob_hash.clone(),
@@ -765,6 +1117,8 @@ fn complete_in_uow(
                 core_schema: resolution.core_schema.clone(),
                 resolved_via_post_verify: resolution.resolved_via_post_verify,
                 diagnostic: resolution.diagnostic.clone(),
+                result_node_id,
+                result_stem,
             },
             actor: prep.actor.clone(),
             idempotency_key: prep.idempotency_key.as_str().to_string(),
@@ -873,6 +1227,226 @@ fn read_blob_hash(worktree_root: &Path, document: &DocumentRef) -> StoreResult<S
         .map_err(|err| StoreError::Snapshot(err.to_string()))
 }
 
+/// Read a document's CURRENT text from the worktree — the semantic-post-verify
+/// sibling of [`read_blob_hash`], used when the write is core-authoritative and
+/// verification must inspect content rather than compare a preview-derived hash.
+fn read_document_text(worktree_root: &Path, document: &DocumentRef) -> StoreResult<String> {
+    SnapshotReader::for_worktree(PathBuf::from(worktree_root))
+        .capture_existing(document)
+        .map(|snapshot| snapshot.text)
+        .map_err(|err| StoreError::Snapshot(err.to_string()))
+}
+
+/// Select the core-adapter capability + build its argv for one materialized
+/// child, keyed on the operation kind. The ONE place apply chooses HOW a
+/// materialized operation is written: `ReplaceBody` streams the whole-document
+/// preview to `SetBody`'s stdin; `EditFrontmatter` forwards its field-level
+/// payload (threaded from the draft through `materialized.frontmatter_edit`) to
+/// `SetFrontmatter`'s typed flags — never a body. A new operation kind (rename,
+/// create) extends this match, not a duplicated invocation-build call site.
+fn build_write_invocation(
+    operation: ChangesetOperationKind,
+    materialized: &super::operations::MaterializedProposalOperation,
+    document_path: &str,
+    core_base_blob_hash: String,
+) -> Result<CoreInvocation> {
+    // CreateDocument is NOT a `write` over an existing doc ref at all — it is
+    // its own `CoreInvocation` constructor (`vault add`, no `document_path`,
+    // no `--expected-blob-hash`, no stdin body), so it takes the ONLY early
+    // return here rather than being forced into the `CoreInvocation::write`
+    // shape every other kind shares below.
+    if operation == ChangesetOperationKind::CreateDocument {
+        let DocumentRef::ProvisionalCreate {
+            doc_type,
+            feature,
+            title,
+            ..
+        } = &materialized.target.document
+        else {
+            return Err(ApplyError::Internal(
+                "materialized CreateDocument child target is not a provisional create".to_string(),
+            ));
+        };
+        let Some(date) = materialized.create_document_date.as_deref() else {
+            return Err(ApplyError::Internal(
+                "materialized CreateDocument child carries no fixed create date".to_string(),
+            ));
+        };
+        return CoreInvocation::create_document(doc_type, feature, Some(title.as_str()), date, &[])
+            .map_err(|err| ApplyError::Internal(format!("invocation build failed: {err}")));
+    }
+    let (capability, args) = match operation {
+        ChangesetOperationKind::ReplaceBody => (
+            CoreCapability::SetBody,
+            WriteArgs {
+                expected_blob_hash: Some(core_base_blob_hash),
+                body: Some(materialized.target_snapshot.payload_text.clone()),
+                ..Default::default()
+            },
+        ),
+        ChangesetOperationKind::EditFrontmatter => {
+            let fields = materialized.frontmatter_edit.clone().unwrap_or_default();
+            (
+                CoreCapability::SetFrontmatter,
+                WriteArgs {
+                    expected_blob_hash: Some(core_base_blob_hash),
+                    date: fields.date,
+                    tags: fields.tags.unwrap_or_default(),
+                    related: fields.related.unwrap_or_default(),
+                    ..Default::default()
+                },
+            )
+        }
+        ChangesetOperationKind::Rename => {
+            let new_stem = materialized.rename_edit.clone().unwrap_or_default();
+            (
+                CoreCapability::Rename,
+                WriteArgs {
+                    expected_blob_hash: Some(core_base_blob_hash),
+                    new_stem: Some(new_stem),
+                    ..Default::default()
+                },
+            )
+        }
+        other => {
+            return Err(ApplyError::Internal(format!(
+                "apply invocation build has no capability mapping for operation `{other:?}`"
+            )));
+        }
+    };
+    CoreInvocation::write(capability, document_path, args)
+        .map_err(|err| ApplyError::Internal(format!("invocation build failed: {err}")))
+}
+
+/// HOW to verify, post-write, that a materialized child's write actually
+/// landed — keyed on the SAME operation kind [`build_write_invocation`]
+/// dispatches on, because the two questions are coupled: verification is sound
+/// only when it checks what the invocation ACTUALLY asked core to produce.
+///
+/// `ExactBlobHash` applies when the apply invocation streams the SAME bytes
+/// the whole-document preview computed (`ReplaceBody` → `SetBody` stdin): core
+/// reproduces the preview byte-for-byte, so a blob-hash match is a sound proof
+/// of landing.
+///
+/// `FrontmatterFields` applies whenever core is AUTHORITATIVE over the written
+/// bytes (`EditFrontmatter` → `SetFrontmatter` computes its own serialization
+/// from typed flags, never receiving the preview text at all). A
+/// preview-derived hash can NEVER soundly verify such a write — core's real
+/// bytes need not match the Rust-side preview's quoting/spacing/line-ending
+/// choices even when the write landed correctly — so verification instead
+/// RE-READS the post-state document and confirms the intended field values are
+/// present (`operations::frontmatter_fields_match`), never comparing
+/// whole-document bytes. A new core-authoritative operation kind (rename,
+/// create) needs its own semantic variant here, mirroring this one, not a
+/// forced fit into `ExactBlobHash`.
+///
+/// `RenamedTo` applies to `Rename` — ALSO core-authoritative (core computes
+/// the target path/cascade, not just bytes), and doubly unsound for a
+/// blob-hash compare: the recorded `DocumentRef` the hash would be checked
+/// against carries the OLD path, which the rename just moved the file away
+/// from. Verification instead re-resolves by STEM: the document now exists at
+/// the new stem and no longer exists at the old one.
+///
+/// `CreatedAt` applies to `CreateDocument` — core generates the scaffold from
+/// a doc-type template we cannot predict byte-for-byte (no base to preview
+/// against, no preimage), so a blob-hash compare is never sound. Nor is a bare
+/// "a document now exists at the target stem" check sound in general — that
+/// is the stem-identity-aliasing class of bug the Rename rollback lineage
+/// guard exists to close. What closes it here is different from Rename's
+/// fix (create has no rollback to alias across): the predicted path is a
+/// DETERMINISTIC function of the materialized operation alone
+/// (`create_document_date` + `feature` + `doc_type`, fixed once at
+/// materialize time — see `operations::materialize_create_document`), core
+/// itself REFUSES to overwrite an existing document (this invocation never
+/// passes `--force`), and duplicate-path conflict detection denies two LIVE
+/// changesets from ever targeting the same predicted path. Together those
+/// mean at most ONE successful create can ever land at `expected_path`, so
+/// resolving there is sound identity proof — the same trust `RenamedTo`
+/// places in path resolution. A frontmatter feature-tag re-read adds
+/// defense-in-depth ("expected scaffold shape", not bare existence) against a
+/// resolved document that happens to occupy the exact predicted path but was
+/// never this create's own scaffold. Crucially, none of `expected_path`/
+/// `expected_stem`/`expected_feature_tag` depend on wall-clock "now" at
+/// verify time — a crash-recovery reclaim recomputes the IDENTICAL values
+/// from the SAME durable `materialized_operation`, unlike a freshness flag
+/// captured once and never safely recomputable.
+enum PostVerifyExpectation {
+    ExactBlobHash(String),
+    FrontmatterFields(FrontmatterEditFields),
+    RenamedTo {
+        old_stem: String,
+        new_stem: String,
+    },
+    CreatedAt {
+        expected_stem: String,
+        expected_path: String,
+        expected_feature_tag: String,
+    },
+}
+
+/// Build the [`PostVerifyExpectation`] for one materialized child, keyed on
+/// operation kind exactly like [`build_write_invocation`] — the two MUST stay
+/// coupled (see the type's docs), so both are chosen from the SAME match here
+/// at the call site alongside the invocation, never independently re-derived.
+fn post_verify_expectation(
+    operation: ChangesetOperationKind,
+    materialized: &super::operations::MaterializedProposalOperation,
+) -> Result<PostVerifyExpectation> {
+    match operation {
+        ChangesetOperationKind::ReplaceBody => Ok(PostVerifyExpectation::ExactBlobHash(
+            materialized.target_snapshot.payload_hash.clone(),
+        )),
+        ChangesetOperationKind::EditFrontmatter => {
+            let fields = materialized.frontmatter_edit.clone().ok_or_else(|| {
+                ApplyError::Internal(
+                    "materialized EditFrontmatter child carries no field-level payload".to_string(),
+                )
+            })?;
+            Ok(PostVerifyExpectation::FrontmatterFields(fields))
+        }
+        ChangesetOperationKind::Rename => {
+            let new_stem = materialized.rename_edit.clone().ok_or_else(|| {
+                ApplyError::Internal("materialized Rename child carries no target stem".to_string())
+            })?;
+            let DocumentRef::Existing { stem: old_stem, .. } = &materialized.target.document else {
+                return Err(ApplyError::Internal(
+                    "materialized Rename child target is not an existing document".to_string(),
+                ));
+            };
+            Ok(PostVerifyExpectation::RenamedTo {
+                old_stem: old_stem.clone(),
+                new_stem,
+            })
+        }
+        ChangesetOperationKind::CreateDocument => {
+            let DocumentRef::ProvisionalCreate {
+                doc_type, feature, ..
+            } = &materialized.target.document
+            else {
+                return Err(ApplyError::Internal(
+                    "materialized CreateDocument child target is not a provisional create"
+                        .to_string(),
+                ));
+            };
+            let Some(date) = materialized.create_document_date.as_deref() else {
+                return Err(ApplyError::Internal(
+                    "materialized CreateDocument child carries no fixed create date".to_string(),
+                ));
+            };
+            let expected_stem = format!("{date}-{feature}-{doc_type}");
+            let expected_path = format!(".vault/{doc_type}/{expected_stem}.md");
+            Ok(PostVerifyExpectation::CreatedAt {
+                expected_stem,
+                expected_path,
+                expected_feature_tag: format!("#{feature}"),
+            })
+        }
+        other => Err(ApplyError::Internal(format!(
+            "apply has no post-verify expectation for operation `{other:?}`"
+        ))),
+    }
+}
+
 fn existing_path(document: &DocumentRef) -> Option<String> {
     match document {
         DocumentRef::Existing { path, .. } => Some(path.clone()),
@@ -974,6 +1548,8 @@ fn validation_freshness(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
+    use std::sync::Mutex;
     use std::time::Duration;
 
     use crate::authoring::actors::{ActorDisplayMetadata, ActorRecordInput};
@@ -984,7 +1560,9 @@ mod tests {
         ApprovalDecision, ApprovalRequestInput, ReviewDecisionInput, ReviewedTuple,
     };
     use crate::authoring::leases::{AcquireLeaseInput, LeasePurpose, LeaseRecord};
-    use crate::authoring::model::{ActorId, ActorKind, ApprovalId, ChangesetKind, SessionId};
+    use crate::authoring::model::{
+        ActorId, ActorKind, ApprovalId, ChangesetKind, ProvisionalCollisionStatus, SessionId,
+    };
     use crate::authoring::operations::MaterializedProposalOperation;
     use crate::authoring::snapshots::{PreimageCaptureRequest, SnapshotReader};
     use crate::authoring::store::Store;
@@ -1091,6 +1669,8 @@ mod tests {
             draft: DraftMutation {
                 mode: DraftMode::WholeDocument,
                 body: NEW_BODY.to_string(),
+                frontmatter: None,
+                new_stem: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(
@@ -1209,6 +1789,1295 @@ mod tests {
             applier,
             expected_result_blob_hash,
         }
+    }
+
+    const FRONTMATTER_BASE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-01-01'\n---\n\n# apply demo\n\nbase content\n";
+    const FRONTMATTER_DOC_PATH: &str = ".vault/plan/apply-frontmatter-demo.md";
+
+    /// The `setup` sibling for an `EditFrontmatter` child (W02.P03): the SAME
+    /// Draft->NeedsReview->Approve scaffolding, materialized through
+    /// `materialize_edit_frontmatter` instead of `materialize_replace_body`.
+    fn setup_frontmatter(approve: bool) -> Fx {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let doc_file = root
+            .join(".vault")
+            .join("plan")
+            .join("apply-frontmatter-demo.md");
+        std::fs::create_dir_all(doc_file.parent().unwrap()).unwrap();
+        std::fs::write(&doc_file, FRONTMATTER_BASE_BODY).unwrap();
+
+        let mut store = Store::open(&root.join(".vault")).unwrap();
+        let changeset_id = ChangesetId::new("changeset_apply_fm_1").unwrap();
+        let proposal_id = ProposalId::new("proposal_apply_fm_1").unwrap();
+        let origin = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let applier = actor("human:applier", ActorKind::Human);
+
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                for (id, kind) in [
+                    ("agent:author", ActorKind::Agent),
+                    ("human:reviewer", ActorKind::Human),
+                    ("human:applier", ActorKind::Human),
+                ] {
+                    uow.actors().put_record(ActorRecordInput::active(
+                        actor(id, kind),
+                        ActorDisplayMetadata::new(id, None),
+                        1,
+                    ))?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        let reader = SnapshotReader::for_worktree(root.clone());
+        let seed_doc = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: "doc:apply-frontmatter-demo".to_string(),
+            stem: "apply-frontmatter-demo".to_string(),
+            path: FRONTMATTER_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: RevisionToken::new("blob:seed").unwrap(),
+        };
+        let base_probe = reader.capture_existing(&seed_doc).unwrap();
+        let base_revision = base_probe.revision.clone();
+        let document = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: "doc:apply-frontmatter-demo".to_string(),
+            stem: "apply-frontmatter-demo".to_string(),
+            path: FRONTMATTER_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: base_revision.clone(),
+        };
+        let base_snapshot = reader.capture_existing(&document).unwrap();
+        let preimage = reader
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: "preimage_fm_1".to_string(),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: "child_1".to_string(),
+                document: document.clone(),
+                captured_at_ms: 5,
+            })
+            .unwrap();
+        let draft = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::EditFrontmatter,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(base_revision.clone()),
+                current_revision: Some(base_revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: Some(crate::authoring::api::FrontmatterEditFields {
+                    date: Some("2026-02-06".to_string()),
+                    tags: None,
+                    related: None,
+                }),
+                new_stem: None,
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
+
+        let current_observation =
+            CurrentRevisionObservation::from_snapshot("child_1", &base_snapshot);
+        let validation_record = validate_changeset_material(
+            std::slice::from_ref(&materialized),
+            &[current_observation],
+            &[],
+            6,
+        )
+        .unwrap();
+        assert!(
+            validation_record.approval_ready,
+            "fixture validation must be approval-ready: {:?}",
+            validation_record.status
+        );
+        let validation_digest = validation_record.validation_digest.clone();
+
+        let child_input = ChangesetChildOperationInput::from_materialized(
+            materialized,
+            validation_record.material_digest.clone(),
+            validation_digest.clone(),
+        );
+
+        let reviewed_revision = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                let draft_rev = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: None,
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::Draft,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply frontmatter demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 10,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&draft_rev)?;
+                let needs_review = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: Some(draft_rev.changeset_revision.clone()),
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::NeedsReview,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply frontmatter demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 20,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&needs_review)?;
+                uow.validations().store_record(&validation_record)?;
+                Ok(needs_review.changeset_revision)
+            })
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+                Ok(uow.approvals().request_approval(ApprovalRequestInput {
+                    approval_id: ApprovalId::new("approval_apply_fm_1").unwrap(),
+                    proposal_id: proposal_id.clone(),
+                    changeset_id: changeset_id.clone(),
+                    reviewed: ReviewedTuple {
+                        proposal_revision: reviewed_revision.clone(),
+                        validation_digest: validation_digest.clone(),
+                        policy_version: V1_POLICY_VERSION.to_string(),
+                    },
+                    idempotency_key: "idem:request:fm:1".to_string(),
+                    created_at_ms: 30,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        if approve {
+            store
+                .with_unit_of_work(CommandKind::Approve, |uow| {
+                    Ok(uow.approvals().submit_decision(ReviewDecisionInput {
+                        proposal_id: &proposal_id,
+                        decision: ApprovalDecision::Approve,
+                        reviewer: &reviewer,
+                        validation: ValidationFreshness::fresh(),
+                        current_validation_digest: &validation_digest,
+                        current_policy_version: V1_POLICY_VERSION,
+                        run_cancelled: false,
+                        comment: None,
+                        decided_at_ms: 40,
+                    }))
+                })
+                .unwrap()
+                .unwrap();
+        }
+
+        Fx {
+            _dir: dir,
+            store,
+            root,
+            doc_file,
+            changeset_id,
+            proposal_id,
+            origin,
+            applier,
+            expected_result_blob_hash,
+        }
+    }
+
+    // --- W02.P03-R1: EditFrontmatter against the REAL core (kind-gated post-verify) ---
+
+    /// Serializes the tests that spawn the REAL `vaultspec-core` subprocess
+    /// (mirrors `direct_write::tests::REAL_CORE_TEST_LOCK`).
+    static REAL_CORE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    const LIVE_FRONTMATTER_DOC_PATH: &str = ".vault/plan/apply-frontmatter-live-demo.md";
+    const LIVE_FRONTMATTER_BASE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-01-01'\n---\n\n# apply live frontmatter demo\n\nbase content\n";
+    const LIVE_FRONTMATTER_NEW_DATE: &str = "2026-02-06";
+
+    fn git(root: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .current_dir(root)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "apply-live")
+            .env("GIT_AUTHOR_EMAIL", "apply-live@example.invalid")
+            .env("GIT_COMMITTER_NAME", "apply-live")
+            .env("GIT_COMMITTER_EMAIL", "apply-live@example.invalid")
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn scaffold_vaultspec_workspace(root: &Path) {
+        let output = Command::new("uv")
+            .current_dir(root)
+            .args([
+                "run",
+                "--no-sync",
+                "vaultspec-core",
+                "install",
+                "--target",
+                ".",
+            ])
+            .output()
+            .expect("vaultspec-core install command runs");
+        assert!(
+            output.status.success() && root.join(".vaultspec").is_dir(),
+            "real vaultspec-core install must succeed for live-core apply tests: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// The `setup_frontmatter` sibling that scaffolds a REAL git + vaultspec
+    /// workspace (rather than a bare tempdir) so the apply invocation can be
+    /// driven against the genuine `vaultspec-core` binary — the only way to
+    /// prove the kind-gated post-verify (R1) against core's ACTUAL
+    /// `set-frontmatter` write, not a mocked envelope.
+    fn setup_live_frontmatter() -> Fx {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        git(&root, &["init", "-b", "main", "."]);
+        let doc_file = root.join(LIVE_FRONTMATTER_DOC_PATH);
+        std::fs::create_dir_all(doc_file.parent().unwrap()).unwrap();
+        std::fs::write(&doc_file, LIVE_FRONTMATTER_BASE_BODY).unwrap();
+        scaffold_vaultspec_workspace(&root);
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "apply live frontmatter fixture"]);
+
+        let mut store = Store::open(&root.join(".vault")).unwrap();
+        let changeset_id = ChangesetId::new("changeset_apply_fm_live_1").unwrap();
+        let proposal_id = ProposalId::new("proposal_apply_fm_live_1").unwrap();
+        let origin = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let applier = actor("human:applier", ActorKind::Human);
+
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                for (id, kind) in [
+                    ("agent:author", ActorKind::Agent),
+                    ("human:reviewer", ActorKind::Human),
+                    ("human:applier", ActorKind::Human),
+                ] {
+                    uow.actors().put_record(ActorRecordInput::active(
+                        actor(id, kind),
+                        ActorDisplayMetadata::new(id, None),
+                        1,
+                    ))?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        let reader = SnapshotReader::for_worktree(root.clone());
+        let seed_doc = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: "doc:apply-frontmatter-live-demo".to_string(),
+            stem: "apply-frontmatter-live-demo".to_string(),
+            path: LIVE_FRONTMATTER_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: RevisionToken::new("blob:seed").unwrap(),
+        };
+        let base_probe = reader.capture_existing(&seed_doc).unwrap();
+        let document = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: "doc:apply-frontmatter-live-demo".to_string(),
+            stem: "apply-frontmatter-live-demo".to_string(),
+            path: LIVE_FRONTMATTER_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: base_probe.revision.clone(),
+        };
+        let base_snapshot = reader.capture_existing(&document).unwrap();
+        let preimage = reader
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: "preimage_fm_live_1".to_string(),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: "child_1".to_string(),
+                document: document.clone(),
+                captured_at_ms: 5,
+            })
+            .unwrap();
+        let draft = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::EditFrontmatter,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(base_probe.revision.clone()),
+                current_revision: Some(base_probe.revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: Some(crate::authoring::api::FrontmatterEditFields {
+                    date: Some(LIVE_FRONTMATTER_NEW_DATE.to_string()),
+                    tags: None,
+                    related: None,
+                }),
+                new_stem: None,
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
+
+        let current_observation =
+            CurrentRevisionObservation::from_snapshot("child_1", &base_snapshot);
+        let validation_record = validate_changeset_material(
+            std::slice::from_ref(&materialized),
+            &[current_observation],
+            &[],
+            6,
+        )
+        .unwrap();
+        assert!(
+            validation_record.approval_ready,
+            "fixture validation must be approval-ready: {:?}",
+            validation_record.status
+        );
+        let validation_digest = validation_record.validation_digest.clone();
+
+        let child_input = ChangesetChildOperationInput::from_materialized(
+            materialized,
+            validation_record.material_digest.clone(),
+            validation_digest.clone(),
+        );
+
+        let reviewed_revision = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                let draft_rev = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: None,
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::Draft,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live frontmatter demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 10,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&draft_rev)?;
+                let needs_review = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: Some(draft_rev.changeset_revision.clone()),
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::NeedsReview,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live frontmatter demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 20,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&needs_review)?;
+                uow.validations().store_record(&validation_record)?;
+                Ok(needs_review.changeset_revision)
+            })
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+                Ok(uow.approvals().request_approval(ApprovalRequestInput {
+                    approval_id: ApprovalId::new("approval_apply_fm_live_1").unwrap(),
+                    proposal_id: proposal_id.clone(),
+                    changeset_id: changeset_id.clone(),
+                    reviewed: ReviewedTuple {
+                        proposal_revision: reviewed_revision.clone(),
+                        validation_digest: validation_digest.clone(),
+                        policy_version: V1_POLICY_VERSION.to_string(),
+                    },
+                    idempotency_key: "idem:request:fm:live:1".to_string(),
+                    created_at_ms: 30,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::Approve, |uow| {
+                Ok(uow.approvals().submit_decision(ReviewDecisionInput {
+                    proposal_id: &proposal_id,
+                    decision: ApprovalDecision::Approve,
+                    reviewer: &reviewer,
+                    validation: ValidationFreshness::fresh(),
+                    current_validation_digest: &validation_digest,
+                    current_policy_version: V1_POLICY_VERSION,
+                    run_cancelled: false,
+                    comment: None,
+                    decided_at_ms: 40,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        Fx {
+            _dir: dir,
+            store,
+            root,
+            doc_file,
+            changeset_id,
+            proposal_id,
+            origin,
+            applier,
+            expected_result_blob_hash,
+        }
+    }
+
+    #[test]
+    fn edit_frontmatter_tags_order_is_preserved_by_the_real_core_write() {
+        // P03-review follow-on: `frontmatter_fields_match` compares list fields
+        // as ORDERED `Vec` equality. Source inspection of vaultspec-core's
+        // `_serialise_block_list`/`resolve_related_inputs` confirmed order is
+        // preserved (never sorted/deduped-out-of-order), but that was never
+        // exercised against the REAL binary — this falsifier closes the gap.
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        git(&root, &["init", "-b", "main", "."]);
+        let doc_path = ".vault/plan/apply-tags-order-live-demo.md";
+        let doc_file = root.join(doc_path);
+        std::fs::create_dir_all(doc_file.parent().unwrap()).unwrap();
+        // A conformant vault frontmatter (one directory tag, one feature tag, a
+        // date) — core refuses a non-conformant write outright, so the fixture
+        // must already satisfy its own hygiene checks. `date` is untouched by
+        // this `--tags`-only edit, so it must already be valid.
+        std::fs::write(
+            &doc_file,
+            "---\ntags:\n  - '#plan'\n  - '#zz-test-feature'\ndate: '2026-01-01'\n---\n\nbody\n",
+        )
+        .unwrap();
+        scaffold_vaultspec_workspace(&root);
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "tags order fixture"]);
+
+        // Reversed from the directory-then-feature convention above, so a real
+        // reorder (e.g. a canonicalizing sort) would be caught.
+        let ordered_tags = vec!["#zz-test-feature".to_string(), "#plan".to_string()];
+        let invocation = CoreInvocation::write(
+            CoreCapability::SetFrontmatter,
+            doc_path,
+            WriteArgs {
+                tags: ordered_tags.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let adapter = CoreAdapter::detect();
+        let envelope = adapter.invoke(&root, &invocation).unwrap();
+        assert!(envelope.is_success(), "{:?}", envelope.raw);
+
+        let saved = std::fs::read_to_string(&doc_file).unwrap();
+        // The real core write must preserve the REQUESTED order, never sort or
+        // otherwise reorder it.
+        let positions: Vec<usize> = ordered_tags
+            .iter()
+            .map(|tag| {
+                saved
+                    .find(tag.as_str())
+                    .unwrap_or_else(|| panic!("tag `{tag}` missing from: {saved}"))
+            })
+            .collect();
+        assert!(
+            positions.windows(2).all(|pair| pair[0] < pair[1]),
+            "tags must appear in the REQUESTED order in the real written file: {saved}"
+        );
+
+        // The kind-gated post-verify's ordered-Vec-equality comparison must
+        // recognize the exact ordering the real core wrote.
+        let fields = crate::authoring::api::FrontmatterEditFields {
+            date: None,
+            tags: Some(ordered_tags),
+            related: None,
+        };
+        assert!(
+            crate::authoring::operations::frontmatter_fields_match(&saved, &fields),
+            "post-verify must recognize the real core's tags ordering: {saved}"
+        );
+    }
+
+    #[test]
+    fn edit_frontmatter_a_mismatched_or_not_landed_write_fails_closed() {
+        // P03-review follow-on: the `false → Failed` direction of the semantic
+        // post-verify was structurally guaranteed but never directly exercised
+        // for frontmatter. Pin it at the `frontmatter_fields_match` unit level
+        // (mismatch → false) alongside the tolerant-quoting positive case
+        // (→ true), so the fail-closed property is locked independent of any
+        // subprocess timing.
+        let matching = "---\ntags:\n  - '#plan'\ndate: \"2026-02-06\"\n---\n\nbody\n";
+        let mismatched = "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\nbody\n";
+        let not_landed_at_all = "---\ntags:\n  - '#plan'\n---\n\nbody\n";
+        let fields = crate::authoring::api::FrontmatterEditFields {
+            date: Some("2026-02-06".to_string()),
+            tags: None,
+            related: None,
+        };
+
+        assert!(
+            crate::authoring::operations::frontmatter_fields_match(matching, &fields),
+            "a double-quoted value core might write must still compare equal (tolerant quoting)"
+        );
+        assert!(
+            !crate::authoring::operations::frontmatter_fields_match(mismatched, &fields),
+            "a stale/unrelated value must NOT be recognized as landed (fail-closed)"
+        );
+        assert!(
+            !crate::authoring::operations::frontmatter_fields_match(not_landed_at_all, &fields),
+            "an absent field must NOT be recognized as landed (fail-closed)"
+        );
+    }
+
+    // --- W02.P04: Rename against the REAL core -----------------------------
+
+    const LIVE_RENAME_OLD_STEM: &str = "apply-rename-live-demo";
+    const LIVE_RENAME_NEW_STEM: &str = "apply-rename-live-demo-renamed";
+    const LIVE_RENAME_DOC_PATH: &str = ".vault/plan/apply-rename-live-demo.md";
+    const LIVE_RENAME_RENAMED_DOC_PATH: &str = ".vault/plan/apply-rename-live-demo-renamed.md";
+    const LIVE_RENAME_BASE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\n---\n\n# apply live rename demo\n\nbase content\n";
+
+    /// The `setup_live_frontmatter` sibling for `Rename`: a REAL git +
+    /// vaultspec workspace, an APPROVED single-child `Rename` changeset ready
+    /// to apply against the genuine `vaultspec-core` binary.
+    fn setup_live_rename() -> Fx {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        git(&root, &["init", "-b", "main", "."]);
+        let doc_file = root.join(LIVE_RENAME_DOC_PATH);
+        std::fs::create_dir_all(doc_file.parent().unwrap()).unwrap();
+        std::fs::write(&doc_file, LIVE_RENAME_BASE_BODY).unwrap();
+        scaffold_vaultspec_workspace(&root);
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "apply live rename fixture"]);
+
+        let mut store = Store::open(&root.join(".vault")).unwrap();
+        let changeset_id = ChangesetId::new("changeset_apply_rn_live_1").unwrap();
+        let proposal_id = ProposalId::new("proposal_apply_rn_live_1").unwrap();
+        let origin = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let applier = actor("human:applier", ActorKind::Human);
+
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                for (id, kind) in [
+                    ("agent:author", ActorKind::Agent),
+                    ("human:reviewer", ActorKind::Human),
+                    ("human:applier", ActorKind::Human),
+                ] {
+                    uow.actors().put_record(ActorRecordInput::active(
+                        actor(id, kind),
+                        ActorDisplayMetadata::new(id, None),
+                        1,
+                    ))?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        let reader = SnapshotReader::for_worktree(root.clone());
+        let seed_doc = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: format!("doc:{LIVE_RENAME_OLD_STEM}"),
+            stem: LIVE_RENAME_OLD_STEM.to_string(),
+            path: LIVE_RENAME_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: RevisionToken::new("blob:seed").unwrap(),
+        };
+        let base_probe = reader.capture_existing(&seed_doc).unwrap();
+        let document = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: format!("doc:{LIVE_RENAME_OLD_STEM}"),
+            stem: LIVE_RENAME_OLD_STEM.to_string(),
+            path: LIVE_RENAME_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: base_probe.revision.clone(),
+        };
+        let base_snapshot = reader.capture_existing(&document).unwrap();
+        let preimage = reader
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: "preimage_rn_live_1".to_string(),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: "child_1".to_string(),
+                document: document.clone(),
+                captured_at_ms: 5,
+            })
+            .unwrap();
+        let draft = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::Rename,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(base_probe.revision.clone()),
+                current_revision: Some(base_probe.revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: Some(LIVE_RENAME_NEW_STEM.to_string()),
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_rename(
+            &changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
+
+        let current_observation =
+            CurrentRevisionObservation::from_snapshot("child_1", &base_snapshot);
+        let validation_record = validate_changeset_material(
+            std::slice::from_ref(&materialized),
+            &[current_observation],
+            &[],
+            6,
+        )
+        .unwrap();
+        assert!(
+            validation_record.approval_ready,
+            "fixture validation must be approval-ready: {:?}",
+            validation_record.status
+        );
+        let validation_digest = validation_record.validation_digest.clone();
+
+        let child_input = ChangesetChildOperationInput::from_materialized(
+            materialized,
+            validation_record.material_digest.clone(),
+            validation_digest.clone(),
+        );
+
+        let reviewed_revision = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                let draft_rev = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: None,
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::Draft,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live rename demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 10,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&draft_rev)?;
+                let needs_review = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: Some(draft_rev.changeset_revision.clone()),
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::NeedsReview,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live rename demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 20,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&needs_review)?;
+                uow.validations().store_record(&validation_record)?;
+                Ok(needs_review.changeset_revision)
+            })
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+                Ok(uow.approvals().request_approval(ApprovalRequestInput {
+                    approval_id: ApprovalId::new("approval_apply_rn_live_1").unwrap(),
+                    proposal_id: proposal_id.clone(),
+                    changeset_id: changeset_id.clone(),
+                    reviewed: ReviewedTuple {
+                        proposal_revision: reviewed_revision.clone(),
+                        validation_digest: validation_digest.clone(),
+                        policy_version: V1_POLICY_VERSION.to_string(),
+                    },
+                    idempotency_key: "idem:request:rn:live:1".to_string(),
+                    created_at_ms: 30,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::Approve, |uow| {
+                Ok(uow.approvals().submit_decision(ReviewDecisionInput {
+                    proposal_id: &proposal_id,
+                    decision: ApprovalDecision::Approve,
+                    reviewer: &reviewer,
+                    validation: ValidationFreshness::fresh(),
+                    current_validation_digest: &validation_digest,
+                    current_policy_version: V1_POLICY_VERSION,
+                    run_cancelled: false,
+                    comment: None,
+                    decided_at_ms: 40,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        Fx {
+            _dir: dir,
+            store,
+            root,
+            doc_file,
+            changeset_id,
+            proposal_id,
+            origin,
+            applier,
+            expected_result_blob_hash,
+        }
+    }
+
+    /// A REAL `vaultspec-core` `rename` invocation, wrapped to LAND the write and
+    /// THEN hang past the deadline — mirrors `landing_frontmatter_timeout_adapter`
+    /// for `Rename`'s own core-authoritative post-verify.
+    fn landing_rename_timeout_adapter(doc_ref: &str, new_stem: &str) -> CoreAdapter {
+        let invocation = if cfg!(windows) {
+            vec![
+                "powershell".to_string(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!(
+                    "& {{ uv run --no-sync vaultspec-core vault rename '{doc_ref}' --to \
+                     '{new_stem}' --json | Out-Null; Start-Sleep -Seconds 30 }}"
+                ),
+            ]
+        } else {
+            vec![
+                "sh".to_string(),
+                "-c".into(),
+                format!(
+                    "uv run --no-sync vaultspec-core vault rename '{doc_ref}' --to '{new_stem}' \
+                     --json >/dev/null 2>&1; sleep 30"
+                ),
+            ]
+        };
+        CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
+    }
+
+    #[test]
+    fn rename_apply_against_the_real_core_is_recognized_applied() {
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_rename();
+        let applier = fx.applier.clone();
+        let adapter = CoreAdapter::detect();
+        let outcome = apply(&mut fx, &adapter, &applier, "idem:apply:rn:live:1", 100);
+        assert!(
+            outcome.eligibility.allowed,
+            "{:?}",
+            outcome.eligibility.reason
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an applied rename changeset yields a receipt");
+        assert_eq!(receipt.state, ApplyState::Applied, "{receipt:?}");
+        assert_eq!(receipt.child.outcome, ApplyChildOutcome::Applied);
+        assert!(
+            !receipt.child.resolved_via_post_verify,
+            "a clean success completes via the envelope, never the recovery path"
+        );
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        assert!(
+            !fx.doc_file.exists(),
+            "the REAL vaultspec-core rename moved the document away from the old path"
+        );
+        assert!(
+            fx.root.join(LIVE_RENAME_RENAMED_DOC_PATH).exists(),
+            "the REAL vaultspec-core rename landed the document at the new path"
+        );
+    }
+
+    #[test]
+    fn rename_indeterminate_kill_after_a_real_landed_rename_is_recognized_applied() {
+        // THE R1 pattern applied to Rename: core is core-authoritative over BOTH
+        // the write and the path move — the recorded `DocumentRef` the OLD
+        // preview-hash-shaped verify would check carries the OLD (now-stale)
+        // path. Semantic post-verify (re-resolve by stem) must recognize a REAL,
+        // landed rename regardless.
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_rename();
+        let applier = fx.applier.clone();
+        let adapter = landing_rename_timeout_adapter(LIVE_RENAME_DOC_PATH, LIVE_RENAME_NEW_STEM);
+        let outcome = apply(
+            &mut fx,
+            &adapter,
+            &applier,
+            "idem:apply:rn:live:kill:1",
+            100,
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an indeterminate kill still resolves to a terminal receipt");
+        assert_eq!(
+            receipt.state,
+            ApplyState::Applied,
+            "the REAL landed rename must be recognized Applied via semantic post-verify: \
+             {receipt:?}"
+        );
+        assert!(receipt.child.resolved_via_post_verify);
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        assert!(!fx.doc_file.exists());
+        assert!(fx.root.join(LIVE_RENAME_RENAMED_DOC_PATH).exists());
+    }
+
+    // --- W02.P05: CreateDocument against the REAL core ----------------------
+
+    const LIVE_CREATE_DOC_TYPE: &str = "plan";
+    const LIVE_CREATE_FEATURE: &str = "apply-create-live-demo";
+    // A FIXED historical timestamp, never "now" — core's `vault add` accepts
+    // an explicit `--date` override (confirmed against the real binary), so
+    // pinning a stable date keeps this test's predicted path independent of
+    // the day it happens to run on, exactly like `materialize_create_document`
+    // fixes the date once at materialize time rather than reading a clock at
+    // verify time.
+    const LIVE_CREATE_CREATED_AT_MS: i64 = 1_768_435_200_000; // 2026-01-15T00:00:00Z
+    const LIVE_CREATE_DATE: &str = "2026-01-15";
+    const LIVE_CREATE_STEM: &str = "2026-01-15-apply-create-live-demo-plan";
+    const LIVE_CREATE_DOC_PATH: &str = ".vault/plan/2026-01-15-apply-create-live-demo-plan.md";
+
+    /// The `setup_live_rename` sibling for `CreateDocument`: a REAL git +
+    /// vaultspec workspace, an APPROVED single-child `CreateDocument`
+    /// changeset ready to apply against the genuine `vaultspec-core` binary.
+    /// Unlike every other kind, there is NO base document to write first —
+    /// nothing exists yet.
+    fn setup_live_create() -> Fx {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        git(&root, &["init", "-b", "main", "."]);
+        scaffold_vaultspec_workspace(&root);
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "apply live create fixture"]);
+
+        let mut store = Store::open(&root.join(".vault")).unwrap();
+        let changeset_id = ChangesetId::new("changeset_apply_cr_live_1").unwrap();
+        let proposal_id = ProposalId::new("proposal_apply_cr_live_1").unwrap();
+        let origin = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let applier = actor("human:applier", ActorKind::Human);
+
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                for (id, kind) in [
+                    ("agent:author", ActorKind::Agent),
+                    ("human:reviewer", ActorKind::Human),
+                    ("human:applier", ActorKind::Human),
+                ] {
+                    uow.actors().put_record(ActorRecordInput::active(
+                        actor(id, kind),
+                        ActorDisplayMetadata::new(id, None),
+                        1,
+                    ))?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        let provisional_document = DocumentRef::ProvisionalCreate {
+            provisional_doc_id: "provisional_apply_cr_live_1".to_string(),
+            doc_type: LIVE_CREATE_DOC_TYPE.to_string(),
+            feature: LIVE_CREATE_FEATURE.to_string(),
+            title: "Apply Live Create Demo".to_string(),
+            collision_status: ProvisionalCollisionStatus::Unknown,
+            proposed_stem: None,
+        };
+        let draft = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::CreateDocument,
+            target: TargetRevisionFence {
+                document: provisional_document.clone(),
+                base_revision: None,
+                current_revision: None,
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: "preview body (never sent to core; a real create's scaffold comes \
+                       from core's own doc-type template)"
+                    .to_string(),
+                frontmatter: None,
+                new_stem: None,
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_create_document(
+            &changeset_id,
+            draft,
+            LIVE_CREATE_CREATED_AT_MS,
+        )
+        .unwrap();
+        assert_eq!(
+            materialized.create_document_date.as_deref(),
+            Some(LIVE_CREATE_DATE),
+            "the fixed timestamp must format to the fixed date the test's expected path uses"
+        );
+        let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
+
+        // A CurrentRevisionObservation matching the SAME phantom "diff from
+        // nothing" values `materialize_create_document` used internally (empty
+        // text, the git-style empty-blob hash) — required because
+        // `validate_current_revision` BLOCKS approval-readiness on a missing
+        // observation for ANY operation kind, create included.
+        let empty_hash = blob_oid(b"");
+        let phantom_revision = RevisionToken::new(format!("blob:{empty_hash}")).unwrap();
+        let current_observation = CurrentRevisionObservation {
+            child_key: "child_1".to_string(),
+            document: provisional_document,
+            revision: phantom_revision,
+            blob_hash: empty_hash,
+        };
+        let validation_record = validate_changeset_material(
+            std::slice::from_ref(&materialized),
+            &[current_observation],
+            &[],
+            6,
+        )
+        .unwrap();
+        assert!(
+            validation_record.approval_ready,
+            "fixture validation must be approval-ready: {:?}",
+            validation_record.status
+        );
+        let validation_digest = validation_record.validation_digest.clone();
+
+        let child_input = ChangesetChildOperationInput::from_materialized(
+            materialized,
+            validation_record.material_digest.clone(),
+            validation_digest.clone(),
+        );
+
+        let reviewed_revision = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                let draft_rev = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: None,
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::Draft,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live create demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 10,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&draft_rev)?;
+                let needs_review = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: Some(draft_rev.changeset_revision.clone()),
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::NeedsReview,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live create demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 20,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&needs_review)?;
+                uow.validations().store_record(&validation_record)?;
+                Ok(needs_review.changeset_revision)
+            })
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+                Ok(uow.approvals().request_approval(ApprovalRequestInput {
+                    approval_id: ApprovalId::new("approval_apply_cr_live_1").unwrap(),
+                    proposal_id: proposal_id.clone(),
+                    changeset_id: changeset_id.clone(),
+                    reviewed: ReviewedTuple {
+                        proposal_revision: reviewed_revision.clone(),
+                        validation_digest: validation_digest.clone(),
+                        policy_version: V1_POLICY_VERSION.to_string(),
+                    },
+                    idempotency_key: "idem:request:cr:live:1".to_string(),
+                    created_at_ms: 30,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::Approve, |uow| {
+                Ok(uow.approvals().submit_decision(ReviewDecisionInput {
+                    proposal_id: &proposal_id,
+                    decision: ApprovalDecision::Approve,
+                    reviewer: &reviewer,
+                    validation: ValidationFreshness::fresh(),
+                    current_validation_digest: &validation_digest,
+                    current_policy_version: V1_POLICY_VERSION,
+                    run_cancelled: false,
+                    comment: None,
+                    decided_at_ms: 40,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        Fx {
+            _dir: dir,
+            store,
+            root: root.clone(),
+            doc_file: root.join(LIVE_CREATE_DOC_PATH),
+            changeset_id,
+            proposal_id,
+            origin,
+            applier,
+            expected_result_blob_hash,
+        }
+    }
+
+    /// A REAL `vaultspec-core` `vault add` invocation, wrapped to LAND the
+    /// scaffold and THEN hang past the deadline — mirrors
+    /// `landing_rename_timeout_adapter` for `CreateDocument`'s own
+    /// core-authoritative post-verify. Carries the SAME `--date` override
+    /// `build_write_invocation` would send, so the real scaffold lands at the
+    /// exact predicted path the test asserts against.
+    fn landing_create_timeout_adapter(
+        doc_type: &str,
+        feature: &str,
+        title: &str,
+        date: &str,
+    ) -> CoreAdapter {
+        let invocation = if cfg!(windows) {
+            vec![
+                "powershell".to_string(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!(
+                    "& {{ uv run --no-sync vaultspec-core vault add '{doc_type}' --feature \
+                     '{feature}' --title '{title}' --date '{date}' --json | Out-Null; \
+                     Start-Sleep -Seconds 30 }}"
+                ),
+            ]
+        } else {
+            vec![
+                "sh".to_string(),
+                "-c".into(),
+                format!(
+                    "uv run --no-sync vaultspec-core vault add '{doc_type}' --feature \
+                     '{feature}' --title '{title}' --date '{date}' --json >/dev/null 2>&1; \
+                     sleep 30"
+                ),
+            ]
+        };
+        CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
+    }
+
+    #[test]
+    fn create_document_apply_against_the_real_core_is_recognized_applied() {
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_create();
+        let applier = fx.applier.clone();
+        let adapter = CoreAdapter::detect();
+        let outcome = apply(&mut fx, &adapter, &applier, "idem:apply:cr:live:1", 100);
+        assert!(
+            outcome.eligibility.allowed,
+            "{:?}",
+            outcome.eligibility.reason
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an applied create changeset yields a receipt");
+        assert_eq!(receipt.state, ApplyState::Applied, "{receipt:?}");
+        assert_eq!(receipt.child.outcome, ApplyChildOutcome::Applied);
+        assert!(
+            !receipt.child.resolved_via_post_verify,
+            "a clean success completes via the envelope, never the recovery path"
+        );
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        assert!(
+            fx.doc_file.exists(),
+            "the REAL vaultspec-core `vault add` scaffolded the document"
+        );
+        // W03.P09a: the receipt echoes the created document's REAL identity
+        // (previously always empty/None for a create) — never re-derived
+        // client-side, no client-predictable filename guess needed.
+        assert_eq!(receipt.child.document_path, LIVE_CREATE_DOC_PATH);
+        assert_eq!(receipt.child.result_stem.as_deref(), Some(LIVE_CREATE_STEM));
+        assert_eq!(
+            receipt.child.result_node_id.as_deref(),
+            Some(format!("doc:{LIVE_CREATE_STEM}").as_str())
+        );
+    }
+
+    #[test]
+    fn create_document_indeterminate_kill_after_a_real_landed_create_is_recognized_applied() {
+        // THE R1 pattern applied to CreateDocument: core is core-authoritative
+        // over the ENTIRE scaffold (a doc-type template this engine cannot
+        // predict) — there is no preview hash to compare, and a bare
+        // "something now exists at the target stem" check would be exactly
+        // the stem-identity-aliasing bug class the Rename rollback lineage
+        // guard closes. The identity-bearing `CreatedAt` verify (a
+        // DETERMINISTIC predicted path fixed at materialize time, plus a
+        // frontmatter feature-tag re-read) must recognize a REAL, landed
+        // `vault add` regardless of the reclaim recomputing everything from
+        // the SAME durable `materialized_operation`.
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_create();
+        let applier = fx.applier.clone();
+        let adapter = landing_create_timeout_adapter(
+            LIVE_CREATE_DOC_TYPE,
+            LIVE_CREATE_FEATURE,
+            "Apply Live Create Demo",
+            LIVE_CREATE_DATE,
+        );
+        let outcome = apply(
+            &mut fx,
+            &adapter,
+            &applier,
+            "idem:apply:cr:live:kill:1",
+            100,
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an indeterminate kill still resolves to a terminal receipt");
+        assert_eq!(
+            receipt.state,
+            ApplyState::Applied,
+            "the REAL landed create must be recognized Applied via the identity-bearing \
+             post-verify: {receipt:?}"
+        );
+        assert!(receipt.child.resolved_via_post_verify);
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        assert!(fx.doc_file.exists());
+        // W03.P09a: the crash-recovery/reclaim path resolves the SAME real
+        // identity `resolve_outcome`'s happy path does (via the SAME
+        // `resolve_created_document` helper) — not just "recognized
+        // Applied" but the receipt actually echoes it.
+        assert_eq!(receipt.child.document_path, LIVE_CREATE_DOC_PATH);
+        assert_eq!(receipt.child.result_stem.as_deref(), Some(LIVE_CREATE_STEM));
+        assert_eq!(
+            receipt.child.result_node_id.as_deref(),
+            Some(format!("doc:{LIVE_CREATE_STEM}").as_str())
+        );
+    }
+
+    /// A REAL `vaultspec-core` `set-frontmatter` invocation, wrapped to LAND the
+    /// write and THEN hang past the deadline — the realistic "core is
+    /// core-authoritative AND was killed after actually finishing" sequence R1
+    /// fixes. Runs the genuine core subprocess to completion (a REAL frontmatter
+    /// write lands on disk, in `worktree_root`), then sleeps well past the
+    /// timeout so the apply-level `CoreAdapter` still observes a Timeout
+    /// (OUTCOME-INDETERMINATE). The trailing forwarded argv (the `CoreInvocation`
+    /// this test's `apply_changeset` call built) is intentionally unused here —
+    /// this wrapper hardcodes the SAME real command directly, mirroring
+    /// `landing_timeout_adapter`'s synthetic-mutation pattern but with a genuine
+    /// core subprocess instead of a file copy.
+    fn landing_frontmatter_timeout_adapter(doc_ref: &str, date: &str) -> CoreAdapter {
+        let invocation = if cfg!(windows) {
+            vec![
+                "powershell".to_string(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!(
+                    "& {{ uv run --no-sync vaultspec-core vault set-frontmatter '{doc_ref}' \
+                     --date '{date}' --json | Out-Null; Start-Sleep -Seconds 30 }}"
+                ),
+            ]
+        } else {
+            vec![
+                "sh".to_string(),
+                "-c".into(),
+                format!(
+                    "uv run --no-sync vaultspec-core vault set-frontmatter '{doc_ref}' \
+                     --date '{date}' --json >/dev/null 2>&1; sleep 30"
+                ),
+            ]
+        };
+        // A generous deadline: the wrapped command is a REAL `uv run` subprocess
+        // (venv resolution + Python startup), not a synthetic file mutation, so it
+        // needs materially more slack than `landing_timeout_adapter`'s 2.5s.
+        CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
+    }
+
+    #[test]
+    fn edit_frontmatter_apply_against_the_real_core_is_recognized_applied() {
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_frontmatter();
+        let applier = fx.applier.clone();
+        let adapter = CoreAdapter::detect();
+        let outcome = apply(&mut fx, &adapter, &applier, "idem:apply:fm:live:1", 100);
+        assert!(
+            outcome.eligibility.allowed,
+            "{:?}",
+            outcome.eligibility.reason
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an applied frontmatter changeset yields a receipt");
+        assert_eq!(receipt.state, ApplyState::Applied, "{receipt:?}");
+        assert_eq!(receipt.child.outcome, ApplyChildOutcome::Applied);
+        assert!(
+            !receipt.child.resolved_via_post_verify,
+            "a clean success completes via the envelope, never the recovery path"
+        );
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        let saved = std::fs::read_to_string(&fx.doc_file).unwrap();
+        assert!(
+            saved.contains(LIVE_FRONTMATTER_NEW_DATE),
+            "the REAL vaultspec-core set-frontmatter write landed the requested date: {saved}"
+        );
+    }
+
+    #[test]
+    fn edit_frontmatter_indeterminate_kill_after_a_real_landed_write_is_recognized_applied() {
+        // THE R1 falsifier: core is AUTHORITATIVE over an EditFrontmatter write's
+        // exact bytes (it computes its own serialization from typed flags, never
+        // receiving the Rust-side preview text). A preview-hash post-verify would
+        // spuriously report this REAL, landed write as "did NOT land" because
+        // core's real bytes need not match the preview's byte-for-byte guess.
+        // The semantic post-verify (`operations::frontmatter_fields_match`) must
+        // recognize it Applied regardless.
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_frontmatter();
+        let applier = fx.applier.clone();
+        let adapter = landing_frontmatter_timeout_adapter(
+            LIVE_FRONTMATTER_DOC_PATH,
+            LIVE_FRONTMATTER_NEW_DATE,
+        );
+        let outcome = apply(
+            &mut fx,
+            &adapter,
+            &applier,
+            "idem:apply:fm:live:kill:1",
+            100,
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an indeterminate kill still resolves to a terminal receipt");
+        assert_eq!(
+            receipt.state,
+            ApplyState::Applied,
+            "the REAL landed frontmatter write must be recognized Applied via semantic \
+             post-verify, not a preview-hash mismatch: {receipt:?}"
+        );
+        assert!(receipt.child.resolved_via_post_verify);
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        let saved = std::fs::read_to_string(&fx.doc_file).unwrap();
+        assert!(
+            saved.contains(LIVE_FRONTMATTER_NEW_DATE),
+            "the real core write is actually on disk: {saved}"
+        );
     }
 
     fn envelope_adapter(status: &str) -> CoreAdapter {
@@ -2031,6 +3900,154 @@ mod tests {
         assert_eq!(
             replay.receipt.unwrap().result_revision,
             receipt.result_revision
+        );
+    }
+
+    // --- W02.P03: EditFrontmatter apply wiring ------------------------------
+
+    #[test]
+    fn build_write_invocation_selects_set_frontmatter_capability_and_field_level_flags() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let doc_file = root.join(".vault").join("plan").join("fm-invocation.md");
+        std::fs::create_dir_all(doc_file.parent().unwrap()).unwrap();
+        std::fs::write(
+            &doc_file,
+            "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\nbody\n",
+        )
+        .unwrap();
+
+        let reader = SnapshotReader::for_worktree(root.to_path_buf());
+        let seed_doc = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: "doc:fm-invocation".to_string(),
+            stem: "fm-invocation".to_string(),
+            path: ".vault/plan/fm-invocation.md".to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: RevisionToken::new("blob:seed").unwrap(),
+        };
+        let base_probe = reader.capture_existing(&seed_doc).unwrap();
+        let document = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: "doc:fm-invocation".to_string(),
+            stem: "fm-invocation".to_string(),
+            path: ".vault/plan/fm-invocation.md".to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: base_probe.revision.clone(),
+        };
+        let base_snapshot = reader.capture_existing(&document).unwrap();
+        let preimage = reader
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: "preimage_fm_inv".to_string(),
+                changeset_id: "changeset_fm_inv".to_string(),
+                operation_id: "child_1".to_string(),
+                document: document.clone(),
+                captured_at_ms: 1,
+            })
+            .unwrap();
+        let draft = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::EditFrontmatter,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(base_snapshot.revision.clone()),
+                current_revision: Some(base_snapshot.revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::WholeDocument,
+                body: String::new(),
+                frontmatter: Some(crate::authoring::api::FrontmatterEditFields {
+                    date: Some("2026-02-06".to_string()),
+                    tags: Some(vec!["#plan".to_string(), "#new-tag".to_string()]),
+                    related: None,
+                }),
+                new_stem: None,
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &ChangesetId::new("changeset_fm_inv").unwrap(),
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+
+        let invocation = build_write_invocation(
+            ChangesetOperationKind::EditFrontmatter,
+            &materialized,
+            &existing_path(&document).unwrap(),
+            "a".repeat(40),
+        )
+        .unwrap();
+
+        assert_eq!(invocation.capability(), CoreCapability::SetFrontmatter);
+        assert!(
+            !invocation.has_body(),
+            "a frontmatter edit never streams a body to core"
+        );
+        assert!(invocation.argv().contains(&"--date".to_string()));
+        assert!(invocation.argv().contains(&"2026-02-06".to_string()));
+        assert!(invocation.argv().contains(&"--tags".to_string()));
+        assert!(invocation.argv().contains(&"#new-tag".to_string()));
+    }
+
+    #[test]
+    fn edit_frontmatter_apply_materializes_once_and_records_an_applied_receipt() {
+        let mut fx = setup_frontmatter(true);
+        let applier = fx.applier.clone();
+        let outcome = apply(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:apply:fm:1",
+            100,
+        );
+        assert!(
+            outcome.eligibility.allowed,
+            "{:?}",
+            outcome.eligibility.reason
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an applied frontmatter changeset yields a receipt");
+        assert_eq!(receipt.state, ApplyState::Applied);
+        assert_eq!(receipt.child.outcome, ApplyChildOutcome::Applied);
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+    }
+
+    #[test]
+    fn edit_frontmatter_out_of_band_edit_conflicts_and_refuses_the_apply_as_a_value() {
+        let mut fx = setup_frontmatter(true);
+        let applier = fx.applier.clone();
+        // An out-of-band edit lands on the target after the frontmatter draft was
+        // materialized: the base is now stale, so the base-revision conflict gate
+        // (generalized to `EditFrontmatter` by the `is_whole_document_replace`
+        // broadening in conflicts.rs) refuses the apply as a denial VALUE.
+        std::fs::write(
+            &fx.doc_file,
+            "---\ntags:\n  - '#plan'\ndate: '2026-01-01'\n---\n\n# apply demo\n\nsomeone else edited this\n",
+        )
+        .unwrap();
+
+        let outcome = apply(
+            &mut fx,
+            &envelope_adapter("updated"),
+            &applier,
+            "idem:apply:fm:conflict",
+            100,
+        );
+        assert!(
+            !outcome.eligibility.allowed,
+            "a stale base refuses the frontmatter apply as a value"
+        );
+        assert!(
+            outcome.receipt.is_none(),
+            "a preflight conflict denial carries no receipt (the core never ran)"
+        );
+        assert_eq!(
+            ledger_status(&mut fx),
+            ChangesetStatus::Approved,
+            "the refused apply left the ledger untouched"
         );
     }
 }
