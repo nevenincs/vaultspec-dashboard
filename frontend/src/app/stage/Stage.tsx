@@ -55,7 +55,11 @@ import { TimeTravelChip } from "../timeline/TimeTravelChip";
 import { useTimeTravel } from "../timeline/timeTravel";
 import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
 import { MinimapWidget } from "./MinimapWidget";
-import { ProvisionPanel } from "./ProvisionPanel";
+import {
+  ProvisionPanel,
+  shouldSuppressCanvasStateOverlay,
+  useProvisionPanelState,
+} from "./ProvisionPanel";
 import { CANVAS_KEYMAP_CONTEXT, useGraphWalkKeybindings } from "./graphWalkKeybindings";
 import { GraphNavControls, GraphSettingsPanel, GraphSimControl } from "./GraphControls";
 import { useGraphControlsPersistenceSync } from "./graphControlsPersistence";
@@ -419,6 +423,12 @@ export function Stage() {
     availability,
     renderCapability,
   });
+  // The SAME resolved state `ProvisionPanel` renders from (project-provisioning
+  // ADR D7, HIGH review finding): a genuinely unmanaged root never resolves a
+  // scope, so `canvasState` sits at "awaiting-scope" forever. Once the panel is
+  // about to paint its own card, `CanvasStateOverlay`'s card is suppressed so
+  // the two never occupy the same centered coordinates at once.
+  const { state: provisionPanelState } = useProvisionPanelState(scope);
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div
@@ -465,7 +475,13 @@ export function Stage() {
           two from ever targeting the same node anyway. */}
       <HoverCardLayer scene={scene.controller} scope={scope} />
       <IslandLayer scene={scene.controller} scope={scope} />
-      <CanvasStateOverlay state={canvasState} />
+      {/* Suppressed once the not-a-vaultspec-managed-project panel below is
+          about to paint its own centered card (project-provisioning ADR D7) —
+          otherwise a genuinely unmanaged root (scope never resolves) would
+          double-paint both cards at the same coordinates. */}
+      {!shouldSuppressCanvasStateOverlay(provisionPanelState) && (
+        <CanvasStateOverlay state={canvasState} />
+      )}
       {/* The not-a-vaultspec-managed-project empty state (project-provisioning
           ADR D7): takes over the awaiting-scope card once the served
           provisioning projection confirms there is nothing to load, and

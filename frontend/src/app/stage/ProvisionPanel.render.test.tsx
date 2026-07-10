@@ -13,11 +13,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProvisionJob, ProvisionStatus } from "../../stores/server/engine";
 import { PROVISION_FORCE_CONFIRM } from "../../stores/server/provisionControl";
+import { CanvasStateOverlay, type CanvasState } from "./CanvasStateOverlay";
 import {
   ProvisionPanelBody,
   dispatchPayload,
   recommendationDetail,
   resolveProvisionPanelState,
+  shouldSuppressCanvasStateOverlay,
 } from "./ProvisionPanel";
 import { provisionForceInstallAction } from "../../stores/view/provisionActions";
 
@@ -296,5 +298,82 @@ describe("ProvisionPanelBody", () => {
       />,
     );
     expect(screen.getByText(/Couldn.t start: network error/)).toBeTruthy();
+  });
+});
+
+// Stage's ACTUAL overlay composition (the HIGH review finding): a harness
+// mirroring Stage.tsx's real JSX line-for-line — the REAL `CanvasStateOverlay`
+// component, the REAL `shouldSuppressCanvasStateOverlay` predicate, and
+// `ProvisionPanelBody` in place of the wired `ProvisionPanel` (kept wire-free
+// by driving `resolveProvisionPanelState` off injected inputs instead of a
+// live `useProvisionStatus` fetch). Proves the double-card artifact the
+// review caught cannot recur: for a genuinely unmanaged root the awaiting-
+// scope card is ABSENT and the not-managed card is the only one painted.
+function StageOverlayHarness({
+  canvasState,
+  panelInputs,
+}: {
+  canvasState: CanvasState;
+  panelInputs: Parameters<typeof resolveProvisionPanelState>[0];
+}) {
+  const panelState = resolveProvisionPanelState(panelInputs);
+  return (
+    <>
+      {!shouldSuppressCanvasStateOverlay(panelState) && (
+        <CanvasStateOverlay state={canvasState} />
+      )}
+      {panelState.kind === "not-managed" && (
+        <ProvisionPanelBody
+          data={panelState.data}
+          job={undefined}
+          busy={false}
+          runErrorMessage={null}
+          forceArmed={false}
+          onPrimary={vi.fn()}
+          onForce={vi.fn()}
+        />
+      )}
+    </>
+  );
+}
+
+describe("Stage overlay composition (CanvasStateOverlay <-> ProvisionPanel)", () => {
+  it("a genuinely unmanaged root suppresses the awaiting-scope card and shows ONLY the not-managed card", () => {
+    const { container } = render(
+      <StageOverlayHarness
+        canvasState={{ kind: "awaiting-scope" }}
+        panelInputs={{ scope: null, isPending: false, isError: false, data: status() }}
+      />,
+    );
+    expect(container.querySelector('[data-canvas-state="awaiting-scope"]')).toBeNull();
+    expect(container.querySelector('[data-canvas-state="not-managed"]')).not.toBeNull();
+  });
+
+  it("still loading the provisioning read: the awaiting-scope card shows through, no panel card yet", () => {
+    const { container } = render(
+      <StageOverlayHarness
+        canvasState={{ kind: "awaiting-scope" }}
+        panelInputs={{ scope: null, isPending: true, isError: false, data: undefined }}
+      />,
+    );
+    expect(
+      container.querySelector('[data-canvas-state="awaiting-scope"]'),
+    ).not.toBeNull();
+    expect(container.querySelector('[data-canvas-state="not-managed"]')).toBeNull();
+  });
+
+  it("a live resolved scope: neither the awaiting-scope card nor the panel card renders", () => {
+    const { container } = render(
+      <StageOverlayHarness
+        canvasState={{ kind: "ok" }}
+        panelInputs={{
+          scope: "wt-1",
+          isPending: false,
+          isError: false,
+          data: undefined,
+        }}
+      />,
+    );
+    expect(container.querySelector("[data-canvas-state]")).toBeNull();
   });
 });

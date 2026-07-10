@@ -16,8 +16,14 @@
 // (`stores/server/provisionActions.test.ts`). Every displayed truth
 // (`managed`, `recommended`, the job outcome vocabulary) is backend-served
 // (wire-contract) — nothing here re-derives a status.
+//
+// `useProvisionPanelState` is the ONE resolved-state read `Stage.tsx` shares
+// with this module: it decides both what THIS panel renders and whether
+// `CanvasStateOverlay`'s awaiting-scope/empty-invitation card must be
+// suppressed (`shouldSuppressCanvasStateOverlay`) so the two designed states
+// never paint the same centered card at once for a genuinely unmanaged root.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Check, TriangleAlert } from "lucide-react";
 
 import { isRunnable, type ActionDescriptor } from "../../platform/actions/action";
@@ -80,6 +86,37 @@ const SYNC_STATUS_LABEL: Record<string, string> = {
   failed: "Failed",
   mixed: "Mixed results",
 };
+
+/** The ONE resolved-state read: wraps `useProvisionStatus` + `resolveProvisionPanelState`
+ *  behind a single hook so `Stage.tsx` (which needs to know whether to SUPPRESS
+ *  `CanvasStateOverlay`) and `ProvisionPanel` (which needs to know what to RENDER)
+ *  derive from the identical resolution — never two independent re-derivations that
+ *  could drift (the HIGH review finding: Stage previously mounted both overlays as
+ *  plain siblings with nothing suppressing the awaiting-scope card, painting a
+ *  double-card artifact for a genuinely unmanaged root). Memoized on the raw query
+ *  fields (frontend-store-selectors: derive in useMemo, never a fresh object per
+ *  render). */
+export function useProvisionPanelState(scope: string | null): {
+  state: ProvisionPanelState;
+  refetchStatus: () => void;
+} {
+  const status = useProvisionStatus();
+  const { isPending, isError, data, refetch } = status;
+  const state = useMemo(
+    () => resolveProvisionPanelState({ scope, isPending, isError, data }),
+    [scope, isPending, isError, data],
+  );
+  return { state, refetchStatus: () => void refetch() };
+}
+
+/** True once the panel is about to paint a visible card of its own — Stage
+ *  reads this to suppress `CanvasStateOverlay`'s awaiting-scope/empty-invitation
+ *  card so the two never occupy the same centered coordinates at once. */
+export function shouldSuppressCanvasStateOverlay(
+  panelState: ProvisionPanelState,
+): boolean {
+  return panelState.kind !== "hidden";
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -238,18 +275,11 @@ export function ProvisionPanelBody({
  *  body. Mounted as a `Stage.tsx` sibling, gated on the SAME `scope === null`
  *  the stage already computes. */
 export function ProvisionPanel({ scope }: { scope: string | null }) {
-  const status = useProvisionStatus();
+  const { state: panelState, refetchStatus } = useProvisionPanelState(scope);
   const run = useProvisionRun();
   const [jobId, setJobId] = useState<string | null>(null);
   const [forceArmed, setForceArmed] = useState(false);
   const job = useProvisionJob(jobId);
-
-  const panelState = resolveProvisionPanelState({
-    scope,
-    isPending: status.isPending,
-    isError: status.isError,
-    data: status.data,
-  });
 
   if (panelState.kind === "hidden") return null;
   if (panelState.kind === "unavailable") {
@@ -259,7 +289,7 @@ export function ProvisionPanel({ scope }: { scope: string | null }) {
         <p className="text-body font-medium text-state-stale">
           Provisioning status is unavailable
         </p>
-        <Button variant="secondary" onClick={() => void status.refetch()}>
+        <Button variant="secondary" onClick={refetchStatus}>
           Retry
         </Button>
       </StateCard>
