@@ -55,6 +55,7 @@ import { TimeTravelChip } from "../timeline/TimeTravelChip";
 import { useTimeTravel } from "../timeline/timeTravel";
 import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
 import { MinimapWidget } from "./MinimapWidget";
+import { ProvisionPanel } from "./ProvisionPanel";
 import { CANVAS_KEYMAP_CONTEXT, useGraphWalkKeybindings } from "./graphWalkKeybindings";
 import { GraphNavControls, GraphSettingsPanel, GraphSimControl } from "./GraphControls";
 import { useGraphControlsPersistenceSync } from "./graphControlsPersistence";
@@ -465,6 +466,14 @@ export function Stage() {
       <HoverCardLayer scene={scene.controller} scope={scope} />
       <IslandLayer scene={scene.controller} scope={scope} />
       <CanvasStateOverlay state={canvasState} />
+      {/* The not-a-vaultspec-managed-project empty state (project-provisioning
+          ADR D7): takes over the awaiting-scope card once the served
+          provisioning projection confirms there is nothing to load, and
+          carries the operator affordance CanvasStateOverlay's pure resolver
+          cannot (it fetches + dispatches, so it lives outside that no-fetch
+          union). Self-gates on `scope === null`; never renders over a live
+          graph. */}
+      <ProvisionPanel scope={scope} />
     </div>
   );
 }

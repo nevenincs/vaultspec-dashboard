@@ -152,12 +152,21 @@ export function resolveCanvasState(inputs: CanvasStateInputs): CanvasState {
  * transparent so it never steals the canvas pointer, and it never blanks the field
  * — the legend / nav / minimap overlays stay live around it.
  */
-function StateCard({
+// Exported so a sibling designed state OUTSIDE this pure resolver's own union
+// (the not-managed provisioning panel, `ProvisionPanel.tsx` — which fetches
+// and mutates, so it cannot live in this no-fetch resolver) still composes the
+// SAME card primitive rather than a bespoke look-alike (design-system-is-
+// centralized). `interactive` re-enables pointer events on the card only
+// (every other state stays click-through, unchanged) for the one caller that
+// carries a real affordance (a provision button) rather than static copy.
+export function StateCard({
   children,
   testid,
+  interactive = false,
 }: {
   children: React.ReactNode;
   testid: string;
+  interactive?: boolean;
 }) {
   return (
     <div
@@ -165,7 +174,9 @@ function StateCard({
       data-canvas-state={testid}
       role="status"
     >
-      <div className="flex flex-col items-center justify-center gap-[0.625rem] rounded-[0.625rem] border border-rule bg-paper-raised px-[1.625rem] py-[1.375rem] text-center">
+      <div
+        className={`flex flex-col items-center justify-center gap-[0.625rem] rounded-[0.625rem] border border-rule bg-paper-raised px-[1.625rem] py-[1.375rem] text-center ${interactive ? "pointer-events-auto" : ""}`}
+      >
         {children}
       </div>
     </div>
