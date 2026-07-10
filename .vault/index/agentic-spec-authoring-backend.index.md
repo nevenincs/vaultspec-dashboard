@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#agentic-spec-authoring-backend'
-date: '2026-07-09'
-modified: '2026-07-09'
+date: '2026-07-10'
+modified: '2026-07-10'
 related:
   - '[[2026-06-29-agentic-apply-materialization-adr]]'
   - '[[2026-06-29-agentic-approval-gates-review-state-adr]]'
@@ -181,6 +181,7 @@ related:
   - '[[2026-07-06-agentic-spec-authoring-backend-audit]]'
   - '[[2026-07-07-agentic-spec-authoring-backend-audit]]'
   - '[[2026-07-09-agentic-spec-authoring-backend-audit]]'
+  - '[[2026-07-10-agentic-spec-authoring-backend-audit]]'
 ---
 
 # `agentic-spec-authoring-backend` feature index
@@ -217,6 +218,7 @@ Auto-generated index of all documents tagged with `#agentic-spec-authoring-backe
 - `2026-07-06-agentic-spec-authoring-backend-audit` - `agentic-spec-authoring-backend` audit: `W10 P21 approval policy matrix review`
 - `2026-07-07-agentic-spec-authoring-backend-audit` - `agentic-spec-authoring-backend` audit: `semantic-agent-tool-aliases`
 - `2026-07-09-agentic-spec-authoring-backend-audit` - `agentic-spec-authoring-backend` audit: `W12-W14 engine wiring verification and Increment 5-6 phase review closure`
+- `2026-07-10-agentic-spec-authoring-backend-audit` - `agentic-spec-authoring-backend` audit: `W13.P46 per-operation rollback inverses — return trigger fired and satisfied`
 
 ### exec
 
