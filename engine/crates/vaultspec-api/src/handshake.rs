@@ -18,8 +18,8 @@
 
 use std::io::Read as _;
 use std::process::{Command, Stdio};
-use std::sync::OnceLock;
 use std::sync::mpsc;
+use std::sync::{OnceLock, RwLock};
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -118,14 +118,40 @@ pub fn probe_git() -> &'static GitProbe {
     })
 }
 
-/// Probe the resolved `vaultspec-core` version, memoized. Rides the same
-/// resolution [`ingest_core::runner::CoreRunner::detect`] memoizes, so the
-/// handshake reports the core the engine actually brokers.
-pub fn probe_core() -> &'static CoreProbe {
-    static PROBE: OnceLock<CoreProbe> = OnceLock::new();
-    PROBE.get_or_init(|| CoreProbe {
+/// The refreshable memo backing [`probe_core`]. Unlike a bare `OnceLock`, it can
+/// be re-primed after a dashboard-driven `vaultspec-core` install/upgrade so the
+/// served handshake reflects the just-installed version WITHOUT a process
+/// restart (project-provisioning ADR D6). `None` means "not yet probed"; the
+/// first `probe_core()` primes it from the memoized `core_version()`.
+static CORE_PROBE: RwLock<Option<CoreProbe>> = RwLock::new(None);
+
+/// Probe the resolved `vaultspec-core` version, memoized (refreshably). Rides the
+/// same resolution [`ingest_core::runner::CoreRunner::detect`] memoizes, so the
+/// handshake reports the core the engine actually brokers. Returns an owned
+/// clone — the memo is refreshable ([`refresh_core_probe`]), so a borrow cannot
+/// be `'static`.
+pub fn probe_core() -> CoreProbe {
+    if let Some(probe) = CORE_PROBE.read().unwrap_or_else(|e| e.into_inner()).clone() {
+        return probe;
+    }
+    let probed = CoreProbe {
         version: ingest_core::runner::core_version(),
-    })
+    };
+    *CORE_PROBE.write().unwrap_or_else(|e| e.into_inner()) = Some(probed.clone());
+    probed
+}
+
+/// Re-prime the memoized core probe from a FRESH, uncached version read
+/// (project-provisioning ADR D6, post-provision reconciliation). Called by the
+/// provisioning plane after a successful `vaultspec-core` acquisition/upgrade so
+/// every subsequent served `tiers` block reports the new floor verdict. Returns
+/// the freshly-probed value.
+pub fn refresh_core_probe() -> CoreProbe {
+    let probed = CoreProbe {
+        version: ingest_core::runner::core_version_fresh(),
+    };
+    *CORE_PROBE.write().unwrap_or_else(|e| e.into_inner()) = Some(probed.clone());
+    probed
 }
 
 /// The startup probe (D3, detect-and-instruct — amended): probe the two
@@ -138,7 +164,7 @@ pub fn probe_core() -> &'static CoreProbe {
 /// without core. A below-floor core passes silently — presence is the probed
 /// question; the floor verdict degrades through the handshake.
 pub fn startup_gate() -> Result<(), String> {
-    gate(probe_git(), probe_core())
+    gate(probe_git(), &probe_core())
 }
 
 /// The pure probe verdict, parameterized for tests.

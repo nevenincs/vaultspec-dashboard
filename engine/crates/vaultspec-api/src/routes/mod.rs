@@ -5,6 +5,7 @@ pub mod file_tree;
 pub mod github;
 pub mod history;
 pub mod ops;
+pub mod provision;
 pub mod query;
 pub mod registry;
 pub mod session;
