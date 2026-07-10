@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#project-provisioning'
-date: '2026-07-08'
-modified: '2026-07-08'
+date: '2026-07-10'
+modified: '2026-07-10'
 related:
   - '[[2026-07-07-project-provisioning-adr]]'
   - '[[2026-07-07-project-provisioning-plan]]'
