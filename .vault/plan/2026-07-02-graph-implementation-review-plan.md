@@ -3,22 +3,13 @@ tags:
   - '#plan'
   - '#graph-implementation-review'
 date: '2026-07-02'
+modified: '2026-07-03'
 tier: L2
 related:
   - '[[2026-07-02-graph-implementation-review-audit]]'
   - '[[2026-07-02-graph-implementation-review-adr]]'
   - '[[2026-06-29-graph-simulation-stability-research]]'
 ---
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `graph-implementation-review` plan
 

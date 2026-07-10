@@ -3,12 +3,12 @@ tags:
   - '#plan'
   - '#rag-schema-gate'
 date: '2026-06-27'
-modified: '2026-06-27'
+modified: '2026-07-03'
 tier: L2
 related:
   - '[[2026-06-27-rag-schema-gate-adr]]'
+  - '[[2026-06-27-rag-schema-gate-research]]'
 ---
-
 # `rag-schema-gate` plan
 
 Gate the engine's direct-Qdrant embedding read on rag's advertised storage-schema contract (version, dense vector name, dimension) and degrade honestly on a mismatch.

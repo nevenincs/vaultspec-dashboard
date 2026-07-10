@@ -3,12 +3,12 @@ tags:
   - '#plan'
   - '#rag-storage-broker'
 date: '2026-06-27'
-modified: '2026-06-27'
+modified: '2026-07-03'
 tier: L2
 related:
   - '[[2026-06-27-rag-storage-broker-adr]]'
+  - '[[2026-06-27-rag-storage-broker-research]]'
 ---
-
 # `rag-storage-broker` plan
 
 Broker rag's destructive storage verbs (delete/prune/migrate) through the bounded CLI runner with validated arguments, dry-run-default, and exit-1 envelope forwarding.

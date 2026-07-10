@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#agentic-spec-authoring-backend'
 date: '2026-07-02'
-modified: '2026-07-02'
+modified: '2026-07-08'
 related:
   - "[[2026-06-29-agentic-spec-authoring-backend-research]]"
   - "[[2026-06-30-agentic-spec-authoring-backend-plan]]"
@@ -1004,6 +1004,587 @@ panel; the LCS table at the 3,000-line cap is ~9M cells (a transient
 tens-of-MB worst case — an `Int32Array` row table or a Myers diff cuts it if
 it ever shows in profiling); `eligibilityForRender` filters fresh per render
 over query data (plain render derivation, not a store selector — compliant).
+
+### ASA-P21-review | info | W10.P21 approval policy matrix (S104, 1f9ead07f7): verdict APPROVED — no required revisions; defer-the-reroute-to-P48 CONFIRMED with a one-authority bar; two forward-wiring advisories
+
+Phase review of `policy.rs` (713 lines, 9 tests, pure functions over
+arguments — no state to bound). FAITHFUL TO THE ADR CLUSTER: the three modes
+are named policy bundles with an autonomy rank; the session override is
+narrowing-only with a WIDENING override IGNORED and recorded (both the
+`session_override_ignored` flag and the served reason say so); the
+destructive floor is absolute across all three modes (matrix-tested);
+rollback is destructive BY KIND exactly as the operation-modes ADR lists it,
+create is non-destructive exactly as the ADR's assisted class names it, and
+an empty operation set fails CLOSED; `reviewer_eligibility` REUSES
+`automated_self_approval_blocker` (the P23-R1 single authority, never
+re-derived); `system_auto_approval_eligibility` is the distinct fact done
+right — System-actor-only, `SystemAutoApprovable`-requirement-only, an
+Agent/ToolExecutor can never wear the system hat (tested); the
+stale-condition classifier reuses `ApprovalFreshness` in the blocker's
+precedence and treats a MISSING record as absent-not-stale (consistent with
+the P18 absence-is-not-staleness ruling); `PolicyDecisionProjection` is the
+served why with `deny_unknown_fields` and a tamper test; request-changes is
+REPRESENTED, not invented. BOUNDARY CALL CONFIRMED: the approvals.rs reroute
+defers to W10.P48 — it is a contract event touching the load-bearing ban +
+freshness contracts P36 apply consumes, and the built-then-wired pattern
+(transitions→approvals, core_adapter→apply, principal→routes) has carried
+every prior phase; the policy is consumed at P48, so the seam changes once,
+reviewed once. ONE BAR ATTACHED for the P48 review: after wiring, BOTH lanes
+— the human decision path and the system auto-approval — must derive their
+requirement from `decide_changeset_approval` (one policy authority); a
+system-only consultation that leaves the human path's requirement hardcoded
+would fork the matrix. TWO FORWARD-WIRING ADVISORIES, no action in P21:
+(1) `tool_permission_requirement` is mode-INDEPENDENT and human-gates every
+Mutating tool call, while its own tier doc notes a mutating tool is "still
+gated by CHANGESET approval downstream" — under autonomous mode this makes
+every proposal-producing tool call queue a human interrupt, i.e. autonomy in
+name only; before W12 wires tool interrupts, either make the tool gate
+mode-aware (an assisted/autonomous policy entry auto-permitting Mutating,
+with Dangerous always human) or document the double gate as deliberate
+defense-in-depth — reconcile the comment and the classification either way.
+(2) `reviewer_eligibility` accepts ANY CommandKind, but the shipped
+approvals.rs path invokes the ban only on the APPROVE arm — an agent
+REJECTING its own proposal (withdrawal) is deliberately legal (P23); if P48
+wires `reviewer_eligibility` uniformly over decisions it would silently
+tighten self-reject into a denial — a behavior divergence to catch at the
+P48 review; a doc line on `reviewer_eligibility` scoping it to
+approve/apply-class commands closes the trap cheaply.
+
+### ASA-P48-review | info | W10.P48 modes.rs (adopted, a0cddea9c3): the one-policy-authority bar HOLDS; auto-approve/auto-apply ride the canonical paths; mode-set denies agent principals
+
+Delta review of the adopted `modes.rs` (1,300 lines) + its
+approvals/transitions/http deltas. THE ASA-P21 BAR IS SATISFIED:
+`decide_changeset_approval` is the ONLY requirement derivation in the tree —
+consumed by `maybe_auto_approve` and by the served policy projection
+(`projections.rs:1202`); the human decision path needs no requirement check
+by construction (a human approval satisfies every requirement), and no
+parallel matrix exists. Auto-approval is the ADR's shape: it consults the
+policy, checks `system_auto_approval_eligibility`, and records the approval
+through the CANONICAL `approvals::submit_decision` under the system actor
+with the mode policy id + version in the decision comment, plus a durable
+`SystemPolicyApprovalRecord` marker — no bypass arc on the approve side.
+Autonomous auto-apply reuses `apply_changeset` verbatim (system actor as
+applier — ADR-conformant; the blocker correctly passes System kind; the
+receipt attributes the system), under `spawn_blocking` with a
+deterministically derived idempotency key. The after-the-fact lane is a
+bounded marker listing joined on applied heads; acknowledgement is
+append-only and idempotent (a review is acknowledgement, not a gate). The
+mode-set route (`POST /v1/mode`) DENIES Agent/ToolExecutor principals — an
+agent cannot self-enable autonomous mode — and mode changes are
+actor-attributed, audited events effective only forward. The `stale_reason`
+addition to approvals is additive, serde-tolerant, and honestly categorized.
+
+### ASA-P48-R1 | medium | REOPENS P48: the kill-switch requeue appends UNDECLARED lifecycle arcs (Approved→Draft→NeedsReview) with no transition-eligibility check, under the system actor's authorship
+
+`requeue_system_approvals` (modes.rs) implements the downgrade kill switch
+by, per not-yet-applying marker: staling the old approval (correct, and the
+ADR's stated mechanism), then appending TWO synthetic ledger revisions —
+`Approved→Draft` then `Draft→NeedsReview` — directly via
+`ledger().append_revision` under the SYSTEM actor, with no transitions
+vocabulary backing (the transitions.rs delta adds only CommandKind scopes,
+no arcs) and no eligibility helper consulted. Three defects in one: (a) the
+operation-modes ADR's load-bearing constraint is a SINGLE lifecycle — "never
+a bypass arc... or every projection, event, and rollback path would need
+mode-conditional logic" — and a return arc no declared grammar produces is
+the same disease in reverse: P50 projections and the P33 event stream can now
+carry `Approved→Draft` transitions nothing else can legally emit; (b)
+`Approved→Draft` is a provenance distortion — nothing was re-drafted, and
+the revision chain now shows the system actor authoring draft states; (c)
+every sibling path (P23 approve, P36 apply + reclaim) checks a transitions
+eligibility helper BEFORE appending — this is the one append site with no
+check, breaking the discipline that keeps the grammar closed. FIX SHAPE:
+declare ONE kill-switch return arc — `Approved→NeedsReview` ("policy
+requeue") — in the transitions vocabulary with an eligibility helper
+(legal only for a system actor over a staled system-approved head), append
+exactly that single revision, drop the synthetic Draft hop, keep the
+stale-marking and the marker/requeue-id mechanics unchanged (those are
+sound: hashed requeue ids, downgrade-only trigger, idempotent by marker).
+Tests update to assert the single declared arc.
+
+ADVISORIES on the P48 delta, no reopen: (1) the ADR's per-session NARROWING
+override is represented in policy.rs but wired NOWHERE — `maybe_auto_approve`
+passes `None` and sessions carry no override field; a plan step should
+schedule it (an agent session that should be forced more-manual currently
+cannot be). (2) Mode-set is administer-policy-class in the permission model;
+the Human|System kind gate is V1-honest (single operator) — record the same
+return trigger as token issuance: narrow to administer-policy holders when
+the permission module lands. (3) `mode_after_submit` maps a post-submit
+mode-step fault to a full error response although the submit COMMITTED —
+the idempotent retry heals it, but a partial-outcome response would be more
+honest. (4) `mode_rank` duplicates policy's private `autonomy_rank` —
+expose one.
+
+### ASA-P49-review | info | W10.P49 direct_write.rs (adopted): the unified write path does NOT bypass the floor — every gate rides the canonical machinery
+
+Delta review of the adopted `direct_write.rs` (1,960 lines). THE ASA-007
+SHAPE IS REAL: a human editor save composes create-proposal → validate →
+submit → HUMAN SELF-APPROVAL through the canonical `submit_decision` (the
+operation-modes carve-out — the approver is the human author, which the
+blocker correctly permits) → the SAME `apply_changeset` with the
+`--expected-blob-hash` base fence — no second materializer, no gate skipped,
+preimage and receipt riding the normal apply. Agents are DENIED at the top
+with the ADR's exact reason ("agents must propose changesets"); only
+ReplaceBody is expressible, so no destructive op can ride the direct path.
+The optimistic conflict contract is preserved three-deep (pre-check,
+refreshed re-check, and the apply-fence refusal mapped to a `Conflict`
+status with the full expected/actual/target hash triple). Idempotency
+replays by (actor, key) with a request-digest mismatch conflict; composed
+step keys make every sub-stage independently replayable. The route is
+capability-gated FAIL-CLOSED (default disabled; unparseable capability file
+= disabled; a test pins the 503 `authoring_direct_write_disabled`), runs
+under `spawn_blocking`, and the legacy `/ops/core` comparison is genuinely
+ISOLATED — a temp worktree holding only a `.vaultspec` copy plus the one
+document, Drop-cleaned, driven through the bounded adapter — measurement
+evidence for the ADR's latency-parity retirement gate, never a second live
+write.
+
+### ASA-P49-R2 | medium | REOPENS P49: `dual_run` is an accepted-but-ignored capability (the comparison tax cannot be switched off), and the ledger kind deviates from the ADR's decided `kind=direct` vocabulary
+
+Two items, one fix pass. (a) `DirectWriteCapabilities.dual_run` is NEVER
+consulted: `execute_direct_write` takes no capabilities and calls
+`compare_legacy` unconditionally on every enabled save (even conflicting
+ones) — a per-save `.vaultspec` copy plus a core subprocess, the exact tax
+the flag exists to retire once parity is proven. Setting `dual_run: false`
+today does nothing — the accepted-but-ignored contract-lie class. Fix:
+thread the capabilities into `execute_direct_write` and run the comparison
+only under `dual_run` (and skip it on the early conflict path). (b) The
+operation-modes ADR's decided vocabulary is "the editor's save command
+creates a `kind=direct` changeset"; the implementation mints
+`ChangesetKind::Authoring` and records directness only in the
+`authoring_direct_write_records` side table (the model delta adds
+CommandKinds but no ChangesetKind) — letter-vs-code drift on ADR-decided
+vocabulary, and "who changed this and why" needs a side-table join to know
+a changeset was a direct save. Resolve EITHER direction, explicitly: add
+`ChangesetKind::Direct` (additive, the surface is young) and mint direct
+saves with it, OR the ADR is amended to record the marker-table
+representation as the chosen shape with its reasoning — the drift, not the
+choice, is the defect. Advisories, no reopen: the capabilities file is
+production-enabled only by hand-editing JSON under `.vault/data/
+authoring-state/` (only `write_for_tests` writes it) — an acceptable
+transition-state ops story, but an admin route/setting seam should own it
+eventually; the synthetic "direct-write" session's bounding rides on the
+P25 session store (checked in that phase's review).
+
+### ASA-P30-P31-review | info | W12.P30 langgraph.rs + P31 tools.rs (adopted): boundaries honored; both banked advisories TRANSFER to P22 (the pending permission flow)
+
+Delta review, phase 3 of the adopted batch. P30 `langgraph.rs` is a
+mapping-only adapter exactly as the langgraph-integration ADR demands:
+LangGraph thread/run/checkpoint references map ONTO existing authoring
+sessions and runs — execution state never becomes product history; errors
+split a public message from a 500-char-capped REDACTED diagnostic; an
+unconfigured runtime degrades to a typed `Unavailable`, never a guess. P31
+`tools.rs` is the semantic tool catalog done right: a FIXED tool vocabulary
+(`SemanticToolName::ALL`) whose every entry aliases an EXISTING
+`CommandKind` (thin-aliases-over-the-same-domain-commands, api-contract
+ADR); inputs are `deny_unknown_fields` with explicit bounds (search cap
+8/50, query 512 chars, context 16/64 KiB); risk tiers and permission
+requirements are DECLARED per tool from the one policy source. The
+`/v1/agent-tools/prepare` route is honestly prepare-ONLY — it validates and
+echoes the dispatch alias, executes nothing, and its doc names the
+remainder (durable permission requests, interrupt resume, executable
+tool-call records) as later phases — so the catalog's
+`permission_requirement` metadata is declared-forward truth, not an
+unenforced lie. BANKED-ADVISORY DISPOSITION: (1) `reviewer_eligibility` is
+consumed NOWHERE outside policy tests — the self-reject-outlawing trap
+never fired; the doc-scope line still lands at P22. (2) The mode-aware
+Mutating-gate question TRANSFERS to P22 (permissions.rs, unbuilt): when the
+permission flow is built it must either make the Mutating tier mode-aware
+(assisted/autonomous auto-permit Mutating; Dangerous always human) or
+document the double gate as deliberate — and reconcile the tier doc either
+way. NOTE for P22's grounding: `ProposeChangesetInput` declares
+Append/Replace variants — the F1-deferred WIRE verbs — in the served
+catalog; executing them at P22 through the EXISTING domain handlers
+(`append_draft`/`replace_draft` shipped in W03) is ADR-consistent (tools
+alias domain commands; the F1 deferral was the command-envelope wire
+surface), but until execution exists the catalog advertises operations no
+route can run — close that gap at P22, in whichever direction.
+
+### ASA-P25-P33-P34-P50-review | info | Sessions, events, stream, and count projections (adopted): bounds, identity, and wire-contract all hold — batch review complete
+
+Delta review, phase 4 (final) of the adopted batch. P25 `session.rs`: every
+accumulator bounded at creation (session list cap 50 default / 100 max,
+prompt text 64 KiB, recovery snapshots capped at 20 turns + 20 runs, every
+listing SQL LIMIT-ed); all mutating session routes (create / prompt-turn /
+cancel / resume) take identity through `ResolvedCommand` — sessions BIND to
+the authenticated principal exactly as the ASA-010 amendment decided, and
+the direct-write module's synthetic session rides this same bounded store.
+P33 `events.rs`: a lifecycle-event VOCABULARY layered on the existing
+bounded outbox — no new accumulator, no ad-hoc event names at mutation
+sites, schema-versioned with version-mismatch rejection tested. P34
+`stream.rs`: replay pages capped at 128 with `last_seq` resumption. P50
+projections: the counts/activity remainder lands exactly as the W03.P18
+module doc promised — corpus-wide counts computed over the FULL durable
+corpus before any list cap (the wire-contract full-pre-truncation-set rule),
+with a test seeding past the cap and asserting totals beyond the page;
+activity pages carry their own cap + truncation metadata. The store
+migration delta follows the house pattern (per-table DDL with indexes,
+version-bumped, migration-tested). BATCH VERDICT (all four phases): the
+adopted WIP is architecturally faithful to the ADR cluster with TWO
+medium reopens — ASA-P48-R1 (undeclared kill-switch requeue arcs) and
+ASA-P49-R2 (ignored `dual_run` capability + the `kind=direct` vocabulary
+drift) — plus advisories banked on P22 (mode-aware Mutating gate,
+reviewer_eligibility scope, catalog-advertised deferred verbs) and the
+plan-gap advisories from P48 (session narrowing override unwired;
+mode-set's administer-policy return trigger). Nothing in the batch bypasses
+the approval floor, the identity seam, or the apply-time correctness
+contracts.
+
+### ASA-P22-review | info | W12.P22 tool permissions (038361007f + b1532239df): core sound; both transferred advisories landed as directed; fold-in-3 deferral to P32 CONFIRMED
+
+Phase review of `permissions.rs` (896 + 108 lines) and the policy delta. THE
+CORE IS SOUND: a tool-permission request is keyed by tool call and DISTINCT
+from changeset approval (a permitted tool still produces a proposal that
+rides the full matrix); the decision window is bounded at creation (5-minute
+default TTL, saturating arithmetic) and an undecided request EXPIRES rather
+than blocking a run forever; `granted()` is fail-closed — auto-permitted
+read tool or explicit approve ONLY; a claim is coordination, never authority
+(claimed-but-undecided is still not granted); replay is idempotent by tool
+call with conflicting-second-decision refused; a human decision on an
+auto-permitted tool is a no-op replay ("never a second authority");
+retention is registered; migration v14 follows the house pattern; the
+`Permission → 422` taxonomy arm is consistent. THE POLICY DELTA (the flagged
+new review event on policy.rs) is exactly the directed shape:
+`tool_permission_requirement_in_mode` — ReadOnly always auto, DANGEROUS
+always human in every mode (the dangerous floor, matrix-tested), Mutating
+human under manual and auto-permitted under assisted/autonomous with the
+double-gate rationale in the reconciled tier doc; the mode-independent
+baseline delegates to `_in_mode(tier, Manual)` (behaviour-preserving); the
+request threads `scope_mode + session_override` through
+`resolve_effective_mode` and RECORDS the effective mode for provenance
+(narrowing-only, the input source being the scheduled P25 session-field plan
+step); `reviewer_eligibility` is doc-scoped to approve/apply-class naming
+the exact self-reject trap. FOLD-IN-3 DEFERRAL CONFIRMED to W12.P32: the
+tool route is prepare-only for EVERY verb (my own P31-approved
+declared-forward framing), so no execution seam exists for ANY verb —
+Append/Replace are no more advertised-unrunnable than Create, and closing
+execution-honesty per-verb at P22 would either build P32 early or regress
+approved aliases. BAR FOR THE P32 REVIEW: every catalog verb executable (or
+honestly absent), and the execution surface must enforce `granted()` before
+running any non-ReadOnly tool — the permission plane only becomes real when
+the executor consults it.
+
+### ASA-P22-R1 | high | REOPENS P22: nothing enforces WHO may decide a human-gated tool permission — the requesting agent could approve its own Dangerous request
+
+`submit_decision` (and `claim_permission`) check only `ensure_active` on the
+reviewer: NO kind requirement and NO self-decision ban. The requirement
+being decided is literally `HumanApprovalRequired`, yet any active Agent or
+ToolExecutor is an acceptable reviewer — including THE REQUESTER ITSELF: an
+agent requests a Dangerous tool, then approves its own request, and
+`granted()` returns true — the dangerous floor becomes agent-self-approvable
+and the permission plane is cosmetic. LATENT today (no routes mount the
+flow; the P22 http delta is only the error-taxonomy arm), but the campaign's
+own standard (P23-R1: the domain layer owns the authority check, never
+future route vigilance — one forgotten route defeats a route-level check)
+makes this a required revision BEFORE any route or executor consumes the
+flow. FIX SHAPE: in `submit_decision` — and mirror on `claim_permission` —
+for a human-gated request require `reviewer.kind == Human` (System is
+deliberately NOT eligible here: a system actor deciding a
+HumanApprovalRequired tool would be "wearing the reviewer hat", the exact
+thing the security-provenance ADR forbids; system authority over tools is
+the auto-permit lane the mode policy already owns), AND deny a reviewer
+whose id — or whose `delegated_by` — equals the requester's id (the
+automated-self shape from `automated_self_approval_blocker`, reused or
+mirrored, never re-derived loosely). Falsifier tests: agent-self-decide
+denied; ToolExecutor-delegate-of-requester denied; System denied; a distinct
+HUMAN approves.
+
+### ASA-P22-F1-lift | info | Fold-in-3 SUPERSEDED: F1 lifted for append/replace via real routes (743da6df16) — confirmed as a clean partial, with ONE mechanical fixture item owed
+
+Ruling on the wire-contract addition. The F1 lift for append/replace ONLY is
+CONFIRMED as a deliberate, reviewed contract event: both verbs are in the
+api-contract ADR's V1 proposal-command list (ADR-decided, fixture-deferred —
+exactly the F1 framing), the boundary "the wire exposes exactly what the
+catalog advertises" is coherent (cancel/supersede stay deferred because the
+catalog does not advertise them), and superseding the P32 deferral is right —
+the routes need no executor, and the Create-pattern mirror (real
+command-envelope route + advisory prepare alias) is the shape I named
+ADR-consistent. The implementation is sound: `DraftProposalRequest` already
+carried `deny_unknown_fields`, so gaining `Deserialize` makes it a legitimate
+wire DTO; the shared `mutate_proposal_draft` enforces path/body changeset
+coherence; identity rides `ResolvedCommand`; denials-as-values and the error
+taxonomy map through the standard helpers; idempotency stays with the domain
+handler; and the lib.rs mount proof asserts both mounted AND principal-gated
+(401-not-404 on a machine-bearer-only request). ONE MECHANICAL ITEM OWED
+(the P23-rename class — required before the P22 slice closes, no re-review
+needed): the TWO `ROUTE_FIXTURES` entries for the new endpoints (method,
+path template, command, mutating, idempotency_required, negative contract
+cases). F1's non-negotiable was fixture + DTO per exposed verb; the DTO half
+landed, but the declared/tested wire inventory in api.rs does not know these
+routes exist — the coverage guard passes vacuously (it checks family
+coverage, and Proposal already has create), which is precisely the
+silent-divergence channel the fixture inventory exists to close. Minor
+convention note, not required: the wire DTO lives in proposal.rs rather than
+api.rs (the DTO home) — fine while the type is shared verbatim; move it if
+the wire and domain shapes ever diverge.
+
+### ASA-Rfix-recheck | info | CLEARED 2026-07-07 — combined spot-check of the R-fix batch (587fd614b9 + 0dfcd7368a); P48/P22 close; P49 closes at the v15 minting checkpoint
+
+All five items verified on disk. P22-R1: `tool_reviewer_authority_blocker`
+gates BOTH `claim_permission` and `submit_decision` — Human-kind required
+(System correctly denied by the kind check — no reviewer-hat), requester and
+delegate-of-requester denied, auto-permitted exempt, denials riding the
+success envelope as values. P48-R1: the kill switch now appends through ONE
+declared arc — `policy_requeue_transition_eligibility`
+(`Approved → NeedsReview`) checked before the append — with tests asserting
+the direct hop AND that no system-authored Draft revision exists (the
+provenance-distortion falsifier); `autonomy_rank` deduped. P49-R2(a):
+capabilities are threaded into `execute_direct_write`, `compare_legacy` runs
+ONLY under `dual_run` (legacy → `Option`), with both directions tested
+(recorded when on, skipped when off — the default-off path pinned).
+P49-R2(b) vocabulary: `ChangesetKind::Direct` lands with
+`is_authoring_like()` whose doc names the THREE semantic classes verbatim
+from the review bar (authoring-like behaviour / is-Authoring-specifically /
+is-not-Rollback) and mandates per-site decisions; the transitions sites use
+EXPLICIT `Authoring | Direct` match arms — the exhaustive-match discipline
+bar, met better than a helper-in-match would (a future kind addition breaks
+the compile); `changeset_risk` keys on `== Rollback` (class 3), so Direct
+correctly classifies by max-over-ops. The two append/replace
+`ROUTE_FIXTURES` entries land with their `AppendDraft`/`ReplaceDraft`
+CommandKinds — the F1 fixture half closed. DEFERRAL ACCEPTED: `Direct`
+MINTING is a dedicated v15 checkpoint (the ledger's `changeset_kind` CHECK
+constraint needs a recreate-style migration — data-risk-bearing, correctly
+isolated for focused review); the vocabulary is runtime-safe unminted.
+Verdict: P48-R1, P49-R2(a)+(b)-vocabulary, P22-R1, and the fixtures item ALL
+CLEARED; the v15 migration + minting + round-trip test is the one remaining
+review event before P49 fully closes.
+
+### ASA-v15-recheck | info | CLEARED 2026-07-07 — the v15 migration meets the bar; P49 CLOSES; one required-lite rider (the Direct guard is REACHABLE, so it gets its unit test)
+
+Isolated review of 69eb54b83a. MIGRATION SAFETY MET, and the FK trap was
+caught exactly right: a rename-only recreate would leave
+`authoring_changeset_child_operations`' foreign key dangling at the dropped
+parent, so BOTH tables are recreated in dependency order — every column
+copied verbatim (including the v8 actor-provenance quartet and explicit
+`seq`), the child FK rebuilt against the new parent, old tables dropped
+child-first, `sqlite_sequence` rebuilt for both, all three parent indexes
+plus the child index recreated, and the CHECK widened to
+`('authoring','direct','rollback')`; validated against populated store/
+ledger/direct-write suites. MINTING is keyed to the direct-write composition
+only (`create_direct_proposal` consumed by `execute_direct_write`;
+`create_proposal` unchanged, zero caller churn), and the round-trip test
+asserts `kind=Direct` in the LEDGER (no side-table join — the ADR's
+self-describing goal, delivered) plus rollback-source legality over the
+applied Direct changeset (review site a). RULING ON THE HONESTY NOTE: the
+dedicated unit test IS required — as a required-lite rider on the next
+coder-proj pass, not a P49 blocker, because the guard is verified present and
+correct. The "unreachable path" argument has a hole: a CRASHED direct save
+(proposal minted `kind=Direct` in Draft, crash before the self-approval step)
+leaves a Draft Direct changeset that a client can push through the GENERIC
+submit route — nothing gates `POST /proposals/{id}/submit` on kind — and that
+composition ends in `maybe_auto_approve`. On that side path the guard is
+LOAD-BEARING: without it, assisted/autonomous mode would land a SYSTEM
+approval on a human's own partially-composed save. Rider: a
+`maybe_auto_approve`-refuses-Direct unit test (the modes test builder gains a
+kind parameter; one denial assert), and the guard comment's "the direct-write
+flow never routes here" softened to name the crashed-draft submittability.
+Verdict: v15 CLEARED — W10.P49 CLOSES; the R-fix campaign over the adopted
+batch is complete (P48 ✓, P22 ✓, P49 ✓) with the one rider riding P32.
+
+### ASA-P32-review | info | W12.P32 interrupts + executor gate (037da87764 + e7cbab5f5d): verdict APPROVED — the banked executor bar is met at the decision layer; one P44 bar banked
+
+Phase review. THE EXECUTOR BAR IS MET: `tool_execution_gate` is a pure
+decision over the tool's risk tier plus the looked-up permission record —
+ReadOnly runs freely; Mutating/Dangerous run ONLY when the permission
+EXISTS and `granted()` (the P22 plane made real), with DISTINCT honest
+denials for missing-request vs ungranted, riding denials-as-values; the
+four-way gate matrix is tested (read-only free / mutating refused-without /
+mutating runs-with / dangerous holds regardless). RESUME-BY-ID AND REPLAY
+SAFETY are exemplary: `InterruptRecord` is keyed by a stable `interrupt_id`
+(never position); `record_interrupt` replays a re-raise without a second row
+and never resets a resolved interrupt to pending; `resolve_interrupt`
+replays an already-resolved id with the RECORDED decision unchanged
+(`updated_at` untouched — never re-decides) and faults on an unknown id;
+simultaneous interrupts resolve independently by id, and the record survives
+a store reopen — all tested. RETENTION: a pending interrupt registers
+protected product state so it outlives LangGraph checkpoint pruning;
+resolution moves it to Active as the decision audit. `ToolCallRecord`
+snapshots the executor-gate outcome per tool call, idempotent by
+`tool_call_id`, with AuditReceipt retention. The v16 migration is exactly
+the directed shape: TWO FRESH ADDITIVE TABLES (no CHECK-widen, no recreate),
+CHECK-constrained enums, UNIQUE business keys, run + state indexes. The
+catalog-honesty half of the original P32 bar was already closed at P22 (the
+append/replace routes), so this phase's scope is coherent. ONE BAR BANKED
+FOR P44 (the LangGraph run loop): the gate is only as real as the executor
+CALLING it — P44 must route every tool call through `tool_execution_gate`
+and record the `ToolCallRecord` before execution; a run loop that skips the
+gate re-inertifies the permission plane. LOW advisory, documented behavior
+accepted: a second resolve carrying a DIFFERENT decision payload silently
+replays the first (the doc says so; the ADR's idempotent-resume requirement
+is met) — if lost-update masking ever matters, a conflict signal is the
+upgrade.
+
+### ASA-P44-review | info | W12.P44 bounded generation channels + transcript compaction (d333f1491d): verdict APPROVED — the compaction-protection contract holds at BOTH layers
+
+Phase review. THE DESIGN CALL IS CONFIRMED: a bounded, NON-AUTHORITATIVE
+serving contract reusing the existing retention compactor — not a new
+durable frame ring — is exactly what the streaming-events-outbox ADR
+demands (raw token/trace frames non-authoritative; truth recovered via
+lifecycle replay / tiered snapshot), and it avoids a needless v17 table.
+THE PROTECTION CONTRACT HOLDS AT TWO INDEPENDENT LAYERS, both verified at
+source: (1) `due_compactable_records`' SQL structurally selects ONLY
+`retention_class IN ('generation_transcript','review_material')` AND
+`lifecycle_status IN ('rejected','superseded','expired')` (terminal) AND
+`payload_state='full'` AND `protected=0` AND past-due — pending approvals
+(protected), rollback preimages (`RollbackMaterial`, not in the class
+list), audit receipts, and non-terminal records are excluded BY THE QUERY;
+(2) `compact_record` independently blocks any protected record with a
+`SkippedProtected` marker (an audit trail of the refusal), and
+`compact_due` passes `allow_rollback_limitation: false` so rollback
+material is blocked even on the direct path — defense in depth. The sweep
+is bounded (max 64 per run, one pass, remaining reported as
+`limited_count`, the run recorded); the live test drives a terminal
+past-due transcript to Summarized WHILE a co-located pending-approval
+protected record stays Full. The serving bounds are honest: the 256-frame
+hard cap with an EXPLICIT `dropped` count (never a silent clip);
+`authoritative: false` is served load-bearingly at both the block and
+per-subchannel level with the cursor aligned to the LIFECYCLE recovery
+point, so a client structurally cannot mistake a truncated window for
+truth; the recovery path stays read-only (the compaction hook is a
+mutation, correctly kept out of it). ONE LOW NOTE, no reopen:
+`compact_generation_transcripts` is built-then-wired — nothing DRIVES the
+sweep yet (no janitor/route caller), so due transcripts accumulate as
+due-but-unswept until the driver lands; name the owning phase for the
+sweep scheduler so the compactor becomes real (the same built-then-wired
+discipline every prior seam followed, just worth a named owner).
+
+### ASA-P41-A1-review | info | W12.P41 checkpoint A1, the executor seam (6ffb726b91): verdict APPROVED — the run-loop bar HOLDS at one un-skippable seam; three A2-binding directives
+
+Security review of `executor.rs` alone, as designed. THE RUN-LOOP BAR HOLDS:
+`execute_tool_call` is the one atomic step — idempotency short-circuit first
+(a terminal call replays, never re-dispatches); ReadOnly gates through
+`tool_execution_gate(None)` and RECORDS before Dispatch (even reads are
+audited); Mutating/Dangerous resolve-or-open a Pending permission, gate over
+the record, and on allow WRITE THE RECORD BEFORE the Dispatch disposition —
+with the concurrent-write guard (an existing record replays as
+AlreadyHandled, never double-dispatch); an undecided permission SUSPENDS
+(stable-id interrupt + AwaitingPermission + deliberately NO terminal record,
+so a later grant re-drives the same tool_call_id — the suspend-not-refuse
+insight is exactly right, a terminal Refused would wrongly short-circuit the
+grant); a decided rejection or lapsed window is a terminal recorded refusal.
+Dispatch only names `SemanticToolName::command()` — no new execution
+surface; denials are values; the requester is documented as the ASA-010
+principal. Test matrix covers read-free, suspend-no-dispatch+interrupt,
+suspend→grant→dispatch→replay-idempotent, reject→terminal→replay-stays.
+
+THREE A2-BINDING DIRECTIVES (not A1 reopens — each lands naturally with the
+routes): (1) DESIGN POINT 1 RULED — at-most-once is blessed as the A1 FLOOR
+(never double-apply is correct for a security seam), but A2 must upgrade it
+to effectively-once, and the architecture already pays for the upgrade: the
+api-contract ADR MANDATES every mutating command be idempotent precisely so
+"LangGraph interrupts and network retries can replay work" — so the A2 route
+derives the mapped command's idempotency key DETERMINISTICALLY from
+`tool_call_id`, and then the replay disposition for a PERMITTED record can
+safely return Dispatch (re-drive) instead of AlreadyHandled: a completed
+dispatch replays the command's recorded outcome, a crash-lost dispatch runs
+fresh — the permitted-but-lost window HEALS, no completion flag or two-phase
+record needed (Refused replays stay AlreadyHandled). The at-most-once
+lost-call class would otherwise be permanent and operator-invisible. (2)
+DESIGN POINT 2 RULED — the interrupt-id fallback is REACHABLE, not
+near-unreachable: a long-but-valid `ToolCallId` plus the
+`interrupt:tool/` prefix can overflow `InterruptId`'s length cap, and then
+TWO different suspended calls COLLIDE on the shared "unnamed" sentinel —
+`record_interrupt`'s idempotency makes the second call replay the FIRST
+call's interrupt, so the human's resolve targets the wrong tool call and the
+second waits forever. Fix by the established hashing precedent:
+`interrupt:tool/{blob_oid(tool_call_id)}` — bounded, collision-free,
+matching every other derived id; plus a long-id test. (3) LOW — lazy expiry:
+the not-granted arm matches `queue_state`, so a Pending-but-past-TTL record
+(never touched by a decide or sweep) suspends instead of terminally
+refusing; it heals when a human touch or the W14 janitor flips it, but one
+`expire_if_due` call (or `is_expired` check) before the match is the honest
+line. All three ride the A2 pass; I review them with the routes.
+
+(Banking note, 2026-07-08: the route work split into A2 = the two thin
+security routes and A3 = `/execute` + the 7-command dispatch; all three
+directives above bind at A3, where `execute_tool_call` and arbitrary client
+tool_call_ids become reachable.)
+
+### ASA-P41-A2-review | info | W12.P41 checkpoint A2, the thin security routes (6642ea8f46): verdict APPROVED — every checklist item verified through the wire
+
+Review of the two thin routes against the agreed checklist, all verified on
+the committed diff. `POST /v1/agent-tools/{tool_call_id}/permission-decision`
+REUSES `submit_decision`, so the P22-R1 `tool_reviewer_authority_blocker` is
+enforced VERBATIM — never re-derived at the route — and the wire test proves
+it end-to-end: an agent self-decision returns a 200 DENIED value whose reason
+names the human requirement (denials-as-values through the real router +
+principal middleware). `POST /v1/interrupts/{interrupt_id}/resume` reuses
+P32's `resolve_interrupt` unchanged — the second resolve of the same id
+serves `replayed: true` over HTTP, never re-deciding. Both routes take
+identity through `ResolvedCommand` (the ASA-010 seam); faults map through the
+shared taxonomy with the precise statuses (unregistered actor 403,
+unknown/not-permitted 422). THE F1 LIFT IS COMPLETE THIS TIME: two new
+`EndpointFamily` variants, two `deny_unknown_fields` DTOs, two
+`ROUTE_FIXTURES` entries with path templates + commands, and fixture arms —
+the fixture half landed WITH the routes (the append/replace lesson held).
+The `AggregateRef::Session` classification for the fixture arms avoids an
+unnecessary enum expansion — acceptable bookkeeping, not a wire shape. No
+findings. A3 (`/execute` + the seven dispatches) is next, carrying the three
+banked directives, the one-impl-per-command reuse mandate, the inherited
+caller contracts, and the executor's `allow(dead_code)` removal.
+
+### ASA-P41-A3a-recheck | info | CLEARED 2026-07-08 — all three seam directives implemented to spec (e8e3bb9f1a); end-to-end look rides A3b
+
+Code review of the directive commit (executor.rs only; A3b `/execute` still
+to come). (1) EFFECTIVELY-ONCE: `replayed()` now RE-DRIVES a permitted record
+— disposition `Dispatch` with `replayed: true` — while a refused record stays
+terminal (`AlreadyHandled`); the concurrent-terminal-write branch routes
+through the same path so a race re-drives rather than dropping; the module
+doc names the deterministic-key contract the A3b caller must honor; and the
+replay of a record whose stored `tool_name` fails `from_wire` degrades to
+`AlreadyHandled` — a safe fallback, never dispatching an unknown command.
+Tested: the retry returns `Dispatch(CreateProposal)` + `replayed: true`.
+(2) INTERRUPT ID: `interrupt:tool/{blob_oid(tool_call_id)}` — bounded,
+collision-free, from the established id-derivation source — with construction
+failure PROPAGATED as a typed error and the shared "unnamed" sentinel
+DELETED; the reachability falsifier drives two 150-char (valid) tool call ids
+whose raw-prefix form would have overflowed, asserting two DISTINCT
+interrupts. (3) LAZY EXPIRY: `expire_if_due` runs after resolve-or-open and
+before the gate, so a Pending-past-TTL permission terminally refuses instead
+of suspending (tested at ttl=5). `#![allow(dead_code)]` correctly REMAINS
+until A3b wires the seam. Verdict: A3a CLEARED as code; the combined
+end-to-end verification (directives exercised through `/execute`, the
+deterministic command key at the route, the reuse mandate, the caller
+contracts, the F1 lift + fixture, and the dead-code removal) is the A3b
+review.
+
+### ASA-P41-A3b-review | info | W12.P41 checkpoint A3b, /execute + the 7-command dispatch (495f0256d9): verdict APPROVED — every staged item verified; the executor surface is complete
+
+Focused review of the dispatch commit. THE STAGE DISCIPLINE HOLDS: the seam
+(`execute_tool_call`) runs in its OWN unit of work — the gate outcome and
+`ToolCallRecord` are DURABLE before any dispatch executes outside it (the
+P36 record-then-act pattern); the seam is keyed by the `tool_call_id`
+itself, so retries under different envelope keys converge on the same
+permission/interrupt records. DIRECTIVE 1 END-TO-END: the deterministic
+bounded command key (`agent-tool-execute:{blob_oid(tool_call_id)}`, typed
+error on failure) applies at the COMMAND level, so the seam's
+permitted-replay re-drive dedups a completed dispatch through command-layer
+idempotency and heals a crash-lost one — effectively-once, delivered.
+ONE-IMPL-PER-COMMAND VERIFIED: every dispatch arm routes to the SAME
+factored body the dedicated route calls — `dispatch_draft_mutation`
+(append/replace), `validate_proposal_from_worktree` (shared by BOTH the
+submit composite's validate step and the standalone validate — a bonus
+dedup), `submit_for_review_composed`, `apply_changeset_body` — with
+`draft_request_from_alias` as the single alias-conversion site and no
+duplicated resolution. CALLER CONTRACTS SURVIVE THE DISPATCHER:
+`apply_changeset_body` runs apply under `spawn_blocking` internally, and the
+submit composite receives the command key as its BASE with its own
+`step_key` sub-derivation untouched (no double-keying), keeping
+`mode_after_submit` autonomous-parity through the shared composite. READS:
+the gate records the permitted `ToolCallRecord` and the route serves the
+prepared read descriptor with NO command execution (`unreachable!`
+defensive in the dispatcher). Principal via `ResolvedCommand`;
+awaiting/refused/already-handled ride 200 as values with a null result. THE
+F1 LIFT IS COMPLETE WITH THE ROUTE: `EndpointFamily::AgentToolExecute`, the
+run-scoped `ROUTE_FIXTURE` with negative contract cases, the fixture arm,
+and the `AggregateRef::Changeset` classification. `executor.rs`'s
+`#![allow(dead_code)]` is REMOVED now that `/execute` wires the seam — the
+last directive item closed. LOW observations, no action: the route passes
+`session_override: None` (the known unwired plan-gap advisory — consistent,
+not new); the polymorphic route's single fixture entry names a
+representative command (`CreateProposal`) — one entry cannot name seven,
+and the negative cases carry the contract. With A1/A2/A3a/A3b all cleared,
+the P41 executor surface is COMPLETE; checkpoint B (the LangGraph fixture
+riding these routes) is the phase's remaining exit gate.
 
 ## Recommendations
 

@@ -10,16 +10,6 @@ related:
   - '[[2026-07-03-rag-integration-hardening-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 # `rag-integration-hardening` plan
 
 ### Phase `P01` - Engine search transport rides the resident service

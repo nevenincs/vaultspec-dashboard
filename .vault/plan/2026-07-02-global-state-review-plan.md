@@ -3,22 +3,12 @@ tags:
   - '#plan'
   - '#global-state-review'
 date: '2026-07-02'
-modified: '2026-07-02'
+modified: '2026-07-03'
 tier: L2
 related:
   - '[[2026-07-02-global-state-review-audit]]'
+  - '[[2026-07-03-global-state-review-adr]]'
 ---
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 # `global-state-review` plan
 
 ### Phase `P01` - Reveal-selection scroll reactions
@@ -47,13 +37,6 @@ Remediation of the global-state-review audit (GS-003/GS-004 actionable; GS-005 a
 
 ## Steps
 
-
-
-
-
-
-
 ## Parallelization
-
 
 ## Verification
