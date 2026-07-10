@@ -1326,6 +1326,71 @@ export interface GitOpResponse {
   tiers: TiersBlock;
 }
 
+// --- provisioning plane wire shapes (project-provisioning ADR) -----------------
+//
+// Backend-served truth: the engine computes every field, the panel renders it.
+// Deliberately tolerant on nested/optional fields — a new served field is
+// additive, not a break (engine-read-and-infer corollary).
+
+/** The one served decision: what, if anything, the target needs next. Ordered by
+ *  dependency so the panel can render a single primary affordance. */
+export type ProvisionRecommendation =
+  | "not-a-git-project"
+  | "acquire-uv"
+  | "acquire-core"
+  | "install-framework"
+  | "run-migrations"
+  | "upgrade-core"
+  | "managed";
+
+/** `GET /provision/status` projection over a registry-resolved target. */
+export interface ProvisionStatus {
+  target: string;
+  managed: boolean;
+  recommended: ProvisionRecommendation;
+  git: { present: boolean };
+  uv: { present: boolean; version: string | null };
+  core: { version: string | null; floor: string; meets_floor: boolean | null };
+  rag: { tool_version: string | null; floor: string; enrolled: boolean | null };
+  framework: {
+    vaultspec_present: boolean;
+    vault_present: boolean;
+    providers: string[];
+  };
+  pending_migrations: unknown;
+}
+
+/** The bounded `POST /provision/run` body: a semantic action plus typed operands.
+ *  The engine maps this to a fixed installer argv; no wire string reaches argv. */
+export interface ProvisionRunBody {
+  action: "install" | "upgrade" | "migrate" | "acquire";
+  provider?: "all" | "core" | "claude" | "gemini" | "antigravity" | "codex";
+  tool?: "core" | "rag";
+  upgrade?: boolean;
+  force?: boolean;
+  /** Required (`"confirm-force"`) when `force` is set, else the engine refuses. */
+  confirm?: string;
+  workspace?: string;
+  worktree?: string;
+}
+
+/** A tracked provisioning job as `POST /provision/run` and `GET /provision/jobs/
+ *  {id}` report it. `outcome` carries the sibling's verbatim envelope (core) or
+ *  raw output (uv) plus `outcome_indeterminate` when a killed job's post-state
+ *  must be re-read from `/provision/status`. */
+export interface ProvisionJob {
+  id: string;
+  label: string;
+  target: string;
+  state: "running" | "succeeded" | "failed";
+  outcome: {
+    exit_code?: number | null;
+    outcome_indeterminate?: boolean;
+    envelope?: { schema?: string; status?: string; [k: string]: unknown };
+    output?: string;
+  } | null;
+}
+
 // The structured shapes below are the `DiffView` component's prop contract — what
 // the client parses git's verbatim `diff` output INTO so the view renders without
 // re-parsing unified-diff text on every paint. A hunk-per-entry document with
@@ -2173,6 +2238,34 @@ export class EngineClient {
     signal?: AbortSignal,
   ): Promise<{ envelope: T | null; tiers: TiersBlock }> {
     return this.get(`/ops/rag/${encodeURIComponent(verb)}`, params, signal);
+  }
+
+  /** The framework provisioning plane (project-provisioning ADR D2): the served
+   *  status projection of a registry-resolved target — git / uv / core+rag tool
+   *  versions vs floors / framework install state / vault presence / pending
+   *  migrations / rag enrollment. Backend-served truth the panel renders without
+   *  inventing semantics; unwrapped to the `data` projection. */
+  provisionStatus(
+    params: { workspace?: string; worktree?: string } = {},
+    signal?: AbortSignal,
+  ): Promise<ProvisionStatus> {
+    return this.get("/provision/status", params, signal);
+  }
+
+  /** Start a provisioning capability (install / upgrade / migrate / acquire) as a
+   *  bounded, single-flight JOB (ADR D3/D4): returns the job envelope + whether
+   *  the request ATTACHED to an already-running job for the same target. A force
+   *  install must carry `confirm: "confirm-force"` or the engine refuses it. */
+  provisionRun(
+    body: ProvisionRunBody,
+  ): Promise<{ job: ProvisionJob; attached: boolean }> {
+    return this.post("/provision/run", body);
+  }
+
+  /** Poll one provisioning job by id (ADR D4). A reclaimed/unknown id is a 404
+   *  the caller surfaces as "job expired". */
+  provisionJob(id: string, signal?: AbortSignal): Promise<{ job: ProvisionJob }> {
+    return this.get(`/provision/jobs/${encodeURIComponent(id)}`, undefined, signal);
   }
 
   /** The read-only git pass-through (dashboard-pipeline-wire W04; historical diff

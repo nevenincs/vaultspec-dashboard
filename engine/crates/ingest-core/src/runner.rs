@@ -424,44 +424,65 @@ pub const MIN_READONLY_WORKTREE_GRAPH: (u64, u64, u64) = (0, 1, 34);
 /// engine actually brokers.
 pub fn core_version() -> Option<(u64, u64, u64)> {
     static VERSION: OnceLock<Option<(u64, u64, u64)>> = OnceLock::new();
-    *VERSION.get_or_init(|| {
-        // Bounded like the capability probe (resource-bounds: every subprocess
-        // carries an output cap AND a wall-clock deadline). This probe sits on
-        // the serve startup gate (dashboard-packaging D3), so a stuck child —
-        // e.g. a stalled cold `uv run` resolve — must be killed and reported
-        // as unknown, never allowed to hang startup.
-        let invocation = CoreRunner::detect().invocation;
-        let (program, leading) = invocation.split_first()?;
-        let mut child = Command::new(program)
-            .args(leading)
-            .arg("--version")
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .ok()?;
-        let stdout_pipe = child.stdout.take().expect("piped stdout");
-        let (tx, rx) = mpsc::channel();
-        let reader = std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            let res = stdout_pipe
-                .take(64 * 1024)
-                .read_to_end(&mut buf)
-                .map(|_| buf);
-            let _ = tx.send(res);
-        });
-        let drained = rx.recv_timeout(CAPABILITY_PROBE_TIMEOUT);
-        if drained.is_err() {
-            let _ = child.kill();
-        }
-        let status = child.wait();
-        let _ = reader.join();
-        let bytes = drained.ok()?.ok()?;
-        if !status.map(|s| s.success()).unwrap_or(false) {
-            return None;
-        }
-        parse_semver(&String::from_utf8_lossy(&bytes))
-    })
+    *VERSION.get_or_init(probe_core_version_uncached)
+}
+
+/// The uncached core-version probe: re-resolve the invocation and run
+/// `--version` fresh every call, never touching a memo. This is the
+/// post-provision reconciliation seam (project-provisioning ADR D6): after a
+/// dashboard-driven `uv tool install`/`upgrade` of `vaultspec-core`, the
+/// memoized [`core_version`] and the handshake's memoized probe both still
+/// report the pre-install version, so the reconciler re-probes through here to
+/// learn the just-installed version WITHOUT a process restart. It re-resolves
+/// the invocation from scratch ([`resolve_core_invocation`], not the memoized
+/// [`CoreRunner::detect`]) so a FIRST-EVER install — where `detect` cached a
+/// "core absent" fallback at boot — is picked up too.
+pub fn core_version_fresh() -> Option<(u64, u64, u64)> {
+    probe_core_version_uncached()
+}
+
+/// Spawn `<core> --version` bounded (output cap + wall-clock deadline,
+/// resource-bounds) and parse the triple. `None` when the version cannot be
+/// obtained or parsed (treated conservatively as "unknown"). Re-resolves the
+/// invocation each call so it reflects the core the engine WOULD broker right
+/// now, not the one cached at boot.
+fn probe_core_version_uncached() -> Option<(u64, u64, u64)> {
+    // Bounded like the capability probe (resource-bounds: every subprocess
+    // carries an output cap AND a wall-clock deadline). This probe sits on
+    // the serve startup gate (dashboard-packaging D3), so a stuck child —
+    // e.g. a stalled cold `uv run` resolve — must be killed and reported
+    // as unknown, never allowed to hang startup.
+    let invocation = resolve_core_invocation();
+    let (program, leading) = invocation.split_first()?;
+    let mut child = Command::new(program)
+        .args(leading)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let stdout_pipe = child.stdout.take().expect("piped stdout");
+    let (tx, rx) = mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let res = stdout_pipe
+            .take(64 * 1024)
+            .read_to_end(&mut buf)
+            .map(|_| buf);
+        let _ = tx.send(res);
+    });
+    let drained = rx.recv_timeout(CAPABILITY_PROBE_TIMEOUT);
+    if drained.is_err() {
+        let _ = child.kill();
+    }
+    let status = child.wait();
+    let _ = reader.join();
+    let bytes = drained.ok()?.ok()?;
+    if !status.map(|s| s.success()).unwrap_or(false) {
+        return None;
+    }
+    parse_semver(&String::from_utf8_lossy(&bytes))
 }
 
 /// Parse the first `MAJOR.MINOR.PATCH` triple from version output, tolerant of a
