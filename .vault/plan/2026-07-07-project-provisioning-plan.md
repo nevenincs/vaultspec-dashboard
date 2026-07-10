@@ -3,12 +3,22 @@ tags:
   - '#plan'
   - '#project-provisioning'
 date: '2026-07-07'
-modified: '2026-07-08'
+modified: '2026-07-10'
 tier: L2
 related:
   - '[[2026-07-07-project-provisioning-adr]]'
   - '[[2026-07-07-project-provisioning-research]]'
 ---
+
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `project-provisioning` plan
 
@@ -49,8 +59,8 @@ Wire the /provision/* route family, register it in the router and CONTRACT_ROUTE
 Deliver the stores wire client, provisioning ActionDescriptors, and the honest not-a-vaultspec-managed-project empty-state panel that renders outcomes from the served vaultspec.sync.v1 vocabulary.
 
 - [x] `P04.S18` - Add the /provision/* stores wire client reading status and dispatching run and job-poll through the sole wire seam; `frontend/src/stores/server/provisionControl.ts`.
-- [ ] `P04.S19` - Register provisioning verbs as ActionDescriptors on the unified action plane; `frontend/src/platform/actions/action.ts`.
-- [ ] `P04.S20` - Render the not-a-vaultspec-managed-project empty-state panel with the provision affordance and vaultspec.sync.v1 outcome rendering; `frontend/src/app`.
+- [x] `P04.S19` - Register provisioning verbs as ActionDescriptors on the unified action plane; `frontend/src/platform/actions/action.ts`.
+- [x] `P04.S20` - Render the not-a-vaultspec-managed-project empty-state panel with the provision affordance and vaultspec.sync.v1 outcome rendering; `frontend/src/app`.
 
 ### Phase `P05` - verification: tests programmatic and by-hand
 
