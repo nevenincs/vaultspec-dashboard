@@ -22,6 +22,7 @@ import {
   type ProvisionRunBody,
   type ProvisionStatus,
 } from "./engine";
+import { dispatchProvisionRun } from "./provisionActions";
 import { engineKeys } from "./queries";
 
 /** The confirm token a `force` install must carry (engine-enforced). Exposed so a
@@ -48,14 +49,18 @@ export function useProvisionStatus(
   });
 }
 
-/** Dispatch a provisioning capability. On success the caller receives the job
- *  envelope (and whether it ATTACHED to an in-flight job for the same target);
- *  poll it with `useProvisionJob`. The status for the affected target is
- *  invalidated so the projection re-reads once the job is under way. */
+/** Dispatch a provisioning capability. Routes through the ONE platform dispatch
+ *  seam (`PROVISION_RUN_ACTION`, actions-keymap-palette / unified-action-plane)
+ *  so a panel button and any other eligible surface fire the identical verb —
+ *  mirrors `useRagServiceStart` wrapping `dispatchOps`. On success the caller
+ *  receives the job envelope (and whether it ATTACHED to an in-flight job for
+ *  the same target); poll it with `useProvisionJob`. The status for the
+ *  affected target is invalidated so the projection re-reads once the job is
+ *  under way. */
 export function useProvisionRun() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: ProvisionRunBody) => engineClient.provisionRun(body),
+    mutationFn: (body: ProvisionRunBody) => dispatchProvisionRun(body),
     onSuccess: (_result, body) => {
       void queryClient.invalidateQueries({
         queryKey: engineKeys.provisionStatus(body.workspace, body.worktree),
