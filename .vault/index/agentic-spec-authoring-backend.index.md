@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#agentic-spec-authoring-backend'
-date: '2026-07-10'
-modified: '2026-07-10'
+date: '2026-07-11'
+modified: '2026-07-11'
 related:
   - '[[2026-06-29-agentic-apply-materialization-adr]]'
   - '[[2026-06-29-agentic-approval-gates-review-state-adr]]'
@@ -182,6 +182,7 @@ related:
   - '[[2026-07-07-agentic-spec-authoring-backend-audit]]'
   - '[[2026-07-09-agentic-spec-authoring-backend-audit]]'
   - '[[2026-07-10-agentic-spec-authoring-backend-audit]]'
+  - '[[2026-07-11-agentic-spec-authoring-backend-adr]]'
 ---
 
 # `agentic-spec-authoring-backend` feature index
@@ -210,6 +211,7 @@ Auto-generated index of all documents tagged with `#agentic-spec-authoring-backe
 - `2026-06-29-agentic-security-provenance-adr` - `agentic-security-provenance` adr: `actor permissions and auditable agent provenance` | (**status:** `accepted`)
 - `2026-06-29-agentic-streaming-events-outbox-adr` - `agentic-streaming-events-outbox` adr: `durable authoring events and replayable streams` | (**status:** `accepted`)
 - `2026-07-02-agentic-operation-modes-adr` - `agentic-operation-modes` adr: `authoring operation modes and the unified write path` | (**status:** `accepted`)
+- `2026-07-11-agentic-spec-authoring-backend-adr` - `agentic-spec-authoring-backend` adr: `Defer section-scoped operations and the CreateDocument delete-inverse until their gates clear` | (**status:** `accepted`)
 
 ### audit
 

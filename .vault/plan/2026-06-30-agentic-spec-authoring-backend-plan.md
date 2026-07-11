@@ -30,15 +30,6 @@ related:
   - '[[2026-06-29-zed-acp-document-authoring-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 <!-- RETIRED: W04, W05, W06, W07, W08, W09, P12, P29, P37, S56, S57, S58, S59, S60, S141, S142, S143, S144, S145, S181, S182, S183, S184, S185 -->
 
