@@ -1898,6 +1898,54 @@ export function deriveVaultTreeBrowserView(
   };
 }
 
+// --- editor linking corpus (document-editor-redesign ADR) ------------------------
+//
+// The pickable corpus for the document editor's Related and Feature link pickers:
+// the existing vault documents (stem + human title + first feature tag) and the
+// existing feature-tag vocabulary. Both derive from the ALREADY-served
+// `/vault-tree` listing, so the editor stays app/ leaf chrome that fetches nothing
+// (dashboard-layer-ownership): the picker reads THIS selector, never the wire.
+// Bounded by the vault tree's server ceiling; the combobox narrows this bounded
+// slice client-side. Index documents are already excluded from `/vault-tree` rows
+// (terminology-standardization ADR D5), so they never surface as link targets.
+
+export interface EditorCorpusDocument {
+  /** The document stem (`doc:` id tail) — the value persisted into `related`. */
+  stem: string;
+  /** The document's H1 title when the row carries one, else the stem. */
+  title: string;
+  /** The document's first feature tag (bare, no `#`), for the picker row's
+   *  category dot; null when the document carries no feature tag. */
+  feature: string | null;
+}
+
+export interface EditorLinkingCorpus {
+  documents: readonly EditorCorpusDocument[];
+  /** The distinct feature-tag vocabulary (bare, no `#`), sorted for stable rows. */
+  featureTags: readonly string[];
+}
+
+export function deriveEditorLinkingCorpus(
+  entries: readonly VaultTreeEntry[],
+): EditorLinkingCorpus {
+  const documents: EditorCorpusDocument[] = entries.map((entry) => {
+    const stem = stemFromPath(entry.path);
+    return { stem, title: entry.title ?? stem, feature: entry.feature_tags[0] ?? null };
+  });
+  const featureTags = Array.from(
+    new Set(entries.flatMap((entry) => entry.feature_tags)),
+  ).sort((a, b) => a.localeCompare(b));
+  return { documents, featureTags };
+}
+
+/** Stores selector: the editor's link-picker corpus, derived in a useMemo over the
+ *  raw vault-tree slice (store-selector law — never derived inside a selector). The
+ *  corpus is empty until the tree resolves; the picker degrades to free entry. */
+export function useEditorLinkingCorpus(scope: unknown): EditorLinkingCorpus {
+  const entries = useVaultTree(scope).data?.entries;
+  return useMemo(() => deriveEditorLinkingCorpus(entries ?? []), [entries]);
+}
+
 // --- left-rail Vault tab projections (binding `LeftRail` 238:600) -----------------
 //
 // The Vault tab renders TWO parallel collapsible sections over the SAME

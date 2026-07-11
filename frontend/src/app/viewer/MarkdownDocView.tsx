@@ -11,9 +11,16 @@
 // it fetches nothing (the content query + the write mutations are the sole wire
 // clients) and reads the tiers-derived `ContentView`, never raw `tiers`.
 
-import { useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 
 import {
+  useEditorLinkingCorpus,
   useRenameDoc,
   useSaveBody,
   useSetFrontmatter,
@@ -43,40 +50,35 @@ import {
   updateEditorDraft,
   useDocumentEditorView,
   useMarkdownEditorChromeView,
-  type MarkdownEditorFrontmatterDraft,
 } from "../../stores/view/editor";
 import {
   applyRenamedMarkdownDocWorkspace,
   editorStatusHasUnsavedDraft,
   promoteDocTab,
 } from "../../stores/view/tabs";
-import { Button, type BreadcrumbItem } from "../kit";
+import { Button, Divider, type BreadcrumbItem } from "../kit";
 import { DocChrome, type DocChromeMode } from "./DocChrome";
+import { EditorToolbar } from "./EditorToolbar";
 import { HighlightedTextarea } from "./HighlightedCode";
+import { featureTagOf } from "./editorTags";
+import { applyMarkdownFormat, type MarkdownFormatCommand } from "./markdownFormatting";
 import { MarkdownReader } from "./MarkdownReader";
-
-// The directory tags every .vault/ document carries; the OTHER tag is the feature.
-const VAULT_DIRECTORY_TAGS = new Set([
-  "adr",
-  "audit",
-  "exec",
-  "index",
-  "plan",
-  "reference",
-  "research",
-]);
+import { PropertiesPopover } from "./PropertiesPopover";
 
 /** The feature tag of a document, derived from its frontmatter tags (the one tag
  *  that is not a directory tag), or null when none is present. Used to scope the
- *  conformance autofix. */
-export function featureFromDocTags(tags: string): string | null {
-  if (typeof tags !== "string") return null;
-  for (const raw of tags.split(/[,\s]+/)) {
-    const tag = raw.replace(/^#/, "").trim();
-    if (tag.length > 0 && !VAULT_DIRECTORY_TAGS.has(tag)) return tag;
-  }
-  return null;
-}
+ *  conformance autofix. Re-exported from the centralized tag helpers so the
+ *  autofix derivation and the Feature control share one source of truth. */
+export const featureFromDocTags = featureTagOf;
+
+// Formatting is a TOOLBAR-only command surface (document-editor-redesign ADR):
+// there are deliberately no bespoke Mod+key formatting accelerators on the editor
+// textarea. A selection-applying command needs the focused textarea a global keymap
+// thunk cannot reach, and the obvious chords collide with existing Class-A global
+// bindings (Mod+K = command palette, Mod+B = left-rail toggle). Enrolling them would
+// either grow a private keydown that swallows those global commands (the exact
+// failure actions-keymap-palette forbids) or add palette commands that do nothing
+// without a focused editor. Save remains the one editor keymap-registry binding.
 
 export function MarkdownDocView({
   nodeId,
@@ -111,6 +113,52 @@ export function MarkdownDocView({
   const saveBody = useSaveBody();
   const setFrontmatter = useSetFrontmatter();
   const renameDoc = useRenameDoc();
+
+  // The pickable corpus for the Feature / Related linking pickers (stores selector;
+  // this component fetches nothing — dashboard-layer-ownership).
+  const corpus = useEditorLinkingCorpus(scope);
+  const selfStem = docStemFromNodeId(nodeId) ?? "";
+
+  // Formatting wiring: the toolbar reads the textarea selection, applies a pure
+  // transform, and feeds the result back through `updateEditorDraft`. The caret
+  // range to restore is stashed in a ref and applied after the draft re-render (a
+  // layout effect, so it runs before paint and is deterministic under test).
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pendingSelectionRef = useRef<[number, number] | null>(null);
+
+  const applyFormat = (command: MarkdownFormatCommand) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const result = applyMarkdownFormat(command, {
+      text: editor.draftText,
+      selStart: el.selectionStart,
+      selEnd: el.selectionEnd,
+    });
+    pendingSelectionRef.current = [result.selStart, result.selEnd];
+    updateEditorDraft(result.text);
+  };
+
+  useLayoutEffect(() => {
+    const pending = pendingSelectionRef.current;
+    const el = textareaRef.current;
+    if (pending && el) {
+      el.focus();
+      el.setSelectionRange(pending[0], pending[1]);
+      pendingSelectionRef.current = null;
+    }
+  }, [editor.draftText]);
+
+  const saveFrontmatterNow = () => {
+    markEditorSaving();
+    const fields = deriveMarkdownEditorFrontmatterPatch(editorChrome.frontmatterDraft);
+    setFrontmatter.mutate(
+      { nodeId, scope, baseBlobHash: editor.baseBlobHash, ...fields },
+      {
+        onSuccess: ({ result }) => applyEditorWriteResult(result),
+        onError: () => markEditorFailed(),
+      },
+    );
+  };
 
   const renameNow = () => {
     const to = editorChrome.renameTarget;
@@ -240,25 +288,26 @@ export function MarkdownDocView({
         onModeChange={onModeChange}
         canEdit={documentEditor.canEdit}
       />
-      <div className="flex items-center justify-between gap-fg-2 border-b border-rule px-fg-3 py-fg-1">
-        <span className={`text-label ${editor.statusToneClass}`}>
+      <div className="flex items-center justify-between gap-fg-3 border-b border-rule px-fg-3 py-fg-1">
+        <span className={`shrink-0 text-label ${editor.statusToneClass}`}>
           {editor.statusLabel}
         </span>
         <div className="flex items-center gap-fg-2">
-          <input
-            className="w-48 rounded-fg-1 border border-rule bg-paper px-fg-2 py-px text-label text-ink outline-none focus:border-accent"
-            value={editorChrome.renameDraft}
-            onChange={(event) => setMarkdownEditorRenameDraft(event.target.value)}
-            spellCheck={false}
-            aria-label="document name (rename)"
+          <EditorToolbar onCommand={applyFormat} />
+          <Divider orientation="vertical" className="self-stretch" />
+          <PropertiesPopover
+            frontmatterDraft={editorChrome.frontmatterDraft}
+            onFrontmatterChange={setMarkdownEditorFrontmatterDraft}
+            onSaveProperties={saveFrontmatterNow}
+            savingProperties={setFrontmatter.isPending}
+            renameDraft={editorChrome.renameDraft}
+            onRenameChange={setMarkdownEditorRenameDraft}
+            onRename={renameNow}
+            renaming={renameDoc.isPending}
+            renameDisabled={editorChrome.renameTarget === null}
+            corpus={corpus}
+            selfStem={selfStem}
           />
-          <Button
-            variant="ghost"
-            onClick={renameNow}
-            disabled={renameDoc.isPending || editorChrome.renameTarget === null}
-          >
-            Rename
-          </Button>
           <Button
             variant="primary"
             onClick={saveBodyNow}
@@ -329,112 +378,15 @@ export function MarkdownDocView({
           </ul>
         </div>
       )}
-      <div className="flex min-h-0 flex-1">
+      <div className="min-h-0 flex-1">
         <HighlightedTextarea
           value={editor.draftText}
           languageHint="markdown"
           onChange={updateEditorDraft}
           ariaLabel="document body editor"
-        />
-        <PropertiesCard
-          draft={editorChrome.frontmatterDraft}
-          onDraftChange={setMarkdownEditorFrontmatterDraft}
-          onSave={() => {
-            markEditorSaving();
-            const fields = deriveMarkdownEditorFrontmatterPatch(
-              editorChrome.frontmatterDraft,
-            );
-            setFrontmatter.mutate(
-              { nodeId, scope, baseBlobHash: editor.baseBlobHash, ...fields },
-              {
-                onSuccess: ({ result }) => {
-                  applyEditorWriteResult(result);
-                },
-                onError: () => markEditorFailed(),
-              },
-            );
-          }}
-          saving={setFrontmatter.isPending}
+          inputRef={textareaRef}
         />
       </div>
     </div>
-  );
-}
-
-/** The frontmatter PROPERTIES card: edit tags / date / related, saved atomically
- *  through `set-frontmatter` (the engine validates and refuses a non-conformant
- *  write, surfaced through the editor status). Seeded from the read's header. */
-function PropertiesCard({
-  draft,
-  onDraftChange,
-  onSave,
-  saving,
-}: {
-  draft: MarkdownEditorFrontmatterDraft;
-  onDraftChange: (draft: Partial<MarkdownEditorFrontmatterDraft>) => void;
-  onSave: () => void;
-  saving: boolean;
-}) {
-  return (
-    <form
-      className="flex w-64 shrink-0 flex-col gap-fg-3 overflow-y-auto border-l border-rule bg-paper-sunken px-fg-3 py-fg-3"
-      aria-label="document properties"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSave();
-      }}
-    >
-      <Field
-        label="Tags"
-        name="tags"
-        value={draft.tags}
-        placeholder="#tag, #tag"
-        onChange={(value) => onDraftChange({ tags: value })}
-      />
-      <Field
-        label="Date"
-        name="date"
-        value={draft.date}
-        placeholder="YYYY-MM-DD"
-        onChange={(value) => onDraftChange({ date: value })}
-      />
-      <Field
-        label="Related"
-        name="related"
-        value={draft.related}
-        placeholder="stem, stem"
-        onChange={(value) => onDraftChange({ related: value })}
-      />
-      <Button type="submit" variant="secondary" disabled={saving}>
-        Save properties
-      </Button>
-    </form>
-  );
-}
-
-function Field({
-  label,
-  name,
-  value,
-  placeholder,
-  onChange,
-}: {
-  label: string;
-  name: string;
-  value: string;
-  placeholder: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="flex flex-col gap-fg-1 text-label text-ink-muted">
-      {label}
-      <input
-        name={name}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        className="rounded-fg-sm border border-rule bg-paper px-fg-2 py-fg-1 text-body text-ink outline-none focus-visible:border-accent"
-      />
-    </label>
   );
 }
