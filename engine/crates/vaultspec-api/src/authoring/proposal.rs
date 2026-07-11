@@ -849,6 +849,14 @@ fn materialize_drafts(
                 &base_snapshot,
                 &preimage,
             ),
+            ChangesetOperationKind::SectionEdit => {
+                MaterializedProposalOperation::materialize_section_edit(
+                    changeset_id,
+                    draft.clone(),
+                    &base_snapshot,
+                    &preimage,
+                )
+            }
             other => {
                 return Err(StoreError::Validation(format!(
                     "operation `{}` kind `{other:?}` is not supported for proposal \
@@ -1283,6 +1291,7 @@ mod tests {
                 body: body.into(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         }
     }
@@ -2426,6 +2435,7 @@ mod tests {
                     related: None,
                 }),
                 new_stem: None,
+                section_selector: None,
             },
         }
     }
@@ -2450,6 +2460,7 @@ mod tests {
                 body: String::new(),
                 frontmatter: None,
                 new_stem: Some(new_stem.to_string()),
+                section_selector: None,
             },
         }
     }
@@ -2476,6 +2487,7 @@ mod tests {
                 body: "preview\n".to_string(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         }
     }

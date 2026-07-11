@@ -35,6 +35,13 @@ const BASE_BODY: &str =
     "---\ntags:\n  - '#plan'\n  - '#e2e'\ndate: '2026-07-04'\n---\n\n# e2e plan\n\nbase body\n";
 const NEW_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#e2e'\ndate: '2026-07-04'\n---\n\n# e2e plan\n\nmaterialized body\n";
 
+// section-scoped-operations ADR: a doc with two headings so a `SectionEdit`
+// draft can target one (`Beta`) without touching the other (`Alpha`).
+const SECTION_DOC_PATH: &str = ".vault/plan/e2e-section-plan.md";
+const SECTION_BASE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#e2e'\ndate: '2026-07-04'\n---\n\n# e2e section plan\n\n## Alpha\n\nalpha body\n\n## Beta\n\nbeta body\n";
+const SECTION_BETA_SECTION: &str = "## Beta\n\nbeta body\n";
+const SECTION_BETA_NEW: &str = "## Beta\n\nBETA REWRITTEN\n";
+
 fn git(dir: &Path, args: &[&str]) {
     let output = std::process::Command::new("git")
         .current_dir(dir)
@@ -64,6 +71,34 @@ fn git_blob(root: &Path, rel: &str) -> String {
     assert!(
         out.status.success(),
         "git hash-object: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// The git blob object id of arbitrary bytes (not necessarily a tracked file) —
+/// `git hash-object --stdin` computes the SAME blob-hashing scheme
+/// [`ingest_struct::reader::blob_oid`] does, so a section selector's
+/// `expected_content_hash` can be computed here without a second hashing
+/// implementation or a scratch file.
+fn git_blob_of(content: &str) -> String {
+    use std::io::Write;
+    let mut child = std::process::Command::new("git")
+        .args(["hash-object", "--stdin"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("git hash-object --stdin spawns");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(content.as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(
+        out.status.success(),
+        "git hash-object --stdin: {}",
         String::from_utf8_lossy(&out.stderr)
     );
     String::from_utf8_lossy(&out.stdout).trim().to_string()
@@ -116,6 +151,24 @@ fn worktree_state() -> (tempfile::TempDir, Arc<AppState>, String, bool) {
     git(root, &["add", "."]);
     git(root, &["commit", "-m", "fixture"]);
     let base_revision = format!("blob:{}", git_blob(root, DOC_PATH));
+    let state = app::build_state(root.to_path_buf());
+    (dir, state, base_revision, core_ready)
+}
+
+/// The `worktree_state` sibling for `SectionEdit` tests: a real git worktree +
+/// `.vaultspec` workspace seeded with [`SECTION_BASE_BODY`] (two headings)
+/// instead of the flat [`BASE_BODY`].
+fn section_worktree_state() -> (tempfile::TempDir, Arc<AppState>, String, bool) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    git(root, &["init", "-b", "main", "."]);
+    let doc = root.join(SECTION_DOC_PATH);
+    std::fs::create_dir_all(doc.parent().unwrap()).unwrap();
+    std::fs::write(&doc, SECTION_BASE_BODY).unwrap();
+    let core_ready = scaffold_vaultspec_workspace(root);
+    git(root, &["add", "."]);
+    git(root, &["commit", "-m", "section fixture"]);
+    let base_revision = format!("blob:{}", git_blob(root, SECTION_DOC_PATH));
     let state = app::build_state(root.to_path_buf());
     (dir, state, base_revision, core_ready)
 }
@@ -229,6 +282,63 @@ fn scope_token_of(state: &std::sync::Arc<AppState>) -> String {
     engine_model::scope_token(&state.workspace_root)
 }
 
+/// The `document` sibling for the section-edit fixture (`SECTION_DOC_PATH`).
+fn section_document(scope: &str, base_revision: &str) -> Value {
+    json!({
+        "kind": "existing",
+        "scope": scope,
+        "node_id": "doc:e2e-section-plan",
+        "stem": "e2e-section-plan",
+        "path": SECTION_DOC_PATH,
+        "doc_type": "plan",
+        "base_revision": base_revision,
+    })
+}
+
+/// The `create_body` sibling for a `SectionEdit` draft: the selector
+/// (structural anchor + expected content hash) and the new section content,
+/// reusing `body` exactly as `replace_body` reuses it for whole-document
+/// content.
+#[allow(clippy::too_many_arguments)]
+fn section_create_body(
+    session_id: &str,
+    scope: &str,
+    changeset: &str,
+    idem: &str,
+    base_revision: &str,
+    heading_path: &[&str],
+    expected_content_hash: &str,
+    new_content: &str,
+) -> Value {
+    json!({
+        "api_version": "v1",
+        "command": "create_proposal",
+        "idempotency_key": idem,
+        "payload": {
+            "session_id": session_id,
+            "changeset_id": changeset,
+            "summary": "e2e section-edit proposal",
+            "operations": [{
+                "child_key": "child_1",
+                "operation": "section_edit",
+                "target": {
+                    "document": section_document(scope, base_revision),
+                    "base_revision": base_revision,
+                    "current_revision": base_revision,
+                },
+                "draft": {
+                    "mode": "section_scoped",
+                    "body": new_content,
+                    "section_selector": {
+                        "heading_path": heading_path,
+                        "expected_content_hash": expected_content_hash,
+                    },
+                },
+            }],
+        }
+    })
+}
+
 fn create_body(
     session_id: &str,
     scope: &str,
@@ -304,6 +414,68 @@ async fn create_and_submit(
             changeset,
             "idem:create",
             base,
+        )),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "create: {body}");
+    assert_eq!(body["data"]["status"], "draft", "create outcome: {body}");
+    let revision = body["data"]["changeset_revision"]
+        .as_str()
+        .expect("create returns the draft revision")
+        .to_string();
+
+    let (status, body) = send(
+        router(state),
+        "POST",
+        &format!("/authoring/v1/proposals/{changeset}/submit"),
+        bearer,
+        Some(agent),
+        Some(submit_body("idem:submit", &revision)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "submit: {body}");
+    assert_eq!(body["data"]["status"], "submitted");
+    (
+        body["data"]["proposal_id"].as_str().unwrap().to_string(),
+        body["data"]["approval"]["approval_id"]
+            .as_str()
+            .unwrap()
+            .to_string(),
+        body["data"]["reviewed_revision"]
+            .as_str()
+            .unwrap()
+            .to_string(),
+    )
+}
+
+/// The `create_and_submit` sibling for a `SectionEdit` draft.
+#[allow(clippy::too_many_arguments)]
+async fn section_create_and_submit(
+    state: &Arc<AppState>,
+    bearer: &str,
+    agent: &str,
+    changeset: &str,
+    base: &str,
+    heading_path: &[&str],
+    expected_content_hash: &str,
+    new_content: &str,
+) -> (String, String, String) {
+    let session = create_session(state, bearer, agent).await;
+    let (status, body) = send(
+        router(state),
+        "POST",
+        "/authoring/v1/proposals",
+        bearer,
+        Some(agent),
+        Some(section_create_body(
+            &session,
+            &scope_token_of(state),
+            changeset,
+            "idem:create",
+            base,
+            heading_path,
+            expected_content_hash,
+            new_content,
         )),
     )
     .await;
@@ -795,5 +967,430 @@ async fn direct_write_route_is_ledger_authoritative_with_no_capability_file() {
         status_body["data"]["capabilities"]
             .get("direct_write_authority")
             .is_none()
+    );
+}
+
+/// section-scoped-operations ADR: the SAME exit-gate flow
+/// (`exit_gate_flow_issue_create_submit_approve_apply_rollback`) driven by a
+/// `SectionEdit` draft instead of a whole-document `replace_body` — proposing
+/// a section-scoped change over the wire, submitting, approving, applying
+/// (confirming the spliced whole-document body landed via the real core), and
+/// rolling back (confirming the selected preimage was restored into its
+/// resolved range).
+#[tokio::test]
+async fn section_edit_full_lifecycle_propose_submit_approve_apply_rollback() {
+    let (dir, state, base, core_ready) = section_worktree_state();
+    let _keep = &dir;
+    let bearer = state.bearer.clone();
+    let beta_hash = git_blob_of(SECTION_BETA_SECTION);
+
+    let agent = issue_token(&state, &bearer, "agent:writer", "agent").await;
+    let reviewer = issue_token(&state, &bearer, "human:reviewer", "human").await;
+
+    let (proposal_id, approval_id, reviewed) = section_create_and_submit(
+        &state,
+        &bearer,
+        &agent,
+        "changeset_e2e_section",
+        &base,
+        &["Beta"],
+        &beta_hash,
+        SECTION_BETA_NEW,
+    )
+    .await;
+    assert!(proposal_id.starts_with("proposal:"));
+
+    let (status, body) = send(
+        router(&state),
+        "POST",
+        &format!("/authoring/v1/reviews/{}/decisions", pct(&approval_id)),
+        &bearer,
+        Some(&reviewer),
+        Some(decision_body(&proposal_id, &approval_id, &reviewed)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "approve: {body}");
+    assert_eq!(body["data"]["status"], "decided");
+
+    let (status, body) = send(
+        router(&state),
+        "POST",
+        "/authoring/v1/apply-requests",
+        &bearer,
+        Some(&reviewer),
+        Some(json!({
+            "api_version": "v1",
+            "command": "request_apply",
+            "idempotency_key": "idem:apply",
+            "payload": {
+                "changeset_id": "changeset_e2e_section",
+                "approval_id": approval_id
+            }
+        })),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "apply is reachable + enveloped: {body}"
+    );
+    let child_outcome = body["data"]["child_outcome"]
+        .as_str()
+        .unwrap_or("<none>")
+        .to_string();
+    if core_ready {
+        assert_eq!(
+            child_outcome, "applied",
+            "a real vaultspec workspace must yield an APPLIED section-edit receipt: {body}"
+        );
+        let saved = std::fs::read_to_string(dir.path().join(SECTION_DOC_PATH)).unwrap();
+        assert!(
+            saved.contains("BETA REWRITTEN") && saved.contains("alpha body"),
+            "the spliced whole-document body landed; the untouched Alpha section survives: \
+             {saved}"
+        );
+    }
+    let applied = child_outcome == "applied";
+
+    let (status, body) = send(
+        router(&state),
+        "POST",
+        "/authoring/v1/rollback-proposals",
+        &bearer,
+        Some(&reviewer),
+        Some(json!({
+            "api_version": "v1",
+            "command": "create_rollback",
+            "idempotency_key": "idem:rollback",
+            "payload": {
+                "source_changeset_id": "changeset_e2e_section",
+                "source_children": [{ "source_child_key": "child_1" }],
+                "reason": "restore the selected preimage"
+            }
+        })),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "rollback is reachable + enveloped: {body}"
+    );
+    if applied {
+        assert_eq!(
+            body["data"]["status"], "generated",
+            "an applied section-edit source rolls back to a new Rollback changeset: {body}"
+        );
+        let rollback_id = body["data"]["rollback_changeset_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(rollback_id.starts_with("rollback:"));
+
+        let (status, projection) = send(
+            router(&state),
+            "GET",
+            &format!("/authoring/v1/proposals/{}", pct(&rollback_id)),
+            &bearer,
+            Some(&reviewer),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "rollback projects: {projection}");
+        let review_doc = &projection["data"]["review_documents"][0];
+        assert!(
+            review_doc["base"]["text"]
+                .as_str()
+                .is_some_and(|text| text.contains("BETA REWRITTEN") && text.contains("alpha body")),
+            "the rollback's base is the post-apply document: {projection}"
+        );
+        assert!(
+            review_doc["proposed"]["text"].as_str().is_some_and(|text| {
+                text.contains("beta body")
+                    && !text.contains("BETA REWRITTEN")
+                    && text.contains("alpha body")
+            }),
+            "the rollback restores ONLY the selected Beta preimage, leaving Alpha untouched: \
+             {projection}"
+        );
+    } else {
+        assert_eq!(
+            body["data"]["status"], "unavailable",
+            "an unapplied source is honestly not rollback-able (no live core): {body}"
+        );
+    }
+}
+
+/// A `SectionEdit` draft whose selector anchor does not resolve against the
+/// current document is refused at PROPOSAL-CREATION time, before any review
+/// or apply — never a fuzzy patch.
+#[tokio::test]
+async fn section_edit_missing_anchor_is_refused_at_proposal_creation() {
+    let (dir, state, base, _core_ready) = section_worktree_state();
+    let _keep = &dir;
+    let bearer = state.bearer.clone();
+    let agent = issue_token(&state, &bearer, "agent:writer", "agent").await;
+    let session = create_session(&state, &bearer, &agent).await;
+
+    let (status, body) = send(
+        router(&state),
+        "POST",
+        "/authoring/v1/proposals",
+        &bearer,
+        Some(&agent),
+        Some(section_create_body(
+            &session,
+            &scope_token_of(&state),
+            "changeset_section_missing",
+            "idem:create",
+            &base,
+            &["Gamma"],
+            "irrelevant",
+            "## Gamma\n\nnew content\n",
+        )),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "a missing selector anchor is a 422 with typed evidence: {body}"
+    );
+    assert_eq!(body["error_kind"], "authoring_validation_failed");
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("did not resolve")),
+        "{body}"
+    );
+}
+
+/// A `SectionEdit` draft whose expected content hash mismatches the current
+/// section is refused at proposal-creation time, carrying the typed
+/// observed-versus-expected evidence.
+#[tokio::test]
+async fn section_edit_content_hash_mismatch_is_refused_at_proposal_creation() {
+    let (dir, state, base, _core_ready) = section_worktree_state();
+    let _keep = &dir;
+    let bearer = state.bearer.clone();
+    let agent = issue_token(&state, &bearer, "agent:writer", "agent").await;
+    let session = create_session(&state, &bearer, &agent).await;
+
+    let (status, body) = send(
+        router(&state),
+        "POST",
+        "/authoring/v1/proposals",
+        &bearer,
+        Some(&agent),
+        Some(section_create_body(
+            &session,
+            &scope_token_of(&state),
+            "changeset_section_hash_mismatch",
+            "idem:create",
+            &base,
+            &["Beta"],
+            "0000000000000000000000000000000000000000",
+            SECTION_BETA_NEW,
+        )),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "a content-hash mismatch is a 422 with typed evidence: {body}"
+    );
+    assert_eq!(body["error_kind"], "authoring_validation_failed");
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("content hash mismatch")),
+        "{body}"
+    );
+}
+
+/// A `SectionEdit` draft whose `heading_path` is ambiguous (a duplicate
+/// heading with no disambiguating ancestor path) is refused at
+/// proposal-creation time.
+#[tokio::test]
+async fn section_edit_ambiguous_anchor_is_refused_at_proposal_creation() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    git(root, &["init", "-b", "main", "."]);
+    let doc_path = ".vault/plan/e2e-section-ambiguous-plan.md";
+    let body = "---\ntags:\n  - '#plan'\n  - '#e2e'\ndate: '2026-07-04'\n---\n\n# e2e ambiguous plan\n\n## One\n\n### Item\n\nfirst\n\n## Two\n\n### Item\n\nsecond\n";
+    std::fs::create_dir_all(root.join(doc_path).parent().unwrap()).unwrap();
+    std::fs::write(root.join(doc_path), body).unwrap();
+    scaffold_vaultspec_workspace(root);
+    git(root, &["add", "."]);
+    git(root, &["commit", "-m", "ambiguous fixture"]);
+    let base = format!("blob:{}", git_blob(root, doc_path));
+    let state = app::build_state(root.to_path_buf());
+    let bearer = state.bearer.clone();
+    let agent = issue_token(&state, &bearer, "agent:writer", "agent").await;
+    let session = create_session(&state, &bearer, &agent).await;
+
+    let document = json!({
+        "kind": "existing",
+        "scope": scope_token_of(&state),
+        "node_id": "doc:e2e-section-ambiguous-plan",
+        "stem": "e2e-section-ambiguous-plan",
+        "path": doc_path,
+        "doc_type": "plan",
+        "base_revision": base,
+    });
+    let create = json!({
+        "api_version": "v1",
+        "command": "create_proposal",
+        "idempotency_key": "idem:create",
+        "payload": {
+            "session_id": session,
+            "changeset_id": "changeset_section_ambiguous",
+            "summary": "e2e ambiguous section-edit proposal",
+            "operations": [{
+                "child_key": "child_1",
+                "operation": "section_edit",
+                "target": {
+                    "document": document,
+                    "base_revision": base,
+                    "current_revision": base,
+                },
+                "draft": {
+                    "mode": "section_scoped",
+                    "body": "### Item\n\nrewritten\n",
+                    "section_selector": {
+                        "heading_path": ["Item"],
+                        "expected_content_hash": "irrelevant",
+                    },
+                },
+            }],
+        }
+    });
+
+    let (status, body) = send(
+        router(&state),
+        "POST",
+        "/authoring/v1/proposals",
+        &bearer,
+        Some(&agent),
+        Some(create),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "an ambiguous selector anchor is a 422 with typed evidence: {body}"
+    );
+    assert_eq!(body["error_kind"], "authoring_validation_failed");
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("ambiguous")),
+        "{body}"
+    );
+}
+
+/// An APPLIED `SectionEdit` whose targeted section no longer resolves at
+/// rollback time (a further out-of-band edit landed inside it) surfaces
+/// `rollback_available=false` — the honest degradation, never a guessed
+/// inverse. Only meaningful when a real core landed the forward apply.
+#[tokio::test]
+async fn applied_section_edit_rollback_surfaces_unavailable_when_the_section_no_longer_resolves() {
+    let (dir, state, base, core_ready) = section_worktree_state();
+    let _keep = &dir;
+    let bearer = state.bearer.clone();
+    let beta_hash = git_blob_of(SECTION_BETA_SECTION);
+
+    let agent = issue_token(&state, &bearer, "agent:writer", "agent").await;
+    let reviewer = issue_token(&state, &bearer, "human:reviewer", "human").await;
+
+    let (proposal_id, approval_id, reviewed) = section_create_and_submit(
+        &state,
+        &bearer,
+        &agent,
+        "changeset_e2e_section_drift",
+        &base,
+        &["Beta"],
+        &beta_hash,
+        SECTION_BETA_NEW,
+    )
+    .await;
+
+    let (status, body) = send(
+        router(&state),
+        "POST",
+        &format!("/authoring/v1/reviews/{}/decisions", pct(&approval_id)),
+        &bearer,
+        Some(&reviewer),
+        Some(decision_body(&proposal_id, &approval_id, &reviewed)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "approve: {body}");
+
+    let (status, body) = send(
+        router(&state),
+        "POST",
+        "/authoring/v1/apply-requests",
+        &bearer,
+        Some(&reviewer),
+        Some(json!({
+            "api_version": "v1",
+            "command": "request_apply",
+            "idempotency_key": "idem:apply",
+            "payload": {
+                "changeset_id": "changeset_e2e_section_drift",
+                "approval_id": approval_id
+            }
+        })),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "apply is reachable + enveloped: {body}"
+    );
+    if !core_ready {
+        // No live core in this environment: the source never actually applied,
+        // so there is nothing to roll back — the same honest degradation the
+        // exit-gate test already covers. Skip the section-drift assertion.
+        return;
+    }
+    assert_eq!(body["data"]["child_outcome"], "applied");
+
+    // A FURTHER out-of-band edit lands inside the Beta section after apply —
+    // beyond what the forward apply itself produced.
+    std::fs::write(
+        dir.path().join(SECTION_DOC_PATH),
+        "---\ntags:\n  - '#plan'\n  - '#e2e'\ndate: '2026-07-04'\n---\n\n# e2e section plan\n\n## Alpha\n\nalpha body\n\n## Beta\n\nBETA EDITED AGAIN OUT OF BAND\n",
+    )
+    .unwrap();
+
+    let (status, body) = send(
+        router(&state),
+        "POST",
+        "/authoring/v1/rollback-proposals",
+        &bearer,
+        Some(&reviewer),
+        Some(json!({
+            "api_version": "v1",
+            "command": "create_rollback",
+            "idempotency_key": "idem:rollback",
+            "payload": {
+                "source_changeset_id": "changeset_e2e_section_drift",
+                "source_children": [{ "source_child_key": "child_1" }],
+                "reason": "restore the selected preimage"
+            }
+        })),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "rollback is reachable + enveloped: {body}"
+    );
+    assert_eq!(
+        body["data"]["status"], "unavailable",
+        "the targeted section no longer resolves; rollback degrades honestly: {body}"
+    );
+    assert!(
+        body["data"]["manual_repair"].is_object(),
+        "an unavailable rollback still offers the manual-repair hook: {body}"
     );
 }

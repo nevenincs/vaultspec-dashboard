@@ -13,6 +13,7 @@ use super::api::{
     TargetRevisionFence,
 };
 use super::model::{ChangesetId, DocumentRef, RevisionToken};
+use super::sections::{SectionResolveError, SectionSelector, resolve_section};
 use super::snapshots::{
     PreimageRecord, RevisionMetadata, RevisionSnapshot, SnapshotError, TargetSnapshot,
 };
@@ -90,6 +91,19 @@ pub enum OperationError {
         child_key: String,
         field: &'static str,
     },
+    #[error("operation `{child_key}` section edit requires a selector payload")]
+    MissingSectionSelector { child_key: String },
+    #[error(
+        "operation `{child_key}` must not carry a section selector (field-level payload only \
+         for section_edit)"
+    )]
+    UnexpectedSectionSelector { child_key: String },
+    #[error("operation `{child_key}` section selector: {source}")]
+    SectionSelectorUnresolved {
+        child_key: String,
+        #[source]
+        source: SectionResolveError,
+    },
     #[error("snapshot: {0}")]
     Snapshot(#[from] SnapshotError),
 }
@@ -131,6 +145,14 @@ pub struct MaterializedProposalOperation {
     /// "now" a second time. `None` for every other operation kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub create_document_date: Option<String>,
+    /// The selector + selected-preimage/new-content payload a `SectionEdit`
+    /// apply/rollback carries through (section-scoped-operations ADR): the
+    /// selector resolved at materialize time, the resolved section's PRE-edit
+    /// bytes (distinct from the whole-document `preimage` capture above), and
+    /// the NEW section bytes the draft spliced in. `None` for every other
+    /// operation kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section_edit: Option<SectionEditPayload>,
 }
 
 impl MaterializedProposalOperation {
@@ -303,6 +325,65 @@ impl MaterializedProposalOperation {
             },
         )
     }
+
+    /// Materialize a `SectionEdit` draft (section-scoped-operations ADR):
+    /// resolve the selector's structural anchor against the base body — exact
+    /// or a typed conflict, never a fuzzy patch — capture the resolved bytes
+    /// as the SELECTED preimage, and splice the draft's `body` (the new
+    /// section content) into the resolved range to build the whole-document
+    /// preview. Materialization is WHOLE-DOCUMENT under the hood (the write
+    /// reuses `SetBody`, exactly like `ReplaceBody`): section granularity
+    /// lives in the selector, the selected preimage, and the review diff, not
+    /// in a separate core write path.
+    pub fn materialize_section_edit(
+        changeset_id: &ChangesetId,
+        draft: ChangesetChildOperationDraft,
+        base_snapshot: &RevisionSnapshot,
+        preimage: &PreimageRecord,
+    ) -> Result<Self> {
+        let (selector, resolved) =
+            validate_section_edit_draft(changeset_id, &draft, base_snapshot, preimage)?;
+        let selector = selector.clone();
+        let new_content = draft.draft.body.clone();
+        let target_text = format!(
+            "{}{}{}",
+            &base_snapshot.text[..resolved.content_start],
+            new_content,
+            &base_snapshot.text[resolved.content_end..],
+        );
+        let section_edit = SectionEditPayload {
+            selector,
+            selected_preimage: resolved.content,
+            new_content,
+        };
+        finish_materialization(
+            changeset_id,
+            draft,
+            base_snapshot,
+            preimage,
+            target_text,
+            OperationKindExtras {
+                section_edit: Some(section_edit),
+                ..Default::default()
+            },
+        )
+    }
+}
+
+/// The `SectionEdit` field-level payload a materialized operation carries
+/// through to apply and rollback (section-scoped-operations ADR): the
+/// resolved selector, the resolved section's PRE-edit bytes (the "selected
+/// preimage" — distinct from the whole-document preimage every kind
+/// captures), and the NEW section bytes the draft spliced in. Rollback uses
+/// `new_content` to build the FRESH selector its inverse re-resolves against
+/// (expecting to find exactly what this edit produced), then splices
+/// `selected_preimage` back in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SectionEditPayload {
+    pub selector: SectionSelector,
+    pub selected_preimage: String,
+    pub new_content: String,
 }
 
 /// The phantom "diff from nothing" base a `CreateDocument` draft materializes
@@ -332,6 +413,7 @@ struct OperationKindExtras {
     frontmatter_edit: Option<FrontmatterEditFields>,
     rename_edit: Option<String>,
     create_document_date: Option<String>,
+    section_edit: Option<SectionEditPayload>,
 }
 
 /// Shared materialization tail: build the target snapshot + review diff from
@@ -353,6 +435,7 @@ fn finish_materialization(
         frontmatter_edit,
         rename_edit,
         create_document_date,
+        section_edit,
     } = extras;
     let target_snapshot = TargetSnapshot::from_text(
         base_snapshot.document.clone(),
@@ -372,6 +455,7 @@ fn finish_materialization(
         frontmatter_edit,
         rename_edit,
         create_document_date,
+        section_edit,
     })
 }
 
@@ -494,6 +578,9 @@ fn validate_replace_body_draft(
             mode: draft.draft.mode,
         });
     }
+    if draft.draft.section_selector.is_some() {
+        return Err(OperationError::UnexpectedSectionSelector { child_key });
+    }
     validate_target_and_preimage(changeset_id, child_key, draft, base_snapshot, preimage)
 }
 
@@ -526,6 +613,9 @@ fn validate_edit_frontmatter_draft<'a>(
     }
     if !draft.draft.body.is_empty() {
         return Err(OperationError::UnexpectedBodyPayload { child_key });
+    }
+    if draft.draft.section_selector.is_some() {
+        return Err(OperationError::UnexpectedSectionSelector { child_key });
     }
     let Some(fields) = draft.draft.frontmatter.as_ref() else {
         return Err(OperationError::EmptyFrontmatterPayload { child_key });
@@ -567,6 +657,9 @@ fn validate_rename_draft<'a>(
     }
     if !draft.draft.body.is_empty() {
         return Err(OperationError::UnexpectedBodyPayload { child_key });
+    }
+    if draft.draft.section_selector.is_some() {
+        return Err(OperationError::UnexpectedSectionSelector { child_key });
     }
     let Some(new_stem) = draft.draft.new_stem.as_deref() else {
         return Err(OperationError::MissingRenameStem { child_key });
@@ -637,6 +730,9 @@ fn validate_create_document_draft(
             mode: draft.draft.mode,
         });
     }
+    if draft.draft.section_selector.is_some() {
+        return Err(OperationError::UnexpectedSectionSelector { child_key });
+    }
     let DocumentRef::ProvisionalCreate {
         doc_type,
         feature,
@@ -665,6 +761,53 @@ fn validate_create_document_draft(
         });
     }
     Ok((doc_type.as_str(), feature.as_str(), title.as_str()))
+}
+
+/// Validate a `SectionEdit` draft (section-scoped-operations ADR): the
+/// operation kind, its selector payload shape, and the SAME target-fence +
+/// preimage checks every operation kind shares — then resolve the selector's
+/// structural anchor against the base body. Resolution is exact-or-conflict
+/// (missing anchor, ambiguous anchor, or a content-hash mismatch all fail
+/// closed with typed evidence — see [`super::sections::SectionResolveError`]),
+/// so a malformed or stale selector is refused here, at draft-validation
+/// time, before a materialized preview is ever built. Returns the validated
+/// selector and its resolution so the caller materializes without
+/// re-resolving.
+fn validate_section_edit_draft<'a>(
+    changeset_id: &ChangesetId,
+    draft: &'a ChangesetChildOperationDraft,
+    base_snapshot: &RevisionSnapshot,
+    preimage: &PreimageRecord,
+) -> Result<(&'a SectionSelector, super::sections::ResolvedSection)> {
+    if draft.child_key.trim().is_empty() {
+        return Err(OperationError::EmptyChildKey);
+    }
+    let child_key = draft.child_key.clone();
+    if draft.operation != ChangesetOperationKind::SectionEdit {
+        return Err(OperationError::UnsupportedOperationKind {
+            child_key,
+            operation: draft.operation,
+        });
+    }
+    if draft.draft.mode != DraftMode::SectionScoped {
+        return Err(OperationError::UnsupportedDraftMode {
+            child_key,
+            mode: draft.draft.mode,
+        });
+    }
+    let Some(selector) = draft.draft.section_selector.as_ref() else {
+        return Err(OperationError::MissingSectionSelector { child_key });
+    };
+    validate_target_and_preimage(
+        changeset_id,
+        child_key.clone(),
+        draft,
+        base_snapshot,
+        preimage,
+    )?;
+    let resolved = resolve_section(&base_snapshot.text, selector)
+        .map_err(|source| OperationError::SectionSelectorUnresolved { child_key, source })?;
+    Ok((selector, resolved))
 }
 
 /// Reject a field value that would corrupt the frontmatter block it lands in: an
@@ -1222,6 +1365,7 @@ mod tests {
                 body: body.to_string(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         }
     }
@@ -1244,6 +1388,7 @@ mod tests {
                 body: String::new(),
                 frontmatter: Some(fields),
                 new_stem: None,
+                section_selector: None,
             },
         }
     }
@@ -1263,6 +1408,31 @@ mod tests {
                 body: String::new(),
                 frontmatter: None,
                 new_stem: Some(new_stem.to_string()),
+                section_selector: None,
+            },
+        }
+    }
+
+    fn section_edit_draft_for(
+        document: DocumentRef,
+        selector: SectionSelector,
+        new_content: &str,
+    ) -> ChangesetChildOperationDraft {
+        let revision = base_revision(&document);
+        ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::SectionEdit,
+            target: TargetRevisionFence {
+                document,
+                base_revision: Some(revision.clone()),
+                current_revision: Some(revision),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::SectionScoped,
+                body: new_content.to_string(),
+                frontmatter: None,
+                new_stem: None,
+                section_selector: Some(selector),
             },
         }
     }
@@ -1535,6 +1705,7 @@ mod tests {
                 body: "new\n".to_string(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         };
 
@@ -1620,6 +1791,41 @@ mod tests {
                 mode: DraftMode::Append,
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn replace_body_rejects_a_stray_section_selector() {
+        // R1: a `section_selector` is `section_edit`'s own field-level payload —
+        // an accepted-but-ignored selector on a whole-document `replace_body`
+        // draft must be refused, never silently dropped.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", "base\n");
+        let snapshot = base_snapshot(root);
+        let mut draft = draft_for(
+            snapshot.document.clone(),
+            ChangesetOperationKind::ReplaceBody,
+            DraftMode::WholeDocument,
+            "after\n",
+        );
+        draft.draft.section_selector = Some(SectionSelector {
+            heading_path: vec!["Stray".to_string()],
+            range_hint: None,
+            expected_content_hash: "irrelevant".to_string(),
+        });
+
+        let preimage = preimage_record(root);
+        let err = MaterializedProposalOperation::materialize_replace_body(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::UnexpectedSectionSelector { .. }
         ));
     }
 
@@ -2138,6 +2344,44 @@ mod tests {
     }
 
     #[test]
+    fn edit_frontmatter_rejects_a_stray_section_selector() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/operation-plan.md",
+            "---\ntags:\n  - '#plan'\n---\n\nbody\n",
+        );
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let mut draft = frontmatter_draft_for(
+            snapshot.document.clone(),
+            FrontmatterEditFields {
+                date: Some("2026-02-06".to_string()),
+                tags: None,
+                related: None,
+            },
+        );
+        draft.draft.section_selector = Some(SectionSelector {
+            heading_path: vec!["Stray".to_string()],
+            range_hint: None,
+            expected_content_hash: "irrelevant".to_string(),
+        });
+
+        let err = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::UnexpectedSectionSelector { .. }
+        ));
+    }
+
+    #[test]
     fn section_and_destructive_kinds_are_deferred_from_edit_frontmatter_materialization() {
         // EditFrontmatter's own materializer accepts only its own kind, exactly as
         // materialize_replace_body accepts only ReplaceBody (`W03.P13` subset).
@@ -2268,6 +2512,33 @@ mod tests {
     }
 
     #[test]
+    fn rename_rejects_a_stray_section_selector() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", "body\n");
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let mut draft = rename_draft_for(snapshot.document.clone(), "operation-plan-renamed");
+        draft.draft.section_selector = Some(SectionSelector {
+            heading_path: vec!["Stray".to_string()],
+            range_hint: None,
+            expected_content_hash: "irrelevant".to_string(),
+        });
+
+        let err = MaterializedProposalOperation::materialize_rename(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::UnexpectedSectionSelector { .. }
+        ));
+    }
+
+    #[test]
     fn rename_rejects_a_missing_target_stem() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -2359,6 +2630,166 @@ mod tests {
         }
     }
 
+    // --- section-scoped-operations: SectionEdit validation + materialization
+
+    const SECTION_DOC: &str = "# Doc\n\nintro\n\n## Alpha\n\nalpha body\n\n## Beta\n\nbeta body\n";
+
+    fn section_selector_for(heading_path: &[&str], expected_content_hash: &str) -> SectionSelector {
+        SectionSelector {
+            heading_path: heading_path.iter().map(|s| s.to_string()).collect(),
+            range_hint: None,
+            expected_content_hash: expected_content_hash.to_string(),
+        }
+    }
+
+    #[test]
+    fn section_edit_splices_the_resolved_range_and_captures_the_selected_preimage() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", SECTION_DOC);
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let beta_section = "## Beta\n\nbeta body\n";
+        let selector = section_selector_for(&["Beta"], &blob_oid(beta_section.as_bytes()));
+        let draft = section_edit_draft_for(
+            snapshot.document.clone(),
+            selector.clone(),
+            "## Beta\n\nBETA REWRITTEN\n",
+        );
+
+        let materialized = MaterializedProposalOperation::materialize_section_edit(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap();
+
+        assert_eq!(materialized.operation, ChangesetOperationKind::SectionEdit);
+        assert_eq!(
+            materialized.target_snapshot.payload_text,
+            "# Doc\n\nintro\n\n## Alpha\n\nalpha body\n\n## Beta\n\nBETA REWRITTEN\n"
+        );
+        assert!(materialized.review_diff.changed);
+
+        let section_edit = materialized.section_edit.as_ref().unwrap();
+        assert_eq!(section_edit.selector, selector);
+        assert_eq!(section_edit.selected_preimage, beta_section);
+        assert_eq!(section_edit.new_content, "## Beta\n\nBETA REWRITTEN\n");
+    }
+
+    #[test]
+    fn section_edit_rejects_a_missing_selector_payload() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", SECTION_DOC);
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let mut draft = section_edit_draft_for(
+            snapshot.document.clone(),
+            section_selector_for(&["Beta"], "irrelevant"),
+            "new\n",
+        );
+        draft.draft.section_selector = None;
+
+        let err = MaterializedProposalOperation::materialize_section_edit(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(err, OperationError::MissingSectionSelector { .. }));
+    }
+
+    #[test]
+    fn section_edit_rejects_a_selector_that_does_not_resolve() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", SECTION_DOC);
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let draft = section_edit_draft_for(
+            snapshot.document.clone(),
+            section_selector_for(&["Gamma"], "irrelevant"),
+            "new\n",
+        );
+
+        let err = MaterializedProposalOperation::materialize_section_edit(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::SectionSelectorUnresolved {
+                source: SectionResolveError::MissingAnchor { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn section_edit_rejects_a_content_hash_mismatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", SECTION_DOC);
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let draft = section_edit_draft_for(
+            snapshot.document.clone(),
+            section_selector_for(&["Beta"], "not-the-real-hash"),
+            "new\n",
+        );
+
+        let err = MaterializedProposalOperation::materialize_section_edit(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::SectionSelectorUnresolved {
+                source: SectionResolveError::ContentHashMismatch { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn section_edit_materialized_operation_round_trips_including_the_section_edit_payload() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", SECTION_DOC);
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let selector = section_selector_for(&["Alpha"], &blob_oid(b"## Alpha\n\nalpha body\n\n"));
+        let draft = section_edit_draft_for(
+            snapshot.document.clone(),
+            selector,
+            "## Alpha\n\nALPHA REWRITTEN\n\n",
+        );
+
+        let materialized = MaterializedProposalOperation::materialize_section_edit(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap();
+
+        let value = serde_json::to_value(&materialized).unwrap();
+        let recovered: MaterializedProposalOperation = serde_json::from_value(value).unwrap();
+        assert_eq!(recovered, materialized);
+        assert!(recovered.section_edit.is_some());
+        assert!(recovered.frontmatter_edit.is_none());
+        assert!(recovered.rename_edit.is_none());
+    }
+
     // --- W02.P05: CreateDocument validation + materialization --------------
 
     const CREATE_FIXED_CREATED_AT_MS: i64 = 1_768_435_200_000; // 2026-01-15T00:00:00Z
@@ -2389,6 +2820,7 @@ mod tests {
                 body: body.to_string(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         }
     }
@@ -2451,6 +2883,30 @@ mod tests {
         assert!(matches!(
             err,
             OperationError::UnsupportedCreateTarget { .. }
+        ));
+    }
+
+    #[test]
+    fn create_document_rejects_a_stray_section_selector() {
+        let mut draft = create_draft_for(
+            provisional_document("plan", "operation-plan-feature", "A New Plan"),
+            "preview body\n",
+        );
+        draft.draft.section_selector = Some(SectionSelector {
+            heading_path: vec!["Stray".to_string()],
+            range_hint: None,
+            expected_content_hash: "irrelevant".to_string(),
+        });
+
+        let err = MaterializedProposalOperation::materialize_create_document(
+            &changeset_id(),
+            draft,
+            CREATE_FIXED_CREATED_AT_MS,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::UnexpectedSectionSelector { .. }
         ));
     }
 

@@ -42,13 +42,15 @@ use super::api::{
 };
 use super::documents::{DocumentResolver, ExistingDocumentLookup};
 use super::ledger::{
-    ChangesetAggregateRecord, ChangesetChildOperationInput, ChangesetRevisionInput,
+    ChangesetAggregateRecord, ChangesetChildOperationInput, ChangesetChildOperationRecord,
+    ChangesetRevisionInput,
 };
 use super::model::{
     ActionEligibility, ActorRef, ChangesetId, ChangesetKind, ChangesetStatus, CommandKind,
     DocumentRef, IdempotencyKey, RevisionToken,
 };
 use super::operations::MaterializedProposalOperation;
+use super::sections::SectionSelector;
 use super::snapshots::{PreimageCaptureRequest, PreimageRecord, SnapshotReader};
 use super::store::unit_of_work::{Repository, UnitOfWork};
 use super::store::{Result as StoreResult, Store, StoreError};
@@ -177,7 +179,7 @@ pub fn generate_rollback(
             eligibility_children.push(RollbackChildEligibility::new(
                 child.child_key.clone(),
                 child.operation,
-                preimage.is_some(),
+                preimage_available(child, preimage.is_some()),
             ));
             resolved.push((child.clone(), preimage));
         }
@@ -368,6 +370,7 @@ pub fn generate_rollback(
                         body: String::new(),
                         frontmatter: None,
                         new_stem: Some(original_stem.clone()),
+                        section_selector: None,
                     },
                 };
                 let materialized = MaterializedProposalOperation::materialize_rename(
@@ -378,6 +381,67 @@ pub fn generate_rollback(
                 )
                 .map_err(|err| StoreError::Validation(err.to_string()))?;
                 (ChangesetOperationKind::Rename, materialized)
+            }
+            ChangesetOperationKind::SectionEdit => {
+                // SELECTED-preimage restore (section-scoped-operations ADR):
+                // re-resolve the SAME heading-path anchor against the CURRENT
+                // base, expecting to find exactly the NEW content this
+                // source's forward apply spliced in, then splice the
+                // captured SELECTED preimage back into the resolved range —
+                // never a whole-document preimage restore, which would
+                // clobber any unrelated section edited since.
+                let Some(section_edit) = source_child
+                    .materialized_operation
+                    .as_ref()
+                    .and_then(|operation| operation.section_edit.clone())
+                else {
+                    return Ok(RollbackOutcome::unavailable(
+                        ActionEligibility::denied(
+                            CommandKind::CreateRollback,
+                            "rollback_unavailable: section edit source carries no recorded \
+                             selector or selected preimage",
+                        ),
+                        Some(manual_repair(&request)),
+                    ));
+                };
+                let rollback_selector = SectionSelector {
+                    heading_path: section_edit.selector.heading_path.clone(),
+                    range_hint: section_edit.selector.range_hint,
+                    expected_content_hash: blob_oid(section_edit.new_content.as_bytes()),
+                };
+                let draft = ChangesetChildOperationDraft {
+                    child_key: child_key.clone(),
+                    operation: ChangesetOperationKind::SectionEdit,
+                    target: target.clone(),
+                    draft: DraftMutation {
+                        mode: DraftMode::SectionScoped,
+                        body: section_edit.selected_preimage.clone(),
+                        frontmatter: None,
+                        new_stem: None,
+                        section_selector: Some(rollback_selector),
+                    },
+                };
+                let materialized = match MaterializedProposalOperation::materialize_section_edit(
+                    &rollback_id,
+                    draft,
+                    &base_snapshot,
+                    &inverse_preimage,
+                ) {
+                    Ok(materialized) => materialized,
+                    Err(err) => {
+                        return Ok(RollbackOutcome::unavailable(
+                            ActionEligibility::denied(
+                                CommandKind::CreateRollback,
+                                format!(
+                                    "rollback_unavailable: the section this rollback targets \
+                                     no longer resolves ({err})"
+                                ),
+                            ),
+                            Some(manual_repair(&request)),
+                        ));
+                    }
+                };
+                (ChangesetOperationKind::SectionEdit, materialized)
             }
             _ => {
                 // Preimage-restore: body/frontmatter edits invert by restoring
@@ -393,6 +457,7 @@ pub fn generate_rollback(
                         body: source_preimage.payload_text.clone(),
                         frontmatter: None,
                         new_stem: None,
+                        section_selector: None,
                     },
                 };
                 let materialized = MaterializedProposalOperation::materialize_replace_body(
@@ -506,6 +571,25 @@ fn stem_lineage_check(
         return Ok(StemLineageCheck::Unconfirmable);
     }
     Ok(StemLineageCheck::Clear)
+}
+
+/// Whether the preimage material a `child`'s rollback inverse needs is present.
+/// Every kind gates on the WHOLE-document preimage `whole_document_present`
+/// names; a `SectionEdit` child ALSO requires the SELECTED preimage its own
+/// materialized operation carries (section-scoped-operations ADR: the inverse
+/// restores the selected preimage, never the whole-document one) — an applied
+/// record from before this feature landed carries no `section_edit` payload
+/// and is honestly unavailable rather than silently falling back to a
+/// whole-document restore that would clobber unrelated content.
+fn preimage_available(child: &ChangesetChildOperationRecord, whole_document_present: bool) -> bool {
+    if child.operation != ChangesetOperationKind::SectionEdit {
+        return whole_document_present;
+    }
+    whole_document_present
+        && child
+            .materialized_operation
+            .as_ref()
+            .is_some_and(|operation| operation.section_edit.is_some())
 }
 
 fn manual_repair(request: &RollbackRequest<'_>) -> ManualRepairProposal {
@@ -828,6 +912,275 @@ mod tests {
         .unwrap()
     }
 
+    const SECTION_EDIT_DOC: &str =
+        "# Doc\n\nintro\n\n## Alpha\n\nalpha body\n\n## Beta\n\nbeta body\n";
+    const SECTION_EDIT_BETA_SECTION: &str = "## Beta\n\nbeta body\n";
+    const SECTION_EDIT_BETA_NEW: &str = "## Beta\n\nBETA REWRITTEN\n";
+
+    /// A materialized `section_edit` child (section-scoped-operations ADR)
+    /// targeting `heading_path` in `document`'s CURRENT worktree body,
+    /// resolving with `expected_content_hash` and splicing in `new_content`.
+    fn section_edit_child_input(
+        root: &Path,
+        changeset_id: &ChangesetId,
+        child_key: &str,
+        document: DocumentRef,
+        heading_path: &[&str],
+        expected_content_hash: &str,
+        new_content: &str,
+    ) -> ChangesetChildOperationInput {
+        let base_snapshot = SnapshotReader::for_worktree(root)
+            .require_current_base(&document)
+            .unwrap();
+        let preimage = SnapshotReader::for_worktree(root)
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: format!("preimage:{}:{child_key}", changeset_id.as_str()),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: child_key.to_string(),
+                document: document.clone(),
+                captured_at_ms: 5,
+            })
+            .unwrap();
+        let DocumentRef::Existing {
+            base_revision: revision,
+            ..
+        } = &document
+        else {
+            panic!("section edit target must be an existing document");
+        };
+        let selector = SectionSelector {
+            heading_path: heading_path.iter().map(|s| s.to_string()).collect(),
+            range_hint: None,
+            expected_content_hash: expected_content_hash.to_string(),
+        };
+        let draft = ChangesetChildOperationDraft {
+            child_key: child_key.to_string(),
+            operation: ChangesetOperationKind::SectionEdit,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(revision.clone()),
+                current_revision: Some(revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::SectionScoped,
+                body: new_content.to_string(),
+                frontmatter: None,
+                new_stem: None,
+                section_selector: Some(selector),
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_section_edit(
+            changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        ChangesetChildOperationInput::from_materialized(
+            materialized,
+            format!("material:{child_key}"),
+            format!("validation:{child_key}"),
+        )
+    }
+
+    #[test]
+    fn section_edit_rolls_back_by_restoring_the_selected_preimage_into_its_resolved_range() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let base_rev = write_doc(root, "rollback-section", SECTION_EDIT_DOC);
+        let mut store = temp_store(root);
+        let source = ChangesetId::new("changeset_se_1").unwrap();
+        let author = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let doc = existing_doc("rollback-section", &base_rev);
+        let preimage = source_preimage_record(root, &source, "child_1", doc.clone());
+        let beta_hash = blob_oid(SECTION_EDIT_BETA_SECTION.as_bytes());
+        let child = {
+            let root = root.to_path_buf();
+            let doc = doc.clone();
+            let source = source.clone();
+            move || {
+                section_edit_child_input(
+                    &root,
+                    &source,
+                    "child_1",
+                    doc.clone(),
+                    &["Beta"],
+                    &beta_hash,
+                    SECTION_EDIT_BETA_NEW,
+                )
+            }
+        };
+        seed_applied_source(
+            &mut store,
+            &source,
+            &author,
+            &reviewer,
+            child,
+            Some(preimage),
+        );
+
+        // The forward edit landed (Beta rewritten), AND an unrelated concurrent
+        // edit landed in Alpha since — the rollback must restore ONLY Beta.
+        write_doc(
+            root,
+            "rollback-section",
+            "# Doc\n\nintro\n\n## Alpha\n\nALPHA CONCURRENT EDIT\n\n## Beta\n\nBETA REWRITTEN\n",
+        );
+
+        let outcome = generate(
+            &mut store,
+            root,
+            &source,
+            &["child_1"],
+            "idem:rollback:se:1",
+        );
+
+        assert!(
+            outcome.eligibility.allowed,
+            "reason: {:?}",
+            outcome.eligibility.reason
+        );
+        assert!(outcome.manual_repair.is_none());
+        let rollback_id = outcome.changeset_id.expect("rollback changeset generated");
+
+        let rollback = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                Ok(uow.ledger().latest(&rollback_id)?.unwrap())
+            })
+            .unwrap();
+        let materialized = rollback.children[0]
+            .materialized_operation
+            .as_ref()
+            .expect("rollback child is materialized");
+        assert_eq!(
+            materialized.operation,
+            ChangesetOperationKind::SectionEdit,
+            "the selected-preimage restore is itself a section edit"
+        );
+        assert_eq!(
+            materialized.target_snapshot.payload_text,
+            "# Doc\n\nintro\n\n## Alpha\n\nALPHA CONCURRENT EDIT\n\n## Beta\n\nbeta body\n",
+            "Beta is restored to its selected preimage; the unrelated concurrent Alpha edit \
+             survives untouched"
+        );
+    }
+
+    #[test]
+    fn section_edit_rollback_is_unavailable_when_the_targeted_section_no_longer_resolves() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let base_rev = write_doc(root, "rollback-section-drift", SECTION_EDIT_DOC);
+        let mut store = temp_store(root);
+        let source = ChangesetId::new("changeset_se_drift_1").unwrap();
+        let author = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let doc = existing_doc("rollback-section-drift", &base_rev);
+        let preimage = source_preimage_record(root, &source, "child_1", doc.clone());
+        let beta_hash = blob_oid(SECTION_EDIT_BETA_SECTION.as_bytes());
+        let child = {
+            let root = root.to_path_buf();
+            let doc = doc.clone();
+            let source = source.clone();
+            move || {
+                section_edit_child_input(
+                    &root,
+                    &source,
+                    "child_1",
+                    doc.clone(),
+                    &["Beta"],
+                    &beta_hash,
+                    SECTION_EDIT_BETA_NEW,
+                )
+            }
+        };
+        seed_applied_source(
+            &mut store,
+            &source,
+            &author,
+            &reviewer,
+            child,
+            Some(preimage),
+        );
+
+        // Beta was edited FURTHER since the forward apply — the rollback's
+        // re-resolve (expecting exactly the forward-apply's own new content)
+        // no longer finds a match.
+        write_doc(
+            root,
+            "rollback-section-drift",
+            "# Doc\n\nintro\n\n## Alpha\n\nalpha body\n\n## Beta\n\nBETA EDITED AGAIN\n",
+        );
+
+        let outcome = generate(
+            &mut store,
+            root,
+            &source,
+            &["child_1"],
+            "idem:rollback:se:drift:1",
+        );
+
+        assert!(!outcome.eligibility.allowed);
+        assert!(
+            outcome
+                .eligibility
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("rollback_unavailable")
+                    && reason.contains("no longer resolves")),
+            "{:?}",
+            outcome.eligibility.reason
+        );
+        assert!(outcome.manual_repair.is_some());
+    }
+
+    #[test]
+    fn section_edit_rollback_is_unavailable_without_a_captured_selected_preimage() {
+        // A source whose materialized operation carries no `section_edit`
+        // payload (e.g. an applied record from before this feature existed):
+        // the WHOLE-document preimage alone is not enough for a section-edit
+        // inverse, which restores the SELECTED preimage, never the whole one.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let base_rev = write_doc(root, "rollback-section-np", SECTION_EDIT_DOC);
+        let mut store = temp_store(root);
+        let source = ChangesetId::new("changeset_se_np_1").unwrap();
+        let author = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let doc = existing_doc("rollback-section-np", &base_rev);
+        let preimage = source_preimage_record(root, &source, "child_1", doc.clone());
+        let child = {
+            let doc = doc.clone();
+            move || child_input("child_1", ChangesetOperationKind::SectionEdit, doc.clone())
+        };
+        seed_applied_source(
+            &mut store,
+            &source,
+            &author,
+            &reviewer,
+            child,
+            Some(preimage),
+        );
+
+        let outcome = generate(
+            &mut store,
+            root,
+            &source,
+            &["child_1"],
+            "idem:rollback:se:np:1",
+        );
+
+        assert!(!outcome.eligibility.allowed);
+        assert!(
+            outcome.eligibility.reason.as_deref().is_some_and(|reason| {
+                reason.contains("rollback_unavailable") && reason.contains("preimage")
+            }),
+            "the reason names the missing preimage: {:?}",
+            outcome.eligibility.reason
+        );
+        assert!(outcome.manual_repair.is_some());
+    }
+
     #[test]
     fn body_edit_rolls_back_by_restoring_the_source_preimage() {
         let dir = tempfile::tempdir().unwrap();
@@ -1130,6 +1483,7 @@ mod tests {
                 body: String::new(),
                 frontmatter: None,
                 new_stem: Some("rollback-new-name".to_string()),
+                section_selector: None,
             },
         };
         let forward_materialized = MaterializedProposalOperation::materialize_rename(
@@ -1258,6 +1612,7 @@ mod tests {
                 body: String::new(),
                 frontmatter: None,
                 new_stem: Some("rollback-lineage-b".to_string()),
+                section_selector: None,
             },
         };
         let materialized_c1 =
@@ -1307,6 +1662,7 @@ mod tests {
                 body: String::new(),
                 frontmatter: None,
                 new_stem: Some("rollback-lineage-d".to_string()),
+                section_selector: None,
             },
         };
         let materialized_c2 =
@@ -1357,6 +1713,7 @@ mod tests {
                 body: String::new(),
                 frontmatter: None,
                 new_stem: Some("rollback-lineage-b".to_string()),
+                section_selector: None,
             },
         };
         let materialized_c3 =

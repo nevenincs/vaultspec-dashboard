@@ -39,6 +39,8 @@ use super::model::{ActorRef, ChangesetId, DocumentRef, RevisionToken};
 use super::modes::scope_id_for_worktree;
 use super::operations::ReviewDiffHunk;
 use super::policy::{RiskClass, operation_risk};
+use super::sections::resolve_section;
+use super::snapshots::SnapshotReader;
 
 /// The bounded corpus of candidate sibling proposals a conflict scan reads for overlap
 /// detection (resource-bounds: a hard cap at the call site). A store past this is scanned
@@ -87,6 +89,13 @@ pub enum ConflictKind {
     /// land at most ONE of them — surfaced proactively here rather than left to a bare
     /// apply-time refusal.
     CreateDocumentPathCollision,
+    /// A `SectionEdit` child's recorded selector no longer resolves against the
+    /// current worktree body — the FINER diagnostic (section-scoped-operations ADR)
+    /// for the specific case where the out-of-band edit that staled the base landed
+    /// INSIDE the targeted section. Never new leniency: any other base drift still
+    /// reports the generic [`Self::StaleWholeDocumentDraft`], and apply refuses
+    /// either way.
+    SectionSelectorUnresolved,
 }
 
 impl ConflictKind {
@@ -101,6 +110,7 @@ impl ConflictKind {
             Self::PolicyConflict => 4,
             Self::RenameTargetCollision => 5,
             Self::CreateDocumentPathCollision => 6,
+            Self::SectionSelectorUnresolved => 7,
         }
     }
 }
@@ -199,7 +209,7 @@ pub fn detect_conflicts(
     let mut findings = Vec::new();
 
     for child in &changeset.children {
-        detect_child_base_and_anchor(&resolver, child, &mut findings);
+        detect_child_base_and_anchor(worktree_root, &resolver, child, &mut findings);
         detect_child_policy_conflict(
             worktree_root,
             changeset,
@@ -230,6 +240,7 @@ pub fn detect_conflicts(
 /// vanished identity yields only an anchor finding (there is nothing left to base
 /// against).
 fn detect_child_base_and_anchor(
+    worktree_root: &Path,
     resolver: &DocumentResolver,
     child: &ChangesetChildOperationRecord,
     findings: &mut Vec<ConflictFinding>,
@@ -299,23 +310,11 @@ fn detect_child_base_and_anchor(
     }
 
     if current_revision != recorded_base {
-        let (kind, reason) = if is_whole_document_replace(child) {
-            (
-                ConflictKind::StaleWholeDocumentDraft,
-                "whole-document draft base is behind the current worktree revision; the \
-                 draft must be regenerated or rebased against the current document",
-            )
-        } else {
-            (
-                ConflictKind::StaleBaseRevision,
-                "target base revision is behind the current worktree revision (an \
-                 out-of-band edit landed since the proposal was drafted)",
-            )
-        };
+        let (kind, reason) = staleness_finding(worktree_root, child, &current_ref);
         findings.push(ConflictFinding {
             child_key: child.child_key.clone(),
             kind,
-            reason: reason.to_string(),
+            reason,
             document: child.target.document.clone(),
             reviewed_base_revision: Some(recorded_base.clone()),
             current_revision: Some(current_revision.clone()),
@@ -326,6 +325,59 @@ fn detect_child_base_and_anchor(
             lease_holder: None,
         });
     }
+}
+
+/// Classify a whole-document-scale staleness finding for `child` (whose base
+/// revision no longer matches the current worktree). A `SectionEdit` child
+/// gets the FINER `SectionSelectorUnresolved` diagnostic when its OWN targeted
+/// section is what changed — re-resolving its recorded selector against the
+/// CURRENT worktree body fails. Any other drift (the section still resolves
+/// fine; the base moved elsewhere in the document) still reports the generic
+/// `StaleWholeDocumentDraft` — the ADR's no-section-local-leniency posture:
+/// any base drift still blocks apply, this only sharpens WHY. A current body
+/// that cannot even be read falls back to the generic finding too (honest:
+/// there is nothing here to confirm resolution failed specifically).
+fn staleness_finding(
+    worktree_root: &Path,
+    child: &ChangesetChildOperationRecord,
+    current_ref: &DocumentRef,
+) -> (ConflictKind, String) {
+    if !is_whole_document_replace(child) {
+        return (
+            ConflictKind::StaleBaseRevision,
+            "target base revision is behind the current worktree revision (an out-of-band \
+             edit landed since the proposal was drafted)"
+                .to_string(),
+        );
+    }
+    if child.operation == ChangesetOperationKind::SectionEdit
+        && let Some(selector) = child
+            .materialized_operation
+            .as_ref()
+            .and_then(|operation| operation.section_edit.as_ref())
+            .map(|section_edit| &section_edit.selector)
+    {
+        let resolution = SnapshotReader::for_worktree(worktree_root)
+            .capture_existing(current_ref)
+            .ok()
+            .map(|snapshot| resolve_section(&snapshot.text, selector));
+        if let Some(Err(resolve_err)) = resolution {
+            return (
+                ConflictKind::SectionSelectorUnresolved,
+                format!(
+                    "the section this draft targets (`{}`) no longer resolves against the \
+                     current document: {resolve_err}",
+                    selector.heading_path.join(" > ")
+                ),
+            );
+        }
+    }
+    (
+        ConflictKind::StaleWholeDocumentDraft,
+        "whole-document draft base is behind the current worktree revision; the draft must \
+         be regenerated or rebased against the current document"
+            .to_string(),
+    )
 }
 
 /// A lease-protected collision: the child does collision-prone (destructive or
@@ -578,16 +630,19 @@ fn child_hunks(child: &ChangesetChildOperationRecord) -> Option<&[ReviewDiffHunk
     (!hunks.is_empty()).then_some(hunks)
 }
 
-/// Whether a child is a whole-document-shaped draft: `replace_body` or (W02.P03)
-/// `edit_frontmatter` — both materialize a whole-document preview (`operations.rs`
+/// Whether a child is a whole-document-shaped draft: `replace_body`, (W02.P03)
+/// `edit_frontmatter`, or (section-scoped-operations ADR) `section_edit` — all
+/// three materialize a whole-document preview (`operations.rs`
 /// `finish_materialization`), so a present materialization is the signal either
-/// way. A stale base therefore reports `StaleWholeDocumentDraft` for a frontmatter
-/// edit exactly as it does for a body replace, never the generic partial-base
-/// finding, and the pair participates in cross-proposal hunk-overlap detection.
+/// way. A stale base therefore reports `StaleWholeDocumentDraft` for these
+/// exactly as it does for a body replace, never the generic partial-base
+/// finding, and the set participates in cross-proposal hunk-overlap detection.
 fn is_whole_document_replace(child: &ChangesetChildOperationRecord) -> bool {
     matches!(
         child.operation,
-        ChangesetOperationKind::ReplaceBody | ChangesetOperationKind::EditFrontmatter
+        ChangesetOperationKind::ReplaceBody
+            | ChangesetOperationKind::EditFrontmatter
+            | ChangesetOperationKind::SectionEdit
     ) && child.materialized_operation.is_some()
 }
 
@@ -725,6 +780,7 @@ mod tests {
                 body: new_body.to_string(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(
@@ -782,6 +838,7 @@ mod tests {
                     related: None,
                 }),
                 new_stem: None,
+                section_selector: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
@@ -835,9 +892,90 @@ mod tests {
                 body: String::new(),
                 frontmatter: None,
                 new_stem: Some(new_stem.to_string()),
+                section_selector: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_rename(
+            changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        ChangesetChildOperationInput::from_materialized(
+            materialized,
+            format!("material:{child_key}"),
+            format!("validation:{child_key}"),
+        )
+    }
+
+    /// A materialized `section_edit` child (section-scoped-operations ADR)
+    /// targeting `heading_path` in `stem`'s CURRENT worktree body, splicing in
+    /// `new_content`. Mirrors `materialized_child` so a section edit exercises
+    /// the SAME whole-document-relevance conflict path, plus the finer
+    /// selector-resolution check.
+    fn materialized_section_edit_child(
+        root: &Path,
+        changeset_id: &ChangesetId,
+        stem: &str,
+        child_key: &str,
+        heading_path: &[&str],
+        new_content: &str,
+    ) -> ChangesetChildOperationInput {
+        let document = resolve(root, stem);
+        let base_snapshot = SnapshotReader::for_worktree(root)
+            .require_current_base(&document)
+            .unwrap();
+        let preimage = SnapshotReader::for_worktree(root)
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: format!("preimage:{}:{child_key}", changeset_id.as_str()),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: child_key.to_string(),
+                document: document.clone(),
+                captured_at_ms: 100,
+            })
+            .unwrap();
+        let revision = existing_base(&document);
+        let resolved = crate::authoring::sections::resolve_section(
+            &base_snapshot.text,
+            &crate::authoring::sections::SectionSelector {
+                heading_path: heading_path.iter().map(|s| s.to_string()).collect(),
+                range_hint: None,
+                expected_content_hash: String::new(),
+            },
+        );
+        // The probe selector above always mismatches its bogus empty-string hash;
+        // extract the OBSERVED hash from the typed error to build the real selector,
+        // rather than duplicating the resolver's own section-boundary logic here.
+        let expected_content_hash = match resolved.unwrap_err() {
+            crate::authoring::sections::SectionResolveError::ContentHashMismatch {
+                observed,
+                ..
+            } => observed,
+            other => panic!("expected a content-hash mismatch probe, got {other:?}"),
+        };
+        let selector = crate::authoring::sections::SectionSelector {
+            heading_path: heading_path.iter().map(|s| s.to_string()).collect(),
+            range_hint: None,
+            expected_content_hash,
+        };
+        let draft = ChangesetChildOperationDraft {
+            child_key: child_key.to_string(),
+            operation: ChangesetOperationKind::SectionEdit,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(revision.clone()),
+                current_revision: Some(revision),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::SectionScoped,
+                body: new_content.to_string(),
+                frontmatter: None,
+                new_stem: None,
+                section_selector: Some(selector),
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_section_edit(
             changeset_id,
             draft,
             &base_snapshot,
@@ -1023,6 +1161,100 @@ mod tests {
             "a stale frontmatter draft reports distinctly from a partial stale base"
         );
         assert_eq!(finding.child_key, "child_1");
+    }
+
+    #[test]
+    fn section_edit_stale_elsewhere_in_the_document_reports_the_generic_whole_document_finding() {
+        // The ADR's no-section-local-leniency posture: an out-of-band edit that
+        // lands OUTSIDE the targeted section still refuses apply (the base
+        // moved), but reports the SAME generic `StaleWholeDocumentDraft` a
+        // `replace_body`/`edit_frontmatter` draft would — never new leniency.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/section-edit-plan.md",
+            "# Doc\n\nintro\n\n## Alpha\n\nalpha body\n\n## Beta\n\nbeta body\n",
+        );
+        let child = materialized_section_edit_child(
+            root,
+            &ChangesetId::new("changeset:section-edit-elsewhere").unwrap(),
+            "section-edit-plan",
+            "child_1",
+            &["Beta"],
+            "## Beta\n\nBETA REWRITTEN\n",
+        );
+        let cs = changeset(
+            "changeset:section-edit-elsewhere",
+            actor("agent:author"),
+            ChangesetStatus::Proposed,
+            vec![child],
+        );
+
+        // The out-of-band edit lands in Alpha — a DIFFERENT section from the
+        // one this draft targets (Beta).
+        write_doc(
+            root,
+            ".vault/plan/section-edit-plan.md",
+            "# Doc\n\nintro\n\n## Alpha\n\nALPHA EDITED ELSEWHERE\n\n## Beta\n\nbeta body\n",
+        );
+
+        let report = detect_conflicts(root, &cs, &[], &[], NOW_MS);
+
+        assert!(report.has_conflict());
+        assert_eq!(report.findings.len(), 1, "{report:?}");
+        let finding = &report.findings[0];
+        assert_eq!(
+            finding.kind,
+            ConflictKind::StaleWholeDocumentDraft,
+            "the targeted section (Beta) still resolves fine; the generic finding applies"
+        );
+        assert_eq!(finding.child_key, "child_1");
+    }
+
+    #[test]
+    fn section_edit_stale_inside_the_targeted_section_reports_the_finer_selector_finding() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/section-edit-targeted-plan.md",
+            "# Doc\n\nintro\n\n## Alpha\n\nalpha body\n\n## Beta\n\nbeta body\n",
+        );
+        let child = materialized_section_edit_child(
+            root,
+            &ChangesetId::new("changeset:section-edit-targeted").unwrap(),
+            "section-edit-targeted-plan",
+            "child_1",
+            &["Beta"],
+            "## Beta\n\nBETA REWRITTEN\n",
+        );
+        let cs = changeset(
+            "changeset:section-edit-targeted",
+            actor("agent:author"),
+            ChangesetStatus::Proposed,
+            vec![child],
+        );
+
+        // The out-of-band edit lands INSIDE the targeted Beta section itself.
+        write_doc(
+            root,
+            ".vault/plan/section-edit-targeted-plan.md",
+            "# Doc\n\nintro\n\n## Alpha\n\nalpha body\n\n## Beta\n\nBETA EDITED OUT OF BAND\n",
+        );
+
+        let report = detect_conflicts(root, &cs, &[], &[], NOW_MS);
+
+        assert!(report.has_conflict());
+        assert_eq!(report.findings.len(), 1, "{report:?}");
+        let finding = &report.findings[0];
+        assert_eq!(
+            finding.kind,
+            ConflictKind::SectionSelectorUnresolved,
+            "the targeted section itself changed; the finer diagnostic applies: {report:?}"
+        );
+        assert_eq!(finding.child_key, "child_1");
+        assert!(finding.reason.contains("Beta"), "{}", finding.reason);
     }
 
     #[test]
@@ -1400,6 +1632,7 @@ mod tests {
                 body: "preview\n".to_string(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_create_document(

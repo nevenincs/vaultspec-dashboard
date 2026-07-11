@@ -1390,6 +1390,7 @@ mod tests {
                     body: "# Tool alias\n".to_string(),
                     frontmatter: None,
                     new_stem: None,
+                    section_selector: None,
                 },
             }],
         };

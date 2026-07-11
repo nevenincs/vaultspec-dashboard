@@ -940,6 +940,7 @@ fn build_draft(
                     body: body.clone(),
                     frontmatter: None,
                     new_stem: None,
+                    section_selector: None,
                 },
             }
         }
@@ -959,6 +960,7 @@ fn build_draft(
                     body: String::new(),
                     frontmatter: Some(fields.clone()),
                     new_stem: None,
+                    section_selector: None,
                 },
             }
         }
@@ -977,6 +979,7 @@ fn build_draft(
                     body: String::new(),
                     frontmatter: None,
                     new_stem: Some(new_stem.clone()),
+                    section_selector: None,
                 },
             }
         }
@@ -1002,6 +1005,7 @@ fn build_draft(
                     body: String::new(),
                     frontmatter: None,
                     new_stem: None,
+                    section_selector: None,
                 },
             }
         }

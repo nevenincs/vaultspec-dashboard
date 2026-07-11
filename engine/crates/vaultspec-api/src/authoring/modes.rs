@@ -873,6 +873,7 @@ mod tests {
                 body: "---\ntags:\n  - '#plan'\n---\n\nnew body\n".to_string(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         };
         let operation = MaterializedProposalOperation::materialize_replace_body(

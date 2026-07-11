@@ -1618,6 +1618,7 @@ mod tests {
                 body: new_body.to_string(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         };
         let preimage = SnapshotReader::for_worktree(root)

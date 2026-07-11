@@ -34,6 +34,7 @@ pub(crate) mod response;
 pub(crate) mod review;
 pub(crate) mod rollback;
 pub(crate) mod routes;
+pub(crate) mod sections;
 pub(crate) mod security;
 pub(crate) mod session;
 pub(crate) mod snapshots;

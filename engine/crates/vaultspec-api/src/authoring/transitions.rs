@@ -611,6 +611,7 @@ pub fn create_rollback_eligibility(
         ChangesetOperationKind::ReplaceBody
             | ChangesetOperationKind::EditFrontmatter
             | ChangesetOperationKind::Rename
+            | ChangesetOperationKind::SectionEdit
     ) {
         return ActionEligibility::denied(
             CommandKind::CreateRollback,
