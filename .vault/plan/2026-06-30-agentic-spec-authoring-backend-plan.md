@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#agentic-spec-authoring-backend'
 date: '2026-06-30'
-modified: '2026-07-10'
+modified: '2026-07-11'
 tier: L4
 related:
   - '[[2026-07-02-agentic-spec-authoring-backend-reference]]'
@@ -482,9 +482,9 @@ Provide explicit user-visible flows for rebase, supersede, cancel, and replaceme
 Section-scoped proposal operations, conditional on skeleton evidence that agents need sub-document edits. DEFERRED OUT (2026-07-08): Increments 1-5, including the LangGraph agent runtime, produced no consumer needing sub-document edits; V1 materialization is whole-document ReplaceBody only and the paired chunk/selector API is itself deferred (change-format ADR ASA-003). Section-scoped operations are inapplicable in V1. Return trigger: the first agent or editor workflow requiring an exact-resolving sub-document or atomic-hunk edit. The ADR gate comes first: firing that trigger requires amending or superseding the ASA-003 clause in the change-format ADR (which contractually couples section-scoped operations to the deferred chunk/selector API) before S242 is built, never contradicting the accepted ADR silently. Re-confirmed DEFERRED (2026-07-10 architectural gate): the ledgered-edit-migration campaign wired every product edit — save, frontmatter, rename, create, relate/link — entirely through whole-document shapes (relate/link as a whole-frontmatter read-modify-write), so no sub-document-edit consumer has appeared; 247/250 is the honest reachable target for V1.
 
 - [x] `W13.P45.S241` - Ground Section-scoped proposal operations requirements into the phase checklist, and record whether skeleton evidence warrants this work; `.vault/adr/`.
-- [ ] `W13.P45.S242` - Implement section-scoped and atomic-hunk operation payloads, selectors, and selected preimages, gated on skeleton evidence that agents need sub-document edits; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
-- [ ] `W13.P45.S243` - Add tests for atomic hunk operations, selector resolution, selected preimage capture, and invalid range cases; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
-- [ ] `W13.P45.S244` - Run Section-scoped proposal operations code review and record the phase audit; `.vault/audit/`.
+- [x] `W13.P45.S242` - Implement section-scoped and atomic-hunk operation payloads, selectors, and selected preimages, gated on skeleton evidence that agents need sub-document edits; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
+- [x] `W13.P45.S243` - Add tests for atomic hunk operations, selector resolution, selected preimage capture, and invalid range cases; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
+- [x] `W13.P45.S244` - Run Section-scoped proposal operations code review and record the phase audit; `.vault/audit/`.
 - [x] `W13.P45.S245` - Verify section-scoped edits are reviewable and safe, or record that skeleton evidence did not warrant this work and the phase defers out of the campaign; `engine/crates/vaultspec-api/src/authoring/operations.rs`.
 
 ### Phase `W13.P20` - Authorization engine and scope guards
