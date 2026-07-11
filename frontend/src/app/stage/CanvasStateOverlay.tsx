@@ -54,7 +54,13 @@ export type CanvasState =
   // nothing can render underneath, so unlike the degraded banner it is not over a
   // live field.
   | { kind: "gpu-unavailable" }
-  | { kind: "context-lost" };
+  | { kind: "context-lost" }
+  // A re-query is in flight behind the HELD slice (`keepPreviousData` — a
+  // filter/lens/scope change re-querying while the previous field stays live).
+  // Non-blocking corner banner, lowest precedence: any designed annotation
+  // (degraded/truncated/unknown-tier) outranks it (universal-data-loading ADR
+  // D2 — the held field is never blanked).
+  | { kind: "refreshing" };
 
 export interface CanvasStateInputs {
   /** Null until a worktree scope is resolved (cold start / no vault-bearing wt). */
@@ -142,6 +148,9 @@ export function resolveCanvasState(inputs: CanvasStateInputs): CanvasState {
       reasons: availability.reasons,
     };
   }
+  // Lowest precedence: a held-slice re-query surfaces as the non-blocking
+  // refresh banner only when no designed annotation outranks it.
+  if (availability.refreshing) return { kind: "refreshing" };
   return { kind: "ok" };
 }
 
@@ -309,6 +318,14 @@ export function CanvasStateOverlay({ state }: { state: CanvasState }) {
             </span>{" "}
             nodes — refine your view with a filter
           </span>
+        </CornerBanner>
+      );
+    // Refreshing — a re-query behind the live held field. A muted corner
+    // banner; the canvas stays fully interactive and is never blanked.
+    case "refreshing":
+      return (
+        <CornerBanner testid="refreshing" tone="muted">
+          <span>Refreshing view…</span>
         </CornerBanner>
       );
     case "unknown-tier":

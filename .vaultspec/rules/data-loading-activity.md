@@ -1,0 +1,10 @@
+---
+name: data-loading-activity
+---
+
+# Data loading: mount-gated fetches, one activity plane
+
+- **Mount-gating is the canonical visibility mechanism.** A heavy data hook (a graph slice, an SSE subscription, a listing drain, a timeline read) lives ONLY under the component tree that renders its data; a surface that is not rendered fetches nothing. Never gate a query on `document.visibilityState`-driven `enabled` — the refresh sweep (`refreshAllEngineQueries`, `refetchType: "active"`) skips mounted-but-disabled observers, so a visibility-disabled query silently goes stale. The one sanctioned `enabled:false`-while-mounted surface is the hidden-tab-paused backend-signal stream (universal-data-loading ADR D4), which re-snapshots itself on resume; any new enabled-gated query must make the same argument at its definition or refetch on its own re-enable.
+- **Loading truth is the one data-activity plane.** `useDataActivityView` (`frontend/src/stores/server/dataActivity.ts`) is the sole aggregate of "data is moving": TanStack fetch/mutation counts (stream keys excluded), the drain-progress slice, nothing else. Chrome renders it through the one `DataActivityIndicator` mount per shell branch; no surface re-derives activity from transport events, and degradation stays read from `tiers`, never from this plane.
+- **Multi-page cursor walks report progress.** Any wire-client walk that drains a cursor across pages inside one queryFn (`vaultTree`, `codeFiles`, and any future listing) reports per-page progress through the drain-progress seam (`reportDrainProgress`/`settleDrainProgress`) and settles its entry on success AND error. A silent multi-page drain is a defect: the largest payloads must be visible to the activity plane.
+- **A progressive partial listing is honest.** A listing rendered ahead of its completed drain carries `complete: false`, and every consumer that client-narrows it surfaces the partial state until the flag flips; the complete-set law (filtering rule) binds at the moment a narrow applies to the finished listing. Never render a partial prefix as if it were the whole set.

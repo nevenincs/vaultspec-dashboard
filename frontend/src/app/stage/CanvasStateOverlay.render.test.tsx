@@ -28,6 +28,7 @@ function availabilityWith(
 ): GraphSliceAvailability {
   return {
     loading: false,
+    refreshing: false,
     degraded: degradedTiers.length > 0,
     degradedTiers,
     reasons,
@@ -74,6 +75,56 @@ describe("resolveCanvasState (graph stage surfaces only edge tiers)", () => {
     expect(state.kind).toBe("degraded");
     if (state.kind !== "degraded") throw new Error("expected degraded");
     expect(state.tiers).toEqual(["temporal"]);
+  });
+});
+
+describe("resolveCanvasState — held-slice refresh (universal-data-loading ADR D2)", () => {
+  const base = {
+    scope: "wt-1",
+    granularity: "document" as const,
+    stageSurface: "normal" as const,
+    slice: liveSlice,
+    queriedScope: "wt-1",
+    renderCapability: { status: "ok" as const, recoverable: false },
+  };
+
+  it("surfaces a re-query behind a held slice as the non-blocking refresh banner", () => {
+    const state = resolveCanvasState({
+      ...base,
+      availability: { ...availabilityWith([]), refreshing: true },
+    });
+    expect(state.kind).toBe("refreshing");
+  });
+
+  it("is outranked by every designed annotation (degraded wins)", () => {
+    const state = resolveCanvasState({
+      ...base,
+      availability: {
+        ...availabilityWith(["temporal"], { temporal: "index not built" }),
+        refreshing: true,
+      },
+    });
+    expect(state.kind).toBe("degraded");
+  });
+
+  it("is outranked by truncation on the held slice", () => {
+    const truncated = {
+      ...liveSlice,
+      truncated: { total_nodes: 9000, returned_nodes: 5000, reason: "node ceiling" },
+    } as unknown as GraphSlice;
+    const state = resolveCanvasState({
+      ...base,
+      slice: truncated,
+      availability: { ...availabilityWith([]), refreshing: true },
+    });
+    expect(state.kind).toBe("truncated");
+  });
+
+  it("renders as a corner banner that never blanks the field", () => {
+    const { container } = render(<CanvasStateOverlay state={{ kind: "refreshing" }} />);
+    const banner = container.querySelector('[data-canvas-state="refreshing"]');
+    expect(banner).not.toBeNull();
+    expect(banner?.textContent).toContain("Refreshing view");
   });
 });
 
