@@ -93,6 +93,11 @@ pub enum OperationError {
     },
     #[error("operation `{child_key}` section edit requires a selector payload")]
     MissingSectionSelector { child_key: String },
+    #[error(
+        "operation `{child_key}` must not carry a section selector (field-level payload only \
+         for section_edit)"
+    )]
+    UnexpectedSectionSelector { child_key: String },
     #[error("operation `{child_key}` section selector: {source}")]
     SectionSelectorUnresolved {
         child_key: String,
@@ -573,6 +578,9 @@ fn validate_replace_body_draft(
             mode: draft.draft.mode,
         });
     }
+    if draft.draft.section_selector.is_some() {
+        return Err(OperationError::UnexpectedSectionSelector { child_key });
+    }
     validate_target_and_preimage(changeset_id, child_key, draft, base_snapshot, preimage)
 }
 
@@ -605,6 +613,9 @@ fn validate_edit_frontmatter_draft<'a>(
     }
     if !draft.draft.body.is_empty() {
         return Err(OperationError::UnexpectedBodyPayload { child_key });
+    }
+    if draft.draft.section_selector.is_some() {
+        return Err(OperationError::UnexpectedSectionSelector { child_key });
     }
     let Some(fields) = draft.draft.frontmatter.as_ref() else {
         return Err(OperationError::EmptyFrontmatterPayload { child_key });
@@ -646,6 +657,9 @@ fn validate_rename_draft<'a>(
     }
     if !draft.draft.body.is_empty() {
         return Err(OperationError::UnexpectedBodyPayload { child_key });
+    }
+    if draft.draft.section_selector.is_some() {
+        return Err(OperationError::UnexpectedSectionSelector { child_key });
     }
     let Some(new_stem) = draft.draft.new_stem.as_deref() else {
         return Err(OperationError::MissingRenameStem { child_key });
@@ -715,6 +729,9 @@ fn validate_create_document_draft(
             child_key,
             mode: draft.draft.mode,
         });
+    }
+    if draft.draft.section_selector.is_some() {
+        return Err(OperationError::UnexpectedSectionSelector { child_key });
     }
     let DocumentRef::ProvisionalCreate {
         doc_type,
@@ -1778,6 +1795,41 @@ mod tests {
     }
 
     #[test]
+    fn replace_body_rejects_a_stray_section_selector() {
+        // R1: a `section_selector` is `section_edit`'s own field-level payload —
+        // an accepted-but-ignored selector on a whole-document `replace_body`
+        // draft must be refused, never silently dropped.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", "base\n");
+        let snapshot = base_snapshot(root);
+        let mut draft = draft_for(
+            snapshot.document.clone(),
+            ChangesetOperationKind::ReplaceBody,
+            DraftMode::WholeDocument,
+            "after\n",
+        );
+        draft.draft.section_selector = Some(SectionSelector {
+            heading_path: vec!["Stray".to_string()],
+            range_hint: None,
+            expected_content_hash: "irrelevant".to_string(),
+        });
+
+        let preimage = preimage_record(root);
+        let err = MaterializedProposalOperation::materialize_replace_body(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::UnexpectedSectionSelector { .. }
+        ));
+    }
+
+    #[test]
     fn stale_base_snapshot_is_rejected_before_preview_materialization() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -2292,6 +2344,44 @@ mod tests {
     }
 
     #[test]
+    fn edit_frontmatter_rejects_a_stray_section_selector() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(
+            root,
+            ".vault/plan/operation-plan.md",
+            "---\ntags:\n  - '#plan'\n---\n\nbody\n",
+        );
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let mut draft = frontmatter_draft_for(
+            snapshot.document.clone(),
+            FrontmatterEditFields {
+                date: Some("2026-02-06".to_string()),
+                tags: None,
+                related: None,
+            },
+        );
+        draft.draft.section_selector = Some(SectionSelector {
+            heading_path: vec!["Stray".to_string()],
+            range_hint: None,
+            expected_content_hash: "irrelevant".to_string(),
+        });
+
+        let err = MaterializedProposalOperation::materialize_edit_frontmatter(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::UnexpectedSectionSelector { .. }
+        ));
+    }
+
+    #[test]
     fn section_and_destructive_kinds_are_deferred_from_edit_frontmatter_materialization() {
         // EditFrontmatter's own materializer accepts only its own kind, exactly as
         // materialize_replace_body accepts only ReplaceBody (`W03.P13` subset).
@@ -2419,6 +2509,33 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, OperationError::UnexpectedBodyPayload { .. }));
+    }
+
+    #[test]
+    fn rename_rejects_a_stray_section_selector() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_doc(root, ".vault/plan/operation-plan.md", "body\n");
+        let snapshot = base_snapshot(root);
+        let preimage = preimage_record(root);
+        let mut draft = rename_draft_for(snapshot.document.clone(), "operation-plan-renamed");
+        draft.draft.section_selector = Some(SectionSelector {
+            heading_path: vec!["Stray".to_string()],
+            range_hint: None,
+            expected_content_hash: "irrelevant".to_string(),
+        });
+
+        let err = MaterializedProposalOperation::materialize_rename(
+            &changeset_id(),
+            draft,
+            &snapshot,
+            &preimage,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::UnexpectedSectionSelector { .. }
+        ));
     }
 
     #[test]
@@ -2766,6 +2883,30 @@ mod tests {
         assert!(matches!(
             err,
             OperationError::UnsupportedCreateTarget { .. }
+        ));
+    }
+
+    #[test]
+    fn create_document_rejects_a_stray_section_selector() {
+        let mut draft = create_draft_for(
+            provisional_document("plan", "operation-plan-feature", "A New Plan"),
+            "preview body\n",
+        );
+        draft.draft.section_selector = Some(SectionSelector {
+            heading_path: vec!["Stray".to_string()],
+            range_hint: None,
+            expected_content_hash: "irrelevant".to_string(),
+        });
+
+        let err = MaterializedProposalOperation::materialize_create_document(
+            &changeset_id(),
+            draft,
+            CREATE_FIXED_CREATED_AT_MS,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            OperationError::UnexpectedSectionSelector { .. }
         ));
     }
 

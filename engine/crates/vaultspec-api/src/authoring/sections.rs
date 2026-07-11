@@ -171,20 +171,35 @@ struct RawHeading {
 /// 1-6 `#` followed by a space/tab or end of line) in `body`, skipping lines
 /// inside fenced code blocks (``` or ~~~) so a commented-out heading-looking
 /// line never becomes a false anchor. Bounded at [`MAX_HEADING_SECTIONS`].
+///
+/// Fence tracking is DELIMITER-MATCHED, not "any marker toggles": the OPENING
+/// marker (`` ` `` or `~`) and its run length are remembered, and only a
+/// closing line of the SAME marker with a run length AT LEAST as long closes
+/// it (CommonMark's own fenced-code-block rule). A stray unrelated-marker
+/// line inside the fence (e.g. a `~~~` line inside a ```` ``` ````-fenced
+/// block) never closes it early — an early close would expose the fence's
+/// own interior lines as spurious heading candidates.
 fn parse_heading_sections(body: &str) -> Vec<HeadingSection> {
     let mut raw = Vec::new();
-    let mut in_fence = false;
+    let mut fence: Option<(char, usize)> = None;
     let mut offset = 0usize;
     for line in body.split_inclusive('\n') {
         let line_start = offset;
         offset += line.len();
         let content = line.trim_end_matches(['\n', '\r']);
         let trimmed = content.trim_start();
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            in_fence = !in_fence;
+        if let Some(marker) = fence_marker_run(trimmed) {
+            match fence {
+                None => fence = Some(marker),
+                Some((open_char, open_len)) => {
+                    if marker.0 == open_char && marker.1 >= open_len {
+                        fence = None;
+                    }
+                }
+            }
             continue;
         }
-        if in_fence || raw.len() >= MAX_HEADING_SECTIONS {
+        if fence.is_some() || raw.len() >= MAX_HEADING_SECTIONS {
             continue;
         }
         if let Some((level, text)) = parse_atx_heading_line(content) {
@@ -221,6 +236,19 @@ fn parse_heading_sections(body: &str) -> Vec<HeadingSection> {
         });
     }
     sections
+}
+
+/// The fence delimiter run at the START of `trimmed` — 3-or-more consecutive
+/// `` ` `` or `~` characters — as `(marker_char, run_length)`, or `None` when
+/// the line opens/closes no fence. Shared by the open and close checks in
+/// [`parse_heading_sections`] so the two agree on what counts as a delimiter.
+fn fence_marker_run(trimmed: &str) -> Option<(char, usize)> {
+    let marker = trimmed.chars().next()?;
+    if marker != '`' && marker != '~' {
+        return None;
+    }
+    let run_len = trimmed.chars().take_while(|ch| *ch == marker).count();
+    (run_len >= 3).then_some((marker, run_len))
 }
 
 /// Parse one line as an ATX heading: 1-6 leading `#` characters immediately
@@ -379,5 +407,23 @@ mod tests {
         assert_eq!(resolved.content, "## Real Heading\n\nbody\n");
         let err = resolve_section(doc, &selector(&["not a heading"], "irrelevant")).unwrap_err();
         assert!(matches!(err, SectionResolveError::MissingAnchor { .. }));
+    }
+
+    #[test]
+    fn a_mismatched_delimiter_line_inside_a_fence_never_closes_it_early() {
+        // A ```-fenced block containing an UNRELATED ~~~ line: the fence must
+        // stay open until a MATCHING ``` closing line — a ~~~ line inside it
+        // must never close it early and expose the fence's own interior `#`
+        // line as a spurious heading candidate.
+        let doc = "# Title\n\n```\n~~~\n# fake heading\n```\n\n## Real Heading\n\nbody\n";
+        let hash = blob_oid(b"## Real Heading\n\nbody\n");
+        let resolved = resolve_section(doc, &selector(&["Real Heading"], &hash)).unwrap();
+        assert_eq!(resolved.content, "## Real Heading\n\nbody\n");
+
+        let err = resolve_section(doc, &selector(&["fake heading"], "irrelevant")).unwrap_err();
+        assert!(
+            matches!(err, SectionResolveError::MissingAnchor { .. }),
+            "the fenced interior `#` line is never a heading candidate: {err:?}"
+        );
     }
 }
