@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.3](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.2...v0.1.3) (2026-07-11)
+
+
+### Features
+
+* **authoring:** section-scoped operations (SectionEdit) — implements W13.P45 ([83e6355](https://github.com/nevenincs/vaultspec-dashboard/commit/83e6355387f8d9a5199acd0261b8baa4f694f439))
+
+
+### Bug Fixes
+
+* **authoring:** fence-delimiter tracking + reject stray section_selector (review nits) ([9c11ec2](https://github.com/nevenincs/vaultspec-dashboard/commit/9c11ec27a15e4166e3df93df31dfa032fc8f3ffb))
+
 ## [0.1.2](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.1...v0.1.2) (2026-07-10)
 
 
