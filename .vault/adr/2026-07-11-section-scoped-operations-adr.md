@@ -12,8 +12,6 @@ related:
   - "[[2026-06-30-agentic-spec-authoring-backend-plan]]"
 ---
 
-
-
 # `section-scoped-operations` adr: `Section-scoped operations: selector schema, whole-document materialization, selected-preimage rollback` | (**status:** `accepted`)
 
 ## Problem Statement
