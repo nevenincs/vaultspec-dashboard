@@ -1057,6 +1057,7 @@ mod tests {
                 body: body.to_string(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         }
     }

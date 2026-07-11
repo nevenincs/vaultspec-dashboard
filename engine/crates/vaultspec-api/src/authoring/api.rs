@@ -481,6 +481,14 @@ pub struct DraftMutation {
     /// as `frontmatter`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub new_stem: Option<String>,
+    /// The field-level payload for `SectionEdit` (section-scoped-operations
+    /// ADR): the selector (structural anchor, base-relative range hint,
+    /// expected selected-content hash) the resolver exact-resolves against the
+    /// base body before splicing `body` — the NEW section content, reused
+    /// exactly as `ReplaceBody` reuses `body` for whole-document content —
+    /// into the resolved range. `None`/absent for every other operation kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section_selector: Option<super::sections::SectionSelector>,
 }
 
 /// The `EditFrontmatter` field-level payload: exactly the fields the
@@ -509,6 +517,7 @@ impl FrontmatterEditFields {
 pub enum DraftMode {
     WholeDocument,
     Append,
+    SectionScoped,
 }
 
 /// Wire payload for `POST /authoring/v1/proposals/{changeset_id}/submit`: move a
@@ -1145,6 +1154,7 @@ fn create_proposal_request_fixture() -> CreateProposalRequest {
                     body: "draft body".to_string(),
                     frontmatter: None,
                     new_stem: None,
+                    section_selector: None,
                 },
             },
             ChangesetChildOperationDraft {
@@ -1156,6 +1166,7 @@ fn create_proposal_request_fixture() -> CreateProposalRequest {
                     body: "new document body".to_string(),
                     frontmatter: None,
                     new_stem: None,
+                    section_selector: None,
                 },
             },
         ],

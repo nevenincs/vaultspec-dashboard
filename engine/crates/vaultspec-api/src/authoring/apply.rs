@@ -194,7 +194,8 @@ pub struct ApplyChildReceipt {
 pub(crate) enum ApplyDenialKind {
     /// `ConflictKind::RenameTargetCollision` / `CreateDocumentPathCollision`.
     PathCollision,
-    /// `ConflictKind::StaleBaseRevision` / `StaleWholeDocumentDraft`.
+    /// `ConflictKind::StaleBaseRevision` / `StaleWholeDocumentDraft` /
+    /// `SectionSelectorUnresolved`.
     StaleBase,
     /// The automated-self-approval blocker (`automated_self_approval_blocker`)
     /// refused an automated actor applying its own (or a delegated) proposal.
@@ -212,9 +213,9 @@ fn classify_conflict_kind(kind: super::conflicts::ConflictKind) -> Option<ApplyD
         ConflictKind::RenameTargetCollision | ConflictKind::CreateDocumentPathCollision => {
             Some(ApplyDenialKind::PathCollision)
         }
-        ConflictKind::StaleBaseRevision | ConflictKind::StaleWholeDocumentDraft => {
-            Some(ApplyDenialKind::StaleBase)
-        }
+        ConflictKind::StaleBaseRevision
+        | ConflictKind::StaleWholeDocumentDraft
+        | ConflictKind::SectionSelectorUnresolved => Some(ApplyDenialKind::StaleBase),
         ConflictKind::OverlappingHunks
         | ConflictKind::AnchorDrift
         | ConflictKind::PolicyConflict => None,
@@ -483,13 +484,15 @@ fn preflight_in_uow(
             | ChangesetOperationKind::EditFrontmatter
             | ChangesetOperationKind::Rename
             | ChangesetOperationKind::CreateDocument
+            | ChangesetOperationKind::SectionEdit
     ) {
         return Ok(Ok(Preflight::Denied(
             ActionEligibility::denied(
                 CommandKind::RequestApply,
                 format!(
                     "V1 apply materializes only whole-document body replacement, frontmatter \
-                     edits, rename, and document creation; operation `{:?}` is not yet supported",
+                     edits, rename, document creation, and section-scoped edits; operation \
+                     `{:?}` is not yet supported",
                     child.operation
                 ),
             ),
@@ -1276,7 +1279,11 @@ fn build_write_invocation(
             .map_err(|err| ApplyError::Internal(format!("invocation build failed: {err}")));
     }
     let (capability, args) = match operation {
-        ChangesetOperationKind::ReplaceBody => (
+        // A `SectionEdit` write is whole-document under the hood (section-
+        // scoped-operations ADR): materialize already spliced the new section
+        // content into the base body, so the invocation is IDENTICAL to
+        // `ReplaceBody` — the same `SetBody` stream of the full preview text.
+        ChangesetOperationKind::ReplaceBody | ChangesetOperationKind::SectionEdit => (
             CoreCapability::SetBody,
             WriteArgs {
                 expected_blob_hash: Some(core_base_blob_hash),
@@ -1393,9 +1400,12 @@ fn post_verify_expectation(
     materialized: &super::operations::MaterializedProposalOperation,
 ) -> Result<PostVerifyExpectation> {
     match operation {
-        ChangesetOperationKind::ReplaceBody => Ok(PostVerifyExpectation::ExactBlobHash(
-            materialized.target_snapshot.payload_hash.clone(),
-        )),
+        // A `SectionEdit` write streams the SAME preview bytes `ReplaceBody`
+        // does (see `build_write_invocation`), so the SAME sound blob-hash
+        // proof of landing applies.
+        ChangesetOperationKind::ReplaceBody | ChangesetOperationKind::SectionEdit => Ok(
+            PostVerifyExpectation::ExactBlobHash(materialized.target_snapshot.payload_hash.clone()),
+        ),
         ChangesetOperationKind::EditFrontmatter => {
             let fields = materialized.frontmatter_edit.clone().ok_or_else(|| {
                 ApplyError::Internal(
@@ -1671,6 +1681,7 @@ mod tests {
                 body: NEW_BODY.to_string(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(
@@ -1877,6 +1888,7 @@ mod tests {
                     related: None,
                 }),
                 new_stem: None,
+                section_selector: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
@@ -2126,6 +2138,7 @@ mod tests {
                     related: None,
                 }),
                 new_stem: None,
+                section_selector: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
@@ -2430,6 +2443,7 @@ mod tests {
                 body: String::new(),
                 frontmatter: None,
                 new_stem: Some(LIVE_RENAME_NEW_STEM.to_string()),
+                section_selector: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_rename(
@@ -2638,6 +2652,316 @@ mod tests {
         assert!(fx.root.join(LIVE_RENAME_RENAMED_DOC_PATH).exists());
     }
 
+    // --- section-scoped-operations: SectionEdit against the REAL core -------
+
+    const LIVE_SECTION_EDIT_OLD_STEM: &str = "apply-section-edit-live-demo";
+    const LIVE_SECTION_EDIT_DOC_PATH: &str = ".vault/plan/apply-section-edit-live-demo.md";
+    const LIVE_SECTION_EDIT_BASE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\ndate: '2026-01-01'\n---\n\n# apply live section edit demo\n\n## Alpha\n\nalpha body\n\n## Beta\n\nbeta body\n";
+    const LIVE_SECTION_EDIT_BETA_SECTION: &str = "## Beta\n\nbeta body\n";
+    const LIVE_SECTION_EDIT_NEW_BETA: &str = "## Beta\n\nBETA REWRITTEN LIVE\n";
+
+    /// The `setup_live_rename` sibling for `SectionEdit`: a REAL git +
+    /// vaultspec workspace, an APPROVED single-child `SectionEdit` changeset
+    /// (targeting the `Beta` heading) ready to apply against the genuine
+    /// `vaultspec-core` binary. `SectionEdit`'s write is whole-document under
+    /// the hood — the SAME `SetBody` capability and `ExactBlobHash`
+    /// post-verify `ReplaceBody` uses — so this proves the splice
+    /// materialization survives a REAL core round trip.
+    fn setup_live_section_edit() -> Fx {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        git(&root, &["init", "-b", "main", "."]);
+        let doc_file = root.join(LIVE_SECTION_EDIT_DOC_PATH);
+        std::fs::create_dir_all(doc_file.parent().unwrap()).unwrap();
+        std::fs::write(&doc_file, LIVE_SECTION_EDIT_BASE_BODY).unwrap();
+        scaffold_vaultspec_workspace(&root);
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "apply live section edit fixture"]);
+
+        let mut store = Store::open(&root.join(".vault")).unwrap();
+        let changeset_id = ChangesetId::new("changeset_apply_se_live_1").unwrap();
+        let proposal_id = ProposalId::new("proposal_apply_se_live_1").unwrap();
+        let origin = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let applier = actor("human:applier", ActorKind::Human);
+
+        store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                for (id, kind) in [
+                    ("agent:author", ActorKind::Agent),
+                    ("human:reviewer", ActorKind::Human),
+                    ("human:applier", ActorKind::Human),
+                ] {
+                    uow.actors().put_record(ActorRecordInput::active(
+                        actor(id, kind),
+                        ActorDisplayMetadata::new(id, None),
+                        1,
+                    ))?;
+                }
+                Ok(())
+            })
+            .unwrap();
+
+        let reader = SnapshotReader::for_worktree(root.clone());
+        let seed_doc = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: format!("doc:{LIVE_SECTION_EDIT_OLD_STEM}"),
+            stem: LIVE_SECTION_EDIT_OLD_STEM.to_string(),
+            path: LIVE_SECTION_EDIT_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: RevisionToken::new("blob:seed").unwrap(),
+        };
+        let base_probe = reader.capture_existing(&seed_doc).unwrap();
+        let document = DocumentRef::Existing {
+            scope: "worktree".to_string(),
+            node_id: format!("doc:{LIVE_SECTION_EDIT_OLD_STEM}"),
+            stem: LIVE_SECTION_EDIT_OLD_STEM.to_string(),
+            path: LIVE_SECTION_EDIT_DOC_PATH.to_string(),
+            doc_type: "plan".to_string(),
+            base_revision: base_probe.revision.clone(),
+        };
+        let base_snapshot = reader.capture_existing(&document).unwrap();
+        let preimage = reader
+            .capture_preimage(PreimageCaptureRequest {
+                preimage_id: "preimage_se_live_1".to_string(),
+                changeset_id: changeset_id.as_str().to_string(),
+                operation_id: "child_1".to_string(),
+                document: document.clone(),
+                captured_at_ms: 5,
+            })
+            .unwrap();
+        let selector = crate::authoring::sections::SectionSelector {
+            heading_path: vec!["Beta".to_string()],
+            range_hint: None,
+            expected_content_hash: blob_oid(LIVE_SECTION_EDIT_BETA_SECTION.as_bytes()),
+        };
+        let draft = ChangesetChildOperationDraft {
+            child_key: "child_1".to_string(),
+            operation: ChangesetOperationKind::SectionEdit,
+            target: TargetRevisionFence {
+                document: document.clone(),
+                base_revision: Some(base_probe.revision.clone()),
+                current_revision: Some(base_probe.revision.clone()),
+            },
+            draft: DraftMutation {
+                mode: DraftMode::SectionScoped,
+                body: LIVE_SECTION_EDIT_NEW_BETA.to_string(),
+                frontmatter: None,
+                new_stem: None,
+                section_selector: Some(selector),
+            },
+        };
+        let materialized = MaterializedProposalOperation::materialize_section_edit(
+            &changeset_id,
+            draft,
+            &base_snapshot,
+            &preimage,
+        )
+        .unwrap();
+        let expected_result_blob_hash = materialized.target_snapshot.payload_hash.clone();
+
+        let current_observation =
+            CurrentRevisionObservation::from_snapshot("child_1", &base_snapshot);
+        let validation_record = validate_changeset_material(
+            std::slice::from_ref(&materialized),
+            &[current_observation],
+            &[],
+            6,
+        )
+        .unwrap();
+        assert!(
+            validation_record.approval_ready,
+            "fixture validation must be approval-ready: {:?}",
+            validation_record.status
+        );
+        let validation_digest = validation_record.validation_digest.clone();
+
+        let child_input = ChangesetChildOperationInput::from_materialized(
+            materialized,
+            validation_record.material_digest.clone(),
+            validation_digest.clone(),
+        );
+
+        let reviewed_revision = store
+            .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                let draft_rev = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: None,
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::Draft,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live section edit demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 10,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&draft_rev)?;
+                let needs_review = ChangesetAggregateRecord::new(ChangesetRevisionInput {
+                    changeset_id: changeset_id.clone(),
+                    previous_revision: Some(draft_rev.changeset_revision.clone()),
+                    kind: ChangesetKind::Authoring,
+                    status: ChangesetStatus::NeedsReview,
+                    session_id: Some(SessionId::new("session_1").unwrap()),
+                    actor: origin.clone(),
+                    summary: "apply live section edit demo".to_string(),
+                    children: vec![child_input.clone()],
+                    created_at_ms: 20,
+                })
+                .unwrap();
+                uow.ledger().append_revision(&needs_review)?;
+                uow.validations().store_record(&validation_record)?;
+                Ok(needs_review.changeset_revision)
+            })
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::SubmitForReview, |uow| {
+                Ok(uow.approvals().request_approval(ApprovalRequestInput {
+                    approval_id: ApprovalId::new("approval_apply_se_live_1").unwrap(),
+                    proposal_id: proposal_id.clone(),
+                    changeset_id: changeset_id.clone(),
+                    reviewed: ReviewedTuple {
+                        proposal_revision: reviewed_revision.clone(),
+                        validation_digest: validation_digest.clone(),
+                        policy_version: V1_POLICY_VERSION.to_string(),
+                    },
+                    idempotency_key: "idem:request:se:live:1".to_string(),
+                    created_at_ms: 30,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        store
+            .with_unit_of_work(CommandKind::Approve, |uow| {
+                Ok(uow.approvals().submit_decision(ReviewDecisionInput {
+                    proposal_id: &proposal_id,
+                    decision: ApprovalDecision::Approve,
+                    reviewer: &reviewer,
+                    validation: ValidationFreshness::fresh(),
+                    current_validation_digest: &validation_digest,
+                    current_policy_version: V1_POLICY_VERSION,
+                    run_cancelled: false,
+                    comment: None,
+                    decided_at_ms: 40,
+                }))
+            })
+            .unwrap()
+            .unwrap();
+
+        Fx {
+            _dir: dir,
+            store,
+            root,
+            doc_file,
+            changeset_id,
+            proposal_id,
+            origin,
+            applier,
+            expected_result_blob_hash,
+        }
+    }
+
+    /// A core that lands the SAME spliced whole-document body a `SectionEdit`
+    /// apply invocation would (staged in Rust, no shell escaping — mirrors
+    /// `landing_timeout_adapter`'s synthetic-mutation pattern) and THEN hangs
+    /// past the deadline — the outcome-indeterminate-kill falsifier for
+    /// `SectionEdit`'s `ExactBlobHash` post-verify, exactly like `ReplaceBody`.
+    fn landing_section_edit_timeout_adapter(
+        worktree_root: &Path,
+        spliced_body: &str,
+    ) -> CoreAdapter {
+        std::fs::write(worktree_root.join(".landing-source-se"), spliced_body).unwrap();
+        let invocation = if cfg!(windows) {
+            vec![
+                "powershell".to_string(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!(
+                    "& {{ Copy-Item '.landing-source-se' '{LIVE_SECTION_EDIT_DOC_PATH}' -Force; \
+                     Start-Sleep -Seconds 30 }}"
+                ),
+            ]
+        } else {
+            vec![
+                "sh".to_string(),
+                "-c".into(),
+                format!("cp .landing-source-se '{LIVE_SECTION_EDIT_DOC_PATH}'; sleep 30"),
+            ]
+        };
+        CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_millis(2500))
+    }
+
+    #[test]
+    fn section_edit_apply_against_the_real_core_is_recognized_applied() {
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_section_edit();
+        let applier = fx.applier.clone();
+        let adapter = CoreAdapter::detect();
+        let outcome = apply(&mut fx, &adapter, &applier, "idem:apply:se:live:1", 100);
+        assert!(
+            outcome.eligibility.allowed,
+            "{:?}",
+            outcome.eligibility.reason
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an applied section-edit changeset yields a receipt");
+        assert_eq!(receipt.state, ApplyState::Applied, "{receipt:?}");
+        assert_eq!(receipt.child.outcome, ApplyChildOutcome::Applied);
+        assert!(
+            !receipt.child.resolved_via_post_verify,
+            "a clean success completes via the envelope, never the recovery path"
+        );
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        let saved = std::fs::read_to_string(&fx.doc_file).unwrap();
+        assert!(
+            saved.contains("BETA REWRITTEN LIVE"),
+            "the REAL vaultspec-core set-body write landed the spliced section: {saved}"
+        );
+        assert!(
+            saved.contains("## Alpha") && saved.contains("alpha body"),
+            "the untouched Alpha section survives the splice unchanged: {saved}"
+        );
+        assert!(
+            !saved.contains("beta body"),
+            "the OLD Beta content is gone: {saved}"
+        );
+    }
+
+    #[test]
+    fn section_edit_indeterminate_kill_after_a_real_landed_write_is_recognized_applied() {
+        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let mut fx = setup_live_section_edit();
+        let applier = fx.applier.clone();
+        let spliced_body = LIVE_SECTION_EDIT_BASE_BODY
+            .replace(LIVE_SECTION_EDIT_BETA_SECTION, LIVE_SECTION_EDIT_NEW_BETA);
+        let adapter = landing_section_edit_timeout_adapter(&fx.root, &spliced_body);
+        let outcome = apply(
+            &mut fx,
+            &adapter,
+            &applier,
+            "idem:apply:se:live:kill:1",
+            100,
+        );
+        let receipt = outcome
+            .receipt
+            .expect("an indeterminate kill still resolves to a terminal receipt");
+        assert_eq!(
+            receipt.state,
+            ApplyState::Applied,
+            "the REAL landed section-edit write must be recognized Applied via \
+             ExactBlobHash post-verify, exactly like ReplaceBody: {receipt:?}"
+        );
+        assert!(receipt.child.resolved_via_post_verify);
+        assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
+
+        let saved = std::fs::read_to_string(&fx.doc_file).unwrap();
+        assert!(saved.contains("BETA REWRITTEN LIVE"));
+    }
+
     // --- W02.P05: CreateDocument against the REAL core ----------------------
 
     const LIVE_CREATE_DOC_TYPE: &str = "plan";
@@ -2713,6 +3037,7 @@ mod tests {
                     .to_string(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_create_document(
@@ -3962,6 +4287,7 @@ mod tests {
                     related: None,
                 }),
                 new_stem: None,
+                section_selector: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(

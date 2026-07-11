@@ -511,6 +511,7 @@ fn carry_forward_drafts(
                     body: String::new(),
                     frontmatter: None,
                     new_stem: Some(new_stem),
+                    section_selector: None,
                 }
             }
             _ => DraftMutation {
@@ -518,6 +519,7 @@ fn carry_forward_drafts(
                 body: operation.target_snapshot.payload_text.clone(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         };
         drafts.push(ChangesetChildOperationDraft {
@@ -820,6 +822,7 @@ mod tests {
                     body: body.into(),
                     frontmatter: None,
                     new_stem: None,
+                    section_selector: None,
                 },
             }],
         }
@@ -863,6 +866,7 @@ mod tests {
                 body: body.to_string(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(
@@ -915,6 +919,7 @@ mod tests {
                 body: String::new(),
                 frontmatter: None,
                 new_stem: Some(new_stem.to_string()),
+                section_selector: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_rename(
@@ -1777,6 +1782,7 @@ mod tests {
                 body: "preview\n".to_string(),
                 frontmatter: None,
                 new_stem: None,
+                section_selector: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_create_document(
