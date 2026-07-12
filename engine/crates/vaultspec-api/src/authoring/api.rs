@@ -14,6 +14,7 @@ use super::model::{
 use super::permissions::ToolPermissionDecisionKind;
 use super::policy::OperationMode;
 use super::rebase::{CreateReplacementProposalRequest, RebaseProposalRequest};
+use super::sections::SectionSelector;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -450,6 +451,7 @@ pub enum ChangesetOperationKind {
     Unarchive,
     Link,
     SectionEdit,
+    SetPlanStepState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -489,6 +491,42 @@ pub struct DraftMutation {
     /// into the resolved range. `None`/absent for every other operation kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub section_selector: Option<super::sections::SectionSelector>,
+    /// The field-level payload for `SetPlanStepState` (authoring-surface ADR
+    /// D1): the canonical step id + desired open/closed state the `check` /
+    /// `uncheck` plan CLI verb carries. `None`/absent for every other operation
+    /// kind; `body` carries no meaning for a plan tick and must be empty (R1
+    /// discipline, same as `frontmatter`/`new_stem`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_step: Option<PlanStepEdit>,
+}
+
+/// The `SetPlanStepState` field-level payload (authoring-surface ADR D1): the
+/// canonical step id (`S##`) and the desired open/closed state. The plan CLI
+/// verb is idempotent, so re-requesting the state a Step already holds is a
+/// no-op, not an error.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanStepEdit {
+    pub step_id: String,
+    pub state: PlanStepState,
+}
+
+/// The desired state of a plan Step's checkbox. `Checked` closes the Step
+/// (`vault plan step check`), `Unchecked` re-opens it (`vault plan step
+/// uncheck`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanStepState {
+    Checked,
+    Unchecked,
+}
+
+impl PlanStepState {
+    /// Whether the desired state closes the Step — the `check` (`true`) vs
+    /// `uncheck` (`false`) selector the core capability builder takes.
+    pub fn is_checked(self) -> bool {
+        matches!(self, PlanStepState::Checked)
+    }
 }
 
 /// The `EditFrontmatter` field-level payload: exactly the fields the
@@ -584,6 +622,13 @@ pub struct DirectWriteRequest {
     /// `CreateDocument` payload. `None` for every other kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub create: Option<DirectWriteCreateParams>,
+    /// `SetPlanStepState` payload — the canonical step id + desired state
+    /// (authoring-surface ADR D1). `None` for every other kind. The plan
+    /// document is named by `ref`, and `expected_blob_hash` fences it (the
+    /// engine-side stale-base substitute for the plan CLI's absent
+    /// expected-blob-hash flag).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_step: Option<PlanStepEdit>,
     /// The optimistic editor base for an existing-document operation —
     /// required for `ReplaceBody`/`EditFrontmatter`/`Rename`, absent for
     /// `CreateDocument` (nothing exists yet to fence against).
@@ -692,6 +737,36 @@ pub struct LeaseRenewRequest {
 pub struct LeaseReleaseRequest {
     pub target: DocumentRef,
 }
+
+/// Create a section-anchored comment on a document (authoring-surface ADR D2). The
+/// document node id is the route path param; the worktree path is derived server-side
+/// from it through the confined `DocumentResolver` (never a client-supplied path).
+/// `selector` is the heading-section anchor + expected content hash the client
+/// computes from the live section; `body` is the comment text (size-capped
+/// engine-side). The author is the middleware-resolved principal, never a body claim.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateCommentRequest {
+    pub selector: SectionSelector,
+    pub body: String,
+}
+
+/// Mutate an existing comment (authoring-surface ADR D2): edit the body, toggle the
+/// resolved flag, or explicitly re-anchor to the current section state. Exactly one
+/// tagged operation per PATCH — re-anchor is never a silent side effect of a read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CommentUpdateRequest {
+    EditBody { body: String },
+    SetResolved { resolved: bool },
+    Reanchor { selector: SectionSelector },
+}
+
+/// Delete a comment. Carries no payload fields; the command envelope supplies the
+/// actor token and idempotency key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct DeleteCommentRequest {}
 
 /// Claim (or idempotently re-claim) a changeset's advisory review item (W13.P24). The
 /// claim purpose is always `review` (set server-side); the reviewer is the middleware-
@@ -946,6 +1021,7 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
                 frontmatter: None,
                 new_stem: None,
                 create: None,
+                plan_step: None,
                 expected_blob_hash: Some("abc123abc123abc123abc123abc123abc123abcd".to_string()),
                 summary: Some("Editor save".to_string()),
                 scope: None,
@@ -1155,6 +1231,7 @@ fn create_proposal_request_fixture() -> CreateProposalRequest {
                     frontmatter: None,
                     new_stem: None,
                     section_selector: None,
+                    plan_step: None,
                 },
             },
             ChangesetChildOperationDraft {
@@ -1167,6 +1244,7 @@ fn create_proposal_request_fixture() -> CreateProposalRequest {
                     frontmatter: None,
                     new_stem: None,
                     section_selector: None,
+                    plan_step: None,
                 },
             },
         ],

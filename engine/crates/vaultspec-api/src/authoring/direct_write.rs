@@ -21,7 +21,7 @@ use super::actors::actor_kind_name;
 use super::api::{
     ChangesetChildOperationDraft, ChangesetOperationKind, CreateProposalRequest,
     CreateSessionRequest, DirectWriteCreateParams, DirectWriteRequest, DraftMode, DraftMutation,
-    FrontmatterEditFields, TargetRevisionFence,
+    FrontmatterEditFields, PlanStepEdit, TargetRevisionFence,
 };
 use super::apply::{self, ApplyError, ApplyReceipt, ApplyRequest};
 use super::approvals::{
@@ -356,6 +356,11 @@ enum DirectOperationInput {
     CreateDocument {
         params: DirectWriteCreateParams,
     },
+    SetPlanStepState {
+        doc_ref: String,
+        expected_blob_hash: String,
+        edit: PlanStepEdit,
+    },
 }
 
 fn validate_operation(payload: &DirectWriteRequest) -> StoreResult<DirectOperationInput> {
@@ -445,6 +450,30 @@ fn validate_operation(payload: &DirectWriteRequest) -> StoreResult<DirectOperati
             })?;
             Ok(DirectOperationInput::CreateDocument { params })
         }
+        ChangesetOperationKind::SetPlanStepState => {
+            if !payload.body.is_empty() {
+                return Err(unexpected("body"));
+            }
+            if payload.frontmatter.is_some() {
+                return Err(unexpected("frontmatter"));
+            }
+            if payload.new_stem.is_some() {
+                return Err(unexpected("new_stem"));
+            }
+            if payload.create.is_some() {
+                return Err(unexpected("create"));
+            }
+            let edit = payload.plan_step.clone().ok_or_else(|| {
+                StoreError::Validation(
+                    "direct write `set_plan_step_state` requires `plan_step`".to_string(),
+                )
+            })?;
+            Ok(DirectOperationInput::SetPlanStepState {
+                doc_ref: require_doc_ref(payload)?,
+                expected_blob_hash: require_expected_blob_hash(payload)?,
+                edit,
+            })
+        }
         other => Err(StoreError::Validation(format!(
             "direct write does not support operation kind `{other:?}`"
         ))),
@@ -472,7 +501,8 @@ fn operation_document_ref(operation: &DirectOperationInput) -> String {
     match operation {
         DirectOperationInput::ReplaceBody { doc_ref, .. }
         | DirectOperationInput::EditFrontmatter { doc_ref, .. }
-        | DirectOperationInput::Rename { doc_ref, .. } => doc_ref.clone(),
+        | DirectOperationInput::Rename { doc_ref, .. }
+        | DirectOperationInput::SetPlanStepState { doc_ref, .. } => doc_ref.clone(),
         DirectOperationInput::CreateDocument { params } => {
             format!("create:{}/{}", params.doc_type, params.feature)
         }
@@ -494,6 +524,9 @@ fn operation_expected_blob_hash(operation: &DirectOperationInput) -> String {
         }
         | DirectOperationInput::Rename {
             expected_blob_hash, ..
+        }
+        | DirectOperationInput::SetPlanStepState {
+            expected_blob_hash, ..
         } => expected_blob_hash.clone(),
         DirectOperationInput::CreateDocument { .. } => blob_oid(b""),
     }
@@ -510,7 +543,8 @@ fn operation_target_blob_hash(operation: &DirectOperationInput) -> String {
         DirectOperationInput::ReplaceBody { body, .. } => blob_oid(body.as_bytes()),
         DirectOperationInput::EditFrontmatter { .. }
         | DirectOperationInput::Rename { .. }
-        | DirectOperationInput::CreateDocument { .. } => blob_oid(b""),
+        | DirectOperationInput::CreateDocument { .. }
+        | DirectOperationInput::SetPlanStepState { .. } => blob_oid(b""),
     }
 }
 
@@ -644,6 +678,11 @@ pub fn execute_direct_write(
             doc_ref,
             expected_blob_hash,
             ..
+        }
+        | DirectOperationInput::SetPlanStepState {
+            doc_ref,
+            expected_blob_hash,
+            ..
         } => {
             let resolved = resolve_existing_document(&resolver, doc_ref)?;
             let actual_snapshot = reader
@@ -716,7 +755,8 @@ pub fn execute_direct_write(
     // existing-document kinds only, mirroring the pre-check's own scope.
     if let DirectOperationInput::ReplaceBody { doc_ref, .. }
     | DirectOperationInput::EditFrontmatter { doc_ref, .. }
-    | DirectOperationInput::Rename { doc_ref, .. } = &operation
+    | DirectOperationInput::Rename { doc_ref, .. }
+    | DirectOperationInput::SetPlanStepState { doc_ref, .. } = &operation
         && let Some(conflict) = refreshed_conflict(
             worktree_root,
             &reader,
@@ -806,7 +846,8 @@ pub fn execute_direct_write(
     if !apply.eligibility.allowed {
         if let DirectOperationInput::ReplaceBody { doc_ref, .. }
         | DirectOperationInput::EditFrontmatter { doc_ref, .. }
-        | DirectOperationInput::Rename { doc_ref, .. } = &operation
+        | DirectOperationInput::Rename { doc_ref, .. }
+        | DirectOperationInput::SetPlanStepState { doc_ref, .. } = &operation
             && apply
                 .eligibility
                 .reason
@@ -941,6 +982,7 @@ fn build_draft(
                     frontmatter: None,
                     new_stem: None,
                     section_selector: None,
+                    plan_step: None,
                 },
             }
         }
@@ -961,6 +1003,7 @@ fn build_draft(
                     frontmatter: Some(fields.clone()),
                     new_stem: None,
                     section_selector: None,
+                    plan_step: None,
                 },
             }
         }
@@ -980,6 +1023,7 @@ fn build_draft(
                     frontmatter: None,
                     new_stem: Some(new_stem.clone()),
                     section_selector: None,
+                    plan_step: None,
                 },
             }
         }
@@ -1006,6 +1050,28 @@ fn build_draft(
                     frontmatter: None,
                     new_stem: None,
                     section_selector: None,
+                    plan_step: None,
+                },
+            }
+        }
+        DirectOperationInput::SetPlanStepState { edit, .. } => {
+            let document =
+                existing_document.expect("SetPlanStepState resolves an existing document");
+            ChangesetChildOperationDraft {
+                child_key: "direct_write".to_string(),
+                operation: ChangesetOperationKind::SetPlanStepState,
+                target: TargetRevisionFence {
+                    base_revision: base_revision(&document),
+                    current_revision: base_revision(&document),
+                    document,
+                },
+                draft: DraftMutation {
+                    mode: DraftMode::WholeDocument,
+                    body: String::new(),
+                    frontmatter: None,
+                    new_stem: None,
+                    section_selector: None,
+                    plan_step: Some(edit.clone()),
                 },
             }
         }
@@ -1843,6 +1909,7 @@ mod tests {
             frontmatter: None,
             new_stem: None,
             create: None,
+            plan_step: None,
             expected_blob_hash: Some(expected_blob_hash.to_string()),
             summary: Some("editor save".to_string()),
             scope: None,
@@ -2126,6 +2193,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: Some("direct-save-plan-taken".to_string()),
                 create: None,
+                plan_step: None,
                 expected_blob_hash: Some(base_hash),
                 summary: Some("editor rename save".to_string()),
                 scope: None,
@@ -2183,6 +2251,7 @@ mod tests {
                     title: "Collide Create".to_string(),
                     related: Vec::new(),
                 }),
+                plan_step: None,
                 expected_blob_hash: None,
                 summary: Some("editor new document".to_string()),
                 scope: None,
@@ -2319,5 +2388,417 @@ mod tests {
         let temp_dir_name = fx.root.file_name().unwrap().to_string_lossy();
         assert!(!serialized.contains("materialized body"));
         assert!(!serialized.contains(temp_dir_name.as_ref()));
+    }
+
+    /// Plan-step tick (authoring-surface ADR D1) round-trip against the REAL
+    /// vaultspec-core over a canonical plan, exercising the full direct-write
+    /// lifecycle end to end: materialize → self-approve → apply the
+    /// `SetPlanStepState` capability → the watcher-observed served state.
+    mod plan_tick {
+        use std::time::Duration;
+
+        use super::*;
+        use crate::authoring::api::{PlanStepEdit, PlanStepState};
+
+        struct PlanFx {
+            _dir: tempfile::TempDir,
+            root: PathBuf,
+            store: Store,
+            human: ActorRef,
+            plan_ref: String,
+            base_hash: String,
+        }
+
+        /// Run a real `vaultspec-core` verb in the worktree, asserting success.
+        fn core(root: &Path, args: &[&str]) {
+            let output = Command::new("uv")
+                .current_dir(root)
+                .args(["run", "--no-sync", "vaultspec-core"])
+                .args(args)
+                .output()
+                .expect("vaultspec-core runs");
+            assert!(
+                output.status.success(),
+                "vaultspec-core {args:?}: {}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        /// A real worktree carrying a canonical L1 plan with two open steps,
+        /// scaffolded THROUGH core — a hand-written plan's step rows are stripped
+        /// by core's serializer as unknown prose, so the fixture is built the
+        /// only way that survives a real `plan step` write.
+        fn setup_plan() -> PlanFx {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path().to_path_buf();
+            git(&root, &["init", "-b", "main", "."]);
+            scaffold_vaultspec_workspace(&root);
+            core(&root, &["vault", "add", "plan", "--feature", "ticktest"]);
+            let plan_path = std::fs::read_dir(root.join(".vault/plan"))
+                .unwrap()
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .find(|path| path.extension().map(|ext| ext == "md").unwrap_or(false))
+                .expect("scaffolded plan exists");
+            let plan_ref = plan_path
+                .strip_prefix(&root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            core(
+                &root,
+                &[
+                    "vault",
+                    "plan",
+                    "step",
+                    "add",
+                    &plan_ref,
+                    "--action",
+                    "first step",
+                    "--scope",
+                    "src/a.rs",
+                ],
+            );
+            core(
+                &root,
+                &[
+                    "vault",
+                    "plan",
+                    "step",
+                    "add",
+                    &plan_ref,
+                    "--action",
+                    "second step",
+                    "--scope",
+                    "src/b.rs",
+                ],
+            );
+            git(&root, &["add", "."]);
+            git(&root, &["commit", "-m", "plan tick fixture"]);
+            let base_hash = blob_oid(&std::fs::read(&plan_path).unwrap());
+
+            let mut store = Store::open(&root.join(".vault")).unwrap();
+            let human = actor("human:author", ActorKind::Human);
+            register_actor(&mut store, &human, 1);
+            PlanFx {
+                _dir: dir,
+                root,
+                store,
+                human,
+                plan_ref,
+                base_hash,
+            }
+        }
+
+        fn tick_request(
+            plan_ref: &str,
+            expected: &str,
+            step_id: &str,
+            check: bool,
+        ) -> DirectWriteRequest {
+            DirectWriteRequest {
+                doc_ref: Some(plan_ref.to_string()),
+                operation: ChangesetOperationKind::SetPlanStepState,
+                body: String::new(),
+                frontmatter: None,
+                new_stem: None,
+                create: None,
+                plan_step: Some(PlanStepEdit {
+                    step_id: step_id.to_string(),
+                    state: if check {
+                        PlanStepState::Checked
+                    } else {
+                        PlanStepState::Unchecked
+                    },
+                }),
+                expected_blob_hash: Some(expected.to_string()),
+                summary: Some("status rail tick".to_string()),
+                scope: None,
+            }
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        fn tick_save(
+            fx: &mut PlanFx,
+            adapter: &CoreAdapter,
+            actor: &ActorRef,
+            key: &str,
+            expected: &str,
+            step_id: &str,
+            check: bool,
+            now: i64,
+        ) -> DirectWriteOutcome {
+            let request = tick_request(&fx.plan_ref, expected, step_id, check);
+            execute_direct_write(
+                &mut fx.store,
+                adapter,
+                &fx.root,
+                actor,
+                &IdempotencyKey::new(key).unwrap(),
+                now,
+                request,
+            )
+            .unwrap()
+        }
+
+        /// The current `done` state of a Step, parsed with the SAME
+        /// `ingest_struct` parser the served projection uses — so the test
+        /// asserts on the value a reader would actually see.
+        fn step_done(fx: &PlanFx, step_id: &str) -> Option<bool> {
+            let text = std::fs::read_to_string(fx.root.join(&fx.plan_ref)).unwrap();
+            ingest_struct::plan_structure::parse_plan_structure(&text)
+                .steps
+                .iter()
+                .find(|step| step.id == step_id)
+                .map(|step| step.done)
+        }
+
+        fn current_hash(fx: &PlanFx) -> String {
+            blob_oid(&std::fs::read(fx.root.join(&fx.plan_ref)).unwrap())
+        }
+
+        /// A shell adapter that runs the REAL `plan step` verb (landing the
+        /// write) then sleeps past a short deadline — the outcome-indeterminate
+        /// (Timeout) falsifier for the core-authoritative post-verify.
+        fn landing_tick_timeout_adapter(plan_ref: &str, step_id: &str, check: bool) -> CoreAdapter {
+            let verb = if check { "check" } else { "uncheck" };
+            let invocation = if cfg!(windows) {
+                vec![
+                    "powershell".to_string(),
+                    "-NoProfile".into(),
+                    "-Command".into(),
+                    format!(
+                        "& {{ uv run --no-sync vaultspec-core vault plan step {verb} '{plan_ref}' \
+                         '{step_id}' --json | Out-Null; Start-Sleep -Seconds 30 }}"
+                    ),
+                ]
+            } else {
+                vec![
+                    "sh".to_string(),
+                    "-c".into(),
+                    format!(
+                        "uv run --no-sync vaultspec-core vault plan step {verb} '{plan_ref}' \
+                         '{step_id}' --json >/dev/null 2>&1; sleep 30"
+                    ),
+                ]
+            };
+            CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
+        }
+
+        #[test]
+        fn plan_step_tick_round_trip_checks_then_unchecks() {
+            let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+            let mut fx = setup_plan();
+            let human = fx.human.clone();
+            let base_hash = fx.base_hash.clone();
+            let adapter = CoreAdapter::detect();
+
+            assert_eq!(step_done(&fx, "S01"), Some(false), "S01 starts open");
+
+            let check = tick_save(
+                &mut fx,
+                &adapter,
+                &human,
+                "idem:tick:check:1",
+                &base_hash,
+                "S01",
+                true,
+                100,
+            );
+            assert_eq!(
+                check.status,
+                DirectWriteStatus::Applied,
+                "{:?}",
+                check.eligibility
+            );
+            let receipt = check.apply_receipt.as_ref().expect("apply receipt");
+            assert_eq!(receipt.state, ApplyState::Applied);
+            assert!(
+                !receipt.child.resolved_via_post_verify,
+                "a clean success completes via the envelope"
+            );
+            assert_eq!(
+                step_done(&fx, "S01"),
+                Some(true),
+                "S01 is closed in the served plan after the tick re-ingests"
+            );
+            assert_eq!(
+                step_done(&fx, "S02"),
+                Some(false),
+                "the sibling step is untouched"
+            );
+
+            // The check mutated the file (glyph + modified stamp + injected
+            // link-rules block), so the un-tick fences on the NEW blob hash.
+            let after_check = current_hash(&fx);
+            let uncheck = tick_save(
+                &mut fx,
+                &adapter,
+                &human,
+                "idem:tick:uncheck:1",
+                &after_check,
+                "S01",
+                false,
+                200,
+            );
+            assert_eq!(
+                uncheck.status,
+                DirectWriteStatus::Applied,
+                "{:?}",
+                uncheck.eligibility
+            );
+            assert_eq!(
+                step_done(&fx, "S01"),
+                Some(false),
+                "S01 is re-opened in the served plan"
+            );
+        }
+
+        #[test]
+        fn plan_step_tick_stale_base_refuses_without_mutating_the_plan() {
+            let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+            let mut fx = setup_plan();
+            let human = fx.human.clone();
+            let adapter = CoreAdapter::detect();
+            // A well-formed but non-matching base fence (the engine-side
+            // substitute for the plan CLI's absent expected-blob-hash flag).
+            let stale = "0".repeat(40);
+
+            let outcome = tick_save(
+                &mut fx,
+                &adapter,
+                &human,
+                "idem:tick:stale:1",
+                &stale,
+                "S01",
+                true,
+                100,
+            );
+            assert_eq!(
+                outcome.status,
+                DirectWriteStatus::Conflict,
+                "{:?}",
+                outcome.eligibility
+            );
+            assert!(outcome.changeset_id.is_none());
+            let conflict = outcome.conflict.as_ref().expect("conflict served");
+            assert_eq!(conflict.expected_blob_hash, stale);
+            assert_eq!(
+                step_done(&fx, "S01"),
+                Some(false),
+                "a stale-base tick must never mutate the plan"
+            );
+        }
+
+        #[test]
+        fn plan_step_tick_indeterminate_kill_after_a_real_landed_tick_is_recognized_applied() {
+            // THE R1 pattern for the plan tick: the plan CLI verb is
+            // core-authoritative over the resulting bytes (glyph + modified stamp
+            // + display-path recompute), so a blob-hash compare is unsound.
+            // A mid-flight kill after the REAL write landed must still be
+            // recognized Applied via the step-state re-read.
+            let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+            let mut fx = setup_plan();
+            let human = fx.human.clone();
+            let base_hash = fx.base_hash.clone();
+            let plan_ref = fx.plan_ref.clone();
+            let adapter = landing_tick_timeout_adapter(&plan_ref, "S01", true);
+
+            let outcome = tick_save(
+                &mut fx,
+                &adapter,
+                &human,
+                "idem:tick:kill:1",
+                &base_hash,
+                "S01",
+                true,
+                100,
+            );
+            assert_eq!(
+                outcome.status,
+                DirectWriteStatus::Applied,
+                "the REAL landed tick must be recognized Applied via post-verify: {:?}",
+                outcome.eligibility
+            );
+            let receipt = outcome
+                .apply_receipt
+                .as_ref()
+                .expect("an indeterminate kill still resolves to a terminal receipt");
+            assert_eq!(receipt.state, ApplyState::Applied);
+            assert!(
+                receipt.child.resolved_via_post_verify,
+                "recognized via the step-state re-read, not the (killed) envelope"
+            );
+            assert_eq!(
+                step_done(&fx, "S01"),
+                Some(true),
+                "the real landed tick is reflected in the served plan"
+            );
+        }
+
+        #[test]
+        fn re_ticking_an_already_checked_step_is_applied_not_a_false_failure() {
+            // The core `unchanged` status (an idempotent no-op) is a SUCCESS in
+            // the adapter's is_success set — re-checking an already-closed step
+            // through the full direct-write lifecycle must report Applied, never
+            // a spurious Failed.
+            let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+            let mut fx = setup_plan();
+            let human = fx.human.clone();
+            let base_hash = fx.base_hash.clone();
+            let adapter = CoreAdapter::detect();
+
+            let first = tick_save(
+                &mut fx,
+                &adapter,
+                &human,
+                "idem:tick:first:1",
+                &base_hash,
+                "S01",
+                true,
+                100,
+            );
+            assert_eq!(
+                first.status,
+                DirectWriteStatus::Applied,
+                "{:?}",
+                first.eligibility
+            );
+            assert_eq!(step_done(&fx, "S01"), Some(true));
+
+            // Re-tick the SAME (now-closed) step through the full lifecycle: core
+            // reports `unchanged`, and the file is not rewritten, so the fence is
+            // still the post-first-check blob.
+            let after = current_hash(&fx);
+            let again = tick_save(
+                &mut fx,
+                &adapter,
+                &human,
+                "idem:tick:again:1",
+                &after,
+                "S01",
+                true,
+                200,
+            );
+            assert_eq!(
+                again.status,
+                DirectWriteStatus::Applied,
+                "an idempotent re-tick is Applied, not a false failure: {:?}",
+                again.eligibility
+            );
+            let receipt = again.apply_receipt.as_ref().expect("apply receipt");
+            assert_eq!(receipt.state, ApplyState::Applied);
+            assert_eq!(
+                receipt.child.core_status.as_deref(),
+                Some("unchanged"),
+                "the idempotent re-tick rode the core `unchanged` success status"
+            );
+            assert_eq!(
+                step_done(&fx, "S01"),
+                Some(true),
+                "the step stays closed after the no-op re-tick"
+            );
+        }
     }
 }

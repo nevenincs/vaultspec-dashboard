@@ -371,6 +371,7 @@ pub fn generate_rollback(
                         frontmatter: None,
                         new_stem: Some(original_stem.clone()),
                         section_selector: None,
+                        plan_step: None,
                     },
                 };
                 let materialized = MaterializedProposalOperation::materialize_rename(
@@ -419,6 +420,7 @@ pub fn generate_rollback(
                         frontmatter: None,
                         new_stem: None,
                         section_selector: Some(rollback_selector),
+                        plan_step: None,
                     },
                 };
                 let materialized = match MaterializedProposalOperation::materialize_section_edit(
@@ -458,6 +460,7 @@ pub fn generate_rollback(
                         frontmatter: None,
                         new_stem: None,
                         section_selector: None,
+                        plan_step: None,
                     },
                 };
                 let materialized = MaterializedProposalOperation::materialize_replace_body(
@@ -967,6 +970,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: None,
                 section_selector: Some(selector),
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_section_edit(
@@ -1484,6 +1488,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: Some("rollback-new-name".to_string()),
                 section_selector: None,
+                plan_step: None,
             },
         };
         let forward_materialized = MaterializedProposalOperation::materialize_rename(
@@ -1613,6 +1618,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: Some("rollback-lineage-b".to_string()),
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized_c1 =
@@ -1663,6 +1669,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: Some("rollback-lineage-d".to_string()),
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized_c2 =
@@ -1714,6 +1721,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: Some("rollback-lineage-b".to_string()),
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized_c3 =

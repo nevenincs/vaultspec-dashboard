@@ -120,7 +120,8 @@ pub fn operation_risk(operation: ChangesetOperationKind) -> RiskClass {
         | ChangesetOperationKind::AppendBody
         | ChangesetOperationKind::EditFrontmatter
         | ChangesetOperationKind::SectionEdit
-        | ChangesetOperationKind::Link => RiskClass::NonDestructive,
+        | ChangesetOperationKind::Link
+        | ChangesetOperationKind::SetPlanStepState => RiskClass::NonDestructive,
         ChangesetOperationKind::Rename
         | ChangesetOperationKind::Archive
         | ChangesetOperationKind::Unarchive => RiskClass::Destructive,

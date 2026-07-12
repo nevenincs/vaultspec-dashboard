@@ -120,6 +120,7 @@ id_type!(RunId, "run_id");
 id_type!(ProposalId, "proposal_id");
 id_type!(ApprovalId, "approval_id");
 id_type!(LeaseId, "lease_id");
+id_type!(CommentId, "comment_id");
 id_type!(ReceiptId, "receipt_id");
 id_type!(IdempotencyKey, "idempotency_key");
 id_type!(RevisionToken, "revision_token");
@@ -218,6 +219,9 @@ pub enum CommandKind {
     DirectWrite,
     MapLangGraphRuntime,
     RequestToolPermission,
+    CreateComment,
+    UpdateComment,
+    DeleteComment,
     ReadContext,
     SearchGraph,
     SubscribeEvents,
@@ -253,6 +257,9 @@ impl CommandKind {
         Self::DirectWrite,
         Self::MapLangGraphRuntime,
         Self::RequestToolPermission,
+        Self::CreateComment,
+        Self::UpdateComment,
+        Self::DeleteComment,
         Self::ReadContext,
         Self::SearchGraph,
         Self::SubscribeEvents,

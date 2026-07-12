@@ -404,6 +404,9 @@ pub fn command_lifecycle_scope(command: CommandKind) -> CommandLifecycleScope {
         | CommandKind::DirectWrite
         | CommandKind::MapLangGraphRuntime
         | CommandKind::RequestToolPermission
+        | CommandKind::CreateComment
+        | CommandKind::UpdateComment
+        | CommandKind::DeleteComment
         | CommandKind::ReadContext
         | CommandKind::SearchGraph
         | CommandKind::SubscribeEvents
@@ -1461,6 +1464,40 @@ mod tests {
                 ChangesetStatus::Superseded,
             )),
             "reserved",
+        );
+    }
+
+    #[test]
+    fn plan_step_tick_source_has_no_v1_rollback_inverse() {
+        // A SetPlanStepState source MUST be refused for rollback: the plan-tick
+        // preimage is captured (like every kind) but has no V1 inverse — a
+        // check/uncheck inverse is a named follow-on, not built here — so the
+        // eligibility gate must deny it BEFORE `rollback.rs` could ever route a
+        // plan tick through its whole-document preimage-restore default arm.
+        // This guard fails loudly if a future edit adds SetPlanStepState to the
+        // rollback-eligible operation set (transitions `create_rollback_eligibility`).
+        let source = record(
+            ChangesetKind::Authoring,
+            ChangesetStatus::Applied,
+            vec![ChangesetChildOperationInput {
+                child_key: "child_1".to_string(),
+                operation: ChangesetOperationKind::SetPlanStepState,
+                target: fence(existing_doc("tick-plan", "blob:aaa111")),
+                materialized_operation: None,
+                material_digest: None,
+                validation_digest: None,
+            }],
+        );
+        denied_contains(
+            create_rollback_eligibility(
+                &source,
+                &[RollbackChildEligibility::new(
+                    "child_1",
+                    ChangesetOperationKind::SetPlanStepState,
+                    true,
+                )],
+            ),
+            "no V1 inverse",
         );
     }
 

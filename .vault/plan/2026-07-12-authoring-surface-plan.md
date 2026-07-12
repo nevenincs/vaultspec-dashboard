@@ -3,6 +3,7 @@ tags:
   - '#plan'
   - '#authoring-surface'
 date: '2026-07-12'
+modified: '2026-07-12'
 tier: L3
 related:
   - '[[2026-07-12-authoring-surface-adr]]'
@@ -18,19 +19,19 @@ Land the two net-new backend seams the ADR decides: the plan-step set-state capa
 
 One new core-adapter capability invoking the canonical plan CLI verbs, enrolled as a changeset operation with an engine-side concurrency fence and a core-authoritative post-verify, served on the direct-writes route as a direct-only self-approved changeset.
 
-- [ ] `W01.P01.S01` - Add the plan-step set-state core capability invoking vault plan step check/uncheck with JSON output, an output cap and wall-clock timeout, confirming or widening the status vocabulary against the adapter success set; `engine/crates/vaultspec-session/src/authoring/core_adapter.rs`.
-- [ ] `W01.P01.S02` - Enroll the set-plan-step-state changeset operation kind and materializer with the engine-side stale-base concurrency fence and a core-authoritative post-verify that re-reads the resulting step state; `engine/crates/vaultspec-session/src/authoring/apply.rs`.
-- [ ] `W01.P01.S03` - Accept the plan-step operation on the direct-writes route as a direct-only self-approved changeset with provenance, keyed on plan node id plus canonical step id; `engine/crates/vaultspec-session/src/authoring/http.rs`.
-- [ ] `W01.P01.S04` - Integration tests: tick round-trip over a fixture plan, stale-base conflict refusal, and indeterminate-outcome resolution through the post-verify; `engine/crates/vaultspec-session/tests`.
+- [x] `W01.P01.S01` - Add the plan-step set-state core capability invoking vault plan step check/uncheck with JSON output, an output cap and wall-clock timeout, confirming or widening the status vocabulary against the adapter success set; `engine/crates/vaultspec-api/src/authoring/core_adapter.rs`.
+- [x] `W01.P01.S02` - Enroll the set-plan-step-state changeset operation kind and materializer with the engine-side stale-base concurrency fence and a core-authoritative post-verify that re-reads the resulting step state; `engine/crates/vaultspec-api/src/authoring/apply.rs`.
+- [x] `W01.P01.S03` - Accept the plan-step operation on the direct-writes route as a direct-only self-approved changeset with provenance, keyed on plan node id plus canonical step id; `engine/crates/vaultspec-api/src/authoring/http.rs`.
+- [x] `W01.P01.S04` - Integration tests: tick round-trip over a fixture plan, stale-base conflict refusal, and indeterminate-outcome resolution through the post-verify; `engine/crates/vaultspec-api/tests`.
 
 ### Phase `W01.P02` - Comments plane backend (D2)
 
 A bounded comments entity in the authoring store anchored by the section selector, resolved exact-or-conflict into an honest orphaned state, served over new authoring routes with actor-ref attribution and SSE events.
 
-- [ ] `W01.P02.S05` - Add the comments table migration with bounded per-document and per-store caps plus retention, and the typed repository over the authoring store; `engine/crates/vaultspec-session/src/authoring/store`.
-- [ ] `W01.P02.S06` - Model the comment entity anchored by the section selector, resolved exact-or-conflict on read into an honest orphaned flag, never a silent re-anchor; `engine/crates/vaultspec-session/src/authoring/comments.rs`.
-- [ ] `W01.P02.S07` - Serve bounded list, create, edit, resolve, and delete comment routes with actor-ref attribution and comment events on the authoring SSE channel; `engine/crates/vaultspec-session/src/authoring/http.rs`.
-- [ ] `W01.P02.S08` - Engine tests: comment CRUD, anchor orphaning when the commented section is edited, and cap plus retention enforcement; `engine/crates/vaultspec-session/tests`.
+- [x] `W01.P02.S05` - Add the comments table migration with bounded per-document and per-store caps plus retention, and the typed repository over the authoring store; `engine/crates/vaultspec-api/src/authoring/store`.
+- [x] `W01.P02.S06` - Model the comment entity anchored by the section selector, resolved exact-or-conflict on read into an honest orphaned flag, never a silent re-anchor; `engine/crates/vaultspec-api/src/authoring/comments.rs`.
+- [x] `W01.P02.S07` - Serve bounded list, create, edit, resolve, and delete comment routes with actor-ref attribution and comment events on the authoring SSE channel; `engine/crates/vaultspec-api/src/authoring/http.rs`.
+- [x] `W01.P02.S08` - Engine tests: comment CRUD, anchor orphaning when the commented section is edited, and cap plus retention enforcement; `engine/crates/vaultspec-api/tests`.
 
 ## Wave `W02` - Frontend: comment affordances and plan-tick UI
 

@@ -781,6 +781,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: None,
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(
@@ -839,6 +840,7 @@ mod tests {
                 }),
                 new_stem: None,
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
@@ -893,6 +895,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: Some(new_stem.to_string()),
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_rename(
@@ -973,6 +976,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: None,
                 section_selector: Some(selector),
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_section_edit(
@@ -1633,6 +1637,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: None,
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_create_document(

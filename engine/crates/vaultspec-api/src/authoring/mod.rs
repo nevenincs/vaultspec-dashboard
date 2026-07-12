@@ -10,6 +10,7 @@ pub(crate) mod actors;
 pub(crate) mod api;
 pub(crate) mod apply;
 pub(crate) mod approvals;
+pub(crate) mod comments;
 pub(crate) mod conflicts;
 pub(crate) mod core_adapter;
 pub(crate) mod direct_write;

@@ -28,6 +28,7 @@ pub(crate) enum LifecycleAggregateKind {
     Apply,
     Rollback,
     Lease,
+    Comment,
 }
 
 impl LifecycleAggregateKind {
@@ -42,6 +43,7 @@ impl LifecycleAggregateKind {
             Self::Apply => "apply",
             Self::Rollback => "rollback",
             Self::Lease => "lease",
+            Self::Comment => "comment",
         }
     }
 
@@ -56,6 +58,7 @@ impl LifecycleAggregateKind {
             "apply" => Some(Self::Apply),
             "rollback" => Some(Self::Rollback),
             "lease" => Some(Self::Lease),
+            "comment" => Some(Self::Comment),
             _ => None,
         }
     }
@@ -82,6 +85,9 @@ pub(crate) enum LifecycleEventKind {
     FailureRecorded,
     LeaseUpdated,
     RecoverySnapshotServed,
+    CommentCreated,
+    CommentUpdated,
+    CommentDeleted,
 }
 
 impl LifecycleEventKind {
@@ -105,6 +111,9 @@ impl LifecycleEventKind {
             Self::FailureRecorded => "failure.recorded",
             Self::LeaseUpdated => "lease.updated",
             Self::RecoverySnapshotServed => "recovery.snapshot_served",
+            Self::CommentCreated => "comment.created",
+            Self::CommentUpdated => "comment.updated",
+            Self::CommentDeleted => "comment.deleted",
         }
     }
 
@@ -128,6 +137,9 @@ impl LifecycleEventKind {
             "failure.recorded" => Some(Self::FailureRecorded),
             "lease.updated" => Some(Self::LeaseUpdated),
             "recovery.snapshot_served" => Some(Self::RecoverySnapshotServed),
+            "comment.created" => Some(Self::CommentCreated),
+            "comment.updated" => Some(Self::CommentUpdated),
+            "comment.deleted" => Some(Self::CommentDeleted),
             _ => None,
         }
     }
@@ -320,6 +332,40 @@ pub(crate) fn apply_started_event(
             "changeset_id": changeset_id,
             "source_revision": source_revision,
             "applying_revision": applying_revision,
+        }),
+        created_at_ms,
+    })
+}
+
+/// Build a comment lifecycle event for the authoring SSE channel (authoring-surface
+/// ADR D2). Rides the SAME outbox/projector feed every changeset event uses; the
+/// payload carries the `comment_id` and `document_node_id` so an SSE consumer
+/// invalidates exactly the affected document's comment query. The dedupe key folds
+/// in the request's idempotency key, so a replayed mutation coalesces to one event
+/// rather than duplicating on the feed.
+pub(crate) fn comment_event(
+    event_kind: LifecycleEventKind,
+    comment_id: &str,
+    document_node_id: &str,
+    command: CommandKind,
+    actor: ActorRef,
+    idempotency_key: IdempotencyKey,
+    created_at_ms: i64,
+) -> StoreResult<OutboxEventDraft> {
+    let kind_str = event_kind.as_str();
+    let idem = idempotency_key.as_str();
+    lifecycle_event_draft(LifecycleEventInput {
+        event_id: format!("comment-event:{kind_str}:{comment_id}:{idem}"),
+        dedupe_key: format!("comment:{kind_str}:{comment_id}:{idem}"),
+        aggregate_kind: LifecycleAggregateKind::Comment,
+        aggregate_id: comment_id.to_string(),
+        event_kind,
+        actor,
+        command: Some(command),
+        idempotency_key: Some(idempotency_key),
+        payload: json!({
+            "comment_id": comment_id,
+            "document_node_id": document_node_id,
         }),
         created_at_ms,
     })

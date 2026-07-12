@@ -80,6 +80,10 @@ pub(crate) enum CoreCapability {
     Edit,
     /// `vault rename` — rename a document to a new stem.
     Rename,
+    /// `vault plan step check` — mark a plan Step closed (idempotent).
+    CheckPlanStep,
+    /// `vault plan step uncheck` — mark a plan Step open (idempotent).
+    UncheckPlanStep,
 }
 
 impl CoreCapability {
@@ -94,6 +98,8 @@ impl CoreCapability {
             Self::SetFrontmatter => &["vault", "set-frontmatter"],
             Self::Edit => &["vault", "edit"],
             Self::Rename => &["vault", "rename"],
+            Self::CheckPlanStep => &["vault", "plan", "step", "check"],
+            Self::UncheckPlanStep => &["vault", "plan", "step", "uncheck"],
         }
     }
 
@@ -106,6 +112,8 @@ impl CoreCapability {
             Self::SetFrontmatter => "rewrite-frontmatter",
             Self::Edit => "edit-document",
             Self::Rename => "rename-document",
+            Self::CheckPlanStep => "close-plan-step",
+            Self::UncheckPlanStep => "open-plan-step",
         }
     }
 
@@ -240,6 +248,40 @@ impl CoreInvocation {
             capability,
             argv,
             body: opts.body,
+        })
+    }
+
+    /// Build a `vault plan step check|uncheck <plan_ref> <S##>` invocation
+    /// (authoring-surface ADR D1). `check` selects the verb (`true` closes the
+    /// Step, `false` re-opens it); both are idempotent at core. The plan ref and
+    /// canonical step id are validated value-only tokens, so neither can inject a
+    /// flag or escape the tree.
+    ///
+    /// UNLIKE every other write, the plan CLI verb carries NO
+    /// `--expected-blob-hash` fence (ADR D1 constraint): apply-time optimistic
+    /// concurrency for a plan tick is enforced ENGINE-SIDE — a stale-base
+    /// pre-check compares the held base against a fresh worktree read BEFORE this
+    /// invocation runs — never by core. Because the verb is core-authoritative
+    /// over the resulting bytes (it also refreshes the `modified` stamp and may
+    /// recompute display paths), the caller verifies landing by re-reading the
+    /// resulting Step state, never an exact-blob-hash compare.
+    pub(crate) fn set_plan_step_state(
+        check: bool,
+        plan_ref: &str,
+        step_id: &str,
+    ) -> Result<Self, CoreAdapterError> {
+        let capability = if check {
+            CoreCapability::CheckPlanStep
+        } else {
+            CoreCapability::UncheckPlanStep
+        };
+        let mut argv = fixed(capability);
+        argv.push(validate_doc_ref("plan_ref", plan_ref)?);
+        argv.push(validate_step_id("step_id", step_id)?);
+        Ok(Self {
+            capability,
+            argv,
+            body: None,
         })
     }
 }
@@ -688,6 +730,24 @@ fn validate_stem(field: &'static str, value: &str) -> Result<String, CoreAdapter
     Ok(value.to_string())
 }
 
+/// A canonical plan step id (`S##`): `S` followed by one or more ASCII digits —
+/// no leading `-`, no path separator, nothing shell-meaningful. This is exactly
+/// the `STEP_ID` argument the `vault plan step check/uncheck` verb accepts, so a
+/// malformed id fails at the argv boundary rather than reaching core.
+fn validate_step_id(field: &'static str, value: &str) -> Result<String, CoreAdapterError> {
+    let ok = value.len() >= 2
+        && value.starts_with('S')
+        && value[1..].bytes().all(|b| b.is_ascii_digit());
+    if !ok {
+        return Err(invalid(
+            field,
+            value,
+            "must be a canonical step id (`S` followed by digits, e.g. `S01`)",
+        ));
+    }
+    Ok(value.to_string())
+}
+
 /// An optional `expected_blob_hash`: a 40-char lowercase hex git blob OID.
 fn validate_blob_hash(field: &'static str, value: &str) -> Result<String, CoreAdapterError> {
     let ok = value.len() == 40
@@ -823,6 +883,78 @@ mod tests {
         assert_eq!(
             inv.argv(),
             &["vault", "rename", "adr/old-stem", "--to", "new-stem"]
+        );
+    }
+
+    #[test]
+    fn set_plan_step_state_builds_positional_argv_without_a_blob_fence() {
+        // check → `vault plan step check <plan> <S##>`, no `--expected-blob-hash`
+        // (the plan CLI has no such flag — ADR D1), no stdin body.
+        let checked =
+            CoreInvocation::set_plan_step_state(true, ".vault/plan/demo-plan.md", "S01").unwrap();
+        assert_eq!(checked.capability(), CoreCapability::CheckPlanStep);
+        assert_eq!(
+            checked.argv(),
+            &[
+                "vault",
+                "plan",
+                "step",
+                "check",
+                ".vault/plan/demo-plan.md",
+                "S01"
+            ]
+        );
+        assert!(!checked.has_body(), "a plan tick carries no stdin body");
+        assert!(
+            !checked.argv().iter().any(|a| a == "--expected-blob-hash"),
+            "the plan CLI verb carries no blob fence"
+        );
+
+        // uncheck → the sibling verb, same positional shape.
+        let unchecked = CoreInvocation::set_plan_step_state(false, "demo-plan", "S12").unwrap();
+        assert_eq!(unchecked.capability(), CoreCapability::UncheckPlanStep);
+        assert_eq!(
+            unchecked.argv(),
+            &["vault", "plan", "step", "uncheck", "demo-plan", "S12"]
+        );
+    }
+
+    #[test]
+    fn set_plan_step_state_rejects_malformed_step_id_and_traversal_ref() {
+        // A non-`S##` step id, a flag-shaped id, and a `..`-traversal plan ref all
+        // fail BEFORE any spawn.
+        assert!(CoreInvocation::set_plan_step_state(true, "demo-plan", "P01").is_err());
+        assert!(CoreInvocation::set_plan_step_state(true, "demo-plan", "S").is_err());
+        assert!(CoreInvocation::set_plan_step_state(true, "demo-plan", "-S1").is_err());
+        assert!(CoreInvocation::set_plan_step_state(true, "demo-plan", "S1x").is_err());
+        assert!(CoreInvocation::set_plan_step_state(true, "../escape", "S01").is_err());
+    }
+
+    /// The plan CLI verb's `--json` status vocabulary maps onto the adapter's
+    /// EXISTING success set with no widening: a real state flip emits
+    /// `"updated"`, an idempotent no-op emits `"unchanged"` (both success), and a
+    /// business refusal — e.g. an unknown step id — emits `"failed"`. Confirmed
+    /// by running `vaultspec-core vault plan step check/uncheck --json` against a
+    /// scratch fixture plan during S01 execution.
+    #[test]
+    fn plan_step_status_vocabulary_maps_onto_the_existing_success_set() {
+        for status in ["updated", "unchanged"] {
+            let envelope = CoreEnvelope {
+                raw: serde_json::json!({ "schema": "x.v1", "status": status }),
+                status: status.to_string(),
+            };
+            assert!(
+                envelope.is_success(),
+                "plan-tick success status `{status}` is already in the adapter success set"
+            );
+        }
+        let refusal = CoreEnvelope {
+            raw: serde_json::json!({ "schema": "x.v1", "status": "failed" }),
+            status: "failed".to_string(),
+        };
+        assert!(
+            refusal.is_failed(),
+            "an unknown-step refusal is a business `failed`, handled as a recorded failure"
         );
     }
 
@@ -1132,6 +1264,8 @@ mod tests {
             CoreCapability::SetFrontmatter,
             CoreCapability::Edit,
             CoreCapability::Rename,
+            CoreCapability::CheckPlanStep,
+            CoreCapability::UncheckPlanStep,
         ] {
             assert_eq!(
                 cap.fixed_args().first().copied(),
@@ -1162,6 +1296,8 @@ mod tests {
             CoreCapability::SetFrontmatter,
             CoreCapability::Edit,
             CoreCapability::Rename,
+            CoreCapability::CheckPlanStep,
+            CoreCapability::UncheckPlanStep,
         ]
         .into_iter()
         .flat_map(|c| c.fixed_args().iter().copied())
