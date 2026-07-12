@@ -32,6 +32,7 @@ CURRENT structure so a future agent updates the right node and does not chase st
 | `958:4878` | [Graph] Components |
 | `957:5238` | [Mobile] Compact |
 | `741:3141` | [Study] Graph Hover |
+| `1072:4204` | [Surface] Authoring (authoring-surface epic: DocChrome mode toggle w/ kbd hints, heading comment affordance, diff section states, comment thread panel) |
 
 ## State boards (the 4-mode previews)
 
@@ -47,7 +48,9 @@ CURRENT structure so a future agent updates the right node and does not chase st
 New this session:
 
 - `1005:4203` **TimelineRange** (set — `State=Typical\|Loading\|Degraded\|Empty`; variants `1002:4205` / `1003:4197` / `1004:4203` / `1004:4197`)
-- `1013:4066` **StateBlock** (set — `Mode=Empty\|Degraded × Layout=Inline\|Block`, `Message` text prop; the old `515:1000` stub is now its `Mode=Empty, Layout=Inline` variant)
+- `1013:4066` **StateBlock** (set — `Mode=Empty\|Degraded × Layout=Inline\|Block`, `Message` text prop; the old `515:1000` stub is now its `Mode=Empty, Layout=Inline` variant; the `Mode=Empty, Layout=Block` variant `1012:4060` carries the "New document" secondary CTA per authoring-surface D5)
+- `1072:4277` **CommentThreadPanel** (set — `State=Populated\|Orphaned`; the reader's section comment thread, authoring-surface D2; lives on `[Surface] Authoring`)
+- `635:2492` **CreateDocDialog** (renamed from the stale CreateDocButton; full dialog with the open corpus-fed Feature combobox, authoring-surface D6)
 
 Existing (selected — the join is by name, so resolve any component by its React export):
 
@@ -56,9 +59,8 @@ Existing (selected — the join is by name, so resolve any component by its Reac
 | `634:2090` | CommandPalette | | `635:3196` | CanvasStateOverlay |
 | `270:927` | CodeViewer | | `618:1966` | CategoryLegend |
 | `319:1024` | HoverCard | | `838:3906` | FilterMenu |
-| `636:1920` | FrontmatterHeader | | `283:1170` | DocHeader (set) |
-| `807:3528` | DocTypeMark (set) | | `635:3190` | IconRail |
-| `635:3126` | Inspector | | `635:2489` | KeyboardShortcuts |
+| `636:1920` | FrontmatterHeader | | `807:3528` | DocTypeMark (set) |
+| `635:3190` | IconRail | | `635:2489` | KeyboardShortcuts |
 | `545:1397` | LocationStrip (retired in code — worktree-switcher-identity ADR) | | `636:2144` | MinimapWidget |
 | `636:2157` | Playhead | | `260:896` | PropertyRow |
 | `879:4125` | RagOpsConsole | | `636:1947` | RailFilterField |
@@ -68,32 +70,47 @@ Existing (selected — the join is by name, so resolve any component by its Reac
 | `849:3929` | BackgroundMenu | | `826:3833` | BottomSheet |
 | `823:3859` | BottomTabBar (set) | | `635:2500` | BrowserModeToggle |
 | `635:2470` | ConfirmDialog | | `319:960` | ContextMenuHost |
-| `635:2492` | CreateDocButton | | `635:3130` | Dialog |
-| `825:3819` | MobileTopBar | | | |
+| `825:3819` | MobileTopBar | | `635:3130` | Dialog |
+
+Archived (React export deleted; nodes renamed `_archived/*` so the name-join no longer
+matches): `635:3126` `_archived/Inspector`, `283:1170` `_archived/DocHeader` — both
+superseded by the status rail (authoring-surface D7).
 
 Sub-components (no standalone export) use the `_Parent/Part` form — e.g. `_BottomSheet/Handle`,
 `_CategoryLegend/Chip`, `_ChangePill`, `_FeatureSearchField/*`, `_FilterBar`, `_GitStatusPill`,
-`_LayoutSelector`, `_LensSelector`, `_MarkdownReader/CodeBlock`, `_Twisty`.
+`_LayoutSelector`, `_LensSelector`, `_MarkdownReader/CodeBlock`, `_Twisty`. New for
+authoring-surface: `_DocChrome/ModeToggle` (`1072:4205`, View/Edit segments with registry-derived
+kbd hints), `_MarkdownReader/HeadingCommentAffordance` (`1072:4214`, right-gutter comment button +
+count chip), `_TreeBrowser/FeaturesHeader` (`1070:4189`, Features section header + scoped create
+Plus). The vault-mode left-rail header Filter Row (`843:3862`) gained the "New Document Button"
+IconButton; the `StepMark` set (`564:1922`) gained `State=CheckboxUnchecked|CheckboxChecked|
+CheckboxPending` variants (the actionable plan-step checkbox, D1); the `Icon` set (`159:136`)
+gained `Glyph=Comment` (`1070:4166`) and `Glyph=Diff` (`1070:4171`).
 
 State-preview frames (dot-path `Component.state`):
 
 - `847:3903` `FeatureSearchField.open`
 - `652:1804` `SearchPaletteSurface.expanded` · `666:2038` `SearchPaletteSurface.expanded.doc` · `651:1771` `SearchPaletteSurface.list`
 
-## Pending design-sync — authoring-surface epic (2026-07-12)
+## Design-sync — authoring-surface epic (opened 2026-07-12, CLOSED 2026-07-13)
 
-The following affordances are live in code but have not yet been mirrored into the binding Figma file `SlhonORmySdoSMTQgDWw3w`. They represent deliberate divergence permitted by ADR D7 and the authoring-surface ADR decisions D1–D6. A designer must author or update the corresponding Figma nodes before this divergence can be retired.
+Every item below has been mirrored into the binding file; the divergence is retired.
+The tables are kept as the record of WHAT was synced — current node ids live in the
+inventory sections above. Corrections made while closing: the WorkspaceGhost CTA rides
+`left-rail:new-document` (this section previously said `vault-doc:new`, which never
+existed), and DocChrome had no prior Figma node — `_DocChrome/ModeToggle` was authored
+new on `[Surface] Authoring` (`1072:4204`) rather than updated.
 
 ### Components / sub-components to retire from Figma
 
 | Figma node | Name | Reason |
 | --- | --- | --- |
-| `635:3126` | **Inspector** | Superseded by the Status rail (`StatusTab`). The React component is deleted (authoring-surface D7). The Figma component can be archived or removed. |
-| `283:1170` | **DocHeader (set)** | Superseded by the inline `DocHeaderBlock` helper in `MarkdownReader` and the editorial metadata `FrontmatterHeader`. The right-rail `DocHeader.tsx` component is deleted (authoring-surface D7). The Figma component can be archived. |
+| `635:3126` | **Inspector** | Superseded by the Status rail (`StatusTab`). The React component is deleted (authoring-surface D7). DONE: renamed `_archived/Inspector`. |
+| `283:1170` | **DocHeader (set)** | Superseded by the inline `DocHeaderBlock` helper in `MarkdownReader` and the editorial metadata `FrontmatterHeader`. The right-rail `DocHeader.tsx` component is deleted (authoring-surface D7). DONE: renamed `_archived/DocHeader`. |
 
 NowStrip had no standalone Figma component entry; the concept survives in the stores layer (`nowStrip.ts`) and is referenced only at the architectural level.
 
-### New affordances to mirror into Figma (no Figma node yet)
+### New affordances mirrored into Figma (all DONE 2026-07-13)
 
 **Plan-step checkbox rows (D1).** `PlanStepTree` step rows now contain a keyboard-operable checkbox inside the row focus zone. The checkbox is disabled in historical/as-of views. In-flight state (mutation pending) is reflected visually. Suggested home: extend the existing status-rail step-row sub-component or author `_PlanStepTree/StepRow.checked` / `_PlanStepTree/StepRow.inFlight` state frames inside `[Surface] Activity Rail` (`606:1779`).
 
