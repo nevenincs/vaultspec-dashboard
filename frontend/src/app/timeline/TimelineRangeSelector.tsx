@@ -229,9 +229,11 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
       data-timeline
       data-timeline-range
     >
+      {/* The computed range readout is data, carved out of the scrubber's
+          gesture-chrome select-none (touch-selectability ADR D2). */}
       <span
         data-tabular
-        className="shrink-0 text-label tabular-nums text-ink"
+        className="shrink-0 select-text text-label tabular-nums text-ink"
         aria-label="selected date range"
       >
         {readout}

@@ -164,8 +164,12 @@ export function FeatureSearchField() {
                   index === activeIndex ? "bg-paper-sunken" : "hover:bg-paper-sunken"
                 }`}
               >
-                <span className="text-[0.75rem] text-ink">{suggestion.display}</span>
-                <span className="text-[0.6875rem] text-ink-faint">
+                {/* Suggestion display/tag are corpus data: selectable inside the
+                    option button (touch-selectability ADR D2). */}
+                <span className="select-text text-[0.75rem] text-ink">
+                  {suggestion.display}
+                </span>
+                <span className="select-text text-[0.6875rem] text-ink-faint">
                   {suggestion.tag}
                 </span>
               </button>

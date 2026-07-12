@@ -47,11 +47,11 @@ Route every audited menu-online hijack through the guard and re-enable selection
 
 Apply the D2 row-selectability convention to surfaces without live menus so the latent defect never matures: palette and picker result rows, the timeline range readout carve-out, and the medium-severity right-rail rows.
 
-- [ ] `P03.S13` - Re-enable selection on command, document-search, and semantic-search result row data text across the palette surfaces; `frontend/src/app/palette/`.
-- [ ] `P03.S14` - Re-enable selection on combobox and feature-suggestion option data text in the viewer and left-rail pickers; `frontend/src/app/viewer/AutocompleteCombobox.tsx`.
-- [ ] `P03.S15` - Carve the computed date-range readout out of the timeline scrubber selection suppression; `frontend/src/app/timeline/TimelineRangeSelector.tsx`.
+- [x] `P03.S13` - Re-enable selection on command, document-search, and semantic-search result row data text across the palette surfaces; `frontend/src/app/palette/`.
+- [x] `P03.S14` - Re-enable selection on combobox and feature-suggestion option data text in the viewer and left-rail pickers; `frontend/src/app/viewer/AutocompleteCombobox.tsx`.
+- [x] `P03.S15` - Carve the computed date-range readout out of the timeline scrubber selection suppression; `frontend/src/app/timeline/TimelineRangeSelector.tsx`.
 - [ ] `P03.S16` - Re-enable selection on plan pill titles, changed-file names, and plan-step headings in the latent right-rail rows; `frontend/src/app/right/`.
-- [ ] `P03.S17` - Re-enable selection on workspace switcher and project navigator row names on the compact shell; `frontend/src/app/shell/WorkspaceSwitcherSheet.tsx`.
+- [x] `P03.S17` - Re-enable selection on workspace switcher and project navigator row names on the compact shell; `frontend/src/app/shell/WorkspaceSwitcherSheet.tsx`.
 
 ### Phase `P04` - Touch entry and gesture yield
 

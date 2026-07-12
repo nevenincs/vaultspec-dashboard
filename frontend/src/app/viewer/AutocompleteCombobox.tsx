@@ -213,7 +213,9 @@ export function AutocompleteCombobox({
                   {docTypeCategory(option.docType) !== null && (
                     <StatusDot category={docTypeCategory(option.docType)!} />
                   )}
-                  <span className="flex min-w-0 flex-col items-start gap-fg-0-5">
+                  {/* Option primary/secondary are corpus data: selectable inside
+                      the option button (touch-selectability ADR D2). */}
+                  <span className="flex min-w-0 select-text flex-col items-start gap-fg-0-5">
                     <span className="truncate text-[0.75rem] text-ink">
                       {option.primary}
                     </span>

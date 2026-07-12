@@ -34,8 +34,10 @@ export function SearchResultPill({
         >
           {view.typeWord}
         </span>
+        {/* Title / feature / why are corpus data: selection stays enabled inside
+            the wrapping option button (touch-selectability ADR D2). */}
         <span
-          className={`min-w-0 flex-1 truncate text-body text-ink ${
+          className={`min-w-0 flex-1 select-text truncate text-body text-ink ${
             view.titleMono ? "font-mono" : "font-medium"
           }`}
         >
@@ -43,7 +45,7 @@ export function SearchResultPill({
         </span>
         {view.featureTag && (
           <span
-            className={`shrink-0 rounded-fg-pill px-fg-2 py-fg-0-5 text-caption text-ink-muted ${
+            className={`shrink-0 select-text rounded-fg-pill px-fg-2 py-fg-0-5 text-caption text-ink-muted ${
               selected ? "bg-paper-raised" : "bg-paper-sunken"
             }`}
           >
@@ -53,7 +55,7 @@ export function SearchResultPill({
       </div>
       {view.why && (
         <span
-          className={`block w-full truncate text-caption text-ink-faint ${
+          className={`block w-full select-text truncate text-caption text-ink-faint ${
             view.whyMono ? "font-mono" : ""
           }`}
         >
