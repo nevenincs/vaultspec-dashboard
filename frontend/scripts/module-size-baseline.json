@@ -1,9 +1,6 @@
 {
   "engine/crates/engine-graph/src/index.rs": 2415,
-  "engine/crates/engine-query/src/filter.rs": 1625,
-  "engine/crates/engine-query/src/graph.rs": 2048,
-  "engine/crates/engine-query/src/salience.rs": 2111,
-  "engine/crates/vaultspec-api/src/app.rs": 2300,
+  "engine/crates/vaultspec-api/src/app.rs": 2339,
   "engine/crates/vaultspec-api/src/authoring/api.rs": 1757,
   "engine/crates/vaultspec-api/src/authoring/apply.rs": 4518,
   "engine/crates/vaultspec-api/src/authoring/conflicts.rs": 1770,
@@ -21,9 +18,9 @@
   "engine/crates/vaultspec-api/src/authoring/store/retention.rs": 1502,
   "engine/crates/vaultspec-api/src/authoring/transitions.rs": 1679,
   "engine/crates/vaultspec-api/src/authoring/validation.rs": 1619,
-  "engine/crates/vaultspec-api/src/lib.rs": 2828,
+  "engine/crates/vaultspec-api/src/lib.rs": 2941,
   "engine/crates/vaultspec-api/src/routes/ops.rs": 3930,
   "engine/crates/vaultspec-api/src/routes/query.rs": 1624,
-  "frontend/src/scene/three/threeField.ts": 3514,
-  "frontend/src/stores/server/authoring.ts": 1992
+  "frontend/src/scene/three/threeField/field.ts": 3114,
+  "frontend/src/stores/server/authoring.ts": 2348
 }

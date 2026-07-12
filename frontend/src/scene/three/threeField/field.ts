@@ -1,3 +1,114 @@
+import {
+  BufferGeometry,
+  CircleGeometry,
+  Color,
+  ColorManagement,
+  DataTexture,
+  DoubleSide,
+  Float32BufferAttribute,
+  FloatType,
+  InstancedBufferAttribute,
+  InstancedBufferGeometry,
+  Mesh,
+  NearestFilter,
+  OrthographicCamera,
+  RGBAFormat,
+  Scene,
+  ShaderMaterial,
+  Uint32BufferAttribute,
+  WebGLRenderer,
+  type Texture,
+} from "three";
+import {
+  foldSceneDeltas,
+  type SceneCommand,
+  type SceneController,
+  type SceneDelta,
+  type SceneEdgeData,
+  type SceneFieldRenderer,
+  type SceneNodeData,
+} from "../../sceneController";
+import { semanticLevel } from "../../field/cameraCore";
+import {
+  APPEARANCE_DEFAULTS,
+  accentColor,
+  canvasBackground,
+  edgeAppearance,
+  edgeEndColors,
+  highlightColor,
+  inkColor,
+  inkMutedColor,
+  nodeColorNumber,
+  nodeWorldRadius,
+  sceneRuleColor,
+  type AppearanceParams,
+} from "../appearance";
+import { D3ForceSolver, D3_FORCE_DEFAULTS, type D3ForceParams } from "../d3ForceSolver";
+import { defaultPositionCache, type NodePosition } from "../../positionCache";
+import { classifySwap } from "../swapClassifier";
+import { labelTextStyle } from "../labelStyle";
+import { rootFontPx, uiScale } from "../uiScale";
+import { buildGlyphAtlas, glyphKeyForNode, type GlyphAtlas } from "../glyphAtlas";
+import {
+  AUTOFRAME_DEADBAND,
+  AUTOFRAME_EASE,
+  AUTOFRAME_POLL_MS,
+  AUTOFRAME_SETTLE_EPS,
+  COLD_START_ALPHA,
+  DISPLAY_LERP_K,
+  DISPLAY_SNAP_EPS,
+  EMPHASIS_FADE_TAU_MS,
+  FENCE_FILL_ALPHA,
+  FENCE_PAD_PX,
+  FENCE_STROKE_ALPHA,
+  FENCE_STROKE_WIDTH_PX,
+  FIT_PADDING_PX,
+  FOCUS_RING_WIDTH_PX,
+  GENTLE_REHEAT_ALPHA,
+  LABEL_BUDGET,
+  LABEL_MAX_WIDTH_PX,
+  LABEL_PILL_GAP_PX,
+  LABEL_PILL_PAD_X_PX,
+  LABEL_PILL_PAD_Y_PX,
+  MAX_GL_RESTORE_ATTEMPTS,
+  MAX_SCENE_NODES,
+  MINIMAP_INSET,
+  NODE_RECEDE_HOVER,
+  NODE_RECEDE_SELECT,
+  PERF_DEGRADE_MS,
+  PERF_RESTORE_MS,
+  PICK_RADIUS_PX,
+  PINCH_ZOOM_SENSITIVITY,
+  PREWARM_BUDGET_MS,
+  PREWARM_MAX_TICKS,
+  PULSE_RING_ALPHA,
+  PULSE_RING_WIDTH,
+  SIM_MAX_CATCHUP_TICKS,
+  SIM_TICK_MS,
+  WARM_START_ALPHA,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEP_BUTTON,
+  ZOOM_STEP_WHEEL,
+} from "./config";
+import {
+  EDGE_FRAGMENT,
+  EDGE_VERTEX,
+  GLYPH_FRAGMENT,
+  GLYPH_VERTEX,
+  NODE_FRAGMENT,
+  NODE_VERTEX,
+} from "./shaders";
+import {
+  convexHull,
+  forceChangeFraction,
+  hexCss,
+  prefersReducedMotion,
+  sanitizeLabel,
+  traceRoundedOffset,
+  type ScreenPt,
+} from "./geometry";
+
 // ThreeField — a parallel three.js implementation of the SceneFieldRenderer seam,
 // an alternative to CosmosField. 2D orthographic. Node positions are computed on
 // the CPU by D3ForceSolver (d3-force) and mirrored into a small RGBA-float texture
@@ -16,289 +127,6 @@
 // 2D-overlay labels with DOI/semantic-zoom culling, and the SceneEvent surface
 // (hover/select/open/context-menu/camera-change) emitted through the controller.
 
-import {
-  BufferGeometry,
-  CircleGeometry,
-  Color,
-  ColorManagement,
-  DataTexture,
-  DoubleSide,
-  Float32BufferAttribute,
-  FloatType,
-  InstancedBufferAttribute,
-  InstancedBufferGeometry,
-  Mesh,
-  NearestFilter,
-  OrthographicCamera,
-  RGBAFormat,
-  Scene,
-  ShaderMaterial,
-  type Texture,
-  Uint32BufferAttribute,
-  WebGLRenderer,
-} from "three";
-
-import {
-  foldSceneDeltas,
-  type SceneCommand,
-  type SceneDelta,
-  type SceneEdgeData,
-  type SceneFieldRenderer,
-  type SceneNodeData,
-  type SceneController,
-} from "../sceneController";
-import { semanticLevel } from "../field/cameraCore";
-import { controlNumber, specById } from "./graphControlSchema";
-import {
-  accentColor,
-  APPEARANCE_DEFAULTS,
-  type AppearanceParams,
-  canvasBackground,
-  edgeAppearance,
-  edgeEndColors,
-  highlightColor,
-  inkColor,
-  inkMutedColor,
-  nodeColorNumber,
-  nodeWorldRadius,
-  sceneRuleColor,
-} from "./appearance";
-import { D3_FORCE_DEFAULTS, D3ForceSolver, type D3ForceParams } from "./d3ForceSolver";
-import { defaultPositionCache, type NodePosition } from "../positionCache";
-import { classifySwap } from "./swapClassifier";
-import { labelTextStyle } from "./labelStyle";
-import { rootFontPx, uiScale } from "./uiScale";
-import { buildGlyphAtlas, glyphKeyForNode, type GlyphAtlas } from "./glyphAtlas";
-
-// Pointer hit tolerance in screen px at the 16px rem basis; UI-scaled at use.
-// Tweakable constants are read FROM the canonical control registry
-// (graphControlSchema) so each has exactly ONE definition — never a schema entry plus
-// a duplicate local const (the exact drift the registry exists to kill). Same values,
-// single source of truth.
-const PICK_RADIUS_PX = controlNumber("pickRadiusPx");
-/** Gentle restart alpha for a warm-started (mostly-carried-over) layout — low so
- *  persistent nodes barely move while new nodes settle in (object constancy). */
-const WARM_START_ALPHA = controlNumber("warmStartAlpha");
-/** Live-retune kick: the gentle re-energise for a force/size slider — re-settle in
- *  place, never the old violent global 0.5 re-explode. */
-const GENTLE_REHEAT_ALPHA = controlNumber("gentleReheatAlpha");
-/** Cold-start alpha + prewarm caps, schema-read here for the set-data energy
- *  dispatch (proportional warm ramp toward cold; frozen swaps prep zero ticks). */
-const COLD_START_ALPHA = controlNumber("coldAlpha");
-const PREWARM_MAX_TICKS = controlNumber("prewarmMaxTicks");
-const PREWARM_BUDGET_MS = controlNumber("prewarmBudgetMs");
-/** Fit padding: a fixed, UI-scaled pixel margin reserved on EVERY edge when framing, so
- *  the framed graph never touches the canvas rim. A true pixel gap (zoom-independent),
- *  unlike a fractional factor whose apparent margin shrinks as the graph span grows; the
- *  framed bounds already cover node BODIES (graphBounds/fitToNodes expand by node radius),
- *  so this is clear space beyond the outermost node bodies. */
-const FIT_PADDING_PX = controlNumber("fitPaddingPx");
-/** Fractional inset of the minimap overview from the minimap canvas edges. */
-const MINIMAP_INSET = controlNumber("minimapInset");
-// Camera zoom band + step factors. This is the LIVE field clamp (cameraCore's
-// MIN/MAX_SCALE is the retired Camera-class path; the registry names that drift).
-const ZOOM_MIN = controlNumber("zoomMin");
-const ZOOM_MAX = controlNumber("zoomMax");
-const ZOOM_STEP_BUTTON = controlNumber("zoomStepButton");
-const ZOOM_STEP_WHEEL = controlNumber("zoomStepWheel");
-/** Trackpad pinch zoom sensitivity: factor = exp(-deltaY × this) per pinch wheel event. */
-const PINCH_ZOOM_SENSITIVITY = controlNumber("pinchZoomSensitivity");
-// Autoframe (graph-autoframe): poll the graph bounds on an INTERVAL (not every frame) and
-// ease the camera to the fit when the frame drifts beyond a deadband — never per-frame, so
-// it can't fight the settle or jitter. Local interaction-tuning constants (dimensionless /
-// ms), mirroring NODE_RECEDE_HOVER etc.; not user-tunable look params.
-const AUTOFRAME_POLL_MS = 400; // bounds-poll cadence while autoframe is on
-const AUTOFRAME_EASE = 0.16; // per-frame lerp toward the target (smooth, not a snap)
-const AUTOFRAME_DEADBAND = 0.07; // min fractional frame change (center/zoom) to re-target
-const AUTOFRAME_SETTLE_EPS = 0.004; // within this fraction of target → snap + stop easing
-// Label LOD + ring treatment (read from the registry; one definition each).
-const LABEL_BUDGET = controlNumber("labelBudget");
-const PULSE_RING_WIDTH = controlNumber("pulseRingWidth");
-const PULSE_RING_ALPHA = controlNumber("pulseRingAlpha");
-// Emphasis-state grammar (2026-07-03 graph-representation ADR): the three interaction
-// states differentiate by GRAMMAR, not hue. De-emphasis stays COLOUR-ONLY at full opacity
-// (a non-focus node mixes toward the canvas background, node material uDimColor =
-// canvasBackground; focus nodes keep full category colour; edges keep their category
-// GRADIENT in every mode, no recolour; no glow, no near-black) — but the recede DEPTH now
-// encodes the state: a transient hover recedes shallow, a durable selection (node ring or
-// feature-cluster spotlight) recedes deeper so it reads as the stronger state. The recede
-// is CONTINUOUS and eased (aDim carries the current mix fraction, tweened toward its
-// per-node target each frame) so every state change cross-fades instead of popping;
-// prefers-reduced-motion snaps instantly.
-const NODE_RECEDE_HOVER = 0.3; // shallow non-focus mix while a transient hover is active
-const NODE_RECEDE_SELECT = 0.5; // deeper non-focus mix under a durable selection/spotlight
-// Exponential-ease time constant for the emphasis cross-fade: ~95% settled in ~3τ ≈ 210ms
-// (the design motion window). Dimensionless attribute tween, not a user-tunable look param.
-const EMPHASIS_FADE_TAU_MS = 70;
-// Render-time position smoothing (graph-simulation-stability reference — the Quartz
-// mechanism): the displayed position eases toward the physics position by this fraction
-// per frame while anything is in motion, time-averaging Barnes-Hut/anneal jitter before
-// it reaches the screen; the settle then GLIDES out over ~15 frames instead of popping.
-// Fixed legibility constants, not user-tunable look params.
-const DISPLAY_LERP_K = 0.12; // display → physics fraction per frame
-const DISPLAY_SNAP_EPS = 0.01; // world units: within this of truth → snap exact + stop
-// Fixed-timestep sim accumulator: the solver targets 60 ticks/s in wall-clock terms —
-// a slow renderer runs bounded catch-up ticks per frame so anneal/stall budgets and the
-// felt settle duration stop depending on the frame rate.
-const SIM_TICK_MS = 1000 / 60;
-const SIM_MAX_CATCHUP_TICKS = 3;
-const FOCUS_RING_WIDTH_PX = 2; // thin accent focus ring on the hovered hub
-// Cluster-selection perimeter fence (emphasis-state-grammar ADR): the positive marker of
-// the durable feature-cluster selection — a convex padded hull (rounded n-gon) traced
-// around the visible cohort on the 2D overlay. Pad beyond the largest member's screen
-// radius; hairline accent stroke over a whisper fill; alpha rides the emphasis ease.
-const FENCE_PAD_PX = 12; // padding beyond the largest member radius (screen px at UI scale 1)
-const FENCE_STROKE_WIDTH_PX = 1.5; // fence perimeter stroke width
-const FENCE_STROKE_ALPHA = 0.85; // stroke opacity at full fence presence
-const FENCE_FILL_ALPHA = 0.06; // whisper interior fill (skipped under perf degradation)
-// Max canvas label width before ellipsis (screen px at UI scale 1; multiplied by
-// uiScale at draw). The bare canvas label is ELIDED here so an over-long title can
-// never paint an unbounded line across the field — the FULL title lives in the DOM
-// HoverCard (binding graph-ui "Label … truncated with ellipsis, full title in the
-// HoverCard"). A fixed legibility threshold, not a user-tunable look param.
-const LABEL_MAX_WIDTH_PX = 200;
-// Interactive (hover/select/pin) labels render as a design PILL — a rounded, paper-filled
-// chip with a hairline scene-rule border, not naked text — so the focused label reads as a
-// deliberate design element above the field (ambient DOI labels stay plate-less). The text
-// is SANITIZED (whitespace collapsed, control chars stripped) and elided to a FIXED max
-// character length before the width fit, so a pathological title can never blow the chip
-// out. Screen-px at UI scale 1, multiplied by uiScale at draw.
-const LABEL_MAX_CHARS = 48; // fixed sanitized character cap for an interactive label
-const LABEL_PILL_PAD_X_PX = 7; // horizontal padding inside the pill
-const LABEL_PILL_PAD_Y_PX = 3; // vertical padding inside the pill
-const LABEL_PILL_GAP_PX = 6; // gap from the node body to the pill
-// Icon mode (graph-node-icons): the circle ↔ doc-type-icon cross-fade by on-screen
-// node size. Below LO the node is a plain dot (an icon would be sub-legible — the marks
-// are gated at 14px); above HI it is the full icon; between, the two cross-fade. The
-// icon quad is drawn a touch larger than the dot it replaces so the silhouette reads.
-// Local render constants (mirroring NODE_RECEDE_HOVER / FOCUS_RING_WIDTH_PX above), not
-// schema knobs — they are fixed legibility thresholds, not user-tunable look params.
-// Icon-INSIDE-circle (graph-icon-inside-circle): the doc-type icon is drawn WITHIN the
-// filled disc as one composite mark, so its half-extent is a FRACTION of the node radius
-// (≈62% of the disc DIAMETER) — padded inside the rim, not larger than the disc.
-const ICON_SIZE_MULT = 0.7; // icon half-extent vs node radius (~70% diameter, inside the disc)
-// Icon LOD fade: the inner icon fades in by ON-SCREEN node radius. Tuned LOW so icon mode
-// is actually VISIBLE at normal zoom — a 1214-node graph fit to the viewport clamps every
-// node to ~1.5–4px on screen, so the old 6/12px thresholds meant the icon NEVER appeared
-// until the user zoomed deep into a cluster (the "icon mode does nothing" regression #39).
-// At these values a node fully shows its icon by ~4px (the fit-zoom hub size) and fades out
-// only for sub-legible specks below ~2px.
-const ICON_FADE_LO_PX = 2; // node radius (screen px) where the inner icon begins to appear
-const ICON_FADE_HI_PX = 4; // ...and is fully shown
-// Bounded GL-context-restore retries (bounded-by-default): after this many failed rebuilds
-// on webglcontextrestored, the scene reports render-unavailable (recoverable:false).
-const MAX_GL_RESTORE_ATTEMPTS = 3;
-// Defense-in-depth node ceiling for set-data (Rule 2: every CLIENT wire-ingestion point
-// bounds + reports, never trusting the upstream cap). Mirrors the stores adapter's
-// MAX_CLIENT_GRAPH_NODES (20000) — set well above any real graph; the scene clamps its OWN
-// boundary so an oversized/regressed/direct payload can't exhaust GPU memory.
-const MAX_SCENE_NODES = 20000;
-// FPS-adaptive LOD hysteresis band (perf hardening): degrade above a ~25fps-equivalent
-// per-frame render cost, restore below ~45fps — the gap prevents flapping between tiers.
-const PERF_DEGRADE_MS = 40;
-const PERF_RESTORE_MS = 22;
-
-/** 0xRRGGBB int → a CSS "#rrggbb" string for canvas-2D (minimap) fills/strokes. */
-function hexCss(n: number): string {
-  return "#" + (n & 0xffffff).toString(16).padStart(6, "0");
-}
-
-/** Reduced-motion gate for the emphasis cross-fade, fence ramp, and display lerp:
- *  snap instead of ease. The MediaQueryList is created ONCE at module load (GPR-002 —
- *  `applyDisplayLerp` reads this per frame, and `matchMedia()` allocates a fresh MQL
- *  per call); `.matches` is a live view, so no change listener is needed. */
-const reducedMotionQuery =
-  typeof window !== "undefined" && window.matchMedia
-    ? window.matchMedia("(prefers-reduced-motion: reduce)")
-    : null;
-function prefersReducedMotion(): boolean {
-  return reducedMotionQuery?.matches ?? false;
-}
-
-export type ScreenPt = { x: number; y: number };
-
-/** Andrew monotone-chain convex hull over screen points. Returns the hull with a
- *  POSITIVE shoelace winding in raw coordinate arithmetic (the invariant
- *  `traceRoundedOffset`'s outward normals + arc sweeps rely on); collinear inputs
- *  degrade to their 2-point extent, a single point to itself. Exported for tests. */
-export function convexHull(points: ScreenPt[]): ScreenPt[] {
-  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-  const uniq: ScreenPt[] = [];
-  for (const p of sorted) {
-    const last = uniq[uniq.length - 1];
-    if (!last || Math.abs(last.x - p.x) > 1e-6 || Math.abs(last.y - p.y) > 1e-6) {
-      uniq.push(p);
-    }
-  }
-  if (uniq.length <= 2) return uniq;
-  const cross = (o: ScreenPt, a: ScreenPt, b: ScreenPt) =>
-    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const lower: ScreenPt[] = [];
-  for (const p of uniq) {
-    while (
-      lower.length >= 2 &&
-      cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0
-    ) {
-      lower.pop();
-    }
-    lower.push(p);
-  }
-  const upper: ScreenPt[] = [];
-  for (let i = uniq.length - 1; i >= 0; i--) {
-    const p = uniq[i];
-    while (
-      upper.length >= 2 &&
-      cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0
-    ) {
-      upper.pop();
-    }
-    upper.push(p);
-  }
-  lower.pop();
-  upper.pop();
-  return lower.concat(upper);
-}
-
-/** Trace the Minkowski offset of a convex hull by `pad` into the current path — the
- *  rounded n-gon perimeter fence: each edge pushed outward along its normal, each
- *  vertex joined by an arc of radius `pad` (a disc offset natively rounds the
- *  corners; never concave by construction). Degenerates cleanly: one point → a
- *  circle, two points → a capsule. Requires the positive-shoelace winding
- *  `convexHull` returns, whose outward normal is (dy, -dx). Exported for tests. */
-export function traceRoundedOffset(
-  ctx: CanvasRenderingContext2D,
-  hull: ScreenPt[],
-  pad: number,
-): void {
-  if (hull.length === 0) return;
-  if (hull.length === 1) {
-    ctx.arc(hull[0].x, hull[0].y, pad, 0, Math.PI * 2);
-    return;
-  }
-  const k = hull.length;
-  const normals: ScreenPt[] = [];
-  for (let i = 0; i < k; i++) {
-    const a = hull[i];
-    const b = hull[(i + 1) % k];
-    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-    normals.push({ x: (b.y - a.y) / len, y: -(b.x - a.x) / len });
-  }
-  for (let i = 0; i < k; i++) {
-    const a = hull[i];
-    const b = hull[(i + 1) % k];
-    const n = normals[i];
-    const n2 = normals[(i + 1) % k];
-    const sx = a.x + n.x * pad;
-    const sy = a.y + n.y * pad;
-    if (i === 0) ctx.moveTo(sx, sy);
-    else ctx.lineTo(sx, sy);
-    ctx.lineTo(b.x + n.x * pad, b.y + n.y * pad);
-    // Convex + positive winding ⇒ every vertex turn is a ≤π increasing-angle sweep,
-    // which is exactly canvas arc's default (anticlockwise=false) direction.
-    ctx.arc(b.x, b.y, pad, Math.atan2(n.y, n.x), Math.atan2(n2.y, n2.x), false);
-  }
-}
-
 /** Memoized 2D-overlay token→CSS derivations (SGR-006), keyed on theme epoch +
  *  root font size. */
 type OverlayThemeDerived = {
@@ -314,260 +142,10 @@ type OverlayThemeDerived = {
   docStyle: ReturnType<typeof labelTextStyle>;
 };
 
-/** Sanitize + fixed-length-elide a canvas label: collapse all whitespace runs (incl.
- *  newlines/tabs) to single spaces, trim, and cap to a FIXED character length with a
- *  trailing ellipsis. A pathological title (newlines, thousands of chars) can therefore
- *  never paint an unbounded or broken line; the width fit (`fitLabel`) bounds the
- *  remainder. The full title lives in the DOM HoverCard. */
-function sanitizeLabel(text: string): string {
-  const clean = text.replace(/\s+/g, " ").trim();
-  return clean.length > LABEL_MAX_CHARS
-    ? clean.slice(0, LABEL_MAX_CHARS - 1).trimEnd() + "…"
-    : clean;
-}
-
-/** Format a number as a GLSL float literal so an integer default (e.g. 240) compiles
- *  as `240.0`, not the bare int `240` that GLSL rejects where a float is required. */
-function glslFloat(n: number): string {
-  return Number.isInteger(n) ? n.toFixed(1) : String(n);
-}
-
-/** Normalised magnitude of a live force-param change: the MAX over the changed numeric
- *  knobs of |Δ| / (schema max − min), clamped to [0,1]. 0 ⇒ nothing actually changed
- *  (skip the reheat). Drives the change-proportional gentle reheat so a tiny slider
- *  nudge barely warms the layout while a large retune warms more. */
-function forceChangeFraction(
-  prev: D3ForceParams,
-  next: Partial<D3ForceParams>,
-): number {
-  let frac = 0;
-  for (const key of Object.keys(next) as (keyof D3ForceParams)[]) {
-    const nv = next[key];
-    const pv = prev[key];
-    if (typeof nv !== "number" || typeof pv !== "number" || nv === pv) continue;
-    const spec = specById(key);
-    const span =
-      spec && typeof spec.min === "number" && typeof spec.max === "number"
-        ? spec.max - spec.min
-        : 0;
-    const f = span > 0 ? Math.abs(nv - pv) / span : 1;
-    if (f > frac) frac = f;
-  }
-  return Math.min(1, frac);
-}
-
 // Settle is alpha-driven inside the solver: d3-force cools by alphaDecay each tick
 // and the host freezes the loop once `solver.isSettled()` (alpha < alphaMin and not
 // held warm by a drag). A drag holds the sim warm via alphaTarget, so it perturbs
 // only its force-bearing neighbourhood; the rest of a settled graph stays put.
-
-// Nodes are real instanced circle GEOMETRY (a unit disc, one instance per node),
-// positioned from the GPU position texture and scaled by node radius. Crisp at any
-// size (MSAA on the silhouette + an fwidth edge-AA on the fill) — unlike point
-// sprites, which raster a soft bitmap disc and are size-capped by the GPU.
-const NODE_VERTEX = /* glsl */ `
-attribute float aIndex;
-attribute float aSize;
-attribute vec3 aColor;
-attribute float aDim;
-attribute float aHidden;
-uniform sampler2D uPositions;
-uniform float uTexSize;
-uniform float uPixelsPerWorld;
-varying vec3 vColor;
-varying float vDim;
-varying float vEdge;
-varying float vAA;
-
-// Nodes and edges share ONE reference frame: world-space, scaling with zoom, but
-// each CLAMPED to an on-screen px band so it never vanishes when zoomed far out
-// (min) nor balloons when zoomed far in (max) — the deck.gl radiusMin/MaxPixels +
-// widthMin/MaxPixels pattern. This keeps the node↔edge proportion constant at every
-// zoom (Obsidian/Cytoscape scale-together), fixing the prior mismatch where nodes
-// scaled in world units but edges held a constant pixel width.
-uniform float uPxScale;          // UI-scale (root font / 16): the screen-px band tracks the DOM
-// Icon mode: the disc is ALWAYS drawn at full opacity — the doc-type icon is drawn INSIDE
-// it (the sibling glyph mesh), so circle + icon read as ONE composite mark. The disc no
-// longer fades out for the icon (graph-icon-inside-circle); the icon's own size-LOD fade
-// lives in the glyph shader.
-const float NODE_MIN_PX = ${glslFloat(controlNumber("nodeMinPx"))}; // floor on screen — visible zoomed out (schema nodeMinPx)
-const float NODE_MAX_PX = ${glslFloat(controlNumber("nodeMaxPx"))}; // ceiling on screen — no balloon zoomed in (schema nodeMaxPx)
-
-void main() {
-  vec2 uv = (vec2(mod(aIndex, uTexSize), floor(aIndex / uTexSize)) + 0.5) / uTexSize;
-  vec2 center = texture2D(uPositions, uv).xy;
-  float ppw = uPixelsPerWorld;
-  // World radius → wanted on-screen px → clamp to the band → back to world.
-  float pxWanted = aSize * ppw;
-  float pxC = clamp(pxWanted, NODE_MIN_PX * uPxScale, NODE_MAX_PX * uPxScale);
-  float radiusWorld = ppw > 0.0 ? pxC / ppw : aSize;
-  float scale = aHidden > 0.5 ? 0.0 : radiusWorld;
-  vec2 world = center + position.xy * scale;
-  vColor = aColor;
-  vDim = aDim;
-  vEdge = length(position.xy); // 0 at centre → 1 at the rim
-  // Analytic edge-AA band: ~1.5 screen px at the rim, from the CLAMPED on-screen px.
-  vAA = pxC > 0.0 ? clamp(1.5 / pxC, 0.0, 0.5) : 0.01;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 0.0, 1.0);
-}
-`;
-
-const NODE_FRAGMENT = /* glsl */ `
-precision mediump float;
-uniform vec3 uDimColor;
-varying vec3 vColor;
-varying float vDim;
-varying float vEdge;
-varying float vAA;
-
-void main() {
-  float alpha = 1.0 - smoothstep(1.0 - vAA, 1.0, vEdge);
-  if (alpha <= 0.0) discard;
-  // Emphasis is COLOUR-ONLY at full opacity (never an opacity fade). vDim carries the
-  // CURRENT eased recede fraction (0 = focus/full category colour; up to the hover or
-  // selection depth) — the CPU tween writes it per frame, so state changes cross-fade.
-  vec3 col = mix(vColor, uDimColor, clamp(vDim, 0.0, 1.0));
-  gl_FragColor = vec4(col, alpha);
-}
-`;
-
-const EDGE_VERTEX = /* glsl */ `
-attribute float aIndexA;
-attribute float aIndexB;
-attribute float aEnd;
-attribute float aSide;
-attribute float aWidthPx;
-attribute vec3 aColor;
-attribute float aAlpha;
-attribute float aDim;
-uniform sampler2D uPositions;
-uniform float uTexSize;
-uniform float uPixelsPerWorld;
-varying vec3 vColor;
-varying float vAlpha;
-varying float vDim;
-
-vec2 nodePos(float idx) {
-  vec2 uv = (vec2(mod(idx, uTexSize), floor(idx / uTexSize)) + 0.5) / uTexSize;
-  return texture2D(uPositions, uv).xy;
-}
-
-// Edge width shares the node frame: aWidthPx is read as a WORLD width, so it scales
-// with zoom exactly like node radius (parity), then floored/capped on screen so an
-// edge never disappears when zoomed far out (deck.gl widthMinPixels; sigma
-// minEdgeThickness) nor dominates when zoomed in. NOTE: aWidthPx now carries WORLD
-// units, not pixels — the attribute name is kept to avoid churn in the edge build.
-uniform float uPxScale;         // UI-scale (root font / 16): the screen-px band tracks the DOM
-const float EDGE_MIN_PX = ${glslFloat(controlNumber("edgeMinPx"))}; // floor — won't vanish (schema edgeMinPx)
-const float EDGE_MAX_PX = ${glslFloat(controlNumber("edgeMaxPx"))}; // ceiling — no balloon (schema edgeMaxPx)
-
-void main() {
-  vec2 a = nodePos(aIndexA);
-  vec2 b = nodePos(aIndexB);
-  vec2 base = mix(a, b, aEnd);
-  vec2 dir = b - a;
-  float len = length(dir);
-  vec2 nrm = len > 0.0001 ? vec2(-dir.y, dir.x) / len : vec2(0.0);
-  float ppw = uPixelsPerWorld;
-  float pxWanted = aWidthPx * ppw; // world width → on-screen px (scales with zoom)
-  float pxC = clamp(pxWanted, EDGE_MIN_PX * uPxScale, EDGE_MAX_PX * uPxScale);
-  float halfWorld = ppw > 0.0 ? (pxC * 0.5) / ppw : aWidthPx * 0.5;
-  vec2 world = base + nrm * aSide * halfWorld;
-  vColor = aColor;
-  vAlpha = aAlpha;
-  vDim = aDim;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 0.0, 1.0);
-}
-`;
-
-const EDGE_FRAGMENT = /* glsl */ `
-precision mediump float;
-uniform vec3 uDimColor;
-varying vec3 vColor;
-varying float vAlpha;
-varying float vDim;
-
-void main() {
-  // Edges ALWAYS render at full opacity + full colour on hover — the structure stays
-  // legible; de-emphasis is node-colour-only, never an edge fade (user hover redesign).
-  // (vAlpha still carries the per-edge confidence opacity + the filter visibility mask —
-  // a FILTERED-OUT edge is still hidden; only the HOVER emphasis no longer touches edges.)
-  gl_FragColor = vec4(vColor, vAlpha);
-}
-`;
-
-// Glyph layer (graph-node-icons): a quad per node textured from the doc-type mark
-// atlas, sampling the SAME position texture + on-screen px clamp as the node circle so
-// the icon sits exactly where the dot was. Tinted by the node's category hue (the atlas
-// is a white-ink coverage map — the white-ink-then-tint contract). The quad's UVs map
-// its TOP vertex to v=0 so the upright (top-down) atlas renders upright.
-const GLYPH_VERTEX = /* glsl */ `
-attribute float aIndex;
-attribute float aSize;
-attribute vec3 aColor;
-attribute float aDim;
-attribute float aHidden;
-attribute float aCell;
-attribute vec2 aUv;
-uniform sampler2D uPositions;
-uniform float uTexSize;
-uniform float uPixelsPerWorld;
-uniform float uPxScale;
-uniform float uAtlasCols;
-uniform float uAtlasRows;
-varying vec2 vUv;
-varying vec3 vColor;
-varying float vDim;
-varying float vFade;
-const float NODE_MIN_PX = ${glslFloat(controlNumber("nodeMinPx"))};
-const float NODE_MAX_PX = ${glslFloat(controlNumber("nodeMaxPx"))};
-const float ICON_MULT = ${glslFloat(ICON_SIZE_MULT)};
-const float ICON_FADE_LO = ${glslFloat(ICON_FADE_LO_PX)};
-const float ICON_FADE_HI = ${glslFloat(ICON_FADE_HI_PX)};
-
-void main() {
-  vec2 puv = (vec2(mod(aIndex, uTexSize), floor(aIndex / uTexSize)) + 0.5) / uTexSize;
-  vec2 center = texture2D(uPositions, puv).xy;
-  float ppw = uPixelsPerWorld;
-  float pxC = clamp(aSize * ppw, NODE_MIN_PX * uPxScale, NODE_MAX_PX * uPxScale);
-  float radiusWorld = ppw > 0.0 ? pxC / ppw : aSize;
-  float scale = (aHidden > 0.5 || aCell < 0.0) ? 0.0 : radiusWorld * ICON_MULT;
-  vec2 world = center + position.xy * scale;
-  float col = mod(aCell, uAtlasCols);
-  float row = floor(aCell / uAtlasCols);
-  vUv = vec2((col + aUv.x) / uAtlasCols, (row + aUv.y) / uAtlasRows);
-  vColor = aColor;
-  vDim = aDim;
-  vFade = smoothstep(ICON_FADE_LO * uPxScale, ICON_FADE_HI * uPxScale, pxC);
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 0.0, 1.0);
-}
-`;
-
-const GLYPH_FRAGMENT = /* glsl */ `
-precision mediump float;
-uniform sampler2D uAtlas;
-uniform vec3 uDimColor;
-uniform vec3 uIconInkLight; // knockout colour for a dark/saturated disc (paper)
-uniform vec3 uIconInkDark; // ink colour for a light disc
-varying vec2 vUv;
-varying vec3 vColor;
-varying float vDim;
-varying float vFade;
-
-void main() {
-  float cov = texture2D(uAtlas, vUv).r;
-  // The icon sits INSIDE the filled disc as one composite mark: pick a CONTRASTING ink by
-  // the disc colour's luminance — a paper knockout on a dark/saturated disc, dark ink on a
-  // light disc — so the glyph is legible on ANY category fill. A de-emphasised node fades
-  // its icon with the receding disc — continuously, normalised by the deepest recede so a
-  // fully-receded selection-context icon sits at 0.4 and a hover-context icon stays softer.
-  float a = cov * vFade * mix(1.0, 0.4, clamp(vDim / ${glslFloat(NODE_RECEDE_SELECT)}, 0.0, 1.0));
-  if (a <= 0.01) discard;
-  float lum = dot(vColor, vec3(0.299, 0.587, 0.114));
-  vec3 col = lum > 0.6 ? uIconInkDark : uIconInkLight;
-  gl_FragColor = vec4(col, a);
-}
-`;
 
 interface BuiltEdge {
   a: number;
