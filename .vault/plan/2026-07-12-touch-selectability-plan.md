@@ -33,15 +33,15 @@ Author the one shared selection-guard mechanism and predicate hardening every la
 
 Route every audited menu-online hijack through the guard and re-enable selection on the data text beneath (ADR D1 plus D2): viewer prose, reader wiki-links, left-rail trees and picker rows, right-rail inspector and status rows, doc tabs, islands.
 
-- [ ] `P02.S04` - Route the whole-viewer vault-doc context-menu hijack through the selection guard so selected prose keeps its native menu; `frontend/src/app/viewer/MarkdownDocView.tsx`.
-- [ ] `P02.S05` - Render wiki-links and Related-footer stems as selectable anchor-shaped elements with unchanged activation so prose ranges stay contiguous; `frontend/src/app/viewer/MarkdownReader.tsx`.
-- [ ] `P02.S06` - Re-enable text selection on vault tree row data text and route the row menus through the selection guard; `frontend/src/app/left/TreeBrowser.tsx`.
-- [ ] `P02.S07` - Re-enable text selection on code tree row path text and route the code-file menu through the selection guard; `frontend/src/app/left/CodeTree.tsx`.
-- [ ] `P02.S08` - Re-enable text selection on worktree, project, and recent row data text and route the worktree menu through the selection guard; `frontend/src/app/left/WorktreePicker.tsx`.
-- [ ] `P02.S09` - Re-enable selection on inspector node title, property values, and edge row labels and guard the node and edge menu opens; `frontend/src/app/right/Inspector.tsx`.
-- [ ] `P02.S10` - Re-enable selection on commit hash, subject, and age text and guard the commit and pull-request row menu opens; `frontend/src/app/right/StatusTab.tsx`.
-- [ ] `P02.S11` - Scope doc tab title selection to the title span so tab dragging survives, and guard the doc-tab menu open; `frontend/src/app/stage/DockWorkspace.tsx`.
-- [ ] `P02.S12` - Re-enable selection on island interior chips and step titles beneath the newly scoped island menu; `frontend/src/app/islands/NodeInterior.tsx`.
+- [x] `P02.S04` - Route the whole-viewer vault-doc context-menu hijack through the selection guard so selected prose keeps its native menu; `frontend/src/app/viewer/MarkdownDocView.tsx`.
+- [x] `P02.S05` - Render wiki-links and Related-footer stems as selectable anchor-shaped elements with unchanged activation so prose ranges stay contiguous; `frontend/src/app/viewer/MarkdownReader.tsx`.
+- [x] `P02.S06` - Re-enable text selection on vault tree row data text and route the row menus through the selection guard; `frontend/src/app/left/TreeBrowser.tsx`.
+- [x] `P02.S07` - Re-enable text selection on code tree row path text and route the code-file menu through the selection guard; `frontend/src/app/left/CodeTree.tsx`.
+- [x] `P02.S08` - Re-enable text selection on worktree, project, and recent row data text and route the worktree menu through the selection guard; `frontend/src/app/left/WorktreePicker.tsx`.
+- [x] `P02.S09` - Re-enable selection on inspector node title, property values, and edge row labels and guard the node and edge menu opens; `frontend/src/app/right/Inspector.tsx`.
+- [x] `P02.S10` - Re-enable selection on commit hash, subject, and age text and guard the commit and pull-request row menu opens; `frontend/src/app/right/StatusTab.tsx`.
+- [x] `P02.S11` - Scope doc tab title selection to the title span so tab dragging survives, and guard the doc-tab menu open; `frontend/src/app/stage/DockWorkspace.tsx`.
+- [x] `P02.S12` - Re-enable selection on island interior chips and step titles beneath the newly scoped island menu; `frontend/src/app/islands/NodeInterior.tsx`.
 
 ### Phase `P03` - Pickers, palettes, and latent rows
 
@@ -50,16 +50,16 @@ Apply the D2 row-selectability convention to surfaces without live menus so the 
 - [x] `P03.S13` - Re-enable selection on command, document-search, and semantic-search result row data text across the palette surfaces; `frontend/src/app/palette/`.
 - [x] `P03.S14` - Re-enable selection on combobox and feature-suggestion option data text in the viewer and left-rail pickers; `frontend/src/app/viewer/AutocompleteCombobox.tsx`.
 - [x] `P03.S15` - Carve the computed date-range readout out of the timeline scrubber selection suppression; `frontend/src/app/timeline/TimelineRangeSelector.tsx`.
-- [ ] `P03.S16` - Re-enable selection on plan pill titles, changed-file names, and plan-step headings in the latent right-rail rows; `frontend/src/app/right/`.
+- [x] `P03.S16` - Re-enable selection on plan pill titles, changed-file names, and plan-step headings in the latent right-rail rows; `frontend/src/app/right/`.
 - [x] `P03.S17` - Re-enable selection on workspace switcher and project navigator row names on the compact shell; `frontend/src/app/shell/WorkspaceSwitcherSheet.tsx`.
 
 ### Phase `P04` - Touch entry and gesture yield
 
 Give touch a deliberate menu entry and reserve long-press for selection (ADR D3): the coarse-pointer per-row disclosure affordance over the openContextMenu seam, Android long-press routed through the guard, and the compact reader edge-swipe yielding to an active selection.
 
-- [ ] `P04.S18` - Add the coarse-pointer per-row menu disclosure affordance over the openContextMenu seam for menu-bearing rows; `frontend/src/app/chrome/RowMenuDisclosure.tsx`.
+- [x] `P04.S18` - Add the coarse-pointer per-row menu disclosure affordance over the openContextMenu seam for menu-bearing rows; `frontend/src/app/chrome/RowMenuDisclosure.tsx`.
 - [ ] `P04.S19` - Mount the disclosure affordance on compact menu-bearing surfaces and confirm Android long-press routes through the selection guard; `frontend/src/app/shell/`.
-- [ ] `P04.S20` - Yield the compact reader edge-swipe recognizer while a text selection is active; `frontend/src/app/shell/CompactDocReader.tsx`.
+- [x] `P04.S20` - Yield the compact reader edge-swipe recognizer while a text selection is active; `frontend/src/app/shell/CompactDocReader.tsx`.
 
 ### Phase `P05` - Guards and gate
 
