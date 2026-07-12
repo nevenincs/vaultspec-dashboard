@@ -4,6 +4,7 @@ pub mod content;
 pub mod file_tree;
 pub mod github;
 pub mod history;
+pub mod lifecycle;
 pub mod ops;
 pub mod provision;
 pub mod query;

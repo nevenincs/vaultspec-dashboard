@@ -179,7 +179,7 @@ export async function spawnEngine(root: string): Promise<EngineHandle> {
   const { path: bin } = resolveEngineBin();
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
-  const proc = spawn(bin, ["serve", "--port", String(port)], {
+  const proc = spawn(bin, ["serve", "--port", String(port), "--no-seat"], {
     cwd: root,
     stdio: ["ignore", "pipe", "pipe"],
   });

@@ -28,13 +28,14 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 serde_yaml = "0.9.34"
 thiserror = "2.0.18"
-tokio = { version = "1.52.3", features = ["rt", "macros", "net", "sync", "time", "process", "io-util"] }
+tokio = { version = "1.52.3", features = ["rt", "macros", "net", "sync", "time", "process", "io-util", "signal"] }
 tokio-stream = { version = "0.1.18", features = ["sync"] }
 tower-http = { version = "0.6.11", features = [
     "catch-panic",
     "compression-gzip",
     "set-header",
 ] }
+fs4 = { version = "0.13", features = ["sync"] }
 
 [features]
 # Compile `frontend/dist` into the binary via rust-embed for release

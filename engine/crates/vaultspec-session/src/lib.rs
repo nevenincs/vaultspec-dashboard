@@ -38,12 +38,14 @@
 
 use std::path::Path;
 
+pub mod app_home;
 pub mod schema;
 pub mod session;
 pub mod settings;
 pub mod settings_schema;
 pub mod store;
 
+pub use app_home::{LauncherState, MAX_WORKSPACE_ROWS, WorkspaceEntry, app_home_dir};
 pub use schema::WorkspaceRoot;
 pub use session::{MAX_RECENTS, RegistryError, ScopeContext};
 pub use settings::Setting;

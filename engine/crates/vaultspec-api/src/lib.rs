@@ -12,6 +12,7 @@ mod authoring;
 pub mod handshake;
 pub mod registry;
 pub mod routes;
+pub mod seat;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -62,6 +63,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/issues",
     "/status",
     "/stream",
+    "/shutdown",
     "/authoring/status",
     "/search",
     "/ops/core/{verb}",
@@ -98,6 +100,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // the registered project roots with reachability, through the shared
         // envelope. Registry mutation rides /session (config), never here.
         .route("/workspaces", get(routes::registry::list_workspaces))
+        // Graceful stop (single-app-runtime D5): bearer-gated signal; the
+        // drain itself is the serve loop's one shared shutdown path.
+        .route("/shutdown", post(routes::lifecycle::shutdown))
         .route("/vault-tree", get(routes::query::vault_tree))
         .route("/code-files", get(routes::query::code_files))
         // Read-only codebase file-tree listing (dashboard-code-tree ADR): one
@@ -296,7 +301,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
 /// Run the resident service on loopback: initial index, watcher-driven
 /// rebuild-and-swap (302/303), heartbeat on the discovery file.
-pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
+///
+/// `no_seat` (with `--port 0` implying it) is the sanctioned multi-instance
+/// exemption (single-app-runtime D1): an exempt serve skips the machine seat
+/// lock and keeps publishing the workspace-local discovery file, so the test
+/// harness and parallel dev worktrees are untouched by the seat law.
+pub async fn serve(port: u16, scope: Option<String>, no_seat: bool) -> std::io::Result<()> {
     // Crash visibility (dogfood DF-4): a panic anywhere must leave a
     // trace, never a silent death. The hook writes a crash log under the
     // engine data dir and stderr before unwinding.
@@ -349,6 +359,43 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
             root.display()
         )));
     }
+
+    // Machine seat (single-app-runtime D1): one resident app process per
+    // machine, enforced by an OS file lock the kernel releases on ANY death
+    // (dead-pid takeover is therefore automatic). Acquired BEFORE any heavy
+    // work so a conflict fails fast and loud. `--port 0` implies exemption
+    // (the OS-ephemeral test port, the dev-workflow rule's sanctioned
+    // exception); `--no-seat` is the explicit dev escape hatch.
+    let seat_guard = if no_seat || port == 0 {
+        None
+    } else {
+        match vaultspec_session::app_home::app_home_dir() {
+            None => {
+                eprintln!(
+                    "vaultspec serve: WARNING - no home directory resolvable; \
+                     serving unseated (machine discovery disabled)."
+                );
+                None
+            }
+            Some(home) => match seat::acquire_seat(&home)? {
+                Ok(guard) => Some(guard),
+                Err(seat::SeatBusy::Held { pid, port }) => {
+                    let who = match (pid, port) {
+                        (Some(pid), Some(port)) => {
+                            format!("pid {pid} on http://127.0.0.1:{port}")
+                        }
+                        (Some(pid), None) => format!("pid {pid}"),
+                        _ => "another process".to_string(),
+                    };
+                    return Err(std::io::Error::other(format!(
+                        "the vaultspec app is already running ({who}) - run \
+                         `vaultspec` to open it, or `vaultspec stop` first \
+                         (dev/test escape hatches: --no-seat, --port 0)"
+                    )));
+                }
+            },
+        }
+    };
 
     // Detect-and-instruct (dashboard-packaging D3, amended by review): probe
     // the two external requirements BEFORE any heavy work and WARN with the
@@ -464,7 +511,36 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
     let port = listener.local_addr()?.port();
 
     // Discovery + heartbeat (contract §1), advertising the real bound port.
-    app::write_service_json(&state, port)?;
+    // SEATED serves publish at the machine app home (single-app-runtime D1
+    // cutover); exempt serves keep the workspace-local file byte-compatible.
+    let discovery_dir = match &seat_guard {
+        Some(guard) => guard.home.clone(),
+        None => app::workspace_discovery_dir(&state),
+    };
+    app::write_service_json(&state, &discovery_dir, port)?;
+
+    // Launcher state (single-app-runtime D3): a seated boot records its
+    // workspace in the machine-global known-roots file so a cwd-less launch
+    // (double-click) can resolve "where did I work last". Best-effort.
+    if let Some(guard) = &seat_guard {
+        let id = ingest_git::workspace::Workspace::discover(&state.workspace_root)
+            .ok()
+            .map(|ws| routes::scope_token(&ws.common_dir))
+            .unwrap_or_else(|| routes::scope_token(&state.workspace_root));
+        let label = state
+            .workspace_root
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let mut launcher = vaultspec_session::LauncherState::load(&guard.home);
+        launcher.touch(
+            &id,
+            &label,
+            &state.workspace_root.to_string_lossy(),
+            app::now_ms(),
+        );
+        let _ = launcher.save(&guard.home);
+    }
 
     // Abort-on-drop guard for the heartbeat task (B9, resource-hardening): the
     // loop holds a cloned `Arc<AppState>` and runs forever. Without an abort
@@ -480,10 +556,13 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
     }
     let _heartbeat = {
         let state = state.clone();
+        let dir = discovery_dir.clone();
         AbortOnDrop(tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(15)).await;
-                let _ = app::write_service_json(&state, port);
+                // Owner-checked: never clobbers a foreign serve's discovery
+                // (single-app-runtime S01).
+                let _ = app::heartbeat_service_json(&state, &dir, port);
             }
         }))
     };
@@ -491,9 +570,45 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
     println!(
         "vaultspec serve: listening on http://127.0.0.1:{port} (bearer token in service.json)"
     );
-    axum::serve(listener, build_router(state))
+    // Graceful shutdown (single-app-runtime D5): ONE shared exit path for
+    // ctrl-c, SIGTERM (unix), and the bearer-gated `/shutdown` route. axum
+    // stops accepting, in-flight requests and SSE streams drain (bounded by
+    // the clients' own disconnects), then discovery is retracted and the
+    // seat lock released by drop.
+    let shutdown_signal = {
+        let state = state.clone();
+        async move {
+            let ctrl_c = async {
+                let _ = tokio::signal::ctrl_c().await;
+            };
+            #[cfg(unix)]
+            let terminate = async {
+                match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                    Ok(mut sig) => {
+                        sig.recv().await;
+                    }
+                    Err(_) => std::future::pending::<()>().await,
+                }
+            };
+            #[cfg(not(unix))]
+            let terminate = std::future::pending::<()>();
+            tokio::select! {
+                _ = ctrl_c => {},
+                _ = terminate => {},
+                _ = state.shutdown.notified() => {},
+            }
+            eprintln!("vaultspec serve: shutting down gracefully");
+        }
+    };
+    let result = axum::serve(listener, build_router(state))
+        .with_graceful_shutdown(shutdown_signal)
         .await
-        .map_err(std::io::Error::other)
+        .map_err(std::io::Error::other);
+    // Retract discovery (owner-checked) so no stale port/token survives a
+    // clean exit; the seat lock releases when the guard drops right after.
+    app::remove_service_json_if_owned(&discovery_dir);
+    drop(seat_guard);
+    result
 }
 
 #[cfg(test)]

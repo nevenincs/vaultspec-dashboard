@@ -232,14 +232,14 @@ export function engineDevPlugin(): Plugin {
   function startEngine(repo: string): void {
     if (shuttingDown) return;
     const bin = binaryPath(repo);
-    log(`starting: ${bin} serve --port ${port}`);
+    log(`starting: ${bin} serve --port ${port} --no-seat`);
     let proc: ChildProcess;
     try {
       // spawn() can throw SYNCHRONOUSLY under host resource exhaustion
       // (Windows "spawn UNKNOWN", errno -4094) — that escaping uncaught is what
       // previously killed the whole dev server. Catch it and treat it as a
       // recoverable engine failure.
-      proc = spawn(bin, ["serve", "--port", String(port)], {
+      proc = spawn(bin, ["serve", "--port", String(port), "--no-seat"], {
         cwd: repo,
         stdio: ["ignore", "pipe", "pipe"],
       });

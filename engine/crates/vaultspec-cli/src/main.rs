@@ -90,9 +90,18 @@ enum Command {
         /// Port to bind on loopback; fails loud on conflict.
         #[arg(long, default_value_t = vaultspec_api::DEFAULT_PORT)]
         port: u16,
+        /// Skip the machine seat lock and machine discovery (dev/test escape
+        /// hatch; `--port 0` implies it). The workspace-local discovery file
+        /// is still written, byte-compatible with the pre-seat contract.
+        #[arg(long)]
+        no_seat: bool,
     },
-    /// Index state, backend health rollup, watcher state.
+    /// Index state, backend health rollup, watcher state, seat state.
     Status,
+    /// Gracefully stop the running vaultspec app (idempotent).
+    Stop,
+    /// Stop the running app (if any) and relaunch it detached.
+    Restart,
 }
 
 fn render(ctx: &Ctx, command_name: &str, result: Result<Value, cmd::CliError>) -> u8 {
@@ -136,12 +145,46 @@ fn main() -> std::process::ExitCode {
 
     // Serve mode short-circuits: it owns its own lifecycle. The global
     // `--scope` selects the served worktree (else the launch directory).
-    if let Command::Serve { port } = cli.command {
+    if let Command::Serve { port, no_seat } = cli.command {
         let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
-        return match runtime.block_on(vaultspec_api::serve(port, cli.scope)) {
+        return match runtime.block_on(vaultspec_api::serve(port, cli.scope, no_seat)) {
             Ok(()) => std::process::ExitCode::SUCCESS,
             Err(err) => {
                 eprintln!("vaultspec serve: {err}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
+
+    // Machine-lifecycle verbs (single-app-runtime D5) are workspace-free:
+    // they read the seat's machine discovery, never a scope, so they run
+    // BEFORE scope resolution. Their tiers block honestly marks the backend
+    // tiers not-applicable — no corpus is consulted.
+    if matches!(cli.command, Command::Stop | Command::Restart) {
+        let (name, result) = match cli.command {
+            Command::Stop => ("stop", cmd::lifecycle::stop()),
+            Command::Restart => ("restart", cmd::lifecycle::restart()),
+            _ => unreachable!(),
+        };
+        let tiers = envelope::tiers_json(
+            Some("machine-lifecycle verb: no corpus consulted"),
+            Some("machine-lifecycle verb: no corpus consulted"),
+        );
+        return match result {
+            Ok(data) => {
+                if cli.json {
+                    envelope::emit_json(&envelope::ok(name, data, tiers));
+                } else {
+                    envelope::emit_json(&data);
+                }
+                std::process::ExitCode::SUCCESS
+            }
+            Err(message) => {
+                if cli.json {
+                    envelope::emit_json(&envelope::fail(name, "lifecycle", &message, tiers));
+                } else {
+                    eprintln!("vaultspec {name}: {message}");
+                }
                 std::process::ExitCode::FAILURE
             }
         };
@@ -157,6 +200,7 @@ fn main() -> std::process::ExitCode {
         Command::Events { .. } => "events",
         Command::Status => "status",
         Command::Serve { .. } => "serve",
+        Command::Stop | Command::Restart => unreachable!("handled above"),
     };
     let ctx = match Ctx::resolve(cli.scope.as_deref(), cli.json) {
         Ok(ctx) => ctx,
@@ -204,7 +248,9 @@ fn main() -> std::process::ExitCode {
             cmd::events::run(&ctx, *from, *to, kinds, bucket.as_deref()),
         ),
         Command::Status => render(&ctx, "status", cmd::status::run(&ctx)),
-        Command::Serve { .. } => unreachable!("handled above"),
+        Command::Serve { .. } | Command::Stop | Command::Restart => {
+            unreachable!("handled above")
+        }
     };
     std::process::ExitCode::from(code)
 }

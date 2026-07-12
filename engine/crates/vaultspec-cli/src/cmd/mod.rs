@@ -5,6 +5,7 @@
 pub mod events;
 pub mod graph;
 pub mod index;
+pub mod lifecycle;
 pub mod map;
 pub mod node;
 pub mod status;

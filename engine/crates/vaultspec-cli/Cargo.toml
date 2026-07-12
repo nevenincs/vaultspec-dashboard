@@ -24,6 +24,7 @@ serde_json = "1.0.150"
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["rt-multi-thread"] }
 vaultspec-api.workspace = true
+vaultspec-session = { version = "0.1.0", path = "../vaultspec-session" }
 
 [features]
 # Forward the api crate's SPA embed so a release build of the `vaultspec`
