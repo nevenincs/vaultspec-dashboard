@@ -11,6 +11,9 @@ related:
   - '[[2026-07-12-on-demand-cold-start-S03]]'
   - '[[2026-07-12-on-demand-cold-start-S04]]'
   - '[[2026-07-12-on-demand-cold-start-S05]]'
+  - '[[2026-07-12-on-demand-cold-start-S06]]'
+  - '[[2026-07-12-on-demand-cold-start-S07]]'
+  - '[[2026-07-12-on-demand-cold-start-S08]]'
   - '[[2026-07-12-on-demand-cold-start-adr]]'
   - '[[2026-07-12-on-demand-cold-start-plan]]'
   - '[[2026-07-12-on-demand-cold-start-reference]]'
@@ -33,6 +36,9 @@ Auto-generated index of all documents tagged with `#on-demand-cold-start`.
 - `2026-07-12-on-demand-cold-start-S03` - Yield briefly between vault-tree continuation pages so the background drain never contends with first paint or first interaction
 - `2026-07-12-on-demand-cold-start-S04` - Test the progressive slice (cold fill, passthrough on data, asOf bypass, refreshing availability during fill) and the paced drain
 - `2026-07-12-on-demand-cold-start-S05` - Run the full gate, live-verify cold-start payloads and first paint, review the diff, commit
+- `2026-07-12-on-demand-cold-start-S06` - Benchmark the actual mobile cold load (bundle census + network + paint timings): production build chunk sizes and a Playwright mobile-viewport census of scripts, API, fonts, and first-paint
+- `2026-07-12-on-demand-cold-start-S07` - Add the instant pre-hydration boot shell: an inline-styled static skeleton in index.html painting before any bundle downloads, retired on AppShell's first commit with a main.tsx backstop
+- `2026-07-12-on-demand-cold-start-S08` - Stop pinning lazily-imported registries into the eager vendor chunk: exempt the shiki grammar/theme modules so they emit as natural async chunks, and isolate the three.js scene stack as its own cacheable vendor-scene chunk
 
 ### plan
 

@@ -124,3 +124,24 @@ the one-model law and avoiding a wire contract event.
   constellation is already cached).
 - Time-travel and focus/ego reads bypass the progressive path by design.
 - Server-side document-payload pruning (O1) remains open as follow-up.
+
+## Addendum (same day): the JS bundle census
+
+Benchmarking after acceptance showed the MOBILE cold load is dominated by
+JavaScript, not wire data: the eager bundle was 9.7 MB (1.85 MB gzip)
+because the chunk strategy pinned shiki's lazily-imported grammar registry
+into the one eager vendor chunk. Two decisions extend this ADR under the
+same principle (only what a surface renders may load eagerly):
+
+- D5 - Pre-hydration boot shell: an inline static skeleton in the HTML
+  document paints in ~50 ms, before any bundle downloads, and retires on
+  the app shell's first commit. The one sanctioned literal-value style
+  island (pre-token boot, mirroring the scene literal-hex precedent).
+- D6 - Lazy registries stay lazy: modules reached only through dynamic
+  import thunks (shiki grammars/themes) are never pinned into an eager
+  chunk; the WebGL scene stack is isolated as its own cacheable chunk.
+  Eager JS drops to ~2.2 MB (~620 KB gzip). FOLLOW-UP: fully deferring
+  the scene chunk is blocked on the `sceneController` -> `cameraCore` ->
+  `three` import edge - decoupling that is a reviewed scene-contract
+  event, deliberately not done ad hoc here.
+

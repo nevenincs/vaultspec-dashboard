@@ -51,6 +51,14 @@ export default defineConfig(({ command }) => ({
         // compile at startup. Pure chunk grouping — no behaviour change.
         manualChunks(id: string) {
           if (!id.includes("node_modules")) return undefined;
+          // Lazily-imported registries must NOT be pinned into the eager
+          // vendor chunk (on-demand-cold-start): shiki's per-grammar/theme
+          // modules are reached only through `bundledLanguages` import thunks
+          // (`useHighlighter` loads a grammar on first use), so leaving them
+          // unassigned lets the bundler emit them as natural async chunks —
+          // pinning them here was folding the ENTIRE grammar registry into
+          // the boot-blocking vendor download.
+          if (id.includes("/@shikijs/")) return undefined;
           if (id.includes("/@tanstack/")) return "vendor-tanstack";
           if (
             id.includes("/react/") ||
@@ -58,6 +66,9 @@ export default defineConfig(({ command }) => ({
             id.includes("/scheduler/")
           )
             return "vendor-react";
+          // The WebGL scene stack is only consumed by the graph canvas; keep it
+          // out of the shared vendor chunk so a lazy graph subtree can defer it.
+          if (id.includes("/three/")) return "vendor-scene";
           if (id.includes("/graphology") || id.includes("/d3-")) return "vendor-graph";
           return "vendor";
         },
