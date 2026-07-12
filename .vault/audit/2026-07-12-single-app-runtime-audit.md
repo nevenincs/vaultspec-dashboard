@@ -158,8 +158,17 @@ and a starting seat is stoppable via the pid fallback — this also
 discharges the boot-order-vs-discovery LOW finding above), S24 (the
 bounded bearer-gated directory-browse route), and S25 (the FolderBrowser
 picker in the add-project flow, retiring typed-path-only entry — ADR
-option O6 closed). The closure increment was routed to the reviewer for
-its own verdict.
+option O6 closed). The closure increment's review returned REVISION
+REQUIRED (one HIGH: the launcher itself was still blind to the starting
+state; two MEDIUMs: no automated starting-window coverage, and the
+picker's listbox lacked roving-tabindex keyboard semantics; one LOW:
+undocumented symlink-following markers). All four were fixed in the
+revision commit — a state-aware `wait_for_seat_ready` (publish budget +
+index budget, "still reading your project" instead of the crash-log
+message for a live indexing seat), a capped test-only boot-delay knob
+plus a boot-matrix proof that a starting seat is distinguishable and
+stoppable, the roving-tabindex composite per the FeatureSearchField
+precedent, and the symlink note — and routed back for re-check.
 
 ## Recommendations
 
