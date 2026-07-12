@@ -140,6 +140,23 @@ export interface GitOpResponse {
   tiers: TiersBlock;
 }
 
+/** The engine-reduced changed-files rollup served by `/ops/git/changes-summary`
+ *  (changes-summary-projection): the five numbers the collapsed "Changes" fold
+ *  header renders, computed engine-side over the SAME porcelain status + numstat
+ *  reads the full list parses — so a cold load that only shows the header need
+ *  not ship the raw git text. `documents` counts changed paths under `.vault/`,
+ *  `files` the rest; `additions`/`deletions` sum the numstat tallies over the
+ *  changed set (binary/untracked entries contribute 0). */
+export interface GitChangesSummary {
+  files: number;
+  documents: number;
+  additions: number;
+  deletions: number;
+  /** True when the working tree carries no reportable change. */
+  clean: boolean;
+  tiers: TiersBlock;
+}
+
 // --- provisioning plane wire shapes (project-provisioning ADR) -----------------
 //
 // Backend-served truth: the engine computes every field, the panel renders it.

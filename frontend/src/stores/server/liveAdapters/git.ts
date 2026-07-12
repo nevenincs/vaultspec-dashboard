@@ -4,6 +4,7 @@
 import type {
   ChangedFile,
   GitChangeGroup,
+  GitChangesSummary,
   GitDiffHunk,
   GitDiffLine,
   GitFileDiff,
@@ -46,6 +47,43 @@ export function adaptGitOp(body: unknown): GitOpResponse {
     verb: normalizeGitOpVerb(body.verb),
     output,
     ...(truncated === undefined ? {} : { truncated }),
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
+/** A tolerant non-negative integer read for the engine-served summary counts: a
+ *  non-finite / non-number / negative field reads as 0 (a count is never
+ *  negative), so a shape drift degrades to an honest zero rather than NaN in the
+ *  header. */
+function summaryCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : 0;
+}
+
+/** Live `/ops/git/changes-summary` → the engine-reduced fold-header rollup.
+ *  TOLERANT: absent/malformed counts read as 0; `clean` defaults to the
+ *  counts-are-zero truth when the engine omits it (engine-read-and-infer
+ *  corollary — a new field is additive, a missing one degrades honestly). */
+export function adaptGitChangesSummary(body: unknown): GitChangesSummary {
+  if (!isRec(body)) {
+    return {
+      files: 0,
+      documents: 0,
+      additions: 0,
+      deletions: 0,
+      clean: true,
+      tiers: {},
+    };
+  }
+  const files = summaryCount(body.files);
+  const documents = summaryCount(body.documents);
+  return {
+    files,
+    documents,
+    additions: summaryCount(body.additions),
+    deletions: summaryCount(body.deletions),
+    clean: typeof body.clean === "boolean" ? body.clean : files + documents === 0,
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }

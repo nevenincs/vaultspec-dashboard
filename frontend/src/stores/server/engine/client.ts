@@ -6,6 +6,7 @@ import {
   adaptDashboardState,
   adaptFileTree,
   adaptFilters,
+  adaptGitChangesSummary,
   adaptGitOp,
   adaptGraphEmbeddings,
   adaptGraphSlice,
@@ -59,6 +60,7 @@ import type {
 } from "./temporalTypes";
 import type {
   EngineStatus,
+  GitChangesSummary,
   GitOpResponse,
   OpsArchiveBody,
   OpsAutofixBody,
@@ -627,6 +629,17 @@ export class EngineClient {
     body: { scope?: string; path?: string; from?: string; to?: string } = {},
   ): Promise<GitOpResponse> {
     return adaptGitOp(await this.post(`/ops/git/${encodeURIComponent(verb)}`, body));
+  }
+
+  /** The engine-reduced changed-files rollup (changes-summary-projection): the
+   *  collapsed "Changes" fold header's five numbers, computed engine-side over the
+   *  same porcelain status + numstat reads the full list parses. A cold load that
+   *  only renders the header reads this light payload instead of the ~200 KB of
+   *  raw git text the verbatim `status` + `numstat` pass-through returns. */
+  async opsGitChangesSummary(scope?: string): Promise<GitChangesSummary> {
+    return adaptGitChangesSummary(
+      await this.post("/ops/git/changes-summary", scope === undefined ? {} : { scope }),
+    );
   }
 
   /** §7 — open the multiplexed SSE stream through the same transport. The

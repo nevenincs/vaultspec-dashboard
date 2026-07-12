@@ -7,6 +7,7 @@ import {
   readTierAvailability,
   type ChangedFile,
   type GitChangeGroup,
+  type GitChangesSummary,
   type GitFileDiff,
   type GitOpResponse,
   type OpsResult,
@@ -636,6 +637,109 @@ export function useChangesOverview(scope: unknown): ChangesOverviewView {
   const normalizedScope = normalizeGitDiffArg(scope);
   const changed = useChangedFilesForGit(normalizedScope, git);
   return deriveChangesOverviewView(git, changed, normalizedScope);
+}
+
+// --- fold-header summary (changes-summary-projection) ---------------------------------
+//
+// The COLLAPSED "Changes" fold shows only `N files · M documents` + `+A −D`. That
+// header used to be derived from the full porcelain status + numstat text
+// (~227 KB) fetched on every cold load — even when the fold never opened. The
+// engine now serves those five numbers directly (`/ops/git/changes-summary`,
+// engine-computed over the same parsed set — wire-contract rollup law), so the
+// header reads a few bytes and the heavy per-file lists load only when the fold
+// expands (mounted behind the FoldSection body). This LIGHT selector feeds the
+// header; `useChangesOverview` feeds the expanded body, mounted only while open.
+
+/** The interpreted fold-HEADER state: the summary line + the loading / degraded /
+ *  errored / clean truth the collapsed header renders, derived from the engine's
+ *  light rollup rather than the full changed-files lists. */
+export interface ChangesSummaryView {
+  noScope: boolean;
+  loading: boolean;
+  degraded: boolean;
+  errored: boolean;
+  clean: boolean;
+  hasChanges: boolean;
+  summaryLabels: ChangesOverviewView["summaryLabels"];
+  loadingLabel: string;
+  degradedLabel: string;
+  errorTitle: string;
+  cleanLabel: string;
+  noScopeLabel: string;
+  noScopeClassName: string;
+  summaryClassName: string;
+  summaryPrimaryClassName: string;
+  summaryDividerClassName: string;
+  summaryAdditionsClassName: string;
+  summaryDeletionsClassName: string;
+}
+
+export function deriveChangesSummaryView(
+  git: GitStatusHookView,
+  summary: GitChangesSummary | undefined,
+  loading: boolean,
+  errored: boolean,
+  scope: string | null | undefined = undefined,
+): ChangesSummaryView {
+  const gitAvailable = git.git !== undefined;
+  const counts =
+    gitAvailable && summary !== undefined
+      ? {
+          files: summary.files,
+          documents: summary.documents,
+          additions: summary.additions,
+          deletions: summary.deletions,
+          total: summary.files + summary.documents,
+        }
+      : EMPTY_CHANGED_FILES_SUMMARY;
+  const hasChanges = gitAvailable && counts.total > 0;
+  return {
+    noScope: scope === null,
+    loading: (git.loading || loading) && !hasChanges,
+    degraded: git.degraded && !hasChanges,
+    errored: (git.errored || errored) && !hasChanges,
+    clean: scope !== null && gitAvailable && !git.loading && !loading && !hasChanges,
+    hasChanges,
+    summaryLabels: changedSummaryLabels(counts),
+    loadingLabel: "reading changes…",
+    degradedLabel: "repository state unavailable",
+    errorTitle: "changes unavailable",
+    cleanLabel: "working tree clean — no changes to review.",
+    noScopeLabel: "No worktree selected — pick one in the left rail first.",
+    noScopeClassName: CHANGES_OVERVIEW_NO_SCOPE_CLASS,
+    summaryClassName: CHANGES_OVERVIEW_SUMMARY_CLASS,
+    summaryPrimaryClassName: CHANGES_OVERVIEW_SUMMARY_PRIMARY_CLASS,
+    summaryDividerClassName: CHANGES_OVERVIEW_SUMMARY_DIVIDER_CLASS,
+    summaryAdditionsClassName: CHANGES_OVERVIEW_SUMMARY_ADDITIONS_CLASS,
+    summaryDeletionsClassName: CHANGES_OVERVIEW_SUMMARY_DELETIONS_CLASS,
+  };
+}
+
+/**
+ * Stores selector for the fold-header rollup: fetches the engine-reduced summary
+ * through the `client.opsGitChangesSummary` seam under the SAME enablement gate as
+ * the changed-files list (scope non-null, git present in the status snapshot), so a
+ * closed-git or no-scope surface fires no doomed query. A `git` SSE chunk refreshes
+ * this key through the same `invalidateGitRecoveryReads` seam the full list uses,
+ * so the collapsed header never shows a stale count.
+ */
+export function useChangesSummary(scope: unknown): ChangesSummaryView {
+  const git = useGitStatus();
+  const normalizedScope = normalizeGitDiffArg(scope);
+  const enabled =
+    normalizedScope !== null && CHANGED_FILES_LIST_SERVED && git.git !== undefined;
+  const query = useQuery({
+    queryKey: engineKeys.gitChangesSummary(normalizedScope ?? ""),
+    queryFn: () => engineClient.opsGitChangesSummary(normalizedScope!),
+    enabled,
+  });
+  return deriveChangesSummaryView(
+    git,
+    enabled ? query.data : undefined,
+    enabled && query.isPending,
+    query.isError,
+    normalizedScope,
+  );
 }
 
 /**

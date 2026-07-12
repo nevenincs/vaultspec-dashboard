@@ -7,6 +7,7 @@ import {
   engineClient,
   type ChangedFile,
   type EngineStatus,
+  type GitChangesSummary,
   type GitFileDiff,
 } from "../engine";
 import {
@@ -15,11 +16,13 @@ import {
   canReadGitHistoricalFileDiff,
   deriveChangedFilesView,
   deriveChangesOverviewView,
+  deriveChangesSummaryView,
   engineKeys,
   normalizeGitDiffRequest,
   normalizeGitQueryKeyPart,
   useChangedFiles,
   useChangesOverview,
+  useChangesSummary,
   useGitFileDiff,
   useGitHistoricalFileDiff,
 } from "./index";
@@ -745,6 +748,185 @@ describe("deriveChangesOverviewView", () => {
         deletions: "−0",
       },
     });
+  });
+});
+
+describe("useChangesSummary git availability boundary", () => {
+  const statusWithoutGit: EngineStatus = {
+    ok: true,
+    nodes: 0,
+    edges: 0,
+    degradations: [],
+    tiers: { structural: { available: true } },
+  };
+  const statusWithGit: EngineStatus = {
+    ...statusWithoutGit,
+    git: { branch: "main", dirty: true },
+  };
+  const cachedSummary: GitChangesSummary = {
+    files: 3,
+    documents: 1,
+    additions: 9,
+    deletions: 2,
+    clean: false,
+    tiers: {},
+  };
+
+  it("issues no summary read and drops the cached rollup when git is unavailable", async () => {
+    const client = testQueryClient();
+    const scope = "scope-without-git";
+    client.setQueryData(engineKeys.status(), statusWithoutGit);
+    client.setQueryData(engineKeys.gitChangesSummary(scope), cachedSummary);
+    const summaryRequests: string[] = [];
+    engineClient.useTransport((input, init) => {
+      if (input.includes("/ops/git/changes-summary")) summaryRequests.push(input);
+      return liveTransport(input, init);
+    });
+
+    const { result, unmount } = renderHook(() => useChangesSummary(scope), {
+      wrapper: wrapper(client),
+    });
+
+    // Git absent → the header degrades and the stale rollup is not surfaced.
+    expect(result.current).toMatchObject({
+      degraded: true,
+      hasChanges: false,
+      summaryLabels: { files: "0 files", documents: "0 documents" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(summaryRequests).toEqual([]);
+    unmount();
+  });
+
+  it("does not issue a summary read for a malformed scope even when git is available", async () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.status(), statusWithGit);
+    const summaryRequests: string[] = [];
+    engineClient.useTransport((input, init) => {
+      if (input.includes("/ops/git/changes-summary")) summaryRequests.push(input);
+      return liveTransport(input, init);
+    });
+
+    const { result, unmount } = renderHook(
+      () => useChangesSummary({ scope: "scope-a" }),
+      { wrapper: wrapper(client) },
+    );
+
+    expect(result.current.noScope).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(summaryRequests).toEqual([]);
+    unmount();
+  });
+});
+
+describe("deriveChangesSummaryView", () => {
+  const availableGit = {
+    loading: false,
+    errored: false,
+    degraded: false,
+    dirty: true,
+    git: { branch: "main", dirty: true },
+    retry: () => undefined,
+  };
+  const summary: GitChangesSummary = {
+    files: 2,
+    documents: 1,
+    additions: 12,
+    deletions: 1,
+    clean: false,
+    tiers: {},
+  };
+
+  it("projects the collapsed-header labels from the engine rollup", () => {
+    const view = deriveChangesSummaryView(availableGit, summary, false, false, "wt-1");
+    expect(view).toMatchObject({
+      noScope: false,
+      loading: false,
+      degraded: false,
+      errored: false,
+      clean: false,
+      hasChanges: true,
+      summaryLabels: {
+        files: "2 files",
+        documents: "1 document",
+        additions: "+12",
+        deletions: "−1",
+      },
+    });
+  });
+
+  it("prioritizes designed loading/degraded/errored/clean states with no changes", () => {
+    expect(
+      deriveChangesSummaryView(
+        { ...availableGit, loading: true },
+        undefined,
+        true,
+        false,
+        "wt-1",
+      ),
+    ).toMatchObject({ loading: true, hasChanges: false, clean: false });
+
+    expect(
+      deriveChangesSummaryView(
+        { ...availableGit, git: undefined, degraded: true, dirty: false },
+        undefined,
+        false,
+        false,
+        "wt-1",
+      ),
+    ).toMatchObject({ degraded: true, hasChanges: false });
+
+    expect(
+      deriveChangesSummaryView(
+        { ...availableGit, git: undefined, errored: true, dirty: false },
+        undefined,
+        false,
+        true,
+        "wt-1",
+      ),
+    ).toMatchObject({ errored: true, hasChanges: false });
+
+    const clean: GitChangesSummary = {
+      files: 0,
+      documents: 0,
+      additions: 0,
+      deletions: 0,
+      clean: true,
+      tiers: {},
+    };
+    expect(
+      deriveChangesSummaryView(availableGit, clean, false, false, "wt-1"),
+    ).toMatchObject({
+      clean: true,
+      hasChanges: false,
+      summaryLabels: { files: "0 files", documents: "0 documents" },
+    });
+  });
+
+  it("drops the rollup and does not mask unavailable git with a stale count", () => {
+    const view = deriveChangesSummaryView(
+      { ...availableGit, git: undefined, degraded: true, dirty: false },
+      summary,
+      false,
+      false,
+      "wt-1",
+    );
+    expect(view).toMatchObject({
+      degraded: true,
+      hasChanges: false,
+      summaryLabels: {
+        files: "0 files",
+        documents: "0 documents",
+        additions: "+0",
+        deletions: "−0",
+      },
+    });
+  });
+
+  it("projects the no-scope header state", () => {
+    expect(
+      deriveChangesSummaryView(availableGit, undefined, false, false, null),
+    ).toMatchObject({ noScope: true, hasChanges: false });
   });
 });
 

@@ -221,6 +221,17 @@ export const engineKeys = {
   // (gcTime, single entry per observer).
   gitChanges: (scope: unknown) =>
     [...engineKeys.all, "git-changes", normalizeGitQueryKeyPart(scope)] as const,
+  // The engine-reduced fold-header rollup (changes-summary-projection): a LIGHT
+  // per-scope read the collapsed "Changes" header consumes so a cold load never
+  // ships the full status+numstat text. Distinct prefix from `git-changes` so the
+  // header summary and the expanded list evict/refresh as one family on a git SSE
+  // frame (both enrolled below) without sharing a cache entry.
+  gitChangesSummary: (scope: unknown) =>
+    [
+      ...engineKeys.all,
+      "git-changes-summary",
+      normalizeGitQueryKeyPart(scope),
+    ] as const,
   gitDiff: (scope: unknown, path: unknown) =>
     [
       ...engineKeys.all,
@@ -265,6 +276,7 @@ export const SCOPED_ENGINE_QUERY_SUBTREES = [
   "plan-interior",
   "search",
   "git-changes",
+  "git-changes-summary",
   "git-diff",
   "git-histdiff",
   "ops-rag",

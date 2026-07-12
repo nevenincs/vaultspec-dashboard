@@ -198,6 +198,9 @@ export function invalidateAfterVaultMutation(
   void queryClient.invalidateQueries({
     queryKey: engineKeys.gitChanges(normalizedScope),
   });
+  void queryClient.invalidateQueries({
+    queryKey: engineKeys.gitChangesSummary(normalizedScope),
+  });
   invalidateQueryPrefix(queryClient, [...engineKeys.all, "file-tree", normalizedScope]);
   invalidateQueryPrefix(queryClient, [...engineKeys.all, "git-diff", normalizedScope]);
   invalidateQueryPrefix(queryClient, [
@@ -234,6 +237,7 @@ export function invalidateGraphGenerationReads(
 export function invalidateGitRecoveryReads(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: engineKeys.status() });
   invalidateQueryPrefix(queryClient, [...engineKeys.all, "git-changes"]);
+  invalidateQueryPrefix(queryClient, [...engineKeys.all, "git-changes-summary"]);
   invalidateQueryPrefix(queryClient, [...engineKeys.all, "git-diff"]);
   invalidateQueryPrefix(queryClient, [...engineKeys.all, "git-histdiff"]);
   invalidateQueryPrefix(queryClient, [...engineKeys.all, "history"]);
