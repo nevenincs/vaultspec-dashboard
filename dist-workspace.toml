@@ -8,31 +8,24 @@ cargo-dist-version = "0.32.0"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
-installers = ["shell", "powershell"]
+installers = ["shell", "powershell", "msi"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Path that installers should place binaries in
 install-path = "CARGO_HOME"
 # Where to host releases
 hosting = "github"
-# Ship the standalone user-invoked updater (dashboard-packaging D5): installers
-# write an install receipt, and only receipt-marked self-installed copies get
-# `vaultspec-update`; package-manager installs update through their manager.
-# No auto-update — updating is always user-invoked.
+# Whether to install an updater program
 install-updater = true
-# Build the packaged binary with the SPA embedded (dashboard-packaging D2).
+# Features to pass to cargo build
 features = ["embed-spa"]
 # Steps injected into every build job BEFORE cargo runs: the embed-spa build
 # compiles frontend/dist into the binary, so the SPA bundle must exist first
 # (build order, dashboard-packaging D2).
 github-build-setup = "../release-build-setup.yml"
-# Validate this release config on PRs without building artifacts.
+# Which actions to run on pull requests
 pr-run-mode = "plan"
-# release-please CREATES the GitHub Release when it mints the tag (with the
-# changelog as its body); dist must UPLOAD to it, never create a second one
-# (the v0.1.1 host job failed on exactly that collision).
+# Whether dist should create a Github Release or use an existing draft
 create-release = false
-# After the GitHub Release publishes, bump the in-repo scoop manifest to the
-# released version (distribution-channels ADR: `scoop update` reads the
-# COMMITTED manifest, so freshness is a per-release commit, automated here).
+# Post-announce jobs to run in CI
 post-announce-jobs = ["./scoop-bump"]
