@@ -9,6 +9,10 @@ cargo-dist-version = "0.32.0"
 ci = "github"
 # The installers to generate for each app
 installers = ["shell", "powershell", "msi"]
+# The msi template (wix/main.wxs) is deliberately customized beyond what
+# `dist init` generates (Start-Menu shortcut, product naming) - exempt it
+# from the generated-file freshness check.
+allow-dirty = ["msi"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Path that installers should place binaries in

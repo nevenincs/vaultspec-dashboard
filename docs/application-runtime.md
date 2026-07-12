@@ -73,10 +73,10 @@ under each project's `.vault/data/` and are always safe to delete.
 
 The binary is a console program so the CLI works everywhere. Double-clicking
 it flashes a console window for well under a second while it hands off to
-the background app and opens your browser. To get a Start-Menu entry, pin
-the binary (or a shortcut to it) after install; the zip/installer channels
-do not create shortcuts today (an MSI channel that does is on the packaging
-roadmap, dashboard-packaging ADR v2).
+the background app and opens your browser. The MSI installer creates a
+Start-Menu entry ("vaultspec" - it opens the dashboard) and adds the
+binary to PATH; the zip and script-installer channels install the binary
+only, so pin it yourself if you want a shortcut with those.
 
 If the app fails to launch twice in under a minute, the launcher stops
 retrying and points you at the crash log instead of thrashing — run

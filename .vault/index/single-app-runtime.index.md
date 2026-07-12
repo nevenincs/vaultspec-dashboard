@@ -32,6 +32,7 @@ related:
   - '[[2026-07-12-single-app-runtime-W03-P06-S19]]'
   - '[[2026-07-12-single-app-runtime-W03-P06-S20]]'
   - '[[2026-07-12-single-app-runtime-W03-P06-S21]]'
+  - '[[2026-07-12-single-app-runtime-W03-P06-S22]]'
   - '[[2026-07-12-single-app-runtime-W03-P06-summary]]'
   - '[[2026-07-12-single-app-runtime-adr]]'
   - '[[2026-07-12-single-app-runtime-audit]]'
@@ -81,6 +82,7 @@ Auto-generated index of all documents tagged with `#single-app-runtime`.
 - `2026-07-12-single-app-runtime-W03-P06-S19` - Add the update verb ordering stop, receipt-gated axoupdater, relaunch, refusing when the receipt marks a package-manager install and never auto-updating
 - `2026-07-12-single-app-runtime-W03-P06-S20` - Configure installer-created launch shortcuts in the dist pipeline and document install, first-run, lifecycle verbs, the app home, and uninstall (naming the machine-global state) in the user docs
 - `2026-07-12-single-app-runtime-W03-P06-S21` - Run the full gate (just dev lint all plus engine and frontend suites) and a release dry-run building the embed-spa binary, verifying double-click launch, attach, stop, and update flows end to end on Windows
+- `2026-07-12-single-app-runtime-W03-P06-S22` - Ship the msi installer channel with an installer-created Start-Menu shortcut whose target is the bare binary (the app front door), delivered after the user directed the deferral executed
 - `2026-07-12-single-app-runtime-W03-P06-summary` - `single-app-runtime` `W03.P06` summary
 
 ### plan

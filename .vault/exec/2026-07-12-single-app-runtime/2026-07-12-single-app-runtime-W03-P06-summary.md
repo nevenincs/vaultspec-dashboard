@@ -10,7 +10,7 @@ related:
 
 # `single-app-runtime` `W03.P06` summary
 
-All four Steps (S18-S21) complete, committed across `97b69126aa`, `853fec9c8a`, `4524f1cb25`, `71d042ffc5`.
+All five Steps (S18-S22) complete (S22 delivered on user direction after its review-split deferral), committed across `97b69126aa`, `853fec9c8a`, `4524f1cb25`, `71d042ffc5`, and the msi channel in its own commit.
 
 - Modified: `engine/crates/vaultspec-api/src/lib.rs`, `engine/crates/vaultspec-cli/src/cmd/lifecycle.rs`, `engine/crates/vaultspec-cli/src/main.rs`
 - Created: `docs/application-runtime.md`, `engine/crates/vaultspec-api/src/boot.rs`, `engine/crates/vaultspec-api/src/discovery.rs` (module-size decomposition)

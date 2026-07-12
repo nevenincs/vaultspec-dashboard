@@ -152,8 +152,9 @@ sync) as a SANCTIONED EXCEPTION with a no-new-site clause.
   launcher can distinguish indexing from death during the cold window.
 - When a native folder picker lands (ADR O6, deferred), revisit the
   first-run typed-path entry.
-- The MSI channel (packaging-ADR v2) is the path to installer-created
-  Start-Menu shortcuts; the docs currently teach pinning.
+- RESOLVED (user-directed, post-PASS): the MSI channel shipped with the
+  installer-created Start-Menu shortcut (S22 closed); the built MSI's
+  Shortcut table was verified via the WindowsInstaller COM API.
 - Verdict after revision: the consolidated review's HIGH and all five
   MEDIUMs are fixed in-branch (see the finding log). The reviewer
   re-checked the revision commit line by line and returned PASS with no
