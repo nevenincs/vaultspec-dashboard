@@ -8,38 +8,12 @@ related:
   - "[[2026-07-12-authoring-surface-plan]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #exec) and one feature tag.
-     Replace authoring-surface with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
-     parent plan.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
-<!-- PHASE SUMMARY:
-     This file rolls up every <Step Record> belonging to one Phase
-     of the originating plan. Each Step (S##) in the Phase produces
-     one <Step Record> in `.vault/exec/`; this summary aggregates
-     them, lists modified / created files across the Phase, and
-     reports verification status. -->
-
 # `authoring-surface` `W02.P03` summary
 
 All three steps complete (S09-S11). The stores layer now consumes the two net-new W01 backend seams — the section-anchored comments plane (D2) and the ledgered plan-step tick (D1) — as the sole wire client, with bounded caches, tolerant adapters, denials-as-values outcomes, and live-wire tests over the real engine. Code review pending.
 
 - Modified: `frontend/src/stores/server/authoring.ts`
+- Created: `frontend/src/stores/server/authoringComments.ts` (module-size follow-up: the comment vocabulary + adapters extracted out of the grandfathered `authoring.ts` monolith, re-exported from it to keep the public surface stable)
 - Created: `frontend/src/stores/server/queries/comments.ts`
 - Modified: `frontend/src/stores/server/queries/mutations.ts`
 - Modified: `frontend/src/stores/server/queries/index.ts`

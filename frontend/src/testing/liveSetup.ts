@@ -9,9 +9,13 @@
 import { afterEach } from "vitest";
 
 import { engineClient } from "../stores/server/engine";
+import { authoringClient } from "../stores/server/authoring";
 import { liveTransport } from "./liveClient";
 
 engineClient.useTransport(liveTransport);
+// Bind the authoring client to the same live transport so render tests that fire
+// mutations through usePlanStepTick speak to the real engine (authoring-surface D1).
+authoringClient.useTransport(liveTransport);
 
 // #28 parallel-isolation: happy-dom aborts a file's still-pending fetches when it
 // tears down that file's window at file-end (the `DetachedWindowAPI.abort ->

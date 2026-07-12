@@ -155,6 +155,7 @@ interface PlanPillProps {
   expanded: boolean;
   className: string;
   selectedValue: "" | undefined;
+  isTimeTravel: boolean;
   onToggle: () => void;
   nav?: RowNav;
 }
@@ -165,6 +166,7 @@ function PlanPill({
   expanded,
   className,
   selectedValue,
+  isTimeTravel,
   onToggle,
   nav,
 }: PlanPillProps) {
@@ -270,7 +272,12 @@ function PlanPill({
       </div>
       {expanded && (
         <div id={treeId} className="px-fg-2 pb-fg-2">
-          <PlanStepTree view={interior} />
+          <PlanStepTree
+            view={interior}
+            planNodeId={row.nodeId}
+            scope={scope}
+            isTimeTravel={isTimeTravel}
+          />
         </div>
       )}
     </li>
@@ -280,6 +287,7 @@ function PlanPill({
 function OpenPlansBody({ scope }: { scope: unknown }) {
   const timeline = useDashboardTimelineModeView(scope);
   const asOf = timeline.asOf;
+  const isTimeTravel = timeline.timeTravel;
   const view = usePipelineStatusView(scope, asOf);
   const now = Date.now();
   const { expanded, toggle } = usePipelineExpansion(scope, asOf, view.planIds);
@@ -315,6 +323,7 @@ function OpenPlansBody({ scope }: { scope: unknown }) {
             expanded={expanded}
             className={statusPlanClassName}
             selectedValue={statusPlanSelectedValue}
+            isTimeTravel={isTimeTravel}
             onToggle={() => toggle(row.nodeId)}
             nav={nav}
           />

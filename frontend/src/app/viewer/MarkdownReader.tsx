@@ -13,13 +13,15 @@
 // (dashboard-layer-ownership).
 
 import type { ReactElement, ReactNode } from "react";
-import { isValidElement, useMemo } from "react";
-import type { Root } from "hast";
+import { isValidElement, useMemo, useState } from "react";
+import type { Element as HastElement, Root } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import Markdown, { defaultUrlTransform } from "react-markdown";
+import { MessageSquare } from "lucide-react";
 
 import { dispatchCopy } from "../../platform/actions/clipboardActions";
+import { fireActionDescriptor } from "../../platform/actions/action";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -29,8 +31,12 @@ import {
   type MarkdownReaderEditorialView,
   type MarkdownReaderView,
 } from "../../stores/server/queries";
+import { parseDocument } from "../../stores/server/parseDocument";
 import { previewDocTab } from "../../stores/view/tabs";
+import { useViewportClass } from "../../stores/view/viewportClass";
 import {
+  Badge,
+  IconButton,
   Skeleton,
   SkeletonBar,
   StatusDot,
@@ -38,8 +44,20 @@ import {
   categoryColorVar,
 } from "../kit";
 import { PlanSummaryCard } from "./PlanSummaryCard";
+import { CommentThreadPanel } from "./CommentThreadPanel";
 import { languageDisplayName } from "./languages";
+import { remarkBlockId } from "./remarkBlockId";
 import { remarkWikiLink, wikiLinkNodeId, WIKI_LINK_SCHEME } from "./remarkWikiLink";
+import { buildCommentAnchorIndex, type HeadingBlock } from "./sectionAnchor";
+import {
+  ReaderCommentsContext,
+  anchoredCommentsForBlock,
+  commentSectionAction,
+  orphanedComments,
+  useReaderComments,
+  type ReaderCommentPlane,
+  type ReaderCommentSource,
+} from "./readerComments";
 import { stopScrollKeyPropagation } from "./scrollRegion";
 import { useHighlightedHast } from "./useHighlighter";
 
@@ -132,7 +150,7 @@ const COMPONENTS: Components = {
   },
 };
 
-const REMARK_PLUGINS = [remarkGfm, remarkWikiLink];
+const REMARK_PLUGINS = [remarkGfm, remarkWikiLink, remarkBlockId];
 
 /** Recursively flatten rendered children to their plain text. */
 function flattenText(node: ReactNode): string {
@@ -145,18 +163,160 @@ function flattenText(node: ReactNode): string {
   return "";
 }
 
-/** Heading overrides — a final render-layer guard for the no-noise directive:
+/** Read the block-identity data attributes the `remarkBlockId` plugin stamped
+ *  (hProperties are copied onto the hast node verbatim; tolerate the camelCased
+ *  form defensively). */
+function readCommentPath(node: HastElement | undefined): string | null {
+  const props = node?.properties as Record<string, unknown> | undefined;
+  const raw = props?.["data-comment-path"] ?? props?.dataCommentPath;
+  return typeof raw === "string" ? raw : null;
+}
+
+function readHeadingId(node: HastElement | undefined): string | undefined {
+  const id = (node?.properties as Record<string, unknown> | undefined)?.id;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+
+type HeadingTagName = "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+
+/** A heading carrying its section comment affordance: a right-gutter comment button
+ *  (hover-revealed on pointer viewports, always visible on compact) plus a count
+ *  chip when the section has comments, and the anchored thread panel when opened.
+ *  Absolutely positioned inside a relative wrapper so revealing it never reflows the
+ *  prose (no layout thrash on hover). */
+function CommentableHeading({
+  tag: HeadingTag,
+  id,
+  text,
+  plane,
+  block,
+  pluginKey,
+}: {
+  tag: HeadingTagName;
+  id: string | undefined;
+  text: string;
+  plane: ReaderCommentPlane;
+  block: HeadingBlock;
+  /** The plugin's stamped path key this heading resolved through — the key the
+   *  anchor index (and its ambiguity set) is keyed on. */
+  pluginKey: string;
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+  const anchored = anchoredCommentsForBlock(plane.comments, block);
+  const count = anchored.length;
+  const ambiguous = plane.anchorIndex.ambiguousPaths.has(pluginKey);
+  const openThread = () =>
+    fireActionDescriptor(
+      commentSectionAction({ hasComments: count > 0, onOpen: () => setOpen(true) }),
+    );
+  return (
+    <div className="group relative" data-section-heading>
+      {/* Reserve right-gutter space so the always-visible count chip + affordance
+          never render over long heading text (no overlap). */}
+      <HeadingTag id={id} className="pr-16">
+        {text}
+      </HeadingTag>
+      <span className="absolute right-0 top-0 z-10 flex items-center gap-fg-1">
+        {count > 0 && (
+          <span data-comment-count>
+            <Badge tone="accent">{count}</Badge>
+          </span>
+        )}
+        <span
+          data-affordance-visibility={plane.viewport === "compact" ? "always" : "hover"}
+          className={
+            plane.viewport === "compact"
+              ? "opacity-100"
+              : "opacity-0 transition-opacity duration-ui-fast group-hover:opacity-100 focus-within:opacity-100"
+          }
+        >
+          <IconButton
+            label="Comment on this section"
+            data-comment-affordance
+            active={open}
+            onClick={openThread}
+          >
+            <MessageSquare size={14} aria-hidden />
+          </IconButton>
+        </span>
+      </span>
+      {open && (
+        <CommentThreadPanel
+          block={block}
+          comments={anchored}
+          actions={plane}
+          anchorIndex={plane.anchorIndex}
+          actorReady={plane.actorReady}
+          actorBootstrapping={plane.actorBootstrapping}
+          ensureActor={plane.ensureActor}
+          title={text}
+          ambiguous={ambiguous}
+          onClose={() => setOpen(false)}
+          className="absolute right-0 top-full z-40 mt-fg-1"
+        />
+      )}
+    </div>
+  );
+}
+
+/** One heading override. A final render-layer guard for the no-noise directive:
  *  every heading renders as PLAIN TEXT (its flattened text content), so even a
- *  heading that bypassed the body sanitizer can never display inline formatting.
- *  The body is heading-sanitized upstream (sanitizeReaderBody); this is
- *  defense-in-depth. */
+ *  heading that bypassed the body sanitizer can never display inline formatting
+ *  (the body is heading-sanitized upstream — this is defense-in-depth). When a
+ *  comment plane is mounted AND the heading resolves to a live section, it grows the
+ *  section comment affordance; otherwise it renders the bare heading. */
+function BlockHeading({
+  level,
+  node,
+  children,
+}: {
+  level: number;
+  node?: HastElement;
+  children?: ReactNode;
+}): ReactElement {
+  const plane = useReaderComments();
+  const text = flattenText(children);
+  const id = readHeadingId(node);
+  const HeadingTag = `h${level}` as HeadingTagName;
+  const commentPath = plane ? readCommentPath(node) : null;
+  const block =
+    plane && commentPath !== null
+      ? plane.anchorIndex.byPluginPath.get(commentPath)
+      : undefined;
+  if (!plane || block === undefined) {
+    return <HeadingTag id={id}>{text}</HeadingTag>;
+  }
+  return (
+    <CommentableHeading
+      tag={HeadingTag}
+      id={id}
+      text={text}
+      plane={plane}
+      block={block}
+      pluginKey={commentPath!}
+    />
+  );
+}
+
 const HEADING_COMPONENTS: Components = {
-  h1: ({ children }) => <h1>{flattenText(children)}</h1>,
-  h2: ({ children }) => <h2>{flattenText(children)}</h2>,
-  h3: ({ children }) => <h3>{flattenText(children)}</h3>,
-  h4: ({ children }) => <h4>{flattenText(children)}</h4>,
-  h5: ({ children }) => <h5>{flattenText(children)}</h5>,
-  h6: ({ children }) => <h6>{flattenText(children)}</h6>,
+  h1: ({ node, children }) => (
+    <BlockHeading level={1} node={node} children={children} />
+  ),
+  h2: ({ node, children }) => (
+    <BlockHeading level={2} node={node} children={children} />
+  ),
+  h3: ({ node, children }) => (
+    <BlockHeading level={3} node={node} children={children} />
+  ),
+  h4: ({ node, children }) => (
+    <BlockHeading level={4} node={node} children={children} />
+  ),
+  h5: ({ node, children }) => (
+    <BlockHeading level={5} node={node} children={children} />
+  ),
+  h6: ({ node, children }) => (
+    <BlockHeading level={6} node={node} children={children} />
+  ),
 };
 
 /** The editorial DocHeader block: doc-type eyebrow, serif title, italic dek, and
@@ -338,6 +498,7 @@ export function MarkdownReader({
   content,
   scope = null,
   nodeId = null,
+  commentSource,
 }: {
   content: ContentView;
   scope?: string | null;
@@ -345,8 +506,30 @@ export function MarkdownReader({
    *  card can fetch the engine plan-interior summary; null for callers that do
    *  not address by node (the card simply does not mount). */
   nodeId?: string | null;
+  /** The section-comment plane source, supplied by the smart parent
+   *  (`MarkdownDocView`) — the served comments + bound mutations + actor state. When
+   *  omitted the reader renders headings plainly (no comment affordances), so a
+   *  caller that mounts the reader without comments is unaffected. */
+  commentSource?: ReaderCommentSource;
 }): ReactElement {
   const markdownView = useMemo(() => deriveMarkdownReaderView(content), [content]);
+  const viewport = useViewportClass();
+  // The heading anchor index is derived from the RAW served body (frontmatter
+  // stripped for clean ancestor paths; the section bytes — and therefore the git
+  // blob oids — are identical to the backend's read either way). H1 lift is signaled
+  // by an editorial title.
+  const anchorIndex = useMemo(
+    () =>
+      buildCommentAnchorIndex(
+        parseDocument(content.text).body,
+        markdownView.editorial.title !== null,
+      ),
+    [content.text, markdownView.editorial.title],
+  );
+  const commentPlane = useMemo<ReaderCommentPlane | null>(
+    () => (commentSource ? { ...commentSource, anchorIndex, viewport } : null),
+    [commentSource, anchorIndex, viewport],
+  );
 
   // Loading is UI-ONLY (state-mode-uniformity ADR D2): a shimmer skeleton mimicking
   // the reader's rhythm, never on-screen "Loading…" text — the human label lives
@@ -368,28 +551,74 @@ export function MarkdownReader({
   // so it tightens on a narrow pane (mobile, or a narrow desktop pane with the
   // graph open) and only relaxes to the comfortable editorial inset when wide.
   return (
-    <div className="@container flex h-full flex-col bg-paper text-ink">
-      {markdownView.truncated && (
-        <div className="reader-meta border-b border-rule bg-paper-sunken px-fg-4 py-fg-1 text-ink-muted @lg:px-fg-8 @3xl:px-[3rem] @5xl:px-[4.5rem]">
-          {markdownView.truncationMessage}
+    <ReaderCommentsContext.Provider value={commentPlane}>
+      <div className="@container flex h-full flex-col bg-paper text-ink">
+        {markdownView.truncated && (
+          <div className="reader-meta border-b border-rule bg-paper-sunken px-fg-4 py-fg-1 text-ink-muted @lg:px-fg-8 @3xl:px-[3rem] @5xl:px-[4.5rem]">
+            {markdownView.truncationMessage}
+          </div>
+        )}
+        {commentPlane !== null && <OrphanedNotesBar plane={commentPlane} />}
+        {/* Focusable scroll region so the rendered document can be SCROLLED by
+            keyboard (arrows / PageUp-Down) even when its prose holds no links to
+            tab through (WCAG 2.1.1; keyboard-navigation W03.P06.S19). */}
+        <div
+          className="min-h-0 flex-1 overflow-auto"
+          role="region"
+          aria-label="document"
+          tabIndex={0}
+          // The scroll keys are stopped from the global dispatcher (which would
+          // preventDefault them — blocking this scroll — and walk the graph) so the
+          // browser scrolls the document natively (review HIGH).
+          onKeyDown={stopScrollKeyPropagation}
+        >
+          <MarkdownBody view={markdownView} scope={scope} nodeId={nodeId} />
+          <ReaderFooter editorial={markdownView.editorial} scope={scope} />
         </div>
-      )}
-      {/* Focusable scroll region so the rendered document can be SCROLLED by
-          keyboard (arrows / PageUp-Down) even when its prose holds no links to
-          tab through (WCAG 2.1.1; keyboard-navigation W03.P06.S19). */}
-      <div
-        className="min-h-0 flex-1 overflow-auto"
-        role="region"
-        aria-label="document"
-        tabIndex={0}
-        // The scroll keys are stopped from the global dispatcher (which would
-        // preventDefault them — blocking this scroll — and walk the graph) so the
-        // browser scrolls the document natively (review HIGH).
-        onKeyDown={stopScrollKeyPropagation}
-      >
-        <MarkdownBody view={markdownView} scope={scope} nodeId={nodeId} />
-        <ReaderFooter editorial={markdownView.editorial} scope={scope} />
       </div>
+    </ReaderCommentsContext.Provider>
+  );
+}
+
+/** The document-level orphaned-notes affordance: shown only when a comment's anchor
+ *  has drifted off its section (the honest orphan state, never a silent re-anchor).
+ *  It opens a panel listing every orphaned note under a clearly-labeled stale state
+ *  with the typed reason and an explicit re-anchor. */
+function OrphanedNotesBar({
+  plane,
+}: {
+  plane: ReaderCommentPlane;
+}): ReactElement | null {
+  const [open, setOpen] = useState(false);
+  const orphaned = orphanedComments(plane.comments);
+  if (orphaned.length === 0) return null;
+  return (
+    <div className="relative border-b border-rule bg-paper-sunken px-fg-4 py-fg-1 @lg:px-fg-8 @3xl:px-[3rem] @5xl:px-[4.5rem]">
+      <button
+        type="button"
+        data-orphaned-notes
+        className="inline-flex items-center gap-fg-1 text-label font-medium text-ink-muted hover:text-ink"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <MessageSquare size={14} aria-hidden />
+        {orphaned.length === 1
+          ? "1 orphaned note"
+          : `${orphaned.length} orphaned notes`}
+      </button>
+      {open && (
+        <CommentThreadPanel
+          comments={orphaned}
+          actions={plane}
+          anchorIndex={plane.anchorIndex}
+          actorReady={plane.actorReady}
+          actorBootstrapping={plane.actorBootstrapping}
+          ensureActor={plane.ensureActor}
+          title="Orphaned notes"
+          orphanedPanel
+          onClose={() => setOpen(false)}
+          className="absolute left-fg-4 top-full z-40 mt-fg-1 @lg:left-fg-8"
+        />
+      )}
     </div>
   );
 }

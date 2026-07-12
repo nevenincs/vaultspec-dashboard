@@ -9,16 +9,6 @@ related:
   - '[[2026-07-12-authoring-surface-adr]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 # `authoring-surface` plan
 
 ## Wave `W01` - Backend: ledgered plan ticks and the comments store
@@ -59,17 +49,17 @@ The stores layer stays the sole wire client: comment reads/mutations and the pla
 
 Step rows become actionable: a keyboard-operable checkbox inside the row focus zone, disabled off the present view, riding the tick mutation with visible in-flight state.
 
-- [ ] `W02.P04.S12` - Give plan step rows a keyboard-operable checkbox inside the row focus zone, disabled off the present view, riding the tick mutation with visible in-flight state; `frontend/src/app/right/PlanStepTree.tsx`.
-- [ ] `W02.P04.S13` - Render test: tick a fixture step, assert served done-state reconciliation and the time-travel disable; `frontend/src/app/right/PlanStepTree.render.test.tsx`.
+- [x] `W02.P04.S12` - Give plan step rows a keyboard-operable checkbox inside the row focus zone, disabled off the present view, riding the tick mutation with visible in-flight state; `frontend/src/app/right/PlanStepTree.tsx`.
+- [x] `W02.P04.S13` - Render test: tick a fixture step, assert served done-state reconciliation and the time-travel disable; `frontend/src/app/right/PlanStepTree.render.test.tsx`.
 
 ### Phase `W02.P05` - Reader comment affordances and thread panel (D2)
 
 Heading-path block identity in the reader, the right-side comment affordance (hover on pointer, always visible on compact) with a count chip, and the section thread panel composed from kit atoms - all verbs on the unified action plane.
 
-- [ ] `W02.P05.S14` - Author the heading-path block-identity remark plugin producing stable slug ids with bounded per-block work; `frontend/src/app/viewer/remarkBlockId.ts`.
-- [ ] `W02.P05.S15` - Wrap rendered headings with the right-side comment affordance and count chip, hover-revealed on pointer and always visible on compact, dispatching one new comment action descriptor; `frontend/src/app/viewer/MarkdownReader.tsx`.
-- [ ] `W02.P05.S16` - Build the section comment thread panel with list, compose, resolve, and orphaned-anchor handling composed from kit atoms; `frontend/src/app/viewer/CommentThreadPanel.tsx`.
-- [ ] `W02.P05.S17` - Render and guard tests: affordance visibility per viewport class, action-plane enrollment, and orphaned-comment rendering; `frontend/src/app/viewer`.
+- [x] `W02.P05.S14` - Author the heading-path block-identity remark plugin producing stable slug ids with bounded per-block work; `frontend/src/app/viewer/remarkBlockId.ts`.
+- [x] `W02.P05.S15` - Wrap rendered headings with the right-side comment affordance and count chip, hover-revealed on pointer and always visible on compact, dispatching one new comment action descriptor; `frontend/src/app/viewer/MarkdownReader.tsx`.
+- [x] `W02.P05.S16` - Build the section comment thread panel with list, compose, resolve, and orphaned-anchor handling composed from kit atoms; `frontend/src/app/viewer/CommentThreadPanel.tsx`.
+- [x] `W02.P05.S17` - Render and guard tests: affordance visibility per viewport class, action-plane enrollment, and orphaned-comment rendering; `frontend/src/app/viewer`.
 
 ## Wave `W03` - Polish and housekeeping: diff, create actions, cruft
 

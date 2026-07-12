@@ -191,6 +191,7 @@ describe("engineKeys", () => {
       engineKeys.planInterior("wt-1", "doc:plan"),
       engineKeys.search("wt-1", "alpha", "vault"),
       engineKeys.gitChanges("wt-1"),
+      engineKeys.gitChangesSummary("wt-1"),
       engineKeys.gitDiff("wt-1", ".vault/plan.md"),
       engineKeys.gitHistoricalDiff("wt-1", ".vault/plan.md", "HEAD~1", "HEAD"),
       ["engine", "ops-rag", "service-state", "wt-1"] as const,

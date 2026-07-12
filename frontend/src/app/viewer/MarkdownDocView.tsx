@@ -20,13 +20,25 @@ import {
 } from "react";
 
 import {
+  useCreateComment,
+  useDeleteComment,
+  useDocumentComments,
+  useEditComment,
   useEditorLinkingCorpus,
+  useReanchorComment,
   useRenameDoc,
   useSaveBody,
+  useSetCommentResolved,
   useSetFrontmatter,
   type ContentView,
 } from "../../stores/server/queries";
 import { useEnsureCurrentEditorIdentity } from "../../stores/server/authoring";
+import type { SectionSelector, ServedComment } from "../../stores/server/authoring";
+import type { ReaderCommentSource } from "./readerComments";
+
+/** A stable empty listing so an unresolved comment query does not mint a fresh
+ *  array each render (which would churn the memoized comment plane). */
+const NO_COMMENTS: ServedComment[] = [];
 import { docStemFromNodeId } from "../menus/sharedActions";
 import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 import { dispatchOps } from "../../stores/server/opsActions";
@@ -110,11 +122,73 @@ export function MarkdownDocView({
   // frontmatter dispatch itself stays on the legacy write path until W01.P02
   // rewires it, but the identity bootstrap starts here so it is already resolved
   // by the time that cutover lands.
-  useEnsureCurrentEditorIdentity(editor.isEditing);
+  // Bootstrap the shared editor actor eagerly while editing; the comment plane
+  // bootstraps it lazily (on first thread open) in view mode via `ensureActor`.
+  const editorIdentity = useEnsureCurrentEditorIdentity(editor.isEditing);
 
   const saveBody = useSaveBody();
   const setFrontmatter = useSetFrontmatter();
   const renameDoc = useRenameDoc();
+
+  // Section comments (authoring-surface ADR D2): this smart parent is the sole wire
+  // client for the comment read + mutations; the reader is dumb chrome that renders
+  // the plane and emits intent. The read is mount-gated on the open document.
+  const commentsQuery = useDocumentComments(nodeId, scope);
+  const createComment = useCreateComment();
+  const editComment = useEditComment();
+  const setCommentResolved = useSetCommentResolved();
+  const reanchorComment = useReanchorComment();
+  const deleteComment = useDeleteComment();
+
+  // A ref-stable `ensureActor` so the memoized plane is not invalidated by the
+  // per-render identity of the bootstrap callback (it closes over an unstable
+  // mutation object). The mutation `mutateAsync` fns are already react-query-stable.
+  const bootstrapRef = useRef(editorIdentity.bootstrap);
+  bootstrapRef.current = editorIdentity.bootstrap;
+  const ensureActorRef = useRef(() => bootstrapRef.current());
+
+  const comments = commentsQuery.data?.comments ?? NO_COMMENTS;
+  const createCommentAsync = createComment.mutateAsync;
+  const editCommentAsync = editComment.mutateAsync;
+  const setCommentResolvedAsync = setCommentResolved.mutateAsync;
+  const reanchorCommentAsync = reanchorComment.mutateAsync;
+  const deleteCommentAsync = deleteComment.mutateAsync;
+
+  const commentSource = useMemo<ReaderCommentSource>(
+    () => ({
+      comments,
+      actorReady: editorIdentity.hasToken,
+      actorBootstrapping: editorIdentity.bootstrapping,
+      ensureActor: ensureActorRef.current,
+      createComment: async (selector: SectionSelector, body: string) => {
+        await createCommentAsync({ scope, nodeId, selector, body });
+      },
+      editComment: async (commentId: string, body: string) => {
+        await editCommentAsync({ scope, nodeId, commentId, body });
+      },
+      setResolved: async (commentId: string, resolved: boolean) => {
+        await setCommentResolvedAsync({ scope, nodeId, commentId, resolved });
+      },
+      reanchorComment: async (commentId: string, selector: SectionSelector) => {
+        await reanchorCommentAsync({ scope, nodeId, commentId, selector });
+      },
+      deleteComment: async (commentId: string) => {
+        await deleteCommentAsync({ scope, nodeId, commentId });
+      },
+    }),
+    [
+      comments,
+      editorIdentity.hasToken,
+      editorIdentity.bootstrapping,
+      scope,
+      nodeId,
+      createCommentAsync,
+      editCommentAsync,
+      setCommentResolvedAsync,
+      reanchorCommentAsync,
+      deleteCommentAsync,
+    ],
+  );
 
   // The pickable corpus for the Feature / Related linking pickers (stores selector;
   // this component fetches nothing — dashboard-layer-ownership).
@@ -297,7 +371,12 @@ export function MarkdownDocView({
           }
         />
         <div className="min-h-0 flex-1">
-          <MarkdownReader content={content} scope={scope} nodeId={nodeId} />
+          <MarkdownReader
+            content={content}
+            scope={scope}
+            nodeId={nodeId}
+            commentSource={commentSource}
+          />
         </div>
       </div>
     );
