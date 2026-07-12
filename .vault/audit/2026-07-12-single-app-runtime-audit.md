@@ -168,7 +168,11 @@ index budget, "still reading your project" instead of the crash-log
 message for a live indexing seat), a capped test-only boot-delay knob
 plus a boot-matrix proof that a starting seat is distinguishable and
 stoppable, the roving-tabindex composite per the FeatureSearchField
-precedent, and the symlink note — and routed back for re-check.
+precedent, and the symlink note. The re-check returned PASS with no
+residual findings ("closes the gap precisely"; "exactly the
+regression-safety-net I asked for"): the deferral-closure increment is
+approved, and with it every recorded deferral of this feature stands
+delivered and reviewed.
 
 ## Recommendations
 
