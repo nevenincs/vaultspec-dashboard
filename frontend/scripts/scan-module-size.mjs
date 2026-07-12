@@ -118,7 +118,7 @@ if (ratchet) {
     ) + "\n",
   );
   console.log(
-    `module-size: ratcheted ${tightened} entrie(s) down; ${Object.keys(next).length} remain grandfathered.`,
+    `module-size: ratcheted ${tightened} entry(s) down; ${Object.keys(next).length} remain grandfathered.`,
   );
   process.exit(0);
 }
