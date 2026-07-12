@@ -214,6 +214,59 @@ fn second_seated_serve_fails_loud_and_takeover_follows_death() {
     );
 }
 
+/// A seat held in the `starting` state (indexing; wire not yet up) is
+/// DISTINGUISHABLE and STOPPABLE (single-app-runtime S23 + review M2):
+/// discovery says `starting` with a live pid, and `vaultspec stop`
+/// terminates it via the pid fallback instead of claiming "not running".
+#[test]
+fn a_starting_seat_is_distinguishable_and_stoppable() {
+    let home = HomeGuard::new();
+    let nowhere = tempfile::tempdir().expect("non-workspace dir");
+    let port = free_port();
+    let child = Command::new(BIN)
+        .args(["serve", "--port", &port.to_string()])
+        .env("VAULTSPEC_APP_HOME", home.path())
+        // Hold the boot in `starting` long enough to observe + stop it.
+        .env("VAULTSPEC_TEST_BOOT_DELAY_MS", "20000")
+        .current_dir(nowhere.path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn serve");
+    let child = ServeChild(child);
+    let disc = wait_for_discovery(&home, child.0.id());
+    assert_eq!(
+        disc.get("state").and_then(Value::as_str),
+        Some("starting"),
+        "the pre-index record says starting: {disc}"
+    );
+    // stop() must terminate the starting seat via the pid fallback (the
+    // graceful wire door does not exist yet) and say so honestly.
+    let out = Command::new(BIN)
+        .args(["stop", "--json"])
+        .env("VAULTSPEC_APP_HOME", home.path())
+        .output()
+        .expect("run stop");
+    assert!(out.status.success(), "stop exits 0");
+    let v: Value = serde_json::from_slice(&out.stdout).expect("stop emits a JSON envelope");
+    assert_eq!(v["data"]["stopped"], true, "stopped: {v}");
+    assert_eq!(
+        v["data"]["graceful"], false,
+        "a starting seat is stopped via the pid fallback: {v}"
+    );
+    // The process is genuinely gone.
+    let mut child = child;
+    let begun = Instant::now();
+    loop {
+        if let Ok(Some(_)) = child.0.try_wait() {
+            break;
+        }
+        assert!(begun.elapsed() < BOOT_WAIT, "starting seat did not die");
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
 /// The exemptions stay airtight (D1): an exempt serve in a NON-workspace dir
 /// keeps the historical fail-loud contract (no bootstrap boot), and an
 /// exempt serve never writes machine discovery.

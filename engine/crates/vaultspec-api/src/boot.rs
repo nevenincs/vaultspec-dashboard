@@ -253,6 +253,17 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         }))
     };
 
+    // TEST-HARNESS knob (single-app-runtime review M2): hold the boot in the
+    // `starting` state for a bounded moment so the state machine (status,
+    // stop, launcher waits) is testable deterministically — a fixture corpus
+    // indexes too fast to observe the window reliably. Never set outside the
+    // test suites; capped so a stray value cannot wedge a real boot.
+    if let Ok(raw) = std::env::var("VAULTSPEC_TEST_BOOT_DELAY_MS")
+        && let Ok(ms) = raw.parse::<u64>()
+    {
+        tokio::time::sleep(Duration::from_millis(ms.min(60_000))).await;
+    }
+
     // Build the workspace-level state. This opens the SHARED user-state handle
     // once, eagerly builds the launch scope's cell into the registry (cold
     // initial index, the same pipeline the one-shot CLI runs, D2.4), spawns

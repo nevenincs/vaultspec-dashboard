@@ -21,11 +21,15 @@ use super::lifecycle;
 
 /// Loopback request budget for the attach-path session calls.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(5);
-/// How long a cold launch waits for the spawned seat to publish discovery.
-/// Discovery publishes AFTER the initial index, and a large repository's cold
-/// index legitimately takes minutes — the wait must outlast it (review
-/// finding: 30 s produced a false "did not come up" on big corpora).
-const SPAWN_WAIT: Duration = Duration::from_secs(180);
+/// How long a cold launch waits for the spawned seat's `starting` discovery
+/// record to appear. Discovery now publishes BEFORE the initial index
+/// (single-app-runtime S23), so this is short: no record in 30 s means the
+/// process never got going.
+const PUBLISH_WAIT: Duration = Duration::from_secs(30);
+/// How long a cold launch tolerates an honestly-`starting` (indexing) seat
+/// before giving up the wait and telling the user it is still working. A
+/// large project's first index legitimately takes minutes.
+const INDEX_WAIT: Duration = Duration::from_secs(15 * 60);
 /// Crash-loop guard window (single-app-runtime D7): a seat that died within
 /// this window of its launch is NOT auto-relaunched; the user is pointed at
 /// the crash log instead.
@@ -86,32 +90,44 @@ pub fn open_app() -> Result<Value, String> {
     let pid = lifecycle::spawn_detached_serve(&cwd)
         .map_err(|e| format!("could not start the vaultspec app: {e}"))?;
     record_launch(&home, pid);
-    if !lifecycle::wait_for_seat(pid, SPAWN_WAIT) {
-        // A concurrent launch may have WON the seat while our spawn lost it
-        // (review M1): the app IS running, just not under our pid — attach
-        // instead of reporting a misleading failure.
-        if let Some((_, info)) = lifecycle::read_seat()
-            && lifecycle::seat_running(&info)
-        {
-            touch_launcher_state(&home, Some(&cwd));
-            let url = format!("http://127.0.0.1:{}/", info.port);
-            let browser = open_browser(&url);
-            return Ok(json!({
-                "attached": true,
-                "raced_concurrent_launch": true,
-                "url": url,
-                "workspace": workspace,
-                "browser_opened": browser.is_ok(),
-            }));
+    let info = match lifecycle::wait_for_seat_ready(pid, PUBLISH_WAIT, INDEX_WAIT) {
+        lifecycle::SeatWait::Ready(info) => info,
+        // Honestly still indexing (review HIGH): the seat is ALIVE and its
+        // discovery says `starting` — never send the user to the crash log.
+        lifecycle::SeatWait::StillStarting { pid } => {
+            return Err(format!(
+                "the vaultspec app is up (pid {pid}) but still reading your \
+                 project after {} minutes - leave it working and run \
+                 `vaultspec` again shortly, or watch it live with \
+                 `vaultspec serve` next time.",
+                INDEX_WAIT.as_secs() / 60
+            ));
         }
-        return Err(format!(
-            "the vaultspec app started (pid {pid}) but did not come up within \
-             {}s; check the crash log{}",
-            SPAWN_WAIT.as_secs(),
-            crash_log_hint(workspace.as_deref())
-        ));
-    }
-    let (_, info) = lifecycle::read_seat().ok_or("seat discovery vanished after startup")?;
+        lifecycle::SeatWait::Vanished => {
+            // A concurrent launch may have WON the seat while our spawn lost
+            // it (review M1): the app IS running, just not under our pid —
+            // attach instead of reporting a misleading failure.
+            if let Some((_, info)) = lifecycle::read_seat()
+                && lifecycle::seat_running(&info)
+            {
+                touch_launcher_state(&home, Some(&cwd));
+                let url = format!("http://127.0.0.1:{}/", info.port);
+                let browser = open_browser(&url);
+                return Ok(json!({
+                    "attached": true,
+                    "raced_concurrent_launch": true,
+                    "url": url,
+                    "workspace": workspace,
+                    "browser_opened": browser.is_ok(),
+                }));
+            }
+            return Err(format!(
+                "the vaultspec app started (pid {pid}) but did not come up; \
+                 check the crash log{}",
+                crash_log_hint(workspace.as_deref())
+            ));
+        }
+    };
     touch_launcher_state(&home, Some(&cwd));
     let url = format!("http://127.0.0.1:{}/", info.port);
     let browser = open_browser(&url);

@@ -10,7 +10,7 @@
 
 import { Folder as FolderMark } from "@phosphor-icons/react";
 import { ArrowUp } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { FsListEntry, FsListResponse } from "../../stores/server/engine";
 import { useFsList } from "../../stores/server/queries";
@@ -131,6 +131,48 @@ export function FolderBrowser({ path, onNavigate, onChoose }: FolderBrowserProps
     [query.data, query.isPending, query.isError],
   );
 
+  // Widget-intrinsic roving tabindex (Class-B, actions-keymap rule; the
+  // FeatureSearchField listbox precedent): the row list is ONE tab stop —
+  // the active row carries tabIndex 0, arrows/Home/End rove, Enter/Space
+  // activate — and consumed keys stop propagating so they never reach the
+  // global dispatcher. Reset to the first row whenever the level changes.
+  const [activeIndex, setActiveIndex] = useState(0);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [view.headerPath]);
+  const rowCount = view.rows.length;
+  const clampedIndex = rowCount === 0 ? -1 : Math.min(activeIndex, rowCount - 1);
+  const focusRow = (index: number) => {
+    setActiveIndex(index);
+    const buttons =
+      listRef.current?.querySelectorAll<HTMLButtonElement>("[role='option']");
+    buttons?.[index]?.focus();
+  };
+  const onListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (rowCount === 0) return;
+    let next: number;
+    switch (event.key) {
+      case "ArrowDown":
+        next = Math.min(clampedIndex + 1, rowCount - 1);
+        break;
+      case "ArrowUp":
+        next = Math.max(clampedIndex - 1, 0);
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = rowCount - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    focusRow(next);
+  };
+
   return (
     <div
       className="flex flex-col gap-fg-1-5 rounded-fg-xs border border-rule bg-paper-sunken p-fg-2"
@@ -154,8 +196,10 @@ export function FolderBrowser({ path, onNavigate, onChoose }: FolderBrowserProps
         </Button>
       </div>
       <div
+        ref={listRef}
         role="listbox"
         aria-label="folders"
+        onKeyDown={onListKeyDown}
         className="max-h-48 min-h-0 overflow-y-auto rounded-fg-xs border border-rule bg-paper"
       >
         {view.state === "loading" && (
@@ -179,11 +223,14 @@ export function FolderBrowser({ path, onNavigate, onChoose }: FolderBrowserProps
           />
         )}
         {view.state === "ready" &&
-          view.rows.map((row) => (
+          view.rows.map((row, index) => (
             <button
               key={row.key}
               type="button"
               role="option"
+              aria-selected={index === clampedIndex}
+              tabIndex={index === clampedIndex ? 0 : -1}
+              onFocus={() => setActiveIndex(index)}
               onClick={() => onNavigate(row.path)}
               aria-label={row.ariaLabel}
               className="flex w-full items-center gap-fg-1-5 px-fg-2 py-fg-1 text-left text-label text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"

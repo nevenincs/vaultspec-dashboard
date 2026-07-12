@@ -125,7 +125,10 @@ fn entry_row(name: &str, path: &Path) -> Value {
         "path": clean(path),
         // The two markers the picker renders: a vaultspec-managed project
         // (has a vault) and a plain git repository (registrable, not yet
-        // managed — the provisioning plane's audience).
+        // managed — the provisioning plane's audience). Both probes FOLLOW
+        // symlinks/junctions (std is_dir/exists semantics) — deliberate and
+        // harmless here: read-only metadata, one non-recursive level, the
+        // operator's own machine.
         "is_managed": path.join(".vault").is_dir(),
         "is_git": path.join(".git").exists(),
     })

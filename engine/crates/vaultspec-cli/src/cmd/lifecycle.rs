@@ -337,19 +337,62 @@ pub fn spawn_detached_serve(cwd: &Path) -> std::io::Result<u32> {
     Ok(child.id())
 }
 
-/// Wait bounded for the seat discovery file to name `pid` with a live health.
-pub fn wait_for_seat(pid: u32, budget: Duration) -> bool {
+/// How a state-aware wait for a spawned seat ended (single-app-runtime S23,
+/// review HIGH: the launcher must distinguish an INDEXING seat from a dead
+/// one, exactly like `status` and `stop` do).
+#[derive(Debug)]
+pub enum SeatWait {
+    /// Discovery names the pid and `/health` answers: the app is up.
+    Ready(SeatInfo),
+    /// The seat is alive and honestly `starting` (indexing), but did not
+    /// reach ready within the index budget. NOT a failure — the caller
+    /// reports "still indexing", never "check the crash log".
+    StillStarting { pid: u64 },
+    /// No discovery for this pid within the publish budget, or the recorded
+    /// process died: genuinely not coming up.
+    Vanished,
+}
+
+/// Wait for a spawned seat, state-aware. Discovery publishes a `starting`
+/// record within moments of spawn (BEFORE the initial index), so the publish
+/// budget is short; once a `starting` record names a LIVE pid the wait
+/// extends to the index budget, because a large project's first index
+/// legitimately takes minutes.
+pub fn wait_for_seat_ready(pid: u32, publish_budget: Duration, index_budget: Duration) -> SeatWait {
     let begun = Instant::now();
-    while begun.elapsed() < budget {
-        if let Some((_, info)) = read_seat()
-            && info.pid == u64::from(pid)
-            && health_ok(info.port)
-        {
-            return true;
+    let mut seen_ours = false;
+    loop {
+        match read_seat() {
+            Some((_, info)) if info.pid == u64::from(pid) => {
+                seen_ours = true;
+                if health_ok(info.port) {
+                    return SeatWait::Ready(info);
+                }
+                if begun.elapsed() >= index_budget {
+                    return SeatWait::StillStarting { pid: info.pid };
+                }
+                if info.state.as_deref() == Some("starting") && !pid_alive(info.pid) {
+                    return SeatWait::Vanished;
+                }
+            }
+            _ => {
+                let budget = if seen_ours {
+                    index_budget
+                } else {
+                    publish_budget
+                };
+                if begun.elapsed() >= budget {
+                    return SeatWait::Vanished;
+                }
+            }
         }
         std::thread::sleep(Duration::from_millis(250));
     }
-    false
+}
+
+/// Wait bounded for the seat discovery file to name `pid` with a live health.
+pub fn wait_for_seat(pid: u32, budget: Duration) -> bool {
+    matches!(wait_for_seat_ready(pid, budget, budget), SeatWait::Ready(_))
 }
 
 /// Pid-signal fallback: the platform kill verb as a bounded subprocess.
