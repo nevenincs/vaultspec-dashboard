@@ -22,11 +22,11 @@ describe("statusTabChrome store", () => {
 
   it("tracks section disclosure state by stable section id", () => {
     toggleStatusSection("open-plans", true);
-    toggleStatusSection("recent-prs", true);
+    toggleStatusSection("pull-requests", true);
 
     expect(useStatusTabChromeStore.getState().sections).toMatchObject({
       "open-plans": false,
-      "recent-prs": false,
+      "pull-requests": false,
     });
 
     toggleStatusSection("open-plans", true);
@@ -41,7 +41,7 @@ describe("statusTabChrome store", () => {
     expect(
       normalizeStatusSections({
         "open-plans": true,
-        "open-prs": "yes",
+        "pull-requests": "yes",
         "unexpected-section": true,
       }),
     ).toEqual({ "open-plans": true });
@@ -62,7 +62,7 @@ describe("statusTabChrome store", () => {
       sections: {
         "open-plans": true,
         "unexpected-section": true,
-        "recent-prs": "open",
+        "pull-requests": "open",
       } as unknown as Record<"open-plans", boolean>,
     });
 

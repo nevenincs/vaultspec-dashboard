@@ -5407,9 +5407,8 @@ export function useIssuesView(scope: unknown, state: unknown = "open"): IssuesVi
 
 export type StatusTabSectionId =
   | "open-plans"
-  | "open-prs"
+  | "pull-requests"
   | "open-issues"
-  | "recent-prs"
   | "recent-commits";
 
 export interface StatusSectionCardView {
@@ -5420,9 +5419,8 @@ export interface StatusSectionCardView {
 
 export interface StatusTabSectionsView {
   openPlans: StatusSectionCardView;
-  openPrs: StatusSectionCardView;
+  pullRequests: StatusSectionCardView;
   openIssues: StatusSectionCardView;
-  recentPrs: StatusSectionCardView;
   recentCommits: StatusSectionCardView;
 }
 
@@ -5441,9 +5439,13 @@ export function deriveStatusTabSectionsView(counts: {
       title: "Open plans",
       count: positiveStatusCount(counts.openPlans),
     },
-    openPrs: {
-      id: "open-prs",
-      title: "Open PRs",
+    // ONE pull-request section (2026-07-12 IA simplification, user-directed):
+    // the former OPEN PRS / RECENT PRS folds collapsed into a single section —
+    // open items lead, recently merged follow. The count receipt stays the
+    // ACTIONABLE open count, never open+merged.
+    pullRequests: {
+      id: "pull-requests",
+      title: "Pull requests",
       count: positiveStatusCount(counts.openPrs),
     },
     openIssues: {
@@ -5451,8 +5453,59 @@ export function deriveStatusTabSectionsView(counts: {
       title: "Open issues",
       count: positiveStatusCount(counts.openIssues),
     },
-    recentPrs: { id: "recent-prs", title: "Recent PRs" },
     recentCommits: { id: "recent-commits", title: "Recent commits" },
+  };
+}
+
+/** The one Pull requests section body view: open rows lead, recently-merged rows
+ *  follow under a quiet sub-label. Availability is capability-local and shared
+ *  (both reads ride the same gh broker): the open view's states lead so open
+ *  rows never wait on the merged read; the section is empty only when BOTH
+ *  settled lists are empty. */
+export interface PullRequestsSectionView {
+  showLoading: boolean;
+  showUnavailable: boolean;
+  showEmpty: boolean;
+  loadingLabel: string;
+  unavailableLabel: string;
+  emptyLabel: string;
+  openRows: PullRequestRowView[];
+  mergedRows: PullRequestRowView[];
+  mergedLabel: string;
+  listClassName: string;
+}
+
+export function derivePullRequestsSectionView(
+  open: PRsView,
+  merged: PRsView,
+): PullRequestsSectionView {
+  const openUnavailable = !open.showLoading && open.showUnavailable;
+  // Open rows never wait on the merged read — but when the open list settles
+  // EMPTY while merged is still in flight, the skeleton holds (otherwise the
+  // body renders a momentary blank: not empty, not loading, nothing to list).
+  const showLoading =
+    open.showLoading ||
+    (!openUnavailable &&
+      !open.showLoading &&
+      open.rows.length === 0 &&
+      merged.showLoading);
+  const showUnavailable = !showLoading && openUnavailable;
+  const settled = !showLoading && !showUnavailable;
+  const mergedRows =
+    settled && !merged.showLoading && !merged.showUnavailable ? merged.rows : [];
+  const showEmpty =
+    settled && open.rows.length === 0 && !merged.showLoading && mergedRows.length === 0;
+  return {
+    showLoading,
+    showUnavailable,
+    showEmpty,
+    loadingLabel: open.loadingLabel,
+    unavailableLabel: open.unavailableLabel,
+    emptyLabel: "No pull requests.",
+    openRows: settled ? open.rows : [],
+    mergedRows,
+    mergedLabel: "Recently merged",
+    listClassName: open.listClassName,
   };
 }
 

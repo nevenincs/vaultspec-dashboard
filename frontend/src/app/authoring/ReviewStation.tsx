@@ -326,7 +326,9 @@ export function ProposalCard({
 
   return (
     <li
-      className="flex flex-col gap-fg-2 rounded-fg-sm border border-rule bg-paper-raised px-fg-3 py-fg-2"
+      // Card density matches the rail's PR/issue rows (px-fg-2) so the Approvals
+      // fold reads as the same design element as its sibling sections.
+      className="flex flex-col gap-fg-2 rounded-fg-sm border border-rule bg-paper-raised px-fg-2 py-fg-2"
       data-proposal
       data-changeset-id={proposal.changeset_id}
       data-status={proposal.status}
@@ -550,8 +552,8 @@ function ReviewStationBody({ view }: { view: ReviewStationView }) {
   );
 }
 
-/** The review station as a rail SECTION BODY (no title of its own — the enclosing
- *  rail SectionCard supplies the "Review station" header, mirroring the
+/** The approvals queue as a rail SECTION BODY (no title of its own — the enclosing
+ *  rail SectionCard supplies the "Approvals" header, mirroring the
  *  search-service console's body-in-a-section pattern). The reviewer identity
  *  control surfaces only when it can matter: proposals are waiting (sign-in
  *  unlocks their actions) or a reviewer is already signed in (sign-out stays

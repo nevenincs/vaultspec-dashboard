@@ -73,6 +73,7 @@ import {
   derivePlanInteriorView,
   derivePlanSummaryView,
   derivePRsView,
+  derivePullRequestsSectionView,
   deriveSalienceSliceView,
   deriveSettingsDialogView,
   deriveSettingsEffectsView,
@@ -6092,10 +6093,85 @@ describe("derivePRsView and deriveIssuesView", () => {
       }),
     ).toEqual({
       openPlans: { id: "open-plans", title: "Open plans", count: 2 },
-      openPrs: { id: "open-prs", title: "Open PRs", count: undefined },
+      pullRequests: { id: "pull-requests", title: "Pull requests", count: undefined },
       openIssues: { id: "open-issues", title: "Open issues", count: 4 },
-      recentPrs: { id: "recent-prs", title: "Recent PRs" },
       recentCommits: { id: "recent-commits", title: "Recent commits" },
+    });
+  });
+
+  it("composes the one Pull requests section from the open and merged views", () => {
+    const loading = derivePRsView(undefined, null, true, "open");
+    const openEmpty = derivePRsView(
+      { prs: [], available: true, reason: null, tiers: {} },
+      null,
+      false,
+      "open",
+    );
+    const openWithRows = derivePRsView(
+      { prs: [pr()], available: true, reason: null, tiers: {} },
+      null,
+      false,
+      "open",
+    );
+    const mergedLoading = derivePRsView(undefined, null, true, "merged");
+    const mergedEmpty = derivePRsView(
+      { prs: [], available: true, reason: null, tiers: {} },
+      null,
+      false,
+      "merged",
+    );
+    const mergedWithRows = derivePRsView(
+      {
+        prs: [pr({ merged_at: "2026-06-18T01:00:00Z", checks: null })],
+        available: true,
+        reason: null,
+        tiers: {},
+      },
+      null,
+      false,
+      "merged",
+    );
+    const unavailable = derivePRsView(
+      { prs: [], available: false, reason: "gh auth missing", tiers: {} },
+      null,
+      false,
+      "open",
+    );
+
+    // Open leads: its rows render while the merged read is still in flight.
+    expect(derivePullRequestsSectionView(openWithRows, mergedLoading)).toMatchObject({
+      showLoading: false,
+      showUnavailable: false,
+      showEmpty: false,
+      mergedRows: [],
+    });
+    // Open settled EMPTY while merged still loads → the skeleton holds (never a
+    // momentary blank body: not empty, not loading, nothing listed).
+    expect(derivePullRequestsSectionView(openEmpty, mergedLoading)).toMatchObject({
+      showLoading: true,
+      showEmpty: false,
+    });
+    // Both settled empty → the one empty state.
+    expect(derivePullRequestsSectionView(openEmpty, mergedEmpty)).toMatchObject({
+      showEmpty: true,
+      emptyLabel: "No pull requests.",
+    });
+    // Open empty, merged populated → NEVER empty; the merged lane renders.
+    const mergedOnly = derivePullRequestsSectionView(openEmpty, mergedWithRows);
+    expect(mergedOnly.showEmpty).toBe(false);
+    expect(mergedOnly.mergedRows).toHaveLength(1);
+    expect(mergedOnly.mergedLabel).toBe("Recently merged");
+    // Capability-down is led by the open view; no lane renders rows.
+    expect(derivePullRequestsSectionView(unavailable, mergedWithRows)).toMatchObject({
+      showUnavailable: true,
+      openRows: [],
+      mergedRows: [],
+    });
+    // Open still loading masks everything else.
+    expect(derivePullRequestsSectionView(loading, mergedWithRows)).toMatchObject({
+      showLoading: true,
+      openRows: [],
+      mergedRows: [],
     });
   });
 });

@@ -9,7 +9,8 @@
 // states no location of its own:
 //   • OPEN PLANS — flush plan trackers foregrounding a real progress bar,
 //     expandable into the standardized step tree,
-//   • OPEN PRS / OPEN ISSUES / RECENT PRS — GitHub work items,
+//   • PULL REQUESTS / OPEN ISSUES — GitHub work items (one PR fold: open items
+//     lead, recently merged follow — 2026-07-12 IA simplification),
 //   • RECENT COMMITS — expandable commit rows that reveal the full message body,
 //     with a "Show more" control.
 //
@@ -39,6 +40,7 @@ import { RagOpsConsoleBody } from "./RagOpsConsole";
 
 import {
   DEFAULT_HISTORY_LIMIT,
+  derivePullRequestsSectionView,
   deriveStatusTabSectionsView,
   type IssueRowView,
   type PipelinePlanRowView,
@@ -58,6 +60,7 @@ import {
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
 import { guardedContextMenu } from "../menus/guardedContextMenu";
+import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 import type { FocusZoneItemOptions, FocusZoneItemProps } from "../chrome/useFocusZone";
 import { selectEventNodes } from "../../stores/view/selection";
 import {
@@ -82,6 +85,7 @@ import {
   ChevronDown,
   ChevronRight,
   ProgressBar,
+  SectionLabel,
   Skeleton,
   SkeletonRow,
   StateBlock,
@@ -358,11 +362,14 @@ function PrRow({ row, nav }: { row: PullRequestRowView; nav?: RowNav }) {
   const Icon = row.icon === "merged" ? GitMerge : GitPullRequest;
   const key = `pr:${pr.number}`;
   const item = nav ? nav.rove(key) : null;
+  const prEntity = {
+    kind: "pull-request" as const,
+    id: String(pr.number),
+    title: pr.title,
+    url: pr.url,
+  };
   const openMenuAt = (anchor: { x: number; y: number }) =>
-    openContextMenu(
-      { kind: "pull-request", id: String(pr.number), title: pr.title, url: pr.url },
-      anchor,
-    );
+    openContextMenu(prEntity, anchor);
   return (
     <li
       // A PR row is informational; its action is the context menu. When the
@@ -402,6 +409,7 @@ function PrRow({ row, nav }: { row: PullRequestRowView; nav?: RowNav }) {
           {row.titleLabel}
         </span>
         <Badge tone={row.stateTone}>{row.stateLabel}</Badge>
+        <RowMenuDisclosure entity={prEntity} label={`${row.titleLabel} actions`} />
       </div>
       <div className="flex items-center gap-fg-1-5 pl-fg-4 text-meta text-ink-faint">
         {row.authorLabel && <span>{row.authorLabel}</span>}
@@ -412,8 +420,15 @@ function PrRow({ row, nav }: { row: PullRequestRowView; nav?: RowNav }) {
   );
 }
 
-function OpenPrsBody({ scope }: { scope: unknown }) {
-  const view = usePRsView(scope, "open");
+/** The ONE pull-request body (2026-07-12 IA simplification): open PRs lead,
+ *  recently merged follow under a quiet sub-label — one fold instead of the
+ *  former OPEN PRS / RECENT PRS pair. One roving zone spans both lists so the
+ *  section stays a single tab stop; the state rows carry the Open/Merged badge
+ *  so mixed rows stay unambiguous. */
+function PullRequestsBody({ scope }: { scope: unknown }) {
+  const open = usePRsView(scope, "open");
+  const merged = usePRsView(scope, "merged");
+  const view = derivePullRequestsSectionView(open, merged);
   const nav = useRowZone();
   if (view.showLoading) {
     return (
@@ -432,39 +447,25 @@ function OpenPrsBody({ scope }: { scope: unknown }) {
     return <StateBlock mode="empty" message={view.emptyLabel} />;
   }
   return (
-    <ul className={view.listClassName} role="list" data-prs-list>
-      {view.rows.map((row) => (
-        <PrRow key={row.pr.number} row={row} nav={nav} />
-      ))}
-    </ul>
-  );
-}
-
-function RecentPrsBody({ scope }: { scope: unknown }) {
-  const view = usePRsView(scope, "merged");
-  const nav = useRowZone();
-  if (view.showLoading) {
-    return (
-      <Skeleton label={view.loadingLabel}>
-        <SkeletonRow width="w-2/3" />
-        <SkeletonRow width="w-1/2" />
-      </Skeleton>
-    );
-  }
-  if (view.showUnavailable) {
-    return (
-      <StateBlock mode="degraded" layout="inline" message={view.unavailableLabel} />
-    );
-  }
-  if (view.showEmpty) {
-    return <StateBlock mode="empty" message={view.emptyLabel} />;
-  }
-  return (
-    <ul className={view.listClassName} role="list" data-recent-prs-list>
-      {view.rows.map((row) => (
-        <PrRow key={row.pr.number} row={row} nav={nav} />
-      ))}
-    </ul>
+    <div className="flex flex-col gap-fg-2">
+      {view.openRows.length > 0 && (
+        <ul className={view.listClassName} role="list" data-prs-list>
+          {view.openRows.map((row) => (
+            <PrRow key={row.pr.number} row={row} nav={nav} />
+          ))}
+        </ul>
+      )}
+      {view.mergedRows.length > 0 && (
+        <div className="flex flex-col gap-fg-1-5" data-recent-prs-list>
+          <SectionLabel>{view.mergedLabel}</SectionLabel>
+          <ul className={view.listClassName} role="list">
+            {view.mergedRows.map((row) => (
+              <PrRow key={row.pr.number} row={row} nav={nav} />
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -566,6 +567,13 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
           const { row, expanded, showBody } = chromeRow;
           const { commit } = row;
           const Chevron = expanded ? ChevronDown : ChevronRight;
+          const commitEntity = {
+            kind: "commit" as const,
+            id: commit.hash,
+            shortHash: commit.short_hash,
+            subject: commit.subject,
+            ts: commit.ts,
+          };
           return (
             <li
               key={commit.hash}
@@ -574,16 +582,7 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
               data-hash={commit.hash}
               onContextMenu={guardedContextMenu((e) => {
                 e.preventDefault();
-                openContextMenu(
-                  {
-                    kind: "commit",
-                    id: commit.hash,
-                    shortHash: commit.short_hash,
-                    subject: commit.subject,
-                    ts: commit.ts,
-                  },
-                  { x: e.clientX, y: e.clientY },
-                );
+                openContextMenu(commitEntity, { x: e.clientX, y: e.clientY });
               })}
             >
               <div className={chromeRow.headerClassName}>
@@ -625,10 +624,17 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
                   >
                     {row.subjectLabel}
                   </span>
-                  <span className={`${chromeRow.ageClassName} select-text`} data-tabular>
+                  <span
+                    className={`${chromeRow.ageClassName} select-text`}
+                    data-tabular
+                  >
                     {row.ageLabel}
                   </span>
                 </button>
+                <RowMenuDisclosure
+                  entity={commitEntity}
+                  label={`${row.subjectLabel} actions`}
+                />
               </div>
               {showBody && (
                 <div className={view.commitBodyClassName} data-commit-body>
@@ -737,12 +743,12 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
             <OpenPlansBody scope={scope} />
           </SectionCard>
           <SectionCard
-            {...headerNav(sections.openPrs.id)}
-            id={sections.openPrs.id}
-            title={sections.openPrs.title}
-            count={sections.openPrs.count}
+            {...headerNav(sections.pullRequests.id)}
+            id={sections.pullRequests.id}
+            title={sections.pullRequests.title}
+            count={sections.pullRequests.count}
           >
-            <OpenPrsBody scope={scope} />
+            <PullRequestsBody scope={scope} />
           </SectionCard>
           <SectionCard
             {...headerNav(sections.openIssues.id)}
@@ -751,13 +757,6 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
             count={sections.openIssues.count}
           >
             <OpenIssuesBody scope={scope} />
-          </SectionCard>
-          <SectionCard
-            {...headerNav(sections.recentPrs.id)}
-            id={sections.recentPrs.id}
-            title={sections.recentPrs.title}
-          >
-            <RecentPrsBody scope={scope} />
           </SectionCard>
           <SectionCard
             {...headerNav(sections.recentCommits.id)}
@@ -780,14 +779,16 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
       >
         <RagOpsConsoleBody />
       </SectionCard>
-      {/* The agentic-authoring review station (W03.P40): the human-in-the-loop
-          proposal review queue. Independent of corpus state (it manages authoring
+      {/* The agentic-authoring approvals queue (W03.P40): the human-in-the-loop
+          proposal review surface, titled with the standard reviewer vocabulary
+          ("Approvals", 2026-07-12 rename — "Review station" was invented
+          vocabulary). Independent of corpus state (it manages authoring
           proposals, not the graph), so — like the search-service console — it
           renders in every rail state, collapsed by default. */}
       <SectionCard
         {...headerNav("authoring-review")}
         id="authoring-review"
-        title="Review station"
+        title="Approvals"
         defaultOpen={false}
       >
         <ReviewStationSection />
