@@ -87,6 +87,23 @@ pub fn open_app() -> Result<Value, String> {
         .map_err(|e| format!("could not start the vaultspec app: {e}"))?;
     record_launch(&home, pid);
     if !lifecycle::wait_for_seat(pid, SPAWN_WAIT) {
+        // A concurrent launch may have WON the seat while our spawn lost it
+        // (review M1): the app IS running, just not under our pid — attach
+        // instead of reporting a misleading failure.
+        if let Some((_, info)) = lifecycle::read_seat()
+            && lifecycle::seat_running(&info)
+        {
+            touch_launcher_state(&home, Some(&cwd));
+            let url = format!("http://127.0.0.1:{}/", info.port);
+            let browser = open_browser(&url);
+            return Ok(json!({
+                "attached": true,
+                "raced_concurrent_launch": true,
+                "url": url,
+                "workspace": workspace,
+                "browser_opened": browser.is_ok(),
+            }));
+        }
         return Err(format!(
             "the vaultspec app started (pid {pid}) but did not come up within \
              {}s; check the crash log{}",
@@ -173,13 +190,12 @@ fn select_workspace_on_seat(info: &lifecycle::SeatInfo, path: &str) -> Result<bo
         .map_err(|e| format!("seat did not answer /workspaces: {e}"))?;
     let v: Value =
         serde_json::from_str(&body).map_err(|e| format!("bad /workspaces payload: {e}"))?;
-    let norm = |s: &str| s.replace('\\', "/").trim_end_matches('/').to_lowercase();
-    let wanted = norm(path);
+    let wanted = normalize_path_key(path);
     let id = v["data"]["workspaces"]
         .as_array()
         .into_iter()
         .flatten()
-        .find(|w| w["path"].as_str().map(norm) == Some(wanted.clone()))
+        .find(|w| w["path"].as_str().map(normalize_path_key) == Some(wanted.clone()))
         .and_then(|w| w["id"].as_str().map(str::to_string));
     let Some(id) = id else {
         // Not registered and not registrable (validation refused it): the
@@ -220,33 +236,137 @@ fn record_launch(home: &std::path::Path, pid: u32) {
     );
 }
 
-/// The crash-loop guard (D7): when the previous launch is recent (inside the
-/// window) and its process is gone without a live seat, refuse to thrash and
-/// point at the crash log.
+/// What a cold launch should do given the previous launch record (review M2:
+/// the decision is pure and unit-tested; pid liveness is an INPUT, so a slow
+/// first index is distinguished from a crash).
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ColdLaunchDecision {
+    /// No recent launch (or the record is stale): spawn normally.
+    Proceed,
+    /// The recorded launch is recent and its process is STILL ALIVE — it is
+    /// starting (a first index can take minutes); do not double-spawn.
+    StillStarting { pid: u64 },
+    /// The recorded launch is recent and its process is DEAD without a live
+    /// seat — a crash loop; refuse to thrash.
+    RefuseCrashLoop,
+}
+
+pub(crate) fn resolve_cold_launch(
+    last: Option<(u64, i64)>,
+    now_ms: i64,
+    last_pid_alive: bool,
+) -> ColdLaunchDecision {
+    let Some((pid, at_ms)) = last else {
+        return ColdLaunchDecision::Proceed;
+    };
+    if now_ms.saturating_sub(at_ms) >= CRASH_LOOP_WINDOW_MS {
+        return ColdLaunchDecision::Proceed;
+    }
+    if last_pid_alive {
+        ColdLaunchDecision::StillStarting { pid }
+    } else {
+        ColdLaunchDecision::RefuseCrashLoop
+    }
+}
+
+/// The crash-loop guard (D7): when the previous launch is recent, check its
+/// pid before deciding — alive means "still starting" (honest message, no
+/// double-spawn), dead means a crash loop (refuse to thrash).
 fn crash_loop_guard(home: &std::path::Path, workspace: Option<&str>) -> Result<(), String> {
-    let Some(last) = std::fs::read_to_string(last_launch_path(home))
+    let last = std::fs::read_to_string(last_launch_path(home))
         .ok()
         .and_then(|s| serde_json::from_str::<Value>(&s).ok())
-    else {
-        return Ok(());
-    };
-    let at = last.get("at_ms").and_then(Value::as_i64).unwrap_or(0);
-    if now_ms().saturating_sub(at) < CRASH_LOOP_WINDOW_MS {
-        return Err(format!(
-            "the vaultspec app was launched under a minute ago and has not \
-             come up - it may still be starting (a first index of a large \
-             project takes a while) or crashing; not relaunching \
-             automatically. Try again shortly, check the crash log{}, or run \
-             `vaultspec serve` in a terminal to watch it live.",
+        .and_then(|v| {
+            Some((
+                v.get("pid")?.as_u64()?,
+                v.get("at_ms").and_then(Value::as_i64)?,
+            ))
+        });
+    let alive = last.is_some_and(|(pid, _)| lifecycle::pid_alive(pid));
+    match resolve_cold_launch(last, now_ms(), alive) {
+        ColdLaunchDecision::Proceed => Ok(()),
+        ColdLaunchDecision::StillStarting { pid } => Err(format!(
+            "the vaultspec app is still starting (pid {pid}) - a first index \
+             of a large project takes a while. Try again shortly, or run \
+             `vaultspec serve` in a terminal to watch it live."
+        )),
+        ColdLaunchDecision::RefuseCrashLoop => Err(format!(
+            "the vaultspec app was launched under a minute ago and its \
+             process is gone - it may be crashing on startup; not \
+             relaunching automatically. Check the crash log{} or run \
+             `vaultspec serve` in a terminal to see the error.",
             crash_log_hint(workspace)
-        ));
+        )),
     }
-    Ok(())
 }
 
 fn crash_log_hint(workspace: Option<&str>) -> String {
     match workspace {
         Some(ws) => format!(" at `{ws}/.vault/data/engine-data/crash.log`"),
         None => String::new(),
+    }
+}
+
+/// One path-comparison key for matching a local root against a served
+/// registry row: forward slashes, no trailing separator, case-folded
+/// (Windows paths compare case-insensitively).
+pub(crate) fn normalize_path_key(s: &str) -> String {
+    s.replace('\\', "/").trim_end_matches('/').to_lowercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cold_launch_decision_covers_the_matrix() {
+        // No record: proceed.
+        assert_eq!(
+            resolve_cold_launch(None, 1_000_000, false),
+            ColdLaunchDecision::Proceed
+        );
+        // Stale record (outside the window): proceed regardless of liveness.
+        assert_eq!(
+            resolve_cold_launch(Some((42, 0)), CRASH_LOOP_WINDOW_MS + 1, false),
+            ColdLaunchDecision::Proceed
+        );
+        // Recent + alive: still starting (a slow first index is NOT a crash —
+        // review M2, the exact false positive the old time-only check had).
+        assert_eq!(
+            resolve_cold_launch(Some((42, 1_000)), 2_000, true),
+            ColdLaunchDecision::StillStarting { pid: 42 }
+        );
+        // Recent + dead: crash loop, refuse.
+        assert_eq!(
+            resolve_cold_launch(Some((42, 1_000)), 2_000, false),
+            ColdLaunchDecision::RefuseCrashLoop
+        );
+        // Boundary: exactly at the window edge counts as stale.
+        assert_eq!(
+            resolve_cold_launch(Some((42, 0)), CRASH_LOOP_WINDOW_MS, false),
+            ColdLaunchDecision::Proceed
+        );
+    }
+
+    #[test]
+    fn path_keys_normalize_separators_case_and_trailing_slash() {
+        assert_eq!(
+            normalize_path_key("Y:\\Code\\Project\\"),
+            normalize_path_key("y:/code/project")
+        );
+        assert_ne!(
+            normalize_path_key("y:/code/project-a"),
+            normalize_path_key("y:/code/project-b")
+        );
+    }
+
+    #[test]
+    fn pid_liveness_sees_ourselves_alive_and_a_bogus_pid_dead() {
+        assert!(super::super::lifecycle::pid_alive(u64::from(
+            std::process::id()
+        )));
+        // Pid 4_000_000_000 is far outside any real pid space on Windows and
+        // Linux alike.
+        assert!(!super::super::lifecycle::pid_alive(4_000_000_000));
     }
 }

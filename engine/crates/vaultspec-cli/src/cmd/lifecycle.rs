@@ -228,16 +228,24 @@ fn run_bounded(
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("spawn failed: {e}"))?;
+    // Drain BOTH streams concurrently (review nit: a sequential read can
+    // backpressure the child on a full stderr pipe while stdout is still
+    // being read); each side carries its own byte cap.
     let mut stdout = child.stdout.take();
     let mut stderr = child.stderr.take();
+    let err_reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(err) = stderr.as_mut() {
+            let _ = err.take(cap as u64).read_to_end(&mut buf);
+        }
+        buf
+    });
     let reader = std::thread::spawn(move || {
         let mut buf = Vec::new();
         if let Some(out) = stdout.as_mut() {
             let _ = out.take(cap as u64).read_to_end(&mut buf);
         }
-        if let Some(err) = stderr.as_mut() {
-            let _ = err.take(cap as u64).read_to_end(&mut buf);
-        }
+        buf.extend(err_reader.join().unwrap_or_default());
         buf
     });
     let begun = Instant::now();
@@ -317,8 +325,10 @@ pub fn wait_for_seat(pid: u32, budget: Duration) -> bool {
     false
 }
 
-/// Pid-signal fallback: the platform kill verb as a bounded, output-capped
-/// subprocess (never a raw unbounded shell-out).
+/// Pid-signal fallback: the platform kill verb as a bounded subprocess.
+/// Only the exit code is consulted, so stdio is null (review nit: the piped
+/// variant was never drained — null is both simpler and cap-free-by-having-
+/// no-output).
 fn kill_pid(pid: u64) -> Result<(), String> {
     #[cfg(windows)]
     let mut cmd = {
@@ -332,32 +342,79 @@ fn kill_pid(pid: u64) -> Result<(), String> {
         c.arg(pid.to_string());
         c
     };
-    let child = cmd
+    let status = run_status_bounded(&mut cmd, Duration::from_secs(5))
+        .map_err(|e| format!("kill fallback failed: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("kill fallback exited {status}"))
+    }
+}
+
+/// Is `pid` a live process? The platform liveness probe as a bounded, silent
+/// subprocess: `tasklist /FI "PID eq N" /NH` on Windows (exit 0 both ways, so
+/// match the pid in its capped output), `kill -0` elsewhere.
+pub fn pid_alive(pid: u64) -> bool {
+    #[cfg(windows)]
+    {
+        let mut cmd = std::process::Command::new("tasklist");
+        cmd.args(["/FI", &format!("PID eq {pid}"), "/NH"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null());
+        let Ok(mut child) = cmd.spawn() else {
+            return false;
+        };
+        let mut out = String::new();
+        if let Some(stdout) = child.stdout.take() {
+            use std::io::Read as _;
+            let _ = stdout.take(64 * 1024).read_to_string(&mut out);
+        }
+        let begun = Instant::now();
+        while begun.elapsed() < Duration::from_secs(5) {
+            match child.try_wait() {
+                Ok(Some(_)) => return out.contains(&format!(" {pid} ")),
+                Ok(None) => std::thread::sleep(Duration::from_millis(50)),
+                Err(_) => return false,
+            }
+        }
+        let _ = child.kill();
+        false
+    }
+    #[cfg(not(windows))]
+    {
+        let mut cmd = std::process::Command::new("kill");
+        cmd.args(["-0", &pid.to_string()]);
+        run_status_bounded(&mut cmd, Duration::from_secs(5))
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+}
+
+/// Run a silent subprocess to completion under a wall-clock ceiling, killing
+/// on breach (subprocess law: no output is produced, so the cap is moot).
+fn run_status_bounded(
+    cmd: &mut std::process::Command,
+    timeout: Duration,
+) -> Result<std::process::ExitStatus, String> {
+    let mut child = cmd
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()
-        .map_err(|e| format!("kill fallback failed to spawn: {e}"))?;
-    // Bounded wait (subprocess law): kill verbs finish instantly; 5 s is slack.
+        .map_err(|e| format!("spawn failed: {e}"))?;
     let begun = Instant::now();
-    let mut child = child;
     loop {
         match child.try_wait() {
-            Ok(Some(status)) => {
-                return if status.success() {
-                    Ok(())
-                } else {
-                    Err(format!("kill fallback exited {status}"))
-                };
-            }
-            Ok(None) if begun.elapsed() < Duration::from_secs(5) => {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) if begun.elapsed() < timeout => {
                 std::thread::sleep(Duration::from_millis(100));
             }
             Ok(None) => {
                 let _ = child.kill();
-                return Err("kill fallback timed out".to_string());
+                return Err("timed out and was killed".to_string());
             }
-            Err(e) => return Err(format!("kill fallback wait failed: {e}")),
+            Err(e) => return Err(format!("wait failed: {e}")),
         }
     }
 }

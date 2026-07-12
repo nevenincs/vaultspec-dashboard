@@ -83,6 +83,69 @@ scoped-cache enrollment) and one module-size baseline breach
 uncommitted work. Neither file is touched by this feature's commits; both
 are that session's to close before it commits.
 
+### delegated-review-arrival | info | both delegated reviewers reported after the inline pass
+
+The two reviewer agents were not dead, only slow; their reports arrived
+after the inline audit above. Verdicts: W01 approve-with-nits, W02/W03
+approve-with-nits, consolidated final review REVISION REQUIRED (one HIGH,
+five MEDIUM). Every finding and its resolution:
+
+### s20-scope-overclaim | high | S20 was checked with only its docs half delivered — FIXED (plan split)
+
+dist's shell/powershell installers cannot create shortcuts, so the
+installer-shortcut half of S20 never landed while the box was checked.
+Resolved by narrowing S20 to the delivered docs scope and adding S22 as an
+honestly-UNCHECKED deferral whose return trigger is the packaging-ADR v2
+MSI channel.
+
+### launcher-concurrent-race | medium | the losing concurrent launcher reported a misleading failure — FIXED
+
+Two simultaneous launches both spawned serve; the seat-lock loser polled
+for its own pid forever and reported "did not come up". The launcher now
+attaches to ANY live seat after its spawn wait expires
+(`raced_concurrent_launch` in the payload).
+
+### crash-guard-liveness | medium | the guard never checked whether the previous launch was alive — FIXED
+
+The cold-launch decision is now a pure, unit-tested function over (last
+record, now, pid-liveness): a recent LIVE pid reports "still starting"
+without double-spawning; only a recent DEAD pid is treated as a crash
+loop. `pid_alive` is a bounded silent subprocess probe.
+
+### exemption-predicate-duplication | medium | the seat exemption was written twice — FIXED
+
+`seat_eligible` is computed exactly once in the boot path and every
+consumer reads it; the second hand-written `no_seat || port == 0` is gone.
+
+### bootstrap-init-unserialized | medium | the bootstrap git-init ran before seat acquisition — FIXED
+
+Seat acquisition now happens FIRST (it is workspace-independent), so the
+bootstrap check-then-init only ever runs under the held lock. The
+one-shot `provision` verb's bootstrap call remains unserialized
+(stress-tested benign by the reviewer; single-invocation CLI surface).
+
+### csp-document-untested | medium | CSP was proven on an API route, not the SPA document — FIXED
+
+A new test fetches `/` and asserts the header rides the document AND the
+served HTML contains no inline `<script>` and no external origin — the
+two things the policy would break.
+
+### launcher-pure-logic-untested | medium | no unit tests on launcher decision logic — FIXED
+
+The cold-launch decision matrix, path-key normalization, and pid-liveness
+now carry direct unit tests in the launcher module.
+
+### kill-fallback-undrained-pipes | medium | kill_pid piped but never drained; run_bounded drained sequentially — FIXED
+
+`kill_pid` (exit-code-only) now uses null stdio via a shared bounded
+status runner; the update sidecar runner drains stdout and stderr
+concurrently, each under its own cap.
+
+### bootstrap-exception-codified | low | the git-init exception is now a named rule clause — FIXED
+
+Promoted from a code comment into `architecture-boundaries.md` (source +
+sync) as a SANCTIONED EXCEPTION with a no-new-site clause.
+
 ## Recommendations
 
 - Consider a provisional "starting" discovery record (state field) so the
@@ -91,5 +154,6 @@ are that session's to close before it commits.
   first-run typed-path entry.
 - The MSI channel (packaging-ADR v2) is the path to installer-created
   Start-Menu shortcuts; the docs currently teach pinning.
-- Verdict: approve. All CRITICAL/HIGH findings are fixed in-branch; the
-  mediums are accepted judgment calls recorded above.
+- Verdict after revision: the consolidated review's HIGH and all five
+  MEDIUMs are fixed in-branch (see the finding log); the revision commit
+  was routed back to the reviewer for re-check per the dev-workflow rule.

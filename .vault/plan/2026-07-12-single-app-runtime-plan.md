@@ -72,8 +72,9 @@ CSP against the embedded SPA verified on the live wire, the update verb ordered 
 
 - [x] `W03.P06.S18` - Author and serve the Content-Security-Policy header against the embedded SPA's actual inline needs, verified in the live-wire suite across embedded and disk-passthrough asset sources; `engine/crates/vaultspec-api/src/lib.rs`.
 - [x] `W03.P06.S19` - Add the update verb ordering stop, receipt-gated axoupdater, relaunch, refusing when the receipt marks a package-manager install and never auto-updating; `engine/crates/vaultspec-cli/src/cmd/lifecycle.rs`.
-- [x] `W03.P06.S20` - Configure installer-created launch shortcuts in the dist pipeline and document install, first-run, lifecycle verbs, the app home, and uninstall (naming the machine-global state) in the user docs; `dist-workspace.toml + docs/`.
+- [x] `W03.P06.S20` - Document install, first-run, lifecycle verbs, the app home, and uninstall (naming the machine-global state) in the user docs, recording honestly that the zip and shell/powershell installer channels create no shortcuts today; `docs/application-runtime.md`.
 - [x] `W03.P06.S21` - Run the full gate (just dev lint all plus engine and frontend suites) and a release dry-run building the embed-spa binary, verifying double-click launch, attach, stop, and update flows end to end on Windows; `justfile + .github/workflows/`.
+- [ ] `W03.P06.S22` - DEFERRED (review split from S20, return trigger = the packaging ADR v2 MSI channel): ship installer-created Start-Menu launch shortcuts - dist's shell/powershell installers cannot create shortcuts, so this lands with the MSI channel, not as a dist config edit; `dist-workspace.toml`.
 
 ## Description
 

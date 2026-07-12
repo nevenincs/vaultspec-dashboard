@@ -54,7 +54,49 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
     // workspace through the registry write seam. Exempt serves (--no-seat,
     // --port 0) keep the historical fail-loud contract the test harness
     // asserts.
+    // The ONE exemption predicate (review M3: it must exist exactly once).
     let seat_eligible = !(no_seat || explicit_port == Some(0));
+
+    // Machine seat (single-app-runtime D1): one resident app process per
+    // machine, enforced by an OS file lock the kernel releases on ANY death
+    // (dead-pid takeover is therefore automatic). Acquired FIRST — before
+    // workspace resolution and any heavy work — so a conflict fails fast AND
+    // the bootstrap-root creation below is serialized by the lock (review
+    // finding: two concurrent workspace-less boots raced the check-then-init
+    // when it ran pre-seat). `--port 0` implies exemption (the OS-ephemeral
+    // test port, the dev-workflow rule's sanctioned exception); `--no-seat`
+    // is the explicit dev escape hatch.
+    let seat_guard = if !seat_eligible {
+        None
+    } else {
+        match vaultspec_session::app_home::app_home_dir() {
+            None => {
+                eprintln!(
+                    "vaultspec serve: WARNING - no home directory resolvable; \
+                     serving unseated (machine discovery disabled)."
+                );
+                None
+            }
+            Some(home) => match seat::acquire_seat(&home)? {
+                Ok(guard) => Some(guard),
+                Err(seat::SeatBusy::Held { pid, port }) => {
+                    let who = match (pid, port) {
+                        (Some(pid), Some(port)) => {
+                            format!("pid {pid} on http://127.0.0.1:{port}")
+                        }
+                        (Some(pid), None) => format!("pid {pid}"),
+                        _ => "another process".to_string(),
+                    };
+                    return Err(std::io::Error::other(format!(
+                        "the vaultspec app is already running ({who}) - run \
+                         `vaultspec` to open it, or `vaultspec stop` first \
+                         (dev/test escape hatches: --no-seat, --port 0)"
+                    )));
+                }
+            },
+        }
+    };
+
     let resolved_root: Result<std::path::PathBuf, String> = (|| {
         let workspace = ingest_git::workspace::Workspace::discover(&cwd)
             .map_err(|e| format!("not inside a git workspace: {e}"))?;
@@ -87,13 +129,14 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
     })();
     let (root, bootstrap) = match resolved_root {
         Ok(root) => (root, false),
-        Err(reason) if seat_eligible => {
-            let home = vaultspec_session::app_home::app_home_dir().ok_or_else(|| {
-                std::io::Error::other(format!(
-                    "{reason}; and no home directory is resolvable for the \
-                     first-run bootstrap"
-                ))
-            })?;
+        // Bootstrap only for a SEATED boot: the held guard proves this is the
+        // one process allowed to create/inspect the scratch corpus, so the
+        // check-then-init below cannot race a sibling boot.
+        Err(reason) if seat_guard.is_some() => {
+            let home = seat_guard
+                .as_ref()
+                .map(|g| g.home.clone())
+                .expect("guarded by is_some");
             eprintln!(
                 "vaultspec serve: no workspace at the launch directory \
                  ({reason}); booting the first-run onboarding surface."
@@ -101,43 +144,6 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
             (bootstrap_root(&home)?, true)
         }
         Err(reason) => return Err(std::io::Error::other(reason)),
-    };
-
-    // Machine seat (single-app-runtime D1): one resident app process per
-    // machine, enforced by an OS file lock the kernel releases on ANY death
-    // (dead-pid takeover is therefore automatic). Acquired BEFORE any heavy
-    // work so a conflict fails fast and loud. `--port 0` implies exemption
-    // (the OS-ephemeral test port, the dev-workflow rule's sanctioned
-    // exception); `--no-seat` is the explicit dev escape hatch.
-    let seat_guard = if no_seat || port == 0 {
-        None
-    } else {
-        match vaultspec_session::app_home::app_home_dir() {
-            None => {
-                eprintln!(
-                    "vaultspec serve: WARNING - no home directory resolvable; \
-                     serving unseated (machine discovery disabled)."
-                );
-                None
-            }
-            Some(home) => match seat::acquire_seat(&home)? {
-                Ok(guard) => Some(guard),
-                Err(seat::SeatBusy::Held { pid, port }) => {
-                    let who = match (pid, port) {
-                        (Some(pid), Some(port)) => {
-                            format!("pid {pid} on http://127.0.0.1:{port}")
-                        }
-                        (Some(pid), None) => format!("pid {pid}"),
-                        _ => "another process".to_string(),
-                    };
-                    return Err(std::io::Error::other(format!(
-                        "the vaultspec app is already running ({who}) - run \
-                         `vaultspec` to open it, or `vaultspec stop` first \
-                         (dev/test escape hatches: --no-seat, --port 0)"
-                    )));
-                }
-            },
-        }
     };
 
     // Detect-and-instruct (dashboard-packaging D3, amended by review): probe
