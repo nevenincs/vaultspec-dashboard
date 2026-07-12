@@ -3,12 +3,13 @@ tags:
   - '#plan'
   - '#authoring-surface'
 date: '2026-07-12'
-modified: '2026-07-12'
+modified: '2026-07-13'
 tier: L3
 related:
   - '[[2026-07-12-authoring-surface-adr]]'
   - '[[2026-07-12-authoring-surface-research]]'
 ---
+
 # `authoring-surface` plan
 
 ## Wave `W01` - Backend: ledgered plan ticks and the comments store
@@ -92,6 +93,18 @@ Delete the unmounted right-rail components, mirror the new affordances into the 
 - [x] `W03.P08.S28` - Delete the unmounted Inspector, NowStrip, and DocHeader components together with their render tests; `frontend/src/app/right`.
 - [x] `W03.P08.S29` - Mirror the new affordances into the binding design file or record the deliberate divergence; `FRAMES.md`.
 - [x] `W03.P08.S30` - Run the full epic gate for both languages and persist the closeout summary; `.vault/exec/2026-07-12-authoring-surface`.
+
+## Wave `W04` - Follow-on reconciliation: section links and the plan-tick inverse
+
+Close the two implementable follow-ons the epic recorded: make the reserved heading-anchor form functional end to end (reader scroll-to-fragment plus a copy-section-link verb on the heading affordance, completing D3), and give plan ticks their honest check/uncheck rollback inverse so the V1 rollback-unavailable gate can retire (D1 consequence).
+
+### Phase `W04.P09` - Section links and plan-tick rollback inverse
+
+Frontend: follow a wiki-link fragment to its heading and copy a section link from the comment affordance. Engine: an explicit set-plan-step-state inverse replaces the whole-document-restore denial.
+
+- [x] `W04.P09.S31` - Scroll the reader to the target heading when a followed wiki-link carries a fragment, using the block-identity slugs already stamped on headings; `frontend/src/app/viewer/MarkdownDocView.tsx`.
+- [x] `W04.P09.S32` - Add a copy-section-link verb to the heading comment affordance emitting the round-trippable stem-plus-anchor wiki-link through the shared copy-link descriptor family; `frontend/src/app/viewer/MarkdownReader.tsx`.
+- [x] `W04.P09.S33` - Give the set-plan-step-state operation an explicit check/uncheck inverse and retire its rollback-unavailable gate, with tests proving a rollback flips only the target step; `engine/crates/vaultspec-api/src/authoring/rollback.rs`.
 
 ## Description
 

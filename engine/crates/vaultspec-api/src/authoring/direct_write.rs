@@ -2586,8 +2586,17 @@ mod tests {
             CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
         }
 
+        /// The full plan-tick lifecycle against the REAL core, consolidating
+        /// three behaviours in one end-to-end run: (1) the check→uncheck
+        /// ROUND-TRIP restores the target step's served state; (2) an idempotent
+        /// re-tick of an already-closed step is Applied via the core `unchanged`
+        /// success status, never a false failure; and (3) the uncheck INVERSE
+        /// (exactly what `rollback.rs` generates for a plan-tick source) flips
+        /// ONLY the target step, leaving a CONCURRENT sibling tick intact — the
+        /// clobber the retired W01.P01 rollback-unavailable gate guarded against
+        /// (a whole-document preimage restore would have reverted S02 too).
         #[test]
-        fn plan_step_tick_round_trip_checks_then_unchecks() {
+        fn plan_step_tick_round_trip_is_sibling_safe_and_idempotent() {
             let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
             let mut fx = setup_plan();
             let human = fx.human.clone();
@@ -2618,29 +2627,69 @@ mod tests {
                 !receipt.child.resolved_via_post_verify,
                 "a clean success completes via the envelope"
             );
-            assert_eq!(
-                step_done(&fx, "S01"),
-                Some(true),
-                "S01 is closed in the served plan after the tick re-ingests"
+            assert_eq!(step_done(&fx, "S01"), Some(true), "S01 is closed");
+
+            // A CONCURRENT sibling tick.
+            let h1 = current_hash(&fx);
+            let check2 = tick_save(
+                &mut fx,
+                &adapter,
+                &human,
+                "idem:tick:check:2",
+                &h1,
+                "S02",
+                true,
+                150,
             );
             assert_eq!(
-                step_done(&fx, "S02"),
-                Some(false),
-                "the sibling step is untouched"
+                check2.status,
+                DirectWriteStatus::Applied,
+                "{:?}",
+                check2.eligibility
+            );
+            assert_eq!(step_done(&fx, "S02"), Some(true), "S02 is closed");
+
+            // Idempotent re-tick of the already-closed S01: core reports
+            // `unchanged` (a success), not a false failure, and the file is not
+            // rewritten.
+            let h2 = current_hash(&fx);
+            let again = tick_save(
+                &mut fx,
+                &adapter,
+                &human,
+                "idem:tick:again",
+                &h2,
+                "S01",
+                true,
+                200,
+            );
+            assert_eq!(
+                again.status,
+                DirectWriteStatus::Applied,
+                "an idempotent re-tick is Applied, not a false failure: {:?}",
+                again.eligibility
+            );
+            assert_eq!(
+                again
+                    .apply_receipt
+                    .as_ref()
+                    .and_then(|receipt| receipt.child.core_status.as_deref()),
+                Some("unchanged"),
+                "the idempotent re-tick rode the core `unchanged` success status"
             );
 
-            // The check mutated the file (glyph + modified stamp + injected
-            // link-rules block), so the un-tick fences on the NEW blob hash.
-            let after_check = current_hash(&fx);
+            // The uncheck INVERSE of the S01 tick — the operation `rollback.rs`
+            // generates. It must re-open ONLY S01 and leave the S02 tick intact.
+            let h3 = current_hash(&fx);
             let uncheck = tick_save(
                 &mut fx,
                 &adapter,
                 &human,
                 "idem:tick:uncheck:1",
-                &after_check,
+                &h3,
                 "S01",
                 false,
-                200,
+                300,
             );
             assert_eq!(
                 uncheck.status,
@@ -2651,7 +2700,12 @@ mod tests {
             assert_eq!(
                 step_done(&fx, "S01"),
                 Some(false),
-                "S01 is re-opened in the served plan"
+                "the inverse re-opened only S01"
+            );
+            assert_eq!(
+                step_done(&fx, "S02"),
+                Some(true),
+                "the concurrent S02 tick SURVIVES the inverse — no whole-document clobber"
             );
         }
 
@@ -2734,70 +2788,6 @@ mod tests {
                 step_done(&fx, "S01"),
                 Some(true),
                 "the real landed tick is reflected in the served plan"
-            );
-        }
-
-        #[test]
-        fn re_ticking_an_already_checked_step_is_applied_not_a_false_failure() {
-            // The core `unchanged` status (an idempotent no-op) is a SUCCESS in
-            // the adapter's is_success set — re-checking an already-closed step
-            // through the full direct-write lifecycle must report Applied, never
-            // a spurious Failed.
-            let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
-            let mut fx = setup_plan();
-            let human = fx.human.clone();
-            let base_hash = fx.base_hash.clone();
-            let adapter = CoreAdapter::detect();
-
-            let first = tick_save(
-                &mut fx,
-                &adapter,
-                &human,
-                "idem:tick:first:1",
-                &base_hash,
-                "S01",
-                true,
-                100,
-            );
-            assert_eq!(
-                first.status,
-                DirectWriteStatus::Applied,
-                "{:?}",
-                first.eligibility
-            );
-            assert_eq!(step_done(&fx, "S01"), Some(true));
-
-            // Re-tick the SAME (now-closed) step through the full lifecycle: core
-            // reports `unchanged`, and the file is not rewritten, so the fence is
-            // still the post-first-check blob.
-            let after = current_hash(&fx);
-            let again = tick_save(
-                &mut fx,
-                &adapter,
-                &human,
-                "idem:tick:again:1",
-                &after,
-                "S01",
-                true,
-                200,
-            );
-            assert_eq!(
-                again.status,
-                DirectWriteStatus::Applied,
-                "an idempotent re-tick is Applied, not a false failure: {:?}",
-                again.eligibility
-            );
-            let receipt = again.apply_receipt.as_ref().expect("apply receipt");
-            assert_eq!(receipt.state, ApplyState::Applied);
-            assert_eq!(
-                receipt.child.core_status.as_deref(),
-                Some("unchanged"),
-                "the idempotent re-tick rode the core `unchanged` success status"
-            );
-            assert_eq!(
-                step_done(&fx, "S01"),
-                Some(true),
-                "the step stays closed after the no-op re-tick"
             );
         }
     }

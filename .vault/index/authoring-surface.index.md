@@ -44,6 +44,10 @@ related:
   - '[[2026-07-12-authoring-surface-W03-P08-S29]]'
   - '[[2026-07-12-authoring-surface-W03-P08-S30]]'
   - '[[2026-07-12-authoring-surface-W03-P08-summary]]'
+  - '[[2026-07-12-authoring-surface-W04-P09-S31]]'
+  - '[[2026-07-12-authoring-surface-W04-P09-S32]]'
+  - '[[2026-07-12-authoring-surface-W04-P09-S33]]'
+  - '[[2026-07-12-authoring-surface-W04-P09-summary]]'
   - '[[2026-07-12-authoring-surface-adr]]'
   - '[[2026-07-12-authoring-surface-plan]]'
   - '[[2026-07-12-authoring-surface-research]]'
@@ -99,6 +103,10 @@ Auto-generated index of all documents tagged with `#authoring-surface`.
 - `2026-07-12-authoring-surface-W03-P08-S29` - Mirror the new affordances into the binding design file or record the deliberate divergence
 - `2026-07-12-authoring-surface-W03-P08-S30` - Run the full epic gate for both languages and persist the closeout summary
 - `2026-07-12-authoring-surface-W03-P08-summary` - `authoring-surface` `W03.P08` summary
+- `2026-07-12-authoring-surface-W04-P09-S31` - Scroll the reader to the target heading when a followed wiki-link carries a fragment, using the block-identity slugs already stamped on headings
+- `2026-07-12-authoring-surface-W04-P09-S32` - Add a copy-section-link verb to the heading comment affordance emitting the round-trippable stem-plus-anchor wiki-link through the shared copy-link descriptor family
+- `2026-07-12-authoring-surface-W04-P09-S33` - Give the set-plan-step-state operation an explicit check/uncheck inverse and retire its rollback-unavailable gate, with tests proving a rollback flips only the target step
+- `2026-07-12-authoring-surface-W04-P09-summary` - `authoring-surface` `W04.P09` summary
 
 ### plan
 
