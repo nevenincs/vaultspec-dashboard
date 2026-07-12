@@ -8,7 +8,7 @@
   "engine/crates/vaultspec-api/src/authoring/apply.rs": 4518,
   "engine/crates/vaultspec-api/src/authoring/conflicts.rs": 1770,
   "engine/crates/vaultspec-api/src/authoring/direct_write.rs": 2804,
-  "engine/crates/vaultspec-api/src/authoring/http.rs": 7457,
+  "engine/crates/vaultspec-api/src/authoring/http.rs": 7509,
   "engine/crates/vaultspec-api/src/authoring/ledger.rs": 1950,
   "engine/crates/vaultspec-api/src/authoring/operations.rs": 3131,
   "engine/crates/vaultspec-api/src/authoring/projections.rs": 2444,
@@ -28,6 +28,5 @@
   "frontend/src/stores/server/authoring.ts": 1992,
   "frontend/src/stores/server/engine.ts": 2473,
   "frontend/src/stores/server/liveAdapters.test.ts": 2354,
-  "frontend/src/stores/server/liveAdapters.ts": 2563,
-  "frontend/src/stores/server/queries.test.ts": 7219
+  "frontend/src/stores/server/liveAdapters.ts": 2563
 }
