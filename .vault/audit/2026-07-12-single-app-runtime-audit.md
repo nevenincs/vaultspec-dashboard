@@ -155,5 +155,6 @@ sync) as a SANCTIONED EXCEPTION with a no-new-site clause.
 - The MSI channel (packaging-ADR v2) is the path to installer-created
   Start-Menu shortcuts; the docs currently teach pinning.
 - Verdict after revision: the consolidated review's HIGH and all five
-  MEDIUMs are fixed in-branch (see the finding log); the revision commit
-  was routed back to the reviewer for re-check per the dev-workflow rule.
+  MEDIUMs are fixed in-branch (see the finding log). The reviewer
+  re-checked the revision commit line by line and returned PASS with no
+  residual findings: the feature is approved for merge.
