@@ -45,6 +45,7 @@ import "./menus/registerAll";
 // Register every per-surface command-palette provider once at app load.
 import "./menus/registerAllCommands";
 import { AddProjectDialog } from "./left/AddProjectDialog";
+import { CreateDocDialog } from "./left/CreateDocDialog";
 import { ProjectNavigator } from "./left/ProjectNavigator";
 import { CommandPalette } from "./palette/CommandPalette";
 import { SettingsDialog } from "./settings/SettingsDialog";
@@ -180,6 +181,7 @@ export function AppShell() {
         <CommandPalette />
         <SettingsDialog />
         <AddProjectDialog />
+        <CreateDocDialog />
         <ProjectNavigator />
         <UnsavedEditGuardHost />
         <ContextMenuHost timeTravel={timeTravel} />
@@ -215,6 +217,7 @@ export function AppShell() {
       <CommandPalette />
       <SettingsDialog />
       <AddProjectDialog />
+      <CreateDocDialog />
       <ProjectNavigator />
       <UnsavedEditGuardHost />
       <ContextMenuHost timeTravel={timeTravel} />
