@@ -88,9 +88,11 @@ enum Command {
     },
     /// Resident mode: single-origin loopback HTTP + JSON + SSE.
     Serve {
-        /// Port to bind on loopback; fails loud on conflict.
-        #[arg(long, default_value_t = vaultspec_api::DEFAULT_PORT)]
-        port: u16,
+        /// Port to bind on loopback; an EXPLICIT port fails loud on
+        /// conflict. Omitted, the app prefers the well-known port and falls
+        /// back to an ephemeral one (discovery advertises the real port).
+        #[arg(long)]
+        port: Option<u16>,
         /// Skip the machine seat lock and machine discovery (dev/test escape
         /// hatch; `--port 0` implies it). The workspace-local discovery file
         /// is still written, byte-compatible with the pre-seat contract.

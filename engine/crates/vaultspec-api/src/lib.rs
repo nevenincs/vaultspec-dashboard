@@ -326,7 +326,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 /// exemption (single-app-runtime D1): an exempt serve skips the machine seat
 /// lock and keeps publishing the workspace-local discovery file, so the test
 /// harness and parallel dev worktrees are untouched by the seat law.
-pub async fn serve(port: u16, scope: Option<String>, no_seat: bool) -> std::io::Result<()> {
+pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> std::io::Result<()> {
+    // An EXPLICIT port keeps the fail-loud conflict contract (R2). The
+    // DEFAULT (no --port) is app-shaped: prefer the well-known port, fall
+    // back to an OS-ephemeral one on conflict — discovery advertises the
+    // real bound port, so a double-click works even when a dev engine
+    // already squats 8767.
+    let explicit_port = port;
+    let port = port.unwrap_or(DEFAULT_PORT);
     // Crash visibility (dogfood DF-4): a panic anywhere must leave a
     // trace, never a silent death. The hook writes a crash log under the
     // engine data dir and stderr before unwinding.
@@ -357,7 +364,7 @@ pub async fn serve(port: u16, scope: Option<String>, no_seat: bool) -> std::io::
     // workspace through the registry write seam. Exempt serves (--no-seat,
     // --port 0) keep the historical fail-loud contract the test harness
     // asserts.
-    let seat_eligible = !(no_seat || port == 0);
+    let seat_eligible = !(no_seat || explicit_port == Some(0));
     let resolved_root: Result<std::path::PathBuf, String> = (|| {
         let workspace = ingest_git::workspace::Workspace::discover(&cwd)
             .map_err(|e| format!("not inside a git workspace: {e}"))?;
@@ -555,8 +562,24 @@ pub async fn serve(port: u16, scope: Option<String>, no_seat: bool) -> std::io::
     // port before discovery is written. service.json then advertises the real
     // port, letting tests (and any caller) bind 0 and avoid fixed-port
     // collisions on concurrent runs.
-    let listener =
-        tokio::net::TcpListener::bind(std::net::SocketAddr::from(([127, 0, 0, 1], port))).await?;
+    let listener = match tokio::net::TcpListener::bind(std::net::SocketAddr::from((
+        [127, 0, 0, 1],
+        port,
+    )))
+    .await
+    {
+        Ok(listener) => listener,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && explicit_port.is_none() => {
+            // Default-port conflict on an app launch: fall back to ephemeral
+            // (the seat's discovery carries the real port). An EXPLICIT
+            // --port keeps failing loud per the contract.
+            eprintln!(
+                "vaultspec serve: port {port} is in use; binding an ephemeral                  port instead (discovery advertises the real one)"
+            );
+            tokio::net::TcpListener::bind(std::net::SocketAddr::from(([127, 0, 0, 1], 0))).await?
+        }
+        Err(e) => return Err(e),
+    };
     let port = listener.local_addr()?.port();
 
     // Discovery + heartbeat (contract §1), advertising the real bound port.
