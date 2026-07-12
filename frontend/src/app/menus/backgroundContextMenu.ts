@@ -9,6 +9,10 @@ import type { MouseEvent } from "react";
 
 import type { BackgroundRegion } from "../../platform/actions/entity";
 import type { MenuAnchor } from "../../stores/view/contextMenu";
+import {
+  selectionForEventTarget,
+  shouldYieldContextMenuToSelection,
+} from "./guardedContextMenu";
 
 type OpenContextMenu = (entity: unknown, anchor: MenuAnchor) => void;
 
@@ -29,6 +33,17 @@ export function backgroundContextMenuHandler(
       ? isBackgroundTarget(event)
       : event.target === event.currentTarget;
     if (!isBackground) return;
+    // Selection-guard law (touch-selectability ADR D1): a live selection that
+    // reaches this background target keeps its native menu; any future
+    // text-bearing background surface inherits the yield without opting in.
+    if (
+      shouldYieldContextMenuToSelection(
+        event.target as Node | null,
+        selectionForEventTarget(event.target),
+      )
+    ) {
+      return;
+    }
     event.preventDefault();
     open(
       { kind: "background", id: "background", region },

@@ -11,10 +11,24 @@ import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type { SceneController } from "../../scene/sceneController";
+import { guardedContextMenu } from "../menus/guardedContextMenu";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { islandStyle, useNodeAnchor } from "../../stores/view/islandAnchors";
 import { closeNodeIsland, useOpenedNodeIslands } from "../../stores/view/selection";
 import { NodeInterior } from "./NodeInterior";
+
+/** Elements inside an island that own their own click semantics (the close
+ *  button, interior chips and links); a right-click on these is NOT an island
+ *  click, so the island menu no longer blankets nested targets
+ *  (touch-selectability ADR D1: the island gains the same target scoping the
+ *  rail and timeline background handlers already have). */
+const ISLAND_NON_MENU_SELECTOR = "button,a,input,textarea,select";
+
+export function isIslandMenuTarget(event: { target: unknown }): boolean {
+  const target = event.target as Element | null;
+  if (target === null || typeof target.closest !== "function") return false;
+  return target.closest(ISLAND_NON_MENU_SELECTOR) === null;
+}
 
 interface IslandProps {
   scene: SceneController;
@@ -30,10 +44,11 @@ function Island({ scene, id, scope, children }: IslandProps) {
       style={islandStyle(anchor)}
       className="pointer-events-auto rounded-fg-md border border-rule bg-paper-raised/95 p-fg-2 text-body shadow-fg-overlay"
       data-island-for={id}
-      onContextMenu={(e) => {
+      onContextMenu={guardedContextMenu((e) => {
+        if (!isIslandMenuTarget(e)) return;
         e.preventDefault();
         openContextMenu({ kind: "island", id, scope }, { x: e.clientX, y: e.clientY });
-      }}
+      })}
     >
       <div className="flex items-center justify-between gap-fg-2">
         {/* The opened node's id is true identity → monospace (typography law). */}
