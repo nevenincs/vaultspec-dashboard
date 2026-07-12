@@ -9,15 +9,6 @@ related:
   - '[[2026-07-12-touch-selectability-adr]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `touch-selectability` plan
 
@@ -65,8 +56,8 @@ Give touch a deliberate menu entry and reserve long-press for selection (ADR D3)
 
 Engrave the laws as failing-loud tests (ADR D4) and close the pipeline green: the selection-guard matrix suite, the row-selectability sweep assertion, island predicate tests, and the full frontend lint gate plus test suite.
 
-- [ ] `P05.S21` - Author the row-selectability sweep assertion over menu-bearing surfaces and the island predicate suite alongside the guard matrix; `frontend/src/app/menus/guardedContextMenu.test.ts`.
-- [ ] `P05.S22` - Run the full frontend lint gate and the complete vitest suite and reconcile any regression to green; `frontend/`.
+- [x] `P05.S21` - Author the row-selectability sweep assertion over menu-bearing surfaces and the island predicate suite alongside the guard matrix; `frontend/src/app/menus/guardedContextMenu.test.ts`.
+- [x] `P05.S22` - Run the full frontend lint gate and the complete vitest suite and reconcile any regression to green; `frontend/`.
 
 ## Description
 

@@ -22,6 +22,7 @@ import { selectEdge } from "../../stores/view/selection";
 // badge, and the chrome chevrons all resolve to one shared definition.
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
 import { guardedContextMenu } from "../menus/guardedContextMenu";
+import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 import {
   Badge,
   ChevronDown,
@@ -107,12 +108,20 @@ export function Inspector() {
         {/* Title: serif by the binding Reader/Title role over a key/value property
             block — the binding design's inspector header (node 17:618). The
             metadata reads as kit PropertyRows so a label/value line is the one
-            shared definition (design-system-is-centralized). */}
-        <div
-          className={`${view.nodeTitleClassName} select-text`}
-          title={view.nodeTitleAttribute}
-        >
-          {view.nodeTitle}
+            shared definition (design-system-is-centralized). The coarse-pointer
+            disclosure sits beside the title — a plain sibling, never nested
+            inside the header's own focusable panel (touch-selectability D3). */}
+        <div className="flex items-start justify-between gap-fg-2">
+          <div
+            className={`${view.nodeTitleClassName} select-text`}
+            title={view.nodeTitleAttribute}
+          >
+            {view.nodeTitle}
+          </div>
+          <RowMenuDisclosure
+            entity={nodeEntity()}
+            label={`${view.nodeTitle} actions`}
+          />
         </div>
         <dl className={view.propertyListClassName}>
           {view.propertyRows.map((row) => (
@@ -189,45 +198,40 @@ export function Inspector() {
               </button>
               {open && (
                 <ul className={view.tierListClassName}>
-                  {edges.map((edge) => (
-                    <li key={edge.id}>
-                      <button
-                        type="button"
-                        className={`${view.tierEdgeButtonClassName} select-text`}
-                        title={edge.id}
-                        onClick={() => selectEdge(edge.id)}
-                        onContextMenu={guardedContextMenu((e) => {
-                          e.preventDefault();
-                          openContextMenu(
-                            {
-                              kind: "edge",
-                              id: edge.id,
-                              relation: edge.relation,
-                              dst: edge.dst,
-                              tier: edge.tier,
-                            },
-                            { x: e.clientX, y: e.clientY },
-                          );
-                        })}
-                        onKeyDown={(e) => {
-                          handleKeyboardContextMenu(e, (anchor) =>
-                            openContextMenu(
-                              {
-                                kind: "edge",
-                                id: edge.id,
-                                relation: edge.relation,
-                                dst: edge.dst,
-                                tier: edge.tier,
-                              },
-                              anchor,
-                            ),
-                          );
-                        }}
-                      >
-                        {edge.displayLabel}
-                      </button>
-                    </li>
-                  ))}
+                  {edges.map((edge) => {
+                    const edgeEntity = {
+                      kind: "edge" as const,
+                      id: edge.id,
+                      relation: edge.relation,
+                      dst: edge.dst,
+                      tier: edge.tier,
+                    };
+                    return (
+                      <li key={edge.id} className="flex items-center gap-fg-1">
+                        <button
+                          type="button"
+                          className={`${view.tierEdgeButtonClassName} select-text`}
+                          title={edge.id}
+                          onClick={() => selectEdge(edge.id)}
+                          onContextMenu={guardedContextMenu((e) => {
+                            e.preventDefault();
+                            openContextMenu(edgeEntity, { x: e.clientX, y: e.clientY });
+                          })}
+                          onKeyDown={(e) => {
+                            handleKeyboardContextMenu(e, (anchor) =>
+                              openContextMenu(edgeEntity, anchor),
+                            );
+                          }}
+                        >
+                          {edge.displayLabel}
+                        </button>
+                        <RowMenuDisclosure
+                          entity={edgeEntity}
+                          label={`${edge.displayLabel} actions`}
+                        />
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>

@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 
 import type { SceneController } from "../../scene/sceneController";
 import { guardedContextMenu } from "../menus/guardedContextMenu";
+import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { islandStyle, useNodeAnchor } from "../../stores/view/islandAnchors";
 import { closeNodeIsland, useOpenedNodeIslands } from "../../stores/view/selection";
@@ -39,6 +40,7 @@ interface IslandProps {
 
 function Island({ scene, id, scope, children }: IslandProps) {
   const anchor = useNodeAnchor(scene, id);
+  const islandEntity = { kind: "island" as const, id, scope };
   return (
     <div
       style={islandStyle(anchor)}
@@ -47,12 +49,13 @@ function Island({ scene, id, scope, children }: IslandProps) {
       onContextMenu={guardedContextMenu((e) => {
         if (!isIslandMenuTarget(e)) return;
         e.preventDefault();
-        openContextMenu({ kind: "island", id, scope }, { x: e.clientX, y: e.clientY });
+        openContextMenu(islandEntity, { x: e.clientX, y: e.clientY });
       })}
     >
       <div className="flex items-center justify-between gap-fg-2">
         {/* The opened node's id is true identity → monospace (typography law). */}
         <span className="truncate font-mono text-label text-ink">{id}</span>
+        <RowMenuDisclosure entity={islandEntity} label={`${id} actions`} />
         <button
           type="button"
           aria-label={`Close ${id}`}

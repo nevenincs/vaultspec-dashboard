@@ -5,8 +5,12 @@
 // intersects the right-clicked target, and opens (handler runs) on collapsed,
 // absent, or elsewhere selections.
 
+import fs from "node:fs";
+import path from "node:path";
+
 import { afterEach, describe, expect, it } from "vitest";
 
+import { isIslandMenuTarget } from "../islands/IslandLayer";
 import {
   guardedContextMenu,
   selectionForEventTarget,
@@ -105,6 +109,115 @@ describe("guardedContextMenu", () => {
     });
     handler({ target: prose } as unknown as MouseEvent);
     expect(ran).toBe(1);
+  });
+});
+
+describe("touch-selectability law sweep (ADR D4)", () => {
+  const appDir = path.resolve(__dirname, "..");
+
+  function appSourceFiles(): string[] {
+    const out: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(ts|tsx)$/.test(entry.name) && !/\.test\./.test(entry.name))
+          out.push(full);
+      }
+    };
+    walk(appDir);
+    return out;
+  }
+
+  it("every surface that opens the resolver menu from onContextMenu routes through the guard", () => {
+    const offenders: string[] = [];
+    for (const file of appSourceFiles()) {
+      const source = fs.readFileSync(file, "utf-8");
+      // The law binds files that BOTH attach a native context-menu handler and
+      // open the app menu; the shared helpers themselves are the guard's home.
+      if (!/onContextMenu=/.test(source)) continue;
+      if (!/openContextMenu\(/.test(source)) continue;
+      if (file.endsWith("guardedContextMenu.ts")) continue;
+      if (!/guardedContextMenu/.test(source)) offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("menu-bearing data surfaces keep the select-text re-enable", () => {
+    // The D2 convention fence: each audited menu-online surface (or the module
+    // that owns its derived row class) re-enables selection explicitly. A
+    // removal — or a new surface reverting to UA button suppression — fails here.
+    const mustCarrySelectText = [
+      "left/TreeBrowser.tsx",
+      "right/Inspector.tsx",
+      "right/StatusTab.tsx",
+      "stage/DockWorkspace.tsx",
+      "islands/NodeInterior.tsx",
+      "palette/SearchResultPill.tsx",
+      // The worktree-picker and code-tree row classes live at their derived
+      // source in stores, not in the components that render them.
+      "../stores/server/queries.ts",
+      "../stores/view/browserTreeExpansion.ts",
+    ];
+    const missing = mustCarrySelectText.filter(
+      (rel) =>
+        !fs
+          .readFileSync(path.join(appDir, ...rel.split("/")), "utf-8")
+          .includes("select-text"),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it("every surface that opens the resolver menu offers the coarse-pointer disclosure", () => {
+    // The D3 fence: a surface whose right-click opens the app menu must also
+    // mount RowMenuDisclosure (touch cannot right-click; iOS never fires
+    // contextmenu). Exemptions carry their reason inline.
+    const exempt = new Set([
+      // The guard helper itself and the background empty-space menus: empty
+      // space has no row to carry a per-row affordance.
+      "menus/guardedContextMenu.ts",
+      "menus/backgroundContextMenu.ts",
+      // The menu host suppresses the native menu inside the open panel; it
+      // opens nothing.
+      "menu/ContextMenuHost.tsx",
+    ]);
+    const offenders: string[] = [];
+    for (const file of appSourceFiles()) {
+      const rel = path.relative(appDir, file).replaceAll("\\", "/");
+      if (exempt.has(rel)) continue;
+      const source = fs.readFileSync(file, "utf-8");
+      if (!/onContextMenu=/.test(source)) continue;
+      if (!/openContextMenu\(/.test(source)) continue;
+      if (!/RowMenuDisclosure/.test(source)) offenders.push(rel);
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("isIslandMenuTarget", () => {
+  it("accepts the island surface and its plain data text", () => {
+    const island = document.createElement("div");
+    const title = document.createElement("span");
+    title.textContent = "node-id";
+    island.appendChild(title);
+    document.body.appendChild(island);
+    expect(isIslandMenuTarget({ target: island })).toBe(true);
+    expect(isIslandMenuTarget({ target: title })).toBe(true);
+  });
+
+  it("rejects nested interactive targets so they are not blanketed", () => {
+    const island = document.createElement("div");
+    const chip = document.createElement("button");
+    const chipLabel = document.createElement("span");
+    chip.appendChild(chipLabel);
+    island.appendChild(chip);
+    document.body.appendChild(island);
+    expect(isIslandMenuTarget({ target: chip })).toBe(false);
+    expect(isIslandMenuTarget({ target: chipLabel })).toBe(false);
+  });
+
+  it("rejects a null or non-element target", () => {
+    expect(isIslandMenuTarget({ target: null })).toBe(false);
   });
 });
 

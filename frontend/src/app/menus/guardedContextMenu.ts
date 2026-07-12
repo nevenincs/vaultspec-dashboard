@@ -47,8 +47,7 @@ export function shouldYieldContextMenuToSelection(
 export function selectionForEventTarget(target: EventTarget | null): Selection | null {
   const node = target as Node | null;
   const view =
-    node?.ownerDocument?.defaultView ??
-    (typeof window === "undefined" ? null : window);
+    node?.ownerDocument?.defaultView ?? (typeof window === "undefined" ? null : window);
   return view?.getSelection?.() ?? null;
 }
 

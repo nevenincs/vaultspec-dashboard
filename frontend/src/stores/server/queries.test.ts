@@ -2612,7 +2612,7 @@ describe("left-rail root surface states", () => {
       selectable: true,
       isActive: true,
       rowClassName:
-        "flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus bg-accent-subtle font-medium text-ink",
+        "flex w-full select-text items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus bg-accent-subtle font-medium text-ink",
       activeCueClassName: "-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full bg-accent",
       branchClassName: "min-w-0 truncate",
       badgeClassName: "shrink-0 text-ink-faint",
@@ -2624,7 +2624,7 @@ describe("left-rail root surface states", () => {
     expect(view.rows[1]).toMatchObject({
       isPending: true,
       rowClassName:
-        "flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus text-ink-muted hover:bg-paper-sunken hover:text-ink",
+        "flex w-full select-text items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus text-ink-muted hover:bg-paper-sunken hover:text-ink",
       activeCueClassName: "-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full bg-transparent",
       pendingLabel: "switching…",
     });
@@ -2632,7 +2632,7 @@ describe("left-rail root surface states", () => {
       selectable: false,
       isDegraded: true,
       rowClassName:
-        "flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus cursor-not-allowed text-ink-faint/60",
+        "flex w-full select-text items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus cursor-not-allowed text-ink-faint/60",
       activeCueClassName: "-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full bg-transparent",
       noVaultLabel: "·no vault",
       degradedTitle: "structural",

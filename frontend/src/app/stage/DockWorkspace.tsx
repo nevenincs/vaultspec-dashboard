@@ -32,6 +32,7 @@ import {
 } from "../../stores/view/shellLayout";
 import { toggleGraphAction } from "../../stores/view/chromeActions";
 import { guardedContextMenu } from "../menus/guardedContextMenu";
+import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 import { IconButton } from "../kit";
 import { Hierarchy, PanelRight } from "../kit/glyphs";
 import { pokeGraphRect, setWorkspaceContainer } from "./canvasPin";
@@ -87,6 +88,7 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
   const provisional = useIsProvisionalDoc(api.id);
   const view = useDockTabHeaderView(api, provisional);
   const scope = useActiveScope();
+  const docTabEntity = { kind: "doc-tab" as const, id: api.id, nodeId: api.id, scope };
   return (
     <div
       className={view.rootClassName}
@@ -95,10 +97,7 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
         // Keep Open / Reload / Close / Close Others / Close All Documents).
         e.preventDefault();
         e.stopPropagation();
-        openContextMenu(
-          { kind: "doc-tab", id: api.id, nodeId: api.id, scope },
-          { x: e.clientX, y: e.clientY },
-        );
+        openContextMenu(docTabEntity, { x: e.clientX, y: e.clientY });
       })}
     >
       {/* The title is keyboard-activatable so a keyboard user can SWITCH to a tab,
@@ -129,6 +128,7 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
       >
         {view.title}
       </span>
+      <RowMenuDisclosure entity={docTabEntity} label={`${view.title} actions`} />
       <span
         role="button"
         tabIndex={0}

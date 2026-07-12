@@ -9,38 +9,8 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #exec) and one feature tag.
-     Replace touch-selectability with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
 
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
 
-     step_id is the originating Step's canonical identifier, e.g. S01.
-     The S19 and 2026-07-12-touch-selectability-plan placeholders are machine-filled by
-     `vaultspec-core vault add exec`; do not fill them by hand.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
-     parent plan.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
-<!-- STEP RECORD:
-     This file represents one Step from the originating plan. Identified
-     by its canonical leaf identifier (S##) and ancestor display path.
-     The Mount the disclosure affordance on compact menu-bearing surfaces and confirm Android long-press routes through the selection guard and ## Scope
-
-- `frontend/src/app/shell/` placeholders below are machine-filled
-     by `vaultspec-core vault add exec` from the originating Step row;
-     do not fill them by hand. -->
 
 # Mount the disclosure affordance on compact menu-bearing surfaces and confirm Android long-press routes through the selection guard
 
@@ -59,4 +29,12 @@ Compact and any coarse-pointer device now reach the resolver menu by explicit ta
 
 ## Notes
 
-<!-- Incidents. Data loss. Difficulties; persistent failures. Skipped work. Scaffolds left in code. Failures. -->
+Review revision (HIGH finding): the initial mount covered only tree leaf rows and
+the document chrome. The disclosure now rides EVERY menu-online surface - tree
+folder rows and section headers (via a new opt-in `headerTrailingSibling` slot on
+`FoldSection`/`RailSection` so the control is a sibling, never button-in-button),
+the worktree row, code tree rows, the inspector node header and edge rows, commit
+and pull-request rows, the doc tab, and the island header - each passing the exact
+entity its right-click path opens. A D4 sweep test now fails loudly if a surface
+pairs `onContextMenu` + `openContextMenu` without the disclosure.
+

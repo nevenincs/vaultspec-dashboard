@@ -54,6 +54,11 @@ export interface FoldSectionProps extends Omit<
   headerRef?: Ref<HTMLButtonElement>;
   /** Extra header-button props (tabIndex, aria-*, onFocus, onKeyDown, title…). */
   headerProps?: ButtonHTMLAttributes<HTMLButtonElement>;
+  /** Content rendered as a SIBLING of the header button (never nested inside it —
+   *  an interactive control, e.g. the coarse-pointer `RowMenuDisclosure`, cannot
+   *  nest inside another button). Wraps the button in a flex row only when
+   *  supplied, so callers that omit it keep the plain header unchanged. */
+  headerTrailingSibling?: ReactNode;
 }
 
 export function FoldSection({
@@ -69,26 +74,37 @@ export function FoldSection({
   bodyClassName,
   headerRef,
   headerProps,
+  headerTrailingSibling,
   ...rest
 }: FoldSectionProps) {
   const Twisty = open ? ChevronDown : ChevronRight;
+  const headerButton = (
+    <button
+      ref={headerRef}
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-controls={bodyId}
+      className={headerClassName ?? FOLD_HEADER_CLASS}
+      data-fold-toggle
+      {...headerProps}
+    >
+      <Twisty size={twistyPx} aria-hidden className={FOLD_TWISTY_CLASS} />
+      {leading}
+      <span className="flex min-w-0 flex-1 items-center">{label}</span>
+      {trailing}
+    </button>
+  );
   return (
     <section data-fold data-fold-open={open ? "" : undefined} {...rest}>
-      <button
-        ref={headerRef}
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        aria-controls={bodyId}
-        className={headerClassName ?? FOLD_HEADER_CLASS}
-        data-fold-toggle
-        {...headerProps}
-      >
-        <Twisty size={twistyPx} aria-hidden className={FOLD_TWISTY_CLASS} />
-        {leading}
-        <span className="flex min-w-0 flex-1 items-center">{label}</span>
-        {trailing}
-      </button>
+      {headerTrailingSibling ? (
+        <div className="flex items-center">
+          {headerButton}
+          {headerTrailingSibling}
+        </div>
+      ) : (
+        headerButton
+      )}
       {open && (
         <div id={bodyId} className={bodyClassName} data-fold-body>
           {children}

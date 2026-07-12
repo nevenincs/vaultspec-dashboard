@@ -272,7 +272,14 @@ export function MarkdownDocView({
   const docMenuStem = docStemFromNodeId(nodeId);
   const docMenuEntity =
     docMenuStem !== null && content.path !== undefined
-      ? { kind: "vault-doc", id: nodeId, scope, path: content.path, stem: docMenuStem, nodeId }
+      ? {
+          kind: "vault-doc",
+          id: nodeId,
+          scope,
+          path: content.path,
+          stem: docMenuStem,
+          nodeId,
+        }
       : null;
 
   if (!editor.isEditing) {

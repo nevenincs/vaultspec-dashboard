@@ -783,8 +783,19 @@ function VaultTreeRow({
     );
   }
   return (
-    <div data-vault-folder={folderMarker ? "" : undefined}>
-      {button}
+    <>
+      {/* Folder row + the coarse-pointer menu entry (touch-selectability ADR D3):
+          a deliberate tap target for the vault-feature/vault-category menu,
+          sibling of the button (never nested inside it); the button stays a
+          DIRECT child of the `data-vault-folder` marker (existing selector
+          contract). */}
+      <div
+        data-vault-folder={folderMarker ? "" : undefined}
+        className="flex items-center"
+      >
+        {button}
+        {entity && <RowMenuDisclosure entity={entity} label={`${label} actions`} />}
+      </div>
       {expanded && (
         <div id={bodyId} data-vault-folder-body className="relative">
           {/* the indent guide: a quiet rule under this folder's chevron column
@@ -798,7 +809,7 @@ function VaultTreeRow({
           {body}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -864,6 +875,12 @@ function Section({
         },
       }}
       labelProps={{ "data-vault-section": title.toLowerCase() }}
+      // The section header's own coarse-pointer menu entry (touch-selectability
+      // ADR D3): a deliberate tap target for the vault-section (expand/collapse-
+      // all + new doc) menu, sibling of the header button.
+      headerTrailingSibling={
+        <RowMenuDisclosure entity={entity} label={`${title} actions`} />
+      }
       data-vault-section-header
     >
       {children}

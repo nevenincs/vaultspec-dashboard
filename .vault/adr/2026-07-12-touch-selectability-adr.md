@@ -158,7 +158,10 @@ composes with it.
   `user-select: text` to the title span only. The per-row touch disclosure adds one
   chrome control to compact rows and needs design-system care to stay quiet. The
   wiki-link element change touches the reader's markdown component overrides and its
-  tests.
+  tests, and deliberately trades button semantics for link semantics: activation is
+  Enter (not Enter plus Space), and a middle-click or modifier-click falls through
+  to the anchor's inert href rather than the in-app navigation — the standard
+  SPA-link trade, accepted for contiguous prose selection.
 - **Pathways.** The guard helper is the natural future home for other native-plane
   arbitration (e.g. native image context menus); the coarse-pointer disclosure
   affordance generalises to any future touch-only verb surface.

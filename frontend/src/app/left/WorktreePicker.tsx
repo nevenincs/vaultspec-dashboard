@@ -44,6 +44,7 @@ import {
   useWorktreePickerView,
 } from "../../stores/view/worktreePickerChrome";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
+import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 // Self-registering left-rail context-menu resolver (W03.P07): importing the
 // module runs its `registerResolver("worktree", …)` side effect once.
 import "./menus/worktreeMenu";
@@ -232,7 +233,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
     const { worktree } = row;
     const item = zone.rove(rowKey);
     return (
-      <li key={rowKey}>
+      <li key={rowKey} className="flex items-center">
         <button
           ref={item.ref}
           tabIndex={item.tabIndex}
@@ -292,6 +293,14 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
             <span className={row.pendingLabelClassName}>{row.pendingLabel}</span>
           )}
         </button>
+        {/* The worktree row's coarse-pointer menu entry (touch-selectability ADR
+            D3): the SAME `worktree` entity its right-click path opens, sibling of
+            the row button; renders nothing on fine-pointer devices. Project and
+            recent rows carry no resolver, so they get no disclosure. */}
+        <RowMenuDisclosure
+          entity={worktreeEntity(worktree)}
+          label={`${row.nameLabel} actions`}
+        />
       </li>
     );
   };
