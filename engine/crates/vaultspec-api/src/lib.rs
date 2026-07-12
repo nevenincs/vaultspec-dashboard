@@ -15,6 +15,7 @@ pub mod handshake;
 pub mod registry;
 pub mod routes;
 pub mod seat;
+mod vault_rows;
 
 use std::sync::Arc;
 
@@ -45,8 +46,10 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/map",
     "/workspaces",
     "/vault-tree",
+    "/vault-tree/delta",
     "/code-files",
     "/file-tree",
+    "/fs/list",
     "/pipeline",
     "/dashboard-state",
     "/graph/query",
@@ -106,12 +109,22 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // Graceful stop (single-app-runtime D5): bearer-gated signal; the
         // drain itself is the serve loop's one shared shutdown path.
         .route("/shutdown", post(routes::lifecycle::shutdown))
-        .route("/vault-tree", get(routes::query::vault_tree))
+        .route("/vault-tree", get(routes::vault_tree::vault_tree))
+        // Generation-keyed delta reconciliation (vault-tree-delta ADR D3): the
+        // client patches its held listing from a stem-keyed diff instead of
+        // re-draining the whole listing on every generation bump. Read-only.
+        .route(
+            "/vault-tree/delta",
+            get(routes::vault_tree::vault_tree_delta),
+        )
         .route("/code-files", get(routes::query::code_files))
         // Read-only codebase file-tree listing (dashboard-code-tree ADR): one
         // bounded, ignore-aware directory level per call, metadata only, through
         // the shared envelope so every response carries the tiers block.
         .route("/file-tree", get(routes::file_tree::file_tree))
+        // Bounded read-only directory browsing for the add-project picker
+        // (single-app-runtime S24, ADR O6 closure).
+        .route("/fs/list", get(routes::fs_browse::fs_list))
         // In-flight pipeline projection (dashboard-pipeline-wire W02): active
         // plans + in-flight ADRs in scope, through the shared envelope.
         .route("/pipeline", get(routes::query::pipeline))

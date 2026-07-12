@@ -9,6 +9,16 @@ use serde_json::Value;
 
 use crate::app::{AppState, now_ms};
 
+/// The serve identity a discovery record advertises. Owned by the BOOT path
+/// (single-app-runtime S23): the bearer is minted before the heavy initial
+/// index so discovery can publish a `starting` record the moment the port is
+/// bound, and the heartbeat keeps it fresh through the whole index.
+#[derive(Debug, Clone)]
+pub struct DiscoveryIdentity {
+    pub bearer: String,
+    pub started_ms: i64,
+}
+
 /// The workspace-local discovery directory — where EXEMPT (no-seat) serves
 /// publish, byte-compatible with the pre-seat contract so the vitest
 /// live-engine harness and the dev plugin read exactly what they always did.
@@ -24,14 +34,12 @@ pub fn workspace_discovery_dir(state: &AppState) -> PathBuf {
 /// periodic heartbeat goes through [`heartbeat_service_json`], which refuses
 /// to overwrite a foreign process's file (single-app-runtime S01).
 pub fn write_service_json(
-    state: &AppState,
+    identity: &DiscoveryIdentity,
     dir: &std::path::Path,
     port: u16,
+    state: &str,
 ) -> std::io::Result<PathBuf> {
-    write_discovery_atomic(
-        dir,
-        &discovery_payload(&state.bearer, port, state.started_ms),
-    )
+    write_discovery_atomic(dir, &discovery_payload(identity, port, state))
 }
 
 /// Periodic heartbeat rewrite, OWNER-CHECKED: refuses when the file on disk
@@ -39,9 +47,10 @@ pub fn write_service_json(
 /// clobber each other's discovery on every heartbeat tick (single-app-runtime
 /// S01). A missing or unparseable file is reclaimed (it is ours to heal).
 pub fn heartbeat_service_json(
-    state: &AppState,
+    identity: &DiscoveryIdentity,
     dir: &std::path::Path,
     port: u16,
+    state: &str,
 ) -> std::io::Result<PathBuf> {
     let path = dir.join("service.json");
     if let Ok(existing) = std::fs::read_to_string(&path)
@@ -53,21 +62,21 @@ pub fn heartbeat_service_json(
             "discovery file is owned by pid {pid}; refusing to overwrite"
         )));
     }
-    write_discovery_atomic(
-        dir,
-        &discovery_payload(&state.bearer, port, state.started_ms),
-    )
+    write_discovery_atomic(dir, &discovery_payload(identity, port, state))
 }
 
-/// The discovery payload, serialized. Split out so the atomic writer is
-/// testable over bare directories without an `AppState`.
-fn discovery_payload(bearer: &str, port: u16, started_ms: i64) -> String {
+/// The discovery payload, serialized. `state` is the lifecycle phase
+/// (single-app-runtime S23): `starting` from bind until the initial index
+/// completes, `ready` once the wire serves — so a launcher, `status`, or
+/// `stop` can distinguish an INDEXING seat from a dead one.
+fn discovery_payload(identity: &DiscoveryIdentity, port: u16, state: &str) -> String {
     serde_json::to_string_pretty(&serde_json::json!({
         "port": port,
-        "service_token": bearer,
+        "service_token": identity.bearer,
         "pid": std::process::id(),
         "last_heartbeat": now_ms(),
-        "started_ms": started_ms,
+        "started_ms": identity.started_ms,
+        "state": state,
     }))
     .expect("discovery payload serializes")
 }
@@ -182,6 +191,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join(".vault/plan")).unwrap();
         let state = build_state(dir.path().to_path_buf());
+        let identity = DiscoveryIdentity {
+            bearer: state.bearer.clone(),
+            started_ms: 1,
+        };
         let data_dir = workspace_discovery_dir(&state);
         std::fs::create_dir_all(&data_dir).unwrap();
         let foreign = serde_json::json!({
@@ -193,7 +206,7 @@ mod tests {
         .to_string();
         let path = data_dir.join("service.json");
         std::fs::write(&path, &foreign).unwrap();
-        let err = heartbeat_service_json(&state, &data_dir, 8767).unwrap_err();
+        let err = heartbeat_service_json(&identity, &data_dir, 8767, "ready").unwrap_err();
         assert!(
             err.to_string().contains("refusing to overwrite"),
             "owner check must be the refusal reason: {err}"
@@ -205,9 +218,10 @@ mod tests {
         );
         // Our own file (or a missing one) IS ours: the boot claim followed by
         // a heartbeat both succeed and the pid is ours.
-        write_service_json(&state, &data_dir, 8767).unwrap();
-        heartbeat_service_json(&state, &data_dir, 8767).unwrap();
+        write_service_json(&identity, &data_dir, 8767, "starting").unwrap();
+        heartbeat_service_json(&identity, &data_dir, 8767, "ready").unwrap();
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(v["pid"], u64::from(std::process::id()));
+        assert_eq!(v["state"], "ready", "the lifecycle state rides discovery");
     }
 }

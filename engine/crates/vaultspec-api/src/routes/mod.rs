@@ -2,6 +2,7 @@
 
 pub mod content;
 pub mod file_tree;
+pub mod fs_browse;
 pub mod git;
 pub mod github;
 pub mod history;
@@ -15,6 +16,7 @@ pub mod spa;
 pub mod state;
 pub mod stream;
 pub mod temporal;
+pub mod vault_tree;
 
 use axum::Json;
 use axum::http::StatusCode;

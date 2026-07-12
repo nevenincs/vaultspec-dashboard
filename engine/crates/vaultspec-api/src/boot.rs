@@ -181,13 +181,85 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         default_hook(info);
     }));
 
+    // Loopback-only bind FIRST (R2: a port conflict fails loud here) so an
+    // OS-assigned ephemeral port (`--port 0`) is resolved to the ACTUAL bound
+    // port before discovery is written — and BEFORE the heavy initial index
+    // (single-app-runtime S23), so discovery can publish a `starting` record
+    // the moment the port exists and a launcher, `status`, or `stop` can
+    // distinguish an INDEXING seat from a dead one.
+    let listener = match tokio::net::TcpListener::bind(std::net::SocketAddr::from((
+        [127, 0, 0, 1],
+        port,
+    )))
+    .await
+    {
+        Ok(listener) => listener,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && explicit_port.is_none() => {
+            // Default-port conflict on an app launch: fall back to ephemeral
+            // (the seat's discovery carries the real port). An EXPLICIT
+            // --port keeps failing loud per the contract.
+            eprintln!(
+                "vaultspec serve: port {port} is in use; binding an ephemeral port instead (discovery advertises the real one)"
+            );
+            tokio::net::TcpListener::bind(std::net::SocketAddr::from(([127, 0, 0, 1], 0))).await?
+        }
+        Err(e) => return Err(e),
+    };
+    let port = listener.local_addr()?.port();
+
+    // Discovery + heartbeat (contract §1), advertising the real bound port.
+    // SEATED serves publish at the machine app home (single-app-runtime D1
+    // cutover); exempt serves keep the workspace-local file byte-compatible.
+    // The identity (bearer + boot instant) is minted BEFORE the index so the
+    // `starting` record already carries the real token.
+    let discovery_dir = match &seat_guard {
+        Some(guard) => guard.home.clone(),
+        None => engine_store::engine_data_dir(&root.join(".vault")),
+    };
+    let identity = app::DiscoveryIdentity {
+        bearer: app::mint_bearer(),
+        started_ms: app::now_ms(),
+    };
+    app::write_service_json(&identity, &discovery_dir, port, "starting")?;
+
+    // Abort-on-drop guard for the heartbeat task (B9, resource-hardening):
+    // without an abort handle it was a detached task that survives
+    // cancellation of this `serve` future. Spawned BEFORE the index so the
+    // heartbeat stays fresh through a long cold index (a stale-heartbeat
+    // reader must never mistake an indexing seat for a dead one).
+    struct AbortOnDrop(tokio::task::JoinHandle<()>);
+    impl Drop for AbortOnDrop {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
+    }
+    let ready = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let _heartbeat = {
+        let identity = identity.clone();
+        let dir = discovery_dir.clone();
+        let ready = ready.clone();
+        AbortOnDrop(tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(15)).await;
+                let state = if ready.load(std::sync::atomic::Ordering::Relaxed) {
+                    "ready"
+                } else {
+                    "starting"
+                };
+                // Owner-checked: never clobbers a foreign serve's discovery
+                // (single-app-runtime S01).
+                let _ = app::heartbeat_service_json(&identity, &dir, port, state);
+            }
+        }))
+    };
+
     // Build the workspace-level state. This opens the SHARED user-state handle
     // once, eagerly builds the launch scope's cell into the registry (cold
     // initial index, the same pipeline the one-shot CLI runs, D2.4), spawns
     // that cell's watcher on its own clock (W02.P04.S13), and pins it as the
     // active scope. We run inside the tokio runtime, so the watcher's rebuild
     // task spawns here.
-    let state = app::build_state(root.clone());
+    let state = app::build_state_with_bearer(root.clone(), identity.bearer.clone());
 
     // Restore the persisted active scope through the shared user-state handle
     // (W02.P03.S11): the workspace key is the launch root's token, the stored
@@ -253,40 +325,6 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         }
     }
 
-    // Loopback-only bind FIRST (R2: a port conflict fails loud here) so an
-    // OS-assigned ephemeral port (`--port 0`) is resolved to the ACTUAL bound
-    // port before discovery is written. service.json then advertises the real
-    // port, letting tests (and any caller) bind 0 and avoid fixed-port
-    // collisions on concurrent runs.
-    let listener = match tokio::net::TcpListener::bind(std::net::SocketAddr::from((
-        [127, 0, 0, 1],
-        port,
-    )))
-    .await
-    {
-        Ok(listener) => listener,
-        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && explicit_port.is_none() => {
-            // Default-port conflict on an app launch: fall back to ephemeral
-            // (the seat's discovery carries the real port). An EXPLICIT
-            // --port keeps failing loud per the contract.
-            eprintln!(
-                "vaultspec serve: port {port} is in use; binding an ephemeral                  port instead (discovery advertises the real one)"
-            );
-            tokio::net::TcpListener::bind(std::net::SocketAddr::from(([127, 0, 0, 1], 0))).await?
-        }
-        Err(e) => return Err(e),
-    };
-    let port = listener.local_addr()?.port();
-
-    // Discovery + heartbeat (contract §1), advertising the real bound port.
-    // SEATED serves publish at the machine app home (single-app-runtime D1
-    // cutover); exempt serves keep the workspace-local file byte-compatible.
-    let discovery_dir = match &seat_guard {
-        Some(guard) => guard.home.clone(),
-        None => app::workspace_discovery_dir(&state),
-    };
-    app::write_service_json(&state, &discovery_dir, port)?;
-
     // Launcher state (single-app-runtime D3): a seated boot records its
     // workspace in the machine-global known-roots file so a cwd-less launch
     // (double-click) can resolve "where did I work last". Best-effort. The
@@ -313,30 +351,10 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         let _ = launcher.save(&guard.home);
     }
 
-    // Abort-on-drop guard for the heartbeat task (B9, resource-hardening): the
-    // loop holds a cloned `Arc<AppState>` and runs forever. Without an abort
-    // handle it was a detached task that survives cancellation of this `serve`
-    // future (e.g. a test that drops the serve task), keeping the whole
-    // AppState — its locks and every warm ScopeCell — alive. The guard aborts
-    // the task whether `serve` returns normally or is cancelled.
-    struct AbortOnDrop(tokio::task::JoinHandle<()>);
-    impl Drop for AbortOnDrop {
-        fn drop(&mut self) {
-            self.0.abort();
-        }
-    }
-    let _heartbeat = {
-        let state = state.clone();
-        let dir = discovery_dir.clone();
-        AbortOnDrop(tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(Duration::from_secs(15)).await;
-                // Owner-checked: never clobbers a foreign serve's discovery
-                // (single-app-runtime S01).
-                let _ = app::heartbeat_service_json(&state, &dir, port);
-            }
-        }))
-    };
+    // The index is done and the wire is about to serve: flip discovery to
+    // `ready` (single-app-runtime S23). The heartbeat keeps republishing it.
+    ready.store(true, std::sync::atomic::Ordering::Relaxed);
+    let _ = app::write_service_json(&identity, &discovery_dir, port, "ready");
 
     println!(
         "vaultspec serve: listening on http://127.0.0.1:{port} (bearer token in service.json)"

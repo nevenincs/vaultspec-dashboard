@@ -32,6 +32,10 @@ pub struct SeatInfo {
     pub pid: u64,
     pub last_heartbeat: i64,
     pub started_ms: Option<i64>,
+    /// Lifecycle phase from discovery (single-app-runtime S23): `starting`
+    /// from bind until the initial index completes, `ready` once serving.
+    /// Absent on records written by older binaries.
+    pub state: Option<String>,
 }
 
 /// Read the seat discovery file under the machine app home, tolerantly.
@@ -47,6 +51,7 @@ pub fn read_seat() -> Option<(PathBuf, SeatInfo)> {
             pid: v.get("pid")?.as_u64()?,
             last_heartbeat: v.get("last_heartbeat")?.as_i64()?,
             started_ms: v.get("started_ms").and_then(Value::as_i64),
+            state: v.get("state").and_then(Value::as_str).map(str::to_string),
         },
     ))
 }
@@ -97,6 +102,16 @@ pub fn seat_block() -> Value {
             "workspaces": workspaces,
             "last_active": launcher.last_active,
         }),
+        Some((_, info)) if info.state.as_deref() == Some("starting") && pid_alive(info.pid) => {
+            json!({
+                "running": false,
+                "state": "starting",
+                "pid": info.pid,
+                "port": info.port,
+                "workspaces": workspaces,
+                "last_active": launcher.last_active,
+            })
+        }
         Some(_) => json!({
             "running": false,
             "reason": "stale discovery (seat died without cleanup)",
@@ -118,6 +133,18 @@ pub fn stop() -> Result<Value, String> {
         return Ok(json!({"stopped": false, "reason": "not running"}));
     };
     if !seat_running(&info) {
+        // A STARTING seat (indexing; wire not yet up) is still stoppable —
+        // the graceful door does not exist yet, so the pid fallback is the
+        // honest path (single-app-runtime S23).
+        if info.state.as_deref() == Some("starting") && pid_alive(info.pid) {
+            kill_pid(info.pid)?;
+            return Ok(json!({
+                "stopped": true,
+                "pid": info.pid,
+                "graceful": false,
+                "note": "stopped while starting (before the wire was up)",
+            }));
+        }
         return Ok(json!({
             "stopped": false,
             "reason": "not running (stale discovery left behind)",

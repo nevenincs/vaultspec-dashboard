@@ -103,6 +103,22 @@ fn workspace_less_boot_serves_onboarding_then_shuts_down_clean() {
     let child = spawn_seated(home.path(), nowhere.path(), port);
     let disc = wait_for_discovery(&home, child.0.id());
 
+    // Discovery reaches the READY lifecycle state once the wire serves
+    // (single-app-runtime S23; the transient `starting` record precedes it).
+    let begun = Instant::now();
+    loop {
+        if home.read_discovery().and_then(|v| v.get("state").cloned())
+            == Some(Value::String("ready".into()))
+        {
+            break;
+        }
+        assert!(
+            begun.elapsed() < BOOT_WAIT,
+            "discovery never reached the ready state"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
     // Bootstrap root exists, engine-owned, under the app home.
     assert!(
         home.path().join("bootstrap/.vault").is_dir(),
