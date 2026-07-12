@@ -73,7 +73,7 @@ function ChangeRow({ row, scope }: { row: GitChangeRow; scope: unknown }) {
         title={row.path}
         className={row.rowClassName}
       >
-        <span className={row.labelClassName}>{row.label}</span>
+        <span className={`${row.labelClassName} select-text`}>{row.label}</span>
         {row.dirLabel && (
           <span className={row.dirClassName} aria-hidden>
             {row.dirLabel}

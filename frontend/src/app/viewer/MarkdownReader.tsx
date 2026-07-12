@@ -230,10 +230,11 @@ function ReaderFooter({
           <span className="reader-meta w-16 shrink-0 text-ink-muted">Related</span>
           <div className="flex flex-1 flex-wrap gap-x-fg-4 gap-y-fg-1-5">
             {editorial.related.map((related) => (
-              <button
+              <a
                 key={related.nodeId}
-                type="button"
-                onClick={() => {
+                href="#"
+                onClick={(event) => {
+                  event.preventDefault();
                   // Read-mode wiki-link navigation: preview in the single
                   // provisional tab (#15), not an ever-growing pinned tab.
                   void previewDocTab(related.nodeId, "markdown", scope).catch(
@@ -243,7 +244,7 @@ function ReaderFooter({
                 className="text-[0.84375rem] font-medium text-accent-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               >
                 {related.stem}
-              </button>
+              </a>
             ))}
           </div>
         </div>
@@ -275,9 +276,10 @@ function MarkdownBody({
         const nodeId = href ? wikiLinkNodeId(href) : null;
         if (nodeId) {
           return (
-            <button
-              type="button"
-              onClick={() => {
+            <a
+              href="#"
+              onClick={(event) => {
+                event.preventDefault();
                 // Read-mode wiki-link navigation: preview in the single
                 // provisional tab (#15), not an ever-growing pinned tab.
                 void previewDocTab(nodeId, "markdown", scope).catch(() => undefined);
@@ -285,7 +287,7 @@ function MarkdownBody({
               className="text-accent-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             >
               {children}
-            </button>
+            </a>
           );
         }
         return (

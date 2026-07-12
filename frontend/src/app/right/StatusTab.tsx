@@ -57,6 +57,7 @@ import {
 } from "../../stores/view/pipelineExpansion";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
+import { guardedContextMenu } from "../menus/guardedContextMenu";
 import type { FocusZoneItemOptions, FocusZoneItemProps } from "../chrome/useFocusZone";
 import { selectEventNodes } from "../../stores/view/selection";
 import {
@@ -225,7 +226,7 @@ function PlanPill({
             onClick={openPlan}
             data-open-plan-row
             aria-label={row.openAriaLabel}
-            className="min-w-0 flex-1 truncate text-left text-body font-medium text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="min-w-0 flex-1 select-text truncate text-left text-body font-medium text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             title={row.titleLabel}
           >
             {row.titleLabel}
@@ -387,10 +388,10 @@ function PrRow({ row, nav }: { row: PullRequestRowView; nav?: RowNav }) {
       className="flex flex-col gap-fg-0-5 rounded-fg-sm border border-rule bg-paper-raised px-fg-2 py-fg-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       data-pr
       data-pr-number={pr.number}
-      onContextMenu={(e) => {
+      onContextMenu={guardedContextMenu((e) => {
         e.preventDefault();
         openMenuAt({ x: e.clientX, y: e.clientY });
-      }}
+      })}
     >
       <div className="flex items-center gap-fg-1-5">
         <Icon size={ICON_PX} aria-hidden className={`shrink-0 ${row.iconToneClass}`} />
@@ -571,7 +572,7 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
               className={chromeRow.rootClassName}
               data-recent-commit
               data-hash={commit.hash}
-              onContextMenu={(e) => {
+              onContextMenu={guardedContextMenu((e) => {
                 e.preventDefault();
                 openContextMenu(
                   {
@@ -583,7 +584,7 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
                   },
                   { x: e.clientX, y: e.clientY },
                 );
-              }}
+              })}
             >
               <div className={chromeRow.headerClassName}>
                 <button
@@ -612,16 +613,19 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
                   aria-label={row.rowAriaLabel}
                 >
                   <span
-                    className={chromeRow.shortHashClassName}
+                    className={`${chromeRow.shortHashClassName} select-text`}
                     data-short-hash
                     data-tabular
                   >
                     {commit.short_hash}
                   </span>
-                  <span className={chromeRow.subjectClassName} title={commit.subject}>
+                  <span
+                    className={`${chromeRow.subjectClassName} select-text`}
+                    title={commit.subject}
+                  >
                     {row.subjectLabel}
                   </span>
-                  <span className={chromeRow.ageClassName} data-tabular>
+                  <span className={`${chromeRow.ageClassName} select-text`} data-tabular>
                     {row.ageLabel}
                   </span>
                 </button>

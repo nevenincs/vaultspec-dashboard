@@ -725,7 +725,7 @@ const WORKSPACE_MAP_PICKER_EMPTY_CLASS = "px-fg-2 py-fg-1 text-label text-ink-fa
 const WORKSPACE_MAP_PICKER_SINGLE_SCOPE_CLASS =
   "px-fg-2 py-fg-0-5 text-caption text-ink-faint";
 const WORKSPACE_MAP_PICKER_ROW_BASE_CLASS =
-  "flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+  "flex w-full select-text items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 const WORKSPACE_MAP_PICKER_ACTIVE_CUE_BASE_CLASS =
   "-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full";
 const WORKSPACE_MAP_PICKER_BRANCH_CLASS = "min-w-0 truncate";

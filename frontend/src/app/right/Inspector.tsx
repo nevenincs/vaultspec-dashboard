@@ -21,6 +21,7 @@ import { selectEdge } from "../../stores/view/selection";
 // eyebrows, the key/value property rows for the node metadata, the edge-count
 // badge, and the chrome chevrons all resolve to one shared definition.
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
+import { guardedContextMenu } from "../menus/guardedContextMenu";
 import {
   Badge,
   ChevronDown,
@@ -93,10 +94,10 @@ export function Inspector() {
         tabIndex={0}
         aria-label={view.nodeAriaLabel}
         className={view.nodePanelClassName}
-        onContextMenu={(e) => {
+        onContextMenu={guardedContextMenu((e) => {
           e.preventDefault();
           openContextMenu(nodeEntity(), { x: e.clientX, y: e.clientY });
-        }}
+        })}
         onKeyDown={(e) => {
           handleKeyboardContextMenu(e, (anchor) =>
             openContextMenu(nodeEntity(), anchor),
@@ -107,7 +108,10 @@ export function Inspector() {
             block — the binding design's inspector header (node 17:618). The
             metadata reads as kit PropertyRows so a label/value line is the one
             shared definition (design-system-is-centralized). */}
-        <div className={view.nodeTitleClassName} title={view.nodeTitleAttribute}>
+        <div
+          className={`${view.nodeTitleClassName} select-text`}
+          title={view.nodeTitleAttribute}
+        >
           {view.nodeTitle}
         </div>
         <dl className={view.propertyListClassName}>
@@ -117,11 +121,11 @@ export function Inspector() {
               label={row.label}
               value={
                 row.tabular ? (
-                  <span data-tabular className="tabular-nums">
+                  <span data-tabular className="select-text tabular-nums">
                     {row.value}
                   </span>
                 ) : (
-                  row.value
+                  <span className="select-text">{row.value}</span>
                 )
               }
             />
@@ -189,10 +193,10 @@ export function Inspector() {
                     <li key={edge.id}>
                       <button
                         type="button"
-                        className={view.tierEdgeButtonClassName}
+                        className={`${view.tierEdgeButtonClassName} select-text`}
                         title={edge.id}
                         onClick={() => selectEdge(edge.id)}
-                        onContextMenu={(e) => {
+                        onContextMenu={guardedContextMenu((e) => {
                           e.preventDefault();
                           openContextMenu(
                             {
@@ -204,7 +208,7 @@ export function Inspector() {
                             },
                             { x: e.clientX, y: e.clientY },
                           );
-                        }}
+                        })}
                         onKeyDown={(e) => {
                           handleKeyboardContextMenu(e, (anchor) =>
                             openContextMenu(

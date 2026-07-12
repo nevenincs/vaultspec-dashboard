@@ -31,6 +31,7 @@ import {
   useShellWindowActions,
 } from "../../stores/view/shellLayout";
 import { toggleGraphAction } from "../../stores/view/chromeActions";
+import { guardedContextMenu } from "../menus/guardedContextMenu";
 import { IconButton } from "../kit";
 import { Hierarchy, PanelRight } from "../kit/glyphs";
 import { pokeGraphRect, setWorkspaceContainer } from "./canvasPin";
@@ -89,7 +90,7 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
   return (
     <div
       className={view.rootClassName}
-      onContextMenu={(e) => {
+      onContextMenu={guardedContextMenu((e) => {
         // Right-click the tab → the layered "doc-tab" context menu (#15:
         // Keep Open / Reload / Close / Close Others / Close All Documents).
         e.preventDefault();
@@ -98,7 +99,7 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
           { kind: "doc-tab", id: api.id, nodeId: api.id, scope },
           { x: e.clientX, y: e.clientY },
         );
-      }}
+      })}
     >
       {/* The title is keyboard-activatable so a keyboard user can SWITCH to a tab,
           not only close it (dockview's `.dv-tab` owns pointer click-to-activate but
@@ -109,7 +110,7 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
           PEGS a provisional (preview) tab to permanent (VS Code, #15) — openDocTab
           promotes the provisional in place. */}
       <span
-        className={view.titleClassName}
+        className={`${view.titleClassName} select-text`}
         role="button"
         tabIndex={0}
         aria-label={view.activateAriaLabel}

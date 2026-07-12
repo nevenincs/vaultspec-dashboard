@@ -70,16 +70,16 @@ describe("MarkdownReader frontmatter chrome", () => {
     // Reader meta is projected by the stores-owned reader view.
     expect(screen.getByText("16 June 2026")).toBeTruthy();
     expect(screen.getByText("accepted")).toBeTruthy();
-    // Related renders the target stem as a clickable control.
+    // Related renders the target stem as a clickable, selectable anchor.
     expect(
-      screen.getByRole("button", { name: "2026-06-16-review-rail-viewers-plan" }),
+      screen.getByRole("link", { name: "2026-06-16-review-rail-viewers-plan" }),
     ).toBeTruthy();
   });
 
   it("opens the related document in the reader on click (in-app navigation)", () => {
     render(<MarkdownReader content={available(DOC)} />);
     fireEvent.click(
-      screen.getByRole("button", { name: "2026-06-16-review-rail-viewers-plan" }),
+      screen.getByRole("link", { name: "2026-06-16-review-rail-viewers-plan" }),
     );
     const target = useViewStore
       .getState()
@@ -92,8 +92,8 @@ describe("MarkdownReader frontmatter chrome", () => {
 describe("MarkdownReader body", () => {
   it("rewrites in-body double-bracket wiki-links to in-app navigation", () => {
     render(<MarkdownReader content={available(DOC)} />);
-    // The `[[stem|label]]` form renders its label as a clickable control.
-    const link = screen.getByRole("button", { name: "the other doc" });
+    // The `[[stem|label]]` form renders its label as a clickable, selectable anchor.
+    const link = screen.getByRole("link", { name: "the other doc" });
     fireEvent.click(link);
     const target = useViewStore
       .getState()

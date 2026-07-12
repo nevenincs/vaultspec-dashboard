@@ -40,6 +40,7 @@ import {
 } from "../../stores/view/browserTreeExpansion";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
+import { guardedContextMenu } from "../menus/guardedContextMenu";
 import { useFocusZone, type FocusZoneItemProps } from "../chrome/useFocusZone";
 import {
   useDashboardBrowserSelection,
@@ -336,13 +337,13 @@ function DirectoryRow({
             clickHandler(entry);
           }
         }}
-        onContextMenu={(e) => {
+        onContextMenu={guardedContextMenu((e) => {
           e.preventDefault();
           openContextMenu(codeFileEntity(entry, scope), {
             x: e.clientX,
             y: e.clientY,
           });
-        }}
+        })}
         onKeyDown={(e) => {
           if (
             handleKeyboardContextMenu(e, (anchor) =>

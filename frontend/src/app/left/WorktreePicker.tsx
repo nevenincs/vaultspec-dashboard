@@ -37,6 +37,7 @@ import {
 import { openAddProjectDialog } from "../../stores/view/addProjectChrome";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { guardUnsavedDiscard } from "../../stores/view/unsavedEditGuard";
+import { guardedContextMenu } from "../menus/guardedContextMenu";
 import {
   setWorktreePickerExpanded,
   toggleWorktreePickerExpanded,
@@ -83,7 +84,7 @@ const TRIGGER_CHEVRON_PX = 14;
 // type/ink/state tiers (design-system-is-centralized). The focus-visible ring
 // stays for keyboard a11y (it is not a hover affordance).
 const PILL_CLASS =
-  "group flex min-w-0 flex-1 flex-col gap-fg-0-5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+  "group flex min-w-0 flex-1 select-text flex-col gap-fg-0-5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 // The first two identity lines keep clear of the absolutely-pinned collapse
 // toggle riding the header's right edge (the window-top chrome band below).
 const PILL_PROJECT_CLASS = "min-w-0 truncate pr-fg-8 text-caption text-ink-faint";
@@ -242,10 +243,10 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           aria-label={row.ariaLabel}
           onFocus={() => setActiveRow(rowKey)}
           onClick={() => selectWorktree(row)}
-          onContextMenu={(e) => {
+          onContextMenu={guardedContextMenu((e) => {
             e.preventDefault();
             openContextMenu(worktreeEntity(worktree), { x: e.clientX, y: e.clientY });
-          }}
+          })}
           onKeyDown={(e) => {
             if (
               handleKeyboardContextMenu(e, (anchor) =>

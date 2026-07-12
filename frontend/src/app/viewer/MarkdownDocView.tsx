@@ -30,6 +30,7 @@ import { useEnsureCurrentEditorIdentity } from "../../stores/server/authoring";
 import { docStemFromNodeId } from "../menus/sharedActions";
 import { dispatchOps } from "../../stores/server/opsActions";
 import { openContextMenu } from "../../stores/view/contextMenu";
+import { guardedContextMenu } from "../menus/guardedContextMenu";
 import {
   EDITOR_TOGGLE_MODE_ACTION_ID,
   EDITOR_TOGGLE_MODE_LABEL,
@@ -241,7 +242,7 @@ export function MarkdownDocView({
   // open document IS a vault-doc. Needs the served path for the entity, so it is a
   // no-op (native menu) until the content carries one. A plain event handler, never
   // a selector, so it is safe in this loop-sensitive component.
-  const onDocContextMenu = (event: ReactMouseEvent) => {
+  const onDocContextMenu = guardedContextMenu((event: ReactMouseEvent) => {
     const stem = docStemFromNodeId(nodeId);
     if (stem === null || content.path === undefined) return;
     event.preventDefault();
@@ -249,7 +250,7 @@ export function MarkdownDocView({
       { kind: "vault-doc", id: nodeId, scope, path: content.path, stem, nodeId },
       { x: event.clientX, y: event.clientY },
     );
-  };
+  });
 
   const saveBodyNow = () => {
     markEditorSaving();
@@ -378,7 +379,10 @@ export function MarkdownDocView({
           </ul>
         </div>
       )}
-      <div className="min-h-0 flex-1">
+      {/* Flex container so the HighlightedTextarea (flex-1 / min-h-0) stretches to
+          fill the body height; a plain block wrapper collapses it to zero height and
+          the syntax-highlight layer has nowhere to paint. */}
+      <div className="flex min-h-0 flex-1">
         <HighlightedTextarea
           value={editor.draftText}
           languageHint="markdown"

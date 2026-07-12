@@ -67,10 +67,15 @@ function StepRow({ step, nav }: StepRowProps) {
         className={step.rowClassName}
       >
         <StepCheckMark done={step.done} />
-        <span className="shrink-0 font-mono text-caption text-ink-faint" data-tabular>
+        <span
+          className="shrink-0 select-text font-mono text-caption text-ink-faint"
+          data-tabular
+        >
           {step.id}
         </span>
-        <span className="min-w-0 truncate text-ink-muted">{step.headingLabel}</span>
+        <span className="min-w-0 select-text truncate text-ink-muted">
+          {step.headingLabel}
+        </span>
       </button>
     </li>
   );

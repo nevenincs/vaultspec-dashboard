@@ -81,6 +81,7 @@ import {
 import { type RailSortKey, useRailSort } from "../../stores/view/railSort";
 import { registerKeyAction } from "../../stores/view/keymapDispatcher";
 import { openContextMenu } from "../../stores/view/contextMenu";
+import { guardedContextMenu } from "../menus/guardedContextMenu";
 import { useViewportClass } from "../../stores/view/viewportClass";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
 import {
@@ -160,7 +161,7 @@ function guideStyle(parentLevel: number): CSSProperties {
  *  binding Figma selected-row look. No left-edge bar, no half-rounded/straight edge:
  *  a leaf and a folder select identically. */
 function rowClassName(highlighted: boolean): string {
-  return `flex w-full items-center gap-fg-1-5 rounded-fg-xs py-fg-1-5 pe-fg-2 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+  return `flex w-full select-text items-center gap-fg-1-5 rounded-fg-xs py-fg-1-5 pe-fg-2 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
     highlighted ? "bg-accent-subtle" : "hover:bg-paper-sunken"
   }`;
 }
@@ -686,10 +687,10 @@ function VaultTreeRow({
       onDoubleClick={onOpen}
       onContextMenu={
         entity
-          ? (e) => {
+          ? guardedContextMenu((e) => {
               e.preventDefault();
               openContextMenu(entity, { x: e.clientX, y: e.clientY });
-            }
+            })
           : undefined
       }
       onKeyDown={(e: ReactKeyboardEvent<HTMLButtonElement>) => {
@@ -840,10 +841,10 @@ function Section({
         // The section header opens its own menu (expand/collapse-all + new doc) on
         // right-click and on the ContextMenu/Shift+F10 keys; the roving keydown runs
         // only when those keyboard entry points did not consume the event.
-        onContextMenu: (e) => {
+        onContextMenu: guardedContextMenu((e) => {
           e.preventDefault();
           openContextMenu(entity, { x: e.clientX, y: e.clientY });
-        },
+        }),
         onKeyDown: (e) => {
           if (
             handleKeyboardContextMenu(e, (anchor) => openContextMenu(entity, anchor))
