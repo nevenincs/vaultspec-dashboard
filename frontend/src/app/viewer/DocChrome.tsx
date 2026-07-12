@@ -10,6 +10,8 @@
 // no raw `tiers` — the host derives the trail from the preserved stores header
 // model and passes mode + intent down.
 
+import type { ReactNode } from "react";
+
 import { Breadcrumb, type BreadcrumbItem, Segment, SegmentedToggle } from "../kit";
 
 export type DocChromeMode = "view" | "edit";
@@ -19,6 +21,7 @@ export function DocChrome({
   mode,
   onModeChange,
   canEdit,
+  trailing,
 }: {
   /** The path trail leading to the document (kit Breadcrumb). */
   trail: BreadcrumbItem[];
@@ -28,6 +31,9 @@ export function DocChrome({
   onModeChange: (mode: DocChromeMode) => void;
   /** When false, the Edit segment is disabled (e.g. a non-editable target). */
   canEdit: boolean;
+  /** Trailing chrome after the mode toggle (the coarse-pointer menu disclosure,
+   *  touch-selectability ADR D3). */
+  trailing?: ReactNode;
 }) {
   return (
     <div data-doc-chrome className="shrink-0">
@@ -43,6 +49,7 @@ export function DocChrome({
             Edit
           </Segment>
         </SegmentedToggle>
+        {trailing}
       </div>
       <div className="h-px w-full bg-rule" />
     </div>

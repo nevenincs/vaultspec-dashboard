@@ -28,6 +28,7 @@ import {
 } from "../../stores/server/queries";
 import { useEnsureCurrentEditorIdentity } from "../../stores/server/authoring";
 import { docStemFromNodeId } from "../menus/sharedActions";
+import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 import { dispatchOps } from "../../stores/server/opsActions";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { guardedContextMenu } from "../menus/guardedContextMenu";
@@ -265,6 +266,15 @@ export function MarkdownDocView({
     );
   };
 
+  // The coarse-pointer menu entry (touch-selectability ADR D3): the same
+  // vault-doc entity the right-click path opens, surfaced as a deliberate tap
+  // target because long-press stays the platform selection gesture.
+  const docMenuStem = docStemFromNodeId(nodeId);
+  const docMenuEntity =
+    docMenuStem !== null && content.path !== undefined
+      ? { kind: "vault-doc", id: nodeId, scope, path: content.path, stem: docMenuStem, nodeId }
+      : null;
+
   if (!editor.isEditing) {
     return (
       <div className="flex h-full flex-col bg-paper" onContextMenu={onDocContextMenu}>
@@ -273,6 +283,11 @@ export function MarkdownDocView({
           mode="view"
           onModeChange={onModeChange}
           canEdit={documentEditor.canEdit}
+          trailing={
+            docMenuEntity && (
+              <RowMenuDisclosure entity={docMenuEntity} label="Document actions" />
+            )
+          }
         />
         <div className="min-h-0 flex-1">
           <MarkdownReader content={content} scope={scope} nodeId={nodeId} />

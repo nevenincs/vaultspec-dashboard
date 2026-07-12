@@ -84,6 +84,7 @@ import { openContextMenu } from "../../stores/view/contextMenu";
 import { guardedContextMenu } from "../menus/guardedContextMenu";
 import { useViewportClass } from "../../stores/view/viewportClass";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
+import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 import {
   pathStem,
   pathToNodeId,
@@ -771,7 +772,15 @@ function VaultTreeRow({
   );
 
   if (!expandable) {
-    return <li>{button}</li>;
+    // Leaf row + the coarse-pointer menu entry (touch-selectability ADR D3):
+    // long-press is the selection gesture, so the row's resolver menu gets a
+    // deliberate tap target; renders nothing on fine-pointer devices.
+    return (
+      <li className="flex items-center">
+        {button}
+        {entity && <RowMenuDisclosure entity={entity} label={`${label} actions`} />}
+      </li>
+    );
   }
   return (
     <div data-vault-folder={folderMarker ? "" : undefined}>

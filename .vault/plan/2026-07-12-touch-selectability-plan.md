@@ -58,7 +58,7 @@ Apply the D2 row-selectability convention to surfaces without live menus so the 
 Give touch a deliberate menu entry and reserve long-press for selection (ADR D3): the coarse-pointer per-row disclosure affordance over the openContextMenu seam, Android long-press routed through the guard, and the compact reader edge-swipe yielding to an active selection.
 
 - [x] `P04.S18` - Add the coarse-pointer per-row menu disclosure affordance over the openContextMenu seam for menu-bearing rows; `frontend/src/app/chrome/RowMenuDisclosure.tsx`.
-- [ ] `P04.S19` - Mount the disclosure affordance on compact menu-bearing surfaces and confirm Android long-press routes through the selection guard; `frontend/src/app/shell/`.
+- [x] `P04.S19` - Mount the disclosure affordance on compact menu-bearing surfaces and confirm Android long-press routes through the selection guard; `frontend/src/app/shell/`.
 - [x] `P04.S20` - Yield the compact reader edge-swipe recognizer while a text selection is active; `frontend/src/app/shell/CompactDocReader.tsx`.
 
 ### Phase `P05` - Guards and gate
