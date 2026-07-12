@@ -95,6 +95,40 @@ function jobTitle(source: string | undefined): string {
     : "Indexing documents";
 }
 
+/** Wire job-phase token → Title Case label (labels-are-user-facing; the served
+ *  token stays authoritative and unknown tokens pass through capitalized). */
+const PHASE_LABEL: Record<string, string> = {
+  queued: "Queued",
+  running: "Running",
+  completed: "Completed",
+  failed: "Failed",
+  cancelled: "Cancelled",
+};
+
+function phaseLabel(phase: string): string {
+  return PHASE_LABEL[phase] ?? phase.charAt(0).toUpperCase() + phase.slice(1);
+}
+
+/** Wire lifecycle token → plain status word. The raw token keeps driving the
+ *  tone logic; only the rendered label is reworded. */
+const LIFECYCLE_LABEL: Record<string, string> = {
+  running: "Running",
+  stopped: "Stopped",
+  crashed: "Not responding",
+  absent: "Not running",
+};
+
+function lifecycleLabel(word: string): string {
+  return LIFECYCLE_LABEL[word] ?? word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+/** Compact idle-time label from seconds: 45s / 3m / 2h. */
+function idleLabel(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  return `${Math.floor(seconds / 3600)}h`;
+}
+
 /**
  * The one glanceable vitals line: only the numbers the wire actually served,
  * joined with middots. While the aggregate read is in flight a skeleton holds
@@ -156,9 +190,9 @@ function ActivityLine({ jobs }: { jobs: RagJob[] }) {
           {jobTitle(latest.source)}
         </span>
         <span className="min-w-0 flex-1 truncate text-meta text-ink-faint">
-          {str(latest.result) ?? (running ? "" : latest.phase)}
+          {str(latest.result) ?? (running ? "" : phaseLabel(latest.phase))}
         </span>
-        <Badge tone={running ? "accent" : "neutral"}>{latest.phase}</Badge>
+        <Badge tone={running ? "accent" : "neutral"}>{phaseLabel(latest.phase)}</Badge>
       </div>
       {running && completed !== undefined && total !== undefined && total > 0 && (
         <ProgressBar
@@ -343,6 +377,14 @@ function Tenants({ scope }: { scope: unknown }) {
           typeof slot.idle_seconds === "number"
             ? Math.round(slot.idle_seconds)
             : undefined;
+        // Plain-language slot state (labels-are-user-facing): "in use by N" when
+        // leased, else the compact idle age — never the internal ref-count vocab.
+        const slotMeta =
+          ref !== undefined && ref > 0
+            ? `in use by ${ref}`
+            : idle !== undefined
+              ? `idle ${idleLabel(idle)}`
+              : "";
         // RCR-005: Evict is disabled ONLY with a stated reason (never the
         // permanently-disabled lie) — an unknown ref count or a live lease. The
         // reason rides the wrapper's tooltip.
@@ -358,8 +400,7 @@ function Tenants({ scope }: { scope: unknown }) {
               {base}
             </span>
             <span className="shrink-0 text-meta tabular-nums text-ink-faint">
-              {ref !== undefined ? `ref ${ref}` : ""}
-              {idle !== undefined ? ` · idle ${idle}s` : ""}
+              {slotMeta}
             </span>
             <span title={evictBlockReason} className="shrink-0">
               <Button
@@ -417,7 +458,7 @@ function Maintenance({ scope }: { scope: unknown }) {
             onClick={() => watcherStop.mutate()}
             disabled={watcherStop.isPending}
           >
-            Watcher off
+            Stop watching
           </Button>
         ) : (
           <Button
@@ -425,7 +466,7 @@ function Maintenance({ scope }: { scope: unknown }) {
             onClick={() => watcherStart.mutate()}
             disabled={watcherStart.isPending}
           >
-            Watcher on
+            Watch for changes
           </Button>
         )}
         <Button
@@ -433,7 +474,7 @@ function Maintenance({ scope }: { scope: unknown }) {
           onClick={() => doctor.mutate()}
           disabled={doctor.isPending}
         >
-          Doctor
+          Check health
         </Button>
         <Button
           variant="ghost"
@@ -540,10 +581,10 @@ function JobHistory({
             {jobTitle(job.source)}
           </span>
           <span className="min-w-0 flex-1 truncate text-meta text-ink-faint">
-            {str(job.result) ?? job.phase}
+            {str(job.result) ?? phaseLabel(job.phase)}
           </span>
           <Badge tone={job.phase === "running" ? "accent" : "neutral"}>
-            {job.phase}
+            {phaseLabel(job.phase)}
           </Badge>
         </div>
       ))}
@@ -580,7 +621,7 @@ export function RagOpsConsoleBody() {
     <div className="flex flex-col gap-fg-2">
       <div className="flex items-center gap-fg-1">
         <span
-          className={`size-[0.5rem] shrink-0 rounded-full ${
+          className={`size-fg-2 shrink-0 rounded-full ${
             status.running
               ? "bg-state-active"
               : word === "crashed"
@@ -591,10 +632,12 @@ export function RagOpsConsoleBody() {
         />
         <span className="text-body font-medium text-ink">Search service</span>
         <span className={`text-meta ${lifecycleInk(status.running, word)}`}>
-          {word}
+          {lifecycleLabel(word)}
         </span>
         <span className="flex-1" />
-        <span className="shrink-0 text-caption text-ink-faint">machine-wide</span>
+        <span className="shrink-0 text-caption text-ink-faint">
+          shared across projects
+        </span>
       </div>
       {status.running ? (
         <>
