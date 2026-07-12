@@ -13,6 +13,7 @@ export * from "./history-github";
 export * from "./timeline-search";
 export * from "./settings";
 export * from "./mutations";
+export * from "./comments";
 export * from "./docmeta";
 export * from "./status";
 export * from "./pipeline";

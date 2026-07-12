@@ -419,6 +419,21 @@ export interface DirectWriteCreateParams {
   related?: string[];
 }
 
+/** The desired state of a plan Step's checkbox (authoring-surface ADR D1):
+ *  `checked` closes the Step (`vault plan step check`), `unchecked` re-opens it
+ *  (`vault plan step uncheck`). */
+export type PlanStepDesiredState = "checked" | "unchecked";
+
+/** `POST /authoring/v1/direct-writes` set-plan-step-state params (the
+ *  `set_plan_step_state` operation's payload, authoring-surface ADR D1): the
+ *  canonical step id (`S##`) and the desired open/closed state. The plan CLI
+ *  verb is idempotent, so re-requesting the state a Step already holds is a
+ *  no-op success (`core_status: "unchanged"`), never an error. */
+export interface DirectWritePlanStep {
+  stepId: string;
+  state: PlanStepDesiredState;
+}
+
 /**
  * `POST /authoring/v1/direct-writes` payload — a human editor save routed
  * through the ledger as a self-approved direct changeset, generalized to every
@@ -463,6 +478,19 @@ export type DirectWritePayload =
   | {
       operation: "create_document";
       create: DirectWriteCreateParams;
+      scope?: string | null;
+      summary?: string;
+    }
+  | {
+      // Tick/untick a plan Step through the ledger (authoring-surface ADR D1).
+      // The plan document is named by `ref`; `expected_blob_hash` is the
+      // engine-side stale-base fence (the substitute for the plan CLI's absent
+      // expected-blob-hash flag). The `planStep` carries the canonical step id +
+      // desired state.
+      operation: "set_plan_step_state";
+      ref: string;
+      planStep: DirectWritePlanStep;
+      expected_blob_hash: string;
       scope?: string | null;
       summary?: string;
     };
@@ -1017,8 +1045,226 @@ export function directWriteWirePayload(payload: DirectWritePayload): Rec {
       };
     case "create_document":
       return { ...common, create: payload.create };
+    case "set_plan_step_state":
+      return {
+        ...common,
+        ref: payload.ref,
+        plan_step: {
+          step_id: payload.planStep.stepId,
+          state: payload.planStep.state,
+        },
+        expected_blob_hash: payload.expected_blob_hash,
+      };
     default: {
       const exhaustive: never = payload;
+      return exhaustive;
+    }
+  }
+}
+
+// --- section-anchored document comments (authoring-surface ADR D2) --------------
+//
+// A comment is a durable authoring-state entity anchored to a heading SECTION of
+// a vault document through the SAME section selector a `SectionEdit` uses (heading
+// path + advisory range hint + expected content hash). The backend resolves each
+// anchor EXACT-OR-CONFLICT on read: an exact match serves the comment as anchored;
+// a missing/ambiguous heading or a content-hash mismatch serves it as ORPHANED
+// with typed evidence — still listed, never silently re-anchored. The served
+// `orphaned` boolean is authoritative (backend-served, never frontend-derived);
+// the store consumes the served shapes unchanged and maps only presentation.
+
+/** The section anchor a comment binds to (engine `SectionSelector`): the heading
+ *  path plus the expected content hash the resolver fences against. `range_hint`
+ *  is advisory-only (never a resolution input); the frontend omits it when
+ *  authoring a fresh selector. */
+export interface SectionSelector {
+  heading_path: string[];
+  range_hint?: { start: number; end: number } | null;
+  expected_content_hash: string;
+}
+
+/** Typed evidence for why a comment orphaned (engine `CommentOrphanEvidence`),
+ *  tagged by `reason` so a consumer branches without positional guessing. */
+export type CommentOrphanEvidence =
+  | { reason: "missing_anchor"; heading_path: string[] }
+  | { reason: "ambiguous_anchor"; heading_path: string[]; candidate_count: number }
+  | {
+      reason: "content_hash_mismatch";
+      heading_path: string[];
+      expected: string;
+      observed: string;
+    }
+  | { reason: "malformed_anchor" };
+
+/** How a comment's anchor resolved against the CURRENT document body (engine
+ *  `CommentAnchorState`), tagged by `state`. `anchored` carries the resolved
+ *  byte range; `orphaned` carries the typed drift evidence. */
+export type CommentAnchorState =
+  | {
+      state: "anchored";
+      heading_path: string[];
+      content_start: number;
+      content_end: number;
+    }
+  | { state: "orphaned"; evidence: CommentOrphanEvidence };
+
+/** The durable comment record (engine `CommentRecord`). `author` carries the full
+ *  actor ref so attribution upgrades in place when per-human identity lands (V1 is
+ *  single-principal by ADR). Wire fields stay snake_case as served. */
+export interface CommentRecord {
+  schema_version: string;
+  comment_id: string;
+  document: { node_id: string };
+  selector: SectionSelector;
+  body: string;
+  author: ActorRef;
+  resolved: boolean;
+  created_at_ms: number;
+  updated_at_ms: number;
+  resolved_at_ms?: number | null;
+}
+
+/** One served comment (engine `ServedComment`): the stored record, its anchor
+ *  resolution against the current body, and the flat backend-served `orphaned`
+ *  flag the reader filters on. */
+export interface ServedComment {
+  comment: CommentRecord;
+  anchor: CommentAnchorState;
+  orphaned: boolean;
+}
+
+/** The bounded per-document comment listing (`GET .../comments`). */
+export interface CommentListResult {
+  documentNodeId: string;
+  comments: ServedComment[];
+  tiers: TiersBlock;
+}
+
+/** `POST .../comments` payload: the section anchor + the comment body. The author
+ *  is the middleware-resolved principal (never a body claim); the comment id is
+ *  minted server-side from the node id + idempotency key. */
+export interface CreateCommentPayload {
+  selector: SectionSelector;
+  body: string;
+}
+
+/** `PATCH /authoring/v1/comments/{id}` payload (engine `CommentUpdateRequest`):
+ *  exactly one tagged op per request — edit the body, toggle resolved, or
+ *  explicitly re-anchor to the current section. Re-anchor is never a silent side
+ *  effect of a read. */
+export type CommentUpdate =
+  | { op: "edit_body"; body: string }
+  | { op: "set_resolved"; resolved: boolean }
+  | { op: "reanchor"; selector: SectionSelector };
+
+function adaptSectionSelector(raw: unknown): SectionSelector {
+  const r: Rec = isRec(raw) ? raw : {};
+  const heading = Array.isArray(r.heading_path)
+    ? r.heading_path.filter((seg): seg is string => typeof seg === "string")
+    : [];
+  const hint = isRec(r.range_hint) ? r.range_hint : null;
+  return {
+    heading_path: heading,
+    range_hint: hint ? { start: asNum(hint.start), end: asNum(hint.end) } : undefined,
+    expected_content_hash: asStr(r.expected_content_hash) ?? "",
+  };
+}
+
+function adaptOrphanEvidence(raw: unknown): CommentOrphanEvidence {
+  const r: Rec = isRec(raw) ? raw : {};
+  const headingPath = Array.isArray(r.heading_path)
+    ? r.heading_path.filter((seg): seg is string => typeof seg === "string")
+    : [];
+  switch (asStr(r.reason)) {
+    case "missing_anchor":
+      return { reason: "missing_anchor", heading_path: headingPath };
+    case "ambiguous_anchor":
+      return {
+        reason: "ambiguous_anchor",
+        heading_path: headingPath,
+        candidate_count: asNum(r.candidate_count),
+      };
+    case "content_hash_mismatch":
+      return {
+        reason: "content_hash_mismatch",
+        heading_path: headingPath,
+        expected: asStr(r.expected) ?? "",
+        observed: asStr(r.observed) ?? "",
+      };
+    default:
+      // An unrecognized/absent reason degrades to the honest "malformed anchor"
+      // rather than throwing on a wire shape this client has not been taught.
+      return { reason: "malformed_anchor" };
+  }
+}
+
+function adaptCommentAnchorState(raw: unknown): CommentAnchorState {
+  const r: Rec = isRec(raw) ? raw : {};
+  if (asStr(r.state) === "anchored") {
+    return {
+      state: "anchored",
+      heading_path: Array.isArray(r.heading_path)
+        ? r.heading_path.filter((seg): seg is string => typeof seg === "string")
+        : [],
+      content_start: asNum(r.content_start),
+      content_end: asNum(r.content_end),
+    };
+  }
+  return { state: "orphaned", evidence: adaptOrphanEvidence(r.evidence) };
+}
+
+/** Adapt one served comment record, flooring optionals so a sparse wire shape
+ *  never crashes a thread row. Consumes the served shape unchanged. */
+export function adaptCommentRecord(raw: unknown): CommentRecord {
+  const r: Rec = isRec(raw) ? raw : {};
+  const document: Rec = isRec(r.document) ? r.document : {};
+  return {
+    schema_version: asStr(r.schema_version) ?? "",
+    comment_id: asStr(r.comment_id) ?? "",
+    document: { node_id: asStr(document.node_id) ?? "" },
+    selector: adaptSectionSelector(r.selector),
+    body: asStr(r.body) ?? "",
+    author: adaptActorRef(r.author),
+    resolved: asBool(r.resolved),
+    created_at_ms: asNum(r.created_at_ms),
+    updated_at_ms: asNum(r.updated_at_ms),
+    resolved_at_ms: typeof r.resolved_at_ms === "number" ? r.resolved_at_ms : undefined,
+  };
+}
+
+/** Adapt one served comment (record + backend-served anchor resolution + the flat
+ *  `orphaned` flag). The `orphaned` flag is authoritative; when a wire omits it,
+ *  it is derived from the tagged anchor state (never re-resolved client-side). */
+export function adaptServedComment(raw: unknown): ServedComment {
+  const r: Rec = isRec(raw) ? raw : {};
+  const anchor = adaptCommentAnchorState(r.anchor);
+  const orphaned =
+    typeof r.orphaned === "boolean" ? r.orphaned : anchor.state === "orphaned";
+  return { comment: adaptCommentRecord(r.comment), anchor, orphaned };
+}
+
+/** Adapt the bounded per-document comment listing. */
+export function adaptCommentList(raw: unknown): CommentListResult {
+  const r: Rec = isRec(raw) ? raw : {};
+  return {
+    documentNodeId: asStr(r.document_node_id) ?? "",
+    comments: Array.isArray(r.comments) ? r.comments.map(adaptServedComment) : [],
+    tiers: asTiers(r.tiers),
+  };
+}
+
+/** Marshal a `CommentUpdate` onto the wire tagged `CommentUpdateRequest` shape
+ *  (`op` discriminator + only that op's fields). */
+function commentUpdateWirePayload(update: CommentUpdate): Rec {
+  switch (update.op) {
+    case "edit_body":
+      return { op: "edit_body", body: update.body };
+    case "set_resolved":
+      return { op: "set_resolved", resolved: update.resolved };
+    case "reanchor":
+      return { op: "reanchor", selector: update.selector };
+    default: {
+      const exhaustive: never = update;
       return exhaustive;
     }
   }
@@ -1320,6 +1566,92 @@ export class AuthoringClient {
     );
   }
 
+  // --- section-anchored document comments (authoring-surface ADR D2) ---
+  //
+  // The comment routes are NOT denials-are-values commands: a create/edit/delete
+  // returns its record (or `deleted` flag) directly, and a genuine refusal
+  // (unknown document, oversized body, unregistered actor) is a tiers-bearing
+  // typed EngineError the caller surfaces — never a `denied` VALUE. The list read
+  // is principal-permissive (no actor token).
+
+  /** `GET /authoring/v1/documents/{node_id}/comments` — the bounded, backend-
+   *  served comment listing. Each stored anchor is resolved EXACT-OR-CONFLICT
+   *  against the current worktree body server-side, so the served `orphaned` flag
+   *  is authoritative. */
+  async listComments(
+    nodeId: string,
+    cap?: number,
+    signal?: AbortSignal,
+  ): Promise<CommentListResult> {
+    const query =
+      typeof cap === "number" ? `?cap=${encodeURIComponent(String(cap))}` : "";
+    return adaptCommentList(
+      await this.get(
+        `/authoring/v1/documents/${encodeURIComponent(nodeId)}/comments${query}`,
+        signal,
+      ),
+    );
+  }
+
+  /** `POST /authoring/v1/documents/{node_id}/comments` — create a section-anchored
+   *  comment attributed to the resolved principal (the node id rides the route;
+   *  the body carries only `{selector, body}`). Returns the created record. */
+  async createComment(
+    nodeId: string,
+    payload: CreateCommentPayload,
+    opts: CommandOptions,
+  ): Promise<CommentRecord> {
+    const body = await this.postJson(
+      `/authoring/v1/documents/${encodeURIComponent(nodeId)}/comments`,
+      {
+        api_version: "v1",
+        command: "create_comment",
+        idempotency_key: opts.idempotencyKey ?? newIdempotencyKey("comment"),
+        payload,
+      },
+      this.withActor(opts.actorToken),
+    );
+    return adaptCommentRecord(isRec(body) ? body.comment : undefined);
+  }
+
+  /** `PATCH /authoring/v1/comments/{comment_id}` — edit the body, toggle resolved,
+   *  or explicitly re-anchor to the current section (one tagged op per request). */
+  async updateComment(
+    commentId: string,
+    update: CommentUpdate,
+    opts: CommandOptions,
+  ): Promise<CommentRecord> {
+    const body = await this.sendJson(
+      "PATCH",
+      `/authoring/v1/comments/${encodeURIComponent(commentId)}`,
+      {
+        api_version: "v1",
+        command: "update_comment",
+        idempotency_key: opts.idempotencyKey ?? newIdempotencyKey("comment"),
+        payload: commentUpdateWirePayload(update),
+      },
+      this.withActor(opts.actorToken),
+    );
+    return adaptCommentRecord(isRec(body) ? body.comment : undefined);
+  }
+
+  /** `DELETE /authoring/v1/comments/{comment_id}` — delete a comment (idempotent:
+   *  an absent id returns `deleted: false`). */
+  async deleteComment(commentId: string, opts: CommandOptions): Promise<boolean> {
+    const body = await this.sendJson(
+      "DELETE",
+      `/authoring/v1/comments/${encodeURIComponent(commentId)}`,
+      {
+        api_version: "v1",
+        command: "delete_comment",
+        idempotency_key: opts.idempotencyKey ?? newIdempotencyKey("comment"),
+        payload: {},
+      },
+      this.withActor(opts.actorToken),
+    );
+    return isRec(body) && body.deleted === true;
+  }
+
   // --- transport ---
 
   private async get(path: string, signal?: AbortSignal): Promise<unknown> {
@@ -1350,13 +1682,26 @@ export class AuthoringClient {
     return interpretCommandOutcome(body);
   }
 
-  private async postJson(
+  private postJson(
+    path: string,
+    body: unknown,
+    transport: FetchLike,
+  ): Promise<unknown> {
+    return this.sendJson("POST", path, body, transport);
+  }
+
+  /** Issue a JSON command over an arbitrary method (POST/PATCH/DELETE), throwing a
+   *  tiers-bearing `EngineError` on a 4xx/5xx fault and returning the unwrapped
+   *  envelope on success. The comment PATCH/DELETE routes carry the command
+   *  envelope in the body exactly like the POST commands. */
+  private async sendJson(
+    method: string,
     path: string,
     body: unknown,
     transport: FetchLike,
   ): Promise<unknown> {
     const response = await transport(`${this.baseUrl}${path}`, {
-      method: "POST",
+      method,
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
@@ -1696,6 +2041,14 @@ export const authoringKeys = {
     [...authoringKeys.all, "proposal", changesetId] as const,
   snapshot: (changesetId: string) =>
     [...authoringKeys.all, "snapshot", changesetId] as const,
+  // The per-document comment listing (authoring-surface ADR D2): keyed by
+  // (scope, node id) so a scope switch re-reads and two documents never share a
+  // cache entry. Under the `authoring` prefix so the existing lifecycle-stream
+  // invalidation (`invalidateAuthoring`, fired on every authoring SSE frame —
+  // including the `comment.created/.updated/.deleted` events) refreshes it for
+  // free, the same delta path the review queue rides.
+  comments: (scope: string, nodeId: string) =>
+    [...authoringKeys.all, "comments", scope, nodeId] as const,
 };
 
 export function proposalsQueryOptions() {

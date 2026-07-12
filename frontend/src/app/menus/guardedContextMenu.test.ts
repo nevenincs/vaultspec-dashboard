@@ -155,8 +155,10 @@ describe("touch-selectability law sweep (ADR D4)", () => {
       "islands/NodeInterior.tsx",
       "palette/SearchResultPill.tsx",
       // The worktree-picker and code-tree row classes live at their derived
-      // source in stores, not in the components that render them.
-      "../stores/server/queries.ts",
+      // source in stores, not in the components that render them (the queries
+      // monolith was decomposed into per-domain submodules; the row class lives
+      // in the workspaces submodule).
+      "../stores/server/queries/workspaces.ts",
       "../stores/view/browserTreeExpansion.ts",
     ];
     const missing = mustCarrySelectText.filter(

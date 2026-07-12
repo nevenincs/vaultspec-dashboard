@@ -9,6 +9,16 @@ related:
   - '[[2026-07-12-authoring-surface-adr]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
+
 # `authoring-surface` plan
 
 ## Wave `W01` - Backend: ledgered plan ticks and the comments store
@@ -41,9 +51,9 @@ Consume the W01 seams: stores wiring (sole wire client) for comments and plan ti
 
 The stores layer stays the sole wire client: comment reads/mutations and the plan-step tick mutation with bounded caches, tolerant adapters, and live-wire tests.
 
-- [ ] `W02.P03.S09` - Extend the authoring wire client with comment reads and mutations plus the plan-step set-state mutation, invalidating the plan-interior and comment queries on settle; `frontend/src/stores/server/authoring.ts`.
-- [ ] `W02.P03.S10` - Expose the comments view and mutation hooks and the plan-step tick hook with bounded caches and tolerant adapters; `frontend/src/stores/server/queries.ts`.
-- [ ] `W02.P03.S11` - Live-wire tests for the new hooks over the fixture vault, including the comment SSE delta path; `frontend/src/stores/server`.
+- [x] `W02.P03.S09` - Extend the authoring wire client with comment reads and mutations plus the plan-step set-state mutation, invalidating the plan-interior and comment queries on settle; `frontend/src/stores/server/authoring.ts`.
+- [x] `W02.P03.S10` - Expose the comments view and mutation hooks and the plan-step tick hook with bounded caches and tolerant adapters; `frontend/src/stores/server/queries.ts`.
+- [x] `W02.P03.S11` - Live-wire tests for the new hooks over the fixture vault, including the comment SSE delta path; `frontend/src/stores/server`.
 
 ### Phase `W02.P04` - Plan-step checkbox in the status rail (D1)
 

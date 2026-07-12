@@ -741,3 +741,124 @@ export function useRenameDoc() {
     },
   });
 }
+
+// --- plan-step tick (authoring-surface ADR D1) -----------------------------------
+//
+// Ticking/unticking a plan Step rides the SAME ledgered `directWrite` route as
+// every editor save, under the `set_plan_step_state` operation: the engine
+// invokes `vault plan step check`/`uncheck` through the core adapter, fences the
+// plan's optimistic base engine-side (the plan CLI carries no expected-blob-hash
+// flag — authoring-surface ADR "Constraints"), and re-verifies the resulting Step
+// state through the SAME parser the plan-interior projection serves from. The
+// served `done` flag flips after the watcher re-ingests, so a successful tick
+// invalidates the vault-mutation read surfaces — the plan-interior projection
+// among them (`plan-interior` is a graph-generation subtree), which re-reads the
+// flipped state. An idempotent re-tick (the Step already holds the desired state)
+// reports success, never an error.
+
+/** The typed outcome of a plan-step tick the status-rail checkbox drives its
+ *  state from — NOT a thrown error. `ticked` carries the applied desired state and
+ *  the plan's new blob hash (the next optimistic base); `conflict` is a stale base
+ *  (the plan drifted since the row was read); `refused` is every denial/failure/
+ *  in-flight collision, carrying the served reason. */
+export type PlanStepTickResult =
+  | { kind: "ticked"; done: boolean; blobHash: string | null }
+  | { kind: "conflict"; expected: string; actual: string }
+  | { kind: "refused"; reason: string };
+
+/** Args for {@link usePlanStepTick}: the plan node id + scope, the canonical step
+ *  id, the DESIRED closed state (`done`), and the plan's current blob hash (the
+ *  engine-side stale-base fence). */
+export interface PlanStepTickArgs {
+  planNodeId: unknown;
+  scope: unknown;
+  stepId: unknown;
+  /** The desired closed state: `true` ticks (check), `false` unticks (uncheck). */
+  done: unknown;
+  /** The plan document's current blob hash — the optimistic base the engine fences
+   *  the tick against. */
+  expectedBlobHash: unknown;
+}
+
+function refusedPlanStepResult(reason: string): {
+  result: PlanStepTickResult;
+  tiers: TiersBlock;
+} {
+  return { result: { kind: "refused", reason }, tiers: {} };
+}
+
+function planStepOutcomeToResult(
+  outcome: DirectWriteOutcome,
+  desiredDone: boolean,
+): { result: PlanStepTickResult; tiers: TiersBlock } {
+  if (outcome.kind === "applied") {
+    return {
+      result: { kind: "ticked", done: desiredDone, blobHash: outcome.blobHash },
+      tiers: outcome.tiers,
+    };
+  }
+  if (outcome.kind === "conflict") {
+    return {
+      result: {
+        kind: "conflict",
+        expected: outcome.conflict.expected_blob_hash,
+        actual: outcome.conflict.actual_blob_hash,
+      },
+      tiers: outcome.tiers,
+    };
+  }
+  const reason =
+    outcome.kind === "denied" || outcome.kind === "failed"
+      ? (outcome.reason ?? "The plan step could not be updated")
+      : "a prior update for this plan step is still in flight — try again shortly";
+  return { result: { kind: "refused", reason }, tiers: outcome.tiers };
+}
+
+/**
+ * Tick or untick a plan Step through the authoring ledger's `directWrite` route
+ * (`operation: "set_plan_step_state"`, authoring-surface ADR D1). Resolves with a
+ * typed {@link PlanStepTickResult} — a `conflict` (a stale plan base) or a
+ * `refused` (a denial, e.g. a non-human actor or a scope-pin mismatch; a failure;
+ * or an in-flight collision) is a value the caller drives checkbox state from, NOT
+ * a thrown error; only a transport fault, or the actor-token fail-safe
+ * (`requireActorToken`), rejects. On a `ticked` outcome the vault-mutation read
+ * surfaces are invalidated — including the plan-interior projection, which
+ * re-reads the flipped `done` state after the watcher re-ingests.
+ */
+export function usePlanStepTick() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: PlanStepTickArgs) => {
+      const scope = normalizeGitDiffArg(args.scope);
+      const identity = normalizeWriteRef(args.planNodeId);
+      const stepId = normalizeWriteText(args.stepId).trim();
+      const expectedBlobHash = normalizeWriteText(args.expectedBlobHash);
+      const done = args.done === true;
+      if (identity.ref === null) return refusedPlanStepResult("Missing plan id");
+      if (stepId.length === 0) return refusedPlanStepResult("Missing step id");
+      if (expectedBlobHash.length === 0) {
+        return refusedPlanStepResult("Missing the plan's optimistic base");
+      }
+      const outcome = await authoringClient.directWrite(
+        {
+          operation: "set_plan_step_state",
+          ref: identity.ref,
+          planStep: { stepId, state: done ? "checked" : "unchecked" },
+          expected_blob_hash: expectedBlobHash,
+          scope,
+        },
+        { actorToken: requireActorToken() },
+      );
+      return planStepOutcomeToResult(outcome, done);
+    },
+    onSuccess: ({ result }, args) => {
+      if (result.kind === "ticked") {
+        invalidateAfterVaultMutation(
+          queryClient,
+          normalizeGitDiffArg(args.scope),
+          normalizeNodeId(args.planNodeId),
+        );
+      }
+    },
+  });
+}
