@@ -76,6 +76,14 @@ CSP against the embedded SPA verified on the live wire, the update verb ordered 
 - [x] `W03.P06.S21` - Run the full gate (just dev lint all plus engine and frontend suites) and a release dry-run building the embed-spa binary, verifying double-click launch, attach, stop, and update flows end to end on Windows; `justfile + .github/workflows/`.
 - [x] `W03.P06.S22` - Ship the msi installer channel with an installer-created Start-Menu shortcut whose target is the bare binary (the app front door), delivered after the user directed the deferral executed; `dist-workspace.toml`.
 
+### Phase `W03.P07` - Deferral closure
+
+Drive every recorded deferral to completion (user directive): the provisional starting discovery state so launch, status, and stop can distinguish an indexing seat from a dead one, and the ADR O6 onboarding folder picker (a bounded served directory-listing route plus a browse affordance in the add-project flow) retiring typed-path-only entry.
+
+- [x] `W03.P07.S23` - Publish discovery immediately after the bind with a starting state and keep the heartbeat fresh through the initial index, flipping to ready before serving; `consumers (status seat block, stop, the launcher) read the state honestly (a starting seat reports starting, stop can still terminate it via the pid fallback); `engine/crates/vaultspec-api/src/boot.rs + engine/crates/vaultspec-api/src/discovery.rs + engine/crates/vaultspec-cli/src/cmd/lifecycle.rs`.
+- [x] `W03.P07.S24` - Serve a bounded, bearer-gated, read-only directory-listing route (filesystem roots plus one directory level, directories only, capped count, vaultspec-managed and git markers) through the shared envelope, with adverse coverage (tokenless refusal, non-directory refusal, cap honored); `engine/crates/vaultspec-api/src/routes/fs_browse.rs`.
+- [x] `W03.P07.S25` - Add a Browse affordance to the add-project flow consuming the new directory-listing route (drill-down list, managed and git badges, select-to-fill-the-path), replacing typed-path-only entry for first-run onboarding and the project switcher alike; `frontend/src/app/left/AddProjectDialog.tsx`.
+
 ## Description
 
 Implement the accepted single-app-runtime ADR: turn the shipped single

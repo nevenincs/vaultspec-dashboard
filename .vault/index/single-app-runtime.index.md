@@ -34,6 +34,10 @@ related:
   - '[[2026-07-12-single-app-runtime-W03-P06-S21]]'
   - '[[2026-07-12-single-app-runtime-W03-P06-S22]]'
   - '[[2026-07-12-single-app-runtime-W03-P06-summary]]'
+  - '[[2026-07-12-single-app-runtime-W03-P07-S23]]'
+  - '[[2026-07-12-single-app-runtime-W03-P07-S24]]'
+  - '[[2026-07-12-single-app-runtime-W03-P07-S25]]'
+  - '[[2026-07-12-single-app-runtime-W03-P07-summary]]'
   - '[[2026-07-12-single-app-runtime-adr]]'
   - '[[2026-07-12-single-app-runtime-audit]]'
   - '[[2026-07-12-single-app-runtime-plan]]'
@@ -84,6 +88,10 @@ Auto-generated index of all documents tagged with `#single-app-runtime`.
 - `2026-07-12-single-app-runtime-W03-P06-S21` - Run the full gate (just dev lint all plus engine and frontend suites) and a release dry-run building the embed-spa binary, verifying double-click launch, attach, stop, and update flows end to end on Windows
 - `2026-07-12-single-app-runtime-W03-P06-S22` - Ship the msi installer channel with an installer-created Start-Menu shortcut whose target is the bare binary (the app front door), delivered after the user directed the deferral executed
 - `2026-07-12-single-app-runtime-W03-P06-summary` - `single-app-runtime` `W03.P06` summary
+- `2026-07-12-single-app-runtime-W03-P07-S23` - Publish discovery immediately after the bind with a starting state and keep the heartbeat fresh through the initial index, flipping to ready before serving
+- `2026-07-12-single-app-runtime-W03-P07-S24` - Serve a bounded, bearer-gated, read-only directory-listing route (filesystem roots plus one directory level, directories only, capped count, vaultspec-managed and git markers) through the shared envelope, with adverse coverage (tokenless refusal, non-directory refusal, cap honored)
+- `2026-07-12-single-app-runtime-W03-P07-S25` - Add a Browse affordance to the add-project flow consuming the new directory-listing route (drill-down list, managed and git badges, select-to-fill-the-path), replacing typed-path-only entry for first-run onboarding and the project switcher alike
+- `2026-07-12-single-app-runtime-W03-P07-summary` - `single-app-runtime` `W03.P07` summary
 
 ### plan
 

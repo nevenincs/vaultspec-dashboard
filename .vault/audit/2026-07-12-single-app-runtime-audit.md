@@ -146,12 +146,26 @@ concurrently, each under its own cap.
 Promoted from a code comment into `architecture-boundaries.md` (source +
 sync) as a SANCTIONED EXCEPTION with a no-new-site clause.
 
+### deferral-closure | info | every recorded deferral driven to completion (user directive)
+
+Post-PASS, the user directed all deferrals executed. Delivered: S22 (the
+MSI channel with an installer-created Start-Menu shortcut targeting the
+bare binary; Shortcut table verified inside a locally-built MSI via the
+WindowsInstaller COM API), S23 (the starting-state discovery record:
+bearer minted pre-index, bind moved before the initial index, heartbeat
+fresh throughout, ready flip pre-serve; status and stop are state-aware
+and a starting seat is stoppable via the pid fallback — this also
+discharges the boot-order-vs-discovery LOW finding above), S24 (the
+bounded bearer-gated directory-browse route), and S25 (the FolderBrowser
+picker in the add-project flow, retiring typed-path-only entry — ADR
+option O6 closed). The closure increment was routed to the reviewer for
+its own verdict.
+
 ## Recommendations
 
-- Consider a provisional "starting" discovery record (state field) so the
-  launcher can distinguish indexing from death during the cold window.
-- When a native folder picker lands (ADR O6, deferred), revisit the
-  first-run typed-path entry.
+- RESOLVED: the provisional starting discovery record shipped (S23).
+- RESOLVED: the folder picker shipped (S24/S25); typed-path entry is now
+  the fallback, not the only path.
 - RESOLVED (user-directed, post-PASS): the MSI channel shipped with the
   installer-created Start-Menu shortcut (S22 closed); the built MSI's
   Shortcut table was verified via the WindowsInstaller COM API.
