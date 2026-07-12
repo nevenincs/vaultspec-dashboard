@@ -7136,5 +7136,8 @@ describe("useProgressiveGraphSlice (on-demand-cold-start ADR D1)", () => {
     );
     await waitFor(() => expect(graphBodies.length).toBeGreaterThan(0), ENGINE_WAIT);
     expect(graphBodies.every((b) => b.granularity === "document")).toBe(true);
+    // The as-of bypass means no constellation fill ever substitutes for the
+    // historical slice — the hook holds nothing until the document data lands.
+    expect(asOf.result.current.data).toBeUndefined();
   });
 });
