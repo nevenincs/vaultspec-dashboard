@@ -22,7 +22,10 @@ use super::lifecycle;
 /// Loopback request budget for the attach-path session calls.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long a cold launch waits for the spawned seat to publish discovery.
-const SPAWN_WAIT: Duration = Duration::from_secs(30);
+/// Discovery publishes AFTER the initial index, and a large repository's cold
+/// index legitimately takes minutes — the wait must outlast it (review
+/// finding: 30 s produced a false "did not come up" on big corpora).
+const SPAWN_WAIT: Duration = Duration::from_secs(180);
 /// Crash-loop guard window (single-app-runtime D7): a seat that died within
 /// this window of its launch is NOT auto-relaunched; the user is pointed at
 /// the crash log instead.
@@ -230,10 +233,11 @@ fn crash_loop_guard(home: &std::path::Path, workspace: Option<&str>) -> Result<(
     let at = last.get("at_ms").and_then(Value::as_i64).unwrap_or(0);
     if now_ms().saturating_sub(at) < CRASH_LOOP_WINDOW_MS {
         return Err(format!(
-            "the vaultspec app was launched under a minute ago and is not \
-             running - it may be crashing on startup; not relaunching \
-             automatically. Check the crash log{} or run `vaultspec serve` in \
-             a terminal to see the error.",
+            "the vaultspec app was launched under a minute ago and has not \
+             come up - it may still be starting (a first index of a large \
+             project takes a while) or crashing; not relaunching \
+             automatically. Try again shortly, check the crash log{}, or run \
+             `vaultspec serve` in a terminal to watch it live.",
             crash_log_hint(workspace)
         ));
     }
