@@ -66,6 +66,9 @@ export interface ReaderCommentActions {
 export interface ReaderCommentSource extends ReaderCommentActions {
   /** Every served comment for the open document (anchor resolution backend-served). */
   comments: ServedComment[];
+  /** The open document's stem, for the copy-section-link verb (`[[stem#slug]]`);
+   *  null when the source is not a document (the verb renders disabled-with-reason). */
+  docStem: string | null;
   /** A human actor token is bootstrapped — a comment command can fire. */
   actorReady: boolean;
   /** Whether a bootstrap mint is in flight (for the compose box's disabled state). */

@@ -162,6 +162,7 @@ export function MarkdownDocView({
   const commentSource = useMemo<ReaderCommentSource>(
     () => ({
       comments,
+      docStem: docStemFromNodeId(nodeId),
       actorReady: editorIdentity.hasToken,
       actorBootstrapping: editorIdentity.bootstrapping,
       ensureActor: ensureActorRef.current,
@@ -401,12 +402,14 @@ export function MarkdownDocView({
         onModeChange={onModeChange}
         canEdit={documentEditor.canEdit}
       />
-      <div className="flex items-center justify-between gap-fg-3 border-b border-rule px-fg-3 py-fg-1">
+      <div className="flex flex-wrap items-center justify-between gap-fg-2 border-b border-rule px-fg-3 py-fg-1">
         <span className={`shrink-0 text-label ${editor.statusToneClass}`}>
           {editor.statusLabel}
         </span>
-        <div className="flex items-center gap-fg-2">
-          <EditorToolbar onCommand={applyFormat} />
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-fg-2">
+          <div className="min-w-0 overflow-x-auto" data-editor-toolbar-scroll-region>
+            <EditorToolbar onCommand={applyFormat} />
+          </div>
           {/* Toggle diff (authoring-surface ADR D4): compare draft against the
               saved text captured at open. Chord Mod+Shift+D; shared id
               `editor:toggle-diff` across toolbar, keymap, and palette. */}

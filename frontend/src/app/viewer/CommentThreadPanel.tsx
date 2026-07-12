@@ -17,7 +17,7 @@
 // kit atoms and calls the plane callbacks). Tokens only; every string plain language.
 
 import { useEffect, useState } from "react";
-import { Check, Link2, RotateCcw, Trash2, X } from "lucide-react";
+import { Check, Link, Link2, RotateCcw, Trash2, X } from "lucide-react";
 
 import { Badge, Button, Card, Divider, IconButton, Popover } from "../kit";
 import type {
@@ -288,6 +288,9 @@ export interface CommentThreadPanelProps {
   title: string;
   /** True for the doc-level orphaned panel (no compose; rows offer re-anchor). */
   orphanedPanel?: boolean;
+  /** Copy a section link (`[[stem#slug]]`) to this heading; omitted when the source
+   *  is not a document. Rendered as a header verb on the section thread. */
+  onCopyLink?: () => void;
   /** The section's heading path is duplicated in the document, so a new comment
    *  could not be told apart from the identically-titled section(s). Compose is
    *  replaced with an honest hint rather than silently creating an orphan. */
@@ -311,6 +314,7 @@ export function CommentThreadPanel({
   ensureActor,
   title,
   orphanedPanel = false,
+  onCopyLink,
   ambiguous = false,
   onClose,
   className,
@@ -338,9 +342,16 @@ export function CommentThreadPanel({
             <span className="truncate text-label font-medium text-ink" title={title}>
               {title}
             </span>
-            <IconButton label="Close comments" onClick={onClose}>
-              <X size={14} aria-hidden />
-            </IconButton>
+            <div className="flex shrink-0 items-center gap-fg-1">
+              {onCopyLink !== undefined && !orphanedPanel && (
+                <IconButton label="Copy section link" onClick={onCopyLink}>
+                  <Link size={14} aria-hidden />
+                </IconButton>
+              )}
+              <IconButton label="Close comments" onClick={onClose}>
+                <X size={14} aria-hidden />
+              </IconButton>
+            </div>
           </div>
           <Divider />
 

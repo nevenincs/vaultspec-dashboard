@@ -9,18 +9,30 @@
 // affordance visibility, the count chip, the thread lifecycle (open → compose →
 // resolve), and honest orphaned rendering with an explicit re-anchor.
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ContentView } from "../../stores/server/queries";
 import type { ServedComment } from "../../stores/server/authoring";
 import { MarkdownReader } from "./MarkdownReader";
 import type { ReaderCommentSource } from "./readerComments";
+import { clearSectionScroll, requestSectionScroll } from "./readerSectionScroll";
+
+const SCROLL_NODE_ID = "doc:2026-06-16-x-adr";
 
 afterEach(() => {
   cleanup();
   // Restore matchMedia between tests (the compact case stubs it).
   delete (window as unknown as { matchMedia?: unknown }).matchMedia;
+  // Drop any unconsumed section-scroll intent so it never leaks into the next test.
+  clearSectionScroll(SCROLL_NODE_ID);
 });
 
 const SECTION_PATH = ["Doc Title", "Section One"];
@@ -111,6 +123,7 @@ function orphanedComment(id: string, headingPath: string[]): ServedComment {
 function makeSource(overrides: Partial<ReaderCommentSource> = {}): ReaderCommentSource {
   return {
     comments: [],
+    docStem: "2026-06-16-x-adr",
     actorReady: true,
     actorBootstrapping: false,
     ensureActor: vi.fn(),
@@ -260,6 +273,154 @@ describe("reader duplicate-section handling", () => {
     ).toBeTruthy();
     expect(screen.queryByLabelText("new comment")).toBeNull();
     expect(createComment).not.toHaveBeenCalled();
+  });
+});
+
+describe("reader scroll-to-section (S31)", () => {
+  it("scrolls to and focuses the heading a section-scroll intent targets", () => {
+    const { container } = render(
+      <MarkdownReader
+        content={available(DOC)}
+        nodeId={SCROLL_NODE_ID}
+        commentSource={makeSource()}
+      />,
+    );
+    // The heading carries the plugin's slug id ("Section One" → "section-one").
+    const heading = container.querySelector<HTMLElement>("#section-one");
+    expect(heading).toBeTruthy();
+    const scrollSpy = vi.fn();
+    heading!.scrollIntoView = scrollSpy;
+
+    act(() => requestSectionScroll(SCROLL_NODE_ID, "section-one"));
+
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    // a11y: the section is made focusable and focused so keyboard/AT users land there.
+    expect(heading!.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("is inert when the fragment matches no heading (plain open, no error)", () => {
+    const { container } = render(
+      <MarkdownReader
+        content={available(DOC)}
+        nodeId={SCROLL_NODE_ID}
+        commentSource={makeSource()}
+      />,
+    );
+    const heading = container.querySelector<HTMLElement>("#section-one");
+    const scrollSpy = vi.fn();
+    heading!.scrollIntoView = scrollSpy;
+
+    act(() => requestSectionScroll(SCROLL_NODE_ID, "no-such-heading"));
+
+    expect(scrollSpy).not.toHaveBeenCalled();
+  });
+
+  it("fires the scroll+focus once the document finishes loading (the async path)", () => {
+    // scrollIntoView is not implemented in happy-dom — spy the prototype so the
+    // effect can call it, and so we observe the deferred (loading → ready) fire.
+    const proto = window.HTMLElement.prototype as unknown as {
+      scrollIntoView: unknown;
+    };
+    const original = proto.scrollIntoView;
+    const scrollSpy = vi.fn();
+    proto.scrollIntoView = scrollSpy;
+    try {
+      const loadingView: ContentView = {
+        ...available(DOC),
+        loading: true,
+        text: "",
+        available: false,
+      };
+      const { container, rerender } = render(
+        <MarkdownReader
+          content={loadingView}
+          nodeId={SCROLL_NODE_ID}
+          commentSource={makeSource()}
+        />,
+      );
+      // While loading the reader shows a skeleton — no headings exist yet.
+      expect(container.querySelector("#section-one")).toBeNull();
+      // Record the intent WHILE the document is still loading.
+      act(() => requestSectionScroll(SCROLL_NODE_ID, "section-one"));
+      expect(scrollSpy).not.toHaveBeenCalled();
+
+      // The content resolves — the effect re-runs now that the heading exists.
+      rerender(
+        <MarkdownReader
+          content={available(DOC)}
+          nodeId={SCROLL_NODE_ID}
+          commentSource={makeSource()}
+        />,
+      );
+      expect(scrollSpy).toHaveBeenCalledTimes(1);
+      const heading = container.querySelector<HTMLElement>("#section-one");
+      expect(heading?.getAttribute("tabindex")).toBe("-1");
+    } finally {
+      proto.scrollIntoView = original;
+    }
+  });
+
+  it("clears a dormant intent when the reader unmounts unconsumed (no stale scroll-jump on reopen)", () => {
+    // First open: still loading, record an intent, then unmount before it is ready —
+    // the failed-load case that must not leave a dormant intent behind.
+    const loadingView: ContentView = {
+      ...available(DOC),
+      loading: true,
+      text: "",
+      available: false,
+    };
+    const first = render(
+      <MarkdownReader
+        content={loadingView}
+        nodeId={SCROLL_NODE_ID}
+        commentSource={makeSource()}
+      />,
+    );
+    act(() => requestSectionScroll(SCROLL_NODE_ID, "section-one"));
+    first.unmount();
+
+    // Reopen the same document, now ready. Had the dormant intent lingered it would
+    // scroll-jump; the unmount-clear guarantees it does not.
+    const proto = window.HTMLElement.prototype as unknown as {
+      scrollIntoView: unknown;
+    };
+    const original = proto.scrollIntoView;
+    const scrollSpy = vi.fn();
+    proto.scrollIntoView = scrollSpy;
+    try {
+      render(
+        <MarkdownReader
+          content={available(DOC)}
+          nodeId={SCROLL_NODE_ID}
+          commentSource={makeSource()}
+        />,
+      );
+      expect(scrollSpy).not.toHaveBeenCalled();
+    } finally {
+      proto.scrollIntoView = original;
+    }
+  });
+});
+
+describe("reader copy-section-link (S32)", () => {
+  it("copies the round-trippable [[stem#slug]] section link from the thread header", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    render(
+      <MarkdownReader
+        content={available(DOC)}
+        nodeId={SCROLL_NODE_ID}
+        commentSource={makeSource()}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Comment on this section"));
+    fireEvent.click(await screen.findByLabelText("Copy section link"));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0][0]).toBe("[[2026-06-16-x-adr#section-one]]");
   });
 });
 

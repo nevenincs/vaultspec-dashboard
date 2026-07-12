@@ -17,11 +17,11 @@ afterEach(() => {
   cleanup();
 });
 
-function renderChrome() {
+function renderChrome(mode: "view" | "edit" = "view") {
   return render(
     <DocChrome
       trail={[{ label: "doc" }]}
-      mode="view"
+      mode={mode}
       onModeChange={() => undefined}
       canEdit
     />,
@@ -45,5 +45,16 @@ describe("DocChrome accelerator hints", () => {
     expect(screen.getByRole("radio", { name: "View" }).getAttribute("title")).toBe(
       "Toggle edit mode (Ctrl E)",
     );
+  });
+
+  it("removes shortcut hints and shortcut tooltips in edit mode", () => {
+    renderChrome("edit");
+    expect(document.querySelector("[data-doc-chrome-accelerators]")).toBeNull();
+    expect(
+      screen.getByRole("radio", { name: "View" }).getAttribute("title"),
+    ).toBeNull();
+    expect(
+      screen.getByRole("radio", { name: "Edit" }).getAttribute("title"),
+    ).toBeNull();
   });
 });

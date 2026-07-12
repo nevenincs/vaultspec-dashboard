@@ -13,7 +13,7 @@
 // (dashboard-layer-ownership).
 
 import type { ReactElement, ReactNode } from "react";
-import { isValidElement, useMemo, useState } from "react";
+import { isValidElement, useEffect, useMemo, useRef, useState } from "react";
 import type { Element as HastElement, Root } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
@@ -43,11 +43,22 @@ import {
   StepCheckMark,
   categoryColorVar,
 } from "../kit";
+import { copyLinkAction } from "../../stores/view/documentLinkActions";
 import { PlanSummaryCard } from "./PlanSummaryCard";
 import { CommentThreadPanel } from "./CommentThreadPanel";
 import { languageDisplayName } from "./languages";
 import { remarkBlockId } from "./remarkBlockId";
-import { remarkWikiLink, wikiLinkNodeId, WIKI_LINK_SCHEME } from "./remarkWikiLink";
+import {
+  remarkWikiLink,
+  wikiLinkFragment,
+  wikiLinkNodeId,
+  WIKI_LINK_SCHEME,
+} from "./remarkWikiLink";
+import {
+  clearSectionScroll,
+  requestSectionScroll,
+  useReaderSectionScroll,
+} from "./readerSectionScroll";
 import { buildCommentAnchorIndex, type HeadingBlock } from "./sectionAnchor";
 import {
   ReaderCommentsContext,
@@ -209,6 +220,14 @@ function CommentableHeading({
     fireActionDescriptor(
       commentSectionAction({ hasComments: count > 0, onOpen: () => setOpen(true) }),
     );
+  // Copy a section link (`[[stem#slug]]`) through the shared copy-link descriptor
+  // family (S32) — the slug is this heading's stamped block-identity id, so the
+  // emitted link round-trips back to this section on follow. Available only when the
+  // source is a document and the heading carries a slug.
+  const copySectionLink =
+    plane.docStem !== null && id !== undefined
+      ? () => fireActionDescriptor(copyLinkAction({ stem: plane.docStem, heading: id }))
+      : undefined;
   return (
     <div className="group relative" data-section-heading>
       {/* Reserve right-gutter space so the always-visible count chip + affordance
@@ -251,6 +270,7 @@ function CommentableHeading({
           ensureActor={plane.ensureActor}
           title={text}
           ambiguous={ambiguous}
+          onCopyLink={copySectionLink}
           onClose={() => setOpen(false)}
           className="absolute right-0 top-full z-40 mt-fg-1"
         />
@@ -435,14 +455,21 @@ function MarkdownBody({
       a({ href, children, ...props }) {
         const nodeId = href ? wikiLinkNodeId(href) : null;
         if (nodeId) {
+          const fragment = href ? wikiLinkFragment(href) : null;
           return (
             <a
               href="#"
               onClick={(event) => {
                 event.preventDefault();
                 // Read-mode wiki-link navigation: preview in the single
-                // provisional tab (#15), not an ever-growing pinned tab.
-                void previewDocTab(nodeId, "markdown", scope).catch(() => undefined);
+                // provisional tab (#15), not an ever-growing pinned tab. A section
+                // link (`[[stem#slug]]`) records the scroll intent so the target
+                // reader scrolls to the heading once its content renders (S31).
+                void previewDocTab(nodeId, "markdown", scope)
+                  .then(() => {
+                    if (fragment) requestSectionScroll(nodeId, fragment);
+                  })
+                  .catch(() => undefined);
               }}
               className="text-accent-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             >
@@ -531,6 +558,44 @@ export function MarkdownReader({
     [commentSource, anchorIndex, viewport],
   );
 
+  // Scroll-to-section (S31): when a followed section wiki-link recorded a scroll
+  // intent for this document, scroll to the heading carrying that slug id once the
+  // content is rendered (the doc may load async — the effect re-runs when the state
+  // flips to ready). The slug is the block-identity id the `remarkBlockId` plugin
+  // stamped, so resolution is by that SAME identity, never a second slugger.
+  const scrollRegionRef = useRef<HTMLDivElement>(null);
+  const scrollSlug = useReaderSectionScroll(nodeId);
+  useEffect(() => {
+    if (scrollSlug === null || nodeId === null) return;
+    if (markdownView.state !== "ready") return;
+    const region = scrollRegionRef.current;
+    if (region !== null) {
+      const heading = Array.from(
+        region.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6"),
+      ).find((el) => el.id === scrollSlug);
+      if (heading !== undefined) {
+        heading.scrollIntoView({ block: "start" });
+        // a11y: move focus to the section so keyboard/AT users land there too. The
+        // heading is not natively focusable; make it programmatically focusable and
+        // focus without a second scroll.
+        heading.setAttribute("tabindex", "-1");
+        heading.focus({ preventScroll: true });
+      }
+    }
+    // Consume the intent whether or not the heading was found — a missing anchor is
+    // a plain open, never a lingering stale target.
+    clearSectionScroll(nodeId);
+  }, [scrollSlug, nodeId, markdownView.state]);
+
+  // Clear a still-pending intent if this reader unmounts (or its document changes)
+  // before consuming it — a failed or aborted load must never leave a dormant intent
+  // that would scroll-jump a later, unrelated reopen of the same document.
+  useEffect(() => {
+    return () => {
+      if (nodeId !== null) clearSectionScroll(nodeId);
+    };
+  }, [nodeId]);
+
   // Loading is UI-ONLY (state-mode-uniformity ADR D2): a shimmer skeleton mimicking
   // the reader's rhythm, never on-screen "Loading…" text — the human label lives
   // only in the kit `Skeleton`'s sr-only. Empty / degraded / error stay plain
@@ -563,6 +628,7 @@ export function MarkdownReader({
             keyboard (arrows / PageUp-Down) even when its prose holds no links to
             tab through (WCAG 2.1.1; keyboard-navigation W03.P06.S19). */}
         <div
+          ref={scrollRegionRef}
           className="min-h-0 flex-1 overflow-auto"
           role="region"
           aria-label="document"

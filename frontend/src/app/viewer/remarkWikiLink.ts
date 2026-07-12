@@ -90,3 +90,17 @@ export function wikiLinkNodeId(url: string): string | null {
   const stem = raw.split("#", 1)[0]!.trim();
   return stem.length > 0 ? docNodeIdFromStem(stem) : null;
 }
+
+/** The heading-anchor fragment a section wiki-link (`[[stem#slug]]`) carries, or
+ *  null when the URL is not a wiki-link or carries no fragment. The slug is the
+ *  block-identity slug the `remarkBlockId` plugin stamps as each heading's id, so a
+ *  follower resolves it to the heading through that SAME identity (never re-slugged),
+ *  scrolling the reader to the section. */
+export function wikiLinkFragment(url: string): string | null {
+  if (!url.startsWith(WIKI_LINK_SCHEME)) return null;
+  const raw = url.slice(WIKI_LINK_SCHEME.length);
+  const hashIndex = raw.indexOf("#");
+  if (hashIndex === -1) return null;
+  const fragment = raw.slice(hashIndex + 1).trim();
+  return fragment.length > 0 ? fragment : null;
+}

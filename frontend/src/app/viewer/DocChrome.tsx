@@ -10,7 +10,7 @@
 // no raw `tiers` — the host derives the trail from the preserved stores header
 // model and passes mode + intent down.
 //
-// The toggle carries reading-mode accelerator hints (authoring-surface ADR D3): the
+// In reading mode, the toggle carries accelerator hints (authoring-surface ADR D3): the
 // view/edit toggle chord (Mod+E) and the close-editor chord (Mod+Alt+W) render as
 // Kbd chips DERIVED from the one keymap registry by shared action id — never
 // hand-typed (palette-accelerators-derive-from-the-keymap-registry). The default
@@ -76,18 +76,23 @@ export function DocChrome({
 }) {
   const toggleCaps = editorAcceleratorCaps(EDITOR_TOGGLE_MODE_ACTION_ID);
   const closeCaps = editorAcceleratorCaps(EDITOR_CLOSE_ACTION_ID);
+  const showAccelerators = mode === "view";
   const toggleTitle =
-    toggleCaps.length > 0 ? `Toggle edit mode (${toggleCaps.join(" ")})` : undefined;
+    showAccelerators && toggleCaps.length > 0
+      ? `Toggle edit mode (${toggleCaps.join(" ")})`
+      : undefined;
 
   return (
     <div data-doc-chrome className="shrink-0">
       <div className="flex items-center justify-between gap-fg-3 bg-paper py-[0.8125rem] pl-[1.25rem] pr-[0.875rem]">
         <Breadcrumb items={trail} className="min-w-0" />
         <div className="flex shrink-0 items-center gap-fg-3">
-          <div className="flex items-center gap-fg-3" data-doc-chrome-accelerators>
-            <AcceleratorHint label="Toggle" caps={toggleCaps} />
-            <AcceleratorHint label="Close" caps={closeCaps} />
-          </div>
+          {showAccelerators && (
+            <div className="flex items-center gap-fg-3" data-doc-chrome-accelerators>
+              <AcceleratorHint label="Toggle" caps={toggleCaps} />
+              <AcceleratorHint label="Close" caps={closeCaps} />
+            </div>
+          )}
           <SegmentedToggle
             value={mode}
             onChange={(next) => onModeChange(next === "edit" ? "edit" : "view")}
