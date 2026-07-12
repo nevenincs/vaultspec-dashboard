@@ -3519,6 +3519,58 @@ export function useGraphSlice(
 }
 
 /**
+ * Constellation-first progressive graph slice (on-demand-cold-start ADR D1).
+ * A LIVE document-granularity request whose slice is COLD (no held or
+ * placeholder data — the 1.9MB-class read is still in flight) serves the
+ * same-identity feature-LOD constellation as the held slice instead: 16x
+ * smaller, and a cache SHARE with the nav toolbar's descent (same query key),
+ * so a re-ascend or prior visit paints instantly. `isPending` is masked false
+ * while the fill shows, which makes the availability derivation report
+ * `refreshing` — the canvas renders the real constellation plus the
+ * non-blocking refresh banner, never a blank skeleton for MBs. Passthrough
+ * (zero extra query) for: feature-granularity requests, time-travel (`asOf`
+ * reads one historical snapshot), and any slice with held data.
+ */
+export function useProgressiveGraphSlice(
+  scope: unknown,
+  filter?: unknown,
+  asOf?: unknown,
+  granularity?: unknown,
+  lens?: unknown,
+  focus?: unknown,
+  corpus?: unknown,
+) {
+  const requested = useGraphSlice(
+    scope,
+    filter,
+    asOf,
+    granularity,
+    lens,
+    focus,
+    corpus,
+  );
+  const wantsFill =
+    normalizeDashboardGraphGranularity(granularity) === "document" &&
+    normalizeGraphSliceAsOf(asOf) === undefined;
+  // Cold = the requested slice holds nothing (not even keepPreviousData).
+  const cold = wantsFill && requested.data === undefined;
+  const constellation = useGraphSlice(
+    cold ? scope : null,
+    filter,
+    undefined,
+    "feature",
+    lens,
+    focus,
+    corpus,
+  );
+  const fillData = cold ? constellation.data : undefined;
+  return useMemo(() => {
+    if (fillData === undefined) return requested;
+    return { ...requested, data: fillData, isPending: false };
+  }, [requested, fillData]);
+}
+
+/**
  * The active-lens graph slice (graph-node-salience): reads lens + focus from
  * canonical dashboard state and parameterizes the graph query by them, so a lens
  * switch or focus change is a re-query keyed on (lens, focus).

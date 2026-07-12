@@ -403,6 +403,14 @@ const CODE_FILES_MAX_PAGES = 25;
 const VAULT_TREE_FIRST_PAGE_SIZE = 200;
 const VAULT_TREE_PAGE_SIZE = 2000;
 const VAULT_TREE_MAX_PAGES = 26;
+// Brief yield between continuation pages (on-demand-cold-start ADR D3) so the
+// background drain never contends with first paint / first interaction; the
+// page cap still bounds the loop, so total added latency is bounded too.
+const VAULT_TREE_PAGE_YIELD_MS = 120;
+
+function drainYield(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // --- §3 code (worktree) file tree (dashboard-code-tree ADR) ----------------------
 //
@@ -1946,6 +1954,7 @@ export class EngineClient {
           ...adaptVaultTree({ entries: [...entries], tiers }),
           complete: false,
         });
+        await drainYield(VAULT_TREE_PAGE_YIELD_MS);
       }
     } finally {
       settleDrainProgress(drainId);

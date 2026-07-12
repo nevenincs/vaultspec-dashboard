@@ -16,8 +16,8 @@ import {
   useActiveScope,
   useActiveWorkspace,
   useDashboardStageSceneView,
-  useGraphSlice,
   useGraphSliceAvailability,
+  useProgressiveGraphSlice,
   useHealStaleSessionIntentOnBoot,
   useHealTimelineModeToLiveOnBoot,
   useNodeNeighborsBulk,
@@ -165,7 +165,11 @@ export function Stage() {
     liveTimeline,
   } = stageView;
   const graphScope = graphQuery?.scope ?? null;
-  const slice = useGraphSlice(
+  // Constellation-first cold start (on-demand-cold-start ADR D1/D2): a cold
+  // persisted document-granularity boot paints the 16x-smaller feature LOD
+  // immediately and the document slice enriches behind the refresh banner —
+  // same query cache, same set-data path the nav descent already exercises.
+  const slice = useProgressiveGraphSlice(
     graphScope,
     graphQuery?.filter,
     graphQuery?.asOf,
