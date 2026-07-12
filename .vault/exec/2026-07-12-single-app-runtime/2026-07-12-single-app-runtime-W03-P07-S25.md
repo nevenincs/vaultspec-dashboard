@@ -27,4 +27,4 @@ Typed-path-only entry is retired: ADR O6 is closed end to end (served route + pi
 
 ## Notes
 
-Executed by a delegated frontend coder that again went silent after finishing; verified and committed by the orchestrator. The shared adapter files carried the parallel session's in-flight vault-tree-delta hunks - cross-committed deliberately after whole-tree verification, with their consuming mutations.ts left to their lane.
+Executed by a delegated frontend coder whose report arrived only after the orchestrator had already independently verified and committed the work (matching accounts: 11/11 its tests, 43/43 incl. adapters on the orchestrator's pass). The coder flags that the SHARED engine/target/debug binary predates /fs/list and stays locked by live dev processes - the next session in this tree should rebuild it once the locks clear. The shared adapter files carried the parallel session's in-flight vault-tree-delta hunks - cross-committed deliberately after whole-tree verification, with their consuming mutations.ts left to their lane.
