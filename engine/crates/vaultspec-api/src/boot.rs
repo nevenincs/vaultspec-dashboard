@@ -5,10 +5,8 @@
 //! `lib.rs` re-exports `serve` and `bootstrap_root` so the public surface is
 //! unchanged.
 
-use std::sync::Arc;
 use std::time::Duration;
 
-use crate::app::AppState;
 use crate::{DEFAULT_PORT, app, build_router, handshake, registry, routes, seat};
 
 /// Run the resident service on loopback: initial index, watcher-driven

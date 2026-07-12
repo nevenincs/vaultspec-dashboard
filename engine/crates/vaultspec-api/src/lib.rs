@@ -17,7 +17,6 @@ pub mod routes;
 pub mod seat;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
