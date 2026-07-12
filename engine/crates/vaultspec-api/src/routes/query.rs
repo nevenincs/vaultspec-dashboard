@@ -146,43 +146,11 @@ pub async fn map(State(state): State<Arc<AppState>>, Query(params): Query<MapPar
 }
 
 // --- GET /vault-tree?scope= ---------------------------------------------------
-
-#[derive(Deserialize)]
-pub struct VaultTreeParams {
-    pub scope: String,
-    #[serde(default)]
-    pub cursor: Option<String>,
-    #[serde(default)]
-    pub page_size: Option<usize>,
-}
-
-pub async fn vault_tree(
-    State(state): State<Arc<AppState>>,
-    Query(params): Query<VaultTreeParams>,
-) -> ApiResult {
-    let cell = validate_scope(&state, &params.scope)?;
-    // The stem-sorted doc-row projection is filter-independent and changes only on
-    // a graph rebuild, so it is memoized per generation (build_vault_tree_rows +
-    // ScopeCell.vault_tree_rows) instead of re-projecting + re-sorting every `doc:`
-    // node on each poll. The handler still paginates the cached slice per request.
-    let entries = cell.vault_tree_rows();
-    // Cursor pagination on the unbounded listing (contract §2, audit N8).
-    // Clamp the page size (robustness M2): a client-supplied page_size must not
-    // defeat the cursor cap and pull the whole listing in one response. 2000 is
-    // a generous upper bound; the default stays 500.
-    let page_size = params.page_size.unwrap_or(500).min(2000);
-    let (page, next_cursor) = engine_query::envelope::paginate(
-        &entries,
-        |e| e["stem"].as_str().unwrap_or_default(),
-        params.cursor.as_deref(),
-        page_size,
-    );
-    Ok(super::envelope(
-        json!({"entries": page}),
-        rag_tiers(&cell),
-        next_cursor,
-    ))
-}
+//
+// The `/vault-tree` full listing AND the `/vault-tree/delta` route moved to
+// `routes::vault_tree` (vault-tree-delta ADR D1/D3); the row projection + snapshot
+// ring live in `crate::vault_rows`. `validate_scope` (below) stays the shared
+// scope resolver both handlers call.
 
 // --- GET /code-files?scope= ---------------------------------------------------
 
