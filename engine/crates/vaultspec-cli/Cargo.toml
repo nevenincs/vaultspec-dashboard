@@ -19,6 +19,7 @@ engine-query.workspace = true
 engine-store = { version = "0.1.0", path = "../engine-store" }
 ingest-core = { version = "0.1.0", path = "../ingest-core" }
 ingest-git = { version = "0.1.0", path = "../ingest-git" }
+open = "5.4.0"
 rag-client = { version = "0.1.0", path = "../rag-client" }
 serde_json = "1.0.150"
 thiserror = "2.0.18"

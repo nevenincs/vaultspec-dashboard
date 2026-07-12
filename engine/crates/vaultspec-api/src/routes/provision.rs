@@ -1028,6 +1028,64 @@ pub(crate) async fn provision_job(
     }
 }
 
+// --- one-shot CLI facade (single-app-runtime D6) ------------------------------
+//
+// The terminal gets the SAME provisioning mouth the GUI has: these wrappers
+// drive the exact route handlers above in-process (same DTO validation — the
+// request is deserialized through the same serde grammar the wire uses, so no
+// CLI string can select an argv the wire could not), and the run wrapper polls
+// the same job registry to completion so a one-shot invocation returns the
+// finished outcome. One module, three consumers (startup gate via handshake,
+// the served projection, and the CLI): they cannot disagree.
+
+/// One-shot `provision status` over the launch workspace (the CLI's implicit
+/// target, exactly like every other one-shot verb).
+pub async fn cli_status(state: Arc<AppState>, workspace: Option<String>) -> Result<Value, Value> {
+    let target = TargetParams {
+        workspace,
+        worktree: None,
+    };
+    match provision_status(State(state), Query(target)).await {
+        Ok(Json(v)) => Ok(v),
+        Err((_, Json(v))) => Err(v),
+    }
+}
+
+/// One-shot `provision <action>`: validate through the wire DTO grammar, start
+/// the job through the same single-flight registry, and poll it to a terminal
+/// state (bounded by the job's own wall-clock ceiling plus slack).
+pub async fn cli_run(state: Arc<AppState>, request: Value) -> Result<Value, Value> {
+    let req: RunRequest = serde_json::from_value(request)
+        .map_err(|e| json!({"error": format!("invalid provision request: {e}")}))?;
+    let started = match provision_run(State(state.clone()), Json(req)).await {
+        Ok(Json(v)) => v,
+        Err((_, Json(v))) => return Err(v),
+    };
+    let Some(job_id) = started["data"]["job"]["id"].as_str().map(str::to_string) else {
+        // No job id means the run was refused with a typed payload.
+        return Err(started);
+    };
+    let deadline = Instant::now() + JOB_TIMEOUT + Duration::from_secs(60);
+    loop {
+        let polled = match provision_job(State(state.clone()), Path(job_id.clone())).await {
+            Ok(Json(v)) => v,
+            Err((_, Json(v))) => return Err(v),
+        };
+        match polled["data"]["job"]["state"].as_str() {
+            Some("running") if Instant::now() < deadline => {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Some("running") => {
+                return Err(json!({
+                    "error": "provisioning job still running past its ceiling",
+                    "job": polled["data"]["job"].clone(),
+                }));
+            }
+            _ => return Ok(polled),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

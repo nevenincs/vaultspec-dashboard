@@ -32,8 +32,9 @@ struct Cli {
     #[arg(long, global = true, value_name = "WORKTREE")]
     scope: Option<String>,
 
+    /// Omitted entirely = the app front door (`vaultspec open`).
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -98,10 +99,57 @@ enum Command {
     },
     /// Index state, backend health rollup, watcher state, seat state.
     Status,
+    /// Open the vaultspec app: attach to the running instance (or start it
+    /// detached) and open the dashboard in your browser. Bare `vaultspec`
+    /// does the same.
+    Open,
+    /// Provision the framework and companion tools for the current project.
+    Provision {
+        #[command(subcommand)]
+        action: Option<ProvisionCommand>,
+    },
     /// Gracefully stop the running vaultspec app (idempotent).
     Stop,
     /// Stop the running app (if any) and relaunch it detached.
     Restart,
+    /// Self-update a receipt-marked install (stop, update, relaunch).
+    /// Package-manager installs are refused with their own remediation.
+    Update,
+}
+
+#[derive(Subcommand)]
+enum ProvisionCommand {
+    /// The provisioning projection: managed / installable / migratable state.
+    Status,
+    /// Install the framework into the project.
+    Install {
+        /// Provider scaffolding to install: all|core|claude|gemini|antigravity|codex.
+        #[arg(long)]
+        provider: String,
+        /// Overwrite existing provider output (requires --confirm).
+        #[arg(long)]
+        force: bool,
+        /// Typed confirm token a --force requires.
+        #[arg(long)]
+        confirm: Option<String>,
+    },
+    /// Upgrade the framework's provider scaffolding.
+    Upgrade {
+        /// Provider scaffolding to upgrade: all|core|claude|gemini|antigravity|codex.
+        #[arg(long)]
+        provider: String,
+    },
+    /// Run the project's pending schema migrations.
+    Migrate,
+    /// Acquire (or upgrade) a machine-level companion tool.
+    Acquire {
+        /// Tool to acquire: core|rag.
+        #[arg(long)]
+        tool: String,
+        /// Upgrade an already-installed tool.
+        #[arg(long)]
+        upgrade: bool,
+    },
 }
 
 fn render(ctx: &Ctx, command_name: &str, result: Result<Value, cmd::CliError>) -> u8 {
@@ -140,12 +188,76 @@ fn render(ctx: &Ctx, command_name: &str, result: Result<Value, cmd::CliError>) -
     }
 }
 
+/// Split a machine-verb payload into (data, tiers). A payload that already
+/// rides the served envelope keeps its OWN tiers truth (the provisioning
+/// plane's); anything else gets the honest not-applicable block.
+fn split_envelope(payload: Value) -> (Value, Value) {
+    match (payload.get("data"), payload.get("tiers")) {
+        (Some(data), Some(tiers)) => (data.clone(), tiers.clone()),
+        _ => (
+            payload,
+            envelope::tiers_json(
+                Some("machine-lifecycle verb: no corpus consulted"),
+                Some("machine-lifecycle verb: no corpus consulted"),
+            ),
+        ),
+    }
+}
+
+fn run_provision(action: Option<ProvisionCommand>) -> Result<Value, String> {
+    let invocation = match action {
+        None | Some(ProvisionCommand::Status) => None,
+        Some(ProvisionCommand::Install {
+            provider,
+            force,
+            confirm,
+        }) => Some(cmd::provision::ProvisionInvocation {
+            action: "install",
+            provider: Some(provider),
+            tool: None,
+            upgrade: false,
+            force,
+            confirm,
+        }),
+        Some(ProvisionCommand::Upgrade { provider }) => Some(cmd::provision::ProvisionInvocation {
+            action: "upgrade",
+            provider: Some(provider),
+            tool: None,
+            upgrade: false,
+            force: false,
+            confirm: None,
+        }),
+        Some(ProvisionCommand::Migrate) => Some(cmd::provision::ProvisionInvocation {
+            action: "migrate",
+            provider: None,
+            tool: None,
+            upgrade: false,
+            force: false,
+            confirm: None,
+        }),
+        Some(ProvisionCommand::Acquire { tool, upgrade }) => {
+            Some(cmd::provision::ProvisionInvocation {
+                action: "acquire",
+                provider: None,
+                tool: Some(tool),
+                upgrade,
+                force: false,
+                confirm: None,
+            })
+        }
+    };
+    cmd::provision::run(invocation)
+}
+
 fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
+    // Bare invocation (a double-click, or plain `vaultspec`) IS the app
+    // front door (single-app-runtime D2): identical to the explicit `open`.
+    let command = cli.command.unwrap_or(Command::Open);
 
     // Serve mode short-circuits: it owns its own lifecycle. The global
     // `--scope` selects the served worktree (else the launch directory).
-    if let Command::Serve { port, no_seat } = cli.command {
+    if let Command::Serve { port, no_seat } = command {
         let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
         return match runtime.block_on(vaultspec_api::serve(port, cli.scope, no_seat)) {
             Ok(()) => std::process::ExitCode::SUCCESS,
@@ -160,18 +272,27 @@ fn main() -> std::process::ExitCode {
     // they read the seat's machine discovery, never a scope, so they run
     // BEFORE scope resolution. Their tiers block honestly marks the backend
     // tiers not-applicable — no corpus is consulted.
-    if matches!(cli.command, Command::Stop | Command::Restart) {
-        let (name, result) = match cli.command {
+    if matches!(
+        command,
+        Command::Open
+            | Command::Stop
+            | Command::Restart
+            | Command::Update
+            | Command::Provision { .. }
+    ) {
+        let (name, result) = match command {
+            Command::Open => ("open", cmd::launch::open_app()),
             Command::Stop => ("stop", cmd::lifecycle::stop()),
             Command::Restart => ("restart", cmd::lifecycle::restart()),
+            Command::Update => ("update", cmd::lifecycle::update()),
+            Command::Provision { action } => ("provision", run_provision(action)),
             _ => unreachable!(),
         };
-        let tiers = envelope::tiers_json(
-            Some("machine-lifecycle verb: no corpus consulted"),
-            Some("machine-lifecycle verb: no corpus consulted"),
-        );
+        // Provision results carry the plane's own served tiers; lifecycle
+        // verbs honestly mark the backend tiers not-applicable.
         return match result {
-            Ok(data) => {
+            Ok(payload) => {
+                let (data, tiers) = split_envelope(payload);
                 if cli.json {
                     envelope::emit_json(&envelope::ok(name, data, tiers));
                 } else {
@@ -181,6 +302,10 @@ fn main() -> std::process::ExitCode {
             }
             Err(message) => {
                 if cli.json {
+                    let tiers = envelope::tiers_json(
+                        Some("machine verb refused before any corpus read"),
+                        Some("machine verb refused before any corpus read"),
+                    );
                     envelope::emit_json(&envelope::fail(name, "lifecycle", &message, tiers));
                 } else {
                     eprintln!("vaultspec {name}: {message}");
@@ -192,7 +317,7 @@ fn main() -> std::process::ExitCode {
 
     // The envelope names the INVOKED verb even on resolve failure (audit
     // rider): scope errors belong to the command the user ran.
-    let command_name = match &cli.command {
+    let command_name = match &command {
         Command::Map => "map",
         Command::Index { .. } => "index",
         Command::Graph { .. } => "graph",
@@ -200,7 +325,13 @@ fn main() -> std::process::ExitCode {
         Command::Events { .. } => "events",
         Command::Status => "status",
         Command::Serve { .. } => "serve",
-        Command::Stop | Command::Restart => unreachable!("handled above"),
+        Command::Open
+        | Command::Stop
+        | Command::Restart
+        | Command::Update
+        | Command::Provision { .. } => {
+            unreachable!("handled above")
+        }
     };
     let ctx = match Ctx::resolve(cli.scope.as_deref(), cli.json) {
         Ok(ctx) => ctx,
@@ -222,7 +353,7 @@ fn main() -> std::process::ExitCode {
         }
     };
 
-    let code = match &cli.command {
+    let code = match &command {
         Command::Map => render(&ctx, "map", cmd::map::run(&ctx)),
         Command::Index { full } => render(&ctx, "index", cmd::index::run(&ctx, *full)),
         Command::Graph {
@@ -248,7 +379,12 @@ fn main() -> std::process::ExitCode {
             cmd::events::run(&ctx, *from, *to, kinds, bucket.as_deref()),
         ),
         Command::Status => render(&ctx, "status", cmd::status::run(&ctx)),
-        Command::Serve { .. } | Command::Stop | Command::Restart => {
+        Command::Serve { .. }
+        | Command::Open
+        | Command::Stop
+        | Command::Restart
+        | Command::Update
+        | Command::Provision { .. } => {
             unreachable!("handled above")
         }
     };

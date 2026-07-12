@@ -169,6 +169,101 @@ pub fn restart() -> Result<Value, String> {
     }))
 }
 
+/// `vaultspec update` — receipt-gated self-update (single-app-runtime D5,
+/// packaging-ADR update-provenance unchanged): stop the seat, run the
+/// axoupdater sidecar `dist` installs beside self-installed copies, then
+/// relaunch. A copy WITHOUT the sidecar was installed by a package manager
+/// and is refused with the manager remediation instead — never auto-updated.
+pub fn update() -> Result<Value, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let updater_name = if cfg!(windows) {
+        "vaultspec-update.exe"
+    } else {
+        "vaultspec-update"
+    };
+    let updater = exe.with_file_name(updater_name);
+    if !updater.is_file() {
+        return Ok(json!({
+            "updated": false,
+            "reason": "this copy has no self-update receipt (installed by a \
+                       package manager); update it there instead, e.g. \
+                       `scoop update vaultspec` or `cargo binstall vaultspec`",
+        }));
+    }
+    let was_running = read_seat().map(|(_, i)| seat_running(&i)).unwrap_or(false);
+    let stopped = stop()?;
+    // Bounded, output-capped sidecar run (resource-bounds subprocess law):
+    // updates download a release artifact, so the ceiling is generous.
+    let output = run_bounded(
+        std::process::Command::new(&updater),
+        Duration::from_secs(10 * 60),
+        1024 * 1024,
+    )?;
+    let relaunched = if was_running {
+        resolve_relaunch_root()
+            .and_then(|cwd| spawn_detached_serve(&cwd).ok())
+            .map(|pid| json!({"pid": pid, "seated": wait_for_seat(pid, START_WAIT)}))
+    } else {
+        None
+    };
+    Ok(json!({
+        "updated": true,
+        "stopped": stopped,
+        "updater_output": output,
+        "relaunched": relaunched,
+    }))
+}
+
+/// Run a subprocess with BOTH a wall-clock ceiling and an output byte cap,
+/// killing on breach (resource-bounds law). Returns the capped combined text.
+fn run_bounded(
+    mut cmd: std::process::Command,
+    timeout: Duration,
+    cap: usize,
+) -> Result<String, String> {
+    use std::io::Read as _;
+    let mut child = cmd
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn failed: {e}"))?;
+    let mut stdout = child.stdout.take();
+    let mut stderr = child.stderr.take();
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(out) = stdout.as_mut() {
+            let _ = out.take(cap as u64).read_to_end(&mut buf);
+        }
+        if let Some(err) = stderr.as_mut() {
+            let _ = err.take(cap as u64).read_to_end(&mut buf);
+        }
+        buf
+    });
+    let begun = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let buf = reader.join().unwrap_or_default();
+                let text = String::from_utf8_lossy(&buf).to_string();
+                return if status.success() {
+                    Ok(text)
+                } else {
+                    Err(format!("updater exited {status}: {text}"))
+                };
+            }
+            Ok(None) if begun.elapsed() < timeout => {
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                return Err("updater timed out and was killed".to_string());
+            }
+            Err(e) => return Err(format!("updater wait failed: {e}")),
+        }
+    }
+}
+
 /// Prefer the cwd's workspace when it is vaultspec-managed; else the
 /// launcher-state last-active root.
 fn resolve_relaunch_root() -> Option<PathBuf> {

@@ -282,8 +282,28 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // `nosniff` stops MIME-confusion on served assets, `DENY` blocks
         // clickjacking via framing, and `no-referrer` keeps loopback URLs out of
         // any cross-origin referrer. Applied OUTERMOST so every response — static
-        // asset, API, error, and SSE — carries them. (CSP is a separate task: it
-        // needs testing against the Vite-built SPA's inline/style needs.)
+        // asset, API, error, and SSE — carries them.
+        //
+        // CSP (single-app-runtime D7, closing the deferral recorded here):
+        // authored against the embedded SPA's ACTUAL needs — every script and
+        // stylesheet is a same-origin chunk (shiki grammars arrive via
+        // same-origin dynamic import); the pre-hydration boot shell is one
+        // inline <style> island and React styles are attributes (both under
+        // style-src 'unsafe-inline'); the favicon is a data: URI; SSE rides
+        // connect-src 'self'; the browser never contacts an external host
+        // (core and rag are reached by the ENGINE process, not the page).
+        // frame-ancestors 'none' mirrors X-Frame-Options DENY.
+        .layer(tower_http::set_header::SetResponseHeaderLayer::overriding(
+            axum::http::header::CONTENT_SECURITY_POLICY,
+            axum::http::HeaderValue::from_static(concat!(
+                "default-src 'self'; script-src 'self'; ",
+                "style-src 'self' 'unsafe-inline'; ",
+                "img-src 'self' data:; font-src 'self' data:; ",
+                "connect-src 'self'; worker-src 'self' blob:; ",
+                "frame-ancestors 'none'; base-uri 'self'; ",
+                "form-action 'self'; object-src 'none'"
+            )),
+        ))
         .layer(tower_http::set_header::SetResponseHeaderLayer::overriding(
             axum::http::header::X_CONTENT_TYPE_OPTIONS,
             axum::http::HeaderValue::from_static("nosniff"),
@@ -329,36 +349,62 @@ pub async fn serve(port: u16, scope: Option<String>, no_seat: bool) -> std::io::
     };
     // Resolve like every other verb (dogfood DF-2, D2.1): any launch
     // directory inside the workspace resolves to its containing worktree.
-    let workspace = ingest_git::workspace::Workspace::discover(&cwd)
-        .map_err(|e| std::io::Error::other(format!("not inside a git workspace: {e}")))?;
-    // Path-only resolution (worktree-enumeration sweep): the launch root is
-    // matched by path, so list roots cheaply rather than inspecting every
-    // worktree at serve boot.
-    let roots = ingest_git::worktrees::list_roots(&workspace)
-        .map_err(|e| std::io::Error::other(e.to_string()))?;
-    let cwd_clean = cwd.to_string_lossy().replace('\\', "/");
-    let root = roots
-        .into_iter()
-        .find(|p| {
-            let wp = p.to_string_lossy().replace('\\', "/");
-            let wp = wp.strip_prefix("//?/").unwrap_or(&wp).to_string();
-            let cw = cwd_clean.strip_prefix("//?/").unwrap_or(&cwd_clean);
-            cw == wp || cw.starts_with(&format!("{wp}/"))
-        })
-        .unwrap_or(cwd);
-    // Strip Windows extended-length prefixes so the served root compares
-    // cleanly with client-supplied scope strings.
-    let root = {
+    // WORKSPACE-LESS BOOT (single-app-runtime D4): a SEATED serve with no
+    // resolvable vault-bearing workspace (the first-ever double-click) does
+    // not fail — it boots over the engine-owned bootstrap root (an empty,
+    // deletable, re-derivable scratch corpus under the app home) so the SPA
+    // can serve the first-run onboarding and register the first real
+    // workspace through the registry write seam. Exempt serves (--no-seat,
+    // --port 0) keep the historical fail-loud contract the test harness
+    // asserts.
+    let seat_eligible = !(no_seat || port == 0);
+    let resolved_root: Result<std::path::PathBuf, String> = (|| {
+        let workspace = ingest_git::workspace::Workspace::discover(&cwd)
+            .map_err(|e| format!("not inside a git workspace: {e}"))?;
+        // Path-only resolution (worktree-enumeration sweep): the launch root
+        // is matched by path, so list roots cheaply rather than inspecting
+        // every worktree at serve boot.
+        let roots = ingest_git::worktrees::list_roots(&workspace).map_err(|e| e.to_string())?;
+        let cwd_clean = cwd.to_string_lossy().replace('\\', "/");
+        let root = roots
+            .into_iter()
+            .find(|p| {
+                let wp = p.to_string_lossy().replace('\\', "/");
+                let wp = wp.strip_prefix("//?/").unwrap_or(&wp).to_string();
+                let cw = cwd_clean.strip_prefix("//?/").unwrap_or(&cwd_clean);
+                cw == wp || cw.starts_with(&format!("{wp}/"))
+            })
+            .unwrap_or(cwd.clone());
+        // Strip Windows extended-length prefixes so the served root compares
+        // cleanly with client-supplied scope strings.
         let cleaned = root.to_string_lossy().replace('\\', "/");
-        std::path::PathBuf::from(cleaned.strip_prefix("//?/").unwrap_or(&cleaned))
+        let root = std::path::PathBuf::from(cleaned.strip_prefix("//?/").unwrap_or(&cleaned));
+        if !root.join(".vault").is_dir() {
+            return Err(format!(
+                "no .vault corpus under {} - vaultspec serve runs inside a \
+                 vaultspec-managed worktree",
+                root.display()
+            ));
+        }
+        Ok(root)
+    })();
+    let (root, bootstrap) = match resolved_root {
+        Ok(root) => (root, false),
+        Err(reason) if seat_eligible => {
+            let home = vaultspec_session::app_home::app_home_dir().ok_or_else(|| {
+                std::io::Error::other(format!(
+                    "{reason}; and no home directory is resolvable for the \
+                     first-run bootstrap"
+                ))
+            })?;
+            eprintln!(
+                "vaultspec serve: no workspace at the launch directory \
+                 ({reason}); booting the first-run onboarding surface."
+            );
+            (bootstrap_root(&home)?, true)
+        }
+        Err(reason) => return Err(std::io::Error::other(reason)),
     };
-    if !root.join(".vault").is_dir() {
-        return Err(std::io::Error::other(format!(
-            "no .vault corpus under {} - vaultspec serve runs inside a \
-             vaultspec-managed worktree",
-            root.display()
-        )));
-    }
 
     // Machine seat (single-app-runtime D1): one resident app process per
     // machine, enforced by an OS file lock the kernel releases on ANY death
@@ -475,7 +521,10 @@ pub async fn serve(port: u16, scope: Option<String>, no_seat: bool) -> std::io::
 
     // Auto-register the launch workspace as the first registry root
     // (dashboard-workspace-registry ADR, P01.S03), so the single-project
-    // experience is unchanged. The stable workspace id is the canonical git
+    // experience is unchanged. The BOOTSTRAP root is deliberately NOT
+    // registered (single-app-runtime D4): it is engine-owned scratch, not a
+    // user workspace — an empty registry is the SPA's first-run signal.
+    // The stable workspace id is the canonical git
     // common dir (the same identity-bearing derivation the rest of the contract
     // uses), discovered READ-ONLY from the launch root; the label defaults to the
     // launch root's final path component, the path is the launch token. This
@@ -483,7 +532,7 @@ pub async fn serve(port: u16, scope: Option<String>, no_seat: bool) -> std::io::
     // a discovery or store failure degrades to "no registry seeded" and the rail
     // renders the launch workspace as the header fallback. The active workspace
     // is seeded to the launch root when none is selected yet.
-    {
+    if !bootstrap {
         let workspace_id = ingest_git::workspace::Workspace::discover(&state.workspace_root)
             .ok()
             .map(|ws| routes::scope_token(&ws.common_dir));
@@ -521,8 +570,11 @@ pub async fn serve(port: u16, scope: Option<String>, no_seat: bool) -> std::io::
 
     // Launcher state (single-app-runtime D3): a seated boot records its
     // workspace in the machine-global known-roots file so a cwd-less launch
-    // (double-click) can resolve "where did I work last". Best-effort.
-    if let Some(guard) = &seat_guard {
+    // (double-click) can resolve "where did I work last". Best-effort. The
+    // bootstrap root is scratch, never recorded.
+    if let Some(guard) = &seat_guard
+        && !bootstrap
+    {
         let id = ingest_git::workspace::Workspace::discover(&state.workspace_root)
             .ok()
             .map(|ws| routes::scope_token(&ws.common_dir))
@@ -609,6 +661,24 @@ pub async fn serve(port: u16, scope: Option<String>, no_seat: bool) -> std::io::
     app::remove_service_json_if_owned(&discovery_dir);
     drop(seat_guard);
     result
+}
+
+/// The engine-owned bootstrap root for workspace-less boots (single-app-
+/// runtime D4): an empty scratch corpus under the app home — a bare-bones
+/// git repository (initialized once, engine-owned, deletable, re-derivable;
+/// this touches NO user repository and is exempt from the never-mutate-git
+/// rule the same way the engine-data cache is exempt from never-write-vault)
+/// plus an empty `.vault/`. The whole existing pipeline runs over it and
+/// serves honest empty projections until the first real workspace is
+/// registered through the SPA onboarding.
+pub fn bootstrap_root(home: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    let root = home.join("bootstrap");
+    std::fs::create_dir_all(root.join(".vault"))?;
+    if !root.join(".git").exists() {
+        gix::init(&root)
+            .map_err(|e| std::io::Error::other(format!("bootstrap repository init failed: {e}")))?;
+    }
+    Ok(root)
 }
 
 #[cfg(test)]
@@ -730,6 +800,27 @@ mod tests {
         assert_eq!(
             headers.get("referrer-policy").and_then(|v| v.to_str().ok()),
             Some("no-referrer"),
+        );
+        // CSP (single-app-runtime D7): same-origin everything, the SPA's two
+        // real allowances (inline style island, data: favicon), nothing else.
+        let csp = headers
+            .get("content-security-policy")
+            .and_then(|v| v.to_str().ok())
+            .expect("CSP on every response");
+        for directive in [
+            "default-src 'self'",
+            "script-src 'self'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data:",
+            "connect-src 'self'",
+            "frame-ancestors 'none'",
+            "object-src 'none'",
+        ] {
+            assert!(csp.contains(directive), "CSP missing `{directive}`: {csp}");
+        }
+        assert!(
+            !csp.contains("unsafe-eval"),
+            "CSP must never allow eval: {csp}"
         );
     }
 
