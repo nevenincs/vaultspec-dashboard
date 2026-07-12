@@ -392,8 +392,17 @@ const CODE_FILES_MAX_PAGES = 25;
 // The page is the route's sanctioned maximum; the page cap bounds the walk
 // (bounded-by-default-for-every-accumulator) so a pathological corpus cannot
 // spin the loop unboundedly.
+//
+// The FIRST page is deliberately small (universal-data-loading ADR D5,
+// first-page-first): the cold-load rail paints after ~a couple hundred rows
+// instead of buffering the route max, and the progressive `complete:false`
+// partial path engages on ordinary corpora too — with a 2000-row first page,
+// any vault under 2000 documents loaded as one monolithic response and the
+// progressive render never fired. Subsequent pages use the route max so the
+// drain still finishes in few round-trips; the cap covers the same 50k total.
+const VAULT_TREE_FIRST_PAGE_SIZE = 200;
 const VAULT_TREE_PAGE_SIZE = 2000;
-const VAULT_TREE_MAX_PAGES = 25;
+const VAULT_TREE_MAX_PAGES = 26;
 
 // --- §3 code (worktree) file tree (dashboard-code-tree ADR) ----------------------
 //
@@ -1923,7 +1932,11 @@ export class EngineClient {
           entries?: unknown[];
           tiers?: unknown;
           next_cursor?: string;
-        }>("/vault-tree", { scope, page_size: VAULT_TREE_PAGE_SIZE, cursor });
+        }>("/vault-tree", {
+          scope,
+          page_size: page === 0 ? VAULT_TREE_FIRST_PAGE_SIZE : VAULT_TREE_PAGE_SIZE,
+          cursor,
+        });
         if (Array.isArray(body.entries)) entries.push(...body.entries);
         if (body.tiers !== undefined) tiers = body.tiers;
         cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;

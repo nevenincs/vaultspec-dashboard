@@ -45,7 +45,7 @@ describe("EngineClient", () => {
     const urls = calls.map((c) => c.url);
     expect(urls).toEqual([
       "/api/map",
-      "/api/vault-tree?scope=wt-1&page_size=2000",
+      "/api/vault-tree?scope=wt-1&page_size=200",
       "/api/graph/query",
       "/api/filters?scope=wt-1",
       "/api/nodes/feature%3Aa?scope=wt-1",
@@ -126,7 +126,9 @@ describe("EngineClient", () => {
     const tree = await client.vaultTree("wt-1");
 
     expect(calls.map((c) => c.url)).toEqual([
-      "/api/vault-tree?scope=wt-1&page_size=2000",
+      // First page is deliberately small (progressive first paint, ADR D5);
+      // continuation pages use the route max.
+      "/api/vault-tree?scope=wt-1&page_size=200",
       "/api/vault-tree?scope=wt-1&page_size=2000&cursor=a-S01",
     ]);
     expect(tree.entries.map((e) => e.feature_tags[0])).toEqual(["a", "b"]);
