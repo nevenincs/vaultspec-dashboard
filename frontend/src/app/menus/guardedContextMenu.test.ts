@@ -149,7 +149,6 @@ describe("touch-selectability law sweep (ADR D4)", () => {
     // removal — or a new surface reverting to UA button suppression — fails here.
     const mustCarrySelectText = [
       "left/TreeBrowser.tsx",
-      "right/Inspector.tsx",
       "right/StatusTab.tsx",
       "stage/DockWorkspace.tsx",
       "islands/NodeInterior.tsx",

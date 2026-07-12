@@ -157,6 +157,10 @@ export interface CommandContext {
   graphFrozen: boolean;
   /** Shell-frame visibility snapshot (the window provider reads these). */
   shell: CommandShellContext;
+  /** The open document's stem for document-scoped verbs (copy-link), or null/absent
+   *  when no document — or a non-document tab — is active. A provider enrolls its
+   *  doc-scoped commands only when this resolves. */
+  activeDocumentStem?: string | null;
   /** Runtime effect intents the providers fire. */
   intents: CommandIntents;
 }

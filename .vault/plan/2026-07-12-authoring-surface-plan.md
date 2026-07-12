@@ -7,8 +7,8 @@ modified: '2026-07-12'
 tier: L3
 related:
   - '[[2026-07-12-authoring-surface-adr]]'
+  - '[[2026-07-12-authoring-surface-research]]'
 ---
-
 # `authoring-surface` plan
 
 ## Wave `W01` - Backend: ledgered plan ticks and the comments store
@@ -69,29 +69,29 @@ Close the remaining ADR decisions: the in-editor draft-vs-saved diff (D4), readi
 
 The editor retains its opening text and gains a toggleable draft-vs-saved diff reusing the pure diff-lines view - zero new wire calls.
 
-- [ ] `W03.P06.S18` - Retain the opening text as baseText in the editor slice at open, cleared on close; `frontend/src/stores/view/editor.ts`.
-- [ ] `W03.P06.S19` - Add the editor toggle-diff action and toolbar button mounting the pure diff-lines view as a collapsible draft-vs-saved section above the textarea; `frontend/src/app/viewer/MarkdownDocView.tsx`.
-- [ ] `W03.P06.S20` - Tests: the diff toggle renders draft-vs-saved hunks and enrolls in keymap and palette under one id; `frontend/src/app/viewer`.
+- [x] `W03.P06.S18` - Retain the opening text as baseText in the editor slice at open, cleared on close; `frontend/src/stores/view/editor.ts`.
+- [x] `W03.P06.S19` - Add the editor toggle-diff action and toolbar button mounting the pure diff-lines view as a collapsible draft-vs-saved section above the textarea; `frontend/src/app/viewer/MarkdownDocView.tsx`.
+- [x] `W03.P06.S20` - Tests: the diff toggle renders draft-vs-saved hunks and enrolls in keymap and palette under one id; `frontend/src/app/viewer`.
 
 ### Phase `W03.P07` - Visible create actions and reading-mode polish (D3, D5, D6)
 
 Accelerator hints, the copy-link verb, New-document buttons in the empty state and rail header, the scoped Features-section create, and the corpus-fed feature combobox in the create dialog - every affordance dispatching the one shared descriptor.
 
-- [ ] `W03.P07.S21` - Surface the view-edit toggle and close-editor accelerator hints on the segmented control; `frontend/src/app/viewer/DocChrome.tsx`.
-- [ ] `W03.P07.S22` - Author the vault-doc copy-link action descriptor producing a deep link with heading anchor when block-invoked, enrolled across menus and palette; `frontend/src/app/menus`.
-- [ ] `W03.P07.S23` - Add the New-document secondary button to the workspace empty state through the shared new-document action; `frontend/src/app/stage/WorkspaceGhost.tsx`.
-- [ ] `W03.P07.S24` - Add the vault-mode Plus create button to the browser-region header via the shared new-document action; `frontend/src/app/left/BrowserRegion.tsx`.
-- [ ] `W03.P07.S25` - Add the Features-section scoped Plus that opens the create dialog focused on the feature field; `frontend/src/app/left/TreeBrowser.tsx`.
-- [ ] `W03.P07.S26` - Swap the create-dialog feature input to the corpus-fed autocomplete combobox preserving free text for new tags; `frontend/src/app/left/CreateDocDialog.tsx`.
-- [ ] `W03.P07.S27` - Render and guard tests for every new affordance: single-descriptor law, coverage guards, compact variants; `frontend/src/app`.
+- [x] `W03.P07.S21` - Surface the view-edit toggle and close-editor accelerator hints on the segmented control; `frontend/src/app/viewer/DocChrome.tsx`.
+- [x] `W03.P07.S22` - Author the vault-doc copy-link action descriptor producing a deep link with heading anchor when block-invoked, enrolled across menus and palette; `frontend/src/app/menus`.
+- [x] `W03.P07.S23` - Add the New-document secondary button to the workspace empty state through the shared new-document action; `frontend/src/app/stage/WorkspaceGhost.tsx`.
+- [x] `W03.P07.S24` - Add the vault-mode Plus create button to the browser-region header via the shared new-document action; `frontend/src/app/left/BrowserRegion.tsx`.
+- [x] `W03.P07.S25` - Add the Features-section scoped Plus that opens the create dialog focused on the feature field; `frontend/src/app/left/TreeBrowser.tsx`.
+- [x] `W03.P07.S26` - Swap the create-dialog feature input to the corpus-fed autocomplete combobox preserving free text for new tags; `frontend/src/app/left/CreateDocDialog.tsx`.
+- [x] `W03.P07.S27` - Render and guard tests for every new affordance: single-descriptor law, coverage guards, compact variants; `frontend/src/app`.
 
 ### Phase `W03.P08` - Cruft deletion and closeout (D7)
 
 Delete the unmounted right-rail components, mirror the new affordances into the binding design file, and run the full epic gate.
 
-- [ ] `W03.P08.S28` - Delete the unmounted Inspector, NowStrip, and DocHeader components together with their render tests; `frontend/src/app/right`.
-- [ ] `W03.P08.S29` - Mirror the new affordances into the binding design file or record the deliberate divergence; `FRAMES.md`.
-- [ ] `W03.P08.S30` - Run the full epic gate for both languages and persist the closeout summary; `.vault/exec/2026-07-12-authoring-surface`.
+- [x] `W03.P08.S28` - Delete the unmounted Inspector, NowStrip, and DocHeader components together with their render tests; `frontend/src/app/right`.
+- [x] `W03.P08.S29` - Mirror the new affordances into the binding design file or record the deliberate divergence; `FRAMES.md`.
+- [x] `W03.P08.S30` - Run the full epic gate for both languages and persist the closeout summary; `.vault/exec/2026-07-12-authoring-surface`.
 
 ## Description
 

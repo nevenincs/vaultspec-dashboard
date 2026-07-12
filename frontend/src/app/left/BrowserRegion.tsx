@@ -9,11 +9,12 @@
 // facets from `dashboardState.filters`, and the Files tree narrows by the same
 // canonical text. This region hosts no filter control of its own.
 
-import { ArrowUpDown } from "lucide-react";
+import { ArrowUpDown, Plus } from "lucide-react";
 
 import { useBrowserMode, useBrowserModeIntent } from "../../stores/view/browserMode";
 import { useActiveScope, useVaultFilesNarrowText } from "../../stores/server/queries";
 import { openContextMenu } from "../../stores/view/contextMenu";
+import { newDocumentAction } from "../../stores/view/leftRailKeybindings";
 import { RAIL_SORT_OPTIONS, useRailSort } from "../../stores/view/railSort";
 import { useViewportClass } from "../../stores/view/viewportClass";
 import { IconButton } from "../kit";
@@ -86,7 +87,21 @@ export function BrowserRegion() {
         <div className="min-w-0 flex-1">
           <BrowserModeToggle mode={mode} onModeChange={setMode} />
         </div>
-        {mode === "vault" && <VaultTreeOptionsButton scope={scope} />}
+        {mode === "vault" && (
+          <>
+            {/* Always-visible create discovery (authoring-surface ADR D5): dispatches
+                the ONE shared new-document action descriptor, never a bespoke handler.
+                Vault mode only — the Files tree lists source, not authored docs. */}
+            <IconButton
+              label="New document"
+              data-new-document
+              onClick={() => newDocumentAction().run?.()}
+            >
+              <Plus size={16} aria-hidden />
+            </IconButton>
+            <VaultTreeOptionsButton scope={scope} />
+          </>
+        )}
       </div>
 
       {/* The active tab's tree. On desktop the listing scrolls under the pinned tabs;

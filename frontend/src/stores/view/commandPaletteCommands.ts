@@ -45,6 +45,8 @@ import { useCommandPaletteOpsRunMutation } from "./opsRun";
 import { requestCloseDocumentEditor } from "./unsavedEditGuard";
 import { closeAllDocTabs, promoteDocTab, reloadDocTab } from "./tabs";
 import { useViewStore } from "./viewStore";
+import { copyLinkAction } from "./documentLinkActions";
+import { stemFromDocNodeId } from "../server/liveAdapters";
 import {
   graphFitToView,
   graphResetView,
@@ -376,6 +378,8 @@ export function buildEditorCommands(intents: {
   closeAllDocs: () => void;
   reloadDoc: () => void;
   keepOpen: () => void;
+  /** Toggle the draft-vs-saved diff panel (authoring-surface ADR D4). */
+  toggleDiff: () => void;
 }): PaletteCommand[] {
   const commands: unknown[] = [
     {
@@ -402,6 +406,29 @@ export function buildEditorCommands(intents: {
       family: "app",
       run: intents.keepOpen,
     },
+    {
+      // Shared id with the keymap chord (Mod+Shift+D) so accelerators derive
+      // correctly from the registry (actions-keymap-palette: one id per verb).
+      id: "editor:toggle-diff",
+      label: "Toggle Draft Diff",
+      family: "edit",
+      run: intents.toggleDiff,
+    },
+  ];
+  return normalizedPaletteCommands(commands);
+}
+
+/**
+ * Document-scoped palette commands (authoring-surface ADR D3). Copy-link is enrolled
+ * ONLY when a document is open (`stem` non-null), so it is never a dead command with
+ * no target. It composes the SAME shared `copyLinkAction` builder the vault-doc
+ * context menu uses under one id (`vault-doc:copy-link`), so the verb is authored once
+ * across both planes (the unified action plane).
+ */
+export function buildDocumentCommands(opts: { stem: string | null }): PaletteCommand[] {
+  if (opts.stem === null) return [];
+  const commands: unknown[] = [
+    { ...copyLinkAction({ stem: opts.stem }), family: "app" },
   ];
   return normalizedPaletteCommands(commands);
 }
@@ -802,6 +829,10 @@ export function useCommandPaletteCommandView(
   const rightPanelSetTab = useShellPanelIntent(scope).setRightTab;
   const dateBounds = vocabulary.dateBounds;
   const timeTravel = timeline.opsDisabled;
+  // The open document's stem, read reactively (raw primitive selector — stable) so the
+  // document-scoped copy-link command enrolls/withdraws as the active tab changes.
+  const activeDocId = useViewStore((state) => state.activeDocId);
+  const activeDocumentStem = stemFromDocNodeId(activeDocId);
   useCommandPaletteOpsFeedbackBoundary(scope, timeTravel);
 
   const commands = useMemo(() => {
@@ -817,6 +848,7 @@ export function useCommandPaletteCommandView(
         timelineVisible: shellFrame.timelineVisible,
         graphVisible: shellFrame.graphVisible,
       },
+      activeDocumentStem,
       intents: {
         collapseTree: () => {
           const key = browserTreeExpansionKey(scope, browserMode);
@@ -875,6 +907,7 @@ export function useCommandPaletteCommandView(
       normalizedQuery,
     );
   }, [
+    activeDocumentStem,
     browserMode,
     clearFeatureFilter,
     clearProjectHistory,

@@ -10,8 +10,15 @@
 // app-wide dialogs so every entry point renders it (it previously anchored to
 // the retired stage nav bar and went dark).
 
-import { useActiveScope, useCreateDoc } from "../../stores/server/queries";
+import { useEffect, useMemo, useRef } from "react";
+
 import {
+  useActiveScope,
+  useCreateDoc,
+  useEditorLinkingCorpus,
+} from "../../stores/server/queries";
+import {
+  consumeCreateDocFocusFeature,
   CREATE_DOC_TYPES,
   deriveCreateDocSubmission,
   isCreateDocType,
@@ -21,18 +28,50 @@ import {
   setCreateDocTitle,
   setCreateDocType,
   useCreateDocChrome,
+  useCreateDocChromeStore,
 } from "../../stores/view/createDocChrome";
 import { openDocTab } from "../../stores/view/tabs";
+import { AutocompleteCombobox, type ComboOption } from "../viewer/AutocompleteCombobox";
 import { Dialog } from "../chrome/Dialog";
 import { Button } from "../kit";
 
 export function CreateDocDialog() {
   const scope = useActiveScope();
   const create = useCreateDoc();
-  const { open, docType, feature, title, error } = useCreateDocChrome();
+  const { open, docType, feature, title, error, focusFeatureField } =
+    useCreateDocChrome();
+  // The pickable feature vocabulary — the SAME live corpus the editor's Feature
+  // picker reads (useEditorLinkingCorpus), so both create entry points share one
+  // source and a value can only ever name an existing tag (free text still creates
+  // a new one). Derived in a memo over the raw corpus (store-selector law).
+  const corpus = useEditorLinkingCorpus(scope);
+  const featureOptions: ComboOption[] = useMemo(
+    () => corpus.featureTags.map((tag) => ({ value: tag, primary: tag })),
+    [corpus.featureTags],
+  );
+  const featureFieldRef = useRef<HTMLDivElement>(null);
+
+  // Honour the one-shot focus request from the Features-section create affordance
+  // (D5/D6): when the dialog opens with the flag set, move focus to the feature
+  // combobox input. Consumed once so a later ordinary open does not steal focus.
+  useEffect(() => {
+    if (!open || !focusFeatureField) return;
+    if (!consumeCreateDocFocusFeature()) return;
+    featureFieldRef.current
+      ?.querySelector<HTMLInputElement>('[role="combobox"]')
+      ?.focus();
+  }, [open, focusFeatureField]);
 
   const submit = () => {
-    const submission = deriveCreateDocSubmission({ docType, feature, title });
+    // Read the freshest draft from the store, not the render snapshot: a combobox
+    // free-text commit fires synchronously just before an Enter-submit, so getState
+    // reflects the just-typed feature that the captured `feature` would still miss.
+    const draft = useCreateDocChromeStore.getState();
+    const submission = deriveCreateDocSubmission({
+      docType: draft.docType,
+      feature: draft.feature,
+      title: draft.title,
+    });
     if (!submission.ok) {
       setCreateDocError(submission.error);
       return;
@@ -102,18 +141,28 @@ export function CreateDocDialog() {
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-fg-1 text-label text-ink-muted">
+        {/* Corpus-fed feature picker (authoring-surface ADR D6): the SAME combobox
+            the editor's Feature field uses, over the live feature-tag vocabulary.
+            Free text is preserved, so typing a NEW tag still creates the feature with
+            its first document — feature creation stays implicit. Enter submits the
+            dialog only when the suggestion list is closed (onSubmit). */}
+        <div
+          className="flex flex-col gap-fg-1 text-label text-ink-muted"
+          ref={featureFieldRef}
+          data-create-feature-field
+        >
           Feature
-          <input
-            className="rounded-fg-xs border border-rule bg-paper px-fg-2 py-fg-1 text-body text-ink outline-none focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-            value={feature}
-            onChange={(event) => setCreateDocFeature(event.target.value)}
-            onKeyDown={submitOnEnter}
+          <AutocompleteCombobox
+            options={featureOptions}
+            onCommit={(value) => setCreateDocFeature(value)}
+            onSubmit={submit}
             placeholder="feature-tag"
-            aria-label="feature"
-            spellCheck={false}
+            ariaLabel="feature"
+            allowFreeText
+            initialQuery={feature}
+            emptyLabel="Type to create a new feature tag"
           />
-        </label>
+        </div>
         <label className="flex flex-col gap-fg-1 text-label text-ink-muted">
           Title
           <input

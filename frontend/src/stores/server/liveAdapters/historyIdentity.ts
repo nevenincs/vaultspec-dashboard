@@ -257,6 +257,14 @@ export function docNodeIdFromStem(stem: string): string {
   return `doc:${stem}`;
 }
 
+/** The inverse: a `doc:{stem}` node id → its vault document stem, or null when the id
+ *  is not a document node (a `code:`/other node carries no document stem). */
+export function stemFromDocNodeId(nodeId: unknown): string | null {
+  if (typeof nodeId !== "string" || !nodeId.startsWith("doc:")) return null;
+  const stem = nodeId.slice("doc:".length).trim();
+  return stem.length > 0 ? stem : null;
+}
+
 /** A repo-relative code path → its contract code-artifact node id (`code:{path}`). */
 export function codeNodeIdFromPath(path: string): string {
   return `code:${path}`;

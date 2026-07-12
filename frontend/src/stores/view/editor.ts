@@ -31,6 +31,11 @@ export interface DocumentEditorView {
   isEditing: boolean;
   draftText: string;
   baseBlobHash: string;
+  /** The body text as it was when the editor was opened (the diff base). Empty
+   *  when not editing. Stays frozen while the draft diverges from it. */
+  baseText: string;
+  /** Whether the in-editor draft-vs-saved diff section is expanded. */
+  diffVisible: boolean;
   status: EditorStatus;
   statusLabel: string;
   statusTone: EditorStatusTone;
@@ -261,7 +266,12 @@ function editorStatusToneClass(tone: EditorStatusTone): string {
 export function deriveDocumentEditorView(
   state: Pick<
     ViewState,
-    "editorTarget" | "draftText" | "baseBlobHash" | "editorStatus"
+    | "editorTarget"
+    | "draftText"
+    | "baseBlobHash"
+    | "editorStatus"
+    | "editorBaseText"
+    | "editorDiffVisible"
   >,
   nodeId: unknown,
 ): DocumentEditorView {
@@ -273,6 +283,8 @@ export function deriveDocumentEditorView(
       normalizedNodeId !== null && state.editorTarget?.nodeId === normalizedNodeId,
     draftText: state.draftText,
     baseBlobHash: state.baseBlobHash,
+    baseText: state.editorBaseText,
+    diffVisible: state.editorDiffVisible,
     status,
     statusLabel: STATUS_LABEL[status],
     statusTone,
@@ -289,13 +301,30 @@ export function useDocumentEditorView(nodeId: unknown): DocumentEditorView {
   const draftText = useViewStore((state) => state.draftText);
   const baseBlobHash = useViewStore((state) => state.baseBlobHash);
   const editorStatus = useViewStore((state) => state.editorStatus);
+  const editorBaseText = useViewStore((state) => state.editorBaseText);
+  const editorDiffVisible = useViewStore((state) => state.editorDiffVisible);
   return useMemo(
     () =>
       deriveDocumentEditorView(
-        { editorTarget, draftText, baseBlobHash, editorStatus },
+        {
+          editorTarget,
+          draftText,
+          baseBlobHash,
+          editorStatus,
+          editorBaseText,
+          editorDiffVisible,
+        },
         nodeId,
       ),
-    [editorTarget, draftText, baseBlobHash, editorStatus, nodeId],
+    [
+      editorTarget,
+      draftText,
+      baseBlobHash,
+      editorStatus,
+      editorBaseText,
+      editorDiffVisible,
+      nodeId,
+    ],
   );
 }
 
@@ -401,8 +430,8 @@ export function markEditorSaving(): void {
   useViewStore.getState().markSaving();
 }
 
-export function markEditorSaved(blobHash: unknown): void {
-  useViewStore.getState().markSaved(blobHash);
+export function markEditorSaved(blobHash: unknown, savedText: string): void {
+  useViewStore.getState().markSaved(blobHash, savedText);
 }
 
 export function markEditorConflict(): void {
@@ -415,6 +444,11 @@ export function markEditorFailed(): void {
 
 export function closeDocumentEditor(): void {
   useViewStore.getState().closeEditor();
+}
+
+/** Toggle the in-editor draft-vs-saved diff panel (authoring-surface ADR D4). */
+export function toggleEditorDiff(): void {
+  useViewStore.getState().toggleEditorDiff();
 }
 
 export function setMarkdownEditorRenameDraft(draft: unknown): void {
@@ -437,10 +471,13 @@ export function setMarkdownEditorAdvisories(advisories: unknown): void {
   useMarkdownEditorChromeStore.getState().setAdvisories(advisories);
 }
 
-export function applyEditorWriteResult(result: EditorWriteResult): void {
+export function applyEditorWriteResult(
+  result: EditorWriteResult,
+  savedText: string,
+): void {
   setMarkdownEditorAdvisories(conformanceChecksOf(result));
   if (result.kind === "saved") {
-    markEditorSaved(result.blobHash);
+    markEditorSaved(result.blobHash, savedText);
     return;
   }
   if (result.kind === "conflict") {

@@ -19,6 +19,8 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
+import { GitCompare } from "lucide-react";
+
 import {
   useCreateComment,
   useDeleteComment,
@@ -45,6 +47,7 @@ import { dispatchOps } from "../../stores/server/opsActions";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { guardedContextMenu } from "../menus/guardedContextMenu";
 import {
+  EDITOR_TOGGLE_DIFF_LABEL,
   EDITOR_TOGGLE_MODE_ACTION_ID,
   EDITOR_TOGGLE_MODE_LABEL,
 } from "../../stores/view/editorKeybindings";
@@ -61,6 +64,7 @@ import {
   openDocumentEditor,
   setMarkdownEditorFrontmatterDraft,
   setMarkdownEditorRenameDraft,
+  toggleEditorDiff,
   updateEditorDraft,
   useDocumentEditorView,
   useMarkdownEditorChromeView,
@@ -70,7 +74,8 @@ import {
   editorStatusHasUnsavedDraft,
   promoteDocTab,
 } from "../../stores/view/tabs";
-import { Button, Divider, type BreadcrumbItem } from "../kit";
+import { DiffLinesView } from "../authoring/DiffPanel";
+import { Button, Divider, IconButton, type BreadcrumbItem } from "../kit";
 import { DocChrome, type DocChromeMode } from "./DocChrome";
 import { EditorToolbar } from "./EditorToolbar";
 import { HighlightedTextarea } from "./HighlightedCode";
@@ -225,12 +230,15 @@ export function MarkdownDocView({
   }, [editor.draftText]);
 
   const saveFrontmatterNow = () => {
+    // Capture editorBaseText before the mutation so the resolve closure can keep it
+    // unchanged (frontmatter saves do not alter the body diff base).
+    const baseTextSnapshot = useViewStore.getState().editorBaseText;
     markEditorSaving();
     const fields = deriveMarkdownEditorFrontmatterPatch(editorChrome.frontmatterDraft);
     setFrontmatter.mutate(
       { nodeId, scope, baseBlobHash: editor.baseBlobHash, ...fields },
       {
-        onSuccess: ({ result }) => applyEditorWriteResult(result),
+        onSuccess: ({ result }) => applyEditorWriteResult(result, baseTextSnapshot),
         onError: () => markEditorFailed(),
       },
     );
@@ -328,12 +336,15 @@ export function MarkdownDocView({
   });
 
   const saveBodyNow = () => {
+    // Capture the draft at mutation time (not the render closure snapshot) so the
+    // resolve closure can advance editorBaseText to what was actually committed.
+    const savedText = useViewStore.getState().draftText;
     markEditorSaving();
     saveBody.mutate(
-      { nodeId, scope, text: editor.draftText, baseBlobHash: editor.baseBlobHash },
+      { nodeId, scope, text: savedText, baseBlobHash: editor.baseBlobHash },
       {
         onSuccess: ({ result }) => {
-          applyEditorWriteResult(result);
+          applyEditorWriteResult(result, savedText);
         },
         onError: () => markEditorFailed(),
       },
@@ -396,6 +407,18 @@ export function MarkdownDocView({
         </span>
         <div className="flex items-center gap-fg-2">
           <EditorToolbar onCommand={applyFormat} />
+          {/* Toggle diff (authoring-surface ADR D4): compare draft against the
+              saved text captured at open. Chord Mod+Shift+D; shared id
+              `editor:toggle-diff` across toolbar, keymap, and palette. */}
+          <IconButton
+            label={EDITOR_TOGGLE_DIFF_LABEL}
+            title={EDITOR_TOGGLE_DIFF_LABEL}
+            active={editor.diffVisible}
+            data-editor-diff-toggle
+            onClick={toggleEditorDiff}
+          >
+            <GitCompare size={16} aria-hidden />
+          </IconButton>
           <Divider orientation="vertical" className="self-stretch" />
           <PropertiesPopover
             frontmatterDraft={editorChrome.frontmatterDraft}
@@ -478,6 +501,32 @@ export function MarkdownDocView({
               </li>
             ))}
           </ul>
+        </div>
+      )}
+      {/* Draft-vs-saved diff (authoring-surface ADR D4): a collapsible section
+          comparing the base text captured at open against the current draft.
+          Zero new wire calls — both sides are client-held strings. Only mounts
+          while editing; cleared when the editor closes or a new session opens. */}
+      {editor.diffVisible && (
+        <div
+          className="max-h-64 overflow-y-auto border-b border-rule bg-paper-sunken px-fg-3 py-fg-2"
+          data-editor-diff-section
+        >
+          <DiffLinesView
+            base={{
+              text: editor.baseText,
+              truncated: false,
+              total_bytes: editor.baseText.length,
+              returned_bytes: editor.baseText.length,
+            }}
+            proposed={{
+              text: editor.draftText,
+              truncated: false,
+              total_bytes: editor.draftText.length,
+              returned_bytes: editor.draftText.length,
+            }}
+            label={content.path ?? docStemFromNodeId(nodeId) ?? nodeId}
+          />
         </div>
       )}
       {/* Flex container so the HighlightedTextarea (flex-1 / min-h-0) stretches to

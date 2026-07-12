@@ -32,9 +32,9 @@ import type {
 } from "react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 
-import { categoryColorVar, categoryToken, type Category } from "../kit";
+import { categoryColorVar, categoryToken, IconButton, type Category } from "../kit";
 import { RailSection } from "../chrome/RailSection";
 import { useFocusZone, type FocusZoneItemProps } from "../chrome/useFocusZone";
 import { DocTypeMark } from "../../scene/field/markComponents";
@@ -77,6 +77,7 @@ import {
   LEFT_RAIL_EXPAND_TREE_ACTION_ID,
   collapseTreeAction,
   expandTreeAction,
+  newDocumentAction,
 } from "../../stores/view/leftRailKeybindings";
 import { type RailSortKey, useRailSort } from "../../stores/view/railSort";
 import { registerKeyAction } from "../../stores/view/keymapDispatcher";
@@ -512,6 +513,9 @@ export function TreeBrowser({
             expanded={expanded}
             toggle={toggle}
             nav={rowNav}
+            onCreate={() =>
+              newDocumentAction(undefined, { focusFeature: true }).run?.()
+            }
           >
             {view.featureGroups.map((group) => (
               <FeatureFolderRow
@@ -824,6 +828,10 @@ interface SectionProps {
   expanded: ReadonlySet<string>;
   toggle: (key: string) => void;
   nav: RowNav;
+  /** When set, the header gains a scoped create affordance (the Features-section
+   *  Plus, authoring-surface ADR D5/D6) — a visible sibling of the menu disclosure
+   *  that opens the create dialog focused on the feature field. */
+  onCreate?: () => void;
   children: ReactNode;
 }
 
@@ -840,6 +848,7 @@ function Section({
   expanded,
   toggle,
   nav,
+  onCreate,
   children,
 }: SectionProps) {
   const open = deriveBrowserTreeExpansionItem(sectionKey, expanded).expanded;
@@ -877,9 +886,25 @@ function Section({
       labelProps={{ "data-vault-section": title.toLowerCase() }}
       // The section header's own coarse-pointer menu entry (touch-selectability
       // ADR D3): a deliberate tap target for the vault-section (expand/collapse-
-      // all + new doc) menu, sibling of the header button.
+      // all + new doc) menu, sibling of the header button. The Features section
+      // additionally gains a scoped, always-visible create Plus (D5/D6) — also a
+      // sibling, so neither trailing control toggles the fold.
       headerTrailingSibling={
-        <RowMenuDisclosure entity={entity} label={`${title} actions`} />
+        <>
+          {onCreate && (
+            <IconButton
+              label={`New document in ${title.toLowerCase()}`}
+              data-new-feature-document
+              onClick={(event) => {
+                event.stopPropagation();
+                onCreate();
+              }}
+            >
+              <Plus size={14} aria-hidden />
+            </IconButton>
+          )}
+          <RowMenuDisclosure entity={entity} label={`${title} actions`} />
+        </>
       }
       data-vault-section-header
     >

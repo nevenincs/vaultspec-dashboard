@@ -65,6 +65,11 @@ export interface AutocompleteComboboxProps {
    *  present selection). Applied once at mount; changing the selection is the
    *  component's own concern thereafter. */
   initialQuery?: string;
+  /** Optional host submit intent (e.g. the create dialog): fired on Enter ONLY when
+   *  the suggestion list is closed, after committing any typed free text — so the
+   *  field stays a picker while open, yet an Enter with the list dismissed still
+   *  submits the surrounding form. Omitted callers keep the pure picker behaviour. */
+  onSubmit?: () => void;
 }
 
 function matches(option: ComboOption, q: string): boolean {
@@ -84,6 +89,7 @@ export function AutocompleteCombobox({
   allowFreeText = false,
   emptyLabel,
   initialQuery = "",
+  onSubmit,
 }: AutocompleteComboboxProps) {
   const listboxId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -128,6 +134,11 @@ export function AutocompleteCombobox({
         event.preventDefault();
         if (activeIndex >= 0 && suggestions[activeIndex]) {
           commit(suggestions[activeIndex]!.value);
+        } else if (!showList && onSubmit) {
+          // List dismissed: capture any typed free text, then hand off to the host's
+          // submit (e.g. the create dialog) rather than swallowing the Enter.
+          if (allowFreeText && query.trim().length > 0) commit(query);
+          onSubmit();
         } else if (allowFreeText) {
           commit(query);
         }

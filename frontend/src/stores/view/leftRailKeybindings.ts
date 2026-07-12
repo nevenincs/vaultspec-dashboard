@@ -124,16 +124,22 @@ export function deriveLeftRailKeybindings(): KeybindingDef[] {
 
 /**
  * "New document" — opens the global create-document dialog, optionally pre-filling
- * the feature tag from the surface that invoked it. A store-only intent (the write
- * itself rides `useCreateDoc` from the dialog), so no time-travel gate.
+ * the feature tag from the surface that invoked it and/or requesting focus on the
+ * feature field (the Features-section create affordance). The id is ALWAYS the one
+ * shared `left-rail:new-document`, whatever the options — every visible create
+ * affordance dispatches this one descriptor (unified action plane). A store-only
+ * intent (the write itself rides `useCreateDoc` from the dialog), so no time-travel gate.
  */
-export function newDocumentAction(prefillFeature?: string): ActionDescriptor {
+export function newDocumentAction(
+  prefillFeature?: string,
+  options?: { focusFeature?: boolean },
+): ActionDescriptor {
   return {
     id: LEFT_RAIL_NEW_DOC_ACTION_ID,
     label: LEFT_RAIL_NEW_DOC_LABEL,
     section: "transform",
     icon: FilePlus2,
-    run: () => openCreateDocDialog(prefillFeature),
+    run: () => openCreateDocDialog(prefillFeature, options),
   };
 }
 

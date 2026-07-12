@@ -129,7 +129,7 @@ describe("editor-state slice (bounded, single-value)", () => {
 
     updateEditorDraft("changed");
     markEditorSaving();
-    markEditorSaved({ blobHash: "bad" });
+    markEditorSaved({ blobHash: "bad" }, "changed");
     expect(useViewStore.getState()).toMatchObject({
       editorStatus: "saved",
       baseBlobHash: "",
@@ -165,7 +165,7 @@ describe("editor-state slice (bounded, single-value)", () => {
     updateEditorDraft("changed");
     markEditorSaving();
     expect(useViewStore.getState().editorStatus).toBe("saving");
-    markEditorSaved("hash-2");
+    markEditorSaved("hash-2", "changed");
     expect(useViewStore.getState().editorStatus).toBe("saved");
     expect(useViewStore.getState().baseBlobHash).toBe("hash-2");
   });
@@ -178,7 +178,7 @@ describe("editor-state slice (bounded, single-value)", () => {
     // The textarea stays editable during the save — the user keeps typing mid-save.
     updateEditorDraft("changed again mid-save");
     expect(useViewStore.getState().editorStatus).toBe("dirty");
-    markEditorSaved("hash-2");
+    markEditorSaved("hash-2", "changed");
     // The raced edit is unsaved: markSaved must KEEP "dirty" (not mask it as "saved")
     // so the unsaved-edit guard still protects it — but it adopts the new base blob so
     // the next save's expected_blob_hash matches the fresh on-disk body.
@@ -202,21 +202,27 @@ describe("editor-state slice (bounded, single-value)", () => {
     updateEditorDraft("changed");
     markEditorSaving();
 
-    applyEditorWriteResult({
-      kind: "saved",
-      path: ".vault/research/alpha.md",
-      blobHash: "hash-2",
-      checks: [],
-    });
+    applyEditorWriteResult(
+      {
+        kind: "saved",
+        path: ".vault/research/alpha.md",
+        blobHash: "hash-2",
+        checks: [],
+      },
+      "changed",
+    );
     expect(useViewStore.getState()).toMatchObject({
       editorStatus: "saved",
       baseBlobHash: "hash-2",
     });
 
-    applyEditorWriteResult({ kind: "conflict", expected: "hash-2", actual: "hash-3" });
+    applyEditorWriteResult(
+      { kind: "conflict", expected: "hash-2", actual: "hash-3" },
+      "",
+    );
     expect(useViewStore.getState().editorStatus).toBe("conflict");
 
-    applyEditorWriteResult({ kind: "refused", checks: [], errors: ["bad"] });
+    applyEditorWriteResult({ kind: "refused", checks: [], errors: ["bad"] }, "");
     expect(useViewStore.getState().editorStatus).toBe("save-failed");
   });
 

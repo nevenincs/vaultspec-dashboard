@@ -79,9 +79,14 @@ export function remarkWikiLink() {
 }
 
 /** Recover the `doc:<stem>` node id a sentinel wiki-link URL targets, or null
- *  when the URL is not a wiki-link (a normal link the reader renders plainly). */
+ *  when the URL is not a wiki-link (a normal link the reader renders plainly). An
+ *  anchor form `[[stem#heading]]` (the section-anchor reference the copy-link verb
+ *  emits) carries the `#fragment` in the captured stem; split it off BEFORE resolving
+ *  so the document still resolves — the fragment is reserved for future
+ *  scroll-to-section navigation, not part of the node identity. */
 export function wikiLinkNodeId(url: string): string | null {
   if (!url.startsWith(WIKI_LINK_SCHEME)) return null;
-  const stem = url.slice(WIKI_LINK_SCHEME.length);
+  const raw = url.slice(WIKI_LINK_SCHEME.length);
+  const stem = raw.split("#", 1)[0]!.trim();
   return stem.length > 0 ? docNodeIdFromStem(stem) : null;
 }
