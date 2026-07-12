@@ -6,6 +6,7 @@ import {
   adaptDashboardState,
   adaptFileTree,
   adaptFilters,
+  adaptFsList,
   adaptGitChangesSummary,
   adaptGitOp,
   adaptGraphEmbeddings,
@@ -25,6 +26,7 @@ import {
   adaptSettingsSchema,
   adaptStatus,
   adaptVaultTree,
+  adaptVaultTreeDelta,
   adaptWorkspaces,
   unwrapEnvelope,
 } from "../liveAdapters";
@@ -39,6 +41,7 @@ import type {
   EmbeddingsResponse,
   FileTreeResponse,
   FiltersVocabulary,
+  FsListResponse,
   GraphCorpus,
   GraphFilter,
   GraphSlice,
@@ -46,6 +49,7 @@ import type {
   NodeDetail,
   NodeEvidence,
   SalienceLens,
+  VaultTreeDeltaResponse,
   VaultTreeResponse,
   WorkspacesState,
 } from "./graphTypes";
@@ -112,6 +116,14 @@ const CODE_FILES_MAX_PAGES = 25;
 const VAULT_TREE_FIRST_PAGE_SIZE = 200;
 const VAULT_TREE_PAGE_SIZE = 2000;
 const VAULT_TREE_MAX_PAGES = 26;
+// A cursor walk can straddle a graph-generation bump mid-drain (vault-tree-delta
+// ADR D1 / constraint): the accumulated prefix would then mix two generations and
+// carry no reliable delta baseline. On a mid-walk generation change the drain
+// restarts from the first page; the restart budget bounds that loop (a pathological
+// rebuild storm cannot spin it), and on exhaustion the walk accepts the listing but
+// drops its generation baseline so the NEXT sweep re-drains cleanly rather than
+// patching a straddled listing.
+const VAULT_TREE_MAX_WALK_RESTARTS = 3;
 // Brief yield between continuation pages (on-demand-cold-start ADR D3) so the
 // background drain never contends with first paint / first interaction; the
 // page cap still bounds the loop, so total added latency is bounded too.
@@ -208,6 +220,13 @@ export class EngineClient {
     return adaptWorkspaces(await this.get("/workspaces"));
   }
 
+  /** Bounded, read-only OS directory browsing for the add-project picker
+   *  (single-app-runtime ADR O6): omitted `path` lists the filesystem roots,
+   *  an absolute `path` lists that directory's immediate subdirectories. */
+  async fsList(path?: string): Promise<FsListResponse> {
+    return adaptFsList(await this.get("/fs/list", path ? { path } : undefined));
+  }
+
   async vaultTree(
     scope: string,
     onPartial?: (partial: VaultTreeResponse) => void,
@@ -223,35 +242,80 @@ export class EngineClient {
     // can render the first page immediately while the drain continues; the
     // resolved value is the whole listing with `complete: true`.
     const drainId = `vault-tree:${scope}`;
-    const entries: unknown[] = [];
-    let tiers: unknown = {};
-    let cursor: string | undefined;
     try {
-      for (let page = 0; page < VAULT_TREE_MAX_PAGES; page += 1) {
-        const body = await this.get<{
-          entries?: unknown[];
-          tiers?: unknown;
-          next_cursor?: string;
-        }>("/vault-tree", {
-          scope,
-          page_size: page === 0 ? VAULT_TREE_FIRST_PAGE_SIZE : VAULT_TREE_PAGE_SIZE,
-          cursor,
-        });
-        if (Array.isArray(body.entries)) entries.push(...body.entries);
-        if (body.tiers !== undefined) tiers = body.tiers;
-        cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
-        if (cursor === undefined) break;
-        reportDrainProgress(drainId, page + 1, entries.length);
-        onPartial?.({
-          ...adaptVaultTree({ entries: [...entries], tiers }),
-          complete: false,
-        });
-        await drainYield(VAULT_TREE_PAGE_YIELD_MS);
+      // Outer restart loop (D1): a mid-walk generation change restarts the drain
+      // from page 0. Bounded by the restart budget — on exhaustion the last attempt
+      // accepts the (possibly straddled) listing but drops its generation baseline.
+      for (let attempt = 0; ; attempt += 1) {
+        const canRestart = attempt < VAULT_TREE_MAX_WALK_RESTARTS;
+        const entries: unknown[] = [];
+        let tiers: unknown = {};
+        // The generation the walk committed to (the first page's); a later page
+        // from a different generation is a mid-walk straddle.
+        let generation: number | undefined;
+        let straddled = false;
+        let cursor: string | undefined;
+        let restart = false;
+        for (let page = 0; page < VAULT_TREE_MAX_PAGES; page += 1) {
+          const body = await this.get<{
+            entries?: unknown[];
+            tiers?: unknown;
+            generation?: number;
+            next_cursor?: string;
+          }>("/vault-tree", {
+            scope,
+            page_size: page === 0 ? VAULT_TREE_FIRST_PAGE_SIZE : VAULT_TREE_PAGE_SIZE,
+            cursor,
+          });
+          const pageGeneration =
+            typeof body.generation === "number" ? body.generation : undefined;
+          if (page === 0) {
+            generation = pageGeneration;
+          } else if (
+            pageGeneration !== undefined &&
+            generation !== undefined &&
+            pageGeneration !== generation
+          ) {
+            if (canRestart) {
+              // The graph rebuilt mid-drain: discard the mixed prefix and restart.
+              restart = true;
+              break;
+            }
+            // Restart budget spent: accept the mixed listing but mark it straddled
+            // so no generation baseline is carried (the next sweep re-drains).
+            straddled = true;
+          }
+          if (Array.isArray(body.entries)) entries.push(...body.entries);
+          if (body.tiers !== undefined) tiers = body.tiers;
+          cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
+          if (cursor === undefined) break;
+          reportDrainProgress(drainId, page + 1, entries.length);
+          onPartial?.({
+            ...adaptVaultTree({ entries: [...entries], tiers, generation }),
+            complete: false,
+          });
+          await drainYield(VAULT_TREE_PAGE_YIELD_MS);
+        }
+        if (restart) continue;
+        // A straddled final attempt carries no reliable baseline: omit generation.
+        const resolvedGeneration = straddled ? undefined : generation;
+        return {
+          ...adaptVaultTree({ entries, tiers, generation: resolvedGeneration }),
+          complete: true,
+        };
       }
     } finally {
       settleDrainProgress(drainId);
     }
-    return { ...adaptVaultTree({ entries, tiers }), complete: true };
+  }
+
+  /** The generation-keyed vault-tree delta (vault-tree-delta ADR D3): the stem-keyed
+   *  diff from the client's held `since` generation to the current one, or a
+   *  full-drain instruction when the baseline is no longer retained. A single small
+   *  request — the reconcile seam patches its held listing instead of re-draining
+   *  the whole ~765 KB listing on every generation bump. */
+  async vaultTreeDelta(scope: string, since: number): Promise<VaultTreeDeltaResponse> {
+    return adaptVaultTreeDelta(await this.get("/vault-tree/delta", { scope, since }));
   }
 
   async codeFiles(scope: string): Promise<CodeFilesResponse> {

@@ -12,12 +12,15 @@ import type {
   FileTreeEntry,
   FileTreeResponse,
   FileTreeTruncated,
+  FsListEntry,
+  FsListResponse,
   GraphSlice,
   NodeDetail,
   NodeEvidence,
   SearchIndexState,
   SearchResponse,
   TiersBlock,
+  VaultTreeDeltaResponse,
   VaultTreeEntry,
   VaultTreeResponse,
 } from "../engine";
@@ -335,7 +338,18 @@ function adaptVaultTreeEntry(value: unknown): VaultTreeEntry | null {
   };
 }
 
-/** Live stem/node_id tree entries → the internal path-bearing entries. */
+/** A tolerant non-negative integer read for the engine graph generation: a
+ *  non-finite / non-number / negative field reads as undefined (unknown baseline),
+ *  so a shape drift degrades to a full re-drain rather than a bogus delta baseline. */
+function normalizeGeneration(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : undefined;
+}
+
+/** Live stem/node_id tree entries → the internal path-bearing entries. Absorbs the
+ *  optional `generation` (vault-tree-delta ADR D1) so the drained listing carries
+ *  its delta baseline. */
 export function adaptVaultTree(body: unknown): VaultTreeResponse {
   if (!isRec(body) || !Array.isArray(body.entries)) {
     return body as VaultTreeResponse;
@@ -343,7 +357,45 @@ export function adaptVaultTree(body: unknown): VaultTreeResponse {
   const entries = body.entries
     .map(adaptVaultTreeEntry)
     .filter((entry): entry is VaultTreeEntry => entry !== null);
-  return { entries, tiers: (body.tiers ?? {}) as TiersBlock };
+  const generation = normalizeGeneration(body.generation);
+  return {
+    entries,
+    tiers: (body.tiers ?? {}) as TiersBlock,
+    ...(generation !== undefined ? { generation } : {}),
+  };
+}
+
+/** Live `/vault-tree/delta` → the internal delta shape (vault-tree-delta ADR D3).
+ *  TOLERANT and FAIL-SAFE: an unusable body, an absent generation, or a
+ *  `full_required` flag all resolve to a full-drain instruction rather than a
+ *  partial patch, so a shape drift can never corrupt the held listing. `changed`
+ *  rows are adapted like full listing rows; `removed` is a plain stem list. */
+export function adaptVaultTreeDelta(body: unknown): VaultTreeDeltaResponse {
+  if (!isRec(body)) {
+    return { generation: 0, full_required: true, tiers: {} };
+  }
+  const tiers = (body.tiers ?? {}) as TiersBlock;
+  const generation = normalizeGeneration(body.generation);
+  // No usable generation, or an explicit instruction: fall back to a full drain.
+  if (generation === undefined || body.full_required === true) {
+    return { generation: generation ?? 0, full_required: true, tiers };
+  }
+  const changed = Array.isArray(body.changed)
+    ? body.changed
+        .map(adaptVaultTreeEntry)
+        .filter((entry): entry is VaultTreeEntry => entry !== null)
+    : [];
+  const removed = Array.isArray(body.removed)
+    ? body.removed.filter((stem): stem is string => typeof stem === "string")
+    : [];
+  const since = normalizeGeneration(body.since);
+  return {
+    generation,
+    changed,
+    removed,
+    tiers,
+    ...(since !== undefined ? { since } : {}),
+  };
 }
 
 // --- /code-files: the complete code-file listing (search-providers ADR) ----------
@@ -487,6 +539,48 @@ export function adaptFileTree(body: unknown): FileTreeResponse {
     path: normalizeFileTreeString(body.path) ?? "",
     truncated: adaptFileTreeTruncated(body.truncated),
     next_cursor: normalizeFileTreeString(body.next_cursor),
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
+// --- filesystem browse picker (single-app-runtime ADR O6) -----------------------
+//
+// Tolerant adapter for `GET /fs/list`. The live `{data, tiers}` envelope is
+// already unwrapped by `unwrapEnvelope` before this runs; a body already in the
+// internal shape (the mock) passes through unchanged. Every missing field
+// defaults to a safe empty so a sparse or malformed shape NEVER throws — the
+// picker degrades to an empty, non-truncated level rather than crashing the
+// add-project dialog.
+
+function adaptFsListEntry(value: unknown): FsListEntry | null {
+  if (!isRec(value)) return null;
+  const name = normalizeFileTreeString(value.name);
+  const path = normalizeFileTreeString(value.path);
+  if (name === undefined || path === undefined) return null;
+  return {
+    name,
+    path,
+    is_managed: value.is_managed === true,
+    is_git: value.is_git === true,
+  };
+}
+
+/** Live `/fs/list` → the internal listing. TOLERANT: an absent `entries` array
+ *  defaults to empty, `path`/`parent` default to null (the filesystem-roots
+ *  shape), and `truncated` defaults to false. */
+export function adaptFsList(body: unknown): FsListResponse {
+  if (!isRec(body)) {
+    return { path: null, parent: null, entries: [], truncated: false, tiers: {} };
+  }
+  return {
+    path: normalizeFileTreeString(body.path) ?? null,
+    parent: normalizeFileTreeString(body.parent) ?? null,
+    entries: Array.isArray(body.entries)
+      ? body.entries
+          .map(adaptFsListEntry)
+          .filter((entry): entry is FsListEntry => entry !== null)
+      : [],
+    truncated: body.truncated === true,
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }

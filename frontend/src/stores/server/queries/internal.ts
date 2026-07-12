@@ -65,6 +65,12 @@ export const engineKeys = {
   // corpus's levels never survive (mirrors the vault-tree cache discipline).
   fileTree: (scope: string, path?: string, cursor?: string) =>
     [...engineKeys.all, "file-tree", scope, path ?? "", cursor ?? ""] as const,
+  // The add-project OS folder picker (single-app-runtime ADR O6): keyed on the
+  // browsed directory alone — this read is NOT project/scope-bound (it browses
+  // the machine to find a folder to register), so no scope segment folds in.
+  // Omitted `path` is the filesystem-roots level; each distinct directory is its
+  // own bounded cache entry.
+  fsList: (path?: string) => [...engineKeys.all, "fs-list", path ?? ""] as const,
   filters: (scope: string, corpus?: GraphCorpus) =>
     [...engineKeys.all, "filters", scope, corpus ?? "vault"] as const,
   dashboardState: (scope: string, backendSessionIdentity: string) =>

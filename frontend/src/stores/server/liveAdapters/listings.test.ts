@@ -14,6 +14,7 @@ import {
   adaptNodeEvidence,
   adaptSearch,
   adaptVaultTree,
+  adaptVaultTreeDelta,
   docTypeFromStem,
   unwrapEnvelope,
 } from "./index";
@@ -449,6 +450,63 @@ describe("adaptVaultTree (live stem entries)", () => {
     // (index-node-exclusion ADR): no `index` doc-type, falls through to document.
     expect(docTypeFromStem("dashboard-gui.index")).toBe("document");
     expect(docTypeFromStem("mystery")).toBe("document");
+  });
+});
+
+describe("adaptVaultTree generation (vault-tree-delta ADR D1)", () => {
+  it("absorbs a numeric generation and omits a malformed one", () => {
+    expect(
+      adaptVaultTree({ entries: [], tiers: TIERS, generation: 7 }).generation,
+    ).toBe(7);
+    // A fractional generation floors; a negative/non-number is dropped (no baseline).
+    expect(
+      adaptVaultTree({ entries: [], tiers: TIERS, generation: 12.9 }).generation,
+    ).toBe(12);
+    expect(
+      adaptVaultTree({ entries: [], tiers: TIERS, generation: -1 }).generation,
+    ).toBeUndefined();
+    expect(
+      adaptVaultTree({ entries: [], tiers: TIERS, generation: "x" }).generation,
+    ).toBeUndefined();
+    expect(adaptVaultTree({ entries: [], tiers: TIERS }).generation).toBeUndefined();
+  });
+});
+
+describe("adaptVaultTreeDelta (vault-tree-delta ADR D3)", () => {
+  it("adapts a real diff: changed rows and removed stems", () => {
+    const delta = adaptVaultTreeDelta({
+      since: 3,
+      generation: 5,
+      changed: [{ stem: "2026-06-12-x-plan", feature_tags: ["x"] }],
+      removed: ["2026-06-11-old-adr", 42],
+      tiers: TIERS,
+    });
+    expect(delta.generation).toBe(5);
+    expect(delta.since).toBe(3);
+    expect(delta.full_required).toBeUndefined();
+    expect(delta.changed?.[0]).toMatchObject({
+      path: ".vault/plan/2026-06-12-x-plan.md",
+      doc_type: "plan",
+    });
+    // Non-string removed entries are dropped (tolerant).
+    expect(delta.removed).toEqual(["2026-06-11-old-adr"]);
+  });
+
+  it("passes through an explicit full_required instruction", () => {
+    const delta = adaptVaultTreeDelta({
+      generation: 9,
+      full_required: true,
+      tiers: TIERS,
+    });
+    expect(delta.full_required).toBe(true);
+    expect(delta.generation).toBe(9);
+  });
+
+  it("fails safe to a full drain on an unusable or generation-less body", () => {
+    expect(adaptVaultTreeDelta(null).full_required).toBe(true);
+    expect(adaptVaultTreeDelta("nope").full_required).toBe(true);
+    // A body with no usable generation cannot be a baseline → full drain.
+    expect(adaptVaultTreeDelta({ changed: [], removed: [] }).full_required).toBe(true);
   });
 });
 

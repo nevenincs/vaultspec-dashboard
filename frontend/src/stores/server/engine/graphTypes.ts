@@ -106,6 +106,30 @@ export interface VaultTreeResponse {
    *  partial state (the complete-set law applies at the moment a narrow
    *  lands on the finished listing). */
   complete?: boolean;
+  /** The engine graph `generation` the drained rows belong to (vault-tree-delta
+   *  ADR D1). The client records it so a later generation-invalidation sweep can
+   *  fetch a `since=<generation>` delta and patch this listing instead of
+   *  re-draining it. Absent on an older engine or a partial mid-drain listing —
+   *  a listing with no known generation has no delta baseline and re-drains. */
+  generation?: number;
+}
+
+/** The engine-reduced `/vault-tree/delta` response (vault-tree-delta ADR D3): a
+ *  stem-keyed diff from the client's held generation to the current one, or a
+ *  full-drain instruction when the baseline is no longer retained. */
+export interface VaultTreeDeltaResponse {
+  /** The current graph generation the delta (or full-drain) is against. */
+  generation: number;
+  /** True when `since` is unknown (evicted/restarted): the client must re-drain
+   *  the whole listing rather than patch. Mutually exclusive with a diff. */
+  full_required?: boolean;
+  /** The client's baseline generation, echoed on a real diff. */
+  since?: number;
+  /** Rows added or modified since `since` — full entries to merge in by stem. */
+  changed?: VaultTreeEntry[];
+  /** Stems dropped since `since` — remove these from the held listing. */
+  removed?: string[];
+  tiers: TiersBlock;
 }
 
 // The complete code-file listing (search-providers ADR: the one contract event).
@@ -187,6 +211,34 @@ export interface FileTreeResponse {
   truncated: FileTreeTruncated | null;
   /** Cursor for the next page when the level paginates; absent on the last page. */
   next_cursor?: string;
+  tiers: TiersBlock;
+}
+
+// --- filesystem browse picker (single-app-runtime ADR O6) -----------------------
+//
+// `GET /fs/list[?path=<absolute dir>]`: bounded, read-only OS directory browsing
+// for the add-project picker. Without `path` it lists the filesystem roots (drive
+// letters on Windows, `/` elsewhere); with an absolute `path` it lists that
+// directory's immediate SUBDIRECTORIES only, name-sorted and capped. Each row
+// carries the two markers the picker renders: `is_managed` (has a `.vault`) and
+// `is_git` (has a `.git`) — a plain git repo the picker can register vs. one
+// already vaultspec-managed.
+
+export interface FsListEntry {
+  name: string;
+  path: string;
+  is_managed: boolean;
+  is_git: boolean;
+}
+
+export interface FsListResponse {
+  /** The listed directory's absolute path; null at the filesystem-roots level. */
+  path: string | null;
+  /** The listed directory's parent path; null at the roots level or a root itself. */
+  parent: string | null;
+  entries: FsListEntry[];
+  /** True when the 256-row cap clipped this level's entries. */
+  truncated: boolean;
   tiers: TiersBlock;
 }
 
