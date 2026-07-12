@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import type { FetchLike } from "./engine";
 import { EngineClient, EngineError } from "./engine";
+import { resetDrainProgress, useDrainProgressStore } from "./drainProgress";
 
 function recordingFetch(payload: unknown = { ok: true }, status = 200) {
   const calls: { url: string; init?: RequestInit }[] = [];
@@ -18,6 +19,8 @@ function recordingFetch(payload: unknown = { ok: true }, status = 200) {
 }
 
 describe("EngineClient", () => {
+  beforeEach(() => resetDrainProgress());
+
   it("covers every contract query family with the right path and method", async () => {
     const { calls, fetchImpl } = recordingFetch();
     const client = new EngineClient({ baseUrl: "/api", fetchImpl });
@@ -42,7 +45,7 @@ describe("EngineClient", () => {
     const urls = calls.map((c) => c.url);
     expect(urls).toEqual([
       "/api/map",
-      "/api/vault-tree?scope=wt-1&page_size=2000",
+      "/api/vault-tree?scope=wt-1&page_size=200",
       "/api/graph/query",
       "/api/filters?scope=wt-1",
       "/api/nodes/feature%3Aa?scope=wt-1",
@@ -123,10 +126,64 @@ describe("EngineClient", () => {
     const tree = await client.vaultTree("wt-1");
 
     expect(calls.map((c) => c.url)).toEqual([
-      "/api/vault-tree?scope=wt-1&page_size=2000",
+      // First page is deliberately small (progressive first paint, ADR D5);
+      // continuation pages use the route max.
+      "/api/vault-tree?scope=wt-1&page_size=200",
       "/api/vault-tree?scope=wt-1&page_size=2000&cursor=a-S01",
     ]);
     expect(tree.entries.map((e) => e.feature_tags[0])).toEqual(["a", "b"]);
+    expect(tree.complete).toBe(true);
+  });
+
+  it("hands out honest partial prefixes while the vault-tree drain continues (ADR D5)", async () => {
+    // Narrow-during-drain guard (universal-data-loading): each onPartial batch is
+    // the accumulated PREFIX marked complete:false — the rail can render and even
+    // narrow it, but the flag keeps the affordance honest until the resolved
+    // whole listing (complete:true) replaces it. A match beyond the loaded prefix
+    // is never silently absent from the COMPLETE set.
+    const pages = [
+      {
+        data: { entries: [{ stem: "a-S01", doc_type: "exec", feature_tags: ["a"] }] },
+        tiers: {},
+        next_cursor: "a-S01",
+      },
+      {
+        data: { entries: [{ stem: "b-S01", doc_type: "exec", feature_tags: ["b"] }] },
+        tiers: {},
+        next_cursor: "b-S01",
+      },
+      {
+        data: { entries: [{ stem: "c-S01", doc_type: "exec", feature_tags: ["c"] }] },
+        tiers: {},
+      },
+    ];
+    let page = 0;
+    const fetchImpl: FetchLike = () => {
+      const body = pages[Math.min(page, pages.length - 1)];
+      page += 1;
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    };
+    const client = new EngineClient({ baseUrl: "/api", fetchImpl });
+    const partials: { count: number; complete: boolean | undefined }[] = [];
+
+    const tree = await client.vaultTree("wt-1", (partial) => {
+      partials.push({ count: partial.entries.length, complete: partial.complete });
+    });
+
+    // One partial per page that still had a cursor, each a growing prefix.
+    expect(partials).toEqual([
+      { count: 1, complete: false },
+      { count: 2, complete: false },
+    ]);
+    expect(tree.entries).toHaveLength(3);
+    expect(tree.complete).toBe(true);
+    // The drain-progress entry never outlives the walk (settled on resolve).
+    expect(useDrainProgressStore.getState().drains["vault-tree:wt-1"]).toBeUndefined();
   });
 
   it("builds the multiplexed stream URL with splice resume (§7)", () => {

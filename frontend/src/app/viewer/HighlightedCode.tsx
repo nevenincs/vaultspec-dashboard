@@ -1,4 +1,4 @@
-import type { ChangeEvent, ReactElement } from "react";
+import type { ChangeEvent, KeyboardEventHandler, ReactElement, Ref } from "react";
 import { useState } from "react";
 
 import type { TokenLine } from "./useHighlighter";
@@ -72,11 +72,19 @@ export function HighlightedTextarea({
   languageHint,
   onChange,
   ariaLabel,
+  inputRef,
+  onKeyDown,
 }: {
   value: string;
   languageHint: string | null;
   onChange: (value: string) => void;
   ariaLabel: string;
+  /** Forwarded textarea ref — lets a composing toolbar read/set the selection to
+   *  apply formatting around it. */
+  inputRef?: Ref<HTMLTextAreaElement>;
+  /** Keydown handler on the textarea — for the editor's widget-intrinsic (Class-B)
+   *  formatting accelerators, kept in the component, never the keymap registry. */
+  onKeyDown?: KeyboardEventHandler<HTMLTextAreaElement>;
 }): ReactElement {
   const [scroll, setScroll] = useState({ top: 0, left: 0 });
   const rawLines = splitHighlightedTextLines(value);
@@ -100,11 +108,13 @@ export function HighlightedTextarea({
         </code>
       </pre>
       <textarea
+        ref={inputRef}
         className="relative z-10 h-full w-full resize-none border-none bg-transparent px-fg-6 py-fg-3 font-mono text-body leading-relaxed text-transparent outline-none"
         value={value}
         onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
           onChange(event.target.value)
         }
+        onKeyDown={onKeyDown}
         onScroll={(event) =>
           setScroll({
             top: event.currentTarget.scrollTop,

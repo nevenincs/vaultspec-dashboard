@@ -164,6 +164,7 @@ import {
   useGraphEmbeddings,
   useGraphSlice,
   useGraphSliceAvailability,
+  useProgressiveGraphSlice,
   useGitFileDiff,
   useGitHistoricalFileDiff,
   useHistoryView,
@@ -7059,5 +7060,84 @@ describe("graph cache key (graph-filter-fetch-split: backend re-query, cache-ins
     // The same facet selection resolves to the SAME key — a toggle back to a
     // previously-seen filter is a cache hit (keepPreviousData keeps it from blanking).
     expect(keyRepeat).toEqual(keyA);
+  });
+});
+
+describe("useProgressiveGraphSlice (on-demand-cold-start ADR D1)", () => {
+  it("serves the constellation while a cold document slice is in flight, then passes the document slice through", async () => {
+    const scope = await liveScope();
+    // Delay ONLY the document-granularity graph query so the cold window is
+    // observable; the feature-LOD (constellation) query rides the live wire.
+    engineClient.useTransport(async (input, init) => {
+      if (input.includes("/graph/query") && init?.body) {
+        const body = JSON.parse(String(init.body)) as { granularity?: string };
+        if (body.granularity === "document") {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+      }
+      return liveTransport(input, init);
+    });
+
+    const client = testQueryClient();
+    const { result } = renderHook(
+      () => useProgressiveGraphSlice(scope, undefined, undefined, "document"),
+      { wrapper: wrapper(client) },
+    );
+
+    // The fill: constellation data held, isPending masked false — the canvas
+    // renders a real field, and availability derives `refreshing`.
+    await waitFor(() => expect(result.current.data).toBeDefined(), ENGINE_WAIT);
+    expect(result.current.isPending).toBe(false);
+    expect(
+      (result.current.data?.nodes ?? []).every((n) => n.id.startsWith("feature:")),
+    ).toBe(true);
+    const availability = deriveGraphSliceAvailability(
+      result.current.data?.tiers,
+      result.current.isPending,
+      result.current.isFetching && !result.current.isPending && !!result.current.data,
+    );
+    expect(availability.refreshing).toBe(true);
+
+    // Enrichment: the document slice replaces the fill through the same hook.
+    await waitFor(
+      () =>
+        expect(
+          (result.current.data?.nodes ?? []).some((n) => n.id.startsWith("doc:")),
+        ).toBe(true),
+      ENGINE_WAIT,
+    );
+    expect(result.current.isFetching).toBe(false);
+  });
+
+  it("bypasses the fill for feature-granularity and time-travel requests (no second query)", async () => {
+    const scope = await liveScope();
+    const graphBodies: { granularity?: string; as_of?: number }[] = [];
+    engineClient.useTransport((input, init) => {
+      if (input.includes("/graph/query") && init?.body) {
+        graphBodies.push(JSON.parse(String(init.body)) as never);
+      }
+      return liveTransport(input, init);
+    });
+
+    const client = testQueryClient();
+    const { result } = renderHook(
+      () => useProgressiveGraphSlice(scope, undefined, undefined, "feature"),
+      { wrapper: wrapper(client) },
+    );
+    await waitFor(() => expect(result.current.data).toBeDefined(), ENGINE_WAIT);
+    expect(graphBodies).toHaveLength(1);
+    expect(graphBodies[0].granularity).toBe("feature");
+
+    // Time-travel: one historical document query, never a constellation fill.
+    graphBodies.length = 0;
+    const asOf = renderHook(
+      () => useProgressiveGraphSlice(scope, undefined, 1, "document"),
+      { wrapper: wrapper(testQueryClient()) },
+    );
+    await waitFor(() => expect(graphBodies.length).toBeGreaterThan(0), ENGINE_WAIT);
+    expect(graphBodies.every((b) => b.granularity === "document")).toBe(true);
+    // The as-of bypass means no constellation fill ever substitutes for the
+    // historical slice — the hook holds nothing until the document data lands.
+    expect(asOf.result.current.data).toBeUndefined();
   });
 });

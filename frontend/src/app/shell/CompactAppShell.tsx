@@ -4,9 +4,9 @@
 // under a mobile top bar. It is the compact branch of the ONE shell projection
 // (responsive-layout-is-one-viewport-aware-projection), not a parallel app.
 //
-// Surfaces (ADR D2): Browse (the left-rail vault/files content — the landing),
-// Timeline (scrubber minimode, D2t), Status (the activity rail). The graph is
-// desktop-only (D4) — it has NO compact tab or surface (an "unavailable" tab is
+// Surfaces: Home (the unified rail — the Status section then the Browse tree in ONE
+// scroll, mobile-unified-rail ADR) and Timeline (scrubber minimode, D2t). The graph
+// is desktop-only (D4) — it has NO compact tab or surface (an "unavailable" tab is
 // worse than no tab). Search is the momentary tab that opens the full-screen
 // command palette (D3). Documents open via the sliding navigator (D5).
 //
@@ -26,18 +26,15 @@ import {
   useFilterSidebarOpen,
 } from "../../stores/view/filterSidebar";
 import { Funnel, MagnifyingGlass } from "../kit/glyphs";
-import { LeftRail } from "../left/LeftRail";
-import { StatusTab } from "../right/StatusTab";
 import { BottomTabBar, type CompactSurface } from "./BottomTabBar";
 import { CompactDocReader } from "./CompactDocReader";
 import { CompactTimeline } from "./CompactTimeline";
+import { CompactUnifiedRail } from "./CompactUnifiedRail";
 import { MobileTopBar } from "./MobileTopBar";
 import { WorkspaceSwitcherSheet } from "./WorkspaceSwitcherSheet";
 
 const SURFACE_TITLE: Record<string, string> = {
-  browse: "Browse",
   timeline: "Timeline",
-  status: "Status",
 };
 
 export function CompactAppShell() {
@@ -45,8 +42,8 @@ export function CompactAppShell() {
   const scope = useActiveScope();
   const filterOpen = useFilterSidebarOpen();
   const mainRef = useRef<HTMLElement>(null);
-  // The workspace switcher sheet (ADR D1) is opened only from the Browse top-bar
-  // title trigger, so its open state is local chrome (no cross-surface need).
+  // The workspace switcher sheet (mobile-enrichment D1) is opened only from the Home
+  // top-bar title trigger, so its open state is local chrome (no cross-surface need).
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
   // Place initial focus on the pane once on mount so the compact page never loads
@@ -64,10 +61,10 @@ export function CompactAppShell() {
     setCompactSurface(next);
   };
 
-  // Browse's top bar is the worktree name + search + advanced-filter (binding Figma
-  // compact Browse: the worktree header + filter fold into the top bar). Other
-  // surfaces show their title only — search is reached via the bottom Search tab, and
-  // the binding Status/Timeline frames carry no top-bar action.
+  // The Home top bar is the worktree name + search + advanced-filter (the unified
+  // rail carries the former Browse chrome: the worktree header + filter live in the
+  // top bar). The Timeline surface shows its title only — search is reached via the
+  // bottom Search tab, and the timeline frame carries no top-bar action.
   const searchAction = {
     label: "Search",
     Glyph: MagnifyingGlass,
@@ -79,9 +76,9 @@ export function CompactAppShell() {
     typeof scope === "string" && scope
       ? (scope.split(/[\\/]/).pop() ?? scope)
       : "Vault";
-  const title = surface === "browse" ? worktree : (SURFACE_TITLE[surface] ?? "Browse");
+  const title = surface === "home" ? worktree : (SURFACE_TITLE[surface] ?? "Home");
   const actions =
-    surface === "browse"
+    surface === "home"
       ? [
           searchAction,
           {
@@ -111,11 +108,11 @@ export function CompactAppShell() {
       <MobileTopBar
         title={title}
         actions={actions}
-        // On Browse the title IS the worktree name — make it the workspace-switcher
-        // trigger (ADR D1). Other surfaces keep a plain heading.
-        onTitleActivate={surface === "browse" ? () => setSwitcherOpen(true) : undefined}
+        // On Home the title IS the worktree name — make it the workspace-switcher
+        // trigger (mobile-enrichment D1). The Timeline surface keeps a plain heading.
+        onTitleActivate={surface === "home" ? () => setSwitcherOpen(true) : undefined}
         titleActivateLabel={
-          surface === "browse" ? `${worktree} — switch workspace` : undefined
+          surface === "home" ? `${worktree} — switch workspace` : undefined
         }
       />
       <main
@@ -125,15 +122,14 @@ export function CompactAppShell() {
         data-focus-region="stage"
         className="relative min-h-0 flex-1 overflow-y-auto outline-none"
       >
-        {surface === "browse" && <LeftRail />}
-        {surface === "status" && <StatusTab />}
+        {surface === "home" && <CompactUnifiedRail />}
         {surface === "timeline" && <CompactTimeline scope={scope} />}
       </main>
       <BottomTabBar active={surface} onSelect={onSelect} />
       {/* Sliding document reader (D5): full-screen over the pane + tab bar when a
           document is open; the back control pops it. */}
       <CompactDocReader />
-      {/* Workspace switcher (ADR D1): opened from the Browse title trigger. */}
+      {/* Workspace switcher (mobile-enrichment D1): opened from the Home title trigger. */}
       <WorkspaceSwitcherSheet
         open={switcherOpen}
         onDismiss={() => setSwitcherOpen(false)}

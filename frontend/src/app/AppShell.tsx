@@ -14,6 +14,7 @@ import {
   useShellFrameView,
   useShellWindowActions,
 } from "../stores/view/shellLayout";
+import { DataActivityIndicator } from "./chrome/DataActivityIndicator";
 import { ShellResizeHandle } from "./chrome/ShellResizeHandle";
 import { LeftRail } from "./left/LeftRail";
 import { backgroundContextMenuHandler } from "./menus/backgroundContextMenu";
@@ -156,6 +157,12 @@ export function AppShell() {
   useEffect(() => {
     stageRef.current?.focus({ preventScroll: true });
   }, []);
+  // Retire the pre-hydration boot shell (index.html) after the shell's first
+  // commit — the real chrome is painted underneath by now, so the static
+  // skeleton hands off without a blank frame (on-demand-cold-start boot shell).
+  useEffect(() => {
+    document.getElementById("boot-shell")?.remove();
+  }, []);
 
   // Compact (phone/tablet) branch of the ONE shell projection
   // (mobile-responsive-layout ADR D2): a single pane + bottom tab bar instead of
@@ -166,6 +173,10 @@ export function AppShell() {
   if (shellFrame.compact) {
     return (
       <div className="relative flex h-screen min-h-0 flex-col overflow-hidden bg-paper text-ink">
+        {/* The universal loading floor (universal-data-loading ADR D2): one
+            mount per shell branch — compact has no canvas, so this is the only
+            surface signalling the cold-load listing drain. */}
+        <DataActivityIndicator />
         <CommandPalette />
         <SettingsDialog />
         <AddProjectDialog />
@@ -199,6 +210,8 @@ export function AppShell() {
       >
         Skip to content
       </a>
+      {/* The universal loading floor (universal-data-loading ADR D2). */}
+      <DataActivityIndicator />
       <CommandPalette />
       <SettingsDialog />
       <AddProjectDialog />

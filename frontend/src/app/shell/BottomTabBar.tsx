@@ -1,8 +1,9 @@
-// Compact bottom tab bar (mobile-responsive-layout ADR D2; binding Figma
-// `BottomTabBar` component set). The thumb-reachable primary navigation for the
-// compact (phone/tablet) shell: four surfaces — Browse · Timeline · Status ·
-// Search — one active at a time (the graph is desktop-only, D4 — no tab). It
-// mirrors the Figma component: a safe-area-inset bar of ≥44pt icon-only items,
+// Compact bottom tab bar (mobile-responsive-layout ADR D2; mobile-unified-rail ADR).
+// The thumb-reachable primary navigation for the compact (phone/tablet) shell: three
+// surfaces — Home · Timeline · Search — one active at a time (the graph is
+// desktop-only, D4 — no tab). Home is the unified rail (the former Browse and Status
+// surfaces merged into one scroll), so the former Status tab is retired. It
+// mirrors the Figma component idiom: a safe-area-inset bar of ≥44pt icon-only items,
 // the active item carrying a COMPACT accent-subtle pill + accent-text (a
 // non-colour-only cue, redundant with the accent glyph), so the active state
 // reads without relying on hue alone.
@@ -18,7 +19,7 @@ import { useEffect, useState } from "react";
 
 import type { CompactSurface } from "../../stores/view/compactSurface";
 import { useFocusZone } from "../chrome/useFocusZone";
-import { Books, Calendar, GitBranch, MagnifyingGlass } from "../kit/glyphs";
+import { Calendar, Home, MagnifyingGlass } from "../kit/glyphs";
 
 export type { CompactSurface };
 
@@ -28,11 +29,10 @@ interface TabDef {
   Glyph: ComponentType<{ size?: number }>;
 }
 
-// Left-to-right order matches the binding Figma BottomTabBar.
+// Left-to-right order: the unified Home landing, the timeline scrubber, then search.
 const TABS: readonly TabDef[] = [
-  { id: "browse", label: "Browse", Glyph: Books },
+  { id: "home", label: "Home", Glyph: Home },
   { id: "timeline", label: "Timeline", Glyph: Calendar },
-  { id: "status", label: "Status", Glyph: GitBranch },
   { id: "search", label: "Search", Glyph: MagnifyingGlass },
 ];
 
@@ -42,7 +42,7 @@ export interface BottomTabBarProps {
 }
 
 export function BottomTabBar({ active, onSelect }: BottomTabBarProps) {
-  // The five surfaces rove through the one shared FocusZone (keyboard-navigation
+  // The three surfaces rove through the one shared FocusZone (keyboard-navigation
   // every-composite-navigates-through-the-one-focuszone): the bar is ONE tab stop
   // and Left/Right arrows move between tabs. Activation is MANUAL (Enter / Space /
   // tap), so arrowing PAST the momentary Search tab never opens the palette — only

@@ -35,6 +35,7 @@ import {
   adaptWorkspaces,
   unwrapEnvelope,
 } from "./liveAdapters";
+import { reportDrainProgress, settleDrainProgress } from "./drainProgress";
 
 // In development Vite proxies /api to the engine (vite.config.ts); in
 // production the SPA is served by the engine itself, so the API shares the
@@ -331,6 +332,13 @@ export interface VaultTreeEntry {
 export interface VaultTreeResponse {
   entries: VaultTreeEntry[];
   tiers: TiersBlock;
+  /** False while a progressive partial (the first page rendered ahead of the
+   *  continuing drain — universal-data-loading ADR D5) is held; true (or
+   *  absent, for cached pre-flag shapes) once the walk drained to completion.
+   *  Client narrowing over an incomplete listing must surface the honest
+   *  partial state (the complete-set law applies at the moment a narrow
+   *  lands on the finished listing). */
+  complete?: boolean;
 }
 
 // The complete code-file listing (search-providers ADR: the one contract event).
@@ -384,8 +392,25 @@ const CODE_FILES_MAX_PAGES = 25;
 // The page is the route's sanctioned maximum; the page cap bounds the walk
 // (bounded-by-default-for-every-accumulator) so a pathological corpus cannot
 // spin the loop unboundedly.
+//
+// The FIRST page is deliberately small (universal-data-loading ADR D5,
+// first-page-first): the cold-load rail paints after ~a couple hundred rows
+// instead of buffering the route max, and the progressive `complete:false`
+// partial path engages on ordinary corpora too — with a 2000-row first page,
+// any vault under 2000 documents loaded as one monolithic response and the
+// progressive render never fired. Subsequent pages use the route max so the
+// drain still finishes in few round-trips; the cap covers the same 50k total.
+const VAULT_TREE_FIRST_PAGE_SIZE = 200;
 const VAULT_TREE_PAGE_SIZE = 2000;
-const VAULT_TREE_MAX_PAGES = 25;
+const VAULT_TREE_MAX_PAGES = 26;
+// Brief yield between continuation pages (on-demand-cold-start ADR D3) so the
+// background drain never contends with first paint / first interaction; the
+// page cap still bounds the loop, so total added latency is bounded too.
+const VAULT_TREE_PAGE_YIELD_MS = 120;
+
+function drainYield(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // --- §3 code (worktree) file tree (dashboard-code-tree ADR) ----------------------
 //
@@ -1891,26 +1916,50 @@ export class EngineClient {
     return adaptWorkspaces(await this.get("/workspaces"));
   }
 
-  async vaultTree(scope: string): Promise<VaultTreeResponse> {
+  async vaultTree(
+    scope: string,
+    onPartial?: (partial: VaultTreeResponse) => void,
+  ): Promise<VaultTreeResponse> {
     // Walk the cursor to completion so the rail holds the WHOLE listing — the
     // tree filters client-side, so a partial first page silently drops every
     // feature whose documents sit beyond it (the rail's filter-shows-nothing
-    // bug). Each page is the route's max; the page cap bounds the walk.
+    // bug). Each page is the route's max; the page cap bounds the walk. Each
+    // page reports into the drain-progress seam (universal-data-loading ADR
+    // D3) so the multi-page walk is visible to the activity indicator; the
+    // entry is dropped on settle or error either way. `onPartial` (ADR D5)
+    // hands each accumulated prefix out with `complete: false` so the rail
+    // can render the first page immediately while the drain continues; the
+    // resolved value is the whole listing with `complete: true`.
+    const drainId = `vault-tree:${scope}`;
     const entries: unknown[] = [];
     let tiers: unknown = {};
     let cursor: string | undefined;
-    for (let page = 0; page < VAULT_TREE_MAX_PAGES; page += 1) {
-      const body = await this.get<{
-        entries?: unknown[];
-        tiers?: unknown;
-        next_cursor?: string;
-      }>("/vault-tree", { scope, page_size: VAULT_TREE_PAGE_SIZE, cursor });
-      if (Array.isArray(body.entries)) entries.push(...body.entries);
-      if (body.tiers !== undefined) tiers = body.tiers;
-      cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
-      if (cursor === undefined) break;
+    try {
+      for (let page = 0; page < VAULT_TREE_MAX_PAGES; page += 1) {
+        const body = await this.get<{
+          entries?: unknown[];
+          tiers?: unknown;
+          next_cursor?: string;
+        }>("/vault-tree", {
+          scope,
+          page_size: page === 0 ? VAULT_TREE_FIRST_PAGE_SIZE : VAULT_TREE_PAGE_SIZE,
+          cursor,
+        });
+        if (Array.isArray(body.entries)) entries.push(...body.entries);
+        if (body.tiers !== undefined) tiers = body.tiers;
+        cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
+        if (cursor === undefined) break;
+        reportDrainProgress(drainId, page + 1, entries.length);
+        onPartial?.({
+          ...adaptVaultTree({ entries: [...entries], tiers }),
+          complete: false,
+        });
+        await drainYield(VAULT_TREE_PAGE_YIELD_MS);
+      }
+    } finally {
+      settleDrainProgress(drainId);
     }
-    return adaptVaultTree({ entries, tiers });
+    return { ...adaptVaultTree({ entries, tiers }), complete: true };
   }
 
   async codeFiles(scope: string): Promise<CodeFilesResponse> {
@@ -1919,22 +1968,31 @@ export class EngineClient {
     // every file beyond it. Each page is the route's max; the page cap bounds
     // the walk. The walk-cap `truncated` block is generation-stable (identical
     // on every page), so the last-seen value is the honest whole-listing truth.
+    const drainId = `code-files:${scope}`;
     const entries: unknown[] = [];
     let tiers: unknown = {};
     let truncated: unknown = null;
     let cursor: string | undefined;
-    for (let page = 0; page < CODE_FILES_MAX_PAGES; page += 1) {
-      const body = await this.get<{
-        entries?: unknown[];
-        tiers?: unknown;
-        truncated?: unknown;
-        next_cursor?: string;
-      }>("/code-files", { scope, page_size: CODE_FILES_PAGE_SIZE, cursor });
-      if (Array.isArray(body.entries)) entries.push(...body.entries);
-      if (body.tiers !== undefined) tiers = body.tiers;
-      if (body.truncated !== undefined) truncated = body.truncated;
-      cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
-      if (cursor === undefined) break;
+    try {
+      for (let page = 0; page < CODE_FILES_MAX_PAGES; page += 1) {
+        const body = await this.get<{
+          entries?: unknown[];
+          tiers?: unknown;
+          truncated?: unknown;
+          next_cursor?: string;
+        }>("/code-files", { scope, page_size: CODE_FILES_PAGE_SIZE, cursor });
+        if (Array.isArray(body.entries)) entries.push(...body.entries);
+        if (body.tiers !== undefined) tiers = body.tiers;
+        if (body.truncated !== undefined) truncated = body.truncated;
+        cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
+        if (cursor === undefined) break;
+        // Report only while another page remains (universal-data-loading ADR
+        // D3): the common single-page listing never touches the drain slice,
+        // so small corpora cannot flicker the indicator.
+        reportDrainProgress(drainId, page + 1, entries.length);
+      }
+    } finally {
+      settleDrainProgress(drainId);
     }
     // The CLIENT walk cap is ALSO truncation: if the page loop exhausted its
     // bound while a cursor still remained, files beyond it never loaded — an

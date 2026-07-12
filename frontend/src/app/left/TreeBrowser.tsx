@@ -245,7 +245,7 @@ export function TreeBrowser({
   ariaLabel = "tree browser",
 }: TreeBrowserProps) {
   const scope = useActiveScope();
-  const { tree, availability, state } = useVaultTreeSurface(scope);
+  const { tree, availability, state, complete } = useVaultTreeSurface(scope);
   const facets = useVaultRailFacets(scope);
   const dashboardSelection = useDashboardBrowserSelection(scope);
   const sharedHighlight = useHighlightedPath(tree.data?.entries, scope);
@@ -468,13 +468,35 @@ export function TreeBrowser({
         <RailDegradedNotice label="Some documents are temporarily unavailable." />
       )}
 
+      {/* PARTIAL listing (universal-data-loading ADR D5): the first pages are
+          interactive while the drain continues in the background. Honest
+          affordance — any filter/search over this prefix may be missing later
+          matches; narrowing re-runs per render as pages land, so matches never
+          silently vanish once the drain completes. */}
+      {!complete && (
+        <p className="px-fg-1 text-label text-ink-muted" data-tree-partial>
+          {/* The live region announces only the STATIC sentence; the growing
+              count is aria-hidden so per-page updates never queue repeated
+              announcements (review nit: SR chattiness). */}
+          <span role="status" className="sr-only">
+            Still loading the full list
+          </span>
+          <span aria-hidden>
+            Still loading the full list —{" "}
+            {(tree.data?.entries.length ?? 0).toLocaleString()} documents so far…
+          </span>
+        </p>
+      )}
+
       {empty ? (
         <RailMessage
           tone="empty"
           label={
-            view.filteredToNothing
+            view.filteredToNothing && complete
               ? "No documents match this filter."
-              : "No documents in this worktree yet."
+              : view.filteredToNothing
+                ? "No matches yet — the list is still loading."
+                : "No documents in this worktree yet."
           }
         />
       ) : (

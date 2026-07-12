@@ -71,3 +71,11 @@ createRoot(rootElement).render(
     </ErrorBoundary>
   </StrictMode>,
 );
+
+// Boot-shell fallback retirement: AppShell removes the pre-hydration skeleton
+// on its first commit (the guaranteed post-paint point). This timeout is the
+// backstop for surfaces that never mount AppShell (a crash fallback, an aux
+// route) so the skeleton can never trap the screen.
+setTimeout(() => {
+  document.getElementById("boot-shell")?.remove();
+}, 10_000);

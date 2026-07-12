@@ -27,6 +27,7 @@ import {
   FolderPlus,
   Funnel,
   GitBranch,
+  House,
   Library,
   Maximize,
   Menu,
@@ -69,6 +70,10 @@ export { Search as MagnifyingGlass };
 // The vault/browse mark is structural chrome → Lucide `Library` (one family with
 // the other chrome icons), re-exported under the binding name `Books`.
 export { Library as Books };
+// The compact unified-rail "Home" tab mark (mobile-unified-rail ADR): the Home pane
+// stacks Status + Browse, so its bottom-tab glyph is the neutral structural `House`
+// (Lucide), re-exported under the binding name `Home`.
+export { House as Home };
 
 // State-mode marks (state-mode-uniformity): the shared caution mark for the DEGRADED
 // mode (`TriangleAlert`) and the positive `Check` for the EMPTY/settled mode, sourced

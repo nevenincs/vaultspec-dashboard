@@ -18,7 +18,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { StreamLostError } from "../../platform/policy/failurePolicy";
 import { debounce } from "../../platform/timing";
@@ -504,8 +504,11 @@ let lastEngineRefreshAt = -Infinity;
  *     cached entries are marked stale and re-fetch lazily on next mount, bounding the
  *     fan-out to what the user can actually see. CONTRACT: this holds only while a visible
  *     surface keeps an active (mounted, enabled) observer — a mounted-but-`enabled:false`
- *     query a user expects Refresh to update would NOT refetch here (no such surface today;
- *     a future one must not assume otherwise).
+ *     query a user expects Refresh to update would NOT refetch here. The ONE such surface
+ *     is the hidden-tab-paused backend-signal stream (universal-data-loading ADR D4),
+ *     which is safe by construction: the tab is hidden (no user can press Refresh into
+ *     it) and resume invalidates + refetches the stream key itself. Any future
+ *     enabled-gated query must make the same argument or refetch on its own re-enable.
  * Client-side only — no backend mutation, so it is safe in time-travel and needs no
  * confirm guard.
  */
@@ -1651,9 +1654,19 @@ export function normalizeVaultTreeRequestIdentity(
 export function useVaultTree(scope: unknown) {
   const request = normalizeVaultTreeRequestIdentity(scope);
   const enabled = request.scope !== null;
+  const queryClient = useQueryClient();
+  const queryKey = engineKeys.vaultTree(request.scope ?? "");
   const query = useQuery({
-    queryKey: engineKeys.vaultTree(request.scope ?? ""),
-    queryFn: () => engineClient.vaultTree(request.scope!),
+    queryKey,
+    // Progressive listing (universal-data-loading ADR D5): each accumulated
+    // page prefix is written into THIS query's cache entry (`complete: false`)
+    // so the rail paints the first page immediately; the resolved value — the
+    // whole drained listing, `complete: true` — replaces it on settle. A
+    // failed walk falls back to normal query-error semantics.
+    queryFn: () =>
+      engineClient.vaultTree(request.scope!, (partial) => {
+        queryClient.setQueryData(queryKey, partial);
+      }),
     enabled,
   });
   return withManualRetry(enabled ? query : { ...query, data: undefined });
@@ -1737,6 +1750,10 @@ export interface VaultTreeSurfaceView {
   tree: ReturnType<typeof useVaultTree>;
   availability: VaultTreeAvailability;
   state: VaultTreeSurfaceState;
+  /** False while a progressive partial listing is held (the drain is still
+   *  walking — universal-data-loading ADR D5): the rail renders its honest
+   *  partial-narrow affordance until this flips true. */
+  complete: boolean;
 }
 
 /**
@@ -1751,6 +1768,9 @@ export function useVaultTreeSurface(scope: unknown): VaultTreeSurfaceView {
     tree,
     availability,
     state: deriveVaultTreeSurfaceState(tree, availability),
+    // Absent flag (older cached shapes) reads as complete; only an explicit
+    // in-flight partial (`complete: false`) triggers the partial affordance.
+    complete: tree.data?.complete !== false,
   };
 }
 
@@ -1876,6 +1896,54 @@ export function deriveVaultTreeBrowserView(
     groups: projectVaultTreeFeatureGroups(filteredEntries),
     filteredToNothing: activeFilter.length > 0 && filteredEntries.length === 0,
   };
+}
+
+// --- editor linking corpus (document-editor-redesign ADR) ------------------------
+//
+// The pickable corpus for the document editor's Related and Feature link pickers:
+// the existing vault documents (stem + human title + first feature tag) and the
+// existing feature-tag vocabulary. Both derive from the ALREADY-served
+// `/vault-tree` listing, so the editor stays app/ leaf chrome that fetches nothing
+// (dashboard-layer-ownership): the picker reads THIS selector, never the wire.
+// Bounded by the vault tree's server ceiling; the combobox narrows this bounded
+// slice client-side. Index documents are already excluded from `/vault-tree` rows
+// (terminology-standardization ADR D5), so they never surface as link targets.
+
+export interface EditorCorpusDocument {
+  /** The document stem (`doc:` id tail) — the value persisted into `related`. */
+  stem: string;
+  /** The document's H1 title when the row carries one, else the stem. */
+  title: string;
+  /** The document's first feature tag (bare, no `#`), for the picker row's
+   *  category dot; null when the document carries no feature tag. */
+  feature: string | null;
+}
+
+export interface EditorLinkingCorpus {
+  documents: readonly EditorCorpusDocument[];
+  /** The distinct feature-tag vocabulary (bare, no `#`), sorted for stable rows. */
+  featureTags: readonly string[];
+}
+
+export function deriveEditorLinkingCorpus(
+  entries: readonly VaultTreeEntry[],
+): EditorLinkingCorpus {
+  const documents: EditorCorpusDocument[] = entries.map((entry) => {
+    const stem = stemFromPath(entry.path);
+    return { stem, title: entry.title ?? stem, feature: entry.feature_tags[0] ?? null };
+  });
+  const featureTags = Array.from(
+    new Set(entries.flatMap((entry) => entry.feature_tags)),
+  ).sort((a, b) => a.localeCompare(b));
+  return { documents, featureTags };
+}
+
+/** Stores selector: the editor's link-picker corpus, derived in a useMemo over the
+ *  raw vault-tree slice (store-selector law — never derived inside a selector). The
+ *  corpus is empty until the tree resolves; the picker degrades to free entry. */
+export function useEditorLinkingCorpus(scope: unknown): EditorLinkingCorpus {
+  const entries = useVaultTree(scope).data?.entries;
+  return useMemo(() => deriveEditorLinkingCorpus(entries ?? []), [entries]);
 }
 
 // --- left-rail Vault tab projections (binding `LeftRail` 238:600) -----------------
@@ -3451,6 +3519,58 @@ export function useGraphSlice(
 }
 
 /**
+ * Constellation-first progressive graph slice (on-demand-cold-start ADR D1).
+ * A LIVE document-granularity request whose slice is COLD (no held or
+ * placeholder data — the 1.9MB-class read is still in flight) serves the
+ * same-identity feature-LOD constellation as the held slice instead: 16x
+ * smaller, and a cache SHARE with the nav toolbar's descent (same query key),
+ * so a re-ascend or prior visit paints instantly. `isPending` is masked false
+ * while the fill shows, which makes the availability derivation report
+ * `refreshing` — the canvas renders the real constellation plus the
+ * non-blocking refresh banner, never a blank skeleton for MBs. Passthrough
+ * (zero extra query) for: feature-granularity requests, time-travel (`asOf`
+ * reads one historical snapshot), and any slice with held data.
+ */
+export function useProgressiveGraphSlice(
+  scope: unknown,
+  filter?: unknown,
+  asOf?: unknown,
+  granularity?: unknown,
+  lens?: unknown,
+  focus?: unknown,
+  corpus?: unknown,
+) {
+  const requested = useGraphSlice(
+    scope,
+    filter,
+    asOf,
+    granularity,
+    lens,
+    focus,
+    corpus,
+  );
+  const wantsFill =
+    normalizeDashboardGraphGranularity(granularity) === "document" &&
+    normalizeGraphSliceAsOf(asOf) === undefined;
+  // Cold = the requested slice holds nothing (not even keepPreviousData).
+  const cold = wantsFill && requested.data === undefined;
+  const constellation = useGraphSlice(
+    cold ? scope : null,
+    filter,
+    undefined,
+    "feature",
+    lens,
+    focus,
+    corpus,
+  );
+  const fillData = cold ? constellation.data : undefined;
+  return useMemo(() => {
+    if (fillData === undefined) return requested;
+    return { ...requested, data: fillData, isPending: false };
+  }, [requested, fillData]);
+}
+
+/**
  * The active-lens graph slice (graph-node-salience): reads lens + focus from
  * canonical dashboard state and parameterizes the graph query by them, so a lens
  * switch or focus change is a re-query keyed on (lens, focus).
@@ -3757,18 +3877,24 @@ export function useGraphEmbeddings(
 export interface GraphSliceAvailability extends TierAvailability {
   /** The slice query is in flight (no held data yet). */
   loading: boolean;
+  /** A re-query is in flight WHILE a previous slice is held on screen
+   *  (`keepPreviousData`): the canvas renders this as a non-blocking corner
+   *  refresh banner, never a blanking loading card (universal-data-loading
+   *  ADR D2). */
+  refreshing: boolean;
 }
 
 type GraphSliceAvailabilitySource = Pick<
   UseQueryResult<GraphSlice>,
-  "data" | "error" | "isPending"
+  "data" | "error" | "isPending" | "isFetching"
 >;
 
 export function deriveGraphSliceAvailability(
   tiers: TiersBlock | undefined,
   loading: boolean,
+  refreshing = false,
 ): GraphSliceAvailability {
-  return { loading, ...readTierAvailability(tiers, CANONICAL_TIERS) };
+  return { loading, refreshing, ...readTierAvailability(tiers, CANONICAL_TIERS) };
 }
 
 /**
@@ -3789,6 +3915,13 @@ export function useGraphSliceAvailability(
   return deriveGraphSliceAvailability(
     slice ? tiersFromQuery(slice) : undefined,
     active && Boolean(slice?.isPending),
+    // Refreshing = a re-query behind a HELD slice (fetching, not the initial
+    // pending, data present) — the keepPreviousData window the canvas must
+    // signal without blanking (universal-data-loading ADR D2).
+    active &&
+      Boolean(slice?.isFetching) &&
+      !slice?.isPending &&
+      slice?.data !== undefined,
   );
 }
 
@@ -9007,8 +9140,81 @@ export const BACKEND_SIGNAL_CHANNELS = ["backends", "git"] as const;
  * coalesces them onto the one EventSource (each filters the deduped accumulator
  * for its own channel). No `since`/`scope` — these channels are not anchored.
  */
+/** Grace before a hidden tab pauses the backend-signal stream
+ *  (universal-data-loading ADR D4): long enough that tab-switching never
+ *  churns the EventSource, short enough that a parked tab stops holding a
+ *  connection open. */
+export const BACKEND_SIGNAL_HIDDEN_PAUSE_MS = 60_000;
+
+/**
+ * True once the document has stayed hidden past the grace window; flips back
+ * false the moment it is visible again. SSR/test-safe: no `document` means
+ * never paused.
+ */
+export function useDocumentHiddenPause(
+  graceMs: number = BACKEND_SIGNAL_HIDDEN_PAUSE_MS,
+): boolean {
+  const [paused, setPaused] = useState(false);
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const apply = () => {
+      if (document.hidden) {
+        timer ??= setTimeout(() => setPaused(true), graceMs);
+      } else {
+        if (timer !== null) clearTimeout(timer);
+        timer = null;
+        setPaused(false);
+      }
+    };
+    apply();
+    document.addEventListener("visibilitychange", apply);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", apply);
+    };
+  }, [graceMs]);
+  return paused;
+}
+
+/**
+ * Hidden-tab pause (universal-data-loading ADR D4): when the tab stays hidden
+ * past the grace, the subscription disables AND the in-flight stream is
+ * cancelled (closing the EventSource — `enabled: false` alone would leave it
+ * open, and cancelling alone would let `retry` reconnect). On return the
+ * stream key is invalidated so the re-enabled observer reopens the
+ * EventSource and re-snapshots — the pause gap is a designed resume, never a
+ * lost-stream degradation (these channels are unanchored; every reconnect
+ * re-serves current state). The `graph` delta channel is untouched: it is
+ * mount-gated in Stage and seq-anchored.
+ */
+const BACKEND_SIGNAL_STREAM_KEY = engineKeys.stream(
+  BACKEND_SIGNAL_CHANNELS,
+  undefined,
+  undefined,
+);
+
 export function useBackendSignalStream() {
-  return useEngineStream(BACKEND_SIGNAL_CHANNELS);
+  const paused = useDocumentHiddenPause();
+  const queryClient = useQueryClient();
+  const wasPausedRef = useRef(false);
+  useEffect(() => {
+    if (paused) {
+      wasPausedRef.current = true;
+      void queryClient.cancelQueries({ queryKey: BACKEND_SIGNAL_STREAM_KEY });
+      return;
+    }
+    if (!wasPausedRef.current) return;
+    wasPausedRef.current = false;
+    // Resume: staleTime Infinity would otherwise keep the held (now gapped)
+    // accumulator fresh forever; invalidating refetches the ACTIVE re-enabled
+    // observer, reopening the stream for a fresh snapshot.
+    void queryClient.invalidateQueries({ queryKey: BACKEND_SIGNAL_STREAM_KEY });
+  }, [paused, queryClient]);
+  return useQuery({
+    ...engineStreamOptions(BACKEND_SIGNAL_CHANNELS),
+    enabled: !paused,
+  });
 }
 
 export type BackendSignalChannel = (typeof BACKEND_SIGNAL_CHANNELS)[number];
