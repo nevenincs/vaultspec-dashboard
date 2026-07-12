@@ -15,6 +15,7 @@ import { useBrowserMode, useBrowserModeIntent } from "../../stores/view/browserM
 import { useActiveScope, useVaultFilesNarrowText } from "../../stores/server/queries";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { RAIL_SORT_OPTIONS, useRailSort } from "../../stores/view/railSort";
+import { useViewportClass } from "../../stores/view/viewportClass";
 import { IconButton } from "../kit";
 import { BrowserModeToggle } from "./BrowserModeToggle";
 import { CodeTree } from "./CodeTree";
@@ -67,10 +68,17 @@ export function BrowserRegion() {
   // authors, reduced to a plain path substring; the Vault tree reads the full facet
   // set (including the feature query proper) straight from the store.
   const filesNarrowText = useVaultFilesNarrowText(scope);
+  // In the compact unified rail (mobile-unified-rail ADR) the whole Home pane is ONE
+  // scroll, so the tree flows at natural height and opens no scroll region of its own
+  // (a nested scroll would trap the tree below the Status section). On desktop the
+  // tree keeps its bounded internal scroll under the pinned mode tabs.
+  const compact = useViewportClass() === "compact";
 
   return (
     <section
-      className="flex min-h-0 flex-1 flex-col gap-fg-3"
+      className={
+        compact ? "flex flex-col gap-fg-3" : "flex min-h-0 flex-1 flex-col gap-fg-3"
+      }
       aria-label="file browser"
       data-browser-region
     >
@@ -81,8 +89,9 @@ export function BrowserRegion() {
         {mode === "vault" && <VaultTreeOptionsButton scope={scope} />}
       </div>
 
-      {/* The active tab's tree. The listing scrolls; the tabs above stay pinned. */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* The active tab's tree. On desktop the listing scrolls under the pinned tabs;
+          on compact it flows into the one Home-pane scroll. */}
+      <div className={compact ? undefined : "min-h-0 flex-1 overflow-y-auto"}>
         {mode === "code" ? <CodeTree filter={filesNarrowText} /> : <VaultBrowser />}
       </div>
     </section>
