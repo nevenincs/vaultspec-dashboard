@@ -3,10 +3,10 @@ tags:
   - '#adr'
   - '#vault-tree-delta'
 date: '2026-07-12'
-modified: '2026-07-12'
+modified: '2026-07-13'
 related:
   - '[[2026-07-11-universal-data-loading-adr]]'
-  - '[[2026-07-11-on-demand-cold-start-adr]]'
+  - '[[2026-07-12-on-demand-cold-start-adr]]'
 ---
 
 # `vault-tree-delta` adr: `generation-keyed vault-tree delta reconciliation` | (**status:** `accepted`)
