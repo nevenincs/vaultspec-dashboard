@@ -16,7 +16,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ContentView } from "../../stores/server/queries";
 import { queryClient } from "../../stores/server/queryClient";
@@ -253,5 +253,47 @@ describe("editor:toggle-diff enrollment guard (S20)", () => {
     const command = commands.find((c) => c.id === EDITOR_TOGGLE_DIFF_ACTION_ID);
     expect(command).toBeTruthy();
     expect(command?.family).toBe("edit");
+  });
+});
+
+// ── W03.P06.S19 ceiling closure ──────────────────────────────────────────────
+// Verifies the debounce that bounds per-keystroke O(n·m) line-LCS cost:
+// rapid draft edits must not recompute the diff immediately; the diff must
+// settle to the final draft after the 250ms trailing window.
+
+describe("MarkdownDocView diff debounce (S19 ceiling closure)", () => {
+  beforeEach(() => {
+    // Fake only setTimeout/clearTimeout so the debounce is clock-controlled;
+    // React's MessageChannel scheduler is not affected.
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("debounces proposed text: rapid edits do not immediately recompute the diff, then settle after 250ms", () => {
+    const { container } = renderEditing();
+    // Open the diff panel: leading flush renders the current draft (same as base —
+    // no divergence yet, so no added hunks).
+    fireEvent.click(screen.getByRole("button", { name: EDITOR_TOGGLE_DIFF_LABEL }));
+    expect(container.querySelectorAll('[data-diff-line="add"]').length).toBe(0);
+
+    // Rapid successive keystrokes — all within the 250ms window.
+    act(() => updateEditorDraft(BODY + "\nFirst added line"));
+    act(() => updateEditorDraft(BODY + "\nSecond added line"));
+    act(() => updateEditorDraft(BODY + "\nFinal added line"));
+
+    // Debounce timer has NOT elapsed: diff still reflects the open-flush snapshot (no hunks).
+    expect(container.querySelectorAll('[data-diff-line="add"]').length).toBe(0);
+
+    // Advance past the 250ms trailing window.
+    act(() => {
+      vi.advanceTimersByTime(260);
+    });
+
+    // Diff has now settled to the final draft: at least one added hunk is visible.
+    expect(container.querySelectorAll('[data-diff-line="add"]').length).toBeGreaterThan(
+      0,
+    );
   });
 });

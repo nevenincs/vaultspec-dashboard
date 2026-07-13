@@ -24,8 +24,10 @@ related:
 
 ## Outcome
 
-11/11 viewer tests green; 17/17 palette command tests green. Full `just dev lint frontend` gate: exit 0 (eslint + prettier + tsc + px-scan + module-size + tokens + figma:names).
+12/12 viewer tests green (11 original + 1 debounce ceiling-closure test); 17/17 palette command tests green. Full `just dev lint frontend` gate: exit 0 (eslint + prettier + tsc + px-scan + module-size + tokens + figma:names).
 
 ## Notes
 
 The lint gate was initially blocked by sibling agent WIP: first by `BrowserRegion.tsx` (S24, resolved by the time the no-cache ESLint run ran — imports were in fact used in JSX), then by `CreateDocDialog.tsx` (S25/S26 prep — unused `AutocompleteCombobox` + `featureOptions`). The S26 agent completed the wiring before I needed to intervene; on re-run the gate cleared. No changes to `BrowserRegion.tsx` or `CreateDocDialog.tsx` were required from this step.
+
+**Ceiling closure:** Added `"MarkdownDocView diff debounce (S19 ceiling closure)"` suite (1 test): opens editor, toggles diff (leading flush — no hunks since draft == base), fires rapid successive draft updates, asserts diff section still shows no added hunks (debounce pending), advances fake timer by 260ms, asserts added hunks now visible. Uses `vi.useFakeTimers()` / `vi.useRealTimers()` in `beforeEach` / `afterEach`.

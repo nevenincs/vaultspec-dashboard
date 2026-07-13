@@ -16,6 +16,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
@@ -99,6 +100,38 @@ export const featureFromDocTags = featureTagOf;
 // failure actions-keymap-palette forbids) or add palette commands that do nothing
 // without a focused editor. Save remains the one editor keymap-registry binding.
 
+/** Debounces the proposed text fed to DiffLinesView so per-keystroke O(n·m)
+ *  line-LCS is bounded. Flushes immediately when the diff panel first opens
+ *  (visible: false → true) so the leading render is instant; subsequent draft
+ *  changes trail by delayMs. Panel-closed transitions skip the timeout entirely. */
+function useDebouncedDraftText(
+  draft: string,
+  delayMs: number,
+  visible: boolean,
+): string {
+  const [debounced, setDebounced] = useState(draft);
+  const prevVisibleRef = useRef(visible);
+
+  useEffect(() => {
+    const prevVisible = prevVisibleRef.current;
+    prevVisibleRef.current = visible;
+
+    if (visible && !prevVisible) {
+      // Panel just opened: flush instantly so the first diff render is immediate.
+      setDebounced(draft);
+      return;
+    }
+
+    if (!visible) return;
+
+    // Panel open, draft changed: trail by delayMs to bound keystroke LCS cost.
+    const id = setTimeout(() => setDebounced(draft), delayMs);
+    return () => clearTimeout(id);
+  }, [draft, visible, delayMs]);
+
+  return debounced;
+}
+
 export function MarkdownDocView({
   nodeId,
   content,
@@ -122,6 +155,14 @@ export function MarkdownDocView({
   );
   const editor = useDocumentEditorView(nodeId);
   const editorChrome = useMarkdownEditorChromeView(nodeId, documentEditor.properties);
+  // Debounce the proposed side of the diff (authoring-surface ADR D4 ceiling closure):
+  // per-keystroke O(n·m) line-LCS is bounded to ~250ms trailing; the leading open
+  // flush ensures the first diff render is instant. Textarea stays fully live.
+  const debouncedDraft = useDebouncedDraftText(
+    editor.draftText,
+    250,
+    editor.diffVisible,
+  );
   // A fresh editing session mints the shared human actor token before any
   // ledgered edit can fire (ledgered-edit-migration ADR, W01.P01): the Save/
   // frontmatter dispatch itself stays on the legacy write path until W01.P02
@@ -523,10 +564,10 @@ export function MarkdownDocView({
               returned_bytes: editor.baseText.length,
             }}
             proposed={{
-              text: editor.draftText,
+              text: debouncedDraft,
               truncated: false,
-              total_bytes: editor.draftText.length,
-              returned_bytes: editor.draftText.length,
+              total_bytes: debouncedDraft.length,
+              returned_bytes: debouncedDraft.length,
             }}
             label={content.path ?? docStemFromNodeId(nodeId) ?? nodeId}
           />
