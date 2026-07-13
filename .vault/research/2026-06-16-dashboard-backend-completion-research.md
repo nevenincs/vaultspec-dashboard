@@ -3,8 +3,9 @@ tags:
   - '#research'
   - '#dashboard-backend-completion'
 date: '2026-06-16'
-modified: '2026-06-22'
-related: []
+modified: '2026-07-13'
+related:
+  - '[[2026-06-16-missing-backend-inventory-research]]'
 ---
 
 # `dashboard-backend-completion` research: `frontend-driven backend completion and hardening`

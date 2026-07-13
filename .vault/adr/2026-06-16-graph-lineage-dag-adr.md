@@ -3,14 +3,14 @@ tags:
   - '#adr'
   - '#graph-lineage-dag'
 date: '2026-06-16'
-modified: '2026-06-16'
+modified: '2026-07-13'
 related:
   - "[[2026-06-16-graph-lineage-dag-research]]"
   - "[[2026-06-14-graph-node-semantics-adr]]"
   - "[[2026-06-14-graph-representation-adr]]"
 ---
 
-# graph-lineage-dag adr: rebuilding the lineage mode as a Sugiyama-layered DAG and closing the engine derivation-labeling hole that starves it
+# `graph-lineage-dag` adr: `rebuilding the lineage mode as a Sugiyama-layered DAG and closing the engine derivation-labeling hole that starves it` | (**status:** `accepted`)
 
 ## Context
 

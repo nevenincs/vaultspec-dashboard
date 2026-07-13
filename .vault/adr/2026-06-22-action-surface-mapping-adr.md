@@ -3,12 +3,13 @@ tags:
   - '#adr'
   - '#action-surface-mapping'
 date: '2026-06-22'
-modified: '2026-06-22'
+modified: '2026-07-13'
 related:
   - "[[2026-06-22-action-surface-mapping-audit]]"
   - "[[2026-06-21-command-palette-actions-adr]]"
   - "[[2026-06-19-keyboard-action-system-adr]]"
   - "[[2026-06-15-dashboard-context-menus-adr]]"
+  - '[[2026-06-22-action-surface-mapping-reference]]'
 ---
 
 # `action-surface-mapping` adr: `converge by coverage delta, not blanket re-enrollment` | (**status:** `accepted`)

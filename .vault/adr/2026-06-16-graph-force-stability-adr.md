@@ -3,13 +3,13 @@ tags:
   - '#adr'
   - '#graph-force-stability'
 date: '2026-06-16'
-modified: '2026-06-16'
+modified: '2026-07-13'
 related:
   - "[[2026-06-16-graph-force-stability-research]]"
   - "[[2026-06-15-dashboard-node-graph-stability-adr]]"
 ---
 
-# graph-force-stability adr: incremental reheat, held-alphaTarget interaction, and Obsidian-grade drag-to-pin
+# `graph-force-stability` adr: `incremental reheat, held-alphaTarget interaction, and Obsidian-grade drag-to-pin` | (**status:** `accepted`)
 
 ## Context
 

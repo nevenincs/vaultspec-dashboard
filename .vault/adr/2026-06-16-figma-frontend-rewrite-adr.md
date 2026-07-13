@@ -3,8 +3,9 @@ tags:
   - '#adr'
   - '#figma-frontend-rewrite'
 date: '2026-06-16'
-modified: '2026-06-22'
-related: []
+modified: '2026-07-13'
+related:
+  - '[[2026-06-16-figma-frontend-rewrite-reference]]'
 ---
 
 # `figma-frontend-rewrite` adr: `complete frontend teardown and Figma-binding rewrite` | (**status:** `accepted`)

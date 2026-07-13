@@ -3,13 +3,13 @@ tags:
   - '#adr'
   - '#graph-semantic-embeddings'
 date: '2026-06-16'
-modified: '2026-06-16'
+modified: '2026-07-13'
 related:
   - "[[2026-06-16-graph-semantic-embeddings-research]]"
   - "[[2026-06-14-graph-representation-adr]]"
 ---
 
-# graph-semantic-embeddings adr: serving rag embeddings on a bounded, tiers-gated endpoint so the meaning constellation becomes real
+# `graph-semantic-embeddings` adr: `serving rag embeddings on a bounded, tiers-gated endpoint so the meaning constellation becomes real` | (**status:** `accepted`)
 
 ## Context
 

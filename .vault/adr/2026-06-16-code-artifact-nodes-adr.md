@@ -8,7 +8,7 @@ related:
   - "[[2026-06-16-missing-backend-inventory-research]]"
 ---
 
-# code-artifact-nodes adr: mint inferred code/symbol nodes so structural mentions bridge to navigable graph nodes
+# `code-artifact-nodes` adr: `mint inferred code/symbol nodes so structural mentions bridge to navigable graph nodes` | (**status:** `proposed`)
 
 ## Context
 

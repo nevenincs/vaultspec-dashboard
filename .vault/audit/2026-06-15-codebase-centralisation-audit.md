@@ -3,8 +3,9 @@ tags:
   - '#audit'
   - '#codebase-centralisation'
 date: '2026-06-15'
-modified: '2026-06-15'
-related: []
+modified: '2026-07-13'
+related:
+  - '[[2026-06-17-dashboard-state-centralization-adr]]'
 ---
 
 # `codebase-centralisation` audit: `rag-driven semantic centralisation health audit`

@@ -3,11 +3,12 @@ tags:
   - '#adr'
   - '#ledgered-edit-migration'
 date: '2026-07-09'
-modified: '2026-07-09'
+modified: '2026-07-13'
 related:
   - "[[2026-07-02-agentic-operation-modes-adr]]"
   - "[[2026-06-29-agentic-security-provenance-adr]]"
   - "[[2026-06-30-agentic-spec-authoring-backend-plan]]"
+  - '[[2026-07-09-ledgered-edit-migration-reference]]'
 ---
 
 # `ledgered-edit-migration` adr: `Route every document edit through the ledgered authoring backend and retire the /ops/core write path` | (**status:** `accepted`)

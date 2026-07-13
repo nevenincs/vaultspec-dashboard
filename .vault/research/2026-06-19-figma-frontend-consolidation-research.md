@@ -3,8 +3,9 @@ tags:
   - '#research'
   - '#figma-frontend-consolidation'
 date: '2026-06-19'
-modified: '2026-06-22'
-related: []
+modified: '2026-07-13'
+related:
+  - '[[2026-06-16-figma-frontend-rewrite-adr]]'
 ---
 
 # `figma-frontend-consolidation` research: `figma vs frontend drift inventory and prune matrix`
