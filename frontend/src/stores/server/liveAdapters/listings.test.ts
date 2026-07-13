@@ -12,6 +12,7 @@ import {
   adaptFileTree,
   adaptNodeDetail,
   adaptNodeEvidence,
+  adaptCodeFilesDelta,
   adaptSearch,
   adaptVaultTree,
   adaptVaultTreeDelta,
@@ -507,6 +508,37 @@ describe("adaptVaultTreeDelta (vault-tree-delta ADR D3)", () => {
     expect(adaptVaultTreeDelta("nope").full_required).toBe(true);
     // A body with no usable generation cannot be a baseline → full drain.
     expect(adaptVaultTreeDelta({ changed: [], removed: [] }).full_required).toBe(true);
+  });
+});
+
+describe("adaptCodeFilesDelta (path-keyed delta, /code-files follow-on)", () => {
+  it("adapts a real diff: changed code rows and removed paths", () => {
+    const delta = adaptCodeFilesDelta({
+      since: 3,
+      generation: 5,
+      changed: [{ path: "src/new.rs", node_id: "code:src/new.rs", lang: "rust" }],
+      removed: ["src/old.rs", 42],
+      tiers: TIERS,
+    });
+    expect(delta.generation).toBe(5);
+    expect(delta.since).toBe(3);
+    expect(delta.full_required).toBeUndefined();
+    expect(delta.changed?.[0]).toMatchObject({
+      path: "src/new.rs",
+      node_id: "code:src/new.rs",
+      lang: "rust",
+    });
+    // A code row missing its path is dropped; non-string removed keys are dropped.
+    expect(delta.removed).toEqual(["src/old.rs"]);
+  });
+
+  it("fails safe to a full drain on full_required / unusable / generation-less bodies", () => {
+    expect(
+      adaptCodeFilesDelta({ generation: 9, full_required: true, tiers: TIERS })
+        .full_required,
+    ).toBe(true);
+    expect(adaptCodeFilesDelta(null).full_required).toBe(true);
+    expect(adaptCodeFilesDelta({ changed: [], removed: [] }).full_required).toBe(true);
   });
 });
 

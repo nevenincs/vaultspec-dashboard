@@ -19,6 +19,8 @@ import type {
   NodeEvidence,
   SearchIndexState,
   SearchResponse,
+  CodeFilesDeltaResponse,
+  RowDeltaResponse,
   TiersBlock,
   VaultTreeDeltaResponse,
   VaultTreeEntry,
@@ -365,12 +367,16 @@ export function adaptVaultTree(body: unknown): VaultTreeResponse {
   };
 }
 
-/** Live `/vault-tree/delta` → the internal delta shape (vault-tree-delta ADR D3).
+/** Live `/…/delta` → the internal delta shape (vault-tree-delta ADR D3), KEY-GENERIC
+ *  over the row entry type via `adaptEntry` (vault: stem rows; code: path rows).
  *  TOLERANT and FAIL-SAFE: an unusable body, an absent generation, or a
  *  `full_required` flag all resolve to a full-drain instruction rather than a
  *  partial patch, so a shape drift can never corrupt the held listing. `changed`
- *  rows are adapted like full listing rows; `removed` is a plain stem list. */
-export function adaptVaultTreeDelta(body: unknown): VaultTreeDeltaResponse {
+ *  rows are adapted like full listing rows; `removed` is a plain key list. */
+export function adaptRowDelta<Entry>(
+  body: unknown,
+  adaptEntry: (value: unknown) => Entry | null,
+): RowDeltaResponse<Entry> {
   if (!isRec(body)) {
     return { generation: 0, full_required: true, tiers: {} };
   }
@@ -381,12 +387,10 @@ export function adaptVaultTreeDelta(body: unknown): VaultTreeDeltaResponse {
     return { generation: generation ?? 0, full_required: true, tiers };
   }
   const changed = Array.isArray(body.changed)
-    ? body.changed
-        .map(adaptVaultTreeEntry)
-        .filter((entry): entry is VaultTreeEntry => entry !== null)
+    ? body.changed.map(adaptEntry).filter((entry): entry is Entry => entry !== null)
     : [];
   const removed = Array.isArray(body.removed)
-    ? body.removed.filter((stem): stem is string => typeof stem === "string")
+    ? body.removed.filter((key): key is string => typeof key === "string")
     : [];
   const since = normalizeGeneration(body.since);
   return {
@@ -396,6 +400,16 @@ export function adaptVaultTreeDelta(body: unknown): VaultTreeDeltaResponse {
     tiers,
     ...(since !== undefined ? { since } : {}),
   };
+}
+
+/** Live `/vault-tree/delta` → the stem-keyed delta (D3). */
+export function adaptVaultTreeDelta(body: unknown): VaultTreeDeltaResponse {
+  return adaptRowDelta(body, adaptVaultTreeEntry);
+}
+
+/** Live `/code-files/delta` → the path-keyed delta (D3, /code-files follow-on). */
+export function adaptCodeFilesDelta(body: unknown): CodeFilesDeltaResponse {
+  return adaptRowDelta(body, adaptCodeFileEntry);
 }
 
 // --- /code-files: the complete code-file listing (search-providers ADR) ----------
@@ -450,10 +464,17 @@ export function adaptCodeFiles(body: unknown): CodeFilesResponse {
   const entries = body.entries
     .map(adaptCodeFileEntry)
     .filter((entry): entry is CodeFileEntry => entry !== null);
+  // The serving code `generation` (vault-tree-delta ADR /code-files follow-on) is
+  // absorbed like the vault tree's, passed through verbatim. The truncated-corpus
+  // baseline DROP happens downstream: the client walk omits its resolved
+  // generation on a truncated/straddled listing, and the reconcile spec re-checks
+  // `truncated == null` — so a capped listing never becomes a delta baseline.
+  const generation = normalizeGeneration(body.generation);
   return {
     entries,
     tiers: (body.tiers ?? {}) as TiersBlock,
     truncated: adaptCodeFilesTruncation(body.truncated),
+    ...(generation !== undefined ? { generation } : {}),
   };
 }
 

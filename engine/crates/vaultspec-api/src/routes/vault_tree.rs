@@ -21,7 +21,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::app::AppState;
-use crate::vault_rows::VaultTreeDelta;
+use crate::row_delta::row_delta_envelope_data;
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
@@ -84,29 +84,7 @@ pub async fn vault_tree_delta(
     Query(params): Query<VaultTreeDeltaParams>,
 ) -> ApiResult {
     let cell = super::query::validate_scope(&state, &params.scope)?;
-    let data = match cell.vault_tree_delta(params.since) {
-        VaultTreeDelta::Unchanged { generation } => json!({
-            "since": params.since,
-            "generation": generation,
-            "changed": [],
-            "removed": [],
-        }),
-        VaultTreeDelta::FullRequired { generation } => json!({
-            "generation": generation,
-            "full_required": true,
-        }),
-        VaultTreeDelta::Delta {
-            since,
-            generation,
-            changed,
-            removed,
-        } => json!({
-            "since": since,
-            "generation": generation,
-            "changed": changed,
-            "removed": removed,
-        }),
-    };
+    let data = row_delta_envelope_data(cell.vault_tree_delta(params.since), params.since);
     Ok(super::envelope(data, super::query_tiers(&cell), None))
 }
 

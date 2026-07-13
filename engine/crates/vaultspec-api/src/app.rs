@@ -144,7 +144,7 @@ pub struct ScopeCell {
     /// generations back the `/vault-tree/delta` route. The memo, the ring, and the
     /// diff live in `crate::vault_rows`. Invalidated implicitly by the generation
     /// bump — a superseded generation stays only until evicted past the cap.
-    pub(crate) vault_tree_rows_ring: Mutex<crate::vault_rows::VaultRowsRing>,
+    pub(crate) vault_tree_rows_ring: Mutex<crate::row_delta::RowSnapshotRing>,
     /// The HEAD commit-correlated temporal event rows, memoized per generation. The
     /// /events activity feed walks up to 5000 commits and correlates each to graph
     /// nodes — immutable for a given HEAD, but it ran on every request (~2.2s).
@@ -290,14 +290,14 @@ pub struct CodeGraphCell {
     /// changing HEAD). The `embeddings_cache` epoch-key precedent.
     recency_cache: Mutex<Option<(String, Arc<engine_query::code::CodeRecency>)>>,
     recency_probe_ms: std::sync::atomic::AtomicI64,
-    /// The complete path-sorted `/code-files` listing, memoized per code
-    /// generation (search-providers ADR: the `files (code)` provider narrows a
-    /// COMPLETE client-cached listing, so the engine serves the whole set from
-    /// this generation-stable projection rather than the DOI-bounded graph
-    /// slice). One slot, replaced on a generation bump — the
-    /// `vault_tree_rows` memo discipline, keyed on the CODE generation because
-    /// the projection is over the code corpus's own graph.
-    code_file_rows_cache: Mutex<Option<(u64, Arc<Vec<serde_json::Value>>)>>,
+    /// The complete path-sorted `/code-files` listing: a bounded snapshot RING keyed
+    /// by the CODE generation (vault-tree-delta ADR `/code-files` follow-on), sharing
+    /// `crate::row_delta` with the vault tree. The freshest slot is the
+    /// per-generation memo the `files (code)` provider narrows over a COMPLETE
+    /// client-cached listing; the retained prior generations back the
+    /// `/code-files/delta` route. A truncated (walk-capped) corpus is NEVER recorded
+    /// (it is not a stable complete baseline).
+    pub(crate) code_file_rows_ring: Mutex<crate::row_delta::RowSnapshotRing>,
 }
 
 /// Commit-walk ceiling for the per-file recency fold — the event tier's
@@ -325,7 +325,7 @@ impl CodeGraphCell {
             rollup_cache: Mutex::new(None),
             recency_cache: Mutex::new(None),
             recency_probe_ms: std::sync::atomic::AtomicI64::new(0),
-            code_file_rows_cache: Mutex::new(None),
+            code_file_rows_ring: Mutex::new(crate::row_delta::RowSnapshotRing::default()),
         }
     }
 
@@ -369,22 +369,6 @@ impl CodeGraphCell {
     /// the projection runs over exactly the generation it read — the
     /// `default_rollup` discipline. Filter-independent (the whole listing), so
     /// the handler paginates the cached slice per request.
-    pub fn code_file_rows(&self, graph: &Arc<LinkageGraph>) -> Arc<Vec<serde_json::Value>> {
-        let generation = self.generation.load(Ordering::SeqCst);
-        let mut cache = self
-            .code_file_rows_cache
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if let Some((cached_generation, cached)) = cache.as_ref()
-            && *cached_generation == generation
-        {
-            return cached.clone();
-        }
-        let fresh = Arc::new(engine_query::graph::build_code_file_rows(graph));
-        *cache = Some((generation, fresh.clone()));
-        fresh
-    }
-
     /// Per-file git recency for the heat ranking (code-graph-heat ADR
     /// amendment): repo-relative path → last-commit committer time, folded
     /// order-independently (max) from ONE bounded commit walk, plus the
@@ -551,7 +535,7 @@ impl ScopeCell {
             salience_cache: Mutex::new(None),
             doc_views_cache: Mutex::new(None),
             feature_nodes_cache: Mutex::new(None),
-            vault_tree_rows_ring: Mutex::new(crate::vault_rows::VaultRowsRing::default()),
+            vault_tree_rows_ring: Mutex::new(crate::row_delta::RowSnapshotRing::default()),
             event_rows_cache: Mutex::new(None),
             lineage_nodes_cache: Mutex::new(None),
             filters_vocab_cache: Mutex::new(None),

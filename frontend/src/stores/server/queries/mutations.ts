@@ -9,9 +9,11 @@ import {
 } from "../authoring";
 import {
   engineClient,
+  type CodeFileEntry,
+  type CodeFilesResponse,
   type OpsWriteResult,
+  type RowDeltaResponse,
   type TiersBlock,
-  type VaultTreeDeltaResponse,
   type VaultTreeEntry,
   type VaultTreeResponse,
 } from "../engine";
@@ -166,130 +168,107 @@ function invalidateScopedQuerySubtree(
     // listing from a small delta instead of re-draining the whole ~765 KB listing.
     // Fire-and-forget — the reconcile falls back to a full invalidate itself on any
     // no-baseline / full_required / large-delta / error path.
-    void reconcileVaultTreeGeneration(queryClient, scope);
+    void reconcileRowGeneration(queryClient, vaultTreeReconcileSpec(scope));
+    return;
+  }
+  if (subtree === "code-files") {
+    // The SAME generation-keyed reconcile, keyed by path (ADR /code-files
+    // follow-on): the code delta route ensure-freshes the corpus, so a source edit
+    // since the client's baseline is surfaced and patched instead of re-draining.
+    void reconcileRowGeneration(queryClient, codeFilesReconcileSpec(scope));
     return;
   }
   invalidateQueryPrefix(queryClient, [...engineKeys.all, subtree, scope]);
 }
 
-/** The vault-tree entry's stem — its identity key, matching the engine's row
- *  `stem` (which the entry's path round-trips through `stemFromPath`). */
-function vaultEntryStem(entry: VaultTreeEntry): string {
-  return stemFromPath(entry.path);
+// --- generation-keyed listing reconcile (vault-tree-delta ADR D4, KEY-GENERIC) ------
+//
+// The reconcile machinery is shared by `/vault-tree` (keyed by stem) and
+// `/code-files` (keyed by path): the ring diff, the merge, the pure decision, and
+// the identity-guarded apply differ only by a `RowReconcileSpec` — never a
+// copy-paste twin. The review HIGH lost-update guard lives ONCE in
+// `applyRowReconcile`.
+
+/** The per-listing parameters the generic reconcile is specialized by. */
+interface RowReconcileSpec<Entry, Listing> {
+  /** The listing's cache key (also the full-drain invalidation target). */
+  queryKey: readonly unknown[];
+  /** The row's identity key (vault: stem via `stemFromPath`; code: the path). */
+  keyOf: (entry: Entry) => string;
+  entriesOf: (listing: Listing) => Entry[];
+  /** The delta baseline generation, or undefined when the listing is NOT a valid
+   *  baseline (partial, no generation, or — for code — a truncated corpus). */
+  baselineGenerationOf: (listing: Listing) => number | undefined;
+  fetchDelta: (since: number) => Promise<RowDeltaResponse<Entry>>;
+  /** Build ONE complete, internally consistent patched listing at the new
+   *  generation (`complete: true`; never a `complete: false` half-patch — the
+   *  setQueryData-partial gotcha). */
+  build: (entries: Entry[], tiers: TiersBlock, generation: number) => Listing;
 }
 
-/** Stem-keyed merge (vault-tree-delta ADR D4): drop `removed`, replace/insert
- *  `changed`, and re-sort by stem to reproduce the engine's stem-sorted order —
- *  producing ONE complete, internally consistent listing (`complete: true`) at the
- *  new generation. Never leaves a `complete: false` patched value
- *  (setQueryData-partial gotcha, universal-data-loading campaign). */
-export function mergeVaultTreeDelta(
-  held: VaultTreeResponse,
-  changed: VaultTreeEntry[],
-  removed: string[],
-  generation: number,
-  tiers: TiersBlock,
-): VaultTreeResponse {
-  const removedStems = new Set(removed);
-  const changedStems = new Set(changed.map(vaultEntryStem));
-  // Decorate with the sort key once (avoid re-deriving the stem per comparison).
-  const decorated: [string, VaultTreeEntry][] = [];
-  for (const entry of held.entries) {
-    const stem = vaultEntryStem(entry);
-    // A removed or changed stem is dropped here; a changed row is re-added below.
-    if (removedStems.has(stem) || changedStems.has(stem)) continue;
-    decorated.push([stem, entry]);
-  }
-  for (const entry of changed) decorated.push([vaultEntryStem(entry), entry]);
-  decorated.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return {
-    entries: decorated.map(([, entry]) => entry),
-    tiers,
-    complete: true,
-    generation,
-  };
-}
-
-/** The reconcile decision (vault-tree-delta ADR D4), factored PURE so every branch
- *  is deterministically testable without the wire: `patch` a held complete listing
- *  from the delta; `full-drain` on any honest-degradation path (no complete
- *  baseline, `full_required`, or a delta touching more than half the set); `noop`
- *  when nothing changed since the baseline. The complete-set law is preserved — a
- *  patch only ever lands on a complete baseline, with the full drain as the
- *  universal safety net. */
-export type VaultTreeReconcileAction =
-  | { kind: "patch"; value: VaultTreeResponse }
+export type RowReconcileAction<Listing> =
+  | { kind: "patch"; value: Listing }
   | { kind: "full-drain" }
   | { kind: "noop" };
 
-export function planVaultTreeReconcile(
-  held: VaultTreeResponse | undefined,
-  delta: VaultTreeDeltaResponse,
-): VaultTreeReconcileAction {
-  // Only a COMPLETE listing at a known generation has a delta baseline; a partial
-  // mid-drain listing or a pre-generation cached shape must re-drain.
-  if (
-    held === undefined ||
-    held.complete !== true ||
-    typeof held.generation !== "number"
-  ) {
-    return { kind: "full-drain" };
+/** Key-keyed merge (ADR D4): drop `removed`, replace/insert `changed`, and re-sort
+ *  by key to reproduce the engine's sorted order — producing ONE complete listing at
+ *  the new generation. */
+export function mergeRowDelta<Entry, Listing>(
+  held: Listing,
+  changed: Entry[],
+  removed: string[],
+  generation: number,
+  tiers: TiersBlock,
+  spec: RowReconcileSpec<Entry, Listing>,
+): Listing {
+  const removedKeys = new Set(removed);
+  const changedKeys = new Set(changed.map(spec.keyOf));
+  // Decorate with the sort key once (avoid re-deriving the key per comparison).
+  const decorated: [string, Entry][] = [];
+  for (const entry of spec.entriesOf(held)) {
+    const key = spec.keyOf(entry);
+    // A removed or changed key is dropped here; a changed row is re-added below.
+    if (removedKeys.has(key) || changedKeys.has(key)) continue;
+    decorated.push([key, entry]);
   }
+  for (const entry of changed) decorated.push([spec.keyOf(entry), entry]);
+  decorated.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return spec.build(
+    decorated.map(([, entry]) => entry),
+    tiers,
+    generation,
+  );
+}
+
+/** The reconcile decision (ADR D4), factored PURE so every branch is
+ *  deterministically testable without the wire: `patch` a held complete listing
+ *  from the delta; `full-drain` on any honest-degradation path (no valid baseline,
+ *  `full_required`, or a delta touching more than half the set); `noop` when nothing
+ *  changed since the baseline. A patch only ever lands on a complete baseline, with
+ *  the full drain as the universal safety net (the complete-set law). */
+export function planRowReconcile<Entry, Listing>(
+  held: Listing | undefined,
+  delta: RowDeltaResponse<Entry>,
+  spec: RowReconcileSpec<Entry, Listing>,
+): RowReconcileAction<Listing> {
+  const baselineGeneration =
+    held === undefined ? undefined : spec.baselineGenerationOf(held);
+  if (baselineGeneration === undefined) return { kind: "full-drain" };
   if (delta.full_required) return { kind: "full-drain" };
   // Nothing changed since our baseline (the engine short-circuits since==current).
-  if (delta.generation === held.generation) return { kind: "noop" };
+  if (delta.generation === baselineGeneration) return { kind: "noop" };
   const changed = delta.changed ?? [];
   const removed = delta.removed ?? [];
   // A delta touching more than half the set is not worth patching — re-drain for a
   // clean complete listing. Guards the empty-baseline case too.
-  if (changed.length + removed.length > held.entries.length / 2) {
+  if (changed.length + removed.length > spec.entriesOf(held!).length / 2) {
     return { kind: "full-drain" };
   }
   return {
     kind: "patch",
-    value: mergeVaultTreeDelta(held, changed, removed, delta.generation, delta.tiers),
+    value: mergeRowDelta(held!, changed, removed, delta.generation, delta.tiers, spec),
   };
-}
-
-/**
- * Reconcile the held vault-tree listing on a generation bump (vault-tree-delta ADR
- * D4). With a COMPLETE held listing at a KNOWN generation, fetch the `since=` delta
- * and apply the pure `planVaultTreeReconcile` decision in one atomic `setQueryData`;
- * a transport/shape fault or any degradation path falls back to the full-drain
- * invalidate. The delta is skipped entirely when there is no baseline to patch.
- */
-async function reconcileVaultTreeGeneration(
-  queryClient: QueryClient,
-  scope: string,
-): Promise<void> {
-  const queryKey = engineKeys.vaultTree(scope);
-  const fullDrain = () =>
-    invalidateQueryPrefix(queryClient, [...engineKeys.all, "vault-tree", scope]);
-  const held = queryClient.getQueryData<VaultTreeResponse>(queryKey);
-  // No baseline to patch: full-drain WITHOUT a needless delta round-trip.
-  if (
-    held === undefined ||
-    held.complete !== true ||
-    typeof held.generation !== "number"
-  ) {
-    fullDrain();
-    return;
-  }
-  let delta: VaultTreeDeltaResponse;
-  try {
-    delta = await engineClient.vaultTreeDelta(scope, held.generation);
-  } catch {
-    // A transport/shape fault must never leave a stale or half-patched listing.
-    fullDrain();
-    return;
-  }
-  applyVaultTreeReconcile(
-    queryClient,
-    queryKey,
-    held,
-    planVaultTreeReconcile(held, delta),
-    fullDrain,
-  );
 }
 
 /**
@@ -297,21 +276,21 @@ async function reconcileVaultTreeGeneration(
  * generation bumps arrive in bursts, so two overlapping reconciles can resolve
  * OUT OF ORDER — a stale patch landing after a newer write would silently regress
  * the listing and stamp it fresh. The write is therefore guarded on baseline
- * identity: react-query hands back the same reference until the value is
- * replaced, so `getQueryData(queryKey) === held` proves nothing intervened; a
- * moved baseline falls back to the full drain (never a possibly-regressing
- * patch). Exported so the overlap ordering is deterministically testable against
- * a real QueryClient.
+ * identity: react-query hands back the same reference until the value is replaced,
+ * so `getQueryData(queryKey) === held` proves nothing intervened; a moved baseline
+ * falls back to the full drain (never a possibly-regressing patch). Shared by every
+ * listing (the guard is NOT re-implemented per corpus) and exported so the overlap
+ * ordering is deterministically testable against a real QueryClient.
  */
-export function applyVaultTreeReconcile(
+export function applyRowReconcile<Listing>(
   queryClient: QueryClient,
   queryKey: readonly unknown[],
-  held: VaultTreeResponse,
-  action: VaultTreeReconcileAction,
+  held: Listing,
+  action: RowReconcileAction<Listing>,
   fullDrain: () => void,
 ): void {
   if (action.kind === "patch") {
-    if (queryClient.getQueryData<VaultTreeResponse>(queryKey) === held) {
+    if (queryClient.getQueryData<Listing>(queryKey) === held) {
       queryClient.setQueryData(queryKey, action.value);
     } else {
       fullDrain();
@@ -320,6 +299,93 @@ export function applyVaultTreeReconcile(
     fullDrain();
   }
   // noop: the held listing is already current — leave it untouched.
+}
+
+/**
+ * Reconcile a held listing on a generation bump (ADR D4). With a valid baseline
+ * (complete, known generation, untruncated), fetch the `since=` delta and apply the
+ * pure `planRowReconcile` decision through the identity-guarded `applyRowReconcile`;
+ * a transport/shape fault or any degradation path falls back to the full-drain
+ * invalidate. The delta is skipped entirely when there is no baseline to patch.
+ */
+async function reconcileRowGeneration<Entry, Listing>(
+  queryClient: QueryClient,
+  spec: RowReconcileSpec<Entry, Listing>,
+): Promise<void> {
+  const fullDrain = () => invalidateQueryPrefix(queryClient, spec.queryKey);
+  const held = queryClient.getQueryData<Listing>(spec.queryKey);
+  const baselineGeneration =
+    held === undefined ? undefined : spec.baselineGenerationOf(held);
+  // No baseline to patch: full-drain WITHOUT a needless delta round-trip.
+  if (held === undefined || baselineGeneration === undefined) {
+    fullDrain();
+    return;
+  }
+  let delta: RowDeltaResponse<Entry>;
+  try {
+    delta = await spec.fetchDelta(baselineGeneration);
+  } catch {
+    // A transport/shape fault must never leave a stale or half-patched listing.
+    fullDrain();
+    return;
+  }
+  applyRowReconcile(
+    queryClient,
+    spec.queryKey,
+    held,
+    planRowReconcile(held, delta, spec),
+    fullDrain,
+  );
+}
+
+/** The `/vault-tree` reconcile spec: rows keyed by stem (the entry's path
+ *  round-trips through `stemFromPath` to the engine's row `stem`). */
+export function vaultTreeReconcileSpec(
+  scope: string,
+): RowReconcileSpec<VaultTreeEntry, VaultTreeResponse> {
+  return {
+    queryKey: engineKeys.vaultTree(scope),
+    keyOf: (entry) => stemFromPath(entry.path),
+    entriesOf: (listing) => listing.entries,
+    baselineGenerationOf: (listing) =>
+      listing.complete === true && typeof listing.generation === "number"
+        ? listing.generation
+        : undefined,
+    fetchDelta: (since) => engineClient.vaultTreeDelta(scope, since),
+    build: (entries, tiers, generation) => ({
+      entries,
+      tiers,
+      complete: true,
+      generation,
+    }),
+  };
+}
+
+/** The `/code-files` reconcile spec: rows keyed by path. A TRUNCATED (walk-capped)
+ *  listing is not a stable complete baseline, so `baselineGenerationOf` rejects it —
+ *  the reconcile re-drains rather than patching an incomplete set. */
+export function codeFilesReconcileSpec(
+  scope: string,
+): RowReconcileSpec<CodeFileEntry, CodeFilesResponse> {
+  return {
+    queryKey: engineKeys.codeFiles(scope),
+    keyOf: (entry) => entry.path,
+    entriesOf: (listing) => listing.entries,
+    baselineGenerationOf: (listing) =>
+      listing.complete === true &&
+      typeof listing.generation === "number" &&
+      listing.truncated == null
+        ? listing.generation
+        : undefined,
+    fetchDelta: (since) => engineClient.codeFilesDelta(scope, since),
+    build: (entries, tiers, generation) => ({
+      entries,
+      tiers,
+      truncated: null,
+      complete: true,
+      generation,
+    }),
+  };
 }
 
 function invalidateGraphGenerationSubtrees(

@@ -2,6 +2,7 @@
 
 import {
   adaptCodeFiles,
+  adaptCodeFilesDelta,
   adaptContent,
   adaptDashboardState,
   adaptFileTree,
@@ -48,6 +49,7 @@ import type {
   MapResponse,
   NodeDetail,
   NodeEvidence,
+  CodeFilesDeltaResponse,
   SalienceLens,
   VaultTreeDeltaResponse,
   VaultTreeResponse,
@@ -325,44 +327,91 @@ export class EngineClient {
     // the walk. The walk-cap `truncated` block is generation-stable (identical
     // on every page), so the last-seen value is the honest whole-listing truth.
     const drainId = `code-files:${scope}`;
-    const entries: unknown[] = [];
-    let tiers: unknown = {};
-    let truncated: unknown = null;
-    let cursor: string | undefined;
     try {
-      for (let page = 0; page < CODE_FILES_MAX_PAGES; page += 1) {
-        const body = await this.get<{
-          entries?: unknown[];
-          tiers?: unknown;
-          truncated?: unknown;
-          next_cursor?: string;
-        }>("/code-files", { scope, page_size: CODE_FILES_PAGE_SIZE, cursor });
-        if (Array.isArray(body.entries)) entries.push(...body.entries);
-        if (body.tiers !== undefined) tiers = body.tiers;
-        if (body.truncated !== undefined) truncated = body.truncated;
-        cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
-        if (cursor === undefined) break;
-        // Report only while another page remains (universal-data-loading ADR
-        // D3): the common single-page listing never touches the drain slice,
-        // so small corpora cannot flicker the indicator.
-        reportDrainProgress(drainId, page + 1, entries.length);
+      // Outer restart loop (D1, mirroring the vault tree): a mid-walk generation
+      // change restarts the drain from page 0, bounded by the restart budget.
+      for (let attempt = 0; ; attempt += 1) {
+        const canRestart = attempt < VAULT_TREE_MAX_WALK_RESTARTS;
+        const entries: unknown[] = [];
+        let tiers: unknown = {};
+        let truncated: unknown = null;
+        // The code `generation` the walk committed to (the first page's); a later
+        // page from a different generation is a mid-walk straddle.
+        let generation: number | undefined;
+        let straddled = false;
+        let cursor: string | undefined;
+        let restart = false;
+        for (let page = 0; page < CODE_FILES_MAX_PAGES; page += 1) {
+          const body = await this.get<{
+            entries?: unknown[];
+            tiers?: unknown;
+            truncated?: unknown;
+            generation?: number;
+            next_cursor?: string;
+          }>("/code-files", { scope, page_size: CODE_FILES_PAGE_SIZE, cursor });
+          const pageGeneration =
+            typeof body.generation === "number" ? body.generation : undefined;
+          if (page === 0) {
+            generation = pageGeneration;
+          } else if (
+            pageGeneration !== undefined &&
+            generation !== undefined &&
+            pageGeneration !== generation
+          ) {
+            if (canRestart) {
+              restart = true;
+              break;
+            }
+            straddled = true;
+          }
+          if (Array.isArray(body.entries)) entries.push(...body.entries);
+          if (body.tiers !== undefined) tiers = body.tiers;
+          if (body.truncated !== undefined) truncated = body.truncated;
+          cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
+          if (cursor === undefined) break;
+          // Report only while another page remains (universal-data-loading ADR
+          // D3): the common single-page listing never touches the drain slice,
+          // so small corpora cannot flicker the indicator.
+          reportDrainProgress(drainId, page + 1, entries.length);
+        }
+        if (restart) continue;
+        // The CLIENT walk cap is ALSO truncation: if the page loop exhausted its
+        // bound while a cursor still remained, files beyond it never loaded — an
+        // incomplete listing exactly like the engine's own walk cap. Surface it
+        // (when the server did not already report truncation).
+        if (truncated === null && cursor !== undefined) {
+          truncated = {
+            returned_files: entries.length,
+            reason:
+              "client page-walk cap: the listing stopped at its page ceiling; files beyond it are absent",
+          };
+        }
+        // A truncated corpus (server or client-cap) or a straddled walk carries no
+        // stable delta baseline — omit the generation so the next sweep re-drains
+        // rather than patches an incomplete/mixed-generation listing.
+        const resolvedGeneration =
+          truncated !== null || straddled ? undefined : generation;
+        return {
+          ...adaptCodeFiles({
+            entries,
+            tiers,
+            truncated,
+            generation: resolvedGeneration,
+          }),
+          complete: true,
+        };
       }
     } finally {
       settleDrainProgress(drainId);
     }
-    // The CLIENT walk cap is ALSO truncation: if the page loop exhausted its
-    // bound while a cursor still remained, files beyond it never loaded — an
-    // incomplete listing exactly like the engine's own walk cap. Surface it (when
-    // the server did not already report truncation) so the provider and palette
-    // can be honest rather than silently partial.
-    if (truncated === null && cursor !== undefined) {
-      truncated = {
-        returned_files: entries.length,
-        reason:
-          "client page-walk cap: the listing stopped at its page ceiling; files beyond it are absent",
-      };
-    }
-    return adaptCodeFiles({ entries, tiers, truncated });
+  }
+
+  /** The generation-keyed code-files delta (vault-tree-delta ADR /code-files
+   *  follow-on): the path-keyed diff from the client's held `since` generation to
+   *  the current one, or a full-drain instruction when the baseline is no longer
+   *  retained (evicted/restarted) or the corpus is truncated. */
+  async codeFilesDelta(scope: string, since: number): Promise<CodeFilesDeltaResponse> {
+    return adaptCodeFilesDelta(await this.get("/code-files/delta", { scope, since }));
   }
 
   /** One bounded, ignore-aware directory level of the worktree file tree

@@ -14,8 +14,8 @@ pub mod discovery;
 pub mod handshake;
 pub mod registry;
 pub mod routes;
+mod row_delta;
 pub mod seat;
-mod vault_rows;
 
 use std::sync::Arc;
 
@@ -48,6 +48,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/vault-tree",
     "/vault-tree/delta",
     "/code-files",
+    "/code-files/delta",
     "/file-tree",
     "/fs/list",
     "/pipeline",
@@ -99,6 +100,9 @@ async fn health() -> Json<Value> {
 
 /// Assemble the full single-origin router (contract §1).
 pub fn build_router(state: Arc<AppState>) -> Router {
+    // Short paths for the generation-keyed listing routes so the delta
+    // registrations fit on one line (module-size gate: lib.rs is shrink-only).
+    use routes::{code_files, vault_tree};
     Router::new()
         .route("/health", get(health))
         .route("/map", get(routes::query::map))
@@ -109,15 +113,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // Graceful stop (single-app-runtime D5): bearer-gated signal; the
         // drain itself is the serve loop's one shared shutdown path.
         .route("/shutdown", post(routes::lifecycle::shutdown))
-        .route("/vault-tree", get(routes::vault_tree::vault_tree))
-        // Generation-keyed delta reconciliation (vault-tree-delta ADR D3): the
-        // client patches its held listing from a stem-keyed diff instead of
-        // re-draining the whole listing on every generation bump. Read-only.
-        .route(
-            "/vault-tree/delta",
-            get(routes::vault_tree::vault_tree_delta),
-        )
-        .route("/code-files", get(routes::query::code_files))
+        // Generation-keyed listing deltas (vault-tree-delta ADR + /code-files follow-on).
+        .route("/vault-tree", get(vault_tree::vault_tree))
+        .route("/vault-tree/delta", get(vault_tree::vault_tree_delta))
+        .route("/code-files", get(code_files::code_files))
+        .route("/code-files/delta", get(code_files::code_files_delta))
         // Read-only codebase file-tree listing (dashboard-code-tree ADR): one
         // bounded, ignore-aware directory level per call, metadata only, through
         // the shared envelope so every response carries the tiers block.

@@ -114,23 +114,31 @@ export interface VaultTreeResponse {
   generation?: number;
 }
 
-/** The engine-reduced `/vault-tree/delta` response (vault-tree-delta ADR D3): a
- *  stem-keyed diff from the client's held generation to the current one, or a
- *  full-drain instruction when the baseline is no longer retained. */
-export interface VaultTreeDeltaResponse {
+/** The engine-reduced generation-keyed delta response (vault-tree-delta ADR D3),
+ *  KEY-GENERIC over the row entry type: a diff from the client's held generation to
+ *  the current one, or a full-drain instruction when the baseline is no longer a
+ *  stable complete set (evicted/restarted, or — for code — a truncated corpus).
+ *  `/vault-tree/delta` keys `Entry` by stem; `/code-files/delta` by path. */
+export interface RowDeltaResponse<Entry> {
   /** The current graph generation the delta (or full-drain) is against. */
   generation: number;
-  /** True when `since` is unknown (evicted/restarted): the client must re-drain
-   *  the whole listing rather than patch. Mutually exclusive with a diff. */
+  /** True when `since` is no longer a valid baseline: the client must re-drain the
+   *  whole listing rather than patch. Mutually exclusive with a diff. */
   full_required?: boolean;
   /** The client's baseline generation, echoed on a real diff. */
   since?: number;
-  /** Rows added or modified since `since` — full entries to merge in by stem. */
-  changed?: VaultTreeEntry[];
-  /** Stems dropped since `since` — remove these from the held listing. */
+  /** Rows added or modified since `since` — full entries to merge in by key. */
+  changed?: Entry[];
+  /** Row keys dropped since `since` — remove these from the held listing. */
   removed?: string[];
   tiers: TiersBlock;
 }
+
+/** The `/vault-tree/delta` response (rows keyed by stem). */
+export type VaultTreeDeltaResponse = RowDeltaResponse<VaultTreeEntry>;
+
+/** The `/code-files/delta` response (rows keyed by path). */
+export type CodeFilesDeltaResponse = RowDeltaResponse<CodeFileEntry>;
 
 // The complete code-file listing (search-providers ADR: the one contract event).
 // One minimal row per `code:` file node projected off the code corpus graph —
@@ -163,6 +171,15 @@ export interface CodeFilesResponse {
   entries: CodeFileEntry[];
   tiers: TiersBlock;
   truncated: CodeFilesTruncation | null;
+  /** True once the client walk drained to completion (always, for this non-partial
+   *  listing); paired with `generation` it is a valid delta baseline — but ONLY when
+   *  `truncated` is null (a capped corpus is not a stable complete set). */
+  complete?: boolean;
+  /** The code graph `generation` the drained rows belong to (vault-tree-delta ADR
+   *  `/code-files` follow-on). The reconcile fetches a `since=<generation>` delta and
+   *  patches this listing. OMITTED when the corpus is truncated — a capped listing has
+   *  no stable delta baseline and re-drains. */
+  generation?: number;
 }
 
 // --- §3 code (worktree) file tree (dashboard-code-tree ADR) ----------------------
