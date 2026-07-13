@@ -11,6 +11,7 @@ pub mod app;
 mod authoring;
 pub mod boot;
 pub mod discovery;
+mod graph_delta;
 pub mod handshake;
 pub mod registry;
 pub mod routes;
@@ -54,6 +55,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/pipeline",
     "/dashboard-state",
     "/graph/query",
+    "/graph/query/delta",
     "/graph/embeddings",
     "/graph/asof",
     "/graph/diff",
@@ -100,9 +102,7 @@ async fn health() -> Json<Value> {
 
 /// Assemble the full single-origin router (contract §1).
 pub fn build_router(state: Arc<AppState>) -> Router {
-    // Short paths for the generation-keyed listing routes so the delta
-    // registrations fit on one line (module-size gate: lib.rs is shrink-only).
-    use routes::{code_files, vault_tree};
+    use routes::{code_files, graph, vault_tree};
     Router::new()
         .route("/health", get(health))
         .route("/map", get(routes::query::map))
@@ -113,7 +113,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // Graceful stop (single-app-runtime D5): bearer-gated signal; the
         // drain itself is the serve loop's one shared shutdown path.
         .route("/shutdown", post(routes::lifecycle::shutdown))
-        // Generation-keyed listing deltas (vault-tree-delta ADR + /code-files follow-on).
         .route("/vault-tree", get(vault_tree::vault_tree))
         .route("/vault-tree/delta", get(vault_tree::vault_tree_delta))
         .route("/code-files", get(code_files::code_files))
@@ -135,7 +134,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/dashboard-state",
             get(routes::state::get_dashboard_state).patch(routes::state::patch_dashboard_state),
         )
-        .route("/graph/query", post(routes::query::graph_query_route))
+        .route("/graph/query", post(graph::graph_query_route))
+        .route("/graph/query/delta", post(graph::graph_query_delta_route))
         // The dedicated bounded embedding route (graph-semantic-embeddings ADR
         // D2): rag's stored dense vectors for the served document node set,
         // tiers-gated, generation-stamped, NEVER inline on /graph/query.

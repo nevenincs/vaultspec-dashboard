@@ -459,6 +459,29 @@ export function invalidateGraphGenerationReads(
 }
 
 /**
+ * Invalidate the graph-generation SIBLING projections — every generation-keyed
+ * read EXCEPT the `graph` document slice itself (graph-slice-delta ADR D4). On a
+ * document-granularity stream delta the live-sync path patches the ~3.5 MB `graph`
+ * slice through the delta route instead of refetching it, but the open editor's
+ * served bytes, the vault/code tree, the filter facets, and the selected node's
+ * projections must STILL re-read the fresh generation (the W03.P04.S10 external
+ * re-ingest coupling). This sweep refreshes those siblings without dragging the
+ * large slice back over the wire; the graph subtree is delta-patched (or, on
+ * degradation, drained on its own D1-floored fallback).
+ */
+export function invalidateGraphGenerationSiblingReads(
+  queryClient: QueryClient,
+  scope: unknown,
+): void {
+  const normalizedScope = normalizeGitDiffArg(scope);
+  if (normalizedScope === null) return;
+  for (const subtree of GRAPH_GENERATION_QUERY_SUBTREES) {
+    if (subtree === "graph") continue;
+    invalidateScopedQuerySubtree(queryClient, subtree, normalizedScope);
+  }
+}
+
+/**
  * Backend `git` signal recovery invalidation. `/status` carries the dirty/ahead
  * rollup, while `/ops/git/status|numstat|diff|histdiff` and `/history` are
  * separate scoped projections. A git stream frame means the rollup, per-scope git

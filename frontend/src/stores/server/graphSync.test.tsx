@@ -1,15 +1,16 @@
 // @vitest-environment happy-dom
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { GraphDeltaEntry } from "./engine";
+import { engineClient, type GraphDeltaEntry, type GraphSlice } from "./engine";
 import { useLiveStatusStore } from "./liveStatus";
 import type { StreamChunk } from "./queries";
 import { GRAPH_GENERATION_QUERY_SUBTREES, engineKeys } from "./queries";
 import {
+  GRAPH_BUILDING_REFETCH_MS,
   GRAPH_FEATURE_DELTAS_CAP,
   GRAPH_LIVE_GAP_COUNT_MAX,
   maxSeq,
@@ -22,7 +23,9 @@ import {
   useGraphLiveDeltaStore,
   useGraphLiveDeltaView,
   useGraphLiveSync,
+  useGraphSliceBuildingReconcilePoll,
 } from "./graphSync";
+import { liveTransport } from "../../testing/liveClient";
 import { ENGINE_WAIT } from "../../testing/timing";
 
 function wrapper(client: QueryClient) {
@@ -153,7 +156,7 @@ describe("useGraphLiveSync", () => {
     resetGraphLiveDeltaState();
   });
 
-  it("advances lastSeq + marks connected immediately, and debounces invalidation to one trailing refetch (P-HIGH-1)", () => {
+  it("advances lastSeq + marks connected immediately, and debounces the document-delta SIBLING refresh to one trailing sweep, leaving the graph slice to its delta (P-HIGH-1 / graph-slice-delta D4)", () => {
     vi.useFakeTimers();
     try {
       const client = new QueryClient();
@@ -175,15 +178,14 @@ describe("useGraphLiveSync", () => {
       // ...but the invalidation is debounced, not fired per delta (the fix).
       expect(invalidate).not.toHaveBeenCalled();
       vi.advanceTimersByTime(150);
-      // ONE coalesced trailing refresh per burst, routed through the central
-      // graph-generation invalidation seam. This refreshes the constellation and
-      // every sibling projection that keys on the same graph generation, while
-      // still firing once per affected subtree rather than once per delta.
-      expect(invalidate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          queryKey: ["engine", "graph", "scopeA"],
-          exact: false,
-        }),
+      // ONE coalesced trailing SIBLING refresh per burst: every generation-keyed
+      // projection re-reads the fresh generation (the open editor / tree / facets /
+      // node, W03.P04.S10) EXCEPT the ~3.5 MB graph document slice, which the
+      // graph-slice delta patches instead of refetching (graph-slice-delta ADR D4).
+      // With no active graph observer mounted here, the graph subtree is never
+      // invalidated.
+      expect(invalidate).not.toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ["engine", "graph", "scopeA"] }),
       );
       expect(invalidate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -207,7 +209,10 @@ describe("useGraphLiveSync", () => {
           exact: false,
         }),
       );
-      expect(invalidate).toHaveBeenCalledTimes(GRAPH_GENERATION_QUERY_SUBTREES.length);
+      // Every subtree EXCEPT the graph slice — one sweep per sibling, once per burst.
+      expect(invalidate).toHaveBeenCalledTimes(
+        GRAPH_GENERATION_QUERY_SUBTREES.length - 1,
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -596,6 +601,161 @@ describe("useGraphLiveSync", () => {
       });
       // The feature delta splices via apply-deltas; no debounced refetch fires.
       vi.advanceTimersByTime(300);
+      expect(invalidate).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("useGraphSliceBuildingReconcilePoll (building-tier delta poll — graph-slice-delta root fix)", () => {
+  afterEach(() => {
+    cleanup();
+    engineClient.useTransport(liveTransport);
+  });
+
+  const docVaultKey = engineKeys.graph(
+    "scopeA",
+    {},
+    undefined,
+    "document",
+    "status",
+    null,
+    "vault",
+  );
+  const buildingTiers = {
+    declared: { available: false, reason: "building declared links" },
+  } as unknown as GraphSlice["tiers"];
+
+  function jsonResponse(data: object): Response {
+    return new Response(JSON.stringify({ data, tiers: {} }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("polls the DELTA path on cadence for an eligible building slice — never a full /graph/query refetch — and stops when the tier flips ready", async () => {
+    vi.useFakeTimers();
+    try {
+      const client = new QueryClient();
+      const held = {
+        nodes: [{ id: "n1" }, { id: "n2" }, { id: "n3" }, { id: "n4" }],
+        edges: [],
+        tiers: buildingTiers,
+        generation: 4,
+        slice_token: "tok",
+        filter: {},
+      } as unknown as GraphSlice;
+      client.setQueryData(docVaultKey, held);
+      // Active observer so the reconcile's `type:"active"` find hits the slice.
+      const observer = new QueryObserver(client, {
+        queryKey: docVaultKey,
+        queryFn: () => held,
+        staleTime: Infinity,
+        gcTime: Infinity,
+      });
+      const unsubObserver = observer.subscribe(() => {});
+
+      let deltaCalls = 0;
+      let fullCalls = 0;
+      engineClient.useTransport(async (input, init) => {
+        if (input.includes("/graph/query/delta")) {
+          deltaCalls += 1;
+          return jsonResponse({
+            since: 4,
+            generation: 5,
+            changed_nodes: [{ id: "n5" }],
+            removed_node_ids: [],
+            changed_edges: [],
+            removed_edge_ids: [],
+            tiers: {},
+          });
+        }
+        if (input.includes("/graph/query")) {
+          fullCalls += 1;
+        }
+        return liveTransport(input, init);
+      });
+
+      const { rerender, unmount } = renderHook(
+        ({ building }: { building: boolean }) =>
+          useGraphSliceBuildingReconcilePoll("scopeA", building, true),
+        { initialProps: { building: true }, wrapper: wrapper(client) },
+      );
+
+      await vi.advanceTimersByTimeAsync(GRAPH_BUILDING_REFETCH_MS);
+      // ONE sub-KB delta round-trip; the ~3.5 MB full slice is NEVER re-pulled.
+      expect(deltaCalls).toBe(1);
+      expect(fullCalls).toBe(0);
+      // The held slice is patched (fresh generation + tiers cleared → banner flips).
+      const patched = client.getQueryData<GraphSlice>(docVaultKey);
+      expect(patched?.generation).toBe(5);
+      expect(patched?.nodes.map((n) => n.id).sort()).toEqual([
+        "n1",
+        "n2",
+        "n3",
+        "n4",
+        "n5",
+      ]);
+
+      // The tier flipped ready → the consumer passes building:false → the poll stops.
+      rerender({ building: false });
+      await vi.advanceTimersByTimeAsync(GRAPH_BUILDING_REFETCH_MS * 3);
+      expect(deltaCalls).toBe(1);
+      expect(fullCalls).toBe(0);
+
+      unsubObserver();
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("routes a NON-eligible building slice (feature/code/as-of) to the floored graph-only sweep, never the delta", async () => {
+    vi.useFakeTimers();
+    try {
+      const client = new QueryClient();
+      const invalidate = vi.spyOn(client, "invalidateQueries");
+      let deltaCalls = 0;
+      engineClient.useTransport(async (input, init) => {
+        if (input.includes("/graph/query/delta")) deltaCalls += 1;
+        return liveTransport(input, init);
+      });
+
+      renderHook(() => useGraphSliceBuildingReconcilePoll("scopeA", true, false), {
+        wrapper: wrapper(client),
+      });
+
+      await vi.advanceTimersByTimeAsync(GRAPH_BUILDING_REFETCH_MS);
+      // No delta attempted; the floored sweep fires its leading edge on the graph
+      // subtree only (the D1 floor bounds a non-eligible full re-pull to ≤1/cooldown).
+      expect(deltaCalls).toBe(0);
+      expect(invalidate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          queryKey: ["engine", "graph", "scopeA"],
+          exact: false,
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does nothing while not building", async () => {
+    vi.useFakeTimers();
+    try {
+      const client = new QueryClient();
+      const invalidate = vi.spyOn(client, "invalidateQueries");
+      let deltaCalls = 0;
+      engineClient.useTransport(async (input, init) => {
+        if (input.includes("/graph/query/delta")) deltaCalls += 1;
+        return liveTransport(input, init);
+      });
+      renderHook(() => useGraphSliceBuildingReconcilePoll("scopeA", false, true), {
+        wrapper: wrapper(client),
+      });
+      await vi.advanceTimersByTimeAsync(GRAPH_BUILDING_REFETCH_MS * 3);
+      expect(deltaCalls).toBe(0);
       expect(invalidate).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();

@@ -57,3 +57,6 @@ The engine's per-generation memo means the delta's entire server-side cost is re
 - A future `/code-files` delta reuses D2–D4 verbatim; a future SSE-pushed patch could reuse the same reconcile seam.
 
 - Live-verified 2026-07-13: same-generation delta 355 bytes; unknown-since degrades to full_required.
+
+
+- wire-bench recurring-cost probe 1783965101311.

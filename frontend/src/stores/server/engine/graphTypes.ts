@@ -641,6 +641,32 @@ export interface GraphSlice {
    * partial, never as a complete one. The degraded tier itself is in `tiers`.
    */
   salience_partial?: boolean;
+  /** The engine graph `generation` this present-view document slice belongs to
+   *  (graph-slice-delta ADR D2), present ONLY on the delta-eligible present-view
+   *  document vault slice (null on as-of/feature/code). Passed through `...rest` by
+   *  `adaptGraphSlice`; the live-sync splice uses it as the `since` delta baseline. */
+  generation?: number | null;
+  /** The opaque params-fingerprint token the client returns verbatim in a
+   *  `/graph/query/delta` request (graph-slice-delta ADR D3, guard #1) — the ring
+   *  keys on it, so no client-side canonicalization can drift the lookup. Present
+   *  only alongside a numeric `generation`. */
+  slice_token?: string;
+}
+
+/** The engine-reduced `/graph/query/delta` response (graph-slice-delta ADR D3): an
+ *  id-keyed node + edge diff from the client's held generation to the current one,
+ *  or a full-drain instruction when the (token, generation) pair is not retained or
+ *  truncation composition differs. */
+export interface GraphSliceDeltaResponse {
+  generation: number;
+  full_required?: boolean;
+  since?: number;
+  changed_nodes?: EngineNode[];
+  removed_node_ids?: string[];
+  changed_edges?: EngineEdge[];
+  removed_edge_ids?: string[];
+  truncated?: { total_nodes: number; returned_nodes: number; reason: string } | null;
+  tiers: TiersBlock;
 }
 
 export interface FiltersVocabulary {

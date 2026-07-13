@@ -21,6 +21,7 @@ import type {
   EngineNode,
   GraphCorpus,
   GraphSlice,
+  GraphSliceDeltaResponse,
   NodeEmbedding,
   TiersBlock,
   WireMetaEdge,
@@ -100,6 +101,57 @@ export function metaEdgeToEdge(meta: WireMetaEdge): EngineEdge {
  *  any normal bounded slice so they only fire on a runaway/hostile payload. */
 export const MAX_CLIENT_GRAPH_NODES = 20000;
 export const MAX_CLIENT_GRAPH_EDGES = 80000;
+
+/** A finite non-negative integer, else undefined — the graph generation read. */
+function normalizeGraphGeneration(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : undefined;
+}
+
+/** Live `/graph/query/delta` → the internal id-keyed node/edge delta (graph-slice-
+ *  delta ADR D3). TOLERANT and FAIL-SAFE: an unusable body, an absent generation, or
+ *  a `full_required` flag all resolve to a full-drain instruction rather than a
+ *  partial patch, so a shape drift can never corrupt the held slice. Changed rows
+ *  are trusted as the engine's served (already-excluded) nodes/edges; only rows
+ *  carrying a string `id` are kept (the merge keys by id). */
+export function adaptGraphSliceDelta(body: unknown): GraphSliceDeltaResponse {
+  if (!isRec(body)) return { generation: 0, full_required: true, tiers: {} };
+  const tiers = (body.tiers ?? {}) as TiersBlock;
+  const generation = normalizeGraphGeneration(body.generation);
+  if (generation === undefined || body.full_required === true) {
+    return { generation: generation ?? 0, full_required: true, tiers };
+  }
+  const withStringId = (v: unknown): v is { id: string } =>
+    isRec(v) && typeof v.id === "string" && v.id.length > 0;
+  const changed_nodes = Array.isArray(body.changed_nodes)
+    ? (body.changed_nodes.filter(withStringId) as EngineNode[])
+    : [];
+  const changed_edges = Array.isArray(body.changed_edges)
+    ? (body.changed_edges.filter(withStringId) as EngineEdge[])
+    : [];
+  const removed_node_ids = Array.isArray(body.removed_node_ids)
+    ? body.removed_node_ids.filter((x): x is string => typeof x === "string")
+    : [];
+  const removed_edge_ids = Array.isArray(body.removed_edge_ids)
+    ? body.removed_edge_ids.filter((x): x is string => typeof x === "string")
+    : [];
+  const since = normalizeGraphGeneration(body.since);
+  const truncated =
+    isRec(body.truncated) && typeof body.truncated.reason === "string"
+      ? (body.truncated as GraphSliceDeltaResponse["truncated"])
+      : null;
+  return {
+    generation,
+    changed_nodes,
+    removed_node_ids,
+    changed_edges,
+    removed_edge_ids,
+    truncated,
+    tiers,
+    ...(since !== undefined ? { since } : {}),
+  };
+}
 
 export function adaptGraphSlice(
   body: unknown,

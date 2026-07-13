@@ -6,6 +6,7 @@ pub mod file_tree;
 pub mod fs_browse;
 pub mod git;
 pub mod github;
+pub mod graph;
 pub mod history;
 pub mod lifecycle;
 pub mod ops;

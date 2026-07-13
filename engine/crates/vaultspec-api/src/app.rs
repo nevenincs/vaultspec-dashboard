@@ -138,13 +138,14 @@ pub struct ScopeCell {
     /// into feature-convergence nodes; this serves the default (unfiltered) poll
     /// from cache, invalidated on a generation bump like the other projections.
     pub feature_nodes_cache: Mutex<Option<(u64, Arc<Vec<Value>>)>>,
-    /// The stem-sorted `/vault-tree` document rows: a bounded snapshot RING keyed
-    /// by generation (vault-tree-delta ADR D2). The freshest slot is the
-    /// per-generation memo the Tree view reads from cache; the retained prior
-    /// generations back the `/vault-tree/delta` route. The memo, the ring, and the
-    /// diff live in `crate::vault_rows`. Invalidated implicitly by the generation
-    /// bump — a superseded generation stays only until evicted past the cap.
+    /// The stem-sorted `/vault-tree` document-row snapshot RING keyed by generation
+    /// (vault-tree-delta ADR D2): the freshest slot is the per-generation memo, the
+    /// retained generations back `/vault-tree/delta`. Memo/ring/diff in
+    /// `crate::row_delta`.
     pub(crate) vault_tree_rows_ring: Mutex<crate::row_delta::RowSnapshotRing>,
+    /// The served DOCUMENT graph-slice snapshot ring backing `/graph/query/delta`
+    /// (graph-slice-delta ADR D2): (params fingerprint, generation) → slice.
+    pub(crate) graph_slice_ring: Mutex<crate::graph_delta::GraphSliceRing>,
     /// The HEAD commit-correlated temporal event rows, memoized per generation. The
     /// /events activity feed walks up to 5000 commits and correlates each to graph
     /// nodes — immutable for a given HEAD, but it ran on every request (~2.2s).
@@ -290,13 +291,10 @@ pub struct CodeGraphCell {
     /// changing HEAD). The `embeddings_cache` epoch-key precedent.
     recency_cache: Mutex<Option<(String, Arc<engine_query::code::CodeRecency>)>>,
     recency_probe_ms: std::sync::atomic::AtomicI64,
-    /// The complete path-sorted `/code-files` listing: a bounded snapshot RING keyed
-    /// by the CODE generation (vault-tree-delta ADR `/code-files` follow-on), sharing
-    /// `crate::row_delta` with the vault tree. The freshest slot is the
-    /// per-generation memo the `files (code)` provider narrows over a COMPLETE
-    /// client-cached listing; the retained prior generations back the
-    /// `/code-files/delta` route. A truncated (walk-capped) corpus is NEVER recorded
-    /// (it is not a stable complete baseline).
+    /// The path-sorted `/code-files` snapshot RING keyed by the CODE generation
+    /// (vault-tree-delta `/code-files` follow-on), sharing `crate::row_delta` with
+    /// the vault tree; backs `/code-files/delta`. A truncated (walk-capped) corpus
+    /// is NEVER recorded (not a stable complete baseline).
     pub(crate) code_file_rows_ring: Mutex<crate::row_delta::RowSnapshotRing>,
 }
 
@@ -536,6 +534,7 @@ impl ScopeCell {
             doc_views_cache: Mutex::new(None),
             feature_nodes_cache: Mutex::new(None),
             vault_tree_rows_ring: Mutex::new(crate::row_delta::RowSnapshotRing::default()),
+            graph_slice_ring: Mutex::new(crate::graph_delta::GraphSliceRing::default()),
             event_rows_cache: Mutex::new(None),
             lineage_nodes_cache: Mutex::new(None),
             filters_vocab_cache: Mutex::new(None),

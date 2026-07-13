@@ -1,5 +1,5 @@
 {
-  "engine/crates/vaultspec-api/src/app.rs": 2097,
+  "engine/crates/vaultspec-api/src/app.rs": 2096,
   "engine/crates/vaultspec-api/src/authoring/api.rs": 1756,
   "engine/crates/vaultspec-api/src/authoring/apply.rs": 4518,
   "engine/crates/vaultspec-api/src/authoring/conflicts.rs": 1770,
@@ -19,7 +19,6 @@
   "engine/crates/vaultspec-api/src/authoring/validation.rs": 1619,
   "engine/crates/vaultspec-api/src/lib.rs": 2732,
   "engine/crates/vaultspec-api/src/routes/ops.rs": 3179,
-  "engine/crates/vaultspec-api/src/routes/query.rs": 1519,
   "frontend/src/scene/three/threeField/field.ts": 3092,
   "frontend/src/stores/server/authoring.ts": 2176
 }

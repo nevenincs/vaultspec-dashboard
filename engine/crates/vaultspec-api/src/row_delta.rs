@@ -98,10 +98,10 @@ pub(crate) enum RowDelta {
     },
 }
 
-/// A row's identity key extractor (vault: `stem`, code: `path`) — the field the
-/// row builder sorts by, so a row missing it is skipped from the keyed sides
-/// rather than mis-diffed.
-type RowKey = fn(&Value) -> Option<&str>;
+/// A row's identity key extractor (vault: `stem`, code: `path`, graph slice: `id`)
+/// — the field the row is keyed by, so a row missing it is skipped from the keyed
+/// sides rather than mis-diffed.
+pub(crate) type RowKey = fn(&Value) -> Option<&str>;
 
 fn stem_key(row: &Value) -> Option<&str> {
     row["stem"].as_str()
@@ -111,10 +111,20 @@ fn path_key(row: &Value) -> Option<&str> {
     row["path"].as_str()
 }
 
+/// Key a row by its `id` field — the graph-slice node/edge identity
+/// (graph-slice-delta ADR: nodes and edges both carry a stable `id`).
+pub(crate) fn id_key(row: &Value) -> Option<&str> {
+    row["id"].as_str()
+}
+
 /// Diff two keyed row sets: a row present in `current` that is new or whose full
 /// value differs from `baseline` is CHANGED (added or modified); a key in
 /// `baseline` absent from `current` is REMOVED. O(N) over in-memory rows.
-fn diff_rows(baseline: &[Value], current: &[Value], key: RowKey) -> (Vec<Value>, Vec<String>) {
+pub(crate) fn diff_rows(
+    baseline: &[Value],
+    current: &[Value],
+    key: RowKey,
+) -> (Vec<Value>, Vec<String>) {
     use std::collections::{HashMap, HashSet};
     let baseline_by: HashMap<&str, &Value> = baseline
         .iter()

@@ -12,6 +12,7 @@ import {
   adaptGitOp,
   adaptGraphEmbeddings,
   adaptGraphSlice,
+  adaptGraphSliceDelta,
   adaptHistory,
   adaptIssues,
   adaptLineageSlice,
@@ -46,6 +47,7 @@ import type {
   GraphCorpus,
   GraphFilter,
   GraphSlice,
+  GraphSliceDeltaResponse,
   MapResponse,
   NodeDetail,
   NodeEvidence,
@@ -469,6 +471,28 @@ export class EngineClient {
     return adaptGraphSlice(await this.post("/graph/query", body), {
       corpus: body.corpus ?? "vault",
     });
+  }
+
+  /** The generation-keyed graph-slice delta (graph-slice-delta ADR D3): the id-keyed
+   *  node/edge diff from the client's held `since` generation to the current one, or a
+   *  full-drain instruction. `slice_token` is the opaque params token the full route
+   *  echoed (returned verbatim so the ring lookup can't drift). A single small
+   *  request patches the held slice instead of re-reading the whole ~3.5 MB slice. */
+  async graphSliceDelta(
+    body: {
+      scope: string;
+      filter?: GraphFilter;
+      granularity?: "document" | "feature";
+      lens?: SalienceLens;
+      focus?: string | null;
+      corpus?: GraphCorpus;
+    },
+    since: number,
+    slice_token: string,
+  ): Promise<GraphSliceDeltaResponse> {
+    return adaptGraphSliceDelta(
+      await this.post("/graph/query/delta", { ...body, since, slice_token }),
+    );
   }
 
   /**

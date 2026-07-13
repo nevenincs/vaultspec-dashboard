@@ -27,6 +27,7 @@ import {
   type TierAvailability,
   type TiersBlock,
 } from "../engine";
+import { useGraphSliceBuildingReconcilePoll } from "../graphSync";
 import { featureTagFromNodeId } from "../liveAdapters";
 import { normalizeStoreScope } from "../scopeIdentity";
 import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
@@ -110,25 +111,13 @@ export function normalizeGraphSliceRequestIdentity(
   };
 }
 
-/** Bounded poll interval (ms) for a graph slice whose held tiers block reports a
- *  tier still mid-build. Active ONLY while that holds; the predicate returns
- *  false the moment the fold flips the tier to ready, so the poll self-clears
- *  (bounded-by-default-for-every-accumulator). */
-const GRAPH_BUILDING_REFETCH_MS = 4_000;
-
 /**
- * Whether a HELD graph slice's tiers block still names a tier mid-build (the
- * engine's unavailable-while-building sentinel — a canonical tier marked
- * unavailable with a reason that names a build). The tiers block is a per-fetch
- * SNAPSHOT, and a declared fold's completion splices its edges via the no-refetch
- * delta path (graphSync), so a "still building" tier would otherwise never clear
- * from the held slice until an unrelated refetch — the stuck "Still loading
- * links…" banner (Issue #4A). While this holds, the slice query is bounded-polled
- * to re-read the tiers; once the fold flips the tier to ready it returns false and
- * the poll stops. Mirrors `isBuildingReason` on the chrome side.
+ * Whether a tiers block still names a tier mid-build (the engine's
+ * unavailable-while-building sentinel — a canonical tier marked unavailable with a
+ * reason that names a build). Exported so the stores-layer building poll (graphSync)
+ * can read the same predicate off a delta response's fresh tiers.
  */
-function graphSliceHasBuildingTier(data: GraphSlice | undefined): boolean {
-  const tiers = data?.tiers;
+export function tiersReportBuilding(tiers: TiersBlock | undefined): boolean {
   if (!tiers) return false;
   return CANONICAL_TIERS.some((tier) => {
     const state = tiers[tier];
@@ -138,6 +127,21 @@ function graphSliceHasBuildingTier(data: GraphSlice | undefined): boolean {
       state.reason.toLowerCase().includes("building")
     );
   });
+}
+
+/**
+ * Whether a HELD graph slice's tiers block still names a tier mid-build. The tiers
+ * block is a per-fetch SNAPSHOT, and a declared fold's completion splices its edges
+ * via the no-refetch delta path (graphSync), so a "still building" tier would
+ * otherwise never clear from the held slice until an unrelated refetch — the stuck
+ * "Still loading links…" banner (Issue #4A). While this holds, the stores-layer
+ * building poll re-reads the tiers through the graph-slice DELTA path (sub-KB, not a
+ * full ~3.5 MB refetch — graph-slice-delta ADR D4); once the fold flips the tier to
+ * ready it returns false and the poll stops. Mirrors `isBuildingReason` on the
+ * chrome side.
+ */
+function graphSliceHasBuildingTier(data: GraphSlice | undefined): boolean {
+  return tiersReportBuilding(data?.tiers);
 }
 
 export function useGraphSlice(
@@ -204,17 +208,21 @@ export function useGraphSlice(
     // previously-seen filter resolves instantly from cache. The scene's warm-start
     // (object constancy by id) animates the transition rather than re-exploding.
     placeholderData: keepPreviousData,
-    // Held-slice tiers lag (Issue #4A): the tiers block is a per-fetch snapshot and a
-    // declared fold's completion splices its edges via the no-refetch delta path, so a
-    // "still building" tier would otherwise leave the "Still loading links…" banner
-    // stuck until an unrelated refetch. Poll on a bounded interval ONLY while a held
-    // tier reads building; the moment the fold flips it to ready the predicate returns
-    // false and the poll stops (bounded-by-default-for-every-accumulator).
-    refetchInterval: (query) =>
-      graphSliceHasBuildingTier(query.state.data as GraphSlice | undefined)
-        ? GRAPH_BUILDING_REFETCH_MS
-        : false,
   });
+  // Held-slice tiers lag (Issue #4A): while a held tier reads building, the stores
+  // building poll re-reads the tiers on a bounded cadence through the graph-slice
+  // DELTA path (sub-KB — graph-slice-delta ADR D4), NOT the old full-slice
+  // `refetchInterval` that perpetually re-pulled ~3.5 MB on a corpus under continuous
+  // edit. The poll stops the moment the fold flips the tier to ready. Only a
+  // present-view document-vault slice is delta-eligible; other shapes degrade to the
+  // floored sweep (see the poll doc).
+  useGraphSliceBuildingReconcilePoll(
+    request.scope,
+    enabled && graphSliceHasBuildingTier(query.data as GraphSlice | undefined),
+    request.granularity === "document" &&
+      request.corpus === "vault" &&
+      request.asOf === undefined,
+  );
   return enabled ? query : { ...query, data: undefined };
 }
 
