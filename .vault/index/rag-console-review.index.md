@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#rag-console-review'
 date: '2026-07-03'
-modified: '2026-07-03'
+modified: '2026-07-12'
 related:
   - '[[2026-07-02-rag-console-review-P02-S05]]'
   - '[[2026-07-02-rag-console-review-audit]]'

@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Re-enable selection on inspector node title, property values, and edge row labels and guard the node and edge menu opens
 
 ## Scope
@@ -32,4 +29,3 @@ related:
 ## Notes
 
 None.
-

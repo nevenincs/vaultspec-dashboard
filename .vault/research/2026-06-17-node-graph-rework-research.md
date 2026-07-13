@@ -3,7 +3,7 @@ tags:
   - '#research'
   - '#node-graph-rework'
 date: '2026-06-17'
-modified: '2026-06-17'
+modified: '2026-07-12'
 related:
   - '[[2026-06-12-dashboard-foundation-reference]]'
   - '[[2026-06-16-graph-layout-catalog-adr]]'

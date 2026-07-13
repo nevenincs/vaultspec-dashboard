@@ -3,7 +3,7 @@ tags:
   - '#exec'
   - '#node-graph-rework'
 date: '2026-06-17'
-modified: '2026-06-17'
+modified: '2026-07-12'
 related:
   - "[[2026-06-17-node-graph-rework-plan]]"
 ---

@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Re-enable selection on island interior chips and step titles beneath the newly scoped island menu
 
 ## Scope
@@ -30,4 +27,3 @@ related:
 ## Notes
 
 None.
-

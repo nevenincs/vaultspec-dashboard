@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#project-provisioning'
 date: '2026-07-07'
-modified: '2026-07-07'
+modified: '2026-07-12'
 related:
   - "[[2026-07-07-project-provisioning-research]]"
   - "[[2026-07-04-dashboard-packaging-adr]]"

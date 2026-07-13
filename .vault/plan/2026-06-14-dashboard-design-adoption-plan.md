@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#dashboard-design-adoption'
 date: '2026-06-14'
-modified: '2026-06-15'
+modified: '2026-07-12'
 tier: L3
 related:
   - '[[2026-06-14-dashboard-design-language-adr]]'

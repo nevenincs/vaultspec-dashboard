@@ -3,7 +3,7 @@ tags:
   - '#exec'
   - '#dashboard-left-rail'
 date: '2026-06-14'
-modified: '2026-06-15'
+modified: '2026-07-12'
 step_id: 'S04'
 related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"

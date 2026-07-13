@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Carve the computed date-range readout out of the timeline scrubber selection suppression
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 The readout (data) is selectable while the scrubber track and grips keep their drag-gesture suppression, matching the ADR's adjunct scoping law.
 
 ## Notes
-

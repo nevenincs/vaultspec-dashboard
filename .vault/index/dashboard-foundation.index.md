@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#dashboard-foundation'
 date: '2026-06-12'
-modified: '2026-06-15'
+modified: '2026-07-12'
 related:
   - '[[2026-06-12-dashboard-foundation-adr]]'
   - '[[2026-06-12-dashboard-foundation-audit]]'

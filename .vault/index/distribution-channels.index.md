@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#distribution-channels'
 date: '2026-07-08'
-modified: '2026-07-08'
+modified: '2026-07-12'
 related:
   - '[[2026-07-08-distribution-channels-P01-S01]]'
   - '[[2026-07-08-distribution-channels-P01-S02]]'

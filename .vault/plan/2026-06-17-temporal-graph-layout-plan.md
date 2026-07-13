@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#temporal-graph-layout'
 date: '2026-06-17'
-modified: '2026-06-18'
+modified: '2026-07-12'
 tier: L3
 related:
   - '[[2026-06-17-temporal-graph-layout-adr]]'

@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Route the background empty-space handler through the same selection-guard clause so future text-bearing background surfaces inherit it
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 Background handler now inherits the D1 guard; all three existing node-env handler tests pass unchanged alongside the render suite.
 
 ## Notes
-

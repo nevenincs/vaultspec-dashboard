@@ -3,7 +3,7 @@ tags:
   - '#research'
   - '#dashboard-settings'
 date: '2026-06-15'
-modified: '2026-06-15'
+modified: '2026-07-12'
 related:
   - "[[2026-06-14-user-state-persistence-adr]]"
   - "[[2026-06-12-dashboard-foundation-reference]]"

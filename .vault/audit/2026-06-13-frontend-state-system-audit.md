@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#frontend-state-system'
 date: '2026-06-13'
-modified: '2026-06-13'
+modified: '2026-07-12'
 related:
   - "[[2026-06-13-frontend-state-system-reference]]"
   - "[[2026-06-13-dashboard-live-state-adr]]"

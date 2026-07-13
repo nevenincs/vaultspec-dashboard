@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#agentic-spec-authoring-backend'
 date: '2026-06-29'
-modified: '2026-06-30'
+modified: '2026-07-12'
 related:
   - "[[2026-06-29-agentic-spec-authoring-backend-research]]"
   - "[[2026-06-29-langgraph-approval-document-editing-research]]"

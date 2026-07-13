@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Re-enable text selection on vault tree row data text and route the row menus through the selection guard
 
 ## Scope
@@ -19,7 +16,6 @@ related:
 - `frontend/src/app/left/TreeBrowser.tsx`
 
 ## Description
-
 
 - Add `select-text` to the shared row shell class used by every tree level (feature
   folder, category folder, document leaf), re-enabling selection over titles, meta,
@@ -35,4 +31,3 @@ Every level of the vault tree re-enables selection over its data text via
 to a live intersecting selection.
 
 ## Notes
-

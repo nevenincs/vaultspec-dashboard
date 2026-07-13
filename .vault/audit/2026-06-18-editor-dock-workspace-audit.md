@@ -8,7 +8,7 @@ related:
   - "[[2026-06-18-editor-dock-workspace-adr]]"
 promoted_to:
   - 'rule:graph-canvas-is-portal-pinned-never-reparented'
-modified: '2026-06-22'
+modified: '2026-07-12'
 ---
 
 # `editor-dock-workspace` audit: `dockable tabbed editor workspace review`

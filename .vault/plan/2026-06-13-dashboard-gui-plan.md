@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#dashboard-gui'
 date: '2026-06-13'
-modified: '2026-06-13'
+modified: '2026-07-12'
 tier: L1
 related:
   - '[[2026-06-12-dashboard-gui-adr]]'

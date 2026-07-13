@@ -3,7 +3,7 @@ tags:
   - '#research'
   - '#graph-viz-quality'
 date: '2026-06-16'
-modified: '2026-06-22'
+modified: '2026-07-12'
 related:
   - '[[2026-06-16-graph-semantic-embeddings-adr]]'
   - '[[2026-06-16-graph-layout-catalog-adr]]'

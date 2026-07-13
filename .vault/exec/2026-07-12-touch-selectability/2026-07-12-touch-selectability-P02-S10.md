@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Re-enable selection on commit hash, subject, and age text and guard the commit and pull-request row menu opens
 
 ## Scope
@@ -31,4 +28,3 @@ related:
 ## Notes
 
 None.
-

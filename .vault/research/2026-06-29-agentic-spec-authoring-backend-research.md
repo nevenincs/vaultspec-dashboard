@@ -3,7 +3,7 @@ tags:
   - '#research'
   - '#agentic-spec-authoring-backend'
 date: '2026-06-29'
-modified: '2026-06-29'
+modified: '2026-07-12'
 related: []
 ---
 

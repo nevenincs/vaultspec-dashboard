@@ -3,7 +3,7 @@ tags:
   - '#research'
   - '#dashboard-live-state'
 date: '2026-06-13'
-modified: '2026-06-13'
+modified: '2026-07-12'
 related:
   - "[[2026-06-12-dashboard-gui-adr]]"
   - "[[2026-06-13-dashboard-platform-adr]]"

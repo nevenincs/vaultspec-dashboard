@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#command-palette-architecture'
 date: '2026-06-21'
-modified: '2026-06-21'
+modified: '2026-07-12'
 related:
   - '[[2026-06-21-command-palette-architecture-plan]]'
   - '[[2026-06-21-command-palette-architecture-reference]]'

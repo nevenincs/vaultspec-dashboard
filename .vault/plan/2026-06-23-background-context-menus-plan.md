@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#background-context-menus'
 date: '2026-06-23'
-modified: '2026-06-24'
+modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-06-23-background-context-menus-adr]]'

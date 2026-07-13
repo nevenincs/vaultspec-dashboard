@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Re-enable selection on workspace switcher and project navigator row names on the compact shell
 
 ## Scope
@@ -28,4 +25,3 @@ related:
 The sole touch-reachable worktree switcher on compact and the desktop recents list both allow long-press name copy; row activation and roving focus are unchanged. Affected suites pass (33 tests).
 
 ## Notes
-

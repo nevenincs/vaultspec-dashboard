@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#temporal-graph-layout'
 date: '2026-06-17'
-modified: '2026-06-18'
+modified: '2026-07-12'
 related:
   - '[[2026-06-17-temporal-graph-layout-W01-P01-S01]]'
   - '[[2026-06-17-temporal-graph-layout-W01-P01-S02]]'

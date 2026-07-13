@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#filter-consolidation'
 date: '2026-06-19'
-modified: '2026-06-25'
+modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-06-19-filter-consolidation-adr]]'

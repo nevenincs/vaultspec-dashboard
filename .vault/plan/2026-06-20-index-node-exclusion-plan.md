@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#index-node-exclusion'
 date: '2026-06-20'
-modified: '2026-06-25'
+modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-06-20-index-node-exclusion-adr]]'

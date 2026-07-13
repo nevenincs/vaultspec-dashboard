@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#state-mode-uniformity'
 date: '2026-06-25'
-modified: '2026-06-25'
+modified: '2026-07-12'
 related:
   - '[[2026-06-25-state-mode-uniformity-adr]]'
   - '[[2026-06-25-state-mode-uniformity-research]]'

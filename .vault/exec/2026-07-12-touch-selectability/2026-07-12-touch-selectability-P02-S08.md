@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Re-enable text selection on worktree, project, and recent row data text and route the worktree menu through the selection guard
 
 ## Scope
@@ -19,7 +16,6 @@ related:
 - `frontend/src/app/left/WorktreePicker.tsx`
 
 ## Description
-
 
 - Add `select-text` to the shared dropdown row base class the worktree, project, and
   recent rows all derive from (`workspaceMapPickerRowClassName`'s base string), and to
@@ -34,4 +30,3 @@ Worktree, project, and recent dropdown rows, plus the trigger's identity block
 to a live intersecting selection.
 
 ## Notes
-

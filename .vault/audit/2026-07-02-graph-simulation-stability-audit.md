@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#graph-simulation-stability'
 date: '2026-07-02'
-modified: '2026-07-02'
+modified: '2026-07-12'
 related:
   - "[[2026-07-02-graph-implementation-review-adr]]"
   - "[[2026-06-16-graph-force-stability-adr]]"

@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#plan-document-rendering'
 date: '2026-06-29'
-modified: '2026-06-29'
+modified: '2026-07-12'
 related:
   - '[[2026-06-29-plan-document-rendering-adr]]'
   - '[[2026-06-29-plan-document-rendering-audit]]'

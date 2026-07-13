@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#graph-viz-scorecard'
 date: '2026-06-16'
-modified: '2026-06-16'
+modified: '2026-07-12'
 related:
   - '[[2026-06-16-graph-viz-scorecard-adr]]'
 ---

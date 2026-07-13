@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#scene-render-review'
 date: '2026-07-02'
-modified: '2026-07-03'
+modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-07-02-scene-render-review-audit]]'

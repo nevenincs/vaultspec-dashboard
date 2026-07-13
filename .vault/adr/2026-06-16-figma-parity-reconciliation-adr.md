@@ -7,7 +7,7 @@ related:
   - "[[2026-06-16-figma-parity-reconciliation-research]]"
 supersedes:
   - '2026-06-14-dashboard-activity-rail-adr'
-modified: '2026-06-22'
+modified: '2026-07-12'
 ---
 
 # `figma-parity-reconciliation` adr: `Figma-binding frontend rewrite and reconciliation` | (**status:** `accepted`)

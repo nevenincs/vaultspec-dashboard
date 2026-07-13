@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#rag-service-management'
 date: '2026-06-26'
-modified: '2026-06-26'
+modified: '2026-07-12'
 related:
   - '[[2026-06-26-rag-service-management-W01-P01-S01]]'
   - '[[2026-06-26-rag-service-management-W01-P01-S02]]'

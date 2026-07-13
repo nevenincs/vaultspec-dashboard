@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#mobile-enrichment'
 date: '2026-07-09'
-modified: '2026-07-09'
+modified: '2026-07-12'
 related:
   - '[[2026-07-08-mobile-enrichment-S01]]'
   - '[[2026-07-08-mobile-enrichment-S02]]'

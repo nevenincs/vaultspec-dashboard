@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#left-rail-feature-filter'
 date: '2026-06-24'
-modified: '2026-06-24'
+modified: '2026-07-12'
 related:
   - '[[2026-06-24-left-rail-feature-filter-adr]]'
   - '[[2026-06-24-left-rail-feature-filter-research]]'

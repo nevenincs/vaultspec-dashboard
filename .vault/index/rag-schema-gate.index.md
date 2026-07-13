@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#rag-schema-gate'
 date: '2026-06-27'
-modified: '2026-06-27'
+modified: '2026-07-12'
 related:
   - '[[2026-06-27-rag-schema-gate-P01-S01]]'
   - '[[2026-06-27-rag-schema-gate-P01-S02]]'

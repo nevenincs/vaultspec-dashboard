@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#global-context-actions'
 date: '2026-06-22'
-modified: '2026-06-23'
+modified: '2026-07-12'
 related:
   - "[[2026-06-22-global-context-actions-research]]"
 ---

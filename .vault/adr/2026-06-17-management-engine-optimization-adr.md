@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#management-engine-optimization'
 date: '2026-06-17'
-modified: '2026-06-17'
+modified: '2026-07-12'
 related:
   - "[[2026-06-17-management-engine-optimization-research]]"
 ---

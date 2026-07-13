@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#graph-simulation-stability'
 date: '2026-07-03'
-modified: '2026-07-03'
+modified: '2026-07-12'
 tier: L1
 related:
   - '[[2026-07-03-graph-simulation-stability-reference]]'

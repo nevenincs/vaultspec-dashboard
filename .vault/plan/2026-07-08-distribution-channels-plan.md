@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#distribution-channels'
 date: '2026-07-08'
-modified: '2026-07-08'
+modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-07-08-distribution-channels-adr]]'

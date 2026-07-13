@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Author the shared selection-guard helper that yields the app context menu to a live non-collapsed text selection intersecting the target, plus its yield/open unit matrix
 
 ## Scope
@@ -29,4 +26,3 @@ related:
 Guard module and matrix landed; 9/9 tests pass. `selectionForEventTarget` resolves null (never throws) outside a DOM environment so node-env handler tests keep passing.
 
 ## Notes
-

@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#rag-storage-broker'
 date: '2026-06-27'
-modified: '2026-06-27'
+modified: '2026-07-12'
 related:
   - "[[2026-06-27-rag-storage-broker-research]]"
 ---

@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#dashboard-activity-rail'
 date: '2026-06-14'
-modified: '2026-06-15'
+modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-06-14-dashboard-activity-rail-adr]]'

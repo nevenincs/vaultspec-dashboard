@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Render wiki-links and Related-footer stems as selectable anchor-shaped elements with unchanged activation so prose ranges stay contiguous
 
 ## Scope
@@ -19,7 +16,6 @@ related:
 - `frontend/src/app/viewer/MarkdownReader.tsx`
 
 ## Description
-
 
 - Replace the wiki-link `<button>` override in the markdown `a()` component and the
   Related-footer stem `<button>` with `<a href="#">` elements, calling
@@ -36,4 +32,3 @@ Both in-body wiki-links and the Related-footer stems render as anchors; the exis
 `MarkdownReader.test.tsx` suite (8 tests) was updated for the role change and passes.
 
 ## Notes
-

@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#dashboard-context-menus'
 date: '2026-06-15'
-modified: '2026-06-15'
+modified: '2026-07-12'
 related:
   - "[[2026-06-15-dashboard-context-menus-research]]"
   - "[[2026-06-14-dashboard-command-palette-adr]]"

@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#graph-worktree-edge-consistency'
 date: '2026-06-30'
-modified: '2026-06-30'
+modified: '2026-07-12'
 related:
   - '[[2026-06-30-graph-worktree-edge-consistency-adr]]'
   - '[[2026-06-30-graph-worktree-edge-consistency-audit]]'

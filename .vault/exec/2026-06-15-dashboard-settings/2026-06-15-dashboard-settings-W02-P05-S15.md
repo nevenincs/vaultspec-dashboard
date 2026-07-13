@@ -3,7 +3,7 @@ tags:
   - '#exec'
   - '#dashboard-settings'
 date: '2026-06-15'
-modified: '2026-06-15'
+modified: '2026-07-12'
 step_id: 'S15'
 related:
   - "[[2026-06-15-dashboard-settings-plan]]"

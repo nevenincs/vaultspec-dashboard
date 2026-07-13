@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#frontend-state-system'
 date: '2026-06-13'
-modified: '2026-06-13'
+modified: '2026-07-12'
 related:
   - '[[2026-06-13-frontend-state-system-audit]]'
   - '[[2026-06-13-frontend-state-system-reference]]'

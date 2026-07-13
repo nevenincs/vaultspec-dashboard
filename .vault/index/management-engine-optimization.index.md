@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#management-engine-optimization'
 date: '2026-06-17'
-modified: '2026-06-17'
+modified: '2026-07-12'
 related:
   - '[[2026-06-17-management-engine-optimization-W01-P01-S01]]'
   - '[[2026-06-17-management-engine-optimization-W01-P01-S02]]'

@@ -7,7 +7,7 @@ related:
   - "[[2026-06-22-unified-filter-plane-plan]]"
 promoted_to:
   - 'rule:one-filter-authority-every-corpus-view-consumes-it'
-modified: '2026-06-24'
+modified: '2026-07-12'
 ---
 # `unified-filter-plane` audit: `unified filter plane review`
 

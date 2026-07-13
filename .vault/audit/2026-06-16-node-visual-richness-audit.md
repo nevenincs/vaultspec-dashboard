@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#node-visual-richness'
 date: '2026-06-16'
-modified: '2026-06-16'
+modified: '2026-07-12'
 related:
   - "[[2026-06-14-node-visual-richness-plan]]"
   - "[[2026-06-14-node-visual-richness-adr]]"

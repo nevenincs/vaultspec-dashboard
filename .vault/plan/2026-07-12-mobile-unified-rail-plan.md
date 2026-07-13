@@ -7,18 +7,8 @@ modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-07-12-mobile-unified-rail-adr]]'
+  - '[[2026-07-12-mobile-unified-rail-research]]'
 ---
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 # `mobile-unified-rail` plan
 
 Merge the compact left rail (Browse) and right rail (Status) into one Status-first vertical scroll so critical plan, PR, issue, and commit state is glanceable on a phone instead of hidden behind a tab.

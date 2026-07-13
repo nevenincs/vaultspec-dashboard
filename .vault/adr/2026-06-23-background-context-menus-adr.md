@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#background-context-menus'
 date: '2026-06-23'
-modified: '2026-06-23'
+modified: '2026-07-12'
 related:
   - "[[2026-06-23-background-context-menus-research]]"
   - "[[2026-06-22-global-context-actions-adr]]"

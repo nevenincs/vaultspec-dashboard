@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Scope doc tab title selection to the title span so tab dragging survives, and guard the doc-tab menu open
 
 ## Scope
@@ -30,4 +27,3 @@ related:
 ## Notes
 
 None.
-

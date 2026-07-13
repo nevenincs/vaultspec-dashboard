@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#dashboard-pipeline-status'
 date: '2026-06-15'
-modified: '2026-06-15'
+modified: '2026-07-12'
 related:
   - "[[2026-06-14-dashboard-pipeline-status-adr]]"
   - "[[2026-06-14-dashboard-pipeline-wire-adr]]"

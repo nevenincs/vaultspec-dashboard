@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#dashboard-optimization'
 date: '2026-06-15'
-modified: '2026-06-15'
+modified: '2026-07-12'
 related:
   - '[[2026-06-13-dashboard-optimization-W01-P01-S01]]'
   - '[[2026-06-13-dashboard-optimization-W02-P02-S03]]'

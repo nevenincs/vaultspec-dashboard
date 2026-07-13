@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Author the row-selectability sweep assertion over menu-bearing surfaces and the island predicate suite alongside the guard matrix
 
 ## Scope
@@ -28,4 +25,3 @@ related:
 Fifteen tests engrave the three laws; a new hijack, a stripped select-text, or a menu-online surface without a touch entry now fails loudly in the suite.
 
 ## Notes
-

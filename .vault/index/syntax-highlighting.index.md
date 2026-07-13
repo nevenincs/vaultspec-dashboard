@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#syntax-highlighting'
 date: '2026-07-06'
-modified: '2026-07-06'
+modified: '2026-07-12'
 related:
   - '[[2026-07-06-syntax-highlighting-S01]]'
   - '[[2026-07-06-syntax-highlighting-S02]]'

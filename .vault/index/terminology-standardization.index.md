@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#terminology-standardization'
 date: '2026-06-20'
-modified: '2026-06-20'
+modified: '2026-07-12'
 related:
   - '[[2026-06-20-terminology-standardization-adr]]'
   - '[[2026-06-20-terminology-standardization-research]]'

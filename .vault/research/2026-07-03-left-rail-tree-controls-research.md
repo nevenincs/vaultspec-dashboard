@@ -3,7 +3,7 @@ tags:
   - '#research'
   - '#left-rail-tree-controls'
 date: '2026-07-03'
-modified: '2026-07-03'
+modified: '2026-07-12'
 related:
   - '[[2026-06-14-dashboard-sidebar-adr]]'
   - '[[2026-06-14-dashboard-left-rail-adr]]'

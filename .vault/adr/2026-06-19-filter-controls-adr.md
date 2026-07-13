@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#filter-controls'
 date: '2026-06-19'
-modified: '2026-06-22'
+modified: '2026-07-12'
 related:
   - '[[2026-06-19-filter-controls-research]]'
 ---

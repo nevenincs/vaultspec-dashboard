@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#graph-query-scope-memo'
 date: '2026-06-16'
-modified: '2026-06-22'
+modified: '2026-07-12'
 tier: L1
 related:
   - '[[2026-06-16-backend-hotpath-hardening-research]]'

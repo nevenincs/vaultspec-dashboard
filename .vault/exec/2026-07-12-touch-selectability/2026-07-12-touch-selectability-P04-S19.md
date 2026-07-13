@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Mount the disclosure affordance on compact menu-bearing surfaces and confirm Android long-press routes through the selection guard
 
 ## Scope
@@ -37,4 +34,3 @@ the worktree row, code tree rows, the inspector node header and edge rows, commi
 and pull-request rows, the doc tab, and the island header - each passing the exact
 entity its right-click path opens. A D4 sweep test now fails loudly if a surface
 pairs `onContextMenu` + `openContextMenu` without the disclosure.
-

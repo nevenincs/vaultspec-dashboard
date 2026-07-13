@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#worktree-enumeration-sweep'
 date: '2026-06-16'
-modified: '2026-06-22'
+modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-06-16-status-worktree-latency-adr]]'

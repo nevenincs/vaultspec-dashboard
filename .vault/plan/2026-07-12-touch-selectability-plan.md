@@ -9,7 +9,6 @@ related:
   - '[[2026-07-12-touch-selectability-adr]]'
 ---
 
-
 # `touch-selectability` plan
 
 ### Phase `P01` - Selection-guard substrate
@@ -73,12 +72,6 @@ findings, then latent rows, then touch, then guards and the gate.
 
 ## Steps
 
-
-
-
-
-
-
 ## Parallelization
 
 P01 is the substrate and lands first; its helper is imported by every later phase.
@@ -87,7 +80,6 @@ merged; the S03 island predicate must land before S12 (island interiors). P03 st
 are mutually independent and may run in parallel with P02. P04 depends on P01 (guard
 routing) but not on P02/P03; S18 must land before S19. P05 is terminal and strictly
 after all other phases.
-
 
 ## Verification
 

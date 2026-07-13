@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#rag-affordance-adoption'
 date: '2026-06-27'
-modified: '2026-07-03'
+modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-06-27-rag-affordance-adoption-adr]]'

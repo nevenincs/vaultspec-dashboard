@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Route the whole-viewer vault-doc context-menu hijack through the selection guard so selected prose keeps its native menu
 
 ## Scope
@@ -19,7 +16,6 @@ related:
 - `frontend/src/app/viewer/MarkdownDocView.tsx`
 
 ## Description
-
 
 - Import the shared `guardedContextMenu` helper.
 - Wrap `onDocContextMenu` with it so a live text selection over the prose keeps the
@@ -32,4 +28,3 @@ target, matching D1. No other behavior changed; the unrelated in-flight flex-wra
 edit near the editor textarea was left untouched.
 
 ## Notes
-

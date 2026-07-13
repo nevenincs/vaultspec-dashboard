@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#rag-service-management'
 date: '2026-06-26'
-modified: '2026-06-26'
+modified: '2026-07-12'
 tier: L3
 related:
   - '[[2026-06-26-rag-service-management-adr]]'

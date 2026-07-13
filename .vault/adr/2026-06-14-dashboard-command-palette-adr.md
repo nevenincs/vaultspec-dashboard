@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#dashboard-command-palette'
 date: '2026-06-14'
-modified: '2026-06-14'
+modified: '2026-07-12'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"

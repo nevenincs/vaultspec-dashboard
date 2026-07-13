@@ -3,14 +3,13 @@ tags:
   - '#plan'
   - '#section-scoped-operations'
 date: '2026-07-11'
-modified: '2026-07-11'
+modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-07-11-section-scoped-operations-adr]]'
   - '[[2026-06-29-agentic-change-format-and-chunking-adr]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-plan]]'
 ---
-
 
 # `section-scoped-operations` plan
 

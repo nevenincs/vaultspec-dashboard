@@ -3,7 +3,7 @@ tags:
   - '#reference'
   - '#command-palette-architecture'
 date: '2026-06-21'
-modified: '2026-06-22'
+modified: '2026-07-12'
 related:
   - "[[2026-06-21-command-palette-planes-adr]]"
 ---

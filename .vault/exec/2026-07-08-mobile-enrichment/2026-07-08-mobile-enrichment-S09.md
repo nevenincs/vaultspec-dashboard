@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#mobile-enrichment'
 date: '2026-07-09'
-modified: '2026-07-09'
+modified: '2026-07-12'
 step_id: 'S09'
 related:
   - "[[2026-07-08-mobile-enrichment-plan]]"
 ---
-
-
-
 
 # D8: desktop LeftRail tree-level indent guide added to the Figma design (SectionBody), matching the shipped code and the mobile Browse frame — Figma-only, no code change
 
@@ -27,4 +24,3 @@ related:
 The desktop `LeftRail` design frames now render the tree-level guide on expanded doc groups, matching the shipped frontend (`TreeBrowser` `data-tree-guide`/`guideStyle`) and the mobile Browse frame. Figma-only; the code was already correct, so there is no code change.
 
 ## Notes
-

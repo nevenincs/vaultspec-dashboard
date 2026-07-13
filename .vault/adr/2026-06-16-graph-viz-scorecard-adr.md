@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#graph-viz-scorecard'
 date: '2026-06-16'
-modified: '2026-06-22'
+modified: '2026-07-12'
 related:
   - "[[2026-06-16-graph-viz-quality-research]]"
   - "[[2026-06-16-graph-node-representation-adr]]"

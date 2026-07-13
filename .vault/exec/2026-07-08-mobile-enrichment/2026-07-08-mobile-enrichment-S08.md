@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#mobile-enrichment'
 date: '2026-07-09'
-modified: '2026-07-09'
+modified: '2026-07-12'
 step_id: 'S08'
 related:
   - "[[2026-07-08-mobile-enrichment-plan]]"
 ---
-
-
-
 
 # D7: edge-swipe hardening decided — pointer-capture rejected, touch-action pan-y shipped
 
@@ -29,4 +26,3 @@ related:
 The D4 gesture ships in its committed form; the real-device verification gap is closed for merge by a documented manual checklist (iOS Safari + Android Chrome). No code change beyond the already-shipped hardening.
 
 ## Notes
-

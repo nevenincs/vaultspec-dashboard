@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#mobile-responsive-layout'
 date: '2026-06-23'
-modified: '2026-06-25'
+modified: '2026-07-12'
 tier: L3
 related:
   - '[[2026-06-22-mobile-responsive-layout-adr]]'

@@ -3,12 +3,12 @@ tags:
   - '#plan'
   - '#rag-console-review'
 date: '2026-07-02'
-modified: '2026-07-03'
+modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-07-02-rag-console-review-audit]]'
+  - '[[2026-07-03-rag-console-review-adr]]'
 ---
-
 # `rag-console-review` plan
 
 ### Phase `P01` - Directly implementable

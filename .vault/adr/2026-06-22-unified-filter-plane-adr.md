@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#unified-filter-plane'
 date: '2026-06-22'
-modified: '2026-06-22'
+modified: '2026-07-12'
 related:
   - "[[2026-06-22-unified-filter-plane-research]]"
   - "[[2026-06-19-filter-consolidation-adr]]"

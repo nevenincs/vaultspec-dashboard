@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Add the coarse-pointer per-row menu disclosure affordance over the openContextMenu seam for menu-bearing rows
 
 ## Scope
@@ -28,4 +25,3 @@ related:
 The deliberate touch entry to the menu plane exists as one shared chrome control; it renders nothing on fine-pointer devices and is exempt from the selection guard because a tap on it is always an explicit menu request. Mounting on compact surfaces lands in the next step.
 
 ## Notes
-

@@ -3,7 +3,7 @@ tags:
   - '#research'
   - '#dashboard-platform'
 date: '2026-06-13'
-modified: '2026-06-13'
+modified: '2026-07-12'
 related:
   - "[[2026-06-12-dashboard-gui-audit]]"
   - "[[2026-06-12-dashboard-foundation-reference]]"

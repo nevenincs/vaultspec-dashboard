@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#keyboard-action-system'
 date: '2026-06-19'
-modified: '2026-06-25'
+modified: '2026-07-12'
 tier: L3
 related:
   - '[[2026-06-19-keyboard-action-system-adr]]'

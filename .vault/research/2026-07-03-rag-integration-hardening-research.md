@@ -3,7 +3,7 @@ tags:
   - '#research'
   - '#rag-integration-hardening'
 date: '2026-07-03'
-modified: '2026-07-03'
+modified: '2026-07-12'
 related:
   - '[[2026-06-14-dashboard-rag-search-adr]]'
   - '[[2026-06-16-rag-control-plane-adr]]'

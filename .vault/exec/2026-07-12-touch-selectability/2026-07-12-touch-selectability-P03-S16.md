@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Re-enable selection on plan pill titles, changed-file names, and plan-step headings in the latent right-rail rows
 
 ## Scope
@@ -31,4 +28,3 @@ Plan pill titles, changed-file names, and plan-step headings in the latent right
 ## Notes
 
 None.
-

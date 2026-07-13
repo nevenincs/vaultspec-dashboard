@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#keyboard-navigation'
 date: '2026-06-21'
-modified: '2026-06-24'
+modified: '2026-07-12'
 tier: L3
 related:
   - '[[2026-06-21-keyboard-navigation-adr]]'

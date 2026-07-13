@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#dashboard-live-state'
 date: '2026-06-13'
-modified: '2026-06-13'
+modified: '2026-07-12'
 related:
   - '[[2026-06-13-dashboard-live-state-P01-S01]]'
   - '[[2026-06-13-dashboard-live-state-P01-S02]]'

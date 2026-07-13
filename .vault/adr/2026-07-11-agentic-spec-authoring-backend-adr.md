@@ -3,17 +3,15 @@ tags:
   - '#adr'
   - '#agentic-spec-authoring-backend'
 date: '2026-07-11'
-modified: '2026-07-11'
+modified: '2026-07-12'
 related:
   - "[[2026-06-29-agentic-change-format-and-chunking-adr]]"
   - "[[2026-06-29-agentic-rollback-history-adr]]"
   - "[[2026-07-09-ledgered-edit-migration-adr]]"
   - "[[2026-07-09-ledgered-edit-migration-reference]]"
   - "[[2026-06-30-agentic-spec-authoring-backend-plan]]"
+  - '[[2026-06-29-agentic-spec-authoring-backend-research]]'
 ---
-
-
-
 # `agentic-spec-authoring-backend` adr: `Defer section-scoped operations and the CreateDocument delete-inverse until their gates clear` | (**status:** `accepted`)
 
 ## Problem Statement

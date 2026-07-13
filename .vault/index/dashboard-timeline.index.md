@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#dashboard-timeline'
 date: '2026-06-15'
-modified: '2026-06-15'
+modified: '2026-07-12'
 related:
   - '[[2026-06-14-dashboard-timeline-adr]]'
   - '[[2026-06-15-dashboard-timeline-W01-P01-S01]]'

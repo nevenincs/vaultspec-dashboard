@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Re-enable selection on command, document-search, and semantic-search result row data text across the palette surfaces
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 All three search surfaces gained selectable result data through the one shared pill; command rows in `CommandPalette` are chrome verbs and stay unselectable by design.
 
 ## Notes
-

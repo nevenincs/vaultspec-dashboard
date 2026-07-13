@@ -9,32 +9,6 @@ related:
   - "[[2026-07-11-universal-data-loading-adr]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #adr) and one feature tag.
-     Replace on-demand-cold-start with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar]]'.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     Status convention: the H1 status value is one of proposed, accepted,
-     rejected, superseded, or deprecated. A new ADR starts as proposed; it
-     moves to accepted or rejected when the decision is made; it becomes
-     superseded when a later ADR replaces it (set by vault adr supersede,
-     which also records superseded_by); and deprecated when it is retired
-     without a direct successor.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
 # `on-demand-cold-start` adr: `Constellation-first cold start: MBs load on demand, enrichment arrives behind a fast first paint` | (**status:** `accepted`)
 
 ## Problem Statement
@@ -144,4 +118,3 @@ same principle (only what a surface renders may load eagerly):
   the scene chunk is blocked on the `sceneController` -> `cameraCore` ->
   `three` import edge - decoupling that is a reviewed scene-contract
   event, deliberately not done ad hoc here.
-

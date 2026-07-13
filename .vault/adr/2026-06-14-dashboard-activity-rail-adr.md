@@ -7,7 +7,7 @@ related:
   - "[[2026-06-14-dashboard-activity-rail-research]]"
   - "[[2026-06-12-dashboard-foundation-reference]]"
 superseded_by: '2026-06-16-figma-parity-reconciliation-adr'
-modified: '2026-06-16'
+modified: '2026-07-12'
 ---
 # `dashboard-activity-rail` adr: `right activity rail information architecture` | (**status:** `superseded`)
 

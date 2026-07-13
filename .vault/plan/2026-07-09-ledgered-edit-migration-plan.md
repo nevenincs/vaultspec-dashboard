@@ -3,13 +3,12 @@ tags:
   - '#plan'
   - '#ledgered-edit-migration'
 date: '2026-07-09'
-modified: '2026-07-10'
+modified: '2026-07-12'
 tier: L3
 related:
   - '[[2026-07-09-ledgered-edit-migration-adr]]'
   - '[[2026-06-30-agentic-spec-authoring-backend-plan]]'
 ---
-
 
 # `ledgered-edit-migration` plan
 

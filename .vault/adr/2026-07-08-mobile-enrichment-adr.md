@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#mobile-enrichment'
 date: '2026-07-08'
-modified: '2026-07-08'
+modified: '2026-07-12'
 related:
   - '[[2026-06-22-mobile-responsive-layout-research]]'
   - '[[2026-06-22-mobile-responsive-layout-adr]]'

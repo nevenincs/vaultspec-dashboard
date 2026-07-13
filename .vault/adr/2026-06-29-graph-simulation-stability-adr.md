@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#graph-simulation-stability'
 date: '2026-06-29'
-modified: '2026-07-03'
+modified: '2026-07-12'
 related:
   - "[[2026-06-29-graph-simulation-stability-research]]"
   - '[[2026-07-03-graph-simulation-stability-research]]'

@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#dashboard-state-centralization'
 date: '2026-06-17'
-modified: '2026-06-22'
+modified: '2026-07-12'
 tier: L3
 related:
   - '[[2026-06-17-dashboard-state-centralization-adr]]'

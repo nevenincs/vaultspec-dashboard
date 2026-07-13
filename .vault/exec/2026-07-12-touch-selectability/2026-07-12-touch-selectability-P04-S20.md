@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Yield the compact reader edge-swipe recognizer while a text selection is active
 
 ## Scope
@@ -27,4 +24,3 @@ related:
 Prose selection owns the reader surface per ADR D3; vertical-scroll yield behaviour is unchanged and the shell suite passes.
 
 ## Notes
-

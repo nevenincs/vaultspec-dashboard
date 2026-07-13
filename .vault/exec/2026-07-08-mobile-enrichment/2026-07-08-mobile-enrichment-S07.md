@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#mobile-enrichment'
 date: '2026-07-09'
-modified: '2026-07-09'
+modified: '2026-07-12'
 step_id: 'S07'
 related:
   - "[[2026-07-08-mobile-enrichment-plan]]"
 ---
-
-
-
 
 # D6: compact reader breadcrumb legibility — drop the Vault root on compact and keep ancestor crumbs whole so only the title truncates (no more Va… / Decisi… / title…)
 
@@ -28,4 +25,3 @@ related:
 The compact reader trail reads "Decisions / <title>" instead of "Va… / Decisi… / title…" (verified live @390px). The wide desktop `DocPanel` trail is unchanged; the `Breadcrumb` render test and the compact guard test stay green.
 
 ## Notes
-

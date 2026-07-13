@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#dashboard-sidebar'
 date: '2026-06-14'
-modified: '2026-06-14'
+modified: '2026-07-12'
 related:
   - '[[2026-06-14-dashboard-sidebar-adr]]'
 ---

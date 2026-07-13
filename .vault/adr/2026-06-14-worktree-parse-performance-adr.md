@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#worktree-parse-performance'
 date: '2026-06-14'
-modified: '2026-06-22'
+modified: '2026-07-12'
 related:
   - '[[2026-06-14-user-state-persistence-audit]]'
   - '[[2026-06-13-graph-scale-hardening-adr]]'

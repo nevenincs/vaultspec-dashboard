@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#keyboard-navigation'
 date: '2026-06-21'
-modified: '2026-06-21'
+modified: '2026-07-12'
 related:
   - "[[2026-06-21-keyboard-navigation-research]]"
 ---

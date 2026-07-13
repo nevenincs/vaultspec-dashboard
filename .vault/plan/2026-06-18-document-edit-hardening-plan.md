@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#document-edit-hardening'
 date: '2026-06-18'
-modified: '2026-06-25'
+modified: '2026-07-12'
 tier: L3
 related:
   - '[[2026-06-18-document-edit-hardening-adr]]'

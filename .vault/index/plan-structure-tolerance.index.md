@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#plan-structure-tolerance'
 date: '2026-06-15'
-modified: '2026-06-15'
+modified: '2026-07-12'
 related:
   - '[[2026-06-15-plan-structure-tolerance-adr]]'
 ---

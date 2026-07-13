@@ -3,7 +3,7 @@ tags:
   - '#reference'
   - '#figma-parity-reconciliation'
 date: '2026-06-16'
-modified: '2026-06-22'
+modified: '2026-07-12'
 related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"
   - "[[2026-06-16-figma-parity-reconciliation-adr]]"

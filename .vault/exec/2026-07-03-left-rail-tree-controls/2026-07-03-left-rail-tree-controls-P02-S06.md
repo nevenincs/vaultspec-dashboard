@@ -3,7 +3,7 @@ tags:
   - '#exec'
   - '#left-rail-tree-controls'
 date: '2026-07-04'
-modified: '2026-07-04'
+modified: '2026-07-12'
 step_id: 'S06'
 related:
   - "[[2026-07-03-left-rail-tree-controls-plan]]"

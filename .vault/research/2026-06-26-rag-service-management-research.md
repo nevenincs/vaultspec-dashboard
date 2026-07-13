@@ -3,7 +3,7 @@ tags:
   - '#research'
   - '#rag-service-management'
 date: '2026-06-26'
-modified: '2026-06-26'
+modified: '2026-07-12'
 related:
   - '[[2026-06-12-dashboard-foundation-reference]]'
 ---

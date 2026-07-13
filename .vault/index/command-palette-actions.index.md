@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#command-palette-actions'
 date: '2026-06-21'
-modified: '2026-06-21'
+modified: '2026-07-12'
 related:
   - '[[2026-06-21-command-palette-actions-adr]]'
 ---

@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#dashboard-pipeline-wire'
 date: '2026-06-14'
-modified: '2026-06-15'
+modified: '2026-07-12'
 related:
   - "[[2026-06-14-dashboard-activity-rail-research]]"
   - "[[2026-06-14-dashboard-pipeline-status-adr]]"

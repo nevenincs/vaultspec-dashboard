@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#worktree-enumeration-sweep'
 date: '2026-06-16'
-modified: '2026-06-16'
+modified: '2026-07-12'
 related:
   - '[[2026-06-16-worktree-enumeration-sweep-audit]]'
   - '[[2026-06-16-worktree-enumeration-sweep-plan]]'

@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#node-visual-richness'
 date: '2026-06-15'
-modified: '2026-06-15'
+modified: '2026-07-12'
 related:
   - '[[2026-06-14-node-visual-richness-P01-S01]]'
   - '[[2026-06-14-node-visual-richness-P01-S02]]'

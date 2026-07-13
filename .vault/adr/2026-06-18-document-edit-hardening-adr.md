@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#document-edit-hardening'
 date: '2026-06-18'
-modified: '2026-06-18'
+modified: '2026-07-12'
 related:
   - "[[2026-06-18-document-edit-hardening-research]]"
   - "[[2026-06-16-document-editor-backend-adr]]"

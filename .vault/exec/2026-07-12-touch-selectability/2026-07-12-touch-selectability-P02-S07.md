@@ -9,9 +9,6 @@ related:
   - "[[2026-07-12-touch-selectability-plan]]"
 ---
 
-
-
-
 # Re-enable text selection on code tree row path text and route the code-file menu through the selection guard
 
 ## Scope
@@ -19,7 +16,6 @@ related:
 - `frontend/src/app/left/CodeTree.tsx`
 
 ## Description
-
 
 - Add `select-text` to the code tree row class derived by the shared browser-tree
   store selector (`deriveCodeBrowserTreeRowView`), re-enabling selection over file
@@ -32,4 +28,3 @@ Code tree rows keep their path text selectable and the `code-file` menu yields t
 active intersecting selection.
 
 ## Notes
-
