@@ -1,0 +1,44 @@
+<svg width="190" height="190" viewBox="0 0 190 190" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="vaultspec-dashboard">
+  <!-- Vaultspec family tile: dashboard DA mark, derived from the RAG vector construction. -->
+  <defs>
+    <filter id="blur" x="-80" y="-80" width="350" height="350" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="13" />
+    </filter>
+    <radialGradient id="rose" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(90 120) rotate(-30) scale(135 780)">
+      <stop stop-color="#B05A6B" stop-opacity="0.65" />
+      <stop offset="1" stop-color="#B05A6B" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="teal" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(34 82) rotate(57) scale(169)">
+      <stop stop-color="#3F9AA6" stop-opacity="0.65" />
+      <stop offset="1" stop-color="#3F9AA6" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="sand" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(167 130) rotate(-130) scale(106)">
+      <stop stop-color="#B3823C" stop-opacity="0.65" />
+      <stop offset="1" stop-color="#B3823C" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="amber" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(74 150) rotate(-126) scale(97 136)">
+      <stop stop-color="#B5703F" stop-opacity="0.65" />
+      <stop offset="1" stop-color="#B5703F" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="violet" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(68 116) scale(34)">
+      <stop stop-color="#8A72B5" stop-opacity="0.65" />
+      <stop offset="1" stop-color="#8A72B5" stop-opacity="0" />
+    </radialGradient>
+    <clipPath id="tile">
+      <rect width="190" height="190" rx="42" />
+    </clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="190" height="190" rx="42" fill="#ECE6DC" />
+    <g filter="url(#blur)">
+      <circle cx="155" cy="121" r="62" fill="url(#rose)" />
+      <circle cx="19" cy="98" r="76" fill="url(#teal)" />
+      <circle cx="113" cy="82" r="79" fill="url(#sand)" />
+      <circle cx="59" cy="124" r="79" fill="url(#amber)" />
+      <circle cx="35" cy="83" r="66" fill="url(#violet)" />
+    </g>
+    <path d="M88.9 37.9Q88.9 68.2 124.6 79.8L190.6 92.5Q215.8 99.2 228.4 113.2Q241.1 127.2 241.1 152.5V1246.8Q241.1 1272.9 228.5 1286.9Q215.8 1300.9 190.6 1307.5L124.5 1320.3Q88.9 1332.1 88.9 1362.2Q88.9 1380.4 100.7 1390.2Q112.5 1400 135.5 1400H601.2Q783.8 1400 933 1345.8Q1082.2 1291.5 1189.5 1192.1Q1296.9 1092.7 1354.8 956.6Q1412.6 820.6 1412.6 656.5Q1412.6 464.8 1327.1 316.7Q1241.5 168.6 1080.7 84.3Q919.9 0 693.4 0H135.5Q112.3 0 100.6 10.1Q88.9 20.3 88.9 37.9ZM682.5 81.7Q836 81.7 948 149.7Q1060 217.7 1121.1 348.7Q1182.2 479.7 1182.2 668Q1182.2 814.6 1140.4 934.4Q1098.7 1054.1 1020.3 1140.1Q942 1226 831.7 1272.2Q721.5 1318.5 584.4 1318.5H462V167.4Q462 123.5 485.8 102.6Q509.6 81.7 557.7 81.7ZM1809.2 563.4H2389.6L2395.4 479.7H1801.5ZM1899.3 37.9Q1899.3 20.5 1888 10.2Q1876.7 0 1852.7 0H1555.2Q1531.8 0 1520.1 10.1Q1508.5 20.3 1508.5 37.8Q1508.5 51.4 1516.7 60.2Q1524.8 69 1542.1 77.2L1581.3 89.9Q1607.8 99.7 1623.1 121.2Q1638.4 142.6 1655.6 197.7L1992.2 1243.7Q2003.6 1278.8 1996.4 1294.4Q1989.1 1310 1956.3 1320Q1932.4 1328 1921.1 1337.6Q1909.7 1347.2 1909.7 1362.4Q1909.7 1380.5 1921.7 1390.3Q1933.6 1400 1957.1 1400H2353.3Q2377.2 1400 2388.8 1390Q2400.4 1380.1 2400.4 1362.6Q2400.4 1346.9 2389.2 1337.1Q2378.1 1327.3 2354.3 1319.9Q2327.6 1313.4 2322.1 1301.3Q2316.5 1289.2 2325.8 1260.1L2684.8 173Q2698.6 130.2 2717.2 110.5Q2735.8 90.7 2769.2 81.6Q2793.2 72.9 2801.9 63.2Q2810.6 53.5 2810.6 37.9Q2810.6 20.7 2798.9 10.4Q2787.2 0 2763.4 0H2382.7Q2359.1 0 2347.5 10.2Q2335.8 20.5 2335.8 37.9Q2335.8 53 2345.1 62.5Q2354.4 71.9 2372.3 77.4L2439.3 87.9Q2462.8 93.3 2465 110.7Q2467.2 128.1 2455.1 165.5L2083.7 1306.6L2109.6 1319.7L1752.4 209Q1741.1 172.6 1741.5 149.4Q1741.9 126.2 1756.4 112.1Q1770.9 98 1800.4 88.4L1863.4 76.6Q1881.4 71.2 1890.4 62Q1899.3 52.9 1899.3 37.9Z" fill="#F4EFEA" transform="translate(25.5 133) scale(.049 -.055)" />
+    <circle cx="34" cy="33" r="17.5" fill="#F4EFEA" />
+    <circle cx="155" cy="159" r="17.5" fill="#F4EFEA" />
+  </g>
+</svg>

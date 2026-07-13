@@ -1,0 +1,56 @@
+{
+  "schema": "vaultspec.readme-captures.v1",
+  "captured_at": "2026-07-12T18:23:37.490Z",
+  "origin": "http://127.0.0.1:8790",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "figures": {
+    "workspace": {
+      "file": "docs/assets/workspace.png",
+      "sha256": "ca715dd15b10cf2e9f46ab7bf64b6de287e4d0a191e5c506f3552ca4d4b541c2",
+      "evidence": {
+        "page_title": "vaultspec dashboard",
+        "current_location": "current location: vaultspec-dashboard / main",
+        "document_summary": "1 file · 511 documents +512 −568",
+        "graph_present": true,
+        "timeline_present": true,
+        "activity_present": true
+      }
+    },
+    "document": {
+      "file": "docs/assets/document-workspace.png",
+      "sha256": "db1e73165b0a1edb65ed31a1fe233fd463a506f3c0b24a3c080ac721351dd8a7",
+      "evidence": {
+        "selected_record": "Dashboard live state Jun 13",
+        "document_title": "Live and degradation state plane",
+        "document_region_present": true,
+        "graph_present": true
+      }
+    },
+    "search": {
+      "file": "docs/assets/search.png",
+      "sha256": "f2ef575e991a4b770427755596c85f45645220634faa096a16a088cb2e00a51f",
+      "evidence": {
+        "query": "dashboard",
+        "result_summary": "40 results",
+        "semantic_offline": false,
+        "scopes": [
+          "All",
+          "Docs",
+          "Code"
+        ]
+      }
+    },
+    "status": {
+      "file": "docs/assets/status.png",
+      "sha256": "a5587e13ee99dd398cc379150ecdc298da7e15237cddbcfa0d427eb9302ed928",
+      "evidence": {
+        "activity_present": true,
+        "open_plans_visible": true,
+        "search_service_visible": true
+      }
+    }
+  }
+}

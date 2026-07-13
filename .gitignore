@@ -129,6 +129,9 @@ frontend/test-results/
 playwright-report/
 # figma-visual-parity skill output (scoped, reclaimable comparison artifacts)
 output/visual-compare/
+# README capture intermediates (curated copies live in docs/assets/)
+output/playwright/
+output/tech-review-assets/
 
 # >>> vaultspec-managed (do not edit this block) >>>
 .vault/.obsidian/
