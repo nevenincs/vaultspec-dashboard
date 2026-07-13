@@ -103,15 +103,21 @@ describe("stage scene-event bridge", () => {
   it("an OPEN event (double-click) on a doc node opens it as a PERMANENT tab (#15)", () => {
     handleStageSceneEvent({ kind: "open", id: "doc:beta" }, OPEN_CONTEXT);
     // Double-click = the VS Code PERMANENT open (single-click preview is the select bridge).
+    // The tab records the context scope it was opened in (per-tab-scope-binding).
     expect(useViewStore.getState().openDocs).toEqual([
-      { nodeId: "doc:beta", surface: "markdown", provisional: false },
+      { nodeId: "doc:beta", surface: "markdown", provisional: false, scope: "scope-a" },
     ]);
   });
 
   it("an OPEN event on a code node opens it permanently with the code surface", () => {
     handleStageSceneEvent({ kind: "open", id: "code:src/main.rs" }, OPEN_CONTEXT);
     expect(useViewStore.getState().openDocs).toEqual([
-      { nodeId: "code:src/main.rs", surface: "code", provisional: false },
+      {
+        nodeId: "code:src/main.rs",
+        surface: "code",
+        provisional: false,
+        scope: "scope-a",
+      },
     ]);
   });
 

@@ -29,6 +29,9 @@ export interface ConformanceCheck {
 
 export interface DocumentEditorView {
   isEditing: boolean;
+  /** The scope the editor was opened against (per-tab-scope-binding) — the single
+   *  scope source every save path reads, so a save always targets the tab's corpus. */
+  scope: string | null;
   draftText: string;
   baseBlobHash: string;
   /** The body text as it was when the editor was opened (the diff base). Empty
@@ -281,6 +284,7 @@ export function deriveDocumentEditorView(
   return {
     isEditing:
       normalizedNodeId !== null && state.editorTarget?.nodeId === normalizedNodeId,
+    scope: state.editorTarget?.scope ?? null,
     draftText: state.draftText,
     baseBlobHash: state.baseBlobHash,
     baseText: state.editorBaseText,
@@ -418,8 +422,11 @@ export function openDocumentEditor(
   nodeId: unknown,
   text: unknown,
   baseBlobHash: unknown,
+  scope?: unknown,
 ): void {
-  useViewStore.getState().openEditor(nodeId, text, baseBlobHash);
+  // Pin the tab's scope onto the editor target so every save writes to the corpus the
+  // document was opened in (per-tab-scope-binding), never the ambient active scope.
+  useViewStore.getState().openEditor(nodeId, text, baseBlobHash, scope);
 }
 
 export function updateEditorDraft(text: unknown): void {

@@ -864,8 +864,15 @@ export function useCommandPaletteCommandView(
         closeDocument: () => requestCloseDocumentEditor(),
         closeAllDocuments: () => closeAllDocTabs(),
         reloadActiveDocument: () => {
-          const activeId = useViewStore.getState().activeDocId;
-          if (activeId !== null) reloadDocTab(activeId, scope);
+          const state = useViewStore.getState();
+          const activeId = state.activeDocId;
+          if (activeId === null) return;
+          // Attribution law (ambient-scope-coherence audit): reload against the
+          // tab's ORIGIN scope, never the ambient active scope — a cross-scope
+          // tab's content key folds ITS scope, so an ambient-scope invalidation
+          // would silently miss it (review LOW).
+          const tab = state.openDocs.find((doc) => doc.nodeId === activeId);
+          reloadDocTab(activeId, tab?.scope ?? scope);
         },
         keepActiveDocumentOpen: () => {
           const activeId = useViewStore.getState().activeDocId;

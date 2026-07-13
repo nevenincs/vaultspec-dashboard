@@ -50,6 +50,8 @@ import {
   promoteDocTab,
   reorderDocTabs,
   useDockTabHeaderView,
+  useDocTabScope,
+  useDocTabScopeBadge,
   useDockWorkspaceTabsView,
   useIsProvisionalDoc,
 } from "../../stores/view/tabs";
@@ -87,7 +89,15 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
   // provisional lookup keys straight off it — drives the italic preview title (#15).
   const provisional = useIsProvisionalDoc(api.id);
   const view = useDockTabHeaderView(api, provisional);
-  const scope = useActiveScope();
+  // The tab's OWN scope (per-tab-scope-binding), falling back to the active scope for
+  // a legacy tab — so Reload and the other doc-tab actions run against the workspace
+  // the tab belongs to, not whatever is active now.
+  const tabScope = useDocTabScope(api.id);
+  const activeScope = useActiveScope();
+  const scope = tabScope ?? activeScope;
+  // A small attenuated label when the tab belongs to a DIFFERENT workspace than the
+  // active one, so its foreign origin is legible (null → same-scope, no badge).
+  const scopeBadge = useDocTabScopeBadge(api.id);
   const docTabEntity = { kind: "doc-tab" as const, id: api.id, nodeId: api.id, scope };
   return (
     <div
@@ -128,6 +138,15 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
       >
         {view.title}
       </span>
+      {scopeBadge && (
+        <span
+          className="shrink-0 rounded-fg-xs bg-paper-sunken px-fg-1 text-caption text-ink-faint"
+          title={scopeBadge.title}
+          aria-label={`in workspace ${scopeBadge.label}`}
+        >
+          {scopeBadge.label}
+        </span>
+      )}
       <RowMenuDisclosure entity={docTabEntity} label={`${view.title} actions`} />
       <span
         role="button"

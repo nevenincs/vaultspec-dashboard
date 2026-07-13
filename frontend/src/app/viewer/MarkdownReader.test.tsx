@@ -202,6 +202,23 @@ describe("MarkdownReader states (read from the tiers-derived view)", () => {
     expect(screen.getByText(/worktree not listable/)).toBeTruthy();
   });
 
+  it("renders the not-in-workspace state on a 404, never a blank body (per-tab-scope-binding)", () => {
+    const view: ContentView = {
+      loading: false,
+      errored: false,
+      notFound: true,
+      degraded: false,
+      degradedTiers: [],
+      reasons: {},
+      languageHint: null,
+      text: "",
+      truncated: null,
+      available: false,
+    };
+    render(<MarkdownReader content={view} />);
+    expect(screen.getByText(/isn't in this workspace/)).toBeTruthy();
+  });
+
   it("renders the loading state as a text-free skeleton and the error state as a sentence", () => {
     const loading: ContentView = {
       loading: true,

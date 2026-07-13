@@ -14,8 +14,8 @@ import {
 } from "./useWorkspacePersistence";
 
 const PERMANENT: OpenDoc[] = [
-  { nodeId: "doc:a-plan", surface: "markdown", provisional: false },
-  { nodeId: "code:src/app.ts", surface: "code", provisional: false },
+  { nodeId: "doc:a-plan", surface: "markdown", provisional: false, scope: null },
+  { nodeId: "code:src/app.ts", surface: "code", provisional: false, scope: null },
 ];
 
 describe("serialize -> parse round-trip", () => {
@@ -65,7 +65,7 @@ describe("degradation", () => {
       }),
     );
     expect(restored?.openDocs).toEqual([
-      { nodeId: "doc:ok", surface: "markdown", provisional: false },
+      { nodeId: "doc:ok", surface: "markdown", provisional: false, scope: null },
     ]);
     expect(restored?.activeDocId).toBe("doc:ok");
   });

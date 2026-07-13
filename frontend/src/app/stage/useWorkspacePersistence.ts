@@ -91,7 +91,10 @@ export function useWorkspacePersistence(scope: unknown): void {
     // Do NOT re-seed when the user has intentionally emptied the workspace — that is
     // exactly the close that this restore would otherwise immediately undo.
     if (workspaceCleared) return;
-    const restored = parseWorkspaceTabs(persistedBlob);
+    // The durable blob is read only for the ACTIVE scope (`useDurableWorkspaceLayout`),
+    // so that scope is the tabs' provable origin — bind scope-less/v1 tabs to it, never
+    // ambient (audit finding 1).
+    const restored = parseWorkspaceTabs(persistedBlob, normalizedScope);
     if (restored && restored.openDocs.length > 0) {
       restoreDocTabsIfEmpty(restored.openDocs, restored.activeDocId);
     }

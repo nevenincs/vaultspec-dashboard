@@ -97,10 +97,20 @@ describe("editor-state slice (bounded, single-value)", () => {
   it("openEditor seeds the target/draft/base and begins idle", () => {
     openDocumentEditor(DOC_ID, "initial body", "hash-1");
     const s = useViewStore.getState();
-    expect(s.editorTarget).toEqual({ nodeId: DOC_ID });
+    expect(s.editorTarget).toEqual({ nodeId: DOC_ID, scope: null });
     expect(s.draftText).toBe("initial body");
     expect(s.baseBlobHash).toBe("hash-1");
     expect(s.editorStatus).toBe("idle");
+  });
+
+  it("pins the tab scope onto the editor target — the single save source (audit finding 2)", () => {
+    openDocumentEditor(DOC_ID, "body", "hash-1", " scope-x ");
+    // The scope every save path (panel + Mod+S) reads, so a cross-scope tab always
+    // writes to its own corpus, never the ambient active scope.
+    expect(useViewStore.getState().editorTarget).toEqual({
+      nodeId: DOC_ID,
+      scope: "scope-x",
+    });
   });
 
   it("normalizes malformed editor lifecycle payloads at the store seam", () => {
@@ -250,10 +260,13 @@ describe("editor-state slice (bounded, single-value)", () => {
   });
 
   it("projects the document editor read model for chrome consumers", () => {
-    openDocumentEditor(DOC_ID, "body", "hash-1");
+    openDocumentEditor(DOC_ID, "body", "hash-1", "scope-x");
     let view = deriveDocumentEditorView(useViewStore.getState(), DOC_ID);
     expect(view).toMatchObject({
       isEditing: true,
+      // The pinned editor scope is surfaced so the panel save reads the SAME source
+      // as the Mod+S keybinding (audit finding 2).
+      scope: "scope-x",
       draftText: "body",
       baseBlobHash: "hash-1",
       status: "idle",

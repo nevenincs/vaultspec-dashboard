@@ -141,7 +141,13 @@ export function restoredSessionContextSeed(
   if (normalizeViewStoreSessionString(pickedScope) !== null) return null;
   if (!session) return null;
   const context = session.scope_context ?? {};
-  const restoredTabs = parseWorkspaceTabs(context.workspace_layout ?? null);
+  // The scope_context blob is stored per-scope, so its tabs' provable origin is the
+  // session's active scope — bind scope-less/v1 tabs to it, never ambient (audit
+  // finding 1).
+  const restoredTabs = parseWorkspaceTabs(
+    context.workspace_layout ?? null,
+    session.active_scope,
+  );
   return {
     workspace:
       normalizeViewStoreSessionString(session.active_workspace) ??
@@ -219,16 +225,42 @@ export function useSeedSessionContext(): void {
   const session = useSession();
   const picked = useViewStore((s) => s.scope);
   const seedFromSession = useViewStore((s) => s.seedFromSession);
+  const mirrorSessionScopeContext = useViewStore((s) => s.mirrorSessionScopeContext);
   const seededRef = useRef(false);
+  // The active scope this hook last attributed context to, so a REMOTE flip while
+  // still unpicked re-attributes rather than leaving stale folder/features.
+  const seededScopeRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (seededRef.current) return;
     if (!session.isSuccess) return;
+    // `restoredSessionContextSeed` returns null once the user has PICKED a scope
+    // (they are pinned; a remote flip must not move them). While unpicked it returns
+    // the current active scope's context.
     const seed = restoredSessionContextSeed(picked, session.data);
     if (!seed) return;
-    seededRef.current = true;
-    seedFromSession(seed);
-  }, [picked, session.isSuccess, session.data, seedFromSession]);
+    if (!seededRef.current) {
+      seededRef.current = true;
+      seededScopeRef.current = seed.scope;
+      seedFromSession(seed);
+      return;
+    }
+    // Already seeded once and STILL unpicked: if the observed active scope changed
+    // (a remote flip on the shared session), re-mirror folder/features to the new
+    // scope's context so they are not interpreted under a foreign ambient scope
+    // (audit finding 3 — attribution over reset). A LIGHT re-mirror only: it does not
+    // pin the scope or reseed tabs (finding 1 owns the restored tabs' origin), so it
+    // stays the minimal fix within scope.
+    if (seededScopeRef.current !== seed.scope) {
+      seededScopeRef.current = seed.scope;
+      mirrorSessionScopeContext({ folder: seed.folder, featureTags: seed.featureTags });
+    }
+  }, [
+    picked,
+    session.isSuccess,
+    session.data,
+    seedFromSession,
+    mirrorSessionScopeContext,
+  ]);
 }
 
 /** The current folder + feature-tag contexts, read from the view store (the

@@ -13,6 +13,7 @@ import {
   editorStatusHasUnsavedDraft,
   activateDocTab,
   closeDocTab,
+  deriveDocTabScopeBadge,
   deriveDockDocPanelView,
   deriveDockTabHeaderView,
   deriveDockWorkspaceSyncPlan,
@@ -78,6 +79,7 @@ function content(patch: Partial<ContentView> = {}): ContentView {
   return {
     loading: false,
     errored: false,
+    notFound: false,
     degraded: false,
     degradedTiers: [],
     reasons: {},
@@ -98,7 +100,7 @@ describe("provisional (preview) tabs", () => {
     useViewStore.getState().openDoc("doc:a", "markdown", false);
     const state = useViewStore.getState();
     expect(state.openDocs).toEqual([
-      { nodeId: "doc:a", surface: "markdown", provisional: true },
+      { nodeId: "doc:a", surface: "markdown", provisional: true, scope: null },
     ]);
     expect(state.activeDocId).toBe("doc:a");
   });
@@ -122,7 +124,10 @@ describe("provisional (preview) tabs", () => {
     expect(useViewStore.getState().activeDocId).toBe("doc:a");
 
     useViewStore.getState().openEditor(" doc:a ", "body", "hash-a");
-    expect(useViewStore.getState().editorTarget).toEqual({ nodeId: "doc:a" });
+    expect(useViewStore.getState().editorTarget).toEqual({
+      nodeId: "doc:a",
+      scope: null,
+    });
 
     useViewStore.getState().closeDoc(" doc:a ");
     expect(ids()).toEqual(["doc:b"]);
@@ -268,7 +273,10 @@ describe("intentional close-all latch (split panel can be hidden)", () => {
   it("tears down the editor when its open tab is closed", () => {
     useViewStore.getState().openDoc("doc:a", "markdown", true);
     useViewStore.getState().openEditor("doc:a", "draft body", "hash-a");
-    expect(useViewStore.getState().editorTarget).toEqual({ nodeId: "doc:a" });
+    expect(useViewStore.getState().editorTarget).toEqual({
+      nodeId: "doc:a",
+      scope: null,
+    });
     useViewStore.getState().closeDoc("doc:a");
     expect(useViewStore.getState()).toMatchObject({
       editorTarget: null,
@@ -283,7 +291,10 @@ describe("intentional close-all latch (split panel can be hidden)", () => {
     useViewStore.getState().openDoc("doc:b", "markdown", true);
     useViewStore.getState().openEditor("doc:a", "draft body", "hash-a");
     useViewStore.getState().closeDoc("doc:b");
-    expect(useViewStore.getState().editorTarget).toEqual({ nodeId: "doc:a" });
+    expect(useViewStore.getState().editorTarget).toEqual({
+      nodeId: "doc:a",
+      scope: null,
+    });
   });
 });
 
@@ -410,14 +421,14 @@ describe("dock workspace projection", () => {
         id: "doc:a",
         component: "doc",
         title: "a",
-        params: { nodeId: "doc:a", surface: "markdown" },
+        params: { nodeId: "doc:a", surface: "markdown", scope: null },
         position: { referencePanel: "__graph__", direction: "left" },
       },
       {
         id: "code:src/app.ts",
         component: "doc",
         title: "app.ts",
-        params: { nodeId: "code:src/app.ts", surface: "code" },
+        params: { nodeId: "code:src/app.ts", surface: "code", scope: null },
         position: { referencePanel: "doc:a", direction: "within" },
       },
     ]);
@@ -438,9 +449,9 @@ describe("dock workspace projection", () => {
 
     expect(normalized).toEqual({
       openDocs: [
-        { nodeId: "doc:a", surface: "markdown", provisional: false },
-        { nodeId: "doc:b", surface: "markdown", provisional: false },
-        { nodeId: "code:src/app.ts", surface: "code", provisional: true },
+        { nodeId: "doc:a", surface: "markdown", provisional: false, scope: null },
+        { nodeId: "doc:b", surface: "markdown", provisional: false, scope: null },
+        { nodeId: "code:src/app.ts", surface: "code", provisional: true, scope: null },
       ],
       activeDocId: "code:src/app.ts",
     });
@@ -478,7 +489,7 @@ describe("dock workspace projection", () => {
         id: "doc:b",
         component: "doc",
         title: "b",
-        params: { nodeId: "doc:b", surface: "markdown" },
+        params: { nodeId: "doc:b", surface: "markdown", scope: null },
         position: { referencePanel: "doc:a", direction: "within" },
       },
     ]);
@@ -640,14 +651,18 @@ describe("workspace persistence restore", () => {
       " code:src/app.ts ",
     );
 
+    // Writes always emit v2; these input tabs carry no scope, so it is omitted from
+    // the blob (compact) and reads back as a null scope (active-scope fallback).
     expect(JSON.parse(blob)).toEqual({
-      v: 1,
+      v: 2,
       tabs: [
         { nodeId: "doc:restored", surface: "markdown" },
         { nodeId: "code:src/app.ts", surface: "code" },
       ],
       active: "code:src/app.ts",
     });
+    // A legacy v1 blob still loads (tolerant read): every tab gets scope=null so it
+    // falls back to the active scope, the pre-binding behavior.
     expect(
       parseWorkspaceTabs(
         JSON.stringify({
@@ -663,8 +678,13 @@ describe("workspace persistence restore", () => {
       ),
     ).toEqual({
       openDocs: [
-        { nodeId: "doc:restored", surface: "markdown", provisional: false },
-        { nodeId: "code:src/app.ts", surface: "code", provisional: false },
+        {
+          nodeId: "doc:restored",
+          surface: "markdown",
+          provisional: false,
+          scope: null,
+        },
+        { nodeId: "code:src/app.ts", surface: "code", provisional: false, scope: null },
       ],
       activeDocId: "code:src/app.ts",
     });
@@ -676,5 +696,71 @@ describe("workspace persistence restore", () => {
     expect(normalizeWorkspaceLayoutBlob('  {"v":1}  ')).toBe('{"v":1}');
     expect(normalizeWorkspaceLayoutBlob(oversized)).toBeNull();
     expect(parseWorkspaceTabs(oversized)).toBeNull();
+  });
+});
+
+describe("per-tab scope binding", () => {
+  beforeEach(reset);
+
+  it("records the scope a tab is opened in on the tab", () => {
+    useViewStore.getState().openDoc("doc:a", "markdown", true, " scope-x ");
+    expect(useViewStore.getState().openDocs[0]).toMatchObject({
+      nodeId: "doc:a",
+      scope: "scope-x",
+    });
+  });
+
+  it("keeps a tab's original scope when it is re-opened without one", () => {
+    useViewStore.getState().openDoc("doc:a", "markdown", true, "scope-x");
+    // Re-opening/activating the same tab (no scope) must not silently re-scope it.
+    useViewStore.getState().openDoc("doc:a", "markdown", true);
+    expect(useViewStore.getState().openDocs[0]?.scope).toBe("scope-x");
+  });
+
+  it("threads the tab scope into the dock panel params", () => {
+    const plan = deriveDockWorkspaceSyncPlan(
+      [{ nodeId: "doc:a", surface: "markdown", provisional: false, scope: "scope-x" }],
+      "doc:a",
+      ["__graph__"],
+      "__graph__",
+    );
+    expect(plan.addPanels[0]?.params).toEqual({
+      nodeId: "doc:a",
+      surface: "markdown",
+      scope: "scope-x",
+    });
+  });
+
+  it("round-trips the tab scope through a v2 blob and defaults a v1 blob to null", () => {
+    const blob = serializeWorkspaceTabs(
+      [{ nodeId: "doc:a", surface: "markdown", provisional: false, scope: "scope-x" }],
+      "doc:a",
+    );
+    expect(JSON.parse(blob)).toMatchObject({ v: 2 });
+    expect(parseWorkspaceTabs(blob)?.openDocs[0]).toMatchObject({
+      nodeId: "doc:a",
+      scope: "scope-x",
+    });
+    // A legacy v1 blob (no scope) still loads, with scope=null (active fallback).
+    const v1 = parseWorkspaceTabs(
+      JSON.stringify({
+        v: 1,
+        tabs: [{ nodeId: "doc:a", surface: "markdown" }],
+        active: "doc:a",
+      }),
+    );
+    expect(v1?.openDocs[0]).toMatchObject({ nodeId: "doc:a", scope: null });
+  });
+
+  it("derives a cross-scope tab badge only when the tab scope differs from active", () => {
+    // Same scope → no badge; scope-less tab → no badge.
+    expect(deriveDocTabScopeBadge("scope-a", "scope-a")).toBeNull();
+    expect(deriveDocTabScopeBadge(null, "scope-a")).toBeNull();
+    // Cross-scope → the registry-style short label + the full path as the tooltip.
+    const badge = deriveDocTabScopeBadge("/repos/aeat-worktrees/main", "scope-a");
+    expect(badge).toEqual({
+      label: "aeat",
+      title: "/repos/aeat-worktrees/main",
+    });
   });
 });

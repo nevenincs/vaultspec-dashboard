@@ -411,6 +411,44 @@ describe("restoredSessionContextSeed", () => {
       scope: "scope-a",
     });
   });
+
+  it("binds restored v1-blob tabs to the session's active scope (origin), not ambient (audit finding 1)", () => {
+    const seed = restoredSessionContextSeed(null, {
+      workspace: "workspace-a",
+      active_scope: "scope-origin",
+      active_workspace: "project-a",
+      scope_context: {
+        folder: null,
+        feature_tags: [],
+        // A legacy v1 blob carries no per-tab scope; the restore must attribute its
+        // tabs to the scope whose context stored them (their provable origin).
+        workspace_layout: JSON.stringify({
+          v: 1,
+          tabs: [
+            { nodeId: "doc:a", surface: "markdown" },
+            { nodeId: "code:src/app.ts", surface: "code" },
+          ],
+          active: "doc:a",
+        }),
+      },
+      recents: [],
+      tiers: {},
+    });
+    expect(seed?.openDocs).toEqual([
+      {
+        nodeId: "doc:a",
+        surface: "markdown",
+        provisional: false,
+        scope: "scope-origin",
+      },
+      {
+        nodeId: "code:src/app.ts",
+        surface: "code",
+        provisional: false,
+        scope: "scope-origin",
+      },
+    ]);
+  });
 });
 
 describe("deriveDurableWorkspaceLayoutView", () => {

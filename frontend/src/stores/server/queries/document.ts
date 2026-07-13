@@ -74,6 +74,15 @@ export interface ContentView extends TierAvailability {
   loading: boolean;
   /** A genuine transport failure (no tiers-bearing envelope) — distinct from degraded. */
   errored: boolean;
+  /**
+   * The engine answered 404 — there is no readable document at this node id in the
+   * READ scope (per-tab-scope-binding). Distinct from `errored` (a transport fault)
+   * and from an empty document: the file genuinely is not in this workspace, so the
+   * viewer renders a designed "not in this workspace" state, never a blank body.
+   * Optional like `path`/`blobHash`: `deriveContentView` always sets it, and a
+   * fixture that omits it reads as "not a 404" (undefined is falsy).
+   */
+  notFound?: boolean;
   /** The served repo-relative path, when available. */
   path?: string;
   /** The git-style blob oid of the served bytes, when available. */
@@ -115,12 +124,16 @@ export function deriveContentView(
   // tiers-bearing error or a degraded served block is designed degradation.
   const errored =
     error instanceof EngineError ? error.tiers === undefined : error != null;
+  // A 404 is the "no readable content in this scope" answer — the document is not
+  // in the read scope. Rendered as a distinct designed state, never a blank body.
+  const notFound = error instanceof EngineError && error.status === 404;
   const available =
     !loading && !errored && !availability.degraded && data !== undefined;
   return {
     ...availability,
     loading,
     errored,
+    notFound,
     path: data?.path,
     blobHash: data?.blob_hash,
     languageHint: data?.language_hint ?? null,
@@ -156,7 +169,7 @@ export type ViewerStateTone = "faint" | "muted" | "broken";
 
 export interface CodeViewerView {
   /** The designed surface state the code viewer renders. */
-  state: "loading" | "errored" | "degraded" | "empty" | "ready";
+  state: "loading" | "errored" | "degraded" | "empty" | "missing" | "ready";
   /** Placeholder copy for non-ready states. */
   stateMessage: string | null;
   /** Placeholder tone for non-ready states. */
@@ -213,6 +226,19 @@ export function deriveCodeViewerView(content: ContentView): CodeViewerView {
       ...base,
       state: "loading",
       stateMessage: "Loading file...",
+      stateTone,
+      stateToneClass: viewerStateToneClass(stateTone),
+    };
+  }
+  // A 404 in the read scope is a distinct designed state (per-tab-scope-binding): the
+  // file is not in this workspace, never a blank body. Checked before `errored` so a
+  // tiers-less 404 still lands here rather than the generic transport-error copy.
+  if (content.notFound) {
+    const stateTone: ViewerStateTone = "muted";
+    return {
+      ...base,
+      state: "missing",
+      stateMessage: "This file isn't in this workspace.",
       stateTone,
       stateToneClass: viewerStateToneClass(stateTone),
     };
@@ -344,7 +370,7 @@ export function deriveMarkdownHeaderView(
 
 export interface MarkdownReaderView {
   /** The designed reader state the app renders. */
-  state: "loading" | "errored" | "degraded" | "empty" | "ready";
+  state: "loading" | "errored" | "degraded" | "empty" | "missing" | "ready";
   /** Placeholder copy for non-ready states. */
   stateMessage: string | null;
   /** Placeholder tone for non-ready states. */
@@ -593,6 +619,19 @@ export function deriveMarkdownReaderView(content: ContentView): MarkdownReaderVi
       ...base,
       state: "loading",
       stateMessage: "Loading document…",
+      stateTone,
+      stateToneClass: viewerStateToneClass(stateTone),
+    };
+  }
+  // A 404 in the read scope is a distinct designed state (per-tab-scope-binding): the
+  // document is not in this workspace, never a blank body. Checked before `errored`
+  // so a tiers-less 404 still lands here rather than the generic transport-error copy.
+  if (content.notFound) {
+    const stateTone: ViewerStateTone = "muted";
+    return {
+      ...base,
+      state: "missing",
+      stateMessage: "This document isn't in this workspace.",
       stateTone,
       stateToneClass: viewerStateToneClass(stateTone),
     };

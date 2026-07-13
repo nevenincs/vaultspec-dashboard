@@ -16,6 +16,7 @@ import {
   engineKeys,
   useActiveScope,
   useContentView,
+  workspaceRootName,
   type ContentView,
   type MarkdownHeaderView,
 } from "../server/queries";
@@ -33,7 +34,13 @@ import {
 } from "./viewStore";
 import { normalizeWorkspaceLayoutBlob } from "../workspaceLayout";
 
-const WORKSPACE_PERSIST_VERSION = 1;
+// v2 adds the per-tab `scope` (per-tab-scope-binding). Writes always emit v2; reads
+// tolerate v1 (every tab loads with scope=null → falls back to the active scope, the
+// pre-binding behavior). Scope strings are absolute paths (~80 chars), but at
+// MAX_OPEN_DOCS=12 the blob stays well under WORKSPACE_LAYOUT_BLOB_MAX_CHARS (64 KB)
+// — ~200 chars/tab × 12 ≈ 2.4 KB — so no scope-table dedupe is needed.
+const WORKSPACE_PERSIST_VERSION = 2;
+const WORKSPACE_PERSIST_VERSIONS_READABLE = new Set([1, 2]);
 export {
   WORKSPACE_LAYOUT_BLOB_MAX_CHARS,
   normalizeWorkspaceLayoutBlob,
@@ -43,7 +50,7 @@ export interface DockWorkspacePanelSpec {
   id: string;
   component: "doc";
   title: string;
-  params: { nodeId: string; surface: ViewerSurface };
+  params: { nodeId: string; surface: ViewerSurface; scope: string | null };
   /** Where to dock the new panel. Absent when nothing is present to reference
    *  (the graph is hidden and no document is open yet) — the panel then seeds the
    *  empty workspace at the root, taking the full center width. */
@@ -135,7 +142,7 @@ export function deriveDockWorkspaceSyncPlan(
       id: doc.nodeId,
       component: "doc",
       title: dockTabTitle(doc.nodeId),
-      params: { nodeId: doc.nodeId, surface: doc.surface },
+      params: { nodeId: doc.nodeId, surface: doc.surface, scope: doc.scope ?? null },
       ...(referencePanel === null
         ? {}
         : {
@@ -223,6 +230,55 @@ export function useIsProvisionalDoc(nodeId: unknown): boolean {
   );
 }
 
+/** The scope a given open tab was opened in (per-tab-scope-binding), or null when
+ *  the tab is unknown or carries no scope (a legacy/unknown tab → active-scope
+ *  fallback). Selects the RAW openDocs slice and derives in useMemo (stable-selectors). */
+export function useDocTabScope(nodeId: unknown): string | null {
+  const normalized = normalizeNodeId(nodeId);
+  const openDocs = useViewStore((state) => state.openDocs);
+  return useMemo(
+    () =>
+      normalized === null
+        ? null
+        : (openDocs.find((doc) => doc.nodeId === normalized)?.scope ?? null),
+    [openDocs, normalized],
+  );
+}
+
+/** The attenuated cross-scope tab badge (per-tab-scope-binding): a tab opened in a
+ *  DIFFERENT worktree than the dashboard's active one shows a small plain-language
+ *  workspace label so its foreign origin is legible; the full scope path is the
+ *  tooltip only (labels-are-user-facing: no raw paths on screen). Null when the tab
+ *  is same-scope (or scope-less) — no badge. The short label reuses the registry's
+ *  `workspaceRootName` heuristic (…/aeat-worktrees/main → "aeat"), a pure string
+ *  derivation, so the badge needs no extra wire read. */
+export interface DocTabScopeBadgeView {
+  label: string;
+  title: string;
+}
+
+export function deriveDocTabScopeBadge(
+  tabScope: unknown,
+  activeScope: unknown,
+): DocTabScopeBadgeView | null {
+  const normalizedTab = normalizeViewStoreSessionString(tabScope);
+  const normalizedActive = normalizeViewStoreSessionString(activeScope);
+  if (normalizedTab === null || normalizedTab === normalizedActive) return null;
+  return {
+    label: workspaceRootName({ label: "", path: normalizedTab }),
+    title: normalizedTab,
+  };
+}
+
+export function useDocTabScopeBadge(nodeId: unknown): DocTabScopeBadgeView | null {
+  const tabScope = useDocTabScope(nodeId);
+  const activeScope = useActiveScope();
+  return useMemo(
+    () => deriveDocTabScopeBadge(tabScope, activeScope),
+    [tabScope, activeScope],
+  );
+}
+
 /** Close ALL open document tabs (#15 "Close all documents"). Composes the store's
  *  bulk-close op so the active id and workspace-cleared latch stay consistent. */
 export function closeAllDocTabs(): void {
@@ -274,8 +330,14 @@ export function deriveDockDocPanelView(
 export function useDockDocPanelView(
   nodeId: unknown,
   surface: unknown,
+  tabScope?: unknown,
 ): DockDocPanelView {
-  const scope = useActiveScope();
+  const activeScope = useActiveScope();
+  // The tab reads against the scope it was OPENED in (per-tab-scope-binding); a
+  // legacy/unknown tab (null) falls back to the active scope, preserving today's
+  // behavior. This is the fix for the "every document is empty" incident — a tab
+  // no longer 404s when the shared session's active scope switches away.
+  const scope = normalizeViewStoreSessionString(tabScope) ?? activeScope;
   const normalizedNodeId = normalizeNodeId(nodeId);
   const normalizedSurface = normalizeViewerSurface(surface);
   const content = useContentView(normalizedNodeId, scope);
@@ -312,7 +374,12 @@ export function previewDocTab(
   const selected = selectNode(docNodeId, normalizeSelectionScope(scope)).catch(
     () => false,
   );
-  useViewStore.getState().openDoc(docNodeId, normalizeViewerSurface(surface), false);
+  // Record the scope the tab is opened in (per-tab-scope-binding) so it reads its
+  // content against THAT scope, not whatever the shared session's active scope
+  // later becomes.
+  useViewStore
+    .getState()
+    .openDoc(docNodeId, normalizeViewerSurface(surface), false, scope);
   return selected;
 }
 
@@ -331,7 +398,9 @@ export function openDocTab(
   const selected = selectNode(docNodeId, normalizeSelectionScope(scope)).catch(
     () => false,
   );
-  useViewStore.getState().openDoc(docNodeId, normalizeViewerSurface(surface), true);
+  useViewStore
+    .getState()
+    .openDoc(docNodeId, normalizeViewerSurface(surface), true, scope);
   return selected;
 }
 
@@ -406,7 +475,11 @@ export function applyRenamedMarkdownDocWorkspace(
   // S19 adversarial review caught). The flag is threaded in, not re-derived here.
   closeDocTab(result.oldNodeId);
   const selected = openDocTab(result.newNodeId, "markdown", scope);
-  useViewStore.getState().openEditor(result.newNodeId, draftText, result.newBlobHash);
+  // Re-pin the same scope onto the re-opened editor target (per-tab-scope-binding) so
+  // the renamed doc keeps saving to its own corpus.
+  useViewStore
+    .getState()
+    .openEditor(result.newNodeId, draftText, result.newBlobHash, scope);
   if (hadUnsavedDraft) {
     useViewStore.setState({ editorStatus: "dirty" });
   }
@@ -438,6 +511,9 @@ export function serializeWorkspaceTabs(
     tabs: normalizedOpenDocs.map((doc) => ({
       nodeId: doc.nodeId,
       surface: doc.surface,
+      // Omit a null/absent scope to keep the blob compact; a restored tab without a
+      // scope falls back to the active scope (matching a v1 blob).
+      ...(doc.scope != null ? { scope: doc.scope } : {}),
     })),
     active: normalizeActiveDocId(normalizedOpenDocs, activeDocId),
   });
@@ -447,26 +523,43 @@ export function serializeWorkspaceTabs(
  * Parse the durable session workspace-layout blob back into the tab store shape.
  * Malformed, duplicate, and over-cap entries degrade into the same bounded
  * one-tab-per-node invariant enforced by the live tab operations.
+ *
+ * `originScope` is the scope the blob was STORED under (the session `scope_context`
+ * is per-scope). A tab with no explicit scope — every tab of a legacy v1 blob, or a
+ * v2 tab persisted before a scope was picked — is bound to `originScope`, NOT null:
+ * that scope is its provable origin, so a foreign active-scope flip can never make a
+ * restored tab read against the ambient corpus (audit finding 1 — attribution over
+ * reset). Absent `originScope`, an unscoped tab stays null (active-scope fallback).
  */
 export function parseWorkspaceTabs(
   blob: unknown,
+  originScope: unknown = null,
 ): { openDocs: OpenDoc[]; activeDocId: string | null } | null {
   const normalizedBlob = normalizeWorkspaceLayoutBlob(blob);
   if (normalizedBlob === null) return null;
+  const normalizedOriginScope = normalizeViewStoreSessionString(originScope);
   try {
     const parsed = JSON.parse(normalizedBlob) as {
       v?: number;
-      tabs?: Array<{ nodeId?: unknown; surface?: unknown }>;
+      tabs?: Array<{ nodeId?: unknown; surface?: unknown; scope?: unknown }>;
       active?: unknown;
     };
-    if (parsed.v !== WORKSPACE_PERSIST_VERSION || !Array.isArray(parsed.tabs)) {
+    if (
+      typeof parsed.v !== "number" ||
+      !WORKSPACE_PERSIST_VERSIONS_READABLE.has(parsed.v) ||
+      !Array.isArray(parsed.tabs)
+    ) {
       return null;
     }
     const openDocs: OpenDoc[] = [];
     for (const entry of parsed.tabs) {
       if (typeof entry?.nodeId !== "string") continue;
       const surface = entry.surface === "code" ? "code" : "markdown";
-      openDocs.push({ nodeId: entry.nodeId, surface, provisional: false });
+      // A tab's explicit scope wins; otherwise bind to the blob's origin scope (its
+      // provable per-scope-context origin), never null/ambient.
+      const scope =
+        typeof entry.scope === "string" ? entry.scope : normalizedOriginScope;
+      openDocs.push({ nodeId: entry.nodeId, surface, provisional: false, scope });
     }
     const normalizedOpenDocs = normalizeOpenDocs(openDocs);
     return {

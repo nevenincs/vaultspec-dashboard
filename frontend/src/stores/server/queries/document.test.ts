@@ -2,9 +2,10 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { liveTransport } from "../../../testing/liveClient";
-import { engineClient } from "../engine";
+import { engineClient, EngineError } from "../engine";
 import {
   deriveCodeViewerView,
+  deriveContentView,
   deriveFrontmatterHeaderView,
   deriveMarkdownHeaderView,
   deriveMarkdownReaderView,
@@ -19,6 +20,7 @@ describe("deriveCodeViewerView (viewer code chrome)", () => {
   const content = (patch: Partial<ContentView>): ContentView => ({
     loading: false,
     errored: false,
+    notFound: false,
     degraded: false,
     degradedTiers: [],
     reasons: {},
@@ -93,6 +95,18 @@ describe("deriveCodeViewerView (viewer code chrome)", () => {
     );
   });
 
+  it("renders a distinct not-in-workspace state on a 404 (never a blank body)", () => {
+    // A 404 in the read scope is the "missing" state — distinct from empty/errored so
+    // the viewer never blanks (per-tab-scope-binding).
+    expect(
+      deriveCodeViewerView(content({ notFound: true, available: false, text: "" })),
+    ).toMatchObject({
+      state: "missing",
+      stateMessage: "This file isn't in this workspace.",
+      stateTone: "muted",
+    });
+  });
+
   it("carries the honest truncation block only with ready content", () => {
     const truncated = {
       total_bytes: 2_000_000,
@@ -117,10 +131,34 @@ describe("deriveCodeViewerView (viewer code chrome)", () => {
   });
 });
 
+describe("deriveContentView (404 → notFound)", () => {
+  it("flags a 404 as notFound (distinct from a transport error)", () => {
+    const notFound = deriveContentView(
+      undefined,
+      new EngineError("/nodes/doc:x/content", 404, {
+        tiers: { structural: { available: true } },
+        body: { error: "no readable content in this scope" },
+      }),
+      false,
+    );
+    expect(notFound.notFound).toBe(true);
+    // A non-404 EngineError is not notFound.
+    const other = deriveContentView(
+      undefined,
+      new EngineError("/nodes/doc:x/content", 500, { tiers: {} }),
+      false,
+    );
+    expect(other.notFound).toBe(false);
+    // No error → not notFound.
+    expect(deriveContentView(undefined, null, false).notFound).toBe(false);
+  });
+});
+
 describe("deriveMarkdownHeaderView (viewer document chrome)", () => {
   const content = (patch: Partial<ContentView>): ContentView => ({
     loading: false,
     errored: false,
+    notFound: false,
     degraded: false,
     degradedTiers: [],
     reasons: {},
@@ -168,6 +206,7 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
   const content = (patch: Partial<ContentView>): ContentView => ({
     loading: false,
     errored: false,
+    notFound: false,
     degraded: false,
     degradedTiers: [],
     reasons: {},
@@ -352,6 +391,17 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
     expect(
       deriveMarkdownReaderView(content({ text: "# Body", truncated })).truncated,
     ).toEqual(truncated);
+  });
+
+  it("renders a distinct not-in-workspace state on a 404 (never a blank body)", () => {
+    expect(
+      deriveMarkdownReaderView(content({ notFound: true, available: false, text: "" })),
+    ).toMatchObject({
+      state: "missing",
+      stateMessage: "This document isn't in this workspace.",
+      stateTone: "muted",
+      body: "",
+    });
   });
 });
 

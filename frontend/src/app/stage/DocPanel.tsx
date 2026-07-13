@@ -24,11 +24,15 @@ export interface DocPanelParams {
   nodeId: string;
   /** Which surface to render. Only `markdown` is editable; `code` is read-only. */
   surface: ViewerSurface;
+  /** The scope the tab was opened in (per-tab-scope-binding); null falls back to the
+   *  active scope. Threaded so the panel reads its content/mutations against the tab's
+   *  own workspace, not the shared session's active scope. */
+  scope: string | null;
 }
 
 export function DocPanel(props: IDockviewPanelProps<DocPanelParams>) {
-  const { nodeId, surface } = props.params;
-  const view = useDockDocPanelView(nodeId, surface);
+  const { nodeId, surface, scope } = props.params;
+  const view = useDockDocPanelView(nodeId, surface, scope);
 
   if (view.state === "code") {
     return (

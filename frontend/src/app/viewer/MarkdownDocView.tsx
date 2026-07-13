@@ -278,7 +278,8 @@ export function MarkdownDocView({
     markEditorSaving();
     const fields = deriveMarkdownEditorFrontmatterPatch(editorChrome.frontmatterDraft);
     setFrontmatter.mutate(
-      { nodeId, scope, baseBlobHash: editor.baseBlobHash, ...fields },
+      // The tab's pinned editor scope is the single save source (per-tab-scope-binding).
+      { nodeId, scope: editor.scope, baseBlobHash: editor.baseBlobHash, ...fields },
       {
         onSuccess: ({ result }) => applyEditorWriteResult(result, baseTextSnapshot),
         onError: () => markEditorFailed(),
@@ -298,14 +299,19 @@ export function MarkdownDocView({
     );
     markEditorSaving();
     renameDoc.mutate(
-      { nodeId, scope: scope ?? undefined, to, expectedBlobHash: editor.baseBlobHash },
+      {
+        nodeId,
+        scope: editor.scope ?? undefined,
+        to,
+        expectedBlobHash: editor.baseBlobHash,
+      },
       {
         onSuccess: ({ result }) => {
           if (result.kind === "renamed") {
             void applyRenamedMarkdownDocWorkspace(
               result,
               editor.draftText,
-              scope,
+              editor.scope,
               hadUnsavedDraft,
             );
           } else {
@@ -322,6 +328,9 @@ export function MarkdownDocView({
       nodeId,
       documentEditor.initialText,
       documentEditor.initialBlobHash,
+      // Pin THIS tab's scope onto the editor target so every save (panel + Mod+S)
+      // writes to the corpus the tab was opened in (per-tab-scope-binding).
+      scope,
     );
     // An explicit edit promotes a provisional (preview) tab to a permanent one.
     promoteDocTab(nodeId);
@@ -383,7 +392,12 @@ export function MarkdownDocView({
     const savedText = useViewStore.getState().draftText;
     markEditorSaving();
     saveBody.mutate(
-      { nodeId, scope, text: savedText, baseBlobHash: editor.baseBlobHash },
+      {
+        nodeId,
+        scope: editor.scope,
+        text: savedText,
+        baseBlobHash: editor.baseBlobHash,
+      },
       {
         onSuccess: ({ result }) => {
           applyEditorWriteResult(result, savedText);

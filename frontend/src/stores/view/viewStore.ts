@@ -58,6 +58,26 @@ export interface OpenDoc {
   surface: ViewerSurface;
   /** Whether this is the single provisional (preview) tab. */
   provisional: boolean;
+  /**
+   * The worktree scope the tab was OPENED in (per-tab-scope-binding). A tab reads
+   * its content, comments, and editor mutations against THIS scope, not the
+   * dashboard's currently-active scope — so a document opened in one workspace keeps
+   * resolving after the shared engine session's active scope switches to another
+   * (the "every document is empty" incident).
+   *
+   * THE ATTRIBUTION LAW (ambient-scope audit): any client state carrying scope-bearing
+   * ids — a tab's node id, a stem, a folder, a feature tag — is attributed with its
+   * ORIGIN scope and read against THAT scope, never the ambient active one. Attribution
+   * over reset: a foreign active-scope flip must never silently re-interpret a passive
+   * client's state under the new corpus. A tab's origin is the scope it was opened in;
+   * a RESTORED tab's origin is the scope whose per-scope `scope_context` blob carried
+   * it (`parseWorkspaceTabs(blob, originScope)`), so even a legacy v1 layout binds to a
+   * provable origin, never null. `null` remains only for a genuinely unknown tab and
+   * falls back to the active scope at read time. Optional so a fixture or a pre-binding
+   * literal is still a valid `OpenDoc`; `normalizeOpenDocs` always populates it
+   * (defaulting to null), so a normalized tab always carries the field.
+   */
+  scope?: string | null;
 }
 
 /**
@@ -88,6 +108,16 @@ export type EditorStatus =
 export interface EditorTarget {
   /** The stable `doc:<stem>` node id the editor is mutating. */
   nodeId: string;
+  /**
+   * The scope the editor was opened AGAINST (per-tab-scope-binding): the tab's own
+   * scope, pinned at open. EVERY save path — the in-panel Save/frontmatter/rename and
+   * the Mod+S keybinding — reads scope from HERE so a document is always written to
+   * the corpus it was opened in, never the dashboard's ambient active scope (a
+   * cross-scope tab + Mod+S would otherwise write the stem against the wrong corpus:
+   * a conflict at best, a same-named-doc overwrite at worst). `null` falls back to the
+   * active scope, matching a legacy tab.
+   */
+  scope: string | null;
 }
 
 export const EDITOR_DRAFT_TEXT_MAX_CHARS = 512 * 1024;
@@ -372,7 +402,12 @@ export interface ViewState {
    * already-open doc activates it (and promotes it when `permanent`). Bounded:
    * adding beyond `MAX_OPEN_DOCS` evicts the oldest non-active permanent tab.
    */
-  openDoc: (nodeId: unknown, surface: unknown, permanent?: unknown) => void;
+  openDoc: (
+    nodeId: unknown,
+    surface: unknown,
+    permanent?: unknown,
+    scope?: unknown,
+  ) => void;
   /** Promote the provisional tab (or a given doc) to permanent (clears its
    *  `provisional` flag) — on double-click, first edit, or a tab drag. */
   promoteDoc: (nodeId: unknown) => void;
@@ -393,7 +428,12 @@ export interface ViewState {
    * (the draft equals the saved text). Replaces any prior open editor (one doc at
    * a time, bounded-by-default).
    */
-  openEditor: (nodeId: unknown, text: unknown, baseBlobHash: unknown) => void;
+  openEditor: (
+    nodeId: unknown,
+    text: unknown,
+    baseBlobHash: unknown,
+    scope?: unknown,
+  ) => void;
   /** Update the draft body; marks the editor `dirty` (the draft diverges from the
    *  saved text). A no-op write (same text) is short-circuited so an idle keypress
    *  stream does not churn subscribers. */
@@ -521,11 +561,15 @@ export function normalizeOpenDocs(openDocs: unknown): OpenDoc[] {
     }
     const surface = normalizeViewerSurface(doc.surface);
     const provisional = doc.provisional === true;
+    // The opened-in scope; null (legacy/unknown) is valid and falls back to the
+    // active scope at read time (per-tab-scope-binding).
+    const scope = normalizeViewStoreSessionString(doc.scope);
     if (nodeId !== doc.nodeId || normalized.length !== index) changed = true;
     if (surface !== doc.surface || provisional !== doc.provisional) changed = true;
+    if (scope !== doc.scope) changed = true;
     seen.add(nodeId);
     normalized.push(
-      changed ? { ...doc, nodeId, surface, provisional } : (doc as OpenDoc),
+      changed ? { ...doc, nodeId, surface, provisional, scope } : (doc as OpenDoc),
     );
   }
   // Provisional-last invariant (#15): the single preview tab always sits at the
@@ -768,11 +812,15 @@ export const useViewStore = create<ViewState>((set) => ({
       if (nodeId === null) return state;
       return { openedIds: state.openedIds.filter((entry) => entry !== nodeId) };
     }),
-  openDoc: (nodeId, surface, permanent = false) =>
+  openDoc: (nodeId, surface, permanent = false, scope) =>
     set((state) => {
       const docNodeId = normalizeNodeId(nodeId);
       if (docNodeId === null) return state;
       const normalizedSurface = normalizeViewerSurface(surface);
+      // The scope the tab is opened in (per-tab-scope-binding); null falls back to
+      // the active scope at read time. An already-open doc keeps its original scope
+      // (re-opening/activating a tab must not silently re-scope it).
+      const normalizedScope = normalizeViewStoreSessionString(scope);
       const permanentOpen = permanent === true;
       const existing = state.openDocs.find((d) => d.nodeId === docNodeId);
       if (existing) {
@@ -794,6 +842,7 @@ export const useViewStore = create<ViewState>((set) => ({
         nodeId: docNodeId,
         surface: normalizedSurface,
         provisional: !permanentOpen,
+        scope: normalizedScope,
       };
       let openDocs: OpenDoc[];
       if (!permanentOpen) {
@@ -913,13 +962,16 @@ export const useViewStore = create<ViewState>((set) => ({
         reordered.every((d, i) => d.nodeId === state.openDocs[i]?.nodeId);
       return same ? state : { openDocs: reordered };
     }),
-  openEditor: (nodeId, text, baseBlobHash) =>
+  openEditor: (nodeId, text, baseBlobHash, scope) =>
     set((state) => {
       const docNodeId = normalizeNodeId(nodeId);
       if (docNodeId === null) return state;
       const normalizedText = normalizeEditorTextValue(text);
       return {
-        editorTarget: { nodeId: docNodeId },
+        editorTarget: {
+          nodeId: docNodeId,
+          scope: normalizeViewStoreSessionString(scope),
+        },
         draftText: normalizedText,
         baseBlobHash: normalizeEditorBlobHash(baseBlobHash),
         editorStatus: "idle",

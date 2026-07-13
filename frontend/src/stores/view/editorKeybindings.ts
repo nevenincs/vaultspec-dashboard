@@ -113,7 +113,11 @@ export function useEditorKeybindings(): void {
           saveBody.mutate(
             {
               nodeId: state.editorTarget.nodeId,
-              scope: state.scope,
+              // The ONE save scope source (per-tab-scope-binding): the scope pinned on
+              // the editor target at open (the tab's scope), NOT the ambient
+              // `state.scope`. Kills the third scope source — a cross-scope tab saved
+              // via Mod+S no longer writes the stem against the wrong corpus.
+              scope: state.editorTarget.scope,
               text: savedText,
               baseBlobHash: state.baseBlobHash,
             },

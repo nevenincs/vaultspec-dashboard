@@ -126,11 +126,13 @@ function useEdgeSwipeBack(onBack: () => void) {
 function DocReaderPane({
   nodeId,
   surface,
+  scope,
 }: {
   nodeId: string;
   surface: ViewerSurface;
+  scope: string | null;
 }) {
-  const view = useDockDocPanelView(nodeId, surface);
+  const view = useDockDocPanelView(nodeId, surface, scope);
   // Both the tap-back control and the edge-swipe route the SAME doc-scoped guard, so
   // a dirty draft for THIS document arms the discard confirm before the reader pops
   // (mobile-enrichment ADR D4).
@@ -190,5 +192,11 @@ export function CompactDocReader() {
   if (!activeDocId) return null;
   const active = openDocs.find((doc) => doc.nodeId === activeDocId);
   const surface: ViewerSurface = active?.surface ?? "markdown";
-  return <DocReaderPane nodeId={activeDocId} surface={surface} />;
+  return (
+    <DocReaderPane
+      nodeId={activeDocId}
+      surface={surface}
+      scope={active?.scope ?? null}
+    />
+  );
 }
