@@ -95,7 +95,7 @@ function ProjectNavigatorBody({ history }: { history: ProjectHistoryView }) {
                     <span aria-hidden className={recent.activeCueClassName} />
                     {/* The shared row label leads with the project on a
                         cross-project entry, matching the picker dropdown. */}
-                    <span className="min-w-0 truncate">{recent.label}</span>
+                    <span className="min-w-0 select-text truncate">{recent.label}</span>
                   </button>
                   <IconButton
                     label={`remove ${recent.worktreeName} from history`}

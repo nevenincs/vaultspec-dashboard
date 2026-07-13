@@ -16,21 +16,39 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
+import { GitCompare } from "lucide-react";
+
 import {
+  useCreateComment,
+  useDeleteComment,
+  useDocumentComments,
+  useEditComment,
   useEditorLinkingCorpus,
+  useReanchorComment,
   useRenameDoc,
   useSaveBody,
+  useSetCommentResolved,
   useSetFrontmatter,
   type ContentView,
 } from "../../stores/server/queries";
 import { useEnsureCurrentEditorIdentity } from "../../stores/server/authoring";
+import type { SectionSelector, ServedComment } from "../../stores/server/authoring";
+import type { ReaderCommentSource } from "./readerComments";
+
+/** A stable empty listing so an unresolved comment query does not mint a fresh
+ *  array each render (which would churn the memoized comment plane). */
+const NO_COMMENTS: ServedComment[] = [];
 import { docStemFromNodeId } from "../menus/sharedActions";
+import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 import { dispatchOps } from "../../stores/server/opsActions";
 import { openContextMenu } from "../../stores/view/contextMenu";
+import { guardedContextMenu } from "../menus/guardedContextMenu";
 import {
+  EDITOR_TOGGLE_DIFF_LABEL,
   EDITOR_TOGGLE_MODE_ACTION_ID,
   EDITOR_TOGGLE_MODE_LABEL,
 } from "../../stores/view/editorKeybindings";
@@ -47,6 +65,7 @@ import {
   openDocumentEditor,
   setMarkdownEditorFrontmatterDraft,
   setMarkdownEditorRenameDraft,
+  toggleEditorDiff,
   updateEditorDraft,
   useDocumentEditorView,
   useMarkdownEditorChromeView,
@@ -56,7 +75,8 @@ import {
   editorStatusHasUnsavedDraft,
   promoteDocTab,
 } from "../../stores/view/tabs";
-import { Button, Divider, type BreadcrumbItem } from "../kit";
+import { DiffLinesView } from "../authoring/DiffPanel";
+import { Button, Divider, IconButton, type BreadcrumbItem } from "../kit";
 import { DocChrome, type DocChromeMode } from "./DocChrome";
 import { EditorToolbar } from "./EditorToolbar";
 import { HighlightedTextarea } from "./HighlightedCode";
@@ -79,6 +99,38 @@ export const featureFromDocTags = featureTagOf;
 // either grow a private keydown that swallows those global commands (the exact
 // failure actions-keymap-palette forbids) or add palette commands that do nothing
 // without a focused editor. Save remains the one editor keymap-registry binding.
+
+/** Debounces the proposed text fed to DiffLinesView so per-keystroke O(n·m)
+ *  line-LCS is bounded. Flushes immediately when the diff panel first opens
+ *  (visible: false → true) so the leading render is instant; subsequent draft
+ *  changes trail by delayMs. Panel-closed transitions skip the timeout entirely. */
+function useDebouncedDraftText(
+  draft: string,
+  delayMs: number,
+  visible: boolean,
+): string {
+  const [debounced, setDebounced] = useState(draft);
+  const prevVisibleRef = useRef(visible);
+
+  useEffect(() => {
+    const prevVisible = prevVisibleRef.current;
+    prevVisibleRef.current = visible;
+
+    if (visible && !prevVisible) {
+      // Panel just opened: flush instantly so the first diff render is immediate.
+      setDebounced(draft);
+      return;
+    }
+
+    if (!visible) return;
+
+    // Panel open, draft changed: trail by delayMs to bound keystroke LCS cost.
+    const id = setTimeout(() => setDebounced(draft), delayMs);
+    return () => clearTimeout(id);
+  }, [draft, visible, delayMs]);
+
+  return debounced;
+}
 
 export function MarkdownDocView({
   nodeId,
@@ -103,16 +155,87 @@ export function MarkdownDocView({
   );
   const editor = useDocumentEditorView(nodeId);
   const editorChrome = useMarkdownEditorChromeView(nodeId, documentEditor.properties);
+  // Debounce the proposed side of the diff (authoring-surface ADR D4 ceiling closure):
+  // per-keystroke O(n·m) line-LCS is bounded to ~250ms trailing; the leading open
+  // flush ensures the first diff render is instant. Textarea stays fully live.
+  const debouncedDraft = useDebouncedDraftText(
+    editor.draftText,
+    250,
+    editor.diffVisible,
+  );
   // A fresh editing session mints the shared human actor token before any
   // ledgered edit can fire (ledgered-edit-migration ADR, W01.P01): the Save/
   // frontmatter dispatch itself stays on the legacy write path until W01.P02
   // rewires it, but the identity bootstrap starts here so it is already resolved
   // by the time that cutover lands.
-  useEnsureCurrentEditorIdentity(editor.isEditing);
+  // Bootstrap the shared editor actor eagerly while editing; the comment plane
+  // bootstraps it lazily (on first thread open) in view mode via `ensureActor`.
+  const editorIdentity = useEnsureCurrentEditorIdentity(editor.isEditing);
 
   const saveBody = useSaveBody();
   const setFrontmatter = useSetFrontmatter();
   const renameDoc = useRenameDoc();
+
+  // Section comments (authoring-surface ADR D2): this smart parent is the sole wire
+  // client for the comment read + mutations; the reader is dumb chrome that renders
+  // the plane and emits intent. The read is mount-gated on the open document.
+  const commentsQuery = useDocumentComments(nodeId, scope);
+  const createComment = useCreateComment();
+  const editComment = useEditComment();
+  const setCommentResolved = useSetCommentResolved();
+  const reanchorComment = useReanchorComment();
+  const deleteComment = useDeleteComment();
+
+  // A ref-stable `ensureActor` so the memoized plane is not invalidated by the
+  // per-render identity of the bootstrap callback (it closes over an unstable
+  // mutation object). The mutation `mutateAsync` fns are already react-query-stable.
+  const bootstrapRef = useRef(editorIdentity.bootstrap);
+  bootstrapRef.current = editorIdentity.bootstrap;
+  const ensureActorRef = useRef(() => bootstrapRef.current());
+
+  const comments = commentsQuery.data?.comments ?? NO_COMMENTS;
+  const createCommentAsync = createComment.mutateAsync;
+  const editCommentAsync = editComment.mutateAsync;
+  const setCommentResolvedAsync = setCommentResolved.mutateAsync;
+  const reanchorCommentAsync = reanchorComment.mutateAsync;
+  const deleteCommentAsync = deleteComment.mutateAsync;
+
+  const commentSource = useMemo<ReaderCommentSource>(
+    () => ({
+      comments,
+      docStem: docStemFromNodeId(nodeId),
+      actorReady: editorIdentity.hasToken,
+      actorBootstrapping: editorIdentity.bootstrapping,
+      ensureActor: ensureActorRef.current,
+      createComment: async (selector: SectionSelector, body: string) => {
+        await createCommentAsync({ scope, nodeId, selector, body });
+      },
+      editComment: async (commentId: string, body: string) => {
+        await editCommentAsync({ scope, nodeId, commentId, body });
+      },
+      setResolved: async (commentId: string, resolved: boolean) => {
+        await setCommentResolvedAsync({ scope, nodeId, commentId, resolved });
+      },
+      reanchorComment: async (commentId: string, selector: SectionSelector) => {
+        await reanchorCommentAsync({ scope, nodeId, commentId, selector });
+      },
+      deleteComment: async (commentId: string) => {
+        await deleteCommentAsync({ scope, nodeId, commentId });
+      },
+    }),
+    [
+      comments,
+      editorIdentity.hasToken,
+      editorIdentity.bootstrapping,
+      scope,
+      nodeId,
+      createCommentAsync,
+      editCommentAsync,
+      setCommentResolvedAsync,
+      reanchorCommentAsync,
+      deleteCommentAsync,
+    ],
+  );
 
   // The pickable corpus for the Feature / Related linking pickers (stores selector;
   // this component fetches nothing — dashboard-layer-ownership).
@@ -149,12 +272,15 @@ export function MarkdownDocView({
   }, [editor.draftText]);
 
   const saveFrontmatterNow = () => {
+    // Capture editorBaseText before the mutation so the resolve closure can keep it
+    // unchanged (frontmatter saves do not alter the body diff base).
+    const baseTextSnapshot = useViewStore.getState().editorBaseText;
     markEditorSaving();
     const fields = deriveMarkdownEditorFrontmatterPatch(editorChrome.frontmatterDraft);
     setFrontmatter.mutate(
       { nodeId, scope, baseBlobHash: editor.baseBlobHash, ...fields },
       {
-        onSuccess: ({ result }) => applyEditorWriteResult(result),
+        onSuccess: ({ result }) => applyEditorWriteResult(result, baseTextSnapshot),
         onError: () => markEditorFailed(),
       },
     );
@@ -241,7 +367,7 @@ export function MarkdownDocView({
   // open document IS a vault-doc. Needs the served path for the entity, so it is a
   // no-op (native menu) until the content carries one. A plain event handler, never
   // a selector, so it is safe in this loop-sensitive component.
-  const onDocContextMenu = (event: ReactMouseEvent) => {
+  const onDocContextMenu = guardedContextMenu((event: ReactMouseEvent) => {
     const stem = docStemFromNodeId(nodeId);
     if (stem === null || content.path === undefined) return;
     event.preventDefault();
@@ -249,20 +375,39 @@ export function MarkdownDocView({
       { kind: "vault-doc", id: nodeId, scope, path: content.path, stem, nodeId },
       { x: event.clientX, y: event.clientY },
     );
-  };
+  });
 
   const saveBodyNow = () => {
+    // Capture the draft at mutation time (not the render closure snapshot) so the
+    // resolve closure can advance editorBaseText to what was actually committed.
+    const savedText = useViewStore.getState().draftText;
     markEditorSaving();
     saveBody.mutate(
-      { nodeId, scope, text: editor.draftText, baseBlobHash: editor.baseBlobHash },
+      { nodeId, scope, text: savedText, baseBlobHash: editor.baseBlobHash },
       {
         onSuccess: ({ result }) => {
-          applyEditorWriteResult(result);
+          applyEditorWriteResult(result, savedText);
         },
         onError: () => markEditorFailed(),
       },
     );
   };
+
+  // The coarse-pointer menu entry (touch-selectability ADR D3): the same
+  // vault-doc entity the right-click path opens, surfaced as a deliberate tap
+  // target because long-press stays the platform selection gesture.
+  const docMenuStem = docStemFromNodeId(nodeId);
+  const docMenuEntity =
+    docMenuStem !== null && content.path !== undefined
+      ? {
+          kind: "vault-doc",
+          id: nodeId,
+          scope,
+          path: content.path,
+          stem: docMenuStem,
+          nodeId,
+        }
+      : null;
 
   if (!editor.isEditing) {
     return (
@@ -272,9 +417,19 @@ export function MarkdownDocView({
           mode="view"
           onModeChange={onModeChange}
           canEdit={documentEditor.canEdit}
+          trailing={
+            docMenuEntity && (
+              <RowMenuDisclosure entity={docMenuEntity} label="Document actions" />
+            )
+          }
         />
         <div className="min-h-0 flex-1">
-          <MarkdownReader content={content} scope={scope} nodeId={nodeId} />
+          <MarkdownReader
+            content={content}
+            scope={scope}
+            nodeId={nodeId}
+            commentSource={commentSource}
+          />
         </div>
       </div>
     );
@@ -288,12 +443,26 @@ export function MarkdownDocView({
         onModeChange={onModeChange}
         canEdit={documentEditor.canEdit}
       />
-      <div className="flex items-center justify-between gap-fg-3 border-b border-rule px-fg-3 py-fg-1">
+      <div className="flex flex-wrap items-center justify-between gap-fg-2 border-b border-rule px-fg-3 py-fg-1">
         <span className={`shrink-0 text-label ${editor.statusToneClass}`}>
           {editor.statusLabel}
         </span>
-        <div className="flex items-center gap-fg-2">
-          <EditorToolbar onCommand={applyFormat} />
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-fg-2">
+          <div className="min-w-0 overflow-x-auto" data-editor-toolbar-scroll-region>
+            <EditorToolbar onCommand={applyFormat} />
+          </div>
+          {/* Toggle diff (authoring-surface ADR D4): compare draft against the
+              saved text captured at open. Chord Mod+Shift+D; shared id
+              `editor:toggle-diff` across toolbar, keymap, and palette. */}
+          <IconButton
+            label={EDITOR_TOGGLE_DIFF_LABEL}
+            title={EDITOR_TOGGLE_DIFF_LABEL}
+            active={editor.diffVisible}
+            data-editor-diff-toggle
+            onClick={toggleEditorDiff}
+          >
+            <GitCompare size={16} aria-hidden />
+          </IconButton>
           <Divider orientation="vertical" className="self-stretch" />
           <PropertiesPopover
             frontmatterDraft={editorChrome.frontmatterDraft}
@@ -378,7 +547,36 @@ export function MarkdownDocView({
           </ul>
         </div>
       )}
-      <div className="min-h-0 flex-1">
+      {/* Draft-vs-saved diff (authoring-surface ADR D4): a collapsible section
+          comparing the base text captured at open against the current draft.
+          Zero new wire calls — both sides are client-held strings. Only mounts
+          while editing; cleared when the editor closes or a new session opens. */}
+      {editor.diffVisible && (
+        <div
+          className="max-h-64 overflow-y-auto border-b border-rule bg-paper-sunken px-fg-3 py-fg-2"
+          data-editor-diff-section
+        >
+          <DiffLinesView
+            base={{
+              text: editor.baseText,
+              truncated: false,
+              total_bytes: editor.baseText.length,
+              returned_bytes: editor.baseText.length,
+            }}
+            proposed={{
+              text: debouncedDraft,
+              truncated: false,
+              total_bytes: debouncedDraft.length,
+              returned_bytes: debouncedDraft.length,
+            }}
+            label={content.path ?? docStemFromNodeId(nodeId) ?? nodeId}
+          />
+        </div>
+      )}
+      {/* Flex container so the HighlightedTextarea (flex-1 / min-h-0) stretches to
+          fill the body height; a plain block wrapper collapses it to zero height and
+          the syntax-highlight layer has nowhere to paint. */}
+      <div className="flex min-h-0 flex-1">
         <HighlightedTextarea
           value={editor.draftText}
           languageHint="markdown"

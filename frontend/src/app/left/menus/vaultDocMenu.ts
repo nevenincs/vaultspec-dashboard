@@ -15,6 +15,7 @@ import {
   openInEditorAction,
   revealAction,
 } from "../../../platform/actions/shellActions";
+import { copyLinkAction } from "../../../stores/view/documentLinkActions";
 import { newDocumentAction } from "../../../stores/view/leftRailKeybindings";
 import { focusMenuNode } from "../../../stores/view/menuActions";
 import { relateToSelectionAction } from "../../menus/sharedActions";
@@ -56,6 +57,11 @@ export function vaultDocMenu(entity: unknown, ctx?: ActionContext): ActionDescri
       text: normalizedEntity.stem,
       what: "stem",
     }),
+    // Copy a navigable wiki-link reference to this document. No app URL scheme
+    // exists, so this copies the `[[stem]]` form the vault already uses for
+    // cross-document links (authoring-surface ADR D3) — the SAME shared descriptor
+    // the command palette enrolls under one id. Document-scoped here, so no anchor.
+    copyLinkAction({ stem: normalizedEntity.stem }),
     // Add a related: edge from this document to the focused node (vault link add).
     relateToSelectionAction({
       id: "vault-doc:relate",

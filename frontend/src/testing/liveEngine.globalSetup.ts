@@ -186,7 +186,7 @@ export default async function setup(): Promise<() => void> {
   console.info(
     `[live-engine] binary: ${ENGINE_BIN} (source: ${ENGINE_BIN_SOURCE}) → ${baseUrl}`,
   );
-  engine = spawn(ENGINE_BIN, ["serve", "--port", String(port)], {
+  engine = spawn(ENGINE_BIN, ["serve", "--port", String(port), "--no-seat"], {
     cwd: scratch,
     stdio: ["ignore", "pipe", "pipe"],
   });

@@ -11,9 +11,10 @@ export type StatusSectionId =
   | "changes:deleted"
   | "changes:new"
   | "open-plans"
-  | "open-prs"
+  // The one pull-request section (2026-07-12 IA simplification): open PRs lead,
+  // recently merged follow — the former open-prs/recent-prs folds are retired.
+  | "pull-requests"
   | "open-issues"
-  | "recent-prs"
   | "recent-commits"
   // The machine-level search-service console (rag-service-management ADR D7)
   // and its single Details fold (2026-07-03 redesign).
@@ -31,9 +32,8 @@ const STATUS_SECTION_IDS = [
   "changes:deleted",
   "changes:new",
   "open-plans",
-  "open-prs",
+  "pull-requests",
   "open-issues",
-  "recent-prs",
   "recent-commits",
   "rag-ops",
   "rag-ops:details",

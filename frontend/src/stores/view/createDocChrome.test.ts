@@ -86,6 +86,7 @@ describe("createDocChrome store", () => {
       feature: longDraft.slice(0, CREATE_DOC_DRAFT_TEXT_MAX_CHARS),
       title: "",
       error: longError.slice(0, CREATE_DOC_ERROR_MAX_CHARS),
+      focusFeatureField: false,
     });
 
     toggleCreateDocDialog();

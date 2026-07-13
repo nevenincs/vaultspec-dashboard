@@ -42,6 +42,15 @@ import {
   type TiersBlock,
 } from "./engine";
 import { unwrapEnvelope } from "./liveAdapters";
+import {
+  adaptCommentList,
+  adaptCommentRecord,
+  commentUpdateWirePayload,
+  type CommentListResult,
+  type CommentRecord,
+  type CommentUpdate,
+  type CreateCommentPayload,
+} from "./authoringComments";
 import { queryClient as defaultQueryClient } from "./queryClient";
 import { sseChunks, streamReducer, type StreamChunk } from "./queries";
 
@@ -419,6 +428,21 @@ export interface DirectWriteCreateParams {
   related?: string[];
 }
 
+/** The desired state of a plan Step's checkbox (authoring-surface ADR D1):
+ *  `checked` closes the Step (`vault plan step check`), `unchecked` re-opens it
+ *  (`vault plan step uncheck`). */
+export type PlanStepDesiredState = "checked" | "unchecked";
+
+/** `POST /authoring/v1/direct-writes` set-plan-step-state params (the
+ *  `set_plan_step_state` operation's payload, authoring-surface ADR D1): the
+ *  canonical step id (`S##`) and the desired open/closed state. The plan CLI
+ *  verb is idempotent, so re-requesting the state a Step already holds is a
+ *  no-op success (`core_status: "unchanged"`), never an error. */
+export interface DirectWritePlanStep {
+  stepId: string;
+  state: PlanStepDesiredState;
+}
+
 /**
  * `POST /authoring/v1/direct-writes` payload — a human editor save routed
  * through the ledger as a self-approved direct changeset, generalized to every
@@ -463,6 +487,19 @@ export type DirectWritePayload =
   | {
       operation: "create_document";
       create: DirectWriteCreateParams;
+      scope?: string | null;
+      summary?: string;
+    }
+  | {
+      // Tick/untick a plan Step through the ledger (authoring-surface ADR D1).
+      // The plan document is named by `ref`; `expected_blob_hash` is the
+      // engine-side stale-base fence (the substitute for the plan CLI's absent
+      // expected-blob-hash flag). The `planStep` carries the canonical step id +
+      // desired state.
+      operation: "set_plan_step_state";
+      ref: string;
+      planStep: DirectWritePlanStep;
+      expected_blob_hash: string;
       scope?: string | null;
       summary?: string;
     };
@@ -1017,12 +1054,45 @@ export function directWriteWirePayload(payload: DirectWritePayload): Rec {
       };
     case "create_document":
       return { ...common, create: payload.create };
+    case "set_plan_step_state":
+      return {
+        ...common,
+        ref: payload.ref,
+        plan_step: {
+          step_id: payload.planStep.stepId,
+          state: payload.planStep.state,
+        },
+        expected_blob_hash: payload.expected_blob_hash,
+      };
     default: {
       const exhaustive: never = payload;
       return exhaustive;
     }
   }
 }
+
+// --- section-anchored document comments (authoring-surface ADR D2) --------------
+//
+// The comment vocabulary + adapters live in `./authoringComments` (module-size:
+// this wire client is a grandfathered monolith that may only shrink). They are
+// re-exported here so the public `stores/server/authoring` surface stays stable —
+// viewer consumers still import the comment types from this specifier, and the
+// comment methods below compose the re-exported adapters.
+export {
+  adaptCommentList,
+  adaptCommentRecord,
+  adaptServedComment,
+} from "./authoringComments";
+export type {
+  SectionSelector,
+  CommentOrphanEvidence,
+  CommentAnchorState,
+  CommentRecord,
+  ServedComment,
+  CommentListResult,
+  CreateCommentPayload,
+  CommentUpdate,
+} from "./authoringComments";
 
 // --- degradation read (from tiers + the typed store-unavailable error) ----------
 
@@ -1125,11 +1195,18 @@ export interface AuthoringClientOptions {
  */
 export class AuthoringClient {
   readonly baseUrl: string;
-  private readonly baseFetch: FetchLike;
+  private baseFetch: FetchLike;
 
   constructor(options: AuthoringClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? AUTHORING_BASE;
     this.baseFetch = options.fetchImpl ?? defaultBearerTransport;
+  }
+
+  /** Rebind the base transport at runtime. Mirrors {@link EngineClient.useTransport}:
+   *  the test harness injects the live transport so render tests that fire mutations
+   *  through {@link usePlanStepTick} speak to the real engine (testing/liveSetup). */
+  useTransport(fetchImpl: FetchLike): void {
+    this.baseFetch = fetchImpl;
   }
 
   /** Layer the per-principal actor-token header onto the base (bearer) transport.
@@ -1320,6 +1397,92 @@ export class AuthoringClient {
     );
   }
 
+  // --- section-anchored document comments (authoring-surface ADR D2) ---
+  //
+  // The comment routes are NOT denials-are-values commands: a create/edit/delete
+  // returns its record (or `deleted` flag) directly, and a genuine refusal
+  // (unknown document, oversized body, unregistered actor) is a tiers-bearing
+  // typed EngineError the caller surfaces — never a `denied` VALUE. The list read
+  // is principal-permissive (no actor token).
+
+  /** `GET /authoring/v1/documents/{node_id}/comments` — the bounded, backend-
+   *  served comment listing. Each stored anchor is resolved EXACT-OR-CONFLICT
+   *  against the current worktree body server-side, so the served `orphaned` flag
+   *  is authoritative. */
+  async listComments(
+    nodeId: string,
+    cap?: number,
+    signal?: AbortSignal,
+  ): Promise<CommentListResult> {
+    const query =
+      typeof cap === "number" ? `?cap=${encodeURIComponent(String(cap))}` : "";
+    return adaptCommentList(
+      await this.get(
+        `/authoring/v1/documents/${encodeURIComponent(nodeId)}/comments${query}`,
+        signal,
+      ),
+    );
+  }
+
+  /** `POST /authoring/v1/documents/{node_id}/comments` — create a section-anchored
+   *  comment attributed to the resolved principal (the node id rides the route;
+   *  the body carries only `{selector, body}`). Returns the created record. */
+  async createComment(
+    nodeId: string,
+    payload: CreateCommentPayload,
+    opts: CommandOptions,
+  ): Promise<CommentRecord> {
+    const body = await this.postJson(
+      `/authoring/v1/documents/${encodeURIComponent(nodeId)}/comments`,
+      {
+        api_version: "v1",
+        command: "create_comment",
+        idempotency_key: opts.idempotencyKey ?? newIdempotencyKey("comment"),
+        payload,
+      },
+      this.withActor(opts.actorToken),
+    );
+    return adaptCommentRecord(isRec(body) ? body.comment : undefined);
+  }
+
+  /** `PATCH /authoring/v1/comments/{comment_id}` — edit the body, toggle resolved,
+   *  or explicitly re-anchor to the current section (one tagged op per request). */
+  async updateComment(
+    commentId: string,
+    update: CommentUpdate,
+    opts: CommandOptions,
+  ): Promise<CommentRecord> {
+    const body = await this.sendJson(
+      "PATCH",
+      `/authoring/v1/comments/${encodeURIComponent(commentId)}`,
+      {
+        api_version: "v1",
+        command: "update_comment",
+        idempotency_key: opts.idempotencyKey ?? newIdempotencyKey("comment"),
+        payload: commentUpdateWirePayload(update),
+      },
+      this.withActor(opts.actorToken),
+    );
+    return adaptCommentRecord(isRec(body) ? body.comment : undefined);
+  }
+
+  /** `DELETE /authoring/v1/comments/{comment_id}` — delete a comment (idempotent:
+   *  an absent id returns `deleted: false`). */
+  async deleteComment(commentId: string, opts: CommandOptions): Promise<boolean> {
+    const body = await this.sendJson(
+      "DELETE",
+      `/authoring/v1/comments/${encodeURIComponent(commentId)}`,
+      {
+        api_version: "v1",
+        command: "delete_comment",
+        idempotency_key: opts.idempotencyKey ?? newIdempotencyKey("comment"),
+        payload: {},
+      },
+      this.withActor(opts.actorToken),
+    );
+    return isRec(body) && body.deleted === true;
+  }
+
   // --- transport ---
 
   private async get(path: string, signal?: AbortSignal): Promise<unknown> {
@@ -1350,13 +1513,26 @@ export class AuthoringClient {
     return interpretCommandOutcome(body);
   }
 
-  private async postJson(
+  private postJson(
+    path: string,
+    body: unknown,
+    transport: FetchLike,
+  ): Promise<unknown> {
+    return this.sendJson("POST", path, body, transport);
+  }
+
+  /** Issue a JSON command over an arbitrary method (POST/PATCH/DELETE), throwing a
+   *  tiers-bearing `EngineError` on a 4xx/5xx fault and returning the unwrapped
+   *  envelope on success. The comment PATCH/DELETE routes carry the command
+   *  envelope in the body exactly like the POST commands. */
+  private async sendJson(
+    method: string,
     path: string,
     body: unknown,
     transport: FetchLike,
   ): Promise<unknown> {
     const response = await transport(`${this.baseUrl}${path}`, {
-      method: "POST",
+      method,
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
@@ -1696,6 +1872,14 @@ export const authoringKeys = {
     [...authoringKeys.all, "proposal", changesetId] as const,
   snapshot: (changesetId: string) =>
     [...authoringKeys.all, "snapshot", changesetId] as const,
+  // The per-document comment listing (authoring-surface ADR D2): keyed by
+  // (scope, node id) so a scope switch re-reads and two documents never share a
+  // cache entry. Under the `authoring` prefix so the existing lifecycle-stream
+  // invalidation (`invalidateAuthoring`, fired on every authoring SSE frame —
+  // including the `comment.created/.updated/.deleted` events) refreshes it for
+  // free, the same delta path the review queue rides.
+  comments: (scope: string, nodeId: string) =>
+    [...authoringKeys.all, "comments", scope, nodeId] as const,
 };
 
 export function proposalsQueryOptions() {

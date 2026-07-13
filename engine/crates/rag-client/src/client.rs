@@ -354,6 +354,15 @@ impl LoopbackTransport {
     }
 }
 
+impl LoopbackTransport {
+    /// PUT with a JSON body — an inherent extra beside the `RagTransport`
+    /// verbs (the engine's own `/session` seam is PUT; rag's contract needs
+    /// only GET/POST, so the trait stays untouched).
+    pub fn put_json(&self, path: &str, body: &str) -> Result<String> {
+        self.request("PUT", path, Some(body))
+    }
+}
+
 impl RagTransport for LoopbackTransport {
     fn post_json(&self, path: &str, body: &str) -> Result<String> {
         self.request("POST", path, Some(body))

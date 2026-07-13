@@ -58,12 +58,22 @@ const EDGE_START_PX = 24;
 const COMMIT_FRACTION = 0.28;
 const VERTICAL_YIELD_PX = 12;
 
+/** True while the reader document holds a live, non-collapsed text selection.
+ *  The gesture yields to it (touch-selectability ADR D3): prose selection owns
+ *  the surface, and a long-press selection that begins after pointer-down
+ *  disarms an already-armed swipe. */
+function hasLiveSelection(): boolean {
+  const selection = typeof document === "undefined" ? null : document.getSelection();
+  return selection !== null && !selection.isCollapsed && selection.rangeCount > 0;
+}
+
 function useEdgeSwipeBack(onBack: () => void) {
   const start = useRef<{ x: number; y: number } | null>(null);
   const [dragX, setDragX] = useState(0);
 
   const onPointerDown = useCallback((e: ReactPointerEvent<HTMLElement>) => {
     if (e.pointerType === "mouse") return;
+    if (hasLiveSelection()) return;
     const rect = e.currentTarget.getBoundingClientRect();
     if (e.clientX - rect.left <= EDGE_START_PX) {
       start.current = { x: e.clientX, y: e.clientY };
@@ -73,6 +83,11 @@ function useEdgeSwipeBack(onBack: () => void) {
   const onPointerMove = useCallback((e: ReactPointerEvent<HTMLElement>) => {
     const s = start.current;
     if (!s) return;
+    if (hasLiveSelection()) {
+      start.current = null;
+      setDragX(0);
+      return;
+    }
     const dx = e.clientX - s.x;
     const dy = e.clientY - s.y;
     if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > VERTICAL_YIELD_PX) {

@@ -34,7 +34,8 @@
 import {
   useActiveScope,
   useChangesOverview,
-  type ChangesOverviewView,
+  useChangesSummary,
+  type ChangesSummaryView,
   type GitChangeGroupView,
   type GitChangeRow,
 } from "../../stores/server/queries";
@@ -73,7 +74,7 @@ function ChangeRow({ row, scope }: { row: GitChangeRow; scope: unknown }) {
         title={row.path}
         className={row.rowClassName}
       >
-        <span className={row.labelClassName}>{row.label}</span>
+        <span className={`${row.labelClassName} select-text`}>{row.label}</span>
         {row.dirLabel && (
           <span className={row.dirClassName} aria-hidden>
             {row.dirLabel}
@@ -144,14 +145,80 @@ function ChangeGroup({ group, scope }: { group: GitChangeGroupView; scope: unkno
 
 /** The fold's label: "<N> files · <M> documents" — falls back to the in-flight /
  *  degraded / errored / clean copy so the collapsed header always states the
- *  working-tree truth. */
-function changesHeadLabel(changes: ChangesOverviewView): string {
+ *  working-tree truth. Derived from the LIGHT engine summary, never the full
+ *  changed-files lists (changes-summary-projection). */
+function changesHeadLabel(changes: ChangesSummaryView): string {
   if (changes.loading) return changes.loadingLabel;
   if (changes.degraded) return changes.degradedLabel;
   if (changes.errored) return changes.errorTitle;
   if (changes.hasChanges)
     return `${changes.summaryLabels.files} · ${changes.summaryLabels.documents}`;
   return changes.cleanLabel;
+}
+
+// ---------------------------------------------------------------------------
+// The Changes fold BODY — the heavy per-file status tree.
+// ---------------------------------------------------------------------------
+
+/** The expanded body: the full MODIFIED / DELETED / NEW status tree plus its
+ *  own loading / degraded / errored / clean states. It calls `useChangesOverview`
+ *  (the full porcelain status + numstat read), so it is deliberately its OWN
+ *  component rendered INSIDE the FoldSection body — the fold mounts children only
+ *  while open (data-loading: mount-gated fetches), so a COLLAPSED Changes fold
+ *  fetches none of this heavy text and reads only the light header summary. */
+function ChangesOverviewBody({ scope }: { scope: unknown }) {
+  const changes = useChangesOverview(scope);
+  return (
+    <div className={changes.rootClassName}>
+      {/* LOADING — UI-only skeleton mimicking the change rows (state-mode-uniformity
+          ADR D2): no visible "reading…" copy, the label is screen-reader-only. */}
+      {changes.loading && (
+        <Skeleton label={changes.loadingLabel}>
+          <SkeletonRow width="w-3/4" />
+          <SkeletonRow width="w-2/3" />
+        </Skeleton>
+      )}
+
+      {/* DEGRADED — the shared caution glyph + one plain sentence (ADR D3), as a
+          compact inline notice over the partial content. */}
+      {changes.degraded && (
+        <StateBlock mode="degraded" layout="inline" message={changes.degradedLabel} />
+      )}
+
+      {/* Error state — the head shows the title; the body carries the retry. The
+          shared degraded glyph + sentence stand in for the bare title text. */}
+      {changes.errored && (
+        <div className={changes.errorRootClassName} data-changes-error>
+          <StateBlock mode="degraded" layout="inline" message={changes.errorTitle} />
+          <button
+            type="button"
+            onClick={changes.retry}
+            className={changes.retryButtonClassName}
+          >
+            {changes.retryLabel}
+          </button>
+        </div>
+      )}
+
+      {/* The status tree — MODIFIED / DELETED / NEW collapsible groups, each over
+          its filename + numstat rows (binding GitStatusPill expanded state). */}
+      {changes.changeGroups.length > 0 && (
+        <div className="flex flex-col gap-fg-2" data-change-groups>
+          {changes.changeGroups.map((group) => (
+            <ChangeGroup key={group.id} group={group} scope={scope} />
+          ))}
+        </div>
+      )}
+
+      {/* Clean working tree — the shared empty state: neutral glyph + one plain
+          sentence (state-mode-uniformity ADR D3). */}
+      {changes.clean && (
+        <div data-git-clean>
+          <StateBlock mode="empty" message={changes.cleanLabel} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -168,7 +235,10 @@ export function ChangesOverview({
   headerProps?: ButtonHTMLAttributes<HTMLButtonElement>;
 } = {}) {
   const scope = useActiveScope();
-  const changes = useChangesOverview(scope);
+  // The collapsed header reads the LIGHT engine-served rollup, not the full
+  // changed-files lists — a cold load renders "N files · M documents / +A −D"
+  // from a few bytes instead of ~227 KB of raw git text (changes-summary-projection).
+  const changes = useChangesSummary(scope);
   const open = useStatusSectionOpen(CHANGES_SECTION_ID, CHANGES_DEFAULT_OPEN);
   const chrome = deriveStatusSectionChromeView(CHANGES_SECTION_ID, open);
 
@@ -220,55 +290,10 @@ export function ChangesOverview({
       headerProps={headerProps}
       data-changes-overview
     >
-      <div className={changes.rootClassName}>
-        {/* LOADING — UI-only skeleton mimicking the change rows (state-mode-uniformity
-            ADR D2): no visible "reading…" copy, the label is screen-reader-only. */}
-        {changes.loading && (
-          <Skeleton label={changes.loadingLabel}>
-            <SkeletonRow width="w-3/4" />
-            <SkeletonRow width="w-2/3" />
-          </Skeleton>
-        )}
-
-        {/* DEGRADED — the shared caution glyph + one plain sentence (ADR D3), as a
-            compact inline notice over the partial content. */}
-        {changes.degraded && (
-          <StateBlock mode="degraded" layout="inline" message={changes.degradedLabel} />
-        )}
-
-        {/* Error state — the head shows the title; the body carries the retry. The
-            shared degraded glyph + sentence stand in for the bare title text. */}
-        {changes.errored && (
-          <div className={changes.errorRootClassName} data-changes-error>
-            <StateBlock mode="degraded" layout="inline" message={changes.errorTitle} />
-            <button
-              type="button"
-              onClick={changes.retry}
-              className={changes.retryButtonClassName}
-            >
-              {changes.retryLabel}
-            </button>
-          </div>
-        )}
-
-        {/* The status tree — MODIFIED / DELETED / NEW collapsible groups, each over
-            its filename + numstat rows (binding GitStatusPill expanded state). */}
-        {changes.changeGroups.length > 0 && (
-          <div className="flex flex-col gap-fg-2" data-change-groups>
-            {changes.changeGroups.map((group) => (
-              <ChangeGroup key={group.id} group={group} scope={scope} />
-            ))}
-          </div>
-        )}
-
-        {/* Clean working tree — the shared empty state: neutral glyph + one plain
-            sentence (state-mode-uniformity ADR D3). */}
-        {changes.clean && (
-          <div data-git-clean>
-            <StateBlock mode="empty" message={changes.cleanLabel} />
-          </div>
-        )}
-      </div>
+      {/* Mounted only while the fold is open (FoldSection renders children on
+          open), so the heavy status + numstat read never fires for a collapsed
+          fold — the header above already carries the summary truth. */}
+      <ChangesOverviewBody scope={scope} />
     </FoldSection>
   );
 }

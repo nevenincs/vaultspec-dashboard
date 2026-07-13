@@ -32,9 +32,9 @@ import type {
 } from "react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 
-import { categoryColorVar, categoryToken, type Category } from "../kit";
+import { categoryColorVar, categoryToken, IconButton, type Category } from "../kit";
 import { RailSection } from "../chrome/RailSection";
 import { useFocusZone, type FocusZoneItemProps } from "../chrome/useFocusZone";
 import { DocTypeMark } from "../../scene/field/markComponents";
@@ -77,12 +77,15 @@ import {
   LEFT_RAIL_EXPAND_TREE_ACTION_ID,
   collapseTreeAction,
   expandTreeAction,
+  newDocumentAction,
 } from "../../stores/view/leftRailKeybindings";
 import { type RailSortKey, useRailSort } from "../../stores/view/railSort";
 import { registerKeyAction } from "../../stores/view/keymapDispatcher";
 import { openContextMenu } from "../../stores/view/contextMenu";
+import { guardedContextMenu } from "../menus/guardedContextMenu";
 import { useViewportClass } from "../../stores/view/viewportClass";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
+import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 import {
   pathStem,
   pathToNodeId,
@@ -160,7 +163,7 @@ function guideStyle(parentLevel: number): CSSProperties {
  *  binding Figma selected-row look. No left-edge bar, no half-rounded/straight edge:
  *  a leaf and a folder select identically. */
 function rowClassName(highlighted: boolean): string {
-  return `flex w-full items-center gap-fg-1-5 rounded-fg-xs py-fg-1-5 pe-fg-2 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+  return `flex w-full select-text items-center gap-fg-1-5 rounded-fg-xs py-fg-1-5 pe-fg-2 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
     highlighted ? "bg-accent-subtle" : "hover:bg-paper-sunken"
   }`;
 }
@@ -510,6 +513,9 @@ export function TreeBrowser({
             expanded={expanded}
             toggle={toggle}
             nav={rowNav}
+            onCreate={() =>
+              newDocumentAction(undefined, { focusFeature: true }).run?.()
+            }
           >
             {view.featureGroups.map((group) => (
               <FeatureFolderRow
@@ -686,10 +692,10 @@ function VaultTreeRow({
       onDoubleClick={onOpen}
       onContextMenu={
         entity
-          ? (e) => {
+          ? guardedContextMenu((e) => {
               e.preventDefault();
               openContextMenu(entity, { x: e.clientX, y: e.clientY });
-            }
+            })
           : undefined
       }
       onKeyDown={(e: ReactKeyboardEvent<HTMLButtonElement>) => {
@@ -770,11 +776,30 @@ function VaultTreeRow({
   );
 
   if (!expandable) {
-    return <li>{button}</li>;
+    // Leaf row + the coarse-pointer menu entry (touch-selectability ADR D3):
+    // long-press is the selection gesture, so the row's resolver menu gets a
+    // deliberate tap target; renders nothing on fine-pointer devices.
+    return (
+      <li className="flex items-center">
+        {button}
+        {entity && <RowMenuDisclosure entity={entity} label={`${label} actions`} />}
+      </li>
+    );
   }
   return (
-    <div data-vault-folder={folderMarker ? "" : undefined}>
-      {button}
+    <>
+      {/* Folder row + the coarse-pointer menu entry (touch-selectability ADR D3):
+          a deliberate tap target for the vault-feature/vault-category menu,
+          sibling of the button (never nested inside it); the button stays a
+          DIRECT child of the `data-vault-folder` marker (existing selector
+          contract). */}
+      <div
+        data-vault-folder={folderMarker ? "" : undefined}
+        className="flex items-center"
+      >
+        {button}
+        {entity && <RowMenuDisclosure entity={entity} label={`${label} actions`} />}
+      </div>
       {expanded && (
         <div id={bodyId} data-vault-folder-body className="relative">
           {/* the indent guide: a quiet rule under this folder's chevron column
@@ -788,7 +813,7 @@ function VaultTreeRow({
           {body}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -803,6 +828,10 @@ interface SectionProps {
   expanded: ReadonlySet<string>;
   toggle: (key: string) => void;
   nav: RowNav;
+  /** When set, the header gains a scoped create affordance (the Features-section
+   *  Plus, authoring-surface ADR D5/D6) — a visible sibling of the menu disclosure
+   *  that opens the create dialog focused on the feature field. */
+  onCreate?: () => void;
   children: ReactNode;
 }
 
@@ -819,6 +848,7 @@ function Section({
   expanded,
   toggle,
   nav,
+  onCreate,
   children,
 }: SectionProps) {
   const open = deriveBrowserTreeExpansionItem(sectionKey, expanded).expanded;
@@ -840,10 +870,10 @@ function Section({
         // The section header opens its own menu (expand/collapse-all + new doc) on
         // right-click and on the ContextMenu/Shift+F10 keys; the roving keydown runs
         // only when those keyboard entry points did not consume the event.
-        onContextMenu: (e) => {
+        onContextMenu: guardedContextMenu((e) => {
           e.preventDefault();
           openContextMenu(entity, { x: e.clientX, y: e.clientY });
-        },
+        }),
         onKeyDown: (e) => {
           if (
             handleKeyboardContextMenu(e, (anchor) => openContextMenu(entity, anchor))
@@ -854,6 +884,28 @@ function Section({
         },
       }}
       labelProps={{ "data-vault-section": title.toLowerCase() }}
+      // The section header's own coarse-pointer menu entry (touch-selectability
+      // ADR D3): a deliberate tap target for the vault-section (expand/collapse-
+      // all + new doc) menu, sibling of the header button. The Features section
+      // additionally gains a scoped, always-visible create Plus (D5/D6) — also a
+      // sibling, so neither trailing control toggles the fold.
+      headerTrailingSibling={
+        <>
+          {onCreate && (
+            <IconButton
+              label={`New document in ${title.toLowerCase()}`}
+              data-new-feature-document
+              onClick={(event) => {
+                event.stopPropagation();
+                onCreate();
+              }}
+            >
+              <Plus size={14} aria-hidden />
+            </IconButton>
+          )}
+          <RowMenuDisclosure entity={entity} label={`${title} actions`} />
+        </>
+      }
       data-vault-section-header
     >
       {children}

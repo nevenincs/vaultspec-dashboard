@@ -404,6 +404,9 @@ pub fn command_lifecycle_scope(command: CommandKind) -> CommandLifecycleScope {
         | CommandKind::DirectWrite
         | CommandKind::MapLangGraphRuntime
         | CommandKind::RequestToolPermission
+        | CommandKind::CreateComment
+        | CommandKind::UpdateComment
+        | CommandKind::DeleteComment
         | CommandKind::ReadContext
         | CommandKind::SearchGraph
         | CommandKind::SubscribeEvents
@@ -612,6 +615,7 @@ pub fn create_rollback_eligibility(
             | ChangesetOperationKind::EditFrontmatter
             | ChangesetOperationKind::Rename
             | ChangesetOperationKind::SectionEdit
+            | ChangesetOperationKind::SetPlanStepState
     ) {
         return ActionEligibility::denied(
             CommandKind::CreateRollback,
@@ -1462,6 +1466,37 @@ mod tests {
             )),
             "reserved",
         );
+    }
+
+    #[test]
+    fn plan_step_tick_source_is_rollback_eligible_by_the_opposite_state_inverse() {
+        // W04.P09.S33: a SetPlanStepState source is now INVERTIBLE — the inverse
+        // is the OPPOSITE set-plan-step-state against the same step (built in
+        // `rollback.rs`), never the whole-document preimage restore that would
+        // clobber concurrent step edits. This guard locks the new invariant:
+        // the gate must ADMIT a plan-tick source (so `rollback.rs` generates the
+        // state-flip inverse), and it fails loudly if a future edit drops
+        // SetPlanStepState back out of the invertible set.
+        let source = record(
+            ChangesetKind::Authoring,
+            ChangesetStatus::Applied,
+            vec![ChangesetChildOperationInput {
+                child_key: "child_1".to_string(),
+                operation: ChangesetOperationKind::SetPlanStepState,
+                target: fence(existing_doc("tick-plan", "blob:aaa111")),
+                materialized_operation: None,
+                material_digest: None,
+                validation_digest: None,
+            }],
+        );
+        allowed(create_rollback_eligibility(
+            &source,
+            &[RollbackChildEligibility::new(
+                "child_1",
+                ChangesetOperationKind::SetPlanStepState,
+                true,
+            )],
+        ));
     }
 
     #[test]

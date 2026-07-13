@@ -195,7 +195,7 @@ export function deriveCodeBrowserTreeRowView(
       isDir ||
       entry.path.toLowerCase().includes(normalizedFilter),
     rowStyle: { paddingLeft: "0.25rem" },
-    rowClassName: `flex h-[1.875rem] w-full items-center gap-fg-1 truncate rounded-fg-xs pr-fg-1 text-meta text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+    rowClassName: `flex h-[1.875rem] w-full select-text items-center gap-fg-1 truncate rounded-fg-xs pr-fg-1 text-meta text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
       highlighted
         ? "bg-accent-subtle font-medium text-ink"
         : "text-ink-muted hover:bg-paper-sunken hover:text-ink"

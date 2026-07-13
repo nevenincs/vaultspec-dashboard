@@ -1391,6 +1391,7 @@ mod tests {
                     frontmatter: None,
                     new_stem: None,
                     section_selector: None,
+                    plan_step: None,
                 },
             }],
         };

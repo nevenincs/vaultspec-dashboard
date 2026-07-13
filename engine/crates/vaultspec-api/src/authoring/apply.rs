@@ -485,14 +485,15 @@ fn preflight_in_uow(
             | ChangesetOperationKind::Rename
             | ChangesetOperationKind::CreateDocument
             | ChangesetOperationKind::SectionEdit
+            | ChangesetOperationKind::SetPlanStepState
     ) {
         return Ok(Ok(Preflight::Denied(
             ActionEligibility::denied(
                 CommandKind::RequestApply,
                 format!(
                     "V1 apply materializes only whole-document body replacement, frontmatter \
-                     edits, rename, document creation, and section-scoped edits; operation \
-                     `{:?}` is not yet supported",
+                     edits, rename, document creation, section-scoped edits, and plan-step \
+                     ticks; operation `{:?}` is not yet supported",
                     child.operation
                 ),
             ),
@@ -918,7 +919,92 @@ fn post_state_resolution(worktree_root: &Path, prep: &ApplyPrep, reason: &str) -
                 },
             }
         }
+        PostVerifyExpectation::PlanStepState { step_id, checked } => {
+            // Re-read the plan document and parse the named Step's checkbox with
+            // the SAME parser that serves the projection's `done` flag, so the
+            // post-verify agrees BY CONSTRUCTION with what a subsequent read
+            // shows. FAILS CLOSED: a Step that does not resolve, or an
+            // unreadable document, records not-applied — never a forged success.
+            match read_document_text(worktree_root, &prep.document) {
+                Ok(text) => match plan_step_done(&text, step_id) {
+                    Some(done) if done == *checked => ChildResolution {
+                        outcome: ApplyChildOutcome::Applied,
+                        observed_result_blob_hash: read_blob_hash(worktree_root, &prep.document)
+                            .ok(),
+                        core_status: None,
+                        core_schema: None,
+                        resolved_via_post_verify: true,
+                        diagnostic: Some(format!(
+                            "{reason}; post-state re-verified plan step `{step_id}` is now \
+                             {}",
+                            if *checked { "closed" } else { "open" }
+                        )),
+                    },
+                    Some(_) => ChildResolution {
+                        outcome: ApplyChildOutcome::Failed,
+                        observed_result_blob_hash: read_blob_hash(worktree_root, &prep.document)
+                            .ok(),
+                        core_status: None,
+                        core_schema: None,
+                        resolved_via_post_verify: true,
+                        diagnostic: Some(format!(
+                            "{reason}; post-state re-verified plan step `{step_id}` did NOT \
+                             reach the intended state"
+                        )),
+                    },
+                    None => ChildResolution {
+                        outcome: ApplyChildOutcome::Failed,
+                        observed_result_blob_hash: None,
+                        core_status: None,
+                        core_schema: None,
+                        resolved_via_post_verify: true,
+                        diagnostic: Some(format!(
+                            "{reason}; plan step `{step_id}` no longer resolves in the document \
+                             (fail-closed)"
+                        )),
+                    },
+                },
+                Err(_) => ChildResolution {
+                    outcome: ApplyChildOutcome::Failed,
+                    observed_result_blob_hash: None,
+                    core_status: None,
+                    core_schema: None,
+                    resolved_via_post_verify: true,
+                    diagnostic: Some(format!(
+                        "{reason}; post-state could not be re-verified (recorded not-applied, \
+                         fail-closed)"
+                    )),
+                },
+            }
+        }
     }
+}
+
+/// The `done` state of the plan Step with canonical id `step_id`, parsed with
+/// the SAME `ingest_struct` parser that serves the plan-interior projection's
+/// `done` flag — so a post-verify read and a subsequent projection read can
+/// never disagree. Walks the tier-conditional tree (L3/L4 waves, L2 phases, L1
+/// flat steps). `None` when no Step with that canonical id exists.
+fn plan_step_done(text: &str, step_id: &str) -> Option<bool> {
+    let structure = ingest_struct::plan_structure::parse_plan_structure(text);
+    let matches = |step: &ingest_struct::plan_structure::PlanStep| step.id == step_id;
+    for wave in &structure.waves {
+        for phase in &wave.phases {
+            if let Some(step) = phase.steps.iter().find(|s| matches(s)) {
+                return Some(step.done);
+            }
+        }
+    }
+    for phase in &structure.phases {
+        if let Some(step) = phase.steps.iter().find(|s| matches(s)) {
+            return Some(step.done);
+        }
+    }
+    structure
+        .steps
+        .iter()
+        .find(|s| matches(s))
+        .map(|step| step.done)
 }
 
 /// Re-resolve a document by STEM in the current worktree — the path-independent
@@ -1278,6 +1364,25 @@ fn build_write_invocation(
         return CoreInvocation::create_document(doc_type, feature, Some(title.as_str()), date, &[])
             .map_err(|err| ApplyError::Internal(format!("invocation build failed: {err}")));
     }
+    // SetPlanStepState is NOT a `write` over a document ref either — the plan CLI
+    // verb takes a positional `<plan_ref> <S##>` and NO `--expected-blob-hash`
+    // (authoring-surface ADR D1), so it takes its own early return via the
+    // dedicated builder rather than the `CoreInvocation::write` shape. The
+    // apply-time base fence is ENGINE-SIDE (the direct-write stale-base
+    // pre-check + the preflight conflict detector), never on this invocation.
+    if operation == ChangesetOperationKind::SetPlanStepState {
+        let Some(plan_step) = materialized.plan_step_edit.as_ref() else {
+            return Err(ApplyError::Internal(
+                "materialized SetPlanStepState child carries no plan-step payload".to_string(),
+            ));
+        };
+        return CoreInvocation::set_plan_step_state(
+            plan_step.state.is_checked(),
+            document_path,
+            &plan_step.step_id,
+        )
+        .map_err(|err| ApplyError::Internal(format!("invocation build failed: {err}")));
+    }
     let (capability, args) = match operation {
         // A `SectionEdit` write is whole-document under the hood (section-
         // scoped-operations ADR): materialize already spliced the new section
@@ -1389,6 +1494,22 @@ enum PostVerifyExpectation {
         expected_path: String,
         expected_feature_tag: String,
     },
+    /// `PlanStepState` applies to `SetPlanStepState` — the plan CLI verb is
+    /// core-authoritative over the resulting bytes (it flips the checkbox glyph,
+    /// refreshes the `modified` stamp, and may recompute display paths), so a
+    /// blob-hash compare against the base-unchanged preview is never sound (the
+    /// preview equals the BASE, not the post-write bytes). Verification instead
+    /// re-reads the plan document and parses the named Step's checkbox state
+    /// with the SAME parser that serves the projection's `done` flag, confirming
+    /// it now matches `checked`. This is the authoring-surface ADR D1
+    /// core-authoritative post-verify — the plan CLI has no expected-blob-hash
+    /// fence, so re-reading the resulting Step state is the resolution path for
+    /// an indeterminate kill AND the crash-recovery reclaim, recomputed
+    /// identically from the durable materialized operation.
+    PlanStepState {
+        step_id: String,
+        checked: bool,
+    },
 }
 
 /// Build the [`PostVerifyExpectation`] for one materialized child, keyed on
@@ -1449,6 +1570,17 @@ fn post_verify_expectation(
                 expected_stem,
                 expected_path,
                 expected_feature_tag: format!("#{feature}"),
+            })
+        }
+        ChangesetOperationKind::SetPlanStepState => {
+            let plan_step = materialized.plan_step_edit.as_ref().ok_or_else(|| {
+                ApplyError::Internal(
+                    "materialized SetPlanStepState child carries no plan-step payload".to_string(),
+                )
+            })?;
+            Ok(PostVerifyExpectation::PlanStepState {
+                step_id: plan_step.step_id.clone(),
+                checked: plan_step.state.is_checked(),
             })
         }
         other => Err(ApplyError::Internal(format!(
@@ -1682,6 +1814,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: None,
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_replace_body(
@@ -1889,6 +2022,7 @@ mod tests {
                 }),
                 new_stem: None,
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
@@ -2139,6 +2273,7 @@ mod tests {
                 }),
                 new_stem: None,
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(
@@ -2444,6 +2579,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: Some(LIVE_RENAME_NEW_STEM.to_string()),
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_rename(
@@ -2749,6 +2885,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: None,
                 section_selector: Some(selector),
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_section_edit(
@@ -3038,6 +3175,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: None,
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_create_document(
@@ -4288,6 +4426,7 @@ mod tests {
                 }),
                 new_stem: None,
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_edit_frontmatter(

@@ -25,7 +25,7 @@ use axum::extract::{FromRequest, Path, Query, Request, State};
 use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use ingest_struct::reader::blob_oid;
 use serde::de::DeserializeOwned;
@@ -34,20 +34,27 @@ use serde_json::{Value, json};
 use super::actors::{ActorDisplayMetadata, ActorRecordInput};
 use super::api::{
     ApplyRequest as ApplyRequestDto, CancelRunRequest, ChangesetChildOperationDraft,
-    CommandEnvelope, CreateProposalRequest, CreateSessionRequest,
-    DirectWriteRequest as DirectWriteRequestDto, InterruptResumeRequest, IssueActorTokenRequest,
-    LeaseAcquireRequest, LeaseReleaseRequest, LeaseRenewRequest, ResumeRunRequest,
-    ReviewClaimRequest, ReviewDecisionRequest, ReviewReleaseRequest, ReviewRespondRequest,
-    RollbackRequest as RollbackRequestDto, SetOperationModeRequest, StartPromptTurnRequest,
-    SubmitForReviewRequest, ToolPermissionDecisionRequest,
+    CommandEnvelope, CommentUpdateRequest, CreateCommentRequest, CreateProposalRequest,
+    CreateSessionRequest, DeleteCommentRequest, DirectWriteRequest as DirectWriteRequestDto,
+    InterruptResumeRequest, IssueActorTokenRequest, LeaseAcquireRequest, LeaseReleaseRequest,
+    LeaseRenewRequest, ResumeRunRequest, ReviewClaimRequest, ReviewDecisionRequest,
+    ReviewReleaseRequest, ReviewRespondRequest, RollbackRequest as RollbackRequestDto,
+    SetOperationModeRequest, StartPromptTurnRequest, SubmitForReviewRequest,
+    ToolPermissionDecisionRequest,
 };
 use super::apply::{ApplyError, ApplyOutcome, ApplyRequest};
 use super::approvals::{
     ApprovalDecision, ApprovalError, ApprovalOutcome, ApprovalRequestInput, ApprovalRequestRecord,
     ReviewDecisionInput, ReviewedTuple, V1_POLICY_VERSION,
 };
+use super::comments::{
+    COMMENT_LIST_CAP_DEFAULT, COMMENT_LIST_CAP_MAX, CommentDocument, CreateCommentInput,
+    ServedComment, create_comment, delete_comment, mint_comment_id, reanchor_comment,
+    serve_comment, set_comment_resolved, update_comment_body,
+};
 use super::conflicts::{document_lease_scope, existing_node_id};
 use super::core_adapter::CoreAdapter;
+use super::documents::{DocumentResolver, ExistingDocumentLookup};
 use super::executor::{
     ExecuteDisposition, ExecuteOutcome, ExecuteToolCallRequest, execute_tool_call,
 };
@@ -55,7 +62,7 @@ use super::leases::{AcquireLeaseInput, LeaseOutcome};
 use super::ledger::ChangesetAggregateRecord;
 use super::model::{
     ActionEligibility, ActorId, ActorKind, ActorRef, ApplyState, ApprovalId, ChangesetId,
-    ChangesetStatus, CommandKind, DocumentRef, IdempotencyKey, InterruptId, ProposalId,
+    ChangesetStatus, CommandKind, CommentId, DocumentRef, IdempotencyKey, InterruptId, ProposalId,
     ReviewDecisionKind, RevisionToken, RunId, SessionId, ToolCallId,
 };
 use super::modes::{
@@ -591,6 +598,18 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/v1/leases", post(acquire_lease))
         .route("/v1/leases/renew", post(renew_lease))
         .route("/v1/leases/release", post(release_lease))
+        // Section-anchored document comments (authoring-surface ADR D2). The list is a
+        // principal-permissive read that resolves each anchor against the live worktree
+        // body; create/edit/resolve/re-anchor/delete are mutating commands attributed to
+        // the resolved principal, each emitting a comment event on the authoring SSE feed.
+        .route(
+            "/v1/documents/{node_id}/comments",
+            get(list_comments).post(create_comment_route),
+        )
+        .route(
+            "/v1/comments/{comment_id}",
+            patch(update_comment_route).delete(delete_comment_route),
+        )
         // The bootstrap seam: mint a per-principal actor token. Machine-bearer-gated
         // by the app router; the permissive principal layer never blocks it (it uses
         // a plain JSON body, not the ResolvedCommand extractor).
@@ -910,6 +929,13 @@ fn command_error_response(state: &AppState, err: &StoreError) -> Response {
         StoreError::Session(_) => (
             StatusCode::UNPROCESSABLE_ENTITY,
             "authoring_session_refused",
+            err.to_string(),
+        ),
+        // A comment CRUD fault (unknown comment, malformed anchor, cap/retention
+        // refusal) is a client-correctable bad-request-shaped refusal: a 422.
+        StoreError::Comment(_) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "authoring_comment_refused",
             err.to_string(),
         ),
         // A lease construction fault (empty scope, malformed id, bad schema). Lease
@@ -2513,6 +2539,192 @@ pub async fn release_lease(
     }
 }
 
+// --- section-anchored comments (authoring-surface ADR D2) ---------------------
+
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct CommentListParams {
+    #[serde(default)]
+    cap: Option<u32>,
+}
+
+/// `GET /authoring/v1/documents/{node_id}/comments` — the bounded, backend-served
+/// comment listing for one document. Each stored anchor is resolved EXACT-OR-CONFLICT
+/// against the CURRENT worktree body (read through the shared document-read seam), so
+/// the served `orphaned` flag is authoritative and never frontend-derived. A document
+/// that cannot be read at all serves its comments as orphaned (missing anchor), the
+/// honest "the section is unreachable" signal. Reads are principal-permissive.
+pub async fn list_comments(
+    State(state): State<Arc<AppState>>,
+    Path(node_id): Path<String>,
+    Query(params): Query<CommentListParams>,
+) -> Response {
+    let cap = params
+        .cap
+        .unwrap_or(COMMENT_LIST_CAP_DEFAULT)
+        .min(COMMENT_LIST_CAP_MAX);
+    let records = match state.with_authoring_store(|store| {
+        store.with_read_unit_of_work(CommandKind::ReadContext, |uow| {
+            uow.comments().list_for_document(&node_id, cap)
+        })
+    }) {
+        Ok(records) => records,
+        Err(err) => return command_error_response(&state, &err),
+    };
+
+    // Read the CURRENT document body once, through the confined document-read seam:
+    // the path is derived server-side from the node id (never a client-supplied path),
+    // so this can never read outside the vault. A node id that no longer resolves, or a
+    // document that cannot be read, yields `None` — every comment then serves as
+    // orphaned (missing anchor), the honest "the section is unreachable" signal.
+    let body = resolve_document_body(&state, &node_id);
+    let served: Vec<ServedComment> = records
+        .into_iter()
+        .map(|record| serve_comment(record, body.as_deref()))
+        .collect();
+
+    super::response::snapshot(
+        &state,
+        json!({ "document_node_id": node_id, "comments": served }),
+    )
+    .into_response()
+}
+
+/// Read a document's current worktree text from its NODE ID through the confined
+/// [`DocumentResolver`] + [`SnapshotReader`] — the same guarded seam the section-edit
+/// path uses. Returns `None` when the node id does not resolve or the document cannot
+/// be read; NEVER trusts or reads a client-supplied path.
+fn resolve_document_body(state: &AppState, node_id: &str) -> Option<String> {
+    let root = state.active_workspace_root();
+    let document = DocumentResolver::for_worktree(root.clone())
+        .resolve_existing(ExistingDocumentLookup::NodeId(node_id.to_string()))
+        .ok()?;
+    SnapshotReader::for_worktree(root)
+        .capture_existing(&document)
+        .ok()
+        .map(|snapshot| snapshot.text)
+}
+
+/// `POST /authoring/v1/documents/{node_id}/comments` — create a section-anchored
+/// comment attributed to the resolved principal. The target document must resolve
+/// from its node id (server-side, confined) — a comment cannot anchor to a document
+/// that does not exist. The comment id is minted deterministically from the node id +
+/// idempotency key, so a replay upserts the same row rather than duplicating. Emits
+/// `comment.created` on the authoring SSE feed.
+pub async fn create_comment_route(
+    State(state): State<Arc<AppState>>,
+    Path(node_id): Path<String>,
+    command: ResolvedCommand<CreateCommentRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, command_kind, idempotency_key, payload) = command.into_parts();
+    if command_kind != CommandKind::CreateComment {
+        return super::response::typed_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            REQUEST_INVALID_KIND,
+            "create-comment route requires command `create_comment`",
+        )
+        .into_response();
+    }
+    // Validate the target exists through the confined resolver before storing a comment
+    // against it (no client path is ever accepted or stored).
+    if DocumentResolver::for_worktree(state.active_workspace_root())
+        .resolve_existing(ExistingDocumentLookup::NodeId(node_id.clone()))
+        .is_err()
+    {
+        return super::response::typed_error(
+            &state,
+            StatusCode::NOT_FOUND,
+            "authoring_comment_document_not_found",
+            "the target document does not exist or its node id is ambiguous",
+        )
+        .into_response();
+    }
+    let comment_id = mint_comment_id(&node_id, &idempotency_key);
+    let input = CreateCommentInput {
+        comment_id,
+        document: CommentDocument { node_id },
+        selector: payload.selector,
+        body: payload.body,
+        author: actor,
+        created_at_ms: now,
+    };
+    match state.with_authoring_store(|store| create_comment(store, input, idempotency_key.clone()))
+    {
+        Ok(record) => {
+            super::response::snapshot(&state, json!({ "comment": record })).into_response()
+        }
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `PATCH /authoring/v1/comments/{comment_id}` — edit the body, toggle resolved, or
+/// re-anchor to the current section (one tagged op per request), attributed to the
+/// resolved principal. Emits `comment.updated`.
+pub async fn update_comment_route(
+    State(state): State<Arc<AppState>>,
+    Path(comment_id): Path<CommentId>,
+    command: ResolvedCommand<CommentUpdateRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, command_kind, idempotency_key, payload) = command.into_parts();
+    if command_kind != CommandKind::UpdateComment {
+        return super::response::typed_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            REQUEST_INVALID_KIND,
+            "update-comment route requires command `update_comment`",
+        )
+        .into_response();
+    }
+    let result = state.with_authoring_store(|store| match payload {
+        CommentUpdateRequest::EditBody { body } => {
+            update_comment_body(store, &comment_id, body, actor, idempotency_key, now)
+        }
+        CommentUpdateRequest::SetResolved { resolved } => {
+            set_comment_resolved(store, &comment_id, resolved, actor, idempotency_key, now)
+        }
+        CommentUpdateRequest::Reanchor { selector } => {
+            reanchor_comment(store, &comment_id, selector, actor, idempotency_key, now)
+        }
+    });
+    match result {
+        Ok(record) => {
+            super::response::snapshot(&state, json!({ "comment": record })).into_response()
+        }
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `DELETE /authoring/v1/comments/{comment_id}` — delete a comment (idempotent: an
+/// absent id returns `deleted: false` and emits nothing). Emits `comment.deleted`
+/// when a row was removed.
+pub async fn delete_comment_route(
+    State(state): State<Arc<AppState>>,
+    Path(comment_id): Path<CommentId>,
+    command: ResolvedCommand<DeleteCommentRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, command_kind, idempotency_key, _payload) = command.into_parts();
+    if command_kind != CommandKind::DeleteComment {
+        return super::response::typed_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            REQUEST_INVALID_KIND,
+            "delete-comment route requires command `delete_comment`",
+        )
+        .into_response();
+    }
+    match state.with_authoring_store(|store| {
+        delete_comment(store, &comment_id, actor, idempotency_key, now)
+    }) {
+        Ok(removed) => {
+            super::response::snapshot(&state, json!({ "deleted": removed })).into_response()
+        }
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
 // --- apply (the one side-effecting command) -----------------------------------
 
 /// Map an `ApplyError` FAULT to a `StoreError` for the shared taxonomy. Policy
@@ -3637,6 +3849,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: None,
                 create: None,
+                plan_step: None,
                 expected_blob_hash: Some(expected.to_string()),
                 summary: Some("route editor save".to_string()),
                 scope: None,
@@ -3663,6 +3876,7 @@ mod tests {
                 }),
                 new_stem: None,
                 create: None,
+                plan_step: None,
                 expected_blob_hash: Some(expected.to_string()),
                 summary: Some("route editor frontmatter save".to_string()),
                 scope: None,
@@ -3685,6 +3899,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: Some(new_stem.to_string()),
                 create: None,
+                plan_step: None,
                 expected_blob_hash: Some(expected.to_string()),
                 summary: Some("route editor rename save".to_string()),
                 scope: None,
@@ -3712,6 +3927,7 @@ mod tests {
                     title: title.to_string(),
                     related: Vec::new(),
                 }),
+                plan_step: None,
                 expected_blob_hash: None,
                 summary: Some("route editor new document".to_string()),
                 scope: None,
@@ -4263,6 +4479,7 @@ mod tests {
                         frontmatter: None,
                         new_stem: None,
                         section_selector: None,
+                        plan_step: None,
                     },
                 }],
             },
@@ -4313,6 +4530,7 @@ mod tests {
                         frontmatter: None,
                         new_stem: None,
                         section_selector: None,
+                        plan_step: None,
                     },
                 }],
             },
@@ -6835,6 +7053,7 @@ mod tests {
                         frontmatter: None,
                         new_stem: None,
                         section_selector: None,
+                        plan_step: None,
                     },
                 }],
             },
@@ -6995,6 +7214,296 @@ mod tests {
                 .as_str()
                 .is_some_and(|reason| reason.contains("holder")),
             "the denial names the owner-only rule: {envelope}"
+        );
+    }
+
+    // --- section-anchored comment routes (authoring-surface ADR D2) --------------
+
+    use crate::authoring::sections::SectionSelector;
+
+    const COMMENT_DOC_REL: &str = ".vault/plan/comment-fixture.md";
+    // The node id resolves through the confined resolver: `doc:` + the file stem, so it
+    // maps to `.vault/plan/comment-fixture.md` (never a client-supplied path).
+    const COMMENT_NODE_ID: &str = "doc:comment-fixture";
+
+    fn write_worktree_doc(state: &AppState, rel_path: &str, text: &str) {
+        let path = state.active_workspace_root().join(rel_path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, text).unwrap();
+    }
+
+    /// Build a section selector for `heading` in `body`, computing the exact expected
+    /// content hash the way the frontend would from the live section — the section is
+    /// the heading line through the next same-or-shallower heading (here, EOF).
+    fn selector_for(section_bytes: &str, heading: &str) -> SectionSelector {
+        SectionSelector {
+            heading_path: vec![heading.to_string()],
+            range_hint: None,
+            expected_content_hash: ingest_struct::reader::blob_oid(section_bytes.as_bytes()),
+        }
+    }
+
+    fn create_comment_envelope(idem: &str, selector: SectionSelector, body: &str) -> Value {
+        serde_json::to_value(CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::CreateComment,
+            idempotency_key: IdempotencyKey::new(idem).unwrap(),
+            payload: CreateCommentRequest {
+                selector,
+                body: body.to_string(),
+            },
+        })
+        .unwrap()
+    }
+
+    async fn send_authoring(
+        router: Router,
+        method: &str,
+        uri: &str,
+        token: Option<&str>,
+        body: Option<Value>,
+    ) -> (StatusCode, Value) {
+        let mut builder = Request::builder().method(method).uri(uri);
+        if let Some(token) = token {
+            builder = builder.header(AUTHORING_ACTOR_TOKEN_HEADER, token);
+        }
+        let request = match body {
+            Some(body) => builder
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+            None => builder.body(Body::empty()).unwrap(),
+        };
+        let response = router.oneshot(request).await.unwrap();
+        let status = response.status();
+        (status, json_body(response).await)
+    }
+
+    /// The full comment lifecycle over the REAL router + REAL store + REAL worktree
+    /// file: create anchors to a live heading section; editing the section orphans the
+    /// comment (content-hash mismatch, never a silent re-anchor); an explicit re-anchor
+    /// re-binds it; delete removes it. Anchor resolution is backend-served throughout.
+    #[tokio::test]
+    async fn comment_route_create_list_orphan_reanchor_and_delete() {
+        let (_dir, state) = fixture_state();
+        let author = agent();
+        register_actor(&state, &author);
+        let token = issue_token_in_state(&state, &author);
+
+        let original = "# Comment Fixture\n\n## Alpha\n\nalpha body\n";
+        let alpha_section = "## Alpha\n\nalpha body\n";
+        write_worktree_doc(&state, COMMENT_DOC_REL, original);
+
+        // Create a comment anchored to the live Alpha section.
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, env) = post_authoring(
+            router,
+            &format!("/v1/documents/{COMMENT_NODE_ID}/comments"),
+            &token,
+            create_comment_envelope(
+                "idem:comment:create",
+                selector_for(alpha_section, "Alpha"),
+                "check this section",
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{env}");
+        let comment_id = env["data"]["comment"]["comment_id"]
+            .as_str()
+            .expect("create serves the comment id")
+            .to_string();
+        assert_eq!(env["data"]["comment"]["resolved"], false);
+
+        // List: the comment resolves as anchored against the live body.
+        let list_uri = format!("/v1/documents/{COMMENT_NODE_ID}/comments");
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, env) = send_authoring(router, "GET", &list_uri, None, None).await;
+        assert_eq!(status, StatusCode::OK, "{env}");
+        assert_eq!(env["data"]["comments"].as_array().unwrap().len(), 1);
+        assert_eq!(env["data"]["comments"][0]["orphaned"], false);
+        assert_eq!(env["data"]["comments"][0]["anchor"]["state"], "anchored");
+
+        // Edit the commented section on disk → the comment orphans with a typed
+        // content-hash mismatch, still listed (never dropped, never re-anchored).
+        write_worktree_doc(
+            &state,
+            COMMENT_DOC_REL,
+            "# Comment Fixture\n\n## Alpha\n\nALPHA REWRITTEN\n",
+        );
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, env) = send_authoring(router, "GET", &list_uri, None, None).await;
+        assert_eq!(status, StatusCode::OK, "{env}");
+        assert_eq!(env["data"]["comments"][0]["orphaned"], true);
+        assert_eq!(
+            env["data"]["comments"][0]["anchor"]["evidence"]["reason"],
+            "content_hash_mismatch"
+        );
+
+        // Re-anchor to the CURRENT section (explicit mutation) → anchored again.
+        let fresh = selector_for("## Alpha\n\nALPHA REWRITTEN\n", "Alpha");
+        let reanchor_body = serde_json::to_value(CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::UpdateComment,
+            idempotency_key: IdempotencyKey::new("idem:comment:reanchor").unwrap(),
+            payload: CommentUpdateRequest::Reanchor { selector: fresh },
+        })
+        .unwrap();
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, env) = send_authoring(
+            router,
+            "PATCH",
+            &format!("/v1/comments/{comment_id}"),
+            Some(&token),
+            Some(reanchor_body),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{env}");
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (_status, env) = send_authoring(router, "GET", &list_uri, None, None).await;
+        assert_eq!(env["data"]["comments"][0]["orphaned"], false);
+
+        // Delete → the listing empties, and a replayed delete is an idempotent no-op.
+        let delete_body = serde_json::to_value(CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::DeleteComment,
+            idempotency_key: IdempotencyKey::new("idem:comment:delete").unwrap(),
+            payload: DeleteCommentRequest::default(),
+        })
+        .unwrap();
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, env) = send_authoring(
+            router,
+            "DELETE",
+            &format!("/v1/comments/{comment_id}"),
+            Some(&token),
+            Some(delete_body),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{env}");
+        assert_eq!(env["data"]["deleted"], true);
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (_status, env) = send_authoring(router, "GET", &list_uri, None, None).await;
+        assert_eq!(env["data"]["comments"].as_array().unwrap().len(), 0);
+    }
+
+    /// A comment mutation emits a lifecycle event on the SAME outbox/SSE feed every
+    /// changeset event rides — so an SSE consumer learns a document's comments changed.
+    #[tokio::test]
+    async fn comment_create_emits_a_comment_created_event_on_the_sse_feed() {
+        let (_dir, state) = fixture_state();
+        let author = agent();
+        register_actor(&state, &author);
+        let token = issue_token_in_state(&state, &author);
+        write_worktree_doc(
+            &state,
+            COMMENT_DOC_REL,
+            "# Comment Fixture\n\n## Alpha\n\nalpha body\n",
+        );
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, _env) = post_authoring(
+            router,
+            &format!("/v1/documents/{COMMENT_NODE_ID}/comments"),
+            &token,
+            create_comment_envelope(
+                "idem:comment:event",
+                selector_for("## Alpha\n\nalpha body\n", "Alpha"),
+                "eventful note",
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let events = state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::CreateProposal, |uow| {
+                    uow.outbox().events_after(0, 50)
+                })
+            })
+            .unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|event| event.aggregate_kind == "comment"
+                    && event.event_kind == "comment.created"),
+            "a comment.created event must ride the authoring outbox feed"
+        );
+    }
+
+    /// The comment routes fence the command kind before any store work — a create
+    /// envelope carrying the wrong command is a typed bad request.
+    #[tokio::test]
+    async fn comment_create_route_rejects_the_wrong_command_kind() {
+        let (_dir, state) = fixture_state();
+        let author = agent();
+        register_actor(&state, &author);
+        let token = issue_token_in_state(&state, &author);
+        write_worktree_doc(
+            &state,
+            COMMENT_DOC_REL,
+            "# Comment Fixture\n\n## Alpha\n\nalpha body\n",
+        );
+
+        // A CreateProposal command sent to the create-comment route: wrong kind → 400.
+        let wrong = serde_json::to_value(CommandEnvelope {
+            api_version: ApiVersion::V1,
+            command: CommandKind::CreateProposal,
+            idempotency_key: IdempotencyKey::new("idem:comment:wrongkind").unwrap(),
+            payload: CreateCommentRequest {
+                selector: selector_for("## Alpha\n\nalpha body\n", "Alpha"),
+                body: "note".to_string(),
+            },
+        })
+        .unwrap();
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, env) = post_authoring(
+            router,
+            &format!("/v1/documents/{COMMENT_NODE_ID}/comments"),
+            &token,
+            wrong,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{env}");
+        assert_eq!(env["error_kind"], REQUEST_INVALID_KIND);
+    }
+
+    /// The comment routes never accept a client path: the worktree read is derived from
+    /// the node id through the confined resolver, so a traversal-shaped node id resolves
+    /// to nothing (a 404) and can never read a file outside the vault. Regression for the
+    /// arbitrary-file-read finding.
+    #[tokio::test]
+    async fn comment_create_rejects_a_traversal_shaped_node_id_without_reading_outside_the_vault() {
+        let (dir, state) = fixture_state();
+        let author = agent();
+        register_actor(&state, &author);
+        let token = issue_token_in_state(&state, &author);
+
+        // A secret file OUTSIDE the vault subtree that a traversal would target.
+        std::fs::write(dir.path().join("secret.txt"), "TOP SECRET").unwrap();
+
+        let router = authoring_router(state.clone()).with_state(state.clone());
+        let (status, env) = post_authoring(
+            router,
+            "/v1/documents/doc:..%2F..%2Fsecret/comments",
+            &token,
+            create_comment_envelope(
+                "idem:comment:traversal",
+                selector_for("## Alpha\n\nalpha body\n", "Alpha"),
+                "should never land",
+            ),
+        )
+        .await;
+
+        assert_eq!(
+            status,
+            StatusCode::NOT_FOUND,
+            "a traversal-shaped node id must resolve to nothing: {env}"
+        );
+        assert_eq!(env["error_kind"], "authoring_comment_document_not_found");
+        assert!(
+            !env.to_string().contains("TOP SECRET"),
+            "the outside-vault file's contents must never appear on the wire: {env}"
         );
     }
 }

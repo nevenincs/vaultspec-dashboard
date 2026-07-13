@@ -11,10 +11,25 @@ import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type { SceneController } from "../../scene/sceneController";
+import { guardedContextMenu } from "../menus/guardedContextMenu";
+import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { islandStyle, useNodeAnchor } from "../../stores/view/islandAnchors";
 import { closeNodeIsland, useOpenedNodeIslands } from "../../stores/view/selection";
 import { NodeInterior } from "./NodeInterior";
+
+/** Elements inside an island that own their own click semantics (the close
+ *  button, interior chips and links); a right-click on these is NOT an island
+ *  click, so the island menu no longer blankets nested targets
+ *  (touch-selectability ADR D1: the island gains the same target scoping the
+ *  rail and timeline background handlers already have). */
+const ISLAND_NON_MENU_SELECTOR = "button,a,input,textarea,select";
+
+export function isIslandMenuTarget(event: { target: unknown }): boolean {
+  const target = event.target as Element | null;
+  if (target === null || typeof target.closest !== "function") return false;
+  return target.closest(ISLAND_NON_MENU_SELECTOR) === null;
+}
 
 interface IslandProps {
   scene: SceneController;
@@ -25,19 +40,22 @@ interface IslandProps {
 
 function Island({ scene, id, scope, children }: IslandProps) {
   const anchor = useNodeAnchor(scene, id);
+  const islandEntity = { kind: "island" as const, id, scope };
   return (
     <div
       style={islandStyle(anchor)}
       className="pointer-events-auto rounded-fg-md border border-rule bg-paper-raised/95 p-fg-2 text-body shadow-fg-overlay"
       data-island-for={id}
-      onContextMenu={(e) => {
+      onContextMenu={guardedContextMenu((e) => {
+        if (!isIslandMenuTarget(e)) return;
         e.preventDefault();
-        openContextMenu({ kind: "island", id, scope }, { x: e.clientX, y: e.clientY });
-      }}
+        openContextMenu(islandEntity, { x: e.clientX, y: e.clientY });
+      })}
     >
       <div className="flex items-center justify-between gap-fg-2">
         {/* The opened node's id is true identity → monospace (typography law). */}
         <span className="truncate font-mono text-label text-ink">{id}</span>
+        <RowMenuDisclosure entity={islandEntity} label={`${id} actions`} />
         <button
           type="button"
           aria-label={`Close ${id}`}

@@ -1,0 +1,3092 @@
+import {
+  BufferGeometry,
+  CircleGeometry,
+  Color,
+  ColorManagement,
+  DataTexture,
+  DoubleSide,
+  Float32BufferAttribute,
+  FloatType,
+  InstancedBufferAttribute,
+  InstancedBufferGeometry,
+  Mesh,
+  NearestFilter,
+  OrthographicCamera,
+  RGBAFormat,
+  Scene,
+  ShaderMaterial,
+  Uint32BufferAttribute,
+  WebGLRenderer,
+  type Texture,
+} from "three";
+import {
+  foldSceneDeltas,
+  type SceneCommand,
+  type SceneController,
+  type SceneDelta,
+  type SceneEdgeData,
+  type SceneFieldRenderer,
+  type SceneNodeData,
+} from "../../sceneController";
+import { semanticLevel } from "../../field/cameraCore";
+import {
+  APPEARANCE_DEFAULTS,
+  accentColor,
+  canvasBackground,
+  edgeAppearance,
+  edgeEndColors,
+  highlightColor,
+  inkColor,
+  inkMutedColor,
+  nodeColorNumber,
+  nodeWorldRadius,
+  sceneRuleColor,
+  type AppearanceParams,
+} from "../appearance";
+import { D3ForceSolver, D3_FORCE_DEFAULTS, type D3ForceParams } from "../d3ForceSolver";
+import { defaultPositionCache, type NodePosition } from "../../positionCache";
+import { classifySwap } from "../swapClassifier";
+import { labelTextStyle } from "../labelStyle";
+import { rootFontPx, uiScale } from "../uiScale";
+import { buildGlyphAtlas, glyphKeyForNode, type GlyphAtlas } from "../glyphAtlas";
+import {
+  AUTOFRAME_DEADBAND,
+  AUTOFRAME_EASE,
+  AUTOFRAME_POLL_MS,
+  AUTOFRAME_SETTLE_EPS,
+  COLD_START_ALPHA,
+  DISPLAY_LERP_K,
+  DISPLAY_SNAP_EPS,
+  EMPHASIS_FADE_TAU_MS,
+  FENCE_FILL_ALPHA,
+  FENCE_PAD_PX,
+  FENCE_STROKE_ALPHA,
+  FENCE_STROKE_WIDTH_PX,
+  FIT_PADDING_PX,
+  FOCUS_RING_WIDTH_PX,
+  GENTLE_REHEAT_ALPHA,
+  LABEL_BUDGET,
+  LABEL_MAX_WIDTH_PX,
+  LABEL_PILL_GAP_PX,
+  LABEL_PILL_PAD_X_PX,
+  LABEL_PILL_PAD_Y_PX,
+  MAX_GL_RESTORE_ATTEMPTS,
+  MAX_SCENE_NODES,
+  MINIMAP_INSET,
+  NODE_RECEDE_HOVER,
+  NODE_RECEDE_SELECT,
+  PERF_DEGRADE_MS,
+  PERF_RESTORE_MS,
+  PICK_RADIUS_PX,
+  PINCH_ZOOM_SENSITIVITY,
+  PREWARM_BUDGET_MS,
+  PREWARM_MAX_TICKS,
+  PULSE_RING_ALPHA,
+  PULSE_RING_WIDTH,
+  SIM_MAX_CATCHUP_TICKS,
+  SIM_TICK_MS,
+  WARM_START_ALPHA,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEP_BUTTON,
+  ZOOM_STEP_WHEEL,
+} from "./config";
+import {
+  EDGE_FRAGMENT,
+  EDGE_VERTEX,
+  GLYPH_FRAGMENT,
+  GLYPH_VERTEX,
+  NODE_FRAGMENT,
+  NODE_VERTEX,
+} from "./shaders";
+import {
+  convexHull,
+  forceChangeFraction,
+  hexCss,
+  prefersReducedMotion,
+  sanitizeLabel,
+  traceRoundedOffset,
+  type ScreenPt,
+} from "./geometry";
+
+// ThreeField — a parallel three.js implementation of the SceneFieldRenderer seam,
+// an alternative to CosmosField. 2D orthographic. Node positions are computed on
+// the CPU by D3ForceSolver (d3-force) and mirrored into a small RGBA-float texture
+// the node/edge vertex shaders sample by id — so the crisp instanced rendering is
+// untouched while the solver is a plain, deterministic CPU simulation. The host
+// owns the loop: it ticks the solver, uploads the position texture, and stops on
+// settle (alpha < alphaMin) so the idle GPU cost is zero (render-on-demand).
+//
+// Init is FLICKER-FREE: the solver pre-warms off-screen (the violent early ticks
+// run before the first paint), then the camera fits ONCE — the first visible frame
+// is already at equilibrium, never an "explode then settle".
+//
+// Visual + interaction parity with cosmos: real token colours and node sizing
+// (appearance.ts mirrors cosmosField), tier-coloured width-varying edges, theme
+// background, pointer picking → hover/selection emphasis (greyout) + rings, crisp
+// 2D-overlay labels with DOI/semantic-zoom culling, and the SceneEvent surface
+// (hover/select/open/context-menu/camera-change) emitted through the controller.
+
+/** Memoized 2D-overlay token→CSS derivations (SGR-006), keyed on theme epoch +
+ *  root font size. */
+type OverlayThemeDerived = {
+  epoch: number;
+  fontPx: number;
+  ink: string;
+  accent: string;
+  highlight: string;
+  inkMuted: string;
+  pillFill: string;
+  pillBorder: string;
+  featureStyle: ReturnType<typeof labelTextStyle>;
+  docStyle: ReturnType<typeof labelTextStyle>;
+};
+
+// Settle is alpha-driven inside the solver: d3-force cools by alphaDecay each tick
+// and the host freezes the loop once `solver.isSettled()` (alpha < alphaMin and not
+// held warm by a drag). A drag holds the sim warm via alphaTarget, so it perturbs
+// only its force-bearing neighbourhood; the rest of a settled graph stays put.
+
+interface BuiltEdge {
+  a: number;
+  b: number;
+  srcId: string;
+  dstId: string;
+}
+
+export class ThreeField implements SceneFieldRenderer {
+  /** Set by the scene factory; hover/select/open events flow back through it. */
+  controller: SceneController | null = null;
+
+  private renderer: WebGLRenderer | null = null;
+  private readonly scene = new Scene();
+  private readonly camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+
+  private solver: D3ForceSolver | null = null;
+  private nodeMesh: Mesh | null = null;
+  private edgeMesh: Mesh | null = null;
+  private nodeMaterial: ShaderMaterial | null = null;
+  private edgeMaterial: ShaderMaterial | null = null;
+  // Icon mode (graph-node-icons): a sibling glyph mesh + the shared doc-type-mark atlas.
+  // The atlas is built lazily on first icon enable and cached across data swaps; the mesh
+  // is rebuilt with each set-data alongside the node mesh. Null when icons have never been
+  // turned on (or the host cannot build the texture).
+  private glyphMesh: Mesh | null = null;
+  private glyphMaterial: ShaderMaterial | null = null;
+  private glyphAtlas: GlyphAtlas | null = null;
+  private glyphAtlasFailed = false;
+  // GPU mirror of the CPU positions (cpuPositions). The vertex shaders sample this
+  // by node id; we flag it needsUpdate after every tick so three re-uploads it.
+  private positionTex: DataTexture | null = null;
+  private labelCanvas: HTMLCanvasElement | null = null;
+  private labelCtx: CanvasRenderingContext2D | null = null;
+
+  // graph model (CPU side)
+  private nodes: SceneNodeData[] = [];
+  // Per-node category colour (int RGB), indexed by node index — the source of truth
+  // edges inherit their colour from (an edge never carries a flat tier/grey/black hue).
+  private nodeColors: number[] = [];
+  private builtEdges: BuiltEdge[] = [];
+  // The rendered edge inputs (the `valid` filter of set-data), aligned 1:1 with
+  // builtEdges and the per-edge quad block — kept so a live edge-appearance retune
+  // can recompute width/opacity without a full rebuild.
+  private edgeData: SceneEdgeData[] = [];
+  // Per-edge base opacity from edgeAppearance, before the visibility mask. The
+  // displayed aAlpha is base × visibility, so an opacity retune and a filter compose
+  // (and a retune never clobbers the filter's hidden edges).
+  private edgeBaseAlpha = new Float32Array(0);
+  private idToIndex = new Map<string, number>();
+  private neighbors = new Map<string, Set<string>>();
+  private featureCohort = new Map<string, Set<string>>();
+  // DISPLAY positions: feeds the GPU texture, overlays, and picking. The frame loop
+  // eases this toward `simPositions` (render-time lerp) so solver jitter is
+  // time-averaged before it reaches the screen; snapped exact on settle/data swap.
+  private cpuPositions = new Float32Array(0);
+  // PHYSICS-truth positions: the solver pack target. Warm-start carries, layout
+  // persistence, and the next data swap's seed all read THIS, never the eased display.
+  private simPositions = new Float32Array(0);
+  private displayEasing = false;
+  private lastSimTs = 0;
+
+  // interaction state
+  private hoveredId: string | null = null;
+  private selectedIds: ReadonlySet<string> = new Set();
+  // DURABLE feature-cluster spotlight: the SELECTED FEATURE tag (feature-selection-global-
+  // state). Stored as a tag — NOT a frozen id set — so the member cohort is re-derived from
+  // `featureCohort` on every `setData`, surviving data refreshes. `null` = no feature spotlit.
+  private spotlightFeatureTag: string | null = null;
+  private pinnedIds: ReadonlySet<string> = new Set();
+  private visibleNodeIds: ReadonlySet<string> | null = null;
+  // Emphasis cross-fade (emphasis-state-grammar ADR): per-node recede TARGETS; the frame
+  // loop eases the displayed aDim toward them (EMPHASIS_FADE_TAU_MS) while `emphasisAnim`
+  // holds the loop awake. Bounded: one float per node, reallocated with the node set.
+  private dimTarget = new Float32Array(0);
+  private emphasisAnim = false;
+  private lastEmphasisTs = 0;
+  // Cluster-selection fence presence: eased 0..1 alpha on the same clock. `fenceTag` lags
+  // the spotlight tag on clear so the fence can fade OUT over the departing cohort.
+  private fenceAlpha = 0;
+  private fenceTargetAlpha = 0;
+  private fenceTag: string | null = null;
+
+  private params: D3ForceParams = { ...D3_FORCE_DEFAULTS };
+  private appearance: AppearanceParams = { ...APPEARANCE_DEFAULTS };
+  // Transient pulse cohort (pulse command): briefly ring these nodes, then clear.
+  private pulseIds: ReadonlySet<string> = new Set();
+  private pulseTimer = 0;
+  private running = false;
+  private frozen = false;
+  private needsRender = false;
+  private scheduled = false;
+  private raf = 0;
+  // SGR-005 pointer-delta pick cache: the last hit test's screen point + result,
+  // valid only while nothing that affects a pick (positions, camera, data, size)
+  // has changed. `frame()` clears it on any dirty work and `setData` clears it on
+  // a node-set change, so a reuse is provably against an unchanged scene.
+  private lastPickSx = NaN;
+  private lastPickSy = NaN;
+  private lastPickId: string | null = null;
+  private pickCacheValid = false;
+  // GL-context-restore attempt counter (bounded retry on webglcontextrestored).
+  private glRestoreAttempts = 0;
+  // FPS-adaptive LOD (perf hardening): EMA of render cost + a hysteresis-gated degraded flag.
+  private frameMsEma = 0;
+  private perfDegraded = false;
+  // SGR-006: the 2D overlay passes (drawLabels/renderMinimap) re-derive token→CSS
+  // hex strings + label text styles every frame, though they change only per THEME
+  // and per UI scale. `themeEpoch` bumps on `refresh-theme`; the cache re-derives
+  // when the epoch or the (cached) root font size changes — otherwise it is reused.
+  private themeEpoch = 0;
+  private overlayThemeCache: OverlayThemeDerived | null = null;
+
+  private width = 1;
+  private height = 1;
+  private dpr = 1;
+  private viewHeight = 600;
+  private seedRadius = 300;
+
+  private dragging = false;
+  private dragMoved = false;
+  private lastX = 0;
+  private lastY = 0;
+  // Node drag: when a node is grabbed it is cursor-pinned in the solver and the
+  // sim is held warm so its edges visibly pull neighbours along.
+  private dragNodeIndex = -1;
+  private dragActive = false;
+  // Two-finger touch gesture (trackpad/touch QoL): while two fingers are down the
+  // pointer-event pan is suppressed and the centroid drives pan + the spread drives
+  // pinch-zoom. Torn down when fewer than two touches remain.
+  private touchGesture = false;
+  private lastTouchCentroid: { x: number; y: number } | null = null;
+  private lastTouchDist = 0;
+  // Autoframe (graph-autoframe): when on (default), an interval polls the graph bounds and,
+  // when the fit drifts beyond the deadband, sets an eased camera target the render loop
+  // glides toward. Skipped while the user interacts; the timer is bounded + torn down.
+  private autoframe = true;
+  private autoframeTimer = 0;
+  private autoframeTarget: { x: number; y: number; zoom: number } | null = null;
+  private autoframedFrame: { x: number; y: number; zoom: number } | null = null;
+  // Arbitration with a one-shot USER selection-frame (graph-follow-mode #13): a
+  // `frame-nodes` selection-frame SUSPENDS whole-graph autoframe so it never yanks the
+  // camera back off the user's focused subset. Cleared on the next DATA change (set-data)
+  // or an explicit fit-all / autoframe re-enable — so autoframe resumes on load/data
+  // change, never over a selection write.
+  private autoframeSuspended = false;
+  // Off-slice focus (graph-follow-mode #42): a `focus-node` for a node NOT currently
+  // mounted (a rail/activity-rail/search open whose ego-expand materializes it a fetch
+  // later) is REMEMBERED as a single pending id and centered when it next arrives in a
+  // set-data/merge. Cleared on arrival, or when a newer explicit focus/fit/selection
+  // supersedes it. Bounded to ONE id.
+  private pendingFocusId: string | null = null;
+
+  // --- minimap (overview navigator) ---------------------------------------
+  // A chrome-hosted <canvas> the field draws a downscaled overview into (node dots
+  // + the current-viewport rectangle), refreshed on every render frame (settle
+  // ticks, camera moves, data changes) — bounded by the on-demand render model, no
+  // separate loop. Pointer click/drag on it pans the main camera.
+  private minimapCanvas: HTMLCanvasElement | null = null;
+  private minimapCtx: CanvasRenderingContext2D | null = null;
+  private detachMinimap: (() => void) | null = null;
+  // The last world→minimap transform, retained so a pointer on the minimap maps
+  // back to world coordinates for camera panning.
+  private minimapView: { scale: number; cx: number; cy: number } | null = null;
+  private minimapDragging = false;
+
+  mount(host: HTMLElement): void {
+    // Colour-space contract: the scene's category/tier/ink tokens are authored as
+    // sRGB literal hex (themes-are-oklch-generated-from-a-token-tier) and every other
+    // scene consumer paints them as sRGB PASSTHROUGH — cosmos via `rgba()` (raw bytes
+    // /255), Pixi, and this field's own canvas-2D label overlay. three.js's default
+    // (ColorManagement on) is the outlier: `Color.set(hex)` would convert the sRGB
+    // token to LINEAR, and because our custom ShaderMaterials write gl_FragColor
+    // directly (no built-in linearToOutputTexel re-encode), that linear value lands on
+    // the sRGB canvas and renders visibly DARKER than the declared token. Disabling
+    // colour management aligns three with the scene-wide sRGB-passthrough contract, so
+    // node/edge/dim/background colours match the tokens (and cosmos) exactly. Safe and
+    // contained: three is imported only by this field.
+    ColorManagement.enabled = false;
+
+    // Capability detection, TWO-TIER (user mandate: "software-WebGL fallback — must run in
+    // headless Chrome w/o GPU"). Tier 1 prefers a real GPU (powerPreference high-performance
+    // + failIfMajorPerformanceCaveat) so a capable machine never silently drops to a crawl.
+    // Tier 2: if that throws (headless / SwiftShader / software-only / weak iGPU), RETRY
+    // without the caveat so the graph still RENDERS via software-WebGL (degraded frame rate is
+    // the perf-adaptive LOD axis's concern, not a blank canvas). Only when NO GL context can be
+    // created at all do we report `unavailable` — app-chrome renders the gpu-unavailable
+    // CanvasState (the scene never draws its own DOM fallback; layer boundary).
+    let renderer: WebGLRenderer;
+    let softwareFallback = false;
+    try {
+      renderer = new WebGLRenderer({
+        antialias: true,
+        alpha: false,
+        powerPreference: "high-performance",
+        failIfMajorPerformanceCaveat: true,
+      });
+    } catch {
+      try {
+        // Tier 2: software-WebGL fallback (drop failIfMajorPerformanceCaveat) — the graph
+        // still RENDERS (the user's headless/no-GPU mandate). `reason:"software-fallback"`
+        // on the ok emit flags software mode so the perf-adaptive LOD axis (#5) can throttle;
+        // this is `ok` (rendering), NOT a degraded state.
+        renderer = new WebGLRenderer({
+          antialias: true,
+          alpha: false,
+          powerPreference: "high-performance",
+        });
+        softwareFallback = true;
+      } catch (err) {
+        this.controller?.emit({
+          kind: "render-capability",
+          state: "unavailable",
+          recoverable: false,
+          reason: err instanceof Error ? err.message : "WebGL context unavailable",
+        });
+        return;
+      }
+    }
+    this.dpr = Math.min(window.devicePixelRatio, 2);
+    renderer.setPixelRatio(this.dpr);
+    host.appendChild(renderer.domElement);
+    Object.assign(renderer.domElement.style, {
+      display: "block",
+      width: "100%",
+      height: "100%",
+      position: "absolute",
+      inset: "0",
+    });
+    this.renderer = renderer;
+    // WebGL context-loss resilience: preventDefault on loss is REQUIRED for the browser to
+    // fire a restore; on restore we rebuild GL resources from the persisted CPU layout.
+    renderer.domElement.addEventListener("webglcontextlost", this.onContextLost, false);
+    renderer.domElement.addEventListener(
+      "webglcontextrestored",
+      this.onContextRestored,
+      false,
+    );
+
+    const labels = document.createElement("canvas");
+    Object.assign(labels.style, {
+      position: "absolute",
+      inset: "0",
+      width: "100%",
+      height: "100%",
+      pointerEvents: "none",
+    });
+    host.appendChild(labels);
+    this.labelCanvas = labels;
+    this.labelCtx = labels.getContext("2d");
+
+    this.camera.position.set(0, 0, 10);
+    this.camera.lookAt(0, 0, 0);
+    this.applyBackground();
+    this.attachInteraction(renderer.domElement);
+
+    const rect = host.getBoundingClientRect();
+    this.resize(rect.width || 1, rect.height || 1);
+
+    (window as unknown as { __threeField?: ThreeField }).__threeField = this;
+    // GL context created — report render-capable. A tier-2 software context still renders
+    // (the headless/no-GPU mandate); reason:"software-fallback" flags software mode for the
+    // perf-adaptive LOD axis. Both tiers are `ok`, never a degraded state.
+    this.controller?.emit({
+      kind: "render-capability",
+      state: "ok",
+      recoverable: true,
+      ...(softwareFallback ? { reason: "software-fallback" } : {}),
+    });
+    // Autoframe is ON by default — start its bounded bounds-poll (the Stage syncs the
+    // store's toggle state via set-autoframe; a paused store value flips it off).
+    if (this.autoframe) this.startAutoframeTimer();
+  }
+
+  private applyBackground(): void {
+    this.renderer?.setClearColor(canvasBackground(), 1);
+  }
+
+  resize(width: number, height: number): void {
+    this.width = Math.max(1, width);
+    this.height = Math.max(1, height);
+    this.renderer?.setSize(this.width, this.height, false);
+    if (this.labelCanvas) {
+      this.labelCanvas.width = Math.round(this.width * this.dpr);
+      this.labelCanvas.height = Math.round(this.height * this.dpr);
+    }
+    const aspect = this.width / this.height;
+    const halfH = this.viewHeight / 2;
+    const halfW = halfH * aspect;
+    this.camera.left = -halfW;
+    this.camera.right = halfW;
+    this.camera.top = halfH;
+    this.camera.bottom = -halfH;
+    this.camera.updateProjectionMatrix();
+    this.requestRender();
+  }
+
+  destroy(): void {
+    if (this.raf) cancelAnimationFrame(this.raf);
+    this.stopAutoframeTimer();
+    if (this.pulseTimer) clearTimeout(this.pulseTimer);
+    this.pulseTimer = 0;
+    this.scheduled = false;
+    // SGR-007 total teardown: disposeGraph() already tears down the node/edge
+    // meshes + materials + positionTex AND (via disposeGlyphs) the glyph mesh +
+    // material, so no retained mesh references the atlas texture disposed just
+    // below. Reset the atlas-failed latch too (mirroring rebuildGLResources), so a
+    // remount rebuilds the atlas cleanly through the normal set-data → buildGlyphs
+    // path rather than inheriting a stale "failed" flag.
+    this.disposeGraph();
+    this.glyphAtlas?.texture.dispose();
+    this.glyphAtlas = null;
+    this.glyphAtlasFailed = false;
+    this.detachMinimap?.();
+    this.detachMinimap = null;
+    this.minimapCanvas = null;
+    this.minimapCtx = null;
+    this.labelCanvas?.remove();
+    this.labelCanvas = null;
+    this.labelCtx = null;
+    if (this.renderer) {
+      this.renderer.domElement.removeEventListener(
+        "webglcontextlost",
+        this.onContextLost,
+      );
+      this.renderer.domElement.removeEventListener(
+        "webglcontextrestored",
+        this.onContextRestored,
+      );
+      this.renderer.domElement.remove();
+      this.renderer.dispose();
+      this.renderer = null;
+    }
+    const g = window as unknown as { __threeField?: ThreeField };
+    if (g.__threeField === this) delete g.__threeField;
+  }
+
+  // --- WebGL context-loss resilience (scene-WebGL hardening) ----------------
+
+  /** WebGL context lost (GPU crash / driver reset / tab backgrounding): preventDefault is
+   *  REQUIRED or the browser never fires a restore. Pause the loop + report; the CPU
+   *  d3-force layout (cpuPositions/solver) is untouched and persists for the rebuild. */
+  private onContextLost = (e: Event): void => {
+    e.preventDefault();
+    this.setRunning(false);
+    if (this.raf) cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    this.scheduled = false;
+    this.controller?.emit({
+      kind: "render-capability",
+      state: "context-lost",
+      recoverable: true,
+    });
+  };
+
+  /** WebGL context restored: rebuild the GL resources from the persisted CPU layout and
+   *  resume. Bounded retry — after MAX_GL_RESTORE_ATTEMPTS failures, report unavailable. */
+  private onContextRestored = (): void => {
+    try {
+      this.rebuildGLResources();
+      this.glRestoreAttempts = 0;
+      this.controller?.emit({
+        kind: "render-capability",
+        state: "ok",
+        recoverable: true,
+      });
+      // Resume ticking only when there is genuinely unfinished settling (GPR-004):
+      // a restore over a SETTLED graph otherwise emitted a spurious sim-state
+      // true→false flicker, ran a ghost tick over fully-pinned nodes, and re-wrote
+      // the persisted layout blob for nothing. The repaint alone suffices there.
+      this.setRunning(this.solver !== null && !this.frozen && !this.solver.isSettled());
+      this.requestRender();
+    } catch (err) {
+      this.glRestoreAttempts += 1;
+      this.controller?.emit(
+        this.glRestoreAttempts >= MAX_GL_RESTORE_ATTEMPTS
+          ? {
+              kind: "render-capability",
+              state: "unavailable",
+              recoverable: false,
+              reason: err instanceof Error ? err.message : "GL restore failed",
+            }
+          : { kind: "render-capability", state: "context-lost", recoverable: true },
+      );
+    }
+  };
+
+  /** Recreate the GPU-side resources after a context restore, from the persisted CPU state
+   *  (nodes / edges / idToIndex / cpuPositions / solver) — the layout never re-explodes,
+   *  only the GL handles rebuild. The 2D label canvas is unaffected by GL context loss. */
+  private rebuildGLResources(): void {
+    if (this.nodeMesh) {
+      this.scene.remove(this.nodeMesh);
+      this.nodeMesh.geometry.dispose();
+      this.nodeMesh = null;
+    }
+    if (this.edgeMesh) {
+      this.scene.remove(this.edgeMesh);
+      this.edgeMesh.geometry.dispose();
+      this.edgeMesh = null;
+    }
+    this.nodeMaterial?.dispose();
+    this.edgeMaterial?.dispose();
+    this.nodeMaterial = null;
+    this.edgeMaterial = null;
+    this.positionTex?.dispose();
+    this.positionTex = null;
+    // The glyph atlas is a GPU texture too — its handle is dead after a context loss, so
+    // drop it (and the mesh) and let buildNodes rebuild both from the cached marks.
+    this.disposeGlyphs();
+    this.glyphAtlas?.texture.dispose();
+    this.glyphAtlas = null;
+    this.glyphAtlasFailed = false;
+    if (this.nodes.length === 0 || !this.solver) return;
+    const texSize = this.solver.texSize;
+    this.positionTex = new DataTexture(
+      this.cpuPositions,
+      texSize,
+      texSize,
+      RGBAFormat,
+      FloatType,
+    );
+    this.positionTex.minFilter = NearestFilter;
+    this.positionTex.magFilter = NearestFilter;
+    this.positionTex.needsUpdate = true;
+    this.buildNodes(this.nodes, texSize);
+    this.buildEdges(this.edgeData, this.idToIndex, texSize);
+    this.applyEmphasis();
+    this.applyEdgeAlpha();
+  }
+
+  command(cmd: SceneCommand): void {
+    switch (cmd.kind) {
+      case "set-data":
+        this.setData(
+          cmd.nodes,
+          cmd.edges,
+          cmd.reflow ?? false,
+          false,
+          cmd.reset ?? false,
+        );
+        break;
+      case "set-selected": {
+        // SINGLETON enforcement (#16): the graph rings AT MOST ONE node — a >1-id
+        // set-selected (the old feature-members multiselect the user rejected) collapses
+        // to a single id. A node click already selects exactly one; feature emphasis goes
+        // through `set-feature-spotlight`, never a multi-id selection.
+        const first = cmd.ids.values().next().value;
+        this.selectedIds = first === undefined ? new Set() : new Set([first]);
+        this.applyEmphasis();
+        this.requestRender();
+        break;
+      }
+      case "set-feature-spotlight": {
+        // DURABLE feature-cluster spotlight (feature-selection-global-state): store the
+        // selected feature TAG and emphasise its cohort (non-members recede), persisting
+        // across data reloads because `emphasisSet` re-derives membership from the live
+        // `featureCohort`. A genuine change with `frame` requested fires a ONE-SHOT camera
+        // frame to the cohort (the follow-gated rail-select frame); the durable re-apply on
+        // `setData` never re-frames, so a refresh keeps the spotlight without yanking.
+        const changed = cmd.tag !== this.spotlightFeatureTag;
+        this.spotlightFeatureTag = cmd.tag;
+        this.applyEmphasis();
+        if (cmd.tag !== null && changed && cmd.frame) {
+          const members = this.featureCohort.get(cmd.tag);
+          if (members && members.size > 0) {
+            this.autoframeTarget = null;
+            this.autoframeSuspended = true;
+            this.fitToNodes(members);
+          }
+        }
+        this.requestRender();
+        break;
+      }
+      case "set-pinned":
+        this.pinnedIds = new Set(cmd.ids);
+        this.requestRender();
+        break;
+      case "set-visibility":
+        this.visibleNodeIds = new Set(cmd.visibleNodeIds);
+        this.applyVisibility(cmd.visibleNodeIds, cmd.visibleEdgeIds);
+        // A filter visibility change is a STATE change: when autoframe is on, re-frame to the
+        // now-visible subset (graphBounds is visibility-aware), even if a prior manual nav had
+        // disengaged it.
+        this.reengageAutoframe();
+        this.requestRender();
+        break;
+      case "focus-node":
+        this.focusNode(cmd.id);
+        break;
+      case "set-simulation-active":
+        // Resume/pause is energy-neutral: just toggle ticking, never re-pump heat.
+        // (A fresh layout reheats via set-data; an explicit restart via reheatNow.)
+        if (cmd.active) this.resume();
+        else this.setRunning(false);
+        break;
+      case "sim-play":
+        // Deliberate PLAY intent (the top-left play/pause control): a paused mid-flight
+        // settle RESUMES energy-neutrally; an already-settled layout gets the explicit
+        // named restart (reheatNow) — the sim then runs its cooling schedule and the
+        // settle transition auto-emits sim-state{running:false}, flipping the button
+        // back without any wall-clock timer. A frozen field ignores play (the chrome
+        // unfreezes first through the set-frozen seam).
+        if (this.frozen) break;
+        if (this.solver && !this.solver.isSettled()) this.resume();
+        else this.reheatNow();
+        break;
+      case "set-autoframe":
+        this.setAutoframe(cmd.enabled);
+        break;
+      case "set-frozen":
+        // Freeze is a PAUSE, not a re-energise: freezing stops ticking in place, and
+        // unfreezing RESUMES an in-flight settle WITHOUT pumping new heat. A graph
+        // already at rest stays exactly put on unfreeze — a freeze toggle must never
+        // modify simulation state (issue #5). The old `resume()` here reheated to
+        // WARM_ALPHA + woke every node, re-exploding a settled layout on every toggle.
+        this.frozen = cmd.frozen;
+        if (cmd.frozen) {
+          this.setRunning(false);
+        } else if (this.solver && !this.solver.isSettled()) {
+          this.setRunning(true);
+          this.wake();
+        }
+        break;
+      case "fit-to-view":
+      case "reset-view":
+        // An explicit "fit all" is a whole-graph frame → clear any selection-frame
+        // suspension so autoframe resumes tracking the whole graph from here (#13).
+        this.autoframeSuspended = false;
+        this.fitToView();
+        break;
+      case "frame-nodes":
+        // One-shot user selection-frame (follow-mode #13): fit the subset and SUSPEND
+        // whole-graph autoframe so it never re-fits over the user's focused frame, until
+        // the next data change / explicit fit / autoframe re-enable. A deliberate camera
+        // move, so it also cancels any in-flight autoframe ease.
+        this.autoframeTarget = null;
+        this.autoframeSuspended = true;
+        this.fitToNodes(cmd.ids);
+        break;
+      case "zoom-in":
+        this.zoomBy(ZOOM_STEP_BUTTON);
+        break;
+      case "zoom-out":
+        this.zoomBy(1 / ZOOM_STEP_BUTTON);
+        break;
+      case "apply-deltas":
+        this.applyDeltas(cmd.deltas);
+        break;
+      case "pulse":
+        this.pulseNodes(cmd.ids);
+        break;
+      case "set-representation-mode":
+        // No-op: the representation-mode switch was retired (only connectivity
+        // ships). Acknowledged so it is never silently dropped.
+        break;
+      case "set-time":
+        // No-op: time travel is driven by the stores replaying the slice through
+        // set-data; the field owns no time state (mirrors CosmosField).
+        break;
+      case "set-overlays":
+        // No-op: feature-country labels + BubbleSets hulls render in a separate
+        // overlay layer, not the field (mirrors CosmosField).
+        break;
+      case "set-bounds":
+        // No-op in the current field: graph bounds are preserved as a scene seam
+        // command so the dashboard state can project containment intent centrally.
+        break;
+      case "begin-interaction":
+      case "end-interaction":
+        // Light no-op: reheat-on-change already keeps the sim warm during edits;
+        // no interaction-specific decay bracket is needed.
+        break;
+      case "set-force-params":
+        // Live force tuning from the graph-controls sliders.
+        this.setForceParams(cmd.params);
+        break;
+      case "set-appearance-params":
+        // Live look tuning (node size/salience, edge width/opacity, colour mode)
+        // from the graph-controls sliders.
+        this.setAppearanceParams(cmd.params);
+        break;
+      case "refresh-theme":
+        this.refreshTheme();
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** Re-read every theme-dependent colour after a `[data-theme]` flip and repaint.
+   *
+   *  The GL field bakes its colours — node/edge category hues, the canvas-background
+   *  recede target, the ink-muted edge dim, and the per-disc glyph inks — into instanced
+   *  buffer attributes and shader uniforms at build time (the literal-hex scene-token
+   *  contract is a getComputedStyle read, not a live `var()` binding), so a theme change
+   *  does NOT reach them; only the per-frame label + minimap reads re-theme on their own.
+   *  Rebuilding the GL resources from the cached marks re-runs `buildNodes`/`buildEdges`/
+   *  `buildGlyphs`, which re-read all tokens fresh, while the d3-force layout
+   *  (`cpuPositions`) and selection/edge emphasis are preserved (no re-layout, no camera
+   *  move). We then re-apply the renderer clear colour and request one frame. Theme flips
+   *  are rare and user/OS-initiated, so a one-shot GL rebuild is the robust choice over
+   *  threading a colour-only update through every bake site. */
+  private refreshTheme(): void {
+    // SGR-006: a theme change invalidates the cached overlay CSS/style derivations.
+    this.themeEpoch += 1;
+    this.rebuildGLResources();
+    this.applyBackground();
+    this.requestRender();
+  }
+
+  /** The 2D-overlay token→CSS derivations (ring/label/pill colours + per-role label
+   *  text styles), memoized per theme epoch and root font size (SGR-006). Recomputed
+   *  only when the theme flips (`refresh-theme`) or the UI scale changes; otherwise
+   *  the same object is reused across frames, avoiding per-frame getComputedStyle
+   *  reads, hex→string work, and label-style allocation. */
+  private overlayTheme(): OverlayThemeDerived {
+    const epoch = this.themeEpoch;
+    const fontPx = rootFontPx();
+    const cached = this.overlayThemeCache;
+    if (cached && cached.epoch === epoch && cached.fontPx === fontPx) return cached;
+    const derived = {
+      epoch,
+      fontPx,
+      ink: hexCss(inkColor()),
+      accent: hexCss(accentColor()),
+      highlight: hexCss(highlightColor()),
+      inkMuted: hexCss(inkMutedColor()),
+      pillFill: hexCss(canvasBackground()),
+      pillBorder: hexCss(sceneRuleColor()),
+      featureStyle: labelTextStyle("feature"),
+      docStyle: labelTextStyle("document"),
+    };
+    this.overlayThemeCache = derived;
+    return derived;
+  }
+
+  // --- data ----------------------------------------------------------------
+
+  private setData(
+    nodes: SceneNodeData[],
+    edges: SceneEdgeData[],
+    reflow = false,
+    deltaDriven = false,
+    reset = false,
+  ): void {
+    if (!this.renderer) return;
+
+    // Defense-in-depth: bound the node payload at the scene's OWN wire-ingestion boundary
+    // (Rule 2). The stores adapter already clamps to MAX_CLIENT_GRAPH_NODES, but the scene
+    // independently caps so a direct/regressed/oversized set-data can't exhaust GPU memory;
+    // it reports honest truncation. Edges among dropped nodes are skipped automatically (the
+    // index below only holds the kept nodes).
+    if (nodes.length > MAX_SCENE_NODES) {
+      this.controller?.emit({
+        kind: "graph-truncated",
+        shown: MAX_SCENE_NODES,
+        total: nodes.length,
+      });
+      nodes = nodes.slice(0, MAX_SCENE_NODES);
+    }
+
+    // Warm-start (object constancy): capture the PRIOR layout by id BEFORE teardown,
+    // so nodes that persist across this set-data resume from where they were instead
+    // of re-exploding. The app re-sends set-data on every working-set expansion and
+    // live update; without this the graph re-explodes each time.
+    const prevPos = new Map<string, { x: number; y: number }>();
+    for (const [id, idx] of this.idToIndex) {
+      // Carry PHYSICS truth, never the eased display (a mid-glide swap must seed
+      // the next solver from where the nodes actually are, not where they render).
+      const x = this.simPositions[idx * 4];
+      const y = this.simPositions[idx * 4 + 1];
+      if (Number.isFinite(x) && Number.isFinite(y)) prevPos.set(id, { x, y });
+    }
+    // Capture the OUTGOING layout's settle state, temperature, and edge set before
+    // teardown: the pin-authoritative warm path is only valid over a SETTLED prior
+    // layout with an unchanged local topology, and both facts are gone after
+    // disposeGraph (settle-on-swap audit — mid-settle captures are a resume point,
+    // never an authoritative rest to pin).
+    const priorSettled = this.solver ? this.solver.isSettled() : true;
+    const priorAlpha = this.solver ? this.solver.alpha() : 0;
+    const prevBuiltEdges = this.builtEdges;
+
+    this.disposeGraph();
+
+    this.nodes = nodes;
+    this.hoveredId = null;
+    this.visibleNodeIds = null;
+    const n = nodes.length;
+    if (n === 0) {
+      this.requestRender();
+      this.drawLabels();
+      return;
+    }
+
+    const index = new Map<string, number>();
+    nodes.forEach((node, i) => index.set(node.id, i));
+    this.idToIndex = index;
+
+    // adjacency + feature cohorts for hover emphasis
+    this.neighbors = new Map();
+    this.featureCohort = new Map();
+    for (const node of nodes) {
+      for (const tag of node.featureTags ?? []) {
+        let set = this.featureCohort.get(tag);
+        if (!set) this.featureCohort.set(tag, (set = new Set()));
+        set.add(node.id);
+      }
+    }
+    const addNbr = (a: string, b: string) => {
+      let s = this.neighbors.get(a);
+      if (!s) this.neighbors.set(a, (s = new Set()));
+      s.add(b);
+    };
+
+    this.builtEdges = [];
+    for (const e of edges) {
+      const a = index.get(e.src);
+      const b = index.get(e.dst);
+      if (a === undefined || b === undefined || a === b) continue;
+      this.builtEdges.push({ a, b, srcId: e.src, dstId: e.dst });
+      addNbr(e.src, e.dst);
+      addNbr(e.dst, e.src);
+    }
+
+    // Real node body radii drive forceCollide non-overlap (clean spacing).
+    const radii = nodes.map((node) => nodeWorldRadius(node, this.appearance));
+    this.solver = new D3ForceSolver(
+      n,
+      this.builtEdges.map((e) => ({ source: e.a, target: e.b })),
+      radii,
+      this.params,
+    );
+    const texSize = this.solver.texSize;
+
+    // The DISPLAY positions ARE the texture's backing buffer: a single needsUpdate
+    // re-uploads — no GPU readback. The solver packs into `simPositions` (physics
+    // truth); the frame loop eases the display toward it (render-time lerp).
+    this.cpuPositions = new Float32Array(texSize * texSize * 4);
+    this.simPositions = new Float32Array(texSize * texSize * 4);
+    this.positionTex = new DataTexture(
+      this.cpuPositions,
+      texSize,
+      texSize,
+      RGBAFormat,
+      FloatType,
+    );
+    this.positionTex.minFilter = NearestFilter;
+    this.positionTex.magFilter = NearestFilter;
+
+    this.buildNodes(nodes, texSize);
+    this.buildEdges(edges, index, texSize);
+
+    // Warm-start: carry persisting nodes' positions over by id and seed each NEW node
+    // next to a persisting neighbour (or near the carried centroid), so the solver
+    // resumes the prior layout. WARM only when the carried set still DOMINATES (>= half
+    // the nodes) — an expansion or live update — with NO camera refit so persistent
+    // nodes barely move and the user's view is preserved; a FILTER reflow warms on ANY
+    // carried id (a filter that hides most nodes must never re-explode + refit). COLD
+    // otherwise (first load, a big partial-overlap change) — full off-screen prewarm +
+    // a one-time camera fit — and ALWAYS on `reset` (a corpus switch's explicit cold
+    // contract, no longer left to incidental id-disjointness). The classifier also
+    // enforces the two warm-path preconditions the id-overlap gate cannot see
+    // (settle-on-swap audit): survivors pin ONLY over a settled prior layout, and
+    // changed-edge endpoints join the movable set so a same-id/different-edge swap
+    // (relations facet, timeline as-of, live edge deltas) re-relaxes instead of
+    // freezing the OLD topology's arrangement; the relax alpha ramps with the movable
+    // fraction so a many-new swap cannot under-settle at the gentle warm energy.
+    const swap = classifySwap({
+      nodeIds: nodes.map((node) => node.id),
+      carriedIds: new Set(prevPos.keys()),
+      prevEdges: prevBuiltEdges.map((e) => ({ src: e.srcId, dst: e.dstId })),
+      nextEdges: this.builtEdges.map((e) => ({ src: e.srcId, dst: e.dstId })),
+      reflow,
+      reset,
+      priorSettled,
+      warmStartAlpha: WARM_START_ALPHA,
+      coldAlpha: COLD_START_ALPHA,
+    });
+    const warm = swap.warm;
+    if (warm) {
+      let carried = 0;
+      let cx = 0;
+      let cy = 0;
+      for (const node of nodes) {
+        const p = prevPos.get(node.id);
+        if (p) {
+          carried++;
+          cx += p.x;
+          cy += p.y;
+        }
+      }
+      const centroid = { x: cx / carried, y: cy / carried };
+      this.solver.seed((i) => {
+        const node = nodes[i];
+        const prev = prevPos.get(node.id);
+        if (prev) return prev; // persistent → resume exact position
+        // new node → next to a persisting neighbour (collide/forces separate it)
+        for (const nb of this.neighbors.get(node.id) ?? []) {
+          const np = prevPos.get(nb);
+          if (np) return np;
+        }
+        // else a small deterministic golden-angle ring around the carried centroid, so a
+        // BATCH of neighbourless new nodes does not seed coincident (coincident points
+        // separate only slowly under the low warm alpha).
+        const a = i * 2.399963229; // golden angle (radians)
+        const r = 6 + (i % 7);
+        return { x: centroid.x + Math.cos(a) * r, y: centroid.y + Math.sin(a) * r };
+      });
+    }
+    // Off-screen settle before the first paint. The SETTLED LAYOUT IS AUTHORITATIVE:
+    // a warm path over a settled prior layout — a filter reflow, an ego expansion, a
+    // live delta, a same-scope re-fetch — PINS the carried survivors and relaxes only
+    // the movable nodes (genuinely-new + changed-edge endpoints), so an additive
+    // change never re-simulates an already-settled node (the graph is static unless a
+    // node is explicitly dragged); a same-id-AND-same-edge update has nothing movable
+    // and does ZERO ticks. Authority holds ONLY for rest: a swap landing while the
+    // prior layout was still relaxing carries mid-settle positions, so it CONTINUES
+    // the settle globally (seeded, unpinned, at the hotter of the carried temperature
+    // and the proportional alpha) instead of pinning a half-converged tangle. A cold
+    // load runs full energy + a one-time fit. A FROZEN sim preps the energy state
+    // with zero ticks — the swap displays, and unfreeze resumes the pending settle —
+    // so a background set-data can never tick through the user's freeze. If prewarm
+    // hits its wall-clock budget the remainder finishes in the live loop; otherwise
+    // it freezes (idle GPU 0).
+    let prewarmTicks: number;
+    if (warm && !swap.continueSettle) {
+      prewarmTicks = this.solver.prewarmReflow(
+        (i) => swap.movableIds.has(nodes[i].id),
+        swap.startAlpha,
+        this.frozen ? 0 : undefined,
+      );
+    } else if (warm) {
+      prewarmTicks = this.solver.prewarm(
+        this.frozen ? 0 : PREWARM_MAX_TICKS,
+        PREWARM_BUDGET_MS,
+        Math.max(swap.startAlpha, Math.min(priorAlpha, COLD_START_ALPHA)),
+      );
+    } else {
+      // Persisted-base seed (graph-simulation-stability ADR): a COLD load (no
+      // in-memory carry — first visit, corpus reset, scope switch) opens at the
+      // last SETTLED equilibrium for this scope when one is persisted. Matching
+      // ids seed their converged positions and the anneal merely relaxes the
+      // topology diff, at a carry-proportional alpha (all-persisted ≈ the
+      // gentle warm start; none ≈ the full cold explode). Node ids are
+      // corpus-prefixed, so one per-scope blob serves both corpora.
+      let persistedCarried = 0;
+      const persisted =
+        this.positionCache && this.persistWorkspace !== null
+          ? this.positionCache.load(this.persistWorkspace, this.persistScope)
+          : null;
+      if (persisted && persisted.size > 0) {
+        this.solver.seed((i) => {
+          const p = persisted.get(nodes[i].id) ?? null;
+          if (p) persistedCarried++;
+          return p;
+        });
+      }
+      const movableFraction = n > 0 ? (n - persistedCarried) / n : 1;
+      const startAlpha = Math.min(
+        COLD_START_ALPHA,
+        WARM_START_ALPHA + (COLD_START_ALPHA - WARM_START_ALPHA) * movableFraction,
+      );
+      prewarmTicks = this.solver.prewarm(
+        this.frozen ? 0 : PREWARM_MAX_TICKS,
+        PREWARM_BUDGET_MS,
+        startAlpha,
+      );
+    }
+    // A data swap SNAPS the display to physics truth (no cross-swap glide between
+    // unrelated geometries); the live loop's per-frame lerp takes over from here.
+    this.solver.pack(this.simPositions);
+    this.cpuPositions.set(this.simPositions);
+    this.displayEasing = false;
+    this.uploadPositions();
+    // Fit the camera ONCE on a cold load; a warm update preserves the user's view.
+    if (!warm) this.fitToView();
+    // Off-slice focus arrival (#42): a pending focus target the ego-expand just
+    // materialized now has a position — center on it (focusNode clears the pending id).
+    if (this.pendingFocusId !== null && this.idToIndex.has(this.pendingFocusId)) {
+      this.focusNode(this.pendingFocusId);
+    }
+    // A frozen sim never resumes ticking from a data swap (the pending settle waits
+    // for unfreeze); otherwise run until the solver actually reaches rest.
+    this.setRunning(!this.frozen && !this.solver.isSettled());
+    // A swap that genuinely ticked and landed settled synchronously persists the
+    // layout here (the live loop's settle-transition persist never fires for it);
+    // a zero-tick same-topology swap writes nothing.
+    if (prewarmTicks > 0 && !this.frozen && this.solver.isSettled()) {
+      this.persistSettledLayout();
+    }
+    // A genuine state change (new corpus, filter reflow, ego expansion, explicit user
+    // action) re-engages autoframe when it is on, so the new corpus reframes on
+    // load/filter — releasing any prior selection-frame or manual-nav suspension (#13
+    // arbitration). The cold path already framed via fitToView above; this prompt poll
+    // handles the warm path and its deadband no-ops an unchanged frame.
+    //
+    // A DELTA-driven warm set-data (ambient SSE vault edits, folded in via applyDeltas) is
+    // NOT such a state change (GIR-012): re-engaging on it would clear a user's manual-nav
+    // suspension and yank the camera back to the whole-graph frame on any background edit.
+    // Skip re-engagement for deltas — an engaged (unsuspended) autoframe still tracks the
+    // new bounds via its interval poll, and a disengaged one stays where the user left it.
+    if (!deltaDriven) this.reengageAutoframe();
+    // Re-apply emphasis against the freshly-rebuilt geometry so a DURABLE focus survives
+    // the data reload: the feature-cluster spotlight (re-derived from the rebuilt
+    // `featureCohort`) and any active node selection re-dim their non-members instead of
+    // resetting to a flat, un-spotlit graph (the aDim attribute is recreated at 0 here).
+    this.applyEmphasis();
+    this.requestRender();
+    if (this.running) this.wake();
+  }
+
+  /** Live incremental update (apply-deltas): fold add/remove/change-by-id into the
+   *  current node + edge set, then re-run setData — which warm-starts by id, so a
+   *  delta updates the graph in place without re-exploding the layout. */
+  private applyDeltas(deltas: SceneDelta[]): void {
+    if (!deltas || deltas.length === 0) return;
+    // Fold via the shared helper so the field's set and the controller's held model
+    // (nodeCount/edgeCount) fold identically (GIR-006).
+    const { nodes, edges } = foldSceneDeltas(this.nodes, this.edgeData, deltas);
+    // reflow=false (normal warm gate), deltaDriven=true so an ambient delta never
+    // re-frames the camera (GIR-012).
+    this.setData(nodes, edges, false, true);
+  }
+
+  /** Transient cross-highlight (pulse): briefly ring the named nodes, then clear —
+   *  the timeline's event-click flash. Bounded by a single self-clearing timer. */
+  private pulseNodes(ids: ReadonlySet<string>): void {
+    this.pulseIds = new Set(ids);
+    if (this.pulseTimer) clearTimeout(this.pulseTimer);
+    this.requestRender();
+    this.pulseTimer = window.setTimeout(() => {
+      this.pulseTimer = 0;
+      this.pulseIds = new Set();
+      this.requestRender();
+    }, 900);
+  }
+
+  // Persisted settled-layout base (graph-simulation-stability ADR): the bounded
+  // LRU PositionCache (built in W01.P02.S08, wired here) keyed per workspace +
+  // scope. In-memory warm-start still keys on node id; the cache is the
+  // CROSS-SESSION base a cold load seeds from.
+  private positionCache = defaultPositionCache();
+  private persistWorkspace: string | null = null;
+  private persistScope: string | null = null;
+
+  /** Persistence scope (Stage calls this directly): keys the persisted
+   *  settled-layout cache — the "pre-simulated base" a cold load opens at.
+   *  Node ids are corpus-prefixed and scope-unique, so one per-scope blob
+   *  serves both corpora. */
+  setPersistenceScope(workspace: string, scope: string): void {
+    this.persistWorkspace = workspace;
+    this.persistScope = scope;
+  }
+
+  /** Persist the settled layout as the next cold load's base — called only on
+   *  a genuine settle transition (the live loop's running→false edge, or a
+   *  swap that ticked and landed settled synchronously). Merged over the
+   *  scope's existing blob so the OTHER corpus's layout survives; the current
+   *  view's entries take precedence under the cache's entry cap. Best-effort
+   *  by design (the cache owns quota eviction and bounds). */
+  private persistSettledLayout(): void {
+    if (!this.positionCache || this.persistWorkspace === null) return;
+    if (!this.solver || this.idToIndex.size === 0) return;
+    const merged = new Map<string, NodePosition>();
+    for (const [id, idx] of this.idToIndex) {
+      // Persist PHYSICS truth: at the settle transition the display may still be
+      // mid-glide; the cache must hold the solver's converged positions.
+      const x = this.simPositions[idx * 4];
+      const y = this.simPositions[idx * 4 + 1];
+      if (Number.isFinite(x) && Number.isFinite(y)) merged.set(id, { x, y });
+    }
+    const existing = this.positionCache.load(this.persistWorkspace, this.persistScope);
+    for (const [id, p] of existing) {
+      if (!merged.has(id)) merged.set(id, p);
+    }
+    this.positionCache.save(
+      this.persistWorkspace,
+      this.persistScope,
+      merged,
+      Date.now(),
+    );
+  }
+
+  private buildNodes(nodes: SceneNodeData[], texSize: number): void {
+    const n = nodes.length;
+    const aIndex = new Float32Array(n);
+    const aSize = new Float32Array(n);
+    const aColor = new Float32Array(n * 3);
+    const aDim = new Float32Array(n);
+    const aHidden = new Float32Array(n);
+    const tmp = new Color();
+    this.nodeColors = new Array<number>(n);
+    nodes.forEach((node, i) => {
+      aIndex[i] = i;
+      aSize[i] = nodeWorldRadius(node, this.appearance);
+      const col = nodeColorNumber(node, this.appearance);
+      this.nodeColors[i] = col;
+      tmp.set(col);
+      aColor[i * 3] = tmp.r;
+      aColor[i * 3 + 1] = tmp.g;
+      aColor[i * 3 + 2] = tmp.b;
+    });
+
+    // Unit disc base geometry, instanced once per node. 48 segments + the fwidth
+    // fill-AA keeps the silhouette smooth even at large feature-node radii.
+    const disc = new CircleGeometry(1, 48);
+    const geom = new InstancedBufferGeometry();
+    geom.index = disc.index;
+    geom.setAttribute("position", disc.getAttribute("position"));
+    geom.setAttribute("aIndex", new InstancedBufferAttribute(aIndex, 1));
+    geom.setAttribute("aSize", new InstancedBufferAttribute(aSize, 1));
+    geom.setAttribute("aColor", new InstancedBufferAttribute(aColor, 3));
+    geom.setAttribute("aDim", new InstancedBufferAttribute(aDim, 1));
+    geom.setAttribute("aHidden", new InstancedBufferAttribute(aHidden, 1));
+    geom.instanceCount = n;
+
+    // The node de-emphasis recede target is the canvas BACKGROUND (an established palette
+    // token, theme-adaptive): a non-focus node mixes toward it (the eased aDim recede) so it
+    // recedes into the paper a touch, at full alpha. No adhoc colour.
+    const dim = new Color(canvasBackground());
+    this.nodeMaterial = new ShaderMaterial({
+      uniforms: {
+        uPositions: { value: null as Texture | null },
+        uTexSize: { value: texSize },
+        uPixelsPerWorld: { value: this.pixelsPerWorld() },
+        uDimColor: { value: [dim.r, dim.g, dim.b] },
+        uPxScale: { value: uiScale() },
+      },
+      vertexShader: NODE_VERTEX,
+      fragmentShader: NODE_FRAGMENT,
+      transparent: true,
+      depthTest: false,
+    });
+
+    this.nodeMesh = new Mesh(geom, this.nodeMaterial);
+    this.nodeMesh.frustumCulled = false;
+    this.nodeMesh.renderOrder = 1;
+    this.scene.add(this.nodeMesh);
+
+    // Build the icon layer when icon mode is active (lazy: the atlas is built on first
+    // enable and cached). Re-syncs aColor/aSize from the node attrs just computed.
+    if (this.appearance.nodeIcons) this.buildGlyphs(nodes, texSize, aColor, aSize);
+  }
+
+  /** The two contrasting icon inks for the inside-disc glyph (graph-icon-inside-circle):
+   *  a PAPER knockout for a dark/saturated disc and a dark INK for a light disc — both
+   *  theme tokens, picked per node by the disc-colour luminance in the glyph shader. */
+  private iconInk(which: "light" | "dark"): [number, number, number] {
+    const c = new Color(which === "light" ? canvasBackground() : inkColor());
+    return [c.r, c.g, c.b];
+  }
+
+  /**
+   * Build the per-node glyph (icon) instanced mesh — the sibling of buildNodes. Reuses
+   * the node attrs (same index/size/colour) and adds the atlas cell per node. The atlas
+   * is built once and cached; if it cannot be built (no texture support) the icon layer
+   * is skipped and the circles render unchanged. Disposed in disposeGraph; rebuilt on a
+   * data swap or an icon-mode enable.
+   */
+  private buildGlyphs(
+    nodes: SceneNodeData[],
+    texSize: number,
+    aColor: Float32Array,
+    aSize: Float32Array,
+  ): void {
+    if (!this.renderer || nodes.length === 0) return;
+    if (!this.glyphAtlas) {
+      if (this.glyphAtlasFailed) return;
+      this.glyphAtlas = buildGlyphAtlas();
+      if (!this.glyphAtlas) {
+        this.glyphAtlasFailed = true;
+        return;
+      }
+    }
+    const atlas = this.glyphAtlas;
+    const n = nodes.length;
+    const aIndex = new Float32Array(n);
+    const aDim = new Float32Array(n);
+    const aHidden = new Float32Array(n);
+    const aCell = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      aIndex[i] = i;
+      aCell[i] = atlas.cellOf(glyphKeyForNode(nodes[i]));
+    }
+
+    // Unit quad (-1..1), UVs map the TOP vertex to v=0 so the top-down atlas is upright.
+    const quadPos = new Float32Array([-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0]);
+    const quadUv = new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]);
+    const quadIdx = new Uint32Array([0, 1, 2, 2, 1, 3]);
+    const geom = new InstancedBufferGeometry();
+    geom.setAttribute("position", new Float32BufferAttribute(quadPos, 3));
+    geom.setAttribute("aUv", new Float32BufferAttribute(quadUv, 2));
+    geom.setIndex(new Uint32BufferAttribute(quadIdx, 1));
+    geom.setAttribute("aIndex", new InstancedBufferAttribute(aIndex, 1));
+    geom.setAttribute("aSize", new InstancedBufferAttribute(aSize.slice(), 1));
+    geom.setAttribute("aColor", new InstancedBufferAttribute(aColor.slice(), 3));
+    geom.setAttribute("aDim", new InstancedBufferAttribute(aDim, 1));
+    geom.setAttribute("aHidden", new InstancedBufferAttribute(aHidden, 1));
+    geom.setAttribute("aCell", new InstancedBufferAttribute(aCell, 1));
+    geom.instanceCount = n;
+
+    const dim = new Color(canvasBackground());
+    this.glyphMaterial = new ShaderMaterial({
+      uniforms: {
+        uPositions: { value: null as Texture | null },
+        uTexSize: { value: texSize },
+        uPixelsPerWorld: { value: this.pixelsPerWorld() },
+        uPxScale: { value: uiScale() },
+        uAtlas: { value: atlas.texture },
+        uAtlasCols: { value: atlas.cols },
+        uAtlasRows: { value: atlas.rows },
+        uDimColor: { value: [dim.r, dim.g, dim.b] },
+        uIconInkLight: { value: this.iconInk("light") },
+        uIconInkDark: { value: this.iconInk("dark") },
+      },
+      vertexShader: GLYPH_VERTEX,
+      fragmentShader: GLYPH_FRAGMENT,
+      transparent: true,
+      depthTest: false,
+    });
+    this.glyphMesh = new Mesh(geom, this.glyphMaterial);
+    this.glyphMesh.frustumCulled = false;
+    this.glyphMesh.renderOrder = 2; // above edges (0) and node circles (1)
+    this.glyphMesh.visible = this.appearance.nodeIcons;
+    this.scene.add(this.glyphMesh);
+  }
+
+  private buildEdges(
+    edges: SceneEdgeData[],
+    index: Map<string, number>,
+    texSize: number,
+  ): void {
+    const valid = edges.filter(
+      (e) => index.has(e.src) && index.has(e.dst) && e.src !== e.dst,
+    );
+    // Retain the rendered edge inputs + a base-opacity buffer for live retuning.
+    this.edgeData = valid;
+    this.edgeBaseAlpha = new Float32Array(valid.length);
+    if (valid.length === 0) return;
+
+    const quad = valid.length * 4;
+    const aIndexA = new Float32Array(quad);
+    const aIndexB = new Float32Array(quad);
+    const aEnd = new Float32Array(quad);
+    const aSide = new Float32Array(quad);
+    const aWidthPx = new Float32Array(quad);
+    const aColor = new Float32Array(quad * 3);
+    const aAlpha = new Float32Array(quad);
+    const aDim = new Float32Array(quad);
+    const indices = new Uint32Array(valid.length * 6);
+    const colA = new Color();
+    const colB = new Color();
+
+    valid.forEach((e, i) => {
+      const s = index.get(e.src) as number;
+      const t = index.get(e.dst) as number;
+      const ap = edgeAppearance(e, this.appearance);
+      this.edgeBaseAlpha[i] = ap.alpha;
+      // Inherit colour from the endpoint nodes (never a flat tier/grey/black edge):
+      // solid → both ends the source (leaf) hue; gradient → leaf→parent blend that
+      // the shader interpolates across the quad (A verts = source, B verts = target).
+      const endColors = edgeEndColors(
+        this.appearance.edgeColorMode,
+        this.nodeColors[s],
+        this.nodeColors[t],
+      );
+      colA.set(endColors.a);
+      colB.set(endColors.b);
+      // 4 verts: 0=A-left,1=A-right,2=B-left,3=B-right
+      const endT = [0, 0, 1, 1];
+      const sides = [-1, 1, -1, 1];
+      for (let k = 0; k < 4; k++) {
+        const v = i * 4 + k;
+        aIndexA[v] = s;
+        aIndexB[v] = t;
+        aEnd[v] = endT[k];
+        aSide[v] = sides[k];
+        aWidthPx[v] = ap.width;
+        const c = k < 2 ? colA : colB;
+        aColor[v * 3] = c.r;
+        aColor[v * 3 + 1] = c.g;
+        aColor[v * 3 + 2] = c.b;
+        aAlpha[v] = ap.alpha;
+      }
+      const base = i * 4;
+      indices.set([base, base + 1, base + 2, base + 1, base + 3, base + 2], i * 6);
+    });
+
+    const geom = new BufferGeometry();
+    geom.setAttribute(
+      "position",
+      new Float32BufferAttribute(new Float32Array(quad * 3), 3),
+    );
+    geom.setAttribute("aIndexA", new Float32BufferAttribute(aIndexA, 1));
+    geom.setAttribute("aIndexB", new Float32BufferAttribute(aIndexB, 1));
+    geom.setAttribute("aEnd", new Float32BufferAttribute(aEnd, 1));
+    geom.setAttribute("aSide", new Float32BufferAttribute(aSide, 1));
+    geom.setAttribute("aWidthPx", new Float32BufferAttribute(aWidthPx, 1));
+    geom.setAttribute("aColor", new Float32BufferAttribute(aColor, 3));
+    geom.setAttribute("aAlpha", new Float32BufferAttribute(aAlpha, 1));
+    geom.setAttribute("aDim", new Float32BufferAttribute(aDim, 1));
+    geom.setIndex(new Uint32BufferAttribute(indices, 1));
+
+    const dim = new Color(inkMutedColor());
+    this.edgeMaterial = new ShaderMaterial({
+      uniforms: {
+        uPositions: { value: null as Texture | null },
+        uTexSize: { value: texSize },
+        uPixelsPerWorld: { value: this.pixelsPerWorld() },
+        uDimColor: { value: [dim.r, dim.g, dim.b] },
+        uPxScale: { value: uiScale() },
+      },
+      vertexShader: EDGE_VERTEX,
+      fragmentShader: EDGE_FRAGMENT,
+      transparent: true,
+      depthTest: false,
+      side: DoubleSide,
+    });
+
+    this.edgeMesh = new Mesh(geom, this.edgeMaterial);
+    this.edgeMesh.frustumCulled = false;
+    this.edgeMesh.renderOrder = 0;
+    this.scene.add(this.edgeMesh);
+  }
+
+  private disposeGraph(): void {
+    if (this.nodeMesh) {
+      this.scene.remove(this.nodeMesh);
+      this.nodeMesh.geometry.dispose();
+      this.nodeMesh = null;
+    }
+    if (this.edgeMesh) {
+      this.scene.remove(this.edgeMesh);
+      this.edgeMesh.geometry.dispose();
+      this.edgeMesh = null;
+    }
+    this.disposeGlyphs();
+    this.nodeMaterial?.dispose();
+    this.edgeMaterial?.dispose();
+    this.nodeMaterial = null;
+    this.edgeMaterial = null;
+    this.positionTex?.dispose();
+    this.positionTex = null;
+    this.solver?.dispose();
+    this.solver = null;
+    this.nodes = [];
+    this.nodeColors = [];
+    this.builtEdges = [];
+    this.edgeData = [];
+    this.edgeBaseAlpha = new Float32Array(0);
+    // Clear the id/adjacency/position structures so an EMPTY graph is empty everywhere
+    // (GIR-008): the n===0 set-data path returns early WITHOUT rebuilding these, so a
+    // leftover idToIndex + cpuPositions would let emitAnchors resolve a tracked id and
+    // focusNode centre on a ghost node over a blank canvas. The non-empty path rebuilds
+    // all four before use (idToIndex, neighbors, featureCohort, cpuPositions), so
+    // clearing here is safe for both paths.
+    this.idToIndex = new Map();
+    this.neighbors = new Map();
+    this.featureCohort = new Map();
+    this.cpuPositions = new Float32Array(0);
+    this.simPositions = new Float32Array(0);
+    this.displayEasing = false;
+    // SGR-005: the node set + positions just changed, so any cached pick is stale
+    // — invalidate synchronously (a pick can run before the next frame clears it).
+    this.pickCacheValid = false;
+  }
+
+  /** Tear down the glyph mesh + material (the cached atlas texture survives, reused on
+   *  the next build; it is only disposed on destroy or a GL context loss). */
+  private disposeGlyphs(): void {
+    if (this.glyphMesh) {
+      this.scene.remove(this.glyphMesh);
+      this.glyphMesh.geometry.dispose();
+      this.glyphMesh = null;
+    }
+    this.glyphMaterial?.dispose();
+    this.glyphMaterial = null;
+  }
+
+  // --- emphasis / visibility -----------------------------------------------
+
+  /** Active emphasis set (hover takes precedence; else shared selection). */
+  private emphasisSet(): Set<string> | null {
+    if (this.hoveredId) {
+      const set = new Set<string>([this.hoveredId]);
+      for (const nb of this.neighbors.get(this.hoveredId) ?? []) set.add(nb);
+      const node = this.nodes[this.idToIndex.get(this.hoveredId) ?? -1];
+      for (const tag of node?.featureTags ?? []) {
+        for (const id of this.featureCohort.get(tag) ?? []) set.add(id);
+      }
+      return set;
+    }
+    // DURABLE feature-cluster spotlight (feature-selection-global-state): a selected
+    // feature emphasises its member cohort — derived LIVE from `featureCohort` (rebuilt
+    // every setData) plus the feature node itself when rendered — so the spotlight is
+    // re-derived (never lost) across a data reload. Sits ABOVE the generic selected-ids
+    // branch so a `feature:<tag>` id can never fall through and dim the whole graph. An
+    // all-absent cohort yields no emphasis (returns null) rather than dimming everything.
+    if (this.spotlightFeatureTag) {
+      const set = new Set<string>();
+      for (const id of this.featureCohort.get(this.spotlightFeatureTag) ?? []) {
+        if (this.idToIndex.has(id)) set.add(id);
+      }
+      const featureNodeId = `feature:${this.spotlightFeatureTag}`;
+      if (this.idToIndex.has(featureNodeId)) set.add(featureNodeId);
+      return set.size > 0 ? set : null;
+    }
+    if (this.selectedIds.size > 0) {
+      const set = new Set<string>(this.selectedIds);
+      for (const id of this.selectedIds) {
+        for (const nb of this.neighbors.get(id) ?? []) set.add(nb);
+      }
+      return set;
+    }
+    return null;
+  }
+
+  private applyEmphasis(): void {
+    if (!this.nodeMesh) return;
+    const active = this.emphasisSet();
+    // NODES — continuous colour-recede (emphasis-state-grammar ADR): each node's TARGET
+    // recede fraction is 0 for a focus node (or no emphasis) and otherwise the depth of
+    // the ACTIVE state — shallow for a transient hover, deeper for a durable selection /
+    // feature spotlight, so the durable state reads stronger. The frame loop eases the
+    // displayed aDim toward these targets (cross-fade, never a pop); reduced motion snaps.
+    // De-emphasis stays colour-only at FULL alpha; a focus node keeps full saturation.
+    const depth = this.hoveredId ? NODE_RECEDE_HOVER : NODE_RECEDE_SELECT;
+    if (this.dimTarget.length !== this.nodes.length) {
+      this.dimTarget = new Float32Array(this.nodes.length);
+    }
+    for (let i = 0; i < this.nodes.length; i++) {
+      this.dimTarget[i] = active && !active.has(this.nodes[i].id) ? depth : 0;
+    }
+    // Fence presence target: rises while a feature spotlight is set; on clear the tag is
+    // RETAINED (fenceTag) so the fade-out still knows its cohort, released at alpha 0.
+    if (this.spotlightFeatureTag) this.fenceTag = this.spotlightFeatureTag;
+    this.fenceTargetAlpha = this.spotlightFeatureTag ? 1 : 0;
+    if (prefersReducedMotion()) {
+      const nodeDim = this.nodeMesh.geometry.getAttribute("aDim");
+      const glyphDim = this.glyphMesh?.geometry.getAttribute("aDim");
+      for (let i = 0; i < this.nodes.length; i++) {
+        nodeDim.setX(i, this.dimTarget[i]);
+        glyphDim?.setX(i, this.dimTarget[i]); // the icon recedes with its circle
+      }
+      nodeDim.needsUpdate = true;
+      if (glyphDim) glyphDim.needsUpdate = true;
+      this.fenceAlpha = this.fenceTargetAlpha;
+      if (this.fenceAlpha === 0) this.fenceTag = null;
+      this.emphasisAnim = false;
+      return;
+    }
+    if (!this.emphasisAnim) this.lastEmphasisTs = performance.now();
+    this.emphasisAnim = true;
+    this.requestRender();
+
+    // EDGES keep their category GRADIENT colour + confidence width in EVERY mode (built once
+    // in buildEdges, never recoloured on hover/selection) — user goal: theme palette only,
+    // gradients kept, no near-black recolour. Emphasis touches nodes only (above); edge alpha
+    // depends solely on confidence + the filter visibility mask (applyEdgeAlpha).
+  }
+
+  private applyVisibility(
+    nodeIds: ReadonlySet<string>,
+    edgeIds: ReadonlySet<string>,
+  ): void {
+    if (!this.nodeMesh || !this.edgeMesh) return;
+    const hidden = this.nodeMesh.geometry.getAttribute("aHidden");
+    const glyphHidden = this.glyphMesh?.geometry.getAttribute("aHidden");
+    for (let i = 0; i < this.nodes.length; i++) {
+      const h = nodeIds.has(this.nodes[i].id) ? 0 : 1;
+      hidden.setX(i, h);
+      glyphHidden?.setX(i, h); // a filtered-out node hides its icon too
+    }
+    hidden.needsUpdate = true;
+    if (glyphHidden) glyphHidden.needsUpdate = true;
+    // edgeIds membership is by edge id; we kept only endpoint ids, so visibility
+    // falls back to endpoint membership (both endpoints visible ⇒ shown). Apply the
+    // edge alpha from the retained base opacity gated by that mask.
+    void edgeIds;
+    this.applyEdgeAlpha();
+  }
+
+  /** Write every edge quad's displayed alpha from its retained base opacity gated by
+   *  the current visibility mask, so an opacity retune and a filter compose (and a
+   *  retune never clobbers a hidden edge). */
+  private applyEdgeAlpha(): void {
+    if (!this.edgeMesh) return;
+    const alpha = this.edgeMesh.geometry.getAttribute("aAlpha");
+    const vis = this.visibleNodeIds;
+    // Edges show their confidence-derived base opacity in every mode (gated by the filter
+    // visibility mask) — no hover alpha boost, so the hover↔non-hover difference stays subtle.
+    this.builtEdges.forEach((e, i) => {
+      const shown = !vis || (vis.has(e.srcId) && vis.has(e.dstId));
+      const a = shown ? (this.edgeBaseAlpha[i] ?? 0) : 0;
+      for (let k = 0; k < 4; k++) alpha.setX(i * 4 + k, a);
+    });
+    alpha.needsUpdate = true;
+  }
+
+  // --- render loop ---------------------------------------------------------
+
+  /** Cold restart — a full re-explode of the current data (explicit reheat). */
+  private reheat(): void {
+    if (this.frozen || !this.solver) return;
+    this.solver.reheat(true);
+    this.setRunning(true);
+    this.wake();
+  }
+
+  /** Resume ticking after a pause — ENERGY-NEUTRAL (GIR-002). Resumes an in-flight
+   *  settle WITHOUT pumping new heat; a graph already at rest stays exactly put. An
+   *  explicit re-energise is reheatNow()'s job, never resume()'s. Mirrors the set-frozen
+   *  unfreeze path so pause/resume and freeze/unfreeze behave identically.
+   *
+   *  This is the accepted stability design, not a limitation (ADR "graph simulation
+   *  stability model", Option B): a settled layout is a frozen-yet-authoritative state
+   *  held still by pinning, so resuming must NOT re-inject energy — doing so would
+   *  displace an at-rest layout for no user action. Every energy-injecting path is a
+   *  deliberate, named entry point (set-data warm-start, setForceParams retune,
+   *  reheatNow restart); resume is not one of them. The reserved Option-A anneal (make
+   *  rest a true force-field fixed point) is revisited only under the recorded re-open
+   *  trigger: at-rest displacement or contact micro-buzz recurring after these valves
+   *  close. */
+  private resume(): void {
+    if (this.frozen || !this.solver) return;
+    if (!this.solver.isSettled()) {
+      this.setRunning(true);
+      this.wake();
+    }
+  }
+
+  reheatNow(): void {
+    this.reheat();
+  }
+
+  /** Flag the position texture for re-upload after pack() writes cpuPositions. */
+  private uploadPositions(): void {
+    if (this.positionTex) this.positionTex.needsUpdate = true;
+  }
+
+  /** Re-tune the force parameters live (graph-lab knob set) and reheat GENTLY +
+   *  PROPORTIONALLY: the kick is scaled to how far the changed knobs actually moved
+   *  (normalised by each control's schema range), so a small nudge re-settles softly in
+   *  place and only a large retune warms more — never the old violent global 0.5
+   *  re-explode. A no-op set (identical params) skips the reheat entirely. */
+  setForceParams(params: Partial<D3ForceParams>): void {
+    const frac = forceChangeFraction(this.params, params);
+    this.params = { ...this.params, ...params };
+    if (this.solver && frac > 0) {
+      // A floor (0.3×) keeps even a tiny nudge perceptibly responsive; the full gentle
+      // alpha is reserved for a full-range change.
+      this.solver.setParams(this.params, GENTLE_REHEAT_ALPHA * Math.max(0.3, frac));
+      this.setRunning(true);
+      this.wake();
+      // A force-param (simulation) change reshapes the layout: when autoframe is on, bind to
+      // it (re-engage even if a prior manual nav had disengaged). The running loop's poll then
+      // tracks the bounds as the layout re-settles.
+      this.reengageAutoframe();
+    }
+  }
+
+  /**
+   * Re-tune the LOOK live (node module size, edge width/opacity) — the appearance
+   * sibling of setForceParams. Edge changes just rewrite the instanced width/alpha
+   * attributes with NO re-simulation (cheap). A node-SIZE change also re-feeds the
+   * solver's collide radii so non-overlap spacing tracks the drawn size, which does
+   * gently reheat — node size is both look and collision body, so it cannot be a
+   * pure attribute rewrite. A change that touches neither (no-op) costs nothing.
+   */
+  setAppearanceParams(params: Partial<AppearanceParams>): void {
+    const prev = this.appearance;
+    this.appearance = { ...prev, ...params };
+
+    const sizeChanged =
+      this.appearance.nodeSizeScale !== prev.nodeSizeScale ||
+      this.appearance.nodeSalienceScale !== prev.nodeSalienceScale;
+    const edgeChanged =
+      this.appearance.edgeWidthMin !== prev.edgeWidthMin ||
+      this.appearance.edgeWidthMax !== prev.edgeWidthMax ||
+      this.appearance.edgeOpacityMin !== prev.edgeOpacityMin ||
+      this.appearance.edgeOpacityMax !== prev.edgeOpacityMax ||
+      this.appearance.edgeColorMode !== prev.edgeColorMode;
+    const iconsChanged = this.appearance.nodeIcons !== prev.nodeIcons;
+    // A node COLOUR MODE change (category ↔ recency heat, code-graph-heat ADR)
+    // re-bakes every baked colour consumer at once — node aColor, edge
+    // end-colours, glyph inks, minimap — via the proven refresh-theme rebuild
+    // (layout + selection preserved). One rebuild on a rare, deliberate toggle
+    // beats a bespoke partial-rewrite path that could drift from build truth.
+    // The rebuild re-derives sizes/edge widths from the merged appearance too,
+    // so it SUBSUMES the attribute rewrites below (they skip when it ran);
+    // solver collide radii and the icon visibility toggle still apply after.
+    const colorModeChanged = this.appearance.nodeColorMode !== prev.nodeColorMode;
+    if (colorModeChanged) this.rebuildGLResources();
+
+    if (sizeChanged && this.nodeMesh) {
+      if (!colorModeChanged) {
+        const aSize = this.nodeMesh.geometry.getAttribute("aSize");
+        const glyphSize = this.glyphMesh?.geometry.getAttribute("aSize");
+        for (let i = 0; i < this.nodes.length; i++) {
+          const r = nodeWorldRadius(this.nodes[i], this.appearance);
+          aSize.setX(i, r);
+          glyphSize?.setX(i, r); // the icon tracks the dot's size
+        }
+        aSize.needsUpdate = true;
+        if (glyphSize) glyphSize.needsUpdate = true;
+      }
+      // Node size is the collision body too: re-feed collide radii so spacing tracks
+      // the drawn size (the solver rebuilds collide + gently reheats).
+      if (this.solver) {
+        this.solver.setRadii(
+          this.nodes.map((node) => nodeWorldRadius(node, this.appearance)),
+        );
+        this.setRunning(true);
+        this.wake();
+      }
+    }
+
+    if (edgeChanged && !colorModeChanged && this.edgeMesh && this.edgeData.length > 0) {
+      const aWidth = this.edgeMesh.geometry.getAttribute("aWidthPx");
+      const aColor = this.edgeMesh.geometry.getAttribute("aColor");
+      const colA = new Color();
+      const colB = new Color();
+      this.edgeData.forEach((e, i) => {
+        const ap = edgeAppearance(e, this.appearance);
+        this.edgeBaseAlpha[i] = ap.alpha;
+        const s = this.idToIndex.get(e.src) ?? 0;
+        const t = this.idToIndex.get(e.dst) ?? 0;
+        const endColors = edgeEndColors(
+          this.appearance.edgeColorMode,
+          this.nodeColors[s],
+          this.nodeColors[t],
+        );
+        colA.set(endColors.a);
+        colB.set(endColors.b);
+        for (let k = 0; k < 4; k++) {
+          aWidth.setX(i * 4 + k, ap.width);
+          const c = k < 2 ? colA : colB;
+          aColor.setXYZ(i * 4 + k, c.r, c.g, c.b);
+        }
+      });
+      aWidth.needsUpdate = true;
+      aColor.needsUpdate = true;
+      this.applyEdgeAlpha();
+    }
+
+    if (iconsChanged) {
+      const on = this.appearance.nodeIcons;
+      // The disc is always drawn (no uIconMode fade now); icon mode only toggles whether the
+      // inside-disc glyph layer is present/visible.
+      // Build the icon layer on first enable; thereafter just toggle its visibility.
+      if (on && !this.glyphMesh && this.solver && this.nodeMesh) {
+        const aColor = this.nodeMesh.geometry.getAttribute("aColor")
+          .array as Float32Array;
+        const aSize = this.nodeMesh.geometry.getAttribute("aSize")
+          .array as Float32Array;
+        this.buildGlyphs(this.nodes, this.solver.texSize, aColor, aSize);
+        // Reflect the current emphasis/visibility onto the freshly-built glyph attrs.
+        this.applyEmphasis();
+        if (this.visibleNodeIds) {
+          this.applyVisibility(this.visibleNodeIds, new Set<string>());
+        }
+      }
+      if (this.glyphMesh) this.glyphMesh.visible = on;
+    }
+
+    // A node-SIZE (display) change alters each node's body radius, so the framed bounds
+    // change (graphBounds expands by radius): when autoframe is on, bind to it and re-frame.
+    // Edge/icon-only changes do not move bounds, so they do not re-engage.
+    if (sizeChanged) this.reengageAutoframe();
+
+    this.requestRender();
+  }
+
+  /**
+   * Tick-level dynamics snapshot (bypasses the rAF loop): single-steps `ticks`
+   * iterations and returns per-tick alpha (the cooling schedule) and mean per-node
+   * displacement (→0 at rest — the jitter/instability signature). Updates the view
+   * and leaves the loop stopped.
+   */
+  diagnose(ticks: number): { alpha: number[]; meanDisplacement: number[] } {
+    const out = { alpha: [] as number[], meanDisplacement: [] as number[] };
+    if (!this.solver) return out;
+    this.setRunning(false);
+    for (let t = 0; t < ticks; t++) {
+      const m = this.solver.tick();
+      out.alpha.push(+m.alpha.toFixed(5));
+      out.meanDisplacement.push(+m.meanDisplacement.toFixed(4));
+    }
+    this.solver.pack(this.simPositions);
+    this.cpuPositions.set(this.simPositions);
+    this.displayEasing = false;
+    this.uploadPositions();
+    this.requestRender();
+    return out;
+  }
+
+  private requestRender(): void {
+    this.needsRender = true;
+    this.wake();
+  }
+
+  /** The ONE `running` mutation point: emits `sim-state` on every TRANSITION (never
+   *  per frame) so the chrome's play/pause control mirrors the sim's own truth —
+   *  including the auto-flip back to "play" when the cooling schedule settles. */
+  private setRunning(next: boolean): void {
+    if (this.running === next) return;
+    this.running = next;
+    // Fresh run → fresh accumulator epoch, so idle time never counts as catch-up.
+    if (next) this.lastSimTs = 0;
+    this.controller?.emit({ kind: "sim-state", running: next });
+  }
+
+  private wake(): void {
+    if (this.scheduled) return;
+    this.scheduled = true;
+    this.raf = requestAnimationFrame(this.frame);
+  }
+
+  private frame = (): void => {
+    this.scheduled = false;
+    let dirty = this.needsRender;
+    this.needsRender = false;
+
+    if (this.solver && this.running) {
+      // d3-force ticks on the CPU, then mirror positions into the GPU texture.
+      // Freeze when the solver has cooled below alphaMin (and no drag holds it
+      // warm) — a real convergence stop that idles the GPU to zero. The settle
+      // TRANSITION persists the layout as the next cold load's base
+      // (graph-simulation-stability ADR) — once per settle, never per frame.
+      //
+      // Fixed-timestep accumulator (sim-smoothness reference): the sim targets a
+      // 60Hz tick rate in WALL-CLOCK terms. A slow renderer (long frames) runs
+      // bounded catch-up ticks so the anneal/stall budgets and the felt settle
+      // duration stop depending on the frame rate; the catch-up cap keeps a
+      // pathological stall from spiraling the CPU.
+      const now = performance.now();
+      const elapsed = this.lastSimTs > 0 ? now - this.lastSimTs : SIM_TICK_MS;
+      this.lastSimTs = now;
+      const ticks = Math.max(
+        1,
+        Math.min(SIM_MAX_CATCHUP_TICKS, Math.round(elapsed / SIM_TICK_MS)),
+      );
+      for (let t = 0; t < ticks; t++) {
+        this.solver.tick();
+        if (!this.dragActive && this.solver.isSettled()) break;
+      }
+      this.solver.pack(this.simPositions);
+      this.applyDisplayLerp();
+      this.uploadPositions();
+      if (!this.dragActive && this.solver.isSettled()) {
+        this.setRunning(false);
+        this.persistSettledLayout();
+      }
+      dirty = true;
+    } else if (this.displayEasing) {
+      // Physics is at rest (settled or paused) but the DISPLAY is still gliding
+      // toward it (render-time lerp): finish the glide, then snap to exact physics
+      // truth — the frozen layout stays authoritative on screen too.
+      this.applyDisplayLerp();
+      this.uploadPositions();
+      dirty = true;
+    }
+
+    // Autoframe ease (graph-autoframe): glide the camera one step toward the polled fit
+    // target. Keeps the loop alive while easing so it animates smoothly even at GPU idle.
+    let easing = false;
+    if (this.autoframeTarget) {
+      easing = this.stepAutoframe();
+      dirty = true;
+    }
+
+    // Emphasis cross-fade (emphasis-state-grammar ADR): ease every node's displayed
+    // recede + the fence alpha toward their targets, holding the loop awake until settled.
+    if (this.emphasisAnim) {
+      this.stepEmphasisFade();
+      dirty = true;
+    }
+
+    // SGR-005: any dirty frame may have moved node positions (tick+pack), the
+    // camera (autoframe ease), the data, or the viewport (resize sets needsRender)
+    // — all pick inputs — so the pointer-delta pick cache is no longer valid.
+    if (dirty) this.pickCacheValid = false;
+
+    // Skip the GPU render while the canvas host is HIDDEN (graph toggled off → host
+    // display:none → 0×0, #11): the CPU sim above still advances so the layout settles
+    // off-screen, but zero GPU work is done. On re-show the ResizeObserver fires
+    // resize→requestRender and the next frame paints the current state (no blank). This
+    // makes "hidden == 0 GPU" hold even mid-settle, beyond the settled render-on-demand
+    // idle. Mirrors the autoframe hidden-pause guard.
+    const el = this.renderer?.domElement;
+    const hidden = !el || el.clientWidth === 0 || el.clientHeight === 0;
+    if (dirty && !hidden) {
+      const t0 = performance.now();
+      this.renderFrame();
+      this.updatePerfLod(performance.now() - t0);
+    }
+    if (
+      this.running ||
+      this.needsRender ||
+      easing ||
+      this.emphasisAnim ||
+      this.displayEasing
+    ) {
+      this.wake();
+    }
+  };
+
+  /** Render-time position lerp (sim-smoothness reference — the Quartz mechanism):
+   *  ease the DISPLAY buffer (`cpuPositions`, feeding the GPU texture, overlays, and
+   *  picking) toward the physics truth (`simPositions`) each frame, time-averaging
+   *  solver jitter ~8x before it reaches the screen. The dragged node snaps (no
+   *  rubber-band under the cursor); prefers-reduced-motion snaps everything; once
+   *  every coordinate is within epsilon the display snaps to EXACT physics truth so
+   *  the frozen layout stays authoritative on screen. */
+  private applyDisplayLerp(): void {
+    const sim = this.simPositions;
+    const disp = this.cpuPositions;
+    if (sim.length === 0 || disp.length !== sim.length) return;
+    if (prefersReducedMotion()) {
+      disp.set(sim);
+      this.displayEasing = false;
+      return;
+    }
+    let maxErr = 0;
+    for (let i = 0; i < this.nodes.length; i++) {
+      const b = i * 4;
+      if (i === this.dragNodeIndex) {
+        disp[b] = sim[b];
+        disp[b + 1] = sim[b + 1];
+        continue;
+      }
+      for (let c = 0; c < 2; c++) {
+        const target = sim[b + c];
+        if (!Number.isFinite(target)) continue;
+        const cur = disp[b + c];
+        if (!Number.isFinite(cur)) {
+          disp[b + c] = target;
+          continue;
+        }
+        const next = cur + (target - cur) * DISPLAY_LERP_K;
+        const err = Math.abs(target - next);
+        if (err > maxErr) maxErr = err;
+        disp[b + c] = err < DISPLAY_SNAP_EPS ? target : next;
+      }
+    }
+    this.displayEasing = maxErr >= DISPLAY_SNAP_EPS;
+  }
+
+  /** One exponential-ease step of the emphasis cross-fade: move every node's displayed
+   *  aDim (and the fence alpha) toward its target; snap + stop once everything is within
+   *  epsilon. dt is clamped so a background-tab stall can't teleport past the ease. */
+  private stepEmphasisFade(): void {
+    const nodeDim = this.nodeMesh?.geometry.getAttribute("aDim");
+    if (!nodeDim) {
+      this.emphasisAnim = false;
+      return;
+    }
+    const glyphDim = this.glyphMesh?.geometry.getAttribute("aDim");
+    const now = performance.now();
+    const dt = Math.min(100, Math.max(0, now - this.lastEmphasisTs));
+    this.lastEmphasisTs = now;
+    const k = 1 - Math.exp(-dt / EMPHASIS_FADE_TAU_MS);
+    const EPS = 0.004;
+    let maxErr = 0;
+    for (let i = 0; i < this.nodes.length; i++) {
+      const target = this.dimTarget[i] ?? 0;
+      const cur = nodeDim.getX(i);
+      let next = cur + (target - cur) * k;
+      const err = Math.abs(target - next);
+      if (err < EPS) next = target;
+      else if (err > maxErr) maxErr = err;
+      nodeDim.setX(i, next);
+      glyphDim?.setX(i, next); // the icon recedes with its circle
+    }
+    let fenceNext = this.fenceAlpha + (this.fenceTargetAlpha - this.fenceAlpha) * k;
+    const fenceErr = Math.abs(this.fenceTargetAlpha - fenceNext);
+    if (fenceErr < EPS) fenceNext = this.fenceTargetAlpha;
+    else if (fenceErr > maxErr) maxErr = fenceErr;
+    this.fenceAlpha = fenceNext;
+    nodeDim.needsUpdate = true;
+    if (glyphDim) glyphDim.needsUpdate = true;
+    if (maxErr < EPS) {
+      this.emphasisAnim = false;
+      // The fade-out has fully landed: release the lagging fence cohort tag.
+      if (this.fenceTargetAlpha === 0) this.fenceTag = null;
+    }
+  }
+
+  /**
+   * FPS-adaptive LOD (perf hardening #5). Tracks an EMA of render cost and, with hysteresis
+   * so it can't flap, degrades quality when frames get slow — covering the two-tier software
+   * fallback (a fill-bound software-WebGL context on a large graph). Two clean levers: halve
+   * the device-pixel-ratio (~4x fewer fragments — the biggest lever for fill-bound rendering,
+   * no flicker, no filter conflict) and quarter the label budget (the per-frame 2D-overlay
+   * cost, see drawLabels). Heavier tiers (salience-ordered node-draw cap, instancing
+   * reduction) are a follow-on if these prove insufficient.
+   */
+  private updatePerfLod(frameMs: number): void {
+    this.frameMsEma =
+      this.frameMsEma === 0 ? frameMs : this.frameMsEma * 0.8 + frameMs * 0.2;
+    const wasDegraded = this.perfDegraded;
+    if (!this.perfDegraded && this.frameMsEma > PERF_DEGRADE_MS)
+      this.perfDegraded = true;
+    else if (this.perfDegraded && this.frameMsEma < PERF_RESTORE_MS)
+      this.perfDegraded = false;
+    if (this.perfDegraded !== wasDegraded && this.renderer) {
+      this.renderer.setPixelRatio(this.perfDegraded ? Math.min(1, this.dpr) : this.dpr);
+      this.needsRender = true;
+    }
+  }
+
+  private renderFrame(): void {
+    if (!this.renderer) return;
+    const tex = this.positionTex;
+    const ppw = this.pixelsPerWorld();
+    const pxScale = uiScale();
+    if (this.nodeMaterial) {
+      this.nodeMaterial.uniforms.uPositions.value = tex;
+      this.nodeMaterial.uniforms.uPixelsPerWorld.value = ppw;
+      this.nodeMaterial.uniforms.uPxScale.value = pxScale;
+    }
+    if (this.edgeMaterial) {
+      this.edgeMaterial.uniforms.uPositions.value = tex;
+      this.edgeMaterial.uniforms.uPixelsPerWorld.value = ppw;
+      this.edgeMaterial.uniforms.uPxScale.value = pxScale;
+    }
+    if (this.glyphMaterial && this.glyphMesh?.visible) {
+      this.glyphMaterial.uniforms.uPositions.value = tex;
+      this.glyphMaterial.uniforms.uPixelsPerWorld.value = ppw;
+      this.glyphMaterial.uniforms.uPxScale.value = pxScale;
+    }
+    this.renderer.render(this.scene, this.camera);
+    this.drawLabels();
+    this.emitAnchors();
+    this.renderMinimap();
+  }
+
+  // --- anchors (RL-4: DOM islands + hover card) ----------------------------
+
+  /** For every node a consumer is tracking (opened islands, hover card), emit its
+   *  screen-space anchor each render so the DOM overlay follows it; emit null when
+   *  the node is gone or off the viewport so the overlay hides. Mirrors CosmosField's
+   *  per-frame trackedNodeIds → emitAnchor pass. */
+  private emitAnchors(): void {
+    const ctrl = this.controller;
+    if (!ctrl) return;
+    const scale = this.camera.zoom;
+    for (const id of ctrl.trackedNodeIds()) {
+      const i = this.idToIndex.get(id);
+      // A filtered-out node hides its DOM anchor (opened island / hover card) — the
+      // same visibleNodeIds mask the ring + label passes honor (GS-004) — so an overlay
+      // never floats over a node the filter has hidden. Selection/tracking survives the
+      // filter (desirable); only the ghost anchor is suppressed, and it re-emits when the
+      // filter releases the node — no state change.
+      const masked = this.visibleNodeIds !== null && !this.visibleNodeIds.has(id);
+      const p = i === undefined || masked ? null : this.worldToScreen(i);
+      if (!p || p.x < 0 || p.x > this.width || p.y < 0 || p.y > this.height) {
+        ctrl.emitAnchor(id, null);
+      } else {
+        ctrl.emitAnchor(id, { x: p.x, y: p.y, scale });
+      }
+    }
+  }
+
+  /** One-shot anchor refresh when a consumer starts tracking a node (RL-4). */
+  refreshAnchors(): void {
+    this.emitAnchors();
+  }
+
+  // --- labels + rings (2D overlay) -----------------------------------------
+
+  private drawLabels(): void {
+    const ctx = this.labelCtx;
+    if (!ctx) return;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.clearRect(0, 0, this.width, this.height);
+    if (this.nodes.length === 0) return;
+
+    // SGR-006: theme/scale-derived colours + label styles from the per-epoch cache.
+    const {
+      ink,
+      accent,
+      highlight,
+      inkMuted,
+      pillFill,
+      pillBorder,
+      featureStyle,
+      docStyle,
+    } = this.overlayTheme();
+    const ppw = this.pixelsPerWorld();
+    // Screen-px UI-scale: ring gaps, stroke widths, and label offsets track the DOM.
+    const s = uiScale();
+    // The active emphasis set (hover/selection) drives the focus/context split for the
+    // glow + label colours below — recomputed once per draw.
+    const focus = this.emphasisSet();
+
+    // Cluster-selection perimeter fence (emphasis-state-grammar ADR) — drawn FIRST so
+    // rings and labels layer above it.
+    this.drawFence(ctx, accent, s, ppw);
+
+    // Emphasis rings (under labels). Three theme-token treatments kept visually
+    // distinct so hover, selection, and pin never read the same:
+    //   • SELECTED — the dominant ring: ACCENT hue, thickness scaled as a
+    //     MULTIPLIER of the node radius (floored 3.5px, capped 10px) + a wide gap.
+    //   • HOVERED  — a thinner ring in the distinct theme HIGHLIGHT hue, so a
+    //     transient hover never reads as a selection.
+    //   • PINNED   — a thin dashed ACCENT ring (layout-fixed marker).
+    // Precedence selected > hovered > pinned: a selected node keeps its strong
+    // ring while hovered.
+    for (let i = 0; i < this.nodes.length; i++) {
+      const id = this.nodes[i].id;
+      // A filtered-out node draws no emphasis ring (GS-004): the same visibleNodeIds
+      // mask the label pass (labelVisible) and picking already honor, and the node body
+      // scales to zero via aHidden. Selection/pin survives the filter (desirable) — only
+      // the ghost ring over the hidden node is suppressed; it reappears when the filter
+      // releases the node, no state change.
+      if (this.visibleNodeIds && !this.visibleNodeIds.has(id)) continue;
+      const selected = this.selectedIds.has(id);
+      const hovered = this.hoveredId === id;
+      const pinned = this.pinnedIds.has(id);
+      const pulsed = this.pulseIds.has(id);
+      if (!selected && !hovered && !pinned && !pulsed) continue;
+      const p = this.worldToScreen(i);
+      if (!p) continue;
+      const nodeR = Math.max(
+        3 * s,
+        nodeWorldRadius(this.nodes[i], this.appearance) * ppw,
+      );
+      // Base emphasis ring (precedence selected > hovered > pinned). The hovered hub's
+      // focus ring is the binding 2px ACCENT (graph/Hover); selected stays the dominant
+      // (wider) accent ring, pinned a thin dashed accent marker.
+      if (selected || hovered || pinned) {
+        ctx.beginPath();
+        if (selected) {
+          ctx.arc(p.x, p.y, nodeR + 5 * s, 0, Math.PI * 2);
+          ctx.strokeStyle = accent;
+          ctx.lineWidth = Math.min(10 * s, Math.max(3.5 * s, nodeR * 0.22));
+        } else if (hovered) {
+          ctx.arc(p.x, p.y, nodeR + 4 * s, 0, Math.PI * 2);
+          ctx.strokeStyle = accent;
+          ctx.lineWidth = FOCUS_RING_WIDTH_PX * s;
+        } else {
+          ctx.arc(p.x, p.y, nodeR + 3 * s, 0, Math.PI * 2);
+          ctx.strokeStyle = accent;
+          ctx.lineWidth = 1.5 * s;
+          ctx.setLineDash([3 * s, 3 * s]);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // Transient pulse ring (additive flash in the highlight hue).
+      if (pulsed) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, nodeR + 8 * s, 0, Math.PI * 2);
+        ctx.strokeStyle = highlight;
+        ctx.lineWidth = PULSE_RING_WIDTH * s;
+        ctx.globalAlpha = PULSE_RING_ALPHA;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Labels — typography from the CENTRALIZED design tokens (binding Figma
+    // "graph/Label — Feature | Document"): feature = Label/12, document = Meta/11. Sizes
+    // are rem-relative (resolved against the root font size in labelStyle) so canvas labels
+    // scale with the DOM under one UI scale — never a hardcoded px. Labels appear ONLY on
+    // interaction (hover / select / pin, per labelVisible) and render as a design PILL
+    // (drawLabelPill) — there are no ambient always-on labels.
+    ctx.textBaseline = "middle";
+    // FPS-adaptive LOD: quarter the label clutter cap when frames are slow (updatePerfLod).
+    let budget = this.perfDegraded
+      ? Math.max(24, Math.floor(LABEL_BUDGET / 4))
+      : LABEL_BUDGET; // clutter cap
+    for (let i = 0; i < this.nodes.length && budget > 0; i++) {
+      const node = this.nodes[i];
+      if (!this.labelVisible(node)) continue;
+      const p = this.worldToScreen(i);
+      if (!p || p.x < -40 || p.x > this.width + 40 || p.y < 0 || p.y > this.height)
+        continue;
+      const r = Math.max(3 * s, nodeWorldRadius(node, this.appearance) * ppw);
+      const isFeature = node.kind === "feature";
+      const style = isFeature ? featureStyle : docStyle;
+      ctx.font = style.font;
+      // The label text is SANITIZED (whitespace collapsed, control chars stripped) and
+      // elided to a FIXED character cap, then bounded to a screen width; the full title
+      // lives in the DOM HoverCard.
+      const text = this.fitLabel(
+        ctx,
+        sanitizeLabel(node.title ?? node.id),
+        LABEL_MAX_WIDTH_PX * s,
+      );
+      // Label colour by focus membership while an emphasis is active (graph/Hover parity):
+      // focus labels read in ink, context labels in the muted taupe. Off-emphasis, the
+      // default feature=ink / document=ink-muted ramp applies.
+      const labelInk = focus
+        ? focus.has(node.id)
+          ? ink
+          : inkMuted
+        : isFeature
+          ? ink
+          : inkMuted;
+      // Every visible label is an interaction (hover / select / pin) and renders as the
+      // design PILL — a rounded paper chip with a hairline border. There are no ambient
+      // plate-less labels any more (the field never paints naked text without a hover).
+      const x = p.x + r + LABEL_PILL_GAP_PX * s;
+      this.drawLabelPill(
+        ctx,
+        x,
+        p.y,
+        text,
+        style.sizePx,
+        labelInk,
+        pillFill,
+        pillBorder,
+        s,
+      );
+      budget--;
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** Cluster-selection perimeter fence (emphasis-state-grammar ADR): the positive marker
+   *  of the durable feature-cluster selection — a convex padded hull (rounded n-gon)
+   *  traced around the spotlit cohort's on-screen positions, accent-token stroke over a
+   *  whisper fill, its alpha riding the shared emphasis ease (fade in on select, fade out
+   *  over the departing cohort on clear via the lagging `fenceTag`). Gates on the
+   *  visibleNodeIds mask exactly as rings/anchors do (GS-004): a filtered-out member
+   *  contributes no hull point and an all-hidden cohort draws no fence. Re-traced per
+   *  frame so it tracks the live layout; the interior fill is skipped under perf
+   *  degradation (the overlay pass is the FPS-sensitive path). */
+  private drawFence(
+    ctx: CanvasRenderingContext2D,
+    accentCss: string,
+    s: number,
+    ppw: number,
+  ): void {
+    if (this.fenceAlpha <= 0.01 || !this.fenceTag) return;
+    const ids = new Set(this.featureCohort.get(this.fenceTag) ?? []);
+    const featureNodeId = `feature:${this.fenceTag}`;
+    if (this.idToIndex.has(featureNodeId)) ids.add(featureNodeId);
+    const pts: ScreenPt[] = [];
+    let maxR = 0;
+    for (const id of ids) {
+      const i = this.idToIndex.get(id);
+      if (i === undefined) continue;
+      if (this.visibleNodeIds && !this.visibleNodeIds.has(id)) continue;
+      const p = this.worldToScreen(i);
+      if (!p) continue;
+      const r = Math.max(3 * s, nodeWorldRadius(this.nodes[i], this.appearance) * ppw);
+      if (r > maxR) maxR = r;
+      pts.push(p);
+    }
+    if (pts.length === 0) return;
+    const pad = maxR + FENCE_PAD_PX * s;
+    ctx.beginPath();
+    traceRoundedOffset(ctx, convexHull(pts), pad);
+    ctx.closePath();
+    if (!this.perfDegraded) {
+      ctx.globalAlpha = FENCE_FILL_ALPHA * this.fenceAlpha;
+      ctx.fillStyle = accentCss;
+      ctx.fill();
+    }
+    ctx.globalAlpha = FENCE_STROKE_ALPHA * this.fenceAlpha;
+    ctx.strokeStyle = accentCss;
+    ctx.lineWidth = FENCE_STROKE_WIDTH_PX * s;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  /** Draw an interactive label as a design PILL: a rounded, paper-filled chip with a
+   *  hairline scene-rule border and the ink text centred inside, left-anchored at `x` and
+   *  vertically centred on `y`. Padding/radius are UI-scaled. The chip's paper fill is
+   *  opaque so it occludes the edges/nodes behind the text, keeping the focused label
+   *  crisply legible above the field. */
+  private drawLabelPill(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    text: string,
+    fontPx: number,
+    inkCss: string,
+    fillCss: string,
+    borderCss: string,
+    s: number,
+  ): void {
+    const padX = LABEL_PILL_PAD_X_PX * s;
+    const padY = LABEL_PILL_PAD_Y_PX * s;
+    const tw = ctx.measureText(text).width;
+    const w = tw + padX * 2;
+    const h = fontPx + padY * 2;
+    const top = y - h / 2;
+    const radius = h / 2; // full pill
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.roundRect(x, top, w, h, radius);
+    ctx.fillStyle = fillCss;
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, s);
+    ctx.strokeStyle = borderCss;
+    ctx.stroke();
+    ctx.fillStyle = inkCss;
+    ctx.fillText(text, x + padX, y);
+  }
+
+  /** Elide a label to at most `maxWidth` screen px with a trailing ellipsis,
+   *  measured in the ctx's CURRENT font. Returns the text unchanged when it fits;
+   *  otherwise binary-searches the longest prefix that fits with the ellipsis
+   *  appended. One `measureText` for the common (fits) case; ~log2(len) extra only
+   *  for the long labels this exists to bound. */
+  private fitLabel(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+  ): string {
+    if (maxWidth <= 0 || ctx.measureText(text).width <= maxWidth) return text;
+    const ellipsis = "…";
+    let lo = 0;
+    let hi = text.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (ctx.measureText(text.slice(0, mid) + ellipsis).width <= maxWidth) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return lo > 0 ? text.slice(0, lo) + ellipsis : ellipsis;
+  }
+
+  private labelVisible(node: SceneNodeData): boolean {
+    // Labels appear ONLY on a real interaction — hover, selection, or pin — and render as
+    // the design PILL (drawLabelPill). There are NO ambient/always-on labels: the field no
+    // longer paints naked text on every feature or high-salience document (the user's
+    // "nodes displaying hover information without any hover" + "overflowing black text"
+    // complaint). A filtered-out node is never labelled.
+    if (this.visibleNodeIds && !this.visibleNodeIds.has(node.id)) return false;
+    return (
+      this.hoveredId === node.id ||
+      this.selectedIds.has(node.id) ||
+      this.pinnedIds.has(node.id)
+    );
+  }
+
+  // --- camera --------------------------------------------------------------
+
+  private pixelsPerWorld(): number {
+    return (this.height / this.viewHeight) * this.camera.zoom;
+  }
+
+  private worldToScreen(i: number): { x: number; y: number } | null {
+    const wx = this.cpuPositions[i * 4];
+    const wy = this.cpuPositions[i * 4 + 1];
+    if (!Number.isFinite(wx) || !Number.isFinite(wy)) return null;
+    const halfW = (this.camera.right - this.camera.left) / 2 / this.camera.zoom;
+    const halfH = (this.camera.top - this.camera.bottom) / 2 / this.camera.zoom;
+    const ndcX = (wx - this.camera.position.x) / halfW;
+    const ndcY = (wy - this.camera.position.y) / halfH;
+    return {
+      x: (ndcX * 0.5 + 0.5) * this.width,
+      y: (1 - (ndcY * 0.5 + 0.5)) * this.height,
+    };
+  }
+
+  private screenToWorld(sx: number, sy: number): { x: number; y: number } {
+    const halfW = (this.camera.right - this.camera.left) / 2 / this.camera.zoom;
+    const halfH = (this.camera.top - this.camera.bottom) / 2 / this.camera.zoom;
+    const ndcX = (sx / this.width) * 2 - 1;
+    const ndcY = (1 - sy / this.height) * 2 - 1;
+    return {
+      x: this.camera.position.x + ndcX * halfW,
+      y: this.camera.position.y + ndcY * halfH,
+    };
+  }
+
+  private fitToSeed(): void {
+    this.frameBounds(
+      -this.seedRadius,
+      -this.seedRadius,
+      this.seedRadius,
+      this.seedRadius,
+    );
+  }
+
+  /** Axis-aligned bounding box over all live node BODIES (each centre expanded by its
+   *  world radius), or null when there are no finite positions yet. Expanding by the node
+   *  radius — not just the centre — is what lets the fit guarantee every node's body is
+   *  inside the canvas; framing bare centres half-clips a peripheral node by its radius.
+   *  Shared by fitToView (cold framing) and the minimap. */
+  private graphBounds(): {
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+  } | null {
+    if (!this.solver) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (let i = 0; i < this.solver.count; i++) {
+      // Visibility-aware: when a filter mask is active, frame only the VISIBLE subset so a
+      // filter change tightens the fit to what is shown (a hidden node never holds the frame
+      // open). With no mask (visibleNodeIds null) every node counts, as before.
+      if (
+        this.visibleNodeIds &&
+        i < this.nodes.length &&
+        !this.visibleNodeIds.has(this.nodes[i].id)
+      ) {
+        continue;
+      }
+      const x = this.cpuPositions[i * 4];
+      const y = this.cpuPositions[i * 4 + 1];
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const r =
+        i < this.nodes.length ? nodeWorldRadius(this.nodes[i], this.appearance) : 0;
+      if (x - r < minX) minX = x - r;
+      if (x + r > maxX) maxX = x + r;
+      if (y - r < minY) minY = y - r;
+      if (y + r > maxY) maxY = y + r;
+    }
+    return minX > maxX ? null : { minX, minY, maxX, maxY };
+  }
+
+  private fitToView(): void {
+    const b = this.graphBounds();
+    if (!b) return this.fitToSeed();
+    this.frameBounds(b.minX, b.minY, b.maxX, b.maxY);
+  }
+
+  /** One-shot frame to a SUBSET of nodes (follow-mode-selection-sync, #13): fit the camera
+   *  to the bounding box of the given ids — the rail feature-select frame for that feature's
+   *  members. Unknown/non-finite ids are skipped; an empty/all-unknown set is a NO-OP (the
+   *  camera holds). A single node frames with a sensible margin so it doesn't slam to max
+   *  zoom. Mirrors fitToView's fit math via frameBounds; the caller suspends autoframe so
+   *  this deliberate user move is not immediately re-fit to the whole graph. */
+  private fitToNodes(ids: ReadonlySet<string>): void {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let count = 0;
+    let maxR = 0;
+    for (const id of ids) {
+      const i = this.idToIndex.get(id);
+      if (i === undefined) continue;
+      const x = this.cpuPositions[i * 4];
+      const y = this.cpuPositions[i * 4 + 1];
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      const r = nodeWorldRadius(this.nodes[i], this.appearance);
+      if (r > maxR) maxR = r;
+      count++;
+    }
+    if (count === 0) return; // empty / all-unknown → no-op
+    // Pad by a node radius (+ a small margin) so a single/tight cluster frames with breathing
+    // room instead of zooming to the ceiling on a zero-span bbox.
+    const margin = Math.max(maxR * 3, 1);
+    this.frameBounds(minX - margin, minY - margin, maxX + margin, maxY + margin);
+  }
+
+  /** The camera {x, y, zoom} that fits the given bounds with the standard padding —
+   *  the pure fit math, shared by the one-shot frameBounds and the eased autoframe. */
+  private fitTargetForBounds(
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+  ): { x: number; y: number; zoom: number } {
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const spanX = Math.max(maxX - minX, 1);
+    const spanY = Math.max(maxY - minY, 1);
+    // Reserve a fixed, UI-scaled pixel margin on every edge: the graph fits into the
+    // canvas MINUS 2×pad on each axis, so there is always a visible gap between the framed
+    // node bodies and the canvas rim. Pixels-per-world is isotropic here (pixelsPerWorld()),
+    // so the SAME ppw fits both axes; the tighter axis wins. zoom solves
+    // ppw = (height / viewHeight) × zoom.
+    const padPx = FIT_PADDING_PX * uiScale();
+    const usableW = Math.max(1, this.width - 2 * padPx);
+    const usableH = Math.max(1, this.height - 2 * padPx);
+    const ppw = Math.min(usableW / spanX, usableH / spanY);
+    const zoom = Math.max(
+      ZOOM_MIN,
+      Math.min(ZOOM_MAX, (ppw * this.viewHeight) / this.height),
+    );
+    return { x: cx, y: cy, zoom };
+  }
+
+  private frameBounds(minX: number, minY: number, maxX: number, maxY: number): void {
+    const t = this.fitTargetForBounds(minX, minY, maxX, maxY);
+    // A manual fit cancels any in-flight autoframe ease and records the new frame so the
+    // autoframe deadband measures drift from here (no immediate re-fit fighting the user).
+    // It also supersedes a pending off-slice focus (#42) — an explicit fit/frame is a newer
+    // camera intent. (The warm set-data arrival path skips fitToView, so the pending focus
+    // there still survives to its arrival check.)
+    this.autoframeTarget = null;
+    this.autoframedFrame = t;
+    this.pendingFocusId = null;
+    this.camera.position.set(t.x, t.y, 10);
+    this.camera.zoom = t.zoom;
+    this.camera.updateProjectionMatrix();
+    this.emitCameraChange();
+    this.requestRender();
+  }
+
+  // --- autoframe (graph-autoframe) -----------------------------------------
+
+  /** Toggle autoframe. ON starts the bounded bounds-poll interval; OFF clears it and any
+   *  in-flight ease, holding the camera for full manual control. */
+  private setAutoframe(enabled: boolean): void {
+    if (this.autoframe === enabled) {
+      if (enabled && this.autoframeTimer === 0) this.startAutoframeTimer();
+      return;
+    }
+    this.autoframe = enabled;
+    if (enabled) {
+      // Re-enabling autoframe is a fresh start — drop any selection-frame / manual-nav
+      // suspension so the toggle reasserts whole-graph framing (#13 arbitration), and frame
+      // immediately (reengageAutoframe polls now) rather than waiting for the next poll tick.
+      this.startAutoframeTimer();
+      this.reengageAutoframe();
+    } else {
+      this.stopAutoframeTimer();
+      this.autoframeTarget = null;
+    }
+  }
+
+  private startAutoframeTimer(): void {
+    this.stopAutoframeTimer();
+    this.autoframeTimer = window.setInterval(
+      () => this.autoframePoll(),
+      AUTOFRAME_POLL_MS,
+    );
+  }
+
+  private stopAutoframeTimer(): void {
+    if (this.autoframeTimer) {
+      clearInterval(this.autoframeTimer);
+      this.autoframeTimer = 0;
+    }
+  }
+
+  /** True while the user is directly driving the camera/a node — autoframe never fights it. */
+  private isUserInteracting(): boolean {
+    return (
+      this.dragging || this.dragNodeIndex >= 0 || this.touchGesture || this.dragActive
+    );
+  }
+
+  /** The user took manual CAMERA control (pan / zoom / wheel / pinch / minimap): DISENGAGE
+   *  autoframe — drop any in-flight ease and suspend re-framing — so it never yanks the view
+   *  back. Autoframe stays in its ON mode (the toggle is unchanged) but holds off until a
+   *  STATE change (filter/visibility/appearance/force) or an explicit fit/toggle re-engages
+   *  it (`reengageAutoframe`). A no-op when autoframe is already off. */
+  private disengageAutoframeForUserNav(): void {
+    if (!this.autoframe || this.autoframeSuspended) return;
+    this.autoframeSuspended = true;
+    this.autoframeTarget = null;
+  }
+
+  /** A graph STATE change happened (new data, filter/visibility, appearance, force params):
+   *  if autoframe is ON, RE-ENGAGE it — clear the user-nav/selection suspension and
+   *  re-evaluate the fit immediately so the camera binds to the new graph without waiting for
+   *  the next poll tick. The poll's deadband still guards an unchanged frame, so a state
+   *  change that does not move the bounds costs nothing. A no-op when autoframe is off. */
+  private reengageAutoframe(): void {
+    if (!this.autoframe) return;
+    this.autoframeSuspended = false;
+    // Measure the poll's drift from the CURRENT camera, not the last auto-fit: a manual nav
+    // moved the camera without updating `autoframedFrame`, so without this the poll would
+    // compare the bounds-fit against the stale frame, see no drift, and leave the camera at
+    // the user's manual position — failing to re-frame. Nulling it makes the poll re-fit from
+    // wherever the camera now is.
+    this.autoframedFrame = null;
+    this.autoframePoll();
+  }
+
+  /** Interval poll: when autoframe is on and the user is idle, compute the fit target and,
+   *  if the frame has drifted beyond the deadband (hysteresis — so a settled/unchanged
+   *  graph never re-eases and jitters), set the eased target the render loop glides toward. */
+  private autoframePoll(): void {
+    if (!this.autoframe || this.autoframeSuspended || !this.renderer) return;
+    if (this.isUserInteracting()) return;
+    // Don't poll/reframe a HIDDEN graph (#11): when the canvas host is display:none'd (the
+    // graph toggled off), its box collapses to 0×0 — skip until it is shown again. The
+    // interval keeps ticking but does no work; self-detected from the DOM, so no cross-layer
+    // visibility signal is needed (works for any hide mechanism fixer-3 uses).
+    const el = this.renderer.domElement;
+    if (el.clientWidth === 0 || el.clientHeight === 0) return;
+    const b = this.graphBounds();
+    if (!b) return;
+    const target = this.fitTargetForBounds(b.minX, b.minY, b.maxX, b.maxY);
+    const ref = this.autoframedFrame ?? {
+      x: this.camera.position.x,
+      y: this.camera.position.y,
+      zoom: this.camera.zoom,
+    };
+    // Fractional drift: center shift relative to the on-screen span + relative zoom change.
+    const worldHalfH = this.viewHeight / 2 / Math.max(target.zoom, 1e-6);
+    const centerDrift =
+      Math.hypot(target.x - ref.x, target.y - ref.y) / Math.max(worldHalfH, 1);
+    const zoomDrift = Math.abs(target.zoom - ref.zoom) / Math.max(ref.zoom, 1e-6);
+    if (Math.max(centerDrift, zoomDrift) < AUTOFRAME_DEADBAND) return;
+    this.autoframeTarget = target;
+    this.wake();
+  }
+
+  /** One eased step toward the autoframe target; called from the render loop. Returns true
+   *  while still easing (keeps the loop alive). Snaps + clears the target when within eps. */
+  private stepAutoframe(): boolean {
+    const t = this.autoframeTarget;
+    if (!t) return false;
+    // Never fight a user who grabbed the camera mid-ease — drop the target.
+    if (this.isUserInteracting()) {
+      this.autoframeTarget = null;
+      return false;
+    }
+    const cam = this.camera;
+    const dz = t.zoom - cam.zoom;
+    const dx = t.x - cam.position.x;
+    const dy = t.y - cam.position.y;
+    const worldHalfH = this.viewHeight / 2 / Math.max(t.zoom, 1e-6);
+    const posClose =
+      Math.hypot(dx, dy) / Math.max(worldHalfH, 1) < AUTOFRAME_SETTLE_EPS;
+    const zoomClose = Math.abs(dz) / Math.max(t.zoom, 1e-6) < AUTOFRAME_SETTLE_EPS;
+    if (posClose && zoomClose) {
+      cam.position.set(t.x, t.y, 10);
+      cam.zoom = t.zoom;
+      this.autoframedFrame = t;
+      this.autoframeTarget = null;
+    } else {
+      cam.position.x += dx * AUTOFRAME_EASE;
+      cam.position.y += dy * AUTOFRAME_EASE;
+      cam.zoom += dz * AUTOFRAME_EASE;
+    }
+    cam.updateProjectionMatrix();
+    this.emitCameraChange();
+    return this.autoframeTarget !== null;
+  }
+
+  private zoomBy(factor: number): void {
+    this.disengageAutoframeForUserNav();
+    this.camera.zoom = Math.max(
+      ZOOM_MIN,
+      Math.min(ZOOM_MAX, this.camera.zoom * factor),
+    );
+    this.camera.updateProjectionMatrix();
+    this.emitCameraChange();
+    this.requestRender();
+  }
+
+  /** Pan the camera by a WORLD-space delta (already divided by pixelsPerWorld), then
+   *  refresh. The sign convention is the caller's: trackpad SCROLL moves the camera with
+   *  the scroll delta; a DRAG (pointer / two-finger) moves it opposite the finger so the
+   *  surface follows the hand. Respects nothing to clamp (panning is unbounded by design;
+   *  the autoframe / fit path re-centres). */
+  private panCamera(dxWorld: number, dyWorld: number): void {
+    this.disengageAutoframeForUserNav();
+    this.camera.position.x += dxWorld;
+    this.camera.position.y += dyWorld;
+    this.camera.updateProjectionMatrix();
+    this.emitCameraChange();
+    this.requestRender();
+  }
+
+  /** Client (page) px → canvas-local screen px, mirroring eventToScreen for a raw point
+   *  (used for the touch centroid, which is computed from Touch.clientX/Y). */
+  private clientToScreen(cx: number, cy: number): [number, number] {
+    const rect = this.renderer?.domElement.getBoundingClientRect();
+    return [cx - (rect?.left ?? 0), cy - (rect?.top ?? 0)];
+  }
+
+  /** Centroid (client px) of the first two active touches. */
+  private touchCentroid(touches: TouchList): { x: number; y: number } {
+    const a = touches[0];
+    const b = touches[1];
+    return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+  }
+
+  /** Euclidean spread (client px) between the first two active touches. */
+  private touchDistance(touches: TouchList): number {
+    const a = touches[0];
+    const b = touches[1];
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  }
+
+  /** Zoom keeping the world point under (sx, sy) screen px stationary. */
+  private zoomAtScreen(factor: number, sx: number, sy: number): void {
+    this.disengageAutoframeForUserNav();
+    const before = this.screenToWorld(sx, sy);
+    this.camera.zoom = Math.max(
+      ZOOM_MIN,
+      Math.min(ZOOM_MAX, this.camera.zoom * factor),
+    );
+    this.camera.updateProjectionMatrix();
+    const after = this.screenToWorld(sx, sy);
+    this.camera.position.x += before.x - after.x;
+    this.camera.position.y += before.y - after.y;
+    this.camera.updateProjectionMatrix();
+    this.emitCameraChange();
+    this.requestRender();
+  }
+
+  private focusNode(id: string): void {
+    const i = this.idToIndex.get(id);
+    if (i === undefined) {
+      // Off-slice target (#42): not mounted yet — remember it (bounded to one) and center
+      // it when it next arrives via set-data (the ego-expand materializes it a fetch later).
+      this.pendingFocusId = id;
+      return;
+    }
+    const x = this.cpuPositions[i * 4];
+    const y = this.cpuPositions[i * 4 + 1];
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    this.camera.position.set(x, y, 10);
+    this.camera.updateProjectionMatrix();
+    // A successful explicit focus supersedes any older pending off-slice target.
+    this.pendingFocusId = null;
+    this.emitCameraChange();
+    this.requestRender();
+  }
+
+  private emitCameraChange(): void {
+    const level = semanticLevel(this.camera.zoom);
+    this.controller?.emit({ kind: "camera-change", scale: this.camera.zoom, level });
+  }
+
+  // --- minimap -------------------------------------------------------------
+
+  /** Register (or clear) the chrome-hosted minimap canvas. The field owns every
+   *  pixel inside it; chrome never draws. Forwarded from
+   *  SceneController.setMinimapCanvas via duck-typing. */
+  setMinimapCanvas(canvas: HTMLCanvasElement | null): void {
+    this.detachMinimap?.();
+    this.detachMinimap = null;
+    this.minimapCanvas = canvas;
+    this.minimapCtx = canvas ? canvas.getContext("2d") : null;
+    this.minimapView = null;
+    if (canvas) {
+      this.detachMinimap = this.attachMinimapInteraction(canvas);
+      this.renderMinimap();
+    }
+  }
+
+  /** Draw the downscaled overview (node dots) + the current-viewport rectangle into
+   *  the minimap canvas. Called from renderFrame, so it tracks settle ticks, camera
+   *  moves, and data changes with no separate loop (bounded). */
+  private renderMinimap(): void {
+    const canvas = this.minimapCanvas;
+    const ctx = this.minimapCtx;
+    if (!canvas || !ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const b = this.graphBounds();
+    if (!b) {
+      this.minimapView = null;
+      return;
+    }
+    const spanX = Math.max(b.maxX - b.minX, 1);
+    const spanY = Math.max(b.maxY - b.minY, 1);
+    const scale = Math.min(
+      (w * (1 - 2 * MINIMAP_INSET)) / spanX,
+      (h * (1 - 2 * MINIMAP_INSET)) / spanY,
+    );
+    const cx = (b.minX + b.maxX) / 2;
+    const cy = (b.minY + b.maxY) / 2;
+    this.minimapView = { scale, cx, cy };
+    const toX = (wx: number): number => w / 2 + (wx - cx) * scale;
+    const toY = (wy: number): number => h / 2 - (wy - cy) * scale; // world up = screen up
+
+    // Node dots — a faint muted-ink constellation; bounded dot size.
+    const count = this.solver?.count ?? 0;
+    const dot = Math.max(1, Math.min(2.5, scale * 6));
+    const r = dot / 2;
+    ctx.fillStyle = this.overlayTheme().inkMuted; // SGR-006: cached per theme epoch
+    ctx.globalAlpha = 0.7;
+    for (let i = 0; i < count; i++) {
+      // Match the visibility-aware bounds: a filtered-out node is not drawn on the overview.
+      if (
+        this.visibleNodeIds &&
+        i < this.nodes.length &&
+        !this.visibleNodeIds.has(this.nodes[i].id)
+      ) {
+        continue;
+      }
+      const x = this.cpuPositions[i * 4];
+      const y = this.cpuPositions[i * 4 + 1];
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      ctx.fillRect(toX(x) - r, toY(y) - r, dot, dot);
+    }
+    ctx.globalAlpha = 1;
+
+    // Viewport rectangle — the current camera view in world → minimap. The only
+    // stroked outline on the overview, so position reads in grayscale too.
+    const halfW = (this.camera.right - this.camera.left) / 2 / this.camera.zoom;
+    const halfH = (this.camera.top - this.camera.bottom) / 2 / this.camera.zoom;
+    const left = toX(this.camera.position.x - halfW);
+    const right = toX(this.camera.position.x + halfW);
+    const top = toY(this.camera.position.y + halfH);
+    const bottom = toY(this.camera.position.y - halfH);
+    ctx.strokeStyle = this.overlayTheme().accent; // SGR-006: cached per theme epoch
+    ctx.lineWidth = 1;
+    ctx.strokeRect(
+      Math.round(left) + 0.5,
+      Math.round(top) + 0.5,
+      Math.max(1, Math.round(right - left)),
+      Math.max(1, Math.round(bottom - top)),
+    );
+  }
+
+  /** Pointer click/drag on the minimap pans the main camera to the picked world
+   *  point. Returns a cleanup that removes the listeners. */
+  private attachMinimapInteraction(canvas: HTMLCanvasElement): () => void {
+    const toWorld = (ev: PointerEvent): { x: number; y: number } | null => {
+      const view = this.minimapView;
+      if (!view) return null;
+      const rect = canvas.getBoundingClientRect();
+      // CSS px → backing-store px (canvas.width may differ from its CSS size).
+      const sx = ((ev.clientX - rect.left) / Math.max(1, rect.width)) * canvas.width;
+      const sy = ((ev.clientY - rect.top) / Math.max(1, rect.height)) * canvas.height;
+      return {
+        x: view.cx + (sx - canvas.width / 2) / view.scale,
+        y: view.cy - (sy - canvas.height / 2) / view.scale,
+      };
+    };
+    const panTo = (ev: PointerEvent): void => {
+      const world = toWorld(ev);
+      if (!world) return;
+      // Minimap pan is manual navigation → disengage autoframe (idempotent).
+      this.disengageAutoframeForUserNav();
+      this.camera.position.set(world.x, world.y, 10);
+      this.camera.updateProjectionMatrix();
+      this.emitCameraChange();
+      this.requestRender();
+    };
+    const onDown = (ev: PointerEvent): void => {
+      this.minimapDragging = true;
+      canvas.setPointerCapture(ev.pointerId);
+      panTo(ev);
+    };
+    const onMove = (ev: PointerEvent): void => {
+      if (this.minimapDragging) panTo(ev);
+    };
+    const onUp = (ev: PointerEvent): void => {
+      this.minimapDragging = false;
+      if (canvas.hasPointerCapture(ev.pointerId))
+        canvas.releasePointerCapture(ev.pointerId);
+    };
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onUp);
+    canvas.style.cursor = "pointer";
+    return () => {
+      canvas.removeEventListener("pointerdown", onDown);
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", onUp);
+      canvas.removeEventListener("pointercancel", onUp);
+    };
+  }
+
+  // --- picking + interaction ----------------------------------------------
+
+  private setHovered(id: string | null): void {
+    if (id === this.hoveredId) return;
+    this.hoveredId = id;
+    this.applyEmphasis();
+    this.controller?.emit({ kind: "hover", id });
+    this.requestRender();
+  }
+
+  private pickNodeAtScreen(sx: number, sy: number): string | null {
+    // cpuPositions is the live source of truth (pack() runs every tick), so the
+    // hit test is always current — no GPU readback.
+    //
+    // SGR-005 pointer-delta gate: pointermove fires at device rate, so a hover
+    // hold re-scans O(N) for a sub-pixel jiggle. When the pick cache is still
+    // valid (no dirty frame / setData since the last pick) and the pointer moved
+    // <1px, reuse the last result — provably correct because nothing that affects
+    // a pick (positions, camera, data, viewport) has changed in that window.
+    if (
+      this.pickCacheValid &&
+      (sx - this.lastPickSx) ** 2 + (sy - this.lastPickSy) ** 2 < 1
+    ) {
+      return this.lastPickId;
+    }
+
+    const ppw = this.pixelsPerWorld();
+    // SGR-004/005: hoist the per-node loop invariants OUT of the scan. `uiScale()`
+    // is a forced computed-style read (now cached, but still hoisted to one call),
+    // and the camera half-extents + viewport feed the INLINED `worldToScreen`
+    // projection (same math as the method) so the loop carries no invariant work.
+    const pickRadiusScreen = PICK_RADIUS_PX * uiScale();
+    const halfW = (this.camera.right - this.camera.left) / 2 / this.camera.zoom;
+    const halfH = (this.camera.top - this.camera.bottom) / 2 / this.camera.zoom;
+    const camX = this.camera.position.x;
+    const camY = this.camera.position.y;
+    const width = this.width;
+    const height = this.height;
+
+    let best: string | null = null;
+    let bestDistSq = Infinity;
+    for (let i = 0; i < this.nodes.length; i++) {
+      if (this.visibleNodeIds && !this.visibleNodeIds.has(this.nodes[i].id)) continue;
+      const wx = this.cpuPositions[i * 4];
+      const wy = this.cpuPositions[i * 4 + 1];
+      if (!Number.isFinite(wx) || !Number.isFinite(wy)) continue;
+      const px = ((wx - camX) / halfW / 2 + 0.5) * width;
+      const py = (1 - ((wy - camY) / halfH / 2 + 0.5)) * height;
+      const radius = Math.max(
+        pickRadiusScreen,
+        nodeWorldRadius(this.nodes[i], this.appearance) * ppw,
+      );
+      const dx = px - sx;
+      const dy = py - sy;
+      const distSq = dx * dx + dy * dy;
+      if (distSq <= radius * radius && distSq < bestDistSq) {
+        bestDistSq = distSq;
+        best = this.nodes[i].id;
+      }
+    }
+
+    this.lastPickSx = sx;
+    this.lastPickSy = sy;
+    this.lastPickId = best;
+    this.pickCacheValid = true;
+    return best;
+  }
+
+  private eventToScreen(ev: MouseEvent): [number, number] {
+    const rect = this.renderer?.domElement.getBoundingClientRect();
+    return [ev.clientX - (rect?.left ?? 0), ev.clientY - (rect?.top ?? 0)];
+  }
+
+  private startNodeDrag(index: number, sx: number, sy: number): void {
+    if (!this.solver) return;
+    this.dragNodeIndex = index;
+    this.dragActive = true;
+    // No global re-energise: the solver pins the grabbed node and wakes only its
+    // link-neighbours within wakeRadius (the sleep/active-set model); every other
+    // settled node stays pinned, so distant clusters do not move.
+    this.setRunning(true);
+    const w = this.screenToWorld(sx, sy);
+    this.solver.setDrag(index, w.x, w.y);
+    this.wake();
+  }
+
+  private endNodeDrag(): void {
+    if (this.dragNodeIndex < 0) return;
+    this.solver?.clearDrag();
+    this.dragNodeIndex = -1;
+    this.dragActive = false;
+    // Keep ticking; the released neighbourhood re-settles via the solver, then sleeps.
+    this.setRunning(true);
+    this.wake();
+  }
+
+  private setCursor(c: string): void {
+    if (this.renderer) this.renderer.domElement.style.cursor = c;
+  }
+
+  private attachInteraction(el: HTMLElement): void {
+    el.addEventListener(
+      "wheel",
+      (ev: WheelEvent) => {
+        // Trackpad QoL (graph-trackpad-nav): the browser delivers a trackpad PINCH as a
+        // wheel event with `ctrlKey` set, and a two-finger SCROLL as a wheel event with
+        // deltaX/deltaY and no modifier. So:
+        //   • ctrl/⌘+wheel (pinch, or a deliberate zoom modifier) → ZOOM toward the cursor;
+        //   • a classic MOUSE WHEEL (axis-locked vertical notch — no deltaX, line-mode or a
+        //     coarse |deltaY|) → ZOOM, so mouse users are NOT regressed;
+        //   • everything else (fine, often-horizontal two-finger trackpad scroll) → PAN.
+        // preventDefault stops the page/panel from scrolling under the canvas.
+        ev.preventDefault();
+        const [sx, sy] = this.eventToScreen(ev);
+        const pinch = ev.ctrlKey || ev.metaKey;
+        const mouseWheel =
+          !pinch &&
+          ev.deltaX === 0 &&
+          (ev.deltaMode !== 0 || Math.abs(ev.deltaY) >= 100);
+        if (pinch) {
+          this.zoomAtScreen(Math.exp(-ev.deltaY * PINCH_ZOOM_SENSITIVITY), sx, sy);
+        } else if (mouseWheel) {
+          this.zoomAtScreen(
+            ev.deltaY < 0 ? ZOOM_STEP_WHEEL : 1 / ZOOM_STEP_WHEEL,
+            sx,
+            sy,
+          );
+        } else {
+          // Two-finger scroll → pan (scroll sense: the camera follows the scroll delta).
+          const ppw = this.pixelsPerWorld();
+          this.panCamera(ev.deltaX / ppw, -ev.deltaY / ppw);
+        }
+      },
+      { passive: false },
+    );
+    el.addEventListener("pointerdown", (ev: PointerEvent) => {
+      // A two-finger touch gesture owns pan/zoom; ignore the per-finger pointer stream.
+      if (this.touchGesture) return;
+      this.dragMoved = false;
+      this.lastX = ev.clientX;
+      this.lastY = ev.clientY;
+      el.setPointerCapture(ev.pointerId);
+      const [sx, sy] = this.eventToScreen(ev);
+      const id = ev.button === 0 ? this.pickNodeAtScreen(sx, sy) : null;
+      const i = id ? this.idToIndex.get(id) : undefined;
+      if (i !== undefined) {
+        // Grab a node — direct manipulation; the camera does not pan.
+        this.startNodeDrag(i, sx, sy);
+        this.setCursor("grabbing");
+      } else {
+        this.dragging = true; // camera pan on empty canvas
+        this.setCursor("grabbing");
+      }
+    });
+    el.addEventListener("pointermove", (ev: PointerEvent) => {
+      if (this.touchGesture) return; // two-finger gesture owns the camera
+      const [sx, sy] = this.eventToScreen(ev);
+      if (this.dragNodeIndex >= 0) {
+        this.dragMoved = true;
+        const w = this.screenToWorld(sx, sy);
+        this.solver?.setDrag(this.dragNodeIndex, w.x, w.y);
+        this.wake();
+        return;
+      }
+      if (this.dragging) {
+        const dx = ev.clientX - this.lastX;
+        const dy = ev.clientY - this.lastY;
+        if (Math.abs(dx) + Math.abs(dy) > 2) this.dragMoved = true;
+        this.lastX = ev.clientX;
+        this.lastY = ev.clientY;
+        // A camera pan is manual navigation: disengage autoframe so it does not yank the
+        // view back when the drag ends (idempotent — suspends once).
+        this.disengageAutoframeForUserNav();
+        const ppw = this.pixelsPerWorld();
+        this.camera.position.x -= dx / ppw;
+        this.camera.position.y += dy / ppw;
+        this.camera.updateProjectionMatrix();
+        this.requestRender();
+        return;
+      }
+      const hit = this.pickNodeAtScreen(sx, sy);
+      this.setHovered(hit);
+      this.setCursor(hit ? "grab" : "default");
+    });
+    const end = (ev: PointerEvent) => {
+      this.dragging = false;
+      if (el.hasPointerCapture(ev.pointerId)) el.releasePointerCapture(ev.pointerId);
+    };
+    el.addEventListener("pointerup", (ev: PointerEvent) => {
+      const draggedNode = this.dragNodeIndex >= 0;
+      const wasDrag = this.dragMoved;
+      this.endNodeDrag();
+      end(ev);
+      this.setCursor("default");
+      if (ev.button !== 0) return;
+      // A click (no movement) selects; a node drag also selects the grabbed node.
+      if (!wasDrag || draggedNode) {
+        const [sx, sy] = this.eventToScreen(ev);
+        this.controller?.emit({ kind: "select", id: this.pickNodeAtScreen(sx, sy) });
+      }
+    });
+    el.addEventListener("pointercancel", (ev: PointerEvent) => {
+      this.endNodeDrag();
+      end(ev);
+    });
+    el.addEventListener("dblclick", (ev: MouseEvent) => {
+      const [sx, sy] = this.eventToScreen(ev);
+      const id = this.pickNodeAtScreen(sx, sy);
+      if (id) this.controller?.emit({ kind: "open", id });
+    });
+    el.addEventListener("contextmenu", (ev: MouseEvent) => {
+      ev.preventDefault();
+      const [sx, sy] = this.eventToScreen(ev);
+      const id = this.pickNodeAtScreen(sx, sy);
+      this.controller?.emit({
+        kind: "context-menu",
+        id,
+        target: "node",
+        clientX: ev.clientX,
+        clientY: ev.clientY,
+      });
+    });
+    el.addEventListener("pointerleave", () => {
+      if (this.dragNodeIndex < 0) this.setHovered(null);
+    });
+
+    // Real touch devices (graph-trackpad-nav): a TWO-FINGER gesture pans by the centroid
+    // delta (drag sense — the surface follows the fingers) and pinch-zooms by the spread
+    // ratio toward the centroid. Single-finger touch still flows through the pointer
+    // handlers above (tap = select, one-finger drag = pan). The gesture suppresses the
+    // pointer pan via `touchGesture` so the two never fight.
+    el.addEventListener(
+      "touchstart",
+      (ev: TouchEvent) => {
+        if (ev.touches.length !== 2) return;
+        ev.preventDefault();
+        this.touchGesture = true;
+        this.dragging = false; // cancel any single-finger pan already begun
+        this.endNodeDrag();
+        this.lastTouchCentroid = this.touchCentroid(ev.touches);
+        this.lastTouchDist = this.touchDistance(ev.touches);
+      },
+      { passive: false },
+    );
+    el.addEventListener(
+      "touchmove",
+      (ev: TouchEvent) => {
+        if (!this.touchGesture || ev.touches.length < 2) return;
+        ev.preventDefault();
+        const centroid = this.touchCentroid(ev.touches);
+        const dist = this.touchDistance(ev.touches);
+        if (this.lastTouchCentroid) {
+          const ppw = this.pixelsPerWorld();
+          const dcx = centroid.x - this.lastTouchCentroid.x;
+          const dcy = centroid.y - this.lastTouchCentroid.y;
+          // Drag sense: surface follows the fingers (camera moves opposite).
+          this.panCamera(-dcx / ppw, dcy / ppw);
+        }
+        if (this.lastTouchDist > 0 && dist > 0) {
+          const [sx, sy] = this.clientToScreen(centroid.x, centroid.y);
+          this.zoomAtScreen(dist / this.lastTouchDist, sx, sy);
+        }
+        this.lastTouchCentroid = centroid;
+        this.lastTouchDist = dist;
+      },
+      { passive: false },
+    );
+    const endTouch = (ev: TouchEvent) => {
+      if (ev.touches.length < 2) {
+        this.touchGesture = false;
+        this.lastTouchCentroid = null;
+        this.lastTouchDist = 0;
+      }
+    };
+    el.addEventListener("touchend", endTouch);
+    el.addEventListener("touchcancel", endTouch);
+  }
+}

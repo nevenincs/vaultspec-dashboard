@@ -107,11 +107,12 @@ describe("buildTimelineCommands / buildEditorCommands", () => {
     expect(cleared).toBe(1);
   });
 
-  it("editor commands fire the injected effects (close / close-all / reload / keep-open)", () => {
+  it("editor commands fire the injected effects (close / close-all / reload / keep-open / toggle-diff)", () => {
     let closed = 0;
     let closedAll = 0;
     let reloaded = 0;
     let kept = 0;
+    let diffToggled = 0;
     const commands = buildEditorCommands({
       closeDoc: () => {
         closed += 1;
@@ -125,19 +126,34 @@ describe("buildTimelineCommands / buildEditorCommands", () => {
       keepOpen: () => {
         kept += 1;
       },
+      toggleDiff: () => {
+        diffToggled += 1;
+      },
     });
     expect(commands.map((c) => c.id)).toEqual([
       "editor:close-document",
       "editor:close-all-documents",
       "editor:reload-document",
       "editor:keep-document-open",
+      "editor:toggle-diff",
     ]);
-    expect(commands.every((c) => c.family === "app")).toBe(true);
+    // The lifecycle commands are in the "app" family; toggle-diff is in "edit".
+    const appIds = [
+      "editor:close-document",
+      "editor:close-all-documents",
+      "editor:reload-document",
+      "editor:keep-document-open",
+    ];
+    expect(
+      commands.filter((c) => appIds.includes(c.id)).every((c) => c.family === "app"),
+    ).toBe(true);
+    expect(commands.find((c) => c.id === "editor:toggle-diff")?.family).toBe("edit");
     commands[0]?.run();
     commands[1]?.run();
     commands[2]?.run();
     commands[3]?.run();
-    expect([closed, closedAll, reloaded, kept]).toEqual([1, 1, 1, 1]);
+    commands[4]?.run();
+    expect([closed, closedAll, reloaded, kept, diffToggled]).toEqual([1, 1, 1, 1, 1]);
   });
 });
 

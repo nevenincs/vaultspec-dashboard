@@ -287,6 +287,19 @@ export interface ViewState {
   /** The editor lifecycle status for the open document; `idle` when none is open. */
   editorStatus: EditorStatus;
   /**
+   * The document body text captured when the editor opened — the "base" for the
+   * draft-vs-saved diff (authoring-surface ADR D4). Matches `draftText` at open
+   * (status `idle`); stays frozen while the draft diverges. Empty when no editor
+   * is open. A SINGLE string, never a history (bounded-by-default).
+   */
+  editorBaseText: string;
+  /**
+   * Whether the in-editor diff panel is expanded (authoring-surface ADR D4).
+   * False when no editor is open or the panel is collapsed. View-local chrome —
+   * the toggle is reachable from keymap + palette under one shared action id.
+   */
+  editorDiffVisible: boolean;
+  /**
    * Overlay visibility (graph-representation ADR): feature-country labels at
    * overview and BubbleSets hulls at document LOD. Owned here, emitted as
    * `set-overlays`.
@@ -388,17 +401,22 @@ export interface ViewState {
   /** Mark a save in flight (status → `saving`). */
   markSaving: () => void;
   /** Mark a save landed (status → `saved`): adopt the new `blob_hash` as the next
-   *  concurrency base so a subsequent edit saves against the fresh blob. */
-  markSaved: (blobHash: unknown) => void;
+   *  concurrency base so a subsequent edit saves against the fresh blob, and advance
+   *  `editorBaseText` to the text that was committed (so the diff panel compares
+   *  against what is actually on disk, not the stale open-time snapshot). */
+  markSaved: (blobHash: unknown, savedText: string) => void;
   /** Mark a blob-hash conflict (status → `conflict`): the optimistic base went
    *  stale (someone else wrote). The draft is retained for the reconcile UI. */
   markConflict: () => void;
   /** Mark a save failure (status → `save-failed`): a transport fault or a
    *  validation refusal. The draft is retained so the edit is not lost. */
   markFailed: () => void;
-  /** Close the editor (clears the target, draft, base, and resets status to
-   *  `idle`) — the same single-value clear a scope swap performs. */
+  /** Close the editor (clears the target, draft, base, diff state, and resets
+   *  status to `idle`) — the same single-value clear a scope swap performs. */
   closeEditor: () => void;
+  /** Toggle the in-editor draft-vs-saved diff panel (authoring-surface ADR D4).
+   *  A no-op when no editor is open (diff state resets on open/close anyway). */
+  toggleEditorDiff: () => void;
   /**
    * Reconcile view-local node affordances against the currently held graph model.
    * These ids are visual subscriptions, not durable truth: when the canonical graph
@@ -612,6 +630,8 @@ function corpusLocalViewState(scope: unknown) {
     draftText: "",
     baseBlobHash: "",
     editorStatus: "idle" as const,
+    editorBaseText: "",
+    editorDiffVisible: false,
   };
 }
 
@@ -631,6 +651,8 @@ export const useViewStore = create<ViewState>((set) => ({
   draftText: "",
   baseBlobHash: "",
   editorStatus: "idle",
+  editorBaseText: "",
+  editorDiffVisible: false,
   overlays: normalizeGraphOverlays(DEFAULT_GRAPH_OVERLAYS),
   renderCapability: DEFAULT_RENDER_CAPABILITY,
   leftRailVisible: true,
@@ -844,6 +866,8 @@ export const useViewStore = create<ViewState>((set) => ({
               draftText: "",
               baseBlobHash: "",
               editorStatus: "idle" as const,
+              editorBaseText: "",
+              editorDiffVisible: false,
             }
           : {}),
       };
@@ -862,6 +886,8 @@ export const useViewStore = create<ViewState>((set) => ({
         draftText: "",
         baseBlobHash: "",
         editorStatus: "idle" as const,
+        editorBaseText: "",
+        editorDiffVisible: false,
       };
     }),
   reorderDocs: (orderedIds) =>
@@ -891,11 +917,16 @@ export const useViewStore = create<ViewState>((set) => ({
     set((state) => {
       const docNodeId = normalizeNodeId(nodeId);
       if (docNodeId === null) return state;
+      const normalizedText = normalizeEditorTextValue(text);
       return {
         editorTarget: { nodeId: docNodeId },
-        draftText: normalizeEditorTextValue(text),
+        draftText: normalizedText,
         baseBlobHash: normalizeEditorBlobHash(baseBlobHash),
         editorStatus: "idle",
+        // Capture the opening text as the diff base; reset the diff panel so
+        // each new editing session starts collapsed (authoring-surface ADR D4).
+        editorBaseText: normalizedText,
+        editorDiffVisible: false,
       };
     }),
   setDraft: (text) =>
@@ -912,10 +943,13 @@ export const useViewStore = create<ViewState>((set) => ({
   // a keystroke after `markSaving` sets status back to "dirty"; a then-incoming
   // `markSaved` must KEEP "dirty" (the raced draft is unsaved) so the unsaved-edit guard
   // still protects it — only flip to "saved" when no edit raced.
-  markSaved: (blobHash) =>
+  // Always advance `editorBaseText` to the committed text (the exact draft that was sent
+  // to the wire) so the diff panel compares draft-vs-SAVED, not draft-vs-open-time.
+  markSaved: (blobHash, savedText) =>
     set((state) => ({
       baseBlobHash: normalizeEditorBlobHash(blobHash),
       editorStatus: state.editorStatus === "dirty" ? "dirty" : "saved",
+      editorBaseText: savedText,
     })),
   markConflict: () => set({ editorStatus: "conflict" }),
   markFailed: () => set({ editorStatus: "save-failed" }),
@@ -925,7 +959,11 @@ export const useViewStore = create<ViewState>((set) => ({
       draftText: "",
       baseBlobHash: "",
       editorStatus: "idle",
+      editorBaseText: "",
+      editorDiffVisible: false,
     }),
+  toggleEditorDiff: () =>
+    set((state) => ({ editorDiffVisible: !state.editorDiffVisible })),
   pruneNodeAffordances: (nodeIds) =>
     set((state) => {
       const valid = new Set(normalizeNodeIds(nodeIds, nodeIds.length));

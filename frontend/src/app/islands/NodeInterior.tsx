@@ -115,7 +115,7 @@ function FeatureLifecycle({
             title={doc.title ?? doc.kind}
           >
             <DocTypeMark kind={doc.kind} size={12} aria-hidden />
-            {doc.kind}
+            <span className="select-text">{doc.kind}</span>
           </button>
         </li>
       ))}
@@ -165,7 +165,7 @@ function PlanInterior({
               title={step.title}
             >
               <span aria-hidden>{step.done ? "✓" : "○"}</span>
-              <span className="truncate">{step.title}</span>
+              <span className="select-text truncate">{step.title}</span>
             </button>
           </li>
         ))}

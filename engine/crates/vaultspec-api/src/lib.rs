@@ -9,12 +9,15 @@
 
 pub mod app;
 mod authoring;
+pub mod boot;
+pub mod discovery;
 pub mod handshake;
 pub mod registry;
 pub mod routes;
+mod row_delta;
+pub mod seat;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
@@ -30,6 +33,8 @@ const MAX_REQUEST_BODY: usize = 1024 * 1024;
 
 use app::AppState;
 
+pub use boot::{bootstrap_root, serve};
+
 /// Default port for the resident service. `--port` with fail-loud
 /// conflicts is a contract requirement (R2).
 pub const DEFAULT_PORT: u16 = 8767;
@@ -41,8 +46,11 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/map",
     "/workspaces",
     "/vault-tree",
+    "/vault-tree/delta",
     "/code-files",
+    "/code-files/delta",
     "/file-tree",
+    "/fs/list",
     "/pipeline",
     "/dashboard-state",
     "/graph/query",
@@ -62,6 +70,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/issues",
     "/status",
     "/stream",
+    "/shutdown",
     "/authoring/status",
     "/search",
     "/ops/core/{verb}",
@@ -91,6 +100,9 @@ async fn health() -> Json<Value> {
 
 /// Assemble the full single-origin router (contract §1).
 pub fn build_router(state: Arc<AppState>) -> Router {
+    // Short paths for the generation-keyed listing routes so the delta
+    // registrations fit on one line (module-size gate: lib.rs is shrink-only).
+    use routes::{code_files, vault_tree};
     Router::new()
         .route("/health", get(health))
         .route("/map", get(routes::query::map))
@@ -98,12 +110,21 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // the registered project roots with reachability, through the shared
         // envelope. Registry mutation rides /session (config), never here.
         .route("/workspaces", get(routes::registry::list_workspaces))
-        .route("/vault-tree", get(routes::query::vault_tree))
-        .route("/code-files", get(routes::query::code_files))
+        // Graceful stop (single-app-runtime D5): bearer-gated signal; the
+        // drain itself is the serve loop's one shared shutdown path.
+        .route("/shutdown", post(routes::lifecycle::shutdown))
+        // Generation-keyed listing deltas (vault-tree-delta ADR + /code-files follow-on).
+        .route("/vault-tree", get(vault_tree::vault_tree))
+        .route("/vault-tree/delta", get(vault_tree::vault_tree_delta))
+        .route("/code-files", get(code_files::code_files))
+        .route("/code-files/delta", get(code_files::code_files_delta))
         // Read-only codebase file-tree listing (dashboard-code-tree ADR): one
         // bounded, ignore-aware directory level per call, metadata only, through
         // the shared envelope so every response carries the tiers block.
         .route("/file-tree", get(routes::file_tree::file_tree))
+        // Bounded read-only directory browsing for the add-project picker
+        // (single-app-runtime S24, ADR O6 closure).
+        .route("/fs/list", get(routes::fs_browse::fs_list))
         // In-flight pipeline projection (dashboard-pipeline-wire W02): active
         // plans + in-flight ADRs in scope, through the shared envelope.
         .route("/pipeline", get(routes::query::pipeline))
@@ -277,8 +298,28 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // `nosniff` stops MIME-confusion on served assets, `DENY` blocks
         // clickjacking via framing, and `no-referrer` keeps loopback URLs out of
         // any cross-origin referrer. Applied OUTERMOST so every response — static
-        // asset, API, error, and SSE — carries them. (CSP is a separate task: it
-        // needs testing against the Vite-built SPA's inline/style needs.)
+        // asset, API, error, and SSE — carries them.
+        //
+        // CSP (single-app-runtime D7, closing the deferral recorded here):
+        // authored against the embedded SPA's ACTUAL needs — every script and
+        // stylesheet is a same-origin chunk (shiki grammars arrive via
+        // same-origin dynamic import); the pre-hydration boot shell is one
+        // inline <style> island and React styles are attributes (both under
+        // style-src 'unsafe-inline'); the favicon is a data: URI; SSE rides
+        // connect-src 'self'; the browser never contacts an external host
+        // (core and rag are reached by the ENGINE process, not the page).
+        // frame-ancestors 'none' mirrors X-Frame-Options DENY.
+        .layer(tower_http::set_header::SetResponseHeaderLayer::overriding(
+            axum::http::header::CONTENT_SECURITY_POLICY,
+            axum::http::HeaderValue::from_static(concat!(
+                "default-src 'self'; script-src 'self'; ",
+                "style-src 'self' 'unsafe-inline'; ",
+                "img-src 'self' data:; font-src 'self' data:; ",
+                "connect-src 'self'; worker-src 'self' blob:; ",
+                "frame-ancestors 'none'; base-uri 'self'; ",
+                "form-action 'self'; object-src 'none'"
+            )),
+        ))
         .layer(tower_http::set_header::SetResponseHeaderLayer::overriding(
             axum::http::header::X_CONTENT_TYPE_OPTIONS,
             axum::http::HeaderValue::from_static("nosniff"),
@@ -292,208 +333,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             axum::http::HeaderValue::from_static("no-referrer"),
         ))
         .with_state(state)
-}
-
-/// Run the resident service on loopback: initial index, watcher-driven
-/// rebuild-and-swap (302/303), heartbeat on the discovery file.
-pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
-    // Crash visibility (dogfood DF-4): a panic anywhere must leave a
-    // trace, never a silent death. The hook writes a crash log under the
-    // engine data dir and stderr before unwinding.
-    //
-    // `--scope` selects the served worktree explicitly; without it the
-    // launch directory is the implicit scope (both resolve to their
-    // containing worktree below, exactly like every one-shot verb).
-    let cwd = match scope {
-        Some(path) => {
-            let p = std::path::PathBuf::from(&path);
-            if !p.is_dir() {
-                return Err(std::io::Error::other(format!(
-                    "--scope `{path}` is not a usable worktree (must be an existing \
-                     directory inside a git workspace)"
-                )));
-            }
-            p
-        }
-        None => std::env::current_dir()?,
-    };
-    // Resolve like every other verb (dogfood DF-2, D2.1): any launch
-    // directory inside the workspace resolves to its containing worktree.
-    let workspace = ingest_git::workspace::Workspace::discover(&cwd)
-        .map_err(|e| std::io::Error::other(format!("not inside a git workspace: {e}")))?;
-    // Path-only resolution (worktree-enumeration sweep): the launch root is
-    // matched by path, so list roots cheaply rather than inspecting every
-    // worktree at serve boot.
-    let roots = ingest_git::worktrees::list_roots(&workspace)
-        .map_err(|e| std::io::Error::other(e.to_string()))?;
-    let cwd_clean = cwd.to_string_lossy().replace('\\', "/");
-    let root = roots
-        .into_iter()
-        .find(|p| {
-            let wp = p.to_string_lossy().replace('\\', "/");
-            let wp = wp.strip_prefix("//?/").unwrap_or(&wp).to_string();
-            let cw = cwd_clean.strip_prefix("//?/").unwrap_or(&cwd_clean);
-            cw == wp || cw.starts_with(&format!("{wp}/"))
-        })
-        .unwrap_or(cwd);
-    // Strip Windows extended-length prefixes so the served root compares
-    // cleanly with client-supplied scope strings.
-    let root = {
-        let cleaned = root.to_string_lossy().replace('\\', "/");
-        std::path::PathBuf::from(cleaned.strip_prefix("//?/").unwrap_or(&cleaned))
-    };
-    if !root.join(".vault").is_dir() {
-        return Err(std::io::Error::other(format!(
-            "no .vault corpus under {} - vaultspec serve runs inside a \
-             vaultspec-managed worktree",
-            root.display()
-        )));
-    }
-
-    // Detect-and-instruct (dashboard-packaging D3, amended by review): probe
-    // the two external requirements BEFORE any heavy work and WARN with the
-    // exact remediation — never exit. Serving degraded with honest tiers is
-    // the binding doctrine (the adversarial degradation suite and the
-    // conformance harness both run serve without core by design), and the
-    // affected tiers carry the same remediation truth to the GUI.
-    if let Err(remediation) = handshake::startup_gate() {
-        eprintln!(
-            "vaultspec serve: WARNING - a companion tool is missing; the \
-             affected data tiers will report unavailable.\n\n{remediation}\n"
-        );
-    }
-
-    let crash_log = engine_store::engine_data_dir(&root.join(".vault")).join("crash.log");
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let line = format!(
-            "[{}] vaultspec serve panic: {info}\n",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0)
-        );
-        if let Some(parent) = crash_log.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&crash_log)
-            .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
-        eprintln!("{line}");
-        default_hook(info);
-    }));
-
-    // Build the workspace-level state. This opens the SHARED user-state handle
-    // once, eagerly builds the launch scope's cell into the registry (cold
-    // initial index, the same pipeline the one-shot CLI runs, D2.4), spawns
-    // that cell's watcher on its own clock (W02.P04.S13), and pins it as the
-    // active scope. We run inside the tokio runtime, so the watcher's rebuild
-    // task spawns here.
-    let state = app::build_state(root.clone());
-
-    // Restore the persisted active scope through the shared user-state handle
-    // (W02.P03.S11): the workspace key is the launch root's token, the stored
-    // active scope is a worktree token. Restore it only if it still names a
-    // selectable vault-bearing worktree; otherwise fall back to the launch
-    // worktree. Persist the resolved active scope back so a first run seeds it.
-    let workspace_key = routes::scope_token(&state.workspace_root);
-    let launch_token = workspace_key.clone();
-    let restored = {
-        let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
-        us.active_scope(&workspace_key).ok().flatten()
-    }
-    .filter(|token| registry::validate_scope_token(&state, token).is_ok());
-    let active_token = match restored {
-        Some(token) if token != launch_token => {
-            // A different, still-valid persisted scope: warm it and make it
-            // active so reload restores "where I was".
-            if registry::get_or_build(&state, &token).is_ok() {
-                *state
-                    .active_scope
-                    .write()
-                    .unwrap_or_else(|e| e.into_inner()) = token.clone();
-                token
-            } else {
-                launch_token.clone()
-            }
-        }
-        _ => launch_token.clone(),
-    };
-    {
-        let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
-        let _ = us.set_active_scope(&workspace_key, &active_token, app::now_ms());
-    }
-
-    // Auto-register the launch workspace as the first registry root
-    // (dashboard-workspace-registry ADR, P01.S03), so the single-project
-    // experience is unchanged. The stable workspace id is the canonical git
-    // common dir (the same identity-bearing derivation the rest of the contract
-    // uses), discovered READ-ONLY from the launch root; the label defaults to the
-    // launch root's final path component, the path is the launch token. This
-    // RECORDS the launch root only; it never mutates the repository. Best-effort:
-    // a discovery or store failure degrades to "no registry seeded" and the rail
-    // renders the launch workspace as the header fallback. The active workspace
-    // is seeded to the launch root when none is selected yet.
-    {
-        let workspace_id = ingest_git::workspace::Workspace::discover(&state.workspace_root)
-            .ok()
-            .map(|ws| routes::scope_token(&ws.common_dir));
-        if let Some(workspace_id) = workspace_id {
-            let label = state
-                .workspace_root
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| launch_token.clone());
-            let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
-            let _ = us.auto_register_launch(&workspace_id, &label, &launch_token, app::now_ms());
-            if us.active_workspace().ok().flatten().is_none() {
-                let _ = us.set_active_workspace(&workspace_id, app::now_ms());
-            }
-        }
-    }
-
-    // Loopback-only bind FIRST (R2: a port conflict fails loud here) so an
-    // OS-assigned ephemeral port (`--port 0`) is resolved to the ACTUAL bound
-    // port before discovery is written. service.json then advertises the real
-    // port, letting tests (and any caller) bind 0 and avoid fixed-port
-    // collisions on concurrent runs.
-    let listener =
-        tokio::net::TcpListener::bind(std::net::SocketAddr::from(([127, 0, 0, 1], port))).await?;
-    let port = listener.local_addr()?.port();
-
-    // Discovery + heartbeat (contract §1), advertising the real bound port.
-    app::write_service_json(&state, port)?;
-
-    // Abort-on-drop guard for the heartbeat task (B9, resource-hardening): the
-    // loop holds a cloned `Arc<AppState>` and runs forever. Without an abort
-    // handle it was a detached task that survives cancellation of this `serve`
-    // future (e.g. a test that drops the serve task), keeping the whole
-    // AppState — its locks and every warm ScopeCell — alive. The guard aborts
-    // the task whether `serve` returns normally or is cancelled.
-    struct AbortOnDrop(tokio::task::JoinHandle<()>);
-    impl Drop for AbortOnDrop {
-        fn drop(&mut self) {
-            self.0.abort();
-        }
-    }
-    let _heartbeat = {
-        let state = state.clone();
-        AbortOnDrop(tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(Duration::from_secs(15)).await;
-                let _ = app::write_service_json(&state, port);
-            }
-        }))
-    };
-
-    println!(
-        "vaultspec serve: listening on http://127.0.0.1:{port} (bearer token in service.json)"
-    );
-    axum::serve(listener, build_router(state))
-        .await
-        .map_err(std::io::Error::other)
 }
 
 #[cfg(test)]
@@ -615,6 +454,73 @@ mod tests {
         assert_eq!(
             headers.get("referrer-policy").and_then(|v| v.to_str().ok()),
             Some("no-referrer"),
+        );
+        // CSP (single-app-runtime D7): same-origin everything, the SPA's two
+        // real allowances (inline style island, data: favicon), nothing else.
+        let csp = headers
+            .get("content-security-policy")
+            .and_then(|v| v.to_str().ok())
+            .expect("CSP on every response");
+        for directive in [
+            "default-src 'self'",
+            "script-src 'self'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data:",
+            "connect-src 'self'",
+            "frame-ancestors 'none'",
+            "object-src 'none'",
+        ] {
+            assert!(csp.contains(directive), "CSP missing `{directive}`: {csp}");
+        }
+        assert!(
+            !csp.contains("unsafe-eval"),
+            "CSP must never allow eval: {csp}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_served_spa_document_is_loadable_under_the_csp() {
+        // Review M4: prove the policy against the SPA DOCUMENT itself, not
+        // just an API route. The served index (whichever asset source
+        // resolves — embedded, override dir, disk passthrough, or the
+        // placeholder) must carry the CSP header AND contain nothing the
+        // policy forbids: no inline <script> (script-src 'self' has no
+        // unsafe-inline) and no external script/style/img origin.
+        let (_dir, state) = fixture_state();
+        let router = build_router(state);
+        let response = router
+            .oneshot(
+                Request::get("/")
+                    .header("host", "127.0.0.1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            response.headers().get("content-security-policy").is_some(),
+            "the SPA document carries the CSP"
+        );
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let html = String::from_utf8_lossy(&bytes).to_lowercase();
+        // An inline module/script body would be blocked by script-src 'self':
+        // every <script> must carry src (the bearer bootstrap is a <meta>
+        // tag by design, never an inline script).
+        for (i, chunk) in html.split("<script").enumerate() {
+            if i == 0 {
+                continue;
+            }
+            let tag = chunk.split('>').next().unwrap_or("");
+            assert!(
+                tag.contains("src="),
+                "inline <script> would be blocked by the CSP: <script{tag}>"
+            );
+        }
+        assert!(
+            !html.contains("src=\"http") && !html.contains("href=\"http"),
+            "the SPA document must reference no external origin under              default-src 'self'"
         );
     }
 

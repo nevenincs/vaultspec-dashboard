@@ -1013,6 +1013,7 @@ fn operation_kind_as_str(kind: ChangesetOperationKind) -> &'static str {
         ChangesetOperationKind::Unarchive => "unarchive",
         ChangesetOperationKind::Link => "link",
         ChangesetOperationKind::SectionEdit => "section_edit",
+        ChangesetOperationKind::SetPlanStepState => "set_plan_step_state",
     }
 }
 

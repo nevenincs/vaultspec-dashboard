@@ -40,6 +40,8 @@ import {
 } from "../../stores/view/browserTreeExpansion";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
+import { guardedContextMenu } from "../menus/guardedContextMenu";
+import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 import { useFocusZone, type FocusZoneItemProps } from "../chrome/useFocusZone";
 import {
   useDashboardBrowserSelection,
@@ -318,68 +320,77 @@ function DirectoryRow({
 
   return (
     <li>
-      <button
-        type="button"
-        title={entry.path}
-        aria-current={rowView.highlighted ? "page" : undefined}
-        aria-expanded={rowView.isDir ? rowView.expanded : undefined}
-        tabIndex={tabIndex}
-        ref={ref}
-        data-code-row
-        data-code-dir={rowView.isDir ? "" : undefined}
-        data-code-linked={rowView.linked ? "" : undefined}
-        onFocus={() => navigation.setActiveKey(rowView.navKey)}
-        onClick={() => {
-          if (rowView.isDir) {
-            expansion.toggle(entry.path);
-          } else {
-            clickHandler(entry);
-          }
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          openContextMenu(codeFileEntity(entry, scope), {
-            x: e.clientX,
-            y: e.clientY,
-          });
-        }}
-        onKeyDown={(e) => {
-          if (
-            handleKeyboardContextMenu(e, (anchor) =>
-              openContextMenu(codeFileEntity(entry, scope), anchor),
-            )
-          ) {
-            return;
-          }
-          zoneKeyDown(e);
-        }}
-        style={rowView.rowStyle}
-        className={rowView.rowClassName}
-      >
-        <DepthGuides depth={depth} />
-        <span aria-hidden className={rowView.selectionCueClassName} />
-        <span className={rowView.chevronClassName} aria-hidden>
-          {rowView.isDir ? (
-            rowView.expanded ? (
-              <ChevronDown size={CHEVRON_PX} />
+      <div className="flex items-center">
+        <button
+          type="button"
+          title={entry.path}
+          aria-current={rowView.highlighted ? "page" : undefined}
+          aria-expanded={rowView.isDir ? rowView.expanded : undefined}
+          tabIndex={tabIndex}
+          ref={ref}
+          data-code-row
+          data-code-dir={rowView.isDir ? "" : undefined}
+          data-code-linked={rowView.linked ? "" : undefined}
+          onFocus={() => navigation.setActiveKey(rowView.navKey)}
+          onClick={() => {
+            if (rowView.isDir) {
+              expansion.toggle(entry.path);
+            } else {
+              clickHandler(entry);
+            }
+          }}
+          onContextMenu={guardedContextMenu((e) => {
+            e.preventDefault();
+            openContextMenu(codeFileEntity(entry, scope), {
+              x: e.clientX,
+              y: e.clientY,
+            });
+          })}
+          onKeyDown={(e) => {
+            if (
+              handleKeyboardContextMenu(e, (anchor) =>
+                openContextMenu(codeFileEntity(entry, scope), anchor),
+              )
+            ) {
+              return;
+            }
+            zoneKeyDown(e);
+          }}
+          style={rowView.rowStyle}
+          className={rowView.rowClassName}
+        >
+          <DepthGuides depth={depth} />
+          <span aria-hidden className={rowView.selectionCueClassName} />
+          <span className={rowView.chevronClassName} aria-hidden>
+            {rowView.isDir ? (
+              rowView.expanded ? (
+                <ChevronDown size={CHEVRON_PX} />
+              ) : (
+                <ChevronRight size={CHEVRON_PX} />
+              )
             ) : (
-              <ChevronRight size={CHEVRON_PX} />
-            )
-          ) : (
-            <span style={rowView.chevronSpacerStyle} />
+              <span style={rowView.chevronSpacerStyle} />
+            )}
+          </span>
+          <span className={rowView.markClassName}>
+            <Mark size={ROW_MARK_PX} />
+          </span>
+          <span className={rowView.labelClassName}>{row.displayName}</span>
+          {rowView.linked && (
+            <span
+              aria-label={rowView.linkedCueAriaLabel}
+              className={rowView.linkedCueClassName}
+            />
           )}
-        </span>
-        <span className={rowView.markClassName}>
-          <Mark size={ROW_MARK_PX} />
-        </span>
-        <span className={rowView.labelClassName}>{row.displayName}</span>
-        {rowView.linked && (
-          <span
-            aria-label={rowView.linkedCueAriaLabel}
-            className={rowView.linkedCueClassName}
-          />
-        )}
-      </button>
+        </button>
+        {/* The row's coarse-pointer menu entry (touch-selectability ADR D3): the
+            SAME code-file entity its right-click path opens, sibling of the row
+            button; renders nothing on fine-pointer devices. */}
+        <RowMenuDisclosure
+          entity={codeFileEntity(entry, scope)}
+          label={`${row.displayName} actions`}
+        />
+      </div>
 
       {/* Lazily-fetched children: mounted only once the directory is expanded, so
           its `useFileTreeLevel(scope, path)` selector fires on first expansion and is

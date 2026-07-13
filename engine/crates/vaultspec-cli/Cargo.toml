@@ -2,10 +2,17 @@
 name = "vaultspec-cli"
 description = "The `vaultspec` binary: one Rust binary, two front doors — one-shot CLI verbs and the resident serve mode (engine-spec D1.1). Verbs are thin shells over engine-query (D6.1)."
 version.workspace = true
+authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+
+[package.metadata.wix]
+upgrade-guid = "51ED63D0-D794-406A-8F96-ED09840177B1"
+path-guid = "C3A8A117-69C2-4305-B00F-CECFF92D204F"
+license = false
+eula = false
 
 [[bin]]
 name = "vaultspec"
@@ -19,11 +26,13 @@ engine-query.workspace = true
 engine-store = { version = "0.1.0", path = "../engine-store" }
 ingest-core = { version = "0.1.0", path = "../ingest-core" }
 ingest-git = { version = "0.1.0", path = "../ingest-git" }
+open = "5.4.0"
 rag-client = { version = "0.1.0", path = "../rag-client" }
 serde_json = "1.0.150"
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["rt-multi-thread"] }
 vaultspec-api.workspace = true
+vaultspec-session = { version = "0.1.0", path = "../vaultspec-session" }
 
 [features]
 # Forward the api crate's SPA embed so a release build of the `vaultspec`

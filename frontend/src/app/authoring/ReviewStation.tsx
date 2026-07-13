@@ -326,7 +326,9 @@ export function ProposalCard({
 
   return (
     <li
-      className="flex flex-col gap-fg-2 rounded-fg-sm border border-rule bg-paper-raised px-fg-3 py-fg-2"
+      // Card density matches the rail's PR/issue rows (px-fg-2) so the Approvals
+      // fold reads as the same design element as its sibling sections.
+      className="flex flex-col gap-fg-2 rounded-fg-sm border border-rule bg-paper-raised px-fg-2 py-fg-2"
       data-proposal
       data-changeset-id={proposal.changeset_id}
       data-status={proposal.status}
@@ -550,39 +552,25 @@ function ReviewStationBody({ view }: { view: ReviewStationView }) {
   );
 }
 
-/** The review station: a polled, backend-served proposal queue with per-proposal
- *  approve/reject/apply/rollback driven by served eligibility. The human-in-the-
- *  loop seam for agentic authoring. */
-export function ReviewStation() {
-  const view = useReviewStationView();
-  return (
-    <section
-      className="flex flex-col gap-fg-3 text-body"
-      data-review-station
-      aria-label="Review station"
-    >
-      <header className="flex items-center justify-between gap-fg-2">
-        <SectionLabel count={view.rows.length + view.afterFactRows.length}>
-          Review station
-        </SectionLabel>
-        <ReviewerIdentity />
-      </header>
-      <ReviewStationBody view={view} />
-    </section>
-  );
-}
-
-/** The review station as a rail SECTION BODY (no title of its own — the enclosing
- *  rail SectionCard supplies the "Review station" header, mirroring the
- *  search-service console's body-in-a-section pattern). Carries the reviewer
- *  identity control + the polled queue. */
+/** The approvals queue as a rail SECTION BODY (no title of its own — the enclosing
+ *  rail SectionCard supplies the "Approvals" header, mirroring the
+ *  search-service console's body-in-a-section pattern). The reviewer identity
+ *  control surfaces only when it can matter: proposals are waiting (sign-in
+ *  unlocks their actions) or a reviewer is already signed in (sign-out stays
+ *  reachable). A quiet queue renders just its state — no dangling sign-in
+ *  button over an empty/loading/degraded body. */
 export function ReviewStationSection() {
   const view = useReviewStationView();
+  const identity = useCurrentEditorIdentity();
+  const showIdentity =
+    identity.hasToken || view.rows.length > 0 || view.afterFactRows.length > 0;
   return (
     <div className="flex flex-col gap-fg-3 text-body" data-review-station>
-      <div className="flex items-center justify-end">
-        <ReviewerIdentity />
-      </div>
+      {showIdentity && (
+        <div className="flex items-center justify-end">
+          <ReviewerIdentity />
+        </div>
+      )}
       <ReviewStationBody view={view} />
     </div>
   );

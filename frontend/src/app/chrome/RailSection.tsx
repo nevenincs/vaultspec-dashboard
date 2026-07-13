@@ -45,6 +45,10 @@ export interface RailSectionProps extends Omit<
   headerProps?: ButtonHTMLAttributes<HTMLButtonElement>;
   /** Extra props forwarded to the eyebrow label (e.g. a `data-*` hook). */
   labelProps?: HTMLAttributes<HTMLDivElement> & Record<`data-${string}`, string>;
+  /** Content rendered as a sibling of the header button (e.g. the coarse-pointer
+   *  `RowMenuDisclosure` for a menu-bearing section header) — never nested inside
+   *  it. Omitted callers keep the plain header unchanged. */
+  headerTrailingSibling?: ReactNode;
   children: ReactNode;
 }
 
@@ -58,6 +62,7 @@ export function RailSection({
   headerRef,
   headerProps,
   labelProps,
+  headerTrailingSibling,
   children,
   ...rest
 }: RailSectionProps) {
@@ -71,6 +76,7 @@ export function RailSection({
       bodyClassName={RAIL_SECTION_BODY_CLASS}
       headerRef={headerRef}
       headerProps={headerProps}
+      headerTrailingSibling={headerTrailingSibling}
       label={
         <SectionLabel count={count} {...labelProps}>
           {title}

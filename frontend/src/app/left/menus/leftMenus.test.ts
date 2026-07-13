@@ -133,7 +133,7 @@ describe("worktreeMenu", () => {
 });
 
 describe("vaultDocMenu", () => {
-  it("offers focus, reveal, open-in-editor, copy, relate, and new document", () => {
+  it("offers focus, reveal, open-in-editor, copy (path/stem/link), relate, and new document", () => {
     const actions = vaultDocMenu({
       kind: "vault-doc",
       id: " doc:my-stem ",
@@ -147,12 +147,32 @@ describe("vaultDocMenu", () => {
       "vault-doc:open-in-editor",
       "vault-doc:copy-path",
       "vault-doc:copy-stem",
+      "vault-doc:copy-link",
       "vault-doc:relate",
       "left-rail:new-document",
     ]);
     expect(byId(actions, "vault-doc:focus")?.section).toBe("navigate");
     expect(byId(actions, "vault-doc:copy-stem")?.section).toBe("copy");
     expect(byId(actions, "left-rail:new-document")?.section).toBe("transform");
+  });
+
+  it("copy-link is a runnable copy verb targeting the document's wiki-link", () => {
+    const action = byId(
+      vaultDocMenu({
+        kind: "vault-doc",
+        id: "doc:my-stem",
+        path: ".vault/adr/my-stem.md",
+        stem: "my-stem",
+      }),
+      "vault-doc:copy-link",
+    );
+    // A `run`-based copy verb (so the ONE descriptor is valid on both the menu and
+    // the palette), non-mutating (no time-travel gate), sitting in the copy section.
+    expect(action?.section).toBe("copy");
+    expect(typeof action?.run).toBe("function");
+    expect(action?.dispatch).toBeUndefined();
+    expect(action?.disabled).toBeUndefined();
+    expect(action?.disabledInTimeTravel).toBeUndefined();
   });
 
   it("relate is disabled-with-reason when no document is focused", () => {

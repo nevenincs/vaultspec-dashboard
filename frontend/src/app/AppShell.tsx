@@ -45,7 +45,12 @@ import "./menus/registerAll";
 // Register every per-surface command-palette provider once at app load.
 import "./menus/registerAllCommands";
 import { AddProjectDialog } from "./left/AddProjectDialog";
+import { CreateDocDialog } from "./left/CreateDocDialog";
 import { ProjectNavigator } from "./left/ProjectNavigator";
+import {
+  FirstRunOnboarding,
+  useFirstRunOnboardingState,
+} from "./onboarding/FirstRunOnboarding";
 import { CommandPalette } from "./palette/CommandPalette";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { useSettingsEffects } from "./settings/settingsEffects";
@@ -73,6 +78,7 @@ import { DockWorkspace } from "./stage/DockWorkspace";
 
 export function AppShell() {
   const scope = useActiveScope();
+  const onboarding = useFirstRunOnboardingState();
   const shellFrame = useShellFrameView(scope);
   const shellActions = useShellWindowActions(scope, shellFrame);
   const {
@@ -164,6 +170,15 @@ export function AppShell() {
     document.getElementById("boot-shell")?.remove();
   }, []);
 
+  // First-run onboarding (single-app-runtime ADR D4): an empty workspace
+  // registry takes over the WHOLE shell rather than overlaying the normal
+  // graph chrome — there is no real project to show underneath yet. Checked
+  // after every other hook above runs unconditionally (rules-of-hooks), same
+  // as the compact/desktop branch below.
+  if (onboarding.kind === "onboarding") {
+    return <FirstRunOnboarding />;
+  }
+
   // Compact (phone/tablet) branch of the ONE shell projection
   // (mobile-responsive-layout ADR D2): a single pane + bottom tab bar instead of
   // the desktop three-column grid. The app-wide overlays (palette, settings,
@@ -180,6 +195,7 @@ export function AppShell() {
         <CommandPalette />
         <SettingsDialog />
         <AddProjectDialog />
+        <CreateDocDialog />
         <ProjectNavigator />
         <UnsavedEditGuardHost />
         <ContextMenuHost timeTravel={timeTravel} />
@@ -215,6 +231,7 @@ export function AppShell() {
       <CommandPalette />
       <SettingsDialog />
       <AddProjectDialog />
+      <CreateDocDialog />
       <ProjectNavigator />
       <UnsavedEditGuardHost />
       <ContextMenuHost timeTravel={timeTravel} />

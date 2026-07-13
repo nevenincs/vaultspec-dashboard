@@ -7,6 +7,8 @@
 // raw `tiers` block. Reachable from the worktree dropdown's pinned item, the command
 // palette, and the keymap under the one shared `left-rail:add-project` id.
 
+import { useState } from "react";
+
 import { useAddWorkspace } from "../../stores/server/queries";
 import {
   resetAddProjectChrome,
@@ -15,6 +17,7 @@ import {
   useAddProjectChrome,
 } from "../../stores/view/addProjectChrome";
 import { Dialog } from "../chrome/Dialog";
+import { FolderBrowser } from "./FolderBrowser";
 import { Button } from "../kit";
 
 /** A FRIENDLY, user-facing refusal — never the raw engine/git message (the UI must
@@ -42,6 +45,11 @@ function addProjectErrorMessage(error: unknown): string {
 export function AddProjectDialog() {
   const { open, path, error } = useAddProjectChrome();
   const { add, mutation } = useAddWorkspace();
+  // Browse is widget-intrinsic, ephemeral UI (not a corpus filter or shared
+  // dashboard intent): plain component state, reset for free each time the
+  // dialog remounts (`Dialog` renders nothing while closed).
+  const [browsing, setBrowsing] = useState(false);
+  const [browsePath, setBrowsePath] = useState<string | undefined>(undefined);
 
   const submit = () => {
     const trimmed = path.trim();
@@ -81,6 +89,24 @@ export function AddProjectDialog() {
             className="rounded-fg-xs border border-rule bg-paper px-fg-2 py-fg-1 font-mono text-body text-ink outline-none focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           />
         </label>
+        <button
+          type="button"
+          onClick={() => setBrowsing((prev) => !prev)}
+          aria-expanded={browsing}
+          className="self-start rounded-fg-xs text-label text-ink-muted underline-offset-2 transition-colors duration-ui-fast hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        >
+          {browsing ? "Hide browser" : "Browse…"}
+        </button>
+        {browsing && (
+          <FolderBrowser
+            path={browsePath}
+            onNavigate={setBrowsePath}
+            onChoose={(chosen) => {
+              setAddProjectPath(chosen);
+              setBrowsing(false);
+            }}
+          />
+        )}
         {error !== null && (
           <p role="alert" className="text-label text-state-broken">
             {error}

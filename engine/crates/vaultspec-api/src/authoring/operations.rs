@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::api::{
     ChangesetChildOperationDraft, ChangesetOperationKind, DraftMode, FrontmatterEditFields,
-    TargetRevisionFence,
+    PlanStepEdit, TargetRevisionFence,
 };
 use super::model::{ChangesetId, DocumentRef, RevisionToken};
 use super::sections::{SectionResolveError, SectionSelector, resolve_section};
@@ -104,6 +104,13 @@ pub enum OperationError {
         #[source]
         source: SectionResolveError,
     },
+    #[error("operation `{child_key}` plan step set-state requires a plan-step payload")]
+    MissingPlanStepEdit { child_key: String },
+    #[error("operation `{child_key}` plan step id is invalid: {reason}")]
+    InvalidPlanStepId {
+        child_key: String,
+        reason: &'static str,
+    },
     #[error("snapshot: {0}")]
     Snapshot(#[from] SnapshotError),
 }
@@ -153,6 +160,14 @@ pub struct MaterializedProposalOperation {
     /// operation kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub section_edit: Option<SectionEditPayload>,
+    /// The step id + desired state a `SetPlanStepState` apply carries through to
+    /// the `check` / `uncheck` plan CLI verb (authoring-surface ADR D1) — the
+    /// SAME `PlanStepEdit` the draft supplied, threaded through the ledger so
+    /// apply-time invocation-building and the core-authoritative post-verify
+    /// both read it from the durable materialized operation, never re-derive it.
+    /// `None` for every other operation kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_step_edit: Option<PlanStepEdit>,
 }
 
 impl MaterializedProposalOperation {
@@ -368,6 +383,49 @@ impl MaterializedProposalOperation {
             },
         )
     }
+
+    /// Materialize a `SetPlanStepState` draft (authoring-surface ADR D1): like
+    /// `materialize_rename`, the preview text is the base text UNCHANGED — a
+    /// plan tick is CORE-AUTHORITATIVE over the resulting bytes (the `check` /
+    /// `uncheck` verb flips the checkbox glyph, refreshes the `modified` stamp,
+    /// and may recompute display paths — none of which this engine predicts
+    /// byte-for-byte), so there is nothing to diff and the review diff is
+    /// trivially empty. The reviewable change is the step id + desired state
+    /// carried in `plan_step_edit`. The base snapshot + preimage still exist
+    /// (unlike `CreateDocument`) because the plan IS an existing document, and
+    /// the shared preimage/base-revision fence and `validate_frontmatter` pass
+    /// run over every materialized operation regardless of kind — the plan
+    /// document has real frontmatter and a real base.
+    ///
+    /// The whole-document preimage is captured (as for every kind) but is
+    /// DELIBERATELY NEVER CONSUMED: a plan tick has no V1 rollback inverse (a
+    /// check/uncheck inverse is a named follow-on). `create_rollback_eligibility`
+    /// refuses a `SetPlanStepState` source with `rollback_unavailable: ... no V1
+    /// inverse`, so `apply`/`rollback` never route a plan tick through the
+    /// whole-document preimage-restore path — the capture is inert bookkeeping,
+    /// not a usable restore payload, until the inverse lands.
+    pub fn materialize_set_plan_step_state(
+        changeset_id: &ChangesetId,
+        draft: ChangesetChildOperationDraft,
+        base_snapshot: &RevisionSnapshot,
+        preimage: &PreimageRecord,
+    ) -> Result<Self> {
+        let plan_step =
+            validate_set_plan_step_state_draft(changeset_id, &draft, base_snapshot, preimage)?
+                .clone();
+        let target_text = base_snapshot.text.clone();
+        finish_materialization(
+            changeset_id,
+            draft,
+            base_snapshot,
+            preimage,
+            target_text,
+            OperationKindExtras {
+                plan_step_edit: Some(plan_step),
+                ..Default::default()
+            },
+        )
+    }
 }
 
 /// The `SectionEdit` field-level payload a materialized operation carries
@@ -414,6 +472,7 @@ struct OperationKindExtras {
     rename_edit: Option<String>,
     create_document_date: Option<String>,
     section_edit: Option<SectionEditPayload>,
+    plan_step_edit: Option<PlanStepEdit>,
 }
 
 /// Shared materialization tail: build the target snapshot + review diff from
@@ -436,6 +495,7 @@ fn finish_materialization(
         rename_edit,
         create_document_date,
         section_edit,
+        plan_step_edit,
     } = extras;
     let target_snapshot = TargetSnapshot::from_text(
         base_snapshot.document.clone(),
@@ -456,6 +516,7 @@ fn finish_materialization(
         rename_edit,
         create_document_date,
         section_edit,
+        plan_step_edit,
     })
 }
 
@@ -808,6 +869,67 @@ fn validate_section_edit_draft<'a>(
     let resolved = resolve_section(&base_snapshot.text, selector)
         .map_err(|source| OperationError::SectionSelectorUnresolved { child_key, source })?;
     Ok((selector, resolved))
+}
+
+/// Validate a `SetPlanStepState` draft (authoring-surface ADR D1): the
+/// operation kind, its plan-step payload shape, and the SAME target-fence +
+/// preimage checks every operation kind shares. `body` carries no meaning for a
+/// plan tick and must be empty (R1, same discipline as `Rename`); the step id
+/// must be canonical (`S##`), rejected here at draft-validation time so a
+/// malformed id fails before a materialized preview or a core invocation is
+/// ever built (mirroring how `validate_rename_stem` guards the rename stem).
+/// Returns the validated payload so the caller materializes without re-deriving
+/// it.
+fn validate_set_plan_step_state_draft<'a>(
+    changeset_id: &ChangesetId,
+    draft: &'a ChangesetChildOperationDraft,
+    base_snapshot: &RevisionSnapshot,
+    preimage: &PreimageRecord,
+) -> Result<&'a PlanStepEdit> {
+    if draft.child_key.trim().is_empty() {
+        return Err(OperationError::EmptyChildKey);
+    }
+    let child_key = draft.child_key.clone();
+    if draft.operation != ChangesetOperationKind::SetPlanStepState {
+        return Err(OperationError::UnsupportedOperationKind {
+            child_key,
+            operation: draft.operation,
+        });
+    }
+    if draft.draft.mode != DraftMode::WholeDocument {
+        return Err(OperationError::UnsupportedDraftMode {
+            child_key,
+            mode: draft.draft.mode,
+        });
+    }
+    if !draft.draft.body.is_empty() {
+        return Err(OperationError::UnexpectedBodyPayload { child_key });
+    }
+    if draft.draft.section_selector.is_some() {
+        return Err(OperationError::UnexpectedSectionSelector { child_key });
+    }
+    let Some(plan_step) = draft.draft.plan_step.as_ref() else {
+        return Err(OperationError::MissingPlanStepEdit { child_key });
+    };
+    validate_plan_step_id(&child_key, &plan_step.step_id)?;
+    validate_target_and_preimage(changeset_id, child_key, draft, base_snapshot, preimage)?;
+    Ok(plan_step)
+}
+
+/// A canonical plan step id (`S##`): `S` followed by one or more ASCII digits —
+/// the SAME grammar the core adapter's own `validate_step_id` enforces at the
+/// argv boundary, checked here too so a malformed id fails at draft validation.
+fn validate_plan_step_id(child_key: &str, step_id: &str) -> Result<()> {
+    let ok = step_id.len() >= 2
+        && step_id.starts_with('S')
+        && step_id[1..].bytes().all(|b| b.is_ascii_digit());
+    if !ok {
+        return Err(OperationError::InvalidPlanStepId {
+            child_key: child_key.to_string(),
+            reason: "must be a canonical step id (`S` followed by digits, e.g. `S01`)",
+        });
+    }
+    Ok(())
 }
 
 /// Reject a field value that would corrupt the frontmatter block it lands in: an
@@ -1366,6 +1488,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: None,
                 section_selector: None,
+                plan_step: None,
             },
         }
     }
@@ -1389,6 +1512,7 @@ mod tests {
                 frontmatter: Some(fields),
                 new_stem: None,
                 section_selector: None,
+                plan_step: None,
             },
         }
     }
@@ -1409,6 +1533,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: Some(new_stem.to_string()),
                 section_selector: None,
+                plan_step: None,
             },
         }
     }
@@ -1433,6 +1558,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: None,
                 section_selector: Some(selector),
+                plan_step: None,
             },
         }
     }
@@ -1706,6 +1832,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: None,
                 section_selector: None,
+                plan_step: None,
             },
         };
 
@@ -2821,6 +2948,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: None,
                 section_selector: None,
+                plan_step: None,
             },
         }
     }

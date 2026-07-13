@@ -51,8 +51,10 @@ function SwitcherRow({
       className={ROW_CLASS}
     >
       <Icon size={18} aria-hidden className="shrink-0 text-ink-faint" />
+      {/* The workspace/branch name is corpus data: selectable inside the row
+          button so touch long-press can copy it (touch-selectability ADR D2). */}
       <span
-        className={`min-w-0 flex-1 truncate ${active ? "font-medium text-accent-text" : ""}`}
+        className={`min-w-0 flex-1 select-text truncate ${active ? "font-medium text-accent-text" : ""}`}
       >
         {label}
       </span>

@@ -42,8 +42,7 @@ use super::api::{
 };
 use super::documents::{DocumentResolver, ExistingDocumentLookup};
 use super::ledger::{
-    ChangesetAggregateRecord, ChangesetChildOperationInput, ChangesetChildOperationRecord,
-    ChangesetRevisionInput,
+    ChangesetAggregateRecord, ChangesetChildOperationInput, ChangesetRevisionInput,
 };
 use super::model::{
     ActionEligibility, ActorRef, ChangesetId, ChangesetKind, ChangesetStatus, CommandKind,
@@ -179,7 +178,7 @@ pub fn generate_rollback(
             eligibility_children.push(RollbackChildEligibility::new(
                 child.child_key.clone(),
                 child.operation,
-                preimage_available(child, preimage.is_some()),
+                super::rollback_inverses::preimage_available(child, preimage.is_some()),
             ));
             resolved.push((child.clone(), preimage));
         }
@@ -198,8 +197,10 @@ pub fn generate_rollback(
         // Idempotency: the rollback id is DETERMINISTIC in (source, idempotency
         // key), so a repeated request finds the already-generated rollback and
         // replays it rather than appending a second one.
-        let rollback_id =
-            rollback_changeset_id(request.source_changeset_id, request.idempotency_key);
+        let rollback_id = super::rollback_inverses::rollback_changeset_id(
+            request.source_changeset_id,
+            request.idempotency_key,
+        );
         if let Some(existing) = uow.ledger().latest(&rollback_id)? {
             return Ok(RollbackOutcome::replayed(&existing));
         }
@@ -209,6 +210,13 @@ pub fn generate_rollback(
             .into_iter()
             .next()
             .expect("eligibility guarantees exactly one source child");
+        // COUPLING (W04.P09.S33): this unwrap is safe only because
+        // `preimage_available` still gates EVERY invertible kind — including
+        // `SetPlanStepState` — on a present source preimage. A plan-tick inverse
+        // does not actually consume it (it is a state flip, not a restore), so a
+        // future edit that EXEMPTS `SetPlanStepState` from `preimage_available`
+        // (in `rollback_inverses`) MUST also make this unwrap conditional, or a
+        // preimage-less plan-tick rollback panics here.
         let source_preimage =
             source_preimage.expect("eligibility guarantees the source preimage is present");
 
@@ -345,7 +353,10 @@ pub fn generate_rollback(
         };
         let inverse_preimage = reader
             .capture_preimage(PreimageCaptureRequest {
-                preimage_id: rollback_preimage_id(&rollback_id, &child_key),
+                preimage_id: super::rollback_inverses::rollback_preimage_id(
+                    &rollback_id,
+                    &child_key,
+                ),
                 changeset_id: rollback_id.as_str().to_string(),
                 operation_id: child_key.clone(),
                 document: current_ref.clone(),
@@ -371,6 +382,7 @@ pub fn generate_rollback(
                         frontmatter: None,
                         new_stem: Some(original_stem.clone()),
                         section_selector: None,
+                        plan_step: None,
                     },
                 };
                 let materialized = MaterializedProposalOperation::materialize_rename(
@@ -419,6 +431,7 @@ pub fn generate_rollback(
                         frontmatter: None,
                         new_stem: None,
                         section_selector: Some(rollback_selector),
+                        plan_step: None,
                     },
                 };
                 let materialized = match MaterializedProposalOperation::materialize_section_edit(
@@ -443,6 +456,31 @@ pub fn generate_rollback(
                 };
                 (ChangesetOperationKind::SectionEdit, materialized)
             }
+            ChangesetOperationKind::SetPlanStepState => {
+                // OPPOSITE-STATE inverse (authoring-surface ADR D1), built in
+                // `rollback_inverses`: the inverse of a plan tick is the opposite
+                // set-plan-step-state against the same step, NEVER a
+                // whole-document preimage restore (that clobber stays impossible).
+                match super::rollback_inverses::plan_step_inverse(
+                    &source_child,
+                    &child_key,
+                    &target,
+                    &base_snapshot,
+                    &inverse_preimage,
+                    &rollback_id,
+                )? {
+                    Some(built) => built,
+                    None => {
+                        return Ok(RollbackOutcome::unavailable(
+                            ActionEligibility::denied(
+                                CommandKind::CreateRollback,
+                                super::rollback_inverses::PLAN_STEP_NO_EDIT_REASON,
+                            ),
+                            Some(manual_repair(&request)),
+                        ));
+                    }
+                }
+            }
             _ => {
                 // Preimage-restore: body/frontmatter edits invert by restoring
                 // the stored whole-document preimage against the current base
@@ -458,6 +496,7 @@ pub fn generate_rollback(
                         frontmatter: None,
                         new_stem: None,
                         section_selector: None,
+                        plan_step: None,
                     },
                 };
                 let materialized = MaterializedProposalOperation::materialize_replace_body(
@@ -573,25 +612,6 @@ fn stem_lineage_check(
     Ok(StemLineageCheck::Clear)
 }
 
-/// Whether the preimage material a `child`'s rollback inverse needs is present.
-/// Every kind gates on the WHOLE-document preimage `whole_document_present`
-/// names; a `SectionEdit` child ALSO requires the SELECTED preimage its own
-/// materialized operation carries (section-scoped-operations ADR: the inverse
-/// restores the selected preimage, never the whole-document one) — an applied
-/// record from before this feature landed carries no `section_edit` payload
-/// and is honestly unavailable rather than silently falling back to a
-/// whole-document restore that would clobber unrelated content.
-fn preimage_available(child: &ChangesetChildOperationRecord, whole_document_present: bool) -> bool {
-    if child.operation != ChangesetOperationKind::SectionEdit {
-        return whole_document_present;
-    }
-    whole_document_present
-        && child
-            .materialized_operation
-            .as_ref()
-            .is_some_and(|operation| operation.section_edit.is_some())
-}
-
 fn manual_repair(request: &RollbackRequest<'_>) -> ManualRepairProposal {
     ManualRepairProposal {
         source_changeset_id: request.source_changeset_id.clone(),
@@ -602,25 +622,6 @@ fn manual_repair(request: &RollbackRequest<'_>) -> ManualRepairProposal {
             .collect(),
         reason: request.reason.clone(),
     }
-}
-
-/// The deterministic rollback changeset id for a (source, idempotency key) pair —
-/// the idempotency identity, so a repeated request replays instead of duplicating.
-///
-/// The inputs are HASHED (not embedded) — mirroring `apply::receipt_id_for`: a
-/// long-but-legal idempotency key would overflow the `ChangesetId` byte cap and
-/// fail a legitimate request on SHAPE alone, and a client-chosen opaque key would
-/// otherwise leak into every projection / event / audit surface as a public entity
-/// id. `blob_oid` is 40-hex — always a valid, bounded authoring token — so the id
-/// is infallible; determinism and replay are unchanged (same inputs → same id).
-fn rollback_changeset_id(source: &ChangesetId, idempotency_key: &IdempotencyKey) -> ChangesetId {
-    let digest = blob_oid(format!("{source}|{idempotency_key}").as_bytes());
-    ChangesetId::new(format!("rollback:{digest}"))
-        .expect("rollback changeset id is a valid authoring token")
-}
-
-fn rollback_preimage_id(rollback_id: &ChangesetId, child_key: &str) -> String {
-    format!("preimage:{}:{}", rollback_id.as_str(), child_key)
 }
 
 /// The source changeset's stored preimage for a child (operation id == child key),
@@ -649,7 +650,7 @@ fn source_preimage(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::path::Path;
 
     use ingest_struct::reader::read_from_worktree;
@@ -660,7 +661,7 @@ mod tests {
     use crate::authoring::snapshots::PreimageCaptureRequest;
     use crate::authoring::store::Store;
 
-    fn actor(id: &str, kind: ActorKind) -> ActorRef {
+    pub(crate) fn actor(id: &str, kind: ActorKind) -> ActorRef {
         ActorRef {
             id: ActorId::new(id).unwrap(),
             kind,
@@ -673,7 +674,7 @@ mod tests {
     }
 
     /// Write `.vault/plan/<stem>.md` and return its current worktree revision.
-    fn write_doc(root: &Path, stem: &str, body: &str) -> RevisionToken {
+    pub(crate) fn write_doc(root: &Path, stem: &str, body: &str) -> RevisionToken {
         let rel = format!(".vault/plan/{stem}.md");
         let path = root.join(&rel);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -749,7 +750,7 @@ mod tests {
         .unwrap()
     }
 
-    fn temp_store(root: &Path) -> Store {
+    pub(crate) fn temp_store(root: &Path) -> Store {
         let mut store = Store::open(&root.join(".vault")).unwrap();
         store
             .with_unit_of_work(CommandKind::CreateProposal, |uow| {
@@ -772,7 +773,7 @@ mod tests {
     /// Walk a single-child changeset from Draft to Applied under the canonical
     /// lifecycle (author proposes; reviewer approves + applies), optionally storing
     /// a source preimage for the child so rollback can restore it.
-    fn seed_applied_source(
+    pub(crate) fn seed_applied_source(
         store: &mut Store,
         changeset_id: &ChangesetId,
         author: &ActorRef,
@@ -867,7 +868,7 @@ mod tests {
 
     /// Capture (but do not store) a source preimage for `stem` at its current
     /// worktree content — the pre-forward-edit state the rollback restores TO.
-    fn source_preimage_record(
+    pub(crate) fn source_preimage_record(
         root: &Path,
         changeset_id: &ChangesetId,
         child_key: &str,
@@ -884,7 +885,7 @@ mod tests {
             .unwrap()
     }
 
-    fn generate(
+    pub(crate) fn generate(
         store: &mut Store,
         root: &Path,
         source: &ChangesetId,
@@ -967,6 +968,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: None,
                 section_selector: Some(selector),
+                plan_step: None,
             },
         };
         let materialized = MaterializedProposalOperation::materialize_section_edit(
@@ -1484,6 +1486,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: Some("rollback-new-name".to_string()),
                 section_selector: None,
+                plan_step: None,
             },
         };
         let forward_materialized = MaterializedProposalOperation::materialize_rename(
@@ -1613,6 +1616,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: Some("rollback-lineage-b".to_string()),
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized_c1 =
@@ -1663,6 +1667,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: Some("rollback-lineage-d".to_string()),
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized_c2 =
@@ -1714,6 +1719,7 @@ mod tests {
                 frontmatter: None,
                 new_stem: Some("rollback-lineage-b".to_string()),
                 section_selector: None,
+                plan_step: None,
             },
         };
         let materialized_c3 =

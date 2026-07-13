@@ -20,7 +20,7 @@ use super::model::CommandKind;
 pub const DB_FILENAME: &str = "authoring-state.sqlite3";
 const AUTHORING_DATA_DIR: &str = "authoring-state";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-const SCHEMA_VERSION: i64 = 19;
+const SCHEMA_VERSION: i64 = 20;
 const STORE_KIND: &str = "vaultspec_authoring";
 
 const METADATA_SCHEMA: &str = "
@@ -1056,6 +1056,49 @@ SET schema_version = 19
 WHERE singleton = 1;
 ";
 
+// W01.P02 (authoring-surface ADR D2): the section-anchored comments plane. A single
+// FRESH additive table (no CHECK-widen, no table recreate — nothing FK-references it),
+// keyed by a stable `comment_id`. A comment is a durable, non-re-derivable authoring-state
+// entity: it anchors to a heading SECTION via the section selector (`sections.rs`) stored
+// as JSON in `record_json`, carries a size-capped body, attributes to an actor ref, and
+// tracks a resolved flag. Bounds live at the repository (`comments.rs`): a per-document
+// cap, a per-store cap, and a resolved-comment retention window pruned opportunistically
+// on create — so this table is NOT an only-growing accumulator. Like the advisory lease
+// table, a comment is not rollback/review/audit material, so it carries no formal
+// retention/compaction lifecycle (`authoring_retention_records`); miscategorizing an
+// annotation as protected material would lie to the compaction system. The queryable
+// columns (`document_node_id`, `resolved`, `resolved_at_ms`, `created_at_ms`, author) back
+// the bounded per-document listing and the retention prune; the record JSON is the source
+// of truth (selector + body + full attribution) mirroring how the lease row stores its
+// record.
+const COMMENTS_SCHEMA: &str = "
+CREATE TABLE authoring_comments (
+    comment_id                   TEXT NOT NULL,
+    document_node_id             TEXT NOT NULL,
+    author_actor_id              TEXT NOT NULL,
+    author_actor_kind            TEXT NOT NULL,
+    author_delegated_by_actor_id TEXT NOT NULL DEFAULT '',
+    resolved                     INTEGER NOT NULL CHECK (resolved IN (0, 1)),
+    record_json                  TEXT NOT NULL,
+    created_at_ms                INTEGER NOT NULL,
+    updated_at_ms                INTEGER NOT NULL,
+    resolved_at_ms               INTEGER,
+    PRIMARY KEY (comment_id)
+) WITHOUT ROWID;
+
+CREATE INDEX idx_authoring_comments_document
+    ON authoring_comments (document_node_id, created_at_ms ASC, comment_id ASC);
+CREATE INDEX idx_authoring_comments_resolved_retention
+    ON authoring_comments (resolved_at_ms)
+    WHERE resolved = 1 AND resolved_at_ms IS NOT NULL;
+CREATE INDEX idx_authoring_comments_author
+    ON authoring_comments (author_actor_id, author_actor_kind);
+
+UPDATE authoring_store_metadata
+SET schema_version = 20
+WHERE singleton = 1;
+";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Migration {
     version: i64,
@@ -1159,6 +1202,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "drop_authoring_direct_write_legacy_status",
         sql: DROP_DIRECT_WRITE_LEGACY_STATUS_SCHEMA,
     },
+    Migration {
+        version: 20,
+        name: "create_authoring_comments",
+        sql: COMMENTS_SCHEMA,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1214,6 +1262,8 @@ pub enum StoreError {
     Lease(String),
     #[error("authoring review station error: {0}")]
     ReviewStation(String),
+    #[error("authoring comment error: {0}")]
+    Comment(String),
     #[error("authoring session error: {0}")]
     Session(String),
     #[error("command {command:?} is read-only and cannot open a mutating unit of work")]
@@ -1559,6 +1609,10 @@ mod tests {
                         version: 19,
                         name: "drop_authoring_direct_write_legacy_status".to_string(),
                     },
+                    AppliedMigration {
+                        version: 20,
+                        name: "create_authoring_comments".to_string(),
+                    },
                 ]
             );
             let table_count: i64 = store
@@ -1590,19 +1644,20 @@ mod tests {
                            'authoring_interrupts',
                            'authoring_tool_call_records',
                            'authoring_leases',
-                           'authoring_review_claims'
+                           'authoring_review_claims',
+                           'authoring_comments'
                         )",
                     [],
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(table_count, 23);
+            assert_eq!(table_count, 24);
         }
 
         let reopened = Store::open_at(&path).expect("authoring store reopens");
         let metadata = reopened.schema_metadata().unwrap();
         assert_eq!(metadata.schema_version, SCHEMA_VERSION);
-        assert_eq!(metadata.applied_migrations.len(), 19);
+        assert_eq!(metadata.applied_migrations.len(), 20);
     }
 
     #[test]

@@ -57,6 +57,9 @@ pub fn run(ctx: &Ctx) -> Result<Value, CliError> {
             },
         },
         "git": git,
+        // The machine seat (single-app-runtime D5): running state, identity,
+        // and the launcher-known workspaces, read from the app home.
+        "seat": super::lifecycle::seat_block(),
         // One-shot CLI: no resident watcher by definition (D2.4 — the
         // resident mode is an optimization, not a requirement).
         "watcher": {"running": false, "mode": "one-shot"},

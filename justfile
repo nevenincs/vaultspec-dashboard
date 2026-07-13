@@ -127,10 +127,12 @@ _dev-lint-markdown:
 _dev-lint-rust:
   cargo fmt --manifest-path engine/Cargo.toml --all -- --check
   cargo clippy --manifest-path engine/Cargo.toml --workspace --all-targets -- -D warnings
+  node frontend/scripts/scan-module-size.mjs
 
 _dev-lint-frontend:
   npm --prefix frontend run lint
   npm --prefix frontend run lint:px
+  npm --prefix frontend run lint:modules
   npm --prefix frontend run format:check
   npm --prefix frontend run typecheck
   npm --prefix frontend run tokens:check

@@ -37,6 +37,11 @@ use tokio::sync::broadcast;
 
 use crate::registry::ScopeRegistry;
 
+pub use crate::discovery::{
+    DiscoveryIdentity, heartbeat_service_json, remove_service_json_if_owned,
+    workspace_discovery_dir, write_service_json,
+};
+
 /// Per-generation `.vault` document basename -> repo-relative path index
 /// (backend-hotpath-hardening F1): built once per rebuild by
 /// `crate::routes::content::build_doc_basename_index` and reused by the content
@@ -133,11 +138,13 @@ pub struct ScopeCell {
     /// into feature-convergence nodes; this serves the default (unfiltered) poll
     /// from cache, invalidated on a generation bump like the other projections.
     pub feature_nodes_cache: Mutex<Option<(u64, Arc<Vec<Value>>)>>,
-    /// The stem-sorted `/vault-tree` document rows, memoized per generation. The
-    /// left-rail Tree view re-projected + re-sorted every `doc:` node on each
-    /// request; this serves the sorted listing from cache (the handler still
-    /// paginates per request), invalidated on a generation bump.
-    pub vault_tree_rows_cache: Mutex<Option<(u64, Arc<Vec<Value>>)>>,
+    /// The stem-sorted `/vault-tree` document rows: a bounded snapshot RING keyed
+    /// by generation (vault-tree-delta ADR D2). The freshest slot is the
+    /// per-generation memo the Tree view reads from cache; the retained prior
+    /// generations back the `/vault-tree/delta` route. The memo, the ring, and the
+    /// diff live in `crate::vault_rows`. Invalidated implicitly by the generation
+    /// bump — a superseded generation stays only until evicted past the cap.
+    pub(crate) vault_tree_rows_ring: Mutex<crate::row_delta::RowSnapshotRing>,
     /// The HEAD commit-correlated temporal event rows, memoized per generation. The
     /// /events activity feed walks up to 5000 commits and correlates each to graph
     /// nodes — immutable for a given HEAD, but it ran on every request (~2.2s).
@@ -283,14 +290,14 @@ pub struct CodeGraphCell {
     /// changing HEAD). The `embeddings_cache` epoch-key precedent.
     recency_cache: Mutex<Option<(String, Arc<engine_query::code::CodeRecency>)>>,
     recency_probe_ms: std::sync::atomic::AtomicI64,
-    /// The complete path-sorted `/code-files` listing, memoized per code
-    /// generation (search-providers ADR: the `files (code)` provider narrows a
-    /// COMPLETE client-cached listing, so the engine serves the whole set from
-    /// this generation-stable projection rather than the DOI-bounded graph
-    /// slice). One slot, replaced on a generation bump — the
-    /// `vault_tree_rows_cache` discipline, keyed on the CODE generation because
-    /// the projection is over the code corpus's own graph.
-    code_file_rows_cache: Mutex<Option<(u64, Arc<Vec<serde_json::Value>>)>>,
+    /// The complete path-sorted `/code-files` listing: a bounded snapshot RING keyed
+    /// by the CODE generation (vault-tree-delta ADR `/code-files` follow-on), sharing
+    /// `crate::row_delta` with the vault tree. The freshest slot is the
+    /// per-generation memo the `files (code)` provider narrows over a COMPLETE
+    /// client-cached listing; the retained prior generations back the
+    /// `/code-files/delta` route. A truncated (walk-capped) corpus is NEVER recorded
+    /// (it is not a stable complete baseline).
+    pub(crate) code_file_rows_ring: Mutex<crate::row_delta::RowSnapshotRing>,
 }
 
 /// Commit-walk ceiling for the per-file recency fold — the event tier's
@@ -318,7 +325,7 @@ impl CodeGraphCell {
             rollup_cache: Mutex::new(None),
             recency_cache: Mutex::new(None),
             recency_probe_ms: std::sync::atomic::AtomicI64::new(0),
-            code_file_rows_cache: Mutex::new(None),
+            code_file_rows_ring: Mutex::new(crate::row_delta::RowSnapshotRing::default()),
         }
     }
 
@@ -362,22 +369,6 @@ impl CodeGraphCell {
     /// the projection runs over exactly the generation it read — the
     /// `default_rollup` discipline. Filter-independent (the whole listing), so
     /// the handler paginates the cached slice per request.
-    pub fn code_file_rows(&self, graph: &Arc<LinkageGraph>) -> Arc<Vec<serde_json::Value>> {
-        let generation = self.generation.load(Ordering::SeqCst);
-        let mut cache = self
-            .code_file_rows_cache
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if let Some((cached_generation, cached)) = cache.as_ref()
-            && *cached_generation == generation
-        {
-            return cached.clone();
-        }
-        let fresh = Arc::new(engine_query::graph::build_code_file_rows(graph));
-        *cache = Some((generation, fresh.clone()));
-        fresh
-    }
-
     /// Per-file git recency for the heat ranking (code-graph-heat ADR
     /// amendment): repo-relative path → last-commit committer time, folded
     /// order-independently (max) from ONE bounded commit walk, plus the
@@ -544,7 +535,7 @@ impl ScopeCell {
             salience_cache: Mutex::new(None),
             doc_views_cache: Mutex::new(None),
             feature_nodes_cache: Mutex::new(None),
-            vault_tree_rows_cache: Mutex::new(None),
+            vault_tree_rows_ring: Mutex::new(crate::row_delta::RowSnapshotRing::default()),
             event_rows_cache: Mutex::new(None),
             lineage_nodes_cache: Mutex::new(None),
             filters_vocab_cache: Mutex::new(None),
@@ -925,30 +916,6 @@ impl ScopeCell {
             return cached.clone();
         }
         let fresh = Arc::new(engine_query::graph::build_feature_nodes(
-            &self.graph_arc(),
-            &self.scope,
-        ));
-        *cache = Some((generation, fresh.clone()));
-        fresh
-    }
-
-    /// The stem-sorted `/vault-tree` rows, memoized per generation. The Tree view
-    /// re-projected + re-sorted every `doc:` node on every poll; this serves the
-    /// sorted listing from cache (the handler paginates the slice per request).
-    /// Invalidated on a generation bump exactly like `document_views`.
-    pub fn vault_tree_rows(&self) -> Arc<Vec<Value>> {
-        let generation = self.generation.load(Ordering::SeqCst);
-        // Poison recovery (robustness H2): see `graph_arc`.
-        let mut cache = self
-            .vault_tree_rows_cache
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if let Some((cached_generation, cached)) = cache.as_ref()
-            && *cached_generation == generation
-        {
-            return cached.clone();
-        }
-        let fresh = Arc::new(engine_query::graph::build_vault_tree_rows(
             &self.graph_arc(),
             &self.scope,
         ));
@@ -1337,6 +1304,13 @@ pub struct AppState {
     /// one seam, so a warm read never pays a second `/jobs` round-trip and the
     /// derivation is not duplicated. Single value plus a TTL — bounded at creation.
     pub semantic_epoch_cache: SemanticEpochCache,
+    /// Graceful-shutdown signal (single-app-runtime D5): the bearer-gated
+    /// `/shutdown` route notifies it; the serve loop's graceful-shutdown
+    /// future awaits it alongside ctrl-c/SIGTERM.
+    pub shutdown: tokio::sync::Notify,
+    /// Process boot instant (ms since epoch), advertised in discovery so the
+    /// CLI seat block can report uptime.
+    pub started_ms: i64,
     /// The fenced authoring domain's durable store (agentic-spec-authoring-
     /// backend W03.P39). Opened LAZILY against `workspace_root/.vault` on the
     /// first authoring request — as an `Option` so a bad or unopenable authoring
@@ -1558,33 +1532,6 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-/// Write the discovery file (rag's pattern, contract §1). One process, one
-/// port/token — written under the WORKSPACE root's vault, unchanged by the
-/// multi-scope refactor.
-pub fn write_service_json(state: &AppState, port: u16) -> std::io::Result<PathBuf> {
-    let dir = engine_store::engine_data_dir(&state.workspace_root.join(".vault"));
-    std::fs::create_dir_all(&dir)?;
-    let path = dir.join("service.json");
-    let payload = serde_json::json!({
-        "port": port,
-        "service_token": state.bearer,
-        "pid": std::process::id(),
-        "last_heartbeat": now_ms(),
-    });
-    std::fs::write(&path, serde_json::to_string_pretty(&payload)?)?;
-    // Restrict the discovery file to its owner: it carries the bearer token, so
-    // the default world-readable 0644 is a local-auth-bypass vector on a shared
-    // host (#41 security hardening). On Unix, chmod 0600 after the write. On
-    // Windows the engine-data dir lives under the user's own workspace and
-    // inherits that profile's NTFS ACL, so no extra restriction is applied here.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
-    }
-    Ok(path)
-}
-
 /// Build the workspace-level application state for a launch root, opening the
 /// shared user-state handle and eagerly building the launch scope's cell into
 /// the registry as the active scope.
@@ -1593,6 +1540,28 @@ pub fn write_service_json(state: &AppState, port: u16) -> std::io::Result<PathBu
 /// the user-state handle; this constructor is the shared core used by both
 /// `serve` and the unit tests.
 pub fn build_state(root: PathBuf) -> Arc<AppState> {
+    build_state_with_bearer(root, mint_bearer())
+}
+
+/// Mint the 128-bit OS-CSPRNG bearer token (B10, resource-hardening).
+/// Public so the BOOT path can mint it BEFORE the heavy initial index and
+/// publish a `starting` discovery record carrying it (single-app-runtime
+/// S23); getrandom draws from the OS entropy source, hex-encoded to the
+/// 32-char shape every consumer expects.
+pub fn mint_bearer() -> String {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).expect("OS CSPRNG unavailable for bearer token");
+    let mut hex = String::with_capacity(32);
+    for b in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(hex, "{b:02x}");
+    }
+    hex
+}
+
+/// [`build_state`] with a caller-minted bearer (the boot path mints early so
+/// discovery can publish before the index).
+pub fn build_state_with_bearer(root: PathBuf, bearer: String) -> Arc<AppState> {
     let workspace_root = root.clone();
     let active_token = crate::routes::scope_token(&workspace_root);
     // The single shared user-state handle, opened ONCE per workspace. Like the
@@ -1602,22 +1571,6 @@ pub fn build_state(root: PathBuf) -> Arc<AppState> {
         vaultspec_session::UserState::open(&workspace_root.join(".vault"))
             .unwrap_or_else(|e| panic!("user-state store unavailable: {e}")),
     ));
-    // Token: 128 bits from the OS CSPRNG (B10, resource-hardening). The prior
-    // token was a non-cryptographic FNV hash of pid + wall-clock time — a
-    // ~10^7 search space a co-resident process could brute-force, and the token
-    // also rides into `service.json` in cleartext. getrandom draws from the OS
-    // entropy source; hex-encoded it keeps the 32-char `[0-9a-f]` shape every
-    // consumer (and the SPA meta-tag injection) already expects.
-    let bearer = {
-        let mut bytes = [0u8; 16];
-        getrandom::fill(&mut bytes).expect("OS CSPRNG unavailable for bearer token");
-        let mut hex = String::with_capacity(32);
-        for b in bytes {
-            use std::fmt::Write as _;
-            let _ = write!(hex, "{b:02x}");
-        }
-        hex
-    };
     let state = Arc::new(AppState {
         workspace_root,
         registry: RwLock::new(ScopeRegistry::new()),
@@ -1626,6 +1579,8 @@ pub fn build_state(root: PathBuf) -> Arc<AppState> {
         active_scope: RwLock::new(active_token.clone()),
         dashboard_state: Mutex::new(crate::routes::state::DashboardStateSlot::new()),
         semantic_epoch_cache: SemanticEpochCache::default(),
+        shutdown: tokio::sync::Notify::new(),
+        started_ms: now_ms(),
         authoring_store: Mutex::new(None),
     });
     // Eagerly build the launch scope's cell so `/status`, the tiers fallback,
@@ -2031,26 +1986,6 @@ mod tests {
             matches!(cached, Some((g, _)) if g == generation),
             "after a drill-in, warm_projections must warm the document views for the current generation",
         );
-    }
-
-    #[test]
-    fn vault_tree_rows_are_memoized_per_generation() {
-        // The Tree view's `/vault-tree` listing re-projected + re-sorted every doc
-        // node on each poll; the rows are filter-independent and generation-stable,
-        // so they are memoized like feature_nodes/document_views: same generation =
-        // warm-cache hit (same Arc), a rebuild recomputes.
-        let (_dir, state) = fixture_state();
-        let cell = state.active_cell();
-        cell.rebuild_and_swap().unwrap();
-        let a = cell.vault_tree_rows();
-        let b = cell.vault_tree_rows();
-        assert!(
-            Arc::ptr_eq(&a, &b),
-            "same generation: vault-tree rows are a warm-cache hit, not re-projected"
-        );
-        let _ = cell.rebuild_and_swap();
-        let c = cell.vault_tree_rows();
-        assert_eq!(*a, *c, "content equal across a no-op rebuild");
     }
 
     #[test]

@@ -17,7 +17,12 @@ import {
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { useSaveBody } from "../server/queries";
-import { applyEditorWriteResult, markEditorFailed, markEditorSaving } from "./editor";
+import {
+  applyEditorWriteResult,
+  markEditorFailed,
+  markEditorSaving,
+  toggleEditorDiff,
+} from "./editor";
 import { registerKeyAction } from "./keymapDispatcher";
 import { requestCloseDocumentEditor } from "./unsavedEditGuard";
 import { useViewStore } from "./viewStore";
@@ -25,10 +30,12 @@ import { useViewStore } from "./viewStore";
 export const EDITOR_SAVE_ACTION_ID = "editor:save-body";
 export const EDITOR_CLOSE_ACTION_ID = "editor:close";
 export const EDITOR_TOGGLE_MODE_ACTION_ID = "editor:toggle-mode";
+export const EDITOR_TOGGLE_DIFF_ACTION_ID = "editor:toggle-diff";
 
 export const EDITOR_SAVE_LABEL = "Save the open document";
 export const EDITOR_CLOSE_LABEL = "Close the editor";
 export const EDITOR_TOGGLE_MODE_LABEL = "Toggle document edit mode";
+export const EDITOR_TOGGLE_DIFF_LABEL = "Toggle draft diff";
 
 const EDITOR_GROUP = "Editor";
 
@@ -60,6 +67,16 @@ export function deriveEditorKeybindings(): KeybindingDef[] {
       group: EDITOR_GROUP,
       context: "global",
     },
+    {
+      // Toggle the draft-vs-saved diff panel (authoring-surface ADR D4). Chord
+      // verified free of same-specificity collisions by the KAR-008 guard.
+      // Mod+B (left-rail toggle) and Mod+I/K are reserved — not this chord.
+      id: EDITOR_TOGGLE_DIFF_ACTION_ID,
+      defaultChord: "Mod+Shift+D",
+      label: EDITOR_TOGGLE_DIFF_LABEL,
+      group: EDITOR_GROUP,
+      context: "global",
+    },
   ];
 }
 
@@ -88,16 +105,20 @@ export function useEditorKeybindings(): void {
         run: () => {
           const state = useViewStore.getState();
           if (state.editorTarget === null) return;
+          // Capture the draft at mutation time so the save-resolve closure can
+          // advance editorBaseText to what was actually committed, not the
+          // potentially-raced current draft (edit-during-save guard).
+          const savedText = state.draftText;
           markEditorSaving();
           saveBody.mutate(
             {
               nodeId: state.editorTarget.nodeId,
               scope: state.scope,
-              text: state.draftText,
+              text: savedText,
               baseBlobHash: state.baseBlobHash,
             },
             {
-              onSuccess: ({ result }) => applyEditorWriteResult(result),
+              onSuccess: ({ result }) => applyEditorWriteResult(result, savedText),
               onError: () => markEditorFailed(),
             },
           );
@@ -119,7 +140,27 @@ export function useEditorKeybindings(): void {
       }),
     );
 
+    const disposeToggleDiff = registerKeyAction(
+      EDITOR_TOGGLE_DIFF_ACTION_ID,
+      (): ActionDescriptor => ({
+        id: EDITOR_TOGGLE_DIFF_ACTION_ID,
+        label: EDITOR_TOGGLE_DIFF_LABEL,
+        disabled: useViewStore.getState().editorTarget === null,
+        disabledReason:
+          useViewStore.getState().editorTarget === null
+            ? "no open document"
+            : undefined,
+        run: () => {
+          // Guard so a stale keymap action does not toggle a closed editor's state.
+          if (useViewStore.getState().editorTarget !== null) {
+            toggleEditorDiff();
+          }
+        },
+      }),
+    );
+
     return () => {
+      disposeToggleDiff();
       disposeClose();
       disposeSave();
       disposeBindings();

@@ -5,8 +5,11 @@
 pub mod events;
 pub mod graph;
 pub mod index;
+pub mod launch;
+pub mod lifecycle;
 pub mod map;
 pub mod node;
+pub mod provision;
 pub mod status;
 
 use std::path::PathBuf;

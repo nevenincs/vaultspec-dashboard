@@ -37,12 +37,14 @@ import {
 import { openAddProjectDialog } from "../../stores/view/addProjectChrome";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { guardUnsavedDiscard } from "../../stores/view/unsavedEditGuard";
+import { guardedContextMenu } from "../menus/guardedContextMenu";
 import {
   setWorktreePickerExpanded,
   toggleWorktreePickerExpanded,
   useWorktreePickerView,
 } from "../../stores/view/worktreePickerChrome";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
+import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 // Self-registering left-rail context-menu resolver (W03.P07): importing the
 // module runs its `registerResolver("worktree", …)` side effect once.
 import "./menus/worktreeMenu";
@@ -83,7 +85,7 @@ const TRIGGER_CHEVRON_PX = 14;
 // type/ink/state tiers (design-system-is-centralized). The focus-visible ring
 // stays for keyboard a11y (it is not a hover affordance).
 const PILL_CLASS =
-  "group flex min-w-0 flex-1 flex-col gap-fg-0-5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+  "group flex min-w-0 flex-1 select-text flex-col gap-fg-0-5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 // The first two identity lines keep clear of the absolutely-pinned collapse
 // toggle riding the header's right edge (the window-top chrome band below).
 const PILL_PROJECT_CLASS = "min-w-0 truncate pr-fg-8 text-caption text-ink-faint";
@@ -231,7 +233,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
     const { worktree } = row;
     const item = zone.rove(rowKey);
     return (
-      <li key={rowKey}>
+      <li key={rowKey} className="flex items-center">
         <button
           ref={item.ref}
           tabIndex={item.tabIndex}
@@ -242,10 +244,10 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           aria-label={row.ariaLabel}
           onFocus={() => setActiveRow(rowKey)}
           onClick={() => selectWorktree(row)}
-          onContextMenu={(e) => {
+          onContextMenu={guardedContextMenu((e) => {
             e.preventDefault();
             openContextMenu(worktreeEntity(worktree), { x: e.clientX, y: e.clientY });
-          }}
+          })}
           onKeyDown={(e) => {
             if (
               handleKeyboardContextMenu(e, (anchor) =>
@@ -291,6 +293,14 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
             <span className={row.pendingLabelClassName}>{row.pendingLabel}</span>
           )}
         </button>
+        {/* The worktree row's coarse-pointer menu entry (touch-selectability ADR
+            D3): the SAME `worktree` entity its right-click path opens, sibling of
+            the row button; renders nothing on fine-pointer devices. Project and
+            recent rows carry no resolver, so they get no disclosure. */}
+        <RowMenuDisclosure
+          entity={worktreeEntity(worktree)}
+          label={`${row.nameLabel} actions`}
+        />
       </li>
     );
   };

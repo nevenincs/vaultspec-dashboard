@@ -1,9 +1,13 @@
 //! Route families (contract §3–§8).
 
+pub mod code_files;
 pub mod content;
 pub mod file_tree;
+pub mod fs_browse;
+pub mod git;
 pub mod github;
 pub mod history;
+pub mod lifecycle;
 pub mod ops;
 pub mod provision;
 pub mod query;
@@ -13,6 +17,7 @@ pub mod spa;
 pub mod state;
 pub mod stream;
 pub mod temporal;
+pub mod vault_tree;
 
 use axum::Json;
 use axum::http::StatusCode;

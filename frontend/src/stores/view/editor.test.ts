@@ -14,6 +14,7 @@ import {
   normalizeMarkdownEditorFrontmatterDraft,
   normalizeMarkdownEditorFrontmatterDraftState,
   openDocumentEditor,
+  updateEditorDraft,
 } from "./editor";
 import { useViewStore } from "./viewStore";
 
@@ -250,21 +251,54 @@ describe("editor view seam", () => {
   it("maps typed write and rename outcomes onto editor status", () => {
     openDocumentEditor("doc:alpha", "body", "old");
 
-    applyEditorWriteResult({
-      kind: "saved",
-      path: "alpha.md",
-      blobHash: "new",
-      checks: [],
-    });
+    applyEditorWriteResult(
+      { kind: "saved", path: "alpha.md", blobHash: "new", checks: [] },
+      "body",
+    );
     expect(useViewStore.getState()).toMatchObject({
       editorStatus: "saved",
       baseBlobHash: "new",
     });
 
-    applyEditorWriteResult({ kind: "refused", checks: [], errors: [] });
+    applyEditorWriteResult({ kind: "refused", checks: [], errors: [] }, "body");
     expect(useViewStore.getState().editorStatus).toBe("save-failed");
 
     applyRenameEditorResult({ kind: "conflict", expected: "new", actual: "other" });
     expect(useViewStore.getState().editorStatus).toBe("conflict");
+  });
+
+  it("advances editorBaseText to the committed text when a save resolves (diff shows clean after save)", () => {
+    // Open with initial body; edit to diverge the draft; simulate a successful save.
+    openDocumentEditor("doc:alpha", "initial body", "hash-0");
+    updateEditorDraft("edited body");
+    // editorBaseText is still "initial body" — diff would show changes.
+    expect(useViewStore.getState().editorBaseText).toBe("initial body");
+
+    // Simulate the save landing with the committed text.
+    applyEditorWriteResult(
+      { kind: "saved", path: "alpha.md", blobHash: "hash-1", checks: [] },
+      "edited body",
+    );
+    // editorBaseText must now equal what was saved, so the diff is empty.
+    expect(useViewStore.getState().editorBaseText).toBe("edited body");
+    // baseBlobHash advances as before.
+    expect(useViewStore.getState().baseBlobHash).toBe("hash-1");
+  });
+
+  it("advances editorBaseText to savedText even when an edit raced the save (edit-during-save)", () => {
+    // Open; edit; simulate save in-flight; type again to race the save.
+    openDocumentEditor("doc:alpha", "v1", "hash-0");
+    updateEditorDraft("v2"); // text sent to wire
+    // Save lands while the user has already typed v3.
+    updateEditorDraft("v3"); // edit-during-save race
+    applyEditorWriteResult(
+      { kind: "saved", path: "alpha.md", blobHash: "hash-1", checks: [] },
+      "v2",
+    );
+    // Status stays dirty (v3 is unsaved), but baseText advances to v2 (what's on disk).
+    expect(useViewStore.getState().editorStatus).toBe("dirty");
+    expect(useViewStore.getState().editorBaseText).toBe("v2");
+    // v3 is still the live draft.
+    expect(useViewStore.getState().draftText).toBe("v3");
   });
 });
