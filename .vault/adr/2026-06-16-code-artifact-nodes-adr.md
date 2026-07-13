@@ -1,14 +1,14 @@
 ---
 tags:
-  - '#adr'
-  - '#code-artifact-nodes'
+  - "#adr"
+  - "#code-artifact-nodes"
 date: '2026-06-16'
-modified: '2026-06-16'
 related:
   - "[[2026-06-16-missing-backend-inventory-research]]"
+superseded_by: '2026-07-02-codebase-graphing-adr'
+modified: '2026-07-13'
 ---
-
-# `code-artifact-nodes` adr: `mint inferred code/symbol nodes so structural mentions bridge to navigable graph nodes` | (**status:** `proposed`)
+# `code-artifact-nodes` adr: `mint inferred code/symbol nodes so structural mentions bridge to navigable graph nodes` | (**status:** `superseded`)
 
 ## Context
 

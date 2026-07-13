@@ -1,17 +1,18 @@
 ---
 tags:
-  - '#adr'
-  - '#dashboard-timeline'
+  - "#adr"
+  - "#dashboard-timeline"
 date: '2026-06-15'
-modified: '2026-06-15'
 related:
   - "[[2026-06-15-dashboard-timeline-research]]"
   - "[[2026-06-14-dashboard-timeline-adr]]"
   - "[[2026-06-14-graph-representation-adr]]"
   - "[[2026-06-14-graph-node-semantics-adr]]"
   - "[[2026-06-12-dashboard-foundation-reference]]"
+supersedes:
+  - '2026-06-14-dashboard-timeline-adr'
+modified: '2026-07-13'
 ---
-
 # `dashboard-timeline` adr: `relational phase-lane timeline` | (**status:** `accepted`)
 
 ## Problem Statement

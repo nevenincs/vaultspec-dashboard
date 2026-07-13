@@ -1,13 +1,14 @@
 ---
 tags:
-  - '#adr'
-  - '#codebase-graphing'
+  - "#adr"
+  - "#codebase-graphing"
 date: '2026-07-02'
-modified: '2026-07-02'
 related:
   - "[[2026-07-02-codebase-graphing-research]]"
+supersedes:
+  - '2026-06-16-code-artifact-nodes-adr'
+modified: '2026-07-13'
 ---
-
 # `codebase-graphing` adr: `a disconnected code graph corpus served beside the vault LinkageGraph` | (**status:** `accepted`)
 
 ## Problem Statement

@@ -180,42 +180,57 @@ body), so all four were linked (see Actions) and the orphans check is now clean.
   `2026-06-27-figma-naming-contract-adr` -> `2026-06-16-figma-parity-reconciliation-adr`
   (the post-Code-Connect parity predecessor). Orphans check now clean (4 -> 0).
 
-## Recommendations
+## Decisions applied
 
-### recommend-timeline-supersession-edge | low
+The three judgment-class items were decided by the user and applied in a follow-up pass;
+each is recorded here as the durable record.
 
-Decide whether `2026-06-14-dashboard-timeline-adr` should carry a formal `superseded_by:
-2026-06-15-dashboard-timeline-adr` edge (accepting it as a partial supersession) or remain
-`deprecated`. The prose already asserts the partial supersession but no machine-visible edge
-exists. Left unchanged pending the call, because the ADR's own note ("behavioral invariants
-remain binding, retained for that invariant record") is the deliberate reason it is
-deprecated rather than superseded.
+### applied-timeline-supersession-edge | resolved
 
-### recommend-code-artifact-nodes-disposition | low
+`2026-06-14-dashboard-timeline-adr` was formalized as superseded by
+`2026-06-15-dashboard-timeline-adr` via `vault adr supersede` — status flipped from
+`deprecated` to `superseded`, `superseded_by` edge written, and the reciprocal `supersedes`
+recorded on the successor. Rationale: a named successor exists, so a machine-visible edge is
+correct; the partial-supersession nuance (representation decisions replaced, behavioral
+invariants re-affirmed and still binding) remains fully stated in the existing prose
+blockquote, which was already forward-written for supersession and reads coherently under the
+new status — no substance rewrite was needed.
 
-Decide whether `code-artifact-nodes` (proposed, never implemented) is superseded or made
-obsolete by the accepted `2026-07-02-codebase-graphing-adr`, which delivered code-in-graph
-via a different mechanism. If so, the author may re-status it to `deprecated`/`superseded`;
-this pass left it `proposed` as the honest, evidence-backed status (drafted, never ratified).
+### applied-code-artifact-nodes-supersession | resolved
 
-### recommend-review-plan-adr-policy | low
+`2026-06-16-code-artifact-nodes-adr` (proposed, never implemented) was superseded by the
+accepted `2026-07-02-codebase-graphing-adr` via `vault adr supersede` — status flipped from
+`proposed` to `superseded`. Rationale: it was overtaken by a different accepted answer to the
+same question (navigable code in the graph); supersession preserves the forward pointer to the
+mechanism that shipped, where a bare rejection or lingering `proposed` would lose that trail.
 
-The 2026-07-02 review-sweep plans (`scene-render-review`, `state-render-review`,
-`keyboard-action-correctness-review`, `timeline-temporal-review`, `test-infra-hardening`,
-`codebase-graphing-review`) trip the "Plan has no references to ADR" error by design — they
-are code-review plans with no authored ADR. Consider whether the schema check should exempt
-review/hardening plans, or whether these should carry a cross-feature link to the ADR whose
-implementation they review. Either is a policy decision, not a curation fix.
+### applied-review-plan-adr-policy | resolved
+
+Policy accepted: review/hardening-sweep plans grounded in an audit or research document
+instead of an ADR are legitimate standing practice — no retroactive anchor ADRs will be
+authored for them. The 2026-07-02 review-sweep plans (`scene-render-review`,
+`state-render-review`, `keyboard-action-correctness-review`, `timeline-temporal-review`,
+`test-infra-hardening`, `codebase-graphing-review`) therefore keep their "Plan has no
+references to ADR" schema flags as accepted historical debt by policy, not as fixable drift.
 
 ## Verification — final `vault check all` counts
 
-- `adr-status`: 5 -> **0** (all encoded).
+Counts reflect the state after the three applied decisions above.
+
+- `adr-status`: 5 -> **0** (all encoded; two were subsequently re-stated as `superseded` by
+  the applied supersessions — `superseded` is a valid encoded status, so the check stays
+  clean).
 - `orphans`: 4 -> **0** (all linked).
 - `dangling`: 1 -> **0** (resolved by the parallel lane).
-- `schema`: 51 -> **51** (accepted historical debt; type-strict, not fabricated away).
-- `modified-stamp`: **15** (out-of-scope pre-existing treadmill; this pass added none — the
-  five edited ADRs were stamp-refreshed per-feature).
-- `features`: 85 -> **67** (index rebuilds by the parallel lane; remainder is the
-  informational "ADR but no research" set, accepted).
+- `schema`: 51 -> **51** (accepted historical debt; type-strict, not fabricated away — the
+  supersessions did not touch any schema-flagged edge).
+- `modified-stamp`: **14** (out-of-scope pre-existing treadmill; this pass added none — the
+  edited/superseded ADRs were stamp-refreshed by their mutating verbs).
+- `features`: 85 -> **67** (index rebuilds by the parallel lane plus this feature's own
+  `vault-curation` index; remainder is the informational "ADR but no research" set, accepted).
 - `structure`, `frontmatter`, `annotations`, `markdown`, `links`, `body-links`,
   `placeholders`, `references`, `encoding`: **0**.
+
+Two supersession chains were added by the applied decisions:
+`2026-06-14-dashboard-timeline-adr` -> `2026-06-15-dashboard-timeline-adr`, and
+`2026-06-16-code-artifact-nodes-adr` -> `2026-07-02-codebase-graphing-adr`.

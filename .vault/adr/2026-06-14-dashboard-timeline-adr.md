@@ -1,17 +1,17 @@
 ---
 tags:
-  - '#adr'
-  - '#dashboard-timeline'
+  - "#adr"
+  - "#dashboard-timeline"
 date: '2026-06-14'
-modified: '2026-06-15'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"
   - "[[2026-06-14-dashboard-design-language-research]]"
   - "[[2026-06-12-dashboard-foundation-reference]]"
+superseded_by: '2026-06-15-dashboard-timeline-adr'
+modified: '2026-07-13'
 ---
-
-# `dashboard-timeline` adr: `timeline` | (**status:** `deprecated`)
+# `dashboard-timeline` adr: `timeline` | (**status:** `superseded`)
 
 > **Superseded (2026-06-15)** by the relational phase-lane timeline ADR
 > (`2026-06-15-dashboard-timeline-adr`) for its *representation* decisions only
