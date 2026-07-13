@@ -1,5 +1,5 @@
 {
-  "engine/crates/vaultspec-api/src/app.rs": 2096,
+  "engine/crates/vaultspec-api/src/app.rs": 2061,
   "engine/crates/vaultspec-api/src/authoring/api.rs": 1756,
   "engine/crates/vaultspec-api/src/authoring/apply.rs": 4518,
   "engine/crates/vaultspec-api/src/authoring/conflicts.rs": 1770,
