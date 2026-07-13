@@ -7,6 +7,7 @@ modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-07-02-codebase-graphing-review-audit]]'
+  - '[[2026-07-02-codebase-graphing-adr]]'
 ---
 
 # `codebase-graphing-review` plan

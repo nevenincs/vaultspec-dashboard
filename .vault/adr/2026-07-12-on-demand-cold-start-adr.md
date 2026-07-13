@@ -7,6 +7,7 @@ modified: '2026-07-12'
 related:
   - "[[2026-07-12-on-demand-cold-start-reference]]"
   - "[[2026-07-11-universal-data-loading-adr]]"
+  - "[[2026-06-22-graph-filter-fetch-split-research]]"
 ---
 
 # `on-demand-cold-start` adr: `Constellation-first cold start: MBs load on demand, enrichment arrives behind a fast first paint` | (**status:** `accepted`)

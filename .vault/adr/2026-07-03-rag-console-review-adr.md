@@ -7,6 +7,7 @@ modified: '2026-07-03'
 related:
   - "[[2026-07-02-rag-console-review-audit]]"
   - "[[2026-07-02-rag-console-review-plan]]"
+  - "[[2026-07-03-rag-integration-hardening-research]]"
 ---
 
 # `rag-console-review` adr: `audit-driven review remediation` | (**status:** `accepted`)

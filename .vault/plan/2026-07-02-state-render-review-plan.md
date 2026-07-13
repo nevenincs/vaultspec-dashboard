@@ -7,6 +7,7 @@ modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-07-02-state-render-review-audit]]'
+  - '[[2026-06-17-dashboard-state-centralization-adr]]'
 ---
 
 # `state-render-review` plan

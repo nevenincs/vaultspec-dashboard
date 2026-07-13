@@ -6,6 +6,7 @@ date: '2026-06-27'
 modified: '2026-07-13'
 related:
   - '[[2026-06-16-figma-parity-reconciliation-adr]]'
+  - '[[2026-06-16-figma-parity-reconciliation-research]]'
 ---
 
 # `figma-naming-contract` adr: `Figma board naming + layout contract (name-as-contract after Code Connect)` | (**status:** `accepted`)

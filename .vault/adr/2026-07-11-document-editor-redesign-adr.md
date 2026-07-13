@@ -4,7 +4,8 @@ tags:
   - '#document-editor-redesign'
 date: '2026-07-11'
 modified: '2026-07-11'
-related: []
+related:
+  - '[[2026-06-18-editor-dock-workspace-research]]'
 ---
 
 # `document-editor-redesign` adr: `metadata editor, controls, and linking pickers` | (**status:** `accepted`)

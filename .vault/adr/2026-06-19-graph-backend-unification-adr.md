@@ -4,7 +4,8 @@ tags:
   - '#graph-backend-unification'
 date: '2026-06-19'
 modified: '2026-06-19'
-related: []
+related:
+  - '[[2026-06-16-graph-force-stability-research]]'
 ---
 
 # `graph-backend-unification` adr: `Unify graph rendering on the three.js field; retire Cosmos and PixiJS` | (**status:** `accepted`)

@@ -10,6 +10,7 @@ related:
   - "[[2026-06-19-keyboard-action-system-adr]]"
   - "[[2026-06-15-dashboard-context-menus-adr]]"
   - '[[2026-06-22-action-surface-mapping-reference]]'
+  - "[[2026-06-22-global-context-actions-research]]"
 ---
 
 # `action-surface-mapping` adr: `converge by coverage delta, not blanket re-enrollment` | (**status:** `accepted`)

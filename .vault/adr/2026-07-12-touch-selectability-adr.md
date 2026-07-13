@@ -10,6 +10,7 @@ related:
   - "[[2026-06-21-keyboard-navigation-adr]]"
   - "[[2026-06-23-background-context-menus-adr]]"
   - "[[2026-07-08-mobile-enrichment-adr]]"
+  - "[[2026-06-22-mobile-responsive-layout-research]]"
 ---
 
 # `touch-selectability` adr: `text selection and touch interactivity standard: selection yields to no one` | (**status:** `accepted`)

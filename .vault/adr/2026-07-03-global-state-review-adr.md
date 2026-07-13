@@ -7,6 +7,7 @@ modified: '2026-07-03'
 related:
   - "[[2026-07-03-global-state-review-audit]]"
   - "[[2026-07-02-global-state-review-audit]]"
+  - "[[2026-06-25-state-mode-uniformity-research]]"
 ---
 
 # `global-state-review` adr: `dashboard-state field lifetimes: durable preference vs session intent` | (**status:** `accepted`)

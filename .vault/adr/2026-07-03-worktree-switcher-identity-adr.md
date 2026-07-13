@@ -8,6 +8,7 @@ related:
   - '[[2026-07-03-worktree-switcher-identity-audit]]'
   - '[[2026-06-14-dashboard-worktree-switcher-adr]]'
   - '[[2026-06-20-left-rail-top-adr]]'
+  - '[[2026-06-20-left-rail-top-research]]'
 ---
 
 # `worktree-switcher-identity` adr: `one left-rail location identity` | (**status:** `accepted`)

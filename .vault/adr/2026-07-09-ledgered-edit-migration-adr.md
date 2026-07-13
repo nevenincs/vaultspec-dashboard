@@ -9,6 +9,7 @@ related:
   - "[[2026-06-29-agentic-security-provenance-adr]]"
   - "[[2026-06-30-agentic-spec-authoring-backend-plan]]"
   - '[[2026-07-09-ledgered-edit-migration-reference]]'
+  - "[[2026-06-29-agentic-spec-authoring-backend-research]]"
 ---
 
 # `ledgered-edit-migration` adr: `Route every document edit through the ledgered authoring backend and retire the /ops/core write path` | (**status:** `accepted`)

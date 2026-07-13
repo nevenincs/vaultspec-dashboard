@@ -9,6 +9,7 @@ related:
   - '[[2026-06-22-graph-filter-fetch-split-adr]]'
   - '[[2026-06-22-mobile-responsive-layout-adr]]'
   - '[[2026-06-25-state-mode-uniformity-adr]]'
+  - '[[2026-06-22-graph-filter-fetch-split-research]]'
 ---
 
 # `universal-data-loading` adr: `One data-activity plane: universal loading state, drain progress, and gated always-on streams` | (**status:** `accepted`)

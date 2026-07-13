@@ -6,6 +6,7 @@ date: '2026-06-21'
 modified: '2026-06-21'
 related:
   - "[[2026-06-21-dashboard-hardening-audit]]"
+  - "[[2026-06-15-resource-hardening-research]]"
 ---
 
 # `dashboard-hardening` adr: `dashboard hardening: adversarial and degraded resilience` | (**status:** `accepted`)

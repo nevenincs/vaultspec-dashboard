@@ -10,6 +10,7 @@ related:
   - "[[2026-06-29-agentic-rollback-history-adr]]"
   - "[[2026-07-11-agentic-spec-authoring-backend-adr]]"
   - "[[2026-06-30-agentic-spec-authoring-backend-plan]]"
+  - "[[2026-06-29-agentic-spec-authoring-backend-research]]"
 ---
 
 # `section-scoped-operations` adr: `Section-scoped operations: selector schema, whole-document materialization, selected-preimage rollback` | (**status:** `accepted`)

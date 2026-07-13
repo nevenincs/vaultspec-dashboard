@@ -7,6 +7,7 @@ modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-07-02-scene-render-review-audit]]'
+  - '[[2026-06-19-graph-backend-unification-adr]]'
 ---
 
 # `scene-render-review` plan

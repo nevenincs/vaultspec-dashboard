@@ -6,6 +6,7 @@ date: '2026-06-16'
 modified: '2026-07-13'
 related:
   - '[[2026-06-16-figma-frontend-rewrite-reference]]'
+  - '[[2026-06-16-figma-parity-reconciliation-research]]'
 ---
 
 # `figma-frontend-rewrite` adr: `complete frontend teardown and Figma-binding rewrite` | (**status:** `accepted`)

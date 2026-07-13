@@ -7,6 +7,7 @@ modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-07-02-timeline-temporal-review-audit]]'
+  - '[[2026-06-17-temporal-graph-layout-adr]]'
 ---
 
 # `timeline-temporal-review` plan

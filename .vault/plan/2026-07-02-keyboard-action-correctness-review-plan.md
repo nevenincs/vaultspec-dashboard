@@ -7,6 +7,7 @@ modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-07-02-keyboard-action-correctness-review-audit]]'
+  - '[[2026-06-19-keyboard-action-system-adr]]'
 ---
 
 # `keyboard-action-correctness-review` plan
