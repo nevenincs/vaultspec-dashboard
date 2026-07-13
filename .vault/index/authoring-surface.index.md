@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#authoring-surface'
-date: '2026-07-12'
-modified: '2026-07-12'
+date: '2026-07-13'
+modified: '2026-07-13'
 related:
   - '[[2026-07-12-authoring-surface-W01-P01-S01]]'
   - '[[2026-07-12-authoring-surface-W01-P01-S02]]'
@@ -51,6 +51,7 @@ related:
   - '[[2026-07-12-authoring-surface-adr]]'
   - '[[2026-07-12-authoring-surface-plan]]'
   - '[[2026-07-12-authoring-surface-research]]'
+  - '[[2026-07-13-authoring-surface-reference]]'
 ---
 
 # `authoring-surface` feature index
@@ -111,6 +112,10 @@ Auto-generated index of all documents tagged with `#authoring-surface`.
 ### plan
 
 - `2026-07-12-authoring-surface-plan` - `authoring-surface` plan
+
+### reference
+
+- `2026-07-13-authoring-surface-reference` - `authoring-surface` reference: `cross-boundary contracts and upstream coordination asks`
 
 ### research
 

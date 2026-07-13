@@ -84,7 +84,9 @@ kbd hints), `_MarkdownReader/HeadingCommentAffordance` (`1072:4214`, right-gutte
 count chip), `_TreeBrowser/FeaturesHeader` (`1070:4189`, Features section header + scoped create
 Plus). The vault-mode left-rail header Filter Row (`843:3862`) gained the "New Document Button"
 IconButton; the `StepMark` set (`564:1922`) gained `State=CheckboxUnchecked|CheckboxChecked|
-CheckboxPending` variants (the actionable plan-step checkbox, D1); the `Icon` set (`159:136`)
+CheckboxPending` variants (the actionable plan-step checkbox, D1), and the step-leaf rows in
+`_Pill/StepTree` (`555:1517`) now instance those checkbox variants instead of the old
+Done/Open glyphs — PlanPill `State=Expanded` inherits; the `Icon` set (`159:136`)
 gained `Glyph=Comment` (`1070:4166`) and `Glyph=Diff` (`1070:4171`).
 
 State-preview frames (dot-path `Component.state`):
