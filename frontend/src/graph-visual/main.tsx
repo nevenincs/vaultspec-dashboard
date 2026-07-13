@@ -47,20 +47,35 @@ const STATE_PARAM = params.get("state") ?? "ok";
 const PANEL_OPEN = params.get("panel") === "1";
 
 function resolveHarnessState(name: string): CanvasState {
+  // The overlay is now { primary, annotations }: blocking states are the primary;
+  // over-a-live-field states are annotations on an `ok` primary.
   switch (name) {
     case "loading":
-      return { kind: "loading-constellation" };
+      return { primary: { kind: "loading-constellation" }, annotations: [] };
     case "empty":
-      return { kind: "empty" };
-    // The binding "Graph is not available" centered card (Figma DegradedState
-    // 498:992) — the graph genuinely failed to load.
+      return { primary: { kind: "empty" }, annotations: [] };
     case "unavailable":
-      return { kind: "unavailable" };
-    // A single tier down while the graph is live → the non-blocking corner banner.
+      return { primary: { kind: "unavailable" }, annotations: [] };
+    // A tier down while the graph is live → a non-blocking annotation chip.
     case "degraded":
-      return { kind: "degraded", tiers: ["semantic"], reasons: {} };
+      return {
+        primary: { kind: "ok" },
+        annotations: [{ kind: "degraded", tiers: ["structural"], reasons: {} }],
+      };
+    // Document links loading for the first time (edge-less) vs refreshing (carried).
+    case "links-building":
+      return { primary: { kind: "ok" }, annotations: [{ kind: "links-building" }] };
+    case "links-refreshing":
+      return { primary: { kind: "ok" }, annotations: [{ kind: "links-refreshing" }] };
+    case "truncated":
+      return {
+        primary: { kind: "ok" },
+        annotations: [
+          { kind: "truncated", total: 8700, returned: 5000, reason: "node ceiling" },
+        ],
+      };
     default:
-      return { kind: "ok" };
+      return { primary: { kind: "ok" }, annotations: [] };
   }
 }
 

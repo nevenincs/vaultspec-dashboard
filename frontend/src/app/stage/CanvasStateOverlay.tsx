@@ -1,66 +1,87 @@
-// The canvas's designed-state overlay (W02.P09.S25, node-canvas ADR "States").
+// The canvas's designed-state overlay (node-canvas ADR "States"; declared-edge-
+// continuity + canvas-overlay-redesign).
 //
-// The node-canvas ADR requires every wire condition to render as a DESIGNED
-// state, never a raw error: loading (scope-appropriate), the empty/no-graph
-// invitation, per-tier degradation (honestly-absent tier), a truncated bounded
-// query ("narrowed — refine your view"), and an unknown-tier data error. This
-// is the chrome layer's half of that mandate — a dumb projection over stores-
-// derived truth. It NEVER fetches and NEVER reads the raw `tiers` block: the
-// per-tier degradation arrives pre-derived through `useGraphSliceAvailability`,
-// the empty/stale conditions through the degradation matrix's surface state, and
-// the truncation/unknown-tier facts off the held slice the stores own
-// (dashboard-layer-ownership, views-are-projections-of-one-model).
+// Every wire condition renders as a DESIGNED state, never a raw error. The overlay
+// splits into ONE PRIMARY state — a blocking/centered treatment when nothing can render
+// underneath (loading, empty, unavailable, no-GPU, restoring) — plus a set of
+// non-blocking ANNOTATIONS that co-occur over a LIVE field (a degraded tier, the
+// document-links building/refreshing state, a fired node ceiling, a background
+// re-query). Loading vs building vs refreshing vs truncated can be true at once, so the
+// resolver returns the primary AND every active annotation in a deliberate priority
+// order (encoded here, unit-tested), and the chrome stacks them so each stays legible.
 //
-// The resolver below is a pure function from those inputs to one state, so the
-// ADR's state table is unit-testable without a DOM or a live backend.
+// Layer law: this is a dumb projection over stores-derived truth. It NEVER fetches and
+// NEVER reads the raw `tiers` block — per-tier availability arrives pre-derived through
+// `useGraphSliceAvailability`, the stage surface through the degradation matrix, and the
+// truncation/reason facts off the held slice the stores own (dashboard-layer-ownership).
+// The one intent it emits is INVOKING the existing open-filter affordance from the
+// truncation chip (the left rail owns filter authorship — the chip only opens it).
 
 import { ScanSearch } from "lucide-react";
 
-import { Folder, Skeleton, SkeletonBar, TriangleAlert } from "../kit";
+import { Button, Folder, Spinner, TriangleAlert } from "../kit";
+import { setFilterSidebarOpen } from "../../stores/view/filterSidebar";
 import type { GraphSlice } from "../../stores/server/engine";
 import type { GraphSliceAvailability } from "../../stores/server/queries";
 import type { RenderCapability } from "../../stores/view/renderCapability";
 import type { SurfaceStates } from "../degradation/matrix";
 
-/** The three provenance EDGE tiers — the only legal graph-edge tier names. The
- *  engine never mints a semantic graph edge (ADR D3.5), so `semantic` is NOT a
- *  graph-edge tier; semantic-search degradation is search's concern, surfaced in
- *  the search UI, never on the graph stage. */
+/** The three provenance EDGE tiers — the only legal graph-edge tier names. The engine
+ *  never mints a semantic graph edge (ADR D3.5), so `semantic` is NOT a graph-edge tier;
+ *  semantic-search degradation is search's concern, never the graph stage. */
 const KNOWN_TIERS = new Set(["declared", "structural", "temporal"]);
 
 /**
- * The canvas's resolved chrome state. The renderer keeps drawing the held slice
- * underneath every state except `empty`/`awaiting-scope`/`loading-*`; the
- * `degraded` and `truncated` states are non-blocking annotations over a live
- * field (the ADR's "render the capped subgraph plus an honest affordance" and
- * "renders the affected tier as honestly-absent, never as a failure of the whole
- * canvas").
+ * The ONE blocking/centered canvas state. Mutually exclusive: nothing renders
+ * underneath these (no slice, or the canvas itself cannot paint), so exactly one shows,
+ * centered. `ok` means the field is live — any annotations then ride over it.
  */
-export type CanvasState =
+export type CanvasPrimary =
   | { kind: "ok" }
   | { kind: "awaiting-scope" }
   | { kind: "loading-constellation" }
   | { kind: "loading-document" }
   | { kind: "empty" }
-  // The whole graph genuinely failed to load (a query ran and settled with no
-  // slice) — the binding "Graph is not available" centered card. DISTINCT from
-  // `degraded` (a single tier down while the graph is live).
+  // The whole graph genuinely failed to load (a query ran and settled with no slice).
   | { kind: "unavailable" }
-  | { kind: "degraded"; tiers: string[]; reasons: Record<string, string> }
-  | { kind: "truncated"; total: number; returned: number; reason: string }
-  | { kind: "unknown-tier"; tiers: string[] }
-  // The canvas cannot render: a lost WebGL context (transient — the scene is
-  // restoring) or no hardware graphics at all (hard). A blocking centered card —
-  // nothing can render underneath, so unlike the degraded banner it is not over a
-  // live field.
+  // The canvas cannot render: no hardware graphics (hard) or a lost WebGL context
+  // being restored (transient). Blocking — nothing renders underneath.
   | { kind: "gpu-unavailable" }
-  | { kind: "context-lost" }
-  // A re-query is in flight behind the HELD slice (`keepPreviousData` — a
-  // filter/lens/scope change re-querying while the previous field stays live).
-  // Non-blocking corner banner, lowest precedence: any designed annotation
-  // (degraded/truncated/unknown-tier) outranks it (universal-data-loading ADR
-  // D2 — the held field is never blanked).
+  | { kind: "context-lost" };
+
+/**
+ * A non-blocking annotation over a LIVE field. Several co-occur (a truncated slice
+ * whose links are refreshing while a tier is degraded), so these are a SET, rendered as
+ * a stacked corner rail, each legible.
+ */
+export type CanvasAnnotation =
+  // An unknown edge-tier name on the wire — a data error, surfaced not silently dropped.
+  | { kind: "unknown-tier"; tiers: string[] }
+  // An honestly-absent edge tier (structural/temporal, or declared genuinely down).
+  | { kind: "degraded"; tiers: string[]; reasons: Record<string, string> }
+  // Document links (declared tier) loading for the FIRST time — nodes shown, no edges
+  // yet (declared-edge-continuity ADR: `DECLARED_BUILDING`).
+  | { kind: "links-building" }
+  // Document links being refreshed while the PRIOR (carried) edges stay visible
+  // (`DECLARED_REFRESHING`) — the quiet, unobtrusive state.
+  | { kind: "links-refreshing" }
+  // A fired node ceiling: the capped subgraph renders + an actionable refine chip.
+  | { kind: "truncated"; total: number; returned: number; reason: string }
+  // A re-query in flight behind the held slice (`keepPreviousData`) — lowest priority.
   | { kind: "refreshing" };
+
+/**
+ * The resolved overlay: one primary + the ordered set of active annotations. The
+ * annotation order IS the stacking priority (most important first), so the chrome can
+ * render them top-down without re-deciding precedence.
+ */
+export interface CanvasOverlayView {
+  primary: CanvasPrimary;
+  annotations: CanvasAnnotation[];
+}
+
+/** Back-compat alias for the harness + call sites that hold the resolved view. */
+export type CanvasState = CanvasOverlayView;
 
 export interface CanvasStateInputs {
   /** Null until a worktree scope is resolved (cold start / no vault-bearing wt). */
@@ -71,9 +92,9 @@ export interface CanvasStateInputs {
   stageSurface: SurfaceStates["stage"];
   /** The held slice, or null while the first keyframe is in flight. */
   slice: GraphSlice | null;
-  /** The scope a graph query was actually issued for (`graphQuery.scope`), or null
-   *  when no query is active yet. Distinguishes "a query ran and returned no slice"
-   *  (unavailable) from "no query has started" (still loading / idle). */
+  /** The scope a graph query was actually issued for, or null when none is active yet.
+   *  Distinguishes "a query ran and returned no slice" (unavailable) from "no query has
+   *  started" (still loading / idle). */
   queriedScope: string | null;
   /** Pre-derived per-tier availability (never the raw `tiers` block). */
   availability: GraphSliceAvailability;
@@ -81,15 +102,10 @@ export interface CanvasStateInputs {
   renderCapability: RenderCapability;
 }
 
-/**
- * Resolve the one canvas state from stores-derived truth. Precedence mirrors the
- * ADR "States" prose: the corpus-absent invitation dominates; a scope not yet
- * resolved is "awaiting scope"; an in-flight first keyframe is a scope-appropriate
- * loading state; an unknown tier on the wire is a SURFACED data error (never
- * silently re-bucketed); a fired node ceiling is the truncated affordance; an
- * honestly-absent tier is non-blocking degradation; otherwise the field is ok.
- */
-export function resolveCanvasState(inputs: CanvasStateInputs): CanvasState {
+/** The blocking/centered decision (ADR "States" precedence): corpus-absent invitation
+ *  dominates; then an unresolved scope; then render-capability; then the no-slice
+ *  loading/unavailable split. `ok` when a slice is live. */
+function resolvePrimary(inputs: CanvasStateInputs): CanvasPrimary {
   const {
     scope,
     granularity,
@@ -99,19 +115,10 @@ export function resolveCanvasState(inputs: CanvasStateInputs): CanvasState {
     availability,
     renderCapability,
   } = inputs;
-  // The empty/no-graph invitation dominates: a worktree with no vault corpus is
-  // not a void to load but a next step to offer.
   if (stageSurface === "empty-invitation") return { kind: "empty" };
   if (scope === null) return { kind: "awaiting-scope" };
-  // Render-capability (after scope, before data states): if the canvas cannot render
-  // — no hardware graphics, or a lost WebGL context being restored — the data states
-  // are moot. `ok` (including the software-fallback, which still renders) falls
-  // through to the normal data flow.
   if (renderCapability.status === "unavailable") return { kind: "gpu-unavailable" };
   if (renderCapability.status === "context-lost") return { kind: "context-lost" };
-  // No held slice. While the query is in flight (or none has started yet) it is a
-  // scope-appropriate loading state; once a query has settled WITHOUT a slice the
-  // graph genuinely failed to load → the unavailable card.
   if (!slice) {
     if (availability.loading || queriedScope === null) {
       return granularity === "document"
@@ -120,54 +127,77 @@ export function resolveCanvasState(inputs: CanvasStateInputs): CanvasState {
     }
     return { kind: "unavailable" };
   }
-  // The graph stage surfaces only EDGE-tier degradation. `semantic` is not a
-  // graph-edge tier (the engine never mints semantic graph edges, ADR D3.5) —
-  // semantic-search availability is search's concern, surfaced in the search UI,
-  // so it is dropped here before any graph-stage degradation is announced.
-  const edgeDegradedTiers = availability.degradedTiers.filter((t) => t !== "semantic");
-  // An unknown tier on the wire is a data error, not a silent re-bucket: any
-  // degraded edge-tier name outside the three canonical edge tiers surfaces here.
-  const unknown = edgeDegradedTiers.filter((t) => !KNOWN_TIERS.has(t));
-  if (unknown.length > 0) return { kind: "unknown-tier", tiers: unknown };
-  // A fired node ceiling: render the capped subgraph plus the refine affordance.
-  if (slice.truncated) {
-    return {
-      kind: "truncated",
-      total: slice.truncated.total_nodes,
-      returned: slice.truncated.returned_nodes,
-      reason: slice.truncated.reason,
-    };
-  }
-  // An honestly-absent EDGE tier: non-blocking annotation over the live field.
-  // Gated on the edge-tier subset so a semantic-search-only degradation never
-  // banners the graph stage.
-  if (edgeDegradedTiers.length > 0) {
-    return {
-      kind: "degraded",
-      tiers: edgeDegradedTiers,
-      reasons: availability.reasons,
-    };
-  }
-  // Lowest precedence: a held-slice re-query surfaces as the non-blocking
-  // refresh banner only when no designed annotation outranks it.
-  if (availability.refreshing) return { kind: "refreshing" };
   return { kind: "ok" };
 }
 
 /**
- * The binding centered state card (graph/Hero state variants 713:2116/2296/2475 —
- * `LoadingState`/`DegradedState`/`EmptyState` 498:987–993): a raised paper card,
- * `border/subtle`, rounded 10px, 26×22 interior, centered in the canvas. Pointer-
- * transparent so it never steals the canvas pointer, and it never blanks the field
- * — the legend / nav / minimap overlays stay live around it.
+ * The active annotations over a LIVE field, in priority (stacking) order:
+ * unknown-tier › degraded › links-building › truncated › links-refreshing › refreshing.
+ * The declared tier's building/refreshing reason is SPLIT OUT of the generic degraded
+ * set into the dedicated document-links states (declared-edge-continuity ADR); a
+ * declared tier that is genuinely down (a non-building/refreshing reason) stays in the
+ * generic degraded annotation.
  */
-// Exported so a sibling designed state OUTSIDE this pure resolver's own union
-// (the not-managed provisioning panel, `ProvisionPanel.tsx` — which fetches
-// and mutates, so it cannot live in this no-fetch resolver) still composes the
-// SAME card primitive rather than a bespoke look-alike (design-system-is-
-// centralized). `interactive` re-enables pointer events on the card only
-// (every other state stays click-through, unchanged) for the one caller that
-// carries a real affordance (a provision button) rather than static copy.
+function resolveAnnotations(inputs: CanvasStateInputs): CanvasAnnotation[] {
+  const { slice, availability } = inputs;
+  const annotations: CanvasAnnotation[] = [];
+  // `semantic` is not a graph-edge tier (ADR D3.5) — dropped before any graph-stage
+  // degradation is announced.
+  const edgeDegradedTiers = availability.degradedTiers.filter((t) => t !== "semantic");
+  const unknown = edgeDegradedTiers.filter((t) => !KNOWN_TIERS.has(t));
+  if (unknown.length > 0) annotations.push({ kind: "unknown-tier", tiers: unknown });
+
+  // Split the declared tier's building/refreshing out of the generic degraded set.
+  const declaredReason = availability.reasons.declared;
+  const declaredDegraded = edgeDegradedTiers.includes("declared");
+  const linksBuilding = declaredDegraded && isBuildingReason(declaredReason);
+  const linksRefreshing = declaredDegraded && isRefreshingReason(declaredReason);
+
+  const genericDegraded = edgeDegradedTiers.filter(
+    (t) =>
+      KNOWN_TIERS.has(t) && !(t === "declared" && (linksBuilding || linksRefreshing)),
+  );
+  if (genericDegraded.length > 0) {
+    annotations.push({
+      kind: "degraded",
+      tiers: genericDegraded,
+      reasons: availability.reasons,
+    });
+  }
+  if (linksBuilding) annotations.push({ kind: "links-building" });
+  if (slice?.truncated) {
+    annotations.push({
+      kind: "truncated",
+      total: slice.truncated.total_nodes,
+      returned: slice.truncated.returned_nodes,
+      reason: slice.truncated.reason,
+    });
+  }
+  if (linksRefreshing) annotations.push({ kind: "links-refreshing" });
+  if (availability.refreshing) annotations.push({ kind: "refreshing" });
+  return annotations;
+}
+
+/**
+ * Resolve the canvas overlay from stores-derived truth: one primary state plus every
+ * co-occurring annotation. Annotations only ride a LIVE field, so they are computed
+ * only when the primary is `ok` (a blocking state occludes the field anyway).
+ */
+export function resolveCanvasState(inputs: CanvasStateInputs): CanvasOverlayView {
+  const primary = resolvePrimary(inputs);
+  return {
+    primary,
+    annotations: primary.kind === "ok" ? resolveAnnotations(inputs) : [],
+  };
+}
+
+/**
+ * The binding centered state card: a raised paper card, centered in the canvas,
+ * pointer-transparent so it never steals the canvas pointer. Exported so a sibling
+ * designed state OUTSIDE this resolver (the provisioning panel) composes the SAME card
+ * primitive. `interactive` re-enables pointer events for the one caller with a real
+ * affordance.
+ */
 export function StateCard({
   children,
   testid,
@@ -192,22 +222,42 @@ export function StateCard({
   );
 }
 
-/** The three binding skeleton bars (498:989–991), composed from the shared kit
- *  `Skeleton` (state-mode-uniformity ADR: loading is UI-ONLY, no on-screen text — the
- *  human `label` lives in the wrapper's `sr-only`). Widths mirror the binding 200 / 150
- *  / 220px bars; the kit pulses + announces busy state. */
-function LoadingSkeleton({ label }: { label: string }) {
+/** The GLOBAL canvas loader (canvas-overlay-redesign): one centered spinner ring on an
+ *  attenuated scrim, matching the app's boot-loader idiom (kit `Spinner`, reduced-motion
+ *  safe). No on-screen text — the human label lives in the spinner's `role="status"`
+ *  sr-only (state-mode-uniformity ADR D2). */
+function CenteredLoader({ testid, label }: { testid: string; label: string }) {
   return (
-    <Skeleton label={label} className="items-center">
-      <SkeletonBar width="w-[12.5rem]" height="h-[0.625rem]" />
-      <SkeletonBar width="w-[9.375rem]" height="h-[0.625rem]" />
-      <SkeletonBar width="w-[13.75rem]" height="h-[0.625rem]" />
-    </Skeleton>
+    // No role="status" on the wrapper: the kit Spinner carries its own status
+    // live region — nesting two would double-announce (review LOW).
+    <div
+      className="pointer-events-none absolute inset-0 flex items-center justify-center bg-paper/70"
+      data-canvas-state={testid}
+    >
+      <Spinner label={label} />
+    </div>
   );
 }
 
-/** A non-blocking bottom-anchored banner — the field stays live behind it. */
-function CornerBanner({
+/** The bottom rail that stacks co-occurring annotations. All four canvas corners are
+ *  occupied by existing widgets (zoom bottom-left, sim top-left, settings top-right,
+ *  minimap bottom-right), so the rail pins to the bottom EDGE (out of the center
+ *  eye-line, never over graph content permanently) and grows upward, most-important
+ *  chip nearest the edge. Pointer-transparent except each chip's own affordance. */
+function AnnotationRail({ annotations }: { annotations: CanvasAnnotation[] }) {
+  if (annotations.length === 0) return null;
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-fg-3 flex flex-col-reverse items-center gap-fg-1-5 px-fg-4">
+      {annotations.map((annotation) => (
+        <AnnotationChip key={annotation.kind} annotation={annotation} />
+      ))}
+    </div>
+  );
+}
+
+/** A compact, tokenized overlay chip — the bespoke canvas-annotation composite (the
+ *  design system permits bespoke graph/timeline composites over the standard atoms). */
+function OverlayChip({
   children,
   testid,
   tone = "muted",
@@ -218,43 +268,127 @@ function CornerBanner({
 }) {
   return (
     <div
-      className={`pointer-events-none absolute inset-x-0 bottom-fg-3 flex justify-center px-fg-4 ${
+      className={`pointer-events-auto flex max-w-[90vw] items-center gap-fg-2 rounded-fg-md border border-rule bg-paper-raised/95 px-fg-3 py-fg-1-5 text-label shadow-fg-overlay ${
         tone === "warn" ? "text-state-stale" : "text-ink-muted"
       }`}
       data-canvas-state={testid}
       role="status"
     >
-      <div className="pointer-events-auto flex items-center gap-fg-2 rounded-fg-md border border-rule bg-paper-raised/95 px-fg-3 py-fg-1-5 text-label shadow-fg-overlay">
-        {children}
-      </div>
+      {children}
     </div>
   );
 }
 
+/** The quietest annotation: a small attenuated caption, no border/shadow — for the
+ *  unobtrusive states (links refreshing, background re-query) that must not draw the
+ *  eye while the field stays fully usable. */
+function QuietCaption({
+  children,
+  testid,
+}: {
+  children: React.ReactNode;
+  testid: string;
+}) {
+  return (
+    <div
+      className="pointer-events-none rounded-fg-sm bg-paper-raised/85 px-fg-2 py-fg-0-5 text-caption text-ink-faint"
+      data-canvas-state={testid}
+      role="status"
+    >
+      {children}
+    </div>
+  );
+}
+
+/** One annotation → its chip. */
+function AnnotationChip({ annotation }: { annotation: CanvasAnnotation }) {
+  switch (annotation.kind) {
+    case "unknown-tier":
+      return (
+        <OverlayChip testid="unknown-tier" tone="warn">
+          <TriangleAlert aria-hidden size={16} strokeWidth={1.5} />
+          <span>
+            unrecognized tier on the wire: {annotation.tiers.join(", ")} — this is a
+            data error, not a degraded view
+          </span>
+        </OverlayChip>
+      );
+    case "degraded":
+      return (
+        <OverlayChip testid="degraded" tone="muted">
+          <span>{degradedBannerCopy(annotation.tiers, annotation.reasons)}</span>
+        </OverlayChip>
+      );
+    // Document links loading for the first time — nodes render, edges are not in yet.
+    case "links-building":
+      return (
+        <OverlayChip testid="links-building" tone="muted">
+          <span>
+            Document links are loading for the first time — nodes are shown; links
+            appear when they’re ready.
+          </span>
+        </OverlayChip>
+      );
+    // A fired node ceiling: an attenuated, ACTIONABLE chip near the periphery — counts in
+    // tabular numerals + an affordance that opens the filter plane (the left rail owns
+    // filter authorship; this only INVOKES the open affordance).
+    case "truncated":
+      return (
+        <OverlayChip testid="truncated" tone="warn">
+          <ScanSearch aria-hidden size={16} strokeWidth={1.5} />
+          <span>
+            Showing{" "}
+            <span data-tabular className="tabular-nums">
+              {annotation.returned.toLocaleString("en-US")}
+            </span>{" "}
+            of{" "}
+            <span data-tabular className="tabular-nums">
+              {annotation.total.toLocaleString("en-US")}
+            </span>{" "}
+            nodes
+          </span>
+          <Button variant="ghost" onClick={() => setFilterSidebarOpen(true)}>
+            Refine with a filter
+          </Button>
+        </OverlayChip>
+      );
+    // The quiet states: attenuated captions, never banners.
+    case "links-refreshing":
+      return (
+        <QuietCaption testid="links-refreshing">
+          Document links are being refreshed.
+        </QuietCaption>
+      );
+    case "refreshing":
+      return <QuietCaption testid="refreshing">Refreshing view…</QuietCaption>;
+  }
+}
+
 /**
- * The chrome-layer realization of every canvas wire state. Dumb projection: the
- * resolved `state` is the only input it renders. Loading/empty states center;
- * degraded/truncated/unknown-tier annotate the live field from a corner so the
- * canvas underneath is never blanked.
+ * The chrome-layer realization of the resolved overlay: the one primary state centered,
+ * plus the annotation rail over the live field. Dumb projection — the resolved `state`
+ * is the only input. Loading/empty/unavailable/gpu/restoring center and (except while a
+ * held field is present) occlude; annotations stack at the bottom edge so the canvas is
+ * never blanked by them.
  */
-export function CanvasStateOverlay({ state }: { state: CanvasState }) {
-  switch (state.kind) {
+export function CanvasStateOverlay({ state }: { state: CanvasOverlayView }) {
+  return (
+    <>
+      <PrimaryCard primary={state.primary} />
+      <AnnotationRail annotations={state.annotations} />
+    </>
+  );
+}
+
+function PrimaryCard({ primary }: { primary: CanvasPrimary }) {
+  switch (primary.kind) {
     case "ok":
       return null;
-    // Loading (binding LoadingState 498:987): UI-ONLY — three skeleton bars, NO
-    // on-screen "Loading…" text (state-mode-uniformity ADR: the human label lives in
-    // the kit `Skeleton`'s sr-only). The awaiting-scope and both granularity loads
-    // share the one binding loading card.
+    // The global loader: a centered spinner ring on an attenuated scrim (no text).
     case "awaiting-scope":
     case "loading-constellation":
     case "loading-document":
-      return (
-        <StateCard testid={state.kind}>
-          <LoadingSkeleton label="Loading graph" />
-        </StateCard>
-      );
-    // Empty (binding EmptyState): the shared empty glyph (matching the kit `StateBlock`
-    // empty mode — `Folder` in `ink-faint`) over one plain no-results sentence.
+      return <CenteredLoader testid={primary.kind} label="Loading graph" />;
     case "empty":
       return (
         <StateCard testid="empty">
@@ -262,10 +396,6 @@ export function CanvasStateOverlay({ state }: { state: CanvasState }) {
           <p className="text-body text-ink-muted">No nodes match the current filter</p>
         </StateCard>
       );
-    // Unavailable (binding DegradedState 498:992): the graph genuinely failed to load.
-    // The shared caution mark (`TriangleAlert`, the same glyph the kit `StateBlock`
-    // degraded mode carries) in the `state-stale` tone over one sentence — read by
-    // shape + the amber token, never colour alone.
     case "unavailable":
       return (
         <StateCard testid="unavailable">
@@ -275,9 +405,7 @@ export function CanvasStateOverlay({ state }: { state: CanvasState }) {
           </p>
         </StateCard>
       );
-    // Render-capability (G1): the canvas itself cannot render. Plain language, no
-    // WebGL jargon (ui-labels-are-user-facing). Blocking centered cards — nothing
-    // renders underneath, unlike the degraded banner over a live field.
+    // Render-capability: plain language, no WebGL jargon (labels-are-user-facing).
     case "gpu-unavailable":
       return (
         <StateCard testid="gpu-unavailable">
@@ -287,69 +415,20 @@ export function CanvasStateOverlay({ state }: { state: CanvasState }) {
           </p>
         </StateCard>
       );
+    // Restoring a lost context: the same centered spinner idiom with a brief label.
     case "context-lost":
       return (
         <StateCard testid="context-lost">
-          <p className="text-body font-medium text-ink-faint">Restoring graphics…</p>
-          <LoadingSkeleton label="Restoring graphics" />
+          <Spinner label="Restoring graphics" />
+          <p className="text-label text-ink-faint">Restoring graphics…</p>
         </StateCard>
-      );
-    // Degraded — a single tier is down while the graph is LIVE behind it. A
-    // non-blocking corner banner naming the tier (never the blocking centered card,
-    // which would occlude a working graph); the field stays fully interactive.
-    case "degraded":
-      return (
-        <CornerBanner testid="degraded" tone="muted">
-          <span>{degradedBannerCopy(state.tiers, state.reasons)}</span>
-        </CornerBanner>
-      );
-    case "truncated":
-      return (
-        <CornerBanner testid="truncated" tone="warn">
-          <ScanSearch aria-hidden size={16} strokeWidth={1.5} />
-          <span>
-            narrowed to{" "}
-            <span data-tabular className="tabular-nums">
-              {state.returned}
-            </span>{" "}
-            of{" "}
-            <span data-tabular className="tabular-nums">
-              {state.total}
-            </span>{" "}
-            nodes — refine your view with a filter
-          </span>
-        </CornerBanner>
-      );
-    // Refreshing — a re-query behind the live held field. A muted corner
-    // banner; the canvas stays fully interactive and is never blanked.
-    case "refreshing":
-      return (
-        <CornerBanner testid="refreshing" tone="muted">
-          <span>Refreshing view…</span>
-        </CornerBanner>
-      );
-    case "unknown-tier":
-      return (
-        <CornerBanner testid="unknown-tier" tone="warn">
-          <TriangleAlert aria-hidden size={16} strokeWidth={1.5} />
-          <span>
-            unrecognized tier on the wire: {tierList(state.tiers)} — this is a data
-            error, not a degraded view
-          </span>
-        </CornerBanner>
       );
   }
 }
 
-/** Join tier names with a comma, lowercased, for the non-color state copy. */
-function tierList(tiers: string[]): string {
-  return tiers.join(", ");
-}
-
 /**
- * Plain, user-facing names for each provenance tier (`ui-labels-are-user-facing`):
- * the degraded banner names the affected FEATURE, never the internal tier name.
- * Stored lowercase for mid-sentence use; capitalized at a sentence start.
+ * Plain, user-facing names for each provenance tier (labels-are-user-facing): the
+ * degraded copy names the affected FEATURE, never the internal tier name.
  */
 const TIER_FEATURE_LABEL: Record<string, string> = {
   declared: "links",
@@ -357,13 +436,18 @@ const TIER_FEATURE_LABEL: Record<string, string> = {
   temporal: "timeline",
 };
 
-/**
- * A tier whose reason names a transient index build reads as "loading", not
- * "unavailable". INTERIM heuristic: the reason STRING is the only signal until the
- * engine emits a structured build state — the one match is isolated here so it swaps
- * to that signal cleanly when it lands (graph-tiers follow-up A). */
+/** A tier whose reason names a transient index build reads as "loading", not
+ *  "unavailable". The reason STRING is the signal the engine serves (`DECLARED_BUILDING`
+ *  = "declared tier building"). */
 function isBuildingReason(reason: string | undefined): boolean {
   return reason !== undefined && reason.toLowerCase().includes("building");
+}
+
+/** A tier whose reason names a stale-while-refolding carry (`DECLARED_REFRESHING` =
+ *  "declared tier refreshing", declared-edge-continuity ADR): the prior edges are still
+ *  served while the fold recomputes them. */
+function isRefreshingReason(reason: string | undefined): boolean {
+  return reason !== undefined && reason.toLowerCase().includes("refreshing");
 }
 
 /** Join feature names as plain prose: "a", "a and b", "a, b and c". */
@@ -378,10 +462,12 @@ function capitalizeFirst(text: string): string {
 }
 
 /**
- * The degraded-banner copy (`ui-labels-are-user-facing`): plain language naming the
- * affected feature, splitting tiers whose reason is a transient build ("Still
- * loading …") from genuinely-down tiers ("… unavailable — the rest of the graph is
- * live"). Pure + exported for unit tests.
+ * The degraded-annotation copy (labels-are-user-facing): plain language naming the
+ * affected feature, splitting tiers whose reason is a transient build ("Still loading
+ * …") from genuinely-down tiers ("… unavailable — the rest of the graph is live"). Pure
+ * + exported for unit tests. (The declared tier's building/refreshing is handled by the
+ * dedicated links states, so this copy covers structural/temporal and a genuinely-down
+ * declared tier.)
  */
 export function degradedBannerCopy(
   tiers: string[],

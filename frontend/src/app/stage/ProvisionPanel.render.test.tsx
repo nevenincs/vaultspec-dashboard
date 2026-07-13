@@ -341,7 +341,7 @@ describe("Stage overlay composition (CanvasStateOverlay <-> ProvisionPanel)", ()
   it("a genuinely unmanaged root suppresses the awaiting-scope card and shows ONLY the not-managed card", () => {
     const { container } = render(
       <StageOverlayHarness
-        canvasState={{ kind: "awaiting-scope" }}
+        canvasState={{ primary: { kind: "awaiting-scope" }, annotations: [] }}
         panelInputs={{ scope: null, isPending: false, isError: false, data: status() }}
       />,
     );
@@ -352,7 +352,7 @@ describe("Stage overlay composition (CanvasStateOverlay <-> ProvisionPanel)", ()
   it("still loading the provisioning read: the awaiting-scope card shows through, no panel card yet", () => {
     const { container } = render(
       <StageOverlayHarness
-        canvasState={{ kind: "awaiting-scope" }}
+        canvasState={{ primary: { kind: "awaiting-scope" }, annotations: [] }}
         panelInputs={{ scope: null, isPending: true, isError: false, data: undefined }}
       />,
     );
@@ -365,7 +365,7 @@ describe("Stage overlay composition (CanvasStateOverlay <-> ProvisionPanel)", ()
   it("a live resolved scope: neither the awaiting-scope card nor the panel card renders", () => {
     const { container } = render(
       <StageOverlayHarness
-        canvasState={{ kind: "ok" }}
+        canvasState={{ primary: { kind: "ok" }, annotations: [] }}
         panelInputs={{
           scope: "wt-1",
           isPending: false,

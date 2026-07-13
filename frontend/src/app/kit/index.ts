@@ -69,5 +69,8 @@ export * from "./glyphs";
 // (no text), degraded/empty = StateBlock (shared glyph + one sentence). Composed by every
 // data-bearing surface so the four modes render uniformly.
 export { Skeleton, SkeletonBar, SkeletonRow } from "./Skeleton";
+
+export { Spinner } from "./Spinner";
+export type { SpinnerProps } from "./Spinner";
 export { StateBlock } from "./StateBlock";
 export type { StateBlockMode, StateBlockLayout } from "./StateBlock";
