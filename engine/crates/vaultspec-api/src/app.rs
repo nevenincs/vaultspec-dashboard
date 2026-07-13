@@ -239,6 +239,13 @@ pub struct ScopeCell {
     /// piggy-back on). Without it, a fold finishing after a final HEAD advance
     /// would serve the superseded commit's declared edges indefinitely.
     pub declared_fold_pending: AtomicBool,
+    /// The last COMPLETED declared fold's edge set (declared-edge-continuity ADR),
+    /// `Arc`-shared and replaced only by a completed fold — never partially. A
+    /// rebuild grafts it onto the fresh graph (pruned to the new node set) so a corpus
+    /// under continuous editing is never presented edge-less; the running fold's
+    /// completion replaces it. `None` before the first fold (node-only + building).
+    /// Bounded by the corpus's own declared edge count — no new unbounded accumulator.
+    pub(crate) declared_edges: RwLock<Option<Arc<Vec<engine_graph::StoredEdge>>>>,
     /// The CODE corpus (codebase-graphing ADR D1): a SEPARATE `LinkageGraph`
     /// instance with its own generation counter and extraction cache, served
     /// beside the vault graph and never merged into it. The two datasets share
@@ -550,6 +557,7 @@ impl ScopeCell {
             declared_status: RwLock::new(None),
             declared_fold_active: AtomicBool::new(false),
             declared_fold_pending: AtomicBool::new(false),
+            declared_edges: RwLock::new(None),
             code: CodeGraphCell::new(),
         }
     }
@@ -1047,58 +1055,15 @@ impl ScopeCell {
         // present-view ref (graph-worktree-edge-consistency ADR: the working tree on a
         // verified read-only core so present-view edges share the nodes' snapshot,
         // else committed HEAD), so the sync and async declared graphs converge.
-        let declared_status = if tokio::runtime::Handle::try_current().is_err() {
-            match engine_graph::index::fetch_core_graph_json(
-                &self.root,
-                engine_graph::index::present_view_git_ref(),
-            ) {
-                Ok(json) => {
-                    let (_, unavailable) = engine_graph::index::ingest_declared_from_json(
-                        &mut fresh,
-                        &json,
-                        &self.scope,
-                        now_ms(),
-                    );
-                    unavailable
-                }
-                Err(reason) => Some(reason),
-            }
-        } else {
-            // Carry last-good declared across a routine re-index (Issue #4 / #1):
-            // if the declared tier was AVAILABLE before this rebuild AND the
-            // declared graph for the FRESH corpus state is already cached (corpus
-            // unchanged ⇒ core's authored vault graph is identical), fold those edges
-            // into the fresh structural graph NOW so the served graph stays complete
-            // and the declared tier does NOT flap to the building sentinel on every FS
-            // change. The cache key is the present-view corpus key (content fingerprint,
-            // or `fingerprint@<sha>` in the HEAD-fallback mode), computed from the
-            // freshly-built structural graph — so a genuine `.vault/` edit misses, and
-            // the async fold the caller spawns re-reads. Only a cold build or a changed
-            // corpus (no cached declared) reports unavailable-while-building until that
-            // fold lands.
-            let prior_available = self
-                .declared_status
-                .read()
-                .map(|status| status.is_none())
-                .unwrap_or(false);
-            let (_, corpus_key) =
-                crate::registry::present_view_corpus(&fresh, &self.root, &self.scope);
-            match prior_available
-                .then(|| crate::registry::cached_declared_json(self, &corpus_key))
-                .flatten()
-            {
-                Some(json) => {
-                    let (_, unavailable) = engine_graph::index::ingest_declared_from_json(
-                        &mut fresh,
-                        &json,
-                        &self.scope,
-                        now_ms(),
-                    );
-                    unavailable
-                }
-                None => stats.declared_unavailable,
-            }
-        };
+        // Reconcile the declared tier into the fresh structural graph BEFORE the swap
+        // (declared-edge-continuity ADR): ingest inline (no-runtime tests) or from the
+        // unchanged-corpus cache (available), else GRAFT the last completed fold's
+        // carried edges pruned to the new node set so a churned corpus is never
+        // edge-less. The reason distinguishes refreshing (carried edges served) from
+        // building (none). Extracted to `registry` (where the declared machinery lives)
+        // so this handler stays under its module-size baseline.
+        let declared_status =
+            crate::registry::reconcile_declared_into(self, &mut fresh, stats.declared_unavailable);
 
         if let Ok(mut status) = self.declared_status.write() {
             *status = declared_status;

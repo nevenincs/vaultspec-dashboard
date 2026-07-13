@@ -410,22 +410,101 @@ pub(crate) fn present_view_corpus(
 }
 
 /// Read the cached declared-graph JSON for the cell's CURRENT working-tree corpus
-/// (identified by `fingerprint`) WITHOUT running the core subprocess (a pure store
-/// read). Returns `None` on a cache miss, so a caller can fall back to the async
-/// fold (which may run the subprocess).
-///
-/// The rebuild path uses this to CARRY last-good declared edges across a routine
-/// re-index: when the corpus is unchanged (same fingerprint), the cached declared
-/// graph is identical (declared ingest is replace-by-id idempotent over the
-/// structural graph), so folding it keeps the `declared` tier AVAILABLE instead of
-/// flapping to the `DECLARED_BUILDING` sentinel on every filesystem change — the
-/// source of the stuck "Still loading links…" banner and the declared building↔ready
-/// flap. A genuine `.vault/` edit changes the fingerprint, so this misses and the
-/// async fold re-reads the working tree (the consistency the ADR requires).
+/// (`fingerprint`) WITHOUT the core subprocess (a pure store read); `None` on a miss.
+/// The rebuild's unchanged-corpus fast path folds this to keep the `declared` tier
+/// AVAILABLE instead of flapping to `DECLARED_BUILDING` on every FS change; a genuine
+/// `.vault/` edit changes the fingerprint, so it misses and the async fold re-reads.
 pub(crate) fn cached_declared_json(cell: &ScopeCell, corpus_key: &str) -> Option<String> {
     let key = declared_cache_key(&crate::routes::scope_token(&cell.root), corpus_key);
     let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
     store.get_artifact(DECLARED_GRAPH_KIND, &key).ok().flatten()
+}
+
+/// Reconcile the declared tier into a freshly-built structural graph BEFORE the swap
+/// (declared-edge-continuity ADR); returns the `declared_status` to record. No runtime
+/// (tests): ingest INLINE, falling through to the carry (with the core error as the
+/// honest fallback reason) on failure. Serve + unchanged corpus with a cached declared
+/// graph: ingest the exact cached edges → AVAILABLE. Otherwise (cold / corpus changed,
+/// a fold will run): GRAFT the last completed fold's carried edges pruned to the fresh
+/// node set — refreshing when any survive, else the building fallback. A successful
+/// ingest also CAPTURES the carried set so the next rebuild grafts the freshest truth.
+pub(crate) fn reconcile_declared_into(
+    cell: &ScopeCell,
+    fresh: &mut engine_graph::LinkageGraph,
+    building_fallback: Option<String>,
+) -> Option<String> {
+    use engine_graph::index;
+    if tokio::runtime::Handle::try_current().is_err() {
+        match index::fetch_core_graph_json(&cell.root, index::present_view_git_ref()) {
+            Ok(json) => ingest_and_capture(cell, fresh, &json),
+            Err(reason) => graft_carried_declared(cell, fresh, Some(reason)),
+        }
+    } else {
+        let prior_available = cell
+            .declared_status
+            .read()
+            .map(|status| status.is_none())
+            .unwrap_or(false);
+        let (_, corpus_key) = present_view_corpus(fresh, &cell.root, &cell.scope);
+        match prior_available
+            .then(|| cached_declared_json(cell, &corpus_key))
+            .flatten()
+        {
+            Some(json) => ingest_and_capture(cell, fresh, &json),
+            None => graft_carried_declared(cell, fresh, building_fallback),
+        }
+    }
+}
+
+/// Ingest declared JSON into `fresh`; on success capture the resulting declared edge
+/// set as the carried truth. Returns the `declared_unavailable` reason (None = up).
+fn ingest_and_capture(
+    cell: &ScopeCell,
+    fresh: &mut engine_graph::LinkageGraph,
+    json: &str,
+) -> Option<String> {
+    let (_, unavailable) = engine_graph::index::ingest_declared_from_json(
+        fresh,
+        json,
+        &cell.scope,
+        crate::app::now_ms(),
+    );
+    if unavailable.is_none() {
+        capture_carried_declared(cell, fresh);
+    }
+    unavailable
+}
+
+/// Graft the cell's carried declared edge set (last completed fold) onto `fresh`, pruned
+/// to its node set (declared-edge-continuity ADR). Returns `refreshing` when any survive
+/// (a fold will update them), else `fallback` (edge-less: building sentinel or core error).
+fn graft_carried_declared(
+    cell: &ScopeCell,
+    fresh: &mut engine_graph::LinkageGraph,
+    fallback: Option<String>,
+) -> Option<String> {
+    let carried = cell
+        .declared_edges
+        .read()
+        .ok()
+        .and_then(|guard| guard.clone());
+    match carried {
+        Some(edges) if fresh.graft_declared_edges(&edges) > 0 => {
+            Some(engine_graph::index::DECLARED_REFRESHING.to_string())
+        }
+        _ => fallback,
+    }
+}
+
+/// Replace the cell's carried declared edge set from a graph that has the declared tier
+/// ingested (declared-edge-continuity ADR): captured on a completed fold (and inline
+/// ingest) so the next rebuild grafts the freshest truth. `Arc`-shared; bounded by the
+/// corpus's declared edge count.
+pub(crate) fn capture_carried_declared(cell: &ScopeCell, graph: &engine_graph::LinkageGraph) {
+    let edges = std::sync::Arc::new(graph.declared_stored_edges());
+    if let Ok(mut carried) = cell.declared_edges.write() {
+        *carried = Some(edges);
+    }
 }
 
 /// Asynchronously fold the declared tier into a cell's live graph (perf ADR
@@ -515,9 +594,8 @@ fn spawn_claimed_fold(cell: &Arc<ScopeCell>) {
 }
 
 /// The blocking body of the declared fold (perf ADR D1): corpus-fingerprint →
-/// cache-or-subprocess JSON → clone-and-fold → commit. Runs on a blocking
-/// thread; the completion guard releases the coalescing slot and re-spawns a
-/// fold if a rebuild raced this one (the trailing-edge close, review HIGH).
+/// cache-or-subprocess JSON → clone-and-fold → commit. Runs on a blocking thread; the
+/// completion guard releases the coalescing slot and re-spawns on a raced rebuild.
 fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
     use std::sync::atomic::Ordering;
 
@@ -526,14 +604,11 @@ fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
     let Some(cell) = weak.upgrade() else {
         return;
     };
-    // On EVERY exit path (including a panic): release the coalescing slot, then
-    // — if a rebuild raced this fold (`declared_fold_pending` set) — re-spawn a
-    // fold at the CURRENT HEAD so the latest structural commit is never left
-    // unfolded. The guard holds a `Weak` for the re-spawn so it can never keep
-    // an evicted cell alive (HIGH-1 discipline). Termination: a re-spawn only
-    // happens when `pending` was actually set by a concurrent rebuild, and the
-    // re-spawned fold clears it; on a STABLE HEAD no rebuild fires, so `pending`
-    // stays false and the chain ends.
+    // On EVERY exit path (incl. panic): release the coalescing slot, then re-spawn a
+    // fold if a rebuild raced this one (`declared_fold_pending`), so the latest commit
+    // is never left unfolded. Holds a `Weak` (never keeps an evicted cell alive,
+    // HIGH-1). Terminates: a re-spawn only fires when a concurrent rebuild set pending,
+    // and it clears pending; a stable HEAD spawns nothing.
     struct FoldGuard {
         cell: std::sync::Weak<ScopeCell>,
     }
@@ -554,17 +629,13 @@ fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
     }
     let _guard = FoldGuard { cell: weak.clone() };
 
-    // Resolve the present-view declared source for the cell's CURRENT corpus
-    // (present-view consistency, graph-worktree-edge-consistency ADR Option A +
-    // version guard): the working tree keyed on the corpus CONTENT fingerprint on a
-    // verified read-only core, else a fail-safe committed-HEAD read keyed on
-    // `fingerprint@<sha>`. Keying on content (not the HEAD sha) is what makes an
-    // uncommitted `.vault/` edit miss the cache and re-read; the key is always
-    // computable from the in-memory graph (no failure path).
+    // Resolve the present-view declared source for the CURRENT corpus (graph-worktree-
+    // edge-consistency ADR): working tree keyed on the corpus CONTENT fingerprint on a
+    // verified read-only core, else a committed-HEAD read keyed on `fingerprint@<sha>`.
+    // Keying on content (not HEAD) is what makes an uncommitted `.vault/` edit re-read.
     let (git_ref, corpus_key) = present_view_corpus(&cell.graph_arc(), &cell.root, &cell.scope);
 
-    // Get the declared graph JSON: cache hit (no subprocess) or miss
-    // (subprocess, then cache the JSON by the corpus key).
+    // Declared graph JSON: cache hit (no subprocess) or miss (subprocess + cache).
     let json: Result<String, String> = {
         let key = declared_cache_key(&crate::routes::scope_token(&cell.root), &corpus_key);
         let cached = {
@@ -574,19 +645,13 @@ fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
         match cached {
             Some(json) => Ok(json),
             None => {
-                // Cache miss: run the subprocess at the gated ref (working tree on a
-                // verified read-only core — `vault graph` mutates no `.vault/`
-                // document — else committed HEAD), then persist the JSON by the
-                // corpus key for instant repeat-switch / restart at this corpus state.
+                // Cache miss: run the subprocess at the gated ref (read-only core, else
+                // committed HEAD), then persist the JSON by the corpus key.
                 let fetched = engine_graph::index::fetch_core_graph_json(&cell.root, git_ref);
-                // TOCTOU guard (audit MEDIUM-2): only persist if the corpus is STILL
-                // the one we keyed on. A concurrent rebuild (`commit_graph` is not
-                // gated by `declared_fold_active`) between the key computation and
-                // this fetch could otherwise cache JSON under a now-stale key, so an
-                // exact corpus revisit within the keep-window could fold the wrong
-                // edges. On a mismatch we skip the WRITE only — the fetched edges
-                // still fold into the live graph below, and the next stable fold
-                // caches under the correct key.
+                // TOCTOU guard (audit MEDIUM-2): only persist if the corpus is STILL the
+                // one we keyed on — a concurrent rebuild could otherwise cache JSON under
+                // a now-stale key. On a mismatch we skip the WRITE only; the fetched edges
+                // still fold below, and the next stable fold caches under the right key.
                 let (_, still_key) =
                     present_view_corpus(&cell.graph_arc(), &cell.root, &cell.scope);
                 if let (Ok(json), true) = (&fetched, still_key == corpus_key) {
@@ -604,13 +669,10 @@ fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
                     {
                         eprintln!("vaultspec serve: pruning declared-graph cache failed: {e}");
                     }
-                    // While we hold the write lock, bound the other growing
-                    // stores and reclaim the freed pages (B5,
-                    // resource-hardening): evict expired semantic-cache rows,
-                    // age out temporal events past the retention window, then
-                    // return freed pages to the OS and collapse the WAL. All
-                    // best-effort + logged — a contended reclaim retries on
-                    // the next HEAD-change fold.
+                    // While we hold the write lock, bound the other growing stores and
+                    // reclaim freed pages (B5): evict expired semantic rows, age out
+                    // temporal events past retention, then reclaim + collapse the WAL.
+                    // Best-effort + logged; a contended reclaim retries on the next fold.
                     let now = crate::app::now_ms();
                     if let Err(e) = store.evict_expired_semantic(now) {
                         eprintln!("vaultspec serve: evicting expired semantic cache failed: {e}");
@@ -641,8 +703,15 @@ fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
                 &cell.scope,
                 crate::app::now_ms(),
             );
-            // Commit the folded graph: emits declared deltas on the cell's
-            // per-scope clock + ring (no separate clock), and bumps generation.
+            // A COMPLETED fold replaces the carried declared set (declared-edge-
+            // continuity ADR), captured BEFORE the move into `commit_graph`. The commit
+            // diffs against the currently-served graph (carrying the PRIOR set), so
+            // clients receive exactly the correction, never a full re-add.
+            if unavailable.is_none() {
+                capture_carried_declared(&cell, &folded);
+            }
+            // Commit the folded graph: emits declared deltas on the cell's per-scope
+            // clock + ring, and bumps generation.
             cell.commit_graph(folded);
             unavailable
         }
@@ -1359,6 +1428,72 @@ mod tests {
             k,
             declared_cache_key("/ws/main", "def456"),
             "different corpus key, different key"
+        );
+    }
+
+    /// A carried declared `StoredEdge` between two node ids (declared-edge-continuity
+    /// ADR test seam).
+    fn carried_edge(
+        src: &engine_model::NodeId,
+        dst: &engine_model::NodeId,
+        scope: &ScopeRef,
+    ) -> engine_graph::StoredEdge {
+        engine_graph::StoredEdge {
+            edge: engine_model::Edge {
+                id: engine_model::EdgeId(format!("{}->{}", src.0, dst.0)),
+                src: src.clone(),
+                dst: dst.clone(),
+                relation: engine_model::RelationKind::References,
+                tier: engine_model::Tier::Declared,
+                confidence: 1.0,
+                state: None,
+                provenance: engine_model::Provenance::CoreGraph {
+                    payload_hash: "h".into(),
+                    edge_id: "e".into(),
+                },
+                scope: scope.clone(),
+                observed_at: 0,
+            },
+            attrs: engine_graph::EdgeAttrs::default(),
+        }
+    }
+
+    #[test]
+    fn carry_grafts_survivors_reports_refreshing_and_captures_the_set() {
+        // declared-edge-continuity ADR: the carried set grafts onto a fresh graph
+        // pruned to its nodes (a ghost endpoint drops), reports refreshing when any
+        // survive (else the fallback), and a completed set is captured for the next
+        // rebuild.
+        let dir = tempfile::tempdir().unwrap();
+        let (_root, cell) = structural_cell(dir.path());
+        let id = cell.graph_arc().nodes().next().unwrap().id.clone();
+        let ghost = engine_model::NodeId("doc:ghost-absent".into());
+
+        // No carried set → the fallback reason; nothing grafted.
+        let mut a = (*cell.graph_arc()).clone();
+        assert_eq!(
+            graft_carried_declared(&cell, &mut a, Some("fallback".into())).as_deref(),
+            Some("fallback")
+        );
+        assert_eq!(a.declared_stored_edges().len(), 0);
+
+        // Carried self-edge (endpoint present) + ghost edge (pruned) → refreshing, 1.
+        *cell.declared_edges.write().unwrap() = Some(std::sync::Arc::new(vec![
+            carried_edge(&id, &id, &cell.scope),
+            carried_edge(&id, &ghost, &cell.scope),
+        ]));
+        let mut b = (*cell.graph_arc()).clone();
+        assert_eq!(
+            graft_carried_declared(&cell, &mut b, Some("fallback".into())).as_deref(),
+            Some(engine_graph::index::DECLARED_REFRESHING)
+        );
+        assert_eq!(b.declared_stored_edges().len(), 1, "ghost endpoint pruned");
+
+        // A completed fold captures the served declared set for the next rebuild.
+        capture_carried_declared(&cell, &b);
+        assert_eq!(
+            cell.declared_edges.read().unwrap().as_ref().unwrap().len(),
+            1
         );
     }
 }

@@ -103,6 +103,17 @@ pub fn index_worktree(
 /// which is what the fold itself records on a genuine failure.
 pub const DECLARED_BUILDING: &str = "declared tier building";
 
+/// Sentinel `declared_unavailable` reason when a rebuild GRAFTED the last completed
+/// fold's declared edges onto the fresh graph (declared-edge-continuity ADR): the
+/// served graph carries near-current links while the async fold recomputes them, so
+/// the tier is refreshing rather than building-from-nothing. The wire keeps
+/// `available: false` in both cases (a fold is in flight); this reason carries the
+/// distinction so the UI can message "links refreshing" (edges shown) apart from
+/// "links loading for the first time" (edge-less). Deliberately does NOT contain the
+/// word "building", so the building-tier refetch poll does not fire for a refreshing
+/// tier — the fold's own completion delta updates the carried edges.
+pub const DECLARED_REFRESHING: &str = "declared tier refreshing";
+
 /// Index one worktree scope into a fresh graph, STRUCTURAL TIER ONLY — every
 /// phase of [`index_worktree`] EXCEPT the declared-tier core subprocess (perf
 /// ADR D1). This is the fast servable parse: the serve path commits it

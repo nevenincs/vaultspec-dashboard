@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use engine_model::{Edge, EdgeId, Facet, Node, NodeId};
+use engine_model::{Edge, EdgeId, Facet, Node, NodeId, Tier};
 
 /// Ingestion-preserved attributes that ride alongside a model edge: core's
 /// authored weight (declared / core-derived), and the observation
@@ -183,6 +183,40 @@ impl LinkageGraph {
     pub fn edge_count(&self) -> usize {
         self.edges.len()
     }
+
+    /// The declared-tier edges currently in the graph, cloned for carry-forward
+    /// (declared-edge-continuity ADR). The scope cell retains this set from the last
+    /// COMPLETED fold and grafts it onto the next rebuilt graph so a corpus under
+    /// continuous editing is never presented edge-less. Bounded by the graph's own
+    /// declared edge count — no new unbounded accumulator.
+    pub fn declared_stored_edges(&self) -> Vec<StoredEdge> {
+        self.edges
+            .values()
+            .filter(|stored| stored.edge.tier == Tier::Declared)
+            .cloned()
+            .collect()
+    }
+
+    /// Graft carried declared edges onto this graph (declared-edge-continuity ADR),
+    /// PRUNING any whose `src` or `dst` node is absent from the current node set so
+    /// the slice stays self-consistent (a carried edge can never dangle to a document
+    /// the rebuild removed). Each surviving edge keeps its stable key VERBATIM — the
+    /// graft never rewrites an identity-bearing key (wire contract). An id that
+    /// already exists is a replace (idempotent). Returns the number actually grafted
+    /// (carried minus pruned), so the caller can distinguish "edges served" from "all
+    /// pruned / none carried" for the tier reason.
+    pub fn graft_declared_edges(&mut self, carried: &[StoredEdge]) -> usize {
+        let mut grafted = 0;
+        for stored in carried {
+            if self.nodes.contains_key(&stored.edge.src)
+                && self.nodes.contains_key(&stored.edge.dst)
+            {
+                self.insert_validated_edge(stored.edge.clone(), stored.attrs.clone());
+                grafted += 1;
+            }
+        }
+        grafted
+    }
 }
 
 /// Replace-by-scope facet merge (one facet per corpus view).
@@ -197,7 +231,9 @@ pub(crate) fn upsert_facet(node: &mut Node, facet: Facet) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine_model::{CanonicalKey, NodeKind, Presence, ScopeRef, node_id};
+    use engine_model::{
+        CanonicalKey, NodeKind, Presence, Provenance, RelationKind, ScopeRef, node_id,
+    };
 
     pub(crate) fn doc_node(stem: &str, scope: &str, hash: &str) -> Node {
         Node {
@@ -242,5 +278,60 @@ mod tests {
         let node = g.nodes().next().unwrap();
         assert_eq!(node.facets.len(), 1);
         assert_eq!(node.facets[0].content_hash.as_deref(), Some("h1-updated"));
+    }
+
+    fn declared_edge(src: &str, dst: &str, scope: &str) -> StoredEdge {
+        let id = format!("{src}->{dst}");
+        StoredEdge {
+            edge: Edge {
+                id: EdgeId(id.clone()),
+                src: node_id(&CanonicalKey::Document { stem: src }),
+                dst: node_id(&CanonicalKey::Document { stem: dst }),
+                relation: RelationKind::References,
+                tier: Tier::Declared,
+                confidence: 1.0,
+                state: None,
+                provenance: Provenance::CoreGraph {
+                    payload_hash: "h".into(),
+                    edge_id: id,
+                },
+                scope: ScopeRef::Ref { name: scope.into() },
+                observed_at: 0,
+            },
+            attrs: EdgeAttrs::default(),
+        }
+    }
+
+    #[test]
+    fn grafts_carried_declared_edges_and_prunes_a_missing_endpoint() {
+        // declared-edge-continuity ADR: a carried edge whose endpoint document was
+        // removed in the rebuild must be pruned so the slice stays self-consistent.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc_node("a", "main", "h"));
+        g.upsert_node(doc_node("b", "main", "h"));
+        // `c` is absent → the a->c carried edge is pruned; a->b survives.
+        let carried = vec![
+            declared_edge("a", "b", "main"),
+            declared_edge("a", "c", "main"),
+        ];
+        let grafted = g.graft_declared_edges(&carried);
+        assert_eq!(
+            grafted, 1,
+            "only the edge with both endpoints present is grafted"
+        );
+        let declared = g.declared_stored_edges();
+        assert_eq!(declared.len(), 1);
+        // The stable key rides through verbatim — the graft never rewrites it.
+        assert_eq!(declared[0].edge.id, EdgeId("a->b".into()));
+    }
+
+    #[test]
+    fn declared_stored_edges_returns_only_the_declared_tier_edges() {
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc_node("a", "main", "h"));
+        g.upsert_node(doc_node("b", "main", "h"));
+        assert_eq!(g.declared_stored_edges().len(), 0, "no edges yet");
+        g.graft_declared_edges(&[declared_edge("a", "b", "main")]);
+        assert_eq!(g.declared_stored_edges().len(), 1);
     }
 }
