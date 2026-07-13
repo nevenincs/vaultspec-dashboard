@@ -136,7 +136,16 @@ fn start_serve(root: &Path, port: u16) -> (ServeGuard, String) {
     let serial = serve_serial();
     let child = Command::new(binary())
         .current_dir(root)
-        .args(["serve", "--port", &port.to_string()])
+        // `--no-seat` is the sanctioned multi-instance exemption (single-app-
+        // runtime D1): an exempt serve skips the machine seat lock and keeps
+        // publishing the WORKSPACE-LOCAL discovery file this harness polls
+        // below — byte-compatible with the pre-seat contract, the same path
+        // the vitest live-engine harness and the dev plugin use. A SEATED
+        // serve (no `--no-seat`) would instead publish to the machine app home
+        // (`~/.vaultspec/service.json`), so the fixture-local file would never
+        // appear and startup would "never come up"; it would also contend for
+        // the real machine seat and pollute the developer's `~/.vaultspec`.
+        .args(["serve", "--port", &port.to_string(), "--no-seat"])
         .spawn()
         .expect("serve starts");
     // Wait for the discovery file (startup includes a cold index).
