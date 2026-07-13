@@ -7,6 +7,7 @@ modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-06-16-backend-hotpath-hardening-research]]'
+  - '[[2026-07-13-backend-hotpath-hardening-adr]]'
 ---
 
 <!-- RETIRED: S05 -->

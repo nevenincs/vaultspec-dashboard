@@ -7,6 +7,7 @@ modified: '2026-07-12'
 tier: L2
 related:
   - '[[2026-07-02-test-infra-hardening-audit]]'
+  - '[[2026-07-13-test-infra-hardening-adr]]'
 ---
 
 # `test-infra-hardening` plan
