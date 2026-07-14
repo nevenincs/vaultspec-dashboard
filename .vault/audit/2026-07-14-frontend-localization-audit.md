@@ -54,6 +54,19 @@ describe the same page-recovery operation with different verbs. This conflicts w
 accepted requirement that one operation use one canonical verb across every message and
 action, and it establishes drift in the source catalog before consumers are migrated.
 
+### confirmation-action-contract | medium | Confirm labels are not constrained to action messages
+
+`W01.P01.S03` types and validates `confirmLabel` as an unrestricted
+`MessageDescriptor`. The public `createConfirmationDescriptor` factory therefore
+accepts any catalog leaf, including error titles and explanatory body copy, as a valid
+confirmation action. It can also accept non-destructive actions such as Close or Retry
+for a destructive confirmation. This leaves the shared contract unable to enforce the
+accepted requirement that confirmations use an explicit action label and that
+destructive confirmations name their effect with a destructive verb. The cancel side
+is correctly restricted at runtime to the catalog-owned Cancel action, and malformed,
+inherited, accessor-backed, oversized, non-finite, and extra-field inputs otherwise
+fail closed.
+
 ## Recommendations
 
 <!-- Actionable recommendations -->
@@ -82,3 +95,19 @@ unexpected-application recovery message. The original canonical-verb finding is
 resolved with no open findings for this step. The remediation stays within scope, its
 execution record captures the review outcome, and the changed catalog passes targeted
 diff, lint, and formatting checks.
+
+### W01.P01.S03 review | changes required | Constrain the confirmation action contract
+
+Define a catalog-derived or explicit allowlist type for confirmation action labels and
+enforce the same constraint in `normalizeConfirmationDescriptor`. Destructive
+confirmation descriptors must not normalize successfully with title, body, status,
+error, Cancel, Close, Retry, or other non-destructive messages in the confirm-label
+position. Keep the current safe Cancel allowlist and strict own-data normalization.
+Add real contract tests in the planned descriptor-test step to cover both accepted and
+rejected labels. Commit `bf941bb72d` otherwise stays within `W01.P01.S03` scope: its
+message keys derive from the real English catalogs, runtime key membership fails
+closed, primitive interpolation data is bounded without rewriting accepted values,
+prototype, inherited, accessor, symbol, array, and extra-field inputs are rejected,
+and the module imports neither React nor stores. Targeted ESLint and Prettier checks and
+the full TypeScript 6 project check pass. The plan checkbox and execution record trace
+the implementation accurately.
