@@ -97,6 +97,15 @@ preview locale, or future runtime catalog mutation can contaminate the applicati
 singleton or another consumer. This conflicts with the step's fresh-instance contract
 and makes behavior depend on which runtime was created or mutated first.
 
+### frozen-runtime-namespaces | medium | Runtime resource removal mutates a frozen namespace list
+
+The `W01.P01.S04` remediation deep-clones resources successfully, but each instance
+still receives the exported frozen `localizationNamespaces` array as its `ns` option.
+A targeted call to the real i18next `removeResourceBundle` API threw `Cannot assign to
+read only property '0'` because i18next updates that namespace list when a bundle is
+removed. The initialization options therefore violate the installed runtime's mutability
+contract and prevent the removal-isolation case required by the original review.
+
 ## Recommendations
 
 <!-- Actionable recommendations -->
@@ -203,3 +212,16 @@ that adding, replacing, or removing a resource on one real instance cannot affec
 second instance or the application singleton. Re-run the same-tick, missing-key,
 missing-interpolation, object-return, empty-result, React-option, and TypeScript checks
 before accepting S04.
+
+### W01.P01.S04 remediation review | changes required | Pass mutable option-owned namespaces
+
+Commit `198ee673de` resolves the original cross-instance resource contamination for
+additions and replacements. Real-runtime assertions proved that two factory results and
+the application singleton own distinct top-level and nested resource objects, and that
+adding a new nested key or replacing an existing action in one instance does not affect
+either peer. `structuredClone` is available in the project's ES2023 and DOM type
+libraries, supported by its Node 20-or-newer toolchain baseline, and suitable for the
+bundled data-only catalog graph. One compatibility defect remains: the shared frozen
+namespace array causes the installed i18next runtime to throw when removing a resource
+bundle. Pass a fresh mutable namespace array in each initialization options object, then
+prove add, replace, and remove operations remain confined to their owning real runtime.
