@@ -1198,3 +1198,27 @@ passed. Baseline reconciliation removed exactly 10 bridge findings with no addit
 metadata mismatches: the scanner decreased from 1,516 to 1,506, and bridge debt decreased
 from 162 to 152. No user-facing developer metadata, raw localization keys, diagnostics,
 or em dashes were introduced. S123 is accepted with no open findings.
+
+### W02.P04.S124 review | pass | Project actions localize ahead of keybinding migration
+
+Commit `55121763f8`, implemented through delegated Terra rollout work, maps add, switch,
+and clear-history actions to the canonical project catalog while preserving action IDs,
+sections, icons, and run seams. The two existing keybinding label byte strings, groups,
+chords, and contexts intentionally remain unchanged until `S22` makes the keybinding
+contract message-typed. Their two `presentation-field` findings therefore remain exact,
+visible migration debt rather than an accidental exemption.
+
+Review rejected two attempts to test the injected clear-history effect with substitute
+behavior. An integer-recording callback was a synthetic spy, and later using the unrelated
+production `closeProjectNavigator` callback made the descriptor semantically invalid and
+the run-identity assertion tautological. The final test removes clear-action construction
+and execution entirely, with no replacement no-op, recorder, fake, mock, stub, patch,
+monkeypatch, skip, or expected-failure shortcut. Clear execution remains covered by its
+real live integration owner; this step tests only real navigation descriptors, preserved
+keybinding bytes, and real localization-runtime resolution.
+
+The focused run passed all 11 tests across three files, and the complete frontend lint
+gate passed. Baseline reconciliation removed exactly three bridge findings with no
+additions or metadata mismatches: the scanner decreased from 1,506 to 1,503, and bridge
+debt decreased from 152 to 149. No user-facing developer metadata, raw localization keys,
+diagnostics, or em dashes were introduced. S124 is accepted with no open findings.
