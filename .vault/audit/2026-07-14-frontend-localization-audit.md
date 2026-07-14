@@ -503,3 +503,30 @@ Prettier, and TypeScript checks passed. The tests import production modules and 
 resources directly and use no fake, mock, stub, skip, or expected failure. S07 requires
 remediation for the runtime mutation and missing regression boundaries before
 acceptance.
+
+### W01.P01.S07 remediation review | pass | Findings resolved
+
+Commit `391dde2d2c` resolves both S07 findings with no open findings. The React
+reactivity assertion now creates a normally initialized real S244 runtime, mounts it
+through the real `I18nextProvider`, and exercises the production
+`useLocalizedMessage` hook across source, left-to-right, and right-to-left language
+changes. It does not mutate the application singleton's language, resources, options,
+or private services; the production `LocalizationProvider` retains a separate
+synchronous first-render assertion. Testing Library cleanup removes the React
+subscription after each case, document attributes are reset, document-language
+bindings are explicitly released, and sequential execution makes the shared DOM
+lifecycle deterministic.
+
+The expanded real-module assertions now cover add, replacement, and removal isolation;
+oversized and unknown formatter inputs; hostile Proxy-backed options, dates, and
+lists; catalog nesting rejection; verbatim translation-like user values; invalid
+descriptor metadata; raw message-key patterns; unresolved interpolation; prohibited
+implementation vocabulary; and all formatter families. These assertions call the
+production contracts directly and neither mirror their algorithms nor introduce a
+fake, mock, stub, runtime patch, monkeypatch, skip, or expected failure.
+
+All three targeted files and 16 tests passed. The ordinary live-engine setup first
+failed because the external `vaultspec-core` environment lacks `annotated_doc`; the
+same engine-independent suites then passed through the setup's documented
+externally-provided-engine path. Full ESLint and TypeScript checks also passed. The
+updated execution record accurately reports the hardened coverage. S07 is accepted.
