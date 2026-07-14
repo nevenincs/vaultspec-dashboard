@@ -47,6 +47,7 @@ Install and initialize the localization runtime, define typed message and format
 - [ ] `W01.P01.S116` - Implement the React localization provider over the initialized production runtime; `frontend/src/platform/localization/LocalizationProvider.tsx`.
 - [ ] `W01.P01.S117` - Implement safe production fallback that never exposes missing keys or diagnostic values; `frontend/src/platform/localization/fallback.ts`.
 - [ ] `W01.P01.S118` - Apply and reactively update document language and direction attributes; `frontend/src/platform/localization/documentLanguage.ts`.
+- [ ] `W01.P01.S244` - Create bounded non-shipped alternate-locale resources for real locale-reactivity tests; `frontend/src/localization/testing/`.
 
 ### Phase `W01.P02` - language preference authority
 
@@ -372,7 +373,7 @@ Exercise production resources, components, accessibility output, locale switchin
 - [ ] `W06.P19.S105` - Verify expanded and right-to-left test locale behavior for layout, focus, rich interpolation, live regions, lang, and dir; `frontend/e2e/localization-layout.spec.ts`.
 - [ ] `W06.P19.S106` - Run the complete frontend test recipe against the real live-engine harness; `frontend/`.
 - [ ] `W06.P19.S107` - Run the complete frontend lint recipe including formatting, TypeScript, ESLint, and localization enforcement; `frontend/`.
-- [ ] `W06.P19.S138` - Create bounded expanded-copy and right-to-left verification resources outside the shipped locale set; `frontend/src/localization/testing/`.
+- [ ] `W06.P19.S138` - Expand the bounded alternate-locale resources for full expanded-copy and right-to-left browser verification; `frontend/src/localization/testing/`.
 - [ ] `W06.P19.S139` - Exercise live loading and progressive-result states without untranslated text or unresolved placeholders; `frontend/e2e/localization-loading.spec.ts`.
 - [ ] `W06.P19.S140` - Exercise live degraded states and prove every visible effect and recovery action is user-facing; `frontend/e2e/localization-degraded.spec.ts`.
 - [ ] `W06.P19.S141` - Exercise live empty states and prove concise localized guidance across primary surfaces; `frontend/e2e/localization-empty.spec.ts`.
