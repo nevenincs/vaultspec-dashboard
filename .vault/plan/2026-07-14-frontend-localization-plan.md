@@ -47,7 +47,7 @@ Install and initialize the localization runtime, define typed message and format
 - [x] `W01.P01.S116` - Implement the React localization provider over the initialized production runtime; `frontend/src/platform/localization/LocalizationProvider.tsx`.
 - [x] `W01.P01.S117` - Implement safe production fallback that never exposes missing keys or diagnostic values; `frontend/src/platform/localization/fallback.ts`.
 - [x] `W01.P01.S118` - Apply and reactively update document language and direction attributes; `frontend/src/platform/localization/documentLanguage.ts`.
-- [ ] `W01.P01.S244` - Create bounded non-shipped alternate-locale resources for real locale-reactivity tests; `frontend/src/localization/testing/`.
+- [x] `W01.P01.S244` - Create bounded non-shipped alternate-locale resources for real locale-reactivity tests; `frontend/src/localization/testing/`.
 
 ### Phase `W01.P02` - language preference authority
 
