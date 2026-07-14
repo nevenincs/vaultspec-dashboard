@@ -1030,3 +1030,28 @@ typed key derivation, actionable disabled-reason enforcement, imperative and des
 verb policy, and plan and execution traceability are coherent. Production catalogs
 contain no em dash or reviewed internal or development vocabulary. S245 is accepted
 with no open findings.
+
+### W02.P04.S247 review | pass | Shared action presentation boundaries accepted
+
+Commit `cc049d8a65` implements the accepted descriptor-at-render-boundary architecture.
+Action identity remains the stable action ID, translated presentation is not cached in
+stores, and typed destructive and guarded confirmations remain mutually exclusive with
+the two-activation legacy path. Context menu and command palette confirmations rederive
+and revalidate the current action before execution. Missing or invalid label, reason,
+prompt, or confirmation copy fails closed with catalog-owned unavailable guidance; raw
+keys, diagnostics, action IDs, and translation failure state do not render.
+
+The review confirmed disabled pointer and keyboard exclusion, actionable disabled
+reasons, stable mobile React keys, locale-reactive palette filtering, modal dismissal
+suspension, cancellation focus return, and final opener restoration. Tests use the real
+localization runtime, registries, stores, and DOM behavior without fake, mock, stub,
+patch, monkeypatch, skip, expected failure, or mirrored business logic. The S247 plan
+scope exactly matches all 33 production and test paths in the implementation commit,
+and its execution record accurately reports the compatibility boundary and scanner
+reduction.
+
+The independent focused integration run passed all 156 tests across 15 files. The root
+verification also passed TypeScript and the complete frontend lint gate; the exact
+localization baseline decreased from 1,560 to 1,559. The reviewed additions introduce
+no user-facing developer metadata, raw localization keys, diagnostics, or em dashes.
+S247 is accepted with no open findings.
