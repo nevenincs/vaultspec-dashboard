@@ -1965,16 +1965,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "82c265afaedcc27c920b0f20",
-    "path": "src/app/menu/KeyboardShortcuts.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "c60d4cd20f5df456dfc7ab5a",
-    "path": "src/app/menu/KeyboardShortcuts.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
     "id": "6448630a82dbb2290d06541d",
     "path": "src/app/onboarding/FirstRunOnboarding.tsx",
     "rule": "jsx-text"

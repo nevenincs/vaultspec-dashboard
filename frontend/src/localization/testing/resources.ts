@@ -12,10 +12,15 @@ export const ltrTestResources = {
       close: "Fermer",
       reloadPage: "Recharger la page",
       retry: "Réessayer",
+      showKeyboardShortcuts: "Afficher les raccourcis clavier",
     },
     disabledReasons: en.common.disabledReasons,
     destructiveActions: {
       discardChanges: "Ignorer les modifications",
+    },
+    shortcutDialog: {
+      description: "Consultez les raccourcis clavier disponibles.",
+      title: "Raccourcis clavier",
     },
     statuses: en.common.statuses,
   },
@@ -52,6 +57,7 @@ export const rtlTestResources = {
     destructiveActions: {
       discardChanges: "تجاهل التغييرات",
     },
+    shortcutDialog: en.common.shortcutDialog,
     statuses: en.common.statuses,
   },
   documents: en.documents,

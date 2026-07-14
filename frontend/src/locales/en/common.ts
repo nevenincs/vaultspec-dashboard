@@ -44,6 +44,10 @@ export const common = {
   destructiveActions: {
     discardChanges: "Discard changes",
   },
+  shortcutDialog: {
+    description: "Review available keyboard shortcuts.",
+    title: "Keyboard shortcuts",
+  },
   statuses: {
     noActionsAvailable: "No actions available",
   },

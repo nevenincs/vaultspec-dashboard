@@ -17,6 +17,14 @@
 
 import { Kbd, ListRow, SectionLabel } from "../kit";
 import { Dialog } from "../chrome/Dialog";
+import type {
+  KeybindingGroupPresentation,
+  KeybindingPresentation,
+} from "../../platform/keymap/registry";
+import {
+  type LocalizedMessageResolver,
+  useLocalizedMessageResolver,
+} from "../../platform/localization/LocalizationProvider";
 import {
   closeKeyboardShortcuts,
   useKeyboardShortcutsGlobalToggle,
@@ -24,37 +32,60 @@ import {
   useKeyboardShortcutsOpen,
 } from "../../stores/view/keyboardShortcuts";
 
+function resolveKeybindingPresentation(
+  presentation: KeybindingPresentation | KeybindingGroupPresentation,
+  resolveMessage: LocalizedMessageResolver,
+): string {
+  return typeof presentation === "string"
+    ? presentation
+    : resolveMessage(presentation).message;
+}
+
+function keycapIdentity(shortcutId: string, index: number): string {
+  return `${shortcutId}:keycap:${index}`;
+}
+
 export function KeyboardShortcuts() {
   const open = useKeyboardShortcutsOpen();
   const shortcutGroups = useKeyboardShortcutGroups();
+  const resolveMessage = useLocalizedMessageResolver();
   useKeyboardShortcutsGlobalToggle();
 
   return (
     <Dialog
       open={open}
       onClose={closeKeyboardShortcuts}
-      title="Keyboard Shortcuts"
-      description="The keys this dashboard listens for. Press ? to toggle this legend."
+      title={resolveMessage({ key: "common:shortcutDialog.title" }).message}
+      description={resolveMessage({ key: "common:shortcutDialog.description" }).message}
     >
       <div className="flex flex-col gap-fg-4 px-fg-4 pt-fg-3 pb-fg-4">
-        {shortcutGroups.map((group) => (
-          <section key={group.name} className="flex flex-col gap-fg-1">
-            <SectionLabel>{group.name}</SectionLabel>
-            <ul className="flex flex-col">
-              {group.shortcuts.map((shortcut) => (
-                <li key={shortcut.label}>
-                  <ListRow
-                    trailing={shortcut.keys.map((key) => (
-                      <Kbd key={key}>{key}</Kbd>
-                    ))}
-                  >
-                    {shortcut.label}
-                  </ListRow>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+        {shortcutGroups.map((group) => {
+          const groupLabel = resolveKeybindingPresentation(group.label, resolveMessage);
+          return (
+            <section key={group.id} className="flex flex-col gap-fg-1">
+              <SectionLabel>{groupLabel}</SectionLabel>
+              <ul className="flex flex-col">
+                {group.shortcuts.map((shortcut) => {
+                  const shortcutLabel = resolveKeybindingPresentation(
+                    shortcut.label,
+                    resolveMessage,
+                  );
+                  return (
+                    <li key={shortcut.id}>
+                      <ListRow
+                        trailing={shortcut.keys.map((key, index) => (
+                          <Kbd key={keycapIdentity(shortcut.id, index)}>{key}</Kbd>
+                        ))}
+                      >
+                        {shortcutLabel}
+                      </ListRow>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          );
+        })}
       </div>
     </Dialog>
   );

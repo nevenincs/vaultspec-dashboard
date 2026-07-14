@@ -5,23 +5,29 @@ import { legacyActionPresentation } from "../../platform/actions/action";
 import { chordToKeycaps } from "../../platform/keymap/chord";
 import {
   type KeybindingDef,
+  type KeybindingGroupPresentation,
   type KeybindingOverrides,
+  type KeybindingPresentation,
   effectiveChord,
   legacyKeybindingPresentation,
   listKeybindings,
+  normalizeKeybindingGroupPresentation,
+  normalizeKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { getKeymapOverrides, registerKeyAction } from "./keymapDispatcher";
 
 /** One shortcut legend row: a human label and the ordered keycaps that trigger it. */
 export interface KeyboardShortcutRowView {
-  label: string;
+  id: string;
+  label: KeybindingPresentation;
   keys: readonly string[];
 }
 
 /** A named group of shortcuts rendered under one section label. */
 export interface KeyboardShortcutGroupView {
-  name: string;
+  id: string;
+  label: KeybindingGroupPresentation;
   shortcuts: readonly KeyboardShortcutRowView[];
 }
 
@@ -62,15 +68,34 @@ export function deriveKeyboardShortcutGroups(
   defs: readonly KeybindingDef[] = listKeybindings(),
   overrides: KeybindingOverrides = getKeymapOverrides(),
 ): readonly KeyboardShortcutGroupView[] {
-  const byGroup = new Map<string, KeyboardShortcutRowView[]>();
+  const byGroup = new Map<
+    string,
+    {
+      id: string;
+      label: KeybindingGroupPresentation;
+      shortcuts: KeyboardShortcutRowView[];
+    }
+  >();
   for (const def of defs) {
-    if (typeof def.label !== "string" || typeof def.group !== "string") continue;
+    const label = normalizeKeybindingPresentation(def.label);
+    const group = normalizeKeybindingGroupPresentation(def.group);
+    if (label === null || group === null) continue;
+    const groupId =
+      typeof group === "string" ? `legacy:${group}` : `message:${group.key}`;
     const keys = chordToKeycaps(effectiveChord(def, overrides));
-    const rows = byGroup.get(def.group) ?? [];
-    rows.push({ label: def.label, keys });
-    byGroup.set(def.group, rows);
+    const row = { id: def.id, label, keys };
+    const existing = byGroup.get(groupId);
+    if (existing !== undefined) {
+      existing.shortcuts.push(row);
+      continue;
+    }
+    byGroup.set(groupId, {
+      id: groupId,
+      label: group,
+      shortcuts: [row],
+    });
   }
-  return [...byGroup.entries()].map(([name, shortcuts]) => ({ name, shortcuts }));
+  return [...byGroup.values()];
 }
 
 export function normalizeKeyboardShortcutsOpen(value: unknown): boolean | null {

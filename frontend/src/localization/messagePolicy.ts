@@ -72,6 +72,8 @@ export const ENGLISH_MESSAGE_POLICY = {
   },
   "common:disabledReasons.selectItemToOpen": { role: "disabled-reason" },
   "common:destructiveActions.discardChanges": { role: "destructive-action" },
+  "common:shortcutDialog.description": { role: "description" },
+  "common:shortcutDialog.title": { role: "label" },
   "common:statuses.noActionsAvailable": { role: "status" },
   "documents:actions.copyLink": { role: "action" },
   "documents:actions.linkToSelectedDocument": { role: "action" },

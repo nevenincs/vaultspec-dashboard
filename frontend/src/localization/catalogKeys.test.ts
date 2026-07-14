@@ -58,6 +58,8 @@ const EXPECTED_CATALOG_KEYS = [
   "common:disabledReasons.desktopFileManagerRequired",
   "common:disabledReasons.selectItemToOpen",
   "common:destructiveActions.discardChanges",
+  "common:shortcutDialog.description",
+  "common:shortcutDialog.title",
   "common:statuses.noActionsAvailable",
   "documents:actions.copyLink",
   "documents:actions.linkToSelectedDocument",

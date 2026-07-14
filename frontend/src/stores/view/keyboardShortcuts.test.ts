@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { setIsMacForTesting } from "../../platform/keymap/chord";
 import {
+  type KeybindingDef,
   legacyKeybindingPresentation,
   registerKeybindings,
   resetKeybindings,
@@ -100,9 +101,11 @@ describe("keyboard shortcuts store", () => {
     ]);
 
     const groups = deriveKeyboardShortcutGroups(undefined, {});
-    expect(groups.map((g) => g.name).sort()).toEqual(["General", "Graph"]);
-    const general = groups.find((g) => g.name === "General");
+    expect(groups.map((group) => group.label)).toEqual(["General", "Graph"]);
+    const general = groups.find((group) => group.label === "General");
+    expect(general?.id).toBe("legacy:General");
     expect(general?.shortcuts).toContainEqual({
+      id: "command.palette",
       label: "Open the command palette",
       keys: ["Ctrl", "K"],
     });
@@ -124,9 +127,95 @@ describe("keyboard shortcuts store", () => {
       "command.palette": "Mod+P",
     });
     expect(groups[0]?.shortcuts[0]).toEqual({
+      id: "command.palette",
       label: "Open the command palette",
       keys: ["Ctrl", "P"],
     });
+  });
+
+  it("retains typed presentations and groups distinct descriptor objects by key", () => {
+    setIsMacForTesting(false);
+    const groups = deriveKeyboardShortcutGroups(
+      [
+        {
+          id: "action.retry",
+          defaultChord: "Mod+R",
+          label: { key: "common:actions.retry" },
+          group: { key: "common:actions.showKeyboardShortcuts" },
+          context: "global",
+        },
+        {
+          id: "action.close",
+          defaultChord: "Escape",
+          label: { key: "common:actions.close" },
+          group: { key: "common:actions.showKeyboardShortcuts" },
+          context: "global",
+        },
+        {
+          id: "action.legacy",
+          defaultChord: "L",
+          label: legacyKeybindingPresentation("Legacy shortcut"),
+          group: legacyKeybindingPresentation("common:actions.showKeyboardShortcuts"),
+          context: "global",
+        },
+      ],
+      {},
+    );
+
+    expect(groups).toEqual([
+      {
+        id: "message:common:actions.showKeyboardShortcuts",
+        label: { key: "common:actions.showKeyboardShortcuts" },
+        shortcuts: [
+          {
+            id: "action.retry",
+            label: { key: "common:actions.retry" },
+            keys: ["Ctrl", "R"],
+          },
+          {
+            id: "action.close",
+            label: { key: "common:actions.close" },
+            keys: ["Escape"],
+          },
+        ],
+      },
+      {
+        id: "legacy:common:actions.showKeyboardShortcuts",
+        label: "common:actions.showKeyboardShortcuts",
+        shortcuts: [
+          {
+            id: "action.legacy",
+            label: "Legacy shortcut",
+            keys: ["L"],
+          },
+        ],
+      },
+    ]);
+    expect(groups[0]?.shortcuts[0]?.label).not.toBe("action.retry");
+  });
+
+  it("omits injected rows with malformed label or group presentations", () => {
+    const malformed = [
+      {
+        id: "bad.label",
+        defaultChord: "A",
+        label: { key: "common:missing" },
+        group: legacyKeybindingPresentation("General"),
+        context: "global",
+      },
+      {
+        id: "bad.group",
+        defaultChord: "B",
+        label: { key: "common:actions.retry" },
+        group: {
+          key: "common:actions.showKeyboardShortcuts",
+          values: { unsafe: "group" },
+        },
+        context: "global",
+      },
+    ] as unknown as readonly KeybindingDef[];
+
+    expect(deriveKeyboardShortcutGroups(malformed, {})).toEqual([]);
   });
 
   it("declares the shortcut legend toggle as a bindable keymap command", () => {
