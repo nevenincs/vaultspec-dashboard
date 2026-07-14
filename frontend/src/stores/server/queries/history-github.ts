@@ -667,7 +667,9 @@ export function deriveStatusTabSectionsView(counts: {
   return {
     openPlans: {
       id: "open-plans",
-      title: "Open plans",
+      // Titled just "Plans" (2026-07-14 wording refinement, like COMMITS): the
+      // count receipt stays the actionable OPEN count; the section id stays.
+      title: "Plans",
       count: positiveStatusCount(counts.openPlans),
     },
     // ONE pull-request section (2026-07-12 IA simplification, user-directed):
@@ -681,10 +683,12 @@ export function deriveStatusTabSectionsView(counts: {
     },
     openIssues: {
       id: "open-issues",
-      title: "Open issues",
+      title: "Issues",
       count: positiveStatusCount(counts.openIssues),
     },
-    recentCommits: { id: "recent-commits", title: "Recent commits" },
+    // Titled just "Commits" (2026-07-14 wording refinement): the recency is
+    // implicit in the list's newest-first order; the persisted section id stays.
+    recentCommits: { id: "recent-commits", title: "Commits" },
   };
 }
 

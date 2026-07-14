@@ -341,18 +341,22 @@ export interface GitChangeGroupView {
   rows: GitChangeRow[];
 }
 
-// Binding GitFileRow (653:1864): a flat row (no card chrome, no dot, no arrow) — the
-// name rides the body role in ink, the numstat the mono meta role in the
-// sacred diff hues. Deleted strikes the name and dims it to ink-muted.
+// A change row reads like a left-rail Files-tree row (the ONE file-row idiom):
+// the same 1.875rem row height, meta type role, mono filename, and quiet
+// muted-ink-to-ink hover — so a file listed here and a file listed in the left
+// rail are visibly the same kind of thing. The numstat keeps the mono meta role
+// in the sacred diff hues. Deleted strikes the name and dims it to ink-faint.
 const GIT_CHANGE_ROW_CLASS =
-  "flex w-full items-center gap-fg-2 rounded-fg-xs py-fg-0-5 pr-fg-1 text-left transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+  "flex h-[1.875rem] w-full items-center gap-fg-1 rounded-fg-xs pr-fg-1 text-meta text-ink-muted text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 // The basename sizes to content but yields to the dimmed dir context when the row
 // is tight (shrink, not flex-1), so both the name and its location stay legible.
-const GIT_CHANGE_LABEL_CLASS = "shrink truncate text-[0.75rem] text-ink";
+// Mono, inheriting the row's ink — the left-rail file-label treatment.
+const GIT_CHANGE_LABEL_CLASS = "shrink truncate font-mono";
 const GIT_CHANGE_LABEL_DELETED_CLASS =
-  "shrink truncate text-[0.75rem] text-ink-muted line-through";
+  "shrink truncate font-mono text-ink-faint line-through";
 // The dimmed parent-dir context takes the remaining width, truncating first.
-const GIT_CHANGE_DIR_CLASS = "min-w-0 flex-1 truncate text-[0.6875rem] text-ink-faint";
+const GIT_CHANGE_DIR_CLASS =
+  "min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-ink-faint";
 const GIT_CHANGE_DIFF_CLASS = "flex shrink-0 items-center gap-fg-1 font-mono text-meta";
 const GIT_CHANGE_ADDS_CLASS = "shrink-0 text-diff-add";
 const GIT_CHANGE_DELS_CLASS = "shrink-0 text-diff-remove";
@@ -464,9 +468,11 @@ export interface ChangesOverviewView {
   /** The status-grouped change tree (MODIFIED / DELETED / NEW) the body renders. */
   changeGroups: GitChangeGroupView[];
   summary: ChangedFilesView["summary"];
+  /** ONE aggregated changed-entries label ("31 files changed") — vault documents
+   *  are files too; a files-vs-documents split read as two unrelated counts
+   *  (2026-07-14 wording refinement). */
   summaryLabels: {
-    files: string;
-    documents: string;
+    total: string;
     additions: string;
     deletions: string;
   };
@@ -482,9 +488,7 @@ export interface ChangesOverviewView {
   cleanLabel: string;
   noScopeClassName: string;
   rootClassName: string;
-  summaryClassName: string;
   summaryPrimaryClassName: string;
-  summaryDividerClassName: string;
   summaryAdditionsClassName: string;
   summaryDeletionsClassName: string;
   loadingClassName: string;
@@ -506,8 +510,7 @@ function changedSummaryLabels(
   summary: ChangedFilesView["summary"],
 ): ChangesOverviewView["summaryLabels"] {
   return {
-    files: pluralLabel(summary.files, "file"),
-    documents: pluralLabel(summary.documents, "document"),
+    total: `${pluralLabel(summary.total, "file")} changed`,
     additions: `+${summary.additions}`,
     deletions: `−${summary.deletions}`,
   };
@@ -515,11 +518,9 @@ function changedSummaryLabels(
 
 const CHANGES_OVERVIEW_NO_SCOPE_CLASS = "text-label text-ink-faint";
 const CHANGES_OVERVIEW_ROOT_CLASS = "space-y-fg-3 text-label";
-const CHANGES_OVERVIEW_SUMMARY_CLASS = "flex flex-wrap items-center gap-fg-1-5";
-// Binding GitStatusPill `git-head` (642:1721): "N files · M documents" rides the
-// label role in ink/muted; the diff tallies read the meta role in the sacred hues.
+// Binding GitStatusPill `git-head` (642:1721): the "N files changed" summary rides
+// the label role in ink/muted; the diff tallies read the meta role in the sacred hues.
 const CHANGES_OVERVIEW_SUMMARY_PRIMARY_CLASS = "text-label font-medium text-ink-muted";
-const CHANGES_OVERVIEW_SUMMARY_DIVIDER_CLASS = "text-ink-faint";
 const CHANGES_OVERVIEW_SUMMARY_ADDITIONS_CLASS = "text-meta text-diff-add";
 const CHANGES_OVERVIEW_SUMMARY_DELETIONS_CLASS = "text-meta text-diff-remove";
 const CHANGES_OVERVIEW_LOADING_CLASS =
@@ -569,12 +570,10 @@ export function deriveChangesOverviewView(
     filesListAriaLabel: "changed files",
     documentsSectionLabel: "Changed documents — open reader",
     documentsListAriaLabel: "changed documents",
-    cleanLabel: "working tree clean — no changes to review.",
+    cleanLabel: "No changes",
     noScopeClassName: CHANGES_OVERVIEW_NO_SCOPE_CLASS,
     rootClassName: CHANGES_OVERVIEW_ROOT_CLASS,
-    summaryClassName: CHANGES_OVERVIEW_SUMMARY_CLASS,
     summaryPrimaryClassName: CHANGES_OVERVIEW_SUMMARY_PRIMARY_CLASS,
-    summaryDividerClassName: CHANGES_OVERVIEW_SUMMARY_DIVIDER_CLASS,
     summaryAdditionsClassName: CHANGES_OVERVIEW_SUMMARY_ADDITIONS_CLASS,
     summaryDeletionsClassName: CHANGES_OVERVIEW_SUMMARY_DELETIONS_CLASS,
     loadingClassName: CHANGES_OVERVIEW_LOADING_CLASS,
@@ -641,7 +640,7 @@ export function useChangesOverview(scope: unknown): ChangesOverviewView {
 
 // --- fold-header summary (changes-summary-projection) ---------------------------------
 //
-// The COLLAPSED "Changes" fold shows only `N files · M documents` + `+A −D`. That
+// The COLLAPSED "Changes" fold shows only `N files changed` + `+A −D`. That
 // header used to be derived from the full porcelain status + numstat text
 // (~227 KB) fetched on every cold load — even when the fold never opened. The
 // engine now serves those five numbers directly (`/ops/git/changes-summary`,
@@ -667,9 +666,7 @@ export interface ChangesSummaryView {
   cleanLabel: string;
   noScopeLabel: string;
   noScopeClassName: string;
-  summaryClassName: string;
   summaryPrimaryClassName: string;
-  summaryDividerClassName: string;
   summaryAdditionsClassName: string;
   summaryDeletionsClassName: string;
 }
@@ -704,12 +701,10 @@ export function deriveChangesSummaryView(
     loadingLabel: "reading changes…",
     degradedLabel: "repository state unavailable",
     errorTitle: "changes unavailable",
-    cleanLabel: "working tree clean — no changes to review.",
+    cleanLabel: "No changes",
     noScopeLabel: "No worktree selected — pick one in the left rail first.",
     noScopeClassName: CHANGES_OVERVIEW_NO_SCOPE_CLASS,
-    summaryClassName: CHANGES_OVERVIEW_SUMMARY_CLASS,
     summaryPrimaryClassName: CHANGES_OVERVIEW_SUMMARY_PRIMARY_CLASS,
-    summaryDividerClassName: CHANGES_OVERVIEW_SUMMARY_DIVIDER_CLASS,
     summaryAdditionsClassName: CHANGES_OVERVIEW_SUMMARY_ADDITIONS_CLASS,
     summaryDeletionsClassName: CHANGES_OVERVIEW_SUMMARY_DELETIONS_CLASS,
   };

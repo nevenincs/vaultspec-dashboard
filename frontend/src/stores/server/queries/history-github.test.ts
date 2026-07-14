@@ -1083,10 +1083,10 @@ describe("derivePRsView and deriveIssuesView", () => {
         openIssues: 4,
       }),
     ).toEqual({
-      openPlans: { id: "open-plans", title: "Open plans", count: 2 },
+      openPlans: { id: "open-plans", title: "Plans", count: 2 },
       pullRequests: { id: "pull-requests", title: "Pull requests", count: undefined },
-      openIssues: { id: "open-issues", title: "Open issues", count: 4 },
-      recentCommits: { id: "recent-commits", title: "Recent commits" },
+      openIssues: { id: "open-issues", title: "Issues", count: 4 },
+      recentCommits: { id: "recent-commits", title: "Commits" },
     });
   });
 

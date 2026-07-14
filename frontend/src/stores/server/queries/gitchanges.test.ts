@@ -567,8 +567,7 @@ describe("deriveChangesOverviewView", () => {
     });
     expect(view.summary.total).toBe(2);
     expect(view.summaryLabels).toEqual({
-      files: "1 file",
-      documents: "1 document",
+      total: "2 files changed",
       additions: "+6",
       deletions: "−1",
     });
@@ -581,9 +580,7 @@ describe("deriveChangesOverviewView", () => {
     expect(view.documentsListAriaLabel).toBe("changed documents");
     expect(view.noScopeClassName).toBe("text-label text-ink-faint");
     expect(view.rootClassName).toBe("space-y-fg-3 text-label");
-    expect(view.summaryClassName).toBe("flex flex-wrap items-center gap-fg-1-5");
     expect(view.summaryPrimaryClassName).toBe("text-label font-medium text-ink-muted");
-    expect(view.summaryDividerClassName).toBe("text-ink-faint");
     expect(view.summaryAdditionsClassName).toBe("text-meta text-diff-add");
     expect(view.summaryDeletionsClassName).toBe("text-meta text-diff-remove");
     expect(view.loadingClassName).toBe(
@@ -641,7 +638,7 @@ describe("deriveChangesOverviewView", () => {
       clean: true,
       hasFiles: false,
       hasDocuments: false,
-      cleanLabel: "working tree clean — no changes to review.",
+      cleanLabel: "No changes",
     });
   });
 
@@ -742,8 +739,7 @@ describe("deriveChangesOverviewView", () => {
         total: 0,
       },
       summaryLabels: {
-        files: "0 files",
-        documents: "0 documents",
+        total: "0 files changed",
         additions: "+0",
         deletions: "−0",
       },
@@ -791,7 +787,7 @@ describe("useChangesSummary git availability boundary", () => {
     expect(result.current).toMatchObject({
       degraded: true,
       hasChanges: false,
-      summaryLabels: { files: "0 files", documents: "0 documents" },
+      summaryLabels: { total: "0 files changed" },
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(summaryRequests).toEqual([]);
@@ -847,8 +843,7 @@ describe("deriveChangesSummaryView", () => {
       clean: false,
       hasChanges: true,
       summaryLabels: {
-        files: "2 files",
-        documents: "1 document",
+        total: "3 files changed",
         additions: "+12",
         deletions: "−1",
       },
@@ -899,7 +894,7 @@ describe("deriveChangesSummaryView", () => {
     ).toMatchObject({
       clean: true,
       hasChanges: false,
-      summaryLabels: { files: "0 files", documents: "0 documents" },
+      summaryLabels: { total: "0 files changed" },
     });
   });
 
@@ -915,8 +910,7 @@ describe("deriveChangesSummaryView", () => {
       degraded: true,
       hasChanges: false,
       summaryLabels: {
-        files: "0 files",
-        documents: "0 documents",
+        total: "0 files changed",
         additions: "+0",
         deletions: "−0",
       },

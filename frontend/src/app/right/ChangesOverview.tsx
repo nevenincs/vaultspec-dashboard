@@ -2,12 +2,16 @@
 // (binding redesign ActivityRail · Status, node 599:2099 → GitStatusPill 642:1724).
 // The rail's three tabs (Status · Changes · Search) were retired: the Changes pane
 // is now a COLLAPSIBLE at the top of the one status surface. Its header is the
-// summary line itself — a twisty + "<N> files · <M> documents" with the sacred
+// summary line itself — a twisty + the ONE aggregated "<N> files changed" count
+// (vault documents are files too — no separate documents tally) with the sacred
 // "+A −D" diff tallies right-aligned — and its body (revealed on expand) is the
 // STATUS TREE the binding GitStatusPill (642:1745) renders: three collapsible
 // groups — MODIFIED / DELETED / NEW — each a twisty + uppercase eyebrow + count
-// over flat filename + numstat rows (GitFileRow 653:1864): no per-row status dot,
-// no open arrow; a deleted name is struck and shows only −D, a new name only +A.
+// over filename + numstat rows. A row reads like a left-rail Files-tree row (the
+// ONE file-row idiom): the Phosphor File mark in quiet ink + mono filename,
+// indented one tree step under its group with the standard vertical indent guide
+// under the group's twisty column. No per-row status dot, no open arrow; a
+// deleted name is struck and shows only −D, a new name only +A.
 // A row opens the code viewer (source files) or the markdown reader (vault docs)
 // through the preserved `openDocTab` intent, never a new fetch. The outer fold AND
 // the status groups default COLLAPSED, so the body reads as a clean "▸ Modified /
@@ -31,6 +35,8 @@
 // state living in the `statusTabChrome` "changes" section so the surface owns no ad
 // hoc state. No raw hex, no loose font-size, no per-surface card chrome.
 
+import { File } from "@phosphor-icons/react";
+
 import {
   useActiveScope,
   useChangesOverview,
@@ -53,13 +59,24 @@ import { FoldSection, SectionLabel, Skeleton, SkeletonRow, StateBlock } from "..
 const CHANGES_SECTION_ID = "changes";
 const CHANGES_DEFAULT_OPEN = false;
 
+// The row's file mark: the SAME Phosphor File domain mark, at the same 14px
+// gate size and quiet neutral ink, that the left rail's Files tree leads its
+// file rows with (iconography ADR grayscale-by-shape).
+const ROW_MARK_PX = 14;
+// The group body's indent guide sits under the group header's twisty column:
+// the header is px-fg-1 (0.25rem) padded and its twisty is 10px (0.625rem)
+// wide, so the column center is 0.5625rem from the section edge — 0.3125rem
+// inside the body's own px-fg-1 content box (rem only, no-hardcoded-px).
+const GROUP_GUIDE_CENTER_REM = 0.3125;
+
 // ---------------------------------------------------------------------------
 // Change tree (binding GitStatusPill 642:1745): status groups + flat file rows
 // ---------------------------------------------------------------------------
 
-/** A changed-entry row (binding GitFileRow 653:1864): filename + numstat, no status
- *  dot and no open arrow — the GROUP conveys the status, a deleted name is struck.
- *  A click opens the code viewer (source) or the markdown reader (vault doc). */
+/** A changed-entry row: the left-rail file-row idiom (File mark + mono name) plus
+ *  numstat — no status dot and no open arrow; the GROUP conveys the status, a
+ *  deleted name is struck. A click opens the code viewer (source) or the
+ *  markdown reader (vault doc). */
 function ChangeRow({ row, scope }: { row: GitChangeRow; scope: unknown }) {
   const open = () => {
     // Read-mode open: preview in the single provisional tab (VS Code preview),
@@ -74,6 +91,9 @@ function ChangeRow({ row, scope }: { row: GitChangeRow; scope: unknown }) {
         title={row.path}
         className={row.rowClassName}
       >
+        <span className="shrink-0 text-ink-faint" aria-hidden>
+          <File size={ROW_MARK_PX} />
+        </span>
         <span className={`${row.labelClassName} select-text`}>{row.label}</span>
         {row.dirLabel && (
           <span className={row.dirClassName} aria-hidden>
@@ -130,11 +150,23 @@ function ChangeGroup({ group, scope }: { group: GitChangeGroupView; scope: unkno
       }
       data-change-group={group.id}
     >
-      <ul className="flex flex-col gap-fg-0-5" aria-label={group.ariaLabel}>
-        {group.rows.map((row) => (
-          <ChangeRow key={row.path} row={row} scope={scope} />
-        ))}
-      </ul>
+      {/* The standard tree-view indent: rows step one level under their group
+          header, with the vertical guide under the header's twisty column —
+          the same guide idiom the left rail's trees draw (presentation only,
+          never a layout shift). */}
+      <div className="relative">
+        <span
+          aria-hidden
+          data-tree-guide
+          className="pointer-events-none absolute inset-y-0 w-px bg-rule"
+          style={{ insetInlineStart: `${GROUP_GUIDE_CENTER_REM}rem` }}
+        />
+        <ul className="flex flex-col gap-fg-0-5 pl-fg-3" aria-label={group.ariaLabel}>
+          {group.rows.map((row) => (
+            <ChangeRow key={row.path} row={row} scope={scope} />
+          ))}
+        </ul>
+      </div>
     </FoldSection>
   );
 }
@@ -143,16 +175,15 @@ function ChangeGroup({ group, scope }: { group: GitChangeGroupView; scope: unkno
 // Fold header — the summary line itself (board GitStatusPill `git-head`).
 // ---------------------------------------------------------------------------
 
-/** The fold's label: "<N> files · <M> documents" — falls back to the in-flight /
- *  degraded / errored / clean copy so the collapsed header always states the
- *  working-tree truth. Derived from the LIGHT engine summary, never the full
- *  changed-files lists (changes-summary-projection). */
+/** The fold's label: the ONE aggregated "<N> files changed" count — falls back to
+ *  the in-flight / degraded / errored / clean copy so the collapsed header always
+ *  states the working-tree truth. Derived from the LIGHT engine summary, never
+ *  the full changed-files lists (changes-summary-projection). */
 function changesHeadLabel(changes: ChangesSummaryView): string {
   if (changes.loading) return changes.loadingLabel;
   if (changes.degraded) return changes.degradedLabel;
   if (changes.errored) return changes.errorTitle;
-  if (changes.hasChanges)
-    return `${changes.summaryLabels.files} · ${changes.summaryLabels.documents}`;
+  if (changes.hasChanges) return changes.summaryLabels.total;
   return changes.cleanLabel;
 }
 
@@ -260,19 +291,7 @@ export function ChangesOverview({
       </span>
     </span>
   ) : undefined;
-  const label = changes.hasChanges ? (
-    <span className={changes.summaryClassName}>
-      <span className={changes.summaryPrimaryClassName}>
-        {changes.summaryLabels.files}
-      </span>
-      <span className={changes.summaryDividerClassName} aria-hidden>
-        ·
-      </span>
-      <span className={changes.summaryPrimaryClassName}>
-        {changes.summaryLabels.documents}
-      </span>
-    </span>
-  ) : (
+  const label = (
     <span className={changes.summaryPrimaryClassName}>{changesHeadLabel(changes)}</span>
   );
 
