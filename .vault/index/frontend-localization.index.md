@@ -6,7 +6,10 @@ tags:
 date: '2026-07-14'
 modified: '2026-07-14'
 related:
+  - '[[2026-07-14-frontend-localization-W01-P01-S01]]'
+  - '[[2026-07-14-frontend-localization-W01-P01-S02]]'
   - '[[2026-07-14-frontend-localization-adr]]'
+  - '[[2026-07-14-frontend-localization-audit]]'
   - '[[2026-07-14-frontend-localization-plan]]'
   - '[[2026-07-14-frontend-localization-reference]]'
   - '[[2026-07-14-frontend-localization-research]]'
@@ -21,6 +24,15 @@ Auto-generated index of all documents tagged with `#frontend-localization`.
 ### adr
 
 - `2026-07-14-frontend-localization-adr` - `frontend-localization` adr: `Adopt typed locale catalogs and one UX language grammar` | (**status:** `accepted`)
+
+### audit
+
+- `2026-07-14-frontend-localization-audit` - `frontend-localization` audit: `Implementation safety and UX language compliance`
+
+### exec
+
+- `2026-07-14-frontend-localization-W01-P01-S01` - Install the approved localization dependencies and lock exact compatible versions
+- `2026-07-14-frontend-localization-W01-P01-S02` - Create the English namespace catalogs and typed resource aggregate
 
 ### plan
 
