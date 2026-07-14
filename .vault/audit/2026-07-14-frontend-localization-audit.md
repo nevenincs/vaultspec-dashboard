@@ -1634,3 +1634,30 @@ formatting eight touched files. Tests use real runtimes, production catalogs, an
 plural rules without resource mutation, doubles, skips, or expected failures. The
 scanner remains clean and unchanged at 1,415 findings. S120 is accepted with no open
 findings.
+
+### W02.P06.S39 and W02.P05.S31 review | pass | Menu feedback is typed and reactive
+
+These steps, implemented atomically through delegated Sol architectural work, replace
+persistent menu feedback strings with a frozen closed condition vocabulary and resolve
+the resulting descriptors only at the React boundary.
+
+Review confirmed exact archive, repair, copy, and document-link outcome classification.
+Verified operation success and applied document links retain their existing cache
+invalidation behavior; already-linked is an idempotent success; unknown settled actions
+remain silent; recognized malformed outcomes use one safe generic condition. Repeated
+valid announcements and clears preserve monotonic token behavior.
+
+No raw result reason, error, path, action ID, target, verb, mode, status, transport
+exception, or development metadata can enter feedback. The persistent live region is
+polite and atomic, resolves messages reactively across locales, and re-announces repeated
+conditions without mutating semantic state.
+
+Independent Terra verification passed 127 tests across 19 files, TypeScript, full
+ESLint, the localization scanner, and diff checks. The complete frontend lint recipe
+passed. Review corrected runtime freezing, idempotent success semantics, an ambiguous
+live-region query, and spy-based seam assertions before approval. Final tests use real
+QueryClient state, production stores, handlers, localization runtimes, and React
+components without doubles, skips, or expected failures. Exact baseline reconciliation
+removed six entries and added none, reducing the scanner from 1,415 to 1,409 findings
+and presentation-field entries from 360 to 354. S39 and S31 are accepted with no open
+findings.
