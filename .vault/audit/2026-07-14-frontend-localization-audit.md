@@ -1537,3 +1537,26 @@ runtimes without doubles, skips, or expected failures. Exact baseline reconcilia
 removed nine bridge entries and added none, reducing the scanner from 1,431 to 1,422
 findings, legacy keybinding entries from 25 to 19, and legacy action entries from 110 to
 107. S28 is accepted with no open findings.
+
+### W02.P05.S29 review | pass | Command family headings hide internal taxonomy
+
+This step, implemented through delegated Terra rollout work, replaces the raw family
+display vocabulary with an exhaustive typed descriptor map. Stable family tokens remain
+the untranslated identity for providers, grouping, ordering, filtering, and React keys,
+while the store transports only catalog descriptors for presentation.
+
+Review confirmed that React alone resolves headings. Missing catalog copy omits only the
+unsafe heading and leaves its command rows usable; it cannot expose a family token or
+message key. Forced uppercase and tracking styling is removed so sentence-case catalog
+copy renders as authored.
+
+The visible concepts replace `core`, `rag`, `app`, and `reload` with Workspace
+maintenance, Search maintenance, General, and Refresh. The headings contain no service
+or implementation vocabulary and preserve all row identity and cursor behavior.
+
+Independent Sol verification passed 46 focused tests across five files, TypeScript, the
+localization scanner, and diff checks. The complete frontend lint recipe passed. Tests
+use real production grouping, React rendering, and localization runtimes without catalog
+mutation, doubles, skips, or expected failures. The scanner remains clean and unchanged
+at 1,422 findings because the former lowercase tokens were not detected. S29 is accepted
+with no open findings.
