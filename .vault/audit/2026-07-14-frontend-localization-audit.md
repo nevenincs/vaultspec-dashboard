@@ -111,3 +111,17 @@ prototype, inherited, accessor, symbol, array, and extra-field inputs are reject
 and the module imports neither React nor stores. Targeted ESLint and Prettier checks and
 the full TypeScript 6 project check pass. The plan checkbox and execution record trace
 the implementation accurately.
+
+### W01.P01.S03 remediation review | pass | Finding resolved
+
+Commits `e85fddb421` and `c922c6baa8` resolve the confirmation-action finding. The
+English catalog now owns the semantic `destructiveActions` category, and both the
+compile-time `DestructiveActionMessageKey` derivation and runtime allowlist are
+generated from leaves in that category. `ConfirmationDescriptorInput` and the
+normalizer reject ordinary actions, Cancel, error text, and other catalog messages in
+the primary-action position. Destructive labels continue to accept bounded named
+string and numeric values without rewriting them, while Cancel retains its separate
+value-free allowlist. Targeted runtime assertions against the bundled production
+module passed for accepted and rejected labels, as did targeted ESLint and Prettier
+checks and the TypeScript 6 project check. The original medium finding is resolved and
+S03 has no open findings.
