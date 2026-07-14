@@ -1414,3 +1414,30 @@ the localization scanner, diff checks, token checks, and design-system checks pa
 Tests contain no doubles or platform mutation hooks. Exact baseline reconciliation
 removed eight DocChrome findings and added none, reducing the scanner from 1,484 to
 1,476 findings. S23 is accepted with no open findings.
+
+### W02.P05.S24 review | pass | Left-rail shortcuts share canonical document actions
+
+Commit `ab27dba7a4`, implemented through delegated Terra rollout work, migrates eight
+left-rail keybindings and their same-ID action builders to catalog-owned descriptors.
+The shortcut group is now the shared Navigation concept, and the action copy uses
+documents, files, document tree, filter, and feature concepts without exposing browser
+mode, Vault/Code, facets, or left-rail implementation language.
+
+Review confirmed that all action IDs, chords, contexts, order, sections, icons, runs,
+and dispatch behavior are preserved. Each binding and same-ID action builder shares the
+same exported descriptor object. The cycle action now has one builder, and the command
+palette composes the shared collapse action instead of authoring another label. Only the
+three separately scheduled dynamic browse, sort, and reset-sorting action bridges remain
+in the module.
+
+The copy is concise, imperative, sentence case, and contains no em dashes. `Add to a
+feature…` retains an ellipsis because it opens a flow that requires more input. Catalog
+ownership, policy roles, alternate-locale resources, and real-runtime descriptor parity
+tests are complete.
+
+Independent Sol verification passed 41 focused tests across five files, TypeScript, the
+localization scanner, and diff checks. The complete frontend lint recipe passed. Tests
+introduce no doubles, skips, or expected failures. Exact baseline reconciliation removed
+18 bridge entries and added none, reducing the scanner from 1,476 to 1,458 findings,
+legacy keybinding entries from 50 to 41, and legacy action entries from 130 to 121. S24
+is accepted with no open findings.
