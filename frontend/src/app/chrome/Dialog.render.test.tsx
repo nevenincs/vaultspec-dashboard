@@ -113,6 +113,30 @@ describe("Dialog", () => {
     expect(dialog.querySelectorAll(".overflow-y-auto").length).toBe(1);
   });
 
+  // The size variant (rag-job-dashboard P03.S08): `default` keeps the 34rem
+  // settings width; `wide` widens to 52rem for the dashboard cockpit — both
+  // retain the compact viewport guard so a wide panel still fits a narrow
+  // screen. Pure width mapping, no other structural change.
+  it("uses the default 34rem width when no size is given", () => {
+    renderDialog();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.className).toContain("w-[34rem]");
+    expect(dialog.className).not.toContain("w-[52rem]");
+    expect(dialog.className).toContain("max-w-[calc(100vw-2rem)]");
+  });
+
+  it('widens to 52rem under size="wide" while keeping the compact guard', () => {
+    render(
+      <Dialog open onClose={vi.fn()} title="Search service" size="wide">
+        <p>dashboard body</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.className).toContain("w-[52rem]");
+    expect(dialog.className).not.toContain("w-[34rem]");
+    expect(dialog.className).toContain("max-w-[calc(100vw-2rem)]");
+  });
+
   it("renders no footer region when the footer prop is omitted", () => {
     renderDialog();
     const dialog = screen.getByRole("dialog");

@@ -5,14 +5,14 @@
 // (mount-gating law): the heavy rag aggregate and review-queue reads fire on open,
 // not while the rail merely renders.
 //
-// Two panels RE-MOUNT the existing console bodies unchanged — Search service hosts
-// `RagOpsConsoleBody`, Approvals hosts `ReviewStationSection` — the moves are
-// chrome-only re-homes (the consoles are glass over stores hooks). The two new
-// bodies (Backend health, Vault health) render already-served but previously dark
-// health planes.
+// The Search service panel is now the WIDE rag job dashboard (rag-job-dashboard
+// ADR D1): a header/body/footer cockpit replacing the re-hosted rail console. Its
+// footer storage strip rides the Dialog's pinned footer slot. Approvals still
+// re-mounts `ReviewStationSection` unchanged (a chrome-only re-home over stores
+// hooks). The two health bodies (Backend health, Vault health) render
+// already-served but previously dark health planes.
 
 import { Dialog } from "../chrome/Dialog";
-import { RagOpsConsoleBody } from "../right/RagOpsConsole";
 import { ReviewStationSection } from "../authoring/ReviewStation";
 import {
   closeControlPanel,
@@ -20,6 +20,8 @@ import {
 } from "../../stores/view/controlPanels";
 import { BackendHealthPanel } from "./BackendHealthPanel";
 import { VaultHealthPanel } from "./VaultHealthPanel";
+import { RagJobDashboard } from "./RagJobDashboard";
+import { RagDashboardFooter } from "./RagDashboardFooter";
 
 /**
  * Mount the four modal control panels once in the shell. The single open-id gates
@@ -36,10 +38,10 @@ export function ControlPanels() {
         open={open === "search-service"}
         onClose={closeControlPanel}
         title="Search service"
+        size="wide"
+        footer={<RagDashboardFooter />}
       >
-        <div className="px-fg-4 py-fg-3">
-          <RagOpsConsoleBody />
-        </div>
+        <RagJobDashboard />
       </Dialog>
       <Dialog open={open === "approvals"} onClose={closeControlPanel} title="Approvals">
         <div className="px-fg-4 py-fg-3">

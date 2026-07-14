@@ -129,16 +129,16 @@ The wide-dialog dashboard surface is built over the W01 frames and stores plane:
 
 The Dialog wide variant and the dashboard shell with the header bar: identity, health, lifecycle verbs, reindex with progress (ADR D1/D2).
 
-- [ ] `W02.P03.S08` - Add the wide size variant to the one Dialog primitive with a render test; `frontend/src/app/chrome/Dialog.tsx`.
-- [ ] `W02.P03.S09` - Build the dashboard shell and header bar mirroring the bound frame and mount it as the Search service panel body, retiring the re-hosted console composition; `frontend/src/app/panels/RagJobDashboard.tsx`.
+- [x] `W02.P03.S08` - Add the wide size variant to the one Dialog primitive with a render test; `frontend/src/app/chrome/Dialog.tsx`.
+- [x] `W02.P03.S09` - Build the dashboard shell and header bar mirroring the bound frame and mount it as the Search service panel body, retiring the re-hosted console composition; `frontend/src/app/panels/RagJobDashboard.tsx`.
 
 ### Phase `W02.P04` - Jobs, log, and footer regions
 
 The sortable filterable job table, the log pane with the job join and lines selector, and the footer storage strip with watcher control (ADR D3/D4/D5).
 
-- [ ] `W02.P04.S10` - Build the jobs table region - sortable columns, filter query, phase chips, row selection joining the log pane, truncation note; `frontend/src/app/panels/RagJobsTable.tsx`.
-- [ ] `W02.P04.S11` - Build the log pane region - bounded tail, lines selector, job-filter chip, client text filter honest about the served window, level tones; `frontend/src/app/panels/RagLogPane.tsx`.
-- [ ] `W02.P04.S12` - Build the footer storage strip - storage rollup with lower-bound honesty, watcher state and toggle, refresh; `frontend/src/app/panels/RagDashboardFooter.tsx`.
+- [x] `W02.P04.S10` - Build the jobs table region - sortable columns, filter query, phase chips, row selection joining the log pane, truncation note; `frontend/src/app/panels/RagJobsTable.tsx`.
+- [x] `W02.P04.S11` - Build the log pane region - bounded tail, lines selector, job-filter chip, client text filter honest about the served window, level tones; `frontend/src/app/panels/RagLogPane.tsx`.
+- [x] `W02.P04.S12` - Build the footer storage strip - storage rollup with lower-bound honesty, watcher state and toggle, refresh; `frontend/src/app/panels/RagDashboardFooter.tsx`.
 
 ## Wave `W03` - Hardening and closeout
 

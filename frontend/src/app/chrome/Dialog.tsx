@@ -32,7 +32,18 @@ export interface DialogProps {
    *  the safe-area bottom inset. Dialogs with a bottom action row pass it
    *  here rather than rendering a footer inside the scrolling body. */
   footer?: ReactNode;
+  /** Panel width: `default` (34rem) for settings-class modals, `wide` (52rem)
+   *  for the dashboard cockpit that hosts a job table and a log pane side by
+   *  side (rag-job-dashboard ADR D1). Both keep the compact viewport guard. */
+  size?: "default" | "wide";
 }
+
+/** The panel width class per size variant. The `max-w` compact guard is shared,
+ *  so a wide panel still fits a narrow viewport. */
+const PANEL_WIDTH: Record<NonNullable<DialogProps["size"]>, string> = {
+  default: "w-[34rem]",
+  wide: "w-[52rem]",
+};
 
 /**
  * A modal dialog. Renders a scrim + centered panel when `open`. Owns its focus
@@ -46,6 +57,7 @@ export function Dialog({
   description,
   children,
   footer,
+  size = "default",
 }: DialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -85,7 +97,7 @@ export function Dialog({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className="flex max-h-[80vh] w-[34rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-fg-lg border border-rule bg-paper-raised shadow-fg-popover outline-none animate-slide-in-down motion-reduce:animate-none"
+        className={`flex max-h-[80vh] ${PANEL_WIDTH[size]} max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-fg-lg border border-rule bg-paper-raised shadow-fg-popover outline-none animate-slide-in-down motion-reduce:animate-none`}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => trapTabFocus(panelRef.current, e)}
       >
@@ -95,7 +107,7 @@ export function Dialog({
               {title}
             </h2>
             {description && (
-              <p id={descId} className="mt-fg-0-5 text-label text-ink-faint">
+              <p id={descId} className="mt-fg-0-5 text-label text-ink-muted">
                 {description}
               </p>
             )}
