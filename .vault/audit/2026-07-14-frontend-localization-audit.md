@@ -1384,3 +1384,33 @@ and DOM events without fakes, mocks, stubs, patches, skips, expected failures, o
 platform mutations. Exact baseline reconciliation removed 13 component literal
 findings and added none, reducing the scanner from 1,497 to 1,484 findings. S248 is
 accepted with no open findings.
+
+### W02.P05.S23 review | pass | Localized keycaps preserve canonical shortcut identity
+
+Commit `87e9d5572a`, implemented through delegated Sol architectural work, introduces one
+typed keycap presentation contract across shared action accelerators, six derivation
+paths, and five React rendering boundaries. Known modifiers and named keys use catalog
+descriptors. Safe glyphs, printable Unicode graphemes, symbols, digits, and function
+keys remain bounded literals. Malformed, invisible, control, overlong, and unknown
+multi-character display input now suppresses the hint instead of exposing raw data.
+
+Review confirmed that canonical chord parsing, formatting, matching, event handling,
+persistence, action IDs, and dispatch behavior remain unchanged. Control stays the
+non-macOS primary modifier, Command remains the macOS glyph, and all locale-bound names
+resolve only during React render. The document edit-mode tooltip is one complete catalog
+message with named accelerator interpolation, so localized keycaps cannot be composed
+into an English shell.
+
+The first independent review withheld approval for two findings. A high-severity issue
+showed that initial Unicode support changed non-ASCII canonical bytes and Shift matching;
+Sol restored the identity path exactly and added golden compatibility tests. A
+medium-severity issue found mixed-language document tooltip composition; Sol moved the
+full tooltip into the catalog and added a real French locale-change assertion. Terra's
+second review verified both corrections and approved the step with no open findings.
+
+Sol's affected suite passed 186 tests across 16 files. Independent Terra review passed
+109 focused tests and the complete frontend lint recipe. TypeScript, ESLint, Prettier,
+the localization scanner, diff checks, token checks, and design-system checks passed.
+Tests contain no doubles or platform mutation hooks. Exact baseline reconciliation
+removed eight DocChrome findings and added none, reducing the scanner from 1,484 to
+1,476 findings. S23 is accepted with no open findings.
