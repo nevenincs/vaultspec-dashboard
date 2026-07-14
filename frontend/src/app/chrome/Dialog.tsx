@@ -26,6 +26,12 @@ export interface DialogProps {
   description?: string;
   /** The dialog body. */
   children: ReactNode;
+  /** Optional pinned action row rendered BELOW the scrolling body: it never
+   *  scrolls out of reach, so the primary action stays visible when the body
+   *  overflows a constrained viewport (soft keyboard up on compact). Carries
+   *  the safe-area bottom inset. Dialogs with a bottom action row pass it
+   *  here rather than rendering a footer inside the scrolling body. */
+  footer?: ReactNode;
 }
 
 /**
@@ -33,7 +39,7 @@ export interface DialogProps {
  * trap, Escape/backdrop dismiss, and focus restore; the caller owns the
  * open/close state and the body.
  */
-export function Dialog({ open, onClose, title, description, children }: DialogProps) {
+export function Dialog({ open, onClose, title, description, children, footer }: DialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descId = useId();
@@ -58,7 +64,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-ink/30 pt-[10vh] animate-fade-in"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-ink/30 pt-[10vh] animate-fade-in motion-reduce:animate-none"
       onMouseDown={(e) => {
         // Backdrop dismiss only on the scrim itself; a click inside the panel
         // stops propagation (below) and must not close it.
@@ -72,7 +78,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className="flex max-h-[80vh] w-[34rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-fg-lg border border-rule bg-paper-raised shadow-fg-popover outline-none animate-slide-in-down"
+        className="flex max-h-[80vh] w-[34rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-fg-lg border border-rule bg-paper-raised shadow-fg-popover outline-none animate-slide-in-down motion-reduce:animate-none"
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => trapTabFocus(panelRef.current, e)}
       >
@@ -96,7 +102,24 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
             <X aria-hidden className="size-3.5" />
           </button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+        <div
+          className="min-h-0 flex-1 overflow-y-auto"
+          onFocus={(e) => {
+            // Keep the focused field visible inside the one scrolling region
+            // (soft keyboard / constrained viewports): nearest-block only, so
+            // an already-visible field never causes scroll jank.
+            if (e.target instanceof HTMLElement) {
+              e.target.scrollIntoView?.({ block: "nearest" });
+            }
+          }}
+        >
+          {children}
+        </div>
+        {footer !== undefined && (
+          <div className="shrink-0 border-t border-rule px-fg-4 pt-fg-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );
