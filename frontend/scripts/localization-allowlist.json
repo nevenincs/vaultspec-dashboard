@@ -7035,21 +7035,6 @@
     "rule": "presentation-field"
   },
   {
-    "id": "21f802d6e537d55c8603fe8e",
-    "path": "src/stores/view/projectActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "7d46544981df1b85ff659693",
-    "path": "src/stores/view/projectActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "dada62b6c9cf3845c691f667",
-    "path": "src/stores/view/projectActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "06b8730c24d52af5e7518dae",
     "path": "src/stores/view/provisionActions.ts",
     "rule": "legacy-action-presentation"
