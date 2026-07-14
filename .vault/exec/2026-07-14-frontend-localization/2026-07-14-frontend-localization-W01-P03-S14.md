@@ -83,3 +83,6 @@ removed.
 An aliased confirmation-descriptor fixture also proved that structured confirmation
 objects are not treated as message keys while nested dynamic keys and raw presentation
 fields remain findings. The fixture was removed after verification.
+Composed confirmation fixtures verified static shorthand and ordered spreads, nested
+dynamic keys, raw shorthand fields, cyclic composition, and field-count overflow. The
+fixtures were removed after verification.

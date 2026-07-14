@@ -378,53 +378,79 @@ function isTranslationCall(node, bindings, checker) {
   return translationCallKind(node, bindings, checker) !== null;
 }
 
-function resolveObjectLiteral(node, checker, seen = new Set(), depth = 0) {
+function symbolInitializer(node, checker) {
+  const symbol = unwrapAlias(symbolAt(node, checker), checker);
+  if (!symbol) return null;
+  for (const declaration of symbol.declarations ?? []) {
+    if (isConstDeclaration(declaration) && declaration.initializer) {
+      return { initializer: declaration.initializer, symbol };
+    }
+    if (ts.isPropertyAssignment(declaration)) {
+      return { initializer: declaration.initializer, symbol };
+    }
+    if (ts.isShorthandPropertyAssignment(declaration)) {
+      const valueSymbol = checker.getShorthandAssignmentValueSymbol(declaration);
+      if (!valueSymbol) return null;
+      for (const valueDeclaration of valueSymbol.declarations ?? []) {
+        if (isConstDeclaration(valueDeclaration) && valueDeclaration.initializer) {
+          return { initializer: valueDeclaration.initializer, symbol: valueSymbol };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function resolveObjectFields(node, checker, seen = new Set(), depth = 0) {
   if (!node || depth > LIMITS.constantDepth) return null;
-  if (ts.isObjectLiteralExpression(node)) return node;
   if (
     ts.isParenthesizedExpression(node) ||
     ts.isAsExpression(node) ||
     ts.isSatisfiesExpression(node)
   ) {
-    return resolveObjectLiteral(node.expression, checker, seen, depth + 1);
+    return resolveObjectFields(node.expression, checker, seen, depth + 1);
+  }
+  if (ts.isObjectLiteralExpression(node)) {
+    if (seen.has(node)) return null;
+    const nextSeen = new Set(seen);
+    nextSeen.add(node);
+    const fields = new Map();
+    for (const property of node.properties) {
+      if (ts.isPropertyAssignment(property)) {
+        const name = propertyName(property.name);
+        if (name === null) return null;
+        fields.set(name, { expression: property.initializer, origin: property });
+      } else if (ts.isShorthandPropertyAssignment(property)) {
+        const resolved = symbolInitializer(property.name, checker);
+        if (!resolved || nextSeen.has(resolved.symbol)) return null;
+        fields.set(property.name.text, {
+          expression: resolved.initializer,
+          origin: property,
+        });
+      } else if (ts.isSpreadAssignment(property)) {
+        const spreadFields = resolveObjectFields(
+          property.expression,
+          checker,
+          nextSeen,
+          depth + 1,
+        );
+        if (spreadFields === null) return null;
+        for (const [name, field] of spreadFields) fields.set(name, field);
+      } else {
+        return null;
+      }
+      if (fields.size > LIMITS.parts) {
+        throw new Error("Localization constant resolution part limit exceeded.");
+      }
+    }
+    return fields;
   }
   if (!ts.isIdentifier(node) && !ts.isPropertyAccessExpression(node)) return null;
-  const symbol = unwrapAlias(symbolAt(node, checker), checker);
-  if (!symbol || seen.has(symbol)) return null;
+  const resolved = symbolInitializer(node, checker);
+  if (!resolved || seen.has(resolved.symbol)) return null;
   const nextSeen = new Set(seen);
-  nextSeen.add(symbol);
-  for (const declaration of symbol.declarations ?? []) {
-    const initializer = isConstDeclaration(declaration)
-      ? declaration.initializer
-      : ts.isPropertyAssignment(declaration)
-        ? declaration.initializer
-        : null;
-    const object = resolveObjectLiteral(initializer, checker, nextSeen, depth + 1);
-    if (object) return object;
-  }
-  return null;
-}
-
-function descriptorKeyExpression(node, checker) {
-  const object = resolveObjectLiteral(node, checker);
-  if (!object) return null;
-  const key = object.properties.find(
-    (property) =>
-      ts.isPropertyAssignment(property) && propertyName(property.name) === "key",
-  );
-  return key && ts.isPropertyAssignment(key) ? key.initializer : null;
-}
-
-function confirmationDescriptorFields(node, checker) {
-  const object = resolveObjectLiteral(node, checker);
-  if (!object) return [];
-  return object.properties.filter(
-    (property) =>
-      ts.isPropertyAssignment(property) &&
-      ["body", "cancelLabel", "confirmLabel", "title"].includes(
-        propertyName(property.name),
-      ),
-  );
+  nextSeen.add(resolved.symbol);
+  return resolveObjectFields(resolved.initializer, checker, nextSeen, depth + 1);
 }
 
 function isStaticMessageKey(node, checker, bindings) {
@@ -621,14 +647,57 @@ function scanProgram(files, allowOutsideSource = false) {
           }
         } else if (translationKind === "confirmation-factory") {
           const confirmation = node.arguments[0];
-          for (const field of confirmationDescriptorFields(confirmation, checker)) {
-            const key = descriptorKeyExpression(field.initializer, checker);
-            if (key && !isStaticMessageKey(key, checker, bindings)) {
+          const fields = resolveObjectFields(confirmation, checker);
+          const requiredFields = ["body", "cancelLabel", "confirmLabel", "title"];
+          if (
+            !confirmation ||
+            fields === null ||
+            requiredFields.some((field) => !fields.has(field))
+          ) {
+            add(
+              FINDING_CODES.dynamicMessageKey,
+              confirmation ?? node,
+              sourceFile,
+              "confirmation.structure",
+            );
+          } else {
+            for (const fieldName of requiredFields) {
+              const field = fields.get(fieldName);
+              const descriptorFields = resolveObjectFields(field.expression, checker);
+              const key = descriptorFields?.get("key")?.expression;
+              if (key) {
+                if (!isStaticMessageKey(key, checker, bindings)) {
+                  add(
+                    FINDING_CODES.dynamicMessageKey,
+                    key,
+                    key.getSourceFile(),
+                    `confirmation.${fieldName}`,
+                  );
+                }
+                continue;
+              }
+              const parts = staticParts(field.expression, checker, bindings);
+              if (parts.translation) continue;
+              const rawTexts = parts.texts.filter(meaningful);
+              if (rawTexts.length > 0) {
+                if (ts.isShorthandPropertyAssignment(field.origin)) {
+                  for (const text of rawTexts) {
+                    add(
+                      FINDING_CODES.presentationField,
+                      field.origin,
+                      field.origin.getSourceFile(),
+                      fieldName,
+                      text,
+                    );
+                  }
+                }
+                continue;
+              }
               add(
                 FINDING_CODES.dynamicMessageKey,
-                key,
-                sourceFile,
-                `confirmation.${propertyName(field.name)}`,
+                field.origin,
+                field.origin.getSourceFile(),
+                `confirmation.${fieldName}`,
               );
             }
           }
