@@ -37,7 +37,7 @@ Establish the typed runtime, English catalogs, locale-aware formatting, persiste
 
 Install and initialize the localization runtime, define typed message and formatting contracts, and ship the complete source-locale resource foundation.
 
-- [ ] `W01.P01.S01` - Install the approved localization dependencies and lock exact compatible versions; `frontend/package.json, frontend/package-lock.json`.
+- [x] `W01.P01.S01` - Install the approved localization dependencies and lock exact compatible versions; `frontend/package.json, frontend/package-lock.json`.
 - [ ] `W01.P01.S02` - Create the English namespace catalogs and typed resource aggregate; `frontend/src/locales/en/`.
 - [ ] `W01.P01.S03` - Define bounded typed message keys, values, descriptors, and confirmation descriptors; `frontend/src/platform/localization/message.ts`.
 - [ ] `W01.P01.S04` - Implement synchronous localization runtime initialization; `frontend/src/platform/localization/runtime.ts`.
