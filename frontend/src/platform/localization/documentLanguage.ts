@@ -4,6 +4,7 @@ import { sourceLocale } from "../../locales/en";
 import { localization } from "./runtime";
 
 const MAX_LOCALE_LENGTH = 128;
+const LISTENER_REMOVAL_ATTEMPTS = 2;
 const INTERNAL_LANGUAGES = new Set(["cimode", "dev"]);
 
 type DocumentLanguageRoot = Pick<HTMLElement, "dir" | "lang">;
@@ -75,6 +76,19 @@ function documentRoot(): DocumentLanguageRoot | null {
   }
 }
 
+function removeLanguageListener(instance: i18n, listener: () => void): boolean {
+  for (let attempt = 0; attempt < LISTENER_REMOVAL_ATTEMPTS; attempt += 1) {
+    try {
+      instance.off("languageChanged", listener);
+      return true;
+    } catch {
+      continue;
+    }
+  }
+
+  return false;
+}
+
 /** Apply the runtime language and writing direction to a document root. */
 export function applyDocumentLanguage(
   instance: i18n = localization,
@@ -141,29 +155,40 @@ export function bindDocumentLanguage(
   }
 
   binding.references += 1;
-  let active = true;
+  let finished = false;
+  let releasedReference = false;
 
   return (): void => {
-    if (!active) {
+    if (finished) {
       return;
     }
-    active = false;
 
     const currentBinding = bindingsForRoot.get(root);
     if (currentBinding !== binding) {
+      finished = true;
       return;
     }
 
-    currentBinding.references -= 1;
+    if (!releasedReference) {
+      currentBinding.references -= 1;
+      releasedReference = true;
+    }
+
     if (currentBinding.references > 0) {
+      finished = true;
       return;
     }
 
-    bindingsForRoot.delete(root);
-    try {
-      instance.off("languageChanged", currentBinding.listener);
-    } catch {
+    if (!removeLanguageListener(instance, currentBinding.listener)) {
       return;
     }
+
+    if (
+      bindingsForRoot.get(root) === currentBinding &&
+      currentBinding.references === 0
+    ) {
+      bindingsForRoot.delete(root);
+    }
+    finished = true;
   };
 }
