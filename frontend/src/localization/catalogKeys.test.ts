@@ -12,6 +12,21 @@ import {
   supportedLocales,
 } from "../platform/localization/runtime";
 
+const EXPECTED_SHIPPED_LOCALES = ["en"] as const;
+const EXPECTED_NAMESPACES = ["common", "errors"] as const;
+const EXPECTED_CATALOG_KEYS = [
+  "common:actions.cancel",
+  "common:actions.close",
+  "common:actions.reloadPage",
+  "common:actions.retry",
+  "common:destructiveActions.discardChanges",
+  "errors:fallback.contentUnavailable",
+  "errors:unexpectedApplication.message",
+  "errors:unexpectedApplication.title",
+  "errors:unexpectedSection.message",
+  "errors:unexpectedSection.title",
+] as const satisfies readonly MessageKey[];
+
 function splitMessageKey(key: MessageKey): {
   namespace: keyof EnglishResources & string;
   path: string;
@@ -23,40 +38,59 @@ function splitMessageKey(key: MessageKey): {
   };
 }
 
-describe("shipped localization catalog keys", () => {
-  it("uses unique, structurally valid namespace-qualified keys", () => {
-    expect(new Set(localizationNamespaces).size).toBe(localizationNamespaces.length);
-    expect(new Set(MESSAGE_KEYS).size).toBe(MESSAGE_KEYS.length);
-    expect(MESSAGE_KEYS.length).toBeGreaterThan(0);
+function discoverLeafKeys(catalog: Readonly<Record<string, unknown>>): string[] {
+  const keys: string[] = [];
 
-    const namespaces = new Set<string>(localizationNamespaces);
-    for (const key of MESSAGE_KEYS) {
-      const { namespace, path } = splitMessageKey(key);
+  const visit = (value: unknown, path: string): void => {
+    if (typeof value === "string") {
+      keys.push(path);
+      return;
+    }
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      keys.push(`${path}:invalid-leaf`);
+      return;
+    }
+    for (const [segment, child] of Object.entries(value)) {
+      visit(child, path.length === 0 ? segment : `${path}.${segment}`);
+    }
+  };
+
+  for (const [namespace, bundle] of Object.entries(catalog)) {
+    if (bundle === null || typeof bundle !== "object" || Array.isArray(bundle)) {
+      keys.push(`${namespace}:invalid-bundle`);
+      continue;
+    }
+    for (const [segment, child] of Object.entries(bundle)) {
+      visit(child, `${namespace}:${segment}`);
+    }
+  }
+  return keys.sort();
+}
+
+describe("shipped localization catalog keys", () => {
+  it("matches the explicit namespace-qualified leaf-key contract", () => {
+    expect([...MESSAGE_KEYS].sort()).toEqual([...EXPECTED_CATALOG_KEYS].sort());
+    for (const key of EXPECTED_CATALOG_KEYS) {
       expect(isMessageKey(key), key).toBe(true);
-      expect(namespaces.has(namespace), key).toBe(true);
-      expect(
-        path.split(".").every((segment) => segment.length > 0),
-        key,
-      ).toBe(true);
     }
 
-    const sortedKeys = [...MESSAGE_KEYS].sort();
-    for (let index = 1; index < sortedKeys.length; index += 1) {
-      expect(
-        sortedKeys[index]?.startsWith(`${sortedKeys[index - 1]}.`),
-        `${sortedKeys[index - 1]} cannot also be a parent message`,
-      ).toBe(false);
+    for (const [locale, catalog] of Object.entries(resources)) {
+      expect(discoverLeafKeys(catalog), locale).toEqual(
+        [...EXPECTED_CATALOG_KEYS].sort(),
+      );
     }
   });
 
   it("keeps shipped locale and namespace aggregates aligned with the source catalog", () => {
     expect(resources[sourceLocale]).toBe(en);
-    expect([...supportedLocales].sort()).toEqual(Object.keys(resources).sort());
-    expect([...localizationNamespaces].sort()).toEqual(Object.keys(en).sort());
+    expect([...supportedLocales].sort()).toEqual([...EXPECTED_SHIPPED_LOCALES].sort());
+    expect(Object.keys(resources).sort()).toEqual([...EXPECTED_SHIPPED_LOCALES].sort());
+    expect([...localizationNamespaces].sort()).toEqual([...EXPECTED_NAMESPACES].sort());
+    expect(Object.keys(en).sort()).toEqual([...EXPECTED_NAMESPACES].sort());
 
     for (const [locale, catalog] of Object.entries(resources)) {
       expect(Object.keys(catalog).sort(), locale).toEqual(
-        [...localizationNamespaces].sort(),
+        [...EXPECTED_NAMESPACES].sort(),
       );
     }
   });
@@ -65,7 +99,7 @@ describe("shipped localization catalog keys", () => {
     const runtime = createLocalizationRuntime();
 
     for (const locale of supportedLocales) {
-      for (const key of MESSAGE_KEYS) {
+      for (const key of EXPECTED_CATALOG_KEYS) {
         const { namespace, path } = splitMessageKey(key);
         const value = runtime.getResource(locale, namespace, path);
         expect(typeof value, `${locale}:${key}`).toBe("string");

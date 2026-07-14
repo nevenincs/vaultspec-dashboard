@@ -50,15 +50,15 @@ related:
 
 ## Description
 
-- Validate shipped locale and namespace aggregates against the English source catalog.
-- Verify every required message key is unique, structurally valid, and directly present.
+- Validate shipped locale and namespace aggregates against explicit expected contracts.
+- Verify exact parity between required keys, discovered leaves, and production key types.
 - Compare the initialized source bundles with the exported production resources.
 
 ## Outcome
 
-The catalog contract now fails when a shipped locale omits a required key, exposes an
-empty message, diverges from the declared namespaces, or introduces a leaf and parent
-collision. The test exercises production catalogs and a fresh production runtime.
+The catalog contract now fails when a shipped locale adds, removes, or misspells a leaf,
+exposes an empty message, or diverges from the declared locales and namespaces. The test
+exercises production catalogs and a fresh production runtime.
 
 ## Notes
 
