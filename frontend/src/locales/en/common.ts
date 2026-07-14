@@ -2,6 +2,8 @@ export const common = {
   accessibility: {
     actionsMenu: "Actions",
     confirmAction: "Confirm {{action}}?",
+    recordShortcut: "Record a shortcut for {{action}}",
+    resetShortcut: "Reset the shortcut for {{action}}",
   },
   actions: {
     cancel: "Cancel",
@@ -24,6 +26,7 @@ export const common = {
     openSettings: "Open settings…",
     refreshData: "Refresh data",
     reloadPage: "Reload page",
+    reset: "Reset",
     resetLayout: "Reset layout",
     retry: "Retry",
     showApprovals: "Show approvals",
@@ -47,6 +50,12 @@ export const common = {
   shortcutDialog: {
     description: "Review available keyboard shortcuts.",
     title: "Keyboard shortcuts",
+  },
+  shortcutSettings: {
+    conflict:
+      "This shortcut is already assigned to {{action}}. Choose another shortcut.",
+    empty: "No keyboard shortcuts available",
+    recording: "Press a key…",
   },
   statuses: {
     noActionsAvailable: "No actions available",

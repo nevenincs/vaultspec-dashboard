@@ -5,12 +5,17 @@ export const rtlTestLocale = "ar" as const;
 
 export const ltrTestResources = {
   common: {
-    accessibility: en.common.accessibility,
+    accessibility: {
+      ...en.common.accessibility,
+      recordShortcut: "Enregistrer un raccourci pour {{action}}",
+      resetShortcut: "Réinitialiser le raccourci pour {{action}}",
+    },
     actions: {
       ...en.common.actions,
       cancel: "Annuler",
       close: "Fermer",
       reloadPage: "Recharger la page",
+      reset: "Réinitialiser",
       retry: "Réessayer",
       showKeyboardShortcuts: "Afficher les raccourcis clavier",
     },
@@ -21,6 +26,12 @@ export const ltrTestResources = {
     shortcutDialog: {
       description: "Consultez les raccourcis clavier disponibles.",
       title: "Raccourcis clavier",
+    },
+    shortcutSettings: {
+      conflict:
+        "Ce raccourci est déjà attribué à {{action}}. Choisissez un autre raccourci.",
+      empty: "Aucun raccourci clavier disponible",
+      recording: "Appuyez sur une touche…",
     },
     statuses: en.common.statuses,
   },
@@ -45,12 +56,17 @@ export const ltrTestResources = {
 
 export const rtlTestResources = {
   common: {
-    accessibility: en.common.accessibility,
+    accessibility: {
+      ...en.common.accessibility,
+      recordShortcut: "تسجيل اختصار لـ {{action}}",
+      resetShortcut: "إعادة تعيين اختصار {{action}}",
+    },
     actions: {
       ...en.common.actions,
       cancel: "إلغاء",
       close: "إغلاق",
       reloadPage: "إعادة تحميل الصفحة",
+      reset: "إعادة تعيين",
       retry: "إعادة المحاولة",
     },
     disabledReasons: en.common.disabledReasons,
@@ -58,6 +74,11 @@ export const rtlTestResources = {
       discardChanges: "تجاهل التغييرات",
     },
     shortcutDialog: en.common.shortcutDialog,
+    shortcutSettings: {
+      conflict: "هذا الاختصار مخصص بالفعل لـ {{action}}. اختر اختصارًا آخر.",
+      empty: "لا توجد اختصارات لوحة مفاتيح متاحة",
+      recording: "اضغط على مفتاح…",
+    },
     statuses: en.common.statuses,
   },
   documents: en.documents,

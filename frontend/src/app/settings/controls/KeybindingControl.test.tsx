@@ -6,18 +6,25 @@
 // with the SPARSE merged override-map JSON, recording the default DROPS the
 // override (sparse), and an existing chord collision surfaces an inline conflict.
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { I18nextProvider } from "react-i18next";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { setIsMacForTesting } from "../../../platform/keymap/chord";
 import {
-  legacyKeybindingPresentation,
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  ltrTestResources,
+} from "../../../localization/testing";
+import {
   registerKeybindings,
   resetKeybindings,
 } from "../../../platform/keymap/registry";
 import type { SettingDef } from "../../../stores/server/engine";
-import { resetSettingsKeybindingRecorder } from "../../../stores/view/settingsControls";
+import {
+  resetSettingsKeybindingRecorder,
+  useSettingsKeybindingRecorderStore,
+} from "../../../stores/view/settingsControls";
 import { KeybindingControl } from "./KeybindingControl";
 
 const def: SettingDef = {
@@ -37,27 +44,38 @@ function KeybindingHarness({ initialValue = "{}" }: { initialValue?: string }) {
   return (
     <>
       <output data-testid="keybinding-value">{value}</output>
-      <KeybindingControl def={def} value={value} onChange={setValue} />
+      <div data-testid="keybinding-control">
+        <KeybindingControl def={def} value={value} onChange={setValue} />
+      </div>
     </>
   );
 }
 
+function renderKeybindingControl(initialValue = "{}") {
+  const runtime = createTestLocalizationRuntime();
+  const result = render(
+    <I18nextProvider i18n={runtime}>
+      <KeybindingHarness initialValue={initialValue} />
+    </I18nextProvider>,
+  );
+  return { ...result, runtime };
+}
+
 beforeEach(() => {
   resetKeybindings();
-  setIsMacForTesting(false); // deterministic: Mod renders "Ctrl"
   registerKeybindings([
     {
       id: "command.palette",
-      defaultChord: "Mod+K",
-      label: legacyKeybindingPresentation("Open command palette"),
-      group: legacyKeybindingPresentation("General"),
+      defaultChord: "Ctrl+K",
+      label: { key: "common:actions.retry" },
+      group: { key: "common:shortcutDialog.title" },
       context: "global",
     },
     {
       id: "help.legend",
-      defaultChord: "?",
-      label: legacyKeybindingPresentation("Show shortcuts"),
-      group: legacyKeybindingPresentation("General"),
+      defaultChord: "Ctrl+H",
+      label: { key: "common:actions.showKeyboardShortcuts" },
+      group: { key: "common:shortcutDialog.title" },
       context: "global",
     },
   ]);
@@ -67,70 +85,144 @@ afterEach(() => {
   cleanup();
   resetSettingsKeybindingRecorder();
   resetKeybindings();
-  setIsMacForTesting(null);
 });
 
 describe("KeybindingControl recorder", () => {
   it("renders one row per registered action with its effective keycaps", () => {
-    render(<KeybindingHarness />);
-    expect(screen.getByText("Open command palette")).toBeTruthy();
-    expect(screen.getByText("Show shortcuts")).toBeTruthy();
-    // Mod renders "Ctrl" on non-mac; the chord splits into keycaps.
-    expect(screen.getByText("Ctrl")).toBeTruthy();
+    renderKeybindingControl();
+    expect(screen.getByText("Keyboard shortcuts")).toBeTruthy();
+    expect(screen.getByText("Retry")).toBeTruthy();
+    expect(screen.getByText("Show keyboard shortcuts")).toBeTruthy();
+    expect(screen.getAllByText("Ctrl")).toHaveLength(2);
     expect(screen.getByText("K")).toBeTruthy();
   });
 
   it("records a captured chord into the sparse override-map JSON", () => {
-    render(<KeybindingHarness />);
+    renderKeybindingControl();
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Record shortcut for Open command palette",
+        name: "Record a shortcut for Retry",
       }),
     );
-    // Capturing: a non-default chord assigns an override.
-    fireEvent.keyDown(window, { key: "p", metaKey: true });
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
 
     expect(
       JSON.parse(screen.getByTestId("keybinding-value").textContent ?? ""),
     ).toEqual({
-      "command.palette": "Mod+P",
+      "command.palette": "Ctrl+P",
     });
   });
 
   it("drops an override when the recorded chord equals the default (sparse)", () => {
-    // Start from an existing override, then re-record the DEFAULT chord.
-    render(<KeybindingHarness initialValue='{"command.palette":"Mod+P"}' />);
+    renderKeybindingControl('{"command.palette":"Ctrl+P"}');
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Record shortcut for Open command palette",
+        name: "Record a shortcut for Retry",
       }),
     );
-    fireEvent.keyDown(window, { key: "k", metaKey: true }); // == default Mod+K
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
 
     expect(
       JSON.parse(screen.getByTestId("keybinding-value").textContent ?? ""),
     ).toEqual({});
   });
 
-  it("surfaces an inline conflict when an override collides with another binding", () => {
-    // Override the legend onto Mod+K — collides with command.palette's default.
-    render(<KeybindingHarness initialValue='{"help.legend":"Mod+K"}' />);
-    const alerts = screen.getAllByRole("alert");
-    expect(alerts.length).toBeGreaterThan(0);
-    expect(alerts.some((el) => /conflicts with/i.test(el.textContent ?? ""))).toBe(
-      true,
-    );
+  it("reactively localizes complete conflicts and recorder accessibility names", async () => {
+    const { runtime } = renderKeybindingControl('{"help.legend":"Ctrl+K"}');
+
+    expect(
+      screen.getByText(
+        "This shortcut is already assigned to Retry. Choose another shortcut.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Record a shortcut for Show keyboard shortcuts",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Reset the shortcut for Show keyboard shortcuts",
+      }),
+    ).toBeTruthy();
+    const control = screen.getByTestId("keybinding-control");
+    expect(control.textContent).not.toContain("command.palette");
+    expect(control.textContent).not.toContain("help.legend");
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+
+    expect(
+      screen.getByText(
+        "Ce raccourci est déjà attribué à Réessayer. Choisissez un autre raccourci.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Enregistrer un raccourci pour Afficher les raccourcis clavier",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Réinitialiser le raccourci pour Afficher les raccourcis clavier",
+      }),
+    ).toBeTruthy();
   });
 
   it("escape cancels recording without emitting", () => {
-    render(<KeybindingHarness />);
+    renderKeybindingControl();
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Record shortcut for Show shortcuts",
+        name: "Record a shortcut for Show keyboard shortcuts",
       }),
     );
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.getByTestId("keybinding-value").textContent).toBe("{}");
+  });
+
+  it("preserves active recording across a locale change and captures the next key", async () => {
+    const { runtime } = renderKeybindingControl();
+    const sourceButton = screen.getByRole("button", {
+      name: "Record a shortcut for Retry",
+    });
+    const sourceRow = sourceButton.closest("li");
+    expect(sourceRow).not.toBeNull();
+
+    fireEvent.click(sourceButton);
+    expect(useSettingsKeybindingRecorderStore.getState().recordingId).toBe(
+      "command.palette",
+    );
+    expect(screen.getByText("Press a key…")).toBeTruthy();
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+
+    const translatedButton = screen.getByRole("button", {
+      name: "Enregistrer un raccourci pour Réessayer",
+    });
+    expect(translatedButton).toBe(sourceButton);
+    expect(translatedButton.closest("li")).toBe(sourceRow);
+    expect(useSettingsKeybindingRecorderStore.getState().recordingId).toBe(
+      "command.palette",
+    );
+    expect(screen.getByText(ltrTestResources.common.shortcutSettings.recording)).toBe(
+      translatedButton,
+    );
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    expect(
+      JSON.parse(screen.getByTestId("keybinding-value").textContent ?? ""),
+    ).toEqual({ "command.palette": "Ctrl+P" });
+    expect(useSettingsKeybindingRecorderStore.getState().recordingId).toBeNull();
+  });
+
+  it("uses safe catalog copy when no shortcuts are available", async () => {
+    resetKeybindings();
+    const { runtime } = renderKeybindingControl();
+    expect(screen.getByText("No keyboard shortcuts available")).toBeTruthy();
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(
+      screen.getByText(ltrTestResources.common.shortcutSettings.empty),
+    ).toBeTruthy();
   });
 });

@@ -16,10 +16,18 @@
 import { useCallback } from "react";
 
 import { Button, Kbd, SectionLabel } from "../../kit";
+import type {
+  KeybindingGroupPresentation,
+  KeybindingPresentation,
+} from "../../../platform/keymap/registry";
+import {
+  type LocalizedMessageResolver,
+  useLocalizedMessageResolver,
+} from "../../../platform/localization/LocalizationProvider";
 import {
   clearKeybindingOverride,
   deriveSettingsKeybindingControlView,
-  keybindingConflictLabels,
+  keybindingConflictPresentations,
   nextKeybindingOverrides,
   serializeKeybindingOverrides,
   toggleSettingsKeybindingRecording,
@@ -27,8 +35,26 @@ import {
 } from "../../../stores/view/settingsControls";
 import type { ControlProps } from "./types";
 
+function resolveKeybindingPresentation(
+  presentation: KeybindingPresentation | KeybindingGroupPresentation,
+  resolveMessage: LocalizedMessageResolver,
+): string {
+  return typeof presentation === "string"
+    ? presentation
+    : resolveMessage(presentation).message;
+}
+
+function keycapIdentity(actionId: string, index: number): string {
+  return `${actionId}:keycap:${index}`;
+}
+
+function recorderButtonVariant(recording: boolean): "primary" | "secondary" {
+  return recording ? "primary" : "secondary";
+}
+
 export function KeybindingControl({ value, onChange, disabled, id }: ControlProps) {
   const view = deriveSettingsKeybindingControlView(value);
+  const resolveMessage = useLocalizedMessageResolver();
 
   const commit = useCallback(
     (next: ReturnType<typeof nextKeybindingOverrides>) => {
@@ -44,68 +70,105 @@ export function KeybindingControl({ value, onChange, disabled, id }: ControlProp
   if (view.empty) {
     return (
       <p id={id} className="text-body text-ink-muted">
-        No keyboard shortcuts are registered yet.
+        {resolveMessage({ key: "common:shortcutSettings.empty" }).message}
       </p>
     );
   }
 
   return (
     <div id={id} className="flex flex-col gap-fg-4">
-      {view.groups.map((group) => (
-        <section key={group.name} className="flex flex-col gap-fg-1">
-          <SectionLabel>{group.name}</SectionLabel>
-          <ul className="flex flex-col gap-fg-0-5">
-            {group.rows.map((row) => {
-              const recording = recordingId === row.id;
-              const conflicts = recording
-                ? []
-                : keybindingConflictLabels(view.overrides, row.id, row.chord);
-              return (
-                <li key={row.id} className="flex items-center justify-between gap-fg-2">
-                  <div className="flex min-w-0 flex-col">
-                    <span className="truncate text-body text-ink">{row.label}</span>
-                    {conflicts.length > 0 && (
-                      <span role="alert" className="text-caption text-diff-remove">
-                        Conflicts with {conflicts.join(", ")}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-fg-1">
-                    <Button
-                      variant={recording ? "primary" : "secondary"}
-                      disabled={disabled}
-                      aria-label={`Record shortcut for ${row.label}`}
-                      onClick={() => toggleSettingsKeybindingRecording(row.id)}
-                    >
-                      {recording ? (
-                        "Press a key…"
-                      ) : (
-                        <span className="flex items-center gap-fg-0-5">
-                          {row.keycaps.map((cap, i) => (
-                            <Kbd key={`${cap}-${i}`}>{cap}</Kbd>
-                          ))}
-                        </span>
-                      )}
-                    </Button>
-                    {row.overridden && (
+      {view.groups.map((group) => {
+        const groupLabel = resolveKeybindingPresentation(group.label, resolveMessage);
+        return (
+          <section key={group.id} className="flex flex-col gap-fg-1">
+            <SectionLabel>{groupLabel}</SectionLabel>
+            <ul className="flex flex-col gap-fg-0-5">
+              {group.rows.map((row) => {
+                const rowLabel = resolveKeybindingPresentation(
+                  row.label,
+                  resolveMessage,
+                );
+                const recording = recordingId === row.id;
+                const conflicts = recording
+                  ? []
+                  : keybindingConflictPresentations(view.overrides, row.id, row.chord);
+                return (
+                  <li
+                    key={row.id}
+                    className="flex items-center justify-between gap-fg-2"
+                  >
+                    <div className="flex min-w-0 flex-col">
+                      <span className="truncate text-body text-ink">{rowLabel}</span>
+                      {conflicts.map((conflict) => {
+                        const action = resolveKeybindingPresentation(
+                          conflict.label,
+                          resolveMessage,
+                        );
+                        return (
+                          <span
+                            key={conflict.id}
+                            role="alert"
+                            className="text-caption text-diff-remove"
+                          >
+                            {
+                              resolveMessage({
+                                key: "common:shortcutSettings.conflict",
+                                values: { action },
+                              }).message
+                            }
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-fg-1">
                       <Button
-                        variant="ghost"
+                        variant={recorderButtonVariant(recording)}
                         disabled={disabled}
-                        aria-label={`Reset ${row.label} to default`}
-                        onClick={() =>
-                          commit(clearKeybindingOverride(view.overrides, row.id))
+                        aria-label={
+                          resolveMessage({
+                            key: "common:accessibility.recordShortcut",
+                            values: { action: rowLabel },
+                          }).message
                         }
+                        onClick={() => toggleSettingsKeybindingRecording(row.id)}
                       >
-                        Reset
+                        {recording ? (
+                          resolveMessage({
+                            key: "common:shortcutSettings.recording",
+                          }).message
+                        ) : (
+                          <span className="flex items-center gap-fg-0-5">
+                            {row.keycaps.map((cap, index) => (
+                              <Kbd key={keycapIdentity(row.id, index)}>{cap}</Kbd>
+                            ))}
+                          </span>
+                        )}
                       </Button>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ))}
+                      {row.overridden && (
+                        <Button
+                          variant="ghost"
+                          disabled={disabled}
+                          aria-label={
+                            resolveMessage({
+                              key: "common:accessibility.resetShortcut",
+                              values: { action: rowLabel },
+                            }).message
+                          }
+                          onClick={() =>
+                            commit(clearKeybindingOverride(view.overrides, row.id))
+                          }
+                        >
+                          {resolveMessage({ key: "common:actions.reset" }).message}
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
 }

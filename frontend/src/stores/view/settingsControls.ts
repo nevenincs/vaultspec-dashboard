@@ -9,12 +9,16 @@ import {
 } from "../../platform/keymap/chord";
 import {
   type KeybindingDef,
+  type KeybindingGroupPresentation,
   type KeybindingOverrides,
+  type KeybindingPresentation,
   conflictsForCandidate,
   effectiveChord,
   listKeybindings,
+  normalizeKeybindingGroupPresentation,
   normalizeKeybindingId,
   normalizeKeybindingOverrides,
+  normalizeKeybindingPresentation,
 } from "../../platform/keymap/registry";
 import type { SettingDef } from "../server/engine";
 import {
@@ -176,8 +180,8 @@ export function settingsNumberControlCommitValue(
 export interface SettingsKeybindingRowView {
   /** Stable action id (the override-map key). */
   id: string;
-  /** Human label for the row. */
-  label: string;
+  /** Locale-independent presentation resolved only by the React consumer. */
+  label: KeybindingPresentation;
   /** The effective chord string (override when present, else default). */
   chord: string;
   /** The effective chord split into platform-aware display keycaps. */
@@ -187,8 +191,18 @@ export interface SettingsKeybindingRowView {
 }
 
 export interface SettingsKeybindingGroupView {
-  name: string;
+  /** Stable semantic identity, independent of the active locale. */
+  id: string;
+  /** Locale-independent group presentation. */
+  label: KeybindingGroupPresentation;
   rows: SettingsKeybindingRowView[];
+}
+
+export interface SettingsKeybindingConflictView {
+  /** Stable conflicting action identity. */
+  id: string;
+  /** Locale-independent action presentation. */
+  label: KeybindingPresentation;
 }
 
 export interface SettingsKeybindingControlView {
@@ -196,7 +210,7 @@ export interface SettingsKeybindingControlView {
   overrides: KeybindingOverrides;
   /** The catalog grouped by `def.group`, groups in first-seen registry order. */
   groups: SettingsKeybindingGroupView[];
-  /** True when no bindings are registered yet (enrollment not converged). */
+  /** True when no valid keybinding rows can be presented. */
   empty: boolean;
 }
 
@@ -211,25 +225,30 @@ export function deriveSettingsKeybindingControlView(
   defs: readonly KeybindingDef[] = listKeybindings(),
 ): SettingsKeybindingControlView {
   const overrides = parseKeybindingOverrides(value);
-  const byGroup = new Map<string, SettingsKeybindingRowView[]>();
+  const byGroup = new Map<string, SettingsKeybindingGroupView>();
   for (const def of defs) {
-    if (typeof def.label !== "string" || typeof def.group !== "string") continue;
+    const label = normalizeKeybindingPresentation(def.label);
+    const group = normalizeKeybindingGroupPresentation(def.group);
+    if (label === null || group === null) continue;
+    const groupId =
+      typeof group === "string" ? `legacy:${group}` : `message:${group.key}`;
     const chord = effectiveChord(def, overrides);
     const row: SettingsKeybindingRowView = {
       id: def.id,
-      label: def.label,
+      label,
       chord,
       keycaps: chordToKeycaps(chord),
       overridden: chord !== def.defaultChord,
     };
-    const list = byGroup.get(def.group) ?? [];
-    list.push(row);
-    byGroup.set(def.group, list);
+    const existing = byGroup.get(groupId);
+    if (existing !== undefined) {
+      existing.rows.push(row);
+      continue;
+    }
+    byGroup.set(groupId, { id: groupId, label: group, rows: [row] });
   }
-  const groups: SettingsKeybindingGroupView[] = [...byGroup.entries()].map(
-    ([name, rows]) => ({ name, rows }),
-  );
-  return { overrides, groups, empty: defs.length === 0 };
+  const groups = [...byGroup.values()];
+  return { overrides, groups, empty: groups.length === 0 };
 }
 
 /**
@@ -301,22 +320,30 @@ export function keybindingConflictIds(
   );
 }
 
-export function keybindingConflictLabels(
+export function keybindingConflictPresentations(
   current: KeybindingOverrides,
   id: unknown,
   rawChord: unknown,
   defs: readonly KeybindingDef[] = listKeybindings(),
-): string[] {
+): SettingsKeybindingConflictView[] {
   const normalizedId = normalizeSettingsKeybindingId(id);
   if (normalizedId === null) return [];
-  return keybindingConflictIds(current, normalizedId, rawChord, defs)
-    .filter((conflictId) => conflictId !== normalizedId)
-    .map((conflictId) => {
-      const label = defs.find(
-        (def) => normalizeSettingsKeybindingId(def.id) === conflictId,
-      )?.label;
-      return typeof label === "string" && label.trim().length > 0 ? label : conflictId;
-    });
+  const presentations: SettingsKeybindingConflictView[] = [];
+  for (const conflictId of keybindingConflictIds(
+    current,
+    normalizedId,
+    rawChord,
+    defs,
+  )) {
+    if (conflictId === normalizedId) continue;
+    const def = defs.find(
+      (candidate) => normalizeSettingsKeybindingId(candidate.id) === conflictId,
+    );
+    const label = normalizeKeybindingPresentation(def?.label);
+    if (label === null) continue;
+    presentations.push({ id: conflictId, label });
+  }
+  return presentations;
 }
 
 export function normalizeSettingsKeybindingId(id: unknown): string | null {

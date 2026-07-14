@@ -1,18 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type KeybindingDef,
   MAX_KEYBINDING_ID_LEN,
   legacyKeybindingPresentation,
 } from "../../platform/keymap/registry";
 import type { SettingDef } from "../server/engine";
 import {
   deriveSettingsEnumControlView,
+  deriveSettingsKeybindingControlView,
   deriveSettingsNumberControlView,
   deriveSettingsSwitchControlView,
   deriveSettingsTextControlView,
   clearKeybindingOverride,
   keybindingConflictIds,
-  keybindingConflictLabels,
+  keybindingConflictPresentations,
   nextKeybindingOverrides,
   normalizeSettingsKeybindingId,
   resetSettingsKeybindingRecorder,
@@ -66,16 +68,16 @@ const textDef: SettingDef = {
 const keybindingDefs = [
   {
     id: "command.palette",
-    defaultChord: "Mod+K",
-    label: legacyKeybindingPresentation("Command palette"),
-    group: legacyKeybindingPresentation("General"),
+    defaultChord: "Ctrl+K",
+    label: { key: "common:actions.openCommandPalette" },
+    group: { key: "common:shortcutDialog.title" },
     context: "global",
   },
   {
     id: "help.legend",
     defaultChord: "?",
-    label: legacyKeybindingPresentation("Keyboard shortcuts"),
-    group: legacyKeybindingPresentation("General"),
+    label: { key: "common:actions.showKeyboardShortcuts" },
+    group: { key: "common:shortcutDialog.title" },
     context: "global",
   },
 ] as const;
@@ -193,6 +195,70 @@ describe("settings control view projections", () => {
     ).toEqual(expect.objectContaining({ maxLength: undefined }));
   });
 
+  it("carries typed keybinding presentations with stable semantic identities", () => {
+    const view = deriveSettingsKeybindingControlView('{"help.legend":"Ctrl+P"}', [
+      ...keybindingDefs,
+      {
+        id: "legacy.group",
+        defaultChord: "Ctrl+L",
+        label: legacyKeybindingPresentation("Legacy action"),
+        group: legacyKeybindingPresentation("message:common:shortcutDialog.title"),
+        context: "global",
+      },
+    ]);
+
+    expect(view.empty).toBe(false);
+    expect(view.groups.map((group) => group.id)).toEqual([
+      "message:common:shortcutDialog.title",
+      "legacy:message:common:shortcutDialog.title",
+    ]);
+    expect(view.groups[0]).toEqual({
+      id: "message:common:shortcutDialog.title",
+      label: { key: "common:shortcutDialog.title" },
+      rows: [
+        {
+          id: "command.palette",
+          label: { key: "common:actions.openCommandPalette" },
+          chord: "Ctrl+K",
+          keycaps: ["Ctrl", "K"],
+          overridden: false,
+        },
+        {
+          id: "help.legend",
+          label: { key: "common:actions.showKeyboardShortcuts" },
+          chord: "Ctrl+P",
+          keycaps: ["Ctrl", "P"],
+          overridden: true,
+        },
+      ],
+    });
+    expect(view.groups[1]?.rows.map((row) => row.id)).toEqual(["legacy.group"]);
+  });
+
+  it("fails closed to the empty view when every presentation is malformed", () => {
+    const malformedDefs = [
+      {
+        id: "unsafe.action",
+        defaultChord: "Ctrl+U",
+        label: { key: "missing:action" },
+        group: { key: "common:shortcutDialog.title" },
+        context: "global",
+      },
+    ] as unknown as readonly KeybindingDef[];
+
+    expect(deriveSettingsKeybindingControlView("{}", malformedDefs)).toEqual({
+      overrides: {},
+      groups: [],
+      empty: true,
+    });
+    expect(
+      keybindingConflictPresentations({}, "command.palette", "Ctrl+U", [
+        keybindingDefs[0],
+        ...malformedDefs,
+      ]),
+    ).toEqual([]);
+  });
+
   it("stores the active keybinding recorder row behind one seam", () => {
     resetSettingsKeybindingRecorder();
 
@@ -232,7 +298,7 @@ describe("settings control view projections", () => {
       nextKeybindingOverrides(
         { "command.palette": "Ctrl+P" },
         " command.palette ",
-        "Mod+K",
+        "Ctrl+K",
         keybindingDefs,
       ),
     ).toEqual({});
@@ -271,15 +337,20 @@ describe("settings control view projections", () => {
       ),
     ).toEqual(["help.legend"]);
     expect(
-      keybindingConflictLabels(
+      keybindingConflictPresentations(
         { " help.legend ": " F2 " },
         " command.palette ",
         "F2",
         keybindingDefs,
       ),
-    ).toEqual(["Keyboard shortcuts"]);
+    ).toEqual([
+      {
+        id: "help.legend",
+        label: { key: "common:actions.showKeyboardShortcuts" },
+      },
+    ]);
     expect(
-      keybindingConflictLabels({}, " command.palette ", "Ctrl+P", [
+      keybindingConflictPresentations({}, " command.palette ", "Ctrl+P", [
         ...keybindingDefs,
         {
           id: "custom.open",
@@ -289,7 +360,12 @@ describe("settings control view projections", () => {
           context: "global",
         },
       ]),
-    ).toEqual(["Custom open"]);
+    ).toEqual([
+      {
+        id: "custom.open",
+        label: legacyKeybindingPresentation("Custom open"),
+      },
+    ]);
   });
 
   it("serializes keybinding overrides through the platform override normalizer", () => {
