@@ -70,8 +70,12 @@ related:
   validator.
 - Stable policy issue codes cover grammar, actionability, punctuation, terminology,
   placeholder safety, and diagnostic leakage.
+- Review remediation closes namespace-key, internal-language, path, command, and false
+  recovery-statement bypasses without inspecting interpolated user data.
 
 ## Notes
 
 - The focused Vitest suite, ESLint, Prettier, and TypeScript project build completed
   successfully.
+- Adverse and safe-boundary fixtures cover exact terminology matches, diagnostic forms,
+  recovery clauses, approved terminology, ordinary colons, and substring safety.

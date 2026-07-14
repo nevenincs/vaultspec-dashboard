@@ -98,13 +98,17 @@ export interface ProhibitedUiTerm {
 }
 
 export const PROHIBITED_UI_TERMS: readonly ProhibitedUiTerm[] = Object.freeze([
+  { id: "engine", pattern: /\bengine\b/iu },
   { id: "backend", pattern: /\bbackend\b/iu },
   { id: "frontend", pattern: /\bfrontend\b/iu },
+  { id: "adapter", pattern: /\badapter\b/iu },
+  { id: "token", pattern: /\btokens?\b/iu },
+  { id: "identifier", pattern: /\bidentifiers?\b/iu },
   { id: "wire", pattern: /\bwire\b/iu },
   { id: "payload", pattern: /\bpayload\b/iu },
-  { id: "schema-key", pattern: /\bschema\s+key\b/iu },
+  { id: "schema", pattern: /\bschema(?:\s+key)?\b/iu },
   { id: "action-id", pattern: /\baction\s+id\b/iu },
-  { id: "route-name", pattern: /\broute\s+name\b/iu },
+  { id: "route", pattern: /\broute(?:\s+name)?\b/iu },
   { id: "query-cache", pattern: /\bquery\s+cache\b/iu },
   { id: "hydration", pattern: /\bhydrat(?:e|ed|es|ing|ion)\b/iu },
   { id: "provider", pattern: /\bprovider\b/iu },
@@ -115,8 +119,16 @@ export const PROHIBITED_UI_TERMS: readonly ProhibitedUiTerm[] = Object.freeze([
   { id: "exception", pattern: /\bexception\b/iu },
   { id: "loopback", pattern: /\bloopback\b/iu },
   { id: "debug", pattern: /\bdebug(?:ging)?\b/iu },
+  { id: "development", pattern: /\bdevelopment\b/iu },
   { id: "development-mode", pattern: /\b(?:development|dev)\s+mode\b/iu },
+  { id: "development-control", pattern: /\bdevelopment\s+controls?\b/iu },
   { id: "not-implemented", pattern: /\bnot\s+implemented\b/iu },
+  { id: "implementation", pattern: /\bimplementation\b/iu },
+  {
+    id: "implementation-difficulty",
+    pattern:
+      /\b(?:difficult|hard|complex|complicated)\s+to\s+(?:implement|support|fix|understand)\b/iu,
+  },
   { id: "vault-bearing", pattern: /\bvault-bearing\b/iu },
   { id: "workspace-map", pattern: /\bworkspace\s+map\b/iu },
   { id: "semantic-search", pattern: /\bsemantic\s+search\b/iu },
@@ -125,6 +137,16 @@ export const PROHIBITED_UI_TERMS: readonly ProhibitedUiTerm[] = Object.freeze([
   { id: "tier", pattern: /\btier(?:s)?\b/iu },
   { id: "scope", pattern: /\bscope\b/iu },
   { id: "endpoint", pattern: /\bendpoint\b/iu },
+  { id: "service", pattern: /\bservice\b/iu },
+  { id: "command-line", pattern: /\bcommand\s+line\b/iu },
+  { id: "internal", pattern: /\binternal\b/iu },
+  { id: "webgl", pattern: /\bWebGL\b/iu },
+  { id: "gpu", pattern: /\bGPU\b/iu },
+  { id: "cli", pattern: /\bCLI\b/iu },
+  { id: "parameter", pattern: /\bparameter\b/iu },
+  { id: "physics", pattern: /\bphysics\b/iu },
+  { id: "graph-theory", pattern: /\bgraph\s+theory\b/iu },
+  { id: "node", pattern: /\bnode\b/iu },
   { id: "internal-package", pattern: /\bvaultspec-(?:core|rag)\b/iu },
 ]);
 
@@ -157,17 +179,34 @@ export type StaticMessagePart =
 const INTERPOLATION_TOKEN = /\{\{\s*-?\s*([a-z][a-zA-Z0-9]*)\s*\}\}/gu;
 const RAW_PLACEHOLDER = /\{\{|\}\}|\$\{|%\{/u;
 const RAW_MESSAGE_KEY =
-  /\b[a-z][a-zA-Z0-9]*:[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+\b/u;
+  /\b[a-z][a-zA-Z0-9]*:[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*\b/u;
 const DIAGNOSTIC_PATTERNS = [
-  /\b(?:TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError):/u,
+  /\b(?:Error|TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError):(?=\s|$)/u,
   /(?:^|\s)at\s+[\w.[\]<>]+\s*\([^\n)]+:\d+:\d+\)/u,
   /(?:[A-Za-z]:\\|\/(?:home|Users|var|tmp|src)\/)[^\s]+/u,
+  /(?:^|\s)(?:\.{0,2}[\\/])?(?:src|frontend|engine|node_modules|\.vault|\.git)[\\/][^\s]+/u,
   /\b(?:localhost|127\.0\.0\.1|::1)(?::\d+)?\b/iu,
   /(?:^|\s)--[a-z][a-z0-9-]*(?:\s|$)/u,
+  /(?:^|[`$]\s*|\s)(?:npm\s+run|npx|pnpm|yarn|cargo|rustc|node|git|vaultspec(?:-core)?)\s+[a-z][a-z0-9:_-]*/u,
 ] as const;
 const WORD = /\p{L}[\p{L}\p{M}'’-]*/gu;
 const SENTENCE_BOUNDARY = /(?<=[.!?])\s+/u;
+const RECOVERY_CLAUSE_BOUNDARY = /(?:[.!?;]\s+|,\s+(?:then\s+)?)/u;
 const VALUE_MARKER = "\uFFFC";
+const FAILED_RECOVERY_COMPLEMENTS: ReadonlySet<string> = new Set([
+  "became",
+  "cannot",
+  "disabled",
+  "failed",
+  "fails",
+  "failure",
+  "has",
+  "is",
+  "pending",
+  "seems",
+  "unavailable",
+  "was",
+]);
 
 const IMPERATIVE_VERB_SET: ReadonlySet<string> = new Set(IMPERATIVE_ACTION_VERBS);
 const DESTRUCTIVE_VERB_SET: ReadonlySet<string> = new Set(DESTRUCTIVE_ACTION_VERBS);
@@ -214,6 +253,26 @@ function issue(
 function firstWord(value: string): string | null {
   WORD.lastIndex = 0;
   return WORD.exec(value)?.[0] ?? null;
+}
+
+function isActionableRecoveryClause(clause: string): boolean {
+  const trimmed = clause.trimStart();
+  if (trimmed.length === 0 || trimmed.startsWith(VALUE_MARKER)) return false;
+
+  const verb = firstWord(trimmed);
+  if (verb === null) return false;
+  const canonicalVerb = `${verb[0]!.toLocaleUpperCase("en")}${verb.slice(1)}`;
+  if (!RECOVERY_VERB_SET.has(canonicalVerb)) return false;
+
+  const verbEnd = trimmed.indexOf(verb) + verb.length;
+  const complement = trimmed.slice(verbEnd).trimStart();
+  if (complement.length === 0) return false;
+  if (complement.startsWith(VALUE_MARKER)) return true;
+
+  const complementWord = firstWord(complement)?.toLocaleLowerCase("en");
+  return (
+    complementWord !== undefined && !FAILED_RECOVERY_COMPLEMENTS.has(complementWord)
+  );
 }
 
 function sentenceCaseIssues(
@@ -346,11 +405,8 @@ export function validateEnglishMessage(
   }
 
   if (policy.role === "error-message") {
-    const sentences = staticText.split(SENTENCE_BOUNDARY);
-    const actionable = sentences.some((sentence) => {
-      const verb = firstWord(sentence.trimStart());
-      return verb !== null && RECOVERY_VERB_SET.has(verb);
-    });
+    const clauses = staticText.split(RECOVERY_CLAUSE_BOUNDARY);
+    const actionable = clauses.some(isActionableRecoveryClause);
     if (!actionable) issue(issues, "not-actionable");
   }
 
