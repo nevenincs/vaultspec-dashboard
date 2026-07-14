@@ -72,6 +72,9 @@ plain-language; the review-badge poll is bounded (SSE-driven, no interval).
   reasons for structural/declared/temporal degradation, and a lightweight
   pending-approvals count route so the chip can show an exact number on a
   truncated queue.
-- Post-fix status: both HIGH and both LOW findings fixed and verified (110
-  tests green across the touched suites, tsc/eslint/prettier clean); re-check
-  requested from the reviewer.
+- Post-fix status: both HIGH and both LOW findings fixed in revision commit
+  3fde848dc2 and verified (110 tests green across the touched suites,
+  tsc/eslint/prettier clean).
+- Reviewer re-check (same day): all four fix sites independently verified,
+  four affected suites re-run green (56 tests). Verdict: APPROVED — the
+  withhold lifts; no CRITICAL/HIGH remaining.
