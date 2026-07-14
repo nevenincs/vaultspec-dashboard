@@ -1055,3 +1055,34 @@ verification also passed TypeScript and the complete frontend lint gate; the exa
 localization baseline decreased from 1,560 to 1,559. The reviewed additions introduce
 no user-facing developer metadata, raw localization keys, diagnostics, or em dashes.
 S247 is accepted with no open findings.
+
+### W02.P04.S246 review | pass | Legacy action presentation debt is exact and bounded
+
+Commit `ed68d7b820` introduces the nominal legacy action-presentation bridge and wraps
+all 201 compiled legacy label and disabled-reason producers at complete-message
+boundaries. Plain strings are rejected at typed producer sites. Runtime normalization
+accepts only bounded nonempty strings, and invalid branded data resolves through the
+safe localized fallback with fallback state preserved so consumers fail closed. Stable
+action IDs, execution lanes, eligibility, accelerators, and legacy and typed
+confirmation behavior remain unchanged.
+
+The initial independent review found one high-severity enforcement bypass: assigning
+the canonical factory to a local const allowed branded copy without an exact scanner
+finding. The remediation follows only immutable identifier or property-access const
+aliases, with bounded depth and visited-symbol cycle protection. The adverse fixture
+now proves that the local alias is inventoried, while unresolved branded-returning
+indirection and same-name counterfeit helpers remain `presentation-field` findings.
+Direct aliases, barrel re-exports, static and dynamic arguments, stale entries, and
+tampered metadata remain covered. Re-review found no remaining scanner bypass.
+
+Baseline reconciliation removed only 205 affected `presentation-field` entries and
+added 201 dedicated `legacy-action-presentation` entries; no other finding category
+changed. The final integration run passed 339 tests across 30 files, the focused scanner
+suite passed all 10 cases, and TypeScript and the complete frontend lint gate passed.
+The scanner is clean at 1,555 exact findings, including 201 bridge findings. Plan scope
+contains every implementation path, and the execution record accurately describes the
+bridge boundary, remediation, gates, and deferred removal at `S17`. Tests use production
+normalizers, resolvers, registries, scanner behavior, and rendering paths without fake,
+mock, stub, patch, monkeypatch, skip, or expected-failure shortcuts. No new user-facing
+developer metadata, raw localization keys, diagnostics, or em dashes were introduced.
+S246 is accepted with no open findings.
