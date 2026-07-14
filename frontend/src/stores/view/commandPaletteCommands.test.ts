@@ -24,11 +24,32 @@ import {
   deriveCommandPalettePresentationView,
   filterCommands,
   groupByFamily,
+  COMMAND_FAMILY_MESSAGES,
   normalizeCommandFamily,
   normalizeCommandPaletteSourceItems,
   normalizePaletteCommand,
   type ResolvedPaletteCommand,
 } from "./commandPaletteCommands";
+
+describe("COMMAND_FAMILY_MESSAGES", () => {
+  it("exhaustively maps stable family tokens to typed headings", () => {
+    expect(COMMAND_FAMILY_MESSAGES).toEqual({
+      navigate: { key: "common:commandFamilies.navigation" },
+      filters: { key: "common:commandFamilies.filters" },
+      focus: { key: "common:commandFamilies.focus" },
+      window: { key: "common:commandFamilies.layout" },
+      edit: { key: "common:commandFamilies.editing" },
+      reload: { key: "common:commandFamilies.refresh" },
+      settings: { key: "common:commandFamilies.settings" },
+      search: { key: "common:commandFamilies.search" },
+      core: { key: "common:commandFamilies.workspaceMaintenance" },
+      rag: { key: "common:commandFamilies.searchMaintenance" },
+      help: { key: "common:commandFamilies.help" },
+      app: { key: "common:commandFamilies.general" },
+    });
+    expect(Object.isFrozen(COMMAND_FAMILY_MESSAGES)).toBe(true);
+  });
+});
 
 describe("buildGraphCommands", () => {
   it("enrolls camera, freeze (label reflects state), and reset-defaults", () => {

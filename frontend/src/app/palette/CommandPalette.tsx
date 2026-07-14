@@ -27,6 +27,7 @@ import { useTranslation } from "react-i18next";
 
 import { Kbd, Skeleton, SkeletonRow } from "../kit";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageResolutionResult } from "../../platform/localization/fallback";
 import { resolveKeycapPresentations } from "../../platform/keymap/chord";
 import { isRunnable } from "../../platform/actions/action";
 import { localizationNamespaces } from "../../platform/localization/runtime";
@@ -71,6 +72,12 @@ import { useFocusRestore } from "../chrome/useFocusRestore";
 import { ActionConfirmationDialog } from "../chrome/ActionConfirmationDialog";
 
 // --- the palette -----------------------------------------------------------------------
+
+export function commandFamilyHeading(
+  resolution: MessageResolutionResult,
+): string | null {
+  return resolution.usedFallback ? null : resolution.message;
+}
 
 export function CommandPalette() {
   const open = useCommandPaletteOpen();
@@ -366,61 +373,66 @@ function CommandPaletteSurface() {
                   {presentation.noMatchMessage}
                 </li>
               )}
-              {presentation.rowGroups.map((group) => (
-                <li key={group.family} role="presentation">
-                  <div className="px-fg-4 pt-fg-2 pb-fg-0-5 text-caption font-medium uppercase tracking-wide text-ink-faint">
-                    {group.label}
-                  </div>
-                  <ul role="presentation">
-                    {group.rows.map((row) => {
-                      const accelerator = row.accelerator
-                        ? resolveKeycapPresentations(
-                            row.accelerator,
-                            resolveMessage,
-                          ).join("+")
-                        : "";
-                      return (
-                        <li key={row.id} role="presentation">
-                          <button
-                            type="button"
-                            id={optionId(row.optionDomIdPart)}
-                            role="option"
-                            aria-selected={row.selected}
-                            aria-disabled={row.disabled || undefined}
-                            disabled={row.disabled}
-                            title={row.disabledReason}
-                            tabIndex={-1}
-                            onMouseEnter={() => setCursorTo(row.index)}
-                            onClick={() => runAt(row.index)}
-                            className={row.rowClassName}
-                          >
-                            <span className={row.labelClassName}>{row.label}</span>
-                            <span className="flex items-center gap-fg-2 text-label text-ink-faint">
-                              {accelerator.length > 0 && !row.armed && (
-                                <Kbd>{accelerator}</Kbd>
-                              )}
-                              {row.confirmShortcutLabel && (
-                                <span
-                                  className="rounded-fg-xs border border-rule px-fg-1 py-fg-0-5 font-mono text-caption"
-                                  aria-hidden
-                                >
-                                  {row.confirmShortcutLabel}
-                                </span>
-                              )}
-                              {row.selectionHintVisible && (
-                                <CornerDownLeft
-                                  aria-hidden
-                                  className="size-3 text-ink-faint"
-                                />
-                              )}
-                            </span>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </li>
-              ))}
+              {presentation.rowGroups.map((group) => {
+                const heading = commandFamilyHeading(resolveMessage(group.label));
+                return (
+                  <li key={group.family} role="presentation">
+                    {heading !== null && (
+                      <div className="px-fg-4 pt-fg-2 pb-fg-0-5 text-caption font-medium text-ink-faint">
+                        {heading}
+                      </div>
+                    )}
+                    <ul role="presentation">
+                      {group.rows.map((row) => {
+                        const accelerator = row.accelerator
+                          ? resolveKeycapPresentations(
+                              row.accelerator,
+                              resolveMessage,
+                            ).join("+")
+                          : "";
+                        return (
+                          <li key={row.id} role="presentation">
+                            <button
+                              type="button"
+                              id={optionId(row.optionDomIdPart)}
+                              role="option"
+                              aria-selected={row.selected}
+                              aria-disabled={row.disabled || undefined}
+                              disabled={row.disabled}
+                              title={row.disabledReason}
+                              tabIndex={-1}
+                              onMouseEnter={() => setCursorTo(row.index)}
+                              onClick={() => runAt(row.index)}
+                              className={row.rowClassName}
+                            >
+                              <span className={row.labelClassName}>{row.label}</span>
+                              <span className="flex items-center gap-fg-2 text-label text-ink-faint">
+                                {accelerator.length > 0 && !row.armed && (
+                                  <Kbd>{accelerator}</Kbd>
+                                )}
+                                {row.confirmShortcutLabel && (
+                                  <span
+                                    className="rounded-fg-xs border border-rule px-fg-1 py-fg-0-5 font-mono text-caption"
+                                    aria-hidden
+                                  >
+                                    {row.confirmShortcutLabel}
+                                  </span>
+                                )}
+                                {row.selectionHintVisible && (
+                                  <CornerDownLeft
+                                    aria-hidden
+                                    className="size-3 text-ink-faint"
+                                  />
+                                )}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </li>
+                );
+              })}
               {presentation.navLoading && (
                 // Loading is UI-ONLY (state-mode-uniformity ADR D2): a text-free skeleton
                 // standing in for result rows, the human search message only in the kit

@@ -18,7 +18,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { appConfirmGuard } from "../../platform/dispatch/middleware";
 import { resetKeybindings } from "../../platform/keymap/registry";
-import { createActionConfirmationDescriptor } from "../../platform/localization/message";
+import {
+  createActionConfirmationDescriptor,
+  type MessageDescriptor,
+} from "../../platform/localization/message";
+import { resolveMessageResult } from "../../platform/localization/fallback";
 import { LocalizationProvider } from "../../platform/localization/LocalizationProvider";
 import type { DashboardTimelineMode, SessionState } from "../../stores/server/engine";
 import {
@@ -36,7 +40,7 @@ import { useViewStore } from "../../stores/view/viewStore";
 // Register every command provider so the live palette is populated (mirrors the app
 // shell, which imports this aggregator once at load).
 import "../menus/registerAllCommands";
-import { CommandPalette } from "./CommandPalette";
+import { CommandPalette, commandFamilyHeading } from "./CommandPalette";
 import { ENGINE_WAIT } from "../../testing/timing";
 import {
   registerCommandProvider,
@@ -261,6 +265,29 @@ describe("CommandPalette lifecycle", () => {
     } finally {
       dispose();
     }
+  });
+
+  it("updates localized family headings without replacing their groups", async () => {
+    const runtime = createTestLocalizationRuntime();
+    renderPalette(runtime);
+    act(() => useCommandPaletteStore.getState().openPalette());
+    const sourceHeading = screen.getByText("General", { selector: "div" });
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+
+    expect(screen.getByText("Général", { selector: "div" })).toBe(sourceHeading);
+  });
+
+  it("omits an unresolved family heading without exposing its token or fallback", () => {
+    const runtime = createTestLocalizationRuntime(ltrTestLocale);
+    const missing = {
+      key: "common:commandFamilies.missing",
+    } as unknown as MessageDescriptor;
+    const resolution = resolveMessageResult(runtime, missing);
+
+    expect(resolution.usedFallback).toBe(true);
+    expect(commandFamilyHeading(resolution)).toBeNull();
+    expect(resolution.message).not.toContain("commandFamilies");
   });
 
   it("exposes disabled reasons and excludes disabled rows from interaction", () => {

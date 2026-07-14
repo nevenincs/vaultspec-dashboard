@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import { legacyActionPresentation } from "../../platform/actions/action";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { showOrHideChangesAction } from "./editorKeybindings";
 import {
   resolveCommands,
@@ -98,21 +99,21 @@ export type ResolvedPaletteCommand = Omit<
   legacyConfirmPrompt: string | null;
 };
 
-/** Human-facing group heading per family (object-then-action taxonomy). */
-export const FAMILY_LABEL: Record<CommandFamily, string> = {
-  navigate: "navigate",
-  filters: "filters",
-  focus: "focus",
-  window: "window",
-  edit: "edit",
-  reload: "reload",
-  settings: "settings",
-  search: "search",
-  core: "core ops",
-  rag: "rag ops",
-  help: "help",
-  app: "app",
-};
+/** Localized group heading per stable command-family token. */
+export const COMMAND_FAMILY_MESSAGES = Object.freeze({
+  navigate: { key: "common:commandFamilies.navigation" },
+  filters: { key: "common:commandFamilies.filters" },
+  focus: { key: "common:commandFamilies.focus" },
+  window: { key: "common:commandFamilies.layout" },
+  edit: { key: "common:commandFamilies.editing" },
+  reload: { key: "common:commandFamilies.refresh" },
+  settings: { key: "common:commandFamilies.settings" },
+  search: { key: "common:commandFamilies.search" },
+  core: { key: "common:commandFamilies.workspaceMaintenance" },
+  rag: { key: "common:commandFamilies.searchMaintenance" },
+  help: { key: "common:commandFamilies.help" },
+  app: { key: "common:commandFamilies.general" },
+} as const satisfies Record<CommandFamily, MessageDescriptor>);
 
 export const COMMAND_PALETTE_SOURCE_ITEMS_CAP = 128;
 export const COMMAND_PALETTE_SOURCE_ITEM_MAX_CHARS = 256;
@@ -621,7 +622,7 @@ export interface CommandPaletteRowView {
 
 export interface CommandPaletteRowGroupView {
   family: CommandFamily;
-  label: string;
+  label: MessageDescriptor;
   rows: CommandPaletteRowView[];
 }
 
@@ -829,7 +830,7 @@ export function deriveCommandPalettePresentationView(
   const activeRow = safeCursor >= 0 ? rows[safeCursor] : undefined;
   const rowGroups = commandView.groups.map((group) => ({
     family: group.family,
-    label: FAMILY_LABEL[group.family],
+    label: COMMAND_FAMILY_MESSAGES[group.family],
     rows: group.commands
       .map((command) => rowsById.get(command.id))
       .filter((row): row is CommandPaletteRowView => row !== undefined),
