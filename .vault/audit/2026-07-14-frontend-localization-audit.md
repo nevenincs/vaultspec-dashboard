@@ -471,3 +471,35 @@ ESLint and Prettier checks and the full TypeScript and production Vite build pas
 production output contains neither HMR markers nor the reviewed development globals.
 The execution record and plan checkbox accurately trace S06, which is accepted with no
 open findings.
+
+### W01.P01.S07 reactivity test | high | Remove post-initialization runtime monkeypatching
+
+Commit `e3f8f98933` passes all 13 targeted real-behavior assertions, but the provider
+reactivity case directly replaces both `localization.options.supportedLngs` and the
+private `languageUtils.supportedLngs` service field after initialization. That is a
+monkeypatched production singleton and internal runtime configuration, which violates
+the repository test rule even though `afterEach` restores the captured references and
+the file runs sequentially. Prove the language transition through a normally
+initialized real runtime carrying the bounded alternate resources, while continuing to
+exercise the production hook or provider boundary without changing private services or
+production configuration. Retain deterministic cleanup and prove the application
+singleton remains on its shipped source-locale configuration.
+
+### W01.P01.S07 regression coverage | medium | Preserve the substrate's safety bounds
+
+The suites cover every formatter family and ordinary invalid inputs, but they do not
+lock several boundaries that were required to accept the underlying steps: maximum
+locale length, unknown and oversized formatter options, hostile Proxy-backed values,
+resource removal and replacement isolation, nested translation rejection, and
+verbatim preservation of user values containing translation-like syntax. The visible
+copy helper also checks only a narrow subset of the prohibited implementation
+vocabulary. Add focused assertions against the production modules for these accepted
+contracts without mirroring their business logic. Keep locale-dependent expectations
+portable by comparing semantic differences or native `Intl` results where exact ICU
+punctuation is not part of the product contract.
+
+Targeted Vitest execution passed all three files and 13 tests, and full ESLint,
+Prettier, and TypeScript checks passed. The tests import production modules and real
+resources directly and use no fake, mock, stub, skip, or expected failure. S07 requires
+remediation for the runtime mutation and missing regression boundaries before
+acceptance.
