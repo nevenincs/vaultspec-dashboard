@@ -142,7 +142,7 @@ export function FrameworkStatusCluster() {
         const item = zone.rove(id);
         // The ONE shared toggle descriptor for this panel — composed here exactly
         // as the command palette and keymap compose it, so the chip cannot drift.
-        const action = controlPanelToggleAction(id);
+        const action = controlPanelToggleAction(id, openPanel);
         return (
           <StatusChip
             key={id}

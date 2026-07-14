@@ -26,6 +26,7 @@ import {
   type ActionDescriptorBase,
 } from "../../platform/actions/action";
 import type { KeybindingOverrides } from "../../platform/keymap/registry";
+import type { ControlPanelId } from "./controlPanels";
 
 /** The canonical command-family taxonomy (command-palette-actions ADR): every
  *  surface enrolls its verbs under one of these. `navigate`/`focus` move the view;
@@ -155,6 +156,8 @@ export interface CommandContext {
   keybindingOverrides: KeybindingOverrides;
   /** Graph layout frozen flag (the graph provider names freeze vs unfreeze). */
   graphFrozen: boolean;
+  /** The currently open framework control panel, for pure toggle-label projection. */
+  openControlPanel: ControlPanelId | null;
   /** Shell-frame visibility snapshot (the window provider reads these). */
   shell: CommandShellContext;
   /** The open document's stem for document-scoped verbs (copy-link), or null/absent

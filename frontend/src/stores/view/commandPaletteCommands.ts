@@ -74,6 +74,7 @@ import {
   useShellWindowActions,
 } from "./shellLayout";
 import { useCommandPaletteOpsFeedbackBoundary } from "./commandPalette";
+import { useOpenControlPanel } from "./controlPanels";
 
 // Re-export the command-plane vocabulary from its canonical home (the registry) so
 // existing importers keep resolving these names from this module.
@@ -888,6 +889,7 @@ export function useCommandPaletteCommandView(): CommandPaletteCommandView {
   const clearFeatureFilter = useDashboardFeatureFilterDraft(scope).clear;
   const clearProjectHistory = useClearRecents();
   const graphFrozen = useGraphControlsFrozen();
+  const openControlPanel = useOpenControlPanel();
   const setThemePreference = useThemeSettingIntent().setThemePreference;
   const shellFrame = useShellFrameView(scope);
   const shellActions = useShellWindowActions(scope, shellFrame);
@@ -906,6 +908,7 @@ export function useCommandPaletteCommandView(): CommandPaletteCommandView {
       timeTravel,
       keybindingOverrides: getKeymapOverrides(),
       graphFrozen,
+      openControlPanel,
       shell: {
         leftRailVisible: shellFrame.leftRailVisible,
         leftCollapsed: shellFrame.leftCollapsed,
@@ -982,6 +985,7 @@ export function useCommandPaletteCommandView(): CommandPaletteCommandView {
     clearProjectHistory,
     dateBounds,
     graphFrozen,
+    openControlPanel,
     resetFilters,
     rightPanelSetTab,
     runPaletteOp,

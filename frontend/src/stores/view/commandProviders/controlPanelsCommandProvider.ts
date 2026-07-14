@@ -6,10 +6,15 @@
 // family, like the shared Settings command.
 
 import { controlPanelActions } from "../chromeActions";
-import { registerCommandProvider } from "../commandRegistry";
+import { registerCommandProvider, type CommandContext } from "../commandRegistry";
 
-export function controlPanelsCommandProvider(): readonly unknown[] {
-  return controlPanelActions().map((action) => ({ ...action, family: "app" as const }));
+export function controlPanelsCommandProvider(
+  ctx: Pick<CommandContext, "openControlPanel">,
+): readonly unknown[] {
+  return controlPanelActions(ctx.openControlPanel).map((action) => ({
+    ...action,
+    family: "app" as const,
+  }));
 }
 
 registerCommandProvider("control-panels", controlPanelsCommandProvider);

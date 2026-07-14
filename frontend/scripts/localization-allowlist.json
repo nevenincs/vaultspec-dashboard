@@ -6370,56 +6370,6 @@
     "rule": "presentation-field"
   },
   {
-    "id": "205a38176aee973491817c46",
-    "path": "src/stores/view/chromeActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "3461ca24e0e7db1326047cee",
-    "path": "src/stores/view/chromeActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "4a03361b479fafaeb70128c4",
-    "path": "src/stores/view/chromeActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "94498e40eca805cc013cd878",
-    "path": "src/stores/view/chromeActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "9e32072ff05826bb7c969d6e",
-    "path": "src/stores/view/chromeActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "b2787106ce8f120455923cd2",
-    "path": "src/stores/view/chromeActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "bc5255e8d92d40e05df740c0",
-    "path": "src/stores/view/chromeActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "e5f901a3f24977d766d0bfd3",
-    "path": "src/stores/view/chromeActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "fc4daf4b9cc45583fdae61c7",
-    "path": "src/stores/view/chromeActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "fe9e5bd948c87e5c6642ca51",
-    "path": "src/stores/view/chromeActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "0586cf0dc8e7ad0203896d4d",
     "path": "src/stores/view/commandPalette.ts",
     "rule": "presentation-field"

@@ -24,6 +24,7 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
     timeTravel: false,
     keybindingOverrides: {},
     graphFrozen: false,
+    openControlPanel: null,
     shell: {
       leftRailVisible: true,
       leftCollapsed: false,

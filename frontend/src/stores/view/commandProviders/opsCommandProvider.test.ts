@@ -11,7 +11,7 @@ import { settingsCommandProvider } from "./settingsCommandProvider";
 
 type RawCommand = {
   id?: string;
-  label?: string;
+  label?: unknown;
   family?: string;
   confirm?: boolean;
   disabledInTimeTravel?: boolean;
@@ -25,6 +25,7 @@ function commandContext(over: Partial<CommandContext> = {}): CommandContext {
     timeTravel: false,
     keybindingOverrides: {},
     graphFrozen: false,
+    openControlPanel: null,
     shell: {
       leftRailVisible: true,
       leftCollapsed: false,
@@ -99,7 +100,7 @@ describe("opsCommandProvider", () => {
     );
     expect(settings?.family).toBe("app");
     // Composed from the shared `openSettingsAction` builder (unified-action-plane).
-    expect(settings?.label).toBe("Settings…");
+    expect(settings?.label).toEqual({ key: "common:actions.openSettings" });
   });
 });
 

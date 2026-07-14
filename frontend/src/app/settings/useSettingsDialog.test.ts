@@ -23,6 +23,7 @@ function commandContext(): CommandContext {
     timeTravel: false,
     keybindingOverrides: {},
     graphFrozen: false,
+    openControlPanel: null,
     shell: {
       leftRailVisible: true,
       leftCollapsed: false,
@@ -121,7 +122,7 @@ describe("command-palette Settings entry point", () => {
       .find((c) => c.id === "app:settings");
     expect(settings).toBeDefined();
     expect(settings?.family).toBe("app");
-    expect(settings?.label).toBe("Settings…");
+    expect(settings?.label).toEqual({ key: "common:actions.openSettings" });
 
     expect(useSettingsDialog.getState().open).toBe(false);
     settings?.run?.();

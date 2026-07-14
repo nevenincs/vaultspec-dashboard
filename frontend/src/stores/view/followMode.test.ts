@@ -47,9 +47,13 @@ describe("follow mode toggle (view-local, default ON)", () => {
 
   it("the shared toggle action's label reflects the resulting action", () => {
     setFollowMode(true);
-    expect(toggleFollowModeAction().label).toBe("Turn Off Follow Mode");
+    expect(toggleFollowModeAction().label).toEqual({
+      key: "common:actions.disableFollowMode",
+    });
     setFollowMode(false);
-    expect(toggleFollowModeAction().label).toBe("Turn On Follow Mode");
+    expect(toggleFollowModeAction().label).toEqual({
+      key: "common:actions.enableFollowMode",
+    });
     expect(toggleFollowModeAction().id).toBe("view:follow-mode");
   });
 });
