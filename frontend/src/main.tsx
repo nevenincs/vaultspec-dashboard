@@ -4,6 +4,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ErrorBoundary } from "./platform/errors/ErrorBoundary";
+import { bindDocumentLanguage } from "./platform/localization/documentLanguage";
+import { LocalizationProvider } from "./platform/localization/LocalizationProvider";
 import { installGlobalTraps } from "./platform/logger/globalTraps";
 import { ringBuffer } from "./platform/logger/logger";
 import { failurePolicy } from "./platform/policy/failurePolicy";
@@ -16,6 +18,11 @@ import "./styles.css";
 const rootElement = document.getElementById("root");
 if (!rootElement) {
   throw new Error("missing #root element");
+}
+
+const unbindDocumentLanguage = bindDocumentLanguage();
+if (import.meta.hot) {
+  import.meta.hot.dispose(unbindDocumentLanguage);
 }
 
 // Theme model (design-language adoption S09): resolve the stored preference
@@ -61,14 +68,16 @@ if (import.meta.env.DEV) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    {/* App-level boundary: the last line. A throw that escapes every region
-        boundary degrades to a full-screen recoverable fallback, never a blank
-        white screen. */}
-    <ErrorBoundary region="app" variant="app">
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </ErrorBoundary>
+    <LocalizationProvider>
+      {/* App-level boundary: the last line. A throw that escapes every region
+          boundary degrades to a full-screen recoverable fallback, never a blank
+          white screen. */}
+      <ErrorBoundary region="app" variant="app">
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </LocalizationProvider>
   </StrictMode>,
 );
 
