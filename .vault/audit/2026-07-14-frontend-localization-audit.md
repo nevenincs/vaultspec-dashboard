@@ -67,6 +67,26 @@ is correctly restricted at runtime to the catalog-owned Cancel action, and malfo
 inherited, accessor-backed, oversized, non-finite, and extra-field inputs otherwise
 fail closed.
 
+### nested-missing-key-leak | high | Missing nested translations can render catalog keys
+
+`W01.P01.S117` validates only the final translated string for the requested outer key.
+With a real i18next instance, a present catalog message containing a missing nested
+translation such as `$t(errors:missing.detail)` resolves to user-visible text containing
+`missing.detail`. The post-translation checks no longer see the nesting marker and do
+not recognize the nested key because they compare only with the requested outer key.
+This violates the production fallback requirement that message keys and diagnostic
+translation state never reach the interface.
+
+### interpolation-data-rejection | medium | User data resembling translation syntax is discarded
+
+`W01.P01.S117` searches the fully interpolated result for `{{`, `}}`, and `$t(`. Those
+substrings can legitimately occur in filenames, document titles, search terms, and
+other user-authored interpolation values. A real i18next assertion with a user value of
+`$t(user-authored)` caused a valid complete message to be replaced by the generic safe
+fallback. The resolver therefore cannot distinguish unresolved catalog syntax from
+preserved user data and violates the decision that user-authored content remains
+untranslated data.
+
 ## Recommendations
 
 <!-- Actionable recommendations -->
@@ -125,3 +145,19 @@ value-free allowlist. Targeted runtime assertions against the bundled production
 module passed for accepted and rejected labels, as did targeted ESLint and Prettier
 checks and the TypeScript 6 project check. The original medium finding is resolved and
 S03 has no open findings.
+
+### W01.P01.S117 review | changes required | Prevent nested-key leakage without rejecting user data
+
+Commit `0b3f59a528` stays within the planned React-free and store-free fallback scope,
+uses i18next `replace`, top-level numeric `count`, and string `context` options
+correctly, rejects malformed descriptors and translator failures, and terminates at the
+direct source-catalog fallback without recursion. The full TypeScript 6 project check
+and diff hygiene pass. However, real i18next assertions prove one high-severity missing
+nested-key leak and one medium-severity user-data preservation failure. Validate
+interpolation and nesting against catalog-origin syntax before or independently of
+substituted user values, and prove missing nested resources cannot become rendered key
+fragments. Preserve arbitrary bounded user strings verbatim. Update the execution
+record's safety outcome and re-run real-runtime assertions for ordinary interpolation,
+plural `count`, `context`, missing nested resources, malformed translators and
+descriptors, source-catalog fallback, and translation-like user data before marking the
+step accepted.
