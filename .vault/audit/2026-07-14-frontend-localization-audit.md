@@ -1357,3 +1357,30 @@ fakes, mocks, stubs, patches, skips, or expected failures. Exact baseline reconc
 removed only the two former dialog literal findings, reducing the scanner from 1,499 to
 1,497 findings while the keybinding bridge remains at 50 entries. S33 is accepted with
 no open findings.
+
+### W02.P05.S248 review | pass | Shortcut settings no longer expose implementation identity
+
+Commit `cff1c360b3`, implemented through delegated Terra rollout work, migrates the
+keyboard shortcut settings projection and recorder to typed message presentations.
+Rows, groups, and conflicts carry stable action or semantic IDs, while translated copy
+resolves only during React render. First-seen ordering, effective chords, override
+serialization, reset behavior, and recorder behavior are preserved.
+
+Review confirmed that malformed labels, groups, and conflict presentations fail closed.
+The former conflict helper that substituted a raw action ID for a missing label is
+removed. Conflict guidance is now one complete catalog message that names the
+conflicting action and tells the user to choose another shortcut. Recorder guidance,
+reset copy, empty state, and accessibility names are also catalog-owned.
+
+Locale changes preserve group, row, button, conflict, and keycap identity. A real
+component test changes locale during active recording, confirms that recording state
+and DOM identity remain stable, and then captures the next chord successfully. The
+compact empty state no longer describes registry or enrollment state.
+
+Independent Sol verification passed 42 focused tests across six files, TypeScript,
+ESLint, the localization scanner, and diff checks. The complete frontend lint recipe
+passed. Tests use the production registry, localization runtime, React state, recorder,
+and DOM events without fakes, mocks, stubs, patches, skips, expected failures, or
+platform mutations. Exact baseline reconciliation removed 13 component literal
+findings and added none, reducing the scanner from 1,497 to 1,484 findings. S248 is
+accepted with no open findings.
