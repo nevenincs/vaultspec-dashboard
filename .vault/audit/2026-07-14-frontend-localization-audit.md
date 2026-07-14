@@ -1173,3 +1173,28 @@ lint gate passed. Baseline reconciliation removed exactly three bridge findings 
 new or mismatched findings: the scanner decreased from 1,519 to 1,516, and bridge debt
 decreased from 165 to 162. No user-facing browser or developer metadata, raw localization
 keys, diagnostics, or em dashes were introduced. S122 is accepted with no open findings.
+
+### W02.P04.S123 review | pass | Shared chrome actions remain reactive and unified
+
+Commit `c3ade4b7c0`, implemented through delegated Terra rollout work, migrates all
+shared chrome actions to approved catalog descriptors while preserving stable IDs,
+icons, sections, run behavior, accelerator derivation, eligibility, and reset-layout
+gating. Graph and follow-mode labels describe the current inverse action. Control-panel
+labels correctly say Hide only for the active panel and Show for every closed panel,
+including when another panel is open.
+
+The initial Sol architecture review rejected a proposed hidden control-panel store read
+inside the shared builder because command providers must remain pure functions of their
+context. The accepted implementation adds a required raw `openControlPanel` snapshot to
+the command context, subscribes reactively at the palette read boundary, includes it in
+memo dependencies, narrows it into the provider, and passes subscribed state explicitly
+from the status cluster. This removes hidden dependencies and stale-label risk. Review
+also required removal of synthetic reset-runner callback tests; the provider test was
+corrected to use real store transitions without no-op callbacks, fake, mock, stub, patch,
+monkeypatch, skip, or expected-failure behavior.
+
+The focused run passed all 81 tests across 14 files, and the complete frontend lint gate
+passed. Baseline reconciliation removed exactly 10 bridge findings with no additions or
+metadata mismatches: the scanner decreased from 1,516 to 1,506, and bridge debt decreased
+from 162 to 152. No user-facing developer metadata, raw localization keys, diagnostics,
+or em dashes were introduced. S123 is accepted with no open findings.
