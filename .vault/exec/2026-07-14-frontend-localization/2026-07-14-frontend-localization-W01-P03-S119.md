@@ -52,26 +52,25 @@ related:
 
 - Inspect every production message leaf in every shipped locale for complete, valid,
   bounded interpolation tokens and prohibited nested-message syntax.
-- Compare each locale's interpolation names with the source locale by semantic message
-  key.
-- Resolve every production message through the production descriptor and safe fallback
-  contracts using bounded values.
-- Exercise missing-value recovery with the real alternate-locale runtime and resources.
+- Resolve production messages without parameters through the production descriptor and
+  safe fallback contracts to their actual source copy.
+- Exercise matching parameter resolution and missing-value recovery with the real
+  left-to-right and right-to-left alternate-locale resources.
 
 ## Outcome
 
 Production catalog interpolation now has a real-resource invariant test. The test reads
 the shipped locale aggregate directly, rejects malformed delimiters and nested catalog
-references, enforces descriptor bounds, verifies parameter parity, and proves successful
-resolution through production message contracts. Missing interpolation values resolve
-to safe localized recovery copy.
+references, bounds distinct parameter names, and proves source-copy resolution through
+production message contracts. Matching left-to-right and right-to-left parameters
+resolve without placeholders, while missing values use safe localized recovery copy.
 
 ## Notes
 
-The production English catalog currently contains no interpolation parameters, so the
-parity loop establishes the invariant for later catalog growth. The bounded alternate
-locale fixture supplies the real interpolation case for complete and missing values.
-No production catalog was changed. Targeted Vitest, ESLint, Prettier, and TypeScript
-checks passed. Semantic discovery was unavailable because the installed
-`vaultspec-rag` executable lacks its Python module; direct source inspection provided
-the required grounding.
+The production English catalog currently contains no interpolation parameters. The
+production scan therefore makes no cross-locale parity claim and activates for future
+catalog additions. Bounded alternate-locale fixtures supply non-vacuous complete and
+missing-value behavior in both writing directions. No production catalog was changed.
+Targeted Vitest, ESLint, Prettier, and TypeScript checks passed. Semantic discovery was
+unavailable because the installed `vaultspec-rag` executable lacks its Python module;
+direct source inspection provided the required grounding.

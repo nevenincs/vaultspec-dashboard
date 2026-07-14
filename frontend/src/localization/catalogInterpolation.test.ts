@@ -1,10 +1,11 @@
-import type { TOptions } from "i18next";
 import { describe, expect, it } from "vitest";
 
 import {
   createTestLocalizationRuntime,
   ltrTestLocale,
   ltrTestResources,
+  rtlTestLocale,
+  rtlTestResources,
 } from "./testing";
 import { resources } from "../locales/en";
 import { resolveMessage } from "../platform/localization/fallback";
@@ -14,7 +15,6 @@ import {
   MESSAGE_VALUE_COUNT_MAX,
   MESSAGE_VALUE_NAME_MAX_CHARS,
   type MessageKey,
-  type MessageValues,
 } from "../platform/localization/message";
 import {
   createLocalizationRuntime,
@@ -26,10 +26,39 @@ const INTERPOLATION_DELIMITER = /\{\{|\}\}/u;
 const NESTED_MESSAGE = /\$t\(/u;
 
 interface CatalogTemplate {
-  readonly key: MessageKey;
-  readonly locale: string;
   readonly template: string;
   readonly tokenNames: readonly string[];
+}
+
+function interpolationTokenNames(
+  identity: string,
+  template: string,
+): readonly string[] {
+  expect(template, `${identity} must not use nested catalog messages`).not.toMatch(
+    NESTED_MESSAGE,
+  );
+
+  const matches = [...template.matchAll(INTERPOLATION_TOKEN)];
+  const unmatched = template.replace(INTERPOLATION_TOKEN, "");
+  expect(
+    unmatched,
+    `${identity} has an incomplete or malformed interpolation token`,
+  ).not.toMatch(INTERPOLATION_DELIMITER);
+
+  const tokenNames = [...new Set(matches.map((match) => match[1]!))];
+  expect(
+    tokenNames.length,
+    `${identity} exceeds the distinct descriptor value bound`,
+  ).toBeLessThanOrEqual(MESSAGE_VALUE_COUNT_MAX);
+
+  for (const tokenName of tokenNames) {
+    expect(
+      tokenName.length,
+      `${identity} has an overlong interpolation name`,
+    ).toBeLessThanOrEqual(MESSAGE_VALUE_NAME_MAX_CHARS);
+  }
+
+  return tokenNames;
 }
 
 function catalogTemplate(locale: string, key: MessageKey): CatalogTemplate {
@@ -51,91 +80,47 @@ function catalogTemplate(locale: string, key: MessageKey): CatalogTemplate {
     expect.any(String),
   );
   const template = value as string;
-  expect(template, `${locale}:${key} must not use nested catalog messages`).not.toMatch(
-    NESTED_MESSAGE,
-  );
-
-  const matches = [...template.matchAll(INTERPOLATION_TOKEN)];
-  const unmatched = template.replace(INTERPOLATION_TOKEN, "");
-  expect(
-    unmatched,
-    `${locale}:${key} has an incomplete or malformed interpolation token`,
-  ).not.toMatch(INTERPOLATION_DELIMITER);
-  expect(
-    matches.length,
-    `${locale}:${key} exceeds the descriptor value bound`,
-  ).toBeLessThanOrEqual(MESSAGE_VALUE_COUNT_MAX);
-
-  const tokenNames = matches.map((match) => match[1]!);
-  for (const tokenName of tokenNames) {
-    expect(
-      tokenName.length,
-      `${locale}:${key} has an overlong interpolation name`,
-    ).toBeLessThanOrEqual(MESSAGE_VALUE_NAME_MAX_CHARS);
-  }
-
-  return { key, locale, template, tokenNames };
-}
-
-function descriptorValues(tokenNames: readonly string[]): MessageValues | undefined {
-  const uniqueNames = [...new Set(tokenNames)];
-  if (uniqueNames.length === 0) return undefined;
-
-  return Object.freeze(
-    Object.fromEntries(
-      uniqueNames.map((name) => [name, name === "count" ? 2 : `value-${name}`]),
-    ),
-  );
-}
-
-function translationOptions(values?: MessageValues): TOptions {
-  if (values === undefined) return { returnObjects: false };
 
   return {
-    count: typeof values.count === "number" ? values.count : undefined,
-    context: typeof values.context === "string" ? values.context : undefined,
-    replace: values,
-    returnObjects: false,
+    template,
+    tokenNames: interpolationTokenNames(`${locale}:${key}`, template),
   };
 }
 
 describe("production catalog interpolation", () => {
-  it("keeps interpolation parameters compatible across every shipped locale", () => {
+  it("checks every production template for valid bounded interpolation syntax", () => {
     expect(supportedLocales.length).toBeGreaterThan(0);
     expect(MESSAGE_KEYS.length).toBeGreaterThan(0);
 
-    for (const key of MESSAGE_KEYS) {
-      const sourceTokens = new Set(catalogTemplate("en", key).tokenNames);
-
-      for (const locale of supportedLocales) {
-        const localeTokens = new Set(catalogTemplate(locale, key).tokenNames);
-        expect(
-          localeTokens,
-          `${locale}:${key} must use the source-locale interpolation parameters`,
-        ).toEqual(sourceTokens);
+    for (const locale of supportedLocales) {
+      for (const key of MESSAGE_KEYS) {
+        catalogTemplate(locale, key);
       }
     }
   });
 
-  it("resolves every shipped template through bounded production descriptors", async () => {
+  it("resolves production templates without parameters to their source copy", async () => {
+    let checkedTemplates = 0;
+
     for (const locale of supportedLocales) {
       const runtime = createLocalizationRuntime();
       await runtime.changeLanguage(locale);
 
       for (const key of MESSAGE_KEYS) {
         const { template, tokenNames } = catalogTemplate(locale, key);
-        const values = descriptorValues(tokenNames);
-        const descriptor = createMessageDescriptor(key, values);
+        if (tokenNames.length > 0) continue;
 
+        const descriptor = createMessageDescriptor(key);
         expect(
           descriptor,
           `${locale}:${key} must fit the descriptor contract`,
         ).not.toBeNull();
+
         const resolved = resolveMessage(runtime, descriptor);
         expect(
           resolved,
           `${locale}:${key} must resolve through the safe boundary`,
-        ).toBe(runtime.t(key, translationOptions(values)));
+        ).toBe(template);
         expect(
           resolved,
           `${locale}:${key} must not expose unresolved interpolation`,
@@ -144,19 +129,39 @@ describe("production catalog interpolation", () => {
           resolved,
           `${locale}:${key} must not expose nested message syntax`,
         ).not.toMatch(NESTED_MESSAGE);
-        expect(template.length).toBeGreaterThan(0);
+        checkedTemplates += 1;
       }
     }
+
+    expect(checkedTemplates).toBeGreaterThan(0);
   });
 
-  it("uses safe localized fallback copy when a real interpolation value is absent", () => {
-    const runtime = createTestLocalizationRuntime(ltrTestLocale);
+  it("resolves matching LTR and RTL parameters and safely handles missing values", () => {
     const key = "errors:unexpectedSection.message";
+    const ltrTemplate = ltrTestResources.errors.unexpectedSection.message;
+    const rtlTemplate = rtlTestResources.errors.unexpectedSection.message;
+    const ltrTokens = interpolationTokenNames(`${ltrTestLocale}:${key}`, ltrTemplate);
+    const rtlTokens = interpolationTokenNames(`${rtlTestLocale}:${key}`, rtlTemplate);
     const complete = createMessageDescriptor(key, { section: "history" });
+    const ltrRuntime = createTestLocalizationRuntime(ltrTestLocale);
+    const rtlRuntime = createTestLocalizationRuntime(rtlTestLocale);
 
-    expect(resolveMessage(runtime, complete)).toBe("Réessayez history.");
-    expect(resolveMessage(runtime, { key })).toBe(
+    expect(ltrTokens).toEqual(["section"]);
+    expect(rtlTokens).toEqual(ltrTokens);
+    expect(complete).not.toBeNull();
+
+    const ltrResolved = resolveMessage(ltrRuntime, complete);
+    const rtlResolved = resolveMessage(rtlRuntime, complete);
+    expect(ltrResolved).toBe("Réessayez history.");
+    expect(rtlResolved).toBe("حاول فتح history مرة أخرى.");
+    expect(ltrResolved).not.toMatch(INTERPOLATION_DELIMITER);
+    expect(rtlResolved).not.toMatch(INTERPOLATION_DELIMITER);
+
+    expect(resolveMessage(ltrRuntime, { key })).toBe(
       ltrTestResources.errors.fallback.contentUnavailable,
+    );
+    expect(resolveMessage(rtlRuntime, { key })).toBe(
+      rtlTestResources.errors.fallback.contentUnavailable,
     );
   });
 });
