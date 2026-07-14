@@ -138,6 +138,16 @@ memory, and semantically identical configurations can churn the caches under dis
 ignored keys. This does not satisfy the step's bounded-options and bounded-retention
 contract.
 
+### formatter-locale-retention | medium | Formatter cache keys retain unbounded locale strings
+
+The `W01.P01.S05` remediation bounds option strings and cache entry counts, but the
+canonical locale remains unbounded and is copied verbatim into every cache key. A real
+runtime check accepted a valid private-use BCP 47 locale containing 90,004 characters,
+and the formatter implementation would retain that entire value in its cache key.
+Forty-eight entries therefore do not establish a byte bound for any formatter cache.
+The public boundary must reject oversized locale identifiers before canonicalization
+and cache insertion.
+
 ## Recommendations
 
 <!-- Actionable recommendations -->
@@ -289,3 +299,20 @@ runtime allowlist with its public type. Re-run the real cross-locale, invalid-in
 hostile-input, option-bound, list-bound, and cache-churn assertions. The review-only
 test file was removed after execution; no fake, mock, stub, patch, monkeypatch, skip, or
 xfail was used.
+
+### W01.P01.S05 remediation review | changes required | Bound retained locale identifiers
+
+Commit `f254b1f9b2` resolves all three original S05 findings. Reflection and formatting
+are exception-safe for Proxy-backed options, lists, and dates; the exported
+`RelativeTimeUnit` now exactly matches the singular runtime allowlist; and explicit
+family-specific allowlists reject unknown fields, accessors, symbols, oversized option
+strings, and invalid values while admitting the installed TypeScript and Intl option
+surface. Real production-module assertions also passed for English and German output,
+percentage, duration, byte formatting, and more than 48 distinct formatter
+configurations. No test double, runtime patch, skip, or expected failure was used, and
+the temporary review test was removed.
+
+One medium resource-bound defect remains. Canonical private-use locale identifiers can
+be arbitrarily long, and the full identifier is retained in each cache key. Add a
+documented locale-length bound before `Intl.getCanonicalLocales`, then repeat the
+hostile-input, cross-locale, option, and cache-churn assertions before accepting S05.
