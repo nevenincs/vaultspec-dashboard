@@ -3,14 +3,19 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type ChordEvent } from "./chord";
 import {
   type KeybindingDef,
+  LEGACY_KEYBINDING_PRESENTATION_MAX_CHARS,
   MAX_KEYBINDING_ID_LEN,
   conflictsForCandidate,
   contextsOverlap,
   effectiveChord,
   findConflicts,
+  legacyKeybindingPresentation,
   listKeybindings,
+  normalizeKeybindingGroupPresentation,
   normalizeKeybindingId,
   normalizeKeybindingOverrides,
+  normalizeKeybindingPresentation,
+  normalizeLegacyKeybindingPresentation,
   registerKeybindings,
   resetKeybindings,
   resolveKeybinding,
@@ -23,8 +28,8 @@ function ev(over: Partial<ChordEvent> & { key: string }): ChordEvent {
 const def = (
   over: Partial<KeybindingDef> & Pick<KeybindingDef, "id" | "defaultChord">,
 ): KeybindingDef => ({
-  label: over.id,
-  group: "Test",
+  label: legacyKeybindingPresentation(over.id),
+  group: legacyKeybindingPresentation("Test"),
   context: "global",
   ...over,
 });
@@ -37,8 +42,8 @@ describe("registerKeybindings", () => {
       def({
         id: " palette ",
         defaultChord: " Mod+K ",
-        label: " Open palette ",
-        group: " General ",
+        label: legacyKeybindingPresentation(" Open palette "),
+        group: legacyKeybindingPresentation(" General "),
         context: " global " as KeybindingDef["context"],
       }),
     ]);
@@ -50,8 +55,8 @@ describe("registerKeybindings", () => {
       {
         id: "palette",
         defaultChord: "Mod+K",
-        label: "Open palette",
-        group: "General",
+        label: legacyKeybindingPresentation("Open palette"),
+        group: legacyKeybindingPresentation("General"),
         context: "global",
       },
     ]);
@@ -89,7 +94,13 @@ describe("registerKeybindings", () => {
 
   it("throws on malformed binding metadata", () => {
     expect(() =>
-      registerKeybindings([def({ id: "x", defaultChord: "Mod+X", label: "   " })]),
+      registerKeybindings([
+        def({
+          id: "x",
+          defaultChord: "Mod+X",
+          label: legacyKeybindingPresentation("   "),
+        }),
+      ]),
     ).toThrow();
     expect(() =>
       registerKeybindings([
@@ -100,6 +111,94 @@ describe("registerKeybindings", () => {
         }),
       ]),
     ).toThrow();
+  });
+
+  it("normalizes typed labels and static group descriptors", () => {
+    const dispose = registerKeybindings([
+      def({
+        id: "typed",
+        defaultChord: "Mod+T",
+        label: {
+          key: "common:accessibility.confirmAction",
+          values: { action: "Retry" },
+        },
+        group: { key: "common:actions.showKeyboardShortcuts" },
+      }),
+    ]);
+
+    expect(listKeybindings()).toEqual([
+      {
+        id: "typed",
+        defaultChord: "Mod+T",
+        label: {
+          key: "common:accessibility.confirmAction",
+          values: { action: "Retry" },
+        },
+        group: { key: "common:actions.showKeyboardShortcuts" },
+        context: "global",
+      },
+    ]);
+    dispose();
+  });
+
+  it("rejects malformed descriptors, interpolated groups, and accessor records", () => {
+    expect(() =>
+      registerKeybindings([
+        def({
+          id: "dynamic-group",
+          defaultChord: "Mod+D",
+          group: {
+            key: "common:accessibility.confirmAction",
+            values: { action: "Group" },
+          } as unknown as KeybindingDef["group"],
+        }),
+      ]),
+    ).toThrowError("keybinding has a malformed id");
+
+    expect(() =>
+      registerKeybindings([
+        def({
+          id: "bad-label",
+          defaultChord: "Mod+B",
+          label: { key: "missing:label" } as unknown as KeybindingDef["label"],
+        }),
+      ]),
+    ).toThrowError("keybinding has a malformed id");
+
+    const accessor = Object.defineProperty({}, "id", { get: () => "accessor" });
+    expect(() => registerKeybindings([accessor as KeybindingDef])).toThrowError(
+      "keybinding has a malformed id",
+    );
+  });
+});
+
+describe("keybinding presentation normalization", () => {
+  it("bounds legacy copy and accepts typed labels", () => {
+    expect(normalizeLegacyKeybindingPresentation(" Label ")).toBe("Label");
+    expect(normalizeLegacyKeybindingPresentation("   ")).toBeNull();
+    expect(
+      normalizeLegacyKeybindingPresentation(
+        "x".repeat(LEGACY_KEYBINDING_PRESENTATION_MAX_CHARS + 1),
+      ),
+    ).toBeNull();
+    expect(normalizeKeybindingPresentation({ key: "common:actions.retry" })).toEqual({
+      key: "common:actions.retry",
+    });
+    expect(normalizeKeybindingPresentation({ key: "missing:key" })).toBeNull();
+  });
+
+  it("requires group descriptors to be static", () => {
+    expect(
+      normalizeKeybindingGroupPresentation({
+        key: "common:accessibility.confirmAction",
+        values: { action: "Group" },
+      }),
+    ).toBeNull();
+    expect(
+      normalizeKeybindingGroupPresentation({
+        key: "common:actions.showKeyboardShortcuts",
+      }),
+    ).toEqual({ key: "common:actions.showKeyboardShortcuts" });
   });
 });
 

@@ -102,7 +102,10 @@ menu and reader producers scheduled through `S82`, has left the temporary bridge
 
 Migrate keybinding, command-provider, palette, and context-menu contracts and resolve all messages at React rendering boundaries.
 
-- [ ] `W02.P05.S22` - Replace keybinding labels and groups with typed messages while preserving IDs, chords, and contexts; `frontend/src/platform/keymap/registry.ts`.
+- [x] `W02.P05.S22` - Replace keybinding labels and groups with typed messages while preserving IDs, chords, and contexts; `frontend/src/platform/keymap/registry.ts, frontend/src/platform/keymap/registry.test.ts, frontend/scripts/scan-localization.mjs, frontend/scripts/scan-localization.test.ts, frontend/scripts/fixtures/localization/invalid/legacy-keybinding-presentation.ts, frontend/scripts/localization-allowlist.json, frontend/src/stores/view/commandPalette.ts, frontend/src/stores/view/keyboardNavigation.ts, frontend/src/stores/view/keyboardShortcuts.ts, frontend/src/stores/view/settingsControls.ts, frontend/src/stores/view/leftRailKeybindings.ts, frontend/src/stores/view/editorKeybindings.ts, frontend/src/stores/view/graphToggleKeybindings.ts, frontend/src/app/stage/graphWalkKeybindings.ts, frontend/src/app/stage/graphWalkKeybindings.test.ts, frontend/src/app/chrome/regionCycleKeybindings.ts, frontend/src/stores/view/docTabKeybindings.ts, frontend/src/stores/view/projectActions.ts, frontend/src/stores/view/reloadKeybindings.ts, frontend/src/stores/view/rightRailKeybindings.ts, frontend/src/stores/view/workingSet.ts, frontend/src/stores/view/keymapDispatcher.test.ts, frontend/src/stores/view/keyboardShortcuts.test.ts, frontend/src/stores/view/settingsControls.test.ts, frontend/src/app/settings/controls/KeybindingControl.test.tsx, frontend/src/stores/view/commandPaletteCommands.test.ts, frontend/src/stores/view/defaultKeybindingConflicts.guard.test.ts`.
+- [ ] `W02.P05.S33` - Replace shortcut store messages with typed descriptors keyed by stable action IDs; `frontend/src/stores/view/keyboardShortcuts.ts, frontend/src/stores/view/keyboardShortcuts.test.ts`.
+- [ ] `W02.P05.S219` - Resolve shortcut dialog messages while using stable IDs as React keys; `frontend/src/app/menu/KeyboardShortcuts.tsx, frontend/src/app/menu/KeyboardShortcuts.render.test.tsx`.
+- [ ] `W02.P05.S248` - Resolve keybinding settings labels, groups, recorder guidance, and conflicts at the React boundary without raw action-ID fallbacks; `frontend/src/stores/view/settingsControls.ts, frontend/src/stores/view/settingsControls.test.ts, frontend/src/app/settings/controls/KeybindingControl.tsx, frontend/src/app/settings/controls/KeybindingControl.test.tsx, frontend/src/locales/en/, frontend/src/localization/`.
 - [ ] `W02.P05.S23` - Separate localized keycap display names from canonical chord identity and reject corrupt display fallbacks; `frontend/src/platform/keymap/chord.ts`.
 - [ ] `W02.P05.S24` - Migrate left-rail keybinding definitions to shared canonical action wording; `frontend/src/stores/view/leftRailKeybindings.ts`.
 - [ ] `W02.P05.S25` - Migrate editor keybinding definitions and actionable disabled reasons; `frontend/src/stores/view/editorKeybindings.ts`.
@@ -113,7 +116,6 @@ Migrate keybinding, command-provider, palette, and context-menu contracts and re
 - [ ] `W02.P05.S30` - Replace operational provider labels and internal service vocabulary with typed user concepts; `frontend/src/stores/view/commandProviders/opsCommandProvider.ts`.
 - [ ] `W02.P05.S31` - Resolve menu labels, reasons, confirmations, feedback, and live messages at the context-menu boundary; `frontend/src/app/menu/ContextMenuHost.tsx`.
 - [ ] `W02.P05.S32` - Resolve command, search, count, confirmation, and live-region messages at the palette boundary; `frontend/src/app/palette/CommandPalette.tsx`.
-- [ ] `W02.P05.S33` - Replace shortcut store messages with typed descriptors keyed by stable action IDs; `frontend/src/stores/view/keyboardShortcuts.ts`.
 - [ ] `W02.P05.S34` - Prove one action ID renders identical wording across menu, palette, and shortcut planes; `frontend/src/app/menu/*.test.tsx, frontend/src/app/palette/*.test.tsx`.
 - [ ] `W02.P05.S126` - Replace arbitrary palette operation feedback strings with typed outcome descriptors; `frontend/src/stores/view/commandPalette.ts`.
 - [ ] `W02.P05.S127` - Replace operation whitelist display labels with localized user concepts while preserving operation IDs; `frontend/src/stores/server/opsActions.ts`.
@@ -125,8 +127,9 @@ Migrate keybinding, command-provider, palette, and context-menu contracts and re
 - [ ] `W02.P05.S155` - Standardize theme and settings command builders on user-facing preference language; `frontend/src/stores/view/commandPaletteCommands.ts`.
 - [ ] `W02.P05.S217` - Migrate right-rail keybinding definitions to shared canonical action wording; `frontend/src/stores/view/rightRailKeybindings.ts`.
 - [ ] `W02.P05.S218` - Migrate document-tab keybinding definitions and actionable disabled reasons; `frontend/src/stores/view/docTabKeybindings.ts`.
-- [ ] `W02.P05.S219` - Resolve shortcut dialog messages while using stable IDs as React keys; `frontend/src/app/menu/KeyboardShortcuts.tsx`.
 - [ ] `W02.P05.S220` - Resolve mobile top-bar action and accessibility messages from stable action IDs; `frontend/src/app/shell/MobileTopBar.tsx`.
+- [ ] `W02.P05.S249` - Migrate keyboard navigation, project, and working-set bindings not owned by another producer step; `frontend/src/stores/view/keyboardNavigation.ts, frontend/src/stores/view/projectActions.ts, frontend/src/stores/view/workingSet.ts`.
+- [ ] `W02.P05.S250` - Remove the temporary keybinding presentation bridge after every producer and display consumer is localized; `frontend/src/platform/keymap/registry.ts, frontend/scripts/scan-localization.mjs, frontend/scripts/localization-allowlist.json, frontend/src/`.
 
 ### Phase `W02.P06` - shared presentation vocabularies
 

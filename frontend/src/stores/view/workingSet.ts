@@ -10,6 +10,7 @@ import {
 } from "../../platform/actions/action";
 import {
   type KeybindingDef,
+  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { normalizeNodeId } from "../nodeIds";
@@ -63,7 +64,7 @@ const WORKING_SET_CLEAR_BUTTON_CLASS =
 const WORKING_SET_ROW_HIDDEN_CLASS = "opacity-50";
 const WORKING_SET_HIDDEN_HINT = "Hidden by the active filter";
 
-export const WORKING_SET_KEYBINDING_GROUP = "Working set";
+export const WORKING_SET_KEYBINDING_GROUP = legacyKeybindingPresentation("Working set");
 export const WORKING_SET_EXPAND_SELECTION_ACTION_ID = "working-set:expand-selection";
 export const WORKING_SET_COLLAPSE_LAST_ACTION_ID = "working-set:collapse-last";
 
@@ -71,14 +72,16 @@ export const WORKING_SET_KEYBINDINGS: readonly KeybindingDef[] = [
   {
     id: WORKING_SET_EXPAND_SELECTION_ACTION_ID,
     defaultChord: "E",
-    label: "Expand selected document into the working set",
+    label: legacyKeybindingPresentation(
+      "Expand selected document into the working set",
+    ),
     group: WORKING_SET_KEYBINDING_GROUP,
     context: "global",
   },
   {
     id: WORKING_SET_COLLAPSE_LAST_ACTION_ID,
     defaultChord: "Backspace",
-    label: "Collapse the last working-set expansion",
+    label: legacyKeybindingPresentation("Collapse the last working-set expansion"),
     group: WORKING_SET_KEYBINDING_GROUP,
     context: "global",
   },

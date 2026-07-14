@@ -5,6 +5,7 @@ import { create } from "zustand";
 import { legacyActionPresentation } from "../../platform/actions/action";
 import {
   type KeybindingDef,
+  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { SEARCH_QUERY_MAX_CHARS, normalizeSearchQuery } from "../searchQuery";
@@ -15,12 +16,15 @@ export const COMMAND_PALETTE_OPS_MESSAGE_CAP = 240;
 export const COMMAND_PALETTE_QUERY_MAX_CHARS = SEARCH_QUERY_MAX_CHARS;
 export const COMMAND_PALETTE_ARMED_COMMAND_ID_MAX_CHARS = 512;
 export const COMMAND_PALETTE_ACTION_ID = "app:command-palette";
-export const COMMAND_PALETTE_SHORTCUT_LABEL = "Open the command palette";
+export const COMMAND_PALETTE_SHORTCUT_LABEL = legacyKeybindingPresentation(
+  "Open the command palette",
+);
+const GENERAL_KEYBINDING_GROUP = legacyKeybindingPresentation("General");
 export const COMMAND_PALETTE_KEYBINDING: KeybindingDef = {
   id: COMMAND_PALETTE_ACTION_ID,
   defaultChord: "Mod+K",
   label: COMMAND_PALETTE_SHORTCUT_LABEL,
-  group: "General",
+  group: GENERAL_KEYBINDING_GROUP,
   context: "global",
 };
 
@@ -36,22 +40,26 @@ export const COMMAND_PALETTE_KEYBINDING: KeybindingDef = {
 export type CommandPaletteMode = "command" | "search" | "document";
 
 export const SEARCH_PALETTE_ACTION_ID = "app:search";
-export const SEARCH_PALETTE_SHORTCUT_LABEL = "Search documents and code";
+export const SEARCH_PALETTE_SHORTCUT_LABEL = legacyKeybindingPresentation(
+  "Search documents and code",
+);
 export const SEARCH_PALETTE_KEYBINDING: KeybindingDef = {
   id: SEARCH_PALETTE_ACTION_ID,
   defaultChord: "Mod+P",
   label: SEARCH_PALETTE_SHORTCUT_LABEL,
-  group: "General",
+  group: GENERAL_KEYBINDING_GROUP,
   context: "global",
 };
 
 export const DOCUMENT_SEARCH_ACTION_ID = "app:document-search";
-export const DOCUMENT_SEARCH_SHORTCUT_LABEL = "Go to document by name";
+export const DOCUMENT_SEARCH_SHORTCUT_LABEL = legacyKeybindingPresentation(
+  "Go to document by name",
+);
 export const DOCUMENT_SEARCH_KEYBINDING: KeybindingDef = {
   id: DOCUMENT_SEARCH_ACTION_ID,
   defaultChord: "Mod+Shift+O",
   label: DOCUMENT_SEARCH_SHORTCUT_LABEL,
-  group: "General",
+  group: GENERAL_KEYBINDING_GROUP,
   context: "global",
 };
 

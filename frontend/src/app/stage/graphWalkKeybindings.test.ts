@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type ChordEvent } from "../../platform/keymap/chord";
 import {
   type KeybindingDef,
+  legacyKeybindingPresentation,
   resetKeybindings,
   resolveKeybinding,
 } from "../../platform/keymap/registry";
@@ -89,8 +90,8 @@ describe("double-fire resolution: canvas context overrides the colliding global"
   const globalArrowLeft: KeybindingDef = {
     id: "nav:neighbor-previous",
     defaultChord: "ArrowLeft",
-    label: "Select previous connected document",
-    group: "Navigation",
+    label: legacyKeybindingPresentation("Select previous connected document"),
+    group: legacyKeybindingPresentation("Navigation"),
     context: "global",
   };
   const canvasArrowLeft = GRAPH_WALK_KEYBINDING_DEFS.find(

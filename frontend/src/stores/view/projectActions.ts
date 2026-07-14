@@ -5,6 +5,7 @@ import { FolderGit2, FolderPlus, Trash2 } from "lucide-react";
 import type { ActionDescriptor } from "../../platform/actions/action";
 import {
   type KeybindingDef,
+  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { openAddProjectDialog } from "./addProjectChrome";
@@ -20,10 +21,12 @@ export const PROJECT_OPEN_ACTION_ID = "project:open";
 export const PROJECT_CLEAR_HISTORY_ACTION_ID = "project:clear-history";
 export const PROJECT_BROWSE_ACTION_ID = "project:browse";
 
-export const PROJECT_OPEN_LABEL = "Project: Open";
-export const PROJECT_BROWSE_LABEL = "Project: Browse or Switch";
+export const PROJECT_OPEN_LABEL = legacyKeybindingPresentation("Project: Open");
+export const PROJECT_BROWSE_LABEL = legacyKeybindingPresentation(
+  "Project: Browse or Switch",
+);
 
-const PROJECT_GROUP = "Project";
+const PROJECT_GROUP = legacyKeybindingPresentation("Project");
 
 /** The keymap-bound Project verbs: Open and Browse-or-Switch are global chords.
  *  Clear History is palette-only (a destructive verb needs no standing chord). */

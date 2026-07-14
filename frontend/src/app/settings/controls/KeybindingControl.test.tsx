@@ -7,10 +7,12 @@
 // override (sparse), and an existing chord collision surfaces an inline conflict.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { setIsMacForTesting } from "../../../platform/keymap/chord";
 import {
+  legacyKeybindingPresentation,
   registerKeybindings,
   resetKeybindings,
 } from "../../../platform/keymap/registry";
@@ -30,6 +32,16 @@ const def: SettingDef = {
   order: 1,
 };
 
+function KeybindingHarness({ initialValue = "{}" }: { initialValue?: string }) {
+  const [value, setValue] = useState(initialValue);
+  return (
+    <>
+      <output data-testid="keybinding-value">{value}</output>
+      <KeybindingControl def={def} value={value} onChange={setValue} />
+    </>
+  );
+}
+
 beforeEach(() => {
   resetKeybindings();
   setIsMacForTesting(false); // deterministic: Mod renders "Ctrl"
@@ -37,15 +49,15 @@ beforeEach(() => {
     {
       id: "command.palette",
       defaultChord: "Mod+K",
-      label: "Open command palette",
-      group: "General",
+      label: legacyKeybindingPresentation("Open command palette"),
+      group: legacyKeybindingPresentation("General"),
       context: "global",
     },
     {
       id: "help.legend",
       defaultChord: "?",
-      label: "Show shortcuts",
-      group: "General",
+      label: legacyKeybindingPresentation("Show shortcuts"),
+      group: legacyKeybindingPresentation("General"),
       context: "global",
     },
   ]);
@@ -60,7 +72,7 @@ afterEach(() => {
 
 describe("KeybindingControl recorder", () => {
   it("renders one row per registered action with its effective keycaps", () => {
-    render(<KeybindingControl def={def} value="{}" onChange={vi.fn()} />);
+    render(<KeybindingHarness />);
     expect(screen.getByText("Open command palette")).toBeTruthy();
     expect(screen.getByText("Show shortcuts")).toBeTruthy();
     // Mod renders "Ctrl" on non-mac; the chord splits into keycaps.
@@ -69,8 +81,7 @@ describe("KeybindingControl recorder", () => {
   });
 
   it("records a captured chord into the sparse override-map JSON", () => {
-    const onChange = vi.fn();
-    render(<KeybindingControl def={def} value="{}" onChange={onChange} />);
+    render(<KeybindingHarness />);
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -80,22 +91,16 @@ describe("KeybindingControl recorder", () => {
     // Capturing: a non-default chord assigns an override.
     fireEvent.keyDown(window, { key: "p", metaKey: true });
 
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(onChange.mock.calls[0]![0] as string)).toEqual({
+    expect(
+      JSON.parse(screen.getByTestId("keybinding-value").textContent ?? ""),
+    ).toEqual({
       "command.palette": "Mod+P",
     });
   });
 
   it("drops an override when the recorded chord equals the default (sparse)", () => {
-    const onChange = vi.fn();
     // Start from an existing override, then re-record the DEFAULT chord.
-    render(
-      <KeybindingControl
-        def={def}
-        value='{"command.palette":"Mod+P"}'
-        onChange={onChange}
-      />,
-    );
+    render(<KeybindingHarness initialValue='{"command.palette":"Mod+P"}' />);
     fireEvent.click(
       screen.getByRole("button", {
         name: "Record shortcut for Open command palette",
@@ -103,18 +108,14 @@ describe("KeybindingControl recorder", () => {
     );
     fireEvent.keyDown(window, { key: "k", metaKey: true }); // == default Mod+K
 
-    expect(JSON.parse(onChange.mock.calls[0]![0] as string)).toEqual({});
+    expect(
+      JSON.parse(screen.getByTestId("keybinding-value").textContent ?? ""),
+    ).toEqual({});
   });
 
   it("surfaces an inline conflict when an override collides with another binding", () => {
     // Override the legend onto Mod+K — collides with command.palette's default.
-    render(
-      <KeybindingControl
-        def={def}
-        value='{"help.legend":"Mod+K"}'
-        onChange={vi.fn()}
-      />,
-    );
+    render(<KeybindingHarness initialValue='{"help.legend":"Mod+K"}' />);
     const alerts = screen.getAllByRole("alert");
     expect(alerts.length).toBeGreaterThan(0);
     expect(alerts.some((el) => /conflicts with/i.test(el.textContent ?? ""))).toBe(
@@ -123,14 +124,13 @@ describe("KeybindingControl recorder", () => {
   });
 
   it("escape cancels recording without emitting", () => {
-    const onChange = vi.fn();
-    render(<KeybindingControl def={def} value="{}" onChange={onChange} />);
+    render(<KeybindingHarness />);
     fireEvent.click(
       screen.getByRole("button", {
         name: "Record shortcut for Show shortcuts",
       }),
     );
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByTestId("keybinding-value").textContent).toBe("{}");
   });
 });

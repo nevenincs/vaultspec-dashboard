@@ -14,6 +14,7 @@ import {
 } from "../../platform/actions/action";
 import {
   type KeybindingDef,
+  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { activateAdjacentDocTab, closeActiveDocTab, useActiveDocId } from "./tabs";
@@ -23,11 +24,13 @@ export const TAB_NEXT_ACTION_ID = "tabs:next-tab";
 export const TAB_PREV_ACTION_ID = "tabs:prev-tab";
 export const TAB_CLOSE_ACTION_ID = "tabs:close-active";
 
-export const TAB_NEXT_LABEL = "Next document tab";
-export const TAB_PREV_LABEL = "Previous document tab";
-export const TAB_CLOSE_LABEL = "Close the active document tab";
+export const TAB_NEXT_LABEL = legacyKeybindingPresentation("Next document tab");
+export const TAB_PREV_LABEL = legacyKeybindingPresentation("Previous document tab");
+export const TAB_CLOSE_LABEL = legacyKeybindingPresentation(
+  "Close the active document tab",
+);
 
-const TAB_GROUP = "Documents";
+const TAB_GROUP = legacyKeybindingPresentation("Documents");
 
 export function deriveDocTabKeybindings(): KeybindingDef[] {
   return [

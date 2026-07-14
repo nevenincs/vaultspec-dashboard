@@ -285,16 +285,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "70ecbb3fba23d672150ad14b",
-    "path": "src/app/chrome/regionCycleKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "8745f832f81cb8ab7720d7bc",
-    "path": "src/app/chrome/regionCycleKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "9289ccd6d919ede8d2720a43",
     "path": "src/app/chrome/regionCycleKeybindings.ts",
     "rule": "legacy-action-presentation"
@@ -303,6 +293,21 @@
     "id": "e8e66158f10782874b4a5a1f",
     "path": "src/app/chrome/regionCycleKeybindings.ts",
     "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "10dd00c8dc375c81870b77c3",
+    "path": "src/app/chrome/regionCycleKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "1dc50cc23dfe5fdb7666a316",
+    "path": "src/app/chrome/regionCycleKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "a69635ff28c3846659df18d6",
+    "path": "src/app/chrome/regionCycleKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "3016c705025c84206758f54b",
@@ -3780,44 +3785,39 @@
     "rule": "direct-locale-format"
   },
   {
-    "id": "000450b644d98df7c85ba0e0",
-    "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "10880e3bc2f90bfa00dcf7c3",
     "path": "src/app/stage/graphWalkKeybindings.ts",
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "12b8b86da86b5057b22fc733",
+    "id": "3eaba0700320b55acb4deade",
     "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-action-presentation"
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "23b2e9438fdcbee3c01d61c0",
+    "id": "457123e6b5262dc09cf42344",
     "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-action-presentation"
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "7132b7e5956b1b6099c9a142",
+    "id": "53505d2a5a95cc5eeafa26e1",
     "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-action-presentation"
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "e15bdc007d82230fc264fa8e",
+    "id": "782bd8fb63684c13c7610ade",
     "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-action-presentation"
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "e204360bca7bd57f20e2ffc6",
+    "id": "ba580bd1613d5d5cf57f3ab1",
     "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-action-presentation"
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "e59a6c72f752e5a37ed1a3d0",
+    "id": "d166b6306f46c4ba8feb994e",
     "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-action-presentation"
+    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "346b15058d4b992744eacd42",
@@ -4550,16 +4550,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "5a8e47e7b0b6e43b114e5db2",
-    "path": "src/app/viewer/MarkdownDocView.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "83f4678560b768117ee34148",
-    "path": "src/app/viewer/MarkdownDocView.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
     "id": "be22a7b3a1a0791a531aa31e",
     "path": "src/app/viewer/MarkdownDocView.tsx",
     "rule": "jsx-attribute"
@@ -4591,16 +4581,6 @@
   },
   {
     "id": "23074bd7dfb84fc1d31c9600",
-    "path": "src/app/viewer/MarkdownDocView.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "25de06927cb8dbbb512df4a9",
-    "path": "src/app/viewer/MarkdownDocView.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "4e64a9aff81f08a7abfa8c91",
     "path": "src/app/viewer/MarkdownDocView.tsx",
     "rule": "jsx-text"
   },
@@ -6330,21 +6310,6 @@
     "rule": "presentation-field"
   },
   {
-    "id": "0586cf0dc8e7ad0203896d4d",
-    "path": "src/stores/view/commandPalette.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "691fa4a7aae82ed64f39057b",
-    "path": "src/stores/view/commandPalette.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "9a05520307a46cbc7add07d7",
-    "path": "src/stores/view/commandPalette.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "832e57f5dc6ee56f16a1ed79",
     "path": "src/stores/view/commandPalette.ts",
     "rule": "legacy-action-presentation"
@@ -6360,44 +6325,24 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "2a2be921655d3879482cf824",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
+    "id": "335080c4d35c716afe1b92c7",
+    "path": "src/stores/view/commandPalette.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "443e1928c213836db0282493",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
+    "id": "61e6c5104a38f1c6413f1deb",
+    "path": "src/stores/view/commandPalette.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "5356193d544688495a138194",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
+    "id": "dd3ce491caa6f405ecd25b0b",
+    "path": "src/stores/view/commandPalette.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "54a3207aa95c418efc771e46",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "7ff5b1254949f5e76af489b1",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "9dcbfe32534ea5777216a0e4",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "bbefc84059f4bc8b0b858b3d",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "e2fd88b4101d23c01311a9bd",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
+    "id": "fdfe4316c6f43a41bc26e7d1",
+    "path": "src/stores/view/commandPalette.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "0ea94ad3f8741b5246299adf",
@@ -6505,24 +6450,49 @@
     "rule": "legacy-action-presentation"
   },
   {
+    "id": "2a2be921655d3879482cf824",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "presentation-field"
+  },
+  {
+    "id": "443e1928c213836db0282493",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "presentation-field"
+  },
+  {
+    "id": "5356193d544688495a138194",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "presentation-field"
+  },
+  {
+    "id": "54a3207aa95c418efc771e46",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "presentation-field"
+  },
+  {
+    "id": "7ff5b1254949f5e76af489b1",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "presentation-field"
+  },
+  {
+    "id": "9dcbfe32534ea5777216a0e4",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "presentation-field"
+  },
+  {
+    "id": "bbefc84059f4bc8b0b858b3d",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "presentation-field"
+  },
+  {
+    "id": "e2fd88b4101d23c01311a9bd",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "presentation-field"
+  },
+  {
     "id": "7b09a331fd3852bef7daf5a6",
     "path": "src/stores/view/commandProviders/opsCommandProvider.ts",
     "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "00f2e30c942a190833c13970",
-    "path": "src/stores/view/docTabKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "c8be8aecba7bc423899b6a4c",
-    "path": "src/stores/view/docTabKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "d103b7020523134e6e2a10c2",
-    "path": "src/stores/view/docTabKeybindings.ts",
-    "rule": "presentation-field"
   },
   {
     "id": "348ba81b61fba2e83dbbffb6",
@@ -6545,24 +6515,24 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "101ac4b145481a566036eb6e",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "presentation-field"
+    "id": "12c219c6a2785332449bb1bd",
+    "path": "src/stores/view/docTabKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "14e9f29cb094273811f20c86",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "presentation-field"
+    "id": "40bc15a5c6a8189e45f78e02",
+    "path": "src/stores/view/docTabKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "65a176fc19e28a9c97874b67",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "presentation-field"
+    "id": "447573a875bb4209bd936906",
+    "path": "src/stores/view/docTabKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "81de4d728d0d207f8c129cf6",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "presentation-field"
+    "id": "f7b94dd0afb4990500505298",
+    "path": "src/stores/view/docTabKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "338f3465cf1e6b579846bb69",
@@ -6593,6 +6563,31 @@
     "id": "ee545a202ac84df6a05fa432",
     "path": "src/stores/view/editorKeybindings.ts",
     "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "0829c219d0e4687a47f0d560",
+    "path": "src/stores/view/editorKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "7448d86f36875d08ac9c1a70",
+    "path": "src/stores/view/editorKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "9051432654a3dddb75158530",
+    "path": "src/stores/view/editorKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "d6f6db8538502ff34f12912b",
+    "path": "src/stores/view/editorKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "e3c8ecf8d1d8bb2d87ba3b1c",
+    "path": "src/stores/view/editorKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "6dedaf0d42934f907231a245",
@@ -6765,9 +6760,14 @@
     "rule": "presentation-field"
   },
   {
-    "id": "3c720c7dd44bb93dcb794555",
+    "id": "3ca502e84feba4ebc433ca0f",
     "path": "src/stores/view/graphToggleKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "ca8c558d701c93b52012cce6",
+    "path": "src/stores/view/graphToggleKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "4f18816b7aa4e5e8a0de766d",
@@ -6830,34 +6830,34 @@
     "rule": "presentation-field"
   },
   {
-    "id": "2a38deaf3c867602634e9bd6",
-    "path": "src/stores/view/keyboardNavigation.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "5cbeb08b9672c02a9b393c9d",
-    "path": "src/stores/view/keyboardNavigation.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "6074e78b5fe8101b768ae6ad",
-    "path": "src/stores/view/keyboardNavigation.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "ab76830520798ce66b611316",
-    "path": "src/stores/view/keyboardNavigation.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "f268a54d55ae308d3da375a5",
     "path": "src/stores/view/keyboardNavigation.ts",
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "2b31eeea3682c455d76bc3c3",
-    "path": "src/stores/view/keyboardShortcuts.ts",
-    "rule": "presentation-field"
+    "id": "9b616ebb8f879bd61ff36195",
+    "path": "src/stores/view/keyboardNavigation.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "b203844e818748fb79fb7147",
+    "path": "src/stores/view/keyboardNavigation.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "c0e8ad1961b07d2af62d016a",
+    "path": "src/stores/view/keyboardNavigation.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "e6d161d202b7ace5f60af44e",
+    "path": "src/stores/view/keyboardNavigation.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "f4f731fde6df779cab215722",
+    "path": "src/stores/view/keyboardNavigation.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "989034ee926d29553b8082b8",
@@ -6865,44 +6865,14 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "227b01cb8b026c656c630c35",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
+    "id": "584ea1f50986693a0c315745",
+    "path": "src/stores/view/keyboardShortcuts.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "330cf13841d575bbeceebfa6",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "aa9aced7ea4c767c3fd4921b",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "c0ec062f9b297ef522413243",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "cdec9c173bedaab130a9fee0",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "dd412a1d56d125641c1c013f",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "ee99ab6c12e3a2d1fb4037d1",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "fb6435f54b3f636edd66d615",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
+    "id": "93dc318956cb04137be533f1",
+    "path": "src/stores/view/keyboardShortcuts.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "7e6dc6640fe12541c08d00a8",
@@ -6960,6 +6930,51 @@
     "rule": "legacy-action-presentation"
   },
   {
+    "id": "2f18d78a4a236c0b2d7dff5d",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "8b3c398eee2a6286c141ed9e",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "972d0e89f71135c32064ff9f",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "bbf582720b26807d25aa7f10",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "ce4f75ceef27489c8c2612fd",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "d583fb82da97c798f25498f2",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "da44c15b588f4726e64fab5d",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "e4931c687726ce8db4bc3ccb",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "f620e98222a7bf8150b7c1aa",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
     "id": "ecb292b0acf158a1fc3b4a41",
     "path": "src/stores/view/nodeInterior.ts",
     "rule": "direct-locale-format"
@@ -6975,14 +6990,19 @@
     "rule": "presentation-field"
   },
   {
-    "id": "cec16bdfbea7faebf0affcf0",
+    "id": "60bc0affeaf5c6f7243d838a",
     "path": "src/stores/view/projectActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "e70041e90d15858488b2e4d7",
+    "id": "cad9ffb140bf19679fdd51c1",
     "path": "src/stores/view/projectActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "e034daf5ddc8963e952f5212",
+    "path": "src/stores/view/projectActions.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "06b8730c24d52af5e7518dae",
@@ -7065,29 +7085,34 @@
     "rule": "presentation-field"
   },
   {
-    "id": "711d7e9b7a486885e9fd37d6",
-    "path": "src/stores/view/reloadKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "92e7226226bbccb2940628dc",
     "path": "src/stores/view/reloadKeybindings.ts",
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "ca9798fded19c77c759fd366",
-    "path": "src/stores/view/rightRailKeybindings.ts",
-    "rule": "presentation-field"
+    "id": "548606c2e1674e18e21ba945",
+    "path": "src/stores/view/reloadKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "cacc92ba87bf548cb08167b6",
-    "path": "src/stores/view/rightRailKeybindings.ts",
-    "rule": "presentation-field"
+    "id": "df3689a160810dca99cdc705",
+    "path": "src/stores/view/reloadKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "6d6c06b9b5a26c5ee7590fc2",
     "path": "src/stores/view/rightRailKeybindings.ts",
     "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "733454ae78e99f004f824e98",
+    "path": "src/stores/view/rightRailKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "791a884e2f036d3d60f367ba",
+    "path": "src/stores/view/rightRailKeybindings.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "335c05ff1f25054efecfee4e",
@@ -7135,16 +7160,6 @@
     "rule": "presentation-field"
   },
   {
-    "id": "7a5632fc845b16716b49272f",
-    "path": "src/stores/view/workingSet.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "d554ad4451d5ba56ddbbd63f",
-    "path": "src/stores/view/workingSet.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "8491b5c68ccb23fbe0554df7",
     "path": "src/stores/view/workingSet.ts",
     "rule": "legacy-action-presentation"
@@ -7153,6 +7168,21 @@
     "id": "c9cf3a2e4d6c4aac45ffe6d0",
     "path": "src/stores/view/workingSet.ts",
     "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "72d1433c260f214ab41534aa",
+    "path": "src/stores/view/workingSet.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "af7a322d1f3770e5bf37fd72",
+    "path": "src/stores/view/workingSet.ts",
+    "rule": "legacy-keybinding-presentation"
+  },
+  {
+    "id": "ed9e9e40742d0c125d6fd8fc",
+    "path": "src/stores/view/workingSet.ts",
+    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "5a984c395bd36bd055e1480b",

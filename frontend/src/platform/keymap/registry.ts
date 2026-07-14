@@ -22,6 +22,10 @@
 // must never be rebindable; only true command shortcuts live in this catalog.
 
 import { type ChordEvent, canonicalizeChord, matchesChord, parseChord } from "./chord";
+import {
+  normalizeMessageDescriptor,
+  type MessageDescriptor,
+} from "../localization/message";
 
 /**
  * The activation context of a binding. `global` is always active; the surface
@@ -61,6 +65,65 @@ export const MAX_KEYBINDING_OVERRIDES = 256;
  */
 export const MAX_KEYBINDING_CHORD_LEN = 64;
 export const MAX_KEYBINDING_ID_LEN = 128;
+export const LEGACY_KEYBINDING_PRESENTATION_MAX_CHARS = 256;
+
+declare const legacyKeybindingPresentationBrand: unique symbol;
+
+/** Bounded keybinding copy tracked by the localization scanner. */
+export type LegacyKeybindingPresentation = string & {
+  readonly [legacyKeybindingPresentationBrand]: "legacy-keybinding-presentation";
+};
+
+/** Presentation accepted by the keybinding registry. */
+export type KeybindingPresentation = LegacyKeybindingPresentation | MessageDescriptor;
+
+/** Group messages are taxonomy identities, so interpolation values are prohibited. */
+export type KeybindingGroupPresentation =
+  | LegacyKeybindingPresentation
+  | (MessageDescriptor & { readonly values?: never });
+
+/** Normalize bounded compatibility copy without coercion. */
+export function normalizeLegacyKeybindingPresentation(
+  value: unknown,
+): LegacyKeybindingPresentation | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 &&
+    normalized.length <= LEGACY_KEYBINDING_PRESENTATION_MAX_CHARS
+    ? (normalized as LegacyKeybindingPresentation)
+    : null;
+}
+
+/** Mark one complete legacy keybinding message for exact scanner inventory. */
+export function legacyKeybindingPresentation(
+  value: string,
+): LegacyKeybindingPresentation {
+  return (
+    normalizeLegacyKeybindingPresentation(value) ?? ("" as LegacyKeybindingPresentation)
+  );
+}
+
+/** Normalize a typed or scanner-tracked transitional keybinding message. */
+export function normalizeKeybindingPresentation(
+  value: unknown,
+): KeybindingPresentation | null {
+  if (typeof value === "string") {
+    return normalizeLegacyKeybindingPresentation(value);
+  }
+  return normalizeMessageDescriptor(value);
+}
+
+/** Normalize a static group message; dynamic values cannot become grouping identity. */
+export function normalizeKeybindingGroupPresentation(
+  value: unknown,
+): KeybindingGroupPresentation | null {
+  const normalized = normalizeKeybindingPresentation(value);
+  if (normalized === null) return null;
+  if (typeof normalized === "string") return normalized;
+  return normalized.values === undefined
+    ? (normalized as KeybindingGroupPresentation)
+    : null;
+}
 
 /** One bindable command action. Construct in a surface's action module. */
 export interface KeybindingDef {
@@ -69,9 +132,9 @@ export interface KeybindingDef {
   /** The canonical default chord string (e.g. `"Mod+K"`, `"ArrowLeft"`). */
   readonly defaultChord: string;
   /** Human label for the legend and the settings recorder. */
-  readonly label: string;
+  readonly label: KeybindingPresentation;
   /** Grouping for the legend and settings (e.g. `"General"`, `"Graph"`). */
-  readonly group: string;
+  readonly group: KeybindingGroupPresentation;
   /** The context the binding is active in. */
   readonly context: BindingContext;
 }
@@ -130,11 +193,31 @@ export function normalizeKeybindingOverrides(overrides: unknown): KeybindingOver
   return normalized;
 }
 
-function normalizedKeybindingDef(def: KeybindingDef): KeybindingDef | null {
+function keybindingDefRecord(value: unknown): Readonly<Record<string, unknown>> | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  try {
+    const snapshot: Record<string, unknown> = Object.create(null) as Record<
+      string,
+      unknown
+    >;
+    for (const key of ["id", "defaultChord", "label", "group", "context"] as const) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !("value" in descriptor)) return null;
+      snapshot[key] = descriptor.value;
+    }
+    return Object.freeze(snapshot);
+  } catch {
+    return null;
+  }
+}
+
+function normalizedKeybindingDef(value: unknown): KeybindingDef | null {
+  const def = keybindingDefRecord(value);
+  if (def === null) return null;
   const normalizedId = normalizeKeybindingId(def.id);
   const defaultChord = normalizeKeybindingText(def.defaultChord);
-  const label = normalizeKeybindingText(def.label);
-  const group = normalizeKeybindingText(def.group);
+  const label = normalizeKeybindingPresentation(def.label);
+  const group = normalizeKeybindingGroupPresentation(def.group);
   const context = normalizeBindingContext(def.context);
   if (
     normalizedId === null ||

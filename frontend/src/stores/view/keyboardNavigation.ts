@@ -4,8 +4,11 @@ import {
   legacyActionPresentation,
   type ActionDescriptor,
 } from "../../platform/actions/action";
-import type { KeybindingDef } from "../../platform/keymap/registry";
-import { registerKeybindings } from "../../platform/keymap/registry";
+import {
+  type KeybindingDef,
+  legacyKeybindingPresentation,
+  registerKeybindings,
+} from "../../platform/keymap/registry";
 import type { EngineNode } from "../server/engine";
 import { featureNodeIdFromTag } from "../server/liveAdapters";
 import {
@@ -26,7 +29,8 @@ export interface KeyboardNavigationView {
 
 export type KeyboardNavigationIntent = { kind: "select-node"; id: string };
 
-export const KEYBOARD_NAVIGATION_ACTION_GROUP = "Navigation";
+export const KEYBOARD_NAVIGATION_ACTION_GROUP =
+  legacyKeybindingPresentation("Navigation");
 
 export type KeyboardNavigationActionId =
   | "nav:neighbor-previous"
@@ -42,7 +46,7 @@ export const KEYBOARD_NAVIGATION_BINDINGS: readonly KeyboardNavigationBinding[] 
   {
     id: "nav:neighbor-previous",
     defaultChord: "ArrowLeft",
-    label: "Select previous connected document",
+    label: legacyKeybindingPresentation("Select previous connected document"),
     group: KEYBOARD_NAVIGATION_ACTION_GROUP,
     context: "global",
     key: "ArrowLeft",
@@ -50,7 +54,7 @@ export const KEYBOARD_NAVIGATION_BINDINGS: readonly KeyboardNavigationBinding[] 
   {
     id: "nav:neighbor-next",
     defaultChord: "ArrowRight",
-    label: "Select next connected document",
+    label: legacyKeybindingPresentation("Select next connected document"),
     group: KEYBOARD_NAVIGATION_ACTION_GROUP,
     context: "global",
     key: "ArrowRight",
@@ -58,7 +62,7 @@ export const KEYBOARD_NAVIGATION_BINDINGS: readonly KeyboardNavigationBinding[] 
   {
     id: "nav:feature-previous",
     defaultChord: "ArrowUp",
-    label: "Select previous feature",
+    label: legacyKeybindingPresentation("Select previous feature"),
     group: KEYBOARD_NAVIGATION_ACTION_GROUP,
     context: "global",
     key: "ArrowUp",
@@ -66,7 +70,7 @@ export const KEYBOARD_NAVIGATION_BINDINGS: readonly KeyboardNavigationBinding[] 
   {
     id: "nav:feature-next",
     defaultChord: "ArrowDown",
-    label: "Select next feature",
+    label: legacyKeybindingPresentation("Select next feature"),
     group: KEYBOARD_NAVIGATION_ACTION_GROUP,
     context: "global",
     key: "ArrowDown",
@@ -124,7 +128,10 @@ export function deriveKeyboardNavigationActionDescriptor(
   if (intent === null) return null;
   return {
     id: binding.id,
-    label: legacyActionPresentation(binding.label),
+    label:
+      typeof binding.label === "string"
+        ? legacyActionPresentation(binding.label)
+        : binding.label,
     run: () => {
       void selectDashboardNode(intent.id).catch(() => undefined);
     },

@@ -24,6 +24,10 @@ const legacyActionPresentationFile = resolve(
   fixtureRoot,
   "invalid/legacy-action-presentation.ts",
 );
+const legacyKeybindingPresentationFile = resolve(
+  fixtureRoot,
+  "invalid/legacy-keybinding-presentation.ts",
+);
 
 function baselineFor(
   findings: ReturnType<typeof scanFiles>,
@@ -39,10 +43,15 @@ describe("localization source scanner", () => {
   it("reports every production finding code from real invalid source", () => {
     const findings = scanFiles([allRulesFile]);
     const legacyFindings = scanFiles([legacyActionPresentationFile]);
+    const legacyKeybindingFindings = scanFiles([legacyKeybindingPresentationFile]);
 
-    expect(new Set([...findings, ...legacyFindings].map(({ code }) => code))).toEqual(
-      new Set(Object.values(FINDING_CODES)),
-    );
+    expect(
+      new Set(
+        [...findings, ...legacyFindings, ...legacyKeybindingFindings].map(
+          ({ code }) => code,
+        ),
+      ),
+    ).toEqual(new Set(Object.values(FINDING_CODES)));
     expect(
       findings.some(
         ({ code, snippet }) =>
@@ -83,6 +92,56 @@ describe("localization source scanner", () => {
           snippet.includes("Raw confirmation body"),
       ),
     ).toBe(true);
+  });
+
+  it("tracks only the canonical legacy keybinding-presentation bridge", () => {
+    const findings = scanFiles([legacyKeybindingPresentationFile]);
+    const presentationFindings = findings.filter(
+      ({ code }) =>
+        code === FINDING_CODES.legacyKeybindingPresentation ||
+        code === FINDING_CODES.presentationField,
+    );
+
+    expect(presentationFindings).toMatchObject([
+      {
+        code: FINDING_CODES.legacyKeybindingPresentation,
+        snippet: 'directLegacyKeybindingPresentation("Legacy static shortcut")',
+      },
+      {
+        code: FINDING_CODES.legacyKeybindingPresentation,
+        snippet: "directLegacyKeybindingPresentation(dynamicCopy)",
+      },
+      {
+        code: FINDING_CODES.legacyKeybindingPresentation,
+        snippet:
+          'keymapRegistry.legacyKeybindingPresentation( "Legacy namespace shortcut", )',
+      },
+      {
+        code: FINDING_CODES.legacyKeybindingPresentation,
+        snippet: 'localLegacyKeybindingPresentation("Legacy locally aliased shortcut")',
+      },
+      {
+        code: FINDING_CODES.presentationField,
+        snippet:
+          'label: unresolvedLegacyKeybindingPresentation( "Unresolved legacy shortcut", )',
+      },
+      {
+        code: FINDING_CODES.presentationField,
+        snippet: 'label: legacyKeybindingPresentation("Counterfeit legacy shortcut")',
+      },
+    ]);
+    expect(
+      findings.filter(
+        ({ code }) => code === FINDING_CODES.legacyKeybindingPresentation,
+      ),
+    ).toHaveLength(4);
+    expect(
+      findings.some(
+        ({ code, snippet }) =>
+          code === FINDING_CODES.presentationField &&
+          snippet.includes("directLegacyKeybindingPresentation"),
+      ),
+    ).toBe(false);
   });
 
   it("does not accept a generated comment as a scanning bypass", () => {

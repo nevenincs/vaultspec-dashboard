@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { MAX_KEYBINDING_ID_LEN } from "../../platform/keymap/registry";
+import {
+  MAX_KEYBINDING_ID_LEN,
+  legacyKeybindingPresentation,
+} from "../../platform/keymap/registry";
 import type { SettingDef } from "../server/engine";
 import {
   deriveSettingsEnumControlView,
@@ -64,15 +67,15 @@ const keybindingDefs = [
   {
     id: "command.palette",
     defaultChord: "Mod+K",
-    label: "Command palette",
-    group: "General",
+    label: legacyKeybindingPresentation("Command palette"),
+    group: legacyKeybindingPresentation("General"),
     context: "global",
   },
   {
     id: "help.legend",
     defaultChord: "?",
-    label: "Keyboard shortcuts",
-    group: "General",
+    label: legacyKeybindingPresentation("Keyboard shortcuts"),
+    group: legacyKeybindingPresentation("General"),
     context: "global",
   },
 ] as const;
@@ -281,8 +284,8 @@ describe("settings control view projections", () => {
         {
           id: "custom.open",
           defaultChord: "Ctrl+P",
-          label: "Custom open",
-          group: "General",
+          label: legacyKeybindingPresentation("Custom open"),
+          group: legacyKeybindingPresentation("General"),
           context: "global",
         },
       ]),

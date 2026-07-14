@@ -17,6 +17,7 @@ import {
 } from "../../platform/actions/action";
 import {
   type KeybindingDef,
+  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { useSaveBody } from "../server/queries";
@@ -35,12 +36,15 @@ export const EDITOR_CLOSE_ACTION_ID = "editor:close";
 export const EDITOR_TOGGLE_MODE_ACTION_ID = "editor:toggle-mode";
 export const EDITOR_TOGGLE_DIFF_ACTION_ID = "editor:toggle-diff";
 
-export const EDITOR_SAVE_LABEL = "Save the open document";
-export const EDITOR_CLOSE_LABEL = "Close the editor";
-export const EDITOR_TOGGLE_MODE_LABEL = "Toggle document edit mode";
-export const EDITOR_TOGGLE_DIFF_LABEL = "Toggle draft diff";
+export const EDITOR_SAVE_LABEL = legacyKeybindingPresentation("Save the open document");
+export const EDITOR_CLOSE_LABEL = legacyKeybindingPresentation("Close the editor");
+export const EDITOR_TOGGLE_MODE_LABEL = legacyKeybindingPresentation(
+  "Toggle document edit mode",
+);
+export const EDITOR_TOGGLE_DIFF_LABEL =
+  legacyKeybindingPresentation("Toggle draft diff");
 
-const EDITOR_GROUP = "Editor";
+const EDITOR_GROUP = legacyKeybindingPresentation("Editor");
 
 export function deriveEditorKeybindings(): KeybindingDef[] {
   return [

@@ -7,6 +7,7 @@ import {
   type KeybindingDef,
   type KeybindingOverrides,
   effectiveChord,
+  legacyKeybindingPresentation,
   listKeybindings,
   registerKeybindings,
 } from "../../platform/keymap/registry";
@@ -34,12 +35,15 @@ interface KeyboardShortcutsState {
 }
 
 export const KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID = "app:keyboard-shortcuts";
-export const KEYBOARD_SHORTCUTS_TOGGLE_LABEL = "Show keyboard shortcuts";
+export const KEYBOARD_SHORTCUTS_TOGGLE_LABEL = legacyKeybindingPresentation(
+  "Show keyboard shortcuts",
+);
+const GENERAL_KEYBINDING_GROUP = legacyKeybindingPresentation("General");
 export const KEYBOARD_SHORTCUTS_TOGGLE_BINDING: KeybindingDef = {
   id: KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
   defaultChord: "?",
   label: KEYBOARD_SHORTCUTS_TOGGLE_LABEL,
-  group: "General",
+  group: GENERAL_KEYBINDING_GROUP,
   context: "global",
 };
 
@@ -60,6 +64,7 @@ export function deriveKeyboardShortcutGroups(
 ): readonly KeyboardShortcutGroupView[] {
   const byGroup = new Map<string, KeyboardShortcutRowView[]>();
   for (const def of defs) {
+    if (typeof def.label !== "string" || typeof def.group !== "string") continue;
     const keys = chordToKeycaps(effectiveChord(def, overrides));
     const rows = byGroup.get(def.group) ?? [];
     rows.push({ label: def.label, keys });

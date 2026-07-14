@@ -6,6 +6,7 @@ import {
 } from "../../platform/actions/action";
 import {
   type KeybindingDef,
+  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { useShellPanelIntent } from "../server/panelStateIntent";
@@ -15,7 +16,7 @@ import { RIGHT_RAIL_TABS, type RailTabId } from "./shellLayout";
 
 export const RIGHT_RAIL_KEYMAP_CONTEXT = "right-rail";
 
-const RIGHT_RAIL_GROUP = "Right rail";
+const RIGHT_RAIL_GROUP = legacyKeybindingPresentation("Right rail");
 
 export function normalizeRightRailKeybindingTab(tab: unknown): RailTabId | null {
   if (typeof tab !== "string") return null;
@@ -47,7 +48,7 @@ export function deriveRightRailKeybindings(): KeybindingDef[] {
           {
             id,
             defaultChord,
-            label: `Show the ${tab.label} tab`,
+            label: legacyKeybindingPresentation(`Show the ${tab.label} tab`),
             group: RIGHT_RAIL_GROUP,
             context: "right-rail" as const,
           },

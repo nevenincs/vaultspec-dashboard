@@ -213,6 +213,7 @@ export function deriveSettingsKeybindingControlView(
   const overrides = parseKeybindingOverrides(value);
   const byGroup = new Map<string, SettingsKeybindingRowView[]>();
   for (const def of defs) {
+    if (typeof def.label !== "string" || typeof def.group !== "string") continue;
     const chord = effectiveChord(def, overrides);
     const row: SettingsKeybindingRowView = {
       id: def.id,

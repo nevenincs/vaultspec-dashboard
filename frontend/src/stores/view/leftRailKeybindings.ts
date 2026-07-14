@@ -18,6 +18,7 @@ import {
 } from "../../platform/actions/action";
 import {
   type KeybindingDef,
+  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { useDashboardFilterSidebarIntent } from "../server/dashboardFilterSidebarIntent";
@@ -50,35 +51,40 @@ export const LEFT_RAIL_TOGGLE_FACETS_ACTION_ID = "left-rail:toggle-facets";
 export const LEFT_RAIL_RESET_FILTERS_ACTION_ID = "left-rail:reset-filters";
 export const LEFT_RAIL_RESET_SORTING_ACTION_ID = "left-rail:reset-sorting";
 
-export const LEFT_RAIL_NEW_DOC_LABEL = "Add to a Feature…";
-export const LEFT_RAIL_EXPAND_TREE_LABEL = "Expand Vault Tree";
-export const LEFT_RAIL_COLLAPSE_TREE_LABEL = "Collapse Vault Tree";
-export const LEFT_RAIL_TOGGLE_FACETS_LABEL = "Toggle Filter Facets";
-export const LEFT_RAIL_RESET_FILTERS_LABEL = "Reset Filters";
+export const LEFT_RAIL_NEW_DOC_LABEL =
+  legacyKeybindingPresentation("Add to a Feature…");
+export const LEFT_RAIL_EXPAND_TREE_LABEL =
+  legacyKeybindingPresentation("Expand Vault Tree");
+export const LEFT_RAIL_COLLAPSE_TREE_LABEL =
+  legacyKeybindingPresentation("Collapse Vault Tree");
+export const LEFT_RAIL_TOGGLE_FACETS_LABEL =
+  legacyKeybindingPresentation("Toggle Filter Facets");
+export const LEFT_RAIL_RESET_FILTERS_LABEL =
+  legacyKeybindingPresentation("Reset Filters");
 export const LEFT_RAIL_RESET_SORTING_LABEL = "Reset Sorting";
 
-const LEFT_RAIL_GROUP = "Left rail";
+const LEFT_RAIL_GROUP = legacyKeybindingPresentation("Left rail");
 
 export function deriveLeftRailKeybindings(): KeybindingDef[] {
   return [
     {
       id: LEFT_RAIL_CYCLE_MODE_ACTION_ID,
       defaultChord: "Mod+B",
-      label: "Cycle the browser mode (Vault / Code)",
+      label: legacyKeybindingPresentation("Cycle the browser mode (Vault / Code)"),
       group: LEFT_RAIL_GROUP,
       context: "left-rail",
     },
     {
       id: LEFT_RAIL_FOCUS_FILTER_ACTION_ID,
       defaultChord: "Mod+Shift+F",
-      label: "Focus the left-rail filter",
+      label: legacyKeybindingPresentation("Focus the left-rail filter"),
       group: LEFT_RAIL_GROUP,
       context: "global",
     },
     {
       id: LEFT_RAIL_CLEAR_FILTER_ACTION_ID,
       defaultChord: "Mod+Shift+X",
-      label: "Clear the document filter",
+      label: legacyKeybindingPresentation("Clear the document filter"),
       group: LEFT_RAIL_GROUP,
       context: "global",
     },

@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { registerKeybindings, resetKeybindings } from "../../platform/keymap/registry";
+import {
+  legacyKeybindingPresentation,
+  registerKeybindings,
+  resetKeybindings,
+} from "../../platform/keymap/registry";
 import { setIsMacForTesting } from "../../platform/keymap/chord";
 import { createActionConfirmationDescriptor } from "../../platform/localization/message";
 import {
@@ -536,8 +540,8 @@ describe("deriveCommandAccelerators", () => {
       {
         id: "left-rail:new-document",
         defaultChord: "Mod+Alt+N",
-        label: "New document",
-        group: "Left rail",
+        label: legacyKeybindingPresentation("New document"),
+        group: legacyKeybindingPresentation("Left rail"),
         context: "left-rail",
       },
     ]);
@@ -558,8 +562,8 @@ describe("deriveCommandAccelerators", () => {
       {
         id: "left-rail:new-document",
         defaultChord: "Mod+Alt+N",
-        label: "New document",
-        group: "Left rail",
+        label: legacyKeybindingPresentation("New document"),
+        group: legacyKeybindingPresentation("Left rail"),
         context: "left-rail",
       },
     ]);

@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { setIsMacForTesting } from "../../platform/keymap/chord";
-import { registerKeybindings, resetKeybindings } from "../../platform/keymap/registry";
+import {
+  legacyKeybindingPresentation,
+  registerKeybindings,
+  resetKeybindings,
+} from "../../platform/keymap/registry";
 import {
   KEYBOARD_SHORTCUTS_TOGGLE_BINDING,
   KEYBOARD_SHORTCUTS_TOGGLE_LABEL,
@@ -82,15 +86,15 @@ describe("keyboard shortcuts store", () => {
       {
         id: "command.palette",
         defaultChord: "Mod+K",
-        label: "Open the command palette",
-        group: "General",
+        label: legacyKeybindingPresentation("Open the command palette"),
+        group: legacyKeybindingPresentation("General"),
         context: "global",
       },
       {
         id: "graph.next",
         defaultChord: "ArrowRight",
-        label: "Next neighbour",
-        group: "Graph",
+        label: legacyKeybindingPresentation("Next neighbour"),
+        group: legacyKeybindingPresentation("Graph"),
         context: "canvas",
       },
     ]);
@@ -111,8 +115,8 @@ describe("keyboard shortcuts store", () => {
       {
         id: "command.palette",
         defaultChord: "Mod+K",
-        label: "Open the command palette",
-        group: "General",
+        label: legacyKeybindingPresentation("Open the command palette"),
+        group: legacyKeybindingPresentation("General"),
         context: "global",
       },
     ]);

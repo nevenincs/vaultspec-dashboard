@@ -31,6 +31,7 @@ import { useEffect } from "react";
 import type { ActionDescriptor } from "../../platform/actions/action";
 import {
   type KeybindingDef,
+  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { registerKeyAction } from "../../stores/view/keymapDispatcher";
@@ -53,7 +54,13 @@ export const GRAPH_OPEN_ACTION_ID = "graph:open";
 export const GRAPH_EXPAND_ACTION_ID = "graph:expand";
 export const GRAPH_CLEAR_ACTION_ID = "graph:clear";
 
-const GRAPH_GROUP = "Graph";
+const GRAPH_GROUP = legacyKeybindingPresentation("Graph");
+const GRAPH_WALK_NEXT_LABEL = legacyKeybindingPresentation(
+  "Walk to the next connected node",
+);
+const GRAPH_WALK_PREVIOUS_LABEL = legacyKeybindingPresentation(
+  "Walk to the previous connected node",
+);
 
 /**
  * The canvas-context bindings. Each entry pairs an action id with the physical
@@ -75,7 +82,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_WALK_FORWARD_RIGHT_ACTION_ID,
       defaultChord: "ArrowRight",
-      label: legacyActionPresentation("Walk to the next connected node"),
+      label: GRAPH_WALK_NEXT_LABEL,
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -85,7 +92,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_WALK_FORWARD_DOWN_ACTION_ID,
       defaultChord: "ArrowDown",
-      label: legacyActionPresentation("Walk to the next connected node"),
+      label: GRAPH_WALK_NEXT_LABEL,
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -95,7 +102,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_WALK_BACKWARD_LEFT_ACTION_ID,
       defaultChord: "ArrowLeft",
-      label: legacyActionPresentation("Walk to the previous connected node"),
+      label: GRAPH_WALK_PREVIOUS_LABEL,
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -105,7 +112,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_WALK_BACKWARD_UP_ACTION_ID,
       defaultChord: "ArrowUp",
-      label: legacyActionPresentation("Walk to the previous connected node"),
+      label: GRAPH_WALK_PREVIOUS_LABEL,
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -115,7 +122,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_OPEN_ACTION_ID,
       defaultChord: "Enter",
-      label: legacyActionPresentation("Open the focused node"),
+      label: legacyKeybindingPresentation("Open the focused node"),
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -125,7 +132,9 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_EXPAND_ACTION_ID,
       defaultChord: "e",
-      label: legacyActionPresentation("Expand the focused node onto the working set"),
+      label: legacyKeybindingPresentation(
+        "Expand the focused node onto the working set",
+      ),
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -135,7 +144,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_CLEAR_ACTION_ID,
       defaultChord: "Escape",
-      label: legacyActionPresentation("Clear the canvas selection"),
+      label: legacyKeybindingPresentation("Clear the canvas selection"),
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -163,7 +172,10 @@ export function deriveGraphWalkActionDescriptor(
   if (action === null) return null;
   return {
     id: binding.def.id,
-    label: legacyActionPresentation(binding.def.label),
+    label:
+      typeof binding.def.label === "string"
+        ? legacyActionPresentation(binding.def.label)
+        : binding.def.label,
     run: () => {
       runGraphWalkAction(action, graph(), handlers);
     },

@@ -16,13 +16,15 @@ import {
 } from "../../platform/actions/action";
 import {
   type KeybindingDef,
+  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { refreshAllEngineQueries } from "../server/queries";
 import { registerKeyAction } from "./keymapDispatcher";
 
 export const RELOAD_REFRESH_DATA_ACTION_ID = "reload:refresh-data";
-export const RELOAD_REFRESH_DATA_LABEL = "Refresh data";
+export const RELOAD_REFRESH_DATA_LABEL = legacyKeybindingPresentation("Refresh data");
+const GENERAL_KEYBINDING_GROUP = legacyKeybindingPresentation("General");
 
 /**
  * The light refresh as one shared `ActionDescriptor`: invalidate + refetch the active
@@ -48,7 +50,7 @@ export function deriveReloadKeybindings(): KeybindingDef[] {
       id: RELOAD_REFRESH_DATA_ACTION_ID,
       defaultChord: "Mod+Shift+R",
       label: RELOAD_REFRESH_DATA_LABEL,
-      group: "General",
+      group: GENERAL_KEYBINDING_GROUP,
       context: "global",
     },
   ];

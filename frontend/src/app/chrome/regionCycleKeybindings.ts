@@ -15,6 +15,7 @@ import { useEffect } from "react";
 import type { ActionDescriptor } from "../../platform/actions/action";
 import {
   type KeybindingDef,
+  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { registerKeyAction } from "../../stores/view/keymapDispatcher";
@@ -23,24 +24,28 @@ import { cycleFocusRegion, rememberRegionFocus } from "./focusRegions";
 export const REGION_CYCLE_NEXT_ACTION_ID = "shell:cycle-region-next";
 export const REGION_CYCLE_PREV_ACTION_ID = "shell:cycle-region-previous";
 
-export const REGION_CYCLE_NEXT_LABEL = "Move to the next panel";
-export const REGION_CYCLE_PREV_LABEL = "Move to the previous panel";
+export const REGION_CYCLE_NEXT_LABEL = legacyKeybindingPresentation(
+  "Move to the next panel",
+);
+export const REGION_CYCLE_PREV_LABEL = legacyKeybindingPresentation(
+  "Move to the previous panel",
+);
 
-const REGION_CYCLE_GROUP = "Navigation";
+const REGION_CYCLE_GROUP = legacyKeybindingPresentation("Navigation");
 
 export function deriveRegionCycleKeybindings(): KeybindingDef[] {
   return [
     {
       id: REGION_CYCLE_NEXT_ACTION_ID,
       defaultChord: "F6",
-      label: legacyActionPresentation(REGION_CYCLE_NEXT_LABEL),
+      label: REGION_CYCLE_NEXT_LABEL,
       group: REGION_CYCLE_GROUP,
       context: "global",
     },
     {
       id: REGION_CYCLE_PREV_ACTION_ID,
       defaultChord: "Shift+F6",
-      label: legacyActionPresentation(REGION_CYCLE_PREV_LABEL),
+      label: REGION_CYCLE_PREV_LABEL,
       group: REGION_CYCLE_GROUP,
       context: "global",
     },

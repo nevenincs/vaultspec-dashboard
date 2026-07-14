@@ -1,13 +1,17 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   legacyActionPresentation,
   type ActionDescriptor,
 } from "../../platform/actions/action";
 import { type ChordEvent } from "../../platform/keymap/chord";
-import { type KeybindingDef, resetKeybindings } from "../../platform/keymap/registry";
+import {
+  type KeybindingDef,
+  legacyKeybindingPresentation,
+  resetKeybindings,
+} from "../../platform/keymap/registry";
 import {
   type KeymapDeps,
   activeContextsFromElement,
@@ -19,25 +23,15 @@ import {
   resolveKeyAction,
 } from "./keymapDispatcher";
 
-function keyEvent(
-  over: Partial<ChordEvent> & { key: string; target?: EventTarget | null },
-): ChordEvent & { target: EventTarget | null; preventDefault: () => void } {
-  return {
-    ctrlKey: false,
-    metaKey: false,
-    altKey: false,
-    shiftKey: false,
-    target: null,
-    preventDefault: vi.fn(),
-    ...over,
-  };
+function keyEvent(over: Partial<ChordEvent> & { key: string }): KeyboardEvent {
+  return new KeyboardEvent("keydown", { cancelable: true, ...over });
 }
 
 const def = (
   over: Partial<KeybindingDef> & Pick<KeybindingDef, "id" | "defaultChord">,
 ): KeybindingDef => ({
-  label: over.id,
-  group: "Test",
+  label: legacyKeybindingPresentation(over.id),
+  group: legacyKeybindingPresentation("Test"),
   context: "global",
   ...over,
 });
@@ -69,8 +63,10 @@ afterEach(() => {
 
 describe("handleKeymapEvent", () => {
   it("resolves a bound chord, fires its action, and consumes the event", () => {
-    const fired = vi.fn();
-    const action = runAction(fired);
+    let runCount = 0;
+    const action = runAction(() => {
+      runCount += 1;
+    });
     const event = keyEvent({ key: "k", ctrlKey: true });
     const consumed = handleKeymapEvent(
       event,
@@ -81,8 +77,8 @@ describe("handleKeymapEvent", () => {
       }),
     );
     expect(consumed).toBe(true);
-    expect(fired).toHaveBeenCalledTimes(1);
-    expect(event.preventDefault).toHaveBeenCalled();
+    expect(runCount).toBe(1);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it("does nothing for an unbound chord", () => {
@@ -92,7 +88,7 @@ describe("handleKeymapEvent", () => {
       deps({ getDefs: () => [def({ id: "palette", defaultChord: "Mod+K" })] }),
     );
     expect(consumed).toBe(false);
-    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
   });
 
   it("blocks an unmodified chord while typing but allows a modified one", () => {
@@ -115,6 +111,7 @@ describe("handleKeymapEvent", () => {
   });
 
   it("applies the time-travel gate to a mutating action", () => {
+    let fireCount = 0;
     const mutating: ActionDescriptor = {
       id: "m",
       label: legacyActionPresentation("m"),
@@ -124,7 +121,9 @@ describe("handleKeymapEvent", () => {
     const base = {
       getDefs: () => [def({ id: "m", defaultChord: "Mod+M" })],
       resolveAction: () => mutating,
-      fire: vi.fn(),
+      fire: () => {
+        fireCount += 1;
+      },
     };
     const event = keyEvent({ key: "m", ctrlKey: true });
     expect(handleKeymapEvent(event, deps({ ...base, isTimeTravel: () => true }))).toBe(
@@ -133,6 +132,7 @@ describe("handleKeymapEvent", () => {
     expect(handleKeymapEvent(event, deps({ ...base, isTimeTravel: () => false }))).toBe(
       true,
     );
+    expect(fireCount).toBe(1);
   });
 
   it("normalizes injected active contexts before keybinding resolution", () => {
@@ -153,7 +153,7 @@ describe("handleKeymapEvent", () => {
   });
 
   it("normalizes resolved key actions before gating and firing", () => {
-    const fire = vi.fn();
+    let firedAction: ActionDescriptor | null = null;
     const event = keyEvent({ key: "k", ctrlKey: true });
 
     const consumed = handleKeymapEvent(
@@ -162,16 +162,18 @@ describe("handleKeymapEvent", () => {
         getDefs: () => [def({ id: "palette", defaultChord: "Mod+K" })],
         resolveAction: () => ({
           id: " palette ",
-          label: " Palette ",
+          label: legacyActionPresentation(" Palette "),
           dispatch: { type: " ui:palette " },
           rogue: "local payload",
         }),
-        fire,
+        fire: (action) => {
+          firedAction = action;
+        },
       }),
     );
 
     expect(consumed).toBe(true);
-    expect(fire).toHaveBeenCalledWith({
+    expect(firedAction).toEqual({
       id: "palette",
       label: "Palette",
       dispatch: { type: "ui:palette" },
@@ -203,7 +205,7 @@ describe("registerKeyAction / resolveKeyAction", () => {
   it("normalizes registered live descriptors at the key action seam", () => {
     const dispose = registerKeyAction(" palette ", () => ({
       id: " palette ",
-      label: " Palette ",
+      label: legacyActionPresentation(" Palette "),
       dispatch: { type: " ui:palette " },
       rogue: "local payload",
     }));
