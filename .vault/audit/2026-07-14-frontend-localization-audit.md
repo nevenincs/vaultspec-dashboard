@@ -908,3 +908,22 @@ confirmations, direct and referenced dynamic nested keys, raw labels, ordinary d
 message descriptors, and shorthand composition, then was removed. No fake, mock, stub,
 patch, monkeypatch, skip, or expected failure was used. The shorthand and spread
 composition gap must close before this confirmation fix is accepted.
+
+### W01.P03.S14 composed confirmation remediation | pass | Structured composition is bounded and inspected
+
+Commit `6e5381c3f8` resolves the remaining confirmation-composition finding. Real
+fixtures proved shorthand descriptors, nested const objects, and ordered spreads expose
+dynamic message keys and raw presentation fields. Map-based source-order resolution
+honors JavaScript override semantics: a later static descriptor replaces an earlier
+dynamic field without a false finding, while a later dynamic field is rejected. Fully
+static shorthand and spread composition remains clean, and an ordinary dynamic
+`createMessageDescriptor` continues to produce `dynamic-message-key`.
+
+Cyclic const composition and an unresolved confirmation producer both fail closed as a
+bounded `confirmation.structure` finding without crashing. A composed object exceeding
+the 64-field cap stops with the scanner's bounded constant-resolution error rather than
+bypassing inspection. The production scanner remains clean with the unchanged 1,560
+exact findings and rule counts, completing in approximately 9.5 seconds. Targeted
+Prettier and ESLint checks passed, all temporary fixtures were removed, and no fake,
+mock, stub, patch, monkeypatch, skip, or expected failure was used. The S14 confirmation
+scanner fix is accepted with no open findings.
