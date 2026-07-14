@@ -61,3 +61,11 @@ Closes focus-lost-on-stage-transition (HIGH), default-initial-focus-is-close-but
 ## Notes
 
 Executed inline by the principal (coder fleet throttled by a shared session limit).
+
+## Review addendum
+
+Recorded trade (review LOW): defaulting initial focus to the feature field
+raises the soft keyboard on every compact open. Accepted deliberately —
+with the pinned footer and focused-field scroll-into-view, the keyboard no
+longer hides the primary action, and a consistent focus target beats a
+per-pointer fork.

@@ -40,6 +40,10 @@ export interface SearchFieldProps {
   role?: "combobox";
   "aria-expanded"?: boolean;
   "aria-controls"?: string;
+  /** Required when the composing autocomplete PORTALS its listbox: the active
+   *  option is no longer a DOM descendant, so aria-owns re-establishes the
+   *  ownership aria-activedescendant needs to announce it. */
+  "aria-owns"?: string;
   "aria-activedescendant"?: string;
   "aria-autocomplete"?: "list";
 }
@@ -59,6 +63,7 @@ export function SearchField({
   role,
   "aria-expanded": ariaExpanded,
   "aria-controls": ariaControls,
+  "aria-owns": ariaOwns,
   "aria-activedescendant": ariaActiveDescendant,
   "aria-autocomplete": ariaAutocomplete,
 }: SearchFieldProps) {
@@ -82,6 +87,7 @@ export function SearchField({
         role={role}
         aria-expanded={ariaExpanded}
         aria-controls={ariaControls}
+        aria-owns={ariaOwns}
         aria-activedescendant={ariaActiveDescendant}
         aria-autocomplete={ariaAutocomplete}
         spellCheck={false}

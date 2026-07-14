@@ -104,6 +104,40 @@ describe("AutocompleteCombobox floating listbox", () => {
     expect(input.getAttribute("aria-controls")).toBe(listbox.id);
   });
 
+  it("owns the portaled listbox via aria-owns so activedescendant announces", () => {
+    // The portal breaks DOM descendancy, which aria-activedescendant requires;
+    // aria-owns re-establishes it (review fast-follow).
+    renderCombobox();
+    const input = screen.getByRole("combobox");
+    expect(input.getAttribute("aria-owns")).toBeNull();
+    stubFieldRect({ top: 100, bottom: 130 });
+    fireEvent.focus(input);
+    expect(input.getAttribute("aria-owns")).toBe(screen.getByRole("listbox").id);
+  });
+
+  it("consumes Escape while the list is open so a host dialog stays open", () => {
+    const documentSpy = vi.fn();
+    document.addEventListener("keydown", documentSpy);
+    try {
+      renderCombobox();
+      const input = screen.getByRole("combobox");
+      stubFieldRect({ top: 100, bottom: 130 });
+      fireEvent.focus(input);
+      expect(screen.getByRole("listbox")).toBeTruthy();
+      // First Escape dismisses the LIST only and never reaches the document
+      // (a hosting Dialog's dismiss listener lives there).
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(screen.queryByRole("listbox")).toBeNull();
+      expect(documentSpy).not.toHaveBeenCalled();
+      // A second Escape, list closed, propagates to the document (control
+      // assertion: the spy is live and the host dismiss still works).
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(documentSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      document.removeEventListener("keydown", documentSpy);
+    }
+  });
+
   it("grows option rows to the touch floor on coarse pointers", () => {
     const realMatchMedia = window.matchMedia;
     window.matchMedia = ((query: string) =>

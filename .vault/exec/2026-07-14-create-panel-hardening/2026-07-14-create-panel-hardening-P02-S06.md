@@ -62,3 +62,11 @@ Closes escape-discards-draft-no-confirm (MEDIUM) per the ADR's preserve-not-conf
 ## Notes
 
 The two prior tests asserting close-resets were rewritten to the new contract (they documented the data-loss behavior the audit condemned).
+
+## Review addendum
+
+Recorded judgment (review LOW): the link-seed key survives dismissal, so
+reopening the SAME feature+type after the corpus gains a new upstream
+document keeps the preserved pre-fill rather than re-seeding — the
+preserve-draft policy deliberately wins over freshness; the add-link field
+makes the newer stem one commit away.

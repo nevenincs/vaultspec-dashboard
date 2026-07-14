@@ -195,6 +195,11 @@ export function AutocompleteCombobox({
       case "Escape":
         if (open) {
           event.preventDefault();
+          // Consume the Escape: dismissing the LIST must not bubble to the
+          // Dialog's document-level dismiss and close the whole panel (review
+          // fast-follow). A second Escape, with the list closed, still reaches
+          // the Dialog.
+          event.stopPropagation();
           setOpen(false);
           setActiveIndex(-1);
         }
@@ -235,6 +240,10 @@ export function AutocompleteCombobox({
         role="combobox"
         aria-expanded={showList}
         aria-controls={showList ? listboxId : undefined}
+        // The listbox is PORTALED (no longer a DOM descendant), so aria-owns
+        // re-establishes the ownership aria-activedescendant needs (review
+        // fast-follow: announcement breaks across the portal without it).
+        aria-owns={showList ? listboxId : undefined}
         aria-activedescendant={activeOptionId}
         aria-autocomplete="list"
       />

@@ -199,3 +199,15 @@ compliant doc-type radios (~53px).
   rag-job-dashboard lane's new panels, which replaced the rag console mid-
   sweep and inherited its un-re-tokened information-bearing small text.
   That lane owns the re-token; the specifics live in the S13 step record.
+
+## Resolution states (closeout, review-verified)
+
+Every HIGH and MEDIUM finding above is CLOSED with a regression lock;
+every LOW is CLOSED except the recorded judgments. Review of the full lane
+(commits 94cd4d73c9, 8c8646e161, 91bf95d08f, bb8da4b60a): APPROVED, no
+CRITICAL/HIGH. Fast-follows landed in-session: aria-owns across the
+portaled listbox (the one review MEDIUM), Escape-consumption while the
+suggestion list is open, and the two recorded judgments (stale-seed
+preservation, compact keyboard-raise trade). The per-finding closure
+evidence lives in the step records; the rag-lane ink-faint handoff above
+remains with that lane.
