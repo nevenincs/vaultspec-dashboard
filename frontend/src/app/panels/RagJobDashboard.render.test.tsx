@@ -131,6 +131,27 @@ describe("DashboardHeaderBar", () => {
     expect(screen.getByText("Semantic search is offline.")).toBeTruthy();
   });
 
+  it("renders the designed engine-unreachable state as a degraded block", () => {
+    // A genuine transport failure (the engine itself is unreachable, not merely the
+    // semantic tier down) surfaces the designed degraded block, not a bare error.
+    const { container } = render(
+      <DashboardHeaderBar
+        {...headerProps({
+          running: false,
+          healthWord: "Not running",
+          healthTone: "broken",
+          errored: true,
+        })}
+      />,
+    );
+    expect(container.querySelector('[data-state-block="degraded"]')).toBeTruthy();
+    expect(
+      screen.getByText(
+        "The dashboard cannot reach the engine — status is unavailable.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("shows the inline reindex progress while a job is live", () => {
     const { container } = render(
       <DashboardHeaderBar
