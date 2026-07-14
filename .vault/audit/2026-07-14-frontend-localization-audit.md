@@ -880,3 +880,31 @@ counts, completing in approximately 9.1 seconds. Targeted Prettier, targeted ESL
 the module import/main-guard check passed. Temporary fixtures were removed, no baseline
 entry changed, and no fake, mock, stub, patch, monkeypatch, skip, or expected failure was
 used. S14 is accepted with no open findings.
+
+### W01.P03.S14 confirmation composition | high | Inspect shorthand and spread descriptor fields
+
+Commit `7feef78247` correctly distinguishes the structured argument of an imported or
+aliased `createConfirmationDescriptor` from an ordinary message key. Direct static
+confirmation descriptors no longer produce an object-level `dynamic-message-key`,
+direct and const-referenced explicit nested descriptor keys remain inspected, all four
+raw confirmation presentation fields produce `presentation-field`, and an ordinary
+aliased `createMessageDescriptor` with a dynamic key still produces
+`dynamic-message-key`.
+
+However, `confirmationDescriptorFields` accepts only `PropertyAssignment` nodes. A real
+valid fixture declaring `body` as a `MessageDescriptor` with a dynamic `MessageKey` and
+passing it through `confirm({ title, body, confirmLabel, cancelLabel })` produced no
+finding for the shorthand `body`. A spread-composed confirmation object has the same
+blind spot because spread fields are not resolved. Resolve bounded shorthand properties
+and const object spreads, or fail closed when a confirmation field cannot be inspected,
+so valid object composition cannot bypass the dynamic-key rule.
+
+### W01.P03.S14 confirmation follow-up review | changes required | One structured-object bypass remains
+
+The production scanner remains clean with the unchanged 1,560-entry baseline and rule
+counts, completing in approximately 7.9 seconds. Targeted Prettier and ESLint checks
+passed. The real temporary fixture covered imported aliases, static structured
+confirmations, direct and referenced dynamic nested keys, raw labels, ordinary dynamic
+message descriptors, and shorthand composition, then was removed. No fake, mock, stub,
+patch, monkeypatch, skip, or expected failure was used. The shorthand and spread
+composition gap must close before this confirmation fix is accepted.
