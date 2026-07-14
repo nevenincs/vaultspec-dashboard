@@ -1086,3 +1086,27 @@ normalizers, resolvers, registries, scanner behavior, and rendering paths withou
 mock, stub, patch, monkeypatch, skip, or expected-failure shortcuts. No new user-facing
 developer metadata, raw localization keys, diagnostics, or em dashes were introduced.
 S246 is accepted with no open findings.
+
+### W02.P04.S19 review | pass | Clipboard actions use canonical localized verbs
+
+Commit `fca95b4c66` restricts clipboard action presentation to five value-free catalog
+keys: generic copy, document name, path, summary, and title. Missing, malformed,
+interpolated, non-copy, and legacy string descriptors normalize to the generic `Copy`
+key. Labels are never derived from copied text or the telemetry `what` field, so copy
+verbs cannot disclose IDs, hashes, JSON, or other internal object terminology.
+
+All 33 clipboard labels across the 14 menu callers, including disabled mirror rows,
+use a static canonical mapping. Copied bytes, action IDs, telemetry values, icons,
+sections, dispatch types and payloads, eligibility, and disabled behavior are unchanged.
+The tests resolve every approved key through the real localization runtime and cover
+invalid ingress without adding fake, mock, stub, patch, monkeypatch, skip, or
+expected-failure behavior.
+
+Baseline reconciliation removed exactly 33 `legacy-action-presentation` entries with
+no additions or metadata mismatches. The scanner is clean at 1,522 exact findings, with
+168 bridge findings remaining. The focused run passed all 112 tests across six files,
+and TypeScript and the complete frontend lint gate passed. Plan scope exactly contains
+all implementation paths, and the execution record accurately describes the mappings,
+behavioral preservation, scanner reduction, and deferred direct content-only clipboard
+writers. No user-facing developer metadata, raw localization keys, diagnostics, or em
+dashes were introduced. S19 is accepted with no open findings.
