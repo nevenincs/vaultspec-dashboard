@@ -44,7 +44,6 @@ import {
   useCommandPaletteCursor,
   useCommandPaletteMode,
   useCommandPaletteOpen,
-  useCommandPaletteOpsMessage,
   useCommandPaletteQuery,
   useSearchPaletteGlobalShortcut,
   useDocumentSearchGlobalShortcut,
@@ -105,7 +104,6 @@ function CommandPaletteSurface() {
   const resolveMessage = useLocalizedMessageResolver();
   const { i18n } = useTranslation(localizationNamespaces, { useSuspense: false });
   const locale = i18n.resolvedLanguage ?? i18n.language;
-  const opsMessage = useCommandPaletteOpsMessage();
   // Platform confirm guard for ops commands (W03.P04.S08 consolidation):
   // replaces the bespoke `armed: string | null` state. A single slot keyed
   // on "ops:run" is correct because only one cursor position can be active;
@@ -448,16 +446,6 @@ function CommandPaletteSurface() {
                 </li>
               )}
             </ul>
-
-            {/* Inline ops result / degradation truth (does not close the palette). */}
-            {opsMessage && (
-              <div
-                role="status"
-                className="border-t border-rule px-fg-4 py-fg-2 text-label text-ink-muted"
-              >
-                {opsMessage}
-              </div>
-            )}
 
             {/* Footer hints (board 94:2): navigate / open / close with Kbd chips. */}
             <div className="flex items-center gap-fg-3 border-t border-rule px-fg-4 py-fg-2 text-caption text-ink-faint">

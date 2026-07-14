@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   beginCommandPaletteOpsFeedback,
   canResetCommandPaletteFeedbackBoundary,
+  commandPaletteOpsFeedback,
   openCommandPalette,
   resetCommandPalette,
   resetCommandPaletteOpsFeedback,
@@ -13,6 +14,15 @@ import {
   useCommandPaletteOpsFeedbackBoundary,
   useCommandPaletteStore,
 } from "./commandPalette";
+
+const running = commandPaletteOpsFeedback({
+  concept: "check-workspace",
+  condition: "running",
+});
+const succeeded = commandPaletteOpsFeedback({
+  concept: "check-workspace",
+  condition: "succeeded",
+});
 
 describe("command palette ops feedback seam", () => {
   beforeEach(() => resetCommandPalette());
@@ -24,37 +34,35 @@ describe("command palette ops feedback seam", () => {
     expect(canResetCommandPaletteFeedbackBoundary("   ")).toBe(false);
   });
 
-  it("accepts only feedback for the current open palette epoch", () => {
+  it("accepts only typed feedback for the current open palette epoch", () => {
     openCommandPalette();
-    const epoch = beginCommandPaletteOpsFeedback("vault-check: running...");
-    setCommandPaletteOpsFeedbackForEpoch(epoch, "vault-check: completed");
+    const epoch = beginCommandPaletteOpsFeedback(running);
+    setCommandPaletteOpsFeedbackForEpoch(epoch, succeeded);
 
-    expect(useCommandPaletteStore.getState().opsMessage).toBe("vault-check: completed");
+    expect(useCommandPaletteStore.getState().opsFeedback).toBe(succeeded);
 
     resetCommandPaletteOpsFeedback();
-    setCommandPaletteOpsFeedbackForEpoch(epoch, "vault-check: stale");
+    setCommandPaletteOpsFeedbackForEpoch(epoch, running);
 
-    expect(useCommandPaletteStore.getState().opsMessage).toBeNull();
+    expect(useCommandPaletteStore.getState().opsFeedback).toBeNull();
   });
 
-  it("preserves current feedback when a matching epoch carries malformed text", () => {
+  it("preserves current feedback when a matching epoch carries arbitrary text", () => {
     openCommandPalette();
-    const epoch = beginCommandPaletteOpsFeedback("vault-check: running...");
+    const epoch = beginCommandPaletteOpsFeedback(running);
 
-    setCommandPaletteOpsFeedbackForEpoch(epoch, "   ");
+    setCommandPaletteOpsFeedbackForEpoch(epoch, "vault-check: completed");
 
-    expect(useCommandPaletteStore.getState().opsMessage).toBe(
-      "vault-check: running...",
-    );
+    expect(useCommandPaletteStore.getState().opsFeedback).toBe(running);
   });
 
   it("drops late feedback after the palette closes", () => {
     openCommandPalette();
-    const epoch = beginCommandPaletteOpsFeedback("reindex: running...");
+    const epoch = beginCommandPaletteOpsFeedback(running);
     resetCommandPalette();
-    setCommandPaletteOpsFeedbackForEpoch(epoch, "reindex: completed");
+    setCommandPaletteOpsFeedbackForEpoch(epoch, succeeded);
 
-    expect(useCommandPaletteStore.getState().opsMessage).toBeNull();
+    expect(useCommandPaletteStore.getState().opsFeedback).toBeNull();
   });
 
   it("drops late feedback after the scope or operation mode changes", () => {
@@ -64,42 +72,38 @@ describe("command palette ops feedback seam", () => {
       { initialProps: { scope: "scope-a", timeTravel: false } },
     );
     openCommandPalette();
-    const epoch = beginCommandPaletteOpsFeedback("vault-stats: running...");
-    expect(useCommandPaletteStore.getState().opsMessage).toBe(
-      "vault-stats: running...",
-    );
+    const epoch = beginCommandPaletteOpsFeedback(running);
+    expect(useCommandPaletteStore.getState().opsFeedback).toBe(running);
 
     act(() => rerender({ scope: "scope-b", timeTravel: false }));
-    setCommandPaletteOpsFeedbackForEpoch(epoch, "vault-stats: stale completed");
-    expect(useCommandPaletteStore.getState().opsMessage).toBeNull();
+    setCommandPaletteOpsFeedbackForEpoch(epoch, succeeded);
+    expect(useCommandPaletteStore.getState().opsFeedback).toBeNull();
 
-    const nextEpoch = beginCommandPaletteOpsFeedback("vault-check: running...");
+    const nextEpoch = beginCommandPaletteOpsFeedback(running);
     act(() => rerender({ scope: "scope-b", timeTravel: true }));
-    setCommandPaletteOpsFeedbackForEpoch(nextEpoch, "vault-check: stale completed");
-    expect(useCommandPaletteStore.getState().opsMessage).toBeNull();
+    setCommandPaletteOpsFeedbackForEpoch(nextEpoch, succeeded);
+    expect(useCommandPaletteStore.getState().opsFeedback).toBeNull();
   });
 
   it("keeps malformed runtime scope inert at the feedback boundary", () => {
     openCommandPalette();
-    const epoch = beginCommandPaletteOpsFeedback("vault-check: running...");
+    const epoch = beginCommandPaletteOpsFeedback(running);
 
     renderHook(() => useCommandPaletteOpsFeedbackBoundary({ scope: "scope-a" }, false));
 
-    expect(useCommandPaletteStore.getState().opsMessage).toBe(
-      "vault-check: running...",
-    );
-    setCommandPaletteOpsFeedbackForEpoch(epoch, "vault-check: completed");
-    expect(useCommandPaletteStore.getState().opsMessage).toBe("vault-check: completed");
+    expect(useCommandPaletteStore.getState().opsFeedback).toBe(running);
+    setCommandPaletteOpsFeedbackForEpoch(epoch, succeeded);
+    expect(useCommandPaletteStore.getState().opsFeedback).toBe(succeeded);
   });
 
   it("keeps explicit null scope as a resettable no-scope feedback context", () => {
     openCommandPalette();
-    const epoch = beginCommandPaletteOpsFeedback("vault-check: running...");
+    const epoch = beginCommandPaletteOpsFeedback(running);
 
     renderHook(() => useCommandPaletteOpsFeedbackBoundary(null, false));
 
-    expect(useCommandPaletteStore.getState().opsMessage).toBeNull();
-    setCommandPaletteOpsFeedbackForEpoch(epoch, "vault-check: stale completed");
-    expect(useCommandPaletteStore.getState().opsMessage).toBeNull();
+    expect(useCommandPaletteStore.getState().opsFeedback).toBeNull();
+    setCommandPaletteOpsFeedbackForEpoch(epoch, succeeded);
+    expect(useCommandPaletteStore.getState().opsFeedback).toBeNull();
   });
 });

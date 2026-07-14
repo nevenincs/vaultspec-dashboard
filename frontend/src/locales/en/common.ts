@@ -62,6 +62,9 @@ export const common = {
     desktopFileManagerRequired: "Open the desktop app to show this item.",
     selectItemToOpen: "Select an item to open.",
   },
+  feedback: {
+    actionUnavailable: "Couldn't complete the action. Reload the page and try again.",
+  },
   destructiveActions: {
     discardChanges: "Discard changes",
   },

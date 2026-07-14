@@ -8,13 +8,18 @@ import {
 } from "../server/queries";
 import {
   dispatchOps,
+  lookupOpsWhitelistEntry,
   normalizeOpsWhitelistIntent,
+  type OperationConcept,
   type OpsPayload,
 } from "../server/opsActions";
+import { EngineError, readTierAvailability, type OpsResult } from "../server/engine";
 import { useInvalidateAfterRagOpsRun } from "../server/ragControl";
 import {
   beginCommandPaletteOpsFeedback,
+  commandPaletteOpsFeedback,
   setCommandPaletteOpsFeedbackForEpoch,
+  type CommandPaletteOpsCondition,
 } from "./commandPalette";
 import { currentOpsReceiptEpoch, setOpsReceiptForEpoch } from "./opsReceipt";
 
@@ -92,6 +97,57 @@ export function useOpsRunMutation() {
 
 interface CommandPaletteOpsRunContext {
   epoch: number;
+  concept: OperationConcept | null;
+}
+
+export type CommandPaletteOpsOutcome = Exclude<CommandPaletteOpsCondition, "running">;
+
+function requiresSemanticAvailability(concept: OperationConcept): boolean {
+  switch (concept) {
+    case "enable-search":
+    case "refresh-search":
+    case "apply-search-settings":
+      return true;
+    case "check-workspace":
+    case "show-workspace-details":
+    case "disable-search":
+      return false;
+  }
+}
+
+export function classifyCommandPaletteOpsResult(
+  concept: OperationConcept,
+  result: OpsResult,
+): CommandPaletteOpsOutcome {
+  if (!result.ok) return "failed";
+  return requiresSemanticAvailability(concept) &&
+    readTierAvailability(result.tiers, ["semantic"]).degraded
+    ? "unavailable"
+    : "succeeded";
+}
+
+export function classifyCommandPaletteOpsError(
+  concept: OperationConcept,
+  error: unknown,
+): CommandPaletteOpsOutcome {
+  return requiresSemanticAvailability(concept) &&
+    error instanceof EngineError &&
+    readTierAvailability(error.tiers, ["semantic"]).degraded
+    ? "unavailable"
+    : "failed";
+}
+
+function commandPaletteOperationConcept(
+  variables: OpsRunVariables,
+): OperationConcept | null {
+  return lookupOpsWhitelistEntry(variables.target, variables.verb)?.concept ?? null;
+}
+
+function feedbackFor(
+  concept: OperationConcept | null,
+  condition: CommandPaletteOpsCondition,
+) {
+  return commandPaletteOpsFeedback({ concept, condition });
 }
 
 export function useCommandPaletteOpsRunMutation() {
@@ -112,11 +168,13 @@ export function useCommandPaletteOpsRunMutation() {
       }
       return dispatchOps(intent satisfies OpsPayload);
     },
-    onMutate: (variables) => ({
-      epoch: beginCommandPaletteOpsFeedback(
-        `${opsRunReceiptVerb(variables)}: running…`,
-      ),
-    }),
+    onMutate: (variables) => {
+      const concept = commandPaletteOperationConcept(variables);
+      return {
+        concept,
+        epoch: beginCommandPaletteOpsFeedback(feedbackFor(concept, "running")),
+      };
+    },
     onSuccess: (result, vars, context) => {
       const intent = normalizeOpsRunVariables(vars);
       if (intent === null) return;
@@ -125,22 +183,25 @@ export function useCommandPaletteOpsRunMutation() {
       } else {
         invalidateStatus();
       }
-      const receipt = opsReceiptFromResult(intent.verb, result);
+      const concept = context.concept;
       setCommandPaletteOpsFeedbackForEpoch(
         context.epoch,
-        `${receipt.verb}: ${receipt.text}`,
+        concept === null
+          ? feedbackFor(null, "failed")
+          : feedbackFor(concept, classifyCommandPaletteOpsResult(concept, result)),
       );
     },
     onError: (err, vars, context) => {
-      const receipt = opsReceiptFromError(opsRunReceiptVerb(vars), err);
+      const concept = context?.concept ?? commandPaletteOperationConcept(vars);
+      const feedback =
+        concept === null
+          ? feedbackFor(null, "failed")
+          : feedbackFor(concept, classifyCommandPaletteOpsError(concept, err));
       if (!context) {
-        beginCommandPaletteOpsFeedback(`${receipt.verb}: ${receipt.text}`);
+        beginCommandPaletteOpsFeedback(feedback);
         return;
       }
-      setCommandPaletteOpsFeedbackForEpoch(
-        context.epoch,
-        `${receipt.verb}: ${receipt.text}`,
-      );
+      setCommandPaletteOpsFeedbackForEpoch(context.epoch, feedback);
     },
   });
 }

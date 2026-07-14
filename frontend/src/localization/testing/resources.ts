@@ -39,6 +39,10 @@ export const ltrTestResources = {
       workspaceMaintenance: "Maintenance de l’espace de travail",
     },
     disabledReasons: en.common.disabledReasons,
+    feedback: {
+      actionUnavailable:
+        "Impossible de terminer l’action. Rechargez la page et réessayez.",
+    },
     destructiveActions: {
       discardChanges: "Ignorer les modifications",
     },
@@ -141,6 +145,41 @@ export const ltrTestResources = {
       refreshSearch: "Actualiser la recherche",
       showWorkspaceDetails: "Afficher les détails de l’espace de travail",
     },
+    feedback: {
+      applySearchSettings: {
+        failed: "Impossible d’appliquer les paramètres de recherche. Réessayez.",
+        running: "Application des paramètres de recherche…",
+        succeeded: "Paramètres de recherche appliqués.",
+        unavailable: "La recherche est indisponible. Activez-la, puis réessayez.",
+      },
+      checkWorkspace: {
+        failed: "Impossible de vérifier l’espace de travail. Réessayez.",
+        running: "Vérification de l’espace de travail…",
+        succeeded: "Vérification de l’espace de travail terminée.",
+      },
+      disableSearch: {
+        failed: "Impossible de désactiver la recherche. Réessayez.",
+        running: "Désactivation de la recherche…",
+        succeeded: "Recherche désactivée.",
+      },
+      enableSearch: {
+        failed: "Impossible d’activer la recherche. Réessayez.",
+        running: "Activation de la recherche…",
+        succeeded: "Recherche activée.",
+        unavailable: "La recherche reste indisponible. Réessayez.",
+      },
+      refreshSearch: {
+        failed: "Impossible d’actualiser la recherche. Réessayez.",
+        running: "Actualisation de la recherche…",
+        succeeded: "Actualisation de la recherche lancée.",
+        unavailable: "La recherche est indisponible. Activez-la, puis réessayez.",
+      },
+      showWorkspaceDetails: {
+        failed: "Impossible de charger les détails de l’espace de travail. Réessayez.",
+        running: "Chargement des détails de l’espace de travail…",
+        succeeded: "Détails de l’espace de travail chargés.",
+      },
+    },
   },
   projects: en.projects,
 } as const;
@@ -180,6 +219,9 @@ export const rtlTestResources = {
       workspaceMaintenance: "صيانة مساحة العمل",
     },
     disabledReasons: en.common.disabledReasons,
+    feedback: {
+      actionUnavailable: "تعذر إكمال الإجراء. أعد تحميل الصفحة وحاول مرة أخرى.",
+    },
     destructiveActions: {
       discardChanges: "تجاهل التغييرات",
     },
@@ -265,6 +307,41 @@ export const rtlTestResources = {
       enableSearch: "تمكين البحث",
       refreshSearch: "تحديث البحث",
       showWorkspaceDetails: "عرض تفاصيل مساحة العمل",
+    },
+    feedback: {
+      applySearchSettings: {
+        failed: "تعذر تطبيق إعدادات البحث. حاول مرة أخرى.",
+        running: "جارٍ تطبيق إعدادات البحث…",
+        succeeded: "تم تطبيق إعدادات البحث.",
+        unavailable: "البحث غير متاح. مكّن البحث، ثم حاول مرة أخرى.",
+      },
+      checkWorkspace: {
+        failed: "تعذر فحص مساحة العمل. حاول مرة أخرى.",
+        running: "جارٍ فحص مساحة العمل…",
+        succeeded: "اكتمل فحص مساحة العمل.",
+      },
+      disableSearch: {
+        failed: "تعذر تعطيل البحث. حاول مرة أخرى.",
+        running: "جارٍ تعطيل البحث…",
+        succeeded: "تم تعطيل البحث.",
+      },
+      enableSearch: {
+        failed: "تعذر تمكين البحث. حاول مرة أخرى.",
+        running: "جارٍ تمكين البحث…",
+        succeeded: "تم تمكين البحث.",
+        unavailable: "لا يزال البحث غير متاح. حاول مرة أخرى.",
+      },
+      refreshSearch: {
+        failed: "تعذر تحديث البحث. حاول مرة أخرى.",
+        running: "جارٍ تحديث البحث…",
+        succeeded: "بدأ تحديث البحث.",
+        unavailable: "البحث غير متاح. مكّن البحث، ثم حاول مرة أخرى.",
+      },
+      showWorkspaceDetails: {
+        failed: "تعذر تحميل تفاصيل مساحة العمل. حاول مرة أخرى.",
+        running: "جارٍ تحميل تفاصيل مساحة العمل…",
+        succeeded: "تم تحميل تفاصيل مساحة العمل.",
+      },
     },
   },
   projects: en.projects,

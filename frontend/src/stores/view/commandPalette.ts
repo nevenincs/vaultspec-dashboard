@@ -6,11 +6,16 @@ import {
   type KeybindingDef,
   registerKeybindings,
 } from "../../platform/keymap/registry";
+import {
+  normalizeMessageDescriptor,
+  type MessageDescriptor,
+  type MessageKey,
+} from "../../platform/localization/message";
+import type { OperationConcept } from "../server/opsActions";
 import { SEARCH_QUERY_MAX_CHARS, normalizeSearchQuery } from "../searchQuery";
 import { registerKeyAction } from "./keymapDispatcher";
 import { normalizeViewStoreSessionString } from "./scopeIdentity";
 
-export const COMMAND_PALETTE_OPS_MESSAGE_CAP = 240;
 export const COMMAND_PALETTE_QUERY_MAX_CHARS = SEARCH_QUERY_MAX_CHARS;
 export const COMMAND_PALETTE_ARMED_COMMAND_ID_MAX_CHARS = 512;
 export const COMMAND_PALETTE_ACTION_ID = "app:command-palette";
@@ -233,13 +238,211 @@ export function deriveSearchPalettePresentationView(context: {
   };
 }
 
-export function normalizeCommandPaletteOpsMessage(message: unknown): string | null {
-  if (typeof message !== "string") return null;
-  const trimmed = message.trim();
-  if (!trimmed) return null;
-  return trimmed.length > COMMAND_PALETTE_OPS_MESSAGE_CAP
-    ? `${trimmed.slice(0, COMMAND_PALETTE_OPS_MESSAGE_CAP - 1)}…`
-    : trimmed;
+export type CommandPaletteOpsCondition =
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "unavailable";
+
+export type CommandPaletteOpsFeedbackTone = "neutral" | "success" | "error";
+
+export interface CommandPaletteOpsFeedback {
+  readonly message: MessageDescriptor;
+  readonly tone: CommandPaletteOpsFeedbackTone;
+}
+
+type ConditionsByOperationConcept = {
+  readonly "check-workspace": "running" | "succeeded" | "failed";
+  readonly "show-workspace-details": "running" | "succeeded" | "failed";
+  readonly "enable-search": CommandPaletteOpsCondition;
+  readonly "disable-search": "running" | "succeeded" | "failed";
+  readonly "refresh-search": CommandPaletteOpsCondition;
+  readonly "apply-search-settings": CommandPaletteOpsCondition;
+};
+
+type OperationFeedbackCatalog = {
+  readonly [Concept in OperationConcept]: Readonly<
+    Record<ConditionsByOperationConcept[Concept], CommandPaletteOpsFeedback>
+  >;
+};
+
+function createCommandPaletteOpsFeedback(
+  key: MessageKey,
+  tone: CommandPaletteOpsFeedbackTone,
+): CommandPaletteOpsFeedback {
+  return Object.freeze({ message: Object.freeze({ key }), tone });
+}
+
+const OPERATION_FEEDBACK_CATALOG = Object.freeze({
+  "check-workspace": Object.freeze({
+    running: createCommandPaletteOpsFeedback(
+      "operations:feedback.checkWorkspace.running",
+      "neutral",
+    ),
+    succeeded: createCommandPaletteOpsFeedback(
+      "operations:feedback.checkWorkspace.succeeded",
+      "success",
+    ),
+    failed: createCommandPaletteOpsFeedback(
+      "operations:feedback.checkWorkspace.failed",
+      "error",
+    ),
+  }),
+  "show-workspace-details": Object.freeze({
+    running: createCommandPaletteOpsFeedback(
+      "operations:feedback.showWorkspaceDetails.running",
+      "neutral",
+    ),
+    succeeded: createCommandPaletteOpsFeedback(
+      "operations:feedback.showWorkspaceDetails.succeeded",
+      "success",
+    ),
+    failed: createCommandPaletteOpsFeedback(
+      "operations:feedback.showWorkspaceDetails.failed",
+      "error",
+    ),
+  }),
+  "enable-search": Object.freeze({
+    running: createCommandPaletteOpsFeedback(
+      "operations:feedback.enableSearch.running",
+      "neutral",
+    ),
+    succeeded: createCommandPaletteOpsFeedback(
+      "operations:feedback.enableSearch.succeeded",
+      "success",
+    ),
+    failed: createCommandPaletteOpsFeedback(
+      "operations:feedback.enableSearch.failed",
+      "error",
+    ),
+    unavailable: createCommandPaletteOpsFeedback(
+      "operations:feedback.enableSearch.unavailable",
+      "error",
+    ),
+  }),
+  "disable-search": Object.freeze({
+    running: createCommandPaletteOpsFeedback(
+      "operations:feedback.disableSearch.running",
+      "neutral",
+    ),
+    succeeded: createCommandPaletteOpsFeedback(
+      "operations:feedback.disableSearch.succeeded",
+      "success",
+    ),
+    failed: createCommandPaletteOpsFeedback(
+      "operations:feedback.disableSearch.failed",
+      "error",
+    ),
+  }),
+  "refresh-search": Object.freeze({
+    running: createCommandPaletteOpsFeedback(
+      "operations:feedback.refreshSearch.running",
+      "neutral",
+    ),
+    succeeded: createCommandPaletteOpsFeedback(
+      "operations:feedback.refreshSearch.succeeded",
+      "success",
+    ),
+    failed: createCommandPaletteOpsFeedback(
+      "operations:feedback.refreshSearch.failed",
+      "error",
+    ),
+    unavailable: createCommandPaletteOpsFeedback(
+      "operations:feedback.refreshSearch.unavailable",
+      "error",
+    ),
+  }),
+  "apply-search-settings": Object.freeze({
+    running: createCommandPaletteOpsFeedback(
+      "operations:feedback.applySearchSettings.running",
+      "neutral",
+    ),
+    succeeded: createCommandPaletteOpsFeedback(
+      "operations:feedback.applySearchSettings.succeeded",
+      "success",
+    ),
+    failed: createCommandPaletteOpsFeedback(
+      "operations:feedback.applySearchSettings.failed",
+      "error",
+    ),
+    unavailable: createCommandPaletteOpsFeedback(
+      "operations:feedback.applySearchSettings.unavailable",
+      "error",
+    ),
+  }),
+} satisfies OperationFeedbackCatalog);
+
+const GENERIC_OPERATION_FEEDBACK = createCommandPaletteOpsFeedback(
+  "common:feedback.actionUnavailable",
+  "error",
+);
+
+const OPERATION_FEEDBACK_BY_KEY: ReadonlyMap<MessageKey, CommandPaletteOpsFeedback> =
+  new Map([
+    ...Object.values(OPERATION_FEEDBACK_CATALOG).flatMap((conditions) =>
+      Object.values(conditions).map(
+        (feedback) => [feedback.message.key, feedback] as const,
+      ),
+    ),
+    [GENERIC_OPERATION_FEEDBACK.message.key, GENERIC_OPERATION_FEEDBACK] as const,
+  ]);
+
+function readExactDataRecord(
+  value: unknown,
+  fields: readonly string[],
+): Readonly<Record<string, unknown>> | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length !== fields.length ||
+      keys.some((key) => typeof key !== "string" || !fields.includes(key))
+    ) {
+      return null;
+    }
+    const record: Record<string, unknown> = Object.create(null) as Record<
+      string,
+      unknown
+    >;
+    for (const field of fields) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, field);
+      if (descriptor === undefined || !("value" in descriptor)) return null;
+      record[field] = descriptor.value;
+    }
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+/** Convert a canonical operation concept and condition to immutable UI feedback. */
+export function commandPaletteOpsFeedback(input: unknown): CommandPaletteOpsFeedback {
+  const record = readExactDataRecord(input, ["concept", "condition"]);
+  if (record === null || typeof record.concept !== "string") {
+    return GENERIC_OPERATION_FEEDBACK;
+  }
+  const byCondition = (
+    OPERATION_FEEDBACK_CATALOG as Readonly<
+      Record<string, Readonly<Record<string, CommandPaletteOpsFeedback>>>
+    >
+  )[record.concept];
+  return typeof record.condition === "string"
+    ? (byCondition?.[record.condition] ?? GENERIC_OPERATION_FEEDBACK)
+    : GENERIC_OPERATION_FEEDBACK;
+}
+
+/** Accept only a frozen catalog outcome, never an arbitrary descriptor or string. */
+export function normalizeCommandPaletteOpsFeedback(
+  feedback: unknown,
+): CommandPaletteOpsFeedback | null {
+  const record = readExactDataRecord(feedback, ["message", "tone"]);
+  if (record === null) return null;
+  const message = normalizeMessageDescriptor(record.message);
+  if (message === null || message.values !== undefined) return null;
+  const canonical = OPERATION_FEEDBACK_BY_KEY.get(message.key);
+  return canonical !== undefined && canonical.tone === record.tone ? canonical : null;
 }
 
 export function normalizeCommandPaletteQuery(query: unknown): string {
@@ -295,7 +498,7 @@ interface CommandPaletteState {
   /** Search mode: the corpus separation control (all | docs | code). */
   searchCorpus: SearchCorpus;
   armedCommandId: string | null;
-  opsMessage: string | null;
+  opsFeedback: CommandPaletteOpsFeedback | null;
   opsEpoch: number;
   openPalette: () => void;
   openSearch: () => void;
@@ -311,8 +514,8 @@ interface CommandPaletteState {
   setArmedCommandId: (commandId: unknown) => void;
   resetSurfaceState: () => void;
   resetOpsFeedback: () => void;
-  beginOpsFeedback: (message: unknown) => number;
-  setOpsFeedbackForEpoch: (epoch: unknown, message: unknown) => void;
+  beginOpsFeedback: (feedback: unknown) => number;
+  setOpsFeedbackForEpoch: (epoch: unknown, feedback: unknown) => void;
   reset: () => void;
 }
 
@@ -321,7 +524,7 @@ export interface CommandPaletteSurfaceState {
   query: string;
   cursor: number;
   armedCommandId: string | null;
-  opsMessage: string | null;
+  opsFeedback: CommandPaletteOpsFeedback | null;
   opsEpoch: number;
 }
 
@@ -341,7 +544,7 @@ export function normalizeCommandPaletteSurfaceState(
     query: normalizeCommandPaletteQuery(value.query),
     cursor: normalizeCommandPaletteCursor(value.cursor),
     armedCommandId: normalizeCommandPaletteArmedCommandId(value.armedCommandId),
-    opsMessage: normalizeCommandPaletteOpsMessage(value.opsMessage),
+    opsFeedback: normalizeCommandPaletteOpsFeedback(value.opsFeedback),
     opsEpoch: normalizeCommandPaletteOpsEpoch(value.opsEpoch) ?? 0,
   };
 }
@@ -355,7 +558,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
   searchExpanded: false,
   searchCorpus: "all",
   armedCommandId: null,
-  opsMessage: null,
+  opsFeedback: null,
   opsEpoch: 0,
   openPalette: () =>
     set((state) => {
@@ -369,7 +572,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         searchExpanded: false,
         searchCorpus: "all",
         armedCommandId: null,
-        opsMessage: null,
+        opsFeedback: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
       };
     }),
@@ -385,7 +588,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         searchExpanded: false,
         searchCorpus: "all",
         armedCommandId: null,
-        opsMessage: null,
+        opsFeedback: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
       };
     }),
@@ -401,7 +604,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         searchExpanded: false,
         searchCorpus: "all",
         armedCommandId: null,
-        opsMessage: null,
+        opsFeedback: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
       };
     }),
@@ -417,7 +620,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         searchExpanded: false,
         searchCorpus: "all",
         armedCommandId: null,
-        opsMessage: null,
+        opsFeedback: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
       };
     }),
@@ -433,7 +636,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         searchExpanded: false,
         searchCorpus: "all",
         armedCommandId: null,
-        opsMessage: null,
+        opsFeedback: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
       };
     }),
@@ -460,26 +663,26 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
     }),
   resetOpsFeedback: () =>
     set((state) => ({
-      opsMessage: null,
+      opsFeedback: null,
       opsEpoch: nextCommandPaletteOpsEpoch(state.opsEpoch),
     })),
-  beginOpsFeedback: (message) => {
+  beginOpsFeedback: (feedback) => {
     const epoch = nextCommandPaletteOpsEpoch(get().opsEpoch);
     set({
-      opsMessage: normalizeCommandPaletteOpsMessage(message),
+      opsFeedback: normalizeCommandPaletteOpsFeedback(feedback),
       opsEpoch: epoch,
     });
     return epoch;
   },
-  setOpsFeedbackForEpoch: (epoch, message) =>
+  setOpsFeedbackForEpoch: (epoch, feedback) =>
     set((state) => {
       const normalizedEpoch = normalizeCommandPaletteOpsEpoch(epoch);
-      const normalizedMessage = normalizeCommandPaletteOpsMessage(message);
+      const normalizedFeedback = normalizeCommandPaletteOpsFeedback(feedback);
       return state.open &&
         normalizedEpoch !== null &&
-        normalizedMessage !== null &&
+        normalizedFeedback !== null &&
         state.opsEpoch === normalizedEpoch
-        ? { opsMessage: normalizedMessage }
+        ? { opsFeedback: normalizedFeedback }
         : state;
     }),
   reset: () =>
@@ -494,7 +697,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         searchExpanded: false,
         searchCorpus: "all",
         armedCommandId: null,
-        opsMessage: null,
+        opsFeedback: null,
         opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
       };
     }),
@@ -504,9 +707,9 @@ export function useCommandPaletteOpen(): boolean {
   return useCommandPaletteStore((state) => normalizeCommandPaletteOpen(state.open));
 }
 
-export function useCommandPaletteOpsMessage(): string | null {
+export function useCommandPaletteOpsFeedback(): CommandPaletteOpsFeedback | null {
   return useCommandPaletteStore((state) =>
-    normalizeCommandPaletteOpsMessage(state.opsMessage),
+    normalizeCommandPaletteOpsFeedback(state.opsFeedback),
   );
 }
 
@@ -600,15 +803,15 @@ export function resetCommandPaletteOpsFeedback(): void {
   useCommandPaletteStore.getState().resetOpsFeedback();
 }
 
-export function beginCommandPaletteOpsFeedback(message: unknown): number {
-  return useCommandPaletteStore.getState().beginOpsFeedback(message);
+export function beginCommandPaletteOpsFeedback(feedback: unknown): number {
+  return useCommandPaletteStore.getState().beginOpsFeedback(feedback);
 }
 
 export function setCommandPaletteOpsFeedbackForEpoch(
   epoch: unknown,
-  message: unknown,
+  feedback: unknown,
 ): void {
-  useCommandPaletteStore.getState().setOpsFeedbackForEpoch(epoch, message);
+  useCommandPaletteStore.getState().setOpsFeedbackForEpoch(epoch, feedback);
 }
 
 export function resetCommandPalette(): void {

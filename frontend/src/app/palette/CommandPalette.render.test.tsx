@@ -146,9 +146,9 @@ describe("CommandPalette lifecycle", () => {
 
     act(() => useCommandPaletteStore.getState().openPalette());
     const input = screen.getByRole("combobox") as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "ops vault check" } });
+    fireEvent.change(input, { target: { value: "check workspace" } });
     fireEvent.click(
-      await screen.findByRole("option", { name: "ops: vault check" }, ENGINE_WAIT),
+      await screen.findByRole("option", { name: "Check workspace" }, ENGINE_WAIT),
     );
     expect(appConfirmGuard.isArmed("ops:run")).toBe(true);
 
@@ -157,7 +157,7 @@ describe("CommandPalette lifecycle", () => {
     await waitFor(() => {
       expect(appConfirmGuard.isArmed("ops:run")).toBe(false);
     }, ENGINE_WAIT);
-    expect(screen.queryByRole("option", { name: "ops: vault check" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "Check workspace" })).toBeNull();
   });
 
   it("keeps legacy confirmation on the inline two-activation path", async () => {

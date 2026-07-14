@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   COMMAND_PALETTE_ARMED_COMMAND_ID_MAX_CHARS,
-  COMMAND_PALETTE_OPS_MESSAGE_CAP,
   COMMAND_PALETTE_QUERY_MAX_CHARS,
   beginCommandPaletteOpsFeedback,
+  commandPaletteOpsFeedback,
   closeCommandPalette,
   deriveSearchPaletteKeyboardIntent,
   deriveSearchPalettePresentationView,
@@ -13,7 +13,7 @@ import {
   normalizeCommandPaletteFeedbackScope,
   normalizeCommandPaletteFeedbackTimeTravel,
   normalizeCommandPaletteOpen,
-  normalizeCommandPaletteOpsMessage,
+  normalizeCommandPaletteOpsFeedback,
   normalizeCommandPaletteQuery,
   normalizeCommandPaletteSurfaceState,
   openCommandPalette,
@@ -56,17 +56,19 @@ describe("command palette store", () => {
     expect(useCommandPaletteStore.getState().open).toBe(false);
   });
 
-  it("normalizes and bounds ops feedback messages at the palette seam", () => {
-    expect(normalizeCommandPaletteOpsMessage("  reindex queued  ")).toBe(
-      "reindex queued",
-    );
-    expect(normalizeCommandPaletteOpsMessage("   ")).toBeNull();
-    expect(normalizeCommandPaletteOpsMessage(null)).toBeNull();
-
-    const long = "x".repeat(COMMAND_PALETTE_OPS_MESSAGE_CAP + 10);
-    const normalized = normalizeCommandPaletteOpsMessage(long);
-    expect(normalized).toHaveLength(COMMAND_PALETTE_OPS_MESSAGE_CAP);
-    expect(normalized?.endsWith("…")).toBe(true);
+  it("accepts only catalog-owned operation feedback at the palette seam", () => {
+    const feedback = commandPaletteOpsFeedback({
+      concept: "refresh-search",
+      condition: "running",
+    });
+    expect(normalizeCommandPaletteOpsFeedback(feedback)).toBe(feedback);
+    expect(
+      normalizeCommandPaletteOpsFeedback({
+        message: { key: "operations:feedback.refreshSearch.running" },
+        tone: "success",
+      }),
+    ).toBeNull();
+    expect(normalizeCommandPaletteOpsFeedback("reindex queued")).toBeNull();
   });
 
   it("owns transient surface input, cursor, and armed row state", () => {
@@ -124,7 +126,7 @@ describe("command palette store", () => {
         query: "  typed lens  ",
         cursor: 3.8,
         armedCommandId: " ops:vault-check ",
-        opsMessage: " running ",
+        opsFeedback: " running ",
         opsEpoch: "12",
       }),
     ).toEqual({
@@ -132,7 +134,7 @@ describe("command palette store", () => {
       query: "typed lens",
       cursor: 3,
       armedCommandId: "ops:vault-check",
-      opsMessage: "running",
+      opsFeedback: null,
       opsEpoch: 0,
     });
 
@@ -367,7 +369,7 @@ describe("command palette store", () => {
       query: { text: "bad" },
       cursor: Number.POSITIVE_INFINITY,
       armedCommandId: { id: "ops:bad" },
-      opsMessage: " stale ",
+      opsFeedback: " stale ",
       opsEpoch: "bad",
     } as unknown as ReturnType<typeof useCommandPaletteStore.getState>);
 
@@ -378,7 +380,7 @@ describe("command palette store", () => {
       query: "",
       cursor: 0,
       armedCommandId: null,
-      opsMessage: null,
+      opsFeedback: null,
       opsEpoch: 1,
     });
 
@@ -393,7 +395,7 @@ describe("command palette store", () => {
       query: "",
       cursor: 0,
       armedCommandId: null,
-      opsMessage: null,
+      opsFeedback: null,
       opsEpoch: 1,
     });
   });
@@ -436,20 +438,28 @@ describe("command palette store", () => {
 
   it("keeps ops feedback scoped to the active palette epoch", () => {
     openCommandPalette();
-    const epoch = beginCommandPaletteOpsFeedback(" running ");
+    const running = commandPaletteOpsFeedback({
+      concept: "check-workspace",
+      condition: "running",
+    });
+    const succeeded = commandPaletteOpsFeedback({
+      concept: "check-workspace",
+      condition: "succeeded",
+    });
+    const epoch = beginCommandPaletteOpsFeedback(running);
     expect(useCommandPaletteStore.getState()).toMatchObject({
-      opsMessage: "running",
+      opsFeedback: running,
       opsEpoch: epoch,
     });
 
-    setCommandPaletteOpsFeedbackForEpoch(epoch + 1, "stale");
-    expect(useCommandPaletteStore.getState().opsMessage).toBe("running");
+    setCommandPaletteOpsFeedbackForEpoch(epoch + 1, succeeded);
+    expect(useCommandPaletteStore.getState().opsFeedback).toBe(running);
 
     setCommandPaletteOpsFeedbackForEpoch(epoch, "   ");
-    expect(useCommandPaletteStore.getState().opsMessage).toBe("running");
+    expect(useCommandPaletteStore.getState().opsFeedback).toBe(running);
 
-    setCommandPaletteOpsFeedbackForEpoch(`${epoch}`, "stale");
-    expect(useCommandPaletteStore.getState().opsMessage).toBe("running");
+    setCommandPaletteOpsFeedbackForEpoch(`${epoch}`, succeeded);
+    expect(useCommandPaletteStore.getState().opsFeedback).toBe(running);
   });
 });
 
