@@ -1,0 +1,698 @@
+#!/usr/bin/env node
+
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import process from "node:process";
+
+import ts from "typescript";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const frontendRoot = resolve(here, "..");
+const sourceRoot = join(frontendRoot, "src");
+const allowlistPath = join(here, "localization-allowlist.json");
+const tsconfigPath = join(frontendRoot, "tsconfig.json");
+
+const LIMITS = Object.freeze({
+  allowlistEntries: 50_000,
+  constantDepth: 8,
+  files: 5_000,
+  fileBytes: 2 * 1024 * 1024,
+  findings: 50_000,
+  parts: 64,
+  snippetChars: 160,
+});
+
+const FINDING_CODES = Object.freeze({
+  directLocaleFormat: "direct-locale-format",
+  dynamicMessageKey: "dynamic-message-key",
+  fixedLocaleFormat: "fixed-locale-format",
+  imperativeDisplay: "imperative-display",
+  jsxAttribute: "jsx-attribute",
+  jsxText: "jsx-text",
+  presentationField: "presentation-field",
+  translatedFragment: "translated-fragment",
+  translationDefault: "translation-default",
+});
+
+const SOURCE_EXT = /\.(?:ts|tsx)$/u;
+const TEST_SOURCE = /\.(?:test|spec)\.(?:ts|tsx)$/u;
+const GENERATED_MARKER = /@generated/iu;
+const EXACT_SOURCE_EXCLUSIONS = new Set(["src/localization/testing/resources.ts"]);
+const FORMATTER_OWNER = "src/platform/localization/formatters.ts";
+
+const JSX_ATTRIBUTE_NAMES = new Set([
+  "accessibleName",
+  "alt",
+  "aria-description",
+  "aria-label",
+  "description",
+  "emptyText",
+  "errorText",
+  "label",
+  "loadingText",
+  "message",
+  "placeholder",
+  "statusText",
+  "title",
+]);
+const PRESENTATION_FIELD_NAMES = new Set([
+  "accessibleName",
+  "body",
+  "cancelLabel",
+  "confirmLabel",
+  "description",
+  "disabledReason",
+  "emptyText",
+  "errorText",
+  "label",
+  "loadingText",
+  "message",
+  "placeholder",
+  "statusText",
+  "title",
+]);
+const IMPERATIVE_CALL_NAMES = new Set([
+  "alert",
+  "confirm",
+  "notify",
+  "prompt",
+  "setError",
+  "setFeedback",
+  "setStatus",
+  "showError",
+  "toast",
+]);
+const TRANSLATION_FACTORIES = new Set([
+  "createMessageDescriptor",
+  "createConfirmationDescriptor",
+]);
+const LOCALE_METHODS = new Map([
+  ["localeCompare", 1],
+  ["toLocaleDateString", 0],
+  ["toLocaleString", 0],
+  ["toLocaleTimeString", 0],
+]);
+const INTL_FORMATTERS = new Set([
+  "DateTimeFormat",
+  "ListFormat",
+  "NumberFormat",
+  "RelativeTimeFormat",
+]);
+
+function toRelative(file) {
+  return relative(frontendRoot, file).split(sep).join("/");
+}
+
+function compareText(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function insideRoot(file, root) {
+  const rel = relative(root, file);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+function collectSourceFiles(root = sourceRoot) {
+  const canonicalRoot = realpathSync(root);
+  const files = [];
+  const walk = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
+      compareText(a.name, b.name),
+    )) {
+      const full = join(directory, entry.name);
+      const stat = lstatSync(full);
+      if (stat.isSymbolicLink()) {
+        throw new Error(
+          `Localization scan refuses symbolic links: ${toRelative(full)}`,
+        );
+      }
+      if (stat.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!stat.isFile() || !SOURCE_EXT.test(entry.name)) continue;
+      const canonical = realpathSync(full);
+      if (!insideRoot(canonical, canonicalRoot)) {
+        throw new Error(
+          `Localization scan found an out-of-root file: ${toRelative(full)}`,
+        );
+      }
+      files.push(canonical);
+      if (files.length > LIMITS.files)
+        throw new Error("Localization source file limit exceeded.");
+    }
+  };
+  walk(canonicalRoot);
+  return files;
+}
+
+function sourceIsExcluded(file, content) {
+  const rel = toRelative(file);
+  return (
+    TEST_SOURCE.test(rel) ||
+    rel.endsWith(".d.ts") ||
+    rel.startsWith("src/locales/") ||
+    EXACT_SOURCE_EXCLUSIONS.has(rel) ||
+    GENERATED_MARKER.test(content.slice(0, 256))
+  );
+}
+
+function compilerOptions() {
+  const config = ts.readConfigFile(tsconfigPath, (file) => readFileSync(file, "utf8"));
+  if (config.error)
+    throw new Error("Localization scan could not read TypeScript config.");
+  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, frontendRoot);
+  if (parsed.errors.length > 0) {
+    throw new Error("Localization scan found an invalid TypeScript config.");
+  }
+  return parsed.options;
+}
+
+function propertyName(node) {
+  if (ts.isIdentifier(node) || ts.isStringLiteralLike(node)) return node.text;
+  return null;
+}
+
+function normalizeText(value) {
+  return value.replace(/\s+/gu, " ").trim();
+}
+
+function meaningful(value) {
+  return normalizeText(value).length > 0;
+}
+
+function mergeParts(parts, next) {
+  parts.texts.push(...next.texts);
+  parts.translation ||= next.translation;
+  parts.dynamic ||= next.dynamic;
+  if (parts.texts.length > LIMITS.parts) parts.overflow = true;
+  return parts;
+}
+
+function emptyParts() {
+  return { dynamic: false, overflow: false, texts: [], translation: false };
+}
+
+function unwrapAlias(symbol, checker) {
+  if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) {
+    try {
+      return checker.getAliasedSymbol(symbol);
+    } catch {
+      return symbol;
+    }
+  }
+  return symbol;
+}
+
+function isConstDeclaration(declaration) {
+  return (
+    ts.isVariableDeclaration(declaration) &&
+    declaration.parent &&
+    ts.isVariableDeclarationList(declaration.parent) &&
+    (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+  );
+}
+
+function sourceUsesTranslationHook(sourceFile) {
+  return sourceFile.statements.some(
+    (statement) =>
+      ts.isImportDeclaration(statement) &&
+      ts.isStringLiteral(statement.moduleSpecifier) &&
+      statement.moduleSpecifier.text === "react-i18next" &&
+      statement.importClause?.namedBindings &&
+      ts.isNamedImports(statement.importClause.namedBindings) &&
+      statement.importClause.namedBindings.elements.some(
+        (element) => element.name.text === "useTranslation",
+      ),
+  );
+}
+
+function callName(expression) {
+  if (ts.isIdentifier(expression)) return expression.text;
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  return null;
+}
+
+function isTranslationCall(node, hookSource) {
+  if (!ts.isCallExpression(node)) return false;
+  const expression = node.expression;
+  if (ts.isIdentifier(expression)) {
+    return (
+      TRANSLATION_FACTORIES.has(expression.text) ||
+      (expression.text === "t" && hookSource)
+    );
+  }
+  if (!ts.isPropertyAccessExpression(expression) || expression.name.text !== "t") {
+    return false;
+  }
+  const receiver = expression.expression;
+  return (
+    ts.isIdentifier(receiver) && /^(?:i18n|localization|runtime)$/u.test(receiver.text)
+  );
+}
+
+function staticParts(node, checker, hookSource, seen = new Set(), depth = 0) {
+  const result = emptyParts();
+  if (!node || depth > LIMITS.constantDepth) return { ...result, dynamic: true };
+  if (ts.isStringLiteralLike(node)) {
+    result.texts.push(node.text);
+    return result;
+  }
+  if (ts.isJsxText(node)) {
+    result.texts.push(node.text);
+    return result;
+  }
+  if (isTranslationCall(node, hookSource)) {
+    result.translation = true;
+    return result;
+  }
+  if (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isSatisfiesExpression(node)
+  ) {
+    return staticParts(node.expression, checker, hookSource, seen, depth + 1);
+  }
+  if (ts.isTemplateExpression(node)) {
+    result.texts.push(node.head.text);
+    for (const span of node.templateSpans) {
+      mergeParts(
+        result,
+        staticParts(span.expression, checker, hookSource, seen, depth + 1),
+      );
+      result.texts.push(span.literal.text);
+    }
+    return result;
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.PlusToken
+  ) {
+    mergeParts(result, staticParts(node.left, checker, hookSource, seen, depth + 1));
+    mergeParts(result, staticParts(node.right, checker, hookSource, seen, depth + 1));
+    return result;
+  }
+  if (ts.isConditionalExpression(node)) {
+    mergeParts(
+      result,
+      staticParts(node.whenTrue, checker, hookSource, seen, depth + 1),
+    );
+    mergeParts(
+      result,
+      staticParts(node.whenFalse, checker, hookSource, seen, depth + 1),
+    );
+    return result;
+  }
+  if (ts.isIdentifier(node) || ts.isPropertyAccessExpression(node)) {
+    const symbol = unwrapAlias(checker.getSymbolAtLocation(node), checker);
+    if (!symbol || seen.has(symbol)) return { ...result, dynamic: true };
+    const nextSeen = new Set(seen);
+    nextSeen.add(symbol);
+    for (const declaration of symbol.declarations ?? []) {
+      let initializer = null;
+      if (isConstDeclaration(declaration)) initializer = declaration.initializer;
+      if (ts.isPropertyAssignment(declaration)) initializer = declaration.initializer;
+      if (initializer) {
+        mergeParts(
+          result,
+          staticParts(initializer, checker, hookSource, nextSeen, depth + 1),
+        );
+      }
+    }
+    if (result.texts.length > 0 || result.translation) return result;
+  }
+  result.dynamic = true;
+  return result;
+}
+
+function literalLocale(node, checker, hookSource) {
+  if (!node) return false;
+  const parts = staticParts(node, checker, hookSource);
+  return !parts.dynamic && parts.texts.some(meaningful);
+}
+
+function safeSnippet(node, sourceFile) {
+  return normalizeText(node.getText(sourceFile)).slice(0, LIMITS.snippetChars);
+}
+
+function scanProgram(files, allowOutsideSource = false) {
+  const program = ts.createProgram({ rootNames: files, options: compilerOptions() });
+  const requestedFiles = new Set(files.map((file) => resolve(file)));
+  if (program.getSyntacticDiagnostics().length > 0) {
+    throw new Error("Localization scan found source syntax errors.");
+  }
+  const checker = program.getTypeChecker();
+  const rawFindings = [];
+  const add = (code, node, sourceFile, context, text = "") => {
+    if (rawFindings.length >= LIMITS.findings) {
+      throw new Error("Localization finding limit exceeded.");
+    }
+    const position = sourceFile.getLineAndCharacterOfPosition(
+      node.getStart(sourceFile),
+    );
+    rawFindings.push({
+      code,
+      column: position.character + 1,
+      context,
+      line: position.line + 1,
+      path: toRelative(sourceFile.fileName),
+      snippet: safeSnippet(node, sourceFile),
+      text: normalizeText(text),
+    });
+  };
+
+  for (const sourceFile of program.getSourceFiles()) {
+    const file = resolve(sourceFile.fileName);
+    if (
+      (!allowOutsideSource && !insideRoot(file, sourceRoot)) ||
+      (allowOutsideSource && !requestedFiles.has(file) && !insideRoot(file, sourceRoot))
+    ) {
+      continue;
+    }
+    const bytes = Buffer.byteLength(sourceFile.text, "utf8");
+    if (bytes > LIMITS.fileBytes)
+      throw new Error(`Localization file limit exceeded: ${toRelative(file)}`);
+    if (sourceIsExcluded(file, sourceFile.text)) continue;
+    const hookSource = sourceUsesTranslationHook(sourceFile);
+    const formatterOwner = toRelative(file) === FORMATTER_OWNER;
+
+    const reportStatic = (code, node, context, expression = node) => {
+      const parts = staticParts(expression, checker, hookSource);
+      for (const text of parts.texts.filter(meaningful))
+        add(code, node, sourceFile, context, text);
+    };
+
+    const visit = (node) => {
+      if (ts.isJsxText(node) && meaningful(node.text)) {
+        add(FINDING_CODES.jsxText, node, sourceFile, "jsx-child", node.text);
+      } else if (ts.isJsxExpression(node) && node.expression) {
+        const parts = staticParts(node.expression, checker, hookSource);
+        if (!parts.translation) {
+          for (const text of parts.texts.filter(meaningful)) {
+            add(FINDING_CODES.jsxText, node, sourceFile, "jsx-expression", text);
+          }
+        }
+      } else if (ts.isJsxAttribute(node)) {
+        const name = node.name.getText(sourceFile);
+        if (JSX_ATTRIBUTE_NAMES.has(name) && node.initializer) {
+          const expression = ts.isJsxExpression(node.initializer)
+            ? node.initializer.expression
+            : node.initializer;
+          if (expression)
+            reportStatic(FINDING_CODES.jsxAttribute, node, name, expression);
+        }
+      } else if (ts.isPropertyAssignment(node)) {
+        const name = propertyName(node.name);
+        if (name && PRESENTATION_FIELD_NAMES.has(name)) {
+          reportStatic(FINDING_CODES.presentationField, node, name, node.initializer);
+        }
+      }
+
+      if (ts.isCallExpression(node)) {
+        const name = callName(node.expression);
+        if (name && IMPERATIVE_CALL_NAMES.has(name) && node.arguments[0]) {
+          reportStatic(FINDING_CODES.imperativeDisplay, node, name, node.arguments[0]);
+        }
+
+        if (isTranslationCall(node, hookSource)) {
+          const key = node.arguments[0];
+          if (key) {
+            const keyParts = staticParts(key, checker, hookSource);
+            const staticKey =
+              !keyParts.dynamic &&
+              keyParts.texts.length === 1 &&
+              meaningful(keyParts.texts[0]);
+            if (!staticKey) {
+              add(
+                FINDING_CODES.dynamicMessageKey,
+                key,
+                sourceFile,
+                name ?? "translation",
+              );
+            }
+          }
+          const options = node.arguments[1];
+          if (options && ts.isObjectLiteralExpression(options)) {
+            for (const property of options.properties) {
+              if (
+                ts.isPropertyAssignment(property) &&
+                propertyName(property.name) === "defaultValue"
+              ) {
+                add(
+                  FINDING_CODES.translationDefault,
+                  property,
+                  sourceFile,
+                  "defaultValue",
+                );
+              }
+            }
+          }
+        }
+
+        if (!formatterOwner && ts.isPropertyAccessExpression(node.expression)) {
+          const method = node.expression.name.text;
+          if (LOCALE_METHODS.has(method)) {
+            const locale = node.arguments[LOCALE_METHODS.get(method)];
+            add(
+              literalLocale(locale, checker, hookSource)
+                ? FINDING_CODES.fixedLocaleFormat
+                : FINDING_CODES.directLocaleFormat,
+              node,
+              sourceFile,
+              method,
+            );
+          }
+          if (
+            ts.isIdentifier(node.expression.expression) &&
+            node.expression.expression.text === "Intl" &&
+            INTL_FORMATTERS.has(node.expression.name.text)
+          ) {
+            const locale = node.arguments[0];
+            add(
+              literalLocale(locale, checker, hookSource)
+                ? FINDING_CODES.fixedLocaleFormat
+                : FINDING_CODES.directLocaleFormat,
+              node,
+              sourceFile,
+              `Intl.${node.expression.name.text}`,
+            );
+          }
+        }
+      }
+
+      if (
+        !formatterOwner &&
+        ts.isNewExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        ts.isIdentifier(node.expression.expression) &&
+        node.expression.expression.text === "Intl" &&
+        INTL_FORMATTERS.has(node.expression.name.text)
+      ) {
+        const locale = node.arguments?.[0];
+        add(
+          literalLocale(locale, checker, hookSource)
+            ? FINDING_CODES.fixedLocaleFormat
+            : FINDING_CODES.directLocaleFormat,
+          node,
+          sourceFile,
+          `Intl.${node.expression.name.text}`,
+        );
+      }
+
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.PlusToken &&
+        !(
+          ts.isBinaryExpression(node.parent) &&
+          node.parent.operatorToken.kind === ts.SyntaxKind.PlusToken
+        )
+      ) {
+        const parts = staticParts(node, checker, hookSource);
+        if (parts.translation) {
+          add(FINDING_CODES.translatedFragment, node, sourceFile, "binary-plus");
+        }
+      }
+      if (ts.isTemplateExpression(node)) {
+        const parts = staticParts(node, checker, hookSource);
+        if (parts.translation && parts.texts.some(meaningful)) {
+          add(FINDING_CODES.translatedFragment, node, sourceFile, "template");
+        }
+      }
+
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      ) {
+        const target = node.left.getText(sourceFile);
+        if (
+          target === "document.title" ||
+          target.endsWith(".textContent") ||
+          target.endsWith(".innerText")
+        ) {
+          reportStatic(FINDING_CODES.imperativeDisplay, node, target, node.right);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+
+  rawFindings.sort(
+    (a, b) =>
+      compareText(a.path, b.path) ||
+      a.line - b.line ||
+      a.column - b.column ||
+      compareText(a.code, b.code),
+  );
+  const occurrences = new Map();
+  return rawFindings.map((finding) => {
+    const signature = [finding.code, finding.path, finding.context, finding.text].join(
+      "\0",
+    );
+    const occurrence = occurrences.get(signature) ?? 0;
+    occurrences.set(signature, occurrence + 1);
+    const id = createHash("sha256")
+      .update(`localization-v1\0${signature}\0${occurrence}`)
+      .digest("hex")
+      .slice(0, 24);
+    return Object.freeze({
+      code: finding.code,
+      column: finding.column,
+      id,
+      line: finding.line,
+      path: finding.path,
+      snippet: finding.snippet,
+    });
+  });
+}
+
+export function scanFiles(files) {
+  return scanProgram(
+    [...files].map((file) => resolve(file)),
+    true,
+  );
+}
+
+export function scanProductionSources() {
+  return scanProgram(collectSourceFiles());
+}
+
+function readAllowlist() {
+  const parsed = JSON.parse(readFileSync(allowlistPath, "utf8"));
+  if (!Array.isArray(parsed) || parsed.length > LIMITS.allowlistEntries) {
+    throw new Error("Localization allowlist has an invalid size.");
+  }
+  const ids = new Set();
+  for (const entry of parsed) {
+    if (
+      entry === null ||
+      typeof entry !== "object" ||
+      Object.keys(entry).sort().join(",") !== "id,path,rule" ||
+      typeof entry.id !== "string" ||
+      !/^[a-f0-9]{24}$/u.test(entry.id) ||
+      typeof entry.path !== "string" ||
+      typeof entry.rule !== "string" ||
+      ids.has(entry.id)
+    ) {
+      throw new Error("Localization allowlist contains an invalid entry.");
+    }
+    ids.add(entry.id);
+  }
+  return parsed;
+}
+
+function baselineEntries(findings) {
+  return findings
+    .map(({ id, code, path }) => ({ id, path, rule: code }))
+    .sort(
+      (a, b) =>
+        compareText(a.path, b.path) ||
+        compareText(a.rule, b.rule) ||
+        compareText(a.id, b.id),
+    );
+}
+
+function reportCounts(findings) {
+  const counts = new Map();
+  for (const finding of findings)
+    counts.set(finding.code, (counts.get(finding.code) ?? 0) + 1);
+  return [...counts].sort(([a], [b]) => compareText(a, b));
+}
+
+function run() {
+  const init = process.argv.includes("--init");
+  const findings = scanProductionSources();
+  if (init) {
+    if (existsSync(allowlistPath)) {
+      throw new Error(
+        "Localization allowlist already exists; initialization cannot overwrite it.",
+      );
+    }
+    writeFileSync(
+      allowlistPath,
+      `${JSON.stringify(baselineEntries(findings), null, 2)}\n`,
+    );
+    process.stdout.write(
+      `localization-scan: initialized ${findings.length} exact finding(s).\n`,
+    );
+    for (const [code, count] of reportCounts(findings))
+      process.stdout.write(`  ${code}: ${count}\n`);
+    return;
+  }
+
+  if (!existsSync(allowlistPath)) throw new Error("Localization allowlist is missing.");
+  const allowlist = readAllowlist();
+  const current = new Map(findings.map((finding) => [finding.id, finding]));
+  const allowed = new Map(allowlist.map((entry) => [entry.id, entry]));
+  const newFindings = findings.filter((finding) => !allowed.has(finding.id));
+  const stale = allowlist.filter((entry) => !current.has(entry.id));
+
+  if (newFindings.length > 0) {
+    process.stderr.write("localization-scan: new user-facing source findings:\n");
+    for (const finding of newFindings) {
+      process.stderr.write(
+        `  ${finding.code} ${finding.path}:${finding.line}:${finding.column} ${finding.snippet}\n`,
+      );
+    }
+  }
+  if (stale.length > 0) {
+    process.stderr.write(
+      "localization-scan: stale allowlist entries must be removed:\n",
+    );
+    for (const entry of stale)
+      process.stderr.write(`  ${entry.rule} ${entry.path} ${entry.id}\n`);
+  }
+  if (newFindings.length > 0 || stale.length > 0) {
+    process.exitCode = 1;
+    return;
+  }
+  process.stdout.write(
+    `localization-scan: clean. ${findings.length} exact finding(s) remain.\n`,
+  );
+  for (const [code, count] of reportCounts(findings))
+    process.stdout.write(`  ${code}: ${count}\n`);
+}
+
+const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
+if (import.meta.url === invokedPath) {
+  try {
+    run();
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Localization scan failed.";
+    process.stderr.write(`localization-scan: ${message}\n`);
+    process.exitCode = 1;
+  }
+}
+
+export { FINDING_CODES, LIMITS };
