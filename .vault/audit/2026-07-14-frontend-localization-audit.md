@@ -148,6 +148,18 @@ Forty-eight entries therefore do not establish a byte bound for any formatter ca
 The public boundary must reject oversized locale identifiers before canonicalization
 and cache insertion.
 
+### provider-subscription-churn | medium | Message hooks resubscribe on every render
+
+`W01.P01.S116` passes a newly created options object to `useTranslation` whenever a
+descriptor consumer renders. The installed React adapter memoizes its effective options
+by the options-object identity, and its external-store subscription depends on that
+memoized value. An otherwise unrelated consumer render therefore removes and re-adds
+the `languageChanged` listener. This does not leave duplicate listeners behind, but it
+introduces avoidable listener churn across every migrated message consumer and conflicts
+with the provider step's stable application-lifetime adapter boundary. Hoist the fixed
+non-Suspense options into a frozen module-level constant so subscription identity stays
+stable while descriptor or parent updates rerender the consumer.
+
 ## Recommendations
 
 <!-- Actionable recommendations -->
@@ -335,3 +347,21 @@ percentage, duration, byte formatting, and behavior after more than 48 cache ent
 All four real-module tests passed, along with targeted ESLint and Prettier checks. The
 temporary review test was removed, and no fake, mock, stub, runtime patch, skip, or
 expected failure was used. S05 is accepted.
+
+### W01.P01.S116 review | changes required | Stabilize the hook subscription options
+
+Commit `70c8ee8d8b` is otherwise a narrow adapter over the synchronously initialized
+application singleton. The provider accepts only children and does not acquire locale,
+document, persistence, router, query, theme, or store authority. The message hook calls
+only `resolveMessage`, requests every shipped namespace, and explicitly disables
+Suspense. No call-site English, raw translation output, keys, diagnostics, internal
+state, or development vocabulary can escape through the reviewed path.
+
+Two real production-module render assertions passed. A valid descriptor rendered in
+the initial synchronous pass, changed safely after a real `changeLanguage` call, and
+returned to the source-locale message on the next language change. A malformed internal
+key rendered only the catalog-owned safe fallback. Targeted ESLint and Prettier checks
+also passed, and the review-only test was removed. No fake, mock, stub, runtime patch,
+monkeypatch, skip, or expected failure was used. Before accepting S116, replace the
+inline `useTranslation` options object with a stable frozen constant and repeat the real
+render, language-reactivity, listener-lifecycle, lint, formatting, and type checks.
