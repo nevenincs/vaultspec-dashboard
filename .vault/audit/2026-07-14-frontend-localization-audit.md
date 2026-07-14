@@ -787,3 +787,73 @@ All nine focused Vitest tests passed, along with targeted ESLint and the full Ty
 project check. No fake, mock, stub, patch, monkeypatch, skip, or expected failure was
 used. The complete English policy map remains catalog-owned, no user-facing copy or
 development metadata was introduced, and S121 is accepted with no open findings.
+
+### W01.P03.S14 translation bindings | high | Resolve translation calls by TypeScript symbol identity
+
+Translation recognition is based on local spellings and the presence of a
+`useTranslation` import anywhere in the module. A real fixture importing that hook but
+calling an unrelated local `t`, unrelated `i18n.t`, or unrelated
+`createMessageDescriptor` produced no finding for hard-coded JSX copy. Conversely, a
+real aliased `useTranslation` import with a genuine translated call produced neither
+`dynamic-message-key` nor `translation-default`. Resolve the hook, returned translator,
+runtime translator, and descriptor factories through their actual imported and bound
+TypeScript symbols. Add adverse cases for unrelated same-name values and accepted cases
+for aliased imports and destructured aliases.
+
+### W01.P03.S14 translated branches | high | Do not let one translated branch hide another branch's literal
+
+The JSX-expression rule suppresses every collected literal whenever any nested branch
+is classified as translated. A real conditional fixture of the form `condition ?
+t(key) : "Hot fallback copy"` returned no findings, so source-language fallback copy
+can bypass both `jsx-text` and `translated-fragment`. Report every untranslated static
+branch independently and classify mixed translated expressions for conditionals and
+other bounded expression forms, not only binary addition and templates.
+
+### W01.P03.S14 generated exclusion | medium | Replace the comment-controlled production bypass with exact ownership
+
+Any TypeScript or TSX file containing `@generated` in its first 256 characters is
+excluded wholesale. A real production-shaped fixture containing that comment and
+hard-coded JSX returned no findings. This is a broad, author-controlled escape hatch,
+not an exact semantic owner exclusion. Restrict generated-source handling to explicit
+owned paths or a checked generated manifest so adding a comment cannot disable the
+guard for an arbitrary production module.
+
+### W01.P03.S14 allowlist integrity | medium | Validate stored rule and path against the current finding
+
+Allowlist comparison uses only each entry's ID. Although the parser requires string
+`path` and `rule` fields, it neither validates the rule vocabulary and normalized source
+path nor checks those fields against the current finding represented by the ID. An entry
+can therefore retain an allowed ID while carrying false audit metadata and still pass.
+Require an exact tuple match for ID, rule, and normalized relative path, and reject
+unknown rules, absolute paths, traversal segments, and paths outside the production
+source owner.
+
+### W01.P03.S14 constant cap | medium | Enforce the declared static-part limit
+
+`mergeParts` sets an `overflow` flag after exceeding `LIMITS.parts`, but no caller reads
+that flag, truncates the collection, or rejects the scan. Template head and literal
+parts are also appended without consulting the limit. The file-size and finding caps
+still provide coarse global bounds, but the advertised per-expression constant-part cap
+is ineffective. Stop bounded resolution at the limit and conservatively report or fail
+instead of continuing with an unbounded parts array relative to that declared limit.
+
+### W01.P03.S14 review | changes required | Close scanner bypasses before lint-gate integration
+
+The scanner parses source without application execution, exports a guarded API, emits
+all nine declared rule codes, bounds files, file bytes, depth, findings, snippets, and
+allowlist size, normalizes path separators, sorts findings deterministically, and seeds
+an allowlist containing only IDs, rule codes, and relative paths. The current 1,560-entry
+baseline is internally ordered and the production run passed in approximately 10.5
+seconds. Exact catalog, alternate-locale fixture, and central formatter owners are
+present, symbolic links encountered by production traversal are refused, initialization
+refuses to overwrite an existing allowlist, and new or stale IDs fail the command. The
+S14 plan scope correction accurately adds the allowlist owner, and the scanner does not
+duplicate S121 wording-policy vocabulary.
+
+Real temporary TypeScript and TSX fixtures exercised all nine codes, binding aliases,
+same-name false positives, mixed translated branches, and the generated marker; they
+were removed after the run. The production scanner, targeted Prettier, targeted ESLint,
+module import/main-guard check, and Vaultspec placeholder, frontmatter, and body-link
+checks passed. No fake, mock, stub, patch, monkeypatch, skip, or expected failure was
+used. S14 requires the two high-severity detection remediations and the bounded
+exclusion, allowlist-integrity, and constant-cap corrections above before acceptance.
