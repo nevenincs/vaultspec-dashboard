@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Link2 } from "lucide-react";
+import { Link2, Wrench } from "lucide-react";
 
 import {
   resolveActionPresentation,
@@ -144,19 +144,47 @@ describe("openEntityAction", () => {
 describe("autofixFeatureAction", () => {
   it("disables with reason when the feature is null", () => {
     const a = autofixFeatureAction({ id: "node:autofix-feature", feature: null });
+    expect(a.label).toEqual({ key: "features:guardedActions.repair" });
+    expect(resolvePresentation(a.label)).toBe("Repair feature");
+    expect(a.section).toBe("transform");
+    expect(a.icon).toBe(Wrench);
     expect(a.disabled).toBe(true);
-    expect(a.disabledReason).toBe("no feature to autofix");
+    expect(a.disabledReason).toEqual({
+      key: "features:disabledReasons.selectFeature",
+    });
+    expect(resolvePresentation(a.disabledReason!)).toBe("Select a feature first.");
+    expect(a.confirm).toBeUndefined();
+    expect(a.confirmation).toBeUndefined();
     expect(a.dispatch).toBeUndefined();
+    expect(a.run).toBeUndefined();
   });
 
-  it("is a confirm-guarded, time-travel-gated transform dispatch for a feature", () => {
+  it("is a typed guarded, time-travel-gated transform dispatch for a feature", () => {
     const a = autofixFeatureAction({
       id: "node:autofix-feature",
       feature: "dashboard",
       scope: "wt",
     });
+    expect(a.label).toEqual({ key: "features:guardedActions.repair" });
     expect(a.section).toBe("transform");
-    expect(a.confirm).toBe(true);
+    expect(a.icon).toBe(Wrench);
+    expect(a.confirm).toBeUndefined();
+    expect(a.confirmation).toEqual({
+      kind: "guarded",
+      title: {
+        key: "features:confirmations.repair.title",
+        values: { feature: "dashboard" },
+      },
+      body: { key: "features:confirmations.repair.body" },
+      confirmLabel: { key: "features:guardedActions.repair" },
+      cancelLabel: { key: "common:actions.cancel" },
+    });
+    expect(resolvePresentation(a.confirmation!.title)).toBe("Repair dashboard?");
+    expect(resolvePresentation(a.confirmation!.body)).toBe(
+      "This applies fixes across this feature's documents. Review the changes when it finishes.",
+    );
+    expect(resolvePresentation(a.confirmation!.confirmLabel)).toBe("Repair feature");
+    expect(resolvePresentation(a.confirmation!.cancelLabel)).toBe("Cancel");
     expect(a.disabledInTimeTravel).toBe(true);
     expect(a.dispatch).toEqual({
       type: "ops:run",

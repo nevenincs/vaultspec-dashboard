@@ -320,7 +320,17 @@ describe("vaultFeatureMenu", () => {
     });
     const autofix = byId(actions, "vault-feature:autofix");
     expect(autofix?.section).toBe("transform");
-    expect(autofix?.confirm).toBe(true);
+    expect(autofix?.confirm).toBeUndefined();
+    expect(autofix?.confirmation).toEqual({
+      kind: "guarded",
+      title: {
+        key: "features:confirmations.repair.title",
+        values: { feature: "f" },
+      },
+      body: { key: "features:confirmations.repair.body" },
+      confirmLabel: { key: "features:guardedActions.repair" },
+      cancelLabel: { key: "common:actions.cancel" },
+    });
     expect(autofix?.disabledInTimeTravel).toBe(true);
     const archive = byId(actions, "vault-feature:archive");
     expect(archive?.section).toBe("danger");

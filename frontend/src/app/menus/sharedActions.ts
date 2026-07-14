@@ -171,23 +171,30 @@ export interface AutofixFeatureOptions {
 export function autofixFeatureAction(opts: AutofixFeatureOptions): ActionDescriptor {
   const base = {
     id: opts.id,
-    label: legacyActionPresentation(
-      opts.feature ? `Autofix “${opts.feature}”` : "Autofix feature",
-    ),
+    label: { key: "features:guardedActions.repair" } as const,
     section: "transform" as const,
     icon: Wrench,
-    confirm: true,
     disabledInTimeTravel: true,
   };
   if (opts.feature === null) {
     return {
       ...base,
       disabled: true,
-      disabledReason: legacyActionPresentation("no feature to autofix"),
+      disabledReason: { key: "features:disabledReasons.selectFeature" } as const,
     };
   }
   return {
     ...base,
+    confirmation: {
+      kind: "guarded",
+      title: {
+        key: "features:confirmations.repair.title",
+        values: { feature: opts.feature },
+      },
+      body: { key: "features:confirmations.repair.body" },
+      confirmLabel: { key: "features:guardedActions.repair" },
+      cancelLabel: { key: "common:actions.cancel" },
+    } as const,
     dispatch: {
       type: OPS_ACTION,
       payload: {
