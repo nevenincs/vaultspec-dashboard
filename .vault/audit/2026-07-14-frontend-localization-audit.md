@@ -45,6 +45,15 @@ and the user-facing language standard before dependent work advances.
      {level} is the severity (critical, high, medium, low), and {summary} is a one-line
      statement. Append continuously as findings surface; do not rewrite settled entries. -->
 
+### recovery-verb-drift | medium | One recovery operation uses both reload and refresh
+
+`W01.P01.S02` assigns `common.actions.reloadPage` the label "Reload page" and the
+unexpected-application fallback tells the user to reload, but
+`errors.fallback.contentUnavailable` tells the user to refresh the page. These phrases
+describe the same page-recovery operation with different verbs. This conflicts with the
+accepted requirement that one operation use one canonical verb across every message and
+action, and it establishes drift in the source catalog before consumers are migrated.
+
 ## Recommendations
 
 <!-- Actionable recommendations -->
@@ -56,3 +65,11 @@ Commit `63db233f29` stays within the approved dependency-installation scope. The
 project's React and TypeScript versions, npm reports no production vulnerabilities,
 and a dry-run lockfile installation is stable. The execution record and completed plan
 checkbox accurately trace the implementation and verification evidence.
+
+### W01.P01.S02 review | changes required | Align the page-recovery verb
+
+Use the canonical "Reload" verb in `errors.fallback.contentUnavailable`, consistent
+with `common.actions.reloadPage` and `errors.unexpectedApplication.message`. Re-run the
+catalog lint, formatting, and type checks before accepting the step. The namespace
+aggregate, semantic key ownership, sentence case, diagnostic safety, implementation
+scope, and execution-record traceability otherwise conform to the accepted decision.
