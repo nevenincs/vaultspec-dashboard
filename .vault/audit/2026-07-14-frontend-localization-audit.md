@@ -1585,3 +1585,27 @@ and real localization runtimes without doubles, skips, or expected failures. Exa
 baseline reconciliation removed seven entries and added none, reducing the scanner from
 1,422 to 1,415 findings, presentation-field entries from 366 to 360, and legacy action
 entries from 107 to 106. S127 and S30 are accepted with no open findings.
+
+### W02.P05.S126 review | pass | Palette feedback cannot expose operation metadata
+
+This step, implemented through delegated Terra rollout work, replaces arbitrary palette
+operation strings with frozen typed message descriptors and tones. A static exhaustive
+map covers the approved valid outcome set for all six canonical operation concepts.
+
+Review confirmed that the store accepts only canonical descriptor and tone pairs and
+preserves epoch increments, stale-write rejection, malformed-write inertia, and every
+open, close, mode, scope, and time-travel reset. The operation classifier reuses the
+canonical whitelist concept, preserves mutation and cache behavior, and leaves the
+separate non-palette receipt path unchanged.
+
+No receipt text, error message, route, target, verb, tier data, service token, or other
+development metadata can enter palette feedback. Failed and unavailable messages are
+short and actionable. Progress messages use ellipses only for ongoing work, and all copy
+is sentence case without em dashes.
+
+Independent Sol verification passed 55 tests across seven files, TypeScript, targeted
+ESLint, the localization scanner, and diff checks. The complete frontend lint recipe
+passed. Terra's focused and live suites passed 61 tests. Real English, French, and Arabic
+catalogs resolve all 21 approved messages without fallback. Tests introduce no doubles,
+skips, or expected failures. The scanner remains clean and unchanged at 1,415 findings
+because the raw string pipeline was not detected. S126 is accepted with no open findings.
