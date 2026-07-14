@@ -927,3 +927,40 @@ exact findings and rule counts, completing in approximately 9.5 seconds. Targete
 Prettier and ESLint checks passed, all temporary fixtures were removed, and no fake,
 mock, stub, patch, monkeypatch, skip, or expected failure was used. The S14 confirmation
 scanner fix is accepted with no open findings.
+
+### W01.P03.S16 confirmation overrides | medium | Prove source-order override behavior
+
+Commit `2f19746ed0` checks direct confirmation fields, shorthand fields, a clean spread,
+an adverse spread, cyclic composition, and the 64-field cap through the production
+scanner. It does not exercise the source-order override contract that closed the S14
+bypass: a later static descriptor must replace an earlier dynamic field without a false
+finding, while a later dynamic field must replace an earlier static field and be
+reported. Add both real fixture shapes and assert their distinct outcomes so a scanner
+regression cannot silently reverse or flatten spread precedence.
+
+### W01.P03.S16 deterministic paths | medium | Cover deterministic output and Windows path refusal
+
+The suite checks unknown rules, traversal paths, duplicate IDs, exact baseline metadata,
+and one-time initialization, but it does not prove stable repeated finding IDs and order,
+nor the Windows-specific backslash-path rejection required by the portable allowlist
+contract. Add an equality assertion across repeated scans and direct invalid metadata
+cases for a backslash path and an absolute path. These cases must continue to invoke the
+production exports without replacing filesystem or platform behavior.
+
+### W01.P03.S16 review | changes required | Complete the scanner-contract evidence
+
+The seven targeted Vitest cases pass. They import the production scanner directly and
+use checked-in TypeScript and TSX fixtures with no fake, mock, stub, patch, monkeypatch,
+skip, expected failure, or mirrored scanner logic. All nine finding codes are emitted
+from adverse source, generated comments remain scanned, alias, destructuring, namespace,
+unrelated-name, conditional, constant, dynamic-key, translation-default, translated-
+fragment, fixed-`Intl`, direct-`Intl`, semantic-data, and diagnostic boundaries are
+exercised. New, stale, and tampered baseline states, bounded expression, file, finding,
+and confirmation composition, and initialization refusal also execute through the real
+implementation. Fixtures live under tooling and introduce no shipped UI or development
+metadata.
+
+Targeted Prettier passed, and the complete frontend lint gate passed ESLint, pixel,
+module-size, formatting, TypeScript, token-drift, and Figma-name checks. S16 remains
+withheld until the confirmation override and deterministic Windows-path evidence above
+is checked in.
