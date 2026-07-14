@@ -82,6 +82,7 @@ import type {
   ProvisionJob,
   ProvisionRunBody,
   ProvisionStatus,
+  RagLogsEnvelope,
   SearchResponse,
   SessionState,
   SessionUpdate,
@@ -748,6 +749,20 @@ export class EngineClient {
     signal?: AbortSignal,
   ): Promise<{ envelope: T | null; tiers: TiersBlock }> {
     return this.get(`/ops/rag/${encodeURIComponent(verb)}`, params, signal);
+  }
+
+  /** Typed convenience for the brokered rag `logs` read (rag-job-dashboard ADR D4):
+   *  forwards the bounded `lines` and optional `job_id` query params. The engine
+   *  route (`GET /ops/rag/logs`) reads BOTH params and clamps `lines` server-side
+   *  (`MAX_RAG_LOG_LINES`), so no passthrough gap remains; a down rag degrades the
+   *  semantic tier honestly with a null envelope. The envelope shape (`RagLogsEnvelope`,
+   *  beside the ops wire family in `statusTypes`) is tolerant, so a rag-side drift
+   *  reads as an empty tail rather than a throw. */
+  opsRagLogs(
+    params: { lines?: number; job_id?: string } = {},
+    signal?: AbortSignal,
+  ): Promise<{ envelope: RagLogsEnvelope | null; tiers: TiersBlock }> {
+    return this.opsRagGet<RagLogsEnvelope>("logs", params, signal);
   }
 
   /** The framework provisioning plane (project-provisioning ADR D2): the served

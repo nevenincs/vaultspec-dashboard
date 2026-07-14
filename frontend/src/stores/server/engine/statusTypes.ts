@@ -38,6 +38,22 @@ export interface OpsResult {
   tiers: TiersBlock;
 }
 
+/** rag's `GET /logs/json` envelope, forwarded verbatim by the brokered
+ *  `/ops/rag/logs` read (rag-job-dashboard ADR D4). `lines` is an array of RAW,
+ *  pre-formatted log-line strings — rag emits formatted text, not structured
+ *  records, so a level word and a leading timestamp (when present) are parsed out
+ *  of each string downstream (`parseRagLogLine` in `ragControl`). `total` is the
+ *  returned-line count; `filters` echoes the applied `lines`/`job_id` filter.
+ *  Deliberately tolerant: a shape drift degrades to an empty tail, never a throw
+ *  (engine-read-and-infer corollary). Lives beside the ops wire family here (not
+ *  with the rag-control envelopes in `ragControl.ts`) so the low-level client
+ *  method stays typed without a client↔stores import cycle. */
+export interface RagLogsEnvelope {
+  lines: string[];
+  total?: number;
+  filters?: { job_id?: string; lines?: number };
+}
+
 // --- §6 vault maintenance ops (document-editor backend) --------------------------
 //
 // Feature-archive and conformance-autofix go through the engine's brokered

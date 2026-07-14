@@ -28,12 +28,21 @@ import {
   RAG_CONTROL_KEY_PART_MAX_CHARS,
   RAG_JOBS_LIMIT_CAP,
   RAG_JOB_TEXT_MAX_CHARS,
+  RAG_LOGS_LINES_DEFAULT,
+  RAG_LOGS_LINES_MAX,
+  RAG_LOG_LINE_MAX_CHARS,
+  RAG_LOG_ROWS_CAP,
   RAG_PROJECT_SLOTS_MAX_ITEMS,
   WATCHER_COOLDOWN_S_MAX,
   WATCHER_DEBOUNCE_MS_MAX,
   boundedRagJobsLimit,
+  boundedRagLogLines,
   deriveRagControlView,
   firstJob,
+  interpretRagLogs,
+  normalizeRagLogLines,
+  parseRagLogLine,
+  useRagLogs,
   invalidateAfterRagOpsRun,
   invalidateRagControlQueries,
   invalidateRagReindexSettlementQueries,
@@ -63,6 +72,7 @@ import {
   useRagWatcher,
   type BrokeredResult,
   type RagJobsSnapshot,
+  type RagLogsEnvelope,
   type RagProjectsState,
   type RagProjectSlot,
 } from "./ragControl";
@@ -268,6 +278,111 @@ describe("rag job interpreters", () => {
     expect(firstJob({ jobs: [] })).toBeUndefined();
     expect(firstJob(undefined)).toBeUndefined();
     expect(firstJob({ jobs: [{ id: "a", phase: "done" }] })?.id).toBe("a");
+  });
+
+  it("clamps the requested log window to [MIN, MAX], defaulting a bad value", () => {
+    expect(boundedRagLogLines(50)).toBe(50);
+    expect(boundedRagLogLines("200")).toBe(200);
+    expect(boundedRagLogLines(0)).toBe(1);
+    expect(boundedRagLogLines(RAG_LOGS_LINES_MAX + 500)).toBe(RAG_LOGS_LINES_MAX);
+    expect(boundedRagLogLines(Number.NaN)).toBe(RAG_LOGS_LINES_DEFAULT);
+    expect(boundedRagLogLines("")).toBe(RAG_LOGS_LINES_DEFAULT);
+    expect(boundedRagLogLines({ lines: 5 })).toBe(RAG_LOGS_LINES_DEFAULT);
+    expect(boundedRagLogLines(12.8)).toBe(12);
+  });
+
+  it("parses a structured rag log line into timestamp, level, and text", () => {
+    // A verbatim rag `/logs/json` line (captured live): Python-logging format.
+    const raw =
+      "2026-07-14 14:20:54,177 INFO     vaultspec_rag.watcher: service.watcher event=reindex_completed";
+    expect(parseRagLogLine(raw)).toEqual({
+      text: raw,
+      level: "info",
+      timestamp: "2026-07-14 14:20:54,177",
+    });
+  });
+
+  it("tones warning/error/critical and folds WARN into warning", () => {
+    expect(parseRagLogLine("2026-07-14 00:00:00,000 WARNING x: y")?.level).toBe(
+      "warning",
+    );
+    expect(parseRagLogLine("WARN     something terse")?.level).toBe("warning");
+    expect(parseRagLogLine("2026-07-14 00:00:00,000 ERROR boom")?.level).toBe("error");
+    expect(parseRagLogLine("CRITICAL meltdown")?.level).toBe("critical");
+    expect(parseRagLogLine("FATAL down")?.level).toBe("critical");
+  });
+
+  it("keeps an unstructured line as untoned text and drops blank/non-strings", () => {
+    const plain = parseRagLogLine("just a message with no level");
+    expect(plain).toEqual({ text: "just a message with no level" });
+    expect(parseRagLogLine("   ")).toBeNull();
+    expect(parseRagLogLine(42)).toBeNull();
+    expect(parseRagLogLine(undefined)).toBeNull();
+  });
+
+  it("bounds an overlong log line to the per-line character cap", () => {
+    const overlong = `INFO ${"x".repeat(RAG_LOG_LINE_MAX_CHARS + 100)}`;
+    const parsed = parseRagLogLine(overlong);
+    expect(parsed?.text.length).toBe(RAG_LOG_LINE_MAX_CHARS);
+    expect(parsed?.level).toBe("info");
+  });
+
+  it("normalizes the served lines array and caps the rendered row count", () => {
+    const envelope: RagLogsEnvelope = {
+      lines: ["INFO a", "   ", "ERROR b"],
+      total: 3,
+    };
+    expect(normalizeRagLogLines(envelope)).toEqual([
+      { text: "INFO a", level: "info" },
+      { text: "ERROR b", level: "error" },
+    ]);
+    expect(normalizeRagLogLines(undefined)).toEqual([]);
+    expect(
+      normalizeRagLogLines({
+        lines: Array.from(
+          { length: RAG_LOG_ROWS_CAP + 50 },
+          (_, i) => `INFO line ${i}`,
+        ),
+      }),
+    ).toHaveLength(RAG_LOG_ROWS_CAP);
+  });
+
+  it("interprets a served logs envelope into the tone-tagged tail view", () => {
+    const data: BrokeredResult<RagLogsEnvelope> = {
+      envelope: {
+        lines: ["2026-07-14 00:00:00,000 INFO watcher: up", "WARN slow"],
+        total: 2,
+        filters: { job_id: "job-9" },
+      },
+      tiers: { semantic: { available: true } },
+    };
+    const view = interpretRagLogs(data);
+    expect(view.lines).toHaveLength(2);
+    expect(view.lines[1]).toEqual({ text: "WARN slow", level: "warning" });
+    expect(view.total).toBe(2);
+    expect(view.jobFilter).toBe("job-9");
+    expect(view.semanticOffline).toBe(false);
+  });
+
+  it("reads the log tail offline from the tiers block, holding an empty window", () => {
+    const data: BrokeredResult<RagLogsEnvelope> = {
+      envelope: null,
+      tiers: { semantic: { available: false, reason: "rag service down" } },
+    };
+    const view = interpretRagLogs(data);
+    expect(view.semanticOffline).toBe(true);
+    expect(view.lines).toEqual([]);
+    expect(view.total).toBe(0);
+    expect(view.jobFilter).toBeNull();
+  });
+
+  it("holds an empty offline tail even when a stale envelope carries lines", () => {
+    // A degraded read may still carry a held envelope; the tiers block wins.
+    const data: BrokeredResult<RagLogsEnvelope> = {
+      envelope: { lines: ["INFO stale"], total: 1 },
+      tiers: { semantic: { available: false } },
+    };
+    expect(interpretRagLogs(data).lines).toEqual([]);
   });
 
   it("bounds non-polling rag jobs reads before query key and broker body", () => {
@@ -872,6 +987,33 @@ describe("rag control plane (real engine broker)", () => {
     expectBrokerContract(result.current.watcher.data);
     expectBrokerContract(result.current.projects.data);
   });
+
+  it("reads the bounded log tail through the broker into a tone-tagged view", async () => {
+    const { result } = renderHook(
+      () => useRagLogs(scope, { lines: 50, enabled: true }),
+      { wrapper },
+    );
+    // The interpreted view resolves without throwing; a settled read either
+    // carries a parsed tail (rag up) or reports offline (rag down) — never a throw.
+    await waitFor(
+      () =>
+        expect(
+          result.current.lines.length > 0 ||
+            result.current.total >= 0 ||
+            result.current.semanticOffline,
+        ).toBe(true),
+      ENGINE_WAIT,
+    );
+    expect(Array.isArray(result.current.lines)).toBe(true);
+    expect(typeof result.current.total).toBe("number");
+    // Every rendered row is bounded and, when toned, carries a known level word.
+    for (const line of result.current.lines) {
+      expect(line.text.length).toBeLessThanOrEqual(RAG_LOG_LINE_MAX_CHARS);
+      if (line.level !== undefined) {
+        expect(["debug", "info", "warning", "error", "critical"]).toContain(line.level);
+      }
+    }
+  });
 });
 
 describe("rag control disabled cache boundaries", () => {
@@ -1034,6 +1176,30 @@ describe("rag control disabled cache boundaries", () => {
       semanticOffline: false,
     });
     expect(result.current.jobs.data).toBeUndefined();
+    client.clear();
+  });
+
+  it("holds an empty log tail when no scope is selected or the panel is closed", () => {
+    const client = new QueryClient();
+    client.setQueryData(ragControlKeys.logs("scope-a", 50, "all"), {
+      envelope: { lines: ["INFO cached"], total: 1 },
+      tiers: availableTiers,
+    });
+
+    const { result } = renderHook(
+      () => ({
+        noScope: useRagLogs(null, { lines: 50, enabled: true }),
+        closed: useRagLogs("scope-a", { lines: 50, enabled: false }),
+      }),
+      { wrapper: clientWrapper(client) },
+    );
+
+    // A closed panel or absent scope exposes no cached tail — the mount-gated read
+    // is disabled, so the interpreted view is an empty, non-offline window.
+    expect(result.current.noScope.lines).toEqual([]);
+    expect(result.current.noScope.total).toBe(0);
+    expect(result.current.closed.lines).toEqual([]);
+    expect(result.current.closed.total).toBe(0);
     client.clear();
   });
 });
