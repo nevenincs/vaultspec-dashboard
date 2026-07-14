@@ -413,3 +413,23 @@ listener. Repeat the real runtime and document assertions for normal cleanup and
 Proxy boundary that delegates subscription to the real i18next instance but fails one
 removal access. No fake, mock, stub, runtime patch, monkeypatch, skip, or expected
 failure was used in this review.
+
+### W01.P01.S244 review | pass | No findings
+
+Commit `6c813b5be8` adds only two compact alternate catalogs and a test-owned runtime
+factory under the localization testing boundary. The production locale registry remains
+source-locale-only, no production module or entry point imports the fixture, and a
+production build contains neither of the reviewed alternate-locale markers. The
+catalogs cover both writing directions, shared namespaces, actionable fallback copy,
+and named interpolation without em dashes, raw diagnostics, internal terminology, development
+state, or unsafe call-site defaults.
+
+Two targeted assertions using real i18next and react-i18next instances passed for
+synchronous initialization, left-to-right and right-to-left direction, localized
+lookup, named interpolation through the production safe resolver, source-locale
+fallback, live language change, and isolation between separately created runtimes. The
+review-only test was removed. No fake, mock, stub, runtime patch, monkeypatch, skip, or
+expected failure was used. The full frontend lint gate and production build passed;
+placeholder, frontmatter, and body-link checks are clean, and the plan reports only the
+documented intentional identifier-order warning. S244 is accepted with no open
+findings.
