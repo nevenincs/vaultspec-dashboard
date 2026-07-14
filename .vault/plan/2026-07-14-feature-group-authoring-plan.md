@@ -123,9 +123,9 @@ Serve per-feature pipeline coverage (present types with newest stems, missing ty
 
 One stores query for coverage keyed on scope+feature with tolerant adapters, and the createDocChrome store reworked to the staged feature-first shape with deterministic related pre-fill state (ADR D1/D5).
 
-- [ ] `P03.S07` - Add the feature-coverage stores query keyed on scope+feature with tolerant live-adapter parsing and honest degradation from tiers; `frontend/src/stores/server/queries`.
-- [ ] `P03.S08` - Rework the create-doc chrome store to the staged feature-first shape (feature stage, document stage, eligibility-aware type choice, editable related pre-fill derived from served coverage) with unit tests; `frontend/src/stores/view/createDocChrome.ts`.
-- [ ] `P03.S09` - Thread the related parameter from the staged submission through the existing create mutation and receipt-driven coverage invalidation; `frontend/src/stores/server/queries/mutations.ts`.
+- [x] `P03.S07` - Add the feature-coverage stores query keyed on scope+feature with tolerant live-adapter parsing and honest degradation from tiers; `frontend/src/stores/server/queries`.
+- [x] `P03.S08` - Rework the create-doc chrome store to the staged feature-first shape (feature stage, document stage, eligibility-aware type choice, editable related pre-fill derived from served coverage) with unit tests; `frontend/src/stores/view/createDocChrome.ts`.
+- [x] `P03.S09` - Thread the related parameter from the staged submission through the existing create mutation and receipt-driven coverage invalidation; `frontend/src/stores/server/queries/mutations.ts`.
 
 ### Phase `P04` - Feature-group panel build
 

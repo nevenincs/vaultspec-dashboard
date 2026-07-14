@@ -770,8 +770,10 @@ export function normalizeCreateDocArgs(args: unknown): NormalizedCreateDocArgs {
  * error; only a transport fault, or the actor-token fail-safe
  * (`requireActorToken`), rejects. On a `created` outcome the same vault-
  * mutation read surfaces are invalidated as a save (a new doc can introduce
- * tree rows, graph nodes, filter facets, search hits, and git change
- * entries).
+ * tree rows, graph nodes, filter facets, search hits, git change entries, and
+ * feature-group coverage — the `features` subtree rides the same generation-
+ * refresh sweep, so a just-created document surfaces in the panel's coverage
+ * from the create receipt, feature-group-authoring ADR constraint).
  */
 export function useCreateDoc() {
   const queryClient = useQueryClient();

@@ -6,6 +6,7 @@
 export * from "./internal";
 export * from "./workspaces";
 export * from "./listings";
+export * from "./features";
 export * from "./fsBrowse";
 export * from "./dashboard";
 export * from "./graph";

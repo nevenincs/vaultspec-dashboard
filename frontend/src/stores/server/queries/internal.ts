@@ -73,6 +73,19 @@ export const engineKeys = {
   fsList: (path?: string) => [...engineKeys.all, "fs-list", path ?? ""] as const,
   filters: (scope: string, corpus?: GraphCorpus) =>
     [...engineKeys.all, "filters", scope, corpus ?? "vault"] as const,
+  // Per-feature pipeline coverage (feature-group-authoring ADR D2): keyed by
+  // (scope, feature) — a feature's coverage is per-workspace-scope, so two scopes
+  // never share an entry, and each feature group is its own entry. The `coverage`
+  // kind segment fences it from the roster (below) so a feature literally named
+  // "roster" cannot collide. Generation-stable and swept on a create receipt (both
+  // the generation-refresh and scope-swap boundaries enroll the `features` family).
+  featureCoverage: (scope: string, feature: string) =>
+    [...engineKeys.all, "features", scope, "coverage", feature] as const,
+  // The compact all-features roster (feature-group-authoring ADR D2): keyed by
+  // scope alone — one roster per corpus. Same `features` family as coverage, so
+  // one create-receipt sweep refreshes both.
+  featureRoster: (scope: string) =>
+    [...engineKeys.all, "features", scope, "roster"] as const,
   dashboardState: (scope: string, backendSessionIdentity: string) =>
     [...engineKeys.all, "dashboard-state", scope, backendSessionIdentity] as const,
   graph: (
@@ -264,6 +277,9 @@ export const SCOPED_ENGINE_QUERY_SUBTREES = [
   "code-files",
   "file-tree",
   "filters",
+  // Per-feature pipeline coverage (feature-group-authoring ADR D2): scope-bound,
+  // so a workspace swap evicts the prior corpus's coverage/roster entries.
+  "features",
   "dashboard-state",
   "graph",
   "graph-embeddings",
@@ -305,6 +321,11 @@ export const GRAPH_GENERATION_QUERY_SUBTREES = [
   "content",
   "file-tree",
   "filters",
+  // Per-feature pipeline coverage (feature-group-authoring ADR D2): generation-
+  // stable and computed over the corpus, so a create/edit that bumps the graph
+  // generation must re-read fresh coverage — the receipt-driven invalidation the
+  // panel relies on to reflect a just-created document (ADR constraint).
+  "features",
   "dashboard-state",
   "graph",
   "graph-embeddings",

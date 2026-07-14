@@ -5,6 +5,8 @@ import {
   adaptCodeFilesDelta,
   adaptContent,
   adaptDashboardState,
+  adaptFeatureCoverage,
+  adaptFeatureRoster,
   adaptFileTree,
   adaptFilters,
   adaptFsList,
@@ -41,6 +43,8 @@ import type {
   DashboardState,
   DashboardStatePatch,
   EmbeddingsResponse,
+  FeatureCoverageResponse,
+  FeatureRosterResponse,
   FileTreeResponse,
   FiltersVocabulary,
   FsListResponse,
@@ -526,6 +530,25 @@ export class EngineClient {
     return adaptFilters(
       await this.get("/filters", corpus === "code" ? { scope, corpus } : { scope }),
     );
+  }
+
+  /** Per-feature pipeline coverage (feature-group-authoring ADR D2/D3): the
+   *  requested feature group's present/missing types with newest stems, per-type
+   *  eligibility, and the advised next step. An unknown feature reads as
+   *  all-missing coverage ("start a new feature"), never a 404; the tolerant
+   *  adapter reconciles the wire shape and the panel reads degraded state from the
+   *  `tiers` block. */
+  async features(scope: string, feature: string): Promise<FeatureCoverageResponse> {
+    return adaptFeatureCoverage(
+      await this.get("/features", { scope, feature }),
+      feature,
+    );
+  }
+
+  /** The compact all-features roster (feature-group-authoring ADR D2): every
+   *  feature group's document counts + advised next step, for the panel combobox. */
+  async featureRoster(scope: string): Promise<FeatureRosterResponse> {
+    return adaptFeatureRoster(await this.get("/features", { scope }));
   }
 
   async dashboardState(scope: string, signal?: AbortSignal): Promise<DashboardState> {

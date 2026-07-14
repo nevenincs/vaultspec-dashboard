@@ -11,3 +11,4 @@ export * from "./historyIdentity";
 export * from "./session";
 export * from "./pipeline";
 export * from "./git";
+export * from "./features";

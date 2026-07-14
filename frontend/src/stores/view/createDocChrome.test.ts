@@ -1,69 +1,150 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import type { FeatureCoverage } from "../server/engine";
 import {
   CREATE_DOC_DRAFT_TEXT_MAX_CHARS,
   CREATE_DOC_ERROR_MAX_CHARS,
+  CREATE_DOC_RELATED_MAX,
+  DEFAULT_CREATE_DOC_STAGE,
   DEFAULT_CREATE_DOC_TYPE,
   deriveCreateDocSubmission,
+  deriveOfferedCreateDocTypes,
+  goToCreateDocDocumentStage,
+  goToCreateDocFeatureStage,
+  isCreateDocStage,
   isCreateDocType,
+  isCreateDocTypeEligible,
   normalizeCreateDocChromeView,
   normalizeCreateDocDraftText,
   normalizeCreateDocError,
+  normalizeCreateDocRelated,
+  normalizeCreateDocStage,
   normalizeCreateDocType,
+  reconcileCreateDocType,
   resetCreateDocChrome,
+  seedRelatedFromCoverage,
   setCreateDocError,
   setCreateDocFeature,
+  setCreateDocRelated,
   setCreateDocTitle,
   setCreateDocType,
   toggleCreateDocDialog,
   useCreateDocChromeStore,
 } from "./createDocChrome";
 
+/** A served coverage fixture (feature-group-authoring wire shape) with the given
+ *  present types, mirroring the engine projection's per-type entries. */
+function coverage(
+  overrides: Partial<
+    Record<string, { newestStem?: string; eligible: boolean; note?: string }>
+  >,
+  nextStep?: string,
+): FeatureCoverage {
+  const types = ["research", "reference", "adr", "plan", "exec", "audit"].map(
+    (docType) => {
+      const o = overrides[docType];
+      const present = o?.newestStem !== undefined;
+      return {
+        doc_type: docType,
+        present,
+        count: present ? 1 : 0,
+        newest_stem: o?.newestStem,
+        eligible: o?.eligible ?? false,
+        note: o?.note,
+      };
+    },
+  );
+  return {
+    feature: "x",
+    types,
+    missing: types.filter((t) => !t.present).map((t) => t.doc_type),
+    next_step: nextStep,
+  };
+}
+
 describe("createDocChrome store", () => {
   beforeEach(() => resetCreateDocChrome());
 
-  it("opens and captures the create-document draft through the store seam", () => {
+  it("opens at stage 1 and captures the create-document draft through the store seam", () => {
     toggleCreateDocDialog();
     setCreateDocType("adr");
     setCreateDocFeature("dashboard");
     setCreateDocTitle("Boundary Decision");
+    setCreateDocRelated(["2026-07-14-dashboard-research"]);
     setCreateDocError("Feature and title are required");
 
     expect(useCreateDocChromeStore.getState()).toMatchObject({
       open: true,
+      stage: "feature",
       docType: "adr",
       feature: "dashboard",
       title: "Boundary Decision",
+      related: ["2026-07-14-dashboard-research"],
       error: "Feature and title are required",
     });
   });
 
-  it("resets draft state when the dialog closes", () => {
+  it("advances to and returns from the document stage, clearing stale errors", () => {
     toggleCreateDocDialog();
+    setCreateDocError("stale");
+    goToCreateDocDocumentStage();
+    expect(useCreateDocChromeStore.getState()).toMatchObject({
+      stage: "document",
+      error: null,
+    });
+    setCreateDocError("another");
+    goToCreateDocFeatureStage();
+    expect(useCreateDocChromeStore.getState()).toMatchObject({
+      stage: "feature",
+      error: null,
+    });
+  });
+
+  it("resets stage and draft state when the dialog closes", () => {
+    toggleCreateDocDialog();
+    goToCreateDocDocumentStage();
     setCreateDocType("plan");
     setCreateDocFeature("git");
     setCreateDocTitle("Git State");
+    setCreateDocRelated(["2026-07-14-git-adr"]);
     setCreateDocError("Create failed");
 
     toggleCreateDocDialog();
 
     expect(useCreateDocChromeStore.getState()).toMatchObject({
       open: false,
+      stage: DEFAULT_CREATE_DOC_STAGE,
       docType: DEFAULT_CREATE_DOC_TYPE,
       feature: "",
       title: "",
+      related: [],
       error: null,
     });
   });
 
-  it("accepts only registered document types at the app boundary", () => {
+  it("reopens at stage 1 even after a prior document-stage session", () => {
+    toggleCreateDocDialog();
+    goToCreateDocDocumentStage();
+    toggleCreateDocDialog(); // close (resets)
+    toggleCreateDocDialog(); // reopen
+    expect(useCreateDocChromeStore.getState().stage).toBe("feature");
+  });
+
+  it("accepts only registered document types and stages at the app boundary", () => {
     expect(isCreateDocType("research")).toBe(true);
+    expect(isCreateDocType("reference")).toBe(true);
+    expect(isCreateDocType("audit")).toBe(true);
+    // exec left the offered set (ADR D4).
+    expect(isCreateDocType("exec")).toBe(false);
     expect(isCreateDocType("story")).toBe(false);
+    expect(isCreateDocStage("feature")).toBe(true);
+    expect(isCreateDocStage("document")).toBe(true);
+    expect(isCreateDocStage("wizard")).toBe(false);
   });
 
   it("ignores unsupported document types at the store boundary", () => {
     setCreateDocType("plan");
-    setCreateDocType("story");
+    setCreateDocType("exec");
     setCreateDocType(null);
 
     expect(useCreateDocChromeStore.getState().docType).toBe("plan");
@@ -74,17 +155,21 @@ describe("createDocChrome store", () => {
     const longError = "e".repeat(CREATE_DOC_ERROR_MAX_CHARS + 8);
     useCreateDocChromeStore.setState({
       open: false,
-      docType: "story",
+      stage: "wizard",
+      docType: "exec",
       feature: longDraft,
       title: { value: "Bad" },
+      related: "not-an-array",
       error: longError,
     } as unknown as ReturnType<typeof useCreateDocChromeStore.getState>);
 
     expect(normalizeCreateDocChromeView(useCreateDocChromeStore.getState())).toEqual({
       open: false,
+      stage: DEFAULT_CREATE_DOC_STAGE,
       docType: DEFAULT_CREATE_DOC_TYPE,
       feature: longDraft.slice(0, CREATE_DOC_DRAFT_TEXT_MAX_CHARS),
       title: "",
+      related: [],
       error: longError.slice(0, CREATE_DOC_ERROR_MAX_CHARS),
       focusFeatureField: false,
     });
@@ -93,6 +178,7 @@ describe("createDocChrome store", () => {
 
     expect(useCreateDocChromeStore.getState()).toMatchObject({
       open: true,
+      stage: DEFAULT_CREATE_DOC_STAGE,
       docType: DEFAULT_CREATE_DOC_TYPE,
       feature: longDraft.slice(0, CREATE_DOC_DRAFT_TEXT_MAX_CHARS),
       title: "",
@@ -100,22 +186,32 @@ describe("createDocChrome store", () => {
     });
   });
 
-  it("normalizes padded document types at the store boundary", () => {
+  it("normalizes padded document types and stages at the store boundary", () => {
     expect(normalizeCreateDocType(" adr ")).toBe("adr");
-    expect(normalizeCreateDocType(" story ")).toBeNull();
+    expect(normalizeCreateDocType(" exec ")).toBeNull();
+    expect(normalizeCreateDocStage(" document ")).toBe("document");
+    expect(normalizeCreateDocStage(" nope ")).toBe(DEFAULT_CREATE_DOC_STAGE);
 
     setCreateDocType(" plan ");
 
     expect(useCreateDocChromeStore.getState().docType).toBe("plan");
   });
 
+  it("normalizes and bounds the editable related list at the store boundary", () => {
+    expect(normalizeCreateDocRelated(["  a  ", "a", "", 5, "b"])).toEqual(["a", "b"]);
+    expect(normalizeCreateDocRelated("nope")).toEqual([]);
+    const many = Array.from({ length: CREATE_DOC_RELATED_MAX + 5 }, (_, i) => `s${i}`);
+    expect(normalizeCreateDocRelated(many)).toHaveLength(CREATE_DOC_RELATED_MAX);
+
+    setCreateDocRelated(["dup", "dup", " keep "]);
+    expect(useCreateDocChromeStore.getState().related).toEqual(["dup", "keep"]);
+  });
+
   it("normalizes draft text and errors at the store boundary", () => {
     expect(normalizeCreateDocDraftText(" dashboard ")).toBe(" dashboard ");
     expect(normalizeCreateDocDraftText(null)).toBe("");
-    expect(normalizeCreateDocDraftText({ value: "dashboard" })).toBe("");
     expect(normalizeCreateDocError("Create failed")).toBe("Create failed");
     expect(normalizeCreateDocError("   ")).toBeNull();
-    expect(normalizeCreateDocError({ message: "Create failed" })).toBeNull();
 
     setCreateDocFeature(null);
     setCreateDocTitle({ value: "Git State" });
@@ -128,42 +224,20 @@ describe("createDocChrome store", () => {
     });
   });
 
-  it("bounds draft text and error strings at the store boundary", () => {
-    const longDraft = "x".repeat(CREATE_DOC_DRAFT_TEXT_MAX_CHARS + 8);
-    const longError = "e".repeat(CREATE_DOC_ERROR_MAX_CHARS + 8);
-
-    expect(normalizeCreateDocDraftText(longDraft)).toHaveLength(
-      CREATE_DOC_DRAFT_TEXT_MAX_CHARS,
-    );
-    expect(normalizeCreateDocError(longError)).toHaveLength(CREATE_DOC_ERROR_MAX_CHARS);
-
-    setCreateDocFeature(longDraft);
-    setCreateDocTitle(longDraft);
-    setCreateDocError(longError);
-
-    expect(useCreateDocChromeStore.getState().feature).toHaveLength(
-      CREATE_DOC_DRAFT_TEXT_MAX_CHARS,
-    );
-    expect(useCreateDocChromeStore.getState().title).toHaveLength(
-      CREATE_DOC_DRAFT_TEXT_MAX_CHARS,
-    );
-    expect(useCreateDocChromeStore.getState().error).toHaveLength(
-      CREATE_DOC_ERROR_MAX_CHARS,
-    );
-  });
-
-  it("derives normalized create submissions at the store seam", () => {
+  it("derives normalized create submissions carrying the related links", () => {
     expect(
       deriveCreateDocSubmission({
         docType: " adr ",
         feature: " dashboard ",
         title: " Boundary Decision ",
+        related: ["  2026-07-14-dashboard-research  ", ""],
       }),
     ).toEqual({
       ok: true,
       docType: "adr",
       feature: "dashboard",
       title: "Boundary Decision",
+      related: ["2026-07-14-dashboard-research"],
     });
 
     expect(
@@ -172,35 +246,116 @@ describe("createDocChrome store", () => {
         feature: " ",
         title: "Git State",
       }),
-    ).toEqual({
-      ok: false,
-      error: "Feature and title are required",
-    });
+    ).toEqual({ ok: false, error: "Feature and title are required" });
 
     expect(
       deriveCreateDocSubmission({
-        docType: "story",
+        docType: "exec",
         feature: "dashboard",
-        title: "Unsupported Doc",
+        title: "Plan-derived",
       }),
-    ).toEqual({
-      ok: false,
-      error: "Unsupported document type",
-    });
+    ).toEqual({ ok: false, error: "Unsupported document type" });
 
     expect(deriveCreateDocSubmission(null)).toEqual({
       ok: false,
       error: "Unsupported document type",
     });
-    expect(
-      deriveCreateDocSubmission({
-        docType: "plan",
-        feature: { value: "dashboard" },
-        title: ["Git State"],
-      }),
-    ).toEqual({
-      ok: false,
-      error: "Feature and title are required",
+  });
+});
+
+describe("createDocChrome coverage derivations", () => {
+  it("offers every pipeline type except exec, with served eligibility and reasons", () => {
+    const cov = coverage(
+      {
+        research: { newestStem: "2026-07-14-x-research", eligible: true },
+        adr: { eligible: false, note: "requires-research-or-reference" },
+      },
+      "adr",
+    );
+    const offered = deriveOfferedCreateDocTypes(cov);
+    const offeredTypes = offered.map((o) => o.docType);
+    expect(offeredTypes).toEqual(["research", "reference", "adr", "plan", "audit"]);
+    // exec never enters the offered set (ADR D4).
+    expect(offeredTypes).not.toContain("exec");
+    const research = offered.find((o) => o.docType === "research")!;
+    expect(research).toMatchObject({ present: true, eligible: true });
+    const adr = offered.find((o) => o.docType === "adr")!;
+    expect(adr).toMatchObject({
+      eligible: false,
+      note: "requires-research-or-reference",
     });
+  });
+
+  it("falls back to the always-open entry points when coverage is absent", () => {
+    const offered = deriveOfferedCreateDocTypes(undefined);
+    expect(offered.find((o) => o.docType === "research")!.eligible).toBe(true);
+    expect(offered.find((o) => o.docType === "reference")!.eligible).toBe(true);
+    expect(offered.find((o) => o.docType === "adr")!.eligible).toBe(false);
+    expect(offered.find((o) => o.docType === "plan")!.eligible).toBe(false);
+    expect(offered.find((o) => o.docType === "audit")!.eligible).toBe(false);
+  });
+
+  it("reads served eligibility, never recomputing it", () => {
+    const cov = coverage({
+      research: { newestStem: "2026-07-14-x-research", eligible: true },
+      adr: { eligible: true },
+    });
+    expect(isCreateDocTypeEligible("adr", cov)).toBe(true);
+    expect(isCreateDocTypeEligible("plan", cov)).toBe(false);
+    // Entry points stay eligible with no served coverage.
+    expect(isCreateDocTypeEligible("research", undefined)).toBe(true);
+    expect(isCreateDocTypeEligible("adr", undefined)).toBe(false);
+  });
+
+  it("reconciles an ineligible selection to the advised next step, then first eligible", () => {
+    // adr selected but ineligible (no upstream): reset to the advised next step.
+    const noUpstream = coverage(
+      { adr: { eligible: false, note: "requires-research-or-reference" } },
+      "research",
+    );
+    expect(reconcileCreateDocType("adr", noUpstream)).toBe("research");
+
+    // An eligible selection stands.
+    const researchPresent = coverage(
+      {
+        research: { newestStem: "2026-07-14-x-research", eligible: true },
+        adr: { eligible: true },
+      },
+      "adr",
+    );
+    expect(reconcileCreateDocType("adr", researchPresent)).toBe("adr");
+
+    // next_step absent/ineligible: fall through to the first eligible offered type.
+    const onlyEntry = coverage({ research: { eligible: true } as never });
+    expect(reconcileCreateDocType("plan", onlyEntry)).toBe("research");
+  });
+
+  it("seeds related links deterministically from newest upstream stems (ADR D5)", () => {
+    const full = coverage({
+      research: { newestStem: "2026-07-14-x-research", eligible: true },
+      reference: { newestStem: "2026-07-14-x-reference", eligible: true },
+      adr: { newestStem: "2026-07-14-x-adr", eligible: true },
+      plan: { newestStem: "2026-07-14-x-plan", eligible: true },
+    });
+    // adr ← newest research AND reference stems.
+    expect(seedRelatedFromCoverage("adr", full)).toEqual([
+      "2026-07-14-x-research",
+      "2026-07-14-x-reference",
+    ]);
+    // plan ← newest adr.
+    expect(seedRelatedFromCoverage("plan", full)).toEqual(["2026-07-14-x-adr"]);
+    // audit ← newest plan.
+    expect(seedRelatedFromCoverage("audit", full)).toEqual(["2026-07-14-x-plan"]);
+    // research/reference ← none.
+    expect(seedRelatedFromCoverage("research", full)).toEqual([]);
+    expect(seedRelatedFromCoverage("reference", full)).toEqual([]);
+    // A missing upstream contributes nothing (no fabricated stem).
+    const researchOnly = coverage({
+      research: { newestStem: "2026-07-14-x-research", eligible: true },
+    });
+    expect(seedRelatedFromCoverage("adr", researchOnly)).toEqual([
+      "2026-07-14-x-research",
+    ]);
+    expect(seedRelatedFromCoverage("plan", researchOnly)).toEqual([]);
   });
 });

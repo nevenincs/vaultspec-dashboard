@@ -701,6 +701,85 @@ export interface FiltersVocabulary {
 }
 
 /**
+ * The pipeline document types the feature-coverage projection reports, in pipeline
+ * order (research/reference are the parallel entry points → adr → plan → exec →
+ * audit). Mirrors the engine `PIPELINE_DOC_TYPES` (feature-group-authoring ADR
+ * D2/D3): the canonical order the panel iterates, so a sparse served `types` array
+ * still renders every pipeline slot. `exec` is reported for coverage but is NEVER
+ * offered for creation from the panel (ADR D4).
+ */
+export const PIPELINE_COVERAGE_DOC_TYPES = [
+  "research",
+  "reference",
+  "adr",
+  "plan",
+  "exec",
+  "audit",
+] as const;
+
+/**
+ * Coverage of one pipeline doc type within a feature group (feature-group-authoring
+ * ADR D2/D3, the `/features?feature=` wire): whether at least one document of the
+ * type exists, how many, the newest present stem (the deterministic cross-link
+ * target, ADR D5), the served hierarchy-gate `eligible` flag, and a `note` token
+ * the dumb chrome maps to plain language (`requires-research-or-reference`,
+ * `requires-adr`, `plan-derived`, `no-upstream`). Eligibility is engine-served
+ * guidance, never client-recomputed (ADR D3).
+ */
+export interface FeatureTypeCoverage {
+  doc_type: string;
+  present: boolean;
+  count: number;
+  /** The newest present stem (the pre-fill link target); absent when missing. */
+  newest_stem?: string;
+  /** The served hierarchy gate — whether this type may be created right now. */
+  eligible: boolean;
+  /** A token naming why the type is ineligible, or an advisory when eligible. */
+  note?: string;
+}
+
+/**
+ * Full pipeline coverage for one feature group (`GET /features?scope=&feature=`,
+ * unwrapped from the `{data: {coverage}, tiers}` envelope). An unknown feature (a
+ * brand-new one being started in the panel) reads as all-missing coverage — the
+ * "start a new feature" state — never a 404.
+ */
+export interface FeatureCoverage {
+  feature: string;
+  /** One entry per pipeline doc type, in pipeline order. */
+  types: FeatureTypeCoverage[];
+  /** The pipeline doc types with no document present, in pipeline order. */
+  missing: string[];
+  /** The advised next pipeline link to close; absent once the chain is satisfied. */
+  next_step?: string;
+}
+
+/**
+ * A compact per-feature roster entry (`GET /features?scope=`, the all-features
+ * variant): the feature tag, its document counts, and the advised next step —
+ * enough for the panel's feature combobox to show group progress without a
+ * per-feature round trip.
+ */
+export interface FeatureRosterEntry {
+  feature: string;
+  doc_count: number;
+  types_present: number;
+  next_step?: string;
+}
+
+/** The per-feature coverage response (feature-present variant), unwrapped. */
+export interface FeatureCoverageResponse {
+  coverage: FeatureCoverage;
+  tiers: TiersBlock;
+}
+
+/** The all-features roster response (feature-absent variant), unwrapped. */
+export interface FeatureRosterResponse {
+  roster: FeatureRosterEntry[];
+  tiers: TiersBlock;
+}
+
+/**
  * One served node embedding (graph-semantic-embeddings ADR D3): the stable node
  * id and its raw float32 vector as a JSON `number[]` — the shape the semantic
  * UMAP worker projects. Identity rides the stable node id (`doc:{stem}`,
