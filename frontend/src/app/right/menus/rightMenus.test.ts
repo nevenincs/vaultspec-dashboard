@@ -121,6 +121,11 @@ describe("searchResultMenu", () => {
     const focus = find(noNode, "search-result:focus");
     expect(focus.disabled).toBe(true);
     expect(focus.disabledReason).toBe("no graph node");
+    const open = find(noNode, "search-result:open");
+    expect(open.disabled).toBe(true);
+    expect(open.disabledReason).toEqual({
+      key: "common:disabledReasons.selectItemToOpen",
+    });
   });
 
   it("omits open-in-editor for a non-code (vault) result", () => {

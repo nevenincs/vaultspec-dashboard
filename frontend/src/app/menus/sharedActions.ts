@@ -35,10 +35,6 @@ export interface OpenEntityOptions {
   nodeId?: string | null;
   /** The active scope, forwarded to the open seam. */
   scope?: string | null;
-  /** Override the label (defaults to "Open"). */
-  label?: string;
-  /** Reason shown when the entity has no node to open. */
-  disabledReason?: string;
 }
 
 /**
@@ -53,7 +49,7 @@ export interface OpenEntityOptions {
 export function openEntityAction(opts: OpenEntityOptions): ActionDescriptor {
   const base = {
     id: opts.id,
-    label: legacyActionPresentation(opts.label ?? "Open"),
+    label: { key: "common:actions.open" } as const,
     section: "navigate" as const,
     icon: ArrowUpRight,
   };
@@ -65,9 +61,7 @@ export function openEntityAction(opts: OpenEntityOptions): ActionDescriptor {
     return {
       ...base,
       disabled: true,
-      disabledReason: legacyActionPresentation(
-        opts.disabledReason ?? "nothing to open",
-      ),
+      disabledReason: { key: "common:disabledReasons.selectItemToOpen" } as const,
     };
   }
   return {

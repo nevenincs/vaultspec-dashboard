@@ -46,7 +46,6 @@ export function searchResultMenu(entity: unknown): ActionDescriptor[] {
     openEntityAction({
       id: "search-result:open",
       nodeId: normalizedEntity.nodeId,
-      disabledReason: legacyActionPresentation("no graph node"),
     }),
   );
 

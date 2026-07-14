@@ -1,12 +1,24 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  resolveActionPresentation,
+  type ActionPresentation,
+} from "../../platform/actions/action";
+import { resolveMessageResult } from "../../platform/localization/fallback";
+import { createLocalizationRuntime } from "../../platform/localization/runtime";
+import {
   archiveFeatureAction,
   autofixFeatureAction,
   docStemFromNodeId,
   openEntityAction,
   relateToSelectionAction,
 } from "./sharedActions";
+
+const localization = createLocalizationRuntime();
+const resolvePresentation = (presentation: ActionPresentation): string =>
+  resolveActionPresentation(presentation, (descriptor) =>
+    resolveMessageResult(localization, descriptor),
+  ).message;
 
 describe("docStemFromNodeId", () => {
   it("returns the stem for a doc: node id, null otherwise", () => {
@@ -96,7 +108,8 @@ describe("openEntityAction", () => {
     });
     expect(a.disabled).toBeUndefined();
     expect(a.section).toBe("navigate");
-    expect(a.label).toBe("Open");
+    expect(a.label).toEqual({ key: "common:actions.open" });
+    expect(resolvePresentation(a.label)).toBe("Open");
     expect(typeof a.run).toBe("function");
     expect(a.dispatch).toBeUndefined();
     // Open is non-mutating, so it is never time-travel gated.
@@ -107,17 +120,13 @@ describe("openEntityAction", () => {
     const a = openEntityAction({
       id: "search-result:open",
       nodeId: null,
-      disabledReason: "no graph node",
     });
     expect(a.disabled).toBe(true);
-    expect(a.disabledReason).toBe("no graph node");
+    expect(a.disabledReason).toEqual({
+      key: "common:disabledReasons.selectItemToOpen",
+    });
+    expect(resolvePresentation(a.disabledReason!)).toBe("Select an item to open.");
     expect(a.run).toBeUndefined();
-  });
-
-  it("honors a custom label", () => {
-    expect(
-      openEntityAction({ id: "x:open", nodeId: "doc:a", label: "Open document" }).label,
-    ).toBe("Open document");
   });
 });
 
