@@ -41,7 +41,7 @@ Install and initialize the localization runtime, define typed message and format
 - [x] `W01.P01.S02` - Create the English namespace catalogs and typed resource aggregate; `frontend/src/locales/en/`.
 - [x] `W01.P01.S03` - Define bounded typed message keys, values, descriptors, and confirmation descriptors; `frontend/src/platform/localization/message.ts`.
 - [x] `W01.P01.S04` - Implement synchronous localization runtime initialization; `frontend/src/platform/localization/runtime.ts`.
-- [ ] `W01.P01.S05` - Implement locale-aware number, date, relative-time, list, duration, percentage, and byte formatters; `frontend/src/platform/localization/formatters.ts`.
+- [x] `W01.P01.S05` - Implement locale-aware number, date, relative-time, list, duration, percentage, and byte formatters; `frontend/src/platform/localization/formatters.ts`.
 - [ ] `W01.P01.S06` - Mount localization before the application boundary without changing theme or data-provider authority; `frontend/src/main.tsx`.
 - [ ] `W01.P01.S07` - Prove runtime initialization, descriptor resolution, formatting, missing-key safety, and locale reactivity with production resources; `frontend/src/platform/localization/*.test.tsx`.
 - [ ] `W01.P01.S116` - Implement the React localization provider over the initialized production runtime; `frontend/src/platform/localization/LocalizationProvider.tsx`.
