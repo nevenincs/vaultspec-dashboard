@@ -1467,3 +1467,28 @@ behavior without doubles, fake timers, skips, or expected failures. Exact baseli
 reconciliation removed 13 bridge entries and added none, reducing the scanner from
 1,458 to 1,445 findings, legacy keybinding entries from 41 to 36, and legacy action
 entries from 121 to 113. S25 is accepted with no open findings.
+
+### W02.P05.S26 review | pass | Graph and panel shortcuts preserve interaction identity
+
+This step, implemented through delegated Terra rollout work, migrates graph walking,
+graph visibility, and panel cycling shortcut presentations to catalog-owned descriptors.
+Graph actions use a dedicated namespace, while shared shortcut groups and panel actions
+use common concepts. Binding and action seams reuse the same descriptors.
+
+Review confirmed the exact graph-walk order, chords, canvas context, distinct physical
+arrow IDs, and traversal behavior. The shortcut registry uses stable graph visibility
+wording, while the same action ID retains live show-or-hide wording in the action
+resolver. Global F6 and Shift+F6 cycling preserves direction, focus memory, capture
+listener behavior, and cleanup.
+
+The copy is concise, imperative, sentence case, and contains no node terminology,
+internal metadata, or em dashes. Architecture review shortened the graph expansion
+message to six words instead of relaxing the global action limit or adding an exception.
+
+Independent Sol verification passed 35 focused tests across seven files, TypeScript,
+the localization scanner, and diff checks. The complete frontend lint recipe passed.
+Tests use production bindings, actions, traversal, focus behavior, and real localization
+runtimes without doubles, fake timers, skips, or expected failures. Exact baseline
+reconciliation removed 14 bridge entries and added none, reducing the scanner from
+1,445 to 1,431 findings, legacy keybinding entries from 36 to 25, and legacy action
+entries from 113 to 110. S26 is accepted with no open findings.
