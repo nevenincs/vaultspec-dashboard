@@ -8,15 +8,18 @@ import {
   deriveGitStatusView,
   deriveInspectorNeighborTierView,
   deriveRagStatusView,
+  deriveStatusTabSectionsView,
   opsReceiptFromError,
   opsReceiptFromResult,
 } from "../../stores/server/queries";
+import { CONTROL_PANEL_IDS } from "../../stores/view/controlPanels";
 import {
   coreCard,
   deriveNowStripView,
   gitCard,
   ragCardView,
 } from "../../stores/view/nowStrip";
+import { normalizeStatusSectionId } from "../../stores/view/statusTabChrome";
 import { RIGHT_RAIL_TABS } from "../../stores/view/shellLayout";
 
 const status = (over: Partial<EngineStatus>): EngineStatus => ({
@@ -46,6 +49,57 @@ describe("rail tab strip IA (binding Figma ActivityRail 244:753)", () => {
         (t) => !("mark" in t) || (t as { mark?: unknown }).mark == null,
       ),
     ).toBe(true);
+  });
+});
+
+describe("status-only rail composition (activity-rail-realignment ADR D1/D3)", () => {
+  it("its populated status sections are exactly Plans, Pull requests, Issues, Commits", () => {
+    // The rail is status-only: the four derived section cards (Changes rides above
+    // them as a structural fold, and the footer cluster below). The two admin
+    // consoles moved into modal control panels, so no admin SectionCard is derived.
+    const sections = deriveStatusTabSectionsView({
+      openPlans: 3,
+      openPrs: 2,
+      openIssues: 1,
+    });
+    expect([
+      sections.openPlans,
+      sections.pullRequests,
+      sections.openIssues,
+      sections.recentCommits,
+    ]).toEqual([
+      { id: "open-plans", title: "Plans", count: 3 },
+      { id: "pull-requests", title: "Pull requests", count: 2 },
+      { id: "open-issues", title: "Issues", count: 1 },
+      { id: "recent-commits", title: "Commits" },
+    ]);
+  });
+
+  it("no longer resolves the retired admin rail-section ids", () => {
+    // The `rag-ops` and `authoring-review` rail-section ids retired with the eviction
+    // (ADR D1) — the normalizer drops them, so a persisted/legacy blob can never
+    // re-mount an admin fold in the rail.
+    expect(normalizeStatusSectionId("rag-ops")).toBeNull();
+    expect(normalizeStatusSectionId("authoring-review")).toBeNull();
+    // The live status sub-folds still resolve, including the console body's own
+    // Details fold, which travelled INTO the Search service panel (id stays live).
+    expect(normalizeStatusSectionId("open-plans")).toBe("open-plans");
+    expect(normalizeStatusSectionId("pull-requests")).toBe("pull-requests");
+    expect(normalizeStatusSectionId("open-issues")).toBe("open-issues");
+    expect(normalizeStatusSectionId("recent-commits")).toBe("recent-commits");
+    expect(normalizeStatusSectionId("rag-ops:details")).toBe("rag-ops:details");
+  });
+
+  it("the footer status cluster is exactly the four control panels", () => {
+    // The evicted admin surfaces (Search service, Approvals) plus the two newly
+    // surfaced health planes (Backend health, Vault health) are the cluster chips —
+    // the one place the rail reaches its control panels now.
+    expect(CONTROL_PANEL_IDS).toEqual([
+      "search-service",
+      "approvals",
+      "backend-health",
+      "vault-health",
+    ]);
   });
 });
 

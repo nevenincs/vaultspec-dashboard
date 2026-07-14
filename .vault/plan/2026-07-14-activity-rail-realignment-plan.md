@@ -132,9 +132,9 @@ Mount the footer cluster and the four modal panels on the Settings-dialog idiom,
 
 Compact unified-rail parity for the cluster, re-pin the rail guard and parity-harness tests to the status-only composition, and run the full frontend gate (ADR D6).
 
-- [ ] `P04.S12` - Join the cluster to the compact unified rail footer and verify the panels open compact-safe; `frontend/src/app/shell/CompactUnifiedRail.tsx`.
-- [ ] `P04.S13` - Re-pin the rail guard tests and the status parity harness to the status-only composition and relocate the console and review-station tests beside their panels; `frontend/src/app/right/rail.test.ts`.
-- [ ] `P04.S14` - Run the full frontend lint gate and the touched vitest suites; `verify Figma name-as-contract bindings; `frontend`.
+- [x] `P04.S12` - Join the cluster to the compact unified rail footer and verify the panels open compact-safe; `frontend/src/app/shell/CompactUnifiedRail.tsx`.
+- [x] `P04.S13` - Re-pin the rail guard tests and the status parity harness to the status-only composition and relocate the console and review-station tests beside their panels; `frontend/src/app/right/rail.test.ts`.
+- [x] `P04.S14` - Run the full frontend lint gate and the touched vitest suites; `verify Figma name-as-contract bindings; `frontend`.
 
 ## Description
 

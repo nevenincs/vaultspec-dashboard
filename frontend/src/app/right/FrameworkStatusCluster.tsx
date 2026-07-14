@@ -31,6 +31,7 @@ import {
   type FrameworkStatusTone,
 } from "../../stores/server/queries";
 import { useFocusZone } from "../chrome/useFocusZone";
+import { usePointerCoarse } from "../chrome/RowMenuDisclosure";
 
 /** Tone -> the bound status-dot fill (the health triad; never raw hex). `unknown`
  *  is the pre-resolution muted state. */
@@ -60,6 +61,9 @@ export interface StatusChipProps {
   tabIndex: 0 | -1;
   onKeyDown: (event: ReactKeyboardEvent) => void;
   onFocus: () => void;
+  /** On coarse pointers the chip grows to the 2.75rem touch-target floor; the slim
+   *  strip is kept on fine (mouse) pointers. */
+  coarse?: boolean;
 }
 
 /** One cluster chip: a tone dot, the plain-language plane label, and at most one
@@ -73,6 +77,7 @@ export function StatusChip({
   tabIndex,
   onKeyDown,
   onFocus,
+  coarse = false,
 }: StatusChipProps) {
   return (
     <button
@@ -86,7 +91,9 @@ export function StatusChip({
       aria-label={`${chip.label} — ${TONE_WORD[chip.tone]}`}
       data-framework-chip
       data-tone={chip.tone}
-      className="flex min-w-0 items-center gap-fg-1 rounded-fg-sm px-fg-1-5 py-fg-1 transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-pressed:bg-paper-sunken"
+      className={`flex min-w-0 items-center gap-fg-1 rounded-fg-sm px-fg-1-5 py-fg-1 transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-pressed:bg-paper-sunken${
+        coarse ? " min-h-[2.75rem]" : ""
+      }`}
     >
       <span
         aria-hidden
@@ -114,6 +121,9 @@ export function FrameworkStatusCluster() {
   // The panels are MODAL (single-open), so one selector yields the open id and
   // each chip's open flag is a value compare — no per-chip store hook in a loop.
   const openPanel = useOpenControlPanel();
+  // On touch-first devices the chips grow to the 2.75rem tap floor (the compact
+  // rail pins this same strip as its footer); mouse pointers keep the slim strip.
+  const coarse = usePointerCoarse();
   const [active, setActive] = useState<string | null>(null);
   const zone = useFocusZone({
     orientation: "horizontal",
@@ -143,6 +153,7 @@ export function FrameworkStatusCluster() {
             tabIndex={item.tabIndex}
             onKeyDown={item.onKeyDown}
             onFocus={() => setActive(id)}
+            coarse={coarse}
           />
         );
       })}
