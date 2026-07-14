@@ -106,6 +106,38 @@ read only property '0'` because i18next updates that namespace list when a bundl
 removed. The initialization options therefore violate the installed runtime's mutability
 contract and prevent the removal-isolation case required by the original review.
 
+### formatter-runtime-totality | medium | Hostile formatter inputs can escape as exceptions
+
+`W01.P01.S05` promises `null` for invalid formatter input, but `safeOptions` calls
+reflection operations outside a protective boundary. A real production-module test
+passed a Proxy-backed options object whose prototype trap throws; `formatNumber`
+propagated that exception instead of returning `null`. The same unguarded option path is
+shared by the date, relative-time, list, percentage, duration, and byte formatters. A
+Proxy-backed array can likewise throw from the list-length or item-validation path.
+Invalid values can therefore cross the formatter boundary as frontend failures rather
+than safe absent presentation.
+
+### relative-time-unit-contract | medium | Valid plural relative-time units are rejected
+
+`formatRelativeTime` publicly accepts `Intl.RelativeTimeFormatUnit`, whose installed
+TypeScript definition and real `Intl.RelativeTimeFormat` implementation accept both
+singular and plural unit names. Its runtime allowlist includes only singular names. A
+targeted assertion confirmed that the platform formatter returns `null` for `"days"`
+while the native formatter returns `"in 2 days"`. The implementation must either
+support every unit admitted by its signature or narrow the signature to the singular
+unit type so callers cannot supply a compile-time-valid value that fails normalization.
+
+### formatter-option-retention | medium | Formatter cache keys retain unbounded option strings
+
+The formatter limits option-property count and cache-entry count, but it does not bound
+string option values or reject unknown option names. Native `Intl` constructors ignore
+unknown properties, so a caller can provide an arbitrarily large primitive string under
+an unknown name, successfully format a value, and retain that string in a cache key.
+Forty-eight entries in each of four caches can therefore retain an unbounded amount of
+memory, and semantically identical configurations can churn the caches under distinct
+ignored keys. This does not satisfy the step's bounded-options and bounded-retention
+contract.
+
 ## Recommendations
 
 <!-- Actionable recommendations -->
@@ -238,3 +270,22 @@ instance or the application singleton. No other array-valued initialization opti
 shared: resources are deep-cloned, and the remaining common options are scalars,
 functions, or non-array configuration objects consumed safely by the installed runtime.
 The remediation and execution record remain within S04 scope.
+
+### W01.P01.S05 review | changes required | Close formatter input and option contracts
+
+Commit `d970c7d93c` stays within the formatter step's source scope, accepts the locale
+explicitly for every operation, keeps each `Intl` formatter cache at 48 entries, bounds
+lists to 100 non-empty strings of at most 4,096 characters, rejects ordinary invalid
+numbers, dates, locales, and option values, and composes durations without the optional
+`Intl.DurationFormat` API. Real production-module assertions confirmed distinct
+number, date, relative-time, list, and percentage output for English and German;
+documented ratio behavior; deterministic duration and byte output; and continued real
+formatting after more distinct configurations than a cache can retain. The plan
+checkbox and execution record trace the intended implementation accurately.
+
+Before accepting the step, make option and list normalization exception-safe, bound
+retained option strings and reject unknown option fields, and align the relative-time
+runtime allowlist with its public type. Re-run the real cross-locale, invalid-input,
+hostile-input, option-bound, list-bound, and cache-churn assertions. The review-only
+test file was removed after execution; no fake, mock, stub, patch, monkeypatch, skip, or
+xfail was used.
