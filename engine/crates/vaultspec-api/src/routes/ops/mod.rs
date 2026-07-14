@@ -493,8 +493,16 @@ pub async fn ops_rag_get(
     }
 
     // Per-verb wall-clock budget (ADR honest difficulty: a fast `/jobs` poll and
-    // a slow `/quality` probe need different bounds). Reads are fast.
-    let transport = match rag_control_transport(&cell, rag_client::control::READ_BUDGET) {
+    // a slow `/quality` probe need different bounds). Reads are fast — except the
+    // survey-bearing aggregates: rag's `/storage/survey` walks the machine store's
+    // disk footprints and takes 10s+ on a namespace-heavy store, so those two
+    // verbs get the wider survey budget instead of failing the storage rollup
+    // closed on every well-populated machine.
+    let budget = match verb.as_str() {
+        "ops-state" | "storage-survey" => rag_client::control::SURVEY_BUDGET,
+        _ => rag_client::control::READ_BUDGET,
+    };
+    let transport = match rag_control_transport(&cell, budget) {
         Ok(t) => t,
         // rag down/absent: every read degrades to the tier block, never a 5xx.
         Err(reason) => {

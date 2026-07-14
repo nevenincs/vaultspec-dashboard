@@ -35,6 +35,14 @@ pub const READ_BUDGET: Duration = Duration::from_secs(10);
 /// while still bounding a hang.
 pub const CONTROL_BUDGET: Duration = Duration::from_secs(15);
 
+/// Survey-bearing reads (`/storage/survey`, the ops-state aggregate that
+/// includes it): rag walks the machine store's per-namespace disk footprints,
+/// which scales with resident namespaces (~15s observed on a 98-namespace
+/// store), so these get a wider wall-clock than [`READ_BUDGET`] rather than
+/// failing the storage rollup closed on every well-populated machine. Still
+/// bounded well under the engine-wide route ceiling.
+pub const SURVEY_BUDGET: Duration = Duration::from_secs(45);
+
 /// Per-verb budget for the `/quality` probe: rag runs a small live retrieval
 /// benchmark, which is materially slower than a snapshot read, so it gets its
 /// own generous-but-bounded budget rather than sharing the fast read bound.
