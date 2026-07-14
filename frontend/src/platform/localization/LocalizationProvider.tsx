@@ -7,7 +7,7 @@ import {
   resolveMessageResult,
   type MessageResolutionResult,
 } from "./fallback";
-import type { MessageDescriptor } from "./message";
+import type { AnyMessageDescriptor } from "./message";
 import { localization, localizationNamespaces } from "./runtime";
 
 const LOCALIZATION_HOOK_OPTIONS = Object.freeze({ useSuspense: false });
@@ -35,7 +35,7 @@ export function useLocalizedMessage(descriptor: unknown): string {
 }
 
 export type LocalizedMessageResolver = (
-  descriptor: MessageDescriptor,
+  descriptor: AnyMessageDescriptor,
 ) => MessageResolutionResult;
 
 /** Resolve many typed descriptors while remaining reactive to language changes. */
@@ -44,7 +44,7 @@ export function useLocalizedMessageResolver(): LocalizedMessageResolver {
   const language = i18n.resolvedLanguage ?? i18n.language;
 
   return useCallback(
-    (descriptor: MessageDescriptor) => resolveMessageResult(i18n, descriptor),
+    (descriptor: AnyMessageDescriptor) => resolveMessageResult(i18n, descriptor),
     [i18n, language],
   );
 }

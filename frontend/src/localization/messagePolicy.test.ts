@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { en } from "../locales/en";
-import { MESSAGE_KEYS, type MessageKey } from "../platform/localization/message";
+import {
+  isPluralMessageKey,
+  MESSAGE_KEYS,
+  PHYSICAL_MESSAGE_KEYS,
+  type MessageKey,
+  type PhysicalMessageKey,
+} from "../platform/localization/message";
 import {
   ENGLISH_MESSAGE_POLICY,
   type MessagePolicyIssueCode,
@@ -9,11 +15,11 @@ import {
   validateEnglishMessage,
 } from "./messagePolicy";
 
-function catalogMessages(): ReadonlyMap<MessageKey, string> {
-  const messages = new Map<MessageKey, string>();
+function catalogMessages(): ReadonlyMap<PhysicalMessageKey, string> {
+  const messages = new Map<PhysicalMessageKey, string>();
   const visit = (namespace: string, path: readonly string[], value: unknown): void => {
     if (typeof value === "string") {
-      messages.set(`${namespace}:${path.join(".")}` as MessageKey, value);
+      messages.set(`${namespace}:${path.join(".")}` as PhysicalMessageKey, value);
       return;
     }
     for (const [segment, child] of Object.entries(
@@ -27,6 +33,11 @@ function catalogMessages(): ReadonlyMap<MessageKey, string> {
     visit(namespace, [], catalog);
   }
   return messages;
+}
+
+function policyKeyForPhysical(key: PhysicalMessageKey): MessageKey {
+  const logical = key.replace(/_(?:zero|one|two|few|many|other)$/u, "");
+  return (isPluralMessageKey(logical) ? logical : key) as MessageKey;
 }
 
 const CASES = {
@@ -131,12 +142,11 @@ describe("source-locale message policy", () => {
 
   it("accepts every production English catalog value", () => {
     const messages = catalogMessages();
-    expect([...messages.keys()].sort()).toEqual([...MESSAGE_KEYS].sort());
+    expect([...messages.keys()].sort()).toEqual([...PHYSICAL_MESSAGE_KEYS].sort());
 
-    for (const key of MESSAGE_KEYS) {
-      const template = messages.get(key);
-      expect(template, key).toEqual(expect.any(String));
-      expect(validateEnglishMessage(key, template!), key).toEqual([]);
+    for (const [physicalKey, template] of messages) {
+      const policyKey = policyKeyForPhysical(physicalKey);
+      expect(validateEnglishMessage(policyKey, template), physicalKey).toEqual([]);
     }
   });
 
@@ -247,7 +257,10 @@ describe("source-locale message policy", () => {
     const messages = catalogMessages();
     for (const key of DISABLED_REASON_KEYS) {
       expect(ENGLISH_MESSAGE_POLICY[key].role, key).toBe("disabled-reason");
-      expect(validateEnglishMessage(key, messages.get(key)!), key).toEqual([]);
+      expect(
+        validateEnglishMessage(key, messages.get(key as PhysicalMessageKey)!),
+        key,
+      ).toEqual([]);
     }
   });
 

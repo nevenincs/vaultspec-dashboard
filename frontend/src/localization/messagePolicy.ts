@@ -119,6 +119,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "common:keycaps.shift": { role: "label" },
   "common:keycaps.space": { role: "label" },
   "common:keycaps.tab": { role: "label" },
+  "common:palette.commandCount": { role: "status" },
   "common:statuses.noActionsAvailable": { role: "status" },
   "documents:accessibility.switchReadingAndEditingShortcut": {
     role: "accessibility",
@@ -352,7 +353,7 @@ export type StaticMessagePart =
   | { readonly kind: "text"; readonly value: string }
   | { readonly kind: "value"; readonly name: string };
 
-const INTERPOLATION_TOKEN = /\{\{\s*-?\s*([a-z][a-zA-Z0-9]*)\s*\}\}/gu;
+const INTERPOLATION_TOKEN = /\{\{\s*([a-z][a-zA-Z0-9]*)(?:\s*,\s*number)?\s*\}\}/gu;
 const RAW_PLACEHOLDER = /\{\{|\}\}|\$\{|%\{/u;
 const RAW_MESSAGE_KEY =
   /\b([a-z][a-zA-Z0-9]*):[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*\b/gu;

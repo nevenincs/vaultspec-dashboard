@@ -38,6 +38,11 @@ export const ltrTestResources = {
       settings: "Paramètres",
       workspaceMaintenance: "Maintenance de l’espace de travail",
     },
+    palette: {
+      commandCount_many: "{{count, number}} commandes",
+      commandCount_one: "{{count, number}} commande",
+      commandCount_other: "{{count, number}} commandes",
+    },
     disabledReasons: en.common.disabledReasons,
     feedback: {
       actionUnavailable:
@@ -217,6 +222,14 @@ export const rtlTestResources = {
       searchMaintenance: "صيانة البحث",
       settings: "الإعدادات",
       workspaceMaintenance: "صيانة مساحة العمل",
+    },
+    palette: {
+      commandCount_few: "{{count, number}} أوامر",
+      commandCount_many: "{{count, number}} أمرًا",
+      commandCount_one: "{{count, number}} أمر",
+      commandCount_other: "{{count, number}} أمر",
+      commandCount_two: "{{count, number}} أمران",
+      commandCount_zero: "{{count, number}} أمر",
     },
     disabledReasons: en.common.disabledReasons,
     feedback: {

@@ -9,7 +9,7 @@ import {
 import {
   normalizeMessageDescriptor,
   type MessageDescriptor,
-  type MessageKey,
+  type OrdinaryMessageKey,
 } from "../../platform/localization/message";
 import type { OperationConcept } from "../server/opsActions";
 import { SEARCH_QUERY_MAX_CHARS, normalizeSearchQuery } from "../searchQuery";
@@ -267,7 +267,7 @@ type OperationFeedbackCatalog = {
 };
 
 function createCommandPaletteOpsFeedback(
-  key: MessageKey,
+  key: OrdinaryMessageKey,
   tone: CommandPaletteOpsFeedbackTone,
 ): CommandPaletteOpsFeedback {
   return Object.freeze({ message: Object.freeze({ key }), tone });
@@ -377,15 +377,17 @@ const GENERIC_OPERATION_FEEDBACK = createCommandPaletteOpsFeedback(
   "error",
 );
 
-const OPERATION_FEEDBACK_BY_KEY: ReadonlyMap<MessageKey, CommandPaletteOpsFeedback> =
-  new Map([
-    ...Object.values(OPERATION_FEEDBACK_CATALOG).flatMap((conditions) =>
-      Object.values(conditions).map(
-        (feedback) => [feedback.message.key, feedback] as const,
-      ),
+const OPERATION_FEEDBACK_BY_KEY: ReadonlyMap<
+  OrdinaryMessageKey,
+  CommandPaletteOpsFeedback
+> = new Map([
+  ...Object.values(OPERATION_FEEDBACK_CATALOG).flatMap((conditions) =>
+    Object.values(conditions).map(
+      (feedback) => [feedback.message.key, feedback] as const,
     ),
-    [GENERIC_OPERATION_FEEDBACK.message.key, GENERIC_OPERATION_FEEDBACK] as const,
-  ]);
+  ),
+  [GENERIC_OPERATION_FEEDBACK.message.key, GENERIC_OPERATION_FEEDBACK] as const,
+]);
 
 function readExactDataRecord(
   value: unknown,

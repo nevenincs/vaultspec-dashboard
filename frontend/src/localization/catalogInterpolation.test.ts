@@ -11,17 +11,18 @@ import { resources, sourceLocale } from "../locales/en";
 import { resolveMessage } from "../platform/localization/fallback";
 import {
   createMessageDescriptor,
-  MESSAGE_KEYS,
   MESSAGE_VALUE_COUNT_MAX,
   MESSAGE_VALUE_NAME_MAX_CHARS,
-  type MessageKey,
+  ORDINARY_MESSAGE_KEYS,
+  PHYSICAL_MESSAGE_KEYS,
+  type PhysicalMessageKey,
 } from "../platform/localization/message";
 import {
   createLocalizationRuntime,
   supportedLocales,
 } from "../platform/localization/runtime";
 
-const INTERPOLATION_TOKEN = /\{\{\s*-?\s*([a-z][a-zA-Z0-9]*)\s*\}\}/gu;
+const INTERPOLATION_TOKEN = /\{\{\s*([a-z][a-zA-Z0-9]*)(?:\s*,\s*number)?\s*\}\}/gu;
 const INTERPOLATION_DELIMITER = /\{\{|\}\}/u;
 const NESTED_MESSAGE = /\$t\(/u;
 
@@ -61,7 +62,7 @@ function interpolationTokenNames(
   return tokenNames;
 }
 
-function catalogTemplate(locale: string, key: MessageKey): CatalogTemplate {
+function catalogTemplate(locale: string, key: PhysicalMessageKey): CatalogTemplate {
   const namespaceEnd = key.indexOf(":");
   const namespace = key.slice(0, namespaceEnd);
   const path = key.slice(namespaceEnd + 1);
@@ -90,9 +91,9 @@ function catalogTemplate(locale: string, key: MessageKey): CatalogTemplate {
 describe("production catalog interpolation", () => {
   it("checks production syntax and preserves shipped-locale token parity", () => {
     expect(supportedLocales.length).toBeGreaterThan(0);
-    expect(MESSAGE_KEYS.length).toBeGreaterThan(0);
+    expect(PHYSICAL_MESSAGE_KEYS.length).toBeGreaterThan(0);
 
-    for (const key of MESSAGE_KEYS) {
+    for (const key of PHYSICAL_MESSAGE_KEYS) {
       const sourceTokens = new Set(catalogTemplate(sourceLocale, key).tokenNames);
 
       for (const locale of supportedLocales) {
@@ -114,7 +115,7 @@ describe("production catalog interpolation", () => {
       const runtime = createLocalizationRuntime();
       await runtime.changeLanguage(locale);
 
-      for (const key of MESSAGE_KEYS) {
+      for (const key of ORDINARY_MESSAGE_KEYS) {
         const { template, tokenNames } = catalogTemplate(locale, key);
         if (tokenNames.length > 0) continue;
 

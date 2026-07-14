@@ -3,8 +3,12 @@ import { describe, expect, it } from "vitest";
 import { en, resources, sourceLocale, type EnglishResources } from "../locales/en";
 import {
   isMessageKey,
+  isPluralMessageKey,
   MESSAGE_KEYS,
+  PHYSICAL_MESSAGE_KEYS,
+  PLURAL_MESSAGE_KEYS,
   type MessageKey,
+  type PhysicalMessageKey,
 } from "../platform/localization/message";
 import {
   createLocalizationRuntime,
@@ -107,6 +111,8 @@ const EXPECTED_CATALOG_KEYS = [
   "common:keycaps.shift",
   "common:keycaps.space",
   "common:keycaps.tab",
+  "common:palette.commandCount_one",
+  "common:palette.commandCount_other",
   "common:statuses.noActionsAvailable",
   "documents:accessibility.switchReadingAndEditingShortcut",
   "documents:actions.addToFeature",
@@ -178,9 +184,16 @@ const EXPECTED_CATALOG_KEYS = [
   "projects:actions.add",
   "projects:actions.clearHistory",
   "projects:actions.switch",
-] as const satisfies readonly MessageKey[];
+] as const satisfies readonly PhysicalMessageKey[];
 
-function splitMessageKey(key: MessageKey): {
+const EXPECTED_PUBLIC_MESSAGE_KEYS = [
+  ...EXPECTED_CATALOG_KEYS.filter(
+    (key) => !/^common:palette\.commandCount_(?:one|other)$/u.test(key),
+  ),
+  "common:palette.commandCount",
+] as readonly MessageKey[];
+
+function splitMessageKey(key: PhysicalMessageKey): {
   namespace: keyof EnglishResources & string;
   path: string;
 } {
@@ -222,8 +235,14 @@ function discoverLeafKeys(catalog: Readonly<Record<string, unknown>>): string[] 
 
 describe("shipped localization catalog keys", () => {
   it("matches the explicit namespace-qualified leaf-key contract", () => {
-    expect([...MESSAGE_KEYS].sort()).toEqual([...EXPECTED_CATALOG_KEYS].sort());
-    for (const key of EXPECTED_CATALOG_KEYS) {
+    expect([...PHYSICAL_MESSAGE_KEYS].sort()).toEqual(
+      [...EXPECTED_CATALOG_KEYS].sort(),
+    );
+    expect([...MESSAGE_KEYS].sort()).toEqual([...EXPECTED_PUBLIC_MESSAGE_KEYS].sort());
+    expect(PLURAL_MESSAGE_KEYS).toEqual(["common:palette.commandCount"]);
+    expect(isPluralMessageKey("common:palette.commandCount")).toBe(true);
+    expect(isMessageKey("common:palette.commandCount_one")).toBe(false);
+    for (const key of EXPECTED_PUBLIC_MESSAGE_KEYS) {
       expect(isMessageKey(key), key).toBe(true);
     }
 

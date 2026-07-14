@@ -3,6 +3,7 @@ import type { i18n, TOptions } from "i18next";
 import { errors } from "../../locales/en/errors";
 import {
   MESSAGE_VALUE_COUNT_MAX,
+  normalizeCountMessageDescriptor,
   normalizeMessageDescriptor,
   type MessageKey,
   type MessageValues,
@@ -68,7 +69,10 @@ function validStringResult(value: unknown, key: MessageKey): string | null {
   return value;
 }
 
-function templateHasCompleteValues(template: string, values?: MessageValues): boolean {
+export function isSafeMessageTemplate(
+  template: string,
+  values?: MessageValues,
+): boolean {
   if (template.length > RAW_TEMPLATE_MAX_CHARS || template.includes("$t(")) {
     return false;
   }
@@ -96,11 +100,16 @@ function templateHasCompleteValues(template: string, values?: MessageValues): bo
     if (tokenCount > MESSAGE_VALUE_COUNT_MAX) return false;
 
     const body = template.slice(opening + 2, closing).trim();
-    const name = body.startsWith("-") ? body.slice(1).trim() : body;
+    const segments = body.split(",").map((segment) => segment.trim());
+    if (segments.length > 2) return false;
+    const [name, format] = segments;
     if (
+      name === undefined ||
       !INTERPOLATION_NAME_PATTERN.test(name) ||
+      (format !== undefined && format !== "number") ||
       values === undefined ||
-      !Object.hasOwn(values, name)
+      !Object.hasOwn(values, name) ||
+      (format === "number" && typeof values[name] !== "number")
     ) {
       return false;
     }
@@ -124,7 +133,7 @@ function tryResolve(
       translator.t(key, rawTemplateOptions(values)),
       key,
     );
-    if (rawTemplate === null || !templateHasCompleteValues(rawTemplate, values)) {
+    if (rawTemplate === null || !isSafeMessageTemplate(rawTemplate, values)) {
       return null;
     }
 
@@ -139,7 +148,9 @@ export function resolveMessageResult(
   translator: MessageTranslator,
   descriptor: unknown,
 ): MessageResolutionResult {
-  const normalized = normalizeMessageDescriptor(descriptor);
+  const normalized =
+    normalizeCountMessageDescriptor(descriptor) ??
+    normalizeMessageDescriptor(descriptor);
   if (normalized !== null) {
     const resolved = tryResolve(translator, normalized.key, normalized.values);
     if (resolved !== null) {

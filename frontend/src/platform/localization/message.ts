@@ -8,11 +8,35 @@ type MessageLeafPath<T> = {
       : never;
 }[keyof T & string];
 
-type MessageKeyByNamespace = {
+type PhysicalMessageKeyByNamespace = {
   [Namespace in keyof EnglishResources & string]: `${Namespace}:${MessageLeafPath<
     EnglishResources[Namespace]
   >}`;
 };
+
+export const PLURAL_CATEGORIES = [
+  "zero",
+  "one",
+  "two",
+  "few",
+  "many",
+  "other",
+] as const;
+
+export type PluralCategory = (typeof PLURAL_CATEGORIES)[number];
+export type PhysicalMessageKey =
+  PhysicalMessageKeyByNamespace[keyof PhysicalMessageKeyByNamespace];
+
+type LogicalPluralKey<Key extends string> =
+  Key extends `${infer Base}_${PluralCategory}` ? Base : never;
+
+/** A semantic plural family addressed without its physical CLDR suffix. */
+export type PluralMessageKey = LogicalPluralKey<PhysicalMessageKey>;
+type PhysicalPluralMessageKey = Extract<
+  PhysicalMessageKey,
+  `${PluralMessageKey}_${PluralCategory}`
+>;
+export type OrdinaryMessageKey = Exclude<PhysicalMessageKey, PhysicalPluralMessageKey>;
 
 type DestructiveActionKeyByNamespace = {
   [Namespace in keyof EnglishResources & string]: EnglishResources[Namespace] extends {
@@ -32,8 +56,8 @@ type GuardedActionKeyByNamespace = {
     : never;
 };
 
-/** A namespace-qualified semantic leaf in the source-locale catalog. */
-export type MessageKey = MessageKeyByNamespace[keyof MessageKeyByNamespace];
+/** A public semantic message key. Plural families use their logical base key. */
+export type MessageKey = OrdinaryMessageKey | PluralMessageKey;
 export type DestructiveActionMessageKey =
   DestructiveActionKeyByNamespace[keyof DestructiveActionKeyByNamespace];
 export type GuardedActionMessageKey =
@@ -53,10 +77,21 @@ const MESSAGE_KEY_PATTERN =
 const MESSAGE_VALUE_NAME_PATTERN = /^[a-z][a-zA-Z0-9]*$/;
 const PROHIBITED_VALUE_NAMES = new Set(["constructor", "prototype"]);
 
-export interface MessageDescriptor<Key extends MessageKey = MessageKey> {
+export interface MessageDescriptor<
+  Key extends OrdinaryMessageKey = OrdinaryMessageKey,
+> {
   readonly key: Key;
   readonly values?: MessageValues;
 }
+
+export interface CountMessageDescriptor<
+  Key extends PluralMessageKey = PluralMessageKey,
+> {
+  readonly key: Key;
+  readonly values: Readonly<{ count: number }>;
+}
+
+export type AnyMessageDescriptor = MessageDescriptor | CountMessageDescriptor;
 
 export const SAFE_CANCEL_MESSAGE_KEYS = [
   "common:actions.cancel",
@@ -142,7 +177,7 @@ function hasExactFields(
   return fields.every((field) => typeof field === "string" && allowed.has(field));
 }
 
-function collectMessageKeys(): readonly MessageKey[] {
+function collectPhysicalMessageKeys(): readonly PhysicalMessageKey[] {
   const keys: string[] = [];
 
   const visit = (namespace: string, path: readonly string[], value: unknown): void => {
@@ -161,15 +196,42 @@ function collectMessageKeys(): readonly MessageKey[] {
     visit(namespace, [], catalog);
   }
 
-  return Object.freeze(keys as MessageKey[]);
+  return Object.freeze(keys as PhysicalMessageKey[]);
 }
 
-/** The runtime allowlist generated from the same source-locale shape as `MessageKey`. */
-export const MESSAGE_KEYS = collectMessageKeys();
+function logicalPluralKey(key: string): string | null {
+  for (const category of PLURAL_CATEGORIES) {
+    const suffix = `_${category}`;
+    if (key.endsWith(suffix)) return key.slice(0, -suffix.length);
+  }
+  return null;
+}
+
+/** Every physical source-catalog leaf, including CLDR-suffixed plural variants. */
+export const PHYSICAL_MESSAGE_KEYS = collectPhysicalMessageKeys();
+
+/** Logical plural identities derived from the physical CLDR-suffixed leaves. */
+export const PLURAL_MESSAGE_KEYS = Object.freeze([
+  ...new Set(PHYSICAL_MESSAGE_KEYS.map(logicalPluralKey).filter(Boolean)),
+] as PluralMessageKey[]);
+
+const PLURAL_MESSAGE_KEY_SET: ReadonlySet<string> = new Set(PLURAL_MESSAGE_KEYS);
+
+export const ORDINARY_MESSAGE_KEYS = Object.freeze(
+  PHYSICAL_MESSAGE_KEYS.filter(
+    (key): key is OrdinaryMessageKey => logicalPluralKey(key) === null,
+  ),
+);
+
+/** Public logical key inventory. Physical plural variants never escape the catalog. */
+export const MESSAGE_KEYS = Object.freeze([
+  ...ORDINARY_MESSAGE_KEYS,
+  ...PLURAL_MESSAGE_KEYS,
+] as MessageKey[]);
 
 /** Destructive action leaves generated from the catalog's semantic category. */
 export const DESTRUCTIVE_ACTION_MESSAGE_KEYS = Object.freeze(
-  MESSAGE_KEYS.filter((key) => {
+  ORDINARY_MESSAGE_KEYS.filter((key) => {
     const namespaceEnd = key.indexOf(":");
     return key.slice(namespaceEnd + 1).startsWith("destructiveActions.");
   }) as DestructiveActionMessageKey[],
@@ -177,13 +239,13 @@ export const DESTRUCTIVE_ACTION_MESSAGE_KEYS = Object.freeze(
 
 /** Guarded action leaves generated from the catalog's semantic category. */
 export const GUARDED_ACTION_MESSAGE_KEYS = Object.freeze(
-  MESSAGE_KEYS.filter((key) => {
+  ORDINARY_MESSAGE_KEYS.filter((key) => {
     const namespaceEnd = key.indexOf(":");
     return key.slice(namespaceEnd + 1).startsWith("guardedActions.");
   }) as GuardedActionMessageKey[],
 );
 
-const MESSAGE_KEY_SET: ReadonlySet<string> = new Set(MESSAGE_KEYS);
+const ORDINARY_MESSAGE_KEY_SET: ReadonlySet<string> = new Set(ORDINARY_MESSAGE_KEYS);
 const DESTRUCTIVE_ACTION_MESSAGE_KEY_SET: ReadonlySet<string> = new Set(
   DESTRUCTIVE_ACTION_MESSAGE_KEYS,
 );
@@ -199,8 +261,16 @@ export function isMessageKey(value: unknown): value is MessageKey {
     typeof value === "string" &&
     value.length <= MESSAGE_KEY_MAX_CHARS &&
     MESSAGE_KEY_PATTERN.test(value) &&
-    MESSAGE_KEY_SET.has(value)
+    (ORDINARY_MESSAGE_KEY_SET.has(value) || PLURAL_MESSAGE_KEY_SET.has(value))
   );
+}
+
+export function isPluralMessageKey(value: unknown): value is PluralMessageKey {
+  return typeof value === "string" && PLURAL_MESSAGE_KEY_SET.has(value);
+}
+
+export function isOrdinaryMessageKey(value: unknown): value is OrdinaryMessageKey {
+  return typeof value === "string" && ORDINARY_MESSAGE_KEY_SET.has(value);
 }
 
 function normalizeMessageValues(value: unknown): MessageValues | null {
@@ -243,16 +313,18 @@ function normalizeMessageValues(value: unknown): MessageValues | null {
 export function normalizeMessageDescriptor(value: unknown): MessageDescriptor | null {
   const record = ownDataRecord(value);
   if (record === null || !hasExactFields(record, ["key"], ["values"])) return null;
-  if (!isMessageKey(record.key)) return null;
+  if (!isOrdinaryMessageKey(record.key)) return null;
 
   if (!Object.hasOwn(record, "values")) {
     return Object.freeze({ key: record.key });
   }
   const values = normalizeMessageValues(record.values);
-  return values === null ? null : Object.freeze({ key: record.key, values });
+  return values === null || Object.hasOwn(values, "count")
+    ? null
+    : Object.freeze({ key: record.key, values });
 }
 
-export function createMessageDescriptor<const Key extends MessageKey>(
+export function createMessageDescriptor<const Key extends OrdinaryMessageKey>(
   key: Key,
   values?: MessageValues,
 ): MessageDescriptor<Key> | null {
@@ -260,6 +332,36 @@ export function createMessageDescriptor<const Key extends MessageKey>(
     values === undefined ? { key } : { key, values },
   );
   return normalized as MessageDescriptor<Key> | null;
+}
+
+export function normalizeCountMessageDescriptor(
+  value: unknown,
+): CountMessageDescriptor | null {
+  const record = ownDataRecord(value);
+  if (record === null || !hasExactFields(record, ["key", "values"])) return null;
+  if (!isPluralMessageKey(record.key)) return null;
+
+  const values = ownDataRecord(record.values);
+  if (values === null || !hasExactFields(values, ["count"])) return null;
+  const count = values.count;
+  if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) {
+    return null;
+  }
+
+  return Object.freeze({
+    key: record.key,
+    values: Object.freeze({ count }),
+  });
+}
+
+export function createCountMessageDescriptor<const Key extends PluralMessageKey>(
+  key: Key,
+  count: number,
+): CountMessageDescriptor<Key> | null {
+  return normalizeCountMessageDescriptor({
+    key,
+    values: { count },
+  }) as CountMessageDescriptor<Key> | null;
 }
 
 export function isMessageDescriptor(value: unknown): value is MessageDescriptor {

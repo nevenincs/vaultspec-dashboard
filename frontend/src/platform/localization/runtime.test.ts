@@ -8,6 +8,7 @@ import {
 import { errors } from "../../locales/en/errors";
 import {
   SAFE_FALLBACK_SOURCE_MESSAGE,
+  isSafeMessageTemplate,
   resolveMessage,
   resolveMessageResult,
 } from "./fallback";
@@ -16,7 +17,9 @@ import {
   normalizeConfirmationDescriptor,
   normalizeGuardedConfirmationDescriptor,
   createMessageDescriptor,
+  createCountMessageDescriptor,
   MESSAGE_VALUE_COUNT_MAX,
+  normalizeCountMessageDescriptor,
   normalizeMessageDescriptor,
 } from "./message";
 import { createLocalizationRuntime } from "./runtime";
@@ -139,6 +142,89 @@ describe("localization runtime and messages", () => {
         },
       }),
     ).toBeNull();
+  });
+
+  it("creates count descriptors only for logical plural keys and safe counts", () => {
+    const descriptor = createCountMessageDescriptor("common:palette.commandCount", 2);
+    expect(descriptor).toEqual({
+      key: "common:palette.commandCount",
+      values: { count: 2 },
+    });
+    expect(Object.isFrozen(descriptor)).toBe(true);
+    expect(Object.isFrozen(descriptor?.values)).toBe(true);
+
+    for (const count of [Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5]) {
+      expect(
+        createCountMessageDescriptor("common:palette.commandCount", count),
+      ).toBeNull();
+    }
+    expect(
+      createCountMessageDescriptor(
+        "common:palette.commandCount",
+        Number.MAX_SAFE_INTEGER + 1,
+      ),
+    ).toBeNull();
+    expect(
+      normalizeCountMessageDescriptor({
+        key: "common:palette.commandCount",
+        values: { count: 1, privateValue: "hidden" },
+      }),
+    ).toBeNull();
+  });
+
+  it("enforces the closed safe interpolation grammar", () => {
+    expect(isSafeMessageTemplate("Open {{name}}.", { name: "document" })).toBe(true);
+    expect(isSafeMessageTemplate("{{count, number}} commands", { count: 12 })).toBe(
+      true,
+    );
+
+    for (const template of [
+      "{{- name}}",
+      "{{count, date}}",
+      "{{count, number, compact}}",
+      "{{count, number(minimumFractionDigits: 2)}}",
+      "{{outer {{inner}} }}",
+      "{{missing}}",
+      "$t(common:actions.retry)",
+    ]) {
+      expect(isSafeMessageTemplate(template, { count: 2, name: "item" })).toBe(false);
+    }
+    expect(isSafeMessageTemplate("{{count, number}}", { count: "2" })).toBe(false);
+  });
+
+  it("prevents generic descriptors from bypassing plural selection", () => {
+    const runtime = createLocalizationRuntime();
+    const fallback = SAFE_FALLBACK_SOURCE_MESSAGE;
+
+    expect(
+      resolveMessage(
+        runtime,
+        createCountMessageDescriptor("common:palette.commandCount", 1),
+      ),
+    ).toBe("1 command");
+    expect(
+      resolveMessage(
+        runtime,
+        createCountMessageDescriptor("common:palette.commandCount", 2),
+      ),
+    ).toBe("2 commands");
+    expect(
+      resolveMessage(runtime, {
+        key: "common:palette.commandCount",
+      }),
+    ).toBe(fallback);
+    expect(
+      resolveMessage(runtime, {
+        key: "common:palette.commandCount_one",
+        values: { count: 1 },
+      }),
+    ).toBe(fallback);
+    expect(
+      resolveMessage(runtime, {
+        key: "common:actions.retry",
+        values: { count: 1 },
+      }),
+    ).toBe(fallback);
   });
 
   it("uses safe catalog copy for missing, malformed, and incomplete messages", () => {

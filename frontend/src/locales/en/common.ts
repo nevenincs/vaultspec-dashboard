@@ -55,6 +55,10 @@ export const common = {
     settings: "Settings",
     workspaceMaintenance: "Workspace maintenance",
   },
+  palette: {
+    commandCount_one: "{{count, number}} command",
+    commandCount_other: "{{count, number}} commands",
+  },
   disabledReasons: {
     actionUnavailable: "Reload the page and try this action again.",
     currentVersionRequired: "Return to the current version to use this action.",
