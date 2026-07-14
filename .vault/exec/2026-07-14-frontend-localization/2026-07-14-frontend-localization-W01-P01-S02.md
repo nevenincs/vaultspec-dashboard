@@ -34,3 +34,6 @@ runtime, React, or store modules.
 
 Leaf-domain messages remain intentionally absent. Their owning migration steps will add
 them after the shared message contract is available.
+
+Review aligned the generic page-recovery message with the canonical `Reload` verb used
+by the shared page action and unexpected-application recovery message.

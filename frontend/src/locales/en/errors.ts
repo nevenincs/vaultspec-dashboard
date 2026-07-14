@@ -1,6 +1,6 @@
 export const errors = {
   fallback: {
-    contentUnavailable: "This content is unavailable. Refresh the page and try again.",
+    contentUnavailable: "This content is unavailable. Reload the page and try again.",
   },
   unexpectedApplication: {
     message: "Reload the page and try again.",
