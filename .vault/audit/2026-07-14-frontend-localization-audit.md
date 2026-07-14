@@ -87,6 +87,16 @@ fallback. The resolver therefore cannot distinguish unresolved catalog syntax fr
 preserved user data and violates the decision that user-authored content remains
 untranslated data.
 
+### runtime-resource-isolation | medium | Fresh localization runtimes share mutable resources
+
+`W01.P01.S04` creates distinct i18next objects but passes the same mutable `resources`
+object to every initialization. A targeted real-runtime assertion added a review-only
+resource through one fresh instance and immediately resolved it through a second fresh
+instance. The factory therefore does not provide isolated resource stores, and a test,
+preview locale, or future runtime catalog mutation can contaminate the application
+singleton or another consumer. This conflicts with the step's fresh-instance contract
+and makes behavior depend on which runtime was created or mutated first.
+
 ## Recommendations
 
 <!-- Actionable recommendations -->
@@ -176,3 +186,20 @@ is malformed. The production module remains React-free and store-free, terminate
 without fallback recursion, and passes the full TypeScript 6 project check. The updated
 execution record accurately describes the defect, remediation, and temporary real-runtime
 verification.
+
+### W01.P01.S04 review | changes required | Isolate each runtime's resource store
+
+Commit `3d28c9ebab` initializes bundled resources in the same tick with `initAsync: false`,
+installs the React adapter with Suspense disabled, derives namespaces and the
+public supported-locale union from the typed source catalog, and keeps boot, browser,
+store, and provider authority outside the runtime module. The `CustomTypeOptions`
+augmentation supplies the documented resource, default namespace, null-return, and
+strict-key settings under TypeScript 6. Targeted real-runtime assertions also proved
+safe output for absent keys, call-site `defaultValue`, and object-valued keys; none
+exposed a key, English default, or object value. The plan checkbox and execution record
+accurately trace the implemented scope. However, fresh factory instances share the
+same resource object. Build a fresh resource graph for every factory call and prove
+that adding, replacing, or removing a resource on one real instance cannot affect a
+second instance or the application singleton. Re-run the same-tick, missing-key,
+missing-interpolation, object-return, empty-result, React-option, and TypeScript checks
+before accepting S04.
