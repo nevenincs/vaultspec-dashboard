@@ -98,13 +98,16 @@ const DIAGNOSTIC_BOUNDARIES = [
 const RAW_KEY_BOUNDARIES = [
   "Show common:retry",
   "Show common:actions.retry",
-  "Show unknown:stale.key",
+  "Show errors:fallback.x",
   "The value (common:retry) is unavailable",
 ] as const;
 
 const FALSE_RECOVERY_STATEMENTS = [
   "Retry failed.",
+  "Retry did not work.",
+  "Retry will fail.",
   "Try is unavailable.",
+  "Try again failed.",
   "Check has failed.",
   "Reload.",
 ] as const;
@@ -181,6 +184,19 @@ describe("source-locale message policy", () => {
         template,
       ).toContain("raw-key");
     }
+
+    for (const template of [
+      "Open mailto:help@example.com",
+      "Open https://example.com",
+      "Call tel:+123456",
+      "Show custom:value",
+      "Status: ready",
+    ]) {
+      expect(
+        validateEnglishMessage("errors:unexpectedApplication.title", template),
+        template,
+      ).toEqual([]);
+    }
   });
 
   it("requires a plausible imperative recovery clause", () => {
@@ -197,6 +213,10 @@ describe("source-locale message policy", () => {
       "This section is unavailable. Retry this section.",
       "This section is unavailable; retry this section.",
       "Open {{document}}.",
+      "Try again.",
+      "Ask for access.",
+      "Check your connection.",
+      "Save to another folder.",
       "{{item}} is unavailable. Retry this section.",
     ]) {
       expect(

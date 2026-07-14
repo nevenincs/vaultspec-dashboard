@@ -72,6 +72,8 @@ related:
   placeholder safety, and diagnostic leakage.
 - Review remediation closes namespace-key, internal-language, path, command, and false
   recovery-statement bypasses without inspecting interpolated user data.
+- Namespace-derived key recognition excludes URI schemes, while recovery validation
+  accepts only explicit imperative complement shapes.
 
 ## Notes
 

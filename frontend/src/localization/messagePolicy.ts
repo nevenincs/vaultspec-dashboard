@@ -179,7 +179,7 @@ export type StaticMessagePart =
 const INTERPOLATION_TOKEN = /\{\{\s*-?\s*([a-z][a-zA-Z0-9]*)\s*\}\}/gu;
 const RAW_PLACEHOLDER = /\{\{|\}\}|\$\{|%\{/u;
 const RAW_MESSAGE_KEY =
-  /\b[a-z][a-zA-Z0-9]*:[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*\b/u;
+  /\b([a-z][a-zA-Z0-9]*):[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*\b/gu;
 const DIAGNOSTIC_PATTERNS = [
   /\b(?:Error|TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError):(?=\s|$)/u,
   /(?:^|\s)at\s+[\w.[\]<>]+\s*\([^\n)]+:\d+:\d+\)/u,
@@ -193,25 +193,39 @@ const WORD = /\p{L}[\p{L}\p{M}'’-]*/gu;
 const SENTENCE_BOUNDARY = /(?<=[.!?])\s+/u;
 const RECOVERY_CLAUSE_BOUNDARY = /(?:[.!?;]\s+|,\s+(?:then\s+)?)/u;
 const VALUE_MARKER = "\uFFFC";
-const FAILED_RECOVERY_COMPLEMENTS: ReadonlySet<string> = new Set([
-  "became",
-  "cannot",
-  "disabled",
-  "failed",
-  "fails",
-  "failure",
-  "has",
-  "is",
-  "pending",
-  "seems",
-  "unavailable",
-  "was",
+const RECOVERY_OBJECT_LEADS: ReadonlySet<string> = new Set([
+  "a",
+  "an",
+  "another",
+  "it",
+  "our",
+  "that",
+  "the",
+  "them",
+  "these",
+  "this",
+  "those",
+  "your",
 ]);
+const RECOVERY_PREPOSITIONS: ReadonlySet<string> = new Set([
+  "after",
+  "before",
+  "for",
+  "from",
+  "in",
+  "on",
+  "to",
+  "with",
+]);
+const RECOVERY_FAILURE_STATEMENT =
+  /\b(?:(?:did|does|do|will|would|could|can|is|was|were|has|have|had)\s+(?:not\s+)?(?:work|fail|failed|unavailable|disabled)|(?:cannot|can't|won't)\s+(?:work|continue|open|reload|retry)|failed|fails|failure|unavailable|disabled)\b/iu;
 
 const IMPERATIVE_VERB_SET: ReadonlySet<string> = new Set(IMPERATIVE_ACTION_VERBS);
 const DESTRUCTIVE_VERB_SET: ReadonlySet<string> = new Set(DESTRUCTIVE_ACTION_VERBS);
 const RECOVERY_VERB_SET: ReadonlySet<string> = new Set(RECOVERY_VERBS);
-const MESSAGE_KEY_SET: ReadonlySet<string> = new Set(MESSAGE_KEYS);
+const MESSAGE_NAMESPACE_SET: ReadonlySet<string> = new Set(
+  MESSAGE_KEYS.map((key) => key.slice(0, key.indexOf(":"))),
+);
 
 export function staticMessageParts(template: string): readonly StaticMessagePart[] {
   const parts: StaticMessagePart[] = [];
@@ -255,6 +269,17 @@ function firstWord(value: string): string | null {
   return WORD.exec(value)?.[0] ?? null;
 }
 
+function wordsIn(value: string): readonly RegExpMatchArray[] {
+  WORD.lastIndex = 0;
+  return [...value.matchAll(WORD)];
+}
+
+function containsRawMessageKey(value: string): boolean {
+  return [...value.matchAll(RAW_MESSAGE_KEY)].some((match) =>
+    MESSAGE_NAMESPACE_SET.has(match[1]!),
+  );
+}
+
 function isActionableRecoveryClause(clause: string): boolean {
   const trimmed = clause.trimStart();
   if (trimmed.length === 0 || trimmed.startsWith(VALUE_MARKER)) return false;
@@ -267,12 +292,21 @@ function isActionableRecoveryClause(clause: string): boolean {
   const verbEnd = trimmed.indexOf(verb) + verb.length;
   const complement = trimmed.slice(verbEnd).trimStart();
   if (complement.length === 0) return false;
+  if (RECOVERY_FAILURE_STATEMENT.test(complement)) return false;
   if (complement.startsWith(VALUE_MARKER)) return true;
 
-  const complementWord = firstWord(complement)?.toLocaleLowerCase("en");
-  return (
-    complementWord !== undefined && !FAILED_RECOVERY_COMPLEMENTS.has(complementWord)
-  );
+  const words = wordsIn(complement).map((match) => match[0].toLocaleLowerCase("en"));
+  const lead = words[0];
+  if (lead === "again") {
+    return words.length === 1 || RECOVERY_PREPOSITIONS.has(words[1]!);
+  }
+  if (lead !== undefined && RECOVERY_OBJECT_LEADS.has(lead)) {
+    return words.length >= 2 || complement.includes(VALUE_MARKER);
+  }
+  if (lead !== undefined && RECOVERY_PREPOSITIONS.has(lead)) {
+    return words.length >= 2 || complement.includes(VALUE_MARKER);
+  }
+  return false;
 }
 
 function sentenceCaseIssues(
@@ -304,7 +338,7 @@ function sentenceCaseIssues(
       }
     }
 
-    const words = [...trimmed.matchAll(WORD)];
+    const words = wordsIn(trimmed);
     const firstInteriorWord = trimmed.startsWith(VALUE_MARKER) ? 0 : 1;
     for (let index = firstInteriorWord; index < words.length; index += 1) {
       const word = words[index]![0];
@@ -361,16 +395,13 @@ export function validateEnglishMessage(
   }
 
   const bounds = roleBounds(policy.role);
-  const wordCount = [...staticText.matchAll(WORD)].length;
+  const wordCount = wordsIn(staticText).length;
   if (template.length > bounds.chars || wordCount > bounds.words) {
     issue(issues, "too-long");
   }
   if (literalText.includes("\u2014")) issue(issues, "em-dash");
   if (literalText.includes("$t(")) issue(issues, "nested-message");
-  if (
-    RAW_MESSAGE_KEY.test(literalText) ||
-    [...MESSAGE_KEY_SET].some((messageKey) => literalText.includes(messageKey))
-  ) {
+  if (containsRawMessageKey(literalText)) {
     issue(issues, "raw-key");
   }
   if (RAW_PLACEHOLDER.test(literalText)) issue(issues, "raw-placeholder");
