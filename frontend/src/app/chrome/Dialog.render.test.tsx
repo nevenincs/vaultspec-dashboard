@@ -81,4 +81,56 @@ describe("Dialog", () => {
     fireEvent.keyDown(dialog, { key: "Tab" });
     expect(document.activeElement).toBe(focusables[0]);
   });
+
+  // The pinned footer slot (create-panel-hardening P01.S01): a dialog's action
+  // row rendered through `footer` sits OUTSIDE the scrolling body as its
+  // sibling, so it can never scroll out of reach on a constrained viewport
+  // (the audit's compact-submit-behind-keyboard HIGH), and it carries the
+  // safe-area bottom inset.
+  it("pins the footer outside the scrolling body with the safe-area inset", () => {
+    render(
+      <Dialog
+        open
+        onClose={vi.fn()}
+        title="Settings"
+        footer={<button type="button">Save</button>}
+      >
+        <p>body copy</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole("dialog");
+    const scroller = dialog.querySelector(".overflow-y-auto") as HTMLElement;
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(scroller).toBeTruthy();
+    // The footer is NOT inside the scroll container...
+    expect(scroller.contains(save)).toBe(false);
+    // ...but IS inside the panel, after the scroller.
+    expect(dialog.contains(save)).toBe(true);
+    const footerRegion = save.parentElement as HTMLElement;
+    expect(footerRegion.className).toContain("shrink-0");
+    expect(footerRegion.className).toContain("safe-area-inset-bottom");
+    // The body remains the one scrolling region.
+    expect(dialog.querySelectorAll(".overflow-y-auto").length).toBe(1);
+  });
+
+  it("renders no footer region when the footer prop is omitted", () => {
+    renderDialog();
+    const dialog = screen.getByRole("dialog");
+    expect(
+      Array.from(dialog.children).some((el) =>
+        el.className.includes("safe-area-inset-bottom"),
+      ),
+    ).toBe(false);
+  });
+
+  // Reduced-motion honesty (audit reduced-motion-unguarded): both animated
+  // layers carry the motion-reduce gate so the open animation is suppressed
+  // under prefers-reduced-motion.
+  it("gates the open animations on prefers-reduced-motion", () => {
+    renderDialog();
+    const dialog = screen.getByRole("dialog");
+    const scrim = dialog.parentElement as HTMLElement;
+    expect(dialog.className).toContain("motion-reduce:animate-none");
+    expect(scrim.className).toContain("motion-reduce:animate-none");
+  });
 });

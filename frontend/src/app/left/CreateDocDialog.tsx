@@ -309,6 +309,30 @@ export function CreateDocDialog() {
           ? "Pick the feature this work belongs to, or type a new tag to start one. New documents join the feature's pipeline."
           : "Only documents the pipeline is ready for can be added. Links to the newest upstream documents are pre-filled."
       }
+      footer={
+        <div className="flex items-center justify-end gap-fg-2">
+          <Button variant="secondary" onClick={resetCreateDocChrome}>
+            Cancel
+          </Button>
+          {isFeatureStage ? (
+            <Button
+              variant="primary"
+              onClick={handleContinue}
+              disabled={featureTrimmed.length === 0}
+            >
+              Continue
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={submit}
+              disabled={create.isPending || !selectedEligible}
+            >
+              Create
+            </Button>
+          )}
+        </div>
+      }
     >
       <div className="flex flex-col gap-fg-3 px-fg-4 pt-fg-3 pb-fg-4">
         {isFeatureStage ? (
@@ -338,29 +362,6 @@ export function CreateDocDialog() {
             {error}
           </p>
         )}
-
-        <div className="flex items-center justify-end gap-fg-2 border-t border-rule pt-fg-3">
-          <Button variant="secondary" onClick={resetCreateDocChrome}>
-            Cancel
-          </Button>
-          {isFeatureStage ? (
-            <Button
-              variant="primary"
-              onClick={handleContinue}
-              disabled={featureTrimmed.length === 0}
-            >
-              Continue
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              onClick={submit}
-              disabled={create.isPending || !selectedEligible}
-            >
-              Create
-            </Button>
-          )}
-        </div>
       </div>
     </Dialog>
   );

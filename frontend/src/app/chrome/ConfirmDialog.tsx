@@ -59,14 +59,12 @@ export function ConfirmDialog({
   }, [open]);
 
   return (
-    <Dialog open={open} onClose={onCancel} title={title}>
-      <div className="flex flex-col">
-        {/* Body copy: the consequence, in muted ink (figma 17:1284). */}
-        <p className="px-fg-4 py-fg-4 text-body text-ink-muted">{message}</p>
-
-        {/* Footer: a top-ruled button row, right-aligned (figma 17:1285) — the
-            centralized kit Button (secondary cancel + primary confirm). */}
-        <div className="flex shrink-0 items-center justify-end gap-fg-2 border-t border-rule px-fg-4 py-fg-3">
+    <Dialog
+      open={open}
+      onClose={onCancel}
+      title={title}
+      footer={
+        <div className="flex items-center justify-end gap-fg-2">
           <Button variant="secondary" onClick={onCancel}>
             {cancelLabel}
           </Button>
@@ -74,7 +72,10 @@ export function ConfirmDialog({
             {confirmLabel}
           </Button>
         </div>
-      </div>
+      }
+    >
+      {/* Body copy: the consequence, in muted ink (figma 17:1284). */}
+      <p className="px-fg-4 py-fg-4 text-body text-ink-muted">{message}</p>
     </Dialog>
   );
 }

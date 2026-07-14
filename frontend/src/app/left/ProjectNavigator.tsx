@@ -53,6 +53,22 @@ function ProjectNavigatorBody({ history }: { history: ProjectHistoryView }) {
       onClose={closeProjectNavigator}
       title="Switch project"
       description="Browse recent projects and worktrees across every registered project, then pick one."
+      footer={
+        <div className="flex items-center justify-between gap-fg-2">
+          <Button
+            variant="ghost"
+            onClick={clearRecents}
+            aria-label="clear project history"
+          >
+            <Trash2 size={GLYPH_PX} aria-hidden className="mr-fg-1" />
+            Clear history
+          </Button>
+          <Button variant="primary" onClick={openAdd}>
+            <FolderPlus size={GLYPH_PX} aria-hidden className="mr-fg-1" />
+            Open project…
+          </Button>
+        </div>
+      }
     >
       <div
         className="flex flex-col gap-fg-2 px-fg-4 pt-fg-3 pb-fg-4"
@@ -109,22 +125,6 @@ function ProjectNavigatorBody({ history }: { history: ProjectHistoryView }) {
             })}
           </ul>
         )}
-
-        {/* Footer: clear the whole history, or open/register a new project. */}
-        <div className="flex items-center justify-between gap-fg-2 border-t border-rule pt-fg-3">
-          <Button
-            variant="ghost"
-            onClick={clearRecents}
-            aria-label="clear project history"
-          >
-            <Trash2 size={GLYPH_PX} aria-hidden className="mr-fg-1" />
-            Clear history
-          </Button>
-          <Button variant="primary" onClick={openAdd}>
-            <FolderPlus size={GLYPH_PX} aria-hidden className="mr-fg-1" />
-            Open project…
-          </Button>
-        </div>
       </div>
     </Dialog>
   );

@@ -69,6 +69,16 @@ export function AddProjectDialog() {
       onClose={resetAddProjectChrome}
       title="Add a project"
       description="Point the dashboard at a project folder. The path is registered read-only — nothing on disk is created or modified."
+      footer={
+        <div className="flex items-center justify-end gap-fg-2">
+          <Button variant="secondary" onClick={resetAddProjectChrome}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={submit} disabled={mutation.isPending}>
+            Add project
+          </Button>
+        </div>
+      }
     >
       <div className="flex flex-col gap-fg-3 px-fg-4 pt-fg-3 pb-fg-4">
         <label className="flex flex-col gap-fg-1 text-label text-ink-muted">
@@ -112,14 +122,6 @@ export function AddProjectDialog() {
             {error}
           </p>
         )}
-        <div className="flex items-center justify-end gap-fg-2 border-t border-rule pt-fg-3">
-          <Button variant="secondary" onClick={resetAddProjectChrome}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={submit} disabled={mutation.isPending}>
-            Add project
-          </Button>
-        </div>
       </div>
     </Dialog>
   );

@@ -12,9 +12,11 @@
 // receives the committed value through `onCommit`.
 
 import type { KeyboardEvent } from "react";
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import type { Category } from "../kit/category";
+import { usePointerCoarse } from "../chrome/RowMenuDisclosure";
 import { SearchField, StatusDot } from "../kit";
 
 // The canonical category tokens a `.vault/` doc-type maps onto (kit category
@@ -93,9 +95,22 @@ export function AutocompleteCombobox({
 }: AutocompleteComboboxProps) {
   const listboxId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState(initialQuery);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const coarse = usePointerCoarse();
+  // The listbox's fixed-position placement (portaled to body so no dialog/scroll
+  // container can clip it — the ContextMenuHost idiom). Space-aware: capped to
+  // the room below the field, flipping above when below is too tight; floors at
+  // a few rows so it never collapses to nothing on extreme viewports.
+  const [placement, setPlacement] = useState<{
+    left: number;
+    width: number;
+    top?: number;
+    bottom?: number;
+    maxHeight: number;
+  } | null>(null);
 
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -107,6 +122,40 @@ export function AutocompleteCombobox({
     open && (suggestions.length > 0 || (query.trim().length > 0 && !!emptyLabel));
   const activeOptionId =
     showList && activeIndex >= 0 ? `${listboxId}-opt-${activeIndex}` : undefined;
+
+  // Measure and place the portaled listbox while it is shown; re-place on
+  // resize and on any ancestor scroll (capture) so it tracks the field.
+  useLayoutEffect(() => {
+    if (!showList) {
+      setPlacement(null);
+      return;
+    }
+    const GAP = 4;
+    const FLOOR = 96; // never shorter than ~3 rows
+    const CAP = 256; // the previous 16rem ceiling
+    const place = () => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const below = window.innerHeight - rect.bottom - GAP * 2;
+      const above = rect.top - GAP * 2;
+      const flip = below < FLOOR && above > below;
+      const room = flip ? above : below;
+      setPlacement({
+        left: rect.left,
+        width: rect.width,
+        top: flip ? undefined : rect.bottom + GAP,
+        bottom: flip ? window.innerHeight - rect.top + GAP : undefined,
+        maxHeight: Math.max(FLOOR, Math.min(CAP, room)),
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [showList]);
 
   const commit = (value: string) => {
     const trimmed = value.trim();
@@ -160,6 +209,7 @@ export function AutocompleteCombobox({
 
   return (
     <div
+      ref={containerRef}
       className="relative"
       data-editor-combobox
       onBlur={(event) => {
@@ -184,64 +234,85 @@ export function AutocompleteCombobox({
         ariaLabel={ariaLabel}
         role="combobox"
         aria-expanded={showList}
-        aria-controls={listboxId}
+        aria-controls={showList ? listboxId : undefined}
         aria-activedescendant={activeOptionId}
         aria-autocomplete="list"
       />
-      {showList && (
-        <ul
-          id={listboxId}
-          role="listbox"
-          aria-label={`${ariaLabel} suggestions`}
-          data-editor-combobox-list
-          className="absolute left-0 right-0 top-[calc(100%+0.25rem)] z-40 max-h-[16rem] overflow-y-auto rounded-fg-md border border-rule bg-paper py-fg-1 shadow-fg-overlay"
-        >
-          {suggestions.length === 0 && emptyLabel ? (
-            <li
-              role="presentation"
-              className="px-fg-3 py-fg-1 text-[0.6875rem] text-ink-faint"
-            >
-              {emptyLabel}
-            </li>
-          ) : (
-            suggestions.map((option, index) => (
-              <li key={option.value} role="presentation">
-                <button
-                  type="button"
-                  id={`${listboxId}-opt-${index}`}
-                  role="option"
-                  aria-label={option.primary}
-                  aria-selected={index === activeIndex}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    commit(option.value);
-                  }}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  className={`flex w-full items-center gap-fg-2 px-fg-3 py-fg-1 text-left transition-colors duration-ui-fast ${
-                    index === activeIndex ? "bg-paper-sunken" : "hover:bg-paper-sunken"
-                  }`}
-                >
-                  {docTypeCategory(option.docType) !== null && (
-                    <StatusDot category={docTypeCategory(option.docType)!} />
-                  )}
-                  {/* Option primary/secondary are corpus data: selectable inside
-                      the option button (touch-selectability ADR D2). */}
-                  <span className="flex min-w-0 select-text flex-col items-start gap-fg-0-5">
-                    <span className="truncate text-[0.75rem] text-ink">
-                      {option.primary}
-                    </span>
-                    {option.secondary && (
-                      <span className="truncate text-[0.6875rem] text-ink-faint">
-                        {option.secondary}
-                      </span>
-                    )}
-                  </span>
-                </button>
+      {showList &&
+        placement !== null &&
+        createPortal(
+          <ul
+            id={listboxId}
+            role="listbox"
+            aria-label={`${ariaLabel} suggestions`}
+            data-editor-combobox-list
+            // Fixed + portaled (ContextMenuHost idiom): no dialog body or scroll
+            // container can clip the list; height is space-aware (measured room
+            // below/above the field), so a soft-keyboard viewport still shows a
+            // scrollable list instead of a cut-off one. Mousedown is swallowed so
+            // a scrollbar drag never blurs the input and dismisses the list.
+            style={{
+              position: "fixed",
+              left: placement.left,
+              width: placement.width,
+              top: placement.top,
+              bottom: placement.bottom,
+              maxHeight: placement.maxHeight,
+            }}
+            onMouseDown={(event) => event.preventDefault()}
+            className="z-50 overflow-y-auto rounded-fg-md border border-rule bg-paper py-fg-1 shadow-fg-overlay"
+          >
+            {suggestions.length === 0 && emptyLabel ? (
+              <li
+                role="presentation"
+                className="px-fg-3 py-fg-1 text-[0.6875rem] text-ink-faint"
+              >
+                {emptyLabel}
               </li>
-            ))
-          )}
-        </ul>
-      )}
+            ) : (
+              suggestions.map((option, index) => (
+                <li key={option.value} role="presentation">
+                  <button
+                    type="button"
+                    id={`${listboxId}-opt-${index}`}
+                    role="option"
+                    aria-label={option.primary}
+                    aria-selected={index === activeIndex}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      commit(option.value);
+                    }}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    className={`flex w-full items-center gap-fg-2 px-fg-3 py-fg-1 text-left transition-colors duration-ui-fast ${
+                      coarse ? "min-h-[2.75rem]" : ""
+                    } ${
+                      index === activeIndex
+                        ? "bg-paper-sunken"
+                        : "hover:bg-paper-sunken"
+                    }`}
+                  >
+                    {docTypeCategory(option.docType) !== null && (
+                      <StatusDot category={docTypeCategory(option.docType)!} />
+                    )}
+                    {/* Option primary/secondary are corpus data: selectable inside
+                      the option button (touch-selectability ADR D2). */}
+                    <span className="flex min-w-0 select-text flex-col items-start gap-fg-0-5">
+                      <span className="truncate text-[0.75rem] text-ink">
+                        {option.primary}
+                      </span>
+                      {option.secondary && (
+                        <span className="truncate text-[0.6875rem] text-ink-faint">
+                          {option.secondary}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>,
+          document.body,
+        )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ tags:
 date: '2026-07-14'
 modified: '2026-07-14'
 related:
+  - '[[2026-07-14-create-panel-hardening-adr]]'
   - '[[2026-07-14-create-panel-hardening-audit]]'
   - '[[2026-07-14-create-panel-hardening-plan]]'
 ---
@@ -15,6 +16,10 @@ related:
 Auto-generated index of all documents tagged with `#create-panel-hardening`.
 
 ## Documents
+
+### adr
+
+- `2026-07-14-create-panel-hardening-adr` - `create-panel-hardening` adr: `panel hardening decisions` | (**status:** `accepted`)
 
 ### audit
 

@@ -42,6 +42,16 @@ export function SettingsDialog() {
       onClose={closeSettingsDialog}
       title={settings.title}
       description={settings.description}
+      footer={
+        <div className="flex items-center justify-end gap-fg-2">
+          <Button variant="secondary" onClick={closeSettingsDialog}>
+            {settings.cancelLabel}
+          </Button>
+          <Button variant="primary" onClick={closeSettingsDialog}>
+            {settings.doneLabel}
+          </Button>
+        </div>
+      }
     >
       <div className="flex flex-col gap-fg-4 px-fg-4 pt-fg-3 pb-fg-4">
         {settings.loading && (
@@ -66,17 +76,6 @@ export function SettingsDialog() {
             </div>
           </section>
         ))}
-
-        {/* Footer (board 96:2): Cancel + Done. Settings auto-persist on change,
-            so both dismiss the dialog; Done is the primary affordance. */}
-        <div className="flex items-center justify-end gap-fg-2 border-t border-rule pt-fg-3">
-          <Button variant="secondary" onClick={closeSettingsDialog}>
-            {settings.cancelLabel}
-          </Button>
-          <Button variant="primary" onClick={closeSettingsDialog}>
-            {settings.doneLabel}
-          </Button>
-        </div>
       </div>
     </Dialog>
   );

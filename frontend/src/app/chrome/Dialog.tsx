@@ -39,7 +39,14 @@ export interface DialogProps {
  * trap, Escape/backdrop dismiss, and focus restore; the caller owns the
  * open/close state and the body.
  */
-export function Dialog({ open, onClose, title, description, children, footer }: DialogProps) {
+export function Dialog({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+}: DialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descId = useId();
