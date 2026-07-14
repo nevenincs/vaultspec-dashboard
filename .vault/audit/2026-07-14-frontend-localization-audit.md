@@ -1282,3 +1282,23 @@ lint gate passed. Baseline reconciliation removed exactly two bridge findings: t
 scanner decreased from 1,497 to 1,495, and bridge debt decreased from 143 to 141. No
 user-facing developer metadata, raw localization keys, diagnostics, or em dashes were
 introduced. S149 is accepted with no open findings.
+
+### W02.P04.S150 review | pass | Feature archive uses explicit destructive guidance
+
+Commit `0de491fd94`, implemented through delegated Terra rollout work, moves the shared
+feature archive action to the approved destructive-action catalog. Enabled actions now
+carry the approved typed destructive confirmation with the selected feature identified
+in the title, clear consequence copy, and explicit archive and cancel choices.
+
+Review confirmed that disabled actions carry actionable feature-selection guidance and
+neither confirmation form nor an effect. Action IDs, the archive icon, danger section,
+time-travel gating, dispatch-only shape, OPS payload, and nullable scope behavior are
+preserved. Removing the final temporary presentation calls also removes the now-unused
+legacy import, leaving no bridge entries in the shared-actions module.
+
+The Terra focused run passed all 94 tests across six files. Independent Sol verification
+passed all 45 tests across the two directly affected test files, and the complete frontend
+lint gate passed. Baseline reconciliation removed exactly two bridge findings: the
+scanner decreased from 1,495 to 1,493, and bridge debt decreased from 141 to 139. No
+user-facing developer metadata, raw localization keys, diagnostics, or em dashes were
+introduced. S150 is accepted with no open findings.
