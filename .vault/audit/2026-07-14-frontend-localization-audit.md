@@ -1110,3 +1110,26 @@ all implementation paths, and the execution record accurately describes the mapp
 behavioral preservation, scanner reduction, and deferred direct content-only clipboard
 writers. No user-facing developer metadata, raw localization keys, diagnostics, or em
 dashes were introduced. S19 is accepted with no open findings.
+
+### W02.P04.S20 review | pass | Shared open action owns localized presentation
+
+Commit `3b809a2bad` removes caller-owned label and disabled-reason overrides from the
+shared open-entity builder. Every result now carries `common:actions.open`, and an item
+without an openable node carries the actionable
+`common:disabledReasons.selectItemToOpen` reason. The search-result caller no longer
+authors English presentation. Action identity, node and scope normalization, run
+behavior, navigate section, icon, and non-mutating eligibility are unchanged.
+
+The scope remains deliberately separate from the relate, repair, and archive builders
+tracked by `S148`, `S149`, and `S150`; their bridge entries and behavior are untouched.
+Tests assert the descriptors and resolve them through a real localization runtime with
+no fake, mock, stub, patch, monkeypatch, skip, or expected-failure shortcuts.
+
+Baseline reconciliation removed exactly three `legacy-action-presentation` entries
+with no additions or metadata mismatches. The scanner is clean at 1,519 exact findings,
+with 165 bridge findings remaining. The focused run passed all 50 tests across three
+files, and TypeScript and the complete frontend lint gate passed. The five implementation
+paths exactly match the plan scope, and the execution record accurately reports the
+scope separation, behavior preservation, gates, and scanner reduction. No user-facing
+developer metadata, raw localization keys, diagnostics, or em dashes were introduced.
+S20 is accepted with no open findings.
