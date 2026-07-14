@@ -44,7 +44,7 @@ export function workspaceMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "workspace:copy-path",
-        label: legacyActionPresentation("Copy path"),
+        label: { key: "common:actions.copyPath" },
         text: normalizedEntity.path,
         what: "path",
       }),

@@ -48,13 +48,13 @@ export function vaultDocMenu(entity: unknown, ctx?: ActionContext): ActionDescri
     }),
     copyAction({
       id: "vault-doc:copy-path",
-      label: legacyActionPresentation("Copy path"),
+      label: { key: "common:actions.copyPath" },
       text: normalizedEntity.path,
       what: "path",
     }),
     copyAction({
       id: "vault-doc:copy-stem",
-      label: legacyActionPresentation("Copy stem"),
+      label: { key: "common:actions.copyDocumentName" },
       text: normalizedEntity.stem,
       what: "stem",
     }),

@@ -73,7 +73,7 @@ export function commitMenu(entity: unknown, ctx?: ActionContext): ActionDescript
   actions.push(
     copyAction({
       id: "commit:copy-hash",
-      label: legacyActionPresentation("Copy commit hash"),
+      label: { key: "common:actions.copy" },
       text: normalizedEntity.id,
       what: "id",
     }),
@@ -83,7 +83,7 @@ export function commitMenu(entity: unknown, ctx?: ActionContext): ActionDescript
     actions.push(
       copyAction({
         id: "commit:copy-short-hash",
-        label: legacyActionPresentation("Copy short hash"),
+        label: { key: "common:actions.copy" },
         text: normalizedEntity.shortHash,
         what: "id",
       }),
@@ -94,7 +94,7 @@ export function commitMenu(entity: unknown, ctx?: ActionContext): ActionDescript
     actions.push(
       copyAction({
         id: "commit:copy-subject",
-        label: legacyActionPresentation("Copy subject"),
+        label: { key: "common:actions.copyTitle" },
         text: normalizedEntity.subject,
         what: "title",
       }),

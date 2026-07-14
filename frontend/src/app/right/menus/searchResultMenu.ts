@@ -93,7 +93,7 @@ export function searchResultMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "search-result:copy-source",
-      label: legacyActionPresentation("Copy source path"),
+      label: { key: "common:actions.copyPath" },
       text: normalizedEntity.source,
       what: "path",
     }),
@@ -104,14 +104,14 @@ export function searchResultMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "search-result:copy-score",
-        label: legacyActionPresentation("Copy score"),
+        label: { key: "common:actions.copy" },
         text: String(normalizedEntity.score),
       }),
     );
   } else {
     actions.push({
       id: "search-result:copy-score",
-      label: legacyActionPresentation("Copy score"),
+      label: { key: "common:actions.copy" },
       section: "copy",
       disabled: true,
       disabledReason: legacyActionPresentation("no score"),
@@ -122,7 +122,7 @@ export function searchResultMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "search-result:copy-full",
-      label: legacyActionPresentation("Copy result (JSON)"),
+      label: { key: "common:actions.copy" },
       text: JSON.stringify({
         source: normalizedEntity.source,
         nodeId: normalizedEntity.nodeId ?? null,

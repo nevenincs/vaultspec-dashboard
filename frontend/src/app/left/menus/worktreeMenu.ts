@@ -54,7 +54,7 @@ export function worktreeMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "worktree:copy-branch",
-        label: legacyActionPresentation("Copy branch"),
+        label: { key: "common:actions.copy" },
         text: normalizedEntity.branch,
       }),
     );
@@ -63,7 +63,7 @@ export function worktreeMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "worktree:copy-id",
-      label: legacyActionPresentation("Copy worktree id"),
+      label: { key: "common:actions.copy" },
       text: normalizedEntity.id,
       what: "id",
     }),

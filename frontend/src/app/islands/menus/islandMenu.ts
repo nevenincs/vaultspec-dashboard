@@ -35,7 +35,7 @@ export function islandMenu(entity: unknown): ActionDescriptor[] {
     },
     copyAction({
       id: "island:copy-id",
-      label: legacyActionPresentation("Copy id"),
+      label: { key: "common:actions.copy" },
       text: normalizedEntity.id,
       what: "id",
     }),

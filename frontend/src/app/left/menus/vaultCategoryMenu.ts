@@ -70,7 +70,7 @@ export function vaultCategoryMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "vault-category:copy-category",
-      label: legacyActionPresentation("Copy category"),
+      label: { key: "common:actions.copy" },
       text: docGroupLabel(normalizedEntity.docType),
     }),
   );

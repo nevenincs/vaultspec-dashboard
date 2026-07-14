@@ -60,7 +60,7 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "edge:copy-id",
-      label: legacyActionPresentation("Copy id"),
+      label: { key: "common:actions.copy" },
       text: normalizedEntity.id,
       what: "id",
     }),
@@ -70,14 +70,14 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "edge:copy-relation",
-        label: legacyActionPresentation("Copy relation"),
+        label: { key: "common:actions.copy" },
         text: normalizedEntity.relation,
       }),
     );
   } else {
     actions.push({
       id: "edge:copy-relation",
-      label: legacyActionPresentation("Copy relation"),
+      label: { key: "common:actions.copy" },
       section: "copy",
       disabled: true,
       disabledReason: legacyActionPresentation("no relation"),
@@ -88,14 +88,14 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "edge:copy-destination",
-        label: legacyActionPresentation("Copy destination"),
+        label: { key: "common:actions.copy" },
         text: normalizedEntity.dst,
       }),
     );
   } else {
     actions.push({
       id: "edge:copy-destination",
-      label: legacyActionPresentation("Copy destination"),
+      label: { key: "common:actions.copy" },
       section: "copy",
       disabled: true,
       disabledReason: legacyActionPresentation("no destination"),
@@ -107,7 +107,7 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "edge:copy-full",
-      label: legacyActionPresentation("Copy edge (JSON)"),
+      label: { key: "common:actions.copy" },
       text: JSON.stringify({
         id: normalizedEntity.id,
         relation: normalizedEntity.relation ?? null,

@@ -48,20 +48,20 @@ export function metaEdgeMenu(entity: unknown): ActionDescriptor[] {
     normalizedEntity.summary
       ? copyAction({
           id: "meta-edge:copy-summary",
-          label: legacyActionPresentation("Copy summary"),
+          label: { key: "common:actions.copySummary" },
           text: normalizedEntity.summary,
           what: "summary",
         })
       : {
           id: "meta-edge:copy-summary",
-          label: legacyActionPresentation("Copy summary"),
+          label: { key: "common:actions.copySummary" },
           section: "copy",
           disabled: true,
           disabledReason: legacyActionPresentation("no summary"),
         },
     copyAction({
       id: "meta-edge:copy-id",
-      label: legacyActionPresentation("Copy id"),
+      label: { key: "common:actions.copy" },
       text: normalizedEntity.id,
       what: "id",
     }),

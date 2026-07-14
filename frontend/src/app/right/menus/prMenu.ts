@@ -43,7 +43,7 @@ export function prMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "pull-request:copy-url",
-        label: legacyActionPresentation("Copy pull-request link"),
+        label: { key: "common:actions.copy" },
         text: url,
         what: "path",
       }),
@@ -62,7 +62,7 @@ export function prMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "pull-request:copy-number",
-      label: legacyActionPresentation("Copy PR number"),
+      label: { key: "common:actions.copy" },
       text: normalizedEntity.id,
       what: "id",
     }),

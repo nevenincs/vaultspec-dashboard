@@ -6,6 +6,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createTestLocalizationRuntime } from "../../localization/testing";
+import { resolveMessageResult } from "../localization/fallback";
 import {
   COPY_ACTION,
   copyAction,
@@ -87,11 +89,12 @@ describe("copy verb", () => {
   it("copyAction builds a copy-section descriptor routed through the copy verb", () => {
     const action = copyAction({
       id: "copy-id",
-      label: "Copy id",
+      label: { key: "common:actions.copy" },
       text: "n1",
       what: "id",
     });
     expect(action.section).toBe("copy");
+    expect(action.label).toEqual({ key: "common:actions.copy" });
     expect(action.dispatch?.type).toBe(COPY_ACTION);
     expect(action.dispatch?.payload).toEqual({ text: "n1", what: "id" });
     expect(action.run).toBeUndefined();
@@ -100,14 +103,49 @@ describe("copy verb", () => {
   it("copyAction normalizes descriptor ingress values", () => {
     const action = copyAction({
       id: " copy-id ",
-      label: " Copy id ",
+      label: { key: "common:actions.copyPath" },
       text: "  n1  ",
       what: "unknown",
     });
 
     expect(action.id).toBe("copy-id");
-    expect(action.label).toBe("Copy id");
+    expect(action.label).toEqual({ key: "common:actions.copyPath" });
     expect(action.dispatch?.payload).toEqual({ text: "  n1  " });
-    expect(copyAction({ id: "   ", label: "", text: 1 }).id).toBe("copy");
+    expect(copyAction({ id: "   ", text: 1 }).id).toBe("copy");
+  });
+
+  it("copyAction falls back to the canonical copy label for invalid ingress", () => {
+    const fallbackLabel = { key: "common:actions.copy" };
+
+    expect(copyAction({ label: "Copy id" }).label).toEqual(fallbackLabel);
+    expect(copyAction({ label: { key: "invalid key" } }).label).toEqual(fallbackLabel);
+    expect(copyAction({ label: { key: "common:actions.open" } }).label).toEqual(
+      fallbackLabel,
+    );
+    expect(
+      copyAction({
+        label: { key: "common:actions.copy", values: { item: "document" } },
+      }).label,
+    ).toEqual(fallbackLabel);
+    expect(copyAction({}).label).toEqual(fallbackLabel);
+  });
+
+  it("resolves every canonical copy label through the real localization runtime", () => {
+    const runtime = createTestLocalizationRuntime();
+    const cases = [
+      ["common:actions.copy", "Copy"],
+      ["common:actions.copyDocumentName", "Copy document name"],
+      ["common:actions.copyPath", "Copy path"],
+      ["common:actions.copySummary", "Copy summary"],
+      ["common:actions.copyTitle", "Copy title"],
+    ] as const;
+
+    for (const [key, expected] of cases) {
+      const action = copyAction({ label: { key } });
+      expect(resolveMessageResult(runtime, action.label)).toEqual({
+        message: expected,
+        usedFallback: false,
+      });
+    }
   });
 });

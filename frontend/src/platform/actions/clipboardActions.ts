@@ -9,12 +9,15 @@
 
 import { Copy } from "lucide-react";
 
-import { logger } from "../logger/logger";
 import { appDispatcher } from "../dispatch/middleware";
 import {
-  legacyActionPresentation,
+  normalizeMessageDescriptor,
+  type MessageDescriptor,
+  type MessageKey,
+} from "../localization/message";
+import { logger } from "../logger/logger";
+import {
   normalizeActionDescriptorId,
-  normalizeActionDescriptorLabel,
   normalizeActionDescriptorText,
   type ActionDescriptor,
 } from "./action";
@@ -44,6 +47,19 @@ const COPY_WHAT_VALUES: readonly CopyWhat[] = [
   "summary",
 ];
 const COPY_WHAT_SET = new Set<string>(COPY_WHAT_VALUES);
+const COPY_ACTION_MESSAGE_KEYS = [
+  "common:actions.copy",
+  "common:actions.copyDocumentName",
+  "common:actions.copyPath",
+  "common:actions.copySummary",
+  "common:actions.copyTitle",
+] as const satisfies readonly MessageKey[];
+const COPY_ACTION_MESSAGE_KEY_SET: ReadonlySet<string> = new Set(
+  COPY_ACTION_MESSAGE_KEYS,
+);
+const DEFAULT_COPY_ACTION_LABEL = Object.freeze({
+  key: "common:actions.copy",
+}) satisfies MessageDescriptor<"common:actions.copy">;
 
 function copyRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -64,6 +80,15 @@ export function normalizeCopyPayload(payload: unknown): CopyPayload {
     text: normalizeActionDescriptorText(record.text),
     ...(what === undefined ? {} : { what }),
   };
+}
+
+function normalizeCopyActionLabel(value: unknown): MessageDescriptor {
+  const normalized = normalizeMessageDescriptor(value);
+  return normalized !== null &&
+    normalized.values === undefined &&
+    COPY_ACTION_MESSAGE_KEY_SET.has(normalized.key)
+    ? normalized
+    : DEFAULT_COPY_ACTION_LABEL;
 }
 
 /** The one clipboard write that works in a NON-SECURE context: a hidden textarea
@@ -134,9 +159,7 @@ export function copyAction(opts: unknown): ActionDescriptor {
   const payload = normalizeCopyPayload(record);
   return {
     id: normalizeActionDescriptorId(record.id, "copy"),
-    label: legacyActionPresentation(
-      normalizeActionDescriptorLabel(record.label, "Copy"),
-    ),
+    label: normalizeCopyActionLabel(record.label),
     section: "copy",
     icon: Copy,
     dispatch: { type: COPY_ACTION, payload },

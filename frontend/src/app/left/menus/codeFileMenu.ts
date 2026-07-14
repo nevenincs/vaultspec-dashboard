@@ -67,7 +67,7 @@ export function codeFileMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "code-file:copy-path",
-      label: legacyActionPresentation("Copy path"),
+      label: { key: "common:actions.copyPath" },
       text: normalizedEntity.path,
       what: "path",
     }),

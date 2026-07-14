@@ -110,7 +110,7 @@ export function graphNodeMenu(
         },
     copyAction({
       id: "node:copy-id",
-      label: legacyActionPresentation("Copy id"),
+      label: { key: "common:actions.copy" },
       text: normalizedEntity.id,
       what: "id",
     }),
@@ -119,13 +119,13 @@ export function graphNodeMenu(
     normalizedEntity.title
       ? copyAction({
           id: "node:copy-title",
-          label: legacyActionPresentation("Copy title"),
+          label: { key: "common:actions.copyTitle" },
           text: normalizedEntity.title,
           what: "title",
         })
       : {
           id: "node:copy-title",
-          label: legacyActionPresentation("Copy title"),
+          label: { key: "common:actions.copyTitle" },
           section: "copy",
           disabled: true,
           disabledReason: legacyActionPresentation("no title"),

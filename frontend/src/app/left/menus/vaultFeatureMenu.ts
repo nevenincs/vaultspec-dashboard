@@ -103,7 +103,7 @@ export function vaultFeatureMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "vault-feature:copy-tag",
-      label: legacyActionPresentation("Copy feature tag"),
+      label: { key: "common:actions.copy" },
       text: normalizedEntity.feature,
     }),
   );

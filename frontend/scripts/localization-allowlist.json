@@ -425,11 +425,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "59bb0577e84a44657acb55be",
-    "path": "src/app/islands/menus/islandMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "9d915c599d9af99ead8c132d",
     "path": "src/app/islands/menus/islandMenu.ts",
     "rule": "legacy-action-presentation"
@@ -1305,33 +1300,13 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "d1e380396cbdbd33d2fdfa11",
-    "path": "src/app/left/menus/codeFileMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "836061e9aeccddf35f5e48b5",
-    "path": "src/app/left/menus/vaultCategoryMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "962092bb7d81d671c86d0f8e",
     "path": "src/app/left/menus/vaultCategoryMenu.ts",
     "rule": "legacy-action-presentation"
   },
   {
     "id": "f5d6ee840415b7603f8c633c",
     "path": "src/app/left/menus/vaultCategoryMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "d11e7bbe61efdb9b9b4c597d",
-    "path": "src/app/left/menus/vaultDocMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "d37ff30762981abfda10da1b",
-    "path": "src/app/left/menus/vaultDocMenu.ts",
     "rule": "legacy-action-presentation"
   },
   {
@@ -1365,11 +1340,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "e2b7fb6ae6df40a5f24cbbd0",
-    "path": "src/app/left/menus/vaultFeatureMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "4a44e2c61a6f05e23ef32ab4",
     "path": "src/app/left/menus/workspaceMenu.ts",
     "rule": "legacy-action-presentation"
@@ -1382,21 +1352,6 @@
   {
     "id": "6ccfbc103ba2abadc02c4ef9",
     "path": "src/app/left/menus/workspaceMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "9d52f7787d20842aa72edfd5",
-    "path": "src/app/left/menus/workspaceMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "1927735240242e77323d2961",
-    "path": "src/app/left/menus/worktreeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "66b0f8dd3acfe3b2926b2f6c",
-    "path": "src/app/left/menus/worktreeMenu.ts",
     "rule": "legacy-action-presentation"
   },
   {
@@ -2945,26 +2900,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "25ce7b2d802a45f85cca1a23",
-    "path": "src/app/right/menus/changeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "a7ed75dcdac76c2733578d82",
-    "path": "src/app/right/menus/changeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "1964218db275d404d13fcac6",
-    "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "49078f189929cdbee27b97ee",
-    "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "7b1ea88f0cfae2915577564e",
     "path": "src/app/right/menus/commitMenu.ts",
     "rule": "legacy-action-presentation"
@@ -2980,17 +2915,7 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "ec0b411e2a2b9e4ee0dab663",
-    "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "44106bf2ad19cb471dcdd0dc",
-    "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "52554b0a8fcbbe1780791d83",
     "path": "src/app/right/menus/edgeMenu.ts",
     "rule": "legacy-action-presentation"
   },
@@ -3005,11 +2930,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "81c4e2ae71ecdec359af8ec4",
-    "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "83d5ec4a7a3c0c1d4e9d4eb8",
     "path": "src/app/right/menus/edgeMenu.ts",
     "rule": "legacy-action-presentation"
@@ -3020,27 +2940,7 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "bd576949521ae1218cff2b85",
-    "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "c9db54d40ef27da187a2c0ab",
-    "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "d94a126f036985d8817637d7",
-    "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "e4c1ef6a57a3b5ace2b208c2",
-    "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "e867a70044f7940f99eb83a6",
     "path": "src/app/right/menus/edgeMenu.ts",
     "rule": "legacy-action-presentation"
   },
@@ -3075,16 +2975,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "2e5a7ccd68a56d5ebabf94c8",
-    "path": "src/app/right/menus/prMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "5468eee4c373af810f7f2dc1",
-    "path": "src/app/right/menus/prMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "85e6ef3ef10864d646b0587c",
     "path": "src/app/right/menus/prMenu.ts",
     "rule": "legacy-action-presentation"
@@ -3100,11 +2990,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "0229ad69f3c6dbcceb69f494",
-    "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "063c90a2222bae51763aba8e",
     "path": "src/app/right/menus/searchResultMenu.ts",
     "rule": "legacy-action-presentation"
@@ -3115,27 +3000,12 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "7fbaec5a57f9180e5bf278c3",
-    "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "afac19f8bb416187242cb733",
     "path": "src/app/right/menus/searchResultMenu.ts",
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "b12477b89d4026d8693756da",
-    "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "da00bb354431e4b6ad68a797",
-    "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "e572a90d665c92f07fafc096",
     "path": "src/app/right/menus/searchResultMenu.ts",
     "rule": "legacy-action-presentation"
   },
@@ -4070,16 +3940,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "2ff6c39d1be90772fb922f53",
-    "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "33692ee90fef9e0839879b23",
-    "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "3c02add1334c767c4cb4ab31",
     "path": "src/app/stage/menus/graphNodeMenu.ts",
     "rule": "legacy-action-presentation"
@@ -4091,11 +3951,6 @@
   },
   {
     "id": "635cd138c76c5e0ad674c3f4",
-    "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "7d8b74c7782be76f3f435098",
     "path": "src/app/stage/menus/graphNodeMenu.ts",
     "rule": "legacy-action-presentation"
   },
@@ -4120,17 +3975,7 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "33fa9beabc42a84b49a631f4",
-    "path": "src/app/stage/menus/metaEdgeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "572c4e1bcae770f83cf0a5b2",
-    "path": "src/app/stage/menus/metaEdgeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "694c8495ca03a0ee47c6d4cc",
     "path": "src/app/stage/menus/metaEdgeMenu.ts",
     "rule": "legacy-action-presentation"
   },
@@ -4141,11 +3986,6 @@
   },
   {
     "id": "b1ef7adc6ce39fc5411db53d",
-    "path": "src/app/stage/menus/metaEdgeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "bb91c1eedddd271ce0de016f",
     "path": "src/app/stage/menus/metaEdgeMenu.ts",
     "rule": "legacy-action-presentation"
   },
@@ -7768,10 +7608,5 @@
     "id": "fb1e5b6330f4178dd10fabb5",
     "path": "src/viewer-visual/main.tsx",
     "rule": "presentation-field"
-  },
-  {
-    "id": "bdf2b219b52a05c8b22ae940",
-    "path": "src/platform/actions/clipboardActions.ts",
-    "rule": "legacy-action-presentation"
   }
 ]
