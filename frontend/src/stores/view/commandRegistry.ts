@@ -77,6 +77,10 @@ export function normalizeCommandFamily(value: unknown): CommandFamily | null {
  * palette requires a store-only `run` and groups by `family`.
  */
 export interface CommandDescriptor extends ActionDescriptorBase {
+  /** Localized presentation inherited unchanged from the shared action contract. */
+  label: ActionDescriptorBase["label"];
+  /** Optional localized reason inherited unchanged from the shared action contract. */
+  disabledReason?: ActionDescriptorBase["disabledReason"];
   family: CommandFamily;
   run: () => void;
   dispatch?: never;
