@@ -857,3 +857,26 @@ module import/main-guard check, and Vaultspec placeholder, frontmatter, and body
 checks passed. No fake, mock, stub, patch, monkeypatch, skip, or expected failure was
 used. S14 requires the two high-severity detection remediations and the bounded
 exclusion, allowlist-integrity, and constant-cap corrections above before acceptance.
+
+### W01.P03.S14 remediation review | pass | Scanner enforcement gaps resolved
+
+Commit `814dde93a7` resolves every recorded S14 finding. Translation recognition now
+tracks imported hook, runtime, i18next, and descriptor-factory symbols rather than local
+spellings. Real fixtures proved aliased named hooks, namespace hooks, destructured `t`
+and `i18n` aliases, hook-result translators, and aliased descriptor factories are
+recognized, while unrelated same-name functions and receivers do not produce dynamic-key
+or default-value false positives. A mixed translated conditional now emits its static
+fallback as `jsx-text`.
+
+The comment-controlled generated-source exclusion is gone; a real `@generated` fixture
+remained scanned and produced a JSX finding. Allowlist validation rejects unknown rules,
+absolute and traversal paths, backslash paths, and duplicate IDs, while comparison now
+fails exact ID matches whose rule or relative path metadata differs. Static-part
+collection checks every merge and append, and a real 65-part template failed closed with
+the bounded scanner message.
+
+The production scanner remains clean with the unchanged 1,560 exact findings and rule
+counts, completing in approximately 9.1 seconds. Targeted Prettier, targeted ESLint, and
+the module import/main-guard check passed. Temporary fixtures were removed, no baseline
+entry changed, and no fake, mock, stub, patch, monkeypatch, skip, or expected failure was
+used. S14 is accepted with no open findings.
