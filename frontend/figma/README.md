@@ -15,15 +15,15 @@ is the canonical ruleset; `FIGMA-WORKFLOW.md` is the day-to-day procedure.
 
 A node is classified into exactly one class; each class has one fixed render:
 
-| Class | What it is | Name render | Example |
-| --- | --- | --- | --- |
-| **Component** | a node with a 1:1 React counterpart | bare PascalCase, `== the React export symbol` | `CommandPalette`, `StatusTab`, `Button` |
-| **Variant leaf** | a variant inside a component set | Figma-native `Property=Value` axes (required for the variant picker) | `Variant=Primary, State=Hover` |
-| **Sub-component** | an internal part with no standalone React export | `_Parent/Part` (leading `_` hides it from the Assets panel) | `_Pill/Row2/Labels`, `_BottomSheet/Handle` |
-| **Container board / section** | an organizational grouping | `[Band] Topic` | `[Kit] Components`, `[Surface] Activity Rail` |
-| **Foundations** | non-component design references | `[Foundations] Topic` | `[Foundations] Colour` |
-| **State preview frame** | a standalone frame showing one state/mode of a surface | dot-path `Component.state[.qualifier]` | `SearchPaletteSurface.expanded`, `FeatureSearchField.open` |
-| **Study / proposal** | a non-binding exploration | `[Study] Topic` | `[Study] Graph Hover` |
+| Class                         | What it is                                             | Name render                                                          | Example                                                    |
+| ----------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Component**                 | a node with a 1:1 React counterpart                    | bare PascalCase, `== the React export symbol`                        | `CommandPalette`, `StatusTab`, `Button`                    |
+| **Variant leaf**              | a variant inside a component set                       | Figma-native `Property=Value` axes (required for the variant picker) | `Variant=Primary, State=Hover`                             |
+| **Sub-component**             | an internal part with no standalone React export       | `_Parent/Part` (leading `_` hides it from the Assets panel)          | `_Pill/Row2/Labels`, `_BottomSheet/Handle`                 |
+| **Container board / section** | an organizational grouping                             | `[Band] Topic`                                                       | `[Kit] Components`, `[Surface] Activity Rail`              |
+| **Foundations**               | non-component design references                        | `[Foundations] Topic`                                                | `[Foundations] Colour`                                     |
+| **State preview frame**       | a standalone frame showing one state/mode of a surface | dot-path `Component.state[.qualifier]`                               | `SearchPaletteSurface.expanded`, `FeatureSearchField.open` |
+| **Study / proposal**          | a non-binding exploration                              | `[Study] Topic`                                                      | `[Study] Graph Hover`                                      |
 
 Fixed vocabulary and separators:
 
@@ -36,8 +36,8 @@ Fixed vocabulary and separators:
   frames per theme.
 - **Separators:** `/` for hierarchy (band/sub-part), `=` / `, ` for variant axes
   (`Property=Value, Property=Value`), `.` for the state/mode address on preview frames,
-  `[ ]` for the organizational band tag. One scheme per class — no ad-hoc ` — ` / ` - ` /
-  ` · ` / `(parens)` drift.
+  `[ ]` for the organizational band tag. One scheme per class — no ad-hoc `—` / `-` /
+  `·` / `(parens)` drift.
 
 ## The cited-node fallback (registry replacement)
 
@@ -53,7 +53,7 @@ header comment, in one canonical greppable form:
 When the Figma name legitimately differs from the React export, record the alias:
 
 ```tsx
-// @figma RagOpsConsole · SlhonORmySdoSMTQgDWw3w · 879:4125 · alias-of RagOpsConsoleBody
+// @figma GraphNavControls · SlhonORmySdoSMTQgDWw3w · 260:839 · alias-of GraphControls
 ```
 
 The codebase itself is the distributed registry — `grep -rn "634:2090" frontend/src`

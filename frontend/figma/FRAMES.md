@@ -15,33 +15,33 @@ CURRENT structure so a future agent updates the right node and does not chase st
 
 ## The live screen
 
-| Node | Name | Notes |
-| --- | --- | --- |
+| Node       | Name                    | Notes                                                                                                                                                                                         |
+| ---------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `455:1094` | **AppShell** (1472×940) | The dashboard screen — author the app to it. Contains the stage (`455:1109`) → the in-context timeline `993:4204` (FUTURE: swap for a `TimelineRange` instance during an AppShell recompose). |
 
 ## Organizational bands (`[Band] Topic` boards)
 
-| Node | Board |
-| --- | --- |
-| `61:2` | [Foundations] Colour |
-| `62:2` | [Foundations] Type & Metrics |
-| `135:2` | [Kit] Components |
-| `606:1779` | [Surface] Activity Rail |
-| `698:2093` | [Surface] Left Rail |
-| `981:4323` | [Surface] Timeline date-range (1280×44 surface board — distinct from the canonical `TimelineRange` component `1005:4203`) |
-| `958:4878` | [Graph] Components |
-| `957:5238` | [Mobile] Compact |
-| `741:3141` | [Study] Graph Hover |
+| Node        | Board                                                                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `61:2`      | [Foundations] Colour                                                                                                                                    |
+| `62:2`      | [Foundations] Type & Metrics                                                                                                                            |
+| `135:2`     | [Kit] Components                                                                                                                                        |
+| `606:1779`  | [Surface] Activity Rail                                                                                                                                 |
+| `698:2093`  | [Surface] Left Rail                                                                                                                                     |
+| `981:4323`  | [Surface] Timeline date-range (1280×44 surface board — distinct from the canonical `TimelineRange` component `1005:4203`)                               |
+| `958:4878`  | [Graph] Components                                                                                                                                      |
+| `957:5238`  | [Mobile] Compact                                                                                                                                        |
+| `741:3141`  | [Study] Graph Hover                                                                                                                                     |
 | `1072:4204` | [Surface] Authoring (authoring-surface epic: DocChrome mode toggle w/ kbd hints, heading comment affordance, diff section states, comment thread panel) |
 
 ## State boards (the 4-mode previews)
 
-| Node | Board | Notes |
-| --- | --- | --- |
-| `957:5217` | [States] Timeline | Shows the 4 real modes — instances the `TimelineRange` variants (was 4× the retired stale `239:713`). |
-| `947:8312` | [States] Activity Rail | |
-| `957:5222` | [States] Rail & Settings | |
-| `957:5229` | [States] Surface State Modes | |
+| Node       | Board                        | Notes                                                                                                 |
+| ---------- | ---------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `957:5217` | [States] Timeline            | Shows the 4 real modes — instances the `TimelineRange` variants (was 4× the retired stale `239:713`). |
+| `947:8312` | [States] Activity Rail       |                                                                                                       |
+| `957:5222` | [States] Rail & Settings     |                                                                                                       |
+| `957:5229` | [States] Surface State Modes |                                                                                                       |
 
 ## Canonical components / sets (name == React export)
 
@@ -54,23 +54,23 @@ New this session:
 
 Existing (selected — the join is by name, so resolve any component by its React export):
 
-| Node | Component | | Node | Component |
-| --- | --- | --- | --- | --- |
-| `634:2090` | CommandPalette | | `635:3196` | CanvasStateOverlay |
-| `270:927` | CodeViewer | | `618:1966` | CategoryLegend |
-| `319:1024` | HoverCard | | `838:3906` | FilterMenu |
-| `636:1920` | FrontmatterHeader | | `807:3528` | DocTypeMark (set) |
-| `635:3190` | IconRail | | `635:2489` | KeyboardShortcuts |
-| `545:1397` | LocationStrip (retired in code — worktree-switcher-identity ADR) | | `636:2144` | MinimapWidget |
-| `636:2157` | Playhead | | `260:896` | PropertyRow |
-| `879:4125` | RagOpsConsole | | `636:1947` | RailFilterField |
-| `636:2152` | RangeSelect | | `650:1790` | SearchResultPill (set) |
-| `635:3108` | SettingsDialog | | `636:2160` | Stage |
-| `635:2503` | TimeTravelChip | | `635:3145` | WorkingSet |
-| `849:3929` | BackgroundMenu | | `826:3833` | BottomSheet |
-| `823:3859` | BottomTabBar (set) | | `635:2500` | BrowserModeToggle |
-| `635:2470` | ConfirmDialog | | `319:960` | ContextMenuHost |
-| `825:3819` | MobileTopBar | | `635:3130` | Dialog |
+| Node       | Component                                                                                          |     | Node       | Component              |
+| ---------- | -------------------------------------------------------------------------------------------------- | --- | ---------- | ---------------------- |
+| `634:2090` | CommandPalette                                                                                     |     | `635:3196` | CanvasStateOverlay     |
+| `270:927`  | CodeViewer                                                                                         |     | `618:1966` | CategoryLegend         |
+| `319:1024` | HoverCard                                                                                          |     | `838:3906` | FilterMenu             |
+| `636:1920` | FrontmatterHeader                                                                                  |     | `807:3528` | DocTypeMark (set)      |
+| `635:3190` | IconRail                                                                                           |     | `635:2489` | KeyboardShortcuts      |
+| `545:1397` | LocationStrip (retired in code — worktree-switcher-identity ADR)                                   |     | `636:2144` | MinimapWidget          |
+| `636:2157` | Playhead                                                                                           |     | `260:896`  | PropertyRow            |
+| `879:4125` | RagOpsConsole (retired in code — rag-job-dashboard ADR; superseded by `1102:4354` RagJobDashboard) |     | `636:1947` | RailFilterField        |
+| `636:2152` | RangeSelect                                                                                        |     | `650:1790` | SearchResultPill (set) |
+| `635:3108` | SettingsDialog                                                                                     |     | `636:2160` | Stage                  |
+| `635:2503` | TimeTravelChip                                                                                     |     | `635:3145` | WorkingSet             |
+| `849:3929` | BackgroundMenu                                                                                     |     | `826:3833` | BottomSheet            |
+| `823:3859` | BottomTabBar (set)                                                                                 |     | `635:2500` | BrowserModeToggle      |
+| `635:2470` | ConfirmDialog                                                                                      |     | `319:960`  | ContextMenuHost        |
+| `825:3819` | MobileTopBar                                                                                       |     | `635:3130` | Dialog                 |
 
 Archived (React export deleted; nodes renamed `_archived/*` so the name-join no longer
 matches): `635:3126` `_archived/Inspector`, `283:1170` `_archived/DocHeader` — both
@@ -105,9 +105,9 @@ new on `[Surface] Authoring` (`1072:4204`) rather than updated.
 
 ### Components / sub-components to retire from Figma
 
-| Figma node | Name | Reason |
-| --- | --- | --- |
-| `635:3126` | **Inspector** | Superseded by the Status rail (`StatusTab`). The React component is deleted (authoring-surface D7). DONE: renamed `_archived/Inspector`. |
+| Figma node | Name                | Reason                                                                                                                                                                                                                                |
+| ---------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `635:3126` | **Inspector**       | Superseded by the Status rail (`StatusTab`). The React component is deleted (authoring-surface D7). DONE: renamed `_archived/Inspector`.                                                                                              |
 | `283:1170` | **DocHeader (set)** | Superseded by the inline `DocHeaderBlock` helper in `MarkdownReader` and the editorial metadata `FrontmatterHeader`. The right-rail `DocHeader.tsx` component is deleted (authoring-surface D7). DONE: renamed `_archived/DocHeader`. |
 
 NowStrip had no standalone Figma component entry; the concept survives in the stores layer (`nowStrip.ts`) and is referenced only at the architectural level.

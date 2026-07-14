@@ -150,7 +150,7 @@ Designed offline/empty/degraded parity and compact collapse, console test re-anc
 
 - [x] `W03.P05.S13` - Verify designed offline, empty, degraded, and loading states across all regions and the compact single-column collapse; `frontend/src/app/panels/RagJobDashboard.tsx`.
 - [x] `W03.P05.S14` - Re-anchor the retired console composition tests onto the dashboard regions and extend the panel guards; `frontend/src/app/panels`.
-- [ ] `W03.P05.S15` - Run the full frontend gate and touched suites, verify Figma name-as-contract bindings, and route the feature through the adversarial review with revisions; `frontend`.
+- [x] `W03.P05.S15` - Run the full frontend gate and touched suites, verify Figma name-as-contract bindings, and route the feature through the adversarial review with revisions; `frontend`.
 
 ## Description
 

@@ -33,8 +33,6 @@ import {
   RAG_LOG_LINE_MAX_CHARS,
   RAG_LOG_ROWS_CAP,
   RAG_PROJECT_SLOTS_MAX_ITEMS,
-  WATCHER_COOLDOWN_S_MAX,
-  WATCHER_DEBOUNCE_MS_MAX,
   boundedRagJobsLimit,
   boundedRagLogLines,
   deriveRagControlView,
@@ -55,7 +53,6 @@ import {
   normalizeRagProjectSlot,
   normalizeRagProjectSlots,
   normalizeRagRequestSeq,
-  normalizeWatcherReconfigureArgs,
   isJobFailed,
   isJobTerminal,
   normalizeRagControlScope,
@@ -135,55 +132,6 @@ describe("rag job interpreters", () => {
     expect(normalizeRagReindexArgs(null)).toEqual({});
     expect(normalizeRagReindexArgs({ type: "all", clean: "true" })).toEqual({});
     expect(normalizeRagReindexArgs({ type: { value: "vault" }, clean: 1 })).toEqual({});
-  });
-
-  it("normalizes watcher reconfigure args at the rag control seam", () => {
-    expect(
-      normalizeWatcherReconfigureArgs({
-        debounce_ms: "250",
-        cooldown_s: "3.5",
-      }),
-    ).toEqual({
-      debounce_ms: 250,
-      cooldown_s: 3.5,
-    });
-    expect(
-      normalizeWatcherReconfigureArgs({
-        debounce_ms: 0,
-        cooldown_s: "0",
-      }),
-    ).toEqual({
-      debounce_ms: 0,
-      cooldown_s: 0,
-    });
-  });
-
-  it("drops invalid watcher reconfigure args before dispatch", () => {
-    expect(normalizeWatcherReconfigureArgs(null)).toEqual({});
-    expect(
-      normalizeWatcherReconfigureArgs({
-        debounce_ms: "",
-        cooldown_s: "",
-      }),
-    ).toEqual({});
-    expect(
-      normalizeWatcherReconfigureArgs({
-        debounce_ms: "10.5",
-        cooldown_s: "nope",
-      }),
-    ).toEqual({});
-    expect(
-      normalizeWatcherReconfigureArgs({
-        debounce_ms: { value: "250" },
-        cooldown_s: ["3"],
-      }),
-    ).toEqual({});
-    expect(
-      normalizeWatcherReconfigureArgs({
-        debounce_ms: String(WATCHER_DEBOUNCE_MS_MAX + 1),
-        cooldown_s: String(WATCHER_COOLDOWN_S_MAX + 0.5),
-      }),
-    ).toEqual({});
   });
 
   it("keys job progress by active scope first, then job id", () => {

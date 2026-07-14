@@ -1113,72 +1113,10 @@ export function useRagReindex() {
   });
 }
 
-export interface WatcherReconfigureArgs {
-  debounce_ms?: number;
-  cooldown_s?: number;
-}
-
-export const WATCHER_DEBOUNCE_MS_MAX = 600_000;
-export const WATCHER_COOLDOWN_S_MAX = 3_600;
-
-function boundedRagWatcherIntegerArg(value: unknown, max: number): number | undefined {
-  if (typeof value === "string" && value.trim() === "") return undefined;
-  if (typeof value !== "number" && typeof value !== "string") return undefined;
-  const parsed = typeof value === "number" ? value : Number(value);
-  if (
-    !Number.isFinite(parsed) ||
-    parsed < 0 ||
-    parsed > max ||
-    !Number.isInteger(parsed)
-  ) {
-    return undefined;
-  }
-  return parsed;
-}
-
-function boundedRagWatcherNumberArg(value: unknown, max: number): number | undefined {
-  if (typeof value === "string" && value.trim() === "") return undefined;
-  if (typeof value !== "number" && typeof value !== "string") return undefined;
-  const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > max) return undefined;
-  return parsed;
-}
-
-export function normalizeWatcherReconfigureArgs(
-  input: unknown,
-): WatcherReconfigureArgs {
-  const value: Record<string, unknown> =
-    input !== null && typeof input === "object"
-      ? (input as Record<string, unknown>)
-      : {};
-  const args: WatcherReconfigureArgs = {};
-  const debounceMs = boundedRagWatcherIntegerArg(
-    value.debounce_ms,
-    WATCHER_DEBOUNCE_MS_MAX,
-  );
-  const cooldownS = boundedRagWatcherNumberArg(
-    value.cooldown_s,
-    WATCHER_COOLDOWN_S_MAX,
-  );
-  if (debounceMs !== undefined) args.debounce_ms = debounceMs;
-  if (cooldownS !== undefined) args.cooldown_s = cooldownS;
-  return args;
-}
-
-export function useRagWatcherReconfigure() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (args: unknown) =>
-      dispatchOps({
-        target: "rag",
-        verb: "watcher-reconfigure",
-        body: normalizeWatcherReconfigureArgs(args),
-      }),
-    onSuccess: () => {
-      invalidateRagWatcherControlQueries(queryClient);
-    },
-  });
-}
+// The watcher-reconfigure client seam (normalizer + hook) retired 2026-07-14
+// with the console-era ops panel — its only consumers. The brokered
+// `watcher-reconfigure` verb remains on the wire; a future surface rebuilds
+// the seam rather than keeping a dead one (no-deprecation-bridges).
 
 export function useRagWatcherStart() {
   const queryClient = useQueryClient();
