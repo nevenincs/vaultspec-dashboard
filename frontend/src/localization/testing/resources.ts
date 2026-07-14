@@ -34,6 +34,9 @@ export const ltrTestResources = {
       empty: "Aucun raccourci clavier disponible",
       recording: "Appuyez sur une touche…",
     },
+    shortcutGroups: {
+      navigation: "Navigation",
+    },
     keycaps: {
       ...en.common.keycaps,
       arrowDown: "Flèche vers le bas",
@@ -50,7 +53,20 @@ export const ltrTestResources = {
     },
     statuses: en.common.statuses,
   },
-  documents: en.documents,
+  documents: {
+    ...en.documents,
+    actions: {
+      ...en.documents.actions,
+      addToFeature: "Ajouter à une fonctionnalité…",
+      clearFilter: "Effacer le filtre des documents",
+      collapseTree: "Réduire l’arborescence des documents",
+      expandTree: "Développer l’arborescence des documents",
+      focusFilter: "Activer le filtre des documents",
+      resetFilters: "Réinitialiser les filtres",
+      showOrHideFilterOptions: "Afficher ou masquer les options de filtre",
+      switchView: "Basculer entre les documents et les fichiers",
+    },
+  },
   errors: {
     fallback: {
       contentUnavailable:
@@ -95,6 +111,7 @@ export const rtlTestResources = {
       empty: "لا توجد اختصارات لوحة مفاتيح متاحة",
       recording: "اضغط على مفتاح…",
     },
+    shortcutGroups: en.common.shortcutGroups,
     keycaps: {
       ...en.common.keycaps,
       arrowDown: "سهم للأسفل",

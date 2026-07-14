@@ -58,6 +58,9 @@ export const common = {
     empty: "No keyboard shortcuts available",
     recording: "Press a key…",
   },
+  shortcutGroups: {
+    navigation: "Navigation",
+  },
   keycaps: {
     alt: "Alt",
     arrowDown: "Down arrow",

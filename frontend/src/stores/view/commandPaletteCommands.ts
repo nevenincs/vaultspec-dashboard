@@ -23,10 +23,9 @@ import {
   useBrowserTreeExpansionStore,
 } from "./browserTreeExpansion";
 import {
-  LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
-  LEFT_RAIL_COLLAPSE_TREE_LABEL,
   browseModeAction,
   clearFilterAction,
+  collapseTreeAction,
   focusFilterAction,
   newDocumentAction,
   resetFiltersAction,
@@ -314,12 +313,7 @@ export function buildLeftRailCommands(
     { ...focusFilterAction(), family: "focus" },
     { ...clearFilterAction(effects.clearFilter), family: "filters" },
     { ...toggleFacetsAction(), family: "filters" },
-    {
-      id: LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
-      label: legacyActionPresentation(LEFT_RAIL_COLLAPSE_TREE_LABEL),
-      family: "navigate",
-      run: effects.collapseTree,
-    },
+    { ...collapseTreeAction(effects.collapseTree), family: "navigate" },
     { ...resetFiltersAction(effects.resetFilters), family: "filters" },
     // The vault tree's sort plane (left-rail-tree-controls ADR D3): one command
     // per sort option + the reset, from the SAME shared builders the rail-top

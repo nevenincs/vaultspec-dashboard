@@ -18,7 +18,6 @@ import {
 } from "../../platform/actions/action";
 import {
   type KeybindingDef,
-  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { useDashboardFilterSidebarIntent } from "../server/dashboardFilterSidebarIntent";
@@ -51,40 +50,56 @@ export const LEFT_RAIL_TOGGLE_FACETS_ACTION_ID = "left-rail:toggle-facets";
 export const LEFT_RAIL_RESET_FILTERS_ACTION_ID = "left-rail:reset-filters";
 export const LEFT_RAIL_RESET_SORTING_ACTION_ID = "left-rail:reset-sorting";
 
-export const LEFT_RAIL_NEW_DOC_LABEL =
-  legacyKeybindingPresentation("Add to a Feature…");
-export const LEFT_RAIL_EXPAND_TREE_LABEL =
-  legacyKeybindingPresentation("Expand Vault Tree");
-export const LEFT_RAIL_COLLAPSE_TREE_LABEL =
-  legacyKeybindingPresentation("Collapse Vault Tree");
-export const LEFT_RAIL_TOGGLE_FACETS_LABEL =
-  legacyKeybindingPresentation("Toggle Filter Facets");
-export const LEFT_RAIL_RESET_FILTERS_LABEL =
-  legacyKeybindingPresentation("Reset Filters");
+export const LEFT_RAIL_CYCLE_MODE_LABEL = {
+  key: "documents:actions.switchView",
+} as const;
+export const LEFT_RAIL_FOCUS_FILTER_LABEL = {
+  key: "documents:actions.focusFilter",
+} as const;
+export const LEFT_RAIL_CLEAR_FILTER_LABEL = {
+  key: "documents:actions.clearFilter",
+} as const;
+export const LEFT_RAIL_NEW_DOC_LABEL = {
+  key: "documents:actions.addToFeature",
+} as const;
+export const LEFT_RAIL_EXPAND_TREE_LABEL = {
+  key: "documents:actions.expandTree",
+} as const;
+export const LEFT_RAIL_COLLAPSE_TREE_LABEL = {
+  key: "documents:actions.collapseTree",
+} as const;
+export const LEFT_RAIL_TOGGLE_FACETS_LABEL = {
+  key: "documents:actions.showOrHideFilterOptions",
+} as const;
+export const LEFT_RAIL_RESET_FILTERS_LABEL = {
+  key: "documents:actions.resetFilters",
+} as const;
 export const LEFT_RAIL_RESET_SORTING_LABEL = "Reset Sorting";
 
-const LEFT_RAIL_GROUP = legacyKeybindingPresentation("Left rail");
+export const LEFT_RAIL_GROUP = {
+  key: "common:shortcutGroups.navigation",
+} as const;
 
 export function deriveLeftRailKeybindings(): KeybindingDef[] {
   return [
     {
       id: LEFT_RAIL_CYCLE_MODE_ACTION_ID,
       defaultChord: "Mod+B",
-      label: legacyKeybindingPresentation("Cycle the browser mode (Vault / Code)"),
+      label: LEFT_RAIL_CYCLE_MODE_LABEL,
       group: LEFT_RAIL_GROUP,
       context: "left-rail",
     },
     {
       id: LEFT_RAIL_FOCUS_FILTER_ACTION_ID,
       defaultChord: "Mod+Shift+F",
-      label: legacyKeybindingPresentation("Focus the left-rail filter"),
+      label: LEFT_RAIL_FOCUS_FILTER_LABEL,
       group: LEFT_RAIL_GROUP,
       context: "global",
     },
     {
       id: LEFT_RAIL_CLEAR_FILTER_ACTION_ID,
       defaultChord: "Mod+Shift+X",
-      label: legacyKeybindingPresentation("Clear the document filter"),
+      label: LEFT_RAIL_CLEAR_FILTER_LABEL,
       group: LEFT_RAIL_GROUP,
       context: "global",
     },
@@ -145,10 +160,18 @@ export function newDocumentAction(
 ): ActionDescriptor {
   return {
     id: LEFT_RAIL_NEW_DOC_ACTION_ID,
-    label: legacyActionPresentation(LEFT_RAIL_NEW_DOC_LABEL),
+    label: LEFT_RAIL_NEW_DOC_LABEL,
     section: "transform",
     icon: FilePlus2,
     run: () => openCreateDocDialog(prefillFeature, options),
+  };
+}
+
+export function cycleBrowserModeAction(): ActionDescriptor {
+  return {
+    id: LEFT_RAIL_CYCLE_MODE_ACTION_ID,
+    label: LEFT_RAIL_CYCLE_MODE_LABEL,
+    run: cycleBrowserMode,
   };
 }
 
@@ -169,7 +192,7 @@ export function browseModeAction(mode: BrowserMode): ActionDescriptor {
 export function expandTreeAction(expandAll: () => void): ActionDescriptor {
   return {
     id: LEFT_RAIL_EXPAND_TREE_ACTION_ID,
-    label: legacyActionPresentation(LEFT_RAIL_EXPAND_TREE_LABEL),
+    label: LEFT_RAIL_EXPAND_TREE_LABEL,
     section: "navigate",
     icon: UnfoldVertical,
     run: expandAll,
@@ -180,7 +203,7 @@ export function expandTreeAction(expandAll: () => void): ActionDescriptor {
 export function collapseTreeAction(collapseAll: () => void): ActionDescriptor {
   return {
     id: LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
-    label: legacyActionPresentation(LEFT_RAIL_COLLAPSE_TREE_LABEL),
+    label: LEFT_RAIL_COLLAPSE_TREE_LABEL,
     section: "navigate",
     icon: FoldVertical,
     run: collapseAll,
@@ -192,7 +215,7 @@ export function collapseTreeAction(collapseAll: () => void): ActionDescriptor {
 export function toggleFacetsAction(): ActionDescriptor {
   return {
     id: LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
-    label: legacyActionPresentation(LEFT_RAIL_TOGGLE_FACETS_LABEL),
+    label: LEFT_RAIL_TOGGLE_FACETS_LABEL,
     section: "navigate",
     icon: Filter,
     run: toggleFilterSidebar,
@@ -204,7 +227,7 @@ export function toggleFacetsAction(): ActionDescriptor {
 export function resetFiltersAction(resetFilters: () => void): ActionDescriptor {
   return {
     id: LEFT_RAIL_RESET_FILTERS_ACTION_ID,
-    label: legacyActionPresentation(LEFT_RAIL_RESET_FILTERS_LABEL),
+    label: LEFT_RAIL_RESET_FILTERS_LABEL,
     section: "navigate",
     icon: ListFilter,
     run: resetFilters,
@@ -246,7 +269,7 @@ export function resetSortingAction(): ActionDescriptor {
 export function focusFilterAction(): ActionDescriptor {
   return {
     id: LEFT_RAIL_FOCUS_FILTER_ACTION_ID,
-    label: legacyActionPresentation("Focus the document filter"),
+    label: LEFT_RAIL_FOCUS_FILTER_LABEL,
     section: "navigate",
     icon: Search,
     run: focusLeftRailFilter,
@@ -259,7 +282,7 @@ export function focusFilterAction(): ActionDescriptor {
 export function clearFilterAction(clearFilter: () => void): ActionDescriptor {
   return {
     id: LEFT_RAIL_CLEAR_FILTER_ACTION_ID,
-    label: legacyActionPresentation("Clear the document filter"),
+    label: LEFT_RAIL_CLEAR_FILTER_LABEL,
     section: "navigate",
     icon: FilterX,
     run: clearFilter,
@@ -284,11 +307,7 @@ export function useLeftRailKeybindings(): void {
     const disposeBindings = registerKeybindings(deriveLeftRailKeybindings());
     const disposeCycle = registerKeyAction(
       LEFT_RAIL_CYCLE_MODE_ACTION_ID,
-      (): ActionDescriptor => ({
-        id: LEFT_RAIL_CYCLE_MODE_ACTION_ID,
-        label: legacyActionPresentation("Cycle the browser mode (Vault / Code)"),
-        run: cycleBrowserMode,
-      }),
+      cycleBrowserModeAction,
     );
     const disposeFocus = registerKeyAction(LEFT_RAIL_FOCUS_FILTER_ACTION_ID, () =>
       focusFilterAction(),

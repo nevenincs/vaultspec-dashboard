@@ -57,7 +57,7 @@ describe("useLeftRailKeybindings", () => {
     expect(getKeybinding(LEFT_RAIL_CYCLE_MODE_ACTION_ID)).toMatchObject({
       defaultChord: "Mod+B",
       context: "left-rail",
-      group: "Left rail",
+      group: { key: "common:shortcutGroups.navigation" },
     });
     expect(getKeybinding(LEFT_RAIL_FOCUS_FILTER_ACTION_ID)).toMatchObject({
       defaultChord: "Mod+Shift+F",

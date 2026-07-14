@@ -6290,11 +6290,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "82298fe30cac092ab3efabfb",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "8fa50d715bf96a429531164e",
     "path": "src/stores/view/commandPaletteCommands.ts",
     "rule": "legacy-action-presentation"
@@ -6765,41 +6760,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "83f906c72e00db7d5273effc",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "9e73154279677c7f05276549",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "b4a6f1f45b06b4b891422f88",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "c29d42fe6b7f3a994458ecb1",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "cd17a735d049a63b14a1a6b8",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "d030ecaf4b0d6a43399e0705",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "da7a93223e360893fb987b3f",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "efc99d926f99394d21413b95",
     "path": "src/stores/view/leftRailKeybindings.ts",
     "rule": "legacy-action-presentation"
@@ -6808,56 +6768,6 @@
     "id": "f0b74f4083bdf9cec895bc59",
     "path": "src/stores/view/leftRailKeybindings.ts",
     "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "fcce01918d6160abb4bb9594",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "2f18d78a4a236c0b2d7dff5d",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "8b3c398eee2a6286c141ed9e",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "972d0e89f71135c32064ff9f",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "bbf582720b26807d25aa7f10",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "ce4f75ceef27489c8c2612fd",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "d583fb82da97c798f25498f2",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "da44c15b588f4726e64fab5d",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "e4931c687726ce8db4bc3ccb",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "f620e98222a7bf8150b7c1aa",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "ecb292b0acf158a1fc3b4a41",
