@@ -160,6 +160,16 @@ with the provider step's stable application-lifetime adapter boundary. Hoist the
 non-Suspense options into a frozen module-level constant so subscription identity stays
 stable while descriptor or parent updates rerender the consumer.
 
+### document-listener-cleanup | medium | Failed listener removal loses cleanup ownership
+
+`W01.P01.S118` deletes the runtime and root binding record before calling the runtime's
+listener-removal boundary. If that boundary throws, the original real listener remains
+registered but its ownership record is gone. A later bind creates a second listener;
+releasing it removes only the new listener and leaves the original listener active for
+the application lifetime. The public boundary contains the exception, but cleanup is
+not recoverable and exact one-listener ownership is lost after a hostile accessor or
+adapter failure.
+
 ## Recommendations
 
 <!-- Actionable recommendations -->
@@ -383,3 +393,23 @@ review-only test was removed. No fake, mock, stub, runtime patch, monkeypatch, s
 expected failure was used. The remediation adds no provider property or authority,
 exposes no translator, and preserves singleton ownership, namespace coverage,
 non-Suspense rendering, and safe descriptor resolution. S116 is accepted.
+
+### W01.P01.S118 review | changes required | Preserve ownership until removal succeeds
+
+Commit `603e222070` correctly prefers canonical `resolvedLanguage`, then canonical
+`language`, then the source locale; rejects internal runtime modes and oversized or
+invalid locale identifiers; clamps direction to `ltr` or `rtl`; and mutates only changed
+`lang` and `dir` properties. Real i18next and happy-dom assertions passed for
+left-to-right and right-to-left changes, source fallback, language fallback,
+canonicalization, idempotent mutation, reference-counted release, repeated cleanup,
+hostile property access, and direction clamping. The default document lookup also
+contains an absent global document for server rendering, and the module emits no
+visible text, log, diagnostic value, persistence, or unrelated authority. The complete
+frontend lint, formatting, type, token, and Figma-name gate passed.
+
+Before accepting S118, keep a failed-removal binding owned and retryable, or otherwise
+prove that a failed removal cannot be followed by duplicate registration or an orphaned
+listener. Repeat the real runtime and document assertions for normal cleanup and for a
+Proxy boundary that delegates subscription to the real i18next instance but fails one
+removal access. No fake, mock, stub, runtime patch, monkeypatch, skip, or expected
+failure was used in this review.
