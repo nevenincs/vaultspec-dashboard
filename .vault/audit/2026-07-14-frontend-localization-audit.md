@@ -984,3 +984,21 @@ All eight targeted Vitest cases and targeted Prettier checks passed. The suite s
 imports production scanner behavior directly, uses no fake, mock, stub, patch,
 monkeypatch, skip, expected failure, or mirrored scanner logic, and introduces no
 shipped UI or development metadata. S16 is accepted with no open findings.
+
+### W01.P03.S15 review | pass | Localization enforcement is in the standard frontend gate
+
+Commit `99490de38e` adds the exact `lint:localization` package command for the production
+scanner and invokes it immediately after ESLint in `_dev-lint-frontend`. The existing
+pixel, module-size, formatting, TypeScript, token-drift, and Figma-name gates retain
+their prior relative order. Every command remains a direct recipe line with no ignored
+failure marker or shell conditional, so a nonzero scanner result stops the Just recipe.
+The command contains no platform-specific shell syntax.
+
+The direct scanner passed with the expected 1,560 exact baseline entries. The complete
+`just dev lint frontend` recipe also passed and its output proved the committed order:
+ESLint, localization scan, pixel scan, module-size scan, formatting, TypeScript,
+token drift, then Figma naming. The commit changes no dependency declaration or
+lockfile and contains only the package script, Just wiring, checked plan step, and its
+scoped execution record. The record accurately reports the observed behavior and does
+not introduce shipped UI text or development metadata. S15 is accepted with no open
+findings.
