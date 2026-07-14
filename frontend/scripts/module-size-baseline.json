@@ -1,13 +1,11 @@
 {
-  "engine/crates/vaultspec-api/src/app.rs": 2061,
+  "engine/crates/vaultspec-api/src/app.rs": 2113,
   "engine/crates/vaultspec-api/src/authoring/apply.rs": 4518,
   "engine/crates/vaultspec-api/src/authoring/direct_write.rs": 2794,
   "engine/crates/vaultspec-api/src/authoring/http.rs": 7509,
-  "engine/crates/vaultspec-api/src/authoring/operations.rs": 3131,
-  "engine/crates/vaultspec-api/src/authoring/proposal.rs": 2809,
   "engine/crates/vaultspec-api/src/authoring/session.rs": 2050,
   "engine/crates/vaultspec-api/src/authoring/store/mod.rs": 2120,
-  "engine/crates/vaultspec-api/src/lib.rs": 2732,
+  "engine/crates/vaultspec-api/src/lib.rs": 2734,
   "engine/crates/vaultspec-api/src/routes/ops.rs": 3179,
   "frontend/src/scene/three/threeField/field.ts": 3092,
   "frontend/src/stores/server/authoring.ts": 2176
