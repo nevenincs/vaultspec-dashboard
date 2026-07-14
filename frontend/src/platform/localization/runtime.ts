@@ -47,7 +47,6 @@ const localizationOptions = {
   missingKeyHandler: false,
   missingKeyNoValueFallbackToKey: true,
   nonExplicitSupportedLngs: false,
-  ns: localizationNamespaces,
   parseMissingKeyHandler: safeMissingMessage,
   partialBundledLanguages: false,
   react: {
@@ -60,7 +59,6 @@ const localizationOptions = {
   returnedObjectHandler: safeMissingMessage,
   saveMissing: false,
   saveMissingPlurals: false,
-  supportedLngs: supportedLocales,
   updateMissing: false,
 } satisfies InitOptions;
 
@@ -70,7 +68,9 @@ export function createLocalizationRuntime(): i18n {
   instance.use(initReactI18next);
   void instance.init({
     ...localizationOptions,
+    ns: [...localizationNamespaces],
     resources: structuredClone(resources),
+    supportedLngs: [...supportedLocales],
   });
 
   if (!instance.isInitialized) {

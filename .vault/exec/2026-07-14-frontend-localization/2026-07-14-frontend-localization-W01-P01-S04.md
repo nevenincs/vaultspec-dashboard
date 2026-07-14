@@ -37,6 +37,10 @@ related:
   structured clone of the trusted bundled resource graph.
 - A temporary real-runtime assertion proved resource mutations do not cross instance
   boundaries; the temporary test was removed after it passed.
+- A second remediation keeps the exported canonical locale and namespace lists frozen
+  while giving each runtime fresh mutable option arrays.
+- A temporary real-runtime assertion proved add, replace, and remove bundle operations
+  stay isolated and do not throw; the temporary test was removed after it passed.
 - Provider mounting, document attributes, locale preference, and runtime tests remain in
   their assigned plan steps.
 - No incidents or skipped S04 work.
