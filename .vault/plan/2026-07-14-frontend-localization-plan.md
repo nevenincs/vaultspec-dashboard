@@ -96,7 +96,7 @@ menu and reader producers scheduled through `S82`, has left the temporary bridge
 - [x] `W02.P04.S125` - Migrate document-link action builders to canonical localized verbs and explicit confirmations; `frontend/src/stores/view/documentLinkActions.ts, frontend/src/stores/view/documentLinkActions.test.ts, frontend/scripts/localization-allowlist.json`.
 - [x] `W02.P04.S148` - Migrate the shared relate-to-selection action builder once; `frontend/src/app/menus/sharedActions.ts, frontend/src/app/menus/sharedActions.test.ts, frontend/src/app/stage/menus/graphNodeMenu.ts, frontend/src/app/left/menus/leftMenus.test.ts, frontend/scripts/localization-allowlist.json`.
 - [x] `W02.P04.S149` - Migrate the shared feature-autofix action builder once; `frontend/src/app/menus/sharedActions.ts, frontend/src/app/menus/sharedActions.test.ts, frontend/src/app/left/menus/leftMenus.test.ts, frontend/scripts/localization-allowlist.json`.
-- [ ] `W02.P04.S150` - Migrate the shared archive-feature action builder with explicit destructive confirmation copy; `frontend/src/app/menus/sharedActions.ts`.
+- [x] `W02.P04.S150` - Migrate the shared archive-feature action builder with explicit destructive confirmation copy; `frontend/src/app/menus/sharedActions.ts, frontend/src/app/menus/sharedActions.test.ts, frontend/src/app/left/menus/leftMenus.test.ts, frontend/scripts/localization-allowlist.json`.
 
 ### Phase `W02.P05` - keymap command and palette convergence
 

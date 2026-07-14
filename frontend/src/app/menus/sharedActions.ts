@@ -17,7 +17,6 @@
 // deleted. They read only their arguments + the injected ActionContext
 // (selectedNodeId), never a store — so they stay pure and unit-testable.
 
-import { legacyActionPresentation } from "../../platform/actions/action";
 import { Archive, ArrowUpRight, Link2, Wrench } from "lucide-react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
@@ -231,23 +230,30 @@ export interface ArchiveFeatureOptions {
 export function archiveFeatureAction(opts: ArchiveFeatureOptions): ActionDescriptor {
   const base = {
     id: opts.id,
-    label: legacyActionPresentation(
-      opts.feature ? `Archive feature “${opts.feature}”` : "Archive feature",
-    ),
+    label: { key: "features:destructiveActions.archive" } as const,
     section: "danger" as const,
     icon: Archive,
-    confirm: true,
     disabledInTimeTravel: true,
   };
   if (opts.feature === null) {
     return {
       ...base,
       disabled: true,
-      disabledReason: legacyActionPresentation("no feature to archive"),
+      disabledReason: { key: "features:disabledReasons.selectFeature" } as const,
     };
   }
   return {
     ...base,
+    confirmation: {
+      kind: "destructive",
+      title: {
+        key: "features:confirmations.archive.title",
+        values: { feature: opts.feature },
+      },
+      body: { key: "features:confirmations.archive.body" },
+      confirmLabel: { key: "features:destructiveActions.archive" },
+      cancelLabel: { key: "common:actions.cancel" },
+    } as const,
     dispatch: {
       type: OPS_ACTION,
       payload: {

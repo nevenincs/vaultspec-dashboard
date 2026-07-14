@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Link2, Wrench } from "lucide-react";
+import { Archive, Link2, Wrench } from "lucide-react";
 
 import {
   resolveActionPresentation,
@@ -201,19 +201,47 @@ describe("autofixFeatureAction", () => {
 describe("archiveFeatureAction", () => {
   it("disables with reason when the feature is null", () => {
     const a = archiveFeatureAction({ id: "x:archive", feature: null });
+    expect(a.label).toEqual({ key: "features:destructiveActions.archive" });
+    expect(resolvePresentation(a.label)).toBe("Archive feature");
+    expect(a.section).toBe("danger");
+    expect(a.icon).toBe(Archive);
     expect(a.disabled).toBe(true);
-    expect(a.disabledReason).toBe("no feature to archive");
+    expect(a.disabledReason).toEqual({
+      key: "features:disabledReasons.selectFeature",
+    });
+    expect(resolvePresentation(a.disabledReason!)).toBe("Select a feature first.");
+    expect(a.confirm).toBeUndefined();
+    expect(a.confirmation).toBeUndefined();
     expect(a.dispatch).toBeUndefined();
+    expect(a.run).toBeUndefined();
   });
 
-  it("is a confirm-guarded, time-travel-gated danger dispatch when a feature is given", () => {
+  it("is a typed destructive, time-travel-gated danger dispatch for a feature", () => {
     const a = archiveFeatureAction({
       id: "x:archive",
       feature: "dashboard",
       scope: "wt",
     });
+    expect(a.label).toEqual({ key: "features:destructiveActions.archive" });
     expect(a.section).toBe("danger");
-    expect(a.confirm).toBe(true);
+    expect(a.icon).toBe(Archive);
+    expect(a.confirm).toBeUndefined();
+    expect(a.confirmation).toEqual({
+      kind: "destructive",
+      title: {
+        key: "features:confirmations.archive.title",
+        values: { feature: "dashboard" },
+      },
+      body: { key: "features:confirmations.archive.body" },
+      confirmLabel: { key: "features:destructiveActions.archive" },
+      cancelLabel: { key: "common:actions.cancel" },
+    });
+    expect(resolvePresentation(a.confirmation!.title)).toBe("Archive dashboard?");
+    expect(resolvePresentation(a.confirmation!.body)).toBe(
+      "This removes the feature and its documents from active work.",
+    );
+    expect(resolvePresentation(a.confirmation!.confirmLabel)).toBe("Archive feature");
+    expect(resolvePresentation(a.confirmation!.cancelLabel)).toBe("Cancel");
     expect(a.disabledInTimeTravel).toBe(true);
     expect(a.dispatch).toEqual({
       type: "ops:run",

@@ -334,7 +334,17 @@ describe("vaultFeatureMenu", () => {
     expect(autofix?.disabledInTimeTravel).toBe(true);
     const archive = byId(actions, "vault-feature:archive");
     expect(archive?.section).toBe("danger");
-    expect(archive?.confirm).toBe(true);
+    expect(archive?.confirm).toBeUndefined();
+    expect(archive?.confirmation).toEqual({
+      kind: "destructive",
+      title: {
+        key: "features:confirmations.archive.title",
+        values: { feature: "f" },
+      },
+      body: { key: "features:confirmations.archive.body" },
+      confirmLabel: { key: "features:destructiveActions.archive" },
+      cancelLabel: { key: "common:actions.cancel" },
+    });
     expect(archive?.disabledInTimeTravel).toBe(true);
   });
 

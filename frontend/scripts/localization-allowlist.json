@@ -1970,16 +1970,6 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "39d2a35608addd83c4efa107",
-    "path": "src/app/menus/sharedActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "5aca906298f425c162e7f43a",
-    "path": "src/app/menus/sharedActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "6448630a82dbb2290d06541d",
     "path": "src/app/onboarding/FirstRunOnboarding.tsx",
     "rule": "jsx-text"
