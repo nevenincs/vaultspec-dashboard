@@ -15,14 +15,10 @@
 
 import { Link } from "lucide-react";
 
-import {
-  legacyActionPresentation,
-  type ActionDescriptor,
-} from "../../platform/actions/action";
+import type { ActionDescriptor } from "../../platform/actions/action";
 import { dispatchCopy } from "../../platform/actions/clipboardActions";
 
 export const COPY_LINK_ACTION_ID = "vault-doc:copy-link";
-export const COPY_LINK_LABEL = "Copy link";
 
 /** The Obsidian-style wiki-link reference for a document stem, with an optional
  *  section anchor when a heading slug is supplied. */
@@ -42,7 +38,6 @@ export interface CopyLinkOptions {
   /** An optional heading slug — when present the copied link carries a section
    *  anchor (a block-scoped invocation); absent copies the bare document link. */
   heading?: string | null;
-  label?: string;
 }
 
 /**
@@ -55,7 +50,7 @@ export interface CopyLinkOptions {
 export function copyLinkAction(opts: CopyLinkOptions): ActionDescriptor {
   const base = {
     id: opts.id ?? COPY_LINK_ACTION_ID,
-    label: legacyActionPresentation(opts.label ?? COPY_LINK_LABEL),
+    label: { key: "documents:actions.copyLink" } as const,
     section: "copy" as const,
     icon: Link,
   };
@@ -63,7 +58,7 @@ export function copyLinkAction(opts: CopyLinkOptions): ActionDescriptor {
     return {
       ...base,
       disabled: true,
-      disabledReason: legacyActionPresentation("not a document"),
+      disabledReason: { key: "documents:disabledReasons.selectDocument" },
     };
   }
   const text = documentWikiLink(opts.stem, opts.heading);

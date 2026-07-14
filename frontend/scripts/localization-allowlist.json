@@ -6585,16 +6585,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "4aae5c5b158d94e727c6d6f5",
-    "path": "src/stores/view/documentLinkActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "566599f4b64dbf462c23559b",
-    "path": "src/stores/view/documentLinkActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "101ac4b145481a566036eb6e",
     "path": "src/stores/view/editorKeybindings.ts",
     "rule": "presentation-field"

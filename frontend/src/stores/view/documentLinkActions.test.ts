@@ -6,6 +6,10 @@
 
 import { describe, expect, it } from "vitest";
 
+import { Link } from "lucide-react";
+
+import { createTestLocalizationRuntime } from "../../localization/testing";
+import { resolveMessageResult } from "../../platform/localization/fallback";
 import {
   COPY_LINK_ACTION_ID,
   copyLinkAction,
@@ -33,18 +37,48 @@ describe("copyLinkAction", () => {
     const action = copyLinkAction({ stem: "x-plan" });
     expect(action.id).toBe(COPY_LINK_ACTION_ID);
     expect(action.id).toBe("vault-doc:copy-link");
+    expect(action.label).toEqual({ key: "documents:actions.copyLink" });
     expect(action.section).toBe("copy");
+    expect(action.icon).toBe(Link);
     expect(typeof action.run).toBe("function");
     // A `run`, never a `dispatch` — the palette normalizer drops dispatch-only
     // descriptors, so the ONE builder must be run-based to ride both planes.
     expect(action.dispatch).toBeUndefined();
     expect(action.disabled).toBeUndefined();
+    expect(action.confirm).toBeUndefined();
+    expect(action.confirmation).toBeUndefined();
   });
 
   it("is disabled-with-reason when the source is not a document", () => {
     const action = copyLinkAction({ stem: null });
+    expect(action.label).toEqual({ key: "documents:actions.copyLink" });
     expect(action.disabled).toBe(true);
-    expect(action.disabledReason).toBe("not a document");
+    expect(action.disabledReason).toEqual({
+      key: "documents:disabledReasons.selectDocument",
+    });
     expect(action.run).toBeUndefined();
+    expect(action.confirm).toBeUndefined();
+    expect(action.confirmation).toBeUndefined();
+  });
+
+  it("preserves an explicit surface action id without changing presentation", () => {
+    const action = copyLinkAction({ id: "reader:copy-section-link", stem: "x-plan" });
+    expect(action.id).toBe("reader:copy-section-link");
+    expect(action.label).toEqual({ key: "documents:actions.copyLink" });
+  });
+
+  it("resolves the action and disabled reason through the real localization runtime", () => {
+    const runtime = createTestLocalizationRuntime();
+    const enabled = copyLinkAction({ stem: "x-plan" });
+    const disabled = copyLinkAction({ stem: null });
+
+    expect(resolveMessageResult(runtime, enabled.label)).toEqual({
+      message: "Copy link",
+      usedFallback: false,
+    });
+    expect(resolveMessageResult(runtime, disabled.disabledReason)).toEqual({
+      message: "Select a document first.",
+      usedFallback: false,
+    });
   });
 });
