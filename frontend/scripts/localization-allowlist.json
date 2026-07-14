@@ -5060,21 +5060,6 @@
     "rule": "presentation-field"
   },
   {
-    "id": "43a3bbd68c0b17bfd2a231db",
-    "path": "src/platform/actions/shellActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "5aa0b62e3fe982a19f9da872",
-    "path": "src/platform/actions/shellActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "a9f6e493856109059e084f22",
-    "path": "src/platform/actions/shellActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "0e6cc98ccf9c9e02dfb69e67",
     "path": "src/platform/errors/CrashInjector.tsx",
     "rule": "jsx-text"

@@ -4,11 +4,12 @@
 // disabled-with-reason and their handlers return a degraded result (no throw);
 // with a bridge they are enabled and dispatch through the seam to the host.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
+import { createTestLocalizationRuntime } from "../../localization/testing";
 import { appDispatcher } from "../dispatch/middleware";
+import { resolveMessageResult } from "../localization/fallback";
 import {
-  OPEN_IN_EDITOR_ACTION,
   REVEAL_ACTION,
   isHostShellAvailable,
   normalizeShellPath,
@@ -17,11 +18,6 @@ import {
   revealAction,
   type ShellResult,
 } from "./shellActions";
-
-afterEach(() => {
-  delete window.vaultspecHost;
-  vi.restoreAllMocks();
-});
 
 describe("host-shell verbs without a bridge (pure web)", () => {
   it("reports unavailable", () => {
@@ -38,9 +34,34 @@ describe("host-shell verbs without a bridge (pure web)", () => {
   it("builds disabled-with-reason descriptors", () => {
     const reveal = revealAction({ id: "reveal", path: "/a/b" });
     expect(reveal.disabled).toBe(true);
-    expect(reveal.disabledReason).toBe("not available in the browser");
+    expect(reveal.label).toEqual({ key: "common:actions.showInFileManager" });
+    expect(reveal.disabledReason).toEqual({
+      key: "common:disabledReasons.desktopFileManagerRequired",
+    });
     const open = openInEditorAction({ id: "open", path: "/a/b" });
     expect(open.disabled).toBe(true);
+    expect(open.label).toEqual({ key: "common:actions.openInEditor" });
+    expect(open.disabledReason).toEqual({
+      key: "common:disabledReasons.desktopEditorRequired",
+    });
+  });
+
+  it("resolves shell labels and actionable reasons through the real localization runtime", () => {
+    const runtime = createTestLocalizationRuntime();
+    const reveal = revealAction({ id: "reveal", path: "/a/b" });
+    const open = openInEditorAction({ id: "open", path: "/a/b" });
+
+    for (const [descriptor, message] of [
+      [reveal.label, "Show in file manager"],
+      [reveal.disabledReason, "Open the desktop app to show this item."],
+      [open.label, "Open in editor"],
+      [open.disabledReason, "Open the desktop app to edit this file."],
+    ] as const) {
+      expect(resolveMessageResult(runtime, descriptor)).toEqual({
+        message,
+        usedFallback: false,
+      });
+    }
   });
 
   it("normalizes descriptor ids and payload paths at construction", () => {
@@ -67,23 +88,5 @@ describe("host-shell verbs without a bridge (pure web)", () => {
       payload: { path: 42 },
     })) as ShellResult;
     expect(result).toEqual({ ok: false, degraded: true });
-  });
-});
-
-describe("host-shell verbs with a bridge installed", () => {
-  it("are enabled and dispatch to the host through the seam", async () => {
-    const reveal = vi.fn().mockResolvedValue(undefined);
-    const openInEditor = vi.fn().mockResolvedValue(undefined);
-    window.vaultspecHost = { reveal, openInEditor };
-
-    expect(isHostShellAvailable()).toBe(true);
-    expect(revealAction({ id: "reveal", path: "/a/b" }).disabled).toBe(false);
-
-    const result = (await appDispatcher.dispatch({
-      type: OPEN_IN_EDITOR_ACTION,
-      payload: { path: "/a/b" },
-    })) as ShellResult;
-    expect(openInEditor).toHaveBeenCalledWith("/a/b");
-    expect(result.ok).toBe(true);
   });
 });

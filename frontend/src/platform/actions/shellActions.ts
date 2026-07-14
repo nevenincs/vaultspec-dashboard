@@ -12,7 +12,6 @@ import { ExternalLink, FolderOpen } from "lucide-react";
 import { logger } from "../logger/logger";
 import { appDispatcher } from "../dispatch/middleware";
 import {
-  legacyActionPresentation,
   normalizeActionDescriptorId,
   normalizeActionDescriptorText,
   type ActionDescriptor,
@@ -53,8 +52,6 @@ export interface ShellResult {
   /** True when the verb could not run because no host shell is present. */
   degraded?: boolean;
 }
-
-const UNAVAILABLE_REASON = legacyActionPresentation("not available in the browser");
 
 function shellActionRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -98,12 +95,14 @@ export function revealAction(opts: unknown): ActionDescriptor {
   const available = isHostShellAvailable();
   return {
     id: normalizeActionDescriptorId(record.id, "reveal"),
-    label: legacyActionPresentation("Reveal in file manager"),
+    label: { key: "common:actions.showInFileManager" },
     section: "navigate",
     icon: FolderOpen,
     dispatch: { type: REVEAL_ACTION, payload: normalizeShellPayload(record) },
     disabled: !available,
-    disabledReason: available ? undefined : UNAVAILABLE_REASON,
+    disabledReason: available
+      ? undefined
+      : { key: "common:disabledReasons.desktopFileManagerRequired" },
   };
 }
 
@@ -113,11 +112,13 @@ export function openInEditorAction(opts: unknown): ActionDescriptor {
   const available = isHostShellAvailable();
   return {
     id: normalizeActionDescriptorId(record.id, "open-in-editor"),
-    label: legacyActionPresentation("Open in editor"),
+    label: { key: "common:actions.openInEditor" },
     section: "navigate",
     icon: ExternalLink,
     dispatch: { type: OPEN_IN_EDITOR_ACTION, payload: normalizeShellPayload(record) },
     disabled: !available,
-    disabledReason: available ? undefined : UNAVAILABLE_REASON,
+    disabledReason: available
+      ? undefined
+      : { key: "common:disabledReasons.desktopEditorRequired" },
   };
 }
