@@ -4495,11 +4495,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "384f791408cf52a179e586b3",
-    "path": "src/app/viewer/MarkdownDocView.tsx",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "362f02772b718e6fa151a43e",
     "path": "src/app/viewer/markdownFormatting.ts",
     "rule": "presentation-field"
@@ -6275,11 +6270,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "5ec47462ae1baa5559eabe40",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "6259ee0bf8cb1bfaf1071156",
     "path": "src/stores/view/commandPaletteCommands.ts",
     "rule": "legacy-action-presentation"
@@ -6412,61 +6402,6 @@
   {
     "id": "f7b94dd0afb4990500505298",
     "path": "src/stores/view/docTabKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "338f3465cf1e6b579846bb69",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "45a5afa3da74c156e9d4d821",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "bd238b0baa83770cf047c01c",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "c3739063d7fda2a65a4c4051",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "dd403a0dbabe1b852857354b",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "ee545a202ac84df6a05fa432",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "0829c219d0e4687a47f0d560",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "7448d86f36875d08ac9c1a70",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "9051432654a3dddb75158530",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "d6f6db8538502ff34f12912b",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "e3c8ecf8d1d8bb2d87ba3b1c",
-    "path": "src/stores/view/editorKeybindings.ts",
     "rule": "legacy-keybinding-presentation"
   },
   {

@@ -9,7 +9,6 @@ export const ltrTestResources = {
       ...en.common.accessibility,
       recordShortcut: "Enregistrer un raccourci pour {{action}}",
       resetShortcut: "Réinitialiser le raccourci pour {{action}}",
-      toggleEditModeShortcut: "Changer de mode d’édition ({{accelerator}})",
     },
     actions: {
       ...en.common.actions,
@@ -55,16 +54,35 @@ export const ltrTestResources = {
   },
   documents: {
     ...en.documents,
+    accessibility: {
+      switchReadingAndEditingShortcut:
+        "Basculer entre la lecture et la modification ({{accelerator}})",
+    },
     actions: {
       ...en.documents.actions,
       addToFeature: "Ajouter à une fonctionnalité…",
       clearFilter: "Effacer le filtre des documents",
       collapseTree: "Réduire l’arborescence des documents",
       expandTree: "Développer l’arborescence des documents",
+      finishEditing: "Terminer la modification",
       focusFilter: "Activer le filtre des documents",
       resetFilters: "Réinitialiser les filtres",
+      save: "Enregistrer le document",
+      showOrHideChanges: "Afficher ou masquer les modifications",
       showOrHideFilterOptions: "Afficher ou masquer les options de filtre",
+      switchReadingAndEditing: "Basculer entre la lecture et la modification",
       switchView: "Basculer entre les documents et les fichiers",
+    },
+    disabledReasons: {
+      ...en.documents.disabledReasons,
+      copyChangesBeforeReopening:
+        "Copiez vos modifications, puis rouvrez le document avant d’enregistrer.",
+      openForEditing: "Ouvrez un document à modifier.",
+      tryAfterSaving: "Réessayez une fois l’enregistrement terminé.",
+      updateBeforeSaving: "Modifiez le document avant d’enregistrer.",
+    },
+    shortcutGroups: {
+      editing: "Modification du document",
     },
   },
   errors: {
@@ -91,7 +109,6 @@ export const rtlTestResources = {
       ...en.common.accessibility,
       recordShortcut: "تسجيل اختصار لـ {{action}}",
       resetShortcut: "إعادة تعيين اختصار {{action}}",
-      toggleEditModeShortcut: "تبديل وضع التحرير ({{accelerator}})",
     },
     actions: {
       ...en.common.actions,
@@ -127,7 +144,29 @@ export const rtlTestResources = {
     },
     statuses: en.common.statuses,
   },
-  documents: en.documents,
+  documents: {
+    ...en.documents,
+    accessibility: {
+      switchReadingAndEditingShortcut: "التبديل بين القراءة والتحرير ({{accelerator}})",
+    },
+    actions: {
+      ...en.documents.actions,
+      finishEditing: "إنهاء التحرير",
+      save: "حفظ المستند",
+      showOrHideChanges: "إظهار التغييرات أو إخفاؤها",
+      switchReadingAndEditing: "التبديل بين القراءة والتحرير",
+    },
+    disabledReasons: {
+      ...en.documents.disabledReasons,
+      copyChangesBeforeReopening: "انسخ تغييراتك، ثم أعد فتح المستند قبل الحفظ.",
+      openForEditing: "افتح مستندًا لتحريره.",
+      tryAfterSaving: "حاول مرة أخرى بعد اكتمال الحفظ.",
+      updateBeforeSaving: "حدّث المستند قبل الحفظ.",
+    },
+    shortcutGroups: {
+      editing: "تحرير المستند",
+    },
+  },
   errors: {
     fallback: {
       contentUnavailable: "هذا المحتوى غير متاح. أعد تحميل الصفحة وحاول مرة أخرى.",

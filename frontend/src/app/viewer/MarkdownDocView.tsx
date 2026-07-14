@@ -11,7 +11,6 @@
 // it fetches nothing (the content query + the write mutations are the sole wire
 // clients) and reads the tiers-derived `ContentView`, never raw `tiers`.
 
-import { legacyActionPresentation } from "../../platform/actions/action";
 import {
   useEffect,
   useLayoutEffect,
@@ -22,6 +21,8 @@ import {
 } from "react";
 
 import { GitCompare } from "lucide-react";
+
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 import {
   useCreateComment,
@@ -51,7 +52,7 @@ import { guardedContextMenu } from "../menus/guardedContextMenu";
 import {
   EDITOR_TOGGLE_DIFF_LABEL,
   EDITOR_TOGGLE_MODE_ACTION_ID,
-  EDITOR_TOGGLE_MODE_LABEL,
+  switchReadingAndEditingAction,
 } from "../../stores/view/editorKeybindings";
 import { registerKeyAction } from "../../stores/view/keymapDispatcher";
 import { useViewStore } from "../../stores/view/viewStore";
@@ -146,6 +147,8 @@ export function MarkdownDocView({
    *  preserved stores header model). */
   trail: BreadcrumbItem[];
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const toggleChangesLabel = resolveMessage(EDITOR_TOGGLE_DIFF_LABEL).message;
   // Memoize on the now-stable ContentView (useContentView memoizes its result) so
   // `documentEditor.properties` is a referentially-stable object — it is passed into
   // useMarkdownEditorChromeView as a seed-effect dependency, and a fresh object every
@@ -365,11 +368,9 @@ export function MarkdownDocView({
     }
   };
   useEffect(() => {
-    return registerKeyAction(EDITOR_TOGGLE_MODE_ACTION_ID, () => ({
-      id: EDITOR_TOGGLE_MODE_ACTION_ID,
-      label: legacyActionPresentation(EDITOR_TOGGLE_MODE_LABEL),
-      run: () => toggleModeRef.current(),
-    }));
+    return registerKeyAction(EDITOR_TOGGLE_MODE_ACTION_ID, () =>
+      switchReadingAndEditingAction(() => toggleModeRef.current()),
+    );
   }, []);
 
   // Right-click anywhere on the open document opens the SAME vault-doc menu the
@@ -470,8 +471,8 @@ export function MarkdownDocView({
               saved text captured at open. Chord Mod+Shift+D; shared id
               `editor:toggle-diff` across toolbar, keymap, and palette. */}
           <IconButton
-            label={EDITOR_TOGGLE_DIFF_LABEL}
-            title={EDITOR_TOGGLE_DIFF_LABEL}
+            label={toggleChangesLabel}
+            title={toggleChangesLabel}
             active={editor.diffVisible}
             data-editor-diff-toggle
             onClick={toggleEditorDiff}

@@ -68,7 +68,7 @@ export function DocChrome({
   const toggleTitle =
     toggleCaps.length > 0
       ? resolveMessage({
-          key: "common:accessibility.toggleEditModeShortcut",
+          key: "documents:accessibility.switchReadingAndEditingShortcut",
           values: { accelerator: toggleCaps.join(" ") },
         }).message
       : undefined;

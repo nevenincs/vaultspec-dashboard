@@ -153,6 +153,9 @@ describe("buildTimelineCommands / buildEditorCommands", () => {
       commands.filter((c) => appIds.includes(c.id)).every((c) => c.family === "app"),
     ).toBe(true);
     expect(commands.find((c) => c.id === "editor:toggle-diff")?.family).toBe("edit");
+    expect(commands.find((c) => c.id === "editor:toggle-diff")?.label).toEqual({
+      key: "documents:actions.showOrHideChanges",
+    });
     commands[0]?.run();
     commands[1]?.run();
     commands[2]?.run();

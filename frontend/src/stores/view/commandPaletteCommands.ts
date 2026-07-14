@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import { legacyActionPresentation } from "../../platform/actions/action";
+import { showOrHideChangesAction } from "./editorKeybindings";
 import {
   resolveCommands,
   normalizeCommandDescriptor,
@@ -424,10 +425,8 @@ export function buildEditorCommands(intents: {
     {
       // Shared id with the keymap chord (Mod+Shift+D) so accelerators derive
       // correctly from the registry (actions-keymap-palette: one id per verb).
-      id: "editor:toggle-diff",
-      label: legacyActionPresentation("Toggle Draft Diff"),
+      ...showOrHideChangesAction(intents.toggleDiff),
       family: "edit",
-      run: intents.toggleDiff,
     },
   ];
   return normalizedPaletteCommands(commands);

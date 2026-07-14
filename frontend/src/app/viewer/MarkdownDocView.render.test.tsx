@@ -14,10 +14,22 @@
 // palette command under the one shared action id.
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { createElement } from "react";
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { I18nextProvider } from "react-i18next";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+} from "../../localization/testing";
+import { en } from "../../locales/en";
 import type { ContentView } from "../../stores/server/queries";
 import { queryClient } from "../../stores/server/queryClient";
 import {
@@ -27,7 +39,6 @@ import {
 } from "../../stores/view/editor";
 import {
   EDITOR_TOGGLE_DIFF_ACTION_ID,
-  EDITOR_TOGGLE_DIFF_LABEL,
   deriveEditorKeybindings,
 } from "../../stores/view/editorKeybindings";
 import {
@@ -39,6 +50,7 @@ import "../../stores/view/commandProviders/editorCommandProvider";
 import { MarkdownDocView } from "./MarkdownDocView";
 
 const NODE_ID = "doc:2026-07-11-sample-plan";
+const TOGGLE_CHANGES_LABEL = en.documents.actions.showOrHideChanges;
 const BODY = [
   "---",
   "tags:",
@@ -66,20 +78,16 @@ function content(): ContentView {
 }
 
 function renderEditing() {
+  const runtime = createTestLocalizationRuntime();
   const view = render(
-    createElement(
-      QueryClientProvider,
-      { client: queryClient },
-      createElement(MarkdownDocView, {
-        nodeId: NODE_ID,
-        content: content(),
-        scope: null,
-        trail: [],
-      }),
-    ),
+    <I18nextProvider i18n={runtime}>
+      <QueryClientProvider client={queryClient}>
+        <MarkdownDocView nodeId={NODE_ID} content={content()} scope={null} trail={[]} />
+      </QueryClientProvider>
+    </I18nextProvider>,
   );
   act(() => openDocumentEditor(NODE_ID, BODY, "abc"));
-  return view;
+  return { ...view, runtime };
 }
 
 afterEach(() => {
@@ -144,7 +152,22 @@ describe("MarkdownDocView edit mode", () => {
 describe("MarkdownDocView diff panel (S20)", () => {
   it("shows the diff toggle button in edit mode", () => {
     renderEditing();
-    expect(screen.getByRole("button", { name: EDITOR_TOGGLE_DIFF_LABEL })).toBeTruthy();
+    expect(screen.getByRole("button", { name: TOGGLE_CHANGES_LABEL })).toBeTruthy();
+  });
+
+  it("reactively localizes the diff toggle without replacing it", async () => {
+    const { runtime } = renderEditing();
+    const toggle = screen.getByRole("button", { name: TOGGLE_CHANGES_LABEL });
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+
+    const localized = screen.getByRole("button", {
+      name: "Afficher ou masquer les modifications",
+    });
+    expect(localized).toBe(toggle);
+    expect(localized.getAttribute("title")).toBe(
+      "Afficher ou masquer les modifications",
+    );
   });
 
   it("does NOT mount the diff section before the toggle fires", () => {
@@ -156,7 +179,7 @@ describe("MarkdownDocView diff panel (S20)", () => {
     const { container } = renderEditing();
     // Diverge the draft from the base text by appending a new line.
     act(() => updateEditorDraft(BODY + "\nAdded line from draft"));
-    fireEvent.click(screen.getByRole("button", { name: EDITOR_TOGGLE_DIFF_LABEL }));
+    fireEvent.click(screen.getByRole("button", { name: TOGGLE_CHANGES_LABEL }));
     // At least one added hunk must be present.
     expect(container.querySelectorAll('[data-diff-line="add"]').length).toBeGreaterThan(
       0,
@@ -166,7 +189,7 @@ describe("MarkdownDocView diff panel (S20)", () => {
   it("collapses the diff section when the toggle fires a second time", () => {
     renderEditing();
     act(() => updateEditorDraft(BODY + "\nAdded line from draft"));
-    const btn = screen.getByRole("button", { name: EDITOR_TOGGLE_DIFF_LABEL });
+    const btn = screen.getByRole("button", { name: TOGGLE_CHANGES_LABEL });
     fireEvent.click(btn);
     // Diff section is visible.
     expect(document.querySelector("[data-editor-diff-section]")).not.toBeNull();
@@ -176,20 +199,21 @@ describe("MarkdownDocView diff panel (S20)", () => {
   });
 
   it("does not mount the diff toggle or section in read mode (editor closed)", () => {
+    const runtime = createTestLocalizationRuntime();
     render(
-      createElement(
-        QueryClientProvider,
-        { client: queryClient },
-        createElement(MarkdownDocView, {
-          nodeId: NODE_ID,
-          content: content(),
-          scope: null,
-          trail: [],
-        }),
-      ),
+      <I18nextProvider i18n={runtime}>
+        <QueryClientProvider client={queryClient}>
+          <MarkdownDocView
+            nodeId={NODE_ID}
+            content={content()}
+            scope={null}
+            trail={[]}
+          />
+        </QueryClientProvider>
+      </I18nextProvider>,
     );
     // Not in edit mode — neither the diff button nor the diff section appears.
-    expect(screen.queryByRole("button", { name: EDITOR_TOGGLE_DIFF_LABEL })).toBeNull();
+    expect(screen.queryByRole("button", { name: TOGGLE_CHANGES_LABEL })).toBeNull();
     expect(document.querySelector("[data-editor-diff-section]")).toBeNull();
   });
 });
@@ -263,20 +287,11 @@ describe("editor:toggle-diff enrollment guard (S20)", () => {
 // settle to the final draft after the 250ms trailing window.
 
 describe("MarkdownDocView diff debounce (S19 ceiling closure)", () => {
-  beforeEach(() => {
-    // Fake only setTimeout/clearTimeout so the debounce is clock-controlled;
-    // React's MessageChannel scheduler is not affected.
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("debounces proposed text: rapid edits do not immediately recompute the diff, then settle after 250ms", () => {
+  it("debounces proposed text: rapid edits do not immediately recompute the diff, then settle after 250ms", async () => {
     const { container } = renderEditing();
     // Open the diff panel: leading flush renders the current draft (same as base —
     // no divergence yet, so no added hunks).
-    fireEvent.click(screen.getByRole("button", { name: EDITOR_TOGGLE_DIFF_LABEL }));
+    fireEvent.click(screen.getByRole("button", { name: TOGGLE_CHANGES_LABEL }));
     expect(container.querySelectorAll('[data-diff-line="add"]').length).toBe(0);
 
     // Rapid successive keystrokes — all within the 250ms window.
@@ -287,14 +302,13 @@ describe("MarkdownDocView diff debounce (S19 ceiling closure)", () => {
     // Debounce timer has NOT elapsed: diff still reflects the open-flush snapshot (no hunks).
     expect(container.querySelectorAll('[data-diff-line="add"]').length).toBe(0);
 
-    // Advance past the 250ms trailing window.
-    act(() => {
-      vi.advanceTimersByTime(260);
-    });
-
     // Diff has now settled to the final draft: at least one added hunk is visible.
-    expect(container.querySelectorAll('[data-diff-line="add"]').length).toBeGreaterThan(
-      0,
+    await waitFor(
+      () =>
+        expect(
+          container.querySelectorAll('[data-diff-line="add"]').length,
+        ).toBeGreaterThan(0),
+      { timeout: 1_000 },
     );
   });
 });

@@ -4,7 +4,6 @@ export const common = {
     confirmAction: "Confirm {{action}}?",
     recordShortcut: "Record a shortcut for {{action}}",
     resetShortcut: "Reset the shortcut for {{action}}",
-    toggleEditModeShortcut: "Toggle edit mode ({{accelerator}})",
   },
   actions: {
     cancel: "Cancel",

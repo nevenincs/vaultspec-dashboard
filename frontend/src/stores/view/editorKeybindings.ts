@@ -11,13 +11,9 @@
 
 import { useEffect } from "react";
 
-import {
-  legacyActionPresentation,
-  type ActionDescriptor,
-} from "../../platform/actions/action";
+import type { ActionDescriptor } from "../../platform/actions/action";
 import {
   type KeybindingDef,
-  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { useSaveBody } from "../server/queries";
@@ -29,22 +25,126 @@ import {
 } from "./editor";
 import { registerKeyAction } from "./keymapDispatcher";
 import { requestCloseDocumentEditor } from "./unsavedEditGuard";
-import { useViewStore } from "./viewStore";
+import { type EditorStatus, type ViewState, useViewStore } from "./viewStore";
 
 export const EDITOR_SAVE_ACTION_ID = "editor:save-body";
 export const EDITOR_CLOSE_ACTION_ID = "editor:close";
 export const EDITOR_TOGGLE_MODE_ACTION_ID = "editor:toggle-mode";
 export const EDITOR_TOGGLE_DIFF_ACTION_ID = "editor:toggle-diff";
 
-export const EDITOR_SAVE_LABEL = legacyKeybindingPresentation("Save the open document");
-export const EDITOR_CLOSE_LABEL = legacyKeybindingPresentation("Close the editor");
-export const EDITOR_TOGGLE_MODE_LABEL = legacyKeybindingPresentation(
-  "Toggle document edit mode",
-);
-export const EDITOR_TOGGLE_DIFF_LABEL =
-  legacyKeybindingPresentation("Toggle draft diff");
+export const EDITOR_SAVE_LABEL = { key: "documents:actions.save" } as const;
+export const EDITOR_CLOSE_LABEL = {
+  key: "documents:actions.finishEditing",
+} as const;
+export const EDITOR_TOGGLE_MODE_LABEL = {
+  key: "documents:actions.switchReadingAndEditing",
+} as const;
+export const EDITOR_TOGGLE_DIFF_LABEL = {
+  key: "documents:actions.showOrHideChanges",
+} as const;
 
-const EDITOR_GROUP = legacyKeybindingPresentation("Editor");
+const EDITOR_GROUP = { key: "documents:shortcutGroups.editing" } as const;
+
+const OPEN_FOR_EDITING_REASON = {
+  key: "documents:disabledReasons.openForEditing",
+} as const;
+const UPDATE_BEFORE_SAVING_REASON = {
+  key: "documents:disabledReasons.updateBeforeSaving",
+} as const;
+const TRY_AFTER_SAVING_REASON = {
+  key: "documents:disabledReasons.tryAfterSaving",
+} as const;
+const COPY_CHANGES_BEFORE_REOPENING_REASON = {
+  key: "documents:disabledReasons.copyChangesBeforeReopening",
+} as const;
+
+export type EditorSaveAvailability =
+  | { readonly disabled: false; readonly disabledReason?: never }
+  | {
+      readonly disabled: true;
+      readonly disabledReason:
+        | typeof OPEN_FOR_EDITING_REASON
+        | typeof UPDATE_BEFORE_SAVING_REASON
+        | typeof TRY_AFTER_SAVING_REASON
+        | typeof COPY_CHANGES_BEFORE_REOPENING_REASON;
+    };
+
+function exhaustiveEditorStatus(status: never): never {
+  throw new Error(`Unhandled editor status: ${String(status)}`);
+}
+
+/** Derive save availability from one editor-state snapshot. */
+export function deriveEditorSaveAvailability(
+  state: Pick<ViewState, "editorTarget" | "editorStatus">,
+): EditorSaveAvailability {
+  if (state.editorTarget === null) {
+    return { disabled: true, disabledReason: OPEN_FOR_EDITING_REASON };
+  }
+  const status: EditorStatus = state.editorStatus;
+  switch (status) {
+    case "dirty":
+    case "save-failed":
+      return { disabled: false };
+    case "saving":
+      return { disabled: true, disabledReason: TRY_AFTER_SAVING_REASON };
+    case "conflict":
+      return {
+        disabled: true,
+        disabledReason: COPY_CHANGES_BEFORE_REOPENING_REASON,
+      };
+    case "idle":
+    case "saved":
+      return { disabled: true, disabledReason: UPDATE_BEFORE_SAVING_REASON };
+    default:
+      return exhaustiveEditorStatus(status);
+  }
+}
+
+export function saveDocumentAction(
+  run: () => void,
+  availability: EditorSaveAvailability,
+): ActionDescriptor {
+  return {
+    id: EDITOR_SAVE_ACTION_ID,
+    label: EDITOR_SAVE_LABEL,
+    ...availability,
+    run,
+  };
+}
+
+export function finishEditingAction(
+  run: () => void,
+  disabled: boolean,
+): ActionDescriptor {
+  return {
+    id: EDITOR_CLOSE_ACTION_ID,
+    label: EDITOR_CLOSE_LABEL,
+    disabled,
+    disabledReason: disabled ? OPEN_FOR_EDITING_REASON : undefined,
+    run,
+  };
+}
+
+export function switchReadingAndEditingAction(run: () => void): ActionDescriptor {
+  return {
+    id: EDITOR_TOGGLE_MODE_ACTION_ID,
+    label: EDITOR_TOGGLE_MODE_LABEL,
+    run,
+  };
+}
+
+export function showOrHideChangesAction(
+  run: () => void,
+  disabled = false,
+): ActionDescriptor {
+  return {
+    id: EDITOR_TOGGLE_DIFF_ACTION_ID,
+    label: EDITOR_TOGGLE_DIFF_LABEL,
+    disabled,
+    disabledReason: disabled ? OPEN_FOR_EDITING_REASON : undefined,
+    run,
+  };
+}
 
 export function deriveEditorKeybindings(): KeybindingDef[] {
   return [
@@ -87,15 +187,6 @@ export function deriveEditorKeybindings(): KeybindingDef[] {
   ];
 }
 
-/** True when an editor is open and its draft diverges from the saved text. */
-function editorCanSave(): boolean {
-  const state = useViewStore.getState();
-  return (
-    state.editorTarget !== null &&
-    (state.editorStatus === "dirty" || state.editorStatus === "save-failed")
-  );
-}
-
 export function useEditorKeybindings(): void {
   const saveBody = useSaveBody();
 
@@ -104,14 +195,10 @@ export function useEditorKeybindings(): void {
 
     const disposeSave = registerKeyAction(
       EDITOR_SAVE_ACTION_ID,
-      (): ActionDescriptor => ({
-        id: EDITOR_SAVE_ACTION_ID,
-        label: legacyActionPresentation(EDITOR_SAVE_LABEL),
-        disabled: !editorCanSave(),
-        disabledReason: editorCanSave()
-          ? undefined
-          : legacyActionPresentation("no unsaved changes"),
-        run: () => {
+      (): ActionDescriptor => {
+        const snapshot = useViewStore.getState();
+        const availability = deriveEditorSaveAvailability(snapshot);
+        return saveDocumentAction(() => {
           const state = useViewStore.getState();
           if (state.editorTarget === null) return;
           // Capture the draft at mutation time so the save-resolve closure can
@@ -135,41 +222,32 @@ export function useEditorKeybindings(): void {
               onError: () => markEditorFailed(),
             },
           );
-        },
-      }),
+        }, availability);
+      },
     );
 
     const disposeClose = registerKeyAction(
       EDITOR_CLOSE_ACTION_ID,
-      (): ActionDescriptor => ({
-        id: EDITOR_CLOSE_ACTION_ID,
-        label: legacyActionPresentation(EDITOR_CLOSE_LABEL),
-        disabled: useViewStore.getState().editorTarget === null,
-        disabledReason:
-          useViewStore.getState().editorTarget === null
-            ? legacyActionPresentation("no open document")
-            : undefined,
-        run: requestCloseDocumentEditor,
-      }),
+      (): ActionDescriptor => {
+        const snapshot = useViewStore.getState();
+        return finishEditingAction(
+          requestCloseDocumentEditor,
+          snapshot.editorTarget === null,
+        );
+      },
     );
 
     const disposeToggleDiff = registerKeyAction(
       EDITOR_TOGGLE_DIFF_ACTION_ID,
-      (): ActionDescriptor => ({
-        id: EDITOR_TOGGLE_DIFF_ACTION_ID,
-        label: legacyActionPresentation(EDITOR_TOGGLE_DIFF_LABEL),
-        disabled: useViewStore.getState().editorTarget === null,
-        disabledReason:
-          useViewStore.getState().editorTarget === null
-            ? legacyActionPresentation("no open document")
-            : undefined,
-        run: () => {
+      (): ActionDescriptor => {
+        const snapshot = useViewStore.getState();
+        return showOrHideChangesAction(() => {
           // Guard so a stale keymap action does not toggle a closed editor's state.
           if (useViewStore.getState().editorTarget !== null) {
             toggleEditorDiff();
           }
-        },
-      }),
+        }, snapshot.editorTarget === null);
+      },
     );
 
     return () => {
