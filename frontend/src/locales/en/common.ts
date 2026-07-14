@@ -31,11 +31,14 @@ export const common = {
     retry: "Retry",
     showApprovals: "Show approvals",
     showGraph: "Show graph",
+    showOrHideGraph: "Show or hide graph",
     showInFileManager: "Show in file manager",
     showKeyboardShortcuts: "Show keyboard shortcuts",
     showProjectHealth: "Show project health",
     showSearchStatus: "Show search status",
     showSystemStatus: "Show system status",
+    moveToNextPanel: "Move to the next panel",
+    moveToPreviousPanel: "Move to the previous panel",
   },
   disabledReasons: {
     actionUnavailable: "Reload the page and try this action again.",
@@ -58,7 +61,9 @@ export const common = {
     recording: "Press a key…",
   },
   shortcutGroups: {
+    graph: "Graph",
     navigation: "Navigation",
+    window: "Window",
   },
   keycaps: {
     alt: "Alt",

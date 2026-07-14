@@ -25,13 +25,12 @@
 // it NEVER fetches and NEVER reads the raw `tiers` block (dashboard-layer-
 // ownership, views-are-projections-of-one-model).
 
-import { legacyActionPresentation } from "../../platform/actions/action";
 import { useEffect } from "react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import {
   type KeybindingDef,
-  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { registerKeyAction } from "../../stores/view/keymapDispatcher";
@@ -54,13 +53,13 @@ export const GRAPH_OPEN_ACTION_ID = "graph:open";
 export const GRAPH_EXPAND_ACTION_ID = "graph:expand";
 export const GRAPH_CLEAR_ACTION_ID = "graph:clear";
 
-const GRAPH_GROUP = legacyKeybindingPresentation("Graph");
-const GRAPH_WALK_NEXT_LABEL = legacyKeybindingPresentation(
-  "Walk to the next connected node",
-);
-const GRAPH_WALK_PREVIOUS_LABEL = legacyKeybindingPresentation(
-  "Walk to the previous connected node",
-);
+const GRAPH_GROUP = { key: "common:shortcutGroups.graph" } as const;
+const GRAPH_WALK_NEXT_LABEL = {
+  key: "graph:actions.moveToNextConnectedItem",
+} as const;
+const GRAPH_WALK_PREVIOUS_LABEL = {
+  key: "graph:actions.moveToPreviousConnectedItem",
+} as const;
 
 /**
  * The canvas-context bindings. Each entry pairs an action id with the physical
@@ -72,7 +71,9 @@ const GRAPH_WALK_PREVIOUS_LABEL = legacyKeybindingPresentation(
  * are the walk mechanism.
  */
 interface GraphWalkBinding {
-  readonly def: KeybindingDef;
+  readonly def: Omit<KeybindingDef, "label"> & {
+    readonly label: MessageDescriptor;
+  };
   /** The physical key, fed through `actionForKey` to the shared runner. */
   readonly key: string;
 }
@@ -122,7 +123,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_OPEN_ACTION_ID,
       defaultChord: "Enter",
-      label: legacyKeybindingPresentation("Open the focused node"),
+      label: { key: "graph:actions.openFocusedItem" },
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -132,9 +133,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_EXPAND_ACTION_ID,
       defaultChord: "e",
-      label: legacyKeybindingPresentation(
-        "Expand the focused node onto the working set",
-      ),
+      label: { key: "graph:actions.expandFocusedItem" },
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -144,7 +143,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_CLEAR_ACTION_ID,
       defaultChord: "Escape",
-      label: legacyKeybindingPresentation("Clear the canvas selection"),
+      label: { key: "graph:actions.clearSelection" },
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -153,7 +152,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
 ];
 
 /** The bindable defs the registry/legend enrol — exported for tests. */
-export const GRAPH_WALK_KEYBINDING_DEFS: readonly KeybindingDef[] =
+export const GRAPH_WALK_KEYBINDING_DEFS: readonly GraphWalkBinding["def"][] =
   GRAPH_WALK_BINDINGS.map((binding) => binding.def);
 
 /**
@@ -172,10 +171,7 @@ export function deriveGraphWalkActionDescriptor(
   if (action === null) return null;
   return {
     id: binding.def.id,
-    label:
-      typeof binding.def.label === "string"
-        ? legacyActionPresentation(binding.def.label)
-        : binding.def.label,
+    label: binding.def.label,
     run: () => {
       runGraphWalkAction(action, graph(), handlers);
     },

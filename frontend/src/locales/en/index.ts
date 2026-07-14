@@ -2,9 +2,10 @@ import { common } from "./common";
 import { documents } from "./documents";
 import { errors } from "./errors";
 import { features } from "./features";
+import { graph } from "./graph";
 import { projects } from "./projects";
 
-export { common, documents, errors, features, projects };
+export { common, documents, errors, features, graph, projects };
 
 export const sourceLocale = "en" as const;
 export const defaultNS = "common" as const;
@@ -14,6 +15,7 @@ export const en = {
   documents,
   errors,
   features,
+  graph,
   projects,
 } as const;
 

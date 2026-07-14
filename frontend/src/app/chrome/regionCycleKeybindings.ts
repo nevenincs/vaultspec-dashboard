@@ -9,13 +9,11 @@
 // Layer: app/chrome — imports the keymap registry (platform) and the action
 // resolver registrar (stores) downward, mirroring `app/left/leftRailActions`.
 
-import { legacyActionPresentation } from "../../platform/actions/action";
 import { useEffect } from "react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
 import {
   type KeybindingDef,
-  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { registerKeyAction } from "../../stores/view/keymapDispatcher";
@@ -24,14 +22,22 @@ import { cycleFocusRegion, rememberRegionFocus } from "./focusRegions";
 export const REGION_CYCLE_NEXT_ACTION_ID = "shell:cycle-region-next";
 export const REGION_CYCLE_PREV_ACTION_ID = "shell:cycle-region-previous";
 
-export const REGION_CYCLE_NEXT_LABEL = legacyKeybindingPresentation(
-  "Move to the next panel",
-);
-export const REGION_CYCLE_PREV_LABEL = legacyKeybindingPresentation(
-  "Move to the previous panel",
-);
+export const REGION_CYCLE_NEXT_LABEL = {
+  key: "common:actions.moveToNextPanel",
+} as const;
+export const REGION_CYCLE_PREV_LABEL = {
+  key: "common:actions.moveToPreviousPanel",
+} as const;
 
-const REGION_CYCLE_GROUP = legacyKeybindingPresentation("Navigation");
+const REGION_CYCLE_GROUP = { key: "common:shortcutGroups.navigation" } as const;
+
+export function regionCycleAction(direction: 1 | -1): ActionDescriptor {
+  return {
+    id: direction === 1 ? REGION_CYCLE_NEXT_ACTION_ID : REGION_CYCLE_PREV_ACTION_ID,
+    label: direction === 1 ? REGION_CYCLE_NEXT_LABEL : REGION_CYCLE_PREV_LABEL,
+    run: () => void cycleFocusRegion(direction),
+  };
+}
 
 export function deriveRegionCycleKeybindings(): KeybindingDef[] {
   return [
@@ -62,19 +68,11 @@ export function useRegionCycleKeybindings(): void {
     const disposeBindings = registerKeybindings(deriveRegionCycleKeybindings());
     const disposeNext = registerKeyAction(
       REGION_CYCLE_NEXT_ACTION_ID,
-      (): ActionDescriptor => ({
-        id: REGION_CYCLE_NEXT_ACTION_ID,
-        label: legacyActionPresentation(REGION_CYCLE_NEXT_LABEL),
-        run: () => void cycleFocusRegion(1),
-      }),
+      (): ActionDescriptor => regionCycleAction(1),
     );
     const disposePrev = registerKeyAction(
       REGION_CYCLE_PREV_ACTION_ID,
-      (): ActionDescriptor => ({
-        id: REGION_CYCLE_PREV_ACTION_ID,
-        label: legacyActionPresentation(REGION_CYCLE_PREV_LABEL),
-        run: () => void cycleFocusRegion(-1),
-      }),
+      (): ActionDescriptor => regionCycleAction(-1),
     );
 
     const onFocusIn = (event: FocusEvent) => rememberRegionFocus(event.target);

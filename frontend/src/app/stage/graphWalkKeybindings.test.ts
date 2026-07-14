@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type ChordEvent } from "../../platform/keymap/chord";
 import {
   type KeybindingDef,
-  legacyKeybindingPresentation,
   resetKeybindings,
   resolveKeybinding,
 } from "../../platform/keymap/registry";
@@ -38,7 +37,7 @@ describe("the canvas graph-walk keybinding catalog", () => {
   it("declares every walk verb in the canvas context under the Graph group", () => {
     for (const binding of GRAPH_WALK_KEYBINDING_DEFS) {
       expect(binding.context).toBe(CANVAS_KEYMAP_CONTEXT);
-      expect(binding.group).toBe("Graph");
+      expect(binding.group).toEqual({ key: "common:shortcutGroups.graph" });
     }
   });
 
@@ -90,8 +89,8 @@ describe("double-fire resolution: canvas context overrides the colliding global"
   const globalArrowLeft: KeybindingDef = {
     id: "nav:neighbor-previous",
     defaultChord: "ArrowLeft",
-    label: legacyKeybindingPresentation("Select previous connected document"),
-    group: legacyKeybindingPresentation("Navigation"),
+    label: { key: "graph:actions.moveToPreviousConnectedItem" },
+    group: { key: "common:shortcutGroups.navigation" },
     context: "global",
   };
   const canvasArrowLeft = GRAPH_WALK_KEYBINDING_DEFS.find(

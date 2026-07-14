@@ -10,13 +10,13 @@ import { useEffect } from "react";
 
 import {
   type KeybindingDef,
-  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { GRAPH_TOGGLE_ACTION_ID, toggleGraphAction } from "./chromeActions";
 import { registerKeyAction } from "./keymapDispatcher";
 
-const GRAPH_TOGGLE_GROUP = legacyKeybindingPresentation("Window");
+const GRAPH_TOGGLE_GROUP = { key: "common:shortcutGroups.window" } as const;
+const GRAPH_TOGGLE_LABEL = { key: "common:actions.showOrHideGraph" } as const;
 
 export function deriveGraphToggleKeybindings(): KeybindingDef[] {
   return [
@@ -25,7 +25,7 @@ export function deriveGraphToggleKeybindings(): KeybindingDef[] {
       // Mod+Shift+G is unbound elsewhere; the chord is rebindable through the
       // engine-owned keybindings override map like every other command shortcut.
       defaultChord: "Mod+Shift+G",
-      label: legacyKeybindingPresentation("Toggle graph"),
+      label: GRAPH_TOGGLE_LABEL,
       group: GRAPH_TOGGLE_GROUP,
       context: "global",
     },

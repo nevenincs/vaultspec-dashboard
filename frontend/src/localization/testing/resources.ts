@@ -14,10 +14,13 @@ export const ltrTestResources = {
       ...en.common.actions,
       cancel: "Annuler",
       close: "Fermer",
+      moveToNextPanel: "Passer au panneau suivant",
+      moveToPreviousPanel: "Passer au panneau précédent",
       reloadPage: "Recharger la page",
       reset: "Réinitialiser",
       retry: "Réessayer",
       showKeyboardShortcuts: "Afficher les raccourcis clavier",
+      showOrHideGraph: "Afficher ou masquer le graphe",
     },
     disabledReasons: en.common.disabledReasons,
     destructiveActions: {
@@ -34,7 +37,9 @@ export const ltrTestResources = {
       recording: "Appuyez sur une touche…",
     },
     shortcutGroups: {
+      graph: "Graphe",
       navigation: "Navigation",
+      window: "Fenêtre",
     },
     keycaps: {
       ...en.common.keycaps,
@@ -100,6 +105,15 @@ export const ltrTestResources = {
     },
   },
   features: en.features,
+  graph: {
+    actions: {
+      clearSelection: "Effacer la sélection du graphe",
+      expandFocusedItem: "Développer l’élément actif dans l’espace de travail",
+      moveToNextConnectedItem: "Passer à l’élément connecté suivant",
+      moveToPreviousConnectedItem: "Passer à l’élément connecté précédent",
+      openFocusedItem: "Ouvrir l’élément actif",
+    },
+  },
   projects: en.projects,
 } as const;
 
@@ -114,9 +128,12 @@ export const rtlTestResources = {
       ...en.common.actions,
       cancel: "إلغاء",
       close: "إغلاق",
+      moveToNextPanel: "الانتقال إلى اللوحة التالية",
+      moveToPreviousPanel: "الانتقال إلى اللوحة السابقة",
       reloadPage: "إعادة تحميل الصفحة",
       reset: "إعادة تعيين",
       retry: "إعادة المحاولة",
+      showOrHideGraph: "إظهار الرسم البياني أو إخفاؤه",
     },
     disabledReasons: en.common.disabledReasons,
     destructiveActions: {
@@ -128,7 +145,11 @@ export const rtlTestResources = {
       empty: "لا توجد اختصارات لوحة مفاتيح متاحة",
       recording: "اضغط على مفتاح…",
     },
-    shortcutGroups: en.common.shortcutGroups,
+    shortcutGroups: {
+      graph: "الرسم البياني",
+      navigation: "التنقل",
+      window: "النافذة",
+    },
     keycaps: {
       ...en.common.keycaps,
       arrowDown: "سهم للأسفل",
@@ -181,6 +202,15 @@ export const rtlTestResources = {
     },
   },
   features: en.features,
+  graph: {
+    actions: {
+      clearSelection: "مسح تحديد الرسم البياني",
+      expandFocusedItem: "توسيع العنصر المحدد ضمن مساحة العمل",
+      moveToNextConnectedItem: "الانتقال إلى العنصر المتصل التالي",
+      moveToPreviousConnectedItem: "الانتقال إلى العنصر المتصل السابق",
+      openFocusedItem: "فتح العنصر المحدد",
+    },
+  },
   projects: en.projects,
 } as const;
 

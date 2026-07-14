@@ -285,31 +285,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "9289ccd6d919ede8d2720a43",
-    "path": "src/app/chrome/regionCycleKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "e8e66158f10782874b4a5a1f",
-    "path": "src/app/chrome/regionCycleKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "10dd00c8dc375c81870b77c3",
-    "path": "src/app/chrome/regionCycleKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "1dc50cc23dfe5fdb7666a316",
-    "path": "src/app/chrome/regionCycleKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "a69635ff28c3846659df18d6",
-    "path": "src/app/chrome/regionCycleKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
     "id": "3016c705025c84206758f54b",
     "path": "src/app/degradation/DebugSwitch.tsx",
     "rule": "jsx-attribute"
@@ -3710,41 +3685,6 @@
     "rule": "direct-locale-format"
   },
   {
-    "id": "10880e3bc2f90bfa00dcf7c3",
-    "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "3eaba0700320b55acb4deade",
-    "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "457123e6b5262dc09cf42344",
-    "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "53505d2a5a95cc5eeafa26e1",
-    "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "782bd8fb63684c13c7610ade",
-    "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "ba580bd1613d5d5cf57f3ab1",
-    "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "d166b6306f46c4ba8feb994e",
-    "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
     "id": "346b15058d4b992744eacd42",
     "path": "src/app/stage/menus/canvasMenu.ts",
     "rule": "legacy-action-presentation"
@@ -6573,16 +6513,6 @@
     "id": "fd3e6f97aa12432565955f66",
     "path": "src/stores/view/graphControlsChrome.ts",
     "rule": "presentation-field"
-  },
-  {
-    "id": "3ca502e84feba4ebc433ca0f",
-    "path": "src/stores/view/graphToggleKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "ca8c558d701c93b52012cce6",
-    "path": "src/stores/view/graphToggleKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "4f18816b7aa4e5e8a0de766d",
