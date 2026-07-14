@@ -42,6 +42,7 @@ import {
   openCreateDocDialog,
   resetCreateDocChrome,
   setCreateDocRelated,
+  setCreateDocType,
   useCreateDocChromeStore,
 } from "../../stores/view/createDocChrome";
 import { CoverageCard, CreateDocDialog } from "./CreateDocDialog";
@@ -120,6 +121,91 @@ describe("CreateDocDialog feature-group panel (store-driven mount)", () => {
     act(() => openCreateDocDialog());
     const cont = screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement;
     expect(cont.disabled).toBe(true);
+  });
+
+  it("focuses the feature combobox on EVERY open, not the header close button", () => {
+    // Hardening audit default-initial-focus-is-close-button: a palette/keymap/menu
+    // open (no focusFeature flag) must land on the stage's primary field.
+    renderSeeded();
+    act(() => openCreateDocDialog());
+    expect(document.activeElement).toBe(
+      screen.getByRole("combobox", { name: "feature" }),
+    );
+  });
+
+  it("re-homes focus across stage transitions (audit focus-loss HIGH)", () => {
+    renderSeeded();
+    act(() => openCreateDocDialog("some-feature"));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    // Entering stage 2 focuses the selected type radio (research, the default).
+    expect(document.activeElement).toBe(
+      screen.getByRole("radio", { name: "Research" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Back to feature" }));
+    // Returning focuses the feature combobox, never document.body.
+    expect(document.activeElement).toBe(
+      screen.getByRole("combobox", { name: "feature" }),
+    );
+  });
+
+  it("announces the stage through a polite live region", () => {
+    renderSeeded();
+    act(() => openCreateDocDialog("some-feature"));
+    const dialog = screen.getByRole("dialog");
+    const live = dialog.querySelector('[aria-live="polite"].sr-only') as HTMLElement;
+    expect(live.textContent).toBe("Step 1 of 2: Add to a feature");
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(live.textContent).toBe("Step 2 of 2: Add a document");
+  });
+
+  it("Home and End rove to the first and last type rows without leaking", () => {
+    const windowSpy = vi.fn();
+    window.addEventListener("keydown", windowSpy);
+    try {
+      renderSeeded();
+      act(() => openCreateDocDialog("some-feature"));
+      act(() => goToCreateDocDocumentStage());
+      const group = screen.getByRole("radiogroup", { name: "Document type" });
+      fireEvent.keyDown(group, { key: "End" });
+      expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Audit" }));
+      fireEvent.keyDown(group, { key: "Home" });
+      expect(document.activeElement).toBe(
+        screen.getByRole("radio", { name: "Research" }),
+      );
+      expect(windowSpy).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("keydown", windowSpy);
+    }
+  });
+
+  it("Escape preserves the draft; reopen restores it at stage 1", () => {
+    // Hardening ADR: dismiss must never wipe typed work.
+    renderSeeded();
+    act(() => openCreateDocDialog("kept-feature"));
+    act(() => goToCreateDocDocumentStage());
+    act(() => setCreateDocRelated(["2026-01-01-kept-research"]));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(useCreateDocChromeStore.getState().open).toBe(false);
+    expect(useCreateDocChromeStore.getState().feature).toBe("kept-feature");
+    act(() => openCreateDocDialog());
+    expect(screen.getByRole("dialog", { name: "Add to a feature" })).toBeTruthy();
+    expect(
+      (screen.getByRole("combobox", { name: "feature" }) as HTMLInputElement).value,
+    ).toBe("kept-feature");
+    expect(useCreateDocChromeStore.getState().related).toEqual([
+      "2026-01-01-kept-research",
+    ]);
+  });
+
+  it("offers a corpus-fed add-link field so removed links are recoverable", () => {
+    renderSeeded();
+    act(() => openCreateDocDialog("some-feature"));
+    act(() => goToCreateDocDocumentStage());
+    // The affordance is always present (keyboard re-add, hardening follow-on);
+    // the seeded no-scope corpus is empty so it degrades to the empty label.
+    expect(
+      screen.getByRole("combobox", { name: "add a linked document" }),
+    ).toBeTruthy();
   });
 
   it("never offers exec in the document-type list (ADR D4)", () => {
@@ -327,10 +413,61 @@ describe("CreateDocDialog feature-group panel (live engine coverage)", () => {
     expect(adr.getAttribute("aria-describedby")).toBe(reason.id);
     adr.focus();
     expect(document.activeElement).toBe(adr);
-    // Activating the ineligible type is a no-op — it is never selectable or
-    // submittable (the selection stays on the eligible entry point).
+    // Activating the ineligible type NEVER selects it — it routes to the
+    // prerequisite instead (one-click path, asserted in its own test below).
     fireEvent.click(adr);
     expect(adr.getAttribute("aria-checked")).toBe("false");
     expect(useCreateDocChromeStore.getState().docType).not.toBe("adr");
+  });
+
+  it("one-click routes an ineligible type to its eligible prerequisite (ADR D3)", async () => {
+    useViewStore.getState().setScope(scope);
+    renderLive();
+    act(() => openCreateDocDialog("fresh-unseen-feature"));
+    const card = screen.getByRole("region", { name: "Pipeline coverage" });
+    await waitFor(
+      () => expect(within(card).getByText(/No documents yet/i)).toBeTruthy(),
+      ENGINE_WAIT,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    // Move the selection off the entry point first so the routing is observable.
+    act(() => setCreateDocType("audit"));
+    const group = screen.getByRole("radiogroup", { name: "Document type" });
+    const adr = within(group).getByRole("radio", { name: "Decision record" });
+    fireEvent.click(adr);
+    // adr's gate is research-or-reference: the click selects and focuses research.
+    expect(useCreateDocChromeStore.getState().docType).toBe("research");
+    expect(document.activeElement).toBe(
+      within(group).getByRole("radio", { name: "Research" }),
+    );
+  });
+
+  it("re-adds a removed link through the corpus-fed add field", async () => {
+    useViewStore.getState().setScope(scope);
+    renderLive();
+    act(() => openCreateDocDialog("alpha"));
+    const card = screen.getByRole("region", { name: "Pipeline coverage" });
+    await waitFor(
+      () => expect(within(card).getByText("2026-01-01-alpha-research")).toBeTruthy(),
+      ENGINE_WAIT,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    // The default type (research) seeds no links; pick a stem from the live corpus
+    // through the add field and commit it — the chip appears, removable again.
+    const add = screen.getByRole("combobox", { name: "add a linked document" });
+    fireEvent.focus(add);
+    fireEvent.change(add, { target: { value: "alpha-research" } });
+    await waitFor(() => expect(screen.getByRole("listbox")).toBeTruthy(), ENGINE_WAIT);
+    const option = screen
+      .getAllByRole("option")
+      .find((node) => node.textContent?.includes("2026-01-01-alpha-research"));
+    expect(option).toBeTruthy();
+    fireEvent.mouseDown(option!);
+    expect(useCreateDocChromeStore.getState().related).toContain(
+      "2026-01-01-alpha-research",
+    );
+    expect(
+      screen.getByRole("button", { name: "Remove 2026-01-01-alpha-research" }),
+    ).toBeTruthy();
   });
 });

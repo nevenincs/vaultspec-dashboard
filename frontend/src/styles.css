@@ -958,6 +958,12 @@
    above against each theme's ground. Floors: body text >=4.5:1, large/UI
    text and load-bearing non-text (focus ring, state marks) >=3:1.
 
+   ink-faint RULING (create-panel-hardening ADR, 2026-07-14): ink-faint
+   clears only the >=3:1 large-text/UI bar in both themes, so it is for
+   LARGE or purely DECORATIVE text only. INFORMATION-BEARING small text
+   (captions, stems, state lines, reasons, hints) uses ink-muted (>=4.5:1).
+   Not scanner-enforced; reviews hold the line.
+
    Method: sRGB relative luminance per WCAG, computed off-line from the OKLCH
    sRGB renderings (re-derivable: oklch L/C/H -> OKLab -> linear sRGB -> WCAG
    luminance). The warm ground shifts effective contrast, so every pair is

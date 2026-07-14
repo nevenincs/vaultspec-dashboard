@@ -210,10 +210,10 @@ export function CreateDocDialog() {
   // chain re-seeds with the freshly-served stems once they land.
   const seedKeyRef = useRef<string>("");
   useEffect(() => {
-    if (!open) {
-      seedKeyRef.current = "";
-      return;
-    }
+    if (!open) return;
+    // The key survives a dismiss (draft preservation, hardening ADR): a reopen of
+    // the SAME feature+type must NOT re-seed over preserved user edits. It clears
+    // only on the successful-create reset below, so the next document seeds fresh.
     const key = `${feature}::${docType}`;
     if (key === seedKeyRef.current) return;
     seedKeyRef.current = key;
@@ -274,6 +274,9 @@ export function CreateDocDialog() {
           if (result.kind === "created") {
             if (nodeId) void openDocTab(nodeId, "markdown", scope);
             resetCreateDocChrome();
+            // The draft is gone: let the NEXT open re-seed even for the same
+            // feature+type (the seed key otherwise survives dismissal).
+            seedKeyRef.current = "";
             return;
           }
           // Surface the served refusal reason verbatim (ADR constraint): core's
@@ -309,6 +312,36 @@ export function CreateDocDialog() {
   const focusOfferedRow = (row: { docType: CreateDocType; eligible: boolean }) => {
     optionRefs.current[row.docType]?.focus();
     if (row.eligible) setCreateDocType(row.docType);
+  };
+
+  // The one-click path to the prerequisite (ADR D3's promised affordance,
+  // hardening follow-on): activating an INELIGIBLE row walks the served reason
+  // chain to the first eligible upstream type and selects+focuses it — plan's
+  // gate is the decision record, whose own gate is research/reference.
+  const activateOfferedRow = (row: {
+    docType: CreateDocType;
+    eligible: boolean;
+    note: string | undefined;
+  }) => {
+    if (row.eligible) {
+      setCreateDocType(row.docType);
+      return;
+    }
+    let target: CreateDocType = row.note === "requires-adr" ? "adr" : "research";
+    for (let hops = 0; hops < 3; hops += 1) {
+      const next = offered.find((o) => o.docType === target);
+      if (!next) return;
+      if (next.eligible) {
+        focusOfferedRow(next);
+        return;
+      }
+      target = next.note === "requires-adr" ? "adr" : "research";
+    }
+  };
+
+  const addRelated = (stem: string) => {
+    // The store normalization dedupes and caps the list (CREATE_DOC_RELATED_MAX).
+    setCreateDocRelated([...related, stem]);
   };
 
   const moveSelection = (dir: 1 | -1) => {
@@ -413,8 +446,11 @@ export function CreateDocDialog() {
             optionRefs={optionRefs}
             backRef={backRef}
             onRadiogroupKeyDown={onRadiogroupKeyDown}
+            onActivateRow={activateOfferedRow}
             title={title}
             related={related}
+            corpusDocuments={corpus.documents}
+            onAddRelated={addRelated}
             onRemoveRelated={removeRelated}
             onTitleEnter={submitOnEnter}
           />
@@ -579,8 +615,15 @@ interface DocumentStageProps {
   optionRefs: React.MutableRefObject<Record<string, HTMLButtonElement | null>>;
   backRef: React.RefObject<HTMLButtonElement | null>;
   onRadiogroupKeyDown: (event: React.KeyboardEvent) => void;
+  onActivateRow: (row: {
+    docType: CreateDocType;
+    eligible: boolean;
+    note: string | undefined;
+  }) => void;
   title: string;
   related: string[];
+  corpusDocuments: readonly { stem: string; title: string; feature: string | null }[];
+  onAddRelated: (stem: string) => void;
   onRemoveRelated: (stem: string) => void;
   onTitleEnter: (event: React.KeyboardEvent) => void;
 }
@@ -592,8 +635,11 @@ function DocumentStage({
   optionRefs,
   backRef,
   onRadiogroupKeyDown,
+  onActivateRow,
   title,
   related,
+  corpusDocuments,
+  onAddRelated,
   onRemoveRelated,
   onTitleEnter,
 }: DocumentStageProps) {
@@ -657,9 +703,10 @@ function DocumentStage({
                 aria-disabled={row.eligible ? undefined : true}
                 aria-describedby={hintId}
                 tabIndex={selected ? 0 : -1}
-                onClick={() => {
-                  if (row.eligible) setCreateDocType(row.docType);
-                }}
+                // Eligible: select. Ineligible: the one-click path to the
+                // prerequisite (ADR D3) — activation walks the reason chain and
+                // selects the first eligible upstream type instead of a dead no-op.
+                onClick={() => onActivateRow(row)}
                 className={`flex items-start gap-fg-2 rounded-fg-sm border px-fg-2 py-fg-2 text-left transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                   selected
                     ? "border-accent bg-accent-subtle"
@@ -705,9 +752,12 @@ function DocumentStage({
         />
       </label>
 
-      {related.length > 0 && (
-        <div className="flex flex-col gap-fg-1 text-label text-ink-muted">
-          Linked documents
+      {/* Linked documents: always rendered so a removed link is RECOVERABLE by
+          keyboard (hardening follow-on) — the corpus-fed add field below re-adds
+          any document, the same picker primitive the editor's Related field uses. */}
+      <div className="flex flex-col gap-fg-1 text-label text-ink-muted">
+        Linked documents
+        {related.length > 0 && (
           <ul className="flex flex-wrap gap-fg-1" aria-label="Linked documents">
             {related.map((stem) => (
               <li key={stem}>
@@ -731,8 +781,22 @@ function DocumentStage({
               </li>
             ))}
           </ul>
-        </div>
-      )}
+        )}
+        <AutocompleteCombobox
+          options={corpusDocuments
+            .filter((doc) => !related.includes(doc.stem))
+            .map((doc) => ({
+              value: doc.stem,
+              primary: doc.title,
+              secondary: doc.stem,
+            }))}
+          onCommit={onAddRelated}
+          clearOnCommit
+          placeholder="Add a linked document"
+          ariaLabel="add a linked document"
+          emptyLabel="No matching documents"
+        />
+      </div>
     </>
   );
 }
