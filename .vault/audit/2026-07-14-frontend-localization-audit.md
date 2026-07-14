@@ -567,3 +567,49 @@ the full TypeScript 6 project check. Before accepting S13, add an independent ex
 leaf-key parity assertion for every shipped locale and remove or replace the assertions
 that are guaranteed by the current source-object traversal. Re-run the same real-runtime
 and static checks after remediation.
+
+### W01.P03.S119 interpolation parity | medium | Make compatibility coverage non-vacuous
+
+Commit `30a6a98e2f` iterates every production key and shipped locale, but the shipped
+registry currently contains only `en` and the English catalog contains no interpolation
+tokens. The parity assertion therefore compares an empty set with itself for every key.
+The alternate-locale case proves one complete and one missing-value resolution, but it
+does not compare token contracts between the left-to-right and right-to-left resources.
+Add a bounded real-resource compatibility case with at least one named token on both
+sides, and assert that the case actually discovers a token, so later changes cannot
+silently return this contract to a vacuous pass.
+
+### W01.P03.S119 descriptor bounds | medium | Count distinct parameter names, not token occurrences
+
+`catalogTemplate` compares the total number of interpolation occurrences with
+`MESSAGE_VALUE_COUNT_MAX`, while the descriptor contract bounds distinct value fields.
+A valid template that repeats one named value more than sixteen times would be rejected
+even though it needs only one bounded descriptor value. Apply the descriptor limit to
+the distinct parameter-name set. Keep a separate finite template-size or occurrence
+bound if runtime cost must be constrained.
+
+### W01.P03.S119 expected-resolution oracle | medium | Do not mirror translation option assembly
+
+The test-owned `translationOptions` helper reproduces the production fallback
+boundary's `count`, `context`, `replace`, and `returnObjects` option assembly, then uses
+that duplicate as the expected oracle for `resolveMessage`. This can drift in lockstep
+with assumptions in the test rather than proving the production contract independently,
+and it conflicts with the repository rule that tests do not implement business logic.
+Assert observable resolver behavior from the real catalogs and descriptors directly,
+using explicit bounded examples for interpolation, count, and context where needed.
+
+### W01.P03.S119 review | changes required | Strengthen the interpolation invariant
+
+The suite imports production catalogs, descriptors, runtime, and safe resolver directly;
+walks every production message key; rejects unresolved delimiters and nested-message
+syntax; and exercises complete and missing interpolation through a real alternate-locale
+runtime. No fake, mock, stub, patch, monkeypatch, skip, expected failure, production
+catalog change, visible copy, or development-state UI was introduced. The execution
+record and plan delta are narrow and accurately identify the current empty production
+interpolation set.
+
+All three targeted Vitest cases passed, as did targeted ESLint and Prettier checks and
+the full TypeScript 6 project check. Before accepting S119, make compatibility
+non-vacuous with bounded real resources, align the token bound with the production
+descriptor's distinct-name contract, and replace the duplicated translation-option
+oracle with direct observable assertions.
