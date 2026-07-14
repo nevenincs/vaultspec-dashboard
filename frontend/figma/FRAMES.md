@@ -50,7 +50,7 @@ New this session:
 - `1005:4203` **TimelineRange** (set — `State=Typical\|Loading\|Degraded\|Empty`; variants `1002:4205` / `1003:4197` / `1004:4203` / `1004:4197`)
 - `1013:4066` **StateBlock** (set — `Mode=Empty\|Degraded × Layout=Inline\|Block`, `Message` text prop; the old `515:1000` stub is now its `Mode=Empty, Layout=Inline` variant; the `Mode=Empty, Layout=Block` variant `1012:4060` carries the "New document" secondary CTA per authoring-surface D5)
 - `1072:4277` **CommentThreadPanel** (set — `State=Populated\|Orphaned`; the reader's section comment thread, authoring-surface D2; lives on `[Surface] Authoring`)
-- `635:2492` **CreateDocDialog** (renamed from the stale CreateDocButton; full dialog with the open corpus-fed Feature combobox, authoring-surface D6)
+- `1080:4272` **CreateDocDialog** (set — `Stage=Feature|Document`; the feature-group panel, feature-group-authoring ADR D1: stage 1 select-or-create feature + pipeline coverage card, stage 2 eligibility-gated document type list + pre-filled link chips. Replaces the flat dialog `635:2492`, now `_archived/CreateDocDialog.flat`. Sub-components: `1077:4203` `_CreateDocDialog/CoverageRow` (`State=Present|Missing|Next`), `1077:4229` `_CreateDocDialog/TypeOption` (`State=Selected|Eligible|Disabled`), `1077:4230` `_CreateDocDialog/LinkChip`. State previews: `1080:4407` `CreateDocDialog.newFeature`, `1080:4486` `CreateDocDialog.compact`. All on `[Surface] Authoring`.)
 
 Existing (selected — the join is by name, so resolve any component by its React export):
 
