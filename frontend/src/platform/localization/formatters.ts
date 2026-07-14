@@ -1,5 +1,6 @@
 const FORMATTER_CACHE_MAX = 48;
 const FORMATTER_OPTION_MAX = 32;
+const FORMATTER_OPTION_STRING_MAX_CHARS = 128;
 const LIST_ITEM_MAX = 100;
 const LIST_ITEM_MAX_CHARS = 4096;
 
@@ -32,6 +33,67 @@ const listFormatters = new BoundedFormatterCache<Intl.ListFormat>();
 type IntlOptionValue = string | number | boolean;
 type SafeOptions = Readonly<Record<string, IntlOptionValue>>;
 
+const NUMBER_OPTION_NAMES = new Set([
+  "compactDisplay",
+  "currency",
+  "currencyDisplay",
+  "currencySign",
+  "localeMatcher",
+  "maximumFractionDigits",
+  "maximumSignificantDigits",
+  "minimumFractionDigits",
+  "minimumIntegerDigits",
+  "minimumSignificantDigits",
+  "notation",
+  "numberingSystem",
+  "roundingIncrement",
+  "roundingMode",
+  "roundingPriority",
+  "signDisplay",
+  "style",
+  "trailingZeroDisplay",
+  "unit",
+  "unitDisplay",
+  "useGrouping",
+] as const);
+
+const DATE_OPTION_NAMES = new Set([
+  "calendar",
+  "dateStyle",
+  "day",
+  "dayPeriod",
+  "era",
+  "formatMatcher",
+  "fractionalSecondDigits",
+  "hour",
+  "hour12",
+  "hourCycle",
+  "localeMatcher",
+  "minute",
+  "month",
+  "numberingSystem",
+  "second",
+  "timeStyle",
+  "timeZone",
+  "timeZoneName",
+  "weekday",
+  "year",
+] as const);
+
+const RELATIVE_TIME_OPTION_NAMES = new Set([
+  "localeMatcher",
+  "numeric",
+  "style",
+] as const);
+
+const LIST_OPTION_NAMES = new Set(["localeMatcher", "style", "type"] as const);
+const DURATION_OPTION_NAMES = new Set(["maxUnits", "style"] as const);
+const BYTE_OPTION_NAMES = new Set(
+  [...NUMBER_OPTION_NAMES, "unitDisplay"].filter(
+    (name) => name !== "style" && name !== "unit",
+  ),
+);
+
 function canonicalLocale(locale: unknown): string | null {
   if (typeof locale !== "string" || locale.trim().length === 0) return null;
   try {
@@ -42,42 +104,52 @@ function canonicalLocale(locale: unknown): string | null {
   }
 }
 
-function safeOptions(value: unknown): SafeOptions | null {
-  if (value === undefined) return Object.freeze({});
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+function safeOptions(
+  value: unknown,
+  allowedNames: ReadonlySet<string>,
+): SafeOptions | null {
+  try {
+    if (value === undefined) return Object.freeze({});
+    if (value === null || typeof value !== "object" || Array.isArray(value))
+      return null;
 
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
 
-  const descriptors = Object.getOwnPropertyDescriptors(value);
-  const keys = Reflect.ownKeys(descriptors);
-  if (
-    keys.length > FORMATTER_OPTION_MAX ||
-    keys.some((key) => typeof key !== "string")
-  ) {
-    return null;
-  }
-  const names = keys as string[];
-
-  const normalized: Record<string, IntlOptionValue> = Object.create(null) as Record<
-    string,
-    IntlOptionValue
-  >;
-  for (const name of names.sort()) {
-    const descriptor = descriptors[name];
-    if (descriptor === undefined || !("value" in descriptor)) return null;
-    const option = descriptor.value as unknown;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
     if (
-      (typeof option !== "string" &&
-        typeof option !== "number" &&
-        typeof option !== "boolean") ||
-      (typeof option === "number" && !Number.isFinite(option))
+      keys.length > FORMATTER_OPTION_MAX ||
+      keys.some((key) => typeof key !== "string" || !allowedNames.has(key))
     ) {
       return null;
     }
-    normalized[name] = option;
+    const names = keys as string[];
+
+    const normalized: Record<string, IntlOptionValue> = Object.create(null) as Record<
+      string,
+      IntlOptionValue
+    >;
+    for (const name of names.sort()) {
+      const descriptor = descriptors[name];
+      if (descriptor === undefined || !("value" in descriptor)) return null;
+      const option = descriptor.value as unknown;
+      if (
+        (typeof option !== "string" &&
+          typeof option !== "number" &&
+          typeof option !== "boolean") ||
+        (typeof option === "string" &&
+          option.length > FORMATTER_OPTION_STRING_MAX_CHARS) ||
+        (typeof option === "number" && !Number.isFinite(option))
+      ) {
+        return null;
+      }
+      normalized[name] = option;
+    }
+    return Object.freeze(normalized);
+  } catch {
+    return null;
   }
-  return Object.freeze(normalized);
 }
 
 function formatterKey(locale: string, options: SafeOptions): string {
@@ -86,7 +158,7 @@ function formatterKey(locale: string, options: SafeOptions): string {
 
 function numberFormatter(locale: unknown, options: unknown): Intl.NumberFormat | null {
   const normalizedLocale = canonicalLocale(locale);
-  const normalizedOptions = safeOptions(options);
+  const normalizedOptions = safeOptions(options, NUMBER_OPTION_NAMES);
   if (normalizedLocale === null || normalizedOptions === null) return null;
 
   try {
@@ -105,7 +177,7 @@ function numberFormatter(locale: unknown, options: unknown): Intl.NumberFormat |
 
 function listFormatter(locale: unknown, options: unknown): Intl.ListFormat | null {
   const normalizedLocale = canonicalLocale(locale);
-  const normalizedOptions = safeOptions(options);
+  const normalizedOptions = safeOptions(options, LIST_OPTION_NAMES);
   if (normalizedLocale === null || normalizedOptions === null) return null;
 
   try {
@@ -127,10 +199,10 @@ export function formatNumber(
   value: number,
   options: Intl.NumberFormatOptions = {},
 ): string | null {
-  if (!Number.isFinite(value)) return null;
-  const formatter = numberFormatter(locale, options);
-  if (formatter === null) return null;
   try {
+    if (!Number.isFinite(value)) return null;
+    const formatter = numberFormatter(locale, options);
+    if (formatter === null) return null;
     return formatter.format(value);
   } catch {
     return null;
@@ -151,7 +223,7 @@ export function formatDate(
   if (!Number.isFinite(timestamp)) return null;
 
   const normalizedLocale = canonicalLocale(locale);
-  const normalizedOptions = safeOptions(options);
+  const normalizedOptions = safeOptions(options, DATE_OPTION_NAMES);
   if (normalizedLocale === null || normalizedOptions === null) return null;
 
   try {
@@ -169,7 +241,17 @@ export function formatDate(
   }
 }
 
-const RELATIVE_TIME_UNITS = new Set<Intl.RelativeTimeFormatUnit>([
+export type RelativeTimeUnit =
+  | "year"
+  | "quarter"
+  | "month"
+  | "week"
+  | "day"
+  | "hour"
+  | "minute"
+  | "second";
+
+const RELATIVE_TIME_UNITS = new Set<RelativeTimeUnit>([
   "year",
   "quarter",
   "month",
@@ -183,12 +265,12 @@ const RELATIVE_TIME_UNITS = new Set<Intl.RelativeTimeFormatUnit>([
 export function formatRelativeTime(
   locale: string,
   value: number,
-  unit: Intl.RelativeTimeFormatUnit,
+  unit: RelativeTimeUnit,
   options: Intl.RelativeTimeFormatOptions = {},
 ): string | null {
   if (!Number.isFinite(value) || !RELATIVE_TIME_UNITS.has(unit)) return null;
   const normalizedLocale = canonicalLocale(locale);
-  const normalizedOptions = safeOptions(options);
+  const normalizedOptions = safeOptions(options, RELATIVE_TIME_OPTION_NAMES);
   if (normalizedLocale === null || normalizedOptions === null) return null;
 
   try {
@@ -211,23 +293,23 @@ export function formatList(
   values: readonly string[],
   options: Intl.ListFormatOptions = {},
 ): string | null {
-  if (
-    !Array.isArray(values) ||
-    values.length === 0 ||
-    values.length > LIST_ITEM_MAX ||
-    values.some(
-      (value) =>
-        typeof value !== "string" ||
-        value.length === 0 ||
-        value.length > LIST_ITEM_MAX_CHARS,
-    )
-  ) {
-    return null;
-  }
-
-  const formatter = listFormatter(locale, options);
-  if (formatter === null) return null;
   try {
+    if (
+      !Array.isArray(values) ||
+      values.length === 0 ||
+      values.length > LIST_ITEM_MAX ||
+      values.some(
+        (value) =>
+          typeof value !== "string" ||
+          value.length === 0 ||
+          value.length > LIST_ITEM_MAX_CHARS,
+      )
+    ) {
+      return null;
+    }
+
+    const formatter = listFormatter(locale, options);
+    if (formatter === null) return null;
     return formatter.format(values);
   } catch {
     return null;
@@ -243,7 +325,7 @@ export function formatPercentage(
   options: PercentageFormatOptions = {},
 ): string | null {
   if (!Number.isFinite(ratio)) return null;
-  const normalizedOptions = safeOptions(options);
+  const normalizedOptions = safeOptions(options, NUMBER_OPTION_NAMES);
   if (normalizedOptions === null || "style" in normalizedOptions) return null;
   return formatNumber(locale, ratio, { ...normalizedOptions, style: "percent" });
 }
@@ -271,7 +353,7 @@ export function formatDuration(
   options: DurationFormatOptions = {},
 ): string | null {
   if (!Number.isFinite(durationMilliseconds) || durationMilliseconds < 0) return null;
-  const normalizedOptions = safeOptions(options);
+  const normalizedOptions = safeOptions(options, DURATION_OPTION_NAMES);
   if (normalizedOptions === null) return null;
   if (
     Object.keys(normalizedOptions).some((key) => key !== "maxUnits" && key !== "style")
@@ -352,7 +434,7 @@ export function formatBytes(
 ): string | null {
   if (!Number.isFinite(bytes) || bytes < 0) return null;
 
-  const normalizedOptions = safeOptions(options);
+  const normalizedOptions = safeOptions(options, BYTE_OPTION_NAMES);
   if (normalizedOptions === null) return null;
   const unitDisplay = normalizedOptions.unitDisplay ?? "short";
   if (unitDisplay !== "long" && unitDisplay !== "short" && unitDisplay !== "narrow") {

@@ -62,9 +62,12 @@ related:
 The localization platform now owns pure formatting functions that accept the active
 locale explicitly and return `null` for invalid input. Percentages use a documented
 ratio contract, durations use deterministic millisecond-based units, and byte sizes use
-a bounded base-1024 scale with localized unit labels.
+a bounded base-1024 scale with localized unit labels. Each Intl formatter family admits
+only its documented option names, bounds retained string values, and safely rejects
+hostile reflected input.
 
 ## Notes
 
-Targeted Prettier, ESLint, and isolated strict TypeScript 6 checks passed. Runtime
-behavior and cross-locale assertions remain assigned to S07.
+Targeted Prettier, ESLint, isolated strict TypeScript 6, and real production-module
+Vitest assertions passed. The runtime assertions covered Proxy-backed inputs, unknown
+and oversized options, singular relative-time units, and valid family-specific options.
