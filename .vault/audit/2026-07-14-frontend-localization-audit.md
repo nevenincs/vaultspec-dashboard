@@ -765,3 +765,25 @@ All nine focused Vitest tests passed, along with targeted ESLint and the full Ty
 project check. No fake, mock, stub, patch, monkeypatch, skip, or expected failure was
 used. S121 still requires the URI-safe raw-key boundary and a positive actionable-
 recovery contract before acceptance.
+
+### W01.P03.S121 final remediation review | pass | Findings resolved
+
+Commit `1286c92765` resolves the remaining S121 findings. Raw-key recognition now
+requires a namespace derived from the typed production key set, catches current keys
+and undeclared future paths within those namespaces at any depth, and automatically
+tracks a newly introduced namespace when its first typed key is added. It accepts
+`mailto`, `https`, `tel`, and custom scheme-value forms as well as ordinary colon
+punctuation. Matching uses isolated `matchAll` iteration, and the shared word matcher is
+reset before each collection, so repeated validations are deterministic.
+
+Recovery validation now applies a positive bounded complement grammar after the
+imperative verb. It rejects every recorded failure statement, including did-not-work,
+will-fail, and try-again-failed forms, while accepting the production catalog,
+determiner-led objects, prepositional instructions, the bounded `again` form, and
+interpolated objects. An interpolation marker cannot supply the imperative itself, and
+its user value remains opaque to terminology, diagnostic, and failure checks.
+
+All nine focused Vitest tests passed, along with targeted ESLint and the full TypeScript
+project check. No fake, mock, stub, patch, monkeypatch, skip, or expected failure was
+used. The complete English policy map remains catalog-owned, no user-facing copy or
+development metadata was introduced, and S121 is accepted with no open findings.
