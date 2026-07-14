@@ -1,0 +1,250 @@
+import { en, type EnglishResources } from "../../locales/en";
+
+type MessageLeafPath<T> = {
+  [Key in keyof T & string]: T[Key] extends string
+    ? Key
+    : T[Key] extends Readonly<Record<string, unknown>>
+      ? `${Key}.${MessageLeafPath<T[Key]>}`
+      : never;
+}[keyof T & string];
+
+type MessageKeyByNamespace = {
+  [Namespace in keyof EnglishResources & string]: `${Namespace}:${MessageLeafPath<
+    EnglishResources[Namespace]
+  >}`;
+};
+
+/** A namespace-qualified semantic leaf in the source-locale catalog. */
+export type MessageKey = MessageKeyByNamespace[keyof MessageKeyByNamespace];
+
+/** Interpolation data may cross non-React presentation seams. */
+export type MessageValue = string | number;
+export type MessageValues = Readonly<Record<string, MessageValue>>;
+
+export const MESSAGE_KEY_MAX_CHARS = 256;
+export const MESSAGE_VALUE_NAME_MAX_CHARS = 64;
+export const MESSAGE_VALUE_COUNT_MAX = 16;
+export const MESSAGE_VALUE_STRING_MAX_CHARS = 4096;
+
+const MESSAGE_KEY_PATTERN =
+  /^[a-z][a-zA-Z0-9]*:[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*$/;
+const MESSAGE_VALUE_NAME_PATTERN = /^[a-z][a-zA-Z0-9]*$/;
+const PROHIBITED_VALUE_NAMES = new Set(["constructor", "prototype"]);
+
+export interface MessageDescriptor<Key extends MessageKey = MessageKey> {
+  readonly key: Key;
+  readonly values?: MessageValues;
+}
+
+export const SAFE_CANCEL_MESSAGE_KEYS = [
+  "common:actions.cancel",
+] as const satisfies readonly MessageKey[];
+
+export type SafeCancelMessageKey = (typeof SAFE_CANCEL_MESSAGE_KEYS)[number];
+export type SafeCancelMessageDescriptor = MessageDescriptor<SafeCancelMessageKey>;
+
+export interface ConfirmationDescriptor {
+  readonly title: MessageDescriptor;
+  readonly body: MessageDescriptor;
+  readonly confirmLabel: MessageDescriptor;
+  readonly cancelLabel: SafeCancelMessageDescriptor;
+}
+
+export interface ConfirmationDescriptorInput {
+  readonly title: MessageDescriptor;
+  readonly body: MessageDescriptor;
+  readonly confirmLabel: MessageDescriptor;
+  readonly cancelLabel: SafeCancelMessageDescriptor;
+}
+
+type OwnDataRecord = Readonly<Record<string, unknown>>;
+
+function ownDataRecord(value: unknown): OwnDataRecord | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+
+    const snapshot: Record<string, unknown> = Object.create(null) as Record<
+      string,
+      unknown
+    >;
+    for (const propertyKey of Reflect.ownKeys(value)) {
+      if (typeof propertyKey !== "string") return null;
+      const descriptor = Object.getOwnPropertyDescriptor(value, propertyKey);
+      if (descriptor === undefined || !("value" in descriptor)) return null;
+      snapshot[propertyKey] = descriptor.value;
+    }
+    return Object.freeze(snapshot);
+  } catch {
+    return null;
+  }
+}
+
+function hasExactFields(
+  record: OwnDataRecord,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): boolean {
+  const fields = Reflect.ownKeys(record);
+  if (fields.some((field) => typeof field !== "string")) return false;
+  if (required.some((field) => !Object.hasOwn(record, field))) return false;
+
+  const allowed = new Set([...required, ...optional]);
+  return fields.every((field) => typeof field === "string" && allowed.has(field));
+}
+
+function collectMessageKeys(): readonly MessageKey[] {
+  const keys: string[] = [];
+
+  const visit = (namespace: string, path: readonly string[], value: unknown): void => {
+    if (typeof value === "string") {
+      keys.push(`${namespace}:${path.join(".")}`);
+      return;
+    }
+
+    const record = value as Readonly<Record<string, unknown>>;
+    for (const [segment, child] of Object.entries(record)) {
+      visit(namespace, [...path, segment], child);
+    }
+  };
+
+  for (const [namespace, catalog] of Object.entries(en)) {
+    visit(namespace, [], catalog);
+  }
+
+  return Object.freeze(keys as MessageKey[]);
+}
+
+/** The runtime allowlist generated from the same source-locale shape as `MessageKey`. */
+export const MESSAGE_KEYS = collectMessageKeys();
+
+const MESSAGE_KEY_SET: ReadonlySet<string> = new Set(MESSAGE_KEYS);
+const SAFE_CANCEL_MESSAGE_KEY_SET: ReadonlySet<string> = new Set(
+  SAFE_CANCEL_MESSAGE_KEYS,
+);
+
+export function isMessageKey(value: unknown): value is MessageKey {
+  return (
+    typeof value === "string" &&
+    value.length <= MESSAGE_KEY_MAX_CHARS &&
+    MESSAGE_KEY_PATTERN.test(value) &&
+    MESSAGE_KEY_SET.has(value)
+  );
+}
+
+function normalizeMessageValues(value: unknown): MessageValues | null {
+  const record = ownDataRecord(value);
+  if (record === null) return null;
+
+  const entries = Reflect.ownKeys(record);
+  if (entries.length > MESSAGE_VALUE_COUNT_MAX) return null;
+
+  const normalized: Record<string, MessageValue> = Object.create(null) as Record<
+    string,
+    MessageValue
+  >;
+  for (const name of entries) {
+    if (
+      typeof name !== "string" ||
+      name.length > MESSAGE_VALUE_NAME_MAX_CHARS ||
+      !MESSAGE_VALUE_NAME_PATTERN.test(name) ||
+      PROHIBITED_VALUE_NAMES.has(name)
+    ) {
+      return null;
+    }
+
+    const item = record[name];
+    if (typeof item === "string") {
+      if (item.length > MESSAGE_VALUE_STRING_MAX_CHARS) return null;
+      normalized[name] = item;
+      continue;
+    }
+    if (typeof item === "number" && Number.isFinite(item)) {
+      normalized[name] = item;
+      continue;
+    }
+    return null;
+  }
+
+  return Object.freeze(normalized);
+}
+
+export function normalizeMessageDescriptor(value: unknown): MessageDescriptor | null {
+  const record = ownDataRecord(value);
+  if (record === null || !hasExactFields(record, ["key"], ["values"])) return null;
+  if (!isMessageKey(record.key)) return null;
+
+  if (!Object.hasOwn(record, "values")) {
+    return Object.freeze({ key: record.key });
+  }
+  const values = normalizeMessageValues(record.values);
+  return values === null ? null : Object.freeze({ key: record.key, values });
+}
+
+export function createMessageDescriptor<const Key extends MessageKey>(
+  key: Key,
+  values?: MessageValues,
+): MessageDescriptor<Key> | null {
+  const normalized = normalizeMessageDescriptor(
+    values === undefined ? { key } : { key, values },
+  );
+  return normalized as MessageDescriptor<Key> | null;
+}
+
+export function isMessageDescriptor(value: unknown): value is MessageDescriptor {
+  return normalizeMessageDescriptor(value) !== null;
+}
+
+function normalizeSafeCancelLabel(value: unknown): SafeCancelMessageDescriptor | null {
+  const normalized = normalizeMessageDescriptor(value);
+  if (
+    normalized === null ||
+    normalized.values !== undefined ||
+    !SAFE_CANCEL_MESSAGE_KEY_SET.has(normalized.key)
+  ) {
+    return null;
+  }
+  return normalized as SafeCancelMessageDescriptor;
+}
+
+export function normalizeConfirmationDescriptor(
+  value: unknown,
+): ConfirmationDescriptor | null {
+  const record = ownDataRecord(value);
+  if (
+    record === null ||
+    !hasExactFields(record, ["title", "body", "confirmLabel", "cancelLabel"])
+  ) {
+    return null;
+  }
+
+  const title = normalizeMessageDescriptor(record.title);
+  const body = normalizeMessageDescriptor(record.body);
+  const confirmLabel = normalizeMessageDescriptor(record.confirmLabel);
+  const cancelLabel = normalizeSafeCancelLabel(record.cancelLabel);
+  if (
+    title === null ||
+    body === null ||
+    confirmLabel === null ||
+    cancelLabel === null ||
+    confirmLabel.key === cancelLabel.key
+  ) {
+    return null;
+  }
+
+  return Object.freeze({ title, body, confirmLabel, cancelLabel });
+}
+
+export function createConfirmationDescriptor(
+  input: ConfirmationDescriptorInput,
+): ConfirmationDescriptor | null {
+  return normalizeConfirmationDescriptor(input);
+}
+
+export function isConfirmationDescriptor(
+  value: unknown,
+): value is ConfirmationDescriptor {
+  return normalizeConfirmationDescriptor(value) !== null;
+}

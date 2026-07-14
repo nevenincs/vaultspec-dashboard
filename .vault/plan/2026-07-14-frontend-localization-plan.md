@@ -39,7 +39,7 @@ Install and initialize the localization runtime, define typed message and format
 
 - [x] `W01.P01.S01` - Install the approved localization dependencies and lock exact compatible versions; `frontend/package.json, frontend/package-lock.json`.
 - [x] `W01.P01.S02` - Create the English namespace catalogs and typed resource aggregate; `frontend/src/locales/en/`.
-- [ ] `W01.P01.S03` - Define bounded typed message keys, values, descriptors, and confirmation descriptors; `frontend/src/platform/localization/message.ts`.
+- [x] `W01.P01.S03` - Define bounded typed message keys, values, descriptors, and confirmation descriptors; `frontend/src/platform/localization/message.ts`.
 - [ ] `W01.P01.S04` - Implement synchronous localization runtime initialization; `frontend/src/platform/localization/runtime.ts`.
 - [ ] `W01.P01.S05` - Implement locale-aware number, date, relative-time, list, duration, percentage, and byte formatters; `frontend/src/platform/localization/formatters.ts`.
 - [ ] `W01.P01.S06` - Mount localization before the application boundary without changing theme or data-provider authority; `frontend/src/main.tsx`.
