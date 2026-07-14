@@ -6,7 +6,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  ACTION_DESCRIPTOR_ACCELERATOR_MAX_CHARS,
   ACTION_DESCRIPTOR_ID_MAX_CHARS,
   ACTION_DESCRIPTOR_LABEL_MAX_CHARS,
   ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS,
@@ -23,6 +22,7 @@ import {
   type ActionDescriptor,
   type LegacyActionPresentation,
 } from "./action";
+import { chordToKeycaps } from "../keymap/chord";
 import {
   resolveMessageResult,
   SAFE_FALLBACK_SOURCE_MESSAGE,
@@ -247,7 +247,7 @@ describe("resolver registry", () => {
             label: " Focus ",
             section: " copy ",
             disabledReason: " no target ",
-            accelerator: " F ",
+            accelerator: chordToKeycaps("F", false),
             run,
             rogue: "local payload",
           },
@@ -265,7 +265,7 @@ describe("resolver registry", () => {
         label: "Focus",
         section: "copy",
         disabledReason: "no target",
-        accelerator: "F",
+        accelerator: [{ kind: "literal", value: "F" }],
         run,
       },
       {
@@ -320,7 +320,7 @@ describe("isRunnable", () => {
         disabled: true,
         disabledReason: " wait ",
         disabledInTimeTravel: true,
-        accelerator: " Mod+X ",
+        accelerator: chordToKeycaps("Mod+X", false),
         run,
       }),
     ).toEqual({
@@ -331,7 +331,7 @@ describe("isRunnable", () => {
       disabled: true,
       disabledReason: "wait",
       disabledInTimeTravel: true,
-      accelerator: "Mod+X",
+      accelerator: [{ key: "common:keycaps.control" }, { kind: "literal", value: "X" }],
       run,
     });
 
@@ -353,7 +353,7 @@ describe("isRunnable", () => {
         id: "x",
         label: "X",
         disabledReason: "x".repeat(ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS + 1),
-        accelerator: "x".repeat(ACTION_DESCRIPTOR_ACCELERATOR_MAX_CHARS + 1),
+        accelerator: "not a keycap presentation",
       }),
     ).toEqual({ id: "x", label: "X" });
     expect(

@@ -374,7 +374,7 @@ describe("context-menu slice", () => {
       armed: false,
       disabled: false,
       confirmShortcutLabel: null,
-      acceleratorLabel: null,
+      accelerator: null,
       selectionHintVisible: true,
     });
     expect(live.rowGroups.map((group) => group.section)).toEqual([
@@ -432,7 +432,7 @@ describe("context-menu slice", () => {
       confirmShortcutLabel: "⏎⏎",
       confirmShortcutClassName:
         "rounded-fg-xs border border-rule px-fg-1 font-mono text-caption text-ink-faint",
-      acceleratorLabel: null,
+      accelerator: null,
       selectionHintVisible: false,
     });
     expect(armed.rowGroups[0]!.rows[0]).toMatchObject({

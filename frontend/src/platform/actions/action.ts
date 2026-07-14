@@ -27,6 +27,7 @@ import {
   type ActionConfirmationDescriptor,
   type MessageDescriptor,
 } from "../localization/message";
+import { type KeycapPresentation, normalizeKeycapPresentations } from "../keymap/chord";
 
 /**
  * Item marks come from the two sanctioned families
@@ -61,7 +62,6 @@ export const ACTION_SECTION_ORDER: readonly ActionSection[] = [
 export const ACTION_DESCRIPTOR_ID_MAX_CHARS = 512;
 export const ACTION_DESCRIPTOR_LABEL_MAX_CHARS = 256;
 export const ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS = 256;
-export const ACTION_DESCRIPTOR_ACCELERATOR_MAX_CHARS = 64;
 export const LEGACY_ACTION_PRESENTATION_MAX_CHARS = Math.max(
   ACTION_DESCRIPTOR_LABEL_MAX_CHARS,
   ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS,
@@ -208,7 +208,7 @@ export interface ActionDescriptorBase {
    */
   disabledInTimeTravel?: boolean;
   /** Trailing inline accelerator hint (the cohort's inline-shortcut affordance). */
-  accelerator?: string;
+  accelerator?: readonly KeycapPresentation[];
 }
 
 /**
@@ -271,11 +271,8 @@ export function normalizeActionDescriptor(action: unknown): ActionDescriptor | n
   );
   if (disabledReason !== undefined) base.disabledReason = disabledReason;
   if (record.disabledInTimeTravel === true) base.disabledInTimeTravel = true;
-  const accelerator = normalizeOptionalActionDescriptorText(
-    record.accelerator,
-    ACTION_DESCRIPTOR_ACCELERATOR_MAX_CHARS,
-  );
-  if (accelerator !== undefined) base.accelerator = accelerator;
+  const accelerator = normalizeKeycapPresentations(record.accelerator);
+  if (accelerator !== null) base.accelerator = accelerator;
 
   const run = typeof record.run === "function" ? (record.run as () => void) : undefined;
   const dispatch = normalizeAction(record.dispatch);

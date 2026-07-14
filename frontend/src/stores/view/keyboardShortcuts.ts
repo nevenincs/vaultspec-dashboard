@@ -2,7 +2,11 @@ import { create } from "zustand";
 import { useEffect } from "react";
 
 import { legacyActionPresentation } from "../../platform/actions/action";
-import { chordToKeycaps } from "../../platform/keymap/chord";
+import {
+  chordToKeycaps,
+  defaultIsMac,
+  type KeycapPresentation,
+} from "../../platform/keymap/chord";
 import {
   type KeybindingDef,
   type KeybindingGroupPresentation,
@@ -21,7 +25,7 @@ import { getKeymapOverrides, registerKeyAction } from "./keymapDispatcher";
 export interface KeyboardShortcutRowView {
   id: string;
   label: KeybindingPresentation;
-  keys: readonly string[];
+  keys: readonly KeycapPresentation[];
 }
 
 /** A named group of shortcuts rendered under one section label. */
@@ -67,6 +71,7 @@ export const KEYBOARD_SHORTCUTS_TOGGLE_BINDING: KeybindingDef = {
 export function deriveKeyboardShortcutGroups(
   defs: readonly KeybindingDef[] = listKeybindings(),
   overrides: KeybindingOverrides = getKeymapOverrides(),
+  isMac: boolean = defaultIsMac(),
 ): readonly KeyboardShortcutGroupView[] {
   const byGroup = new Map<
     string,
@@ -82,7 +87,7 @@ export function deriveKeyboardShortcutGroups(
     if (label === null || group === null) continue;
     const groupId =
       typeof group === "string" ? `legacy:${group}` : `message:${group.key}`;
-    const keys = chordToKeycaps(effectiveChord(def, overrides));
+    const keys = chordToKeycaps(effectiveChord(def, overrides), isMac);
     const row = { id: def.id, label, keys };
     const existing = byGroup.get(groupId);
     if (existing !== undefined) {

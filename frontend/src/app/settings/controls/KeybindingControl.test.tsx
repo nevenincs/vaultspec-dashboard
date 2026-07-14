@@ -73,7 +73,7 @@ beforeEach(() => {
     },
     {
       id: "help.legend",
-      defaultChord: "Ctrl+H",
+      defaultChord: "ArrowLeft",
       label: { key: "common:actions.showKeyboardShortcuts" },
       group: { key: "common:shortcutDialog.title" },
       context: "global",
@@ -93,8 +93,9 @@ describe("KeybindingControl recorder", () => {
     expect(screen.getByText("Keyboard shortcuts")).toBeTruthy();
     expect(screen.getByText("Retry")).toBeTruthy();
     expect(screen.getByText("Show keyboard shortcuts")).toBeTruthy();
-    expect(screen.getAllByText("Ctrl")).toHaveLength(2);
+    expect(screen.getByText("Ctrl")).toBeTruthy();
     expect(screen.getByText("K")).toBeTruthy();
+    expect(screen.getByText("Left arrow")).toBeTruthy();
   });
 
   it("records a captured chord into the sparse override-map JSON", () => {
@@ -167,6 +168,17 @@ describe("KeybindingControl recorder", () => {
         name: "Réinitialiser le raccourci pour Afficher les raccourcis clavier",
       }),
     ).toBeTruthy();
+  });
+
+  it("reactively localizes named keycaps without remounting them", async () => {
+    const { runtime } = renderKeybindingControl();
+    const sourceKeycap = screen.getByText("Left arrow");
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+
+    expect(screen.getByText(ltrTestResources.common.keycaps.arrowLeft)).toBe(
+      sourceKeycap,
+    );
   });
 
   it("escape cancels recording without emitting", () => {

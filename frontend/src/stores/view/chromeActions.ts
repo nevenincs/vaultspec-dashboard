@@ -47,11 +47,11 @@ export const SETTINGS_ACTION_ID = "app:settings";
 export const RESET_LAYOUT_ACTION_ID = "window:reset-layout";
 
 /** The registry-derived accelerator for an action id, or undefined when unbound. */
-function acceleratorFor(id: string): string | undefined {
+function acceleratorFor(id: string): ActionDescriptor["accelerator"] {
   const def = getKeybinding(id);
   if (def === undefined) return undefined;
-  const label = chordToKeycaps(effectiveChord(def, getKeymapOverrides())).join("+");
-  return label.length > 0 ? label : undefined;
+  const keycaps = chordToKeycaps(effectiveChord(def, getKeymapOverrides()));
+  return keycaps.length > 0 ? keycaps : undefined;
 }
 
 function withAccelerator(action: ActionDescriptor): ActionDescriptor {

@@ -6,6 +6,8 @@ import {
   canonicalizeChord,
   chordStringFromEvent,
   chordToKeycaps,
+  defaultIsMac,
+  type KeycapPresentation,
 } from "../../platform/keymap/chord";
 import {
   type KeybindingDef,
@@ -185,7 +187,7 @@ export interface SettingsKeybindingRowView {
   /** The effective chord string (override when present, else default). */
   chord: string;
   /** The effective chord split into platform-aware display keycaps. */
-  keycaps: string[];
+  keycaps: readonly KeycapPresentation[];
   /** True when a user override is in effect (differs from the default). */
   overridden: boolean;
 }
@@ -223,6 +225,7 @@ export interface SettingsKeybindingControlView {
 export function deriveSettingsKeybindingControlView(
   value: string,
   defs: readonly KeybindingDef[] = listKeybindings(),
+  isMac: boolean = defaultIsMac(),
 ): SettingsKeybindingControlView {
   const overrides = parseKeybindingOverrides(value);
   const byGroup = new Map<string, SettingsKeybindingGroupView>();
@@ -237,7 +240,7 @@ export function deriveSettingsKeybindingControlView(
       id: def.id,
       label,
       chord,
-      keycaps: chordToKeycaps(chord),
+      keycaps: chordToKeycaps(chord, isMac),
       overridden: chord !== def.defaultChord,
     };
     const existing = byGroup.get(groupId);

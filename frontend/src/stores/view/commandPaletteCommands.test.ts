@@ -5,7 +5,6 @@ import {
   registerKeybindings,
   resetKeybindings,
 } from "../../platform/keymap/registry";
-import { setIsMacForTesting } from "../../platform/keymap/chord";
 import { createActionConfirmationDescriptor } from "../../platform/localization/message";
 import {
   buildEditorCommands,
@@ -531,11 +530,9 @@ describe("command palette command projection", () => {
 describe("deriveCommandAccelerators", () => {
   afterEach(() => {
     resetKeybindings();
-    setIsMacForTesting(null);
   });
 
   it("derives the inline accelerator from the keymap registry by shared id", () => {
-    setIsMacForTesting(false);
     registerKeybindings([
       {
         id: "left-rail:new-document",
@@ -551,13 +548,17 @@ describe("deriveCommandAccelerators", () => {
         command("graph:fit", { family: "navigate" }),
       ],
       {},
+      false,
     );
-    expect(withChord.accelerator).toBe("Ctrl+Alt+N");
+    expect(withChord.accelerator).toEqual([
+      { key: "common:keycaps.control" },
+      { key: "common:keycaps.alt" },
+      { kind: "literal", value: "N" },
+    ]);
     expect(withoutChord.accelerator).toBeUndefined();
   });
 
   it("reflects an effective override over the default chord", () => {
-    setIsMacForTesting(false);
     registerKeybindings([
       {
         id: "left-rail:new-document",
@@ -570,7 +571,12 @@ describe("deriveCommandAccelerators", () => {
     const [derived] = deriveCommandAccelerators(
       [command("left-rail:new-document", { family: "app" })],
       { "left-rail:new-document": "Mod+Shift+N" },
+      false,
     );
-    expect(derived.accelerator).toBe("Ctrl+Shift+N");
+    expect(derived.accelerator).toEqual([
+      { key: "common:keycaps.control" },
+      { key: "common:keycaps.shift" },
+      { kind: "literal", value: "N" },
+    ]);
   });
 });

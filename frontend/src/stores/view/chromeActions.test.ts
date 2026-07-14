@@ -134,8 +134,13 @@ describe("registry-derived accelerators", () => {
       COMMAND_PALETTE_KEYBINDING,
       KEYBOARD_SHORTCUTS_TOGGLE_BINDING,
     ]);
-    expect(openCommandPaletteAction().accelerator).toMatch(/K$/); // Ctrl+K / ⌘+K
-    expect(showKeyboardShortcutsAction().accelerator).toBe("?");
+    expect(openCommandPaletteAction().accelerator?.at(-1)).toEqual({
+      kind: "literal",
+      value: "K",
+    });
+    expect(showKeyboardShortcutsAction().accelerator).toEqual([
+      { kind: "literal", value: "?" },
+    ]);
     dispose();
     expect(openCommandPaletteAction().accelerator).toBeUndefined();
   });

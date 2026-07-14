@@ -23,11 +23,11 @@ import {
  *  (palette-command-accelerators-derive-from-the-keymap-registry) so the chord the menu
  *  teaches is exactly the chord that fires, override-aware and never hand-typed. Returns
  *  undefined until the reload binding is registered (e.g. in a bare unit test). */
-function refreshAccelerator(): string | undefined {
+function refreshAccelerator(): ActionDescriptor["accelerator"] {
   const def = getKeybinding(RELOAD_REFRESH_DATA_ACTION_ID);
   if (def === undefined) return undefined;
-  const label = chordToKeycaps(effectiveChord(def, getKeymapOverrides())).join("+");
-  return label.length > 0 ? label : undefined;
+  const keycaps = chordToKeycaps(effectiveChord(def, getKeymapOverrides()));
+  return keycaps.length > 0 ? keycaps : undefined;
 }
 
 /** The global-tail actions, kind-agnostic (the entity is intentionally ignored). The

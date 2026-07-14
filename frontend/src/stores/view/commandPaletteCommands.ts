@@ -63,7 +63,11 @@ import {
   effectiveChord,
   getKeybinding,
 } from "../../platform/keymap/registry";
-import { chordToKeycaps } from "../../platform/keymap/chord";
+import {
+  chordToKeycaps,
+  defaultIsMac,
+  type KeycapPresentation,
+} from "../../platform/keymap/chord";
 import { timelineCorpusFitKey, timelineViewSnapshot } from "./timeline";
 import { fitTimelineScopeToCorpus, movePlayhead } from "./timelineIntent";
 import { dateRangePatch, patchDashboardState } from "../server/dashboardState";
@@ -548,12 +552,16 @@ export function gateCommandsForTimeTravel<
  * binding are returned unchanged.
  */
 export function deriveCommandAccelerators<
-  Command extends { id: string; accelerator?: string },
->(commands: readonly Command[], overrides: KeybindingOverrides): Command[] {
+  Command extends { id: string; accelerator?: readonly KeycapPresentation[] },
+>(
+  commands: readonly Command[],
+  overrides: KeybindingOverrides,
+  isMac: boolean = defaultIsMac(),
+): Command[] {
   return commands.map((command) => {
     const def = getKeybinding(command.id);
     if (def === undefined) return command;
-    const accelerator = chordToKeycaps(effectiveChord(def, overrides)).join("+");
+    const accelerator = chordToKeycaps(effectiveChord(def, overrides), isMac);
     return accelerator.length > 0 ? { ...command, accelerator } : command;
   });
 }
@@ -614,7 +622,7 @@ export interface CommandPaletteRowView {
   armed: boolean;
   confirmShortcutLabel: string | null;
   /** Inline accelerator keycaps derived from the keymap registry, or null. */
-  accelerator: string | null;
+  accelerator: readonly KeycapPresentation[] | null;
   selectionHintVisible: boolean;
 }
 

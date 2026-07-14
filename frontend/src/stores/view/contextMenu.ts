@@ -232,7 +232,7 @@ export interface ContextMenuActionRowView {
   disabledReason: ActionPresentation | undefined;
   confirmShortcutLabel: string | null;
   confirmShortcutClassName: string;
-  acceleratorLabel: string | null;
+  accelerator: ActionDescriptor["accelerator"] | null;
   acceleratorClassName: string;
   selectionHintVisible: boolean;
   selectionHintClassName: string;
@@ -350,7 +350,7 @@ export function deriveContextMenuResolvedView(
     const armed = snapshot.armedItemId === action.id;
     const selected = index === snapshot.cursor;
     const hasConfirmHint = action.confirm === true;
-    const acceleratorLabel =
+    const accelerator =
       action.accelerator && !hasConfirmHint ? action.accelerator : null;
     return {
       action,
@@ -373,9 +373,9 @@ export function deriveContextMenuResolvedView(
       disabledReason: action.disabled === true ? action.disabledReason : undefined,
       confirmShortcutLabel: hasConfirmHint ? "⏎⏎" : null,
       confirmShortcutClassName: CONTEXT_MENU_ROW_SHORTCUT_CLASS,
-      acceleratorLabel,
+      accelerator,
       acceleratorClassName: CONTEXT_MENU_ROW_ACCELERATOR_CLASS,
-      selectionHintVisible: selected && !hasConfirmHint && acceleratorLabel === null,
+      selectionHintVisible: selected && !hasConfirmHint && accelerator === null,
       selectionHintClassName: CONTEXT_MENU_ROW_HINT_CLASS,
     };
   });

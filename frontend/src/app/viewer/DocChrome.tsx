@@ -19,7 +19,11 @@ import type { ReactNode } from "react";
 
 import { Breadcrumb, type BreadcrumbItem, Segment, SegmentedToggle } from "../kit";
 import { effectiveChord } from "../../platform/keymap/registry";
-import { chordToKeycaps } from "../../platform/keymap/chord";
+import {
+  chordToKeycaps,
+  resolveKeycapPresentations,
+} from "../../platform/keymap/chord";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { getKeymapOverrides } from "../../stores/view/keymapDispatcher";
 import {
   EDITOR_TOGGLE_MODE_ACTION_ID,
@@ -31,7 +35,7 @@ export type DocChromeMode = "view" | "edit";
 /** The effective keycaps for one editor action id, sourced from the keymap catalog
  *  (the registry's own definitions) with the live user override applied — or an
  *  empty list when the id is unknown, so the hint simply renders nothing. */
-function editorAcceleratorCaps(actionId: string): string[] {
+function editorAcceleratorCaps(actionId: string) {
   const def = deriveEditorKeybindings().find((binding) => binding.id === actionId);
   if (def === undefined) return [];
   return chordToKeycaps(effectiveChord(def, getKeymapOverrides()));
@@ -56,9 +60,18 @@ export function DocChrome({
    *  touch-selectability ADR D3). */
   trailing?: ReactNode;
 }) {
-  const toggleCaps = editorAcceleratorCaps(EDITOR_TOGGLE_MODE_ACTION_ID);
+  const resolveMessage = useLocalizedMessageResolver();
+  const toggleCaps = resolveKeycapPresentations(
+    editorAcceleratorCaps(EDITOR_TOGGLE_MODE_ACTION_ID),
+    resolveMessage,
+  );
   const toggleTitle =
-    toggleCaps.length > 0 ? `Toggle edit mode (${toggleCaps.join(" ")})` : undefined;
+    toggleCaps.length > 0
+      ? resolveMessage({
+          key: "common:accessibility.toggleEditModeShortcut",
+          values: { accelerator: toggleCaps.join(" ") },
+        }).message
+      : undefined;
 
   return (
     <div data-doc-chrome className="shrink-0">

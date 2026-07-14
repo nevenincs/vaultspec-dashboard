@@ -30,6 +30,7 @@ import {
 } from "../../platform/actions/action";
 import { useCanDispatchAction, useDispatch } from "../../platform/dispatch/useAction";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import { resolveKeycapPresentations } from "../../platform/keymap/chord";
 import { logger } from "../../platform/logger/logger";
 import {
   useActiveScope,
@@ -107,6 +108,9 @@ export function ContextMenuHost({
         reason?.usedFallback === true ||
         legacyPrompt?.usedFallback === true ||
         confirmationResults.some((result) => result.usedFallback);
+      const acceleratorLabels = row.accelerator
+        ? resolveKeycapPresentations(row.accelerator, resolveMessage)
+        : [];
       const disabled = row.disabled || fallbackUsed;
       const displayLabel = legacyPrompt ?? label;
       return {
@@ -114,6 +118,8 @@ export function ContextMenuHost({
         label: displayLabel.message,
         disabled,
         disabledReason: fallbackUsed ? unavailable : reason?.message,
+        acceleratorLabel:
+          acceleratorLabels.length > 0 ? acceleratorLabels.join("+") : null,
         className: contextMenuActionRowClassName({
           selected: row.selected,
           disabled,

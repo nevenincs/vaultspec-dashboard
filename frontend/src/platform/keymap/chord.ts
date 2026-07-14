@@ -17,6 +17,12 @@
 // non-macOS, `Mod` and `Ctrl` both resolve to the Control key, which is correct
 // and expected.
 
+import {
+  type MessageDescriptor,
+  type MessageKey,
+  normalizeMessageDescriptor,
+} from "../localization/message";
+
 /** The recognized modifier tokens, in canonical render order. */
 export const MODIFIER_TOKENS = ["Mod", "Ctrl", "Alt", "Shift"] as const;
 
@@ -50,6 +56,142 @@ export interface ChordEvent {
   shiftKey: boolean;
 }
 
+export const MAX_KEYCAP_PRESENTATIONS = MODIFIER_TOKENS.length + 1;
+const MAX_KEYCAP_LITERAL_CODE_UNITS = 32;
+const MAX_KEYCAP_DISPLAY_CHORD_CHARS = 256;
+
+export interface LiteralKeycapPresentation {
+  readonly kind: "literal";
+  readonly value: string;
+}
+
+/** Locale-independent display data for one visible keyboard keycap. */
+export type KeycapPresentation = LiteralKeycapPresentation | MessageDescriptor;
+
+const KEYCAP_MESSAGE_KEYS = {
+  Alt: "common:keycaps.alt",
+  ArrowDown: "common:keycaps.arrowDown",
+  ArrowLeft: "common:keycaps.arrowLeft",
+  ArrowRight: "common:keycaps.arrowRight",
+  ArrowUp: "common:keycaps.arrowUp",
+  Backspace: "common:keycaps.backspace",
+  Ctrl: "common:keycaps.control",
+  Delete: "common:keycaps.delete",
+  End: "common:keycaps.end",
+  Enter: "common:keycaps.enter",
+  Escape: "common:keycaps.escape",
+  Home: "common:keycaps.home",
+  Insert: "common:keycaps.insert",
+  PageDown: "common:keycaps.pageDown",
+  PageUp: "common:keycaps.pageUp",
+  Shift: "common:keycaps.shift",
+  Space: "common:keycaps.space",
+  Tab: "common:keycaps.tab",
+} as const satisfies Readonly<Record<string, MessageKey>>;
+
+const keyGraphemeSegmenter =
+  typeof Intl.Segmenter === "function"
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+    : null;
+
+function isSingleGrapheme(value: string): boolean {
+  if (value.length === 0 || value.length > MAX_KEYCAP_LITERAL_CODE_UNITS) return false;
+  return keyGraphemeSegmenter === null
+    ? Array.from(value).length === 1
+    : Array.from(keyGraphemeSegmenter.segment(value)).length === 1;
+}
+
+function isPrintableKeyGrapheme(value: string): boolean {
+  const hasUnsafeFormat = Array.from(value).some(
+    (character) => /\p{Cf}/u.test(character) && character !== "\u200d",
+  );
+  return (
+    isSingleGrapheme(value) &&
+    !/[\p{Cc}\p{Cs}\p{Z}]/u.test(value) &&
+    !hasUnsafeFormat &&
+    (!value.includes("\u200d") || /\p{Extended_Pictographic}/u.test(value)) &&
+    /[\p{L}\p{N}\p{P}\p{S}]/u.test(value)
+  );
+}
+
+function literalKeycap(value: string): LiteralKeycapPresentation | null {
+  const safe =
+    value === "⌘" ||
+    /^F(?:[1-9]|1\d|2[0-4])$/u.test(value) ||
+    isPrintableKeyGrapheme(value);
+  return safe ? Object.freeze({ kind: "literal", value }) : null;
+}
+
+/** Normalize one keycap presentation without evaluating accessors or coercing data. */
+export function normalizeKeycapPresentation(value: unknown): KeycapPresentation | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  let kind: PropertyDescriptor | undefined;
+  let literal: PropertyDescriptor | undefined;
+  try {
+    kind = Object.getOwnPropertyDescriptor(value, "kind");
+    literal = Object.getOwnPropertyDescriptor(value, "value");
+  } catch {
+    return null;
+  }
+  if (kind !== undefined || literal !== undefined) {
+    if (
+      kind === undefined ||
+      literal === undefined ||
+      !("value" in kind) ||
+      !("value" in literal) ||
+      kind.value !== "literal" ||
+      typeof literal.value !== "string"
+    ) {
+      return null;
+    }
+    return literalKeycap(literal.value);
+  }
+  return normalizeMessageDescriptor(value);
+}
+
+/** Normalize one bounded accelerator/keycap sequence. */
+export function normalizeKeycapPresentations(
+  value: unknown,
+): readonly KeycapPresentation[] | null {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > MAX_KEYCAP_PRESENTATIONS
+  ) {
+    return null;
+  }
+  const normalized: KeycapPresentation[] = [];
+  for (const item of value) {
+    const presentation = normalizeKeycapPresentation(item);
+    if (presentation === null) return null;
+    normalized.push(presentation);
+  }
+  return Object.freeze(normalized);
+}
+
+export interface KeycapMessageResolution {
+  readonly message: string;
+  readonly usedFallback: boolean;
+}
+
+/** Resolve keycaps at a rendering boundary; any missing message hides the hint. */
+export function resolveKeycapPresentations(
+  presentations: readonly KeycapPresentation[],
+  resolveMessage: (descriptor: MessageDescriptor) => KeycapMessageResolution,
+): readonly string[] {
+  const labels: string[] = [];
+  for (const presentation of presentations) {
+    if ("kind" in presentation) {
+      labels.push(presentation.value);
+      continue;
+    }
+    const resolved = resolveMessage(presentation);
+    if (resolved.usedFallback) return [];
+    labels.push(resolved.message);
+  }
+  return Object.freeze(labels);
+}
+
 let detectedIsMac: boolean | null = null;
 
 /**
@@ -67,11 +209,6 @@ export function defaultIsMac(): boolean {
   }
   detectedIsMac = /\bMac|iPhone|iPad|iPod\b/i.test(platform);
   return detectedIsMac;
-}
-
-/** Test seam: force the cached macOS detection (or clear it with `null`). */
-export function setIsMacForTesting(value: boolean | null): void {
-  detectedIsMac = value;
 }
 
 /**
@@ -196,22 +333,39 @@ export function chordStringFromEvent(event: ChordEvent): string | null {
 }
 
 /**
- * Split a canonical chord string into ordered display keycaps for the legend and
- * the settings recorder (e.g. `"Mod+Shift+K"` -> `["Mod","Shift","K"]`). The
- * `Mod` token renders as the platform-primary accelerator symbol — `"⌘"` on
- * macOS, `"Ctrl"` elsewhere — so the legend reads true to the host; every other
- * token (including a named key like `"ArrowLeft"`) renders verbatim. A chord that
- * fails to canonicalize yields a single keycap of its raw text so a corrupt entry
- * is shown honestly rather than dropped.
+ * Project a canonical chord into locale-independent keycap presentations. `Mod`
+ * remains the platform-primary accelerator: Command on macOS and localized
+ * Control elsewhere. Known named keys use semantic catalog messages; printable
+ * keys, symbols, and function keys use bounded literal presentations. Malformed
+ * or unknown display tokens fail closed so raw chord data never reaches the UI.
  */
 export function chordToKeycaps(
   chordString: string,
   isMac: boolean = defaultIsMac(),
-): string[] {
+): readonly KeycapPresentation[] {
+  if (chordString.length > MAX_KEYCAP_DISPLAY_CHORD_CHARS) return [];
   const canonical = canonicalizeChord(chordString);
-  if (canonical === null) return [chordString];
-  const modSymbol = isMac ? "⌘" : "Ctrl";
-  return canonical.split("+").map((token) => (token === "Mod" ? modSymbol : token));
+  if (canonical === null) return [];
+  const presentations: KeycapPresentation[] = [];
+  for (const token of canonical.split("+")) {
+    if (token === "Mod") {
+      const presentation = isMac
+        ? literalKeycap("⌘")
+        : ({ key: KEYCAP_MESSAGE_KEYS.Ctrl } satisfies MessageDescriptor);
+      if (presentation === null) return [];
+      presentations.push(presentation);
+      continue;
+    }
+    const messageKey = KEYCAP_MESSAGE_KEYS[token as keyof typeof KEYCAP_MESSAGE_KEYS];
+    if (messageKey !== undefined) {
+      presentations.push({ key: messageKey });
+      continue;
+    }
+    const literal = literalKeycap(token);
+    if (literal === null) return [];
+    presentations.push(literal);
+  }
+  return Object.freeze(presentations);
 }
 
 /**

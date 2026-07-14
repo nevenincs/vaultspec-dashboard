@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { setIsMacForTesting } from "../../platform/keymap/chord";
 import {
   type KeybindingDef,
   legacyKeybindingPresentation,
@@ -23,7 +22,6 @@ describe("keyboard shortcuts store", () => {
   beforeEach(() => useKeyboardShortcutsStore.getState().reset());
   afterEach(() => {
     resetKeybindings();
-    setIsMacForTesting(null);
   });
 
   it("opens, closes, and toggles the lifted shortcut legend", () => {
@@ -78,7 +76,6 @@ describe("keyboard shortcuts store", () => {
   });
 
   it("derives the legend from the live registry, not a static list", () => {
-    setIsMacForTesting(false); // Mod -> "Ctrl"
     resetKeybindings();
     // An empty registry yields a sparse (empty) legend — honest until enrollment.
     expect(deriveKeyboardShortcutGroups([], {})).toEqual([]);
@@ -100,19 +97,18 @@ describe("keyboard shortcuts store", () => {
       },
     ]);
 
-    const groups = deriveKeyboardShortcutGroups(undefined, {});
+    const groups = deriveKeyboardShortcutGroups(undefined, {}, false);
     expect(groups.map((group) => group.label)).toEqual(["General", "Graph"]);
     const general = groups.find((group) => group.label === "General");
     expect(general?.id).toBe("legacy:General");
     expect(general?.shortcuts).toContainEqual({
       id: "command.palette",
       label: "Open the command palette",
-      keys: ["Ctrl", "K"],
+      keys: [{ key: "common:keycaps.control" }, { kind: "literal", value: "K" }],
     });
   });
 
   it("reflects an effective override in the derived legend keycaps", () => {
-    setIsMacForTesting(false);
     resetKeybindings();
     registerKeybindings([
       {
@@ -123,18 +119,19 @@ describe("keyboard shortcuts store", () => {
         context: "global",
       },
     ]);
-    const groups = deriveKeyboardShortcutGroups(undefined, {
-      "command.palette": "Mod+P",
-    });
+    const groups = deriveKeyboardShortcutGroups(
+      undefined,
+      { "command.palette": "Mod+P" },
+      false,
+    );
     expect(groups[0]?.shortcuts[0]).toEqual({
       id: "command.palette",
       label: "Open the command palette",
-      keys: ["Ctrl", "P"],
+      keys: [{ key: "common:keycaps.control" }, { kind: "literal", value: "P" }],
     });
   });
 
   it("retains typed presentations and groups distinct descriptor objects by key", () => {
-    setIsMacForTesting(false);
     const groups = deriveKeyboardShortcutGroups(
       [
         {
@@ -160,6 +157,7 @@ describe("keyboard shortcuts store", () => {
         },
       ],
       {},
+      false,
     );
 
     expect(groups).toEqual([
@@ -170,12 +168,12 @@ describe("keyboard shortcuts store", () => {
           {
             id: "action.retry",
             label: { key: "common:actions.retry" },
-            keys: ["Ctrl", "R"],
+            keys: [{ key: "common:keycaps.control" }, { kind: "literal", value: "R" }],
           },
           {
             id: "action.close",
             label: { key: "common:actions.close" },
-            keys: ["Escape"],
+            keys: [{ key: "common:keycaps.escape" }],
           },
         ],
       },
@@ -186,7 +184,7 @@ describe("keyboard shortcuts store", () => {
           {
             id: "action.legacy",
             label: "Legacy shortcut",
-            keys: ["L"],
+            keys: [{ kind: "literal", value: "L" }],
           },
         ],
       },

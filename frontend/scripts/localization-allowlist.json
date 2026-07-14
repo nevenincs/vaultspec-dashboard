@@ -4365,52 +4365,12 @@
     "rule": "jsx-text"
   },
   {
-    "id": "0cbeec57623e8143bcf71129",
-    "path": "src/app/viewer/DocChrome.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "3bd432bdf77dbdee18d432b4",
-    "path": "src/app/viewer/DocChrome.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "c054d50ee0a722e432e5a649",
-    "path": "src/app/viewer/DocChrome.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "d5b1b5ca81514c0a02e2074d",
-    "path": "src/app/viewer/DocChrome.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "10da49a2aade237ba6cc81f5",
-    "path": "src/app/viewer/DocChrome.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "1b0db68ba4ff7d1b7c3e29d2",
     "path": "src/app/viewer/DocChrome.tsx",
     "rule": "jsx-text"
   },
   {
-    "id": "1b182aaf98232839db30f3f2",
-    "path": "src/app/viewer/DocChrome.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "41127ba7b4b2789793b586f5",
-    "path": "src/app/viewer/DocChrome.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "a4692048adb32e5b44ded431",
-    "path": "src/app/viewer/DocChrome.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "b6342cb07c13e82647f7c4d1",
     "path": "src/app/viewer/DocChrome.tsx",
     "rule": "jsx-text"
   },

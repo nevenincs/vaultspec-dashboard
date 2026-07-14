@@ -21,6 +21,7 @@ import type {
   KeybindingGroupPresentation,
   KeybindingPresentation,
 } from "../../platform/keymap/registry";
+import { resolveKeycapPresentations } from "../../platform/keymap/chord";
 import {
   type LocalizedMessageResolver,
   useLocalizedMessageResolver,
@@ -70,10 +71,14 @@ export function KeyboardShortcuts() {
                     shortcut.label,
                     resolveMessage,
                   );
+                  const keycaps = resolveKeycapPresentations(
+                    shortcut.keys,
+                    resolveMessage,
+                  );
                   return (
                     <li key={shortcut.id}>
                       <ListRow
-                        trailing={shortcut.keys.map((key, index) => (
+                        trailing={keycaps.map((key, index) => (
                           <Kbd key={keycapIdentity(shortcut.id, index)}>{key}</Kbd>
                         ))}
                       >

@@ -20,6 +20,7 @@ import type {
   KeybindingGroupPresentation,
   KeybindingPresentation,
 } from "../../../platform/keymap/registry";
+import { resolveKeycapPresentations } from "../../../platform/keymap/chord";
 import {
   type LocalizedMessageResolver,
   useLocalizedMessageResolver,
@@ -92,6 +93,7 @@ export function KeybindingControl({ value, onChange, disabled, id }: ControlProp
                 const conflicts = recording
                   ? []
                   : keybindingConflictPresentations(view.overrides, row.id, row.chord);
+                const keycaps = resolveKeycapPresentations(row.keycaps, resolveMessage);
                 return (
                   <li
                     key={row.id}
@@ -138,7 +140,7 @@ export function KeybindingControl({ value, onChange, disabled, id }: ControlProp
                           }).message
                         ) : (
                           <span className="flex items-center gap-fg-0-5">
-                            {row.keycaps.map((cap, index) => (
+                            {keycaps.map((cap, index) => (
                               <Kbd key={keycapIdentity(row.id, index)}>{cap}</Kbd>
                             ))}
                           </span>

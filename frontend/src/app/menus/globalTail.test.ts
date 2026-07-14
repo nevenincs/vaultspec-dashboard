@@ -27,7 +27,8 @@ describe("context-menu global tail (Refresh)", () => {
     const dispose = registerKeybindings(deriveReloadKeybindings());
     const accel = globalTailActions()[0].accelerator;
     expect(accel).toBeDefined();
-    expect(accel).toMatch(/Shift\+R$/); // e.g. "Ctrl+Shift+R" / "⌘+Shift+R"
+    expect(accel).toContainEqual({ key: "common:keycaps.shift" });
+    expect(accel?.at(-1)).toEqual({ kind: "literal", value: "R" });
     dispose();
     expect(globalTailActions()[0].accelerator).toBeUndefined();
   });

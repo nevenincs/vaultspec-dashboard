@@ -1,30 +1,34 @@
 // @vitest-environment happy-dom
 //
 // Document chrome keeps shortcut hints out of the visible UI. The View/Edit toggle
-// exposes its registry-derived chord only through its native hover tooltip. Pinned to
-// non-macOS so `Mod` renders as the literal "Ctrl" keycap.
+// exposes its registry-derived chord only through its native hover tooltip.
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { I18nextProvider } from "react-i18next";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { setIsMacForTesting } from "../../platform/keymap/chord";
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+} from "../../localization/testing";
+import { defaultIsMac } from "../../platform/keymap/chord";
 import { DocChrome } from "./DocChrome";
 
-beforeEach(() => setIsMacForTesting(false));
-afterEach(() => {
-  setIsMacForTesting(null);
-  cleanup();
-});
+afterEach(cleanup);
 
 function renderChrome(mode: "view" | "edit" = "view") {
-  return render(
-    <DocChrome
-      trail={[{ label: "doc" }]}
-      mode={mode}
-      onModeChange={() => undefined}
-      canEdit
-    />,
+  const runtime = createTestLocalizationRuntime();
+  const result = render(
+    <I18nextProvider i18n={runtime}>
+      <DocChrome
+        trail={[{ label: "doc" }]}
+        mode={mode}
+        onModeChange={() => undefined}
+        canEdit
+      />
+    </I18nextProvider>,
   );
+  return { ...result, runtime };
 }
 
 describe("DocChrome accelerator hints", () => {
@@ -41,12 +45,23 @@ describe("DocChrome accelerator hints", () => {
     "keeps the registry-derived shortcut in hover tooltips in %s mode",
     (mode) => {
       renderChrome(mode);
+      const primary = defaultIsMac() ? "⌘" : "Ctrl";
       expect(screen.getByRole("radio", { name: "View" }).getAttribute("title")).toBe(
-        "Toggle edit mode (Ctrl E)",
+        `Toggle edit mode (${primary} E)`,
       );
       expect(screen.getByRole("radio", { name: "Edit" }).getAttribute("title")).toBe(
-        "Toggle edit mode (Ctrl E)",
+        `Toggle edit mode (${primary} E)`,
       );
     },
   );
+
+  it("reactively localizes the complete shortcut tooltip", async () => {
+    const { runtime } = renderChrome();
+    const view = screen.getByRole("radio", { name: "View" });
+    const primary = defaultIsMac() ? "⌘" : "Ctrl";
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+
+    expect(view.getAttribute("title")).toBe(`Changer de mode d’édition (${primary} E)`);
+  });
 });

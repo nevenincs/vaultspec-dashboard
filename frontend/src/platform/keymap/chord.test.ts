@@ -1,15 +1,15 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   type Chord,
   type ChordEvent,
   canonicalizeChord,
   chordStringFromEvent,
+  chordToKeycaps,
   formatChord,
   matchesChord,
   normalizeKey,
   parseChord,
-  setIsMacForTesting,
 } from "./chord";
 
 function ev(over: Partial<ChordEvent> & { key: string }): ChordEvent {
@@ -21,8 +21,6 @@ function ev(over: Partial<ChordEvent> & { key: string }): ChordEvent {
     ...over,
   };
 }
-
-afterEach(() => setIsMacForTesting(null));
 
 describe("parseChord", () => {
   it("parses modifiers case-insensitively in any order into canonical form", () => {
@@ -92,6 +90,63 @@ describe("formatChord / canonicalizeChord", () => {
   it("canonicalize rejects keyless or empty-segment input", () => {
     expect(canonicalizeChord("Mod+")).toBeNull();
     expect(canonicalizeChord("Mod+Ctrl")).toBeNull();
+  });
+});
+
+describe("localized keycap presentations", () => {
+  it("separates canonical chord identity from catalog-owned display names", () => {
+    expect(canonicalizeChord("shift+alt+mod+arrowleft")).toBe(
+      "Mod+Alt+Shift+arrowleft",
+    );
+    expect(chordToKeycaps("Mod+Alt+Shift+ArrowLeft", false)).toEqual([
+      { key: "common:keycaps.control" },
+      { key: "common:keycaps.alt" },
+      { key: "common:keycaps.shift" },
+      { key: "common:keycaps.arrowLeft" },
+    ]);
+    expect(chordToKeycaps("Mod+K", true)).toEqual([
+      { kind: "literal", value: "⌘" },
+      { kind: "literal", value: "K" },
+    ]);
+  });
+
+  it("preserves printable international keyboard graphemes", () => {
+    expect(chordToKeycaps("É", false)).toEqual([{ kind: "literal", value: "é" }]);
+    expect(chordToKeycaps("Ñ", false)).toEqual([{ kind: "literal", value: "ñ" }]);
+    expect(chordToKeycaps("ß", false)).toEqual([{ kind: "literal", value: "ß" }]);
+    expect(chordToKeycaps("ش", false)).toEqual([{ kind: "literal", value: "ش" }]);
+    expect(chordToKeycaps("٣", false)).toEqual([{ kind: "literal", value: "٣" }]);
+    expect(chordToKeycaps("e\u0301", false)).toEqual([{ kind: "literal", value: "é" }]);
+    expect(chordToKeycaps("👩‍💻", false)).toEqual([{ kind: "literal", value: "👩‍💻" }]);
+  });
+
+  it("fails closed for malformed, invisible, and unknown display tokens", () => {
+    expect(chordToKeycaps("Mod+", false)).toEqual([]);
+    expect(chordToKeycaps("LaunchMail", false)).toEqual([]);
+    expect(chordToKeycaps("\u200f", false)).toEqual([]);
+    expect(chordToKeycaps("two keys", false)).toEqual([]);
+  });
+});
+
+describe("non-ASCII canonical identity compatibility", () => {
+  it("keeps legacy canonical bytes and Shift stripping for single-code-unit keys", () => {
+    expect(canonicalizeChord("É")).toBe("é");
+    expect(canonicalizeChord("Shift+É")).toBe("é");
+    expect(canonicalizeChord("Ñ")).toBe("ñ");
+    expect(canonicalizeChord("Shift+ß")).toBe("ß");
+    expect(canonicalizeChord("Shift+ش")).toBe("ش");
+  });
+
+  it("keeps legacy matching behavior for shifted non-ASCII keys", () => {
+    const accented = parseChord("Shift+É")!;
+    expect(accented.shift).toBe(false);
+    expect(matchesChord(accented, ev({ key: "É", shiftKey: true }), false)).toBe(true);
+    expect(matchesChord(accented, ev({ key: "é" }), false)).toBe(true);
+  });
+
+  it("keeps multi-code-unit keys distinct from legacy symbol handling", () => {
+    expect(canonicalizeChord("Shift+e\u0301")).toBe("Shift+é");
+    expect(parseChord("Shift+👩‍💻")?.shift).toBe(true);
   });
 });
 

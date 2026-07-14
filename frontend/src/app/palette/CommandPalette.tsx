@@ -27,6 +27,7 @@ import { useTranslation } from "react-i18next";
 
 import { Kbd, Skeleton, SkeletonRow } from "../kit";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import { resolveKeycapPresentations } from "../../platform/keymap/chord";
 import { isRunnable } from "../../platform/actions/action";
 import { localizationNamespaces } from "../../platform/localization/runtime";
 import { useConfirmable } from "../../platform/dispatch/useAction";
@@ -372,6 +373,12 @@ function CommandPaletteSurface() {
                   </div>
                   <ul role="presentation">
                     {group.rows.map((row) => {
+                      const accelerator = row.accelerator
+                        ? resolveKeycapPresentations(
+                            row.accelerator,
+                            resolveMessage,
+                          ).join("+")
+                        : "";
                       return (
                         <li key={row.id} role="presentation">
                           <button
@@ -389,8 +396,8 @@ function CommandPaletteSurface() {
                           >
                             <span className={row.labelClassName}>{row.label}</span>
                             <span className="flex items-center gap-fg-2 text-label text-ink-faint">
-                              {row.accelerator && !row.armed && (
-                                <Kbd>{row.accelerator}</Kbd>
+                              {accelerator.length > 0 && !row.armed && (
+                                <Kbd>{accelerator}</Kbd>
                               )}
                               {row.confirmShortcutLabel && (
                                 <span
