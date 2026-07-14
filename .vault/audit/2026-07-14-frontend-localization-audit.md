@@ -1261,3 +1261,24 @@ lint gate passed. Baseline reconciliation removed exactly four bridge findings: 
 scanner decreased from 1,501 to 1,497, and bridge debt decreased from 147 to 143. No
 user-facing developer metadata, raw localization keys, diagnostics, or em dashes were
 introduced. S148 is accepted with no open findings.
+
+### W02.P04.S149 review | pass | Feature repair uses a guarded confirmation
+
+Commit `9f2807851c`, implemented through delegated Terra rollout work, moves the shared
+feature repair action to the approved feature catalog. The enabled action replaces the
+transitional confirmation flag with a typed guarded confirmation whose title identifies
+the selected feature and whose body explains the repair and next step.
+
+Review confirmed that the guarded confirmation exists only on enabled actions. The
+disabled descriptor uses actionable feature-selection guidance and carries neither
+confirmation form nor an effect. Action IDs, the repair icon, transform section,
+time-travel gating, dispatch-only shape, OPS payload, and nullable scope behavior are
+preserved. The archive builder remains untouched, and its two bridge entries remain for
+the separately scheduled `S150` migration.
+
+The Terra focused run passed all 94 tests across six files. Independent Sol verification
+passed all 45 tests across the two directly affected test files, and the complete frontend
+lint gate passed. Baseline reconciliation removed exactly two bridge findings: the
+scanner decreased from 1,497 to 1,495, and bridge debt decreased from 143 to 141. No
+user-facing developer metadata, raw localization keys, diagnostics, or em dashes were
+introduced. S149 is accepted with no open findings.
