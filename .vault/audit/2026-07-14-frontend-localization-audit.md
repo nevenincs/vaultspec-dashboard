@@ -433,3 +433,22 @@ expected failure was used. The full frontend lint gate and production build pass
 placeholder, frontmatter, and body-link checks are clean, and the plan reports only the
 documented intentional identifier-order warning. S244 is accepted with no open
 findings.
+
+### W01.P01.S118 remediation review | pass | Finding resolved
+
+Commit `c0d969b53a` resolves the listener-cleanup finding with no open S118 findings.
+The final reference now retains its zero-reference binding record unless exact listener
+removal succeeds. Two bounded attempts handle a transient accessor failure without
+unbounded work, and the same disposer remains retryable after both attempts fail. A
+later bind reuses the retained listener instead of registering a duplicate, increments
+the existing reference count, and lets its disposer complete removal when it becomes
+the final owner. Per-disposer state prevents repeated calls from decrementing the count
+again, and registry identity and zero-reference checks guard deletion.
+
+Three real i18next and happy-dom assertions passed for same-disposer recovery after two
+failed removal accesses, later-disposer recovery without duplicate registration, and
+ordinary two-owner language reactivity through a right-to-left change and final
+release. Listener counts returned to zero, repeated disposal stayed idempotent, and no
+fake, mock, stub, runtime patch, monkeypatch, skip, or expected failure was used. The
+complete frontend lint, formatting, type, token, and Figma-name gate also passed. S118
+is accepted.
