@@ -1330,3 +1330,30 @@ the localization scanner, and diff checks. The complete frontend lint recipe pas
 Touched tests contain no fakes, mocks, stubs, patches, skips, or expected failures. No
 user-facing developer metadata, raw keys, diagnostics, or em dashes were introduced.
 S22 is accepted with no open findings.
+
+### W02.P05.S33 review | pass | Shortcut messages resolve at the React boundary
+
+Commit `0f88139146`, implemented through delegated Terra rollout work, merges the
+planned shortcut-store and shortcut-dialog migrations into one atomic consumer step.
+The store now carries normalized label and group presentations with stable action IDs
+and collision-safe semantic group IDs. It preserves registry order, effective chords,
+overrides, and keycaps without resolving or caching locale copy.
+
+Review confirmed that the dialog resolves typed presentations only during React render
+through the shared safe-fallback runtime. Groups, rows, and keycaps use stable IDs, so a
+locale change updates visible copy without remounting the corresponding elements.
+Malformed presentations fail closed, descriptor groups coalesce by semantic key, and a
+legacy string resembling a message key remains a distinct group.
+
+The dialog title is now sentence-case `Keyboard shortcuts`, and its description is the
+short catalog message `Review available keyboard shortcuts.` The former wording that
+described dashboard listener behavior and a legend is removed. The copy contains no
+rebindable chord guidance, internal vocabulary, raw keys, diagnostics, or em dashes.
+
+Independent Sol verification passed 34 focused tests across five files, TypeScript,
+the localization scanner, and diff checks. The complete frontend lint recipe passed.
+Tests use the real localization runtime, registry, dispatcher, and DOM behavior without
+fakes, mocks, stubs, patches, skips, or expected failures. Exact baseline reconciliation
+removed only the two former dialog literal findings, reducing the scanner from 1,499 to
+1,497 findings while the keybinding bridge remains at 50 entries. S33 is accepted with
+no open findings.
