@@ -682,3 +682,53 @@ All three targeted Vitest cases passed, along with targeted ESLint and Prettier 
 and the full TypeScript 6 project check. No fake, mock, stub, patch, monkeypatch, skip,
 expected failure, production catalog change, user-facing copy, or development-state UI
 was introduced. S119 is accepted with no open findings.
+
+### W01.P03.S121 internal-language coverage | high | Block the full prohibited vocabulary
+
+Commit `0d4fba990c` does not enforce the accepted no-leakage contract for several terms
+named by the architecture and research. Source messages such as "Engine unavailable",
+"Token unavailable", "Adapter unavailable", "Schema unavailable", "Identifier
+unavailable", "WebGL unavailable", "GPU unavailable", "CLI unavailable", and
+"Implementation is difficult" receive no `prohibited-term` issue. The diagnostic guard
+also misses a plain `Error:` exception prefix and common internal path or command forms.
+Expand the bounded prohibited-term and diagnostic tables to cover the complete accepted
+internal, development-state, diagnostic, and implementation-difficulty vocabulary. Add
+direct adverse assertions for each family and safe-boundary assertions proving ordinary
+words such as restore, store, webhook, and telescope do not produce substring false
+positives.
+
+### W01.P03.S121 raw-key coverage | medium | Reject every namespace-qualified key shape
+
+The generic raw-key expression requires a dot after the namespace segment. A source
+message containing an undeclared but valid namespace-qualified form such as
+`common:retry` therefore receives no `raw-key` issue; checking the current
+`MESSAGE_KEYS` set does not protect future, stale, or misspelled keys. Recognize the
+complete bounded semantic-key shape independently of the current catalog and add
+adverse cases for one-segment, multi-segment, unknown, and embedded keys without
+creating substring false positives.
+
+### W01.P03.S121 actionable-recovery | medium | Distinguish recovery instructions from failure statements
+
+The error-message check treats any sentence whose first word is in the recovery verb
+set as actionable. Text such as "Retry failed." or "Try is unavailable." passes even
+though it offers no useful next action. Tighten the grammar or attach an explicit
+policy classification so a recovery instruction is actually actionable, including in
+multi-sentence and interpolation-bearing messages. Keep interpolation values opaque and
+require the static recovery instruction itself to carry the imperative.
+
+### W01.P03.S121 review | changes required | Close policy bypasses before rollout
+
+The English catalog remains the sole source-copy authority, the policy map classifies
+exactly every current typed key, and the production catalog passes. The static-segment
+parser handles valid named interpolation without inspecting user values, malformed
+delimiters remain visible to the raw-placeholder check, issue emission is finitely
+bounded and deduplicated, and the tests cover every declared issue code through the
+production validator without reproducing its algorithm. Current copy introduces no
+user-facing development metadata.
+
+The focused four-test Vitest suite, targeted ESLint and Prettier checks, and the full
+TypeScript project check passed. No fake, mock, stub, patch, monkeypatch, skip, or
+expected failure was used. S121 requires the prohibited-language, raw-key, and
+actionable-recovery remediations above, plus adverse coverage for hostile and malformed
+templates, multiple sentences, interpolation-leading copy, approved-term casing, and
+safe word boundaries, before acceptance.
