@@ -613,3 +613,26 @@ the full TypeScript 6 project check. Before accepting S119, make compatibility
 non-vacuous with bounded real resources, align the token bound with the production
 descriptor's distinct-name contract, and replace the duplicated translation-option
 oracle with direct observable assertions.
+
+### W01.P03.S13 remediation review | pass | Findings resolved
+
+Commit `eec6e256b8` resolves both S13 findings with no open findings. An explicit literal
+contract now independently names every shipped locale, namespace, and required message
+leaf. `MESSAGE_KEYS` must equal that contract, and a separate traversal of every raw
+shipped catalog must produce the same complete set. Adding an undeclared leaf, omitting
+a required leaf, or misspelling a key therefore creates a concrete set difference. The
+literal keys also satisfy the production `MessageKey` type and runtime guard.
+
+The previous uniqueness, leaf-versus-parent, and source-derived namespace-membership
+assertions are removed. The remaining direct-resource checks meaningfully prove that
+each explicit required key resolves to a non-empty string through a fresh production
+runtime and that the initialized source bundles match the exported source catalog. The
+generic test traversal only observes catalog structure; the expected key set remains an
+independent oracle and does not reproduce message resolution or production key
+validation logic.
+
+All four targeted Vitest cases passed, along with targeted ESLint and Prettier checks
+and the full TypeScript 6 project check. No fake, mock, stub, patch, monkeypatch, skip,
+expected failure, production catalog change, user-facing copy, or development metadata
+was introduced. The updated execution record accurately reports exact parity behavior.
+S13 is accepted.
