@@ -1133,3 +1133,20 @@ paths exactly match the plan scope, and the execution record accurately reports 
 scope separation, behavior preservation, gates, and scanner reduction. No user-facing
 developer metadata, raw localization keys, diagnostics, or em dashes were introduced.
 S20 is accepted with no open findings.
+
+### W02.P04.S21 review | pass | Shared action composition remains presentation-neutral
+
+Commit `ca425f1f23` correctly records an evidence-backed no-op. The background menu
+continues to own only entity normalization, regional composition, and action ordering;
+chrome, graph, and follow-mode presentation remains with `S123`, and timeline criteria
+remain with `S230`. The global tail continues to own only terminal placement and the
+registry-derived accelerator; refresh presentation remains with `S146`. Neither target
+authors a label, disabled reason, status, error, localization key, or temporary bridge
+entry.
+
+The 11 focused tests across the two target suites passed, covering identity and order,
+timeline-only composition, disabled and time-travel behavior, sole refresh membership,
+terminal placement, and accelerator derivation. The complete frontend lint gate passed.
+The scanner remains clean and unchanged at 1,519 findings, including 165 bridge entries.
+No user-facing developer metadata, raw localization keys, diagnostics, or em dashes were
+introduced. S21 is accepted with no open findings.
