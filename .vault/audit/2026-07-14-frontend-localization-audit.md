@@ -636,3 +636,29 @@ and the full TypeScript 6 project check. No fake, mock, stub, patch, monkeypatch
 expected failure, production catalog change, user-facing copy, or development metadata
 was introduced. The updated execution record accurately reports exact parity behavior.
 S13 is accepted.
+
+### W01.P03.S119 shipped-locale parity | medium | Keep the production parity guard future-active
+
+Commit `6d5386dd25` removes the vacuous claim and makes current interpolation coverage
+meaningful with real left-to-right and right-to-left resources, but it also removes all
+production cross-locale token comparison. The production loop now validates syntax and
+bounds independently for each template. If a second shipped locale later uses a
+different distinct token set from the source template, every S119 assertion still
+passes. Compare each non-source shipped locale's distinct token set with its source
+template without requiring a second shipped locale to exist. The real S244 comparison
+can continue to provide the present non-vacuous behavior proof.
+
+### W01.P03.S119 remediation review | changes required | One parity guard remains
+
+The remediation resolves the original bounds and oracle findings. Parameter limits now
+apply to distinct names, and the duplicated `translationOptions` helper is removed.
+Production messages without parameters resolve directly to their catalog source copy.
+The real S244 left-to-right and right-to-left templates both independently discover the
+`section` token, compare equal, resolve through production descriptors and fallback,
+leave no unresolved delimiters, and recover with localized safe copy when the value is
+missing. The test does not use a fake, mock, stub, patch, monkeypatch, skip, or expected
+failure and changes no production catalog or user-facing UI.
+
+All three targeted Vitest cases passed, along with targeted ESLint and Prettier checks
+and the full TypeScript 6 project check. S119 still requires a future-active comparison
+for distinct token names across shipped production locales before acceptance.
