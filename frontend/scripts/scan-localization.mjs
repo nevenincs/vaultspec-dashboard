@@ -46,8 +46,8 @@ const FINDING_CODES = Object.freeze({
 
 const SOURCE_EXT = /\.(?:ts|tsx)$/u;
 const TEST_SOURCE = /\.(?:test|spec)\.(?:ts|tsx)$/u;
-const GENERATED_MARKER = /@generated/iu;
 const EXACT_SOURCE_EXCLUSIONS = new Set(["src/localization/testing/resources.ts"]);
+const EXACT_GENERATED_SOURCES = new Set();
 const FORMATTER_OWNER = "src/platform/localization/formatters.ts";
 
 const JSX_ATTRIBUTE_NAMES = new Set([
@@ -156,14 +156,14 @@ function collectSourceFiles(root = sourceRoot) {
   return files;
 }
 
-function sourceIsExcluded(file, content) {
+function sourceIsExcluded(file) {
   const rel = toRelative(file);
   return (
     TEST_SOURCE.test(rel) ||
     rel.endsWith(".d.ts") ||
     rel.startsWith("src/locales/") ||
     EXACT_SOURCE_EXCLUSIONS.has(rel) ||
-    GENERATED_MARKER.test(content.slice(0, 256))
+    EXACT_GENERATED_SOURCES.has(rel)
   );
 }
 
@@ -192,15 +192,24 @@ function meaningful(value) {
 }
 
 function mergeParts(parts, next) {
+  if (parts.texts.length + next.texts.length > LIMITS.parts || next.overflow) {
+    throw new Error("Localization constant resolution part limit exceeded.");
+  }
   parts.texts.push(...next.texts);
   parts.translation ||= next.translation;
   parts.dynamic ||= next.dynamic;
-  if (parts.texts.length > LIMITS.parts) parts.overflow = true;
   return parts;
 }
 
 function emptyParts() {
   return { dynamic: false, overflow: false, texts: [], translation: false };
+}
+
+function appendText(parts, text) {
+  if (parts.texts.length >= LIMITS.parts) {
+    throw new Error("Localization constant resolution part limit exceeded.");
+  }
+  parts.texts.push(text);
 }
 
 function unwrapAlias(symbol, checker) {
@@ -223,18 +232,107 @@ function isConstDeclaration(declaration) {
   );
 }
 
-function sourceUsesTranslationHook(sourceFile) {
-  return sourceFile.statements.some(
-    (statement) =>
-      ts.isImportDeclaration(statement) &&
-      ts.isStringLiteral(statement.moduleSpecifier) &&
-      statement.moduleSpecifier.text === "react-i18next" &&
-      statement.importClause?.namedBindings &&
-      ts.isNamedImports(statement.importClause.namedBindings) &&
-      statement.importClause.namedBindings.elements.some(
-        (element) => element.name.text === "useTranslation",
-      ),
-  );
+function symbolAt(node, checker) {
+  return node ? checker.getSymbolAtLocation(node) : undefined;
+}
+
+function translationBindings(sourceFile, checker) {
+  const bindings = {
+    calls: new Set(),
+    factories: new Set(),
+    hookNamespaces: new Set(),
+    hookResults: new Set(),
+    hooks: new Set(),
+    i18nextNamespaces: new Set(),
+    receivers: new Set(),
+    runtimeFactories: new Set(),
+    runtimeNamespaces: new Set(),
+  };
+  const runtimeModule = (name) =>
+    name === "./runtime" || /(?:^|\/)localization\/runtime$/u.test(name);
+
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      !statement.importClause
+    ) {
+      continue;
+    }
+    const moduleName = statement.moduleSpecifier.text;
+    const clause = statement.importClause;
+    if (moduleName === "i18next" && clause.name) {
+      bindings.receivers.add(symbolAt(clause.name, checker));
+    }
+    const named = clause.namedBindings;
+    if (named && ts.isNamespaceImport(named)) {
+      const symbol = symbolAt(named.name, checker);
+      if (moduleName === "react-i18next") bindings.hookNamespaces.add(symbol);
+      if (moduleName === "i18next") bindings.i18nextNamespaces.add(symbol);
+      if (runtimeModule(moduleName)) bindings.runtimeNamespaces.add(symbol);
+      continue;
+    }
+    if (!named || !ts.isNamedImports(named)) continue;
+    for (const element of named.elements) {
+      const original = element.propertyName?.text ?? element.name.text;
+      const symbol = symbolAt(element.name, checker);
+      if (moduleName === "react-i18next" && original === "useTranslation") {
+        bindings.hooks.add(symbol);
+      }
+      if (moduleName === "i18next" && original === "t") bindings.calls.add(symbol);
+      if (runtimeModule(moduleName) && original === "localization") {
+        bindings.receivers.add(symbol);
+      }
+      if (runtimeModule(moduleName) && original === "createLocalizationRuntime") {
+        bindings.runtimeFactories.add(symbol);
+      }
+      if (
+        (moduleName === "./message" ||
+          /(?:^|\/)localization\/message$/u.test(moduleName)) &&
+        TRANSLATION_FACTORIES.has(original)
+      ) {
+        bindings.factories.add(symbol);
+      }
+    }
+  }
+
+  const isHookCall = (node) =>
+    ts.isCallExpression(node) &&
+    ((ts.isIdentifier(node.expression) &&
+      bindings.hooks.has(symbolAt(node.expression, checker))) ||
+      (ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === "useTranslation" &&
+        ts.isIdentifier(node.expression.expression) &&
+        bindings.hookNamespaces.has(symbolAt(node.expression.expression, checker))));
+  const isRuntimeFactoryCall = (node) =>
+    ts.isCallExpression(node) &&
+    ((ts.isIdentifier(node.expression) &&
+      bindings.runtimeFactories.has(symbolAt(node.expression, checker))) ||
+      (ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === "createLocalizationRuntime" &&
+        ts.isIdentifier(node.expression.expression) &&
+        bindings.runtimeNamespaces.has(symbolAt(node.expression.expression, checker))));
+
+  const visit = (node) => {
+    if (ts.isVariableDeclaration(node) && node.initializer) {
+      if (ts.isIdentifier(node.name)) {
+        const symbol = symbolAt(node.name, checker);
+        if (isHookCall(node.initializer)) bindings.hookResults.add(symbol);
+        if (isRuntimeFactoryCall(node.initializer)) bindings.receivers.add(symbol);
+      } else if (ts.isObjectBindingPattern(node.name) && isHookCall(node.initializer)) {
+        for (const element of node.name.elements) {
+          if (!ts.isIdentifier(element.name)) continue;
+          const original = propertyName(element.propertyName ?? element.name);
+          const symbol = symbolAt(element.name, checker);
+          if (original === "t") bindings.calls.add(symbol);
+          if (original === "i18n") bindings.receivers.add(symbol);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return bindings;
 }
 
 function callName(expression) {
@@ -243,36 +341,50 @@ function callName(expression) {
   return null;
 }
 
-function isTranslationCall(node, hookSource) {
-  if (!ts.isCallExpression(node)) return false;
-  const expression = node.expression;
+function isReceiverExpression(expression, bindings, checker) {
   if (ts.isIdentifier(expression)) {
-    return (
-      TRANSLATION_FACTORIES.has(expression.text) ||
-      (expression.text === "t" && hookSource)
-    );
+    const symbol = symbolAt(expression, checker);
+    return bindings.receivers.has(symbol) || bindings.hookResults.has(symbol);
   }
-  if (!ts.isPropertyAccessExpression(expression) || expression.name.text !== "t") {
-    return false;
-  }
-  const receiver = expression.expression;
   return (
-    ts.isIdentifier(receiver) && /^(?:i18n|localization|runtime)$/u.test(receiver.text)
+    ts.isPropertyAccessExpression(expression) &&
+    ((expression.name.text === "localization" &&
+      ts.isIdentifier(expression.expression) &&
+      bindings.runtimeNamespaces.has(symbolAt(expression.expression, checker))) ||
+      (expression.name.text === "i18n" &&
+        ts.isIdentifier(expression.expression) &&
+        bindings.hookResults.has(symbolAt(expression.expression, checker))))
   );
 }
 
-function staticParts(node, checker, hookSource, seen = new Set(), depth = 0) {
+function isTranslationCall(node, bindings, checker) {
+  if (!ts.isCallExpression(node)) return false;
+  const expression = node.expression;
+  if (ts.isIdentifier(expression)) {
+    const symbol = symbolAt(expression, checker);
+    return bindings.calls.has(symbol) || bindings.factories.has(symbol);
+  }
+  return (
+    ts.isPropertyAccessExpression(expression) &&
+    expression.name.text === "t" &&
+    ((ts.isIdentifier(expression.expression) &&
+      bindings.i18nextNamespaces.has(symbolAt(expression.expression, checker))) ||
+      isReceiverExpression(expression.expression, bindings, checker))
+  );
+}
+
+function staticParts(node, checker, bindings, seen = new Set(), depth = 0) {
   const result = emptyParts();
   if (!node || depth > LIMITS.constantDepth) return { ...result, dynamic: true };
   if (ts.isStringLiteralLike(node)) {
-    result.texts.push(node.text);
+    appendText(result, node.text);
     return result;
   }
   if (ts.isJsxText(node)) {
-    result.texts.push(node.text);
+    appendText(result, node.text);
     return result;
   }
-  if (isTranslationCall(node, hookSource)) {
+  if (isTranslationCall(node, bindings, checker)) {
     result.translation = true;
     return result;
   }
@@ -281,16 +393,16 @@ function staticParts(node, checker, hookSource, seen = new Set(), depth = 0) {
     ts.isAsExpression(node) ||
     ts.isSatisfiesExpression(node)
   ) {
-    return staticParts(node.expression, checker, hookSource, seen, depth + 1);
+    return staticParts(node.expression, checker, bindings, seen, depth + 1);
   }
   if (ts.isTemplateExpression(node)) {
-    result.texts.push(node.head.text);
+    appendText(result, node.head.text);
     for (const span of node.templateSpans) {
       mergeParts(
         result,
-        staticParts(span.expression, checker, hookSource, seen, depth + 1),
+        staticParts(span.expression, checker, bindings, seen, depth + 1),
       );
-      result.texts.push(span.literal.text);
+      appendText(result, span.literal.text);
     }
     return result;
   }
@@ -298,19 +410,13 @@ function staticParts(node, checker, hookSource, seen = new Set(), depth = 0) {
     ts.isBinaryExpression(node) &&
     node.operatorToken.kind === ts.SyntaxKind.PlusToken
   ) {
-    mergeParts(result, staticParts(node.left, checker, hookSource, seen, depth + 1));
-    mergeParts(result, staticParts(node.right, checker, hookSource, seen, depth + 1));
+    mergeParts(result, staticParts(node.left, checker, bindings, seen, depth + 1));
+    mergeParts(result, staticParts(node.right, checker, bindings, seen, depth + 1));
     return result;
   }
   if (ts.isConditionalExpression(node)) {
-    mergeParts(
-      result,
-      staticParts(node.whenTrue, checker, hookSource, seen, depth + 1),
-    );
-    mergeParts(
-      result,
-      staticParts(node.whenFalse, checker, hookSource, seen, depth + 1),
-    );
+    mergeParts(result, staticParts(node.whenTrue, checker, bindings, seen, depth + 1));
+    mergeParts(result, staticParts(node.whenFalse, checker, bindings, seen, depth + 1));
     return result;
   }
   if (ts.isIdentifier(node) || ts.isPropertyAccessExpression(node)) {
@@ -325,7 +431,7 @@ function staticParts(node, checker, hookSource, seen = new Set(), depth = 0) {
       if (initializer) {
         mergeParts(
           result,
-          staticParts(initializer, checker, hookSource, nextSeen, depth + 1),
+          staticParts(initializer, checker, bindings, nextSeen, depth + 1),
         );
       }
     }
@@ -335,9 +441,9 @@ function staticParts(node, checker, hookSource, seen = new Set(), depth = 0) {
   return result;
 }
 
-function literalLocale(node, checker, hookSource) {
+function literalLocale(node, checker, bindings) {
   if (!node) return false;
-  const parts = staticParts(node, checker, hookSource);
+  const parts = staticParts(node, checker, bindings);
   return !parts.dynamic && parts.texts.some(meaningful);
 }
 
@@ -382,12 +488,12 @@ function scanProgram(files, allowOutsideSource = false) {
     const bytes = Buffer.byteLength(sourceFile.text, "utf8");
     if (bytes > LIMITS.fileBytes)
       throw new Error(`Localization file limit exceeded: ${toRelative(file)}`);
-    if (sourceIsExcluded(file, sourceFile.text)) continue;
-    const hookSource = sourceUsesTranslationHook(sourceFile);
+    if (sourceIsExcluded(file)) continue;
+    const bindings = translationBindings(sourceFile, checker);
     const formatterOwner = toRelative(file) === FORMATTER_OWNER;
 
     const reportStatic = (code, node, context, expression = node) => {
-      const parts = staticParts(expression, checker, hookSource);
+      const parts = staticParts(expression, checker, bindings);
       for (const text of parts.texts.filter(meaningful))
         add(code, node, sourceFile, context, text);
     };
@@ -396,11 +502,9 @@ function scanProgram(files, allowOutsideSource = false) {
       if (ts.isJsxText(node) && meaningful(node.text)) {
         add(FINDING_CODES.jsxText, node, sourceFile, "jsx-child", node.text);
       } else if (ts.isJsxExpression(node) && node.expression) {
-        const parts = staticParts(node.expression, checker, hookSource);
-        if (!parts.translation) {
-          for (const text of parts.texts.filter(meaningful)) {
-            add(FINDING_CODES.jsxText, node, sourceFile, "jsx-expression", text);
-          }
+        const parts = staticParts(node.expression, checker, bindings);
+        for (const text of parts.texts.filter(meaningful)) {
+          add(FINDING_CODES.jsxText, node, sourceFile, "jsx-expression", text);
         }
       } else if (ts.isJsxAttribute(node)) {
         const name = node.name.getText(sourceFile);
@@ -424,10 +528,10 @@ function scanProgram(files, allowOutsideSource = false) {
           reportStatic(FINDING_CODES.imperativeDisplay, node, name, node.arguments[0]);
         }
 
-        if (isTranslationCall(node, hookSource)) {
+        if (isTranslationCall(node, bindings, checker)) {
           const key = node.arguments[0];
           if (key) {
-            const keyParts = staticParts(key, checker, hookSource);
+            const keyParts = staticParts(key, checker, bindings);
             const staticKey =
               !keyParts.dynamic &&
               keyParts.texts.length === 1 &&
@@ -464,7 +568,7 @@ function scanProgram(files, allowOutsideSource = false) {
           if (LOCALE_METHODS.has(method)) {
             const locale = node.arguments[LOCALE_METHODS.get(method)];
             add(
-              literalLocale(locale, checker, hookSource)
+              literalLocale(locale, checker, bindings)
                 ? FINDING_CODES.fixedLocaleFormat
                 : FINDING_CODES.directLocaleFormat,
               node,
@@ -479,7 +583,7 @@ function scanProgram(files, allowOutsideSource = false) {
           ) {
             const locale = node.arguments[0];
             add(
-              literalLocale(locale, checker, hookSource)
+              literalLocale(locale, checker, bindings)
                 ? FINDING_CODES.fixedLocaleFormat
                 : FINDING_CODES.directLocaleFormat,
               node,
@@ -500,7 +604,7 @@ function scanProgram(files, allowOutsideSource = false) {
       ) {
         const locale = node.arguments?.[0];
         add(
-          literalLocale(locale, checker, hookSource)
+          literalLocale(locale, checker, bindings)
             ? FINDING_CODES.fixedLocaleFormat
             : FINDING_CODES.directLocaleFormat,
           node,
@@ -517,13 +621,13 @@ function scanProgram(files, allowOutsideSource = false) {
           node.parent.operatorToken.kind === ts.SyntaxKind.PlusToken
         )
       ) {
-        const parts = staticParts(node, checker, hookSource);
+        const parts = staticParts(node, checker, bindings);
         if (parts.translation) {
           add(FINDING_CODES.translatedFragment, node, sourceFile, "binary-plus");
         }
       }
       if (ts.isTemplateExpression(node)) {
-        const parts = staticParts(node, checker, hookSource);
+        const parts = staticParts(node, checker, bindings);
         if (parts.translation && parts.texts.some(meaningful)) {
           add(FINDING_CODES.translatedFragment, node, sourceFile, "template");
         }
@@ -588,12 +692,18 @@ export function scanProductionSources() {
 }
 
 function readAllowlist() {
-  const parsed = JSON.parse(readFileSync(allowlistPath, "utf8"));
+  return validateAllowlistEntries(JSON.parse(readFileSync(allowlistPath, "utf8")));
+}
+
+export function validateAllowlistEntries(parsed) {
   if (!Array.isArray(parsed) || parsed.length > LIMITS.allowlistEntries) {
     throw new Error("Localization allowlist has an invalid size.");
   }
   const ids = new Set();
+  const rules = new Set(Object.values(FINDING_CODES));
   for (const entry of parsed) {
+    const resolvedPath =
+      typeof entry?.path === "string" ? resolve(frontendRoot, entry.path) : "";
     if (
       entry === null ||
       typeof entry !== "object" ||
@@ -602,6 +712,11 @@ function readAllowlist() {
       !/^[a-f0-9]{24}$/u.test(entry.id) ||
       typeof entry.path !== "string" ||
       typeof entry.rule !== "string" ||
+      !rules.has(entry.rule) ||
+      isAbsolute(entry.path) ||
+      entry.path.includes("\\") ||
+      !insideRoot(resolvedPath, frontendRoot) ||
+      toRelative(resolvedPath) !== entry.path ||
       ids.has(entry.id)
     ) {
       throw new Error("Localization allowlist contains an invalid entry.");
@@ -609,6 +724,22 @@ function readAllowlist() {
     ids.add(entry.id);
   }
   return parsed;
+}
+
+export function compareAllowlist(findings, allowlist) {
+  const current = new Map(findings.map((finding) => [finding.id, finding]));
+  const allowed = new Map(allowlist.map((entry) => [entry.id, entry]));
+  return {
+    metadataMismatches: findings.filter((finding) => {
+      const entry = allowed.get(finding.id);
+      return (
+        entry !== undefined &&
+        (entry.rule !== finding.code || entry.path !== finding.path)
+      );
+    }),
+    newFindings: findings.filter((finding) => !allowed.has(finding.id)),
+    stale: allowlist.filter((entry) => !current.has(entry.id)),
+  };
 }
 
 function baselineEntries(findings) {
@@ -652,10 +783,10 @@ function run() {
 
   if (!existsSync(allowlistPath)) throw new Error("Localization allowlist is missing.");
   const allowlist = readAllowlist();
-  const current = new Map(findings.map((finding) => [finding.id, finding]));
-  const allowed = new Map(allowlist.map((entry) => [entry.id, entry]));
-  const newFindings = findings.filter((finding) => !allowed.has(finding.id));
-  const stale = allowlist.filter((entry) => !current.has(entry.id));
+  const { metadataMismatches, newFindings, stale } = compareAllowlist(
+    findings,
+    allowlist,
+  );
 
   if (newFindings.length > 0) {
     process.stderr.write("localization-scan: new user-facing source findings:\n");
@@ -672,7 +803,13 @@ function run() {
     for (const entry of stale)
       process.stderr.write(`  ${entry.rule} ${entry.path} ${entry.id}\n`);
   }
-  if (newFindings.length > 0 || stale.length > 0) {
+  if (metadataMismatches.length > 0) {
+    process.stderr.write("localization-scan: allowlist metadata mismatches:\n");
+    for (const finding of metadataMismatches) {
+      process.stderr.write(`  ${finding.code} ${finding.path} ${finding.id}\n`);
+    }
+  }
+  if (newFindings.length > 0 || stale.length > 0 || metadataMismatches.length > 0) {
     process.exitCode = 1;
     return;
   }

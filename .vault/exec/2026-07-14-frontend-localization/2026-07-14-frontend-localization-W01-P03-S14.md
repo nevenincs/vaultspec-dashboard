@@ -61,6 +61,10 @@ related:
 - Seed an exact per-occurrence allowlist that rejects new and stale findings.
 - Bound traversal, file sizes, constant resolution, findings, snippets, and allowlist
   input.
+- Resolve translation calls through imported symbol provenance and aliased hook
+  destructuring without trusting same-name local functions.
+- Reject mixed translated and literal branches, generated-comment bypasses, allowlist
+  metadata changes, and constant-expansion overflow.
 
 ## Outcome
 
@@ -73,3 +77,6 @@ rule codes, and relative paths. It contains no source literals or diagnostic dat
 Temporary real source fixtures exercised every finding code and were removed. Standard
 lint-gate integration remains assigned to S15, and durable fixture coverage remains
 assigned to S16.
+Adversarial temporary sources exercised aliased bindings, unrelated same-name calls,
+mixed branches, generated comments, metadata tampering, and the parts cap, then were
+removed.
