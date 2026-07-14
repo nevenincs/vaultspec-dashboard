@@ -1241,3 +1241,23 @@ gate passed. Baseline reconciliation removed exactly two bridge findings with no
 additions or metadata mismatches: the scanner decreased from 1,503 to 1,501, and bridge
 debt decreased from 149 to 147. No user-facing developer metadata, raw localization keys,
 diagnostics, or em dashes were introduced. S125 is accepted with no open findings.
+
+### W02.P04.S148 review | pass | Shared relate actions use one clear document contract
+
+Commit `c3eda2f475`, implemented through delegated Terra rollout work, migrates the
+shared relate-to-selection action to existing document catalog descriptors. The
+caller-specific unavailable-reason ingress is removed, so every surface now presents
+the same clear label and actionable document-selection guidance.
+
+Review confirmed that source, target, and same-document branch precedence is preserved.
+Action IDs, the link icon, transform section, time-travel gating, dispatch type and
+payload, nullable scope behavior, and the absence of run and confirmation behavior are
+unchanged. The four remaining bridge entries in the shared builder belong exactly to
+the separately scheduled `S149` and `S150` autofix and archive migrations.
+
+The Terra focused run passed all 76 tests across five files. Independent Sol verification
+passed all 45 tests across the two directly affected test files, and the complete frontend
+lint gate passed. Baseline reconciliation removed exactly four bridge findings: the
+scanner decreased from 1,501 to 1,497, and bridge debt decreased from 147 to 143. No
+user-facing developer metadata, raw localization keys, diagnostics, or em dashes were
+introduced. S148 is accepted with no open findings.
