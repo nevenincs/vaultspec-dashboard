@@ -1492,3 +1492,24 @@ runtimes without doubles, fake timers, skips, or expected failures. Exact baseli
 reconciliation removed 14 bridge entries and added none, reducing the scanner from
 1,445 to 1,431 findings, legacy keybinding entries from 36 to 25, and legacy action
 entries from 113 to 110. S26 is accepted with no open findings.
+
+### W02.P05.S27 review | pass | Command normalization preserves typed presentations
+
+This step, implemented through delegated Terra rollout work, makes the command
+descriptor's inherited action presentation contract explicit. The transitional typed
+or branded-legacy union remains intact while remaining command producers migrate.
+
+Review confirmed that command normalization still delegates only to the shared action
+normalizer. It does not translate messages, localize internal family identity, add a
+parallel normalization path, or alter provider bounds, de-duplication, time-travel
+gating, or run-only command behavior.
+
+The regression proof passes a production typed document action through command
+normalization, preserves its exact run identity and descriptor data, and resolves it in
+source and alternate locales only after the registry seam without fallback.
+
+Independent Sol verification passed 15 focused tests across two files, TypeScript, the
+localization scanner, and diff checks. The complete frontend lint recipe passed. The
+scanner remains clean and unchanged at 1,431 findings because the core contract was
+already delivered by the shared action architecture. S27 is accepted with no open
+findings.
