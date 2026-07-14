@@ -1150,3 +1150,26 @@ terminal placement, and accelerator derivation. The complete frontend lint gate 
 The scanner remains clean and unchanged at 1,519 findings, including 165 bridge entries.
 No user-facing developer metadata, raw localization keys, diagnostics, or em dashes were
 introduced. S21 is accepted with no open findings.
+
+### W02.P04.S122 review | pass | Shell actions use clear desktop guidance
+
+Commit `ee4443ec68`, implemented through delegated Terra rollout work, replaces the
+three remaining shell-action bridge messages with canonical catalog descriptors.
+File-manager and editor actions retain their IDs, normalized paths, dispatch types and
+payloads, sections, icons, availability checks, and degraded behavior. When unavailable,
+each now gives a short actionable instruction to open the desktop app, without exposing
+browser, host-bridge, or other implementation vocabulary.
+
+The initial independent review found one high-severity test-integrity issue: replacing
+mock functions with a hand-built host recorder still constituted a fake and global
+patch. The remediation removed the synthetic installed-host suite, host interface and
+action imports, global mutation and cleanup, and all mock-library use. Re-review verified
+that the remaining coverage uses the real absent-host environment, production dispatcher
+and normalizers, and real localization runtime, with no fake, mock, stub, patch,
+monkeypatch, skip, or expected-failure shortcut.
+
+The final focused run passed all 68 tests across three files, and the complete frontend
+lint gate passed. Baseline reconciliation removed exactly three bridge findings with no
+new or mismatched findings: the scanner decreased from 1,519 to 1,516, and bridge debt
+decreased from 165 to 162. No user-facing browser or developer metadata, raw localization
+keys, diagnostics, or em dashes were introduced. S122 is accepted with no open findings.
