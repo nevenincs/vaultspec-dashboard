@@ -1513,3 +1513,27 @@ localization scanner, and diff checks. The complete frontend lint recipe passed.
 scanner remains clean and unchanged at 1,431 findings because the core contract was
 already delivered by the shared action architecture. S27 is accepted with no open
 findings.
+
+### W02.P05.S28 review | pass | Palette shortcuts share one localized General group
+
+This step, implemented through delegated Terra rollout work, migrates command palette,
+global search, and document search shortcut presentations to catalog-owned descriptors.
+Each matching resolver reuses its binding descriptor, and the command palette wording
+matches the existing same-ID chrome action.
+
+Review confirmed exact action IDs, ordering, chords, global contexts, and mode-specific
+toggle behavior. All palette, shortcut-dialog, and reload producers now use one semantic
+General group key, preventing duplicate visible sections. Adjacent keyboard and reload
+modules change only their group fields.
+
+The action copy is concise, imperative, sentence case, and uses ellipses only because
+each surface requires further input. Search presentation, operation feedback, command
+family headings, and unrelated action labels remain fenced to their planned steps.
+
+Independent Sol verification passed 48 focused tests across seven files, TypeScript,
+the localization scanner, and diff checks. The complete frontend lint recipe passed.
+Tests use production bindings, actions, grouping, mode transitions, and real localization
+runtimes without doubles, skips, or expected failures. Exact baseline reconciliation
+removed nine bridge entries and added none, reducing the scanner from 1,431 to 1,422
+findings, legacy keybinding entries from 25 to 19, and legacy action entries from 110 to
+107. S28 is accepted with no open findings.
