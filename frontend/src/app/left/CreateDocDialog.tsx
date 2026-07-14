@@ -20,7 +20,7 @@
 // ADR D3), and a degraded read renders its honest state rather than an
 // empty-pipeline claim.
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
 import { ArrowLeft, X } from "lucide-react";
 
 import {
@@ -31,6 +31,7 @@ import {
 } from "../../stores/server/queries";
 import type { FeatureTypeCoverage } from "../../stores/server/engine";
 import {
+  closeCreateDocDialog,
   consumeCreateDocFocusFeature,
   type CreateDocType,
   deriveCreateDocSubmission,
@@ -52,6 +53,7 @@ import {
 import { openDocTab } from "../../stores/view/tabs";
 import { AutocompleteCombobox, type ComboOption } from "../viewer/AutocompleteCombobox";
 import { Dialog } from "../chrome/Dialog";
+import { usePointerCoarse } from "../chrome/RowMenuDisclosure";
 import { Button } from "../kit";
 import { DocTypeMark } from "../../scene/field/markComponents";
 
@@ -141,25 +143,65 @@ export function CreateDocDialog() {
   );
   const featureFieldRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const backRef = useRef<HTMLButtonElement>(null);
 
-  // Honour the one-shot focus request from the Features-section create affordance
-  // (D5/D6): move focus to the feature combobox when the dialog opens with the flag
-  // set. Consumed once so a later ordinary open does not steal focus.
-  useEffect(() => {
-    if (!open) return;
-    if (!consumeCreateDocFocusFeature()) return;
+  const focusFeatureCombobox = () =>
     featureFieldRef.current
       ?.querySelector<HTMLInputElement>('[role="combobox"]')
       ?.focus();
-  }, [open, feature]);
+
+  // Default initial focus (hardening audit default-initial-focus-is-close-button):
+  // EVERY open lands on the stage's primary field — the feature combobox at stage 1
+  // (the Features-affordance one-shot flag is consumed but no longer special: it now
+  // matches the default), or the selected type radio on a draft-preserving reopen at
+  // stage 2. Runs after the Dialog's own focus-first-focusable, so this wins.
+  useEffect(() => {
+    if (!open) return;
+    consumeCreateDocFocusFeature();
+    const draft = useCreateDocChromeStore.getState();
+    if (draft.stage === "feature") {
+      focusFeatureCombobox();
+    } else {
+      (optionRefs.current[draft.docType] ?? backRef.current)?.focus();
+    }
+    // Open-only by design: stage transitions are handled below.
+  }, [open]);
+
+  // Stage-keyed focus placement (audit focus-lost-on-stage-transition HIGH): the
+  // activated Continue/Back unmounts with its stage, so focus is re-homed — to the
+  // selected type radio entering stage 2, and to the feature combobox returning to
+  // stage 1. A screen-reader user is never silently orphaned on document.body.
+  const prevStageRef = useRef(stage);
+  useEffect(() => {
+    if (!open) {
+      prevStageRef.current = stage;
+      return;
+    }
+    if (prevStageRef.current === stage) return;
+    prevStageRef.current = stage;
+    if (stage === "document") {
+      const draft = useCreateDocChromeStore.getState();
+      (optionRefs.current[draft.docType] ?? backRef.current)?.focus();
+    } else {
+      focusFeatureCombobox();
+    }
+  }, [open, stage]);
 
   // Reconcile the selected type against served eligibility (ADR D3): when coverage
   // arrives or changes, a selection that turned ineligible resets honestly to the
   // advised next step / first eligible. Reads the served flag, never recomputes it.
+  // When the radiogroup OWNS focus, focus follows the reconciled selection so the
+  // roving tab stop and DOM focus never diverge (audit reconcile-moves-tabstop).
   useEffect(() => {
     if (!open) return;
     const reconciled = reconcileCreateDocType(docType, coverage);
-    if (reconciled !== docType) setCreateDocType(reconciled);
+    if (reconciled !== docType) {
+      const groupOwnsFocus = Object.values(optionRefs.current).some(
+        (node) => node !== null && node === document.activeElement,
+      );
+      setCreateDocType(reconciled);
+      if (groupOwnsFocus) optionRefs.current[reconciled]?.focus();
+    }
   }, [open, coverage, docType]);
 
   // Seed the editable cross-link pre-fill (ADR D5) on a TYPE or FEATURE change only,
@@ -257,31 +299,38 @@ export function CreateDocDialog() {
     }
   };
 
-  // Roving arrow-key selection across the ELIGIBLE type radios (Class-B
-  // widget-intrinsic keys stay in-component, and the composite stopPropagations the
-  // consumed keys so they never reach the global keymap dispatcher — actions-keymap-
-  // palette law). Ineligible radios stay visible + perceivable but are skipped by
-  // arrow traversal.
+  // Roving arrow-key traversal across ALL type radios — ineligible rows are
+  // aria-disabled (focusable, inert) so keyboard and screen-reader users can REACH
+  // them and hear their served reason (audit disabled-type-reason-unreachable HIGH);
+  // arrows move focus through every row but selection only lands on an eligible one
+  // (APG radio-with-disabled pattern). Class-B widget-intrinsic keys stay
+  // in-component, and the composite stopPropagations the consumed keys so they never
+  // reach the global keymap dispatcher (actions-keymap-palette law).
+  const focusOfferedRow = (row: { docType: CreateDocType; eligible: boolean }) => {
+    optionRefs.current[row.docType]?.focus();
+    if (row.eligible) setCreateDocType(row.docType);
+  };
+
   const moveSelection = (dir: 1 | -1) => {
-    const eligible = offered.filter((o) => o.eligible).map((o) => o.docType);
-    if (eligible.length === 0) return;
-    const index = eligible.indexOf(docType);
-    const nextIndex =
-      index < 0
-        ? dir === 1
-          ? 0
-          : eligible.length - 1
-        : (index + dir + eligible.length) % eligible.length;
-    const next = eligible[nextIndex]!;
-    setCreateDocType(next);
-    optionRefs.current[next]?.focus();
+    if (offered.length === 0) return;
+    const focusedIndex = offered.findIndex(
+      (o) => optionRefs.current[o.docType] === document.activeElement,
+    );
+    const currentIndex =
+      focusedIndex >= 0
+        ? focusedIndex
+        : offered.findIndex((o) => o.docType === docType);
+    const base = currentIndex < 0 ? (dir === 1 ? -1 : 0) : currentIndex;
+    const next = offered[(base + dir + offered.length) % offered.length]!;
+    focusOfferedRow(next);
   };
 
   const onRadiogroupKeyDown = (event: React.KeyboardEvent) => {
     // Bare Arrow{Up,Down,Left,Right} are GLOBAL keybindings (feature/neighbor
     // navigation); the radios are buttons so the dispatcher's text gate does not
-    // suppress them, and the Dialog traps only Tab. Stop the consumed arrows here so
-    // roving between type radios never also mutates the graph selection.
+    // suppress them, and the Dialog traps only Tab. Stop the consumed keys here so
+    // roving between type radios never also mutates the graph selection. Home/End
+    // go first/last per the APG radiogroup pattern.
     if (event.key === "ArrowDown" || event.key === "ArrowRight") {
       event.preventDefault();
       event.stopPropagation();
@@ -290,6 +339,11 @@ export function CreateDocDialog() {
       event.preventDefault();
       event.stopPropagation();
       moveSelection(-1);
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      event.stopPropagation();
+      const row = event.key === "Home" ? offered[0] : offered[offered.length - 1];
+      if (row) focusOfferedRow(row);
     }
   };
 
@@ -302,7 +356,7 @@ export function CreateDocDialog() {
   return (
     <Dialog
       open={open}
-      onClose={resetCreateDocChrome}
+      onClose={closeCreateDocDialog}
       title={isFeatureStage ? "Add to a feature" : "Add a document"}
       description={
         isFeatureStage
@@ -311,7 +365,7 @@ export function CreateDocDialog() {
       }
       footer={
         <div className="flex items-center justify-end gap-fg-2">
-          <Button variant="secondary" onClick={resetCreateDocChrome}>
+          <Button variant="secondary" onClick={closeCreateDocDialog}>
             Cancel
           </Button>
           {isFeatureStage ? (
@@ -335,6 +389,14 @@ export function CreateDocDialog() {
       }
     >
       <div className="flex flex-col gap-fg-3 px-fg-4 pt-fg-3 pb-fg-4">
+        {/* Stage announcement (audit stage-transition-not-announced): the dialog's
+            retargeted label swap is silent to screen readers, so the step change is
+            announced through a visually-hidden polite live region. */}
+        <span aria-live="polite" className="sr-only">
+          {isFeatureStage
+            ? "Step 1 of 2: Add to a feature"
+            : "Step 2 of 2: Add a document"}
+        </span>
         {isFeatureStage ? (
           <FeatureStage
             featureFieldRef={featureFieldRef}
@@ -349,6 +411,7 @@ export function CreateDocDialog() {
             offered={offered}
             selectedType={docType}
             optionRefs={optionRefs}
+            backRef={backRef}
             onRadiogroupKeyDown={onRadiogroupKeyDown}
             title={title}
             related={related}
@@ -426,6 +489,11 @@ export function CoverageCard({ feature, coverageView }: CoverageCardProps) {
   return (
     <section
       aria-label="Pipeline coverage"
+      // Polite live region (audit coverage-arrival-silent): the async swap from
+      // "Checking…" to rows (or the degraded line) is announced. State lines read
+      // ink-muted, not ink-faint — they are information-bearing small text
+      // (create-panel-hardening ADR ink-faint ruling).
+      aria-live="polite"
       className="flex flex-col gap-fg-2 rounded-fg-md border border-rule bg-paper-sunken p-fg-3"
     >
       <p className="text-meta font-medium uppercase tracking-wide text-ink-faint">
@@ -433,15 +501,15 @@ export function CoverageCard({ feature, coverageView }: CoverageCardProps) {
       </p>
 
       {!hasFeature ? (
-        <p className="text-label text-ink-faint">
+        <p className="text-label text-ink-muted">
           Pick or type a feature above to see its pipeline.
         </p>
       ) : degraded ? (
-        <p className="text-label text-ink-faint">
+        <p className="text-label text-ink-muted">
           Pipeline coverage is unavailable right now.
         </p>
       ) : loading && !coverage ? (
-        <p className="text-label text-ink-faint">
+        <p className="text-label text-ink-muted">
           Checking this feature&rsquo;s pipeline&hellip;
         </p>
       ) : coverage && anyPresent ? (
@@ -455,7 +523,7 @@ export function CoverageCard({ feature, coverageView }: CoverageCardProps) {
           ))}
         </ul>
       ) : (
-        <p className="text-label text-ink-faint">
+        <p className="text-label text-ink-muted">
           No documents yet. A feature starts with a research or reference document
           &mdash; it exists once the first one is created.
         </p>
@@ -483,7 +551,7 @@ function CoverageRow({
       </span>
       <span className="shrink-0 text-label text-ink">{label}</span>
       {entry.present && entry.newest_stem && (
-        <span className="min-w-0 flex-1 truncate text-meta text-ink-faint">
+        <span className="min-w-0 flex-1 select-text truncate text-meta text-ink-muted">
           {entry.newest_stem}
         </span>
       )}
@@ -495,7 +563,7 @@ function CoverageRow({
             Next step
           </span>
         ) : (
-          <span className="text-meta text-ink-faint">Not yet</span>
+          <span className="text-meta text-ink-muted">Not yet</span>
         )}
       </span>
     </li>
@@ -509,6 +577,7 @@ interface DocumentStageProps {
   offered: ReturnType<typeof deriveOfferedCreateDocTypes>;
   selectedType: CreateDocType;
   optionRefs: React.MutableRefObject<Record<string, HTMLButtonElement | null>>;
+  backRef: React.RefObject<HTMLButtonElement | null>;
   onRadiogroupKeyDown: (event: React.KeyboardEvent) => void;
   title: string;
   related: string[];
@@ -521,22 +590,31 @@ function DocumentStage({
   offered,
   selectedType,
   optionRefs,
+  backRef,
   onRadiogroupKeyDown,
   title,
   related,
   onRemoveRelated,
   onTitleEnter,
 }: DocumentStageProps) {
+  const hintIdBase = useId();
+  // Touch floors (audit touch-target-subminimum): the back affordance and chip
+  // removal grow to the 2.75rem floor on coarse pointers; both keep a >=24px hit
+  // area everywhere (WCAG 2.5.8).
+  const coarse = usePointerCoarse();
   return (
     <>
       {/* Sub-header: back to the feature stage + the selected feature pill. The
           Dialog header carries the title; this row carries navigation + context. */}
       <div className="flex items-center gap-fg-2">
         <button
+          ref={backRef}
           type="button"
           onClick={goToCreateDocFeatureStage}
           aria-label="Back to feature"
-          className="inline-flex items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 text-label text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className={`inline-flex items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-1 text-label text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+            coarse ? "min-h-[2.75rem] min-w-[2.75rem]" : ""
+          }`}
         >
           <ArrowLeft aria-hidden className="size-3.5" />
           Back
@@ -545,7 +623,7 @@ function DocumentStage({
           className="ml-auto inline-flex min-w-0 items-center rounded-fg-pill border border-rule bg-paper-sunken px-fg-2 py-fg-0-5 text-meta font-medium text-ink-muted"
           data-selected-feature
         >
-          <span className="truncate">{feature}</span>
+          <span className="select-text truncate">{feature}</span>
         </span>
       </div>
 
@@ -560,6 +638,7 @@ function DocumentStage({
           {offered.map((row) => {
             const selected = row.docType === selectedType;
             const hint = typeRowHint(row);
+            const hintId = `${hintIdBase}-${row.docType}`;
             return (
               <button
                 key={row.docType}
@@ -570,9 +649,17 @@ function DocumentStage({
                 role="radio"
                 aria-checked={selected}
                 aria-label={CREATE_DOC_TYPE_LABEL[row.docType]}
-                disabled={!row.eligible}
+                // aria-disabled, NOT disabled (audit disabled-type-reason-unreachable
+                // HIGH): the row stays focusable and roving-reachable so keyboard and
+                // screen-reader users can reach it and hear WHY it is unavailable —
+                // the served reason is programmatically associated below. Activation
+                // is a no-op on an ineligible row.
+                aria-disabled={row.eligible ? undefined : true}
+                aria-describedby={hintId}
                 tabIndex={selected ? 0 : -1}
-                onClick={() => setCreateDocType(row.docType)}
+                onClick={() => {
+                  if (row.eligible) setCreateDocType(row.docType);
+                }}
                 className={`flex items-start gap-fg-2 rounded-fg-sm border px-fg-2 py-fg-2 text-left transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                   selected
                     ? "border-accent bg-accent-subtle"
@@ -588,7 +675,9 @@ function DocumentStage({
                   <span className="text-body text-ink">
                     {CREATE_DOC_TYPE_LABEL[row.docType]}
                   </span>
-                  <span className="text-meta text-ink-faint">{hint}</span>
+                  <span id={hintId} className="text-meta text-ink-muted">
+                    {hint}
+                  </span>
                 </span>
                 {selected && (
                   <span
@@ -622,13 +711,19 @@ function DocumentStage({
           <ul className="flex flex-wrap gap-fg-1" aria-label="Linked documents">
             {related.map((stem) => (
               <li key={stem}>
-                <span className="inline-flex max-w-full items-center gap-fg-1 rounded-fg-pill border border-rule bg-paper-sunken px-fg-2 py-fg-0-5 text-meta text-ink-muted">
-                  <span className="truncate">{stem}</span>
+                <span
+                  className={`inline-flex max-w-full items-center gap-fg-1 rounded-fg-pill border border-rule bg-paper-sunken px-fg-2 py-fg-0-5 text-meta text-ink-muted ${
+                    coarse ? "min-h-[2.75rem]" : ""
+                  }`}
+                >
+                  <span className="select-text truncate">{stem}</span>
                   <button
                     type="button"
                     onClick={() => onRemoveRelated(stem)}
                     aria-label={`Remove ${stem}`}
-                    className="shrink-0 rounded-fg-xs text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                    className={`shrink-0 rounded-fg-xs p-fg-1 text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                      coarse ? "min-h-[2.75rem] min-w-[2.75rem]" : ""
+                    }`}
                   >
                     <X aria-hidden className="size-3" />
                   </button>

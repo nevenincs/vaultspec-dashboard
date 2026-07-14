@@ -34,10 +34,10 @@ Fix the Dialog and AutocompleteCombobox once for every consumer: pinned non-scro
 
 Close the audit's panel-level HIGH/MEDIUM findings in CreateDocDialog and its chrome store: stage-keyed focus, default initial focus, aria-disabled reasons with full roving, live announcements, draft preservation across dismiss, target sizes, select-text, caption tokens.
 
-- [ ] `P02.S04` - Move focus deterministically on stage transitions, default initial focus to the feature combobox for every entry point, and announce the stage change; `frontend/src/app/left/CreateDocDialog.tsx`.
-- [ ] `P02.S05` - Make ineligible type rows aria-disabled and roving-included with their served reason associated via aria-describedby, add Home and End, and follow focus when reconcile moves the selection; `frontend/src/app/left/CreateDocDialog.tsx`.
-- [ ] `P02.S06` - Preserve the create draft across dismiss and reset it only on successful create, with store unit tests; `frontend/src/stores/view/createDocChrome.ts`.
-- [ ] `P02.S07` - Raise the chip-remove and back affordances to the touch floor, mark stems select-text, put a polite live region on the coverage card, and move information-bearing small captions off ink-faint; `frontend/src/app/left/CreateDocDialog.tsx`.
+- [x] `P02.S04` - Move focus deterministically on stage transitions, default initial focus to the feature combobox for every entry point, and announce the stage change; `frontend/src/app/left/CreateDocDialog.tsx`.
+- [x] `P02.S05` - Make ineligible type rows aria-disabled and roving-included with their served reason associated via aria-describedby, add Home and End, and follow focus when reconcile moves the selection; `frontend/src/app/left/CreateDocDialog.tsx`.
+- [x] `P02.S06` - Preserve the create draft across dismiss and reset it only on successful create, with store unit tests; `frontend/src/stores/view/createDocChrome.ts`.
+- [x] `P02.S07` - Raise the chip-remove and back affordances to the touch floor, mark stems select-text, put a polite live region on the coverage card, and move information-bearing small captions off ink-faint; `frontend/src/app/left/CreateDocDialog.tsx`.
 
 ### Phase `P03` - Compact verification and closeout
 

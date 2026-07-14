@@ -1,0 +1,63 @@
+---
+tags:
+  - '#exec'
+  - '#create-panel-hardening'
+date: '2026-07-14'
+modified: '2026-07-14'
+step_id: 'S04'
+related:
+  - "[[2026-07-14-create-panel-hardening-plan]]"
+---
+
+<!-- FRONTMATTER RULES:
+     tags: one directory tag (hardcoded #exec) and one feature tag.
+     Replace create-panel-hardening with a kebab-case feature tag, e.g. #foo-bar.
+     Additional tags may be appended below the required pair.
+
+     modified: CLI-maintained last-modified stamp; set at scaffold time,
+     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
+
+     step_id is the originating Step's canonical identifier, e.g. S01.
+     The S04 and 2026-07-14-create-panel-hardening-plan placeholders are machine-filled by
+     `vaultspec-core vault add exec`; do not fill them by hand.
+
+     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
+     parent plan.
+
+     DO NOT add fields beyond those scaffolded; metadata lives
+     only in the frontmatter. -->
+
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
+     - NEVER use [[wiki-links]] or markdown links in the document body.
+     - NEVER reference file paths in the body. If you must name a source file,
+       class, or function, use inline backtick code: `src/module.py`. -->
+
+<!-- STEP RECORD:
+     This file represents one Step from the originating plan. Identified
+     by its canonical leaf identifier (S##) and ancestor display path.
+     The Move focus deterministically on stage transitions, default initial focus to the feature combobox for every entry point, and announce the stage change and ## Scope
+
+- `frontend/src/app/left/CreateDocDialog.tsx` placeholders below are machine-filled
+     by `vaultspec-core vault add exec` from the originating Step row;
+     do not fill them by hand. -->
+
+# Move focus deterministically on stage transitions, default initial focus to the feature combobox for every entry point, and announce the stage change
+
+## Scope
+
+- `frontend/src/app/left/CreateDocDialog.tsx`
+
+## Description
+
+- Re-home focus on every stage transition: entering the document stage focuses the selected type radio (back affordance as fallback); returning focuses the feature combobox. Tracked against the previous stage so a bare re-render never steals focus.
+- Default initial focus for EVERY open: the stage's primary field (combobox at stage 1, selected radio on a draft-preserving stage-2 reopen), replacing the header-Close landing; the Features-affordance one-shot flag is still consumed but now matches the default.
+- Announce the stage change through a visually-hidden polite live region ("Step 1 of 2 ..." / "Step 2 of 2 ...").
+
+## Outcome
+
+Closes focus-lost-on-stage-transition (HIGH), default-initial-focus-is-close-button (MEDIUM), and stage-transition-not-announced (MEDIUM). 15 render tests green.
+
+## Notes
+
+Executed inline by the principal (coder fleet throttled by a shared session limit).

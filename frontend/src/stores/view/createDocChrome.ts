@@ -50,6 +50,7 @@ export interface CreateDocChromeState {
    *  (set by the Features-section create affordance, D5/D6). Cleared once consumed. */
   focusFeatureField: boolean;
   toggleOpen: () => void;
+  close: () => void;
   setStage: (stage: unknown) => void;
   goToDocumentStage: () => void;
   goToFeatureStage: () => void;
@@ -160,15 +161,22 @@ export const useCreateDocChromeStore = create<CreateDocChromeState>((set) => ({
   toggleOpen: () =>
     set((state) =>
       state.open
-        ? RESET_STATE
+        ? // Dismiss PRESERVES the draft (create-panel-hardening ADR): an
+          // accidental toggle/Escape must never wipe a typed feature, title, or
+          // edited link list. Only a successful create resets (`reset`).
+          { open: false, error: null, focusFeatureField: false }
         : {
             ...normalizeCreateDocChromeView(state),
             open: true,
-            // A fresh open always starts at stage 1 with a clean error.
+            // A fresh open always starts at stage 1 with a clean error; the
+            // preserved draft (feature/title/related) carries across.
             stage: DEFAULT_CREATE_DOC_STAGE,
             error: null,
           },
     ),
+  // Every dismiss path (Escape, backdrop, Cancel, close button) closes and clears
+  // the transient error while KEEPING the draft; reset-on-success stays `reset`.
+  close: () => set({ open: false, error: null, focusFeatureField: false }),
   setStage: (stage) => set({ stage: normalizeCreateDocStage(stage) }),
   // Advancing to the document stage clears any stale stage-1 error so a prior
   // validation message never bleeds across the transition.
@@ -447,6 +455,14 @@ export function consumeCreateDocFocusFeature(): boolean {
   return true;
 }
 
+/** Dismiss the dialog PRESERVING the draft (create-panel-hardening ADR): Escape,
+ *  backdrop, Cancel, and the close button all route here so an accidental dismiss
+ *  never loses typed work. A reopen restores the draft at stage 1. */
+export function closeCreateDocDialog(): void {
+  useCreateDocChromeStore.getState().close();
+}
+
+/** Full reset — the SUCCESSFUL-create path (and tests). Wipes the draft. */
 export function resetCreateDocChrome(): void {
   useCreateDocChromeStore.getState().reset();
 }

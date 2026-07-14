@@ -315,12 +315,19 @@ describe("CreateDocDialog feature-group panel (live engine coverage)", () => {
     const adr = within(group).getByRole("radio", {
       name: "Decision record",
     }) as HTMLButtonElement;
-    // Disabled with the served reason rendered (mapped to plain language, ADR D3).
-    expect(adr.disabled).toBe(true);
-    expect(
-      within(group).getByText("Needs a research or reference document first"),
-    ).toBeTruthy();
-    // Clicking the disabled type cannot select it — an ineligible type is never
+    // aria-disabled, NOT hard-disabled (hardening audit HIGH): the row stays
+    // focusable so keyboard/screen-reader users can REACH it and hear its served
+    // reason, which is programmatically associated via aria-describedby.
+    expect(adr.disabled).toBe(false);
+    expect(adr.getAttribute("aria-disabled")).toBe("true");
+    const reason = within(group).getByText(
+      "Needs a research or reference document first",
+    );
+    expect(reason).toBeTruthy();
+    expect(adr.getAttribute("aria-describedby")).toBe(reason.id);
+    adr.focus();
+    expect(document.activeElement).toBe(adr);
+    // Activating the ineligible type is a no-op — it is never selectable or
     // submittable (the selection stays on the eligible entry point).
     fireEvent.click(adr);
     expect(adr.getAttribute("aria-checked")).toBe("false");

@@ -20,6 +20,7 @@ import {
   normalizeCreateDocRelated,
   normalizeCreateDocStage,
   normalizeCreateDocType,
+  closeCreateDocDialog,
   reconcileCreateDocType,
   resetCreateDocChrome,
   seedRelatedFromCoverage,
@@ -100,7 +101,10 @@ describe("createDocChrome store", () => {
     });
   });
 
-  it("resets stage and draft state when the dialog closes", () => {
+  it("preserves the draft across dismiss and clears only the transient error", () => {
+    // create-panel-hardening ADR: Escape/Cancel/backdrop must never wipe typed
+    // work — dismiss keeps the draft; only the transient error and the one-shot
+    // focus flag clear.
     toggleCreateDocDialog();
     goToCreateDocDocumentStage();
     setCreateDocType("plan");
@@ -109,7 +113,38 @@ describe("createDocChrome store", () => {
     setCreateDocRelated(["2026-07-14-git-adr"]);
     setCreateDocError("Create failed");
 
+    closeCreateDocDialog();
+
+    expect(useCreateDocChromeStore.getState()).toMatchObject({
+      open: false,
+      docType: "plan",
+      feature: "git",
+      title: "Git State",
+      related: ["2026-07-14-git-adr"],
+      error: null,
+      focusFeatureField: false,
+    });
+  });
+
+  it("toggle-close also preserves the draft (the keymap toggle is a dismiss)", () => {
     toggleCreateDocDialog();
+    setCreateDocFeature("git");
+    setCreateDocTitle("Git State");
+    toggleCreateDocDialog();
+    expect(useCreateDocChromeStore.getState()).toMatchObject({
+      open: false,
+      feature: "git",
+      title: "Git State",
+    });
+  });
+
+  it("resets the whole draft only on the successful-create path", () => {
+    toggleCreateDocDialog();
+    setCreateDocFeature("git");
+    setCreateDocTitle("Git State");
+    setCreateDocRelated(["2026-07-14-git-adr"]);
+
+    resetCreateDocChrome();
 
     expect(useCreateDocChromeStore.getState()).toMatchObject({
       open: false,
@@ -122,12 +157,15 @@ describe("createDocChrome store", () => {
     });
   });
 
-  it("reopens at stage 1 even after a prior document-stage session", () => {
+  it("reopens the preserved draft at stage 1 after a document-stage dismiss", () => {
     toggleCreateDocDialog();
     goToCreateDocDocumentStage();
-    toggleCreateDocDialog(); // close (resets)
+    setCreateDocFeature("git");
+    closeCreateDocDialog();
     toggleCreateDocDialog(); // reopen
-    expect(useCreateDocChromeStore.getState().stage).toBe("feature");
+    const state = useCreateDocChromeStore.getState();
+    expect(state.stage).toBe("feature");
+    expect(state.feature).toBe("git");
   });
 
   it("accepts only registered document types and stages at the app boundary", () => {
