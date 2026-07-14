@@ -4,7 +4,6 @@
 //! review submission, supersession, cancellation, and snapshot reconstruction.
 //! It deliberately does not create approval records, apply jobs, routes,
 //! projections, actors, operation modes, LangGraph state, or core adapter calls.
-#![allow(dead_code)]
 
 use ingest_struct::reader::blob_oid;
 use serde::{Deserialize, Serialize};

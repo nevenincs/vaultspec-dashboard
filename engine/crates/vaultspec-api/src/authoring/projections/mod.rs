@@ -26,7 +26,6 @@
 //! denying approve/apply eligibility when they diverge. (The apply-time floor
 //! still independently re-checks the base hash, so this is defense-in-depth for
 //! the UI, not the sole guard.)
-#![allow(dead_code)]
 
 use std::path::Path;
 

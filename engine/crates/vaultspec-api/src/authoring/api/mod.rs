@@ -1,20 +1,28 @@
 // W01.P04 defines versioned authoring DTOs and route fixtures. Later phases
 // attach these shapes to handlers, stores, event streams, and agent tools.
-#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::leases::LeasePurpose;
 use super::model::{
-    ActorId, ActorKind, ActorRef, ApprovalId, ChangesetId, CommandKind, DocumentRef,
-    IdempotencyKey, LeaseId, ProvisionalCollisionStatus, ReceiptId, ReceiptRef, ReviewDecisionKind,
-    RevisionToken, RunId, SessionId,
+    ActorRef, ApprovalId, ChangesetId, CommandKind, DocumentRef, IdempotencyKey,
+    ReviewDecisionKind, RevisionToken, SessionId,
 };
 use super::permissions::ToolPermissionDecisionKind;
 use super::policy::OperationMode;
-use super::rebase::{CreateReplacementProposalRequest, RebaseProposalRequest};
 use super::sections::SectionSelector;
+
+// Contract-test-only surface (the DTOs/fixtures below are `#[cfg(test)]`; these
+// imports serve them exclusively).
+#[cfg(test)]
+use super::model::{
+    ActorId, ActorKind, LeaseId, ProvisionalCollisionStatus, ReceiptId, ReceiptRef, RunId,
+};
+#[cfg(test)]
+use super::rebase::{CreateReplacementProposalRequest, RebaseProposalRequest};
+#[cfg(test)]
+use serde_json::json;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -24,6 +32,7 @@ pub enum ApiVersion {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg(test)]
 pub enum EndpointFamily {
     Session,
     Document,
@@ -44,6 +53,7 @@ pub enum EndpointFamily {
     ReviewClaim,
 }
 
+#[cfg(test)]
 impl EndpointFamily {
     const ALL: &'static [Self] = &[
         Self::Session,
@@ -67,6 +77,7 @@ impl EndpointFamily {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(test)]
 pub struct RouteFixture {
     pub family: EndpointFamily,
     pub method: &'static str,
@@ -77,6 +88,7 @@ pub struct RouteFixture {
     pub negative_contract_cases: &'static [&'static str],
 }
 
+#[cfg(test)]
 pub const ROUTE_FIXTURES: &[RouteFixture] = &[
     RouteFixture {
         family: EndpointFamily::Session,
@@ -338,6 +350,7 @@ pub struct CommandEnvelope<T> {
     pub payload: T,
 }
 
+#[cfg(test)]
 impl<T> CommandEnvelope<T> {
     fn new(command: CommandKind, idempotency_key: IdempotencyKey, payload: T) -> Self {
         Self {
@@ -351,11 +364,13 @@ impl<T> CommandEnvelope<T> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(test)]
 pub struct ReadEnvelope<T> {
     pub api_version: ApiVersion,
     pub payload: T,
 }
 
+#[cfg(test)]
 impl<T> ReadEnvelope<T> {
     fn new(payload: T) -> Self {
         Self {
@@ -395,17 +410,7 @@ pub struct ResumeRunRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct SessionListRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cap: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub after_ms: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub after_session_id: Option<SessionId>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[cfg(test)]
 pub struct DocumentSnapshotRequest {
     pub document: DocumentRef,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -416,6 +421,7 @@ pub struct DocumentSnapshotRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(test)]
 pub struct DocumentChunkRequest {
     pub offset: u64,
     pub limit: u64,
@@ -798,6 +804,7 @@ pub struct ReviewRespondRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(test)]
 pub struct StreamSubscribeRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_seq: Option<u64>,
@@ -805,6 +812,7 @@ pub struct StreamSubscribeRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(test)]
 pub struct RecoveryRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<SessionId>,
@@ -816,6 +824,7 @@ pub struct RecoveryRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+#[cfg(test)]
 pub enum AggregateRef {
     Session {
         session_id: SessionId,
@@ -845,6 +854,7 @@ pub enum AggregateRef {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg(test)]
 pub enum CommandReceiptStatus {
     Accepted,
     Replayed,
@@ -854,6 +864,7 @@ pub enum CommandReceiptStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(test)]
 pub struct CommandReceiptDto {
     pub api_version: ApiVersion,
     pub status: CommandReceiptStatus,
@@ -863,6 +874,7 @@ pub struct CommandReceiptDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(test)]
 pub struct ListPageDto {
     pub api_version: ApiVersion,
     pub family: EndpointFamily,
@@ -873,6 +885,7 @@ pub struct ListPageDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(test)]
 pub struct SnapshotDto {
     pub api_version: ApiVersion,
     pub family: EndpointFamily,
@@ -883,6 +896,7 @@ pub struct SnapshotDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(test)]
 pub struct TypedErrorDto {
     pub api_version: ApiVersion,
     pub error_kind: String,
@@ -892,6 +906,7 @@ pub struct TypedErrorDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(test)]
 pub struct DegradedSnapshotDto {
     pub api_version: ApiVersion,
     pub family: EndpointFamily,
@@ -902,6 +917,7 @@ pub struct DegradedSnapshotDto {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg(test)]
 pub enum AuthoringEventKind {
     SessionCreated,
     ProposalUpdated,
@@ -915,6 +931,7 @@ pub enum AuthoringEventKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(test)]
 pub struct AuthoringEventDto {
     pub schema_version: ApiVersion,
     pub seq: u64,
@@ -945,6 +962,7 @@ pub struct InterruptResumeRequest {
     pub decision: Value,
 }
 
+#[cfg(test)]
 pub fn request_fixture(family: EndpointFamily) -> Value {
     match family {
         EndpointFamily::Session => command_value(CommandEnvelope::new(
@@ -1103,6 +1121,7 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
     }
 }
 
+#[cfg(test)]
 pub fn response_fixture(family: EndpointFamily) -> Value {
     let aggregate = match family {
         EndpointFamily::Session
@@ -1153,6 +1172,7 @@ pub fn response_fixture(family: EndpointFamily) -> Value {
     .expect("fixture response serializes")
 }
 
+#[cfg(test)]
 pub fn list_page_fixture(family: EndpointFamily) -> ListPageDto {
     ListPageDto {
         api_version: ApiVersion::V1,
@@ -1162,6 +1182,7 @@ pub fn list_page_fixture(family: EndpointFamily) -> ListPageDto {
     }
 }
 
+#[cfg(test)]
 pub fn typed_error_fixture() -> TypedErrorDto {
     TypedErrorDto {
         api_version: ApiVersion::V1,
@@ -1171,6 +1192,7 @@ pub fn typed_error_fixture() -> TypedErrorDto {
     }
 }
 
+#[cfg(test)]
 pub fn degraded_snapshot_fixture(family: EndpointFamily) -> DegradedSnapshotDto {
     DegradedSnapshotDto {
         api_version: ApiVersion::V1,
@@ -1181,6 +1203,7 @@ pub fn degraded_snapshot_fixture(family: EndpointFamily) -> DegradedSnapshotDto 
     }
 }
 
+#[cfg(test)]
 pub fn event_fixture() -> AuthoringEventDto {
     AuthoringEventDto {
         schema_version: ApiVersion::V1,
@@ -1199,10 +1222,12 @@ pub fn event_fixture() -> AuthoringEventDto {
     }
 }
 
+#[cfg(test)]
 fn command_value<T: Serialize>(request: CommandEnvelope<T>) -> Value {
     serde_json::to_value(request).expect("command fixture serializes")
 }
 
+#[cfg(test)]
 fn read_value<T: Serialize>(payload: T) -> Value {
     serde_json::to_value(ReadEnvelope::new(payload)).expect("read fixture serializes")
 }
@@ -1211,6 +1236,7 @@ fn read_value<T: Serialize>(payload: T) -> Value {
 /// document + one `CreateDocument` op over a provisional one. Shared by the
 /// `Proposal` family's request fixture AND the `AgentToolExecute` family's
 /// `propose_changeset`/create tool-input fixture, so the two never drift.
+#[cfg(test)]
 fn create_proposal_request_fixture() -> CreateProposalRequest {
     CreateProposalRequest {
         session_id: session_id(),
@@ -1254,6 +1280,7 @@ fn create_proposal_request_fixture() -> CreateProposalRequest {
 /// The `propose_changeset`/create semantic-tool input: the `CreateProposalRequest`
 /// fixture flattened alongside the tool's `operation` discriminant tag (the wire
 /// shape `tools::ProposeChangesetInput::Create` expects).
+#[cfg(test)]
 fn propose_changeset_create_input() -> Value {
     let mut value = serde_json::to_value(create_proposal_request_fixture())
         .expect("create-proposal fixture serializes");
@@ -1261,6 +1288,7 @@ fn propose_changeset_create_input() -> Value {
     value
 }
 
+#[cfg(test)]
 fn actor_fixture() -> ActorRef {
     ActorRef {
         id: ActorId::new("human:alice").unwrap(),
@@ -1269,6 +1297,7 @@ fn actor_fixture() -> ActorRef {
     }
 }
 
+#[cfg(test)]
 fn existing_document_fixture() -> DocumentRef {
     DocumentRef::Existing {
         scope: "scope_a".to_string(),
@@ -1280,6 +1309,7 @@ fn existing_document_fixture() -> DocumentRef {
     }
 }
 
+#[cfg(test)]
 fn provisional_document_fixture() -> DocumentRef {
     DocumentRef::ProvisionalCreate {
         provisional_doc_id: "provisional_doc_1".to_string(),
@@ -1291,6 +1321,7 @@ fn provisional_document_fixture() -> DocumentRef {
     }
 }
 
+#[cfg(test)]
 fn target_revision_fence(
     document: DocumentRef,
     base_revision: Option<&str>,
@@ -1303,6 +1334,7 @@ fn target_revision_fence(
     }
 }
 
+#[cfg(test)]
 fn receipt(command: CommandKind, key: &str) -> ReceiptRef {
     ReceiptRef {
         id: ReceiptId::new("receipt_1").unwrap(),
@@ -1312,26 +1344,32 @@ fn receipt(command: CommandKind, key: &str) -> ReceiptRef {
     }
 }
 
+#[cfg(test)]
 fn idempotency_key(value: &str) -> IdempotencyKey {
     IdempotencyKey::new(value).unwrap()
 }
 
+#[cfg(test)]
 fn revision(value: &str) -> RevisionToken {
     RevisionToken::new(value).unwrap()
 }
 
+#[cfg(test)]
 fn session_id() -> SessionId {
     SessionId::new("session_1").unwrap()
 }
 
+#[cfg(test)]
 fn changeset_id() -> ChangesetId {
     ChangesetId::new("changeset_1").unwrap()
 }
 
+#[cfg(test)]
 fn proposal_id() -> super::model::ProposalId {
     super::model::ProposalId::new("proposal_1").unwrap()
 }
 
+#[cfg(test)]
 fn approval_id() -> ApprovalId {
     ApprovalId::new("approval_1").unwrap()
 }

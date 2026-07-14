@@ -31,7 +31,6 @@
 //! aggregate. It does NOT apply it — that rides review + approval + the shared
 //! apply command, so an agent still cannot self-approve or self-apply its own
 //! rollback (the same guardrails apply through the normal path).
-#![allow(dead_code)]
 
 use ingest_struct::reader::blob_oid;
 use serde::{Deserialize, Serialize};

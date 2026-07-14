@@ -34,7 +34,6 @@
 //! DENIALS ARE VALUES: an expected refusal — claiming an item another reviewer holds, a
 //! non-holder release, an automated proposer trying to review its own work — rides the
 //! success envelope as an [`ActionEligibility`]; only store faults are `Err`.
-#![allow(dead_code)]
 
 use std::collections::BTreeSet;
 use std::path::Path;

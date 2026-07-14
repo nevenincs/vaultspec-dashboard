@@ -3,7 +3,6 @@
 //! W03.P13 is intentionally a whole-document subset for the walking skeleton:
 //! existing-document `replace_body` drafts become materialized target snapshots
 //! plus review diffs. Section-scoped and atomic-hunk operations are deferred.
-#![allow(dead_code)]
 
 use ingest_struct::reader::blob_oid;
 use serde::{Deserialize, Serialize};

@@ -3,7 +3,6 @@
 //! W03.P15 owns durable aggregate revisions and ordered child operation rows.
 //! Lifecycle transition legality, proposal command orchestration, approvals,
 //! apply, routes, streams, and LangGraph state are later phases.
-#![allow(dead_code)]
 
 use std::collections::BTreeSet;
 

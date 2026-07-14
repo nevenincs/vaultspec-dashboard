@@ -7,7 +7,6 @@
 //! dual-run comparison this module measured against during the transition
 //! (latency + conflict-UX parity, agentic-operation-modes ADR) is retired —
 //! there is no second write path to compare against or fall back to.
-#![allow(dead_code)]
 
 use std::path::Path;
 use std::time::Instant;

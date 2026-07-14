@@ -3,7 +3,6 @@
 //! W03.P14 records backend-owned validation material for whole-document proposal
 //! previews. It does not create approval records, apply jobs, routes, streams,
 //! section selectors, or a public core-shaped API.
-#![allow(dead_code)]
 
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -3,7 +3,6 @@
 //! W03.P16 owns pure status transition checks and stale-state guards. Command
 //! handlers, approval records, apply receipts, routes, streams, sessions, and
 //! core adapter calls are later phases.
-#![allow(dead_code)]
 
 use super::api::ChangesetOperationKind;
 use super::ledger::ChangesetAggregateRecord;
@@ -27,6 +26,7 @@ pub struct ValidationFreshness {
 }
 
 impl ValidationFreshness {
+    #[cfg(test)]
     pub const fn fresh() -> Self {
         Self {
             record_present: true,
@@ -93,6 +93,7 @@ pub struct ApprovalFreshness {
 }
 
 impl ApprovalFreshness {
+    #[cfg(test)]
     pub const fn fresh() -> Self {
         Self {
             record_present: true,
@@ -115,6 +116,7 @@ impl ApprovalFreshness {
         }
     }
 
+    #[cfg(test)]
     pub const fn cancelled_run() -> Self {
         Self {
             run_cancelled: true,
@@ -122,6 +124,7 @@ impl ApprovalFreshness {
         }
     }
 
+    #[cfg(test)]
     pub const fn stale_revision() -> Self {
         Self {
             proposal_revision_current: false,
@@ -129,6 +132,7 @@ impl ApprovalFreshness {
         }
     }
 
+    #[cfg(test)]
     pub const fn stale_targets() -> Self {
         Self {
             target_revisions_current: false,
@@ -136,6 +140,7 @@ impl ApprovalFreshness {
         }
     }
 
+    #[cfg(test)]
     pub const fn stale_validation() -> Self {
         Self {
             validation_digest_current: false,
@@ -143,6 +148,7 @@ impl ApprovalFreshness {
         }
     }
 
+    #[cfg(test)]
     pub const fn stale_policy() -> Self {
         Self {
             policy_version_current: false,
@@ -202,6 +208,7 @@ pub struct ReviewDecisionFreshness {
 }
 
 impl ReviewDecisionFreshness {
+    #[cfg(test)]
     pub const fn fresh() -> Self {
         Self {
             review_request_present: true,
@@ -224,6 +231,7 @@ impl ReviewDecisionFreshness {
         }
     }
 
+    #[cfg(test)]
     pub const fn cancelled_run() -> Self {
         Self {
             run_cancelled: true,
@@ -231,13 +239,7 @@ impl ReviewDecisionFreshness {
         }
     }
 
-    pub const fn stale_revision() -> Self {
-        Self {
-            proposal_revision_current: false,
-            ..Self::fresh()
-        }
-    }
-
+    #[cfg(test)]
     pub const fn stale_targets() -> Self {
         Self {
             target_revisions_current: false,
@@ -245,6 +247,7 @@ impl ReviewDecisionFreshness {
         }
     }
 
+    #[cfg(test)]
     pub const fn stale_validation() -> Self {
         Self {
             validation_digest_current: false,
@@ -252,6 +255,7 @@ impl ReviewDecisionFreshness {
         }
     }
 
+    #[cfg(test)]
     pub const fn stale_policy() -> Self {
         Self {
             policy_version_current: false,

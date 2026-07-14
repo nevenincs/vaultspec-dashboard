@@ -43,7 +43,6 @@
 //! conflict, snapshot, and proposal-command primitives. It mirrors — never imports —
 //! `proposal.rs`'s private idempotency loop so the most-shared proposal module is not
 //! touched.
-#![allow(dead_code)]
 
 use std::path::Path;
 

@@ -3,7 +3,6 @@
 //! W02.P05 establishes the physical store, migration runner, and schema
 //! metadata checks. Later W02 phases attach typed repositories for unit-of-work
 //! boundaries, idempotency, retention, and the transactional outbox.
-#![allow(dead_code)]
 
 pub(crate) mod idempotency;
 pub(crate) mod outbox;

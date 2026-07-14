@@ -25,7 +25,6 @@
 //! CALLER-ASSEMBLED and passed in, so this module owns no store handle. Surfacing the
 //! report through the projection / route layer is a LATER phase; this phase lands the
 //! detector and its tests only.
-#![allow(dead_code)]
 
 use std::path::Path;
 

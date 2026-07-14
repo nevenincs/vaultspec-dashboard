@@ -3,7 +3,6 @@
 //! W12.P25 stores workflow state owned by the authoring backend. LangGraph ids
 //! are correlation references only; the session, turn, run, cancellation, and
 //! recovery surfaces below are product state in the authoring store.
-#![allow(dead_code)]
 
 use ingest_struct::reader::blob_oid;
 use serde::{Deserialize, Serialize};

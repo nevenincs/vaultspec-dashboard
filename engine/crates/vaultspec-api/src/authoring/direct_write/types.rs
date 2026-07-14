@@ -50,6 +50,7 @@ impl DirectWriteCapabilities {
         serde_json::from_str(&raw).unwrap_or_else(|_| Self::disabled())
     }
 
+    #[cfg(test)]
     pub fn write_for_tests(worktree_root: &Path, capabilities: Self) {
         let path = worktree_root.join(DIRECT_WRITE_CAPABILITIES_FILE);
         if let Some(parent) = path.parent() {
