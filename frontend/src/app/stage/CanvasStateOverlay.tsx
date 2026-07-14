@@ -268,7 +268,11 @@ function OverlayChip({
 }) {
   return (
     <div
-      className={`pointer-events-auto flex max-w-[90vw] items-center gap-fg-2 rounded-fg-md border border-rule bg-paper-raised/95 px-fg-3 py-fg-1-5 text-label shadow-fg-overlay ${
+      // max-w in rem (not vw): the rail lives inside the canvas host, so a
+      // viewport-relative cap can push a long single-line sentence under the
+      // corner widgets (minimap) at narrow canvas widths — 34rem wraps the copy
+      // into two centered lines well clear of every corner (visual pass).
+      className={`pointer-events-auto flex max-w-[34rem] items-center gap-fg-2 text-pretty rounded-fg-md border border-rule bg-paper-raised/95 px-fg-3 py-fg-1-5 text-center text-label shadow-fg-overlay ${
         tone === "warn" ? "text-state-stale" : "text-ink-muted"
       }`}
       data-canvas-state={testid}
