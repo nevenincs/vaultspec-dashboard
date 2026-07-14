@@ -1302,3 +1302,31 @@ lint gate passed. Baseline reconciliation removed exactly two bridge findings: t
 scanner decreased from 1,495 to 1,493, and bridge debt decreased from 141 to 139. No
 user-facing developer metadata, raw localization keys, diagnostics, or em dashes were
 introduced. S150 is accepted with no open findings.
+
+### W02.P05.S22 review | pass | Keybindings now carry typed message presentations
+
+Commit `e926de7d4c`, implemented through delegated Sol architecture and Terra rollout
+work, changes the keybinding registry from unrestricted presentation strings to
+validated message presentations. Existing English producers use a bounded,
+scanner-tracked compatibility type, and static descriptor groups prevent translated
+text or object identity from becoming grouping keys.
+
+Review confirmed that registry normalization fails closed for malformed descriptors,
+interpolated groups, accessor records, empty copy, and unbounded copy. IDs, default
+chords, contexts, conflict behavior, action propagation, and visible wording are
+preserved. Shortcut and settings projections reject typed descriptors until S33, S219,
+and S248 resolve them at React boundaries. The plan now requires those three consumer
+steps before every descriptor-producer migration, including removal of the settings
+conflict fallback that can expose an action ID.
+
+The scanner accepts only the canonical compatibility factory and inventories direct,
+dynamic, namespace, and local aliases while rejecting unresolved and counterfeit
+factories. Baseline reconciliation records 50 exact keybinding bridge entries. It
+removes 44 superseded findings and adds the previously untracked group copy, producing
+a net increase from 1,493 to 1,499 findings without adding visible copy.
+
+Independent Sol verification passed 97 focused tests across nine files, TypeScript,
+the localization scanner, and diff checks. The complete frontend lint recipe passed.
+Touched tests contain no fakes, mocks, stubs, patches, skips, or expected failures. No
+user-facing developer metadata, raw keys, diagnostics, or em dashes were introduced.
+S22 is accepted with no open findings.
