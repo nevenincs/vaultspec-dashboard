@@ -38,3 +38,17 @@ Targeted Prettier, ESLint, and the full TypeScript project check passed. The man
 frontend lint recipe reached unrelated Prettier failures in four concurrent RAG panel
 files after its ESLint, pixel, and module-size checks passed; those files were preserved.
 The focused safety review found no critical or high issues.
+
+The follow-up audit found two safety defects in that first implementation. Inspecting
+post-translation syntax rejected valid user data containing `{{...}}` or `$t(...)`, and
+allowing catalog nesting to run before validation could expose an unresolved nested key.
+The resolver now retrieves the selected raw catalog template with interpolation and
+nesting disabled, rejects catalog nesting, validates bounded and well-formed named
+tokens against normalized descriptor values, and only then performs normal translation.
+Final output validation is limited to type, blank, and key-echo safety, so localization-like
+user content remains unchanged.
+
+A temporary real-i18next suite proved that a missing nested key and missing interpolation
+value use the safe fallback, localization-like user data is preserved, and valid
+interpolation with plural selection resolves correctly. All four assertions passed, and
+the temporary suite was removed so committed runtime coverage remains assigned to S07.
