@@ -316,3 +316,22 @@ One medium resource-bound defect remains. Canonical private-use locale identifie
 be arbitrarily long, and the full identifier is retained in each cache key. Add a
 documented locale-length bound before `Intl.getCanonicalLocales`, then repeat the
 hostile-input, cross-locale, option, and cache-churn assertions before accepting S05.
+
+### W01.P01.S05 locale-bound remediation review | pass | Findings resolved
+
+Commit `4e0ace99b3` resolves the remaining S05 resource-bound finding with no open
+findings. Locale identifiers longer than 256 characters are rejected before
+canonicalization, and the canonical result is independently checked against the same
+limit before cache insertion. A real production-module assertion accepted an exactly
+256-character valid private-use locale, rejected valid 265-character and greater than
+90,000-character locales, and returned `null` through every public formatter for an
+oversized or hostile locale. Ordinary Unicode extensions and private-use subtags
+continued to match native Intl output, while the short alias `sh` correctly expanded to
+the longer canonical `sr-Latn` form.
+
+The same assertions rechecked the singular relative-time contract, unknown and
+oversized option rejection, Proxy-backed option safety, English and German output,
+percentage, duration, byte formatting, and behavior after more than 48 cache entries.
+All four real-module tests passed, along with targeted ESLint and Prettier checks. The
+temporary review test was removed, and no fake, mock, stub, runtime patch, skip, or
+expected failure was used. S05 is accepted.
