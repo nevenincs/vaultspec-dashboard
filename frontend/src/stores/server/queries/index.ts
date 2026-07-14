@@ -18,6 +18,7 @@ export * from "./mutations";
 export * from "./comments";
 export * from "./docmeta";
 export * from "./status";
+export * from "./frameworkStatus";
 export * from "./pipeline";
 export * from "./gitchanges";
 export * from "./streams";

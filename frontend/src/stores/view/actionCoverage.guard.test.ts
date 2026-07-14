@@ -40,7 +40,7 @@ import {
   KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
   KEYBOARD_SHORTCUTS_TOGGLE_BINDING,
 } from "./keyboardShortcuts";
-import { GRAPH_TOGGLE_ACTION_ID } from "./chromeActions";
+import { CONTROL_PANEL_ACTION_IDS, GRAPH_TOGGLE_ACTION_ID } from "./chromeActions";
 import { deriveGraphToggleKeybindings } from "./graphToggleKeybindings";
 
 // Register the command providers and the right-rail resolvers under test (side effects).
@@ -48,6 +48,7 @@ import "./commandProviders/leftRailCommandProvider";
 import "./commandProviders/projectCommandProvider";
 import "./commandProviders/reloadCommandProvider";
 import "./commandProviders/windowCommandProvider";
+import "./commandProviders/controlPanelsCommandProvider";
 import "../../app/right/menus/commitMenu";
 import "../../app/right/menus/prMenu";
 import "../../app/stage/menus/docTabMenu";
@@ -162,5 +163,13 @@ describe("action coverage grid guard", () => {
 
   it("the document-tab entity kind has a layered resolver (#15)", () => {
     expect(hasResolver("doc-tab")).toBe(true);
+  });
+
+  it("each framework control panel toggle is enrolled in the palette under its shared id", () => {
+    // Palette-only verbs (like Settings, no default chord): each must still resolve
+    // in the palette under the shared action id the chip and keymap accelerator use.
+    for (const id of Object.values(CONTROL_PANEL_ACTION_IDS)) {
+      expect(paletteIds.has(id)).toBe(true);
+    }
   });
 });

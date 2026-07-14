@@ -8,15 +8,24 @@
 // a verb with no bound chord simply renders without one.
 
 import {
+  Activity,
+  ClipboardCheck,
   Command,
   Crosshair,
   Keyboard,
   Network,
   RotateCcw,
+  Search,
   Settings,
+  ShieldCheck,
 } from "lucide-react";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
+import type { ActionDescriptor, ActionIcon } from "../../platform/actions/action";
+import {
+  CONTROL_PANEL_IDS,
+  toggleControlPanel,
+  type ControlPanelId,
+} from "./controlPanels";
 import { chordToKeycaps } from "../../platform/keymap/chord";
 import { effectiveChord, getKeybinding } from "../../platform/keymap/registry";
 import { COMMAND_PALETTE_ACTION_ID, openCommandPalette } from "./commandPalette";
@@ -131,6 +140,46 @@ export function toggleFollowModeAction(): ActionDescriptor {
     icon: Crosshair,
     run: toggleFollowMode,
   });
+}
+
+/** The stable action id per control panel (activity-rail-realignment D4). The chip,
+ *  the palette command, and the keymap accelerator all resolve under this one id. */
+export const CONTROL_PANEL_ACTION_IDS: Record<ControlPanelId, string> = {
+  "search-service": "panel:search-service",
+  approvals: "panel:approvals",
+  "backend-health": "panel:backend-health",
+  "vault-health": "panel:vault-health",
+};
+
+const CONTROL_PANEL_ACTION_SPECS: Record<
+  ControlPanelId,
+  { label: string; icon: ActionIcon }
+> = {
+  "search-service": { label: "Search service", icon: Search },
+  approvals: { label: "Approvals", icon: ClipboardCheck },
+  "backend-health": { label: "Backend health", icon: Activity },
+  "vault-health": { label: "Vault health", icon: ShieldCheck },
+};
+
+/** Toggle one framework control panel (activity-rail-realignment D4): ONE shared
+ *  descriptor per panel under a single id, composed by the rail-footer chip, the
+ *  command palette, and the keymap — no bespoke per-surface handler. The panels are
+ *  session-transient dialogs (settings-dialog idiom), so this is a view toggle, not
+ *  a mutation — not time-travel gated. */
+export function controlPanelToggleAction(id: ControlPanelId): ActionDescriptor {
+  const spec = CONTROL_PANEL_ACTION_SPECS[id];
+  return withAccelerator({
+    id: CONTROL_PANEL_ACTION_IDS[id],
+    label: spec.label,
+    section: "navigate",
+    icon: spec.icon,
+    run: () => toggleControlPanel(id),
+  });
+}
+
+/** Every control-panel toggle descriptor, in cluster order. */
+export function controlPanelActions(): ActionDescriptor[] {
+  return CONTROL_PANEL_IDS.map(controlPanelToggleAction);
 }
 
 /** The full app-chrome escape-hatch set, in menu order. */
