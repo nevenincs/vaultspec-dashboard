@@ -77,10 +77,16 @@ Migrate the cross-surface descriptor, command, keymap, and vocabulary contracts 
 
 ### Phase `W02.P04` - action descriptor convergence
 
-Change shared actions and confirmations from resolved English to typed message descriptors while preserving IDs, lanes, and eligibility.
+Change shared actions and confirmations from resolved English to typed message
+descriptors while preserving IDs, lanes, and eligibility. `S17` and `S18` are final
+closure gates: they execute only after every compiled action producer, including the
+menu and reader producers scheduled through `S82`, has left the temporary bridge.
 
-- [ ] `W02.P04.S17` - Replace action labels, disabled reasons, and boolean confirmations with bounded typed message descriptors; `frontend/src/platform/actions/action.ts`.
-- [ ] `W02.P04.S18` - Update action normalization and execution tests for descriptor safety and explicit destructive copy; `frontend/src/platform/actions/registry.test.ts`.
+- [ ] `W02.P04.S245` - Seed canonical shared action, disabled-reason, and explicit confirmation catalog ownership before changing producer types; `frontend/src/locales/en/, frontend/src/localization/messagePolicy.ts, frontend/src/localization/messagePolicy.test.ts`.
+- [ ] `W02.P04.S247` - Make action rendering boundaries resolve typed labels, reasons, and full confirmations while preserving stable IDs and legacy behavior during migration; `frontend/src/stores/view/contextMenu.ts, frontend/src/stores/view/commandPaletteCommands.ts, frontend/src/app/menu/ContextMenuHost.tsx, frontend/src/app/palette/CommandPalette.tsx, frontend/src/app/shell/MobileTopBar.tsx`.
+- [ ] `W02.P04.S246` - Introduce the branded scanner-visible legacy action presentation bridge and wrap every compiled legacy producer without changing visible copy; `frontend/src/platform/actions/, frontend/src/app/, frontend/src/stores/view/, frontend/scripts/scan-localization.mjs, frontend/scripts/localization-allowlist.json`.
+- [ ] `W02.P04.S17` - After every action producer through S82 is migrated, remove the legacy bridge and require bounded typed labels, reasons, and confirmations in the final action contract; `frontend/src/platform/actions/action.ts, frontend/src/platform/actions/registry.ts`.
+- [ ] `W02.P04.S18` - Prove the final strict action contract, normalization, execution lanes, descriptor safety, and explicit destructive copy; `frontend/src/platform/actions/registry.test.ts`.
 - [ ] `W02.P04.S19` - Migrate the clipboard action builder to canonical localized verbs; `frontend/src/platform/actions/clipboardActions.ts`.
 - [ ] `W02.P04.S20` - Migrate the shared open-entity action builder once; `frontend/src/app/menus/sharedActions.ts`.
 - [ ] `W02.P04.S21` - Migrate background and global-tail composition without duplicating shared action wording; `frontend/src/app/menus/backgroundMenu.ts, frontend/src/app/menus/globalTail.ts`.
