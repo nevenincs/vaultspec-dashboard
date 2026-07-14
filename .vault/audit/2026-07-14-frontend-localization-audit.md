@@ -225,3 +225,16 @@ bundled data-only catalog graph. One compatibility defect remains: the shared fr
 namespace array causes the installed i18next runtime to throw when removing a resource
 bundle. Pass a fresh mutable namespace array in each initialization options object, then
 prove add, replace, and remove operations remain confined to their owning real runtime.
+
+### W01.P01.S04 option remediation review | pass | Findings resolved
+
+Commit `e754e003c6` resolves the remaining namespace-option incompatibility with no open
+S04 findings. Each initialization now receives fresh mutable namespace and supported
+locale arrays while the exported canonical lists remain frozen. A targeted assertion
+using three real runtimes proved their namespace and supported-locale option arrays are
+distinct, additions and replacements remain confined to the owning resource graph, and
+`removeResourceBundle` completes without throwing or changing either a second factory
+instance or the application singleton. No other array-valued initialization option is
+shared: resources are deep-cloned, and the remaining common options are scalars,
+functions, or non-array configuration objects consumed safely by the installed runtime.
+The remediation and execution record remain within S04 scope.
