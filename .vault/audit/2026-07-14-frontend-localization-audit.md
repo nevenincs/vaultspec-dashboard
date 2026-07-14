@@ -530,3 +530,40 @@ failed because the external `vaultspec-core` environment lacks `annotated_doc`; 
 same engine-independent suites then passed through the setup's documented
 externally-provided-engine path. Full ESLint and TypeScript checks also passed. The
 updated execution record accurately reports the hardened coverage. S07 is accepted.
+
+### W01.P03.S13 exact-key-parity | medium | Shipped locales can retain undeclared message leaves
+
+Commit `3f601880c0` checks that every source-derived `MESSAGE_KEYS` entry resolves to a
+non-empty string in every shipped locale, but it never compares each locale's complete
+leaf-key set with the source locale. A locale with every required source key plus an
+obsolete, misspelled, or internal-only leaf passes all four tests. The namespace-only
+aggregate comparison does not close this gap. Validate exact leaf-key parity so stale
+or undeclared catalog content cannot accumulate outside the typed message contract.
+
+### W01.P03.S13 generated-key-assertions | medium | Key uniqueness and parent checks are tautological
+
+The uniqueness and leaf-versus-parent assertions operate on `MESSAGE_KEYS`, which the
+production module creates by recursively visiting one JavaScript object. That traversal
+cannot emit a duplicate path, and one object property cannot simultaneously be both a
+string leaf and a parent object. The namespace membership assertion is likewise
+guaranteed because both `MESSAGE_KEYS` and `localizationNamespaces` are derived from
+the same `en` aggregate. These checks restate construction mechanics instead of proving
+independent behavior and conflict with the repository's non-tautological test rule.
+Replace them with assertions capable of failing for a real catalog-contract defect,
+while keeping structural validity checks independent and avoiding mirrored production
+logic.
+
+### W01.P03.S13 review | changes required | Prove the complete catalog key contract independently
+
+The test imports production catalogs, key guards, and a freshly initialized production
+runtime directly. Its direct-resource checks are meaningful: every currently required
+message resolves as a non-empty string, and the initialized source bundles equal the
+exported source catalog. No fake, mock, stub, patch, monkeypatch, skip, expected failure,
+catalog change, user-facing copy, or development metadata was introduced. The execution
+record and plan delta remain narrowly scoped.
+
+All four targeted Vitest cases passed, as did targeted ESLint and Prettier checks and
+the full TypeScript 6 project check. Before accepting S13, add an independent exact
+leaf-key parity assertion for every shipped locale and remove or replace the assertions
+that are guaranteed by the current source-object traversal. Re-run the same real-runtime
+and static checks after remediation.
