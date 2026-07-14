@@ -73,3 +73,12 @@ with `common.actions.reloadPage` and `errors.unexpectedApplication.message`. Re-
 catalog lint, formatting, and type checks before accepting the step. The namespace
 aggregate, semantic key ownership, sentence case, diagnostic safety, implementation
 scope, and execution-record traceability otherwise conform to the accepted decision.
+
+### W01.P01.S02 remediation review | pass | Finding resolved
+
+Commit `430066d69b` changes `errors.fallback.contentUnavailable` from "Refresh the
+page" to "Reload the page", matching both `common.actions.reloadPage` and the
+unexpected-application recovery message. The original canonical-verb finding is
+resolved with no open findings for this step. The remediation stays within scope, its
+execution record captures the review outcome, and the changed catalog passes targeted
+diff, lint, and formatting checks.
