@@ -131,8 +131,8 @@ One stores query for coverage keyed on scope+feature with tolerant adapters, and
 
 Rebuild the dialog as the two-stage feature-group panel mirroring the approved Figma frames: select-or-create feature with coverage rows, eligible-types-only document stage with editable link chips, exec removed, entry points pre-answering stage 1 (ADR D1/D3/D4/D5). Gated on P01 approval.
 
-- [ ] `P04.S10` - Rebuild the dialog as the two-stage feature-group panel mirroring the approved frames: coverage rows, eligible-types-only choice with disabled-with-reason rows, editable link chips, honest same-day-duplicate refusal surfacing; `frontend/src/app/left/CreateDocDialog.tsx`.
-- [ ] `P04.S11` - Remove bare exec from the offered types and pre-answer stage 1 from feature-scoped entry points (Features-section affordance, tree context menu); `frontend/src/app/left`.
+- [x] `P04.S10` - Rebuild the dialog as the two-stage feature-group panel mirroring the approved frames: coverage rows, eligible-types-only choice with disabled-with-reason rows, editable link chips, honest same-day-duplicate refusal surfacing; `frontend/src/app/left/CreateDocDialog.tsx`.
+- [x] `P04.S11` - Remove bare exec from the offered types and pre-answer stage 1 from feature-scoped entry points (Features-section affordance, tree context menu); `frontend/src/app/left`.
 
 ### Phase `P05` - Guards, relabeling, and gate
 
