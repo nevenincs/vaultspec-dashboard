@@ -92,9 +92,9 @@ const IMPERATIVE_CALL_NAMES = new Set([
   "showError",
   "toast",
 ]);
-const TRANSLATION_FACTORIES = new Set([
-  "createMessageDescriptor",
-  "createConfirmationDescriptor",
+const TRANSLATION_FACTORY_KINDS = new Map([
+  ["createMessageDescriptor", "message-factory"],
+  ["createConfirmationDescriptor", "confirmation-factory"],
 ]);
 const LOCALE_METHODS = new Map([
   ["localeCompare", 1],
@@ -239,7 +239,7 @@ function symbolAt(node, checker) {
 function translationBindings(sourceFile, checker) {
   const bindings = {
     calls: new Set(),
-    factories: new Set(),
+    factoryKinds: new Map(),
     hookNamespaces: new Set(),
     hookResults: new Set(),
     hooks: new Set(),
@@ -289,9 +289,9 @@ function translationBindings(sourceFile, checker) {
       if (
         (moduleName === "./message" ||
           /(?:^|\/)localization\/message$/u.test(moduleName)) &&
-        TRANSLATION_FACTORIES.has(original)
+        TRANSLATION_FACTORY_KINDS.has(original)
       ) {
-        bindings.factories.add(symbol);
+        bindings.factoryKinds.set(symbol, TRANSLATION_FACTORY_KINDS.get(original));
       }
     }
   }
@@ -357,19 +357,80 @@ function isReceiverExpression(expression, bindings, checker) {
   );
 }
 
-function isTranslationCall(node, bindings, checker) {
-  if (!ts.isCallExpression(node)) return false;
+function translationCallKind(node, bindings, checker) {
+  if (!ts.isCallExpression(node)) return null;
   const expression = node.expression;
   if (ts.isIdentifier(expression)) {
     const symbol = symbolAt(expression, checker);
-    return bindings.calls.has(symbol) || bindings.factories.has(symbol);
+    if (bindings.calls.has(symbol)) return "translation";
+    return bindings.factoryKinds.get(symbol) ?? null;
   }
-  return (
-    ts.isPropertyAccessExpression(expression) &&
+  return ts.isPropertyAccessExpression(expression) &&
     expression.name.text === "t" &&
     ((ts.isIdentifier(expression.expression) &&
       bindings.i18nextNamespaces.has(symbolAt(expression.expression, checker))) ||
       isReceiverExpression(expression.expression, bindings, checker))
+    ? "translation"
+    : null;
+}
+
+function isTranslationCall(node, bindings, checker) {
+  return translationCallKind(node, bindings, checker) !== null;
+}
+
+function resolveObjectLiteral(node, checker, seen = new Set(), depth = 0) {
+  if (!node || depth > LIMITS.constantDepth) return null;
+  if (ts.isObjectLiteralExpression(node)) return node;
+  if (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isSatisfiesExpression(node)
+  ) {
+    return resolveObjectLiteral(node.expression, checker, seen, depth + 1);
+  }
+  if (!ts.isIdentifier(node) && !ts.isPropertyAccessExpression(node)) return null;
+  const symbol = unwrapAlias(symbolAt(node, checker), checker);
+  if (!symbol || seen.has(symbol)) return null;
+  const nextSeen = new Set(seen);
+  nextSeen.add(symbol);
+  for (const declaration of symbol.declarations ?? []) {
+    const initializer = isConstDeclaration(declaration)
+      ? declaration.initializer
+      : ts.isPropertyAssignment(declaration)
+        ? declaration.initializer
+        : null;
+    const object = resolveObjectLiteral(initializer, checker, nextSeen, depth + 1);
+    if (object) return object;
+  }
+  return null;
+}
+
+function descriptorKeyExpression(node, checker) {
+  const object = resolveObjectLiteral(node, checker);
+  if (!object) return null;
+  const key = object.properties.find(
+    (property) =>
+      ts.isPropertyAssignment(property) && propertyName(property.name) === "key",
+  );
+  return key && ts.isPropertyAssignment(key) ? key.initializer : null;
+}
+
+function confirmationDescriptorFields(node, checker) {
+  const object = resolveObjectLiteral(node, checker);
+  if (!object) return [];
+  return object.properties.filter(
+    (property) =>
+      ts.isPropertyAssignment(property) &&
+      ["body", "cancelLabel", "confirmLabel", "title"].includes(
+        propertyName(property.name),
+      ),
+  );
+}
+
+function isStaticMessageKey(node, checker, bindings) {
+  const keyParts = staticParts(node, checker, bindings);
+  return (
+    !keyParts.dynamic && keyParts.texts.length === 1 && meaningful(keyParts.texts[0])
   );
 }
 
@@ -528,24 +589,21 @@ function scanProgram(files, allowOutsideSource = false) {
           reportStatic(FINDING_CODES.imperativeDisplay, node, name, node.arguments[0]);
         }
 
-        if (isTranslationCall(node, bindings, checker)) {
+        const translationKind = translationCallKind(node, bindings, checker);
+        if (
+          translationKind === "translation" ||
+          translationKind === "message-factory"
+        ) {
           const key = node.arguments[0];
-          if (key) {
-            const keyParts = staticParts(key, checker, bindings);
-            const staticKey =
-              !keyParts.dynamic &&
-              keyParts.texts.length === 1 &&
-              meaningful(keyParts.texts[0]);
-            if (!staticKey) {
-              add(
-                FINDING_CODES.dynamicMessageKey,
-                key,
-                sourceFile,
-                name ?? "translation",
-              );
-            }
+          if (key && !isStaticMessageKey(key, checker, bindings)) {
+            add(
+              FINDING_CODES.dynamicMessageKey,
+              key,
+              sourceFile,
+              name ?? "translation",
+            );
           }
-          const options = node.arguments[1];
+          const options = translationKind === "translation" ? node.arguments[1] : null;
           if (options && ts.isObjectLiteralExpression(options)) {
             for (const property of options.properties) {
               if (
@@ -559,6 +617,19 @@ function scanProgram(files, allowOutsideSource = false) {
                   "defaultValue",
                 );
               }
+            }
+          }
+        } else if (translationKind === "confirmation-factory") {
+          const confirmation = node.arguments[0];
+          for (const field of confirmationDescriptorFields(confirmation, checker)) {
+            const key = descriptorKeyExpression(field.initializer, checker);
+            if (key && !isStaticMessageKey(key, checker, bindings)) {
+              add(
+                FINDING_CODES.dynamicMessageKey,
+                key,
+                sourceFile,
+                `confirmation.${propertyName(field.name)}`,
+              );
             }
           }
         }
