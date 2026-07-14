@@ -5,4 +5,7 @@ export const common = {
     reloadPage: "Reload page",
     retry: "Retry",
   },
+  destructiveActions: {
+    discardChanges: "Discard changes",
+  },
 } as const;

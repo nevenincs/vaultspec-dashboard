@@ -37,3 +37,7 @@ them after the shared message contract is available.
 
 Review aligned the generic page-recovery message with the canonical `Reload` verb used
 by the shared page action and unexpected-application recovery message.
+
+The source catalog now owns a dedicated `destructiveActions` category. Its typed keys
+form the allowlist for explicit destructive confirmation labels, beginning with
+`discardChanges`.
