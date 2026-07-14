@@ -12,6 +12,7 @@ import { Copy } from "lucide-react";
 import { logger } from "../logger/logger";
 import { appDispatcher } from "../dispatch/middleware";
 import {
+  legacyActionPresentation,
   normalizeActionDescriptorId,
   normalizeActionDescriptorLabel,
   normalizeActionDescriptorText,
@@ -133,7 +134,9 @@ export function copyAction(opts: unknown): ActionDescriptor {
   const payload = normalizeCopyPayload(record);
   return {
     id: normalizeActionDescriptorId(record.id, "copy"),
-    label: normalizeActionDescriptorLabel(record.label, "Copy"),
+    label: legacyActionPresentation(
+      normalizeActionDescriptorLabel(record.label, "Copy"),
+    ),
     section: "copy",
     icon: Copy,
     dispatch: { type: COPY_ACTION, payload },

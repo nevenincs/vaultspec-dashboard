@@ -25,6 +25,7 @@
 // it NEVER fetches and NEVER reads the raw `tiers` block (dashboard-layer-
 // ownership, views-are-projections-of-one-model).
 
+import { legacyActionPresentation } from "../../platform/actions/action";
 import { useEffect } from "react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
@@ -74,7 +75,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_WALK_FORWARD_RIGHT_ACTION_ID,
       defaultChord: "ArrowRight",
-      label: "Walk to the next connected node",
+      label: legacyActionPresentation("Walk to the next connected node"),
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -84,7 +85,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_WALK_FORWARD_DOWN_ACTION_ID,
       defaultChord: "ArrowDown",
-      label: "Walk to the next connected node",
+      label: legacyActionPresentation("Walk to the next connected node"),
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -94,7 +95,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_WALK_BACKWARD_LEFT_ACTION_ID,
       defaultChord: "ArrowLeft",
-      label: "Walk to the previous connected node",
+      label: legacyActionPresentation("Walk to the previous connected node"),
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -104,7 +105,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_WALK_BACKWARD_UP_ACTION_ID,
       defaultChord: "ArrowUp",
-      label: "Walk to the previous connected node",
+      label: legacyActionPresentation("Walk to the previous connected node"),
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -114,7 +115,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_OPEN_ACTION_ID,
       defaultChord: "Enter",
-      label: "Open the focused node",
+      label: legacyActionPresentation("Open the focused node"),
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -124,7 +125,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_EXPAND_ACTION_ID,
       defaultChord: "e",
-      label: "Expand the focused node onto the working set",
+      label: legacyActionPresentation("Expand the focused node onto the working set"),
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -134,7 +135,7 @@ const GRAPH_WALK_BINDINGS: readonly GraphWalkBinding[] = [
     def: {
       id: GRAPH_CLEAR_ACTION_ID,
       defaultChord: "Escape",
-      label: "Clear the canvas selection",
+      label: legacyActionPresentation("Clear the canvas selection"),
       group: GRAPH_GROUP,
       context: CANVAS_KEYMAP_CONTEXT,
     },
@@ -162,7 +163,7 @@ export function deriveGraphWalkActionDescriptor(
   if (action === null) return null;
   return {
     id: binding.def.id,
-    label: binding.def.label,
+    label: legacyActionPresentation(binding.def.label),
     run: () => {
       runGraphWalkAction(action, graph(), handlers);
     },

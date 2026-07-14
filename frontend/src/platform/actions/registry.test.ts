@@ -10,16 +10,23 @@ import {
   ACTION_DESCRIPTOR_ID_MAX_CHARS,
   ACTION_DESCRIPTOR_LABEL_MAX_CHARS,
   ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS,
+  LEGACY_ACTION_PRESENTATION_MAX_CHARS,
   fireActionDescriptor,
   isRunnable,
+  legacyActionPresentation,
   normalizeActionDescriptorId,
   normalizeActionDescriptorLabel,
   normalizeActionDescriptorText,
   normalizeActionDescriptor,
+  normalizeLegacyActionPresentation,
   resolveActionPresentation,
   type ActionDescriptor,
+  type LegacyActionPresentation,
 } from "./action";
-import { resolveMessageResult } from "../localization/fallback";
+import {
+  resolveMessageResult,
+  SAFE_FALLBACK_SOURCE_MESSAGE,
+} from "../localization/fallback";
 import type { MessageDescriptor } from "../localization/message";
 import { createLocalizationRuntime } from "../localization/runtime";
 import {
@@ -297,7 +304,10 @@ describe("time-travel gate (W02.P06.S26)", () => {
 });
 
 describe("isRunnable", () => {
-  const base: ActionDescriptor = { id: "i", label: "l" };
+  const base = {
+    id: "i",
+    label: legacyActionPresentation("l"),
+  } satisfies ActionDescriptor;
   it("normalizes raw action descriptor presentation and execution lanes", () => {
     const run = () => {};
 
@@ -418,13 +428,42 @@ describe("isRunnable", () => {
     const resolveDescriptor = (descriptor: MessageDescriptor) =>
       resolveMessageResult(runtime, descriptor);
 
-    expect(resolveActionPresentation("Legacy label", resolveDescriptor)).toEqual({
-      message: "Legacy label",
-      usedFallback: false,
-    });
+    expect(
+      resolveActionPresentation(
+        legacyActionPresentation(" Legacy label "),
+        resolveDescriptor,
+      ),
+    ).toEqual({ message: "Legacy label", usedFallback: false });
     expect(
       resolveActionPresentation({ key: "common:actions.retry" }, resolveDescriptor),
     ).toEqual({ message: "Retry", usedFallback: false });
+  });
+
+  it("bounds legacy presentation and safely resolves invalid bridge data", () => {
+    expect(normalizeLegacyActionPresentation(" Legacy label ")).toBe("Legacy label");
+    expect(normalizeLegacyActionPresentation("   ")).toBeNull();
+    expect(
+      normalizeLegacyActionPresentation({ key: "common:actions.retry" }),
+    ).toBeNull();
+    expect(
+      normalizeLegacyActionPresentation(
+        "x".repeat(LEGACY_ACTION_PRESENTATION_MAX_CHARS + 1),
+      ),
+    ).toBeNull();
+    expect(
+      normalizeLegacyActionPresentation(
+        "x".repeat(LEGACY_ACTION_PRESENTATION_MAX_CHARS + 1),
+        LEGACY_ACTION_PRESENTATION_MAX_CHARS + 1,
+      ),
+    ).toBeNull();
+
+    const runtime = createLocalizationRuntime();
+    const invalidBridgePresentation = " " as LegacyActionPresentation;
+    expect(
+      resolveActionPresentation(invalidBridgePresentation, (descriptor) =>
+        resolveMessageResult(runtime, descriptor),
+      ),
+    ).toEqual({ message: SAFE_FALLBACK_SOURCE_MESSAGE, usedFallback: true });
   });
 
   it("is true for a run action", () => {
@@ -475,7 +514,12 @@ describe("isRunnable", () => {
 
 describe("global-tail seam (global-context-actions D2/D3)", () => {
   const refreshTail = (): ActionDescriptor[] => [
-    { id: "reload:refresh-data", label: "refresh", section: "global", run: () => {} },
+    {
+      id: "reload:refresh-data",
+      label: legacyActionPresentation("refresh"),
+      section: "global",
+      run: () => {},
+    },
   ];
 
   it("appends the tail AFTER the per-kind body, last, for a resolved kind", () => {
@@ -520,7 +564,7 @@ describe("global-tail seam (global-context-actions D2/D3)", () => {
     registerGlobalTailActions(() => [
       {
         id: "x:mutate",
-        label: "Mutate",
+        label: legacyActionPresentation("Mutate"),
         section: "global",
         disabledInTimeTravel: true,
         dispatch: { type: "noop" },

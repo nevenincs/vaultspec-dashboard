@@ -17,6 +17,7 @@
 // deleted. They read only their arguments + the injected ActionContext
 // (selectedNodeId), never a store — so they stay pure and unit-testable.
 
+import { legacyActionPresentation } from "../../platform/actions/action";
 import { Archive, ArrowUpRight, Link2, Wrench } from "lucide-react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
@@ -52,7 +53,7 @@ export interface OpenEntityOptions {
 export function openEntityAction(opts: OpenEntityOptions): ActionDescriptor {
   const base = {
     id: opts.id,
-    label: opts.label ?? "Open",
+    label: legacyActionPresentation(opts.label ?? "Open"),
     section: "navigate" as const,
     icon: ArrowUpRight,
   };
@@ -64,7 +65,9 @@ export function openEntityAction(opts: OpenEntityOptions): ActionDescriptor {
     return {
       ...base,
       disabled: true,
-      disabledReason: opts.disabledReason ?? "nothing to open",
+      disabledReason: legacyActionPresentation(
+        opts.disabledReason ?? "nothing to open",
+      ),
     };
   }
   return {
@@ -110,7 +113,7 @@ export function relateToSelectionAction(
 ): ActionDescriptor {
   const base = {
     id: opts.id,
-    label: "Relate to focused node",
+    label: legacyActionPresentation("Relate to focused node"),
     section: "transform" as const,
     icon: Link2,
     disabledInTimeTravel: true,
@@ -119,15 +122,25 @@ export function relateToSelectionAction(
     return {
       ...base,
       disabled: true,
-      disabledReason: opts.notADocumentReason ?? "not a document",
+      disabledReason: legacyActionPresentation(
+        opts.notADocumentReason ?? "not a document",
+      ),
     };
   }
   const dstStem = docStemFromNodeId(opts.ctx?.selectedNodeId ?? null);
   if (dstStem === null) {
-    return { ...base, disabled: true, disabledReason: "focus a document to relate to" };
+    return {
+      ...base,
+      disabled: true,
+      disabledReason: legacyActionPresentation("focus a document to relate to"),
+    };
   }
   if (dstStem === opts.srcStem) {
-    return { ...base, disabled: true, disabledReason: "already this document" };
+    return {
+      ...base,
+      disabled: true,
+      disabledReason: legacyActionPresentation("already this document"),
+    };
   }
   return {
     ...base,
@@ -166,14 +179,20 @@ export interface AutofixFeatureOptions {
 export function autofixFeatureAction(opts: AutofixFeatureOptions): ActionDescriptor {
   const base = {
     id: opts.id,
-    label: opts.feature ? `Autofix “${opts.feature}”` : "Autofix feature",
+    label: legacyActionPresentation(
+      opts.feature ? `Autofix “${opts.feature}”` : "Autofix feature",
+    ),
     section: "transform" as const,
     icon: Wrench,
     confirm: true,
     disabledInTimeTravel: true,
   };
   if (opts.feature === null) {
-    return { ...base, disabled: true, disabledReason: "no feature to autofix" };
+    return {
+      ...base,
+      disabled: true,
+      disabledReason: legacyActionPresentation("no feature to autofix"),
+    };
   }
   return {
     ...base,
@@ -213,14 +232,20 @@ export interface ArchiveFeatureOptions {
 export function archiveFeatureAction(opts: ArchiveFeatureOptions): ActionDescriptor {
   const base = {
     id: opts.id,
-    label: opts.feature ? `Archive feature “${opts.feature}”` : "Archive feature",
+    label: legacyActionPresentation(
+      opts.feature ? `Archive feature “${opts.feature}”` : "Archive feature",
+    ),
     section: "danger" as const,
     icon: Archive,
     confirm: true,
     disabledInTimeTravel: true,
   };
   if (opts.feature === null) {
-    return { ...base, disabled: true, disabledReason: "no feature to archive" };
+    return {
+      ...base,
+      disabled: true,
+      disabledReason: legacyActionPresentation("no feature to archive"),
+    };
   }
   return {
     ...base,

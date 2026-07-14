@@ -9,6 +9,7 @@
 // below contributes this resolver for the "search-result" entity kind at module
 // load.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Crosshair } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -45,7 +46,7 @@ export function searchResultMenu(entity: unknown): ActionDescriptor[] {
     openEntityAction({
       id: "search-result:open",
       nodeId: normalizedEntity.nodeId,
-      disabledReason: "no graph node",
+      disabledReason: legacyActionPresentation("no graph node"),
     }),
   );
 
@@ -55,7 +56,7 @@ export function searchResultMenu(entity: unknown): ActionDescriptor[] {
     const nodeId = normalizedEntity.nodeId;
     actions.push({
       id: "search-result:focus",
-      label: "Focus node",
+      label: legacyActionPresentation("Focus node"),
       section: "navigate",
       icon: Crosshair,
       run: () => focusMenuNode(nodeId, normalizedEntity),
@@ -63,11 +64,11 @@ export function searchResultMenu(entity: unknown): ActionDescriptor[] {
   } else {
     actions.push({
       id: "search-result:focus",
-      label: "Focus node",
+      label: legacyActionPresentation("Focus node"),
       section: "navigate",
       icon: Crosshair,
       disabled: true,
-      disabledReason: "no graph node",
+      disabledReason: legacyActionPresentation("no graph node"),
     });
   }
 
@@ -92,7 +93,7 @@ export function searchResultMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "search-result:copy-source",
-      label: "Copy source path",
+      label: legacyActionPresentation("Copy source path"),
       text: normalizedEntity.source,
       what: "path",
     }),
@@ -103,17 +104,17 @@ export function searchResultMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "search-result:copy-score",
-        label: "Copy score",
+        label: legacyActionPresentation("Copy score"),
         text: String(normalizedEntity.score),
       }),
     );
   } else {
     actions.push({
       id: "search-result:copy-score",
-      label: "Copy score",
+      label: legacyActionPresentation("Copy score"),
       section: "copy",
       disabled: true,
-      disabledReason: "no score",
+      disabledReason: legacyActionPresentation("no score"),
     });
   }
 
@@ -121,7 +122,7 @@ export function searchResultMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "search-result:copy-full",
-      label: "Copy result (JSON)",
+      label: legacyActionPresentation("Copy result (JSON)"),
       text: JSON.stringify({
         source: normalizedEntity.source,
         nodeId: normalizedEntity.nodeId ?? null,

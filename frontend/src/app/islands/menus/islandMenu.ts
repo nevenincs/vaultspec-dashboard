@@ -3,6 +3,7 @@
 // stage; close removes the island; copy id. Pure over the descriptor; closing
 // is a view-state op gated in time-travel.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Crosshair, Minimize2 } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -19,14 +20,14 @@ export function islandMenu(entity: unknown): ActionDescriptor[] {
   return [
     {
       id: "island:focus",
-      label: "Focus on stage",
+      label: legacyActionPresentation("Focus on stage"),
       section: "navigate",
       icon: Crosshair,
       run: () => focusMenuNode(normalizedEntity.id, normalizedEntity),
     },
     {
       id: "island:close",
-      label: "Close island",
+      label: legacyActionPresentation("Close island"),
       section: "navigate",
       icon: Minimize2,
       run: () => closeMenuNodeIsland(normalizedEntity.id),
@@ -34,7 +35,7 @@ export function islandMenu(entity: unknown): ActionDescriptor[] {
     },
     copyAction({
       id: "island:copy-id",
-      label: "Copy id",
+      label: legacyActionPresentation("Copy id"),
       text: normalizedEntity.id,
       what: "id",
     }),

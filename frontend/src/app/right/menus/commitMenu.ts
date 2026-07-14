@@ -11,6 +11,7 @@
 // scrubs as-of that commit's instant. It is not a git mutation and is not
 // time-travel gated; the exit is the stage's "return to live" chip.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { History } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -47,7 +48,7 @@ export function commitMenu(entity: unknown, ctx?: ActionContext): ActionDescript
   if (typeof at === "number" && Number.isFinite(at) && scope !== null && !codeCorpus) {
     actions.push({
       id: "commit:view-at-commit",
-      label: "View corpus at this commit",
+      label: legacyActionPresentation("View corpus at this commit"),
       section: "navigate",
       icon: History,
       run: () => movePlayhead(at, scope),
@@ -55,22 +56,24 @@ export function commitMenu(entity: unknown, ctx?: ActionContext): ActionDescript
   } else {
     actions.push({
       id: "commit:view-at-commit",
-      label: "View corpus at this commit",
+      label: legacyActionPresentation("View corpus at this commit"),
       section: "navigate",
       icon: History,
       disabled: true,
-      disabledReason: codeCorpus
-        ? "only the vault view has commit history"
-        : at === undefined
-          ? "no commit time"
-          : "no active scope",
+      disabledReason: legacyActionPresentation(
+        codeCorpus
+          ? "only the vault view has commit history"
+          : at === undefined
+            ? "no commit time"
+            : "no active scope",
+      ),
     });
   }
 
   actions.push(
     copyAction({
       id: "commit:copy-hash",
-      label: "Copy commit hash",
+      label: legacyActionPresentation("Copy commit hash"),
       text: normalizedEntity.id,
       what: "id",
     }),
@@ -80,7 +83,7 @@ export function commitMenu(entity: unknown, ctx?: ActionContext): ActionDescript
     actions.push(
       copyAction({
         id: "commit:copy-short-hash",
-        label: "Copy short hash",
+        label: legacyActionPresentation("Copy short hash"),
         text: normalizedEntity.shortHash,
         what: "id",
       }),
@@ -91,7 +94,7 @@ export function commitMenu(entity: unknown, ctx?: ActionContext): ActionDescript
     actions.push(
       copyAction({
         id: "commit:copy-subject",
-        label: "Copy subject",
+        label: legacyActionPresentation("Copy subject"),
         text: normalizedEntity.subject,
         what: "title",
       }),

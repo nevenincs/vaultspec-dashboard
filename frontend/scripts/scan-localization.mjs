@@ -39,6 +39,7 @@ const FINDING_CODES = Object.freeze({
   imperativeDisplay: "imperative-display",
   jsxAttribute: "jsx-attribute",
   jsxText: "jsx-text",
+  legacyActionPresentation: "legacy-action-presentation",
   presentationField: "presentation-field",
   translatedFragment: "translated-fragment",
   translationDefault: "translation-default",
@@ -49,6 +50,8 @@ const TEST_SOURCE = /\.(?:test|spec)\.(?:ts|tsx)$/u;
 const EXACT_SOURCE_EXCLUSIONS = new Set(["src/localization/testing/resources.ts"]);
 const EXACT_GENERATED_SOURCES = new Set();
 const FORMATTER_OWNER = "src/platform/localization/formatters.ts";
+const LEGACY_ACTION_PRESENTATION_OWNER = "src/platform/actions/action.ts";
+const LEGACY_ACTION_PRESENTATION_EXPORT = "legacyActionPresentation";
 
 const JSX_ATTRIBUTE_NAMES = new Set([
   "accessibleName",
@@ -236,6 +239,57 @@ function symbolAt(node, checker) {
   return node ? checker.getSymbolAtLocation(node) : undefined;
 }
 
+function isCanonicalLegacyActionPresentation(
+  expression,
+  checker,
+  seen = new Set(),
+  depth = 0,
+) {
+  if (depth > LIMITS.constantDepth) return false;
+  const lookup = ts.isPropertyAccessExpression(expression)
+    ? expression.name
+    : expression;
+  const symbol = unwrapAlias(symbolAt(lookup, checker), checker);
+  if (!symbol || seen.has(symbol)) return false;
+  if (
+    symbol.getName() === LEGACY_ACTION_PRESENTATION_EXPORT &&
+    (symbol.declarations ?? []).some(
+      (declaration) =>
+        toRelative(declaration.getSourceFile().fileName) ===
+        LEGACY_ACTION_PRESENTATION_OWNER,
+    )
+  ) {
+    return true;
+  }
+  const nextSeen = new Set(seen);
+  nextSeen.add(symbol);
+  return (symbol.declarations ?? []).some(
+    (declaration) =>
+      isConstDeclaration(declaration) &&
+      declaration.initializer !== undefined &&
+      (ts.isIdentifier(declaration.initializer) ||
+        ts.isPropertyAccessExpression(declaration.initializer)) &&
+      isCanonicalLegacyActionPresentation(
+        declaration.initializer,
+        checker,
+        nextSeen,
+        depth + 1,
+      ),
+  );
+}
+
+function isLegacyActionPresentationType(node, checker) {
+  const alias = unwrapAlias(checker.getTypeAtLocation(node).aliasSymbol, checker);
+  return (
+    alias?.getName() === "LegacyActionPresentation" &&
+    (alias.declarations ?? []).some(
+      (declaration) =>
+        toRelative(declaration.getSourceFile().fileName) ===
+        LEGACY_ACTION_PRESENTATION_OWNER,
+    )
+  );
+}
+
 function translationBindings(sourceFile, checker) {
   const bindings = {
     calls: new Set(),
@@ -360,6 +414,9 @@ function isReceiverExpression(expression, bindings, checker) {
 function translationCallKind(node, bindings, checker) {
   if (!ts.isCallExpression(node)) return null;
   const expression = node.expression;
+  if (isCanonicalLegacyActionPresentation(expression, checker)) {
+    return "legacy-action-presentation";
+  }
   if (ts.isIdentifier(expression)) {
     const symbol = symbolAt(expression, checker);
     if (bindings.calls.has(symbol)) return "translation";
@@ -605,7 +662,26 @@ function scanProgram(files, allowOutsideSource = false) {
       } else if (ts.isPropertyAssignment(node)) {
         const name = propertyName(node.name);
         if (name && PRESENTATION_FIELD_NAMES.has(name)) {
-          reportStatic(FINDING_CODES.presentationField, node, name, node.initializer);
+          const unresolvedLegacyFactory =
+            ts.isCallExpression(node.initializer) &&
+            !isCanonicalLegacyActionPresentation(
+              node.initializer.expression,
+              checker,
+            ) &&
+            (callName(node.initializer.expression) ===
+              LEGACY_ACTION_PRESENTATION_EXPORT ||
+              isLegacyActionPresentationType(node.initializer, checker));
+          if (unresolvedLegacyFactory) {
+            add(
+              FINDING_CODES.presentationField,
+              node,
+              sourceFile,
+              name,
+              node.initializer.arguments[0]?.getText(sourceFile) ?? "",
+            );
+          } else {
+            reportStatic(FINDING_CODES.presentationField, node, name, node.initializer);
+          }
         }
       }
 
@@ -701,6 +777,14 @@ function scanProgram(files, allowOutsideSource = false) {
               );
             }
           }
+        } else if (translationKind === "legacy-action-presentation") {
+          add(
+            FINDING_CODES.legacyActionPresentation,
+            node,
+            sourceFile,
+            LEGACY_ACTION_PRESENTATION_EXPORT,
+            node.arguments[0]?.getText(sourceFile) ?? "",
+          );
         }
 
         if (!formatterOwner && ts.isPropertyAccessExpression(node.expression)) {

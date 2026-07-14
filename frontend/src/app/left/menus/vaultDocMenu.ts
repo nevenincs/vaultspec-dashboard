@@ -4,6 +4,7 @@
 // isolation. The registration below contributes it for the "vault-doc" entity
 // kind at module load.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Crosshair } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -34,7 +35,7 @@ export function vaultDocMenu(entity: unknown, ctx?: ActionContext): ActionDescri
   return [
     {
       id: "vault-doc:focus",
-      label: "Focus on stage",
+      label: legacyActionPresentation("Focus on stage"),
       section: "navigate",
       icon: Crosshair,
       run: () =>
@@ -47,13 +48,13 @@ export function vaultDocMenu(entity: unknown, ctx?: ActionContext): ActionDescri
     }),
     copyAction({
       id: "vault-doc:copy-path",
-      label: "Copy path",
+      label: legacyActionPresentation("Copy path"),
       text: normalizedEntity.path,
       what: "path",
     }),
     copyAction({
       id: "vault-doc:copy-stem",
-      label: "Copy stem",
+      label: legacyActionPresentation("Copy stem"),
       text: normalizedEntity.stem,
       what: "stem",
     }),

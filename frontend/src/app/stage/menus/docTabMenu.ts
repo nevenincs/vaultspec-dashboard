@@ -6,6 +6,7 @@
 // provisional/open-count gates are read from the tab store at resolve time (the menu
 // opens against a live snapshot), never a fresh-derived selector (stable-selectors).
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Pin, RotateCw, X } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -36,38 +37,42 @@ export function docTabMenu(entity: unknown): ActionDescriptor[] {
   return [
     {
       id: "doc-tab:keep-open",
-      label: "Keep Open",
+      label: legacyActionPresentation("Keep Open"),
       section: "transform",
       icon: Pin,
       disabled: !isProvisional,
-      disabledReason: isProvisional ? undefined : "already a permanent tab",
+      disabledReason: isProvisional
+        ? undefined
+        : legacyActionPresentation("already a permanent tab"),
       run: () => promoteDocTab(nodeId),
     },
     {
       id: "doc-tab:reload",
-      label: "Reload",
+      label: legacyActionPresentation("Reload"),
       section: "transform",
       icon: RotateCw,
       run: () => reloadDocTab(nodeId, scope),
     },
     {
       id: "doc-tab:close",
-      label: "Close",
+      label: legacyActionPresentation("Close"),
       section: "danger",
       icon: X,
       run: () => closeDocTab(nodeId),
     },
     {
       id: "doc-tab:close-others",
-      label: "Close Others",
+      label: legacyActionPresentation("Close Others"),
       section: "danger",
       disabled: !hasOthers,
-      disabledReason: hasOthers ? undefined : "no other tabs open",
+      disabledReason: hasOthers
+        ? undefined
+        : legacyActionPresentation("no other tabs open"),
       run: () => closeOtherDocTabs(nodeId),
     },
     {
       id: "doc-tab:close-all",
-      label: "Close All Documents",
+      label: legacyActionPresentation("Close All Documents"),
       section: "danger",
       run: () => closeAllDocTabs(),
     },

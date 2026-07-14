@@ -9,6 +9,7 @@
 // Layer: app/chrome — imports the keymap registry (platform) and the action
 // resolver registrar (stores) downward, mirroring `app/left/leftRailActions`.
 
+import { legacyActionPresentation } from "../../platform/actions/action";
 import { useEffect } from "react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
@@ -32,14 +33,14 @@ export function deriveRegionCycleKeybindings(): KeybindingDef[] {
     {
       id: REGION_CYCLE_NEXT_ACTION_ID,
       defaultChord: "F6",
-      label: REGION_CYCLE_NEXT_LABEL,
+      label: legacyActionPresentation(REGION_CYCLE_NEXT_LABEL),
       group: REGION_CYCLE_GROUP,
       context: "global",
     },
     {
       id: REGION_CYCLE_PREV_ACTION_ID,
       defaultChord: "Shift+F6",
-      label: REGION_CYCLE_PREV_LABEL,
+      label: legacyActionPresentation(REGION_CYCLE_PREV_LABEL),
       group: REGION_CYCLE_GROUP,
       context: "global",
     },
@@ -58,7 +59,7 @@ export function useRegionCycleKeybindings(): void {
       REGION_CYCLE_NEXT_ACTION_ID,
       (): ActionDescriptor => ({
         id: REGION_CYCLE_NEXT_ACTION_ID,
-        label: REGION_CYCLE_NEXT_LABEL,
+        label: legacyActionPresentation(REGION_CYCLE_NEXT_LABEL),
         run: () => void cycleFocusRegion(1),
       }),
     );
@@ -66,7 +67,7 @@ export function useRegionCycleKeybindings(): void {
       REGION_CYCLE_PREV_ACTION_ID,
       (): ActionDescriptor => ({
         id: REGION_CYCLE_PREV_ACTION_ID,
-        label: REGION_CYCLE_PREV_LABEL,
+        label: legacyActionPresentation(REGION_CYCLE_PREV_LABEL),
         run: () => void cycleFocusRegion(-1),
       }),
     );

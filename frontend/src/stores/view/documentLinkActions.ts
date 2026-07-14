@@ -15,7 +15,10 @@
 
 import { Link } from "lucide-react";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
+import {
+  legacyActionPresentation,
+  type ActionDescriptor,
+} from "../../platform/actions/action";
 import { dispatchCopy } from "../../platform/actions/clipboardActions";
 
 export const COPY_LINK_ACTION_ID = "vault-doc:copy-link";
@@ -52,12 +55,16 @@ export interface CopyLinkOptions {
 export function copyLinkAction(opts: CopyLinkOptions): ActionDescriptor {
   const base = {
     id: opts.id ?? COPY_LINK_ACTION_ID,
-    label: opts.label ?? COPY_LINK_LABEL,
+    label: legacyActionPresentation(opts.label ?? COPY_LINK_LABEL),
     section: "copy" as const,
     icon: Link,
   };
   if (opts.stem === null) {
-    return { ...base, disabled: true, disabledReason: "not a document" };
+    return {
+      ...base,
+      disabled: true,
+      disabledReason: legacyActionPresentation("not a document"),
+    };
   }
   const text = documentWikiLink(opts.stem, opts.heading);
   return { ...base, run: () => void dispatchCopy({ text }) };

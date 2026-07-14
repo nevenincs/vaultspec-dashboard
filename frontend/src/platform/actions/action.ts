@@ -17,7 +17,10 @@ import type { ComponentType } from "react";
 
 import { normalizeAction, type ActionMeta } from "../dispatch/dispatch";
 import { appDispatcher } from "../dispatch/middleware";
-import type { MessageResolutionResult } from "../localization/fallback";
+import {
+  SAFE_FALLBACK_MESSAGE_KEY,
+  type MessageResolutionResult,
+} from "../localization/fallback";
 import {
   normalizeActionConfirmationDescriptor,
   normalizeMessageDescriptor,
@@ -59,6 +62,20 @@ export const ACTION_DESCRIPTOR_ID_MAX_CHARS = 512;
 export const ACTION_DESCRIPTOR_LABEL_MAX_CHARS = 256;
 export const ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS = 256;
 export const ACTION_DESCRIPTOR_ACCELERATOR_MAX_CHARS = 64;
+export const LEGACY_ACTION_PRESENTATION_MAX_CHARS = Math.max(
+  ACTION_DESCRIPTOR_LABEL_MAX_CHARS,
+  ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS,
+);
+
+declare const legacyActionPresentationBrand: unique symbol;
+
+/**
+ * Scanner-visible compatibility copy for action producers awaiting catalog migration.
+ * The brand is compile-time only; runtime validation remains mandatory at every seam.
+ */
+export type LegacyActionPresentation = string & {
+  readonly [legacyActionPresentationBrand]: "legacy-action-presentation";
+};
 
 export function normalizeActionDescriptorId(value: unknown, fallback: string): string {
   if (typeof value !== "string") return fallback;
@@ -99,12 +116,36 @@ function normalizeOptionalActionDescriptorText(
     : undefined;
 }
 
+/** Normalize bounded compatibility copy without accepting objects or coercion. */
+export function normalizeLegacyActionPresentation(
+  value: unknown,
+  maxChars = LEGACY_ACTION_PRESENTATION_MAX_CHARS,
+): LegacyActionPresentation | null {
+  if (!Number.isInteger(maxChars) || maxChars < 1) return null;
+  const normalized = normalizeOptionalActionDescriptorText(
+    value,
+    Math.min(maxChars, LEGACY_ACTION_PRESENTATION_MAX_CHARS),
+  );
+  return normalized === undefined ? null : (normalized as LegacyActionPresentation);
+}
+
+/**
+ * Mark one complete legacy action message for exact scanner inventory.
+ * Invalid input becomes a bounded non-renderable sentinel and fails closed later.
+ */
+export function legacyActionPresentation(value: string): LegacyActionPresentation {
+  return (
+    normalizeLegacyActionPresentation(value, LEGACY_ACTION_PRESENTATION_MAX_CHARS) ??
+    ("" as LegacyActionPresentation)
+  );
+}
+
 function normalizeActionPresentation(
   value: unknown,
   maxChars: number,
 ): ActionPresentation | undefined {
   if (typeof value === "string") {
-    return normalizeOptionalActionDescriptorText(value, maxChars);
+    return normalizeLegacyActionPresentation(value, maxChars) ?? undefined;
   }
   return normalizeMessageDescriptor(value) ?? undefined;
 }
@@ -123,7 +164,7 @@ export interface ActionDispatch {
   meta?: ActionMeta;
 }
 
-export type ActionPresentation = string | MessageDescriptor;
+export type ActionPresentation = LegacyActionPresentation | MessageDescriptor;
 
 export type ActionPresentationResolver = (
   descriptor: MessageDescriptor,
@@ -134,9 +175,15 @@ export function resolveActionPresentation(
   presentation: ActionPresentation,
   resolveDescriptor: ActionPresentationResolver,
 ): MessageResolutionResult {
-  return typeof presentation === "string"
-    ? Object.freeze({ message: presentation, usedFallback: false })
-    : resolveDescriptor(presentation);
+  if (typeof presentation !== "string") return resolveDescriptor(presentation);
+
+  const normalized = normalizeLegacyActionPresentation(presentation);
+  if (normalized !== null) {
+    return Object.freeze({ message: normalized, usedFallback: false });
+  }
+
+  const fallback = resolveDescriptor({ key: SAFE_FALLBACK_MESSAGE_KEY });
+  return Object.freeze({ message: fallback.message, usedFallback: true });
 }
 
 export interface ActionDescriptorBase {

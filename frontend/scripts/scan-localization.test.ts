@@ -20,6 +20,10 @@ const validFiles = [
 ];
 const allRulesFile = resolve(fixtureRoot, "invalid/all-rules.tsx");
 const generatedCommentFile = resolve(fixtureRoot, "invalid/generated-comment.tsx");
+const legacyActionPresentationFile = resolve(
+  fixtureRoot,
+  "invalid/legacy-action-presentation.ts",
+);
 
 function baselineFor(
   findings: ReturnType<typeof scanFiles>,
@@ -34,8 +38,9 @@ describe("localization source scanner", () => {
 
   it("reports every production finding code from real invalid source", () => {
     const findings = scanFiles([allRulesFile]);
+    const legacyFindings = scanFiles([legacyActionPresentationFile]);
 
-    expect(new Set(findings.map(({ code }) => code))).toEqual(
+    expect(new Set([...findings, ...legacyFindings].map(({ code }) => code))).toEqual(
       new Set(Object.values(FINDING_CODES)),
     );
     expect(
@@ -84,6 +89,88 @@ describe("localization source scanner", () => {
     expect(scanFiles([generatedCommentFile]).map(({ code }) => code)).toContain(
       FINDING_CODES.jsxText,
     );
+  });
+
+  it("tracks only the canonical legacy action-presentation bridge", () => {
+    const findings = scanFiles([legacyActionPresentationFile]);
+
+    expect(findings).toMatchObject([
+      {
+        code: FINDING_CODES.legacyActionPresentation,
+        snippet: 'directLegacyPresentation("Legacy static action")',
+      },
+      {
+        code: FINDING_CODES.legacyActionPresentation,
+        snippet: "directLegacyPresentation(dynamicCopy)",
+      },
+      {
+        code: FINDING_CODES.legacyActionPresentation,
+        snippet: 'reexportedLegacyPresentation("Legacy re-exported action")',
+      },
+      {
+        code: FINDING_CODES.legacyActionPresentation,
+        snippet: 'localLegacyPresentation("Legacy locally aliased action")',
+      },
+      {
+        code: FINDING_CODES.presentationField,
+        snippet: 'label: unresolvedLegacyPresentation("Unresolved legacy action")',
+      },
+      {
+        code: FINDING_CODES.presentationField,
+        snippet: 'label: legacyActionPresentation("Counterfeit legacy action")',
+      },
+    ]);
+    expect(
+      findings.filter(({ code }) => code === FINDING_CODES.legacyActionPresentation),
+    ).toHaveLength(4);
+    expect(
+      findings.some(
+        ({ code, snippet }) =>
+          code === FINDING_CODES.presentationField &&
+          snippet.includes("directLegacyPresentation"),
+      ),
+    ).toBe(false);
+  });
+
+  it("compares exact legacy bridge entries as new, stale, and tampered", () => {
+    const findings = scanFiles([legacyActionPresentationFile]);
+    const baseline = validateAllowlistEntries(baselineFor(findings));
+    const firstLegacyIndex = findings.findIndex(
+      ({ code }) => code === FINDING_CODES.legacyActionPresentation,
+    );
+    const firstLegacy = findings[firstLegacyIndex];
+    if (firstLegacy === undefined) throw new Error("Expected a legacy finding.");
+
+    expect(compareAllowlist(findings, baseline)).toEqual({
+      metadataMismatches: [],
+      newFindings: [],
+      stale: [],
+    });
+
+    const withoutFirstLegacy = baseline.filter(
+      (_, index) => index !== firstLegacyIndex,
+    );
+    expect(compareAllowlist(findings, withoutFirstLegacy).newFindings).toEqual([
+      firstLegacy,
+    ]);
+
+    const staleEntry = {
+      id: "f".repeat(24),
+      path: "scripts/fixtures/localization/invalid/removed-legacy.ts",
+      rule: FINDING_CODES.legacyActionPresentation,
+    };
+    expect(compareAllowlist(findings, [...baseline, staleEntry]).stale).toEqual([
+      staleEntry,
+    ]);
+
+    const tampered = baseline.map((entry, index) =>
+      index === firstLegacyIndex
+        ? { ...entry, rule: FINDING_CODES.presentationField }
+        : entry,
+    );
+    expect(compareAllowlist(findings, tampered).metadataMismatches).toEqual([
+      firstLegacy,
+    ]);
   });
 
   it("returns identical ordered findings and IDs across repeated scans", () => {

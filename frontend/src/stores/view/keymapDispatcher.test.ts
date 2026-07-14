@@ -2,7 +2,10 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
+import {
+  legacyActionPresentation,
+  type ActionDescriptor,
+} from "../../platform/actions/action";
 import { type ChordEvent } from "../../platform/keymap/chord";
 import { type KeybindingDef, resetKeybindings } from "../../platform/keymap/registry";
 import {
@@ -39,7 +42,11 @@ const def = (
   ...over,
 });
 
-const runAction = (run: () => void): ActionDescriptor => ({ id: "x", label: "x", run });
+const runAction = (run: () => void): ActionDescriptor => ({
+  id: "x",
+  label: legacyActionPresentation("x"),
+  run,
+});
 
 function deps(over: Partial<KeymapDeps>): KeymapDeps {
   return {
@@ -110,7 +117,7 @@ describe("handleKeymapEvent", () => {
   it("applies the time-travel gate to a mutating action", () => {
     const mutating: ActionDescriptor = {
       id: "m",
-      label: "m",
+      label: legacyActionPresentation("m"),
       dispatch: { type: "noop" },
       disabledInTimeTravel: true,
     };

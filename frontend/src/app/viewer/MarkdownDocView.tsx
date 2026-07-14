@@ -11,6 +11,7 @@
 // it fetches nothing (the content query + the write mutations are the sole wire
 // clients) and reads the tiers-derived `ContentView`, never raw `tiers`.
 
+import { legacyActionPresentation } from "../../platform/actions/action";
 import {
   useEffect,
   useLayoutEffect,
@@ -366,7 +367,7 @@ export function MarkdownDocView({
   useEffect(() => {
     return registerKeyAction(EDITOR_TOGGLE_MODE_ACTION_ID, () => ({
       id: EDITOR_TOGGLE_MODE_ACTION_ID,
-      label: EDITOR_TOGGLE_MODE_LABEL,
+      label: legacyActionPresentation(EDITOR_TOGGLE_MODE_LABEL),
       run: () => toggleModeRef.current(),
     }));
   }, []);

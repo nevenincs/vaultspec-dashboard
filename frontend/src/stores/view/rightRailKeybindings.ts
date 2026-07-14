@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
+import {
+  legacyActionPresentation,
+  type ActionDescriptor,
+} from "../../platform/actions/action";
 import {
   type KeybindingDef,
   registerKeybindings,
@@ -69,7 +72,7 @@ export function useRightRailKeybindings(): void {
               id,
               (): ActionDescriptor => ({
                 id,
-                label: `Show the ${tab.label} tab`,
+                label: legacyActionPresentation(`Show the ${tab.label} tab`),
                 run: () => {
                   void setRightTab(tab.id).catch(() => undefined);
                 },

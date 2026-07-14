@@ -8,6 +8,7 @@
 // opens the PR on its remote (a non-mutating external navigation), and the rest are
 // copy verbs. None mutates a git ref, so none is time-travel gated.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { ExternalLink } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -30,7 +31,7 @@ export function prMenu(entity: unknown): ActionDescriptor[] {
   if (url) {
     actions.push({
       id: "pull-request:open",
-      label: "Open pull request",
+      label: legacyActionPresentation("Open pull request"),
       section: "navigate",
       icon: ExternalLink,
       run: () => {
@@ -42,7 +43,7 @@ export function prMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "pull-request:copy-url",
-        label: "Copy pull-request link",
+        label: legacyActionPresentation("Copy pull-request link"),
         text: url,
         what: "path",
       }),
@@ -50,18 +51,18 @@ export function prMenu(entity: unknown): ActionDescriptor[] {
   } else {
     actions.push({
       id: "pull-request:open",
-      label: "Open pull request",
+      label: legacyActionPresentation("Open pull request"),
       section: "navigate",
       icon: ExternalLink,
       disabled: true,
-      disabledReason: "no remote link",
+      disabledReason: legacyActionPresentation("no remote link"),
     });
   }
 
   actions.push(
     copyAction({
       id: "pull-request:copy-number",
-      label: "Copy PR number",
+      label: legacyActionPresentation("Copy PR number"),
       text: normalizedEntity.id,
       what: "id",
     }),

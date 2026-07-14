@@ -1,6 +1,9 @@
 import { useEffect, useMemo } from "react";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
+import {
+  legacyActionPresentation,
+  type ActionDescriptor,
+} from "../../platform/actions/action";
 import type { KeybindingDef } from "../../platform/keymap/registry";
 import { registerKeybindings } from "../../platform/keymap/registry";
 import type { EngineNode } from "../server/engine";
@@ -121,7 +124,7 @@ export function deriveKeyboardNavigationActionDescriptor(
   if (intent === null) return null;
   return {
     id: binding.id,
-    label: binding.label,
+    label: legacyActionPresentation(binding.label),
     run: () => {
       void selectDashboardNode(intent.id).catch(() => undefined);
     },

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { useEffect } from "react";
 
+import { legacyActionPresentation } from "../../platform/actions/action";
 import { chordToKeycaps } from "../../platform/keymap/chord";
 import {
   type KeybindingDef,
@@ -108,7 +109,7 @@ export function useKeyboardShortcutsGlobalToggle(): void {
     const disposeAction = registerKeyAction(KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID, () => {
       return {
         id: KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
-        label: KEYBOARD_SHORTCUTS_TOGGLE_LABEL,
+        label: legacyActionPresentation(KEYBOARD_SHORTCUTS_TOGGLE_LABEL),
         run: toggleKeyboardShortcuts,
       };
     });

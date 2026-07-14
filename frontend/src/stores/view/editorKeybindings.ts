@@ -11,7 +11,10 @@
 
 import { useEffect } from "react";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
+import {
+  legacyActionPresentation,
+  type ActionDescriptor,
+} from "../../platform/actions/action";
 import {
   type KeybindingDef,
   registerKeybindings,
@@ -99,9 +102,11 @@ export function useEditorKeybindings(): void {
       EDITOR_SAVE_ACTION_ID,
       (): ActionDescriptor => ({
         id: EDITOR_SAVE_ACTION_ID,
-        label: EDITOR_SAVE_LABEL,
+        label: legacyActionPresentation(EDITOR_SAVE_LABEL),
         disabled: !editorCanSave(),
-        disabledReason: editorCanSave() ? undefined : "no unsaved changes",
+        disabledReason: editorCanSave()
+          ? undefined
+          : legacyActionPresentation("no unsaved changes"),
         run: () => {
           const state = useViewStore.getState();
           if (state.editorTarget === null) return;
@@ -134,11 +139,11 @@ export function useEditorKeybindings(): void {
       EDITOR_CLOSE_ACTION_ID,
       (): ActionDescriptor => ({
         id: EDITOR_CLOSE_ACTION_ID,
-        label: EDITOR_CLOSE_LABEL,
+        label: legacyActionPresentation(EDITOR_CLOSE_LABEL),
         disabled: useViewStore.getState().editorTarget === null,
         disabledReason:
           useViewStore.getState().editorTarget === null
-            ? "no open document"
+            ? legacyActionPresentation("no open document")
             : undefined,
         run: requestCloseDocumentEditor,
       }),
@@ -148,11 +153,11 @@ export function useEditorKeybindings(): void {
       EDITOR_TOGGLE_DIFF_ACTION_ID,
       (): ActionDescriptor => ({
         id: EDITOR_TOGGLE_DIFF_ACTION_ID,
-        label: EDITOR_TOGGLE_DIFF_LABEL,
+        label: legacyActionPresentation(EDITOR_TOGGLE_DIFF_LABEL),
         disabled: useViewStore.getState().editorTarget === null,
         disabledReason:
           useViewStore.getState().editorTarget === null
-            ? "no open document"
+            ? legacyActionPresentation("no open document")
             : undefined,
         run: () => {
           // Guard so a stale keymap action does not toggle a closed editor's state.

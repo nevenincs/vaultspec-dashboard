@@ -12,6 +12,7 @@ import { ExternalLink, FolderOpen } from "lucide-react";
 import { logger } from "../logger/logger";
 import { appDispatcher } from "../dispatch/middleware";
 import {
+  legacyActionPresentation,
   normalizeActionDescriptorId,
   normalizeActionDescriptorText,
   type ActionDescriptor,
@@ -53,7 +54,7 @@ export interface ShellResult {
   degraded?: boolean;
 }
 
-const UNAVAILABLE_REASON = "not available in the browser";
+const UNAVAILABLE_REASON = legacyActionPresentation("not available in the browser");
 
 function shellActionRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -97,7 +98,7 @@ export function revealAction(opts: unknown): ActionDescriptor {
   const available = isHostShellAvailable();
   return {
     id: normalizeActionDescriptorId(record.id, "reveal"),
-    label: "Reveal in file manager",
+    label: legacyActionPresentation("Reveal in file manager"),
     section: "navigate",
     icon: FolderOpen,
     dispatch: { type: REVEAL_ACTION, payload: normalizeShellPayload(record) },
@@ -112,7 +113,7 @@ export function openInEditorAction(opts: unknown): ActionDescriptor {
   const available = isHostShellAvailable();
   return {
     id: normalizeActionDescriptorId(record.id, "open-in-editor"),
-    label: "Open in editor",
+    label: legacyActionPresentation("Open in editor"),
     section: "navigate",
     icon: ExternalLink,
     dispatch: { type: OPEN_IN_EDITOR_ACTION, payload: normalizeShellPayload(record) },

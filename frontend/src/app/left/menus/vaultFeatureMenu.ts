@@ -9,6 +9,7 @@
 // feature row offers the SAME focus / new-document / autofix / archive verbs under
 // shared ids — authored once, not re-derived here.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Crosshair, Filter, FoldVertical, UnfoldVertical } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -43,18 +44,20 @@ export function vaultFeatureMenu(entity: unknown): ActionDescriptor[] {
     normalizedEntity.nodeId
       ? {
           id: "vault-feature:focus",
-          label: "Focus on stage",
+          label: legacyActionPresentation("Focus on stage"),
           section: "navigate",
           icon: Crosshair,
           run: () => focusMenuNode(normalizedEntity.nodeId, normalizedEntity),
         }
       : {
           id: "vault-feature:focus",
-          label: "Focus on stage",
+          label: legacyActionPresentation("Focus on stage"),
           section: "navigate",
           icon: Crosshair,
           disabled: true,
-          disabledReason: "no graph node for this feature yet",
+          disabledReason: legacyActionPresentation(
+            "no graph node for this feature yet",
+          ),
         },
   );
 
@@ -62,7 +65,9 @@ export function vaultFeatureMenu(entity: unknown): ActionDescriptor[] {
     const expansionKey = normalizedEntity.expansionKey;
     actions.push({
       id: "vault-feature:toggle",
-      label: normalizedEntity.expanded ? "Collapse feature" : "Expand feature",
+      label: legacyActionPresentation(
+        normalizedEntity.expanded ? "Collapse feature" : "Expand feature",
+      ),
       section: "navigate",
       icon: normalizedEntity.expanded ? FoldVertical : UnfoldVertical,
       run: () => toggleVaultBrowserTreeItem(normalizedEntity.scope, expansionKey),
@@ -74,7 +79,7 @@ export function vaultFeatureMenu(entity: unknown): ActionDescriptor[] {
   // tree, the graph, and the timeline in lock-step (one-filter-authority).
   actions.push({
     id: "vault-feature:filter",
-    label: "Filter to this feature",
+    label: legacyActionPresentation("Filter to this feature"),
     section: "navigate",
     icon: Filter,
     run: () => {
@@ -98,7 +103,7 @@ export function vaultFeatureMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "vault-feature:copy-tag",
-      label: "Copy feature tag",
+      label: legacyActionPresentation("Copy feature tag"),
       text: normalizedEntity.feature,
     }),
   );

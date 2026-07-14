@@ -4,7 +4,10 @@
 
 import { useEffect, useMemo } from "react";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
+import {
+  legacyActionPresentation,
+  type ActionDescriptor,
+} from "../../platform/actions/action";
 import {
   type KeybindingDef,
   registerKeybindings,
@@ -157,7 +160,7 @@ export function workingSetKeyAction(
     if (nodeId === null) return null;
     return {
       id: WORKING_SET_EXPAND_SELECTION_ACTION_ID,
-      label: "Expand selected document into the working set",
+      label: legacyActionPresentation("Expand selected document into the working set"),
       run: () => expandWorkingSet(nodeId),
     };
   }
@@ -167,7 +170,7 @@ export function workingSetKeyAction(
     if (last === undefined) return null;
     return {
       id: WORKING_SET_COLLAPSE_LAST_ACTION_ID,
-      label: "Collapse the last working-set expansion",
+      label: legacyActionPresentation("Collapse the last working-set expansion"),
       run: () => collapseWorkingSet(last),
     };
   }

@@ -15,7 +15,10 @@
 
 import { Download, RotateCcw } from "lucide-react";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
+import {
+  legacyActionPresentation,
+  type ActionDescriptor,
+} from "../../platform/actions/action";
 import type { ProvisionRecommendation, ProvisionStatus } from "../server/engine";
 import { forceInstallBody, recommendedRunBody } from "../server/provisionControl";
 import { PROVISION_RUN_ACTION } from "../server/provisionActions";
@@ -66,23 +69,33 @@ export function provisionRecommendedAction(
   if (status === undefined) {
     return {
       ...base,
-      label: "Provision project",
+      label: legacyActionPresentation("Provision project"),
       disabled: true,
-      disabledReason: "reading status",
+      disabledReason: legacyActionPresentation("reading status"),
     };
   }
   const label = RECOMMENDATION_LABEL[status.recommended];
   const deadEndReason = RECOMMENDATION_DEAD_END_REASON[status.recommended];
   if (deadEndReason !== undefined) {
-    return { ...base, label, disabled: true, disabledReason: deadEndReason };
+    return {
+      ...base,
+      label: legacyActionPresentation(label),
+      disabled: true,
+      disabledReason: legacyActionPresentation(deadEndReason),
+    };
   }
   const body = recommendedRunBody(status);
   if (body === null) {
-    return { ...base, label, disabled: true, disabledReason: "nothing to provision" };
+    return {
+      ...base,
+      label: legacyActionPresentation(label),
+      disabled: true,
+      disabledReason: legacyActionPresentation("nothing to provision"),
+    };
   }
   return {
     ...base,
-    label,
+    label: legacyActionPresentation(label),
     dispatch: { type: PROVISION_RUN_ACTION, payload: body },
   };
 }
@@ -102,14 +115,18 @@ export function provisionForceInstallAction(
 ): ActionDescriptor {
   const base = {
     id: PROVISION_FORCE_INSTALL_ACTION_ID,
-    label: "Reinstall (overwrite)",
+    label: legacyActionPresentation("Reinstall (overwrite)"),
     section: "danger" as const,
     icon: RotateCcw,
     confirm: true,
     disabledInTimeTravel: true,
   };
   if (status === undefined || !status.framework.vaultspec_present) {
-    return { ...base, disabled: true, disabledReason: "install the framework first" };
+    return {
+      ...base,
+      disabled: true,
+      disabledReason: legacyActionPresentation("install the framework first"),
+    };
   }
   return {
     ...base,

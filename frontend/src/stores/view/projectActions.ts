@@ -2,7 +2,10 @@ import { useEffect } from "react";
 
 import { FolderGit2, FolderPlus, Trash2 } from "lucide-react";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
+import {
+  legacyActionPresentation,
+  type ActionDescriptor,
+} from "../../platform/actions/action";
 import {
   type KeybindingDef,
   registerKeybindings,
@@ -56,7 +59,7 @@ export function deriveProjectKeybindings(): KeybindingDef[] {
 export function openProjectAction(): ActionDescriptor {
   return {
     id: PROJECT_OPEN_ACTION_ID,
-    label: PROJECT_OPEN_LABEL,
+    label: legacyActionPresentation(PROJECT_OPEN_LABEL),
     section: "transform",
     icon: FolderPlus,
     run: openAddProjectDialog,
@@ -71,7 +74,7 @@ export function openProjectAction(): ActionDescriptor {
 export function browseProjectsAction(): ActionDescriptor {
   return {
     id: PROJECT_BROWSE_ACTION_ID,
-    label: PROJECT_BROWSE_LABEL,
+    label: legacyActionPresentation(PROJECT_BROWSE_LABEL),
     section: "navigate",
     icon: FolderGit2,
     run: openProjectNavigator,
@@ -86,7 +89,7 @@ export function browseProjectsAction(): ActionDescriptor {
 export function clearHistoryAction(clear: () => void): ActionDescriptor {
   return {
     id: PROJECT_CLEAR_HISTORY_ACTION_ID,
-    label: PROJECT_CLEAR_HISTORY_LABEL,
+    label: legacyActionPresentation(PROJECT_CLEAR_HISTORY_LABEL),
     section: "transform",
     icon: Trash2,
     run: clear,

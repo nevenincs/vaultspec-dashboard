@@ -16,6 +16,7 @@
 // here (ADR D4 — not mounted on a cold compact load), so the dock workspace is
 // absent from this branch.
 
+import { legacyActionPresentation } from "../../platform/actions/action";
 import { useEffect, useRef, useState } from "react";
 
 import { useActiveScope } from "../../stores/server/queries";
@@ -71,7 +72,7 @@ export function CompactAppShell() {
   // bottom Search tab, and the timeline frame carries no top-bar action.
   const searchAction = {
     id: SEARCH_PALETTE_ACTION_ID,
-    label: "Search",
+    label: legacyActionPresentation("Search"),
     Glyph: MagnifyingGlass,
     onClick: openSearchPalette,
   };
@@ -88,7 +89,7 @@ export function CompactAppShell() {
           searchAction,
           {
             id: LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
-            label: "Advanced filters",
+            label: legacyActionPresentation("Advanced filters"),
             Glyph: Funnel,
             onClick: () => toggleFilterSidebar(),
             active: filterOpen,

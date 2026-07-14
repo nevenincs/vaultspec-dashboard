@@ -10,7 +10,10 @@ import { useEffect } from "react";
 
 import { RefreshCw } from "lucide-react";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
+import {
+  legacyActionPresentation,
+  type ActionDescriptor,
+} from "../../platform/actions/action";
 import {
   type KeybindingDef,
   registerKeybindings,
@@ -31,7 +34,7 @@ export const RELOAD_REFRESH_DATA_LABEL = "Refresh data";
 export function refreshDataAction(): ActionDescriptor {
   return {
     id: RELOAD_REFRESH_DATA_ACTION_ID,
-    label: RELOAD_REFRESH_DATA_LABEL,
+    label: legacyActionPresentation(RELOAD_REFRESH_DATA_LABEL),
     icon: RefreshCw,
     run: () => refreshAllEngineQueries(),
   };

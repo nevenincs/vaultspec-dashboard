@@ -3,6 +3,7 @@
 // is modest and honest - copy the breakdown summary (when present) and the id.
 // Pure over the descriptor; nothing mutates.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Crosshair } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -22,15 +23,15 @@ function gotoEndpointAction(
   if (typeof nodeId !== "string" || nodeId.length === 0) {
     return {
       id,
-      label,
+      label: legacyActionPresentation(label),
       section: "navigate",
       disabled: true,
-      disabledReason: "no endpoint",
+      disabledReason: legacyActionPresentation("no endpoint"),
     };
   }
   return {
     id,
-    label,
+    label: legacyActionPresentation(label),
     section: "navigate",
     icon: Crosshair,
     run: () => focusMenuNode(nodeId),
@@ -47,20 +48,20 @@ export function metaEdgeMenu(entity: unknown): ActionDescriptor[] {
     normalizedEntity.summary
       ? copyAction({
           id: "meta-edge:copy-summary",
-          label: "Copy summary",
+          label: legacyActionPresentation("Copy summary"),
           text: normalizedEntity.summary,
           what: "summary",
         })
       : {
           id: "meta-edge:copy-summary",
-          label: "Copy summary",
+          label: legacyActionPresentation("Copy summary"),
           section: "copy",
           disabled: true,
-          disabledReason: "no summary",
+          disabledReason: legacyActionPresentation("no summary"),
         },
     copyAction({
       id: "meta-edge:copy-id",
-      label: "Copy id",
+      label: legacyActionPresentation("Copy id"),
       text: normalizedEntity.id,
       what: "id",
     }),

@@ -9,6 +9,7 @@
 // the registry, not re-derived here — every mutating action just declares
 // `disabledInTimeTravel`.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Trash2 } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -43,7 +44,7 @@ export function workspaceMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "workspace:copy-path",
-        label: "Copy path",
+        label: legacyActionPresentation("Copy path"),
         text: normalizedEntity.path,
         what: "path",
       }),
@@ -57,19 +58,23 @@ export function workspaceMenu(entity: unknown): ActionDescriptor[] {
   // renders disabled-with-reason there.
   const forgetBase = {
     id: "workspace:forget",
-    label: "Remove from registry",
+    label: legacyActionPresentation("Remove from registry"),
     section: "danger" as const,
     icon: Trash2,
     confirm: true,
     disabledInTimeTravel: true,
   };
   if (!normalizedEntity.path) {
-    actions.push({ ...forgetBase, disabled: true, disabledReason: "no project path" });
+    actions.push({
+      ...forgetBase,
+      disabled: true,
+      disabledReason: legacyActionPresentation("no project path"),
+    });
   } else if (normalizedEntity.isLaunchDefault) {
     actions.push({
       ...forgetBase,
       disabled: true,
-      disabledReason: "the launch project cannot be removed",
+      disabledReason: legacyActionPresentation("the launch project cannot be removed"),
     });
   } else {
     actions.push({

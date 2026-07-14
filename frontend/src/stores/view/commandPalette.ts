@@ -2,6 +2,7 @@ import { normalizeSearchCorpus, type SearchCorpus } from "../server/searchProvid
 import { useEffect } from "react";
 import { create } from "zustand";
 
+import { legacyActionPresentation } from "../../platform/actions/action";
 import {
   type KeybindingDef,
   registerKeybindings,
@@ -612,7 +613,7 @@ export function useCommandPaletteGlobalToggle(cancelConfirm: () => void): void {
     const disposeBinding = registerKeybindings([COMMAND_PALETTE_KEYBINDING]);
     const disposeAction = registerKeyAction(COMMAND_PALETTE_ACTION_ID, () => ({
       id: COMMAND_PALETTE_ACTION_ID,
-      label: COMMAND_PALETTE_SHORTCUT_LABEL,
+      label: legacyActionPresentation(COMMAND_PALETTE_SHORTCUT_LABEL),
       run: () => {
         cancelConfirm();
         resetCommandPaletteOpsFeedback();
@@ -644,7 +645,7 @@ export function useSearchPaletteGlobalShortcut(cancelConfirm: () => void): void 
     const disposeBinding = registerKeybindings([SEARCH_PALETTE_KEYBINDING]);
     const disposeAction = registerKeyAction(SEARCH_PALETTE_ACTION_ID, () => ({
       id: SEARCH_PALETTE_ACTION_ID,
-      label: SEARCH_PALETTE_SHORTCUT_LABEL,
+      label: legacyActionPresentation(SEARCH_PALETTE_SHORTCUT_LABEL),
       run: () => {
         cancelConfirm();
         resetCommandPaletteOpsFeedback();
@@ -675,7 +676,7 @@ export function useDocumentSearchGlobalShortcut(cancelConfirm: () => void): void
     const disposeBinding = registerKeybindings([DOCUMENT_SEARCH_KEYBINDING]);
     const disposeAction = registerKeyAction(DOCUMENT_SEARCH_ACTION_ID, () => ({
       id: DOCUMENT_SEARCH_ACTION_ID,
-      label: DOCUMENT_SEARCH_SHORTCUT_LABEL,
+      label: legacyActionPresentation(DOCUMENT_SEARCH_SHORTCUT_LABEL),
       run: () => {
         cancelConfirm();
         resetCommandPaletteOpsFeedback();

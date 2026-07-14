@@ -4,6 +4,7 @@
 // is unit-testable in isolation. The registration below contributes it for the
 // "code-file" entity kind at module load.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Crosshair } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -36,18 +37,18 @@ export function codeFileMenu(entity: unknown): ActionDescriptor[] {
       linked
         ? {
             id: "code-file:focus",
-            label: "Focus linked node",
+            label: legacyActionPresentation("Focus linked node"),
             section: "navigate",
             icon: Crosshair,
             run: () => focusMenuNode(normalizedEntity.nodeId, normalizedEntity),
           }
         : {
             id: "code-file:focus",
-            label: "Focus linked node",
+            label: legacyActionPresentation("Focus linked node"),
             section: "navigate",
             icon: Crosshair,
             disabled: true,
-            disabledReason: "no graph node for this file yet",
+            disabledReason: legacyActionPresentation("no graph node for this file yet"),
           },
     );
   }
@@ -66,7 +67,7 @@ export function codeFileMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "code-file:copy-path",
-      label: "Copy path",
+      label: legacyActionPresentation("Copy path"),
       text: normalizedEntity.path,
       what: "path",
     }),

@@ -8,6 +8,7 @@
 // App layer: resolvers live here; the registry is substrate. The registration
 // below contributes this resolver for the "change" entity kind at module load.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
 import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
@@ -33,7 +34,7 @@ export function changeMenu(entity: unknown): ActionDescriptor[] {
     revealAction({ id: "change:reveal", path: normalizedEntity.path }),
     copyAction({
       id: "change:copy-path",
-      label: "Copy path",
+      label: legacyActionPresentation("Copy path"),
       text: normalizedEntity.path,
       what: "path",
     }),
@@ -45,7 +46,7 @@ export function changeMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "change:copy-hunk",
-        label: "Copy hunk",
+        label: legacyActionPresentation("Copy hunk"),
         text: normalizedEntity.hunk,
       }),
     );

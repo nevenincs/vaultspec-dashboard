@@ -11,6 +11,7 @@
 // mutations are gated out in time-travel (disabledInTimeTravel); focus and copy
 // are not.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Crosshair, Maximize2, Minimize2, Network, Pin, PinOff } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -44,7 +45,7 @@ export function graphNodeMenu(
   const actions: ActionDescriptor[] = [
     {
       id: "node:focus",
-      label: "Focus on stage",
+      label: legacyActionPresentation("Focus on stage"),
       section: "navigate",
       icon: Crosshair,
       run: () => focusMenuNode(normalizedEntity.id, normalizedEntity),
@@ -52,7 +53,7 @@ export function graphNodeMenu(
     normalizedEntity.isOpen
       ? {
           id: "node:close-island",
-          label: "Close island",
+          label: legacyActionPresentation("Close island"),
           section: "navigate",
           icon: Minimize2,
           run: () => closeMenuNodeIsland(normalizedEntity.id),
@@ -60,7 +61,7 @@ export function graphNodeMenu(
         }
       : {
           id: "node:open",
-          label: "Open",
+          label: legacyActionPresentation("Open"),
           section: "navigate",
           icon: Maximize2,
           // The context-menu Open routes through the ONE canonical activate seam: a
@@ -76,7 +77,7 @@ export function graphNodeMenu(
     normalizedEntity.isPinned
       ? {
           id: "node:unpin",
-          label: "Unpin",
+          label: legacyActionPresentation("Unpin"),
           section: "transform",
           icon: PinOff,
           run: () => toggleMenuPinnedNode(normalizedEntity.id),
@@ -84,7 +85,7 @@ export function graphNodeMenu(
         }
       : {
           id: "node:pin",
-          label: "Pin",
+          label: legacyActionPresentation("Pin"),
           section: "transform",
           icon: Pin,
           run: () => toggleMenuPinnedNode(normalizedEntity.id),
@@ -93,7 +94,7 @@ export function graphNodeMenu(
     normalizedEntity.inWorkingSet
       ? {
           id: "node:collapse-ego",
-          label: "Collapse ego",
+          label: legacyActionPresentation("Collapse ego"),
           section: "transform",
           icon: Network,
           run: () => collapseMenuWorkingSet(normalizedEntity.id),
@@ -101,7 +102,7 @@ export function graphNodeMenu(
         }
       : {
           id: "node:expand-ego",
-          label: "Expand ego",
+          label: legacyActionPresentation("Expand ego"),
           section: "transform",
           icon: Network,
           run: () => expandMenuWorkingSet(normalizedEntity.id),
@@ -109,7 +110,7 @@ export function graphNodeMenu(
         },
     copyAction({
       id: "node:copy-id",
-      label: "Copy id",
+      label: legacyActionPresentation("Copy id"),
       text: normalizedEntity.id,
       what: "id",
     }),
@@ -118,16 +119,16 @@ export function graphNodeMenu(
     normalizedEntity.title
       ? copyAction({
           id: "node:copy-title",
-          label: "Copy title",
+          label: legacyActionPresentation("Copy title"),
           text: normalizedEntity.title,
           what: "title",
         })
       : {
           id: "node:copy-title",
-          label: "Copy title",
+          label: legacyActionPresentation("Copy title"),
           section: "copy",
           disabled: true,
-          disabledReason: "no title",
+          disabledReason: legacyActionPresentation("no title"),
         },
   );
   // Relate this node to the focused node (vault link add) — enabled only for

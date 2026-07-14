@@ -20,7 +20,12 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-import type { ActionDescriptor, ActionIcon } from "../../platform/actions/action";
+import {
+  legacyActionPresentation,
+  type ActionDescriptor,
+  type ActionIcon,
+  type ActionPresentation,
+} from "../../platform/actions/action";
 import {
   CONTROL_PANEL_IDS,
   toggleControlPanel,
@@ -59,7 +64,7 @@ function withAccelerator(action: ActionDescriptor): ActionDescriptor {
 export function openCommandPaletteAction(): ActionDescriptor {
   return withAccelerator({
     id: COMMAND_PALETTE_ACTION_ID,
-    label: "Command palette…",
+    label: legacyActionPresentation("Command palette…"),
     section: "navigate",
     icon: Command,
     run: openCommandPalette,
@@ -70,7 +75,7 @@ export function openCommandPaletteAction(): ActionDescriptor {
 export function openSettingsAction(): ActionDescriptor {
   return withAccelerator({
     id: SETTINGS_ACTION_ID,
-    label: "Settings…",
+    label: legacyActionPresentation("Settings…"),
     section: "navigate",
     icon: Settings,
     run: openSettingsDialog,
@@ -81,7 +86,7 @@ export function openSettingsAction(): ActionDescriptor {
 export function showKeyboardShortcutsAction(): ActionDescriptor {
   return withAccelerator({
     id: KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
-    label: "Keyboard Shortcuts",
+    label: legacyActionPresentation("Keyboard Shortcuts"),
     section: "navigate",
     icon: Keyboard,
     run: openKeyboardShortcuts,
@@ -95,7 +100,7 @@ export function showKeyboardShortcutsAction(): ActionDescriptor {
 export function resetLayoutAction(): ActionDescriptor {
   return withAccelerator({
     id: RESET_LAYOUT_ACTION_ID,
-    label: "Reset Layout",
+    label: legacyActionPresentation("Reset Layout"),
     section: "transform",
     icon: RotateCcw,
     run: runResetLayout,
@@ -117,7 +122,9 @@ export function toggleGraphAction(): ActionDescriptor {
     // "Graph: <verb>" so the visibility toggle is found by searching the element
     // name in Cmd+K, alongside the other "Graph: …" verbs (label-casing-convention,
     // Title-Case "Category: Command"); the verb names the resulting action.
-    label: getShellGraphVisible() ? "Graph: Hide" : "Graph: Show",
+    label: legacyActionPresentation(
+      getShellGraphVisible() ? "Graph: Hide" : "Graph: Show",
+    ),
     section: "transform",
     icon: Network,
     run: toggleShellGraphVisible,
@@ -135,7 +142,9 @@ export const FOLLOW_MODE_TOGGLE_ACTION_ID = "view:follow-mode";
 export function toggleFollowModeAction(): ActionDescriptor {
   return withAccelerator({
     id: FOLLOW_MODE_TOGGLE_ACTION_ID,
-    label: followModeEnabled() ? "Turn Off Follow Mode" : "Turn On Follow Mode",
+    label: legacyActionPresentation(
+      followModeEnabled() ? "Turn Off Follow Mode" : "Turn On Follow Mode",
+    ),
     section: "transform",
     icon: Crosshair,
     run: toggleFollowMode,
@@ -153,12 +162,24 @@ export const CONTROL_PANEL_ACTION_IDS: Record<ControlPanelId, string> = {
 
 const CONTROL_PANEL_ACTION_SPECS: Record<
   ControlPanelId,
-  { label: string; icon: ActionIcon }
+  { label: ActionPresentation; icon: ActionIcon }
 > = {
-  "search-service": { label: "Search service", icon: Search },
-  approvals: { label: "Approvals", icon: ClipboardCheck },
-  "backend-health": { label: "Backend health", icon: Activity },
-  "vault-health": { label: "Vault health", icon: ShieldCheck },
+  "search-service": {
+    label: legacyActionPresentation("Search service"),
+    icon: Search,
+  },
+  approvals: {
+    label: legacyActionPresentation("Approvals"),
+    icon: ClipboardCheck,
+  },
+  "backend-health": {
+    label: legacyActionPresentation("Backend health"),
+    icon: Activity,
+  },
+  "vault-health": {
+    label: legacyActionPresentation("Vault health"),
+    icon: ShieldCheck,
+  },
 };
 
 /** Toggle one framework control panel (activity-rail-realignment D4): ONE shared

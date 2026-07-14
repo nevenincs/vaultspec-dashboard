@@ -8,7 +8,10 @@
 
 import { useEffect } from "react";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
+import {
+  legacyActionPresentation,
+  type ActionDescriptor,
+} from "../../platform/actions/action";
 import {
   type KeybindingDef,
   registerKeybindings,
@@ -70,7 +73,7 @@ export function useDocTabKeybindings(): void {
       TAB_NEXT_ACTION_ID,
       (): ActionDescriptor => ({
         id: TAB_NEXT_ACTION_ID,
-        label: TAB_NEXT_LABEL,
+        label: legacyActionPresentation(TAB_NEXT_LABEL),
         run: () => activateAdjacentDocTab(1),
       }),
     );
@@ -78,7 +81,7 @@ export function useDocTabKeybindings(): void {
       TAB_PREV_ACTION_ID,
       (): ActionDescriptor => ({
         id: TAB_PREV_ACTION_ID,
-        label: TAB_PREV_LABEL,
+        label: legacyActionPresentation(TAB_PREV_LABEL),
         run: () => activateAdjacentDocTab(-1),
       }),
     );
@@ -86,9 +89,12 @@ export function useDocTabKeybindings(): void {
       TAB_CLOSE_ACTION_ID,
       (): ActionDescriptor => ({
         id: TAB_CLOSE_ACTION_ID,
-        label: TAB_CLOSE_LABEL,
+        label: legacyActionPresentation(TAB_CLOSE_LABEL),
         disabled: activeDocId === null,
-        disabledReason: activeDocId === null ? "no open document" : undefined,
+        disabledReason:
+          activeDocId === null
+            ? legacyActionPresentation("no open document")
+            : undefined,
         run: () => closeActiveDocTab(),
       }),
     );

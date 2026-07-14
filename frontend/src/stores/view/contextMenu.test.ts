@@ -4,7 +4,10 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { ACTION_DESCRIPTOR_ID_MAX_CHARS } from "../../platform/actions/action";
+import {
+  ACTION_DESCRIPTOR_ID_MAX_CHARS,
+  legacyActionPresentation,
+} from "../../platform/actions/action";
 import { registerResolver, resetResolvers } from "../../platform/actions/registry";
 import type { EntityDescriptor } from "../../platform/actions/entity";
 import {
@@ -322,9 +325,13 @@ describe("context-menu slice", () => {
   it("groups resolved actions in canonical menu order with navigate as default", () => {
     expect(
       groupContextMenuActions([
-        { id: "copy", label: "Copy", section: "copy" },
-        { id: "focus", label: "Focus" },
-        { id: "remove", label: "Remove", section: "danger" },
+        { id: "copy", label: legacyActionPresentation("Copy"), section: "copy" },
+        { id: "focus", label: legacyActionPresentation("Focus") },
+        {
+          id: "remove",
+          label: legacyActionPresentation("Remove"),
+          section: "danger",
+        },
       ]).map((group) => ({
         section: group.section,
         ids: group.actions.map((action) => action.id),
@@ -448,11 +455,20 @@ describe("context-menu slice", () => {
   });
 
   it("derives activation outcomes for disabled, confirm, run, and dispatch paths", () => {
-    const run = { id: "focus", label: "Focus", run: noop };
-    const confirm = { id: "delete", label: "Delete", confirm: true, run: noop };
+    const run = {
+      id: "focus",
+      label: legacyActionPresentation("Focus"),
+      run: noop,
+    };
+    const confirm = {
+      id: "delete",
+      label: legacyActionPresentation("Delete"),
+      confirm: true,
+      run: noop,
+    };
     const dispatch = {
       id: "host",
-      label: "Reveal",
+      label: legacyActionPresentation("Reveal"),
       dispatch: { type: "host:reveal" },
     };
     const typedConfirmation = {
@@ -470,7 +486,11 @@ describe("context-menu slice", () => {
 
     expect(
       deriveContextMenuActivation(
-        { id: "disabled", label: "Disabled", disabled: true },
+        {
+          id: "disabled",
+          label: legacyActionPresentation("Disabled"),
+          disabled: true,
+        },
         null,
         () => true,
       ),
@@ -510,7 +530,7 @@ describe("context-menu slice", () => {
     registerResolver("node", () => [
       {
         id: "focus",
-        label: "Focus",
+        label: legacyActionPresentation("Focus"),
         accelerator: "F",
         run: noop,
       },
@@ -530,8 +550,12 @@ describe("context-menu slice", () => {
 
   it("repairs cursor and arm state against the current runnable row set", () => {
     const ordered = [
-      { id: "disabled", label: "Disabled", disabled: true },
-      { id: "focus", label: "Focus", run: noop },
+      {
+        id: "disabled",
+        label: legacyActionPresentation("Disabled"),
+        disabled: true,
+      },
+      { id: "focus", label: legacyActionPresentation("Focus"), run: noop },
     ];
 
     expect(

@@ -7,6 +7,7 @@
 // App layer: resolvers live here; the registry is substrate. The registration
 // below contributes this resolver for the "edge" entity kind at module load.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Crosshair, Highlighter } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -30,7 +31,7 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
 
   actions.push({
     id: "edge:highlight",
-    label: "Highlight on stage",
+    label: legacyActionPresentation("Highlight on stage"),
     section: "navigate",
     icon: Highlighter,
     run: () => selectEdge(normalizedEntity.id),
@@ -41,25 +42,25 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
     normalizedEntity.dst
       ? {
           id: "edge:goto-destination",
-          label: "Go to destination node",
+          label: legacyActionPresentation("Go to destination node"),
           section: "navigate",
           icon: Crosshair,
           run: () => focusMenuNode(normalizedEntity.dst),
         }
       : {
           id: "edge:goto-destination",
-          label: "Go to destination node",
+          label: legacyActionPresentation("Go to destination node"),
           section: "navigate",
           icon: Crosshair,
           disabled: true,
-          disabledReason: "no destination node",
+          disabledReason: legacyActionPresentation("no destination node"),
         },
   );
 
   actions.push(
     copyAction({
       id: "edge:copy-id",
-      label: "Copy id",
+      label: legacyActionPresentation("Copy id"),
       text: normalizedEntity.id,
       what: "id",
     }),
@@ -69,17 +70,17 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "edge:copy-relation",
-        label: "Copy relation",
+        label: legacyActionPresentation("Copy relation"),
         text: normalizedEntity.relation,
       }),
     );
   } else {
     actions.push({
       id: "edge:copy-relation",
-      label: "Copy relation",
+      label: legacyActionPresentation("Copy relation"),
       section: "copy",
       disabled: true,
-      disabledReason: "no relation",
+      disabledReason: legacyActionPresentation("no relation"),
     });
   }
 
@@ -87,17 +88,17 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "edge:copy-destination",
-        label: "Copy destination",
+        label: legacyActionPresentation("Copy destination"),
         text: normalizedEntity.dst,
       }),
     );
   } else {
     actions.push({
       id: "edge:copy-destination",
-      label: "Copy destination",
+      label: legacyActionPresentation("Copy destination"),
       section: "copy",
       disabled: true,
-      disabledReason: "no destination",
+      disabledReason: legacyActionPresentation("no destination"),
     });
   }
 
@@ -106,7 +107,7 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "edge:copy-full",
-      label: "Copy edge (JSON)",
+      label: legacyActionPresentation("Copy edge (JSON)"),
       text: JSON.stringify({
         id: normalizedEntity.id,
         relation: normalizedEntity.relation ?? null,

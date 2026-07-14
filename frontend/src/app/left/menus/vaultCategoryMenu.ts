@@ -5,6 +5,7 @@
 // global state, so it is unit-testable in isolation. The registration below
 // contributes it for the "vault-category" entity kind at module load.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Filter, FoldVertical, UnfoldVertical } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -36,7 +37,9 @@ export function vaultCategoryMenu(entity: unknown): ActionDescriptor[] {
     const expansionKey = normalizedEntity.expansionKey;
     actions.push({
       id: "vault-category:toggle",
-      label: normalizedEntity.expanded ? "Collapse category" : "Expand category",
+      label: legacyActionPresentation(
+        normalizedEntity.expanded ? "Collapse category" : "Expand category",
+      ),
       section: "navigate",
       icon: normalizedEntity.expanded ? FoldVertical : UnfoldVertical,
       run: () => toggleVaultBrowserTreeItem(normalizedEntity.scope, expansionKey),
@@ -48,7 +51,7 @@ export function vaultCategoryMenu(entity: unknown): ActionDescriptor[] {
   // the timeline in lock-step (one-filter-authority).
   actions.push({
     id: "vault-category:filter",
-    label: "Filter to this type",
+    label: legacyActionPresentation("Filter to this type"),
     section: "navigate",
     icon: Filter,
     run: () => {
@@ -67,7 +70,7 @@ export function vaultCategoryMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "vault-category:copy-category",
-      label: "Copy category",
+      label: legacyActionPresentation("Copy category"),
       text: docGroupLabel(normalizedEntity.docType),
     }),
   );

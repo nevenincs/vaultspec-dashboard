@@ -13,6 +13,7 @@
 // from the setting and the served criteria become runnable (one source: the
 // `timelineDateCriterion` vocabulary).
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Calendar, Clock, Stamp } from "lucide-react";
 
 import type { ActionDescriptor, ActionIcon } from "../../../platform/actions/action";
@@ -44,16 +45,16 @@ export function timelineDateCriterionActions(): ActionDescriptor[] {
   return TIMELINE_DATE_CRITERIA.map((criterion) => {
     const base = {
       id: `timeline:filter-by:${criterion.id}`,
-      label: `Filter by ${criterion.label}`,
+      label: legacyActionPresentation(`Filter by ${criterion.label}`),
       section: "transform" as const,
       icon: CRITERION_ICON[criterion.id],
     };
     if (criterion.id === active) {
       return {
         ...base,
-        label: `${base.label} (current)`,
+        label: legacyActionPresentation(`Filter by ${criterion.label} (current)`),
         disabled: true,
-        disabledReason: "current date criterion",
+        disabledReason: legacyActionPresentation("current date criterion"),
       };
     }
     // `created` is always available; modified/stamped only once the engine serves
@@ -62,7 +63,9 @@ export function timelineDateCriterionActions(): ActionDescriptor[] {
       return {
         ...base,
         disabled: true,
-        disabledReason: criterion.unavailableReason ?? "not available yet",
+        disabledReason: legacyActionPresentation(
+          criterion.unavailableReason ?? "not available yet",
+        ),
       };
     }
     return { ...base, run: () => void setTimelineDateCriterion(criterion.id) };

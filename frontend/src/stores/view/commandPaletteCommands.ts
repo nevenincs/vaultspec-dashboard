@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 
+import { legacyActionPresentation } from "../../platform/actions/action";
 import {
   resolveCommands,
   normalizeCommandDescriptor,
@@ -197,7 +198,9 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
   const commands: unknown[] = [
     {
       id: "window:left-rail",
-      label: w.leftRailVisible ? "Left rail: Hide" : "Left rail: Show",
+      label: legacyActionPresentation(
+        w.leftRailVisible ? "Left rail: Hide" : "Left rail: Show",
+      ),
       family: "window",
       run: w.toggleLeftRail,
     },
@@ -207,7 +210,9 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
   if (w.leftRailVisible) {
     commands.push({
       id: "window:left-collapse",
-      label: w.leftCollapsed ? "Left rail: Expand" : "Left rail: Collapse",
+      label: legacyActionPresentation(
+        w.leftCollapsed ? "Left rail: Expand" : "Left rail: Collapse",
+      ),
       family: "window",
       run: w.toggleLeftCollapsed,
     });
@@ -215,7 +220,9 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
   commands.push(
     {
       id: "window:right-rail",
-      label: w.rightCollapsed ? "Right rail: Show" : "Right rail: Hide",
+      label: legacyActionPresentation(
+        w.rightCollapsed ? "Right rail: Show" : "Right rail: Hide",
+      ),
       family: "window",
       run: w.toggleRightRail,
     },
@@ -232,7 +239,9 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
   if (w.graphVisible) {
     commands.push({
       id: "window:timeline",
-      label: w.timelineVisible ? "Timeline: Hide" : "Timeline: Show",
+      label: legacyActionPresentation(
+        w.timelineVisible ? "Timeline: Hide" : "Timeline: Show",
+      ),
       family: "window",
       run: w.toggleTimeline,
     });
@@ -246,7 +255,7 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
         : [
             {
               id: commandId,
-              label: `Activity rail: ${label}`,
+              label: legacyActionPresentation(`Activity rail: ${label}`),
               family: "window" as const,
               run: () => w.setRightTab(tab),
             },
@@ -257,7 +266,7 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
       // background menu composes resetLayoutAction over the same id+behavior via the
       // reset-layout bridge. One id (`window:reset-layout`), one behavior.
       id: "window:reset-layout",
-      label: "Reset Layout",
+      label: legacyActionPresentation("Reset Layout"),
       family: "window",
       run: w.resetLayout,
     },
@@ -302,7 +311,7 @@ export function buildLeftRailCommands(
     { ...toggleFacetsAction(), family: "filters" },
     {
       id: LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
-      label: LEFT_RAIL_COLLAPSE_TREE_LABEL,
+      label: legacyActionPresentation(LEFT_RAIL_COLLAPSE_TREE_LABEL),
       family: "navigate",
       run: effects.collapseTree,
     },
@@ -360,13 +369,13 @@ export function buildTimelineCommands(
   const commands: unknown[] = [
     ...TIMELINE_RANGE_PRESETS.map((preset) => ({
       id: `timeline:range-${preset.days}d`,
-      label: `Timeline: Last ${preset.label}`,
+      label: legacyActionPresentation(`Timeline: Last ${preset.label}`),
       family: "filters",
       run: () => effects.setRangeDays(preset.days),
     })),
     {
       id: "timeline:clear-date-range",
-      label: "Timeline: Clear Date Range",
+      label: legacyActionPresentation("Timeline: Clear Date Range"),
       family: "filters",
       run: effects.clearDateRange,
     },
@@ -391,25 +400,25 @@ export function buildEditorCommands(intents: {
   const commands: unknown[] = [
     {
       id: "editor:close-document",
-      label: "Close Document",
+      label: legacyActionPresentation("Close Document"),
       family: "app",
       run: intents.closeDoc,
     },
     {
       id: "editor:close-all-documents",
-      label: "Close All Documents",
+      label: legacyActionPresentation("Close All Documents"),
       family: "app",
       run: intents.closeAllDocs,
     },
     {
       id: "editor:reload-document",
-      label: "Reload Document",
+      label: legacyActionPresentation("Reload Document"),
       family: "app",
       run: intents.reloadDoc,
     },
     {
       id: "editor:keep-document-open",
-      label: "Keep Document Open",
+      label: legacyActionPresentation("Keep Document Open"),
       family: "app",
       run: intents.keepOpen,
     },
@@ -417,7 +426,7 @@ export function buildEditorCommands(intents: {
       // Shared id with the keymap chord (Mod+Shift+D) so accelerators derive
       // correctly from the registry (actions-keymap-palette: one id per verb).
       id: "editor:toggle-diff",
-      label: "Toggle Draft Diff",
+      label: legacyActionPresentation("Toggle Draft Diff"),
       family: "edit",
       run: intents.toggleDiff,
     },
@@ -456,37 +465,39 @@ export function buildGraphCommands(opts: {
   const commands: unknown[] = [
     {
       id: "graph:fit-to-view",
-      label: "Graph: Fit to View",
+      label: legacyActionPresentation("Graph: Fit to View"),
       family: "navigate",
       run: graphFitToView,
     },
     {
       id: "graph:reset-view",
-      label: "Graph: Reset View",
+      label: legacyActionPresentation("Graph: Reset View"),
       family: "navigate",
       run: graphResetView,
     },
     {
       id: "graph:zoom-in",
-      label: "Graph: Zoom In",
+      label: legacyActionPresentation("Graph: Zoom In"),
       family: "navigate",
       run: graphZoomIn,
     },
     {
       id: "graph:zoom-out",
-      label: "Graph: Zoom Out",
+      label: legacyActionPresentation("Graph: Zoom Out"),
       family: "navigate",
       run: graphZoomOut,
     },
     {
       id: "graph:toggle-freeze",
-      label: opts.frozen ? "Graph: Resume Layout" : "Graph: Freeze Layout",
+      label: legacyActionPresentation(
+        opts.frozen ? "Graph: Resume Layout" : "Graph: Freeze Layout",
+      ),
       family: "navigate",
       run: () => opts.setFrozen(!opts.frozen),
     },
     {
       id: "graph:reset-defaults",
-      label: "Graph: Reset Controls to Defaults",
+      label: legacyActionPresentation("Graph: Reset Controls to Defaults"),
       family: "navigate",
       run: opts.resetDefaults,
     },
@@ -512,17 +523,16 @@ export function buildSettingsCommands(
 ): PaletteCommand[] {
   const commands: unknown[] = THEME_PALETTE_COMMANDS.map((theme) => ({
     id: `settings:theme-${theme.value}`,
-    label: theme.label,
+    label: legacyActionPresentation(theme.label),
     family: "app",
     run: () => setTheme(theme.value),
   }));
   return normalizedPaletteCommands(commands);
 }
 
-export function gateCommandsForTimeTravel(
-  commands: readonly PaletteCommand[],
-  timeTravel: boolean,
-): PaletteCommand[] {
+export function gateCommandsForTimeTravel<
+  Command extends Pick<PaletteCommand, "disabledInTimeTravel">,
+>(commands: readonly Command[], timeTravel: boolean): Command[] {
   if (!timeTravel) return [...commands];
   return commands.filter((command) => command.disabledInTimeTravel !== true);
 }
@@ -536,10 +546,9 @@ export function gateCommandsForTimeTravel(
  * (keyboard-shortcuts-bind-through-the-one-keymap-registry). Commands with no
  * binding are returned unchanged.
  */
-export function deriveCommandAccelerators(
-  commands: readonly PaletteCommand[],
-  overrides: KeybindingOverrides,
-): PaletteCommand[] {
+export function deriveCommandAccelerators<
+  Command extends { id: string; accelerator?: string },
+>(commands: readonly Command[], overrides: KeybindingOverrides): Command[] {
   return commands.map((command) => {
     const def = getKeybinding(command.id);
     if (def === undefined) return command;
@@ -642,7 +651,12 @@ export type CommandPaletteActivationView =
       cursor: number;
       commandId: string;
     }
-  | { kind: "run"; cursor: number; command: PaletteCommand; closeAfterRun: boolean };
+  | {
+      kind: "run";
+      cursor: number;
+      command: ResolvedPaletteCommand;
+      closeAfterRun: boolean;
+    };
 
 export type CommandPaletteKeyboardIntent =
   | { kind: "move-cursor"; delta: 1 | -1 }
@@ -710,7 +724,7 @@ export function deriveCommandPaletteKeyboardIntent(
 }
 
 export function deriveCommandPaletteActivation(
-  ordered: readonly PaletteCommand[],
+  ordered: readonly ResolvedPaletteCommand[],
   index: number,
   state: {
     confirmArmed: boolean;
@@ -740,7 +754,7 @@ export function deriveCommandPaletteActivation(
 }
 
 export function deriveCommandPaletteArmedRepair(
-  activeCommand: PaletteCommand | undefined,
+  activeCommand: ResolvedPaletteCommand | undefined,
   state: {
     confirmArmed: boolean;
     armedCommandId: string | null;

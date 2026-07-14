@@ -12,7 +12,10 @@ import {
   UnfoldVertical,
 } from "lucide-react";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
+import {
+  legacyActionPresentation,
+  type ActionDescriptor,
+} from "../../platform/actions/action";
 import {
   type KeybindingDef,
   registerKeybindings,
@@ -136,7 +139,7 @@ export function newDocumentAction(
 ): ActionDescriptor {
   return {
     id: LEFT_RAIL_NEW_DOC_ACTION_ID,
-    label: LEFT_RAIL_NEW_DOC_LABEL,
+    label: legacyActionPresentation(LEFT_RAIL_NEW_DOC_LABEL),
     section: "transform",
     icon: FilePlus2,
     run: () => openCreateDocDialog(prefillFeature, options),
@@ -149,7 +152,7 @@ export function browseModeAction(mode: BrowserMode): ActionDescriptor {
   const option = BROWSER_MODE_OPTIONS.find((candidate) => candidate.id === mode);
   return {
     id: `left-rail:browse-${mode}`,
-    label: `Browse ${option?.label ?? mode}`,
+    label: legacyActionPresentation(`Browse ${option?.label ?? mode}`),
     section: "navigate",
     run: () => setBrowserMode(mode),
   };
@@ -160,7 +163,7 @@ export function browseModeAction(mode: BrowserMode): ActionDescriptor {
 export function expandTreeAction(expandAll: () => void): ActionDescriptor {
   return {
     id: LEFT_RAIL_EXPAND_TREE_ACTION_ID,
-    label: LEFT_RAIL_EXPAND_TREE_LABEL,
+    label: legacyActionPresentation(LEFT_RAIL_EXPAND_TREE_LABEL),
     section: "navigate",
     icon: UnfoldVertical,
     run: expandAll,
@@ -171,7 +174,7 @@ export function expandTreeAction(expandAll: () => void): ActionDescriptor {
 export function collapseTreeAction(collapseAll: () => void): ActionDescriptor {
   return {
     id: LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
-    label: LEFT_RAIL_COLLAPSE_TREE_LABEL,
+    label: legacyActionPresentation(LEFT_RAIL_COLLAPSE_TREE_LABEL),
     section: "navigate",
     icon: FoldVertical,
     run: collapseAll,
@@ -183,7 +186,7 @@ export function collapseTreeAction(collapseAll: () => void): ActionDescriptor {
 export function toggleFacetsAction(): ActionDescriptor {
   return {
     id: LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
-    label: LEFT_RAIL_TOGGLE_FACETS_LABEL,
+    label: legacyActionPresentation(LEFT_RAIL_TOGGLE_FACETS_LABEL),
     section: "navigate",
     icon: Filter,
     run: toggleFilterSidebar,
@@ -195,7 +198,7 @@ export function toggleFacetsAction(): ActionDescriptor {
 export function resetFiltersAction(resetFilters: () => void): ActionDescriptor {
   return {
     id: LEFT_RAIL_RESET_FILTERS_ACTION_ID,
-    label: LEFT_RAIL_RESET_FILTERS_LABEL,
+    label: legacyActionPresentation(LEFT_RAIL_RESET_FILTERS_LABEL),
     section: "navigate",
     icon: ListFilter,
     run: resetFilters,
@@ -209,7 +212,7 @@ export function resetFiltersAction(resetFilters: () => void): ActionDescriptor {
 export function sortTreeActions(): ActionDescriptor[] {
   return RAIL_SORT_OPTIONS.map((option) => ({
     id: sortTreeActionId(option.id),
-    label: `Sort by ${option.label}`,
+    label: legacyActionPresentation(`Sort by ${option.label}`),
     section: "navigate",
     icon: ArrowUpDown,
     run: () => setRailSortKey(option.id),
@@ -224,7 +227,7 @@ export function sortTreeActionId(key: RailSortKey): string {
 export function resetSortingAction(): ActionDescriptor {
   return {
     id: LEFT_RAIL_RESET_SORTING_ACTION_ID,
-    label: LEFT_RAIL_RESET_SORTING_LABEL,
+    label: legacyActionPresentation(LEFT_RAIL_RESET_SORTING_LABEL),
     section: "navigate",
     icon: ListRestart,
     run: resetRailSort,
@@ -237,7 +240,7 @@ export function resetSortingAction(): ActionDescriptor {
 export function focusFilterAction(): ActionDescriptor {
   return {
     id: LEFT_RAIL_FOCUS_FILTER_ACTION_ID,
-    label: "Focus the document filter",
+    label: legacyActionPresentation("Focus the document filter"),
     section: "navigate",
     icon: Search,
     run: focusLeftRailFilter,
@@ -250,7 +253,7 @@ export function focusFilterAction(): ActionDescriptor {
 export function clearFilterAction(clearFilter: () => void): ActionDescriptor {
   return {
     id: LEFT_RAIL_CLEAR_FILTER_ACTION_ID,
-    label: "Clear the document filter",
+    label: legacyActionPresentation("Clear the document filter"),
     section: "navigate",
     icon: FilterX,
     run: clearFilter,
@@ -277,7 +280,7 @@ export function useLeftRailKeybindings(): void {
       LEFT_RAIL_CYCLE_MODE_ACTION_ID,
       (): ActionDescriptor => ({
         id: LEFT_RAIL_CYCLE_MODE_ACTION_ID,
-        label: "Cycle the browser mode (Vault / Code)",
+        label: legacyActionPresentation("Cycle the browser mode (Vault / Code)"),
         run: cycleBrowserMode,
       }),
     );

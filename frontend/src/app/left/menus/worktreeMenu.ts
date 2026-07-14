@@ -4,6 +4,7 @@
 // unit-testable in isolation. The registration below contributes it for the
 // "worktree" entity kind at module load.
 
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { GitBranch } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -32,7 +33,7 @@ export function worktreeMenu(entity: unknown): ActionDescriptor[] {
     switchable
       ? {
           id: "worktree:switch-scope",
-          label: "Switch to this scope",
+          label: legacyActionPresentation("Switch to this scope"),
           section: "navigate",
           icon: GitBranch,
           disabledInTimeTravel: true,
@@ -40,11 +41,11 @@ export function worktreeMenu(entity: unknown): ActionDescriptor[] {
         }
       : {
           id: "worktree:switch-scope",
-          label: "Switch to this scope",
+          label: legacyActionPresentation("Switch to this scope"),
           section: "navigate",
           icon: GitBranch,
           disabled: true,
-          disabledReason: "no vault corpus to switch to",
+          disabledReason: legacyActionPresentation("no vault corpus to switch to"),
           disabledInTimeTravel: true,
         },
   );
@@ -53,7 +54,7 @@ export function worktreeMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "worktree:copy-branch",
-        label: "Copy branch",
+        label: legacyActionPresentation("Copy branch"),
         text: normalizedEntity.branch,
       }),
     );
@@ -62,7 +63,7 @@ export function worktreeMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "worktree:copy-id",
-      label: "Copy worktree id",
+      label: legacyActionPresentation("Copy worktree id"),
       text: normalizedEntity.id,
       what: "id",
     }),

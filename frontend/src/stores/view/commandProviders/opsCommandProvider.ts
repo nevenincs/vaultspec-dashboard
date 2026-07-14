@@ -7,6 +7,7 @@
 // the provider is HOW they enter the palette.
 
 import { OPS_WHITELIST } from "../../server/opsActions";
+import { legacyActionPresentation } from "../../../platform/actions/action";
 import { openSettingsAction } from "../chromeActions";
 import { registerCommandProvider, type CommandContext } from "../commandRegistry";
 
@@ -18,7 +19,7 @@ export function opsCommandProvider(ctx: CommandContext): readonly unknown[] {
     target === "rag" ? "rag" : "core";
   const commands: unknown[] = OPS_WHITELIST.map(({ target, verb, label }) => ({
     id: `ops:${target}:${verb}`,
-    label: `ops: ${label}`,
+    label: legacyActionPresentation(`ops: ${label}`),
     family: familyForTarget(target),
     confirm: true,
     disabledInTimeTravel: true,

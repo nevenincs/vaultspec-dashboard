@@ -285,24 +285,24 @@
     "rule": "jsx-text"
   },
   {
-    "id": "71efed8aedfc1cecf300a8f5",
+    "id": "70ecbb3fba23d672150ad14b",
     "path": "src/app/chrome/regionCycleKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "7a29461490669cf7ce9239d1",
+    "id": "8745f832f81cb8ab7720d7bc",
     "path": "src/app/chrome/regionCycleKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "c5239551f89deef1754b8f32",
+    "id": "9289ccd6d919ede8d2720a43",
     "path": "src/app/chrome/regionCycleKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "c62f61f81b922f6383d09318",
+    "id": "e8e66158f10782874b4a5a1f",
     "path": "src/app/chrome/regionCycleKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "3016c705025c84206758f54b",
@@ -420,19 +420,19 @@
     "rule": "jsx-text"
   },
   {
-    "id": "1923162462fb09abf8ec8f96",
+    "id": "1b363b2daa00235bf3162e9c",
     "path": "src/app/islands/menus/islandMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "87bc7279da3bf842705cae98",
+    "id": "59bb0577e84a44657acb55be",
     "path": "src/app/islands/menus/islandMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "8a08e1bc0627a79daa236413",
+    "id": "9d915c599d9af99ead8c132d",
     "path": "src/app/islands/menus/islandMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "2745b4129102545460652551",
@@ -1290,139 +1290,129 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "020c2edf89691404c6ee6755",
+    "id": "0147b9909c5325317d2980b7",
     "path": "src/app/left/menus/codeFileMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "62bade4e13beae1a02a1f344",
+    "id": "4b9c474f6d6214316edaa7f1",
     "path": "src/app/left/menus/codeFileMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "af5df3594fcbd60513613662",
+    "id": "ccccb923970d270898af3385",
     "path": "src/app/left/menus/codeFileMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "b0b17184dc901574b2ea09b7",
+    "id": "d1e380396cbdbd33d2fdfa11",
     "path": "src/app/left/menus/codeFileMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "6f38df94673e88518fb23fa8",
+    "id": "836061e9aeccddf35f5e48b5",
     "path": "src/app/left/menus/vaultCategoryMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "bd72c259098e2783a2ec0390",
+    "id": "962092bb7d81d671c86d0f8e",
     "path": "src/app/left/menus/vaultCategoryMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "edce92e877c9c63b50abf73d",
+    "id": "f5d6ee840415b7603f8c633c",
     "path": "src/app/left/menus/vaultCategoryMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "feb2d1ca131c94f61211b615",
-    "path": "src/app/left/menus/vaultCategoryMenu.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "3b5101ce91587aedd9700048",
+    "id": "d11e7bbe61efdb9b9b4c597d",
     "path": "src/app/left/menus/vaultDocMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "6d61a1e6f05e74cfa785f69a",
+    "id": "d37ff30762981abfda10da1b",
     "path": "src/app/left/menus/vaultDocMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "ed8a2ac7d380161e467bf0b5",
+    "id": "f848c88c283f7a3f608ed13e",
     "path": "src/app/left/menus/vaultDocMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "2529fb4a9309d06472d9588d",
+    "id": "13da61671b73961fa101c31f",
     "path": "src/app/left/menus/vaultFeatureMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "65479181266d198eb027bb09",
+    "id": "32fd011fe6fade99754d8a49",
     "path": "src/app/left/menus/vaultFeatureMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "6e10acfd716c857110ad9356",
+    "id": "6323242ec7e741d4276ceabb",
     "path": "src/app/left/menus/vaultFeatureMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "761fea11fd49fea5fb8e350e",
+    "id": "6527bc5eccf4cd466a7e25f2",
     "path": "src/app/left/menus/vaultFeatureMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "ab522216fa663e0c5cd56f90",
+    "id": "d0adf9cc6ab1663b9512eb58",
     "path": "src/app/left/menus/vaultFeatureMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "be726e20837e91742d460391",
+    "id": "e2b7fb6ae6df40a5f24cbbd0",
     "path": "src/app/left/menus/vaultFeatureMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "fb8d185d73a29c0e6f52cae5",
-    "path": "src/app/left/menus/vaultFeatureMenu.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "23b55e857e33229ed97c4b6d",
+    "id": "4a44e2c61a6f05e23ef32ab4",
     "path": "src/app/left/menus/workspaceMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "6912553dddf2613ee94207bc",
+    "id": "5ae78b60aa74bcacfba416e1",
     "path": "src/app/left/menus/workspaceMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "6bf2b1bd8e71130daec2f0d2",
+    "id": "6ccfbc103ba2abadc02c4ef9",
     "path": "src/app/left/menus/workspaceMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "729fdc8e4950deedc89e7883",
+    "id": "9d52f7787d20842aa72edfd5",
     "path": "src/app/left/menus/workspaceMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "09c7df198b228a96e1a479ff",
+    "id": "1927735240242e77323d2961",
     "path": "src/app/left/menus/worktreeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "1413e0a67e7e8598c7c11825",
+    "id": "66b0f8dd3acfe3b2926b2f6c",
     "path": "src/app/left/menus/worktreeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "23621c4d0f7c569fc46073dd",
+    "id": "979bca17bf58db5e08090614",
     "path": "src/app/left/menus/worktreeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "a2b7b7d4b756dc658e15f966",
+    "id": "b37ebf329ad1bcad6135499a",
     "path": "src/app/left/menus/worktreeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "bbbdc0ad12e13ddc6581bbf5",
+    "id": "be495685391d5cdbba0ae45c",
     "path": "src/app/left/menus/worktreeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "1355b89a8585e01867f68913",
@@ -2025,59 +2015,54 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "4f5bae000c10e8958ae4a263",
+    "id": "39d2a35608addd83c4efa107",
     "path": "src/app/menus/sharedActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "5964d29c08fb7cd4258f046f",
+    "id": "49752b346cc75e4ce9de45ab",
     "path": "src/app/menus/sharedActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "647bf5b9aafcee495263f833",
+    "id": "535c262827d961f00fc7e8d7",
     "path": "src/app/menus/sharedActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "6d7b793166f6d0f57080a76e",
+    "id": "590626cd5644ecb5a3b0e3cc",
     "path": "src/app/menus/sharedActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "7a8b5cbf5a3f8e23ff1e5911",
+    "id": "5aca906298f425c162e7f43a",
     "path": "src/app/menus/sharedActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "830e2f7e85e9432752bca126",
+    "id": "7c7c8be0ca7403d1ae7689c4",
     "path": "src/app/menus/sharedActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "88729466e08d3ea89b4dd8dd",
+    "id": "82d4e0e71831995a8162ef17",
     "path": "src/app/menus/sharedActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "9b8a3417722863f783ee82f5",
+    "id": "a8ba0063caff29f45a2f4504",
     "path": "src/app/menus/sharedActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "a46c500419719667a8135df3",
+    "id": "ba9c09f9fef22d3709b128bd",
     "path": "src/app/menus/sharedActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "b01526fa7c56637f2cc071b3",
+    "id": "d018d9050d8ce1e03da0f795",
     "path": "src/app/menus/sharedActions.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "e70f6e49ae9479fbaf4b4258",
-    "path": "src/app/menus/sharedActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "6448630a82dbb2290d06541d",
@@ -2960,114 +2945,104 @@
     "rule": "jsx-text"
   },
   {
-    "id": "0a7a7e28fa7f6560f486c3df",
+    "id": "25ce7b2d802a45f85cca1a23",
     "path": "src/app/right/menus/changeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "459d3a04d113e34dc281a235",
+    "id": "a7ed75dcdac76c2733578d82",
     "path": "src/app/right/menus/changeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "06d5cdcf0d920e223bc44092",
+    "id": "1964218db275d404d13fcac6",
     "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "1f0c817b3a35817106904868",
+    "id": "49078f189929cdbee27b97ee",
     "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "243d17a45db2801086446c89",
+    "id": "7b1ea88f0cfae2915577564e",
     "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "3776d392b94e8c25a5e5ff89",
+    "id": "c4a3fed3379b5bfd7de34d28",
     "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "89b8699f21f33429b72635fd",
+    "id": "d66f158c0080a6136ad3d504",
     "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "8bc0c5031a20cf4a0dbc647f",
+    "id": "ec0b411e2a2b9e4ee0dab663",
     "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "a73177dfd3dd3d9bb8f9dad0",
-    "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "c15eacf6084aff948e363056",
-    "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "014dbc5ab391f36caba5d20b",
+    "id": "44106bf2ad19cb471dcdd0dc",
     "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "15f19e49e94e6880612694fa",
+    "id": "52554b0a8fcbbe1780791d83",
     "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "37d6ac4e3cd67b0d1bd408cb",
+    "id": "637eb3b02a26bdcaeaddf8b9",
     "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "455396e64390f4c0f8289baa",
+    "id": "6a344813d5b42e335f888041",
     "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "587cc73a393255b938730a81",
+    "id": "81c4e2ae71ecdec359af8ec4",
     "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "657149836bbda4b363b55320",
+    "id": "83d5ec4a7a3c0c1d4e9d4eb8",
     "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "65de2f7cab13a6008d9a33a5",
+    "id": "9f3e3c3fce4dce5600fb0d10",
     "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "7213f27791efb086dbdaab75",
+    "id": "bd576949521ae1218cff2b85",
     "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "8583691d8e4c53b7a936f33e",
+    "id": "c9db54d40ef27da187a2c0ab",
     "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "88b52dc4163c35ce5c815670",
+    "id": "d94a126f036985d8817637d7",
     "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "9be9ccdb453cc3924e90d682",
+    "id": "e4c1ef6a57a3b5ace2b208c2",
     "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "da2b9b5aa2972f562238214e",
+    "id": "e867a70044f7940f99eb83a6",
     "path": "src/app/right/menus/edgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "baeacec4db30ea9b6096eb17",
@@ -3100,74 +3075,74 @@
     "rule": "jsx-text"
   },
   {
-    "id": "0c16a8e58a41cd66694fb636",
+    "id": "2e5a7ccd68a56d5ebabf94c8",
     "path": "src/app/right/menus/prMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "156836b35c4f506c50bcab87",
+    "id": "5468eee4c373af810f7f2dc1",
     "path": "src/app/right/menus/prMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "474b46f04c290685ea3f741e",
+    "id": "85e6ef3ef10864d646b0587c",
     "path": "src/app/right/menus/prMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "8d5fecdb0cbb67f1d6448b01",
+    "id": "b487d81c00b35a3a74ff97bc",
     "path": "src/app/right/menus/prMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "cae8de27da85edaaa9b1ad79",
+    "id": "e2b8d902193a98bcadf76eed",
     "path": "src/app/right/menus/prMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "10c1ab32fa488f2d0256dcbe",
+    "id": "0229ad69f3c6dbcceb69f494",
     "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "1c52242426e50b330d541187",
+    "id": "063c90a2222bae51763aba8e",
     "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "36883c28db2b6d9a423857f3",
+    "id": "1c00c3d126c18366c208cc2c",
     "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "39d9713ac25dfea4d5842901",
+    "id": "7fbaec5a57f9180e5bf278c3",
     "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "3c7d22d0c268da6443556546",
+    "id": "afac19f8bb416187242cb733",
     "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "4d6e53589d6bd739a62f8fc9",
+    "id": "b12477b89d4026d8693756da",
     "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "55cf894dd2f4014078fc5985",
+    "id": "da00bb354431e4b6ad68a797",
     "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "c254511864c95f4e2d902b85",
+    "id": "e572a90d665c92f07fafc096",
     "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "e070a1ccd8197439e887055c",
+    "id": "efa8d7303638c8780f1f9eb5",
     "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "919f8ed3810afaad75c21b64",
@@ -3455,14 +3430,14 @@
     "rule": "jsx-text"
   },
   {
-    "id": "5b2662c56ad792fd70117606",
+    "id": "363cc75ad39e255fe17b8734",
     "path": "src/app/shell/CompactAppShell.tsx",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "b5004887170a7e251e76d3d8",
+    "id": "7f6a8758a045c503acbc2e35",
     "path": "src/app/shell/CompactAppShell.tsx",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "254b3523eaf1975c79d9b470",
@@ -3990,174 +3965,189 @@
     "rule": "direct-locale-format"
   },
   {
-    "id": "1da3a76530b1e27fa07e814a",
+    "id": "000450b644d98df7c85ba0e0",
     "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "1eb71e831e2f912ea4313da1",
+    "id": "10880e3bc2f90bfa00dcf7c3",
     "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "2d215ce26fe1fa6e59817bdc",
+    "id": "12b8b86da86b5057b22fc733",
     "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "374c43210301d5c33e390556",
+    "id": "23b2e9438fdcbee3c01d61c0",
     "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "65815fe6858b0a7a37e48235",
+    "id": "7132b7e5956b1b6099c9a142",
     "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "9d1973d73c00e8226c012428",
+    "id": "e15bdc007d82230fc264fa8e",
     "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "d5f2dfb66acebccf3f6a6e70",
+    "id": "e204360bca7bd57f20e2ffc6",
     "path": "src/app/stage/graphWalkKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "0263371b6d48396b89529984",
+    "id": "e59a6c72f752e5a37ed1a3d0",
+    "path": "src/app/stage/graphWalkKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "346b15058d4b992744eacd42",
     "path": "src/app/stage/menus/canvasMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "2da3ca81182816336e1ca941",
+    "id": "a301cf71c8f90ed953f4695d",
     "path": "src/app/stage/menus/canvasMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "86320a632cf04a304adafcab",
+    "id": "a3a6bd9675dc4198be5a5789",
     "path": "src/app/stage/menus/canvasMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "86f45196c3259e4459a70178",
+    "id": "b348faa11b57f8420a86d70b",
     "path": "src/app/stage/menus/canvasMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "1796e520b72961dff9f07a9f",
+    "id": "3ff27ff8270448903690b885",
     "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "1e13681c3cd1948d12c2270d",
+    "id": "4420169966b829f88b7e5e91",
     "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "534169edc9e8a9b86d10a3ca",
+    "id": "801ab631060c730e36625da8",
     "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "5b0c3b3ecc5ea6fd5df9e8eb",
+    "id": "d451c608b9c4e4b977541945",
     "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "7c41ca334c524caf81072117",
+    "id": "d67abe7fc7e5f6841f893eca",
     "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "b41acc6cf48f4e93f5d2e8c1",
+    "id": "e56468d5d0169a2c4ef961ce",
     "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "e010a90f45978c9b28b36ea9",
+    "id": "fcd6b8d2b424f45dc3661d40",
     "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "2eec5d5a84fa3b560a367613",
+    "id": "0a36819bc74a1e5d7eebc0fe",
     "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "40c1b922b9981e7da2ba54df",
+    "id": "29e4d4462b7bd0e16e1ad8ea",
     "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "4cde8d9f3644617ea5f285b9",
+    "id": "2ff6c39d1be90772fb922f53",
     "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "4ec12341a697b6341fb34a77",
+    "id": "33692ee90fef9e0839879b23",
     "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "6b7a184d012df31b6f2015a8",
+    "id": "3c02add1334c767c4cb4ab31",
     "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "7af5028707ef33780cdc3cbb",
+    "id": "45d0568cf5d81fdf20f582c4",
     "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "9098645a7b8ca6d560212f8e",
+    "id": "635cd138c76c5e0ad674c3f4",
     "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "9dd1d0899619b70382e7fd9c",
+    "id": "7d8b74c7782be76f3f435098",
     "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "b5ddf6cc2ed0516845b05571",
+    "id": "7efc99a52d9790bd7a027f68",
     "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "baf4e0436837f1a1d5735a95",
+    "id": "a90272a839f4c7f1f43b0ae7",
     "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "bc37fc8184cb380384b63cda",
+    "id": "ee58decf74aa56d839b37fed",
     "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "29ade9bd51ac1d78296d5080",
+    "id": "064b31af8f42c311f8104862",
     "path": "src/app/stage/menus/metaEdgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "4901e677b6cdca4cdbffc783",
+    "id": "33fa9beabc42a84b49a631f4",
     "path": "src/app/stage/menus/metaEdgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "840c84fbe2b973da903c7bbd",
+    "id": "572c4e1bcae770f83cf0a5b2",
     "path": "src/app/stage/menus/metaEdgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "853b4a03890c90394a08fc4c",
+    "id": "694c8495ca03a0ee47c6d4cc",
     "path": "src/app/stage/menus/metaEdgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "f35ca464794a7981d4ccf173",
+    "id": "ab112d55ce5a7df5d28a8833",
     "path": "src/app/stage/menus/metaEdgeMenu.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "b1ef7adc6ce39fc5411db53d",
+    "path": "src/app/stage/menus/metaEdgeMenu.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "bb91c1eedddd271ce0de016f",
+    "path": "src/app/stage/menus/metaEdgeMenu.ts",
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "eb70138bacc8bc7cc8793951",
@@ -4265,24 +4255,24 @@
     "rule": "jsx-text"
   },
   {
-    "id": "1d81a0a154eefb1ee29e8862",
+    "id": "0630c7e00f0fc9480cd68880",
     "path": "src/app/timeline/menus/timelineFilterActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "b423729963fc4ddb63d53f17",
+    "id": "3b05a01f2289a90e2700b294",
     "path": "src/app/timeline/menus/timelineFilterActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "c28ad98c3465e280abc47c95",
+    "id": "5860bce663b024405def4514",
     "path": "src/app/timeline/menus/timelineFilterActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "e7d8aa688d4766db9e35fe4a",
+    "id": "f13c8b9cda22f28a925f2a6c",
     "path": "src/app/timeline/menus/timelineFilterActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "08409187e86c04905c3c87b1",
@@ -4855,9 +4845,9 @@
     "rule": "jsx-text"
   },
   {
-    "id": "3f3521fa546897e4d2dfc807",
+    "id": "384f791408cf52a179e586b3",
     "path": "src/app/viewer/MarkdownDocView.tsx",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "362f02772b718e6fa151a43e",
@@ -5085,14 +5075,9 @@
     "rule": "jsx-text"
   },
   {
-    "id": "2083844f9743983a03cb42c0",
+    "id": "45518f3e7c1a179c6c3f8e61",
     "path": "src/app/viewer/readerComments.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "5eaee848c4ab2aa3ef2262ad",
-    "path": "src/app/viewer/readerComments.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "6e83bdd2a84746e3b5b11972",
@@ -5250,24 +5235,19 @@
     "rule": "presentation-field"
   },
   {
-    "id": "2da9127cd5fe565b6a00d9c3",
+    "id": "43a3bbd68c0b17bfd2a231db",
     "path": "src/platform/actions/shellActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "4b4700cd62096a7a9125fcee",
+    "id": "5aa0b62e3fe982a19f9da872",
     "path": "src/platform/actions/shellActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "83b5643a7f2cfd850c29f9ec",
+    "id": "a9f6e493856109059e084f22",
     "path": "src/platform/actions/shellActions.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "8dd0698e6c0525fa7977945b",
-    "path": "src/platform/actions/shellActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "0e6cc98ccf9c9e02dfb69e67",
@@ -6580,72 +6560,57 @@
     "rule": "presentation-field"
   },
   {
-    "id": "273bb2afb72ec172078cd1a0",
+    "id": "205a38176aee973491817c46",
     "path": "src/stores/view/chromeActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "35aa3a977ecd5e475672ff38",
+    "id": "3461ca24e0e7db1326047cee",
     "path": "src/stores/view/chromeActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "7ad1deeb1d47d498049b8c27",
+    "id": "4a03361b479fafaeb70128c4",
     "path": "src/stores/view/chromeActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "8b0ef59e28e274c178bebb40",
+    "id": "94498e40eca805cc013cd878",
     "path": "src/stores/view/chromeActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "8c1d85e105b8953bf61e7946",
+    "id": "9e32072ff05826bb7c969d6e",
     "path": "src/stores/view/chromeActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "9d33da44b21bbc51dd49dc2a",
+    "id": "b2787106ce8f120455923cd2",
     "path": "src/stores/view/chromeActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "a21e6e2c3dd2f46ee9db2d76",
+    "id": "bc5255e8d92d40e05df740c0",
     "path": "src/stores/view/chromeActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "b175bf4ac060efa1ed6f979a",
+    "id": "e5f901a3f24977d766d0bfd3",
     "path": "src/stores/view/chromeActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "b7ca49710936847b92130c64",
+    "id": "fc4daf4b9cc45583fdae61c7",
     "path": "src/stores/view/chromeActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "d16a4436a7bf0310496f3e22",
+    "id": "fe9e5bd948c87e5c6642ca51",
     "path": "src/stores/view/chromeActions.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "d4746b5f2c9836efafada89e",
-    "path": "src/stores/view/chromeActions.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "d9db5f6c8e1ef4fe3d682b4c",
-    "path": "src/stores/view/chromeActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "0586cf0dc8e7ad0203896d4d",
-    "path": "src/stores/view/commandPalette.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "5c92d66f9403ddfca82c0b38",
     "path": "src/stores/view/commandPalette.ts",
     "rule": "presentation-field"
   },
@@ -6660,52 +6625,22 @@
     "rule": "presentation-field"
   },
   {
-    "id": "d4d147a59cbc70c2873a21e3",
+    "id": "832e57f5dc6ee56f16a1ed79",
     "path": "src/stores/view/commandPalette.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "e0af5b234d4247583f4d68d5",
+    "id": "8bc41897a172145c2b64a58c",
     "path": "src/stores/view/commandPalette.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "1cd76c0bb41f438c47e708de",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "1d98b5a57c5d53cdb466450d",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "212525960ea6edade19e0e6e",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "2953cef33ab01e5ec15fedeb",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
+    "id": "ee5bf0691541d09843398251",
+    "path": "src/stores/view/commandPalette.ts",
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "2a2be921655d3879482cf824",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "35e3663170b5305fa64cfdcb",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "3c7151abb59a339e3baff6eb",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "3feffd180ba5410019b1b187",
     "path": "src/stores/view/commandPaletteCommands.ts",
     "rule": "presentation-field"
   },
@@ -6725,37 +6660,7 @@
     "rule": "presentation-field"
   },
   {
-    "id": "5dd30b925a7f54e56d655719",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "6b368e9b5249dbd1959f658a",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "7e00ae7cfbc473fbcceb257e",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "7ff5b1254949f5e76af489b1",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "877fe8936351f71ae1556b4d",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "8856d9047a1f499937f862c0",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "9259ae56fc664408bd506d59",
     "path": "src/stores/view/commandPaletteCommands.ts",
     "rule": "presentation-field"
   },
@@ -6765,57 +6670,7 @@
     "rule": "presentation-field"
   },
   {
-    "id": "9dd2f975114efc162463005e",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "ac8db3b32a27713f08d5eec1",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "ad831857f6d35a2aa3eec258",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "b20ce75d6bc178f5c591f963",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "b3375a09491e6fb465a4008d",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "bbefc84059f4bc8b0b858b3d",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "bd6ad787adfb8f7a43eec98f",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "caf5e2a47ec4bacbe3e07792",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "d1522a625f86c713b5622b26",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "d7417c4410c6356f7f9fada4",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "d81c90b10616af0665fc7014",
     "path": "src/stores/view/commandPaletteCommands.ts",
     "rule": "presentation-field"
   },
@@ -6825,42 +6680,117 @@
     "rule": "presentation-field"
   },
   {
-    "id": "ef20bc28d9061fdf53a1e94c",
+    "id": "0ea94ad3f8741b5246299adf",
     "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "ff7e2483d9d96e1af719ca10",
+    "id": "1a9bf9aba386fe85917991e1",
     "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "e4ee9f8f5819d1ff2333ad01",
+    "id": "226192139234b926bfd3ee4f",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "2fb80554ff0790ac7ab852d9",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "396c5db492c8fa24577cf9f0",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "3b0b754f863879e18059f663",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "3b5227d39dab6361fdce4199",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "4a4497efc03878218916b1d5",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "4d5d18b20bf5e81e3c8eeb61",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "5ec47462ae1baa5559eabe40",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "6259ee0bf8cb1bfaf1071156",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "7843aeb6c9d96ba19fbba97c",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "82298fe30cac092ab3efabfb",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "8fa50d715bf96a429531164e",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "a81e566247c4dd7d06358f4c",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "b1c3607d1fd2d0c1f789b94f",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "b29add59494c2dd567bc8b37",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "c7ec54c92fa57cf844528545",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "d1f15207b2d276bf8cc1647e",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "f4a24b698f18619bf23091da",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "f5e17d04bba24e7fac0f0f02",
+    "path": "src/stores/view/commandPaletteCommands.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "7b09a331fd3852bef7daf5a6",
     "path": "src/stores/view/commandProviders/opsCommandProvider.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "00f2e30c942a190833c13970",
-    "path": "src/stores/view/docTabKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "02e6d5366ee243fa46539809",
-    "path": "src/stores/view/docTabKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "1687b876726226010cfdd506",
-    "path": "src/stores/view/docTabKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "5e5a428115ee2d05809768c2",
-    "path": "src/stores/view/docTabKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "75504e7411a9fc577b02c266",
     "path": "src/stores/view/docTabKeybindings.ts",
     "rule": "presentation-field"
   },
@@ -6875,9 +6805,34 @@
     "rule": "presentation-field"
   },
   {
-    "id": "6158cb3908d66bf32ec80c19",
+    "id": "348ba81b61fba2e83dbbffb6",
+    "path": "src/stores/view/docTabKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "603de502d7336e0d8988417e",
+    "path": "src/stores/view/docTabKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "9aa868bddf893bca3bfff99d",
+    "path": "src/stores/view/docTabKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "db4193bed820036c4d581b59",
+    "path": "src/stores/view/docTabKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "4aae5c5b158d94e727c6d6f5",
     "path": "src/stores/view/documentLinkActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "566599f4b64dbf462c23559b",
+    "path": "src/stores/view/documentLinkActions.ts",
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "101ac4b145481a566036eb6e",
@@ -6886,11 +6841,6 @@
   },
   {
     "id": "14e9f29cb094273811f20c86",
-    "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "5b718fac4e9904eb2c525815",
     "path": "src/stores/view/editorKeybindings.ts",
     "rule": "presentation-field"
   },
@@ -6905,29 +6855,34 @@
     "rule": "presentation-field"
   },
   {
-    "id": "96ae448ea06efc3324bfc946",
+    "id": "338f3465cf1e6b579846bb69",
     "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "9cebf85e27f17ef3c9cbb290",
+    "id": "45a5afa3da74c156e9d4d821",
     "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "c08c8389d8084173c023d569",
+    "id": "bd238b0baa83770cf047c01c",
     "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "c29be16820b90b4c152b4471",
+    "id": "c3739063d7fda2a65a4c4051",
     "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "f93d9453cd6bc9b93ae65bd1",
+    "id": "dd403a0dbabe1b852857354b",
     "path": "src/stores/view/editorKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "ee545a202ac84df6a05fa432",
+    "path": "src/stores/view/editorKeybindings.ts",
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "6dedaf0d42934f907231a245",
@@ -7185,24 +7140,19 @@
     "rule": "presentation-field"
   },
   {
+    "id": "f268a54d55ae308d3da375a5",
+    "path": "src/stores/view/keyboardNavigation.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
     "id": "2b31eeea3682c455d76bc3c3",
     "path": "src/stores/view/keyboardShortcuts.ts",
     "rule": "presentation-field"
   },
   {
-    "id": "98a4559c0548136fd80953c0",
+    "id": "989034ee926d29553b8082b8",
     "path": "src/stores/view/keyboardShortcuts.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "0bba7006f96fa2fd42de9953",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "1fc8900f3cbd16ac7ef9c91e",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "227b01cb8b026c656c630c35",
@@ -7210,47 +7160,7 @@
     "rule": "presentation-field"
   },
   {
-    "id": "2499b139dd5231f78fe89c85",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "330cf13841d575bbeceebfa6",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "349b2dc8efa93536a4e67405",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "4be63270c6a0c524da8e9651",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "60f62718b698c6907b477455",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "6b9d2bc2203bce1dd7db3cb5",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "80503cf3a9367a657b02086c",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "9d8e98480affd97f385c96b1",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "a9d8c31dc5f4efc510e4cf0d",
     "path": "src/stores/view/leftRailKeybindings.ts",
     "rule": "presentation-field"
   },
@@ -7261,11 +7171,6 @@
   },
   {
     "id": "c0ec062f9b297ef522413243",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "c6c294fe56fbc3420856b71c",
     "path": "src/stores/view/leftRailKeybindings.ts",
     "rule": "presentation-field"
   },
@@ -7290,6 +7195,61 @@
     "rule": "presentation-field"
   },
   {
+    "id": "7e6dc6640fe12541c08d00a8",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "83f906c72e00db7d5273effc",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "9e73154279677c7f05276549",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "b4a6f1f45b06b4b891422f88",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "c29d42fe6b7f3a994458ecb1",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "cd17a735d049a63b14a1a6b8",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "d030ecaf4b0d6a43399e0705",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "da7a93223e360893fb987b3f",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "efc99d926f99394d21413b95",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "f0b74f4083bdf9cec895bc59",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "fcce01918d6160abb4bb9594",
+    "path": "src/stores/view/leftRailKeybindings.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
     "id": "ecb292b0acf158a1fc3b4a41",
     "path": "src/stores/view/nodeInterior.ts",
     "rule": "direct-locale-format"
@@ -7305,22 +7265,7 @@
     "rule": "presentation-field"
   },
   {
-    "id": "060ac09779913c6dd564d803",
-    "path": "src/stores/view/projectActions.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "16d085644d86b81efb921d66",
-    "path": "src/stores/view/projectActions.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "cec16bdfbea7faebf0affcf0",
-    "path": "src/stores/view/projectActions.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "e1fb115f263f9b53ddc71c57",
     "path": "src/stores/view/projectActions.ts",
     "rule": "presentation-field"
   },
@@ -7330,29 +7275,64 @@
     "rule": "presentation-field"
   },
   {
-    "id": "0656abd59a48f7cc98cf803b",
-    "path": "src/stores/view/provisionActions.ts",
-    "rule": "presentation-field"
+    "id": "21f802d6e537d55c8603fe8e",
+    "path": "src/stores/view/projectActions.ts",
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "4b5936b4fa3dca291bc268e3",
-    "path": "src/stores/view/provisionActions.ts",
-    "rule": "presentation-field"
+    "id": "7d46544981df1b85ff659693",
+    "path": "src/stores/view/projectActions.ts",
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "c98886a6b25239ae0f12963f",
-    "path": "src/stores/view/provisionActions.ts",
-    "rule": "presentation-field"
+    "id": "dada62b6c9cf3845c691f667",
+    "path": "src/stores/view/projectActions.ts",
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "cefe08a98798a60241e06d48",
+    "id": "06b8730c24d52af5e7518dae",
     "path": "src/stores/view/provisionActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
   },
   {
-    "id": "de3e1fd88ce0867946ce8e07",
+    "id": "55f86287e4de30c9787f9a72",
     "path": "src/stores/view/provisionActions.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "66a3984bb09edfb904adb821",
+    "path": "src/stores/view/provisionActions.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "890cd00257834f86523d8af5",
+    "path": "src/stores/view/provisionActions.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "9a254ee358781869278e2f3f",
+    "path": "src/stores/view/provisionActions.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "9cd0b999378175dae0f6f06e",
+    "path": "src/stores/view/provisionActions.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "ca746f815892a53344e3be5d",
+    "path": "src/stores/view/provisionActions.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "e9803dcc672e209b48c2367d",
+    "path": "src/stores/view/provisionActions.ts",
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "f0381b87a2ca58aa0aacdf4f",
+    "path": "src/stores/view/provisionActions.ts",
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "40a8704e0a607c00dac1606e",
@@ -7390,24 +7370,14 @@
     "rule": "presentation-field"
   },
   {
-    "id": "658caaabd57dc55cab6c0bfb",
-    "path": "src/stores/view/reloadKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "711d7e9b7a486885e9fd37d6",
     "path": "src/stores/view/reloadKeybindings.ts",
     "rule": "presentation-field"
   },
   {
-    "id": "95e581e954a8a858cbfb22da",
-    "path": "src/stores/view/rightRailKeybindings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "be90936287aefcf44ba0d4fc",
-    "path": "src/stores/view/rightRailKeybindings.ts",
-    "rule": "presentation-field"
+    "id": "92e7226226bbccb2940628dc",
+    "path": "src/stores/view/reloadKeybindings.ts",
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "ca9798fded19c77c759fd366",
@@ -7418,6 +7388,11 @@
     "id": "cacc92ba87bf548cb08167b6",
     "path": "src/stores/view/rightRailKeybindings.ts",
     "rule": "presentation-field"
+  },
+  {
+    "id": "6d6c06b9b5a26c5ee7590fc2",
+    "path": "src/stores/view/rightRailKeybindings.ts",
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "335c05ff1f25054efecfee4e",
@@ -7465,11 +7440,6 @@
     "rule": "presentation-field"
   },
   {
-    "id": "3d93bf79601b5def47c568db",
-    "path": "src/stores/view/workingSet.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "7a5632fc845b16716b49272f",
     "path": "src/stores/view/workingSet.ts",
     "rule": "presentation-field"
@@ -7480,9 +7450,14 @@
     "rule": "presentation-field"
   },
   {
-    "id": "e7c909f420ecbea464b5f251",
+    "id": "8491b5c68ccb23fbe0554df7",
     "path": "src/stores/view/workingSet.ts",
-    "rule": "presentation-field"
+    "rule": "legacy-action-presentation"
+  },
+  {
+    "id": "c9cf3a2e4d6c4aac45ffe6d0",
+    "path": "src/stores/view/workingSet.ts",
+    "rule": "legacy-action-presentation"
   },
   {
     "id": "5a984c395bd36bd055e1480b",
@@ -7793,5 +7768,10 @@
     "id": "fb1e5b6330f4178dd10fabb5",
     "path": "src/viewer-visual/main.tsx",
     "rule": "presentation-field"
+  },
+  {
+    "id": "bdf2b219b52a05c8b22ae940",
+    "path": "src/platform/actions/clipboardActions.ts",
+    "rule": "legacy-action-presentation"
   }
 ]
