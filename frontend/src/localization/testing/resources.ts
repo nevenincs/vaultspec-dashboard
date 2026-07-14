@@ -6,15 +6,18 @@ export const rtlTestLocale = "ar" as const;
 export const ltrTestResources = {
   common: {
     actions: {
+      ...en.common.actions,
       cancel: "Annuler",
       close: "Fermer",
       reloadPage: "Recharger la page",
       retry: "Réessayer",
     },
+    disabledReasons: en.common.disabledReasons,
     destructiveActions: {
       discardChanges: "Ignorer les modifications",
     },
   },
+  documents: en.documents,
   errors: {
     fallback: {
       contentUnavailable:
@@ -29,20 +32,25 @@ export const ltrTestResources = {
       title: "Cette section ne peut pas être affichée",
     },
   },
+  features: en.features,
+  projects: en.projects,
 } as const;
 
 export const rtlTestResources = {
   common: {
     actions: {
+      ...en.common.actions,
       cancel: "إلغاء",
       close: "إغلاق",
       reloadPage: "إعادة تحميل الصفحة",
       retry: "إعادة المحاولة",
     },
+    disabledReasons: en.common.disabledReasons,
     destructiveActions: {
       discardChanges: "تجاهل التغييرات",
     },
   },
+  documents: en.documents,
   errors: {
     fallback: {
       contentUnavailable: "هذا المحتوى غير متاح. أعد تحميل الصفحة وحاول مرة أخرى.",
@@ -56,6 +64,8 @@ export const rtlTestResources = {
       title: "تعذر عرض هذا القسم",
     },
   },
+  features: en.features,
+  projects: en.projects,
 } as const;
 
 export const testResources = {

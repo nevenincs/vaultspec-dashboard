@@ -112,6 +112,16 @@ const FALSE_RECOVERY_STATEMENTS = [
   "Reload.",
 ] as const;
 
+const DISABLED_REASON_KEYS = [
+  "common:disabledReasons.currentVersionRequired",
+  "common:disabledReasons.desktopEditorRequired",
+  "common:disabledReasons.desktopFileManagerRequired",
+  "common:disabledReasons.selectItemToOpen",
+  "documents:disabledReasons.selectDifferentDocument",
+  "documents:disabledReasons.selectDocument",
+  "features:disabledReasons.selectFeature",
+] as const satisfies readonly MessageKey[];
+
 describe("source-locale message policy", () => {
   it("classifies exactly every production message key", () => {
     expect(Object.keys(ENGLISH_MESSAGE_POLICY).sort()).toEqual(
@@ -223,6 +233,21 @@ describe("source-locale message policy", () => {
         validateEnglishMessage("errors:unexpectedApplication.message", template),
         template,
       ).toEqual([]);
+    }
+  });
+
+  it("requires actionable disabled reasons and accepts every production reason", () => {
+    expect(
+      validateEnglishMessage(
+        "common:disabledReasons.selectItemToOpen",
+        "This item cannot be opened.",
+      ).map((item) => item.code),
+    ).toContain("not-actionable");
+
+    const messages = catalogMessages();
+    for (const key of DISABLED_REASON_KEYS) {
+      expect(ENGLISH_MESSAGE_POLICY[key].role, key).toBe("disabled-reason");
+      expect(validateEnglishMessage(key, messages.get(key)!), key).toEqual([]);
     }
   });
 

@@ -7,6 +7,7 @@ export type MessageRole =
   | "status"
   | "error-title"
   | "error-message"
+  | "disabled-reason"
   | "description"
   | "accessibility"
   | "confirmation";
@@ -34,19 +35,67 @@ export interface MessagePolicyEntry {
 export const ENGLISH_MESSAGE_POLICY = {
   "common:actions.cancel": { role: "action" },
   "common:actions.close": { role: "action" },
+  "common:actions.copy": { role: "action" },
+  "common:actions.copyDocumentName": { role: "action" },
+  "common:actions.copyPath": { role: "action" },
+  "common:actions.copySummary": { role: "action" },
+  "common:actions.copyTitle": { role: "action" },
+  "common:actions.disableFollowMode": { role: "action" },
+  "common:actions.enableFollowMode": { role: "action" },
+  "common:actions.hideApprovals": { role: "action" },
+  "common:actions.hideGraph": { role: "action" },
+  "common:actions.hideProjectHealth": { role: "action" },
+  "common:actions.hideSearchStatus": { role: "action" },
+  "common:actions.hideSystemStatus": { role: "action" },
+  "common:actions.open": { role: "action" },
+  "common:actions.openCommandPalette": { role: "action" },
+  "common:actions.openInEditor": { role: "action" },
+  "common:actions.openSettings": { role: "action" },
+  "common:actions.refreshData": { role: "action" },
   "common:actions.reloadPage": { role: "action" },
+  "common:actions.resetLayout": { role: "action" },
   "common:actions.retry": { role: "action" },
+  "common:actions.showApprovals": { role: "action" },
+  "common:actions.showGraph": { role: "action" },
+  "common:actions.showInFileManager": { role: "action" },
+  "common:actions.showKeyboardShortcuts": { role: "action" },
+  "common:actions.showProjectHealth": { role: "action" },
+  "common:actions.showSearchStatus": { role: "action" },
+  "common:actions.showSystemStatus": { role: "action" },
+  "common:disabledReasons.currentVersionRequired": { role: "disabled-reason" },
+  "common:disabledReasons.desktopEditorRequired": { role: "disabled-reason" },
+  "common:disabledReasons.desktopFileManagerRequired": {
+    role: "disabled-reason",
+  },
+  "common:disabledReasons.selectItemToOpen": { role: "disabled-reason" },
   "common:destructiveActions.discardChanges": { role: "destructive-action" },
+  "documents:actions.copyLink": { role: "action" },
+  "documents:actions.linkToSelectedDocument": { role: "action" },
+  "documents:disabledReasons.selectDifferentDocument": {
+    role: "disabled-reason",
+  },
+  "documents:disabledReasons.selectDocument": { role: "disabled-reason" },
   "errors:fallback.contentUnavailable": { role: "error-message" },
   "errors:unexpectedApplication.message": { role: "error-message" },
   "errors:unexpectedApplication.title": { role: "error-title" },
   "errors:unexpectedSection.message": { role: "error-message" },
   "errors:unexpectedSection.title": { role: "error-title" },
+  "features:confirmations.archive.body": { role: "confirmation" },
+  "features:confirmations.archive.title": { role: "label" },
+  "features:confirmations.repair.body": { role: "confirmation" },
+  "features:confirmations.repair.title": { role: "label" },
+  "features:destructiveActions.archive": { role: "destructive-action" },
+  "features:disabledReasons.selectFeature": { role: "disabled-reason" },
+  "features:guardedActions.repair": { role: "action" },
+  "projects:actions.add": { role: "action" },
+  "projects:actions.clearHistory": { role: "action" },
+  "projects:actions.switch": { role: "action" },
 } as const satisfies Record<MessageKey, MessagePolicyEntry>;
 
 export const IMPERATIVE_ACTION_VERBS = [
   "Add",
   "Apply",
+  "Archive",
   "Ask",
   "Cancel",
   "Check",
@@ -57,14 +106,19 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Copy",
   "Create",
   "Delete",
+  "Disable",
   "Discard",
   "Edit",
+  "Enable",
   "Hide",
+  "Link",
   "Move",
   "Open",
+  "Refresh",
   "Reload",
   "Remove",
   "Rename",
+  "Repair",
   "Reset",
   "Retry",
   "Save",
@@ -72,11 +126,17 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Show",
   "Start",
   "Stop",
+  "Switch",
   "Try",
   "Update",
 ] as const;
 
-export const DESTRUCTIVE_ACTION_VERBS = ["Delete", "Discard", "Remove"] as const;
+export const DESTRUCTIVE_ACTION_VERBS = [
+  "Archive",
+  "Delete",
+  "Discard",
+  "Remove",
+] as const;
 
 export const RECOVERY_VERBS = [
   "Ask",
@@ -85,6 +145,7 @@ export const RECOVERY_VERBS = [
   "Close",
   "Open",
   "Reload",
+  "Return",
   "Retry",
   "Save",
   "Select",
@@ -362,6 +423,7 @@ function roleBounds(role: MessageRole): { chars: number; words: number } {
     case "label":
     case "status":
     case "error-title":
+    case "disabled-reason":
       return { chars: 80, words: 10 };
     case "error-message":
     case "confirmation":
@@ -435,7 +497,7 @@ export function validateEnglishMessage(
     }
   }
 
-  if (policy.role === "error-message") {
+  if (policy.role === "error-message" || policy.role === "disabled-reason") {
     const clauses = staticText.split(RECOVERY_CLAUSE_BOUNDARY);
     const actionable = clauses.some(isActionableRecoveryClause);
     if (!actionable) issue(issues, "not-actionable");
