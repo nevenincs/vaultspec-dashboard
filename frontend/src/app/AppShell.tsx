@@ -53,10 +53,12 @@ import {
 } from "./onboarding/FirstRunOnboarding";
 import { CommandPalette } from "./palette/CommandPalette";
 import { SettingsDialog } from "./settings/SettingsDialog";
+import { ControlPanels } from "./panels/ControlPanels";
 import { useSettingsEffects } from "./settings/settingsEffects";
 import { useGraphViewModeBridge } from "../stores/server/graphViewModeBridge";
 import { useThemeSetting } from "./settings/themeSetting";
 import { StatusTab } from "./right/StatusTab";
+import { FrameworkStatusCluster } from "./right/FrameworkStatusCluster";
 import { IconRail } from "./shell/IconRail";
 import { CompactAppShell } from "./shell/CompactAppShell";
 import { getScene } from "./stage/Stage";
@@ -194,6 +196,7 @@ export function AppShell() {
         <DataActivityIndicator />
         <CommandPalette />
         <SettingsDialog />
+        <ControlPanels />
         <AddProjectDialog />
         <CreateDocDialog />
         <ProjectNavigator />
@@ -230,6 +233,7 @@ export function AppShell() {
       <DataActivityIndicator />
       <CommandPalette />
       <SettingsDialog />
+      <ControlPanels />
       <AddProjectDialog />
       <CreateDocDialog />
       <ProjectNavigator />
@@ -331,6 +335,11 @@ function ActivityRail({
       >
         <StatusTab />
       </div>
+      {/* The framework status cluster is pinned OUTSIDE the scroll region
+          (activity-rail-realignment D2): a sibling of the scrollable activity
+          panel above, so it stays fixed at the rail's bottom edge while the
+          status stack scrolls. */}
+      <FrameworkStatusCluster />
     </div>
   );
 }

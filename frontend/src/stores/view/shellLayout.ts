@@ -348,9 +348,13 @@ const SHELL_TIMELINE_CLASS =
 const SHELL_TIMELINE_BODY_CLASS = "relative min-h-0 min-w-0 flex-1";
 const SHELL_RIGHT_RAIL_BASE_CLASS = "relative flex min-h-0 flex-col overflow-hidden";
 const SHELL_RIGHT_RAIL_OPEN_CLASS = `${SHELL_RIGHT_RAIL_BASE_CLASS} border-l border-rule`;
-const SHELL_ACTIVITY_RAIL_CLASS =
-  "flex min-h-0 flex-1 flex-col gap-fg-2 overflow-y-auto p-fg-2";
-const SHELL_ACTIVITY_PANEL_CLASS = "min-h-0 flex-1";
+// The scroll lives on the inner PANEL, not the rail column, so the framework
+// status cluster (activity-rail-realignment D2) pins as a footer OUTSIDE the
+// scroll region: the rail is a plain flex column, the panel is the flex-1
+// scroll region carrying the status stack's inset, and the cluster is a
+// shrink-0 sibling below it.
+const SHELL_ACTIVITY_RAIL_CLASS = "flex min-h-0 flex-1 flex-col";
+const SHELL_ACTIVITY_PANEL_CLASS = "min-h-0 flex-1 overflow-y-auto p-fg-2";
 const SHELL_RESIZE_HANDLE_BASE_CLASS =
   "absolute z-10 bg-transparent outline-none transition-colors duration-ui-fast ease-settle hover:bg-accent/20 focus-visible:bg-accent/20 focus-visible:outline-2 focus-visible:outline-focus";
 

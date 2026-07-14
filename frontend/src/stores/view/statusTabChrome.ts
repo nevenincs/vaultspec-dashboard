@@ -16,14 +16,12 @@ export type StatusSectionId =
   | "pull-requests"
   | "open-issues"
   | "recent-commits"
-  // The machine-level search-service console (rag-service-management ADR D7)
-  // and its single Details fold (2026-07-03 redesign).
-  | "rag-ops"
-  | "rag-ops:details"
-  // The agentic-authoring review station (W03.P40): the human-in-the-loop review
-  // queue, rendered as an always-present rail section like the search-service
-  // console (independent of corpus state — it manages proposals, not the graph).
-  | "authoring-review";
+  // The search-service console's single Details fold (2026-07-03 redesign). The
+  // console itself moved out of the rail into a modal control panel
+  // (activity-rail-realignment ADR D1/D3), but its body still owns this Details
+  // fold, so this section id stays live; the former `rag-ops` and
+  // `authoring-review` rail-section ids retired with the eviction.
+  | "rag-ops:details";
 
 const STATUS_SECTION_IDS = [
   "changes",
@@ -35,9 +33,7 @@ const STATUS_SECTION_IDS = [
   "pull-requests",
   "open-issues",
   "recent-commits",
-  "rag-ops",
   "rag-ops:details",
-  "authoring-review",
 ] as const satisfies readonly StatusSectionId[];
 const STATUS_SECTION_ID_SET = new Set<string>(STATUS_SECTION_IDS);
 const DEFAULT_STATUS_SECTION_ID: StatusSectionId = "open-plans";

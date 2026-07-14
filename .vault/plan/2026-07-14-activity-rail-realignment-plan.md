@@ -122,11 +122,11 @@ The panel open-state stores, the served framework-health chip projections, and t
 
 Mount the footer cluster and the four modal panels on the Settings-dialog idiom, re-mounting the two existing console bodies and building the two new health bodies; evict the admin sections from the rail (ADR D1/D3).
 
-- [ ] `P03.S07` - Build the rail-footer FrameworkStatusCluster strip mirroring the bound frame - pinned outside the rail scroll, one FocusZone tab stop, chips dispatch the panel toggle descriptors; `frontend/src/app/right/FrameworkStatusCluster.tsx`.
-- [ ] `P03.S08` - Build the four modal control panels over the Dialog primitive gated on the open-state store - re-mount RagOpsConsoleBody and ReviewStationSection bodies, mount the host once in the shell; `frontend/src/app/panels/ControlPanels.tsx`.
-- [ ] `P03.S09` - Build the Backend health panel body - per-tier availability with plain-language names and reasons plus engine and core reachability - from the stores projection only; `frontend/src/app/panels/BackendHealthPanel.tsx`.
-- [ ] `P03.S10` - Build the Vault health panel body - served vault health word plus the existing vault-check ops verb with receipt; `frontend/src/app/panels/VaultHealthPanel.tsx`.
-- [ ] `P03.S11` - Evict the Search service and Approvals SectionCards from the rail and retire the rag-ops, rag-ops:details, and authoring-review section ids; `frontend/src/app/right/StatusTab.tsx`.
+- [x] `P03.S07` - Build the rail-footer FrameworkStatusCluster strip mirroring the bound frame - pinned outside the rail scroll, one FocusZone tab stop, chips dispatch the panel toggle descriptors; `frontend/src/app/right/FrameworkStatusCluster.tsx`.
+- [x] `P03.S08` - Build the four modal control panels over the Dialog primitive gated on the open-state store - re-mount RagOpsConsoleBody and ReviewStationSection bodies, mount the host once in the shell; `frontend/src/app/panels/ControlPanels.tsx`.
+- [x] `P03.S09` - Build the Backend health panel body - per-tier availability with plain-language names and reasons plus engine and core reachability - from the stores projection only; `frontend/src/app/panels/BackendHealthPanel.tsx`.
+- [x] `P03.S10` - Build the Vault health panel body - served vault health word plus the existing vault-check ops verb with receipt; `frontend/src/app/panels/VaultHealthPanel.tsx`.
+- [x] `P03.S11` - Evict the Search service and Approvals SectionCards from the rail and retire the rag-ops, rag-ops:details, and authoring-review section ids; `frontend/src/app/right/StatusTab.tsx`.
 
 ### Phase `P04` - Compact parity, test re-pinning, gate
 

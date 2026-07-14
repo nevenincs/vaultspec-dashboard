@@ -1,0 +1,151 @@
+// The rail-footer framework status cluster (activity-rail-realignment ADR D2). A
+// slim strip pinned to the activity rail's bottom edge — OUTSIDE the scroll region
+// — with one chip per framework control panel: Search service, Approvals, Backend
+// health, Vault health. Each chip shows only a served health tone (the standard
+// status-dot vocabulary) plus at most one served count, and toggles its modal
+// panel.
+//
+// Layer ownership (dashboard-layer-ownership / views-are-projections): this is a
+// DUMB app-chrome view. Tones and counts come from ONE interpreted stores
+// projection (`useFrameworkStatusView`) — it fetches nothing and never inspects
+// the raw `tiers` block. Each chip dispatches the ONE shared ActionDescriptor per
+// panel (`controlPanelToggleAction`), the same verb the command palette and the
+// keymap fire — never a bespoke per-surface handler (actions-keymap-palette).
+//
+// Keyboard (keyboard-navigation): the four chips are ONE FocusZone tab stop —
+// Tab enters/leaves the cluster while Left/Right (Home/End) rove between chips
+// (name-as-contract binding Figma frame FrameworkStatusCluster).
+
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useState } from "react";
+
+import {
+  CONTROL_PANEL_IDS,
+  useOpenControlPanel,
+  type ControlPanelId,
+} from "../../stores/view/controlPanels";
+import { controlPanelToggleAction } from "../../stores/view/chromeActions";
+import {
+  useFrameworkStatusView,
+  type FrameworkStatusChip,
+  type FrameworkStatusTone,
+} from "../../stores/server/queries";
+import { useFocusZone } from "../chrome/useFocusZone";
+
+/** Tone -> the bound status-dot fill (the health triad; never raw hex). `unknown`
+ *  is the pre-resolution muted state. */
+const TONE_DOT_CLASS: Record<FrameworkStatusTone, string> = {
+  ok: "bg-state-active",
+  attention: "bg-state-stale",
+  down: "bg-state-broken",
+  unknown: "bg-ink-faint",
+};
+
+/** Tone -> a plain-language health word for the chip's accessible name. */
+const TONE_WORD: Record<FrameworkStatusTone, string> = {
+  ok: "healthy",
+  attention: "attention",
+  down: "unavailable",
+  unknown: "checking",
+};
+
+export interface StatusChipProps {
+  chip: FrameworkStatusChip;
+  /** Whether this chip's panel is the open one. */
+  open: boolean;
+  /** Toggle this chip's panel (the shared descriptor's run). */
+  onToggle: () => void;
+  /** FocusZone item ref registering the button in the roving order. */
+  chipRef: (el: HTMLElement | null) => void;
+  tabIndex: 0 | -1;
+  onKeyDown: (event: ReactKeyboardEvent) => void;
+  onFocus: () => void;
+}
+
+/** One cluster chip: a tone dot, the plain-language plane label, and at most one
+ *  served count. Pure presentation — the parent supplies the served chip, the
+ *  open flag, and the shared toggle so the chip stays wire- and store-free. */
+export function StatusChip({
+  chip,
+  open,
+  onToggle,
+  chipRef,
+  tabIndex,
+  onKeyDown,
+  onFocus,
+}: StatusChipProps) {
+  return (
+    <button
+      type="button"
+      ref={chipRef as (el: HTMLButtonElement | null) => void}
+      tabIndex={tabIndex}
+      onKeyDown={onKeyDown}
+      onFocus={onFocus}
+      onClick={onToggle}
+      aria-pressed={open}
+      aria-label={`${chip.label} — ${TONE_WORD[chip.tone]}`}
+      data-framework-chip
+      data-tone={chip.tone}
+      className="flex min-w-0 items-center gap-fg-1 rounded-fg-sm px-fg-1-5 py-fg-1 transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-pressed:bg-paper-sunken"
+    >
+      <span
+        aria-hidden
+        className={`size-fg-2 shrink-0 rounded-full ${TONE_DOT_CLASS[chip.tone]}`}
+      />
+      <span className="min-w-0 truncate text-meta font-medium text-ink-muted">
+        {chip.label}
+      </span>
+      {chip.count !== undefined && (
+        <span className="shrink-0 text-caption tabular-nums text-ink-faint">
+          {chip.count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/**
+ * The framework status cluster strip. Renders one chip per control panel from the
+ * served projection; the four chips share one FocusZone tab stop with horizontal
+ * roving. Mounted as a pinned footer beneath the activity rail scroll region.
+ */
+export function FrameworkStatusCluster() {
+  const view = useFrameworkStatusView();
+  // The panels are MODAL (single-open), so one selector yields the open id and
+  // each chip's open flag is a value compare — no per-chip store hook in a loop.
+  const openPanel = useOpenControlPanel();
+  const [active, setActive] = useState<string | null>(null);
+  const zone = useFocusZone({
+    orientation: "horizontal",
+    wrap: false,
+    activeKey: active,
+    onActiveKeyChange: setActive,
+  });
+  return (
+    <div
+      role="group"
+      aria-label="Framework status"
+      data-framework-status-cluster
+      className="flex shrink-0 items-center justify-between gap-fg-1 border-t border-rule bg-paper-raised px-fg-2 py-fg-1-5"
+    >
+      {CONTROL_PANEL_IDS.map((id: ControlPanelId) => {
+        const item = zone.rove(id);
+        // The ONE shared toggle descriptor for this panel — composed here exactly
+        // as the command palette and keymap compose it, so the chip cannot drift.
+        const action = controlPanelToggleAction(id);
+        return (
+          <StatusChip
+            key={id}
+            chip={view[id]}
+            open={openPanel === id}
+            onToggle={action.run ?? (() => {})}
+            chipRef={item.ref}
+            tabIndex={item.tabIndex}
+            onKeyDown={item.onKeyDown}
+            onFocus={() => setActive(id)}
+          />
+        );
+      })}
+    </div>
+  );
+}

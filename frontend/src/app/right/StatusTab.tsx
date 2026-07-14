@@ -36,7 +36,6 @@ import type { ButtonHTMLAttributes, Ref, ReactNode } from "react";
 import { CircleDot, GitMerge, GitPullRequest } from "lucide-react";
 
 import { useFocusZone } from "../chrome/useFocusZone";
-import { RagOpsConsoleBody } from "./RagOpsConsole";
 
 import {
   DEFAULT_HISTORY_LIMIT,
@@ -76,7 +75,6 @@ import {
 import { activateEntity } from "../../stores/view/activateEntity";
 import { freshnessLabel } from "../presentation/freshness";
 import { ChangesOverview } from "./ChangesOverview";
-import { ReviewStationSection } from "../authoring/ReviewStation";
 import { PlanStepTree } from "./PlanStepTree";
 import { RailDegraded, RailEmpty, RailLoading, type RailState } from "./railStates";
 // Centralized kit primitives (design-system-is-centralized).
@@ -776,32 +774,10 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
           </SectionCard>
         </>
       )}
-      {/* The machine-level search-service console is independent of corpus state
-          (it manages the one machine service), so it renders in every rail state,
-          collapsed by default. Plain-language title: the backing service name
-          stays internal vocabulary (labels-are-user-facing). */}
-      <SectionCard
-        {...headerNav("rag-ops")}
-        id="rag-ops"
-        title="Search service"
-        defaultOpen={false}
-      >
-        <RagOpsConsoleBody />
-      </SectionCard>
-      {/* The agentic-authoring approvals queue (W03.P40): the human-in-the-loop
-          proposal review surface, titled with the standard reviewer vocabulary
-          ("Approvals", 2026-07-12 rename — "Review station" was invented
-          vocabulary). Independent of corpus state (it manages authoring
-          proposals, not the graph), so — like the search-service console — it
-          renders in every rail state, collapsed by default. */}
-      <SectionCard
-        {...headerNav("authoring-review")}
-        id="authoring-review"
-        title="Approvals"
-        defaultOpen={false}
-      >
-        <ReviewStationSection />
-      </SectionCard>
+      {/* The two admin consoles (Search service, Approvals) were evicted from the
+          rail into modal control panels (activity-rail-realignment ADR D1/D3);
+          the rail is status-only. They are reached from the rail-footer framework
+          status cluster now. */}
     </div>
   );
 }
