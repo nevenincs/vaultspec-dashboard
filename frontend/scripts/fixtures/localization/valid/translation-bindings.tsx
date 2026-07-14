@@ -8,7 +8,7 @@ import {
 } from "../../../../src/platform/localization/message";
 import * as LocalizationRuntime from "../../../../src/platform/localization/runtime";
 
-export function ValidTranslationBindings() {
+export function ValidTranslationBindings(props: { readonly dynamicKey: string }) {
   const hookResult = useLocale();
   const { t: translate, i18n: boundRuntime } = useLocale();
   const namespaceHook = ReactLocalization.useTranslation();
@@ -28,6 +28,14 @@ export function ValidTranslationBindings() {
   });
   const confirmationFields = { body, cancelLabel, confirmLabel, title };
   const spreadConfirmation = describeConfirmation({ ...confirmationFields });
+  const dynamicFirstFields = {
+    ...confirmationFields,
+    body: { key: props.dynamicKey },
+  };
+  const staticOverrideConfirmation = describeConfirmation({
+    ...dynamicFirstFields,
+    body,
+  });
 
   return (
     <>
@@ -41,6 +49,7 @@ export function ValidTranslationBindings() {
       {message?.key}
       {shorthandConfirmation?.cancelLabel.key}
       {spreadConfirmation?.confirmLabel.key}
+      {staticOverrideConfirmation?.body.key}
     </>
   );
 }

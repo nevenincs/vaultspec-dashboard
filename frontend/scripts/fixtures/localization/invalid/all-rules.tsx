@@ -8,6 +8,7 @@ const FIXED_LOCALE = "en-US";
 export function InvalidLocalizationRules(props: {
   readonly locale: string;
   readonly messageKey: string;
+  readonly overrideMessageKey: string;
   readonly ready: boolean;
 }) {
   const { t: translate } = useLocale();
@@ -29,6 +30,17 @@ export function InvalidLocalizationRules(props: {
   } as const;
   const title = { key: "errors:unexpectedApplication.title" } as const;
   describeConfirmation({ body: dynamicBody, cancelLabel, confirmLabel, title });
+  const staticConfirmationFields = {
+    body: { key: "errors:unexpectedApplication.message" } as const,
+    cancelLabel,
+    confirmLabel,
+    title,
+  };
+  const laterDynamicBody = { key: props.overrideMessageKey };
+  describeConfirmation({
+    ...staticConfirmationFields,
+    body: laterDynamicBody,
+  });
   const rawConfirmationFields = {
     body: "Raw confirmation body",
     cancelLabel,

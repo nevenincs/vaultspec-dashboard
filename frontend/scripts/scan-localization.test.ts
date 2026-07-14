@@ -67,6 +67,13 @@ describe("localization source scanner", () => {
     expect(
       findings.some(
         ({ code, snippet }) =>
+          code === FINDING_CODES.dynamicMessageKey &&
+          snippet.includes("overrideMessageKey"),
+      ),
+    ).toBe(true);
+    expect(
+      findings.some(
+        ({ code, snippet }) =>
           code === FINDING_CODES.presentationField &&
           snippet.includes("Raw confirmation body"),
       ),
@@ -77,6 +84,29 @@ describe("localization source scanner", () => {
     expect(scanFiles([generatedCommentFile]).map(({ code }) => code)).toContain(
       FINDING_CODES.jsxText,
     );
+  });
+
+  it("returns identical ordered findings and IDs across repeated scans", () => {
+    const first = scanFiles([allRulesFile]);
+    expect(scanFiles([allRulesFile])).toEqual(first);
+    expect(first.map(({ id }) => id)).toEqual([
+      "ddfbbbc3451009e6e64c94cd",
+      "4a2e7fcfb8b325a010bd3f59",
+      "e7b02641ec4724af326880b3",
+      "4f17b6c0fdb8e62299b28f6c",
+      "dd0f8dd99a7b822ec52c7ada",
+      "adcb46be250028eebb8a951c",
+      "4e27205c6418d45e05347497",
+      "8fcc76ca0fde37f2ae260173",
+      "f8668aef113cb459b9c3fbe3",
+      "28e67bf40758439e28cf5076",
+      "b8b455ed03729d27e63a6594",
+      "ba833345be016286229ce2ed",
+      "e0c9e9e892a51c91f2be815c",
+      "0ce0163dfdc76fb7f3a1cde7",
+      "befb64a7b32ef58615b03c31",
+      "efd39eb35f00920207a45041",
+    ]);
   });
 
   it("detects new, stale, and metadata-tampered baseline entries", () => {
@@ -124,6 +154,16 @@ describe("localization source scanner", () => {
     expect(() =>
       validateAllowlistEntries([{ ...entry, path: "../outside.ts" }]),
     ).toThrowError("Localization allowlist contains an invalid entry.");
+    for (const path of [
+      "scripts\\outside.ts",
+      "C:\\outside.ts",
+      "\\\\server\\share\\outside.ts",
+      "/outside.ts",
+    ]) {
+      expect(() => validateAllowlistEntries([{ ...entry, path }]), path).toThrowError(
+        "Localization allowlist contains an invalid entry.",
+      );
+    }
     expect(() => validateAllowlistEntries([entry, entry])).toThrowError(
       "Localization allowlist contains an invalid entry.",
     );

@@ -59,15 +59,18 @@ related:
   translated fragments, dynamic keys, and translation-default detection.
 - Validate exact baseline comparison, metadata refusal, one-time initialization, and
   bounded expression, file, and finding behavior.
+- Prove spread source-order overrides, deterministic finding identity, and portable path
+  metadata refusal.
 
 ## Outcome
 
 The scanner contract is covered by real source fixtures that distinguish valid dynamic
 data and diagnostics from user-facing literals. Adverse fixtures exercise all nine
-finding codes, while baseline and resource-bound tests fail closed on unsafe input.
+finding codes, while baseline, path, ordering, and resource-bound tests fail closed on
+unsafe input.
 
 ## Notes
 
 The initial valid-fixture run exposed a structured confirmation-signature defect in the
 scanner. The scanner owner corrected that defect, and the unchanged fixture then passed.
-Targeted formatting, lint, TypeScript, and all seven real scanner tests pass.
+Targeted formatting, lint, TypeScript, and all eight real scanner tests pass.
