@@ -9,6 +9,7 @@ pub mod code;
 pub mod embeddings;
 pub mod envelope;
 pub mod events;
+pub mod features;
 pub mod filter;
 pub mod graph;
 pub mod lineage;

@@ -859,6 +859,43 @@ pub async fn filters(
     ))
 }
 
+// --- GET /features?scope=&feature= ------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct FeaturesParams {
+    pub scope: String,
+    /// Which feature group's pipeline coverage to serve. When present, the
+    /// response is that feature's full coverage; when absent, the compact
+    /// all-features roster (feature-group-authoring ADR D2).
+    #[serde(default)]
+    pub feature: Option<String>,
+}
+
+/// Per-feature pipeline coverage for the feature-group panel
+/// (feature-group-authoring ADR D2/D3): resolve the per-request scope to its warm
+/// cell, read the generation-memoized whole-corpus coverage map, and serve either
+/// the requested feature's coverage or the compact roster through the shared
+/// envelope so the tiers block rides success and the unknown-scope 400 alike. An
+/// unknown feature (a new one being started in the panel) reads as an all-missing
+/// coverage — exactly the "start a new feature" state — never a 404.
+pub async fn features(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<FeaturesParams>,
+) -> ApiResult {
+    let cell = validate_scope(&state, &params.scope)?;
+    // The coverage map is generation-stable (it changes only on a rebuild), so it
+    // is memoized per generation on the cell (cache-until-invalidated): a repeat
+    // panel read is a warm lookup, not a re-scan of every `doc:` node. One cached
+    // map serves both the per-feature read and the roster. Invalidated on a
+    // watcher rebuild.
+    let coverage = cell.feature_coverage();
+    let data = match params.feature.as_deref() {
+        Some(feature) => json!({ "coverage": coverage.coverage_for(feature) }),
+        None => json!({ "roster": coverage.roster() }),
+    };
+    Ok(super::envelope(data, rag_tiers(&cell), None))
+}
+
 // --- /nodes/{id} family --------------------------------------------------------------
 
 pub async fn node_detail(

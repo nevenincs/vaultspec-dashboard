@@ -187,6 +187,7 @@ pub(crate) const API_PREFIXES: &[&str] = &[
     "/dashboard-state",
     "/graph",
     "/filters",
+    "/features",
     "/nodes",
     "/events",
     "/history",

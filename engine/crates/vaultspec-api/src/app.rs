@@ -170,6 +170,13 @@ pub struct ScopeCell {
     /// project the active plans/ADRs — a generation-stable projection. Invalidated
     /// on a generation bump.
     pub pipeline_cache: Mutex<Option<(u64, Arc<Vec<engine_query::pipeline::PipelineArtifact>>)>>,
+    /// The whole-corpus feature-coverage map (feature-group-authoring ADR D2),
+    /// memoized per generation. `/features` projects per-feature pipeline coverage
+    /// (present types + newest stems, missing types, eligibility, next step) over
+    /// the graph; the projection is generation-stable, so ONE cached map serves
+    /// both the per-feature read and the roster and repeat panel reads are warm.
+    /// Bounded by the roster cap at build. Invalidated on a generation bump.
+    pub feature_coverage_cache: Mutex<Option<(u64, Arc<engine_query::features::CoverageMap>)>>,
     /// The recent HEAD commit walk (subjects + touched paths), memoized per
     /// generation. `/history` ran a live `git log` walk against the object DB on
     /// EVERY poll; the walk is HEAD-stable (a new commit bumps the generation
@@ -546,6 +553,7 @@ impl ScopeCell {
             lineage_nodes_cache: Mutex::new(None),
             filters_vocab_cache: Mutex::new(None),
             pipeline_cache: Mutex::new(None),
+            feature_coverage_cache: Mutex::new(None),
             recent_commits_cache: Mutex::new(None),
             asof_cache: Mutex::new(VecDeque::new()),
             doc_index_cache: Mutex::new(None),
@@ -716,6 +724,32 @@ impl ScopeCell {
             &self.graph_arc(),
             &self.scope,
         ));
+        *cache = Some((generation, fresh.clone()));
+        fresh
+    }
+
+    /// The whole-corpus feature-coverage map (feature-group-authoring ADR D2),
+    /// memoized per generation. `/features` re-projected per-feature pipeline
+    /// coverage over every `doc:` node on each panel read; the map is
+    /// generation-stable (it changes only on a rebuild), so it is memoized here
+    /// (cache-until-invalidated) and the handler just looks up the requested
+    /// feature or derives the roster from the cached map — no per-read re-scan. A
+    /// single map serves both shapes and is bounded by the roster cap at build.
+    /// Invalidated on a generation bump. Deliberately NOT in `warm_projections`
+    /// (panel-triggered, not default-view): the first panel read per generation
+    /// pays the one full-corpus scan, like the lazily-warmed document views.
+    pub fn feature_coverage(&self) -> Arc<engine_query::features::CoverageMap> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        let mut cache = self
+            .feature_coverage_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_generation, cached)) = cache.as_ref()
+            && *cached_generation == generation
+        {
+            return cached.clone();
+        }
+        let fresh = Arc::new(engine_query::features::coverage_map(&self.graph_arc()));
         *cache = Some((generation, fresh.clone()));
         fresh
     }
@@ -1833,6 +1867,26 @@ mod tests {
         );
         let _ = cell.rebuild_and_swap();
         let c = cell.pipeline_artifacts();
+        assert_eq!(*a, *c, "content equal across a no-op rebuild");
+    }
+
+    #[test]
+    fn feature_coverage_is_memoized_per_generation() {
+        // `/features` re-projected per-feature coverage over every `doc:` node per
+        // panel read; the coverage map is generation-stable, so it is memoized per
+        // generation: a repeat panel read is a warm-cache hit (same Arc), a
+        // generation bump recomputes.
+        let (_dir, state) = fixture_state();
+        let cell = state.active_cell();
+        cell.rebuild_and_swap().unwrap();
+        let a = cell.feature_coverage();
+        let b = cell.feature_coverage();
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "same generation: the coverage map is a warm-cache hit, not re-projected"
+        );
+        let _ = cell.rebuild_and_swap();
+        let c = cell.feature_coverage();
         assert_eq!(*a, *c, "content equal across a no-op rebuild");
     }
 

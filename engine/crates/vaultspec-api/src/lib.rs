@@ -61,6 +61,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/graph/diff",
     "/graph/lineage",
     "/filters",
+    "/features",
     "/nodes/{id}",
     "/nodes/{id}/content",
     "/nodes/{id}/neighbors",
@@ -148,6 +149,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // error), bounded by the document node ceiling, semantic present-only.
         .route("/graph/lineage", get(routes::temporal::graph_lineage))
         .route("/filters", get(routes::query::filters))
+        .route("/features", get(routes::query::features))
         .route("/nodes/{id}", get(routes::query::node_detail))
         // Read-only, bounded content-fetch (review-rail-viewers ADR): the ONE
         // viewer backend — document/file bytes keyed on the stable node id,
