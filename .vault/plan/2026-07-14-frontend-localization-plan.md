@@ -65,7 +65,7 @@ Introduce real catalog invariants and a bounded source scanner that can tighten 
 
 - [x] `W01.P03.S13` - Validate the complete required key set across every shipped locale; `frontend/src/localization/catalogKeys.test.ts`.
 - [x] `W01.P03.S14` - Implement the bounded production-source localization scanner with narrow semantic exclusions; `frontend/scripts/scan-localization.mjs, frontend/scripts/localization-allowlist.json`.
-- [ ] `W01.P03.S15` - Add the localization scanner to the standard frontend lint gate; `frontend/package.json, justfile`.
+- [x] `W01.P03.S15` - Add the localization scanner to the standard frontend lint gate; `frontend/package.json, justfile`.
 - [x] `W01.P03.S16` - Prove the scanner against production files and real rule fixtures without mirrored business logic; `frontend/scripts/scan-localization.test.ts, frontend/scripts/fixtures/localization/`.
 - [x] `W01.P03.S119` - Validate interpolation parameter parity across every shipped locale; `frontend/src/localization/catalogInterpolation.test.ts`.
 - [ ] `W01.P03.S120` - Validate plural categories and formatter-backed dynamic messages against production resources; `frontend/src/localization/catalogPlural.test.ts`.

@@ -12,6 +12,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint src spike",
+    "lint:localization": "node scripts/scan-localization.mjs",
     "lint:px": "node scripts/scan-px.mjs",
     "lint:modules": "node scripts/scan-module-size.mjs",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"spike/**/*.ts\"",

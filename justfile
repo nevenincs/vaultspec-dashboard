@@ -131,6 +131,7 @@ _dev-lint-rust:
 
 _dev-lint-frontend:
   npm --prefix frontend run lint
+  npm --prefix frontend run lint:localization
   npm --prefix frontend run lint:px
   npm --prefix frontend run lint:modules
   npm --prefix frontend run format:check
