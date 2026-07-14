@@ -1975,21 +1975,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "49752b346cc75e4ce9de45ab",
-    "path": "src/app/menus/sharedActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "535c262827d961f00fc7e8d7",
-    "path": "src/app/menus/sharedActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "590626cd5644ecb5a3b0e3cc",
-    "path": "src/app/menus/sharedActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "5aca906298f425c162e7f43a",
     "path": "src/app/menus/sharedActions.ts",
     "rule": "legacy-action-presentation"
@@ -2001,11 +1986,6 @@
   },
   {
     "id": "a8ba0063caff29f45a2f4504",
-    "path": "src/app/menus/sharedActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "d018d9050d8ce1e03da0f795",
     "path": "src/app/menus/sharedActions.ts",
     "rule": "legacy-action-presentation"
   },

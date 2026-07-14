@@ -184,7 +184,9 @@ describe("vaultDocMenu", () => {
     });
     const relate = byId(actions, "vault-doc:relate");
     expect(relate?.disabled).toBe(true);
-    expect(relate?.disabledReason).toBe("focus a document to relate to");
+    expect(relate?.disabledReason).toEqual({
+      key: "documents:disabledReasons.selectDocument",
+    });
     expect(relate?.dispatch).toBeUndefined();
   });
 
@@ -220,7 +222,9 @@ describe("vaultDocMenu", () => {
     );
     const relate = byId(actions, "vault-doc:relate");
     expect(relate?.disabled).toBe(true);
-    expect(relate?.disabledReason).toBe("already this document");
+    expect(relate?.disabledReason).toEqual({
+      key: "documents:disabledReasons.selectDifferentDocument",
+    });
   });
 
   it("rejects non-vault-doc entities at resolver ingress", () => {

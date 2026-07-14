@@ -87,8 +87,6 @@ export interface RelateToSelectionOptions {
   scope?: string | null;
   /** The resolver context carrying the current `selectedNodeId` (the relate target). */
   ctx?: ActionContext;
-  /** Reason shown when the source itself is not a document (node surfaces). */
-  notADocumentReason?: string;
 }
 
 /**
@@ -107,7 +105,7 @@ export function relateToSelectionAction(
 ): ActionDescriptor {
   const base = {
     id: opts.id,
-    label: legacyActionPresentation("Relate to focused node"),
+    label: { key: "documents:actions.linkToSelectedDocument" } as const,
     section: "transform" as const,
     icon: Link2,
     disabledInTimeTravel: true,
@@ -116,9 +114,7 @@ export function relateToSelectionAction(
     return {
       ...base,
       disabled: true,
-      disabledReason: legacyActionPresentation(
-        opts.notADocumentReason ?? "not a document",
-      ),
+      disabledReason: { key: "documents:disabledReasons.selectDocument" } as const,
     };
   }
   const dstStem = docStemFromNodeId(opts.ctx?.selectedNodeId ?? null);
@@ -126,14 +122,16 @@ export function relateToSelectionAction(
     return {
       ...base,
       disabled: true,
-      disabledReason: legacyActionPresentation("focus a document to relate to"),
+      disabledReason: { key: "documents:disabledReasons.selectDocument" } as const,
     };
   }
   if (dstStem === opts.srcStem) {
     return {
       ...base,
       disabled: true,
-      disabledReason: legacyActionPresentation("already this document"),
+      disabledReason: {
+        key: "documents:disabledReasons.selectDifferentDocument",
+      } as const,
     };
   }
   return {

@@ -139,7 +139,6 @@ export function graphNodeMenu(
       srcStem: docStemFromNodeId(normalizedEntity.id),
       scope: normalizedEntity.scope,
       ctx,
-      notADocumentReason: "only documents can be related",
     }),
   );
   // Autofix the feature's documents (vault check all --fix). Feature-scoped, so it is

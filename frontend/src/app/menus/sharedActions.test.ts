@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { Link2 } from "lucide-react";
+
 import {
   resolveActionPresentation,
   type ActionPresentation,
@@ -40,26 +42,35 @@ describe("relateToSelectionAction", () => {
       id,
       srcStem: null,
       ctx: { timeTravel: false, selectedNodeId: "doc:b" },
-      notADocumentReason: "only documents can be related",
     });
+    expect(a.label).toEqual({ key: "documents:actions.linkToSelectedDocument" });
+    expect(resolvePresentation(a.label)).toBe("Link to selected document");
+    expect(a.section).toBe("transform");
+    expect(a.icon).toBe(Link2);
     expect(a.disabled).toBe(true);
-    expect(a.disabledReason).toBe("only documents can be related");
+    expect(a.disabledReason).toEqual({
+      key: "documents:disabledReasons.selectDocument",
+    });
+    expect(resolvePresentation(a.disabledReason!)).toBe("Select a document first.");
     expect(a.disabledInTimeTravel).toBe(true);
     expect(a.dispatch).toBeUndefined();
+    expect(a.run).toBeUndefined();
+    expect(a.confirm).toBeUndefined();
+    expect(a.confirmation).toBeUndefined();
   });
 
   it("disables when nothing (or no document) is focused", () => {
     expect(
       relateToSelectionAction({ id, srcStem: "a", ctx: { timeTravel: false } })
         .disabledReason,
-    ).toBe("focus a document to relate to");
+    ).toEqual({ key: "documents:disabledReasons.selectDocument" });
     expect(
       relateToSelectionAction({
         id,
         srcStem: "a",
         ctx: { timeTravel: false, selectedNodeId: "code:x" },
       }).disabledReason,
-    ).toBe("focus a document to relate to");
+    ).toEqual({ key: "documents:disabledReasons.selectDocument" });
   });
 
   it("disables when the focus is the same document", () => {
@@ -69,7 +80,7 @@ describe("relateToSelectionAction", () => {
         srcStem: "a",
         ctx: { timeTravel: false, selectedNodeId: "doc:a" },
       }).disabledReason,
-    ).toBe("already this document");
+    ).toEqual({ key: "documents:disabledReasons.selectDifferentDocument" });
   });
 
   it("dispatches the relate action (edit_frontmatter read-modify-write) for a distinct focused document", () => {
