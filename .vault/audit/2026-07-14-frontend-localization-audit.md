@@ -964,3 +964,23 @@ Targeted Prettier passed, and the complete frontend lint gate passed ESLint, pix
 module-size, formatting, TypeScript, token-drift, and Figma-name checks. S16 remains
 withheld until the confirmation override and deterministic Windows-path evidence above
 is checked in.
+
+### W01.P03.S16 remediation review | pass | Scanner-contract evidence completed
+
+Commit `dd7838b92f` resolves both S16 findings. The valid confirmation fixture composes
+a dynamic body and then replaces it with a later static descriptor; its production scan
+is clean. The adverse fixture starts with static fields and replaces the body with a
+later dynamic descriptor; the production scan emits `dynamic-message-key` for the
+distinct `overrideMessageKey` expression. Together these outcomes prove source-order
+spread precedence rather than merely exercising spread syntax.
+
+Repeated scans now compare the complete ordered finding objects and pin all sixteen
+ordered IDs, protecting stable baseline identity and ordering. Production allowlist
+validation directly rejects relative backslashes, drive-rooted, UNC-rooted, POSIX-
+rooted, and traversal paths. The checks use ordinary path strings and the real exported
+validator, so they remain portable and do not replace platform or filesystem behavior.
+
+All eight targeted Vitest cases and targeted Prettier checks passed. The suite still
+imports production scanner behavior directly, uses no fake, mock, stub, patch,
+monkeypatch, skip, expected failure, or mirrored scanner logic, and introduces no
+shipped UI or development metadata. S16 is accepted with no open findings.
