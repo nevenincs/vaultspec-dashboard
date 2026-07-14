@@ -108,3 +108,14 @@ related:
   ink, the latter tints only an aria-hidden glyph.
 - The panel-hosted create dialog eyebrow (`In this feature`) was verified as an
   intentional keep from the earlier phase and left unchanged.
+
+## Handoff (post-close)
+
+The concurrent rag-job-dashboard lane deleted `right/RagOpsConsole.tsx`
+mid-sweep, taking ~11 of this step's re-tokens with it. The ruling now
+binds that lane's REPLACEMENT panels (`RagJobsTable`, `RagLogPane`,
+`RagJobDashboard`, `RagDashboardFooter`): job kind/detail/result
+secondaries, counts, reindex progress, slot lines, lower-bound notes, and
+degraded/health reasons are information-bearing small text -> ink-muted;
+faint stays only on glyphs/eyebrows/placeholders/separators. Recorded here
+and in the audit recommendations for that lane to pick up.

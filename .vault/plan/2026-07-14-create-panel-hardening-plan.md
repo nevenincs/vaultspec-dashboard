@@ -45,7 +45,7 @@ Lock the compact presentation and every fixed behavior with tests (viewport-clas
 
 - [x] `P03.S08` - Author the compact render suite (viewport-class driven): footer reachability with constrained height, listbox containment, touch-target floors, and the 320-width presentation; `frontend/src/app/left/CreateDocDialog.compact.render.test.tsx`.
 - [x] `P03.S09` - Add keyboard and announcement regression tests: stage-transition focus, default initial focus, aria-disabled reason reachability, Home and End, draft preservation on Escape; `frontend/src/app/left/CreateDocDialog.render.test.tsx`.
-- [ ] `P03.S10` - Run the full lint gate for the frontend and vault check all, confirm exit 0 for our lane, and route the phase set to code review; `just dev lint frontend`.
+- [x] `P03.S10` - Run the full lint gate for the frontend and vault check all, confirm exit 0 for our lane, and route the phase set to code review; `just dev lint frontend`.
 
 ### Phase `P04` - Follow-on delivery: prerequisite affordance, link re-add, ink-faint ruling
 
@@ -54,7 +54,7 @@ Deliver the three items the audit deferred, per user direction: the ADR D3 one-c
 - [x] `P04.S11` - Add the one-click prerequisite affordance on ineligible type rows: activating the reason selects and focuses the missing upstream type (ADR D3's promised path); `frontend/src/app/left/CreateDocDialog.tsx`.
 - [x] `P04.S12` - Add a corpus-fed add-link affordance to the Linked documents row so removed links are keyboard-recoverable, reusing the shared combobox over the linking corpus; `frontend/src/app/left/CreateDocDialog.tsx`.
 - [x] `P04.S13` - Record the ink-faint ruling in the token ledger (large-text and decorative only) and re-token every information-bearing small-text ink-faint usage app-wide to a passing ink; `frontend/src/styles.css and surveyed usage sites`.
-- [ ] `P04.S14` - Extend the render and store tests for the prerequisite affordance and link re-add, and re-run the full frontend gate and vault check green; `frontend/src/app/left/CreateDocDialog.render.test.tsx`.
+- [x] `P04.S14` - Extend the render and store tests for the prerequisite affordance and link re-add, and re-run the full frontend gate and vault check green; `frontend/src/app/left/CreateDocDialog.render.test.tsx`.
 
 ## Description
 

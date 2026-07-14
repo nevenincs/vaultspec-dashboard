@@ -192,3 +192,10 @@ compliant doc-type radios (~53px).
 - Defer as named follow-ons: the D3 one-click-prerequisite affordance, a
   keyboard re-add affordance for removed links, and the systemic ink-faint
   design-system ruling.
+
+## Post-closeout handoff
+
+- The ink-faint ruling (recorded in the token ledger) binds the concurrent
+  rag-job-dashboard lane's new panels, which replaced the rag console mid-
+  sweep and inherited its un-re-tokened information-bearing small text.
+  That lane owns the re-token; the specifics live in the S13 step record.
