@@ -65,4 +65,6 @@ safe fallback boundary.
 
 The full frontend lint gate passed. A temporary real render test passed with the
 project's DOM environment and was removed because the durable runtime suite belongs to
-the later test step. No scaffolds remain.
+the later test step. Review follow-up stabilized the hook's namespace and option inputs
+so unrelated renders do not recreate its subscription configuration. No scaffolds
+remain.
