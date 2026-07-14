@@ -161,3 +161,18 @@ record's safety outcome and re-run real-runtime assertions for ordinary interpol
 plural `count`, `context`, missing nested resources, malformed translators and
 descriptors, source-catalog fallback, and translation-like user data before marking the
 step accepted.
+
+### W01.P01.S117 remediation review | pass | Findings resolved
+
+Commit `775cffb3b5` resolves both S117 findings with no open findings. The resolver now
+reads the selected raw template with interpolation and nesting disabled, rejects nested,
+unbalanced, malformed, excessive, or unprovided catalog tokens before normal
+translation, and validates the final value without scanning substituted user data.
+Targeted assertions using real i18next instances proved safe fallback for unresolved
+nested keys, missing interpolation values, malformed tokens, and key echoes; verbatim
+preservation of user values containing `$t(...)` and `{{...}}`; valid plural and named
+interpolation; and direct source-catalog recovery when the localized fallback template
+is malformed. The production module remains React-free and store-free, terminates
+without fallback recursion, and passes the full TypeScript 6 project check. The updated
+execution record accurately describes the defect, remediation, and temporary real-runtime
+verification.
