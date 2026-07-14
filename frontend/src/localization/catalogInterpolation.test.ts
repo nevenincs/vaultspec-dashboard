@@ -7,7 +7,7 @@ import {
   rtlTestLocale,
   rtlTestResources,
 } from "./testing";
-import { resources } from "../locales/en";
+import { resources, sourceLocale } from "../locales/en";
 import { resolveMessage } from "../platform/localization/fallback";
 import {
   createMessageDescriptor,
@@ -88,13 +88,21 @@ function catalogTemplate(locale: string, key: MessageKey): CatalogTemplate {
 }
 
 describe("production catalog interpolation", () => {
-  it("checks every production template for valid bounded interpolation syntax", () => {
+  it("checks production syntax and preserves shipped-locale token parity", () => {
     expect(supportedLocales.length).toBeGreaterThan(0);
     expect(MESSAGE_KEYS.length).toBeGreaterThan(0);
 
-    for (const locale of supportedLocales) {
-      for (const key of MESSAGE_KEYS) {
-        catalogTemplate(locale, key);
+    for (const key of MESSAGE_KEYS) {
+      const sourceTokens = new Set(catalogTemplate(sourceLocale, key).tokenNames);
+
+      for (const locale of supportedLocales) {
+        if (locale === sourceLocale) continue;
+
+        const localeTokens = new Set(catalogTemplate(locale, key).tokenNames);
+        expect(
+          localeTokens,
+          `${locale}:${key} must preserve the source interpolation parameters`,
+        ).toEqual(sourceTokens);
       }
     }
   });
