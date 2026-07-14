@@ -6,6 +6,7 @@
 // the whitelist and never touches the engine client itself.
 
 import { appDispatcher } from "../../platform/dispatch/middleware";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import {
   engineClient,
   type OpsArchiveBody,
@@ -44,20 +45,67 @@ export interface OpsPayload {
 }
 
 export interface OpsWhitelistEntry {
-  target: OpsPayload["target"];
-  verb: string;
-  label: string;
+  readonly target: OpsPayload["target"];
+  readonly verb: string;
+  readonly concept: OperationConcept;
+  readonly label: MessageDescriptor;
 }
 
+export type OperationConcept =
+  | "check-workspace"
+  | "show-workspace-details"
+  | "enable-search"
+  | "disable-search"
+  | "refresh-search"
+  | "apply-search-settings";
+
 /** The R1 app-exposed ops whitelist, owned with the dispatch seam. */
-export const OPS_WHITELIST: readonly OpsWhitelistEntry[] = [
-  { target: "core", verb: "vault-check", label: "vault check" },
-  { target: "core", verb: "vault-stats", label: "vault stats" },
-  { target: "rag", verb: "server-start", label: "start rag" },
-  { target: "rag", verb: "server-stop", label: "stop rag" },
-  { target: "rag", verb: "reindex", label: "reindex" },
-  { target: "rag", verb: "watcher-reconfigure", label: "watcher tuning" },
-];
+export const OPS_WHITELIST = Object.freeze([
+  Object.freeze({
+    target: "core",
+    verb: "vault-check",
+    concept: "check-workspace",
+    label: Object.freeze({ key: "operations:actions.checkWorkspace" } as const),
+  }),
+  Object.freeze({
+    target: "core",
+    verb: "vault-stats",
+    concept: "show-workspace-details",
+    label: Object.freeze({
+      key: "operations:actions.showWorkspaceDetails",
+    } as const),
+  }),
+  Object.freeze({
+    target: "rag",
+    verb: "server-start",
+    concept: "enable-search",
+    label: Object.freeze({ key: "operations:actions.enableSearch" } as const),
+  }),
+  Object.freeze({
+    target: "rag",
+    verb: "server-stop",
+    concept: "disable-search",
+    label: Object.freeze({ key: "operations:actions.disableSearch" } as const),
+  }),
+  Object.freeze({
+    target: "rag",
+    verb: "reindex",
+    concept: "refresh-search",
+    label: Object.freeze({ key: "operations:actions.refreshSearch" } as const),
+  }),
+  Object.freeze({
+    target: "rag",
+    verb: "watcher-reconfigure",
+    concept: "apply-search-settings",
+    label: Object.freeze({
+      key: "operations:actions.applySearchSettings",
+    } as const),
+  }),
+] as const satisfies readonly OpsWhitelistEntry[]);
+
+const OPS_WHITELIST_BY_ROUTE: ReadonlyMap<string, OpsWhitelistEntry> = new Map(
+  OPS_WHITELIST.map((entry) => [`${entry.target}:${entry.verb}`, entry]),
+);
 
 const OPS_RAG_CONTROL_VERBS = new Set([
   "server-start",
@@ -77,9 +125,7 @@ const OPS_CORE_AUTOFIX_VERB = "autofix";
 export function isOpsWhitelistIntent(
   payload: Pick<OpsPayload, "target" | "verb">,
 ): boolean {
-  return OPS_WHITELIST.some(
-    (entry) => entry.target === payload.target && entry.verb === payload.verb,
-  );
+  return lookupOpsWhitelistEntry(payload.target, payload.verb) !== null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,15 +146,24 @@ export function normalizeOpsVerb(value: unknown): string | null {
     : null;
 }
 
+/** Resolve a normalized operation route to its one immutable whitelist entry. */
+export function lookupOpsWhitelistEntry(
+  targetValue: unknown,
+  verbValue: unknown,
+): OpsWhitelistEntry | null {
+  const target = normalizeOpsTarget(targetValue);
+  const verb = normalizeOpsVerb(verbValue);
+  return target === null || verb === null
+    ? null
+    : (OPS_WHITELIST_BY_ROUTE.get(`${target}:${verb}`) ?? null);
+}
+
 export function normalizeOpsWhitelistIntent(
   payload: unknown,
 ): Pick<OpsPayload, "target" | "verb"> | null {
   if (!isRecord(payload)) return null;
-  const target = normalizeOpsTarget(payload.target);
-  const verb = normalizeOpsVerb(payload.verb);
-  if (target === null || verb === null) return null;
-  const intent = { target, verb };
-  return isOpsWhitelistIntent(intent) ? intent : null;
+  const entry = lookupOpsWhitelistEntry(payload.target, payload.verb);
+  return entry === null ? null : { target: entry.target, verb: entry.verb };
 }
 
 function isOpsTarget(value: unknown): value is OpsPayload["target"] {

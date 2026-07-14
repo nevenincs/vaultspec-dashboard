@@ -77,6 +77,7 @@ describe("opsCommandProvider", () => {
     expect(reindex?.confirm).toBe(true);
     expect(reindex?.disabledInTimeTravel).toBe(true);
     expect(reindex?.family).toBe("rag");
+    expect(reindex?.label).toEqual({ key: "operations:actions.refreshSearch" });
   });
 
   it("routes a verb through the injected runOp intent", () => {

@@ -5870,36 +5870,6 @@
     "rule": "presentation-field"
   },
   {
-    "id": "166546607a2615757c238433",
-    "path": "src/stores/server/opsActions.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "38989c493d423cd6d42fa998",
-    "path": "src/stores/server/opsActions.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "728784b09914ac17181c00c0",
-    "path": "src/stores/server/opsActions.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "81fbb1f9818fd758602c5809",
-    "path": "src/stores/server/opsActions.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "c68c7269b84ec6d3f5487691",
-    "path": "src/stores/server/opsActions.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "f3059b800bff6ba6ca45fe59",
-    "path": "src/stores/server/opsActions.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "63aed80b62fe86912485070a",
     "path": "src/stores/server/queries/dashboard.ts",
     "rule": "presentation-field"
@@ -6263,11 +6233,6 @@
     "id": "e2fd88b4101d23c01311a9bd",
     "path": "src/stores/view/commandPaletteCommands.ts",
     "rule": "presentation-field"
-  },
-  {
-    "id": "7b09a331fd3852bef7daf5a6",
-    "path": "src/stores/view/commandProviders/opsCommandProvider.ts",
-    "rule": "legacy-action-presentation"
   },
   {
     "id": "348ba81b61fba2e83dbbffb6",

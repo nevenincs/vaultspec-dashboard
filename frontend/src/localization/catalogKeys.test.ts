@@ -19,6 +19,7 @@ const EXPECTED_NAMESPACES = [
   "errors",
   "features",
   "graph",
+  "operations",
   "projects",
 ] as const;
 const EXPECTED_CATALOG_KEYS = [
@@ -146,6 +147,12 @@ const EXPECTED_CATALOG_KEYS = [
   "graph:actions.moveToNextConnectedItem",
   "graph:actions.moveToPreviousConnectedItem",
   "graph:actions.openFocusedItem",
+  "operations:actions.applySearchSettings",
+  "operations:actions.checkWorkspace",
+  "operations:actions.disableSearch",
+  "operations:actions.enableSearch",
+  "operations:actions.refreshSearch",
+  "operations:actions.showWorkspaceDetails",
   "projects:actions.add",
   "projects:actions.clearHistory",
   "projects:actions.switch",

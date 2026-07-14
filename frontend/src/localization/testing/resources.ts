@@ -132,6 +132,16 @@ export const ltrTestResources = {
       openFocusedItem: "Ouvrir l’élément actif",
     },
   },
+  operations: {
+    actions: {
+      applySearchSettings: "Appliquer les paramètres de recherche",
+      checkWorkspace: "Vérifier l’espace de travail",
+      disableSearch: "Désactiver la recherche",
+      enableSearch: "Activer la recherche",
+      refreshSearch: "Actualiser la recherche",
+      showWorkspaceDetails: "Afficher les détails de l’espace de travail",
+    },
+  },
   projects: en.projects,
 } as const;
 
@@ -245,6 +255,16 @@ export const rtlTestResources = {
       moveToNextConnectedItem: "الانتقال إلى العنصر المتصل التالي",
       moveToPreviousConnectedItem: "الانتقال إلى العنصر المتصل السابق",
       openFocusedItem: "فتح العنصر المحدد",
+    },
+  },
+  operations: {
+    actions: {
+      applySearchSettings: "تطبيق إعدادات البحث",
+      checkWorkspace: "فحص مساحة العمل",
+      disableSearch: "تعطيل البحث",
+      enableSearch: "تمكين البحث",
+      refreshSearch: "تحديث البحث",
+      showWorkspaceDetails: "عرض تفاصيل مساحة العمل",
     },
   },
   projects: en.projects,
