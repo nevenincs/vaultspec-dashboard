@@ -47,7 +47,7 @@ export const LEFT_RAIL_TOGGLE_FACETS_ACTION_ID = "left-rail:toggle-facets";
 export const LEFT_RAIL_RESET_FILTERS_ACTION_ID = "left-rail:reset-filters";
 export const LEFT_RAIL_RESET_SORTING_ACTION_ID = "left-rail:reset-sorting";
 
-export const LEFT_RAIL_NEW_DOC_LABEL = "New Document…";
+export const LEFT_RAIL_NEW_DOC_LABEL = "Add to a Feature…";
 export const LEFT_RAIL_EXPAND_TREE_LABEL = "Expand Vault Tree";
 export const LEFT_RAIL_COLLAPSE_TREE_LABEL = "Collapse Vault Tree";
 export const LEFT_RAIL_TOGGLE_FACETS_LABEL = "Toggle Filter Facets";
@@ -123,7 +123,7 @@ export function deriveLeftRailKeybindings(): KeybindingDef[] {
 // lands once and every surface inherits it (the unified action plane).
 
 /**
- * "New document" — opens the global create-document dialog, optionally pre-filling
+ * "Add to a Feature" — opens the global create-document dialog, optionally pre-filling
  * the feature tag from the surface that invoked it and/or requesting focus on the
  * feature field (the Features-section create affordance). The id is ALWAYS the one
  * shared `left-rail:new-document`, whatever the options — every visible create
@@ -287,7 +287,7 @@ export function useLeftRailKeybindings(): void {
     const disposeClear = registerKeyAction(LEFT_RAIL_CLEAR_FILTER_ACTION_ID, () =>
       clearFilterAction(clearFeatureFilter),
     );
-    // New document is a global chord (reachable while the stage is focused); the
+    // The add-to-a-feature verb is a global chord (reachable while the stage is focused); the
     // expand/collapse-tree thunks live with the tree (TreeBrowser) where the loaded
     // keys are, so they only fire when the vault tree is mounted.
     const disposeNewDoc = registerKeyAction(LEFT_RAIL_NEW_DOC_ACTION_ID, () =>

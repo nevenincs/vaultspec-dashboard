@@ -138,9 +138,9 @@ Rebuild the dialog as the two-stage feature-group panel mirroring the approved F
 
 Feature-first relabeling on the descriptor plane (ADR D6), guard and render test updates, full lint gate and vault check green.
 
-- [ ] `P05.S12` - Relabel the new-document descriptors feature-first once on the descriptor plane, ids unchanged, so menu, palette, and keymap legend agree; `frontend/src/stores/view/graphCommands.ts and descriptor sites`.
-- [ ] `P05.S13` - Update the affordance, palette, action-coverage guard tests and the dialog render tests to the staged panel; `frontend/src/app/newDocumentAffordances.guard.test.tsx and sibling guards`.
-- [ ] `P05.S14` - Run the full lint gate for both languages and vault check all, and confirm exit 0 before review; `just dev lint all`.
+- [x] `P05.S12` - Relabel the new-document descriptors feature-first once on the descriptor plane, ids unchanged, so menu, palette, and keymap legend agree; `frontend/src/stores/view/graphCommands.ts and descriptor sites`.
+- [x] `P05.S13` - Update the affordance, palette, action-coverage guard tests and the dialog render tests to the staged panel; `frontend/src/app/newDocumentAffordances.guard.test.tsx and sibling guards`.
+- [x] `P05.S14` - Run the full lint gate for both languages and vault check all, and confirm exit 0 before review; `just dev lint all`.
 
 ## Description
 

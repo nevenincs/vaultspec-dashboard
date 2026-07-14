@@ -21,7 +21,7 @@ import { docGroupLabel } from "../vaultRowPresentation";
  * The menu for a category folder row. "Expand/Collapse" toggles the folder through
  * the one expansion authority; "Filter to this type" toggles the canonical
  * `doc_types` facet (the SAME write the graph legend performs) so every corpus view
- * narrows; "New document…" opens the create dialog (pre-filled with the parent
+ * narrows; "Add to a Feature…" opens the create dialog (pre-filled with the parent
  * feature when this is a feature sub-folder, otherwise unfilled); the human category
  * label is copyable. None of the verbs mutate the corpus, so none carries
  * `disabledInTimeTravel`.
@@ -60,7 +60,7 @@ export function vaultCategoryMenu(entity: unknown): ActionDescriptor[] {
     },
   });
 
-  // New document — pre-filled with the parent feature when this is a feature
+  // Add to a Feature — pre-filled with the parent feature when this is a feature
   // sub-folder; unfilled for a top-level Documents-section category.
   actions.push(newDocumentAction(normalizedEntity.feature));
 

@@ -38,7 +38,7 @@ describe("BrowserRegion create affordance", () => {
   it("shows the Plus create button in vault mode and dispatches the shared action", () => {
     act(() => setBrowserMode("vault"));
     renderRegion();
-    const plus = screen.getByRole("button", { name: "New document" });
+    const plus = screen.getByRole("button", { name: "Add to a feature" });
     expect(plus).toBeTruthy();
     act(() => plus.click());
     expect(useCreateDocChromeStore.getState().open).toBe(true);
@@ -47,6 +47,6 @@ describe("BrowserRegion create affordance", () => {
   it("hides the Plus create button in code mode", () => {
     act(() => setBrowserMode("code"));
     renderRegion();
-    expect(screen.queryByRole("button", { name: "New document" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add to a feature" })).toBeNull();
   });
 });

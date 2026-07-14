@@ -893,7 +893,7 @@ function Section({
         <>
           {onCreate && (
             <IconButton
-              label={`New document in ${title.toLowerCase()}`}
+              label={`Add a document to ${title.toLowerCase()}`}
               data-new-feature-document
               onClick={(event) => {
                 event.stopPropagation();

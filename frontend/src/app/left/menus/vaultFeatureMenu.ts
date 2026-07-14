@@ -27,7 +27,7 @@ import { archiveFeatureAction, autofixFeatureAction } from "../../menus/sharedAc
  * node (navigation — disabled-with-reason until the feature resolves to a node);
  * "Expand/Collapse feature" toggles the folder through the one expansion authority;
  * "Filter to this feature" writes the one canonical feature-query filter so every
- * corpus view narrows to it; "New document…" opens the create dialog pre-filled with
+ * corpus view narrows to it; "Add to a Feature…" opens the create dialog pre-filled with
  * this feature; "Autofix"
  * and "Archive feature" are the shared feature verbs (confirm-guarded, time-travel-
  * gated); and the feature tag is copyable. Focus and expand are non-mutating, so no

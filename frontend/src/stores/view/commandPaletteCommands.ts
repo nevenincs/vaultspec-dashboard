@@ -264,7 +264,7 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
 }
 
 /**
- * The left-rail commands on the palette: New document, the two direct browse-mode
+ * The left-rail commands on the palette: Add to a Feature, the two direct browse-mode
  * sets, and Collapse vault tree. They reuse the SAME shared `ActionDescriptor`
  * builders the keymap and context menus use (the unified action plane), so cmd+K
  * exposes the rail's create/navigate verbs without re-authoring them. Expand-all

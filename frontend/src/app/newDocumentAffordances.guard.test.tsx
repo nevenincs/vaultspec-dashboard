@@ -45,7 +45,7 @@ describe("new-document affordances route through the shared action", () => {
 
   it("the workspace empty-state button opens the create store", () => {
     render(<WorkspaceGhost />);
-    fireEvent.click(screen.getByRole("button", { name: "New document" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to a feature" }));
     expect(useCreateDocChromeStore.getState().open).toBe(true);
   });
 
@@ -56,7 +56,7 @@ describe("new-document affordances route through the shared action", () => {
         <BrowserRegion />
       </MenuTestProviders>,
     );
-    act(() => screen.getByRole("button", { name: "New document" }).click());
+    act(() => screen.getByRole("button", { name: "Add to a feature" }).click());
     expect(useCreateDocChromeStore.getState().open).toBe(true);
   });
 });

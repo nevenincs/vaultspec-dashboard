@@ -28,7 +28,7 @@ export function WorkspaceGhost() {
           Show graph
         </Button>
         <Button variant="secondary" onClick={() => newDocumentAction().run?.()}>
-          New document
+          Add to a feature
         </Button>
       </div>
     </div>

@@ -93,7 +93,7 @@ export function BrowserRegion() {
                 the ONE shared new-document action descriptor, never a bespoke handler.
                 Vault mode only — the Files tree lists source, not authored docs. */}
             <IconButton
-              label="New document"
+              label="Add to a feature"
               data-new-document
               onClick={() => newDocumentAction().run?.()}
             >

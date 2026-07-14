@@ -8,7 +8,7 @@
 // (unified-action-plane): expand/collapse under their `left-rail:*-tree` ids
 // driven by the imperative vault-tree expansion seam, the sort plane + reset
 // verbs (left-rail-tree-controls ADR D3/D4) under their `left-rail:sort-*` /
-// reset ids, so this menu and every other surface cannot drift. "New document…"
+// reset ids, so this menu and every other surface cannot drift. "Add to a Feature…"
 // is the shared rail create verb, unfilled at section level.
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -40,7 +40,7 @@ import {
  * expansion authority), the sort plane (one shared verb per option + reset), the
  * canonical filter resets (reset-filters / clear-filter / toggle-facets — the
  * SAME builders the keymap chords and the palette fire, here bound to the
- * imperative scoped write seams the other rail menus use), and a New document
+ * imperative scoped write seams the other rail menus use), and an Add-to-a-Feature
  * escape hatch. All store-only/state intents, so none carries
  * `disabledInTimeTravel`.
  */

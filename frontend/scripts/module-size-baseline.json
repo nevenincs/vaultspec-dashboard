@@ -1,7 +1,6 @@
 {
   "engine/crates/vaultspec-api/src/app.rs": 2115,
   "engine/crates/vaultspec-api/src/authoring/apply.rs": 4518,
-  "engine/crates/vaultspec-api/src/authoring/direct_write.rs": 2794,
   "engine/crates/vaultspec-api/src/authoring/http.rs": 7509,
   "engine/crates/vaultspec-api/src/lib.rs": 2734,
   "frontend/src/scene/three/threeField/field.ts": 3092
