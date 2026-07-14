@@ -732,3 +732,36 @@ expected failure was used. S121 requires the prohibited-language, raw-key, and
 actionable-recovery remediations above, plus adverse coverage for hostile and malformed
 templates, multiple sentences, interpolation-leading copy, approved-term casing, and
 safe word boundaries, before acceptance.
+
+### W01.P03.S121 URI boundary | medium | Do not classify URI schemes as message keys
+
+Commit `ea91ab33db` expands raw-key detection to a single path segment, but the generic
+shape is now indistinguishable from common scheme-value forms. Text containing
+`mailto:user@example.com` is classified as a `raw-key` because `mailto:user` matches,
+and comparable registered URI schemes can produce the same false positive. Preserve
+the required `common:retry` and unknown-key detection while excluding bounded URI and
+ordinary colon forms; add direct safe cases beyond a colon followed by whitespace and
+an `https` URL.
+
+### W01.P03.S121 recovery complement | medium | Avoid a finite failure-word denylist
+
+The remediation rejects the recorded examples, but actionability still rests on a
+finite first-complement-word denylist. Failure statements such as "Retry did not work.",
+"Retry will fail.", and "Try again failed." receive no `not-actionable` issue. Use a
+positive bounded recovery-clause contract or explicit per-message policy instead of
+trying to enumerate failure predicates. Keep the passing static imperative forms and
+the rule that an interpolation value cannot itself supply the recovery instruction.
+
+### W01.P03.S121 remediation review | changes required | Two general bypasses remain
+
+The remediation resolves the high-severity internal-language finding: every named
+architecture term, plain `Error:` prefix, reviewed path, and reviewed command form is
+now rejected. Exact word boundaries preserve restore, store, webhook, telescope, and
+tokenized; current production messages, approved-term casing, multiple sentences, and
+interpolation-bearing safe recovery cases pass. No new catalog copy or user-facing
+development metadata was introduced.
+
+All nine focused Vitest tests passed, along with targeted ESLint and the full TypeScript
+project check. No fake, mock, stub, patch, monkeypatch, skip, or expected failure was
+used. S121 still requires the URI-safe raw-key boundary and a positive actionable-
+recovery contract before acceptance.
