@@ -1609,3 +1609,28 @@ passed. Terra's focused and live suites passed 61 tests. Real English, French, a
 catalogs resolve all 21 approved messages without fallback. Tests introduce no doubles,
 skips, or expected failures. The scanner remains clean and unchanged at 1,415 findings
 because the raw string pipeline was not detected. S126 is accepted with no open findings.
+
+### W01.P03.S120 review | pass | Plural selection is locale-owned and fail closed
+
+This step, implemented through delegated Sol architectural work, introduces logical
+plural message keys derived from physical CLDR catalog variants. Callers use one bounded
+count descriptor and never choose suffixes, singular forms, or plural grammar.
+
+Review confirmed that physical plural leaves cannot pass public key validation or
+generic descriptor normalization. The dedicated builder accepts only finite,
+non-negative safe integers and owns the count value. Formatter grammar is restricted to
+plain interpolation and the approved number formatter; malformed templates, unknown
+formatters, missing values, and invalid counts use the existing safe fallback.
+
+Production-resource tests require the exact categories reported by `Intl.PluralRules`
+for English, French, and Arabic and exercise real selection and localized number
+formatting. Catalog, interpolation, and wording policy tests distinguish logical public
+keys from physical translator resources without weakening ordinary message checks.
+
+Independent Terra verification passed 42 localization tests and 29 palette regression
+tests, TypeScript, targeted ESLint, the localization scanner, and diff checks. Sol's
+author regression suite passed 114 tests. The complete frontend lint recipe passed after
+formatting eight touched files. Tests use real runtimes, production catalogs, and native
+plural rules without resource mutation, doubles, skips, or expected failures. The
+scanner remains clean and unchanged at 1,415 findings. S120 is accepted with no open
+findings.
