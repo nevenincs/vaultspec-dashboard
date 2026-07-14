@@ -1560,3 +1560,28 @@ use real production grouping, React rendering, and localization runtimes without
 mutation, doubles, skips, or expected failures. The scanner remains clean and unchanged
 at 1,422 findings because the former lowercase tokens were not detected. S29 is accepted
 with no open findings.
+
+### W02.P05.S127 and S30 review | pass | Operation concepts hide routing vocabulary
+
+These steps, implemented atomically through delegated Terra rollout work, make the
+authorized operation whitelist the canonical source for stable user concepts and typed
+label descriptors. The palette provider transports those descriptors directly and
+removes its legacy wrapper and `ops:` display prefix.
+
+Review confirmed that the exact six target and verb pairs remain the sole routing and
+authorization identity, in the same order. The canonical lookup returns the immutable
+whitelist entry, while command IDs, families, confirmations, time-travel gates, and
+`runOp` routes remain unchanged. No descriptor object can pass through the former string
+presentation seam.
+
+Visible labels now use workspace and search concepts. They are concise, imperative,
+sentence case, and expose none of ops, core, RAG, vault, server, watcher, reindex, wire
+tokens, or internal metadata. Catalog keys are static and never derived from routes.
+
+Independent Sol verification passed 35 focused tests across five files, TypeScript,
+targeted ESLint, the localization scanner, and diff checks. The complete frontend lint
+recipe passed. Tests use the production whitelist, lookup, provider, routing behavior,
+and real localization runtimes without doubles, skips, or expected failures. Exact
+baseline reconciliation removed seven entries and added none, reducing the scanner from
+1,422 to 1,415 findings, presentation-field entries from 366 to 360, and legacy action
+entries from 107 to 106. S127 and S30 are accepted with no open findings.
