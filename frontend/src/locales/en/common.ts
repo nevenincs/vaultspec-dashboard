@@ -29,6 +29,7 @@ export const common = {
     reset: "Reset",
     resetLayout: "Reset layout",
     retry: "Retry",
+    searchDocumentsAndCode: "Search documents and code…",
     showApprovals: "Show approvals",
     showGraph: "Show graph",
     showOrHideGraph: "Show or hide graph",
@@ -61,6 +62,7 @@ export const common = {
     recording: "Press a key…",
   },
   shortcutGroups: {
+    general: "General",
     graph: "Graph",
     navigation: "Navigation",
     window: "Window",

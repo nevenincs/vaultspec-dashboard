@@ -2,10 +2,8 @@ import { normalizeSearchCorpus, type SearchCorpus } from "../server/searchProvid
 import { useEffect } from "react";
 import { create } from "zustand";
 
-import { legacyActionPresentation } from "../../platform/actions/action";
 import {
   type KeybindingDef,
-  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { SEARCH_QUERY_MAX_CHARS, normalizeSearchQuery } from "../searchQuery";
@@ -16,10 +14,12 @@ export const COMMAND_PALETTE_OPS_MESSAGE_CAP = 240;
 export const COMMAND_PALETTE_QUERY_MAX_CHARS = SEARCH_QUERY_MAX_CHARS;
 export const COMMAND_PALETTE_ARMED_COMMAND_ID_MAX_CHARS = 512;
 export const COMMAND_PALETTE_ACTION_ID = "app:command-palette";
-export const COMMAND_PALETTE_SHORTCUT_LABEL = legacyKeybindingPresentation(
-  "Open the command palette",
-);
-const GENERAL_KEYBINDING_GROUP = legacyKeybindingPresentation("General");
+export const COMMAND_PALETTE_SHORTCUT_LABEL = {
+  key: "common:actions.openCommandPalette",
+} as const;
+const GENERAL_KEYBINDING_GROUP = {
+  key: "common:shortcutGroups.general",
+} as const;
 export const COMMAND_PALETTE_KEYBINDING: KeybindingDef = {
   id: COMMAND_PALETTE_ACTION_ID,
   defaultChord: "Mod+K",
@@ -40,9 +40,9 @@ export const COMMAND_PALETTE_KEYBINDING: KeybindingDef = {
 export type CommandPaletteMode = "command" | "search" | "document";
 
 export const SEARCH_PALETTE_ACTION_ID = "app:search";
-export const SEARCH_PALETTE_SHORTCUT_LABEL = legacyKeybindingPresentation(
-  "Search documents and code",
-);
+export const SEARCH_PALETTE_SHORTCUT_LABEL = {
+  key: "common:actions.searchDocumentsAndCode",
+} as const;
 export const SEARCH_PALETTE_KEYBINDING: KeybindingDef = {
   id: SEARCH_PALETTE_ACTION_ID,
   defaultChord: "Mod+P",
@@ -52,9 +52,9 @@ export const SEARCH_PALETTE_KEYBINDING: KeybindingDef = {
 };
 
 export const DOCUMENT_SEARCH_ACTION_ID = "app:document-search";
-export const DOCUMENT_SEARCH_SHORTCUT_LABEL = legacyKeybindingPresentation(
-  "Go to document by name",
-);
+export const DOCUMENT_SEARCH_SHORTCUT_LABEL = {
+  key: "documents:actions.findByName",
+} as const;
 export const DOCUMENT_SEARCH_KEYBINDING: KeybindingDef = {
   id: DOCUMENT_SEARCH_ACTION_ID,
   defaultChord: "Mod+Shift+O",
@@ -621,7 +621,7 @@ export function useCommandPaletteGlobalToggle(cancelConfirm: () => void): void {
     const disposeBinding = registerKeybindings([COMMAND_PALETTE_KEYBINDING]);
     const disposeAction = registerKeyAction(COMMAND_PALETTE_ACTION_ID, () => ({
       id: COMMAND_PALETTE_ACTION_ID,
-      label: legacyActionPresentation(COMMAND_PALETTE_SHORTCUT_LABEL),
+      label: COMMAND_PALETTE_SHORTCUT_LABEL,
       run: () => {
         cancelConfirm();
         resetCommandPaletteOpsFeedback();
@@ -653,7 +653,7 @@ export function useSearchPaletteGlobalShortcut(cancelConfirm: () => void): void 
     const disposeBinding = registerKeybindings([SEARCH_PALETTE_KEYBINDING]);
     const disposeAction = registerKeyAction(SEARCH_PALETTE_ACTION_ID, () => ({
       id: SEARCH_PALETTE_ACTION_ID,
-      label: legacyActionPresentation(SEARCH_PALETTE_SHORTCUT_LABEL),
+      label: SEARCH_PALETTE_SHORTCUT_LABEL,
       run: () => {
         cancelConfirm();
         resetCommandPaletteOpsFeedback();
@@ -684,7 +684,7 @@ export function useDocumentSearchGlobalShortcut(cancelConfirm: () => void): void
     const disposeBinding = registerKeybindings([DOCUMENT_SEARCH_KEYBINDING]);
     const disposeAction = registerKeyAction(DOCUMENT_SEARCH_ACTION_ID, () => ({
       id: DOCUMENT_SEARCH_ACTION_ID,
-      label: legacyActionPresentation(DOCUMENT_SEARCH_SHORTCUT_LABEL),
+      label: DOCUMENT_SEARCH_SHORTCUT_LABEL,
       run: () => {
         cancelConfirm();
         resetCommandPaletteOpsFeedback();

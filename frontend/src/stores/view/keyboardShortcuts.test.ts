@@ -220,7 +220,7 @@ describe("keyboard shortcuts store", () => {
     expect(KEYBOARD_SHORTCUTS_TOGGLE_BINDING).toMatchObject({
       defaultChord: "?",
       label: KEYBOARD_SHORTCUTS_TOGGLE_LABEL,
-      group: "General",
+      group: { key: "common:shortcutGroups.general" },
       context: "global",
     });
   });

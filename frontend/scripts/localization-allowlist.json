@@ -6130,41 +6130,6 @@
     "rule": "presentation-field"
   },
   {
-    "id": "832e57f5dc6ee56f16a1ed79",
-    "path": "src/stores/view/commandPalette.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "8bc41897a172145c2b64a58c",
-    "path": "src/stores/view/commandPalette.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "ee5bf0691541d09843398251",
-    "path": "src/stores/view/commandPalette.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "335080c4d35c716afe1b92c7",
-    "path": "src/stores/view/commandPalette.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "61e6c5104a38f1c6413f1deb",
-    "path": "src/stores/view/commandPalette.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "dd3ce491caa6f405ecd25b0b",
-    "path": "src/stores/view/commandPalette.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "fdfe4316c6f43a41bc26e7d1",
-    "path": "src/stores/view/commandPalette.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
     "id": "0ea94ad3f8741b5246299adf",
     "path": "src/stores/view/commandPaletteCommands.ts",
     "rule": "legacy-action-presentation"
@@ -6610,11 +6575,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "584ea1f50986693a0c315745",
-    "path": "src/stores/view/keyboardShortcuts.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
     "id": "93dc318956cb04137be533f1",
     "path": "src/stores/view/keyboardShortcuts.ts",
     "rule": "legacy-keybinding-presentation"
@@ -6751,11 +6711,6 @@
   },
   {
     "id": "548606c2e1674e18e21ba945",
-    "path": "src/stores/view/reloadKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "df3689a160810dca99cdc705",
     "path": "src/stores/view/reloadKeybindings.ts",
     "rule": "legacy-keybinding-presentation"
   },

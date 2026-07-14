@@ -48,7 +48,9 @@ export const KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID = "app:keyboard-shortcuts";
 export const KEYBOARD_SHORTCUTS_TOGGLE_LABEL = legacyKeybindingPresentation(
   "Show keyboard shortcuts",
 );
-const GENERAL_KEYBINDING_GROUP = legacyKeybindingPresentation("General");
+const GENERAL_KEYBINDING_GROUP = {
+  key: "common:shortcutGroups.general",
+} as const;
 export const KEYBOARD_SHORTCUTS_TOGGLE_BINDING: KeybindingDef = {
   id: KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
   defaultChord: "?",

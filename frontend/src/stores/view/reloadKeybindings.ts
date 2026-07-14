@@ -24,7 +24,9 @@ import { registerKeyAction } from "./keymapDispatcher";
 
 export const RELOAD_REFRESH_DATA_ACTION_ID = "reload:refresh-data";
 export const RELOAD_REFRESH_DATA_LABEL = legacyKeybindingPresentation("Refresh data");
-const GENERAL_KEYBINDING_GROUP = legacyKeybindingPresentation("General");
+const GENERAL_KEYBINDING_GROUP = {
+  key: "common:shortcutGroups.general",
+} as const;
 
 /**
  * The light refresh as one shared `ActionDescriptor`: invalidate + refetch the active

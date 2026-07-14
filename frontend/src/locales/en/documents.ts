@@ -9,6 +9,7 @@ export const documents = {
     collapseTree: "Collapse document tree",
     copyLink: "Copy link",
     expandTree: "Expand document tree",
+    findByName: "Find a document by name…",
     finishEditing: "Finish editing",
     focusFilter: "Focus the document filter",
     linkToSelectedDocument: "Link to selected document",
