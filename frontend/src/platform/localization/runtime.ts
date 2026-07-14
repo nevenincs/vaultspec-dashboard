@@ -53,7 +53,6 @@ const localizationOptions = {
   react: {
     useSuspense: false,
   },
-  resources,
   returnDetails: false,
   returnEmptyString: false,
   returnNull: false,
@@ -69,7 +68,10 @@ const localizationOptions = {
 export function createLocalizationRuntime(): i18n {
   const instance = createInstance();
   instance.use(initReactI18next);
-  void instance.init(localizationOptions);
+  void instance.init({
+    ...localizationOptions,
+    resources: structuredClone(resources),
+  });
 
   if (!instance.isInitialized) {
     throw new Error("Localization runtime did not initialize synchronously.");

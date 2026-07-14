@@ -33,6 +33,10 @@ related:
 
 ## Notes
 
+- Remediation isolates every runtime, including the application singleton, with a deep
+  structured clone of the trusted bundled resource graph.
+- A temporary real-runtime assertion proved resource mutations do not cross instance
+  boundaries; the temporary test was removed after it passed.
 - Provider mounting, document attributes, locale preference, and runtime tests remain in
   their assigned plan steps.
 - No incidents or skipped S04 work.
