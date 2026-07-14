@@ -1441,3 +1441,29 @@ introduce no doubles, skips, or expected failures. Exact baseline reconciliation
 18 bridge entries and added none, reducing the scanner from 1,476 to 1,458 findings,
 legacy keybinding entries from 50 to 41, and legacy action entries from 130 to 121. S24
 is accepted with no open findings.
+
+### W02.P05.S25 review | pass | Editor shortcuts use actionable document language
+
+This step, implemented through delegated Terra rollout work, migrates all four editor
+keybindings and their disabled reasons to catalog-owned descriptors. The shortcut,
+document toolbar, shortcut tooltip, and command palette now compose the same canonical
+document action builders and stable IDs instead of re-authoring English copy.
+
+Review confirmed that shortcut IDs, chords, contexts, order, palette families, and run
+behavior are unchanged. Save availability reads one state snapshot and exhaustively
+covers no open document plus every editor status. Each unavailable state now explains
+the next useful action, while dirty and failed saves remain available for retry.
+
+The wording is concise, imperative, and sentence case. It uses document concepts rather
+than editor, browser, implementation, or service terminology and contains no em dashes.
+Markdown resolves the changes label only during React render. The document shortcut
+tooltip preserves fail-closed keycap handling and localizes the complete message with a
+named accelerator.
+
+Independent Sol verification passed 52 focused tests across six files, TypeScript, the
+localization scanner, and diff checks. The complete frontend lint recipe passed. Tests
+use the real query client, editor store transitions, localization runtime, and React
+behavior without doubles, fake timers, skips, or expected failures. Exact baseline
+reconciliation removed 13 bridge entries and added none, reducing the scanner from
+1,458 to 1,445 findings, legacy keybinding entries from 41 to 36, and legacy action
+entries from 121 to 113. S25 is accepted with no open findings.
