@@ -1222,3 +1222,22 @@ gate passed. Baseline reconciliation removed exactly three bridge findings with 
 additions or metadata mismatches: the scanner decreased from 1,506 to 1,503, and bridge
 debt decreased from 152 to 149. No user-facing developer metadata, raw localization keys,
 diagnostics, or em dashes were introduced. S124 is accepted with no open findings.
+
+### W02.P04.S125 review | pass | Document links localize without unnecessary confirmation
+
+Commit `274b42e46b`, implemented through delegated Terra rollout work, moves the shared
+copy-link label and its unavailable reason to canonical document catalog descriptors.
+Review explicitly approved interpreting the plan's confirmation wording as proof that
+both confirmation forms are absent: copying a link is non-mutating, so adding a guard
+would be incorrect. Caller-owned label ingress and its unused constant are removed.
+
+Default and surface-specific IDs, exact bare and anchored wiki-link bytes, trimming,
+copy section, icon, run-only enabled shape, disabled no-run shape, and dispatch absence
+are preserved. Tests resolve through the real localization runtime and never invoke the
+copy operation or install a clipboard fake, mock, stub, patch, or other substitute.
+
+The focused run passed all 55 tests across six files, and the complete frontend lint
+gate passed. Baseline reconciliation removed exactly two bridge findings with no
+additions or metadata mismatches: the scanner decreased from 1,503 to 1,501, and bridge
+debt decreased from 149 to 147. No user-facing developer metadata, raw localization keys,
+diagnostics, or em dashes were introduced. S125 is accepted with no open findings.
