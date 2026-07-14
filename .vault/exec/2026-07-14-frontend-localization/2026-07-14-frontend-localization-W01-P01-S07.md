@@ -55,15 +55,18 @@ related:
 - Verify every locale-explicit formatter and its invalid-input boundaries.
 - Render the production provider and prove first-render and language-change behavior.
 - Verify document language, direction, reactivity, reference counting, and cleanup.
+- Exercise resource lifecycle isolation, hostile inputs, catalog nesting, and
+  translation-like user values.
 
 ## Outcome
 
 The localization substrate now has direct real-behavior coverage for its runtime,
 descriptors, fallback boundary, formatters, React integration, and document metadata.
 Visible fallback samples reject raw keys, unresolved interpolation, em dashes, and
-implementation vocabulary.
+implementation vocabulary. React reactivity uses a normally initialized real test
+runtime without changing production singleton state or configuration.
 
 ## Notes
 
-The three targeted suites passed with 13 tests. The full frontend lint gate and
+The three targeted suites passed with 16 tests. The full frontend lint gate and
 TypeScript build check also passed.

@@ -45,7 +45,10 @@ describe("locale-explicit formatters", () => {
 
   it("rejects invalid and over-limit inputs without producing display copy", () => {
     expect(formatNumber("not a locale", 1)).toBeNull();
+    expect(formatNumber(`en-${"x".repeat(300)}`, 1)).toBeNull();
     expect(formatNumber("en", Number.NaN)).toBeNull();
+    expect(formatNumber("en", 1, { currency: "x".repeat(200) })).toBeNull();
+    expect(formatNumber("en", 1, { unknown: true } as never)).toBeNull();
     expect(formatDate("en", new Date(Number.NaN))).toBeNull();
     expect(formatRelativeTime("en", 1, "days" as "day")).toBeNull();
     expect(formatList("en", [])).toBeNull();
@@ -60,6 +63,29 @@ describe("locale-explicit formatters", () => {
     expect(formatDuration("en", -1)).toBeNull();
     expect(formatDuration("en", 1_000, { maxUnits: 6 } as never)).toBeNull();
     expect(formatBytes("en", -1)).toBeNull();
+  });
+
+  it("returns null for hostile values without invoking display fallbacks", () => {
+    const hostileOptions = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error("unreadable options");
+        },
+      },
+    );
+    const hostileDate = new Proxy(new Date(), {});
+    const hostileList = new Proxy(["item"], {
+      get() {
+        throw new Error("unreadable list");
+      },
+    });
+
+    expect(formatNumber("en", 1, hostileOptions)).toBeNull();
+    expect(formatDate("en", hostileDate)).toBeNull();
+    expect(formatList("en", hostileList)).toBeNull();
+    expect(formatDuration("en", 1_000, hostileOptions)).toBeNull();
+    expect(formatBytes("en", 1_024, hostileOptions)).toBeNull();
   });
 
   it("remains stable after bounded formatter-cache churn", () => {

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { I18nextProvider } from "react-i18next";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -15,28 +16,12 @@ import { bindDocumentLanguage, applyDocumentLanguage } from "./documentLanguage"
 import { LocalizationProvider, useLocalizedMessage } from "./LocalizationProvider";
 import { localization } from "./runtime";
 
-const languageUtility = localization.services
-  .languageUtils as typeof localization.services.languageUtils & {
-  supportedLngs: false | readonly string[];
-};
-const productionSupportedLanguages = localization.options.supportedLngs;
-const productionLanguageUtilitySupportedLanguages = languageUtility.supportedLngs;
-
 function LocalizedRetry(): React.JSX.Element {
   return <p>{useLocalizedMessage({ key: "common:actions.retry" })}</p>;
 }
 
-async function restoreProductionRuntime(): Promise<void> {
-  await localization.changeLanguage(sourceLocale);
-  localization.removeResourceBundle(ltrTestLocale, "common");
-  localization.removeResourceBundle(ltrTestLocale, "errors");
-  localization.options.supportedLngs = productionSupportedLanguages;
-  languageUtility.supportedLngs = productionLanguageUtilitySupportedLanguages;
-}
-
-afterEach(async () => {
+afterEach(() => {
   cleanup();
-  await restoreProductionRuntime();
   document.documentElement.lang = "";
   document.documentElement.dir = "";
 });
@@ -50,37 +35,32 @@ describe.sequential("React localization and document language", () => {
     );
 
     expect(screen.getByText("Retry")).toBeTruthy();
+    expect(localization.language).toBe(sourceLocale);
+    expect(localization.hasResourceBundle(ltrTestLocale, "common")).toBe(false);
   });
 
-  it("reacts to a real languageChanged event on the application runtime", async () => {
-    localization.options.supportedLngs = [sourceLocale, ltrTestLocale];
-    languageUtility.supportedLngs = [sourceLocale, ltrTestLocale];
-    localization.addResourceBundle(
-      ltrTestLocale,
-      "common",
-      structuredClone(ltrTestResources.common),
-      true,
-      true,
-    );
-    localization.addResourceBundle(
-      ltrTestLocale,
-      "errors",
-      structuredClone(ltrTestResources.errors),
-      true,
-      true,
-    );
+  it("reacts through the production hook to real locale changes", async () => {
+    const runtime = createTestLocalizationRuntime();
 
     render(
-      <LocalizationProvider>
+      <I18nextProvider i18n={runtime}>
         <LocalizedRetry />
-      </LocalizationProvider>,
+      </I18nextProvider>,
     );
+    expect(screen.getByText("Retry")).toBeTruthy();
 
     await act(async () => {
-      await localization.changeLanguage(ltrTestLocale);
+      await runtime.changeLanguage(ltrTestLocale);
     });
-
     expect(screen.getByText(ltrTestResources.common.actions.retry)).toBeTruthy();
+
+    await act(async () => {
+      await runtime.changeLanguage(rtlTestLocale);
+    });
+    expect(screen.getByText(rtlTestResources.common.actions.retry)).toBeTruthy();
+
+    expect(localization.language).toBe(sourceLocale);
+    expect(localization.hasResourceBundle(ltrTestLocale, "common")).toBe(false);
   });
 
   it("applies language and direction and follows locale changes", async () => {
