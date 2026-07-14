@@ -139,6 +139,44 @@ describe("RagDashboardFooterBody (binding RagJobDashboard footer)", () => {
     expect(screen.getByText("Not watching")).toBeTruthy();
   });
 
+  it("holds a reading line while the storage read is pending (not offline)", () => {
+    // Distinct from offline: the service is up but the rollup has not arrived yet —
+    // a quiet reading line, never the degraded card or a wall of absent dashes.
+    render(
+      <RagDashboardFooterBody
+        storage={undefined}
+        watching={false}
+        offline={false}
+        pending
+        watcherPending={false}
+        onToggleWatcher={noop}
+        onRefresh={noop}
+      />,
+    );
+    expect(screen.getByText("Reading storage…")).toBeTruthy();
+  });
+
+  it("states storage unavailable honestly when up but the rollup is absent", () => {
+    // Up, settled, but no rollup served (a backend that does not survey): one honest
+    // sentence, not a fabricated zero.
+    const { container } = render(
+      <RagDashboardFooterBody
+        storage={undefined}
+        watching={false}
+        offline={false}
+        pending={false}
+        watcherPending={false}
+        onToggleWatcher={noop}
+        onRefresh={noop}
+      />,
+    );
+    expect(screen.getByText("Storage details unavailable.")).toBeTruthy();
+    // Not the offline degraded card — the watcher stays enabled.
+    expect(container.querySelector('[data-state-block="degraded"]')).toBeNull();
+    const toggle = screen.getByRole("switch", { name: "Watch for changes" });
+    expect(toggle.hasAttribute("disabled")).toBe(false);
+  });
+
   it("fires Refresh", () => {
     const onRefresh = vi.fn();
     render(

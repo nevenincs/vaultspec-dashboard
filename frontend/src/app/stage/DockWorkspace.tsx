@@ -140,7 +140,7 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
       </span>
       {scopeBadge && (
         <span
-          className="shrink-0 rounded-fg-xs bg-paper-sunken px-fg-1 text-caption text-ink-faint"
+          className="shrink-0 rounded-fg-xs bg-paper-sunken px-fg-1 text-caption text-ink-muted"
           title={scopeBadge.title}
           aria-label={`in workspace ${scopeBadge.label}`}
         >

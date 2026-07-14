@@ -18,7 +18,7 @@ import { Card, ProgressBar, Skeleton, SkeletonBar } from "../kit";
 /** The state-tone → ink-token class for the state dot + label. The completion
  *  CLASS stays engine-served; this only chooses presentation. */
 const TONE_TEXT_CLASS: Record<PlanStateTone, string> = {
-  pending: "text-ink-faint",
+  pending: "text-ink-muted",
   active: "text-state-active",
   complete: "text-state-complete",
 };

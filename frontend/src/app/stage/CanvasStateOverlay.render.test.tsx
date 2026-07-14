@@ -306,8 +306,8 @@ describe("CanvasStateOverlay — annotation rendering", () => {
     );
     const refreshing = document.querySelector('[data-canvas-state="links-refreshing"]');
     expect(refreshing?.textContent).toBe("Document links are being refreshed.");
-    // The refreshing state is the quiet, unobtrusive caption — attenuated ink, no border.
-    expect(refreshing?.className).toContain("text-ink-faint");
+    // The refreshing state is the quiet, unobtrusive caption — muted (information-bearing) ink, no border.
+    expect(refreshing?.className).toContain("text-ink-muted");
     expect(refreshing?.className).not.toContain("border");
   });
 

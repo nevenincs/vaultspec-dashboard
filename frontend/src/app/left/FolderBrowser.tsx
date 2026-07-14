@@ -242,7 +242,7 @@ export function FolderBrowser({ path, onNavigate, onChoose }: FolderBrowserProps
               )}
               <span className="min-w-0 flex-1 truncate">{row.label}</span>
               {row.badge && (
-                <span className="shrink-0 text-caption text-ink-faint">
+                <span className="shrink-0 text-caption text-ink-muted">
                   {row.badge}
                 </span>
               )}
@@ -250,7 +250,7 @@ export function FolderBrowser({ path, onNavigate, onChoose }: FolderBrowserProps
           ))}
       </div>
       {view.truncatedMessage && (
-        <p className="text-caption text-ink-faint" role="status">
+        <p className="text-caption text-ink-muted" role="status">
           {view.truncatedMessage}
         </p>
       )}

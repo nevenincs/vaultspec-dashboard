@@ -256,7 +256,7 @@ function ComposeBox({
         className="w-full resize-y rounded-fg-sm border border-rule bg-paper px-fg-2 py-fg-1 text-body text-ink outline-none focus-visible:border-accent"
       />
       <div className="flex items-center justify-between gap-fg-2">
-        <span className="text-meta text-ink-faint">
+        <span className="text-meta text-ink-muted">
           {actorReady
             ? "Notes attach to this section's heading."
             : actorBootstrapping
@@ -356,7 +356,7 @@ export function CommentThreadPanel({
           <Divider />
 
           {comments.length === 0 ? (
-            <p className="py-fg-1 text-meta text-ink-faint">
+            <p className="py-fg-1 text-meta text-ink-muted">
               {orphanedPanel
                 ? "No orphaned notes."
                 : "No comments on this section yet."}

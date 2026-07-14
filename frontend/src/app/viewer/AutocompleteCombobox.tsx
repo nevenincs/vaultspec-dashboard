@@ -265,7 +265,7 @@ export function AutocompleteCombobox({
             {suggestions.length === 0 && emptyLabel ? (
               <li
                 role="presentation"
-                className="px-fg-3 py-fg-1 text-[0.6875rem] text-ink-faint"
+                className="px-fg-3 py-fg-1 text-[0.6875rem] text-ink-muted"
               >
                 {emptyLabel}
               </li>
@@ -301,7 +301,7 @@ export function AutocompleteCombobox({
                         {option.primary}
                       </span>
                       {option.secondary && (
-                        <span className="truncate text-[0.6875rem] text-ink-faint">
+                        <span className="truncate text-[0.6875rem] text-ink-muted">
                           {option.secondary}
                         </span>
                       )}

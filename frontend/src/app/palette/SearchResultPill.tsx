@@ -55,7 +55,7 @@ export function SearchResultPill({
       </div>
       {view.why && (
         <span
-          className={`block w-full select-text truncate text-caption text-ink-faint ${
+          className={`block w-full select-text truncate text-caption text-ink-muted ${
             view.whyMono ? "font-mono" : ""
           }`}
         >

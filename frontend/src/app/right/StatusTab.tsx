@@ -256,12 +256,12 @@ function PlanPill({
               {row.progressTextLabel}
             </span>
             {row.progressPercentLabel !== null && (
-              <span className="shrink-0 text-meta tabular-nums text-ink-faint">
+              <span className="shrink-0 text-meta tabular-nums text-ink-muted">
                 {row.progressPercentLabel}
               </span>
             )}
             {fresh && (
-              <span className="shrink-0 text-meta text-ink-faint" data-freshness>
+              <span className="shrink-0 text-meta text-ink-muted" data-freshness>
                 · {fresh}
               </span>
             )}
@@ -418,7 +418,7 @@ function PrRow({ row, nav }: { row: PullRequestRowView; nav?: RowNav }) {
         <Badge tone={row.stateTone}>{row.stateLabel}</Badge>
         <RowMenuDisclosure entity={prEntity} label={`${row.titleLabel} actions`} />
       </div>
-      <div className="flex items-center gap-fg-1-5 pl-fg-4 text-meta text-ink-faint">
+      <div className="flex items-center gap-fg-1-5 pl-fg-4 text-meta text-ink-muted">
         {row.authorLabel && <span>{row.authorLabel}</span>}
         {row.icon !== "merged" && <ChecksTag row={row} />}
         {row.mergedLabel && <span data-tabular>{row.mergedLabel}</span>}
@@ -497,7 +497,7 @@ function IssueRow({ row }: { row: IssueRowView }) {
         </span>
       </div>
       {(row.labels.length > 0 || row.authorLabel) && (
-        <div className="flex flex-wrap items-center gap-fg-1 pl-fg-4 text-meta text-ink-faint">
+        <div className="flex flex-wrap items-center gap-fg-1 pl-fg-4 text-meta text-ink-muted">
           {row.labels.map((label) => (
             <Badge key={label} tone="neutral">
               {label}

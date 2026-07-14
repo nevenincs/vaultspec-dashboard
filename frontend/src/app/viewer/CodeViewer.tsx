@@ -142,7 +142,7 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
           {view.languageHint && <Badge>{langDisplay}</Badge>}
         </div>
         <div className="flex shrink-0 items-center gap-[0.625rem]">
-          <span className="text-label text-ink-faint">{view.readOnlyLabel}</span>
+          <span className="text-label text-ink-muted">{view.readOnlyLabel}</span>
           <Button variant="ghost" onClick={onCopy}>
             Copy
           </Button>

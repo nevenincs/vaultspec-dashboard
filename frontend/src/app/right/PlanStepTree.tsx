@@ -45,7 +45,7 @@ const SMALL_PX = 13;
 
 function RollupFraction({ rollup }: { rollup: InteriorRollup }) {
   return (
-    <span className="shrink-0 text-caption text-ink-faint" data-tabular data-rollup>
+    <span className="shrink-0 text-caption text-ink-muted" data-tabular data-rollup>
       {rollup.done}/{rollup.total}
     </span>
   );
@@ -182,7 +182,7 @@ function StepRow({
           <StepCheckMark done={effectiveDone} />
         </label>
         <span
-          className="shrink-0 select-text font-mono text-caption text-ink-faint"
+          className="shrink-0 select-text font-mono text-caption text-ink-muted"
           data-tabular
         >
           {step.id}
@@ -233,7 +233,7 @@ function PhaseGroup({
 }) {
   return (
     <li className="space-y-fg-0-5">
-      <p className="flex items-center gap-fg-1-5 px-fg-1 text-caption text-ink-faint">
+      <p className="flex items-center gap-fg-1-5 px-fg-1 text-caption text-ink-muted">
         <span className="font-mono">{phase.id}</span>
         {phase.heading && <span className="min-w-0 truncate">{phase.heading}</span>}
         <RollupFraction rollup={phase.rollup} />
@@ -323,7 +323,7 @@ export function PlanStepTree({
   if (!view.served) {
     return (
       <p
-        className="px-fg-2 py-fg-1 text-label text-ink-faint"
+        className="px-fg-2 py-fg-1 text-label text-ink-muted"
         data-step-tree-placeholder
       >
         {view.placeholderMessage}
@@ -333,7 +333,7 @@ export function PlanStepTree({
 
   if (view.empty) {
     return (
-      <p className="px-fg-2 py-fg-1 text-label text-ink-faint" data-step-tree-empty>
+      <p className="px-fg-2 py-fg-1 text-label text-ink-muted" data-step-tree-empty>
         {view.emptyMessage}
       </p>
     );

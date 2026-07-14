@@ -75,7 +75,7 @@ function ProjectNavigatorBody({ history }: { history: ProjectHistoryView }) {
         data-project-navigator
       >
         {recentRows.length === 0 ? (
-          <p className="py-fg-4 text-center text-label text-ink-faint">
+          <p className="py-fg-4 text-center text-label text-ink-muted">
             No recent projects yet — open a project to get started.
           </p>
         ) : (

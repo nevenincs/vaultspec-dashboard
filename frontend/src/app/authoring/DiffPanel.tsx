@@ -82,7 +82,7 @@ export function DiffLinesView({
 
   return (
     <div className="flex flex-col gap-fg-1-5" data-review-doc-diff data-doc={label}>
-      <div className="flex flex-wrap items-center gap-fg-2 text-meta text-ink-faint">
+      <div className="flex flex-wrap items-center gap-fg-2 text-meta text-ink-muted">
         <span className="min-w-0 truncate font-mono text-ink-muted" title={label}>
           {label}
         </span>

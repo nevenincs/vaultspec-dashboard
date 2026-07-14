@@ -55,12 +55,12 @@ export function SettingsDialog() {
     >
       <div className="flex flex-col gap-fg-4 px-fg-4 pt-fg-3 pb-fg-4">
         {settings.loading && (
-          <p className="py-fg-4 text-center text-label text-ink-faint">
+          <p className="py-fg-4 text-center text-label text-ink-muted">
             {settings.loadingMessage}
           </p>
         )}
         {!settings.loading && settings.groups.length === 0 && (
-          <p className="py-fg-4 text-center text-label text-ink-faint">
+          <p className="py-fg-4 text-center text-label text-ink-muted">
             {settings.emptyMessage}
           </p>
         )}

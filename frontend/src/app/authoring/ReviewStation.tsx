@@ -343,7 +343,7 @@ export function ProposalCard({
         <Badge>{statusLabel(proposal.status)}</Badge>
       </div>
 
-      <div className="flex flex-wrap items-center gap-fg-2 text-meta text-ink-faint">
+      <div className="flex flex-wrap items-center gap-fg-2 text-meta text-ink-muted">
         <span data-proposal-author>{proposal.origin_actor.id || "unknown author"}</span>
         <span aria-hidden>·</span>
         <span data-proposal-ops>

@@ -15,13 +15,13 @@ export type StatusSectionId =
   // recently merged follow — the former open-prs/recent-prs folds are retired.
   | "pull-requests"
   | "open-issues"
-  | "recent-commits"
-  // The search-service console's single Details fold (2026-07-03 redesign). The
-  // console itself moved out of the rail into a modal control panel
-  // (activity-rail-realignment ADR D1/D3), but its body still owns this Details
-  // fold, so this section id stays live; the former `rag-ops` and
-  // `authoring-review` rail-section ids retired with the eviction.
-  | "rag-ops:details";
+  | "recent-commits";
+// The former `rag-ops`, `rag-ops:details`, and `authoring-review` section ids all
+// retired: the search-service console moved into a modal control panel and was then
+// replaced outright by the rag job dashboard (rag-job-dashboard ADR D1), whose view
+// state lives in its own view-local store — so no rail-section id survives for it.
+// The normalizer drops these unknowns, so a persisted/legacy blob can never re-mount
+// a retired fold.
 
 const STATUS_SECTION_IDS = [
   "changes",
@@ -33,7 +33,6 @@ const STATUS_SECTION_IDS = [
   "pull-requests",
   "open-issues",
   "recent-commits",
-  "rag-ops:details",
 ] as const satisfies readonly StatusSectionId[];
 const STATUS_SECTION_ID_SET = new Set<string>(STATUS_SECTION_IDS);
 const DEFAULT_STATUS_SECTION_ID: StatusSectionId = "open-plans";

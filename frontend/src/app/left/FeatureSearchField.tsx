@@ -169,7 +169,7 @@ export function FeatureSearchField() {
                 <span className="select-text text-[0.75rem] text-ink">
                   {suggestion.display}
                 </span>
-                <span className="select-text text-[0.6875rem] text-ink-faint">
+                <span className="select-text text-[0.6875rem] text-ink-muted">
                   {suggestion.tag}
                 </span>
               </button>

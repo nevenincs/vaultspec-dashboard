@@ -446,7 +446,7 @@ export function TreeBrowser({
         <button
           type="button"
           onClick={tree.retry}
-          className="rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="rounded-fg-xs text-label text-ink-muted underline-offset-2 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           try again
         </button>
@@ -762,13 +762,13 @@ function VaultTreeRow({
         </span>
       )}
       {count !== undefined && (
-        <span className="shrink-0 text-meta text-ink-faint" data-tabular>
+        <span className="shrink-0 text-meta text-ink-muted" data-tabular>
           {count}
         </span>
       )}
       {signal}
       {meta && (
-        <span className="shrink-0 text-meta text-ink-faint" data-tabular>
+        <span className="shrink-0 text-meta text-ink-muted" data-tabular>
           {meta}
         </span>
       )}
@@ -1191,7 +1191,7 @@ function docCompactSubMeta(entry: VaultTreeEntry): ReactNode | undefined {
   return (
     <>
       {date && (
-        <span className="shrink-0 text-ink-faint" data-doc-date>
+        <span className="shrink-0 text-ink-muted" data-doc-date>
           {date}
         </span>
       )}

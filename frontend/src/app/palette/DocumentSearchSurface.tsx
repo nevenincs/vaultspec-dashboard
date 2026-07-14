@@ -138,7 +138,7 @@ export function DocumentSearchSurface() {
             className="min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink-faint"
           />
           {countLabel && (
-            <span className="shrink-0 text-caption text-ink-faint" data-tabular>
+            <span className="shrink-0 text-caption text-ink-muted" data-tabular>
               {countLabel}
             </span>
           )}
@@ -168,7 +168,7 @@ export function DocumentSearchSurface() {
             ))}
           </ul>
         ) : idlePrompt ? (
-          <div className="px-fg-4 py-fg-6 text-caption text-ink-faint">
+          <div className="px-fg-4 py-fg-6 text-caption text-ink-muted">
             {idlePrompt}
           </div>
         ) : state === "loading" ? (

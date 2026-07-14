@@ -164,13 +164,13 @@ export function StatusHoverCard({
 
       {/* Microline: authority class + severity/tier magnitude (provenance tail). */}
       {presentation.microline && (
-        <p className="text-caption text-ink-faint" data-microline>
+        <p className="text-caption text-ink-muted" data-microline>
           {presentation.microline}
         </p>
       )}
 
       {/* Identity tail: the node id is true identity → monospace. */}
-      <p className="break-all font-mono text-caption text-ink-faint" data-card-id>
+      <p className="break-all font-mono text-caption text-ink-muted" data-card-id>
         {model.id}
       </p>
     </div>

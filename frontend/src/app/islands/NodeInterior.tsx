@@ -197,7 +197,7 @@ function NodeSummary({ node }: { node: EngineNode }) {
       {/* The node id is true identity → monospace (typography law). */}
       <div className="mt-fg-0-5">
         <dt className="inline font-medium">id:</dt>{" "}
-        <dd className="inline break-all font-mono text-ink-faint">{node.id}</dd>
+        <dd className="inline break-all font-mono text-ink-muted">{node.id}</dd>
       </div>
     </dl>
   );

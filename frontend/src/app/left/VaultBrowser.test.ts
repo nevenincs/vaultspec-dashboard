@@ -114,8 +114,8 @@ describe("entry presentation", () => {
     expect(isFresh("3d")).toBe(false);
     expect(isFresh("")).toBe(false);
     expect(freshnessToneClass("now")).toBe("text-state-active");
-    expect(freshnessToneClass("9h")).toBe("text-ink-faint");
-    expect(freshnessToneClass("")).toBe("text-ink-faint");
+    expect(freshnessToneClass("9h")).toBe("text-ink-muted");
+    expect(freshnessToneClass("")).toBe("text-ink-muted");
   });
 
   it("derives the display stem from the path", () => {

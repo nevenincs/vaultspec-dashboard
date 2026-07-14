@@ -196,7 +196,7 @@ function CheckboxBody({ section }: { section: CheckboxSection }) {
             <SkeletonRow width="w-5/6" />
           </Skeleton>
         ) : (
-          <p className="px-fg-1-5 py-fg-0-5 text-meta text-ink-faint">
+          <p className="px-fg-1-5 py-fg-0-5 text-meta text-ink-muted">
             {section.emptyLabel ?? "none in corpus"}
           </p>
         )

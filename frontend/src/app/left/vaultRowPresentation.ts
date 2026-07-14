@@ -34,7 +34,7 @@ export { freshnessLabel, isFresh };
 /** The token class for a compact freshness label. Only the truly live `now`
  * bucket receives active ink; older buckets stay quiet. */
 export function freshnessToneClass(label: string): string {
-  return isFresh(label) ? "text-state-active" : "text-ink-faint";
+  return isFresh(label) ? "text-state-active" : "text-ink-muted";
 }
 
 // --- icon sizing (token-aligned, not arbitrary px) -------------------------------
@@ -164,7 +164,7 @@ export function planStatusToneClass(status: PlanStatus): string {
     case "in-progress":
       return "text-state-stale";
     case "not-started":
-      return "text-ink-faint";
+      return "text-ink-muted";
   }
 }
 
@@ -268,7 +268,7 @@ export function adrStatusToneClass(status: string): string {
     case "rejected":
       return "text-state-broken";
     default:
-      return "text-ink-faint";
+      return "text-ink-muted";
   }
 }
 

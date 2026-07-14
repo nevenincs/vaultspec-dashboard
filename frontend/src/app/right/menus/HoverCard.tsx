@@ -40,7 +40,7 @@ function stateTintClass(state: string | undefined): string {
     case "broken":
       return "text-state-broken";
     default:
-      return "text-ink-faint";
+      return "text-ink-muted";
   }
 }
 
@@ -87,7 +87,7 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
           {typeWord && (
             <p
               data-hover-doc-type
-              className="text-caption font-medium uppercase tracking-[0.025rem] text-ink-faint"
+              className="text-caption font-medium uppercase tracking-[0.025rem] text-ink-muted"
             >
               {typeWord}
             </p>
@@ -140,7 +140,7 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
               <li key={line.key} className="truncate" title={line.label}>
                 <span>{line.label}</span>
                 {line.detail !== undefined && (
-                  <span className="text-ink-faint"> {line.detail}</span>
+                  <span className="text-ink-muted"> {line.detail}</span>
                 )}
                 {line.state !== undefined && (
                   <span className={stateTintClass(line.state)}> ({line.state})</span>
@@ -148,7 +148,7 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
               </li>
             ))}
             {group.overflow > 0 && (
-              <li className="text-ink-faint" data-evidence-overflow>
+              <li className="text-ink-muted" data-evidence-overflow>
                 +{group.overflow} more
               </li>
             )}
@@ -157,7 +157,7 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
       ))}
 
       {/* Identity tail: the node id is true identity → monospace. */}
-      <p className="break-all font-mono text-caption text-ink-faint" data-card-id>
+      <p className="break-all font-mono text-caption text-ink-muted" data-card-id>
         {model.id}
       </p>
     </div>

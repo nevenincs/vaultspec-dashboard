@@ -53,7 +53,7 @@ Deliver the three items the audit deferred, per user direction: the ADR D3 one-c
 
 - [x] `P04.S11` - Add the one-click prerequisite affordance on ineligible type rows: activating the reason selects and focuses the missing upstream type (ADR D3's promised path); `frontend/src/app/left/CreateDocDialog.tsx`.
 - [x] `P04.S12` - Add a corpus-fed add-link affordance to the Linked documents row so removed links are keyboard-recoverable, reusing the shared combobox over the linking corpus; `frontend/src/app/left/CreateDocDialog.tsx`.
-- [ ] `P04.S13` - Record the ink-faint ruling in the token ledger (large-text and decorative only) and re-token every information-bearing small-text ink-faint usage app-wide to a passing ink; `frontend/src/styles.css and surveyed usage sites`.
+- [x] `P04.S13` - Record the ink-faint ruling in the token ledger (large-text and decorative only) and re-token every information-bearing small-text ink-faint usage app-wide to a passing ink; `frontend/src/styles.css and surveyed usage sites`.
 - [ ] `P04.S14` - Extend the render and store tests for the prerequisite affordance and link re-add, and re-run the full frontend gate and vault check green; `frontend/src/app/left/CreateDocDialog.render.test.tsx`.
 
 ## Description

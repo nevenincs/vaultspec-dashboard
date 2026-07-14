@@ -88,21 +88,21 @@ const PILL_CLASS =
   "group flex min-w-0 flex-1 select-text flex-col gap-fg-0-5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 // The first two identity lines keep clear of the absolutely-pinned collapse
 // toggle riding the header's right edge (the window-top chrome band below).
-const PILL_PROJECT_CLASS = "min-w-0 truncate pr-fg-8 text-caption text-ink-faint";
+const PILL_PROJECT_CLASS = "min-w-0 truncate pr-fg-8 text-caption text-ink-muted";
 const PILL_NAME_ROW_CLASS = "flex min-w-0 items-center gap-fg-1 pr-fg-8";
 const PILL_NAME_CLASS = "min-w-0 truncate text-display text-ink";
 const PILL_CHEVRON_CLASS =
   "shrink-0 text-ink-faint transition-transform duration-ui-fast";
 const PILL_STATUS_ROW_CLASS =
-  "flex items-center gap-fg-1-5 text-caption text-ink-faint";
+  "flex items-center gap-fg-1-5 text-caption text-ink-muted";
 const PILL_BRANCH_CLASS = "flex min-w-0 items-center gap-fg-0-5";
 const PILL_BRANCH_NAME_CLASS = "min-w-0 truncate font-mono";
 const PILL_DIRTY_DOT_CLASS = "size-1.5 shrink-0 rounded-full bg-state-stale";
 const PILL_COUNT_CLASS = "flex shrink-0 items-center gap-fg-0-5 tabular-nums";
-const PILL_PATH_CLASS = "min-w-0 truncate font-mono text-caption text-ink-faint";
+const PILL_PATH_CLASS = "min-w-0 truncate font-mono text-caption text-ink-muted";
 // Dropdown row secondary ink: the branch a worktree row is checked out on.
 const ROW_BRANCH_CLASS =
-  "min-w-0 shrink truncate font-mono text-caption text-ink-faint";
+  "min-w-0 shrink truncate font-mono text-caption text-ink-muted";
 
 // The switcher dropdown: the shared floating-card idiom (the command palette /
 // filter flyout elevation), so the picker stops hand-rolling an inline list.
@@ -482,7 +482,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
             }`}
           />
           <span className="min-w-0 flex-1 truncate">{pickerView.allLabel}</span>
-          <span className="shrink-0 tabular-nums text-ink-faint">{rows.length}</span>
+          <span className="shrink-0 tabular-nums text-ink-muted">{rows.length}</span>
         </button>
       </li>
     );
@@ -687,14 +687,14 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
                   </>
                 ) : mapLoading ? (
                   <li
-                    className="px-fg-2 py-fg-0-5 text-caption text-ink-faint"
+                    className="px-fg-2 py-fg-0-5 text-caption text-ink-muted"
                     data-worktree-loading
                   >
                     Loading worktrees…
                   </li>
                 ) : (
                   <li
-                    className="flex items-center justify-between gap-fg-1 px-fg-2 py-fg-0-5 text-caption text-ink-faint"
+                    className="flex items-center justify-between gap-fg-1 px-fg-2 py-fg-0-5 text-caption text-ink-muted"
                     data-worktree-error
                   >
                     <span className="min-w-0 truncate">

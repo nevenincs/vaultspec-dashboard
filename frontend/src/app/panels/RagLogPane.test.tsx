@@ -133,6 +133,25 @@ describe("RagLogPaneBody (binding RagJobDashboard log pane)", () => {
     expect(screen.getByText("No log lines in this window.")).toBeTruthy();
   });
 
+  it("renders the filter-aware empty state when the filter matches nothing", () => {
+    // A filtered-to-empty window reads differently from a genuinely empty one — the
+    // copy names the filter so the operator knows lines exist outside the narrow.
+    render(
+      <RagLogPaneBody
+        lines={[]}
+        windowCount={200}
+        semanticOffline={false}
+        logFilter="zzz-no-match"
+        selectedJobId={null}
+        linesChoice={200}
+      />,
+    );
+    expect(
+      screen.getByText("No log lines in this window match the filter."),
+    ).toBeTruthy();
+    expect(screen.queryByText("No log lines in this window.")).toBeNull();
+  });
+
   it("renders the designed offline state", () => {
     const { container } = render(
       <RagLogPaneBody

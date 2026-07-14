@@ -172,7 +172,7 @@ export function JobOutcome({ job }: { job: ProvisionJob }) {
           </pre>
         )}
       {outcome.outcome_indeterminate === true && (
-        <p className="text-caption text-ink-faint">
+        <p className="text-caption text-ink-muted">
           Couldn&apos;t confirm this finished cleanly on Windows — rechecking status…
         </p>
       )}

@@ -111,7 +111,7 @@ export function FacetRow({
       {count != null && (
         <>
           <span className="w-[0.25rem] shrink-0" />
-          <span data-tabular className="text-[0.6875rem] tabular-nums text-ink-faint">
+          <span data-tabular className="text-[0.6875rem] tabular-nums text-ink-muted">
             {count}
           </span>
         </>

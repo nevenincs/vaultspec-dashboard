@@ -260,7 +260,7 @@ function CommandPaletteSurface() {
           {presentation.noMatch && (
             <li
               role="presentation"
-              className="px-fg-4 py-fg-3 text-center text-ink-faint"
+              className="px-fg-4 py-fg-3 text-center text-ink-muted"
             >
               {presentation.noMatchMessage}
             </li>

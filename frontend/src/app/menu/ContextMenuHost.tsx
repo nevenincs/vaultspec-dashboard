@@ -242,7 +242,7 @@ export function ContextMenuHost({
               className="flex max-h-[min(24rem,calc(100vh-1rem))] w-56 max-w-[calc(100vw-1rem)] flex-col overflow-y-auto rounded-fg-lg border border-rule bg-paper-raised p-fg-1 text-body shadow-fg-popover animate-fade-in"
             >
               {ordered.length === 0 && (
-                <div className="px-fg-3 py-fg-2 text-center text-label text-ink-faint">
+                <div className="px-fg-3 py-fg-2 text-center text-label text-ink-muted">
                   {emptyMessage}
                 </div>
               )}

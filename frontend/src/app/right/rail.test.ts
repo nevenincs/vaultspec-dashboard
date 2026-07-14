@@ -77,17 +77,18 @@ describe("status-only rail composition (activity-rail-realignment ADR D1/D3)", (
 
   it("no longer resolves the retired admin rail-section ids", () => {
     // The `rag-ops` and `authoring-review` rail-section ids retired with the eviction
-    // (ADR D1) — the normalizer drops them, so a persisted/legacy blob can never
-    // re-mount an admin fold in the rail.
+    // (ADR D1); `rag-ops:details` then retired too when the rag job dashboard replaced
+    // the console outright (rag-job-dashboard ADR D1) — its view state lives in its own
+    // view-local store, so no rail-section id survives for it. The normalizer drops all
+    // three, so a persisted/legacy blob can never re-mount a retired fold.
     expect(normalizeStatusSectionId("rag-ops")).toBeNull();
     expect(normalizeStatusSectionId("authoring-review")).toBeNull();
-    // The live status sub-folds still resolve, including the console body's own
-    // Details fold, which travelled INTO the Search service panel (id stays live).
+    expect(normalizeStatusSectionId("rag-ops:details")).toBeNull();
+    // The live status sub-folds still resolve.
     expect(normalizeStatusSectionId("open-plans")).toBe("open-plans");
     expect(normalizeStatusSectionId("pull-requests")).toBe("pull-requests");
     expect(normalizeStatusSectionId("open-issues")).toBe("open-issues");
     expect(normalizeStatusSectionId("recent-commits")).toBe("recent-commits");
-    expect(normalizeStatusSectionId("rag-ops:details")).toBe("rag-ops:details");
   });
 
   it("the footer status cluster is exactly the four control panels", () => {

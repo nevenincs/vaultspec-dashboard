@@ -43,7 +43,7 @@ export function KeybindingControl({ value, onChange, disabled, id }: ControlProp
 
   if (view.empty) {
     return (
-      <p id={id} className="text-body text-ink-faint">
+      <p id={id} className="text-body text-ink-muted">
         No keyboard shortcuts are registered yet.
       </p>
     );

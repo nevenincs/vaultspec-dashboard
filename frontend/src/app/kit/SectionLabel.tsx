@@ -36,7 +36,7 @@ export function SectionLabel({
     >
       <span className="truncate">{children}</span>
       {count != null && (
-        <span data-tabular className="tabular-nums text-ink-faint">
+        <span data-tabular className="tabular-nums text-ink-muted">
           {count}
         </span>
       )}

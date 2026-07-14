@@ -39,7 +39,7 @@ const TONE_TEXT_CLASS: Record<FrameworkStatusTone, string> = {
   ok: "text-state-active",
   attention: "text-state-stale",
   down: "text-state-broken",
-  unknown: "text-ink-faint",
+  unknown: "text-ink-muted",
 };
 
 const RECEIPT_TONE_CLASS: Record<OpsReceipt["tone"], string> = {

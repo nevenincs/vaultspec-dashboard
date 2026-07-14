@@ -699,7 +699,7 @@ function ViewSection() {
           </Segment>
         ))}
       </SegmentedToggle>
-      <p className="text-caption text-ink-faint">{view.caption}</p>
+      <p className="text-caption text-ink-muted">{view.caption}</p>
     </section>
   );
 }

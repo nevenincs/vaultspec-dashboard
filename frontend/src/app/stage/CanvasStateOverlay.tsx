@@ -295,7 +295,7 @@ function QuietCaption({
 }) {
   return (
     <div
-      className="pointer-events-none rounded-fg-sm bg-paper-raised/85 px-fg-2 py-fg-0-5 text-caption text-ink-faint"
+      className="pointer-events-none rounded-fg-sm bg-paper-raised/85 px-fg-2 py-fg-0-5 text-caption text-ink-muted"
       data-canvas-state={testid}
       role="status"
     >
@@ -424,7 +424,7 @@ function PrimaryCard({ primary }: { primary: CanvasPrimary }) {
       return (
         <StateCard testid="context-lost">
           <Spinner label="Restoring graphics" />
-          <p className="text-label text-ink-faint">Restoring graphics…</p>
+          <p className="text-label text-ink-muted">Restoring graphics…</p>
         </StateCard>
       );
   }

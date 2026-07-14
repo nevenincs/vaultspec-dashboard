@@ -101,7 +101,7 @@ function SearchEmptyState({
   }
   if (message) {
     return (
-      <div className="px-fg-3 py-fg-6 text-center text-caption text-ink-faint">
+      <div className="px-fg-3 py-fg-6 text-center text-caption text-ink-muted">
         {message}
       </div>
     );
@@ -316,7 +316,7 @@ export function SearchPaletteSurface() {
           </div>
         )}
         {presentation.incompleteNote && (
-          <div className="border-t border-rule px-fg-3 py-fg-1 text-caption text-ink-faint">
+          <div className="border-t border-rule px-fg-3 py-fg-1 text-caption text-ink-muted">
             {presentation.incompleteNote}
           </div>
         )}
@@ -364,7 +364,7 @@ export function SearchPaletteSurface() {
           />
           <CorpusToggle corpus={corpus} />
           {presentation.resultCountLabel && (
-            <span className="shrink-0 text-caption text-ink-faint" data-tabular>
+            <span className="shrink-0 text-caption text-ink-muted" data-tabular>
               {presentation.resultCountLabel}
             </span>
           )}
@@ -400,7 +400,7 @@ export function SearchPaletteSurface() {
                 <MarkdownReader content={content} scope={scope} />
               ) : (
                 <div className="h-full overflow-y-auto p-fg-6">
-                  <p className="text-caption font-medium text-ink-faint">
+                  <p className="text-caption font-medium text-ink-muted">
                     {selected?.typeWord}
                   </p>
                   <p className="mt-fg-2 whitespace-pre-wrap text-body text-ink-muted">
@@ -448,7 +448,7 @@ export function SearchPaletteSurface() {
             miss files. Visible (and thus screen-reader accessible) plain-language
             line, no mechanism words (search-providers ADR D1 / D8). */}
         {presentation.incompleteNote && (
-          <div className="border-t border-rule px-fg-4 py-fg-1 text-caption text-ink-faint">
+          <div className="border-t border-rule px-fg-4 py-fg-1 text-caption text-ink-muted">
             {presentation.incompleteNote}
           </div>
         )}

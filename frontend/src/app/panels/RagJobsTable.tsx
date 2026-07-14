@@ -305,21 +305,42 @@ export function RagJobsTableBody({
         </Skeleton>
       ) : (
         <div className="flex min-h-0 flex-col">
-          {/* Column header row on the shared grid. */}
-          <div className={`${GRID} border-b border-rule px-fg-2 pb-fg-1`}>
-            <HeaderCell label="Job" activeSort={table.sort} />
-            <HeaderCell label="Phase" activeSort={table.sort} />
-            <HeaderCell label="Progress" activeSort={table.sort} />
-            <HeaderCell label="Started" sortKey="recency" activeSort={table.sort} />
-            <HeaderCell
-              label="Duration"
-              sortKey="duration"
-              activeSort={table.sort}
-              align="end"
-            />
+          {/* The fixed five-column grid keeps its column widths on a narrow
+              viewport by scrolling horizontally rather than crushing the cells
+              (compact collapse): the header + rows share one x-scroll region so
+              their columns stay aligned, while the empty state and the
+              truncation note below stay full-width and wrap. */}
+          <div className="min-h-0 overflow-x-auto" data-rag-jobs-scroll>
+            <div className="flex min-h-0 min-w-[34rem] flex-col">
+              {/* Column header row on the shared grid. */}
+              <div className={`${GRID} border-b border-rule px-fg-2 pb-fg-1`}>
+                <HeaderCell label="Job" activeSort={table.sort} />
+                <HeaderCell label="Phase" activeSort={table.sort} />
+                <HeaderCell label="Progress" activeSort={table.sort} />
+                <HeaderCell label="Started" sortKey="recency" activeSort={table.sort} />
+                <HeaderCell
+                  label="Duration"
+                  sortKey="duration"
+                  activeSort={table.sort}
+                  align="end"
+                />
+              </div>
+
+              {table.rows.length > 0 && (
+                <div className="flex min-h-0 flex-col overflow-y-auto pt-fg-1">
+                  {table.rows.map((row) => (
+                    <JobRow
+                      key={row.id}
+                      row={row}
+                      selected={selectedJobId === row.id}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
-          {table.rows.length === 0 ? (
+          {table.rows.length === 0 && (
             <StateBlock
               mode="empty"
               message={
@@ -328,12 +349,6 @@ export function RagJobsTableBody({
                   : "No indexing jobs yet — reindex to populate the history."
               }
             />
-          ) : (
-            <div className="flex min-h-0 flex-col overflow-y-auto pt-fg-1">
-              {table.rows.map((row) => (
-                <JobRow key={row.id} row={row} selected={selectedJobId === row.id} />
-              ))}
-            </div>
           )}
 
           {/* Honest served-vs-total bound: never a silent undercount. */}

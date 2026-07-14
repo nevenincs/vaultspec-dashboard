@@ -69,7 +69,7 @@ export function DegradationDebugSwitch() {
           </ul>
           <button
             type="button"
-            className="mt-fg-1 text-ink-faint underline-offset-2 transition-colors hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="mt-fg-1 text-ink-muted underline-offset-2 transition-colors hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             onClick={() => {
               clearDegradationOverrides();
             }}

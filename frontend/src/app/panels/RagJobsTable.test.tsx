@@ -185,6 +185,24 @@ describe("RagJobsTableBody (binding RagJobDashboard jobs region)", () => {
     expect(screen.getByText(/Showing the 3 most recent jobs of 50/)).toBeTruthy();
   });
 
+  it("keeps the fixed columns in a horizontal-scroll region for compact collapse", () => {
+    // The five-column grid must not crush on a narrow viewport: header + rows share
+    // one x-scroll region (so their columns stay aligned) rather than overflowing.
+    const { container } = render(
+      <RagJobsTableBody
+        table={view()}
+        selectedJobId={null}
+        offline={false}
+        pending={false}
+      />,
+    );
+    const scroll = container.querySelector("[data-rag-jobs-scroll]");
+    expect(scroll).toBeTruthy();
+    expect((scroll as HTMLElement).className).toContain("overflow-x-auto");
+    // The header row lives inside the scroll region so it scrolls in lock-step.
+    expect(scroll?.querySelector("button")?.textContent).toBeTruthy();
+  });
+
   it("renders the designed offline state (no header)", () => {
     const { container } = render(
       <RagJobsTableBody table={view()} selectedJobId={null} offline pending={false} />,
