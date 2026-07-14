@@ -42,6 +42,8 @@ import {
   provisionForceInstallAction,
   provisionRecommendedAction,
 } from "../../stores/view/provisionActions";
+import { resolveActionPresentation } from "../../platform/actions/action";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { StateCard } from "./CanvasStateOverlay";
 
 /** The panel's one resolved state, from stores-derived truth — the chrome half
@@ -227,8 +229,16 @@ export function ProvisionPanelBody({
   onPrimary,
   onForce,
 }: ProvisionPanelBodyProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   const primary = provisionRecommendedAction(data);
   const force = provisionForceInstallAction(data);
+  const primaryLabel = resolveActionPresentation(primary.label, resolveMessage);
+  const forceLabel = resolveActionPresentation(force.label, resolveMessage);
+  const forcePrompt = resolveMessage({
+    key: "common:accessibility.confirmAction",
+    values: { action: forceLabel.message },
+  });
+  const forcePresentationFallback = forceLabel.usedFallback || forcePrompt.usedFallback;
   const detail = recommendationDetail(data.recommended);
 
   return (
@@ -240,18 +250,18 @@ export function ProvisionPanelBody({
       <div className="flex flex-wrap items-center justify-center gap-fg-1-5">
         <Button
           variant="primary"
-          disabled={!isRunnable(primary) || busy}
-          onClick={onPrimary}
+          disabled={primaryLabel.usedFallback || !isRunnable(primary) || busy}
+          onClick={primaryLabel.usedFallback ? undefined : onPrimary}
         >
-          {primary.label}
+          {primaryLabel.message}
         </Button>
         {data.framework.vaultspec_present && (
           <Button
             variant={forceArmed ? "danger" : "ghost"}
-            disabled={!isRunnable(force) || busy}
-            onClick={onForce}
+            disabled={forcePresentationFallback || !isRunnable(force) || busy}
+            onClick={forcePresentationFallback ? undefined : onForce}
           >
-            {forceArmed ? "Confirm reinstall?" : force.label}
+            {forceArmed ? forcePrompt.message : forceLabel.message}
           </Button>
         )}
       </div>

@@ -79,7 +79,7 @@ describe("provisionRecommendedAction", () => {
     for (const recommended of recommendations) {
       const action = provisionRecommendedAction(status(recommended));
       expect(action.label).not.toBe(recommended);
-      expect(action.label.length).toBeGreaterThan(0);
+      expect(typeof action.label === "string" && action.label.length > 0).toBe(true);
     }
   });
 

@@ -7,6 +7,7 @@ import {
   ACTION_SECTION_ORDER,
   isRunnable,
   type ActionDescriptor,
+  type ActionPresentation,
   type ActionSection,
 } from "../../platform/actions/action";
 import {
@@ -220,7 +221,7 @@ export interface ContextMenuActionRowView {
   id: string;
   index: number;
   icon: ActionDescriptor["icon"];
-  label: string;
+  label: ActionPresentation;
   className: string;
   iconClassName: string;
   iconSpacerClassName: string;
@@ -228,7 +229,7 @@ export interface ContextMenuActionRowView {
   selected: boolean;
   armed: boolean;
   disabled: boolean;
-  disabledReason: string | undefined;
+  disabledReason: ActionPresentation | undefined;
   confirmShortcutLabel: string | null;
   confirmShortcutClassName: string;
   acceleratorLabel: string | null;
@@ -255,18 +256,10 @@ export interface ContextMenuResolvedView extends ContextMenuSnapshot {
   orderedRows: ContextMenuActionRowView[];
   /** Flat-order indices that can be activated by keyboard cursor movement. */
   runnableIndices: number[];
-  /** Human label for the entity kind used by menu chrome and live regions. */
-  kindLabel: string | null;
   /** The currently focused action in flat display order. */
   activeAction: ActionDescriptor | undefined;
   /** The currently focused row in flat display order. */
   activeRow: ContextMenuActionRowView | undefined;
-  /** Accessible menu label. */
-  menuAriaLabel: string;
-  /** Empty-state copy when a resolver returns no actions. */
-  emptyMessage: string;
-  /** Polite live-region copy for entity, focus, and confirm state. */
-  liveMessage: string;
 }
 
 export interface ContextMenuCursorRepair {
@@ -278,6 +271,7 @@ export interface ContextMenuCursorRepair {
 export type ContextMenuActivationView =
   | { kind: "ignore" }
   | { kind: "arm"; itemId: string }
+  | { kind: "request-confirmation"; itemId: string }
   | { kind: "run"; action: ActionDescriptor }
   | {
       kind: "dispatch";
@@ -363,7 +357,7 @@ export function deriveContextMenuResolvedView(
       id: action.id,
       index,
       icon: action.icon,
-      label: contextMenuActionLabel(action, armed),
+      label: action.label,
       className: contextMenuActionRowClassName({
         selected,
         disabled: action.disabled === true,
@@ -392,20 +386,8 @@ export function deriveContextMenuResolvedView(
       .map((action) => rowsById.get(action.id))
       .filter((row): row is ContextMenuActionRowView => row !== undefined),
   }));
-  const kindLabel = snapshot.entity?.kind.replace(/-/g, " ") ?? null;
-  const label = kindLabel ?? "entity";
   const activeAction = ordered[snapshot.cursor];
   const activeRow = orderedRows[snapshot.cursor];
-  const menuAriaLabel = `${label} actions`;
-  const emptyMessage = "no actions";
-  const liveMessage =
-    !snapshot.open || !snapshot.entity
-      ? ""
-      : activeAction === undefined
-        ? `${menuAriaLabel}: ${emptyMessage}`
-        : snapshot.armedItemId === activeAction.id
-          ? contextMenuActionLabel(activeAction, true)
-          : `${menuAriaLabel}. ${activeAction.label}`;
   return {
     ...snapshot,
     actions,
@@ -416,12 +398,8 @@ export function deriveContextMenuResolvedView(
     runnableIndices: ordered
       .map((action, index) => (isRunnable(action) ? index : -1))
       .filter((index) => index >= 0),
-    kindLabel,
     activeAction,
     activeRow,
-    menuAriaLabel,
-    emptyMessage,
-    liveMessage,
   };
 }
 
@@ -435,19 +413,16 @@ export function contextMenuActionRowClassName(state: {
     : "text-ink-muted hover:bg-paper-sunken hover:text-ink";
 }
 
-export function contextMenuActionLabel(
-  action: Pick<ActionDescriptor, "label">,
-  armed: boolean,
-): string {
-  return armed ? `confirm ${action.label}?` : action.label;
-}
-
 export function deriveContextMenuActivation(
   action: ActionDescriptor,
   armedItemId: string | null,
   canDispatchType: (type: string) => boolean,
+  confirmationApproved = false,
 ): ContextMenuActivationView {
   if (!isRunnable(action)) return { kind: "ignore" };
+  if (action.confirmation !== undefined && !confirmationApproved) {
+    return { kind: "request-confirmation", itemId: action.id };
+  }
   if (action.confirm && armedItemId !== action.id) {
     return { kind: "arm", itemId: action.id };
   }
@@ -615,11 +590,12 @@ export function useContextMenuResolvedView(
   );
 }
 
-export function useContextMenuViewportDismiss(): void {
+export function useContextMenuViewportDismiss(enabled: unknown = true): void {
   const open = useContextMenuStore((state) => normalizeContextMenuOpen(state.open));
+  const dismissEnabled = enabled === true;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !dismissEnabled) return;
     const dismiss = () => closeContextMenu();
 
     window.addEventListener("scroll", dismiss, true);
@@ -630,7 +606,7 @@ export function useContextMenuViewportDismiss(): void {
       window.removeEventListener("resize", dismiss);
       window.removeEventListener("blur", dismiss);
     };
-  }, [open]);
+  }, [dismissEnabled, open]);
 }
 
 /** Imperative open from any surface (pointer or keyboard entry). */

@@ -9,6 +9,7 @@
 // (`stores/server/provisionActions.test.ts`).
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { I18nextProvider } from "react-i18next";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProvisionJob, ProvisionStatus } from "../../stores/server/engine";
@@ -22,6 +23,10 @@ import {
   shouldSuppressCanvasStateOverlay,
 } from "./ProvisionPanel";
 import { provisionForceInstallAction } from "../../stores/view/provisionActions";
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+} from "../../localization/testing";
 
 afterEach(cleanup);
 
@@ -210,7 +215,9 @@ describe("ProvisionPanelBody", () => {
         onForce={vi.fn()}
       />,
     );
-    expect(screen.getByRole("button", { name: "Confirm reinstall?" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Confirm Reinstall (overwrite)?" }),
+    ).toBeTruthy();
 
     rerender(
       <ProvisionPanelBody
@@ -226,6 +233,36 @@ describe("ProvisionPanelBody", () => {
       />,
     );
     expect(screen.queryByText(/Reinstall/)).toBeNull();
+  });
+
+  it("fails closed when the localized force confirmation prompt is unavailable", () => {
+    const runtime = createTestLocalizationRuntime(ltrTestLocale);
+    runtime.removeResourceBundle(ltrTestLocale, "common");
+    runtime.removeResourceBundle("en", "common");
+    let forceCount = 0;
+
+    render(
+      <I18nextProvider i18n={runtime}>
+        <ProvisionPanelBody
+          data={status()}
+          job={undefined}
+          busy={false}
+          runErrorMessage={null}
+          forceArmed
+          onPrimary={() => undefined}
+          onForce={() => {
+            forceCount += 1;
+          }}
+        />
+      </I18nextProvider>,
+    );
+
+    const disabledButtons = screen
+      .getAllByRole("button")
+      .filter((button) => (button as HTMLButtonElement).disabled);
+    expect(disabledButtons).toHaveLength(1);
+    fireEvent.click(disabledButtons[0]!);
+    expect(forceCount).toBe(0);
   });
 
   it("renders the served sync vocabulary on a terminal job outcome, never invented semantics", () => {

@@ -4200,11 +4200,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "6d9a780d96b6a616653a44d0",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "7416d80b0cb712d98b654080",
     "path": "src/app/stage/ProvisionPanel.tsx",
     "rule": "jsx-text"

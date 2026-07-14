@@ -24,10 +24,20 @@ type DestructiveActionKeyByNamespace = {
     : never;
 };
 
+type GuardedActionKeyByNamespace = {
+  [Namespace in keyof EnglishResources & string]: EnglishResources[Namespace] extends {
+    readonly guardedActions: infer Actions extends Readonly<Record<string, unknown>>;
+  }
+    ? `${Namespace}:guardedActions.${MessageLeafPath<Actions>}`
+    : never;
+};
+
 /** A namespace-qualified semantic leaf in the source-locale catalog. */
 export type MessageKey = MessageKeyByNamespace[keyof MessageKeyByNamespace];
 export type DestructiveActionMessageKey =
   DestructiveActionKeyByNamespace[keyof DestructiveActionKeyByNamespace];
+export type GuardedActionMessageKey =
+  GuardedActionKeyByNamespace[keyof GuardedActionKeyByNamespace];
 
 /** Interpolation data may cross non-React presentation seams. */
 export type MessageValue = string | number;
@@ -56,6 +66,7 @@ export type SafeCancelMessageKey = (typeof SAFE_CANCEL_MESSAGE_KEYS)[number];
 export type SafeCancelMessageDescriptor = MessageDescriptor<SafeCancelMessageKey>;
 export type DestructiveActionMessageDescriptor =
   MessageDescriptor<DestructiveActionMessageKey>;
+export type GuardedActionMessageDescriptor = MessageDescriptor<GuardedActionMessageKey>;
 
 export interface ConfirmationDescriptor {
   readonly title: MessageDescriptor;
@@ -70,6 +81,28 @@ export interface ConfirmationDescriptorInput {
   readonly confirmLabel: DestructiveActionMessageDescriptor;
   readonly cancelLabel: SafeCancelMessageDescriptor;
 }
+
+export interface GuardedConfirmationDescriptor {
+  readonly title: MessageDescriptor;
+  readonly body: MessageDescriptor;
+  readonly confirmLabel: GuardedActionMessageDescriptor;
+  readonly cancelLabel: SafeCancelMessageDescriptor;
+}
+
+export interface GuardedConfirmationDescriptorInput {
+  readonly title: MessageDescriptor;
+  readonly body: MessageDescriptor;
+  readonly confirmLabel: GuardedActionMessageDescriptor;
+  readonly cancelLabel: SafeCancelMessageDescriptor;
+}
+
+export type ActionConfirmationDescriptor =
+  | ({ readonly kind: "destructive" } & ConfirmationDescriptor)
+  | ({ readonly kind: "guarded" } & GuardedConfirmationDescriptor);
+
+export type ActionConfirmationDescriptorInput =
+  | ({ readonly kind: "destructive" } & ConfirmationDescriptorInput)
+  | ({ readonly kind: "guarded" } & GuardedConfirmationDescriptorInput);
 
 type OwnDataRecord = Readonly<Record<string, unknown>>;
 
@@ -142,9 +175,20 @@ export const DESTRUCTIVE_ACTION_MESSAGE_KEYS = Object.freeze(
   }) as DestructiveActionMessageKey[],
 );
 
+/** Guarded action leaves generated from the catalog's semantic category. */
+export const GUARDED_ACTION_MESSAGE_KEYS = Object.freeze(
+  MESSAGE_KEYS.filter((key) => {
+    const namespaceEnd = key.indexOf(":");
+    return key.slice(namespaceEnd + 1).startsWith("guardedActions.");
+  }) as GuardedActionMessageKey[],
+);
+
 const MESSAGE_KEY_SET: ReadonlySet<string> = new Set(MESSAGE_KEYS);
 const DESTRUCTIVE_ACTION_MESSAGE_KEY_SET: ReadonlySet<string> = new Set(
   DESTRUCTIVE_ACTION_MESSAGE_KEYS,
+);
+const GUARDED_ACTION_MESSAGE_KEY_SET: ReadonlySet<string> = new Set(
+  GUARDED_ACTION_MESSAGE_KEYS,
 );
 const SAFE_CANCEL_MESSAGE_KEY_SET: ReadonlySet<string> = new Set(
   SAFE_CANCEL_MESSAGE_KEYS,
@@ -244,6 +288,16 @@ export function normalizeDestructiveActionMessageDescriptor(
   return normalized as DestructiveActionMessageDescriptor;
 }
 
+export function normalizeGuardedActionMessageDescriptor(
+  value: unknown,
+): GuardedActionMessageDescriptor | null {
+  const normalized = normalizeMessageDescriptor(value);
+  if (normalized === null || !GUARDED_ACTION_MESSAGE_KEY_SET.has(normalized.key)) {
+    return null;
+  }
+  return normalized as GuardedActionMessageDescriptor;
+}
+
 export function normalizeConfirmationDescriptor(
   value: unknown,
 ): ConfirmationDescriptor | null {
@@ -281,4 +335,87 @@ export function isConfirmationDescriptor(
   value: unknown,
 ): value is ConfirmationDescriptor {
   return normalizeConfirmationDescriptor(value) !== null;
+}
+
+export function normalizeGuardedConfirmationDescriptor(
+  value: unknown,
+): GuardedConfirmationDescriptor | null {
+  const record = ownDataRecord(value);
+  if (
+    record === null ||
+    !hasExactFields(record, ["title", "body", "confirmLabel", "cancelLabel"])
+  ) {
+    return null;
+  }
+
+  const title = normalizeMessageDescriptor(record.title);
+  const body = normalizeMessageDescriptor(record.body);
+  const confirmLabel = normalizeGuardedActionMessageDescriptor(record.confirmLabel);
+  const cancelLabel = normalizeSafeCancelLabel(record.cancelLabel);
+  if (
+    title === null ||
+    body === null ||
+    confirmLabel === null ||
+    cancelLabel === null
+  ) {
+    return null;
+  }
+
+  return Object.freeze({ title, body, confirmLabel, cancelLabel });
+}
+
+export function createGuardedConfirmationDescriptor(
+  input: GuardedConfirmationDescriptorInput,
+): GuardedConfirmationDescriptor | null {
+  return normalizeGuardedConfirmationDescriptor(input);
+}
+
+export function isGuardedConfirmationDescriptor(
+  value: unknown,
+): value is GuardedConfirmationDescriptor {
+  return normalizeGuardedConfirmationDescriptor(value) !== null;
+}
+
+export function normalizeActionConfirmationDescriptor(
+  value: unknown,
+): ActionConfirmationDescriptor | null {
+  const record = ownDataRecord(value);
+  if (
+    record === null ||
+    !hasExactFields(record, ["kind", "title", "body", "confirmLabel", "cancelLabel"])
+  ) {
+    return null;
+  }
+
+  const confirmation = {
+    title: record.title,
+    body: record.body,
+    confirmLabel: record.confirmLabel,
+    cancelLabel: record.cancelLabel,
+  };
+  if (record.kind === "destructive") {
+    const normalized = normalizeConfirmationDescriptor(confirmation);
+    return normalized === null
+      ? null
+      : Object.freeze({ kind: "destructive", ...normalized });
+  }
+  if (record.kind === "guarded") {
+    const normalized = normalizeGuardedConfirmationDescriptor(confirmation);
+    return normalized === null
+      ? null
+      : Object.freeze({ kind: "guarded", ...normalized });
+  }
+  return null;
+}
+
+export function createActionConfirmationDescriptor(
+  input: ActionConfirmationDescriptorInput,
+): ActionConfirmationDescriptor | null {
+  return normalizeActionConfirmationDescriptor(input);
+}
+
+export function isActionConfirmationDescriptor(
+  value: unknown,
+): value is ActionConfirmationDescriptor {
+  return normalizeActionConfirmationDescriptor(value) !== null;
 }

@@ -21,6 +21,8 @@ const EXPECTED_NAMESPACES = [
   "projects",
 ] as const;
 const EXPECTED_CATALOG_KEYS = [
+  "common:accessibility.actionsMenu",
+  "common:accessibility.confirmAction",
   "common:actions.cancel",
   "common:actions.close",
   "common:actions.copy",
@@ -50,11 +52,13 @@ const EXPECTED_CATALOG_KEYS = [
   "common:actions.showProjectHealth",
   "common:actions.showSearchStatus",
   "common:actions.showSystemStatus",
+  "common:disabledReasons.actionUnavailable",
   "common:disabledReasons.currentVersionRequired",
   "common:disabledReasons.desktopEditorRequired",
   "common:disabledReasons.desktopFileManagerRequired",
   "common:disabledReasons.selectItemToOpen",
   "common:destructiveActions.discardChanges",
+  "common:statuses.noActionsAvailable",
   "documents:actions.copyLink",
   "documents:actions.linkToSelectedDocument",
   "documents:disabledReasons.selectDifferentDocument",

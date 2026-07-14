@@ -16,8 +16,12 @@ import {
   normalizeActionDescriptorLabel,
   normalizeActionDescriptorText,
   normalizeActionDescriptor,
+  resolveActionPresentation,
   type ActionDescriptor,
 } from "./action";
+import { resolveMessageResult } from "../localization/fallback";
+import type { MessageDescriptor } from "../localization/message";
+import { createLocalizationRuntime } from "../localization/runtime";
 import {
   ENTITY_DESCRIPTOR_HUNK_MAX_CHARS,
   ENTITY_DESCRIPTOR_ID_MAX_CHARS,
@@ -365,6 +369,62 @@ describe("isRunnable", () => {
         dispatch: { type: "noop" },
       }),
     ).toEqual({ id: "ambiguous", label: "Ambiguous" });
+  });
+
+  it("normalizes typed presentation and discriminated confirmations", () => {
+    const normalized = normalizeActionDescriptor({
+      id: "archive",
+      label: { key: "features:destructiveActions.archive" },
+      disabledReason: { key: "features:disabledReasons.selectFeature" },
+      confirmation: {
+        kind: "destructive",
+        title: {
+          key: "features:confirmations.archive.title",
+          values: { feature: "Alpha" },
+        },
+        body: { key: "features:confirmations.archive.body" },
+        confirmLabel: { key: "features:destructiveActions.archive" },
+        cancelLabel: { key: "common:actions.cancel" },
+      },
+    });
+
+    expect(normalized).toMatchObject({
+      id: "archive",
+      label: { key: "features:destructiveActions.archive" },
+      disabledReason: { key: "features:disabledReasons.selectFeature" },
+      confirmation: {
+        kind: "destructive",
+        confirmLabel: { key: "features:destructiveActions.archive" },
+      },
+    });
+    expect(
+      normalizeActionDescriptor({
+        id: "invalid",
+        label: { key: "features:guardedActions.repair" },
+        confirm: true,
+        confirmation: {
+          kind: "guarded",
+          title: { key: "features:confirmations.repair.title" },
+          body: { key: "features:confirmations.repair.body" },
+          confirmLabel: { key: "features:guardedActions.repair" },
+          cancelLabel: { key: "common:actions.cancel" },
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("resolves transitional action presentation through the localization runtime", () => {
+    const runtime = createLocalizationRuntime();
+    const resolveDescriptor = (descriptor: MessageDescriptor) =>
+      resolveMessageResult(runtime, descriptor);
+
+    expect(resolveActionPresentation("Legacy label", resolveDescriptor)).toEqual({
+      message: "Legacy label",
+      usedFallback: false,
+    });
+    expect(
+      resolveActionPresentation({ key: "common:actions.retry" }, resolveDescriptor),
+    ).toEqual({ message: "Retry", usedFallback: false });
   });
 
   it("is true for a run action", () => {

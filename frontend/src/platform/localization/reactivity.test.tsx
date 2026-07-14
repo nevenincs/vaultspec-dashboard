@@ -13,11 +13,21 @@ import {
 } from "../../localization/testing";
 import { sourceLocale } from "../../locales/en";
 import { bindDocumentLanguage, applyDocumentLanguage } from "./documentLanguage";
-import { LocalizationProvider, useLocalizedMessage } from "./LocalizationProvider";
+import {
+  LocalizationProvider,
+  useLocalizedMessage,
+  useLocalizedMessageResolver,
+} from "./LocalizationProvider";
 import { localization } from "./runtime";
 
 function LocalizedRetry(): React.JSX.Element {
   return <p>{useLocalizedMessage({ key: "common:actions.retry" })}</p>;
+}
+
+function BulkLocalizedRetry(): React.JSX.Element {
+  const resolve = useLocalizedMessageResolver();
+  const result = resolve({ key: "common:actions.retry" });
+  return <p data-used-fallback={String(result.usedFallback)}>{result.message}</p>;
 }
 
 afterEach(() => {
@@ -61,6 +71,31 @@ describe.sequential("React localization and document language", () => {
 
     expect(localization.language).toBe(sourceLocale);
     expect(localization.hasResourceBundle(ltrTestLocale, "common")).toBe(false);
+  });
+
+  it("reacts through the bulk descriptor resolver to real locale changes", async () => {
+    const runtime = createTestLocalizationRuntime();
+
+    render(
+      <I18nextProvider i18n={runtime}>
+        <BulkLocalizedRetry />
+      </I18nextProvider>,
+    );
+    expect(screen.getByText("Retry").dataset.usedFallback).toBe("false");
+
+    await act(async () => {
+      await runtime.changeLanguage(ltrTestLocale);
+    });
+    expect(
+      screen.getByText(ltrTestResources.common.actions.retry).dataset.usedFallback,
+    ).toBe("false");
+
+    await act(async () => {
+      await runtime.changeLanguage(rtlTestLocale);
+    });
+    expect(
+      screen.getByText(rtlTestResources.common.actions.retry).dataset.usedFallback,
+    ).toBe("false");
   });
 
   it("applies language and direction and follows locale changes", async () => {

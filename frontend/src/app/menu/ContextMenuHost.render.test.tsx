@@ -6,11 +6,21 @@
 // disabled item with its reason, and light-dismisses on outside click.
 
 import type { QueryClient } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { i18n } from "i18next";
+import { I18nextProvider } from "react-i18next";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { registerResolver, resetResolvers } from "../../platform/actions/registry";
+import { createTestLocalizationRuntime } from "../../localization/testing";
 import {
   MenuTestProviders,
   createMenuTestQueryClient,
@@ -23,13 +33,24 @@ import { ENGINE_WAIT } from "../../testing/timing";
 // `ctx.selectedNodeId` thread) through TanStack query hooks, so the render must
 // carry a (seeded, no-scope) QueryClient like every other store-backed surface.
 let testClient: QueryClient;
+let testLocalization: i18n;
 function Providers({ children }: { children: ReactNode }) {
-  return <MenuTestProviders client={testClient}>{children}</MenuTestProviders>;
+  return (
+    <I18nextProvider i18n={testLocalization}>
+      <MenuTestProviders client={testClient}>{children}</MenuTestProviders>
+    </I18nextProvider>
+  );
 }
 
-const focus = vi.fn();
-const copy = vi.fn();
-const remove = vi.fn();
+let focusCount = 0;
+let removeCount = 0;
+const focus = () => {
+  focusCount += 1;
+};
+const copy = () => undefined;
+const remove = () => {
+  removeCount += 1;
+};
 
 function registerNodeMenu() {
   registerResolver("node", (entity) => [
@@ -53,6 +74,7 @@ function registerNodeMenu() {
 
 beforeEach(() => {
   testClient = createMenuTestQueryClient();
+  testLocalization = createTestLocalizationRuntime();
   registerNodeMenu();
 });
 afterEach(() => {
@@ -60,9 +82,8 @@ afterEach(() => {
   resetResolvers();
   useContextMenuStore.getState().closeMenu();
   testClient.clear();
-  focus.mockReset();
-  copy.mockReset();
-  remove.mockReset();
+  focusCount = 0;
+  removeCount = 0;
 });
 
 function openNodeMenu() {
@@ -72,12 +93,23 @@ function openNodeMenu() {
   );
 }
 
+const archiveConfirmation = {
+  kind: "destructive" as const,
+  title: {
+    key: "features:confirmations.archive.title" as const,
+    values: { feature: "Search" },
+  },
+  body: { key: "features:confirmations.archive.body" as const },
+  confirmLabel: { key: "features:destructiveActions.archive" as const },
+  cancelLabel: { key: "common:actions.cancel" as const },
+};
+
 describe("ContextMenuHost", () => {
   it("renders a labelled menu with the resolved items grouped into sections", async () => {
     openNodeMenu();
     const menu = await screen.findByRole("menu", undefined, ENGINE_WAIT);
-    expect(menu.getAttribute("aria-label")).toBe("node actions");
-    expect(screen.getByText("Focus Alpha")).toBeTruthy();
+    expect(menu.getAttribute("aria-label")).toBe("Actions");
+    expect(screen.getByRole("menuitem", { name: /Focus Alpha/ })).toBeTruthy();
     expect(screen.getByText("Copy id")).toBeTruthy();
     expect(screen.getByText("Remove")).toBeTruthy();
     // navigate, transform, copy, danger -> three separators between four groups.
@@ -86,21 +118,167 @@ describe("ContextMenuHost", () => {
 
   it("runs a non-confirm item and closes the menu", async () => {
     openNodeMenu();
-    fireEvent.click(await screen.findByText("Focus Alpha", undefined, ENGINE_WAIT));
-    expect(focus).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /Focus Alpha/ }, ENGINE_WAIT),
+    );
+    expect(focusCount).toBe(1);
     expect(useContextMenuStore.getState().open).toBe(false);
   });
 
   it("arms a destructive item on first click and fires on the second", async () => {
     openNodeMenu();
-    fireEvent.click(await screen.findByText("Remove", undefined, ENGINE_WAIT));
-    expect(remove).not.toHaveBeenCalled();
-    const armed = (await screen.findAllByText("confirm Remove?"))[0]!.closest(
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /Remove/ }, ENGINE_WAIT),
+    );
+    expect(removeCount).toBe(0);
+    const armed = (await screen.findAllByText("Confirm Remove?"))[0]!.closest(
       '[role="menuitem"]',
     );
     fireEvent.click(armed as HTMLElement);
-    expect(remove).toHaveBeenCalledTimes(1);
+    expect(removeCount).toBe(1);
     expect(useContextMenuStore.getState().open).toBe(false);
+  });
+
+  it("returns focus to the pending row and later restores the original opener", async () => {
+    resetResolvers();
+    registerResolver("node", () => [
+      { id: "focus", label: "Focus", section: "navigate", run: focus },
+      {
+        id: "archive",
+        label: { key: "features:destructiveActions.archive" },
+        section: "danger",
+        confirmation: archiveConfirmation,
+        run: remove,
+      },
+    ]);
+    const opener = document.createElement("button");
+    opener.textContent = "Open actions";
+    document.body.appendChild(opener);
+    render(<ContextMenuHost />, { wrapper: Providers });
+    act(() => {
+      opener.focus();
+      openContextMenu({ kind: "node", id: "n1" }, { x: 50, y: 50 });
+    });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Archive feature" }, ENGINE_WAIT),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(
+      () =>
+        expect(document.activeElement).toBe(
+          screen.getByRole("menuitem", { name: "Archive feature" }),
+        ),
+      ENGINE_WAIT,
+    );
+    expect(useContextMenuStore.getState().cursor).toBe(1);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+    expect(removeCount).toBe(0);
+  });
+
+  it("clears a typed confirmation when the current action disappears", async () => {
+    resetResolvers();
+    registerResolver("node", () => [
+      { id: "focus", label: "Focus", section: "navigate", run: focus },
+      {
+        id: "archive",
+        label: { key: "features:destructiveActions.archive" },
+        section: "danger",
+        confirmation: archiveConfirmation,
+        disabledInTimeTravel: true,
+        run: remove,
+      },
+    ]);
+    const view = render(<ContextMenuHost timeTravel={false} />, {
+      wrapper: Providers,
+    });
+    act(() => openContextMenu({ kind: "node", id: "n1" }, { x: 50, y: 50 }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Archive feature" }, ENGINE_WAIT),
+    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    view.rerender(<ContextMenuHost timeTravel />);
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), ENGINE_WAIT);
+    expect(await screen.findByRole("menu", undefined, ENGINE_WAIT)).toBeTruthy();
+    await waitFor(
+      () => expect(document.activeElement?.textContent).toContain("Focus"),
+      ENGINE_WAIT,
+    );
+    expect(removeCount).toBe(0);
+  });
+
+  it("keeps typed confirmation open across viewport dismissal events", async () => {
+    resetResolvers();
+    registerResolver("node", () => [
+      {
+        id: "archive",
+        label: { key: "features:destructiveActions.archive" },
+        section: "danger",
+        confirmation: archiveConfirmation,
+        run: remove,
+      },
+    ]);
+    openNodeMenu();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Archive feature" }, ENGINE_WAIT),
+    );
+
+    window.dispatchEvent(new Event("scroll"));
+    window.dispatchEvent(new Event("resize"));
+    window.dispatchEvent(new Event("blur"));
+
+    expect(screen.getByRole("dialog", { name: "Archive Search?" })).toBeTruthy();
+    expect(useContextMenuStore.getState().open).toBe(true);
+    expect(removeCount).toBe(0);
+  });
+
+  it("fails closed before requesting a typed confirmation with unavailable copy", async () => {
+    testLocalization.removeResourceBundle("en", "features");
+    resetResolvers();
+    registerResolver("node", () => [
+      {
+        id: "archive",
+        label: "Archive feature",
+        section: "danger",
+        confirmation: archiveConfirmation,
+        run: remove,
+      },
+    ]);
+    openNodeMenu();
+    const archive = await screen.findByRole(
+      "menuitem",
+      { name: "Archive feature" },
+      ENGINE_WAIT,
+    );
+
+    expect(archive.getAttribute("aria-disabled")).toBe("true");
+    expect(archive.getAttribute("title")).toBe(
+      "Reload the page and try this action again.",
+    );
+    fireEvent.click(archive);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(removeCount).toBe(0);
+    expect(useContextMenuStore.getState().open).toBe(true);
+  });
+
+  it("fails closed when the catalog-owned legacy confirmation prompt is unavailable", async () => {
+    testLocalization.removeResourceBundle("en", "common");
+    openNodeMenu();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /Remove/ }, ENGINE_WAIT),
+    );
+    await waitFor(
+      () =>
+        expect(screen.queryByRole("menuitem", { name: "Confirm Remove?" })).toBeNull(),
+      ENGINE_WAIT,
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: /Remove/ }));
+    expect(removeCount).toBe(0);
+    expect(useContextMenuStore.getState().open).toBe(true);
   });
 
   it("disarms when canonical time-travel state removes the armed action", async () => {
@@ -124,13 +302,15 @@ describe("ContextMenuHost", () => {
     const view = render(<ContextMenuHost />, { wrapper: Providers });
     act(() => openContextMenu({ kind: "node", id: "n1" }, { x: 10, y: 10 }));
 
-    fireEvent.click(await screen.findByText("Remove", undefined, ENGINE_WAIT));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /Remove/ }, ENGINE_WAIT),
+    );
     expect(useContextMenuStore.getState().armedItemId).toBe("remove");
 
     view.rerender(<ContextMenuHost timeTravel />);
 
-    expect(screen.queryByText("confirm Remove?")).toBeNull();
-    expect(screen.queryByText("Remove")).toBeNull();
+    expect(screen.queryByText("Confirm Remove?")).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /Remove/ })).toBeNull();
     expect(useContextMenuStore.getState().armedItemId).toBeNull();
     expect(useContextMenuStore.getState().open).toBe(true);
   });
@@ -184,7 +364,9 @@ describe("ContextMenuHost", () => {
       openContextMenu({ kind: "node", id: "n1", title: "Alpha" }, { x: 10, y: 10 }),
     );
     // Activation must not throw inside the event handler; the menu just closes.
-    expect(() => fireEvent.click(screen.getByText("Unregistered verb"))).not.toThrow();
+    expect(() =>
+      fireEvent.click(screen.getByRole("menuitem", { name: /Unregistered verb/ })),
+    ).not.toThrow();
     expect(useContextMenuStore.getState().open).toBe(false);
   });
 });

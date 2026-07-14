@@ -72,10 +72,7 @@ import {
   useShellFrameView,
   useShellWindowActions,
 } from "./shellLayout";
-import {
-  normalizeCommandPaletteQuery,
-  useCommandPaletteOpsFeedbackBoundary,
-} from "./commandPalette";
+import { useCommandPaletteOpsFeedbackBoundary } from "./commandPalette";
 
 // Re-export the command-plane vocabulary from its canonical home (the registry) so
 // existing importers keep resolving these names from this module.
@@ -84,6 +81,16 @@ export { normalizeCommandFamily };
 /** A palette command IS a registry CommandDescriptor (the shared shape every plane
  *  consumes); this alias preserves the historical name. */
 export type PaletteCommand = CommandDescriptor;
+export type ResolvedPaletteCommand = Omit<
+  PaletteCommand,
+  "label" | "disabledReason"
+> & {
+  label: string;
+  disabledReason?: string;
+  presentationSafe: boolean;
+  fallbackDisabled: boolean;
+  legacyConfirmPrompt: string | null;
+};
 
 /** Human-facing group heading per family (object-then-action taxonomy). */
 export const FAMILY_LABEL: Record<CommandFamily, string> = {
@@ -542,10 +549,10 @@ export function deriveCommandAccelerators(
 }
 
 export function filterCommands(
-  commands: readonly PaletteCommand[],
+  commands: readonly ResolvedPaletteCommand[],
   query: unknown,
-): PaletteCommand[] {
-  const needle = normalizeCommandPaletteQuery(query).toLowerCase();
+): ResolvedPaletteCommand[] {
+  const needle = typeof query === "string" ? query.trim().toLowerCase() : "";
   if (!needle) return [...commands];
   const tokens = needle.split(/\s+/).filter(Boolean);
   return commands.filter((command) => {
@@ -569,9 +576,9 @@ const FAMILY_ORDER: CommandFamily[] = [
   "app",
 ];
 
-export function groupByFamily(
-  commands: readonly PaletteCommand[],
-): { family: CommandFamily; commands: PaletteCommand[] }[] {
+export function groupByFamily<Command extends Pick<PaletteCommand, "family">>(
+  commands: readonly Command[],
+): { family: CommandFamily; commands: Command[] }[] {
   return FAMILY_ORDER.map((family) => ({
     family,
     commands: commands.filter((command) => command.family === family),
@@ -579,19 +586,18 @@ export function groupByFamily(
 }
 
 export interface CommandPaletteCommandView {
-  groups: { family: CommandFamily; commands: PaletteCommand[] }[];
-  ordered: PaletteCommand[];
-  matchedResults: PaletteCommand[];
-  noMatch: boolean;
+  commands: PaletteCommand[];
   navLoading: boolean;
 }
 
 export interface CommandPaletteRowView {
-  command: PaletteCommand;
+  command: ResolvedPaletteCommand;
   id: string;
   optionDomIdPart: string;
   index: number;
   label: string;
+  disabled: boolean;
+  disabledReason: string | undefined;
   rowClassName: string;
   labelClassName: string | undefined;
   selected: boolean;
@@ -610,7 +616,7 @@ export interface CommandPaletteRowGroupView {
 
 export interface CommandPalettePresentationView {
   safeCursor: number;
-  activeCommand: PaletteCommand | undefined;
+  activeCommand: ResolvedPaletteCommand | undefined;
   rowGroups: CommandPaletteRowGroupView[];
   noMatch: boolean;
   navLoading: boolean;
@@ -631,6 +637,11 @@ export interface CommandPalettePresentationView {
 export type CommandPaletteActivationView =
   | { kind: "ignore" }
   | { kind: "arm"; cursor: number; commandId: string }
+  | {
+      kind: "confirm";
+      cursor: number;
+      commandId: string;
+    }
   | { kind: "run"; cursor: number; command: PaletteCommand; closeAfterRun: boolean };
 
 export type CommandPaletteKeyboardIntent =
@@ -643,10 +654,10 @@ export interface CommandPaletteArmedRepair {
 }
 
 export function commandPaletteRowLabel(
-  command: PaletteCommand,
+  command: ResolvedPaletteCommand,
   armed: boolean,
 ): string {
-  return armed ? `confirm ${command.label}?` : command.label;
+  return armed ? (command.legacyConfirmPrompt ?? command.label) : command.label;
 }
 
 export function commandPaletteOptionDomIdPart(commandId: string): string {
@@ -664,6 +675,29 @@ export function commandPaletteMovedCursor(
 ): number {
   if (length === 0) return -1;
   return commandPaletteSafeCursor(length, cursor + delta);
+}
+
+export function commandPaletteMovedRunnableCursor(
+  commands: readonly Pick<ResolvedPaletteCommand, "disabled">[],
+  cursor: number,
+  delta: 1 | -1,
+): number {
+  const runnableIndices = commands.flatMap((command, index) =>
+    command.disabled === true ? [] : [index],
+  );
+  if (runnableIndices.length === 0) return -1;
+  const currentPosition = runnableIndices.indexOf(cursor);
+  if (currentPosition < 0) {
+    return delta > 0
+      ? (runnableIndices.find((index) => index > cursor) ?? runnableIndices.at(-1)!)
+      : ([...runnableIndices].reverse().find((index) => index < cursor) ??
+          runnableIndices[0]!);
+  }
+  const nextPosition = Math.min(
+    Math.max(0, currentPosition + delta),
+    runnableIndices.length - 1,
+  );
+  return runnableIndices[nextPosition]!;
 }
 
 export function deriveCommandPaletteKeyboardIntent(
@@ -687,6 +721,13 @@ export function deriveCommandPaletteActivation(
   if (cursor < 0) return { kind: "ignore" };
   const command = ordered[cursor];
   if (!command || command.disabled === true) return { kind: "ignore" };
+  if (command.confirmation !== undefined) {
+    return {
+      kind: "confirm",
+      cursor,
+      commandId: command.id,
+    };
+  }
   if (command.confirm && (!state.confirmArmed || state.armedCommandId !== command.id)) {
     return { kind: "arm", cursor, commandId: command.id };
   }
@@ -719,21 +760,30 @@ export function deriveCommandPaletteArmedRepair(
 }
 
 export function deriveCommandPalettePresentationView(
-  commandView: Pick<
-    CommandPaletteCommandView,
-    "groups" | "ordered" | "matchedResults" | "noMatch" | "navLoading"
-  >,
+  commandView: {
+    groups: { family: CommandFamily; commands: ResolvedPaletteCommand[] }[];
+    ordered: ResolvedPaletteCommand[];
+    matchedResults: ResolvedPaletteCommand[];
+    noMatch: boolean;
+    navLoading: boolean;
+  },
   state: {
     cursor: number;
     confirmArmed: boolean;
     armedCommandId: string | null;
   },
 ): CommandPalettePresentationView {
-  const safeCursor = commandPaletteSafeCursor(commandView.ordered.length, state.cursor);
+  const runnableIndices = commandView.ordered.flatMap((command, index) =>
+    command.disabled === true ? [] : [index],
+  );
+  const safeCursor = runnableIndices.includes(state.cursor)
+    ? state.cursor
+    : (runnableIndices[0] ?? -1);
   const activeCommand = safeCursor >= 0 ? commandView.ordered[safeCursor] : undefined;
   const rows = commandView.ordered.map((command, index): CommandPaletteRowView => {
     const armed = state.confirmArmed && state.armedCommandId === command.id;
-    const selected = index === safeCursor;
+    const disabled = command.disabled === true;
+    const selected = !disabled && index === safeCursor;
     const confirmShortcutLabel = command.confirm ? "⏎ ⏎" : null;
     return {
       command,
@@ -741,10 +791,14 @@ export function deriveCommandPalettePresentationView(
       optionDomIdPart: commandPaletteOptionDomIdPart(command.id),
       index,
       label: commandPaletteRowLabel(command, armed),
+      disabled,
+      disabledReason: command.disabledReason,
       rowClassName: `flex h-[1.875rem] w-full items-center justify-between rounded-fg-md px-fg-4 text-left transition-colors duration-ui-fast ease-settle ${
-        selected
-          ? "bg-accent-subtle text-ink"
-          : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
+        disabled
+          ? "cursor-not-allowed text-ink-faint opacity-60"
+          : selected
+            ? "bg-accent-subtle text-ink"
+            : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
       }`,
       labelClassName: armed ? "text-state-stale" : undefined,
       selected,
@@ -807,15 +861,12 @@ export function deriveCommandPalettePresentationView(
  * cursor, and confirmation-row state; this selector assembles the `CommandContext`
  * from raw, stable selectors (stable-selectors), calls the command-provider registry
  * host (`resolveCommands`, which applies the central time-travel gate and the bounds),
- * then projects the result through the query filter and family grouping. The command
- * list itself is contributed by the registered providers, not hand-assembled here.
+ * and returns the raw normalized command list. Locale-bound resolution, query
+ * filtering, and family grouping belong to the React palette boundary.
  */
-export function useCommandPaletteCommandView(
-  query: unknown,
-): CommandPaletteCommandView {
+export function useCommandPaletteCommandView(): CommandPaletteCommandView {
   const scope = useActiveScope();
   const browserMode = useBrowserMode();
-  const normalizedQuery = normalizeCommandPaletteQuery(query);
   const vocabulary = useFiltersVocabularyView(scope);
   const timeline = useDashboardTimelineModeView(scope);
   const runPaletteOp = useCommandPaletteOpsRunMutation().mutate;
@@ -909,10 +960,7 @@ export function useCommandPaletteCommandView(
         showKeyboardShortcuts: openKeyboardShortcuts,
       },
     };
-    return filterCommands(
-      deriveCommandAccelerators(resolveCommands(ctx), ctx.keybindingOverrides),
-      normalizedQuery,
-    );
+    return deriveCommandAccelerators(resolveCommands(ctx), ctx.keybindingOverrides);
   }, [
     activeDocumentStem,
     browserMode,
@@ -920,7 +968,6 @@ export function useCommandPaletteCommandView(
     clearProjectHistory,
     dateBounds,
     graphFrozen,
-    normalizedQuery,
     resetFilters,
     rightPanelSetTab,
     runPaletteOp,
@@ -931,15 +978,8 @@ export function useCommandPaletteCommandView(
     timeTravel,
   ]);
 
-  return useMemo(() => {
-    const groups = groupByFamily(commands);
-    const ordered = groups.flatMap((group) => group.commands);
-    return {
-      groups,
-      ordered,
-      matchedResults: ordered,
-      noMatch: ordered.length === 0,
-      navLoading: vocabulary.loading,
-    };
-  }, [commands, vocabulary.loading]);
+  return useMemo(
+    () => ({ commands, navLoading: vocabulary.loading }),
+    [commands, vocabulary.loading],
+  );
 }

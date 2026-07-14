@@ -17,6 +17,13 @@ import type { ComponentType } from "react";
 
 import { normalizeAction, type ActionMeta } from "../dispatch/dispatch";
 import { appDispatcher } from "../dispatch/middleware";
+import type { MessageResolutionResult } from "../localization/fallback";
+import {
+  normalizeActionConfirmationDescriptor,
+  normalizeMessageDescriptor,
+  type ActionConfirmationDescriptor,
+  type MessageDescriptor,
+} from "../localization/message";
 
 /**
  * Item marks come from the two sanctioned families
@@ -92,6 +99,16 @@ function normalizeOptionalActionDescriptorText(
     : undefined;
 }
 
+function normalizeActionPresentation(
+  value: unknown,
+  maxChars: number,
+): ActionPresentation | undefined {
+  if (typeof value === "string") {
+    return normalizeOptionalActionDescriptorText(value, maxChars);
+  }
+  return normalizeMessageDescriptor(value) ?? undefined;
+}
+
 function normalizeActionDescriptorSection(value: unknown): ActionSection | undefined {
   return typeof value === "string" &&
     ACTION_SECTION_ORDER.includes(value.trim() as ActionSection)
@@ -106,19 +123,37 @@ export interface ActionDispatch {
   meta?: ActionMeta;
 }
 
+export type ActionPresentation = string | MessageDescriptor;
+
+export type ActionPresentationResolver = (
+  descriptor: MessageDescriptor,
+) => MessageResolutionResult;
+
+/** Resolve transitional string-or-descriptor copy through an injected React resolver. */
+export function resolveActionPresentation(
+  presentation: ActionPresentation,
+  resolveDescriptor: ActionPresentationResolver,
+): MessageResolutionResult {
+  return typeof presentation === "string"
+    ? Object.freeze({ message: presentation, usedFallback: false })
+    : resolveDescriptor(presentation);
+}
+
 export interface ActionDescriptorBase {
   /** Stable within its surface; used as the menu item key and armed-item id. */
   id: string;
-  label: string;
+  label: ActionPresentation;
   /** Menu section (navigate/transform/copy/danger). Palette leaves this unset. */
   section?: ActionSection;
   /** Leading mark (Lucide structural / Phosphor domain), 14px, grayscale-safe. */
   icon?: ActionIcon;
-  /** Destructive: arms on first activation, fires on the second. */
+  /** Transitional legacy flag; normalization retains only literal `true`. */
   confirm?: boolean;
+  /** Typed confirmation content for destructive and guarded actions. */
+  confirmation?: ActionConfirmationDescriptor;
   /** Exists-but-cannot-run-now: dimmed, reason surfaced (disabled-with-reason). */
   disabled?: boolean;
-  disabledReason?: string;
+  disabledReason?: ActionPresentation;
   /**
    * Mutating, so removed from the menu in time-travel mode (the gate is a
    * property of the descriptor, applied uniformly by the resolver registry -
@@ -165,7 +200,7 @@ export function normalizeActionDescriptor(action: unknown): ActionDescriptor | n
     record.id,
     ACTION_DESCRIPTOR_ID_MAX_CHARS,
   );
-  const label = normalizeOptionalActionDescriptorText(
+  const label = normalizeActionPresentation(
     record.label,
     ACTION_DESCRIPTOR_LABEL_MAX_CHARS,
   );
@@ -175,9 +210,15 @@ export function normalizeActionDescriptor(action: unknown): ActionDescriptor | n
   const section = normalizeActionDescriptorSection(record.section);
   if (section !== undefined) base.section = section;
   if (typeof record.icon === "function") base.icon = record.icon as ActionIcon;
+  if (record.confirm === true && Object.hasOwn(record, "confirmation")) return null;
   if (record.confirm === true) base.confirm = true;
+  if (Object.hasOwn(record, "confirmation")) {
+    const confirmation = normalizeActionConfirmationDescriptor(record.confirmation);
+    if (confirmation === null) return null;
+    base.confirmation = confirmation;
+  }
   if (record.disabled === true) base.disabled = true;
-  const disabledReason = normalizeOptionalActionDescriptorText(
+  const disabledReason = normalizeActionPresentation(
     record.disabledReason,
     ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS,
   );

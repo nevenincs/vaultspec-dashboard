@@ -33,6 +33,8 @@ export interface MessagePolicyEntry {
 }
 
 export const ENGLISH_MESSAGE_POLICY = {
+  "common:accessibility.actionsMenu": { role: "accessibility" },
+  "common:accessibility.confirmAction": { role: "accessibility" },
   "common:actions.cancel": { role: "action" },
   "common:actions.close": { role: "action" },
   "common:actions.copy": { role: "action" },
@@ -62,6 +64,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "common:actions.showProjectHealth": { role: "action" },
   "common:actions.showSearchStatus": { role: "action" },
   "common:actions.showSystemStatus": { role: "action" },
+  "common:disabledReasons.actionUnavailable": { role: "disabled-reason" },
   "common:disabledReasons.currentVersionRequired": { role: "disabled-reason" },
   "common:disabledReasons.desktopEditorRequired": { role: "disabled-reason" },
   "common:disabledReasons.desktopFileManagerRequired": {
@@ -69,6 +72,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   },
   "common:disabledReasons.selectItemToOpen": { role: "disabled-reason" },
   "common:destructiveActions.discardChanges": { role: "destructive-action" },
+  "common:statuses.noActionsAvailable": { role: "status" },
   "documents:actions.copyLink": { role: "action" },
   "documents:actions.linkToSelectedDocument": { role: "action" },
   "documents:disabledReasons.selectDifferentDocument": {

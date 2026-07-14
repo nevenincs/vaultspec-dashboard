@@ -6,6 +6,8 @@
 // are covered elsewhere; this exercises the host's a11y/keyboard behaviour.
 
 import type { QueryClient } from "@tanstack/react-query";
+import type { i18n } from "i18next";
+import { I18nextProvider } from "react-i18next";
 import {
   act,
   cleanup,
@@ -15,9 +17,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { registerResolver, resetResolvers } from "../../platform/actions/registry";
+import { createTestLocalizationRuntime } from "../../localization/testing";
 import {
   MenuTestProviders,
   createMenuTestQueryClient,
@@ -28,15 +31,27 @@ import { ENGINE_WAIT } from "../../testing/timing";
 
 // The host reads active scope / selected node id through TanStack query hooks.
 let testClient: QueryClient;
+let testLocalization: i18n;
 function Providers({ children }: { children: ReactNode }) {
-  return <MenuTestProviders client={testClient}>{children}</MenuTestProviders>;
+  return (
+    <I18nextProvider i18n={testLocalization}>
+      <MenuTestProviders client={testClient}>{children}</MenuTestProviders>
+    </I18nextProvider>
+  );
 }
 
-const first = vi.fn();
-const second = vi.fn();
+let firstCount = 0;
+let secondCount = 0;
+const first = () => {
+  firstCount += 1;
+};
+const second = () => {
+  secondCount += 1;
+};
 
 beforeEach(() => {
   testClient = createMenuTestQueryClient();
+  testLocalization = createTestLocalizationRuntime();
   registerResolver("node", () => [
     { id: "first", label: "First", section: "navigate", run: first },
     { id: "second", label: "Second", section: "navigate", run: second },
@@ -47,8 +62,8 @@ afterEach(() => {
   resetResolvers();
   useContextMenuStore.getState().closeMenu();
   testClient.clear();
-  first.mockReset();
-  second.mockReset();
+  firstCount = 0;
+  secondCount = 0;
 });
 
 function openAt(trigger?: HTMLElement) {
@@ -96,8 +111,8 @@ describe("ContextMenuHost interactive", () => {
       ENGINE_WAIT,
     );
     fireEvent.keyDown(menu, { key: "Enter" });
-    expect(second).toHaveBeenCalledTimes(1);
-    expect(first).not.toHaveBeenCalled();
+    expect(secondCount).toBe(1);
+    expect(firstCount).toBe(0);
     expect(useContextMenuStore.getState().open).toBe(false);
   });
 

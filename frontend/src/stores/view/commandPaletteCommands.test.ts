@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { registerKeybindings, resetKeybindings } from "../../platform/keymap/registry";
 import { setIsMacForTesting } from "../../platform/keymap/chord";
+import { createActionConfirmationDescriptor } from "../../platform/localization/message";
 import {
   buildEditorCommands,
   deriveCommandAccelerators,
@@ -10,6 +11,7 @@ import {
   buildSettingsCommands,
   buildTimelineCommands,
   commandPaletteMovedCursor,
+  commandPaletteMovedRunnableCursor,
   commandPaletteSafeCursor,
   COMMAND_PALETTE_SOURCE_ITEM_MAX_CHARS,
   COMMAND_PALETTE_SOURCE_ITEMS_CAP,
@@ -22,7 +24,7 @@ import {
   normalizeCommandFamily,
   normalizeCommandPaletteSourceItems,
   normalizePaletteCommand,
-  type PaletteCommand,
+  type ResolvedPaletteCommand,
 } from "./commandPaletteCommands";
 
 describe("buildGraphCommands", () => {
@@ -219,11 +221,17 @@ describe("buildLeftRailCommands", () => {
   });
 });
 
-function command(id: string, patch: Partial<PaletteCommand> = {}): PaletteCommand {
+function command(
+  id: string,
+  patch: Partial<ResolvedPaletteCommand> = {},
+): ResolvedPaletteCommand {
   return {
     id,
     label: id,
     family: "app",
+    presentationSafe: true,
+    fallbackDisabled: false,
+    legacyConfirmPrompt: null,
     run: () => undefined,
     ...patch,
   };
@@ -328,6 +336,49 @@ describe("command palette command projection", () => {
     expect(commandPaletteSafeCursor(3, 10)).toBe(2);
     expect(commandPaletteMovedCursor(3, 1, 1)).toBe(2);
     expect(commandPaletteMovedCursor(3, 0, -1)).toBe(0);
+    const commands = [
+      command("first"),
+      command("disabled", { disabled: true }),
+      command("last"),
+    ];
+    expect(commandPaletteMovedRunnableCursor(commands, 0, 1)).toBe(2);
+    expect(commandPaletteMovedRunnableCursor(commands, 2, -1)).toBe(0);
+    expect(
+      commandPaletteMovedRunnableCursor(
+        commands.map((item) => ({ ...item, disabled: true })),
+        0,
+        1,
+      ),
+    ).toBe(-1);
+  });
+
+  it("retains disabled rows while excluding them from selection", () => {
+    const disabled = command("app:disabled", {
+      disabled: true,
+      disabledReason: "Choose a project and try again.",
+    });
+    const runnable = command("app:runnable");
+    const view = deriveCommandPalettePresentationView(
+      {
+        ordered: [disabled, runnable],
+        matchedResults: [disabled, runnable],
+        groups: [{ family: "app", commands: [disabled, runnable] }],
+        noMatch: false,
+        navLoading: false,
+      },
+      { cursor: 0, confirmArmed: false, armedCommandId: null },
+    );
+
+    expect(view.safeCursor).toBe(1);
+    expect(view.activeCommand?.id).toBe("app:runnable");
+    expect(view.rowGroups[0]?.rows[0]).toMatchObject({
+      id: "app:disabled",
+      disabled: true,
+      disabledReason: "Choose a project and try again.",
+      selected: false,
+      selectionHintVisible: false,
+    });
+    expect(view.rowGroups[0]?.rows[0]?.rowClassName).toContain("cursor-not-allowed");
   });
 
   it("derives keyboard navigation intent at the store seam", () => {
@@ -351,6 +402,7 @@ describe("command palette command projection", () => {
       label: "ops: reindex",
       family: "rag",
       confirm: true,
+      legacyConfirmPrompt: "Confirm ops: reindex?",
     });
     const view = deriveCommandPalettePresentationView(
       {
@@ -366,12 +418,12 @@ describe("command palette command projection", () => {
     expect(view.safeCursor).toBe(0);
     expect(view.activeOptionDomIdPart).toBe("ops%3Arag%3Areindex");
     expect(view.rowGroups[0]?.rows[0]).toMatchObject({
-      label: "confirm ops: reindex?",
+      label: "Confirm ops: reindex?",
       armed: true,
       confirmShortcutLabel: "⏎ ⏎",
       selectionHintVisible: false,
     });
-    expect(view.liveMessage).toBe("1 command. confirm ops: reindex?");
+    expect(view.liveMessage).toBe("1 command. Confirm ops: reindex?");
   });
 
   it("derives activation outcomes for disabled, confirm, and run commands", () => {
@@ -381,6 +433,20 @@ describe("command palette command projection", () => {
       label: "ops: reindex",
       family: "rag",
       confirm: true,
+    });
+    const typedConfirmation = createActionConfirmationDescriptor({
+      kind: "guarded",
+      title: {
+        key: "features:confirmations.repair.title",
+        values: { feature: "feature" },
+      },
+      body: { key: "features:confirmations.repair.body" },
+      confirmLabel: { key: "features:guardedActions.repair" },
+      cancelLabel: { key: "common:actions.cancel" },
+    });
+    expect(typedConfirmation).not.toBeNull();
+    const typed = command("feature:repair", {
+      confirmation: typedConfirmation!,
     });
 
     expect(
@@ -416,6 +482,16 @@ describe("command palette command projection", () => {
       cursor: 0,
       command: confirm,
       closeAfterRun: false,
+    });
+    expect(
+      deriveCommandPaletteActivation([typed], 0, {
+        confirmArmed: false,
+        armedCommandId: null,
+      }),
+    ).toEqual({
+      kind: "confirm",
+      cursor: 0,
+      commandId: "feature:repair",
     });
   });
 

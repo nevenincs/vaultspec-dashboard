@@ -6,8 +6,15 @@ import {
   createTestLocalizationRuntime,
 } from "../../localization/testing";
 import { errors } from "../../locales/en/errors";
-import { SAFE_FALLBACK_SOURCE_MESSAGE, resolveMessage } from "./fallback";
 import {
+  SAFE_FALLBACK_SOURCE_MESSAGE,
+  resolveMessage,
+  resolveMessageResult,
+} from "./fallback";
+import {
+  normalizeActionConfirmationDescriptor,
+  normalizeConfirmationDescriptor,
+  normalizeGuardedConfirmationDescriptor,
   createMessageDescriptor,
   MESSAGE_VALUE_COUNT_MAX,
   normalizeMessageDescriptor,
@@ -25,6 +32,42 @@ function expectSafeVisibleMessage(message: string, rawKey: string): void {
 }
 
 describe("localization runtime and messages", () => {
+  const archiveConfirmation = {
+    title: { key: "features:confirmations.archive.title", values: { feature: "A" } },
+    body: { key: "features:confirmations.archive.body" },
+    confirmLabel: { key: "features:destructiveActions.archive" },
+    cancelLabel: { key: "common:actions.cancel" },
+  } as const;
+  const repairConfirmation = {
+    title: { key: "features:confirmations.repair.title", values: { feature: "A" } },
+    body: { key: "features:confirmations.repair.body" },
+    confirmLabel: { key: "features:guardedActions.repair" },
+    cancelLabel: { key: "common:actions.cancel" },
+  } as const;
+
+  it("keeps destructive and guarded confirmation labels in distinct categories", () => {
+    expect(normalizeConfirmationDescriptor(archiveConfirmation)).not.toBeNull();
+    expect(normalizeConfirmationDescriptor(repairConfirmation)).toBeNull();
+    expect(normalizeGuardedConfirmationDescriptor(repairConfirmation)).not.toBeNull();
+    expect(normalizeGuardedConfirmationDescriptor(archiveConfirmation)).toBeNull();
+
+    expect(
+      normalizeActionConfirmationDescriptor({
+        kind: "destructive",
+        ...archiveConfirmation,
+      }),
+    ).toMatchObject({ kind: "destructive" });
+    expect(
+      normalizeActionConfirmationDescriptor({ kind: "guarded", ...repairConfirmation }),
+    ).toMatchObject({ kind: "guarded" });
+    expect(
+      normalizeActionConfirmationDescriptor({
+        kind: "destructive",
+        ...repairConfirmation,
+      }),
+    ).toBeNull();
+  });
+
   it("initializes synchronously with add, replace, and remove isolation", () => {
     const first = createLocalizationRuntime();
     const second = createLocalizationRuntime();
@@ -104,19 +147,37 @@ describe("localization runtime and messages", () => {
     runtime.removeResourceBundle("en", "common");
 
     const missing = resolveMessage(runtime, { key: missingKey });
+    expect(resolveMessageResult(runtime, { key: missingKey })).toEqual({
+      message: SAFE_FALLBACK_SOURCE_MESSAGE,
+      usedFallback: true,
+    });
     expect(missing).toBe(SAFE_FALLBACK_SOURCE_MESSAGE);
     expectSafeVisibleMessage(missing, missingKey);
 
     const malformedKey = "errors:diagnostics.stackTrace";
     const malformed = resolveMessage(runtime, { key: malformedKey });
+    expect(resolveMessageResult(runtime, { key: malformedKey }).usedFallback).toBe(
+      true,
+    );
     expect(malformed).toBe(SAFE_FALLBACK_SOURCE_MESSAGE);
     expectSafeVisibleMessage(malformed, malformedKey);
 
     const incompleteRuntime = createTestLocalizationRuntime(ltrTestLocale);
     const incompleteKey = "errors:unexpectedSection.message";
     const incomplete = resolveMessage(incompleteRuntime, { key: incompleteKey });
+    expect(
+      resolveMessageResult(incompleteRuntime, { key: incompleteKey }).usedFallback,
+    ).toBe(true);
     expect(incomplete).toBe(ltrTestResources.errors.fallback.contentUnavailable);
     expectSafeVisibleMessage(incomplete, incompleteKey);
+  });
+
+  it("reports successful descriptor resolution without a fallback", () => {
+    expect(
+      resolveMessageResult(createLocalizationRuntime(), {
+        key: "common:actions.retry",
+      }),
+    ).toEqual({ message: "Retry", usedFallback: false });
   });
 
   it("rejects catalog nesting and preserves translation-like user data", () => {

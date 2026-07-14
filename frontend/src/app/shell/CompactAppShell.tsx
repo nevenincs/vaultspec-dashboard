@@ -20,7 +20,11 @@ import { useEffect, useRef, useState } from "react";
 
 import { useActiveScope } from "../../stores/server/queries";
 import { setCompactSurface, useCompactSurface } from "../../stores/view/compactSurface";
-import { openSearchPalette } from "../../stores/view/commandPalette";
+import {
+  openSearchPalette,
+  SEARCH_PALETTE_ACTION_ID,
+} from "../../stores/view/commandPalette";
+import { LEFT_RAIL_TOGGLE_FACETS_ACTION_ID } from "../../stores/view/leftRailKeybindings";
 import {
   toggleFilterSidebar,
   useFilterSidebarOpen,
@@ -66,6 +70,7 @@ export function CompactAppShell() {
   // top bar). The Timeline surface shows its title only — search is reached via the
   // bottom Search tab, and the timeline frame carries no top-bar action.
   const searchAction = {
+    id: SEARCH_PALETTE_ACTION_ID,
     label: "Search",
     Glyph: MagnifyingGlass,
     onClick: openSearchPalette,
@@ -82,6 +87,7 @@ export function CompactAppShell() {
       ? [
           searchAction,
           {
+            id: LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
             label: "Advanced filters",
             Glyph: Funnel,
             onClick: () => toggleFilterSidebar(),

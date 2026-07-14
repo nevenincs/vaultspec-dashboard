@@ -12,11 +12,24 @@
 // two-step over the slice's armedItemId, so it owns one disarm path.
 
 import { CornerDownLeft } from "lucide-react";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
+import {
+  isRunnable,
+  resolveActionPresentation,
+  type ActionDescriptor,
+} from "../../platform/actions/action";
 import { useCanDispatchAction, useDispatch } from "../../platform/dispatch/useAction";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { logger } from "../../platform/logger/logger";
 import {
   useActiveScope,
@@ -33,6 +46,7 @@ import {
   armContextMenuItem,
   closeContextMenu,
   deriveContextMenuActivation,
+  contextMenuActionRowClassName,
   deriveContextMenuPanelPosition,
   deriveContextMenuCursorEdge,
   deriveContextMenuKeyboardIntent,
@@ -45,6 +59,7 @@ import {
   useContextMenuViewportDismiss,
 } from "../../stores/view/contextMenu";
 import { useFocusRestore } from "../chrome/useFocusRestore";
+import { ActionConfirmationDialog } from "../chrome/ActionConfirmationDialog";
 
 const menuLog = logger.child("context-menu");
 
@@ -60,22 +75,75 @@ export function ContextMenuHost({
   // code mode (code-timeline-range ADR).
   const corpus = useDashboardState(scope).data?.corpus;
   const menu = useContextMenuResolvedView(timeTravel, selectedNodeId, scope, corpus);
-  const {
-    open,
-    entity,
-    anchor,
-    armedItemId,
-    actions,
-    rowGroups,
-    ordered,
-    activeRow,
-    runnableIndices,
-    cursor,
-    position,
-    menuAriaLabel,
-    emptyMessage,
-    liveMessage,
-  } = menu;
+  const { open, entity, anchor, armedItemId, actions, ordered, cursor, position } =
+    menu;
+  const resolveMessage = useLocalizedMessageResolver();
+  const [confirmationActionId, setConfirmationActionId] = useState<string | null>(null);
+  const localized = useMemo(() => {
+    const unavailable = resolveMessage({
+      key: "common:disabledReasons.actionUnavailable",
+    }).message;
+    const rows = menu.orderedRows.map((row) => {
+      const label = resolveActionPresentation(row.label, resolveMessage);
+      const reason = row.disabledReason
+        ? resolveActionPresentation(row.disabledReason, resolveMessage)
+        : null;
+      const legacyPrompt = row.armed
+        ? resolveMessage({
+            key: "common:accessibility.confirmAction",
+            values: { action: label.message },
+          })
+        : null;
+      const confirmationResults = row.action.confirmation
+        ? [
+            resolveMessage(row.action.confirmation.title),
+            resolveMessage(row.action.confirmation.body),
+            resolveMessage(row.action.confirmation.confirmLabel),
+            resolveMessage(row.action.confirmation.cancelLabel),
+          ]
+        : [];
+      const fallbackUsed =
+        label.usedFallback ||
+        reason?.usedFallback === true ||
+        legacyPrompt?.usedFallback === true ||
+        confirmationResults.some((result) => result.usedFallback);
+      const disabled = row.disabled || fallbackUsed;
+      const displayLabel = legacyPrompt ?? label;
+      return {
+        ...row,
+        label: displayLabel.message,
+        disabled,
+        disabledReason: fallbackUsed ? unavailable : reason?.message,
+        className: contextMenuActionRowClassName({
+          selected: row.selected,
+          disabled,
+        }),
+      };
+    });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return {
+      rows,
+      byId,
+      rowGroups: menu.groups.map((group) => ({
+        section: group.section,
+        rows: group.actions
+          .map((action) => byId.get(action.id))
+          .filter((row) => row !== undefined),
+      })),
+      runnableIndices: rows
+        .map((row, index) => (!row.disabled && isRunnable(row.action) ? index : -1))
+        .filter((index) => index >= 0),
+    };
+  }, [menu.groups, menu.orderedRows, resolveMessage]);
+  const { rowGroups, runnableIndices } = localized;
+  const activeRow = localized.rows[cursor];
+  const menuAriaLabel = resolveMessage({
+    key: "common:accessibility.actionsMenu",
+  }).message;
+  const emptyMessage = resolveMessage({
+    key: "common:statuses.noActionsAvailable",
+  }).message;
+  const liveMessage = activeRow?.label ?? emptyMessage;
   const dispatch = useDispatch();
   const canDispatch = useCanDispatchAction();
   // The persistent action-outcome feedback (KAR-006 / KAR-004): rendered below in
@@ -90,18 +158,22 @@ export function ContextMenuHost({
   const liveRegionId = `${baseId}-live`;
   const itemId = (id: string) => `${baseId}-item-${id}`;
 
-  useContextMenuViewportDismiss();
+  useContextMenuViewportDismiss(confirmationActionId === null);
 
   // The menu projection can change while open when canonical app state changes
   // underneath it (notably dashboard time-travel removing mutating actions). Keep
   // cursor and arm state attached to the CURRENT derived item set, not a stale row.
   useEffect(() => {
     if (!open) return;
-    const repair = deriveContextMenuCursorRepair(menu);
+    const repair = deriveContextMenuCursorRepair({
+      ...menu,
+      runnableIndices,
+    });
     if (repair.changed) setContextMenuCursor(repair.cursor);
     if (repair.disarm) disarmContextMenu();
-  }, [open, menu]);
+  }, [open, menu, runnableIndices]);
 
+  const menuInteractive = open && confirmationActionId === null;
   useFocusRestore(open, {
     onOpen: () =>
       setContextMenuCursor(deriveContextMenuCursorEdge(runnableIndices, "first") ?? 0),
@@ -123,9 +195,9 @@ export function ContextMenuHost({
   // Move DOM focus to the active item so the role=menu reads correctly.
   const activeId = activeRow?.id;
   useEffect(() => {
-    if (!open || position === null || !activeId) return;
+    if (!menuInteractive || position === null || !activeId) return;
     document.getElementById(`${baseId}-item-${activeId}`)?.focus();
-  }, [open, position, activeId, baseId]);
+  }, [menuInteractive, position, activeId, baseId]);
 
   const moveCursor = useCallback(
     (delta: 1 | -1) => {
@@ -138,12 +210,15 @@ export function ContextMenuHost({
     [cursor, runnableIndices],
   );
 
-  const activate = useCallback(
-    (action: ActionDescriptor) => {
-      const activation = deriveContextMenuActivation(action, armedItemId, canDispatch);
+  const performActivation = useCallback(
+    (activation: ReturnType<typeof deriveContextMenuActivation>) => {
       if (activation.kind === "ignore") return;
       if (activation.kind === "arm") {
         armContextMenuItem(activation.itemId);
+        return;
+      }
+      if (activation.kind === "request-confirmation") {
+        setConfirmationActionId(activation.itemId);
         return;
       }
       if (activation.kind === "missing-dispatch") {
@@ -168,8 +243,56 @@ export function ContextMenuHost({
       }
       closeContextMenu();
     },
-    [armedItemId, canDispatch, dispatch, scope],
+    [dispatch, scope],
   );
+
+  const activate = useCallback(
+    (action: ActionDescriptor) => {
+      if (localized.byId.get(action.id)?.disabled !== false) return;
+      performActivation(deriveContextMenuActivation(action, armedItemId, canDispatch));
+    },
+    [armedItemId, canDispatch, localized.byId, performActivation],
+  );
+
+  const pendingAction =
+    confirmationActionId === null
+      ? undefined
+      : ordered.find((action) => action.id === confirmationActionId);
+
+  const cancelPendingConfirmation = useCallback(() => {
+    const actionId = confirmationActionId;
+    setConfirmationActionId(null);
+    if (actionId !== null) {
+      requestAnimationFrame(() =>
+        document.getElementById(`${baseId}-item-${actionId}`)?.focus(),
+      );
+    }
+  }, [baseId, confirmationActionId]);
+
+  useEffect(() => {
+    if (
+      confirmationActionId !== null &&
+      (pendingAction?.confirmation === undefined ||
+        localized.byId.get(confirmationActionId)?.disabled !== false)
+    ) {
+      setConfirmationActionId(null);
+    }
+  }, [confirmationActionId, localized.byId, pendingAction]);
+
+  const confirmPendingAction = useCallback(() => {
+    if (
+      pendingAction === undefined ||
+      pendingAction.confirmation === undefined ||
+      localized.byId.get(pendingAction.id)?.disabled !== false
+    ) {
+      setConfirmationActionId(null);
+      return;
+    }
+    setConfirmationActionId(null);
+    performActivation(
+      deriveContextMenuActivation(pendingAction, armedItemId, canDispatch, true),
+    );
+  }, [armedItemId, canDispatch, localized.byId, pendingAction, performActivation]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -203,7 +326,7 @@ export function ContextMenuHost({
   // The menu panel renders only while open; the feedback region below is ALWAYS
   // mounted so an action outcome that resolves after the menu closes is announced.
   const menuPortal =
-    open && entity && anchor
+    open && entity && anchor && confirmationActionId === null
       ? createPortal(
           <div
             // Invisible full-screen catcher: a click anywhere outside the panel
@@ -326,6 +449,14 @@ export function ContextMenuHost({
   return (
     <>
       {menuPortal}
+      {pendingAction?.confirmation !== undefined && (
+        <ActionConfirmationDialog
+          open
+          confirmation={pendingAction.confirmation}
+          onConfirm={confirmPendingAction}
+          onCancel={cancelPendingConfirmation}
+        />
+      )}
       {/* Persistent action-outcome region (KAR-006 / KAR-004): mounted for the
           host's lifetime, so an ops/copy outcome that resolves after the menu
           closes is still announced. Keyed on the token so an identical

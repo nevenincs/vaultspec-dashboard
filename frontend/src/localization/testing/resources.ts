@@ -5,6 +5,7 @@ export const rtlTestLocale = "ar" as const;
 
 export const ltrTestResources = {
   common: {
+    accessibility: en.common.accessibility,
     actions: {
       ...en.common.actions,
       cancel: "Annuler",
@@ -16,6 +17,7 @@ export const ltrTestResources = {
     destructiveActions: {
       discardChanges: "Ignorer les modifications",
     },
+    statuses: en.common.statuses,
   },
   documents: en.documents,
   errors: {
@@ -38,6 +40,7 @@ export const ltrTestResources = {
 
 export const rtlTestResources = {
   common: {
+    accessibility: en.common.accessibility,
     actions: {
       ...en.common.actions,
       cancel: "إلغاء",
@@ -49,6 +52,7 @@ export const rtlTestResources = {
     destructiveActions: {
       discardChanges: "تجاهل التغييرات",
     },
+    statuses: en.common.statuses,
   },
   documents: en.documents,
   errors: {

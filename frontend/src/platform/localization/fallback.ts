@@ -15,6 +15,11 @@ export const SAFE_FALLBACK_SOURCE_MESSAGE = errors.fallback.contentUnavailable;
 
 export type MessageTranslator = Pick<i18n, "exists" | "t">;
 
+export interface MessageResolutionResult {
+  readonly message: string;
+  readonly usedFallback: boolean;
+}
+
 type SafeTranslationOptions = TOptions & {
   readonly returnObjects: false;
   readonly replace?: MessageValues;
@@ -129,18 +134,30 @@ function tryResolve(
   }
 }
 
+/** Resolve an unknown descriptor and report whether the safe generic fallback was used. */
+export function resolveMessageResult(
+  translator: MessageTranslator,
+  descriptor: unknown,
+): MessageResolutionResult {
+  const normalized = normalizeMessageDescriptor(descriptor);
+  if (normalized !== null) {
+    const resolved = tryResolve(translator, normalized.key, normalized.values);
+    if (resolved !== null) {
+      return Object.freeze({ message: resolved, usedFallback: false });
+    }
+  }
+
+  return Object.freeze({
+    message:
+      tryResolve(translator, SAFE_FALLBACK_MESSAGE_KEY) ?? SAFE_FALLBACK_SOURCE_MESSAGE,
+    usedFallback: true,
+  });
+}
+
 /** Resolve an unknown descriptor without exposing failed translation state to the UI. */
 export function resolveMessage(
   translator: MessageTranslator,
   descriptor: unknown,
 ): string {
-  const normalized = normalizeMessageDescriptor(descriptor);
-  if (normalized !== null) {
-    const resolved = tryResolve(translator, normalized.key, normalized.values);
-    if (resolved !== null) return resolved;
-  }
-
-  return (
-    tryResolve(translator, SAFE_FALLBACK_MESSAGE_KEY) ?? SAFE_FALLBACK_SOURCE_MESSAGE
-  );
+  return resolveMessageResult(translator, descriptor).message;
 }

@@ -4,6 +4,8 @@
 // clear the mounted query/cursor/armed state before the next open.
 
 import { QueryClientProvider } from "@tanstack/react-query";
+import type { i18n } from "i18next";
+import { I18nextProvider } from "react-i18next";
 import {
   act,
   cleanup,
@@ -16,6 +18,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { appConfirmGuard } from "../../platform/dispatch/middleware";
 import { resetKeybindings } from "../../platform/keymap/registry";
+import { createActionConfirmationDescriptor } from "../../platform/localization/message";
+import { LocalizationProvider } from "../../platform/localization/LocalizationProvider";
 import type { DashboardTimelineMode, SessionState } from "../../stores/server/engine";
 import {
   dashboardDocumentStateSeed,
@@ -34,16 +38,30 @@ import { useViewStore } from "../../stores/view/viewStore";
 import "../menus/registerAllCommands";
 import { CommandPalette } from "./CommandPalette";
 import { ENGINE_WAIT } from "../../testing/timing";
+import {
+  registerCommandProvider,
+  type CommandContext,
+} from "../../stores/view/commandRegistry";
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  ltrTestResources,
+} from "../../localization/testing";
 
 function PaletteShortcutHarness() {
   useKeymapDispatcher();
   return <CommandPalette />;
 }
 
-function renderPalette() {
+function renderPalette(runtime?: i18n) {
+  const palette = <PaletteShortcutHarness />;
   return render(
     <QueryClientProvider client={queryClient}>
-      <PaletteShortcutHarness />
+      {runtime ? (
+        <I18nextProvider i18n={runtime}>{palette}</I18nextProvider>
+      ) : (
+        <LocalizationProvider>{palette}</LocalizationProvider>
+      )}
     </QueryClientProvider>,
   );
 }
@@ -136,6 +154,239 @@ describe("CommandPalette lifecycle", () => {
       expect(appConfirmGuard.isArmed("ops:run")).toBe(false);
     }, ENGINE_WAIT);
     expect(screen.queryByRole("option", { name: "ops: vault check" })).toBeNull();
+  });
+
+  it("keeps legacy confirmation on the inline two-activation path", async () => {
+    const dispose = registerCommandProvider("test:legacy-confirmation", () => [
+      {
+        id: "test:archive-feature",
+        label: { key: "features:destructiveActions.archive" },
+        family: "app",
+        confirm: true,
+        run: () => undefined,
+      },
+    ]);
+
+    try {
+      renderPalette();
+      act(() => useCommandPaletteStore.getState().openPalette());
+      fireEvent.change(screen.getByRole("combobox"), {
+        target: { value: "archive feature" },
+      });
+      fireEvent.click(screen.getByRole("option", { name: "Archive feature" }));
+      fireEvent.click(screen.getByRole("option", { name: "Confirm Archive feature?" }));
+
+      expect(screen.getByRole("dialog", { name: "command palette" })).toBeTruthy();
+      expect(appConfirmGuard.isArmed("ops:run")).toBe(false);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("uses the full typed confirmation dialog before running a command", async () => {
+    let runs = 0;
+    const confirmation = createActionConfirmationDescriptor({
+      kind: "guarded",
+      title: {
+        key: "features:confirmations.repair.title",
+        values: { feature: "feature" },
+      },
+      body: { key: "features:confirmations.repair.body" },
+      confirmLabel: { key: "features:guardedActions.repair" },
+      cancelLabel: { key: "common:actions.cancel" },
+    });
+    expect(confirmation).not.toBeNull();
+    const dispose = registerCommandProvider("test:typed-confirmation", () => [
+      {
+        id: "test:repair-feature",
+        label: { key: "features:guardedActions.repair" },
+        family: "app",
+        confirmation,
+        run: () => {
+          runs += 1;
+        },
+      },
+    ]);
+
+    try {
+      renderPalette();
+      act(() => useCommandPaletteStore.getState().openPalette());
+      fireEvent.change(screen.getByRole("combobox"), {
+        target: { value: "repair feature" },
+      });
+      fireEvent.click(screen.getByRole("option", { name: "Repair feature" }));
+      expect(screen.getByRole("dialog", { name: "Repair feature?" })).toBeTruthy();
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+      expect(runs).toBe(0);
+
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(screen.queryByRole("dialog", { name: "Repair feature?" })).toBeNull();
+      expect(screen.getByRole("dialog", { name: "command palette" })).toBeTruthy();
+      await waitFor(() => {
+        expect(document.activeElement).toBe(screen.getByRole("combobox"));
+      });
+
+      fireEvent.click(screen.getByRole("option", { name: "Repair feature" }));
+
+      fireEvent.click(screen.getByRole("button", { name: "Repair feature" }));
+      expect(runs).toBe(1);
+      expect(screen.queryByRole("dialog", { name: "command palette" })).toBeNull();
+    } finally {
+      dispose();
+    }
+  });
+
+  it("updates a localized command label without replacing its stable-id row", async () => {
+    const runtime = createTestLocalizationRuntime();
+    const dispose = registerCommandProvider("test:localized-label", () => [
+      {
+        id: "test:cancel",
+        label: { key: "common:actions.cancel" },
+        family: "app",
+        run: () => undefined,
+      },
+    ]);
+
+    try {
+      renderPalette(runtime);
+      act(() => useCommandPaletteStore.getState().openPalette());
+      const sourceRow = screen.getByRole("option", { name: "Cancel" });
+
+      await act(async () => runtime.changeLanguage(ltrTestLocale));
+      const localizedRow = screen.getByRole("option", {
+        name: ltrTestResources.common.actions.cancel,
+      });
+
+      expect(localizedRow).toBe(sourceRow);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("exposes disabled reasons and excludes disabled rows from interaction", () => {
+    let runCount = 0;
+    const dispose = registerCommandProvider("test:disabled-row", () => [
+      {
+        id: "test:disabled-retry",
+        label: { key: "common:actions.retry" },
+        family: "app",
+        disabled: true,
+        disabledReason: { key: "common:disabledReasons.currentVersionRequired" },
+        run: () => {
+          runCount += 1;
+        },
+      },
+    ]);
+
+    try {
+      renderPalette();
+      act(() => useCommandPaletteStore.getState().openPalette());
+      fireEvent.change(screen.getByRole("combobox"), {
+        target: { value: "retry" },
+      });
+      const option = screen.getByRole("option", { name: "Retry" });
+      const combobox = screen.getByRole("combobox");
+
+      expect((option as HTMLButtonElement).disabled).toBe(true);
+      expect(option.getAttribute("aria-disabled")).toBe("true");
+      expect(option.getAttribute("title")).toBe(
+        "Return to the current version to use this action.",
+      );
+      expect(option.getAttribute("aria-selected")).toBe("false");
+      expect(combobox.hasAttribute("aria-activedescendant")).toBe(false);
+      fireEvent.mouseEnter(option);
+      fireEvent.click(option);
+      expect(runCount).toBe(0);
+      expect(combobox.hasAttribute("aria-activedescendant")).toBe(false);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("cancels removed typed confirmations and updates a current descriptor with the same id", async () => {
+    const scope = "palette-typed-revalidation-scope";
+    const repair = createActionConfirmationDescriptor({
+      kind: "guarded",
+      title: {
+        key: "features:confirmations.repair.title",
+        values: { feature: "feature" },
+      },
+      body: { key: "features:confirmations.repair.body" },
+      confirmLabel: { key: "features:guardedActions.repair" },
+      cancelLabel: { key: "common:actions.cancel" },
+    });
+    const archive = createActionConfirmationDescriptor({
+      kind: "destructive",
+      title: {
+        key: "features:confirmations.archive.title",
+        values: { feature: "feature" },
+      },
+      body: { key: "features:confirmations.archive.body" },
+      confirmLabel: { key: "features:destructiveActions.archive" },
+      cancelLabel: { key: "common:actions.cancel" },
+    });
+    expect(repair).not.toBeNull();
+    expect(archive).not.toBeNull();
+    const dispose = registerCommandProvider(
+      "test:typed-revalidation",
+      (ctx: CommandContext) => [
+        ...(ctx.timeTravel
+          ? []
+          : [
+              {
+                id: "test:removed-confirmation",
+                label: { key: "features:destructiveActions.archive" } as const,
+                family: "app" as const,
+                confirmation: archive,
+                run: () => undefined,
+              },
+            ]),
+        {
+          id: "test:replaced-confirmation",
+          label: { key: "features:guardedActions.repair" },
+          family: "app",
+          confirmation: ctx.timeTravel ? archive : repair,
+          run: () => undefined,
+        },
+      ],
+    );
+
+    try {
+      seedPaletteDashboardState(scope, { kind: "live" });
+      useViewStore.getState().setScope(scope);
+      renderPalette();
+      act(() => useCommandPaletteStore.getState().openPalette());
+      fireEvent.change(screen.getByRole("combobox"), {
+        target: { value: "archive feature" },
+      });
+      fireEvent.click(screen.getByRole("option", { name: "Archive feature" }));
+      expect(screen.getByRole("dialog", { name: "Archive feature?" })).toBeTruthy();
+
+      seedPaletteDashboardState(scope, { kind: "time-travel", at: 42 });
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog", { name: "Archive feature?" })).toBeNull();
+      }, ENGINE_WAIT);
+      expect(screen.getByRole("dialog", { name: "command palette" })).toBeTruthy();
+
+      seedPaletteDashboardState(scope, { kind: "live" });
+      fireEvent.change(screen.getByRole("combobox"), {
+        target: { value: "repair feature" },
+      });
+      fireEvent.click(
+        await screen.findByRole("option", { name: "Repair feature" }, ENGINE_WAIT),
+      );
+      expect(screen.getByRole("dialog", { name: "Repair feature?" })).toBeTruthy();
+
+      seedPaletteDashboardState(scope, { kind: "time-travel", at: 84 });
+      await waitFor(() => {
+        expect(screen.getByRole("dialog", { name: "Archive feature?" })).toBeTruthy();
+      }, ENGINE_WAIT);
+      expect(screen.queryByRole("dialog", { name: "Repair feature?" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.getByRole("dialog", { name: "command palette" })).toBeTruthy();
+    } finally {
+      dispose();
+    }
   });
 });
 

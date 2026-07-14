@@ -11,7 +11,7 @@ import {
   gateCommandsForTimeTravel,
   groupByFamily,
   normalizeCommandPaletteRightRailTab,
-  type PaletteCommand,
+  type ResolvedPaletteCommand,
 } from "../../stores/view/commandPaletteCommands";
 import {
   COMMAND_PALETTE_ACTION_ID,
@@ -23,11 +23,23 @@ import { RIGHT_RAIL_TABS } from "../../stores/view/shellLayout";
 // Synthetic command rows exercising the projection seams (grouping, filtering,
 // presentation). Command CONTENT now comes from the provider registry; these tests
 // pin the pure projection helpers, not corpus assembly.
-function command(id: string, patch: Partial<PaletteCommand> = {}): PaletteCommand {
-  return { id, label: id, family: "app", run: () => undefined, ...patch };
+function command(
+  id: string,
+  patch: Partial<ResolvedPaletteCommand> = {},
+): ResolvedPaletteCommand {
+  return {
+    id,
+    label: id,
+    family: "app",
+    presentationSafe: true,
+    fallbackDisabled: false,
+    legacyConfirmPrompt: null,
+    run: () => undefined,
+    ...patch,
+  };
 }
 
-function sample(): PaletteCommand[] {
+function sample(): ResolvedPaletteCommand[] {
   return [
     command("graph:fit", { label: "graph: fit to view", family: "navigate" }),
     command("graph:zoom-in", { label: "graph: zoom in", family: "navigate" }),
@@ -36,12 +48,14 @@ function sample(): PaletteCommand[] {
       label: "ops: vault check",
       family: "core",
       confirm: true,
+      legacyConfirmPrompt: "Confirm ops: vault check?",
       disabledInTimeTravel: true,
     }),
     command("ops:rag:reindex", {
       label: "ops: reindex",
       family: "rag",
       confirm: true,
+      legacyConfirmPrompt: "Confirm ops: reindex?",
       disabledInTimeTravel: true,
     }),
     command("app:settings", { label: "open settings", family: "app" }),
@@ -317,17 +331,17 @@ describe("deriveCommandPalettePresentationView", () => {
       },
     );
 
-    expect(commandPaletteRowLabel(active, true)).toBe(`confirm ${active.label}?`);
+    expect(commandPaletteRowLabel(active, true)).toBe(`Confirm ${active.label}?`);
     expect(
       view.rowGroups.flatMap((group) => group.rows).find((row) => row.id === active.id),
     ).toMatchObject({
-      label: `confirm ${active.label}?`,
+      label: `Confirm ${active.label}?`,
       labelClassName: "text-state-stale",
       selected: true,
       armed: true,
       confirmShortcutLabel: "⏎ ⏎",
       selectionHintVisible: false,
     });
-    expect(view.liveMessage).toBe(`1 command. confirm ${active.label}?`);
+    expect(view.liveMessage).toBe(`1 command. Confirm ${active.label}?`);
   });
 });

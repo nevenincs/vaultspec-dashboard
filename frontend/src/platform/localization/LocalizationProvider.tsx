@@ -1,8 +1,13 @@
-import type { ReactElement, ReactNode } from "react";
+import { useCallback, type ReactElement, type ReactNode } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
 
 import { defaultNS } from "../../locales/en";
-import { resolveMessage } from "./fallback";
+import {
+  resolveMessage,
+  resolveMessageResult,
+  type MessageResolutionResult,
+} from "./fallback";
+import type { MessageDescriptor } from "./message";
 import { localization, localizationNamespaces } from "./runtime";
 
 const LOCALIZATION_HOOK_OPTIONS = Object.freeze({ useSuspense: false });
@@ -27,4 +32,19 @@ export function useLocalizedMessage(descriptor: unknown): string {
   const { i18n } = useTranslation(localizationNamespaces, LOCALIZATION_HOOK_OPTIONS);
 
   return resolveMessage(i18n, descriptor);
+}
+
+export type LocalizedMessageResolver = (
+  descriptor: MessageDescriptor,
+) => MessageResolutionResult;
+
+/** Resolve many typed descriptors while remaining reactive to language changes. */
+export function useLocalizedMessageResolver(): LocalizedMessageResolver {
+  const { i18n } = useTranslation(localizationNamespaces, LOCALIZATION_HOOK_OPTIONS);
+  const language = i18n.resolvedLanguage ?? i18n.language;
+
+  return useCallback(
+    (descriptor: MessageDescriptor) => resolveMessageResult(i18n, descriptor),
+    [i18n, language],
+  );
 }

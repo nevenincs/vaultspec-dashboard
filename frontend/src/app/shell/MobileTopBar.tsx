@@ -13,14 +13,20 @@ import type { ComponentType, ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { ChevronLeft } from "../kit/glyphs";
+import {
+  resolveActionPresentation,
+  type ActionPresentation,
+} from "../../platform/actions/action";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 export interface MobileTopBarAction {
-  label: string;
+  id: string;
+  label: ActionPresentation;
   /** An icon action renders a 44pt icon slot. */
   Glyph?: ComponentType<{ size?: number }>;
   /** A text action renders a plain-language text button (e.g. the timeline "Now").
    *  Mutually exclusive with `Glyph`. */
-  text?: string;
+  text?: ActionPresentation;
   onClick: () => void;
   /** Pressed/selected (e.g. an open filter sheet). */
   active?: boolean;
@@ -43,12 +49,14 @@ export interface MobileTopBarProps {
 function IconSlot({
   label,
   active = false,
+  disabled = false,
   onClick,
   children,
 }: {
   label: string;
   active?: boolean;
-  onClick: () => void;
+  disabled?: boolean;
+  onClick?: () => void;
   children: ReactNode;
 }) {
   return (
@@ -57,6 +65,7 @@ function IconSlot({
       aria-label={label}
       aria-pressed={active}
       data-active={active}
+      disabled={disabled}
       onClick={onClick}
       // 44pt touch target (size-11 = 2.75rem); state by accent-subtle fill, not hue.
       className={`flex size-11 shrink-0 items-center justify-center rounded-fg-sm transition-colors duration-ui-fast ease-settle outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
@@ -78,6 +87,34 @@ export function MobileTopBar({
   titleActivateLabel,
   actions,
 }: MobileTopBarProps) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const resolvedActions: Array<
+    Omit<MobileTopBarAction, "label" | "text"> & {
+      label: string;
+      text?: string;
+      fallbackDisabled: boolean;
+    }
+  > = [];
+  for (const action of actions ?? []) {
+    const label = resolveActionPresentation(action.label, resolveMessage);
+    const { label: _rawLabel, text: rawText, ...behavior } = action;
+    if (rawText === undefined) {
+      resolvedActions.push({
+        ...behavior,
+        label: label.message,
+        fallbackDisabled: label.usedFallback,
+      });
+      continue;
+    }
+    const actionText = resolveActionPresentation(rawText, resolveMessage);
+    resolvedActions.push({
+      ...behavior,
+      label: label.message,
+      text: actionText.message,
+      fallbackDisabled: label.usedFallback || actionText.usedFallback,
+    });
+  }
+
   return (
     <header
       data-kit="mobile-top-bar"
@@ -111,23 +148,25 @@ export function MobileTopBar({
       ) : (
         <h1 className="min-w-0 flex-1 truncate text-title text-ink">{title}</h1>
       )}
-      {actions?.map((action) =>
+      {resolvedActions?.map((action) =>
         action.text != null ? (
           <button
-            key={action.label}
+            key={action.id}
             type="button"
             aria-label={action.label}
-            onClick={action.onClick}
+            disabled={action.fallbackDisabled}
+            onClick={action.fallbackDisabled ? undefined : action.onClick}
             className="flex h-11 shrink-0 items-center rounded-fg-sm px-fg-2 text-body-strong text-accent-text transition-colors duration-ui-fast ease-settle outline-none hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             {action.text}
           </button>
         ) : action.Glyph ? (
           <IconSlot
-            key={action.label}
+            key={action.id}
             label={action.label}
             active={action.active}
-            onClick={action.onClick}
+            disabled={action.fallbackDisabled}
+            onClick={action.fallbackDisabled ? undefined : action.onClick}
           >
             <action.Glyph size={20} />
           </IconSlot>

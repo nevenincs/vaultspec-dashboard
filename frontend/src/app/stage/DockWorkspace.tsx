@@ -24,6 +24,8 @@ import {
 import { X } from "lucide-react";
 
 import { useActiveScope } from "../../stores/server/queries";
+import { resolveActionPresentation } from "../../platform/actions/action";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import {
   useShellFrameView,
@@ -212,6 +214,7 @@ function isTopRightGroup(
 // (one authoring with Cmd+K / keymap); the rail verb composes the shared shell window
 // action. No free-floating absolutely-positioned chrome, no second copy.
 function DockHeaderActions(props: IDockviewHeaderActionsProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   const scope = useActiveScope();
   const shellFrame = useShellFrameView(scope);
   const shellActions = useShellWindowActions(scope, shellFrame);
@@ -229,13 +232,15 @@ function DockHeaderActions(props: IDockviewHeaderActionsProps) {
   if (!isTopRightGroup(props.group, props.containerApi)) return null;
 
   const graphAction = toggleGraphAction();
+  const graphLabel = resolveActionPresentation(graphAction.label, resolveMessage);
   return (
     <div className="flex h-full items-center gap-fg-1 px-fg-1">
       <IconButton
-        label={graphAction.label}
-        title={graphAction.label}
+        label={graphLabel.message}
+        title={graphLabel.message}
         active={graphVisible}
-        onClick={graphAction.run}
+        disabled={graphLabel.usedFallback}
+        onClick={graphLabel.usedFallback ? undefined : graphAction.run}
       >
         <Hierarchy size={16} aria-hidden />
       </IconButton>

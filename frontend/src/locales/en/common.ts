@@ -1,4 +1,8 @@
 export const common = {
+  accessibility: {
+    actionsMenu: "Actions",
+    confirmAction: "Confirm {{action}}?",
+  },
   actions: {
     cancel: "Cancel",
     close: "Close",
@@ -31,6 +35,7 @@ export const common = {
     showSystemStatus: "Show system status",
   },
   disabledReasons: {
+    actionUnavailable: "Reload the page and try this action again.",
     currentVersionRequired: "Return to the current version to use this action.",
     desktopEditorRequired: "Open the desktop app to edit this file.",
     desktopFileManagerRequired: "Open the desktop app to show this item.",
@@ -38,5 +43,8 @@ export const common = {
   },
   destructiveActions: {
     discardChanges: "Discard changes",
+  },
+  statuses: {
+    noActionsAvailable: "No actions available",
   },
 } as const;

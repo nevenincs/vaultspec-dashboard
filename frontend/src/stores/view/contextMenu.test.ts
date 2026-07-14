@@ -10,7 +10,6 @@ import type { EntityDescriptor } from "../../platform/actions/entity";
 import {
   armContextMenuItem,
   closeContextMenu,
-  contextMenuActionLabel,
   contextMenuActionRowClassName,
   deriveContextMenuActivation,
   deriveContextMenuCursorEdge,
@@ -352,11 +351,7 @@ describe("context-menu slice", () => {
 
     openContextMenu(NODE, { x: 10, y: 20 });
     const live = deriveContextMenuResolvedView(useContextMenuStore.getState(), false);
-    expect(live.kindLabel).toBe("node");
-    expect(live.menuAriaLabel).toBe("node actions");
-    expect(live.emptyMessage).toBe("no actions");
     expect(live.activeAction?.id).toBe("focus");
-    expect(live.liveMessage).toBe("node actions. Focus");
     expect(live.ordered.map((action) => action.id)).toEqual([
       "focus",
       "disabled",
@@ -408,16 +403,12 @@ describe("context-menu slice", () => {
     ]);
   });
 
-  it("derives empty and armed presentation labels in the resolved view", () => {
+  it("keeps empty and armed presentation state structural", () => {
     registerResolver("node", () => []);
     openContextMenu(NODE, { x: 10, y: 20 });
     expect(
-      deriveContextMenuResolvedView(useContextMenuStore.getState(), false),
-    ).toMatchObject({
-      menuAriaLabel: "node actions",
-      emptyMessage: "no actions",
-      liveMessage: "node actions: no actions",
-    });
+      deriveContextMenuResolvedView(useContextMenuStore.getState(), false).ordered,
+    ).toEqual([]);
 
     resetResolvers();
     registerResolver("node", () => [
@@ -426,10 +417,9 @@ describe("context-menu slice", () => {
     openContextMenu(NODE, { x: 10, y: 20 });
     armContextMenuItem("delete");
     const armed = deriveContextMenuResolvedView(useContextMenuStore.getState(), false);
-    expect(armed.liveMessage).toBe("confirm Delete?");
     expect(armed.activeRow).toMatchObject({
       id: "delete",
-      label: "confirm Delete?",
+      label: "Delete",
       armed: true,
       labelClassName: "flex-1 truncate text-state-stale",
       confirmShortcutLabel: "⏎⏎",
@@ -440,11 +430,9 @@ describe("context-menu slice", () => {
     });
     expect(armed.rowGroups[0]!.rows[0]).toMatchObject({
       id: "delete",
-      label: "confirm Delete?",
+      label: "Delete",
       armed: true,
     });
-    expect(contextMenuActionLabel(armed.ordered[0]!, true)).toBe("confirm Delete?");
-    expect(contextMenuActionLabel(armed.ordered[0]!, false)).toBe("Delete");
   });
 
   it("projects context-menu row classes from selected and disabled state", () => {
@@ -467,6 +455,18 @@ describe("context-menu slice", () => {
       label: "Reveal",
       dispatch: { type: "host:reveal" },
     };
+    const typedConfirmation = {
+      id: "archive",
+      label: { key: "features:destructiveActions.archive" } as const,
+      confirmation: {
+        kind: "destructive" as const,
+        title: { key: "features:confirmations.archive.title" } as const,
+        body: { key: "features:confirmations.archive.body" } as const,
+        confirmLabel: { key: "features:destructiveActions.archive" } as const,
+        cancelLabel: { key: "common:actions.cancel" } as const,
+      },
+      run: noop,
+    };
 
     expect(
       deriveContextMenuActivation(
@@ -483,6 +483,13 @@ describe("context-menu slice", () => {
       kind: "run",
       action: confirm,
     });
+    expect(deriveContextMenuActivation(typedConfirmation, null, () => true)).toEqual({
+      kind: "request-confirmation",
+      itemId: "archive",
+    });
+    expect(
+      deriveContextMenuActivation(typedConfirmation, null, () => true, true),
+    ).toEqual({ kind: "run", action: typedConfirmation });
     expect(deriveContextMenuActivation(run, null, () => true)).toEqual({
       kind: "run",
       action: run,
