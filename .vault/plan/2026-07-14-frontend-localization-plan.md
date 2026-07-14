@@ -69,7 +69,7 @@ Introduce real catalog invariants and a bounded source scanner that can tighten 
 - [ ] `W01.P03.S16` - Prove the scanner against production files and real rule fixtures without mirrored business logic; `frontend/scripts/scan-localization.test.ts`.
 - [x] `W01.P03.S119` - Validate interpolation parameter parity across every shipped locale; `frontend/src/localization/catalogInterpolation.test.ts`.
 - [ ] `W01.P03.S120` - Validate plural categories and formatter-backed dynamic messages against production resources; `frontend/src/localization/catalogPlural.test.ts`.
-- [ ] `W01.P03.S121` - Enforce concise plain-language wording, sentence case, canonical imperative verbs, prohibited vocabulary, and actionable recovery in source locale messages; `frontend/src/localization/messagePolicy.ts, frontend/src/localization/messagePolicy.test.ts, frontend/src/locales/en/`.
+- [x] `W01.P03.S121` - Enforce concise plain-language wording, sentence case, canonical imperative verbs, prohibited vocabulary, and actionable recovery in source locale messages; `frontend/src/localization/messagePolicy.ts, frontend/src/localization/messagePolicy.test.ts, frontend/src/locales/en/`.
 
 ## Wave `W02` - shared action and presentation contracts
 
