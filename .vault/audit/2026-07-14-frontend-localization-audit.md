@@ -365,3 +365,21 @@ also passed, and the review-only test was removed. No fake, mock, stub, runtime 
 monkeypatch, skip, or expected failure was used. Before accepting S116, replace the
 inline `useTranslation` options object with a stable frozen constant and repeat the real
 render, language-reactivity, listener-lifecycle, lint, formatting, and type checks.
+
+### W01.P01.S116 remediation review | pass | Finding resolved
+
+Commit `639e2cd45c` resolves the subscription-churn finding with no open S116
+findings. The hook now passes module-stable namespace and frozen option references. In
+the installed React adapter, effective options are memoized from the i18n and options
+references, the subscription callback is memoized from the i18n and effective options,
+and namespace state is memoized from the namespace elements. Unrelated descriptor or
+parent renders therefore preserve the external-store subscription identity instead of
+removing and re-adding the `languageChanged` listener.
+
+A real production-module render assertion passed through an unrelated descriptor
+rerender, a real language change, and a return to the source locale while retaining
+safe resolver output. Targeted ESLint and Prettier checks also passed, and the
+review-only test was removed. No fake, mock, stub, runtime patch, monkeypatch, skip, or
+expected failure was used. The remediation adds no provider property or authority,
+exposes no translator, and preserves singleton ownership, namespace coverage,
+non-Suspense rendering, and safe descriptor resolution. S116 is accepted.
