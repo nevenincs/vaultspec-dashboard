@@ -67,8 +67,15 @@ export interface FrameworkStatusInputs {
 }
 
 /** Vault-health words the engine serves that mean "healthy" — anything else served
- *  is a real condition worth attention. */
-const HEALTHY_VAULT_WORDS = new Set(["healthy", "ok"]);
+ *  is a real condition worth attention. "green" is the engine's canonical healthy
+ *  word (the live adapter's vault-green rollup); the chip and the Vault health
+ *  panel MUST read the same set so the ambient indicator never contradicts the
+ *  panel it opens. */
+export const HEALTHY_VAULT_WORDS: ReadonlySet<string> = new Set([
+  "healthy",
+  "ok",
+  "green",
+]);
 
 function deriveBackendChip(input: FrameworkStatusInputs): FrameworkStatusChip {
   const label = PANEL_LABELS["backend-health"].label;

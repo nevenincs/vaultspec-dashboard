@@ -102,12 +102,20 @@ describe("vault-health chip", () => {
     expect(view["vault-health"].tone).toBe("attention");
   });
 
-  it("stays ok for the healthy and ok words and when no word is served", () => {
+  it("stays ok for the healthy, ok, and green words and when no word is served", () => {
     const ok = deriveFrameworkStatusView({
       ...healthy(),
       core: { loading: false, errored: false, reachable: true, vaultHealth: "OK" },
     });
     expect(ok["vault-health"].tone).toBe("ok");
+    // "green" is the engine's CANONICAL healthy word (the live adapter's
+    // vault-green rollup) — the ambient chip must never contradict the panel
+    // it opens on live data.
+    const green = deriveFrameworkStatusView({
+      ...healthy(),
+      core: { loading: false, errored: false, reachable: true, vaultHealth: "green" },
+    });
+    expect(green["vault-health"].tone).toBe("ok");
     const none = deriveFrameworkStatusView({
       ...healthy(),
       core: { loading: false, errored: false, reachable: true },

@@ -12,6 +12,7 @@
 // idiom every ops surface uses.
 
 import {
+  HEALTHY_VAULT_WORDS,
   useCoreStatus,
   type CoreStatusView,
   type FrameworkStatusTone,
@@ -26,9 +27,6 @@ export interface VaultHealthView {
   tone: FrameworkStatusTone;
   word: string;
 }
-
-/** Served words that mean "healthy" — anything else served is a real condition. */
-const HEALTHY_VAULT_WORDS = new Set(["healthy", "ok", "green"]);
 
 const TONE_DOT_CLASS: Record<FrameworkStatusTone, string> = {
   ok: "bg-state-active",
@@ -78,7 +76,10 @@ export function VaultHealthPanel() {
   const core = useCoreStatus();
   const view = deriveVaultHealthView(core);
   const check = useOpsRunMutation();
-  const receipt = useOpsReceipt();
+  // The receipt store is a global singleton shared by every ops surface; show
+  // only this panel's own verb so a foreign dispatch never surfaces here.
+  const lastReceipt = useOpsReceipt();
+  const receipt = lastReceipt?.verb === "vault-check" ? lastReceipt : null;
 
   return (
     <div className="flex flex-col gap-fg-3 px-fg-4 py-fg-3" data-vault-health-panel>

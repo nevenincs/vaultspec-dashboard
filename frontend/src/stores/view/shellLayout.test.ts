@@ -263,9 +263,10 @@ describe("shell layout frame view", () => {
         "relative flex min-h-0 flex-col overflow-hidden border-l border-rule",
       showRightRail: true,
       rightRailToggleLabel: "Right rail: Hide",
-      activityRailClassName:
-        "flex min-h-0 flex-1 flex-col gap-fg-2 overflow-y-auto p-fg-2",
-      activityPanelClassName: "min-h-0 flex-1",
+      // The scroll lives on the inner panel so the framework status cluster
+      // pins as a footer outside the scroll region (activity-rail-realignment D2).
+      activityRailClassName: "flex min-h-0 flex-1 flex-col",
+      activityPanelClassName: "min-h-0 flex-1 overflow-y-auto p-fg-2",
     });
   });
 

@@ -711,7 +711,7 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
   // `stateOverride` is a test-only seam (the /status.html parity harness drives each
   // designed state); production always derives the state from live data.
   const railState = stateOverride ?? deriveRailState(plansView, openPrs, openIssues);
-  // The rail's six fold headers are ONE tab stop: arrows rove between sections via
+  // The rail's five fold headers are ONE tab stop: arrows rove between sections via
   // the shared FocusZone, Enter/Space toggles the focused fold (the native button)
   // (keyboard-navigation W04.P07.S21). Each section's body rows remain reachable by
   // Tab from its header.
