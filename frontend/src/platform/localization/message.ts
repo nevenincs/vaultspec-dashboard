@@ -14,8 +14,20 @@ type MessageKeyByNamespace = {
   >}`;
 };
 
+type DestructiveActionKeyByNamespace = {
+  [Namespace in keyof EnglishResources & string]: EnglishResources[Namespace] extends {
+    readonly destructiveActions: infer Actions extends Readonly<
+      Record<string, unknown>
+    >;
+  }
+    ? `${Namespace}:destructiveActions.${MessageLeafPath<Actions>}`
+    : never;
+};
+
 /** A namespace-qualified semantic leaf in the source-locale catalog. */
 export type MessageKey = MessageKeyByNamespace[keyof MessageKeyByNamespace];
+export type DestructiveActionMessageKey =
+  DestructiveActionKeyByNamespace[keyof DestructiveActionKeyByNamespace];
 
 /** Interpolation data may cross non-React presentation seams. */
 export type MessageValue = string | number;
@@ -42,18 +54,20 @@ export const SAFE_CANCEL_MESSAGE_KEYS = [
 
 export type SafeCancelMessageKey = (typeof SAFE_CANCEL_MESSAGE_KEYS)[number];
 export type SafeCancelMessageDescriptor = MessageDescriptor<SafeCancelMessageKey>;
+export type DestructiveActionMessageDescriptor =
+  MessageDescriptor<DestructiveActionMessageKey>;
 
 export interface ConfirmationDescriptor {
   readonly title: MessageDescriptor;
   readonly body: MessageDescriptor;
-  readonly confirmLabel: MessageDescriptor;
+  readonly confirmLabel: DestructiveActionMessageDescriptor;
   readonly cancelLabel: SafeCancelMessageDescriptor;
 }
 
 export interface ConfirmationDescriptorInput {
   readonly title: MessageDescriptor;
   readonly body: MessageDescriptor;
-  readonly confirmLabel: MessageDescriptor;
+  readonly confirmLabel: DestructiveActionMessageDescriptor;
   readonly cancelLabel: SafeCancelMessageDescriptor;
 }
 
@@ -120,7 +134,18 @@ function collectMessageKeys(): readonly MessageKey[] {
 /** The runtime allowlist generated from the same source-locale shape as `MessageKey`. */
 export const MESSAGE_KEYS = collectMessageKeys();
 
+/** Destructive action leaves generated from the catalog's semantic category. */
+export const DESTRUCTIVE_ACTION_MESSAGE_KEYS = Object.freeze(
+  MESSAGE_KEYS.filter((key) => {
+    const namespaceEnd = key.indexOf(":");
+    return key.slice(namespaceEnd + 1).startsWith("destructiveActions.");
+  }) as DestructiveActionMessageKey[],
+);
+
 const MESSAGE_KEY_SET: ReadonlySet<string> = new Set(MESSAGE_KEYS);
+const DESTRUCTIVE_ACTION_MESSAGE_KEY_SET: ReadonlySet<string> = new Set(
+  DESTRUCTIVE_ACTION_MESSAGE_KEYS,
+);
 const SAFE_CANCEL_MESSAGE_KEY_SET: ReadonlySet<string> = new Set(
   SAFE_CANCEL_MESSAGE_KEYS,
 );
@@ -209,6 +234,16 @@ function normalizeSafeCancelLabel(value: unknown): SafeCancelMessageDescriptor |
   return normalized as SafeCancelMessageDescriptor;
 }
 
+export function normalizeDestructiveActionMessageDescriptor(
+  value: unknown,
+): DestructiveActionMessageDescriptor | null {
+  const normalized = normalizeMessageDescriptor(value);
+  if (normalized === null || !DESTRUCTIVE_ACTION_MESSAGE_KEY_SET.has(normalized.key)) {
+    return null;
+  }
+  return normalized as DestructiveActionMessageDescriptor;
+}
+
 export function normalizeConfirmationDescriptor(
   value: unknown,
 ): ConfirmationDescriptor | null {
@@ -222,14 +257,13 @@ export function normalizeConfirmationDescriptor(
 
   const title = normalizeMessageDescriptor(record.title);
   const body = normalizeMessageDescriptor(record.body);
-  const confirmLabel = normalizeMessageDescriptor(record.confirmLabel);
+  const confirmLabel = normalizeDestructiveActionMessageDescriptor(record.confirmLabel);
   const cancelLabel = normalizeSafeCancelLabel(record.cancelLabel);
   if (
     title === null ||
     body === null ||
     confirmLabel === null ||
-    cancelLabel === null ||
-    confirmLabel.key === cancelLabel.key
+    cancelLabel === null
   ) {
     return null;
   }

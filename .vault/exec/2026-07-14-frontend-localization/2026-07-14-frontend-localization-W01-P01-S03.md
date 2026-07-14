@@ -9,39 +9,6 @@ related:
   - "[[2026-07-14-frontend-localization-plan]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #exec) and one feature tag.
-     Replace frontend-localization with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     step_id is the originating Step's canonical identifier, e.g. S01.
-     The S03 and 2026-07-14-frontend-localization-plan placeholders are machine-filled by
-     `vaultspec-core vault add exec`; do not fill them by hand.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
-     parent plan.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
-<!-- STEP RECORD:
-     This file represents one Step from the originating plan. Identified
-     by its canonical leaf identifier (S##) and ancestor display path.
-     The Define bounded typed message keys, values, descriptors, and confirmation descriptors and ## Scope
-
-- `frontend/src/platform/localization/message.ts` placeholders below are machine-filled
-     by `vaultspec-core vault add exec` from the originating Step row;
-     do not fill them by hand. -->
-
 # Define bounded typed message keys, values, descriptors, and confirmation descriptors
 
 ## Scope
@@ -73,3 +40,8 @@ The full frontend lint recipe reached an unrelated existing ESLint configuration
 in `CreateDocDialog.tsx`. Targeted Prettier and ESLint checks, the full TypeScript
 project check, and an isolated TypeScript 6 strict compile of the new contract passed.
 The full formatting check also reported only that unrelated file.
+
+Review remediation constrains confirmation primary actions at both compile time and
+runtime to the catalog's semantic `destructiveActions` category. The allowlist is
+generated from the typed source catalog rather than inferred from English copy, and
+destructive labels retain bounded named values for object-specific messages.
