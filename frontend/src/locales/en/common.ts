@@ -68,6 +68,8 @@ export const common = {
   },
   feedback: {
     actionUnavailable: "Couldn't complete the action. Reload the page and try again.",
+    copyFailed: "Couldn't copy. Try again.",
+    copySucceeded: "Copied.",
   },
   destructiveActions: {
     discardChanges: "Discard changes",

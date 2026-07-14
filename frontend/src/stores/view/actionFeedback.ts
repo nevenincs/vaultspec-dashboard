@@ -1,75 +1,106 @@
-// A tiny app-level action-outcome feedback surface (KAR-006 / KAR-004).
-//
-// Menu-fired verbs (relate / autofix / archive / copy) close the context menu
-// SYNCHRONOUSLY, but their outcome resolves ASYNCHRONOUSLY — so the menu's own
-// aria-live region cannot announce it (that region unmounts when the menu
-// closes), and the command palette's ops-message is gated on the palette being
-// open. This one small store outlives both surfaces: the always-mounted
-// ContextMenuHost renders its message into a persistent polite aria-live region,
-// and any surface announces through `announceActionFeedback` (callable outside
-// React, like the dispatch seam it reports on).
-//
-// A monotonic `token` rides alongside the message so an IDENTICAL consecutive
-// outcome ("Copied." twice) still re-announces: the region keys its text node on
-// the token, forcing a remount the screen reader observes as a fresh change.
-
 import { create } from "zustand";
 
-export const ACTION_FEEDBACK_MESSAGE_CAP = 200;
+import type { MessageDescriptor } from "../../platform/localization/message";
 
-export function normalizeActionFeedbackMessage(message: unknown): string | null {
-  if (typeof message !== "string") return null;
-  const trimmed = message.trim();
-  if (!trimmed) return null;
-  return trimmed.length > ACTION_FEEDBACK_MESSAGE_CAP
-    ? `${trimmed.slice(0, ACTION_FEEDBACK_MESSAGE_CAP - 1)}…`
-    : trimmed;
+export const ACTION_FEEDBACK_CONDITIONS = Object.freeze([
+  "archive-succeeded",
+  "archive-rejected",
+  "archive-unavailable",
+  "repair-succeeded",
+  "repair-rejected",
+  "repair-unavailable",
+  "copy-succeeded",
+  "copy-failed",
+  "link-succeeded",
+  "already-linked",
+  "link-conflict",
+  "link-failed",
+  "link-in-progress",
+  "action-unavailable",
+] as const);
+
+export type ActionFeedbackCondition = (typeof ACTION_FEEDBACK_CONDITIONS)[number];
+
+const ACTION_FEEDBACK_CONDITION_SET: ReadonlySet<string> = new Set(
+  ACTION_FEEDBACK_CONDITIONS,
+);
+
+const descriptor = <Key extends MessageDescriptor["key"]>(
+  key: Key,
+): MessageDescriptor<Key> => Object.freeze({ key });
+
+const ACTION_FEEDBACK_DESCRIPTORS = Object.freeze({
+  "archive-succeeded": descriptor("features:feedback.archiveSucceeded"),
+  "archive-rejected": descriptor("features:feedback.archiveRejected"),
+  "archive-unavailable": descriptor("features:feedback.archiveUnavailable"),
+  "repair-succeeded": descriptor("features:feedback.repairSucceeded"),
+  "repair-rejected": descriptor("features:feedback.repairRejected"),
+  "repair-unavailable": descriptor("features:feedback.repairUnavailable"),
+  "copy-succeeded": descriptor("common:feedback.copySucceeded"),
+  "copy-failed": descriptor("common:feedback.copyFailed"),
+  "link-succeeded": descriptor("documents:feedback.linkSucceeded"),
+  "already-linked": descriptor("documents:feedback.alreadyLinked"),
+  "link-conflict": descriptor("documents:feedback.linkConflict"),
+  "link-failed": descriptor("documents:feedback.linkFailed"),
+  "link-in-progress": descriptor("documents:feedback.linkInProgress"),
+  "action-unavailable": descriptor("common:feedback.actionUnavailable"),
+} satisfies Readonly<Record<ActionFeedbackCondition, MessageDescriptor>>);
+
+export function normalizeActionFeedbackCondition(
+  value: unknown,
+): ActionFeedbackCondition | null {
+  return typeof value === "string" && ACTION_FEEDBACK_CONDITION_SET.has(value)
+    ? (value as ActionFeedbackCondition)
+    : null;
+}
+
+/** Exhaustively map a semantic action outcome to its immutable catalog descriptor. */
+export function actionFeedbackDescriptor(
+  condition: ActionFeedbackCondition,
+): MessageDescriptor {
+  return ACTION_FEEDBACK_DESCRIPTORS[condition];
 }
 
 interface ActionFeedbackState {
-  message: string | null;
+  condition: ActionFeedbackCondition | null;
   token: number;
-  announce: (message: unknown) => void;
+  announce: (condition: unknown) => void;
   clear: () => void;
 }
 
 export const useActionFeedbackStore = create<ActionFeedbackState>((set) => ({
-  message: null,
+  condition: null,
   token: 0,
-  announce: (message) =>
+  announce: (condition) =>
     set((state) => {
-      const normalized = normalizeActionFeedbackMessage(message);
+      const normalized = normalizeActionFeedbackCondition(condition);
       return normalized === null
         ? state
-        : { message: normalized, token: state.token + 1 };
+        : { condition: normalized, token: state.token + 1 };
     }),
-  clear: () => set((state) => ({ message: null, token: state.token + 1 })),
+  clear: () => set((state) => ({ condition: null, token: state.token + 1 })),
 }));
 
-/** Announce an action outcome to AT + the user. Imperative: callable from a
- *  dispatch-outcome consumer outside React, never a private per-surface toast. */
-export function announceActionFeedback(message: unknown): void {
-  useActionFeedbackStore.getState().announce(message);
+export function announceActionFeedback(condition: unknown): void {
+  useActionFeedbackStore.getState().announce(condition);
 }
 
 export function clearActionFeedback(): void {
   useActionFeedbackStore.getState().clear();
 }
 
-/** Non-React snapshot of the current feedback (message + token), for consumers
- *  outside a component (tests, imperative readers). */
-export function actionFeedbackSnapshot(): { message: string | null; token: number } {
-  const { message, token } = useActionFeedbackStore.getState();
-  return { message, token };
+export function actionFeedbackSnapshot(): {
+  condition: ActionFeedbackCondition | null;
+  token: number;
+} {
+  const { condition, token } = useActionFeedbackStore.getState();
+  return { condition, token };
 }
 
-/** The current feedback message (raw primitive — stable-selectors). */
-export function useActionFeedbackMessage(): string | null {
-  return useActionFeedbackStore((state) => state.message);
+export function useActionFeedbackCondition(): ActionFeedbackCondition | null {
+  return useActionFeedbackStore((state) => state.condition);
 }
 
-/** The re-announce token (raw primitive): a monotonic counter the aria-live
- *  region keys on so an identical consecutive message still re-announces. */
 export function useActionFeedbackToken(): number {
   return useActionFeedbackStore((state) => state.token);
 }

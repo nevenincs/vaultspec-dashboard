@@ -29,6 +29,14 @@ export const documents = {
     tryAfterSaving: "Try again after saving finishes.",
     updateBeforeSaving: "Update the document before saving.",
   },
+  feedback: {
+    alreadyLinked: "These documents are already linked.",
+    linkConflict:
+      "The document changed before it could be linked. Open it, then try again.",
+    linkFailed: "Couldn't link the documents. Try again.",
+    linkInProgress: "Linking documents…",
+    linkSucceeded: "Documents linked.",
+  },
   shortcutGroups: {
     editing: "Document editing",
   },

@@ -9,9 +9,10 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { registerResolver, resetResolvers } from "../../platform/actions/registry";
+import type { Action } from "../../platform/dispatch/dispatch";
 import { appDispatcher } from "../../platform/dispatch/middleware";
 import {
   MenuTestProviders,
@@ -28,12 +29,15 @@ function Providers({ children }: { children: ReactNode }) {
 }
 
 const TEST_VERB = "test:mutate";
-const handler = vi.fn();
+let receivedActions: Action[] = [];
+let unregisterHandler: (() => void) | null = null;
 
 beforeEach(() => {
   testClient = createMenuTestQueryClient();
-  handler.mockReset();
-  appDispatcher.register(TEST_VERB, handler);
+  receivedActions = [];
+  unregisterHandler = appDispatcher.register(TEST_VERB, (action) => {
+    receivedActions.push(action);
+  });
   registerResolver("node", (entity) => [
     {
       id: "mutate",
@@ -48,25 +52,23 @@ afterEach(() => {
   resetResolvers();
   useContextMenuStore.getState().closeMenu();
   testClient.clear();
-  vi.restoreAllMocks();
+  unregisterHandler?.();
+  unregisterHandler = null;
 });
 
 describe("menu seam transit", () => {
   it("routes a dispatch action through appDispatcher to its terminal handler", async () => {
-    const dispatchSpy = vi.spyOn(appDispatcher, "dispatch");
     render(<ContextMenuHost />, { wrapper: Providers });
     act(() => openContextMenu({ kind: "node", id: "n1" }, { x: 5, y: 5 }));
-    fireEvent.click(await screen.findByText("Mutate", undefined, ENGINE_WAIT));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Mutate" }, ENGINE_WAIT),
+    );
 
     // The terminal handler fired exactly once, with the action that transited
     // the seam (so it was logged/traced/guardable in one place).
-    expect(handler).toHaveBeenCalledTimes(1);
-    const action = handler.mock.calls[0][0];
+    expect(receivedActions).toHaveLength(1);
+    const action = receivedActions[0]!;
     expect(action.type).toBe(TEST_VERB);
     expect(action.payload).toEqual({ id: "n1" });
-    // The menu dispatched through appDispatcher (not a direct engine call).
-    expect(dispatchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ type: TEST_VERB, payload: { id: "n1" } }),
-    );
   });
 });

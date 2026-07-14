@@ -20,12 +20,14 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { registerResolver, resetResolvers } from "../../platform/actions/registry";
+import { copyAction } from "../../platform/actions/clipboardActions";
 import { createTestLocalizationRuntime } from "../../localization/testing";
 import {
   MenuTestProviders,
   createMenuTestQueryClient,
 } from "../../testing/menuQueryClient";
 import { openContextMenu, useContextMenuStore } from "../../stores/view/contextMenu";
+import { clearActionFeedback } from "../../stores/view/actionFeedback";
 import { ContextMenuHost } from "./ContextMenuHost";
 import { ENGINE_WAIT } from "../../testing/timing";
 
@@ -76,6 +78,7 @@ beforeEach(() => {
   testClient = createMenuTestQueryClient();
   testLocalization = createTestLocalizationRuntime();
   registerNodeMenu();
+  clearActionFeedback();
 });
 afterEach(() => {
   cleanup();
@@ -84,6 +87,7 @@ afterEach(() => {
   testClient.clear();
   focusCount = 0;
   removeCount = 0;
+  clearActionFeedback();
 });
 
 function openNodeMenu() {
@@ -368,5 +372,31 @@ describe("ContextMenuHost", () => {
       fireEvent.click(screen.getByRole("menuitem", { name: /Unregistered verb/ })),
     ).not.toThrow();
     expect(useContextMenuStore.getState().open).toBe(false);
+  });
+
+  it("announces an async outcome after close and resolves it again when locale changes", async () => {
+    resetResolvers();
+    registerResolver("node", () => [
+      copyAction({
+        id: "copy-title",
+        label: { key: "common:actions.copyTitle" },
+        text: "Alpha",
+        what: "title",
+      }),
+    ]);
+    openNodeMenu();
+
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Copy title" }, ENGINE_WAIT),
+    );
+    expect(useContextMenuStore.getState().open).toBe(false);
+
+    const feedback = document.querySelector("[data-action-feedback]");
+    await waitFor(() => expect(feedback?.textContent).toBe("Copied."), ENGINE_WAIT);
+
+    await act(async () => testLocalization.changeLanguage("fr"));
+    const french = testLocalization.t("common:feedback.copySucceeded");
+    await waitFor(() => expect(feedback?.textContent).toBe(french), ENGINE_WAIT);
+    expect(french).not.toBe("Copied.");
   });
 });

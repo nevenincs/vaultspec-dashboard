@@ -1,87 +1,192 @@
 import { QueryClient } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { COPY_ACTION } from "../../platform/actions/clipboardActions";
+import { adaptDirectWriteOutcome } from "./authoring";
 import { consumeMenuActionOutcome } from "./menuActionOutcome";
 import { OPS_ACTION } from "./opsActions";
+import { engineKeys } from "./queries/internal";
+import { RELATE_ACTION, type RelateAlreadyLinked } from "./relateActions";
 
-// KAR-006 / KAR-004. The outcomes here MIRROR the live wire shape — the engine
-// forwards the sibling `{status, data}` envelope under `envelope`, HTTP 200 for
-// BOTH success and refusal — so this pins the three consequences the fix closes
-// by driving the pure interpreter with faithful envelopes, never a divergent
-// engine double (mock-mirrors-live-wire-shape: the wire itself is not stubbed).
+const tiers = {};
 
-function opsResult(envelope: unknown, ok = true) {
-  return { ok, envelope, tiers: {} };
+const archiveDispatch = {
+  type: OPS_ACTION,
+  payload: {
+    target: "core",
+    verb: "feature-archive",
+    mode: "archive",
+    body: { feature: "search" },
+  },
+} as const;
+
+const repairDispatch = {
+  type: OPS_ACTION,
+  payload: {
+    target: "core",
+    verb: "autofix",
+    mode: "autofix",
+    body: { feature: "search" },
+  },
+} as const;
+
+const copyDispatch = {
+  type: COPY_ACTION,
+  payload: { text: "Document" },
+} as const;
+
+const relateDispatch = {
+  type: RELATE_ACTION,
+  payload: { src: "source", dst: "target", scope: "scope-a" },
+} as const;
+
+function queryClientWithStatus(): QueryClient {
+  const client = new QueryClient();
+  client.setQueryData(engineKeys.status(), { ok: true });
+  return client;
 }
 
-describe("consumeMenuActionOutcome (KAR-006 / KAR-004)", () => {
-  it("(a) surfaces a business refusal instead of silent success, and does NOT invalidate", async () => {
-    const qc = new QueryClient();
-    const invalidate = vi.spyOn(qc, "invalidateQueries");
-    const outcome = Promise.resolve(
-      opsResult({
-        status: "failed",
-        data: { errors: ["dangling target: doc:nope"] },
-      }),
-    );
+function statusInvalidated(client: QueryClient): boolean {
+  return client.getQueryState(engineKeys.status())?.isInvalidated === true;
+}
 
-    const result = await consumeMenuActionOutcome(OPS_ACTION, outcome, "scope-a", qc);
+describe("consumeMenuActionOutcome", () => {
+  it("classifies archive and repair success, refusal, and transport failure without leaking details", async () => {
+    const archiveClient = queryClientWithStatus();
+    await expect(
+      consumeMenuActionOutcome(
+        archiveDispatch,
+        Promise.resolve({
+          ok: true,
+          envelope: { status: "ok", data: {} },
+          tiers,
+        }),
+        "scope-a",
+        archiveClient,
+      ),
+    ).resolves.toEqual({ ok: true, feedback: "archive-succeeded" });
+    expect(statusInvalidated(archiveClient)).toBe(true);
 
-    expect(result.ok).toBe(false);
-    expect(result.message).toContain("dangling target: doc:nope");
-    // A refusal is not a mutation: the cache must NOT be invalidated.
-    expect(invalidate).not.toHaveBeenCalled();
+    const repairClient = queryClientWithStatus();
+    await expect(
+      consumeMenuActionOutcome(
+        repairDispatch,
+        Promise.resolve({
+          ok: true,
+          envelope: {
+            status: "failed",
+            data: { errors: ["private/path"], reason: "internal detail" },
+          },
+          tiers,
+        }),
+        "scope-a",
+        repairClient,
+      ),
+    ).resolves.toEqual({ ok: false, feedback: "repair-rejected" });
+    expect(statusInvalidated(repairClient)).toBe(false);
+
+    await expect(
+      consumeMenuActionOutcome(
+        archiveDispatch,
+        Promise.reject(new Error("private transport detail")),
+        "scope-a",
+        queryClientWithStatus(),
+      ),
+    ).resolves.toEqual({ ok: false, feedback: "archive-unavailable" });
   });
 
-  it("(b) catches a transport failure into a degraded message (no unhandled rejection)", async () => {
-    const qc = new QueryClient();
-    const outcome = Promise.reject(new Error("socket hang up"));
-
-    const result = await consumeMenuActionOutcome(OPS_ACTION, outcome, "scope-a", qc);
-
-    expect(result.ok).toBe(false);
-    expect(result.message).toMatch(/engine/i);
+  it("invalidates OPS caches only for a verified successful outcome", async () => {
+    for (const malformed of [
+      undefined,
+      { ok: true, envelope: { status: "ok", data: {} } },
+      { ok: true, envelope: { status: "unexpected", data: {} }, tiers },
+      { ok: false, envelope: { status: "ok", data: {} }, tiers },
+    ]) {
+      const client = queryClientWithStatus();
+      await expect(
+        consumeMenuActionOutcome(archiveDispatch, malformed, "scope-a", client),
+      ).resolves.toEqual({ ok: false, feedback: "action-unavailable" });
+      expect(statusInvalidated(client)).toBe(false);
+    }
   });
 
-  it("(c) invalidates the vault-mutation caches on a successful op", async () => {
-    const qc = new QueryClient();
-    const invalidate = vi.spyOn(qc, "invalidateQueries");
-    const outcome = Promise.resolve(opsResult({ status: "ok", data: {} }));
-
-    const result = await consumeMenuActionOutcome(OPS_ACTION, outcome, "scope-a", qc);
-
-    expect(result.ok).toBe(true);
-    expect(invalidate).toHaveBeenCalled();
+  it("classifies copy outcomes and fails malformed copy results closed", async () => {
+    await expect(
+      consumeMenuActionOutcome(copyDispatch, Promise.resolve({ ok: true }), null),
+    ).resolves.toEqual({ ok: true, feedback: "copy-succeeded" });
+    await expect(
+      consumeMenuActionOutcome(copyDispatch, Promise.resolve({ ok: false }), null),
+    ).resolves.toEqual({ ok: false, feedback: "copy-failed" });
+    await expect(
+      consumeMenuActionOutcome(
+        copyDispatch,
+        Promise.resolve({ ok: true, path: "x" }),
+        null,
+      ),
+    ).resolves.toEqual({ ok: false, feedback: "action-unavailable" });
+    await expect(
+      consumeMenuActionOutcome(copyDispatch, Promise.reject(new Error("denied")), null),
+    ).resolves.toEqual({ ok: false, feedback: "copy-failed" });
   });
 
-  it("surfaces copy success and failure (KAR-004 fold-in)", async () => {
-    const qc = new QueryClient();
-    const copied = await consumeMenuActionOutcome(
-      COPY_ACTION,
-      Promise.resolve({ ok: true }),
-      null,
-      qc,
-    );
-    expect(copied.message).toBe("Copied.");
+  it("classifies every production relate outcome without duplicating invalidation", async () => {
+    const outcomes = [
+      [
+        adaptDirectWriteOutcome({
+          status: "applied",
+          changeset_id: "change-1",
+          record: {},
+          apply_receipt: { child: {} },
+          tiers,
+        }),
+        { ok: true, feedback: "link-succeeded" },
+      ],
+      [
+        { kind: "already_related" } satisfies RelateAlreadyLinked,
+        { ok: true, feedback: "already-linked" },
+      ],
+      [
+        adaptDirectWriteOutcome({ status: "conflict", conflict: {}, tiers }),
+        { ok: false, feedback: "link-conflict" },
+      ],
+      [
+        adaptDirectWriteOutcome({ status: "denied", eligibility: {}, tiers }),
+        { ok: false, feedback: "link-failed" },
+      ],
+      [
+        adaptDirectWriteOutcome({ status: "failed", apply_receipt: {}, tiers }),
+        { ok: false, feedback: "link-failed" },
+      ],
+      [
+        adaptDirectWriteOutcome({ status: "in_flight", tiers }),
+        { ok: false, feedback: "link-in-progress" },
+      ],
+    ] as const;
 
-    const failed = await consumeMenuActionOutcome(
-      COPY_ACTION,
-      Promise.resolve({ ok: false }),
-      null,
-      qc,
-    );
-    expect(failed.message).toBe("Couldn't copy.");
+    for (const [outcome, expected] of outcomes) {
+      await expect(
+        consumeMenuActionOutcome(relateDispatch, Promise.resolve(outcome), "scope-a"),
+      ).resolves.toEqual(expected);
+    }
   });
 
-  it("reports nothing (null message) for a dispatch type with no observable outcome", async () => {
-    const qc = new QueryClient();
-    const result = await consumeMenuActionOutcome(
-      "some:store-intent",
-      Promise.resolve(undefined),
-      null,
-      qc,
-    );
-    expect(result.message).toBeNull();
+  it("keeps unknown dispatches silent and recognized malformed input generic", async () => {
+    await expect(
+      consumeMenuActionOutcome(
+        { type: "some:store-intent" },
+        Promise.resolve({ reason: "do not expose" }),
+        null,
+      ),
+    ).resolves.toEqual({ ok: true, feedback: null });
+
+    for (const dispatch of [
+      { type: COPY_ACTION, payload: { text: 42 } },
+      { type: RELATE_ACTION, payload: { src: "source" } },
+      { type: OPS_ACTION, payload: { target: "core", verb: "feature-archive" } },
+    ]) {
+      await expect(
+        consumeMenuActionOutcome(dispatch, Promise.resolve(undefined), null),
+      ).resolves.toEqual({ ok: false, feedback: "action-unavailable" });
+    }
   });
 });

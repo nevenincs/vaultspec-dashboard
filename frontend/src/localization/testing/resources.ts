@@ -47,6 +47,8 @@ export const ltrTestResources = {
     feedback: {
       actionUnavailable:
         "Impossible de terminer l’action. Rechargez la page et réessayez.",
+      copyFailed: "Impossible de copier. Réessayez.",
+      copySucceeded: "Copié.",
     },
     destructiveActions: {
       discardChanges: "Ignorer les modifications",
@@ -113,6 +115,14 @@ export const ltrTestResources = {
       tryAfterSaving: "Réessayez une fois l’enregistrement terminé.",
       updateBeforeSaving: "Modifiez le document avant d’enregistrer.",
     },
+    feedback: {
+      alreadyLinked: "Ces documents sont déjà liés.",
+      linkConflict:
+        "Le document a été modifié avant de pouvoir être lié. Ouvrez-le, puis réessayez.",
+      linkFailed: "Impossible de lier les documents. Réessayez.",
+      linkInProgress: "Liaison des documents…",
+      linkSucceeded: "Documents liés.",
+    },
     shortcutGroups: {
       editing: "Modification du document",
     },
@@ -131,7 +141,19 @@ export const ltrTestResources = {
       title: "Cette section ne peut pas être affichée",
     },
   },
-  features: en.features,
+  features: {
+    ...en.features,
+    feedback: {
+      archiveRejected:
+        "La fonctionnalité n’a pas été archivée. Vérifiez-la, puis réessayez.",
+      archiveSucceeded: "Fonctionnalité archivée.",
+      archiveUnavailable: "Impossible d’archiver la fonctionnalité. Réessayez.",
+      repairRejected:
+        "La fonctionnalité n’a pas été réparée. Vérifiez-la, puis réessayez.",
+      repairSucceeded: "Fonctionnalité réparée.",
+      repairUnavailable: "Impossible de réparer la fonctionnalité. Réessayez.",
+    },
+  },
   graph: {
     actions: {
       clearSelection: "Effacer la sélection du graphe",
@@ -234,6 +256,8 @@ export const rtlTestResources = {
     disabledReasons: en.common.disabledReasons,
     feedback: {
       actionUnavailable: "تعذر إكمال الإجراء. أعد تحميل الصفحة وحاول مرة أخرى.",
+      copyFailed: "تعذر النسخ. حاول مرة أخرى.",
+      copySucceeded: "تم النسخ.",
     },
     destructiveActions: {
       discardChanges: "تجاهل التغييرات",
@@ -285,6 +309,13 @@ export const rtlTestResources = {
       tryAfterSaving: "حاول مرة أخرى بعد اكتمال الحفظ.",
       updateBeforeSaving: "حدّث المستند قبل الحفظ.",
     },
+    feedback: {
+      alreadyLinked: "هذه المستندات مرتبطة بالفعل.",
+      linkConflict: "تغير المستند قبل ربطه. افتحه، ثم حاول مرة أخرى.",
+      linkFailed: "تعذر ربط المستندات. حاول مرة أخرى.",
+      linkInProgress: "جارٍ ربط المستندات…",
+      linkSucceeded: "تم ربط المستندات.",
+    },
     shortcutGroups: {
       editing: "تحرير المستند",
     },
@@ -302,7 +333,17 @@ export const rtlTestResources = {
       title: "تعذر عرض هذا القسم",
     },
   },
-  features: en.features,
+  features: {
+    ...en.features,
+    feedback: {
+      archiveRejected: "لم تتم أرشفة الميزة. تحقق منها، ثم حاول مرة أخرى.",
+      archiveSucceeded: "تمت أرشفة الميزة.",
+      archiveUnavailable: "تعذرت أرشفة الميزة. حاول مرة أخرى.",
+      repairRejected: "لم يتم إصلاح الميزة. تحقق منها، ثم حاول مرة أخرى.",
+      repairSucceeded: "تم إصلاح الميزة.",
+      repairUnavailable: "تعذر إصلاح الميزة. حاول مرة أخرى.",
+    },
+  },
   graph: {
     actions: {
       clearSelection: "مسح تحديد الرسم البياني",

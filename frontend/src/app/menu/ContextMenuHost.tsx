@@ -39,8 +39,9 @@ import {
 } from "../../stores/server/queries";
 import { consumeMenuActionOutcome } from "../../stores/server/menuActionOutcome";
 import {
+  actionFeedbackDescriptor,
   announceActionFeedback,
-  useActionFeedbackMessage,
+  useActionFeedbackCondition,
   useActionFeedbackToken,
 } from "../../stores/view/actionFeedback";
 import {
@@ -155,8 +156,12 @@ export function ContextMenuHost({
   // The persistent action-outcome feedback (KAR-006 / KAR-004): rendered below in
   // an always-mounted aria-live region that OUTLIVES the menu (the menu's own
   // live region unmounts on close, before an async ops/copy outcome resolves).
-  const feedbackMessage = useActionFeedbackMessage();
+  const feedbackCondition = useActionFeedbackCondition();
   const feedbackToken = useActionFeedbackToken();
+  const feedbackMessage =
+    feedbackCondition === null
+      ? null
+      : resolveMessage(actionFeedbackDescriptor(feedbackCondition)).message;
 
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -240,10 +245,11 @@ export function ContextMenuHost({
         // Fire-and-forget with the announce in the tail; the consumer never
         // rejects, so no unhandled rejection escapes.
         const outcome = dispatch(activation.dispatch);
-        const dispatchType = (activation.dispatch as { type?: unknown }).type;
-        void consumeMenuActionOutcome(dispatchType, outcome, scope).then((result) => {
-          if (result.message !== null) announceActionFeedback(result.message);
-        });
+        void consumeMenuActionOutcome(activation.dispatch, outcome, scope).then(
+          (result) => {
+            if (result.feedback !== null) announceActionFeedback(result.feedback);
+          },
+        );
       } else {
         activation.action.run?.();
       }

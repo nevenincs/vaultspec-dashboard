@@ -5840,36 +5840,6 @@
     "rule": "direct-locale-format"
   },
   {
-    "id": "60aeb7ccdeb336a8d0c6f2ca",
-    "path": "src/stores/server/menuActionOutcome.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "a49debb3bf98f8859d5fbf60",
-    "path": "src/stores/server/menuActionOutcome.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "b92d1c7f5288dff88cad396f",
-    "path": "src/stores/server/menuActionOutcome.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "da8eb9f87ca9269b12e5cc37",
-    "path": "src/stores/server/menuActionOutcome.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "e837c887ac88b1210daf6bd3",
-    "path": "src/stores/server/menuActionOutcome.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "f6f82571beec2d83046676a4",
-    "path": "src/stores/server/menuActionOutcome.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "63aed80b62fe86912485070a",
     "path": "src/stores/server/queries/dashboard.ts",
     "rule": "presentation-field"

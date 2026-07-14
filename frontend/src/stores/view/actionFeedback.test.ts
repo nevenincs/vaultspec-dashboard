@@ -1,61 +1,54 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  ACTION_FEEDBACK_MESSAGE_CAP,
+  ACTION_FEEDBACK_CONDITIONS,
+  actionFeedbackDescriptor,
   actionFeedbackSnapshot,
   announceActionFeedback,
   clearActionFeedback,
-  normalizeActionFeedbackMessage,
+  normalizeActionFeedbackCondition,
 } from "./actionFeedback";
 
-describe("actionFeedback store (KAR-006 / KAR-004)", () => {
+describe("actionFeedback store", () => {
   beforeEach(() => clearActionFeedback());
 
-  it("normalizes: trims, drops empty/non-string, caps length", () => {
-    expect(normalizeActionFeedbackMessage("  Copied.  ")).toBe("Copied.");
-    expect(normalizeActionFeedbackMessage("   ")).toBeNull();
-    expect(normalizeActionFeedbackMessage(42)).toBeNull();
-    const capped = normalizeActionFeedbackMessage(
-      "x".repeat(ACTION_FEEDBACK_MESSAGE_CAP + 50),
-    );
-    expect(capped).not.toBeNull();
-    expect(capped!.length).toBe(ACTION_FEEDBACK_MESSAGE_CAP);
-    expect(capped!.endsWith("…")).toBe(true);
+  it("accepts only the exact closed condition union", () => {
+    expect(Object.isFrozen(ACTION_FEEDBACK_CONDITIONS)).toBe(true);
+    for (const condition of ACTION_FEEDBACK_CONDITIONS) {
+      expect(normalizeActionFeedbackCondition(condition)).toBe(condition);
+      expect(Object.isFrozen(actionFeedbackDescriptor(condition))).toBe(true);
+    }
+    expect(normalizeActionFeedbackCondition(" copy-succeeded ")).toBeNull();
+    expect(normalizeActionFeedbackCondition("unknown")).toBeNull();
+    expect(
+      normalizeActionFeedbackCondition({ condition: "copy-succeeded" }),
+    ).toBeNull();
   });
 
-  it("announce sets the message and bumps the re-announce token every time", () => {
-    announceActionFeedback("Copied.");
+  it("stores the condition and bumps the reannouncement token for every valid repeat", () => {
+    announceActionFeedback("copy-succeeded");
     const first = actionFeedbackSnapshot();
-    expect(first.message).toBe("Copied.");
+    expect(first.condition).toBe("copy-succeeded");
 
-    // An IDENTICAL consecutive message must still re-announce: same text, a NEW
-    // token (the aria-live region keys on the token, so AT reads it again).
-    announceActionFeedback("Copied.");
+    announceActionFeedback("copy-succeeded");
     const second = actionFeedbackSnapshot();
-    expect(second.message).toBe("Copied.");
+    expect(second.condition).toBe("copy-succeeded");
     expect(second.token).toBeGreaterThan(first.token);
-
-    announceActionFeedback("Couldn't copy.");
-    const third = actionFeedbackSnapshot();
-    expect(third.message).toBe("Couldn't copy.");
-    expect(third.token).toBeGreaterThan(second.token);
   });
 
-  it("ignores an empty announce (no message, no token bump)", () => {
-    announceActionFeedback("Done.");
+  it("leaves the condition and token untouched for invalid input", () => {
+    announceActionFeedback("link-failed");
     const before = actionFeedbackSnapshot();
-    announceActionFeedback("   ");
-    const after = actionFeedbackSnapshot();
-    expect(after.message).toBe("Done.");
-    expect(after.token).toBe(before.token);
+    announceActionFeedback("link-failed ");
+    expect(actionFeedbackSnapshot()).toEqual(before);
   });
 
-  it("clear empties the message and still bumps the token", () => {
-    announceActionFeedback("Done.");
+  it("clears the condition and bumps the token", () => {
+    announceActionFeedback("repair-succeeded");
     const before = actionFeedbackSnapshot();
     clearActionFeedback();
     const after = actionFeedbackSnapshot();
-    expect(after.message).toBeNull();
+    expect(after.condition).toBeNull();
     expect(after.token).toBeGreaterThan(before.token);
   });
 });

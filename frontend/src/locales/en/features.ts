@@ -15,6 +15,14 @@ export const features = {
   disabledReasons: {
     selectFeature: "Select a feature first.",
   },
+  feedback: {
+    archiveRejected: "The feature wasn't archived. Check it, then try again.",
+    archiveSucceeded: "Feature archived.",
+    archiveUnavailable: "Couldn't archive the feature. Try again.",
+    repairRejected: "The feature wasn't repaired. Check it, then try again.",
+    repairSucceeded: "Feature repaired.",
+    repairUnavailable: "Couldn't repair the feature. Try again.",
+  },
   guardedActions: {
     repair: "Repair feature",
   },

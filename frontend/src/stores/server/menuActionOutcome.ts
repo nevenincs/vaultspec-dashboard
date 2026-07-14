@@ -1,89 +1,244 @@
-// Menu-fired dispatch OUTCOME consumption (KAR-006, with the KAR-004 copy
-// fold-in). The context menu is the only plane offering the mutating vault verbs
-// (relate / autofix / archive), and it discarded the ops dispatch promise: a
-// business REFUSAL looked identical to success (the engine returns HTTP 200 for
-// both, with the outcome in the forwarded core envelope), a TRANSPORT failure
-// became an unhandled rejection, and a SUCCESS never invalidated the cache (so
-// the UI updated only when the ~2s file-watcher rebuild landed).
-//
-// The interpretation + cache invalidation belong in the stores layer — the sole
-// wire client (dashboard-layer-ownership) — so app-chrome never touches the
-// engine client. This awaits the promise, branches the ops envelope on
-// status/data (NEVER the HTTP code), invalidates the vault-mutation caches on
-// success, catches transport failures, and returns a plain feedback string for
-// the app to announce. It never rejects.
-
 import type { QueryClient } from "@tanstack/react-query";
 
-import { COPY_ACTION, type CopyResult } from "../../platform/actions/clipboardActions";
+import {
+  COPY_ACTION,
+  normalizeCopyWhat,
+  type CopyResult,
+} from "../../platform/actions/clipboardActions";
+import { normalizeAction } from "../../platform/dispatch/dispatch";
+import type { ActionFeedbackCondition } from "../view/actionFeedback";
 import { envelopeData, type OpsResult } from "./engine";
-import { OPS_ACTION } from "./opsActions";
+import { isOpsDispatchIntent, OPS_ACTION, type OpsPayload } from "./opsActions";
 import { invalidateAfterVaultMutation } from "./queries";
 import { queryClient as defaultQueryClient } from "./queryClient";
+import { RELATE_ACTION, type RelateOutcome, type RelatePayload } from "./relateActions";
 
 export interface MenuActionOutcome {
-  ok: boolean;
-  /** The feedback line to announce, or null for a dispatch with no observable
-   *  outcome (a store-only intent that reports nothing). */
-  message: string | null;
+  readonly ok: boolean;
+  readonly feedback: ActionFeedbackCondition | null;
 }
 
-/** The refusal reason from an ops envelope, or null when the op SUCCEEDED. Reads
- *  the forwarded sibling envelope's `status` + `data` (never the HTTP code): a
- *  `failed` status or an inner `refused`/`conflict` flag is a business refusal. */
-function opsRefusalReason(ops: OpsResult): string | null {
-  const { status, data } = envelopeData(ops.envelope);
-  const refused =
-    status === "failed" || data.refused === true || data.conflict === true;
-  if (!refused) return null;
-  const errors = Array.isArray(data.errors)
-    ? data.errors.filter((entry): entry is string => typeof entry === "string")
-    : [];
-  if (errors.length > 0) return errors.join("; ");
-  for (const key of ["message", "error", "reason"] as const) {
-    const value = data[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
+type MenuDispatchKind = "archive" | "repair" | "copy" | "relate";
+type RelateFeedbackCondition =
+  | "link-succeeded"
+  | "already-linked"
+  | "link-conflict"
+  | "link-failed"
+  | "link-in-progress";
+
+type ClassifiedDispatch =
+  | { readonly kind: "unknown" }
+  | { readonly kind: "malformed" }
+  | { readonly kind: MenuDispatchKind };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isCopyPayload(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.text !== "string") return false;
+  const keys = Object.keys(value);
+  if (keys.some((key) => key !== "text" && key !== "what")) return false;
+  return value.what === undefined || normalizeCopyWhat(value.what) === value.what;
+}
+
+function isRelatePayload(value: unknown): value is RelatePayload {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value);
+  if (keys.some((key) => key !== "src" && key !== "dst" && key !== "scope")) {
+    return false;
   }
-  return "the operation was refused";
+  return (
+    typeof value.src === "string" &&
+    value.src.length > 0 &&
+    typeof value.dst === "string" &&
+    value.dst.length > 0 &&
+    (value.scope === undefined ||
+      value.scope === null ||
+      typeof value.scope === "string")
+  );
 }
 
-/**
- * Consume a menu-fired dispatch's outcome. Returns a feedback message (or null
- * for a dispatch type with no observable outcome). NEVER rejects — a transport
- * failure resolves to an honest degraded message so the firing surface can
- * announce it instead of leaking an unhandled rejection.
- */
+function classifyDispatch(value: unknown): ClassifiedDispatch {
+  const dispatch = normalizeAction(value);
+  if (dispatch === null) return { kind: "unknown" };
+  if (dispatch.type === COPY_ACTION) {
+    return isCopyPayload(dispatch.payload) ? { kind: "copy" } : { kind: "malformed" };
+  }
+  if (dispatch.type === RELATE_ACTION) {
+    return isRelatePayload(dispatch.payload)
+      ? { kind: "relate" }
+      : { kind: "malformed" };
+  }
+  if (dispatch.type !== OPS_ACTION) return { kind: "unknown" };
+  if (!isOpsDispatchIntent(dispatch.payload)) return { kind: "malformed" };
+
+  const payload = dispatch.payload as OpsPayload;
+  if (
+    payload.target === "core" &&
+    payload.mode === "archive" &&
+    payload.verb === "feature-archive"
+  ) {
+    return { kind: "archive" };
+  }
+  if (
+    payload.target === "core" &&
+    payload.mode === "autofix" &&
+    payload.verb === "autofix"
+  ) {
+    return { kind: "repair" };
+  }
+  return { kind: "unknown" };
+}
+
+function isOpsResult(value: unknown): value is OpsResult {
+  return (
+    isRecord(value) &&
+    typeof value.ok === "boolean" &&
+    Object.hasOwn(value, "envelope") &&
+    isRecord(value.tiers)
+  );
+}
+
+function classifyOpsResult(value: unknown): "succeeded" | "rejected" | null {
+  if (!isOpsResult(value) || !isRecord(value.envelope)) return null;
+  if (!isRecord(value.envelope.data)) return null;
+  const { status, data } = envelopeData(value.envelope);
+  if (status === "failed" || data.refused === true || data.conflict === true) {
+    return "rejected";
+  }
+  return status === "ok" && value.ok ? "succeeded" : null;
+}
+
+function isCopyResult(value: unknown): value is CopyResult {
+  return (
+    isRecord(value) && Object.keys(value).length === 1 && typeof value.ok === "boolean"
+  );
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function isRelateOutcome(value: unknown): value is RelateOutcome {
+  if (!isRecord(value) || typeof value.kind !== "string") return false;
+  if (value.kind === "already_related") {
+    return Object.keys(value).length === 1;
+  }
+  if (!isRecord(value.tiers)) return false;
+  switch (value.kind) {
+    case "applied":
+      return (
+        typeof value.changesetId === "string" &&
+        isNullableString(value.documentPath) &&
+        isNullableString(value.blobHash) &&
+        typeof value.replayed === "boolean"
+      );
+    case "conflict":
+      return isRecord(value.conflict);
+    case "denied":
+    case "failed":
+      return isNullableString(value.reason);
+    case "in_flight":
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function classifyRelateFeedback(
+  outcome: RelateOutcome,
+): RelateFeedbackCondition {
+  switch (outcome.kind) {
+    case "applied":
+      return "link-succeeded";
+    case "already_related":
+      return "already-linked";
+    case "conflict":
+      return "link-conflict";
+    case "in_flight":
+      return "link-in-progress";
+    case "denied":
+    case "failed":
+      return "link-failed";
+  }
+}
+
+function rejectedFeedback(kind: "archive" | "repair"): ActionFeedbackCondition {
+  return kind === "archive" ? "archive-rejected" : "repair-rejected";
+}
+
+function succeededFeedback(kind: "archive" | "repair"): ActionFeedbackCondition {
+  return kind === "archive" ? "archive-succeeded" : "repair-succeeded";
+}
+
+function unavailableFeedback(kind: "archive" | "repair"): ActionFeedbackCondition {
+  return kind === "archive" ? "archive-unavailable" : "repair-unavailable";
+}
+
+async function settleSilently(outcome: unknown): Promise<void> {
+  try {
+    await outcome;
+  } catch {
+    // Unknown or malformed dispatches remain silent and never leak a rejection.
+  }
+}
+
 export async function consumeMenuActionOutcome(
-  type: unknown,
+  dispatchValue: unknown,
   outcome: unknown,
   scope: unknown,
   queryClient: QueryClient = defaultQueryClient,
 ): Promise<MenuActionOutcome> {
-  if (type === OPS_ACTION) {
+  const dispatch = classifyDispatch(dispatchValue);
+  if (dispatch.kind === "unknown") {
+    await settleSilently(outcome);
+    return { ok: true, feedback: null };
+  }
+  if (dispatch.kind === "malformed") {
+    await settleSilently(outcome);
+    return { ok: false, feedback: "action-unavailable" };
+  }
+
+  if (dispatch.kind === "archive" || dispatch.kind === "repair") {
     try {
-      const ops = (await outcome) as OpsResult;
-      const reason = opsRefusalReason(ops);
-      if (reason !== null) {
-        return { ok: false, message: `Couldn't complete that: ${reason}` };
+      const result = classifyOpsResult(await outcome);
+      if (result === null) return { ok: false, feedback: "action-unavailable" };
+      if (result === "rejected") {
+        return { ok: false, feedback: rejectedFeedback(dispatch.kind) };
       }
-      // Success: refresh the vault-mutation caches so the graph/tree update now,
-      // not on the next ~2s watcher rebuild (the ops handler assigns
-      // invalidation to the caller).
       invalidateAfterVaultMutation(queryClient, scope);
-      return { ok: true, message: "Done." };
+      return { ok: true, feedback: succeededFeedback(dispatch.kind) };
     } catch {
-      return { ok: false, message: "Couldn't reach the engine - please try again." };
+      return { ok: false, feedback: unavailableFeedback(dispatch.kind) };
     }
   }
-  if (type === COPY_ACTION) {
+
+  if (dispatch.kind === "copy") {
     try {
-      const { ok } = (await outcome) as CopyResult;
-      return ok
-        ? { ok: true, message: "Copied." }
-        : { ok: false, message: "Couldn't copy." };
+      const result = await outcome;
+      if (!isCopyResult(result)) {
+        return { ok: false, feedback: "action-unavailable" };
+      }
+      return result.ok
+        ? { ok: true, feedback: "copy-succeeded" }
+        : { ok: false, feedback: "copy-failed" };
     } catch {
-      return { ok: false, message: "Couldn't copy." };
+      return { ok: false, feedback: "copy-failed" };
     }
   }
-  return { ok: true, message: null };
+
+  try {
+    const result = await outcome;
+    if (!isRelateOutcome(result)) {
+      return { ok: false, feedback: "action-unavailable" };
+    }
+    const feedback = classifyRelateFeedback(result);
+    return {
+      ok: result.kind === "applied" || result.kind === "already_related",
+      feedback,
+    };
+  } catch {
+    return { ok: false, feedback: "link-failed" };
+  }
 }
