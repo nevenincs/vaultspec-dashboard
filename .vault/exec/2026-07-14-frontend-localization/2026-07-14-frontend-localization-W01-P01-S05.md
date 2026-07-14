@@ -64,10 +64,12 @@ locale explicitly and return `null` for invalid input. Percentages use a documen
 ratio contract, durations use deterministic millisecond-based units, and byte sizes use
 a bounded base-1024 scale with localized unit labels. Each Intl formatter family admits
 only its documented option names, bounds retained string values, and safely rejects
-hostile reflected input.
+hostile reflected input. Locale identifiers are capped before canonicalization and cache
+insertion so every retained formatter key has a finite size bound.
 
 ## Notes
 
 Targeted Prettier, ESLint, isolated strict TypeScript 6, and real production-module
 Vitest assertions passed. The runtime assertions covered Proxy-backed inputs, unknown
-and oversized options, singular relative-time units, and valid family-specific options.
+and oversized options, singular relative-time units, valid family-specific options, a
+90,000-character valid private-use locale, and an ordinary complex BCP 47 locale.

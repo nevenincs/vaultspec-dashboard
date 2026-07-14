@@ -1,6 +1,8 @@
 const FORMATTER_CACHE_MAX = 48;
 const FORMATTER_OPTION_MAX = 32;
 const FORMATTER_OPTION_STRING_MAX_CHARS = 128;
+// This comfortably covers complex BCP 47 tags while placing a hard bound on cache keys.
+const FORMATTER_LOCALE_MAX_CHARS = 256;
 const LIST_ITEM_MAX = 100;
 const LIST_ITEM_MAX_CHARS = 4096;
 
@@ -95,10 +97,19 @@ const BYTE_OPTION_NAMES = new Set(
 );
 
 function canonicalLocale(locale: unknown): string | null {
-  if (typeof locale !== "string" || locale.trim().length === 0) return null;
+  if (
+    typeof locale !== "string" ||
+    locale.length > FORMATTER_LOCALE_MAX_CHARS ||
+    locale.trim().length === 0
+  ) {
+    return null;
+  }
   try {
     const locales = Intl.getCanonicalLocales(locale);
-    return locales.length === 1 ? locales[0] : null;
+    const canonical = locales.length === 1 ? locales[0] : undefined;
+    return canonical !== undefined && canonical.length <= FORMATTER_LOCALE_MAX_CHARS
+      ? canonical
+      : null;
   } catch {
     return null;
   }
