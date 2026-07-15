@@ -373,13 +373,67 @@ export const ltrTestResources = {
   projects: {
     actions: {
       add: "Ajouter un projet…",
+      checkProjectStatus: "Vérifier l’état du projet",
       clearHistory: "Effacer l’historique des projets",
+      prepareProjectTools: "Configurer les outils du projet",
+      setUpProject: "Configurer le projet",
       switch: "Changer de projet…",
       switchWorktree: "Basculer vers l’arbre de travail",
+      updateProject: "Mettre à jour le projet",
+      updateProjectTools: "Mettre à jour les outils du projet",
+    },
+    confirmations: {
+      replaceSetup: {
+        body: "Cette action remplace les fichiers de configuration existants et peut écraser vos modifications. Enregistrez une sauvegarde avant de continuer.",
+        title: "Remplacer la configuration du projet ?",
+      },
+    },
+    destructiveActions: {
+      replaceSetup: "Remplacer la configuration du projet",
     },
     disabledReasons: {
       chooseWorktreeWithProjectFiles:
         "Choisissez un autre arbre de travail contenant les fichiers du projet.",
+      installRequiredProjectTools:
+        "Installez les outils de projet requis, puis réessayez.",
+      noSetupChangesNeeded: "Revenez au projet pour continuer.",
+      prepareFolderAsGitProject:
+        "Préparez ce dossier comme projet Git, puis réessayez.",
+      setUpProjectFirst: "Configurez le projet, puis réessayez.",
+      waitForProjectStatus:
+        "Attendez le chargement de l’état du projet, puis réessayez.",
+    },
+    provisioning: {
+      description: "Configurez ce projet pour continuer.",
+      details: {
+        installRequiredProjectTools:
+          "Installez les outils de projet requis, puis réessayez.",
+        prepareFolderAsGitProject:
+          "Préparez ce dossier comme projet Git, puis réessayez.",
+      },
+      progress: "Configuration du projet…",
+      result: {
+        completed: "Configuration du projet terminée",
+        failed: "Échec de la configuration du projet",
+        indeterminate:
+          "La configuration est peut-être toujours en cours. Vérifiez l’état du projet avant de réessayer.",
+        itemCount_one: "{{count, number}} élément",
+        itemCount_many: "{{count, number}} éléments",
+        itemCount_other: "{{count, number}} éléments",
+        status: {
+          created: "Créé",
+          failed: "Échec",
+          mixed: "Résultats mixtes",
+          removed: "Supprimé",
+          restored: "Restauré",
+          skipped: "Ignoré",
+          updated: "Mis à jour",
+          upToDate: "Déjà à jour",
+        },
+      },
+      startFailed: "La configuration du projet n’a pas pu démarrer. Réessayez.",
+      statusUnavailable: "L’état du projet est indisponible",
+      title: "Configuration du projet requise",
     },
     shortcutGroups: {
       projects: "Projets",
@@ -841,12 +895,64 @@ export const rtlTestResources = {
   projects: {
     actions: {
       add: "إضافة مشروع…",
+      checkProjectStatus: "التحقق من حالة المشروع",
       clearHistory: "مسح سجل المشاريع",
+      prepareProjectTools: "إعداد أدوات المشروع",
+      setUpProject: "إعداد المشروع",
       switch: "تبديل المشروع…",
       switchWorktree: "التبديل إلى شجرة العمل",
+      updateProject: "تحديث المشروع",
+      updateProjectTools: "تحديث أدوات المشروع",
+    },
+    confirmations: {
+      replaceSetup: {
+        body: "يستبدل هذا ملفات الإعداد الحالية وقد يستبدل تغييراتك. احفظ نسخة احتياطية قبل المتابعة.",
+        title: "استبدال إعداد المشروع؟",
+      },
+    },
+    destructiveActions: {
+      replaceSetup: "استبدال إعداد المشروع",
     },
     disabledReasons: {
       chooseWorktreeWithProjectFiles: "اختر شجرة عمل أخرى تحتوي على ملفات المشروع.",
+      installRequiredProjectTools: "ثبّت أدوات المشروع المطلوبة، ثم حاول مرة أخرى.",
+      noSetupChangesNeeded: "ارجع إلى المشروع للمتابعة.",
+      prepareFolderAsGitProject: "جهّز هذا المجلد كمشروع Git، ثم حاول مرة أخرى.",
+      setUpProjectFirst: "أعدّ المشروع، ثم حاول مرة أخرى.",
+      waitForProjectStatus: "انتظر حتى يتم تحميل حالة المشروع، ثم حاول مرة أخرى.",
+    },
+    provisioning: {
+      description: "أعدّ هذا المشروع للمتابعة.",
+      details: {
+        installRequiredProjectTools: "ثبّت أدوات المشروع المطلوبة، ثم حاول مرة أخرى.",
+        prepareFolderAsGitProject: "جهّز هذا المجلد كمشروع Git، ثم حاول مرة أخرى.",
+      },
+      progress: "جارٍ إعداد المشروع…",
+      result: {
+        completed: "اكتمل إعداد المشروع",
+        failed: "فشل إعداد المشروع",
+        indeterminate:
+          "قد يكون الإعداد لا يزال قيد التنفيذ. تحقق من حالة المشروع قبل المحاولة مرة أخرى.",
+        itemCount_zero: "{{count, number}} عنصر",
+        itemCount_one: "عنصر واحد",
+        itemCount_two: "عنصران",
+        itemCount_few: "{{count, number}} عناصر",
+        itemCount_many: "{{count, number}} عنصرًا",
+        itemCount_other: "{{count, number}} عنصر",
+        status: {
+          created: "تم الإنشاء",
+          failed: "فشل",
+          mixed: "نتائج متنوعة",
+          removed: "تمت الإزالة",
+          restored: "تمت الاستعادة",
+          skipped: "تم التجاوز",
+          updated: "تم التحديث",
+          upToDate: "محدّث بالفعل",
+        },
+      },
+      startFailed: "تعذر بدء إعداد المشروع. حاول مرة أخرى.",
+      statusUnavailable: "حالة المشروع غير متاحة",
+      title: "إعداد المشروع مطلوب",
     },
     shortcutGroups: {
       projects: "المشاريع",

@@ -136,6 +136,11 @@ const DISABLED_REASON_KEYS = [
   "graph:disabledReasons.relatedItemUnavailable",
   "graph:disabledReasons.startingItemUnavailable",
   "projects:disabledReasons.chooseWorktreeWithProjectFiles",
+  "projects:disabledReasons.installRequiredProjectTools",
+  "projects:disabledReasons.noSetupChangesNeeded",
+  "projects:disabledReasons.prepareFolderAsGitProject",
+  "projects:disabledReasons.setUpProjectFirst",
+  "projects:disabledReasons.waitForProjectStatus",
 ] as const satisfies readonly MessageKey[];
 
 describe("source-locale message policy", () => {
@@ -207,6 +212,22 @@ describe("source-locale message policy", () => {
         en.projects.disabledReasons.chooseWorktreeWithProjectFiles,
       ),
     ).toEqual([]);
+  });
+
+  it("accepts canonical project setup actions and recovery copy", () => {
+    for (const [key, template] of [
+      ["projects:actions.prepareProjectTools", en.projects.actions.prepareProjectTools],
+      ["projects:actions.setUpProject", en.projects.actions.setUpProject],
+      ["projects:actions.updateProject", en.projects.actions.updateProject],
+      ["projects:actions.updateProjectTools", en.projects.actions.updateProjectTools],
+      [
+        "projects:disabledReasons.prepareFolderAsGitProject",
+        en.projects.disabledReasons.prepareFolderAsGitProject,
+      ],
+      ["projects:provisioning.startFailed", en.projects.provisioning.startFailed],
+    ] as const satisfies readonly (readonly [MessageKey, string])[]) {
+      expect(validateEnglishMessage(key, template)).toEqual([]);
+    }
   });
 
   it("reports each stable policy issue from an adverse literal", () => {

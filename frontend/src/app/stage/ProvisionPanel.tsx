@@ -23,7 +23,7 @@
 // suppressed (`shouldSuppressCanvasStateOverlay`) so the two designed states
 // never paint the same centered card at once for a genuinely unmanaged root.
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Check, TriangleAlert } from "lucide-react";
 
 import { isRunnable, type ActionDescriptor } from "../../platform/actions/action";
@@ -44,6 +44,8 @@ import {
 } from "../../stores/view/provisionActions";
 import { resolveActionPresentation } from "../../platform/actions/action";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
+import { ActionConfirmationDialog } from "../chrome/ActionConfirmationDialog";
 import { StateCard } from "./CanvasStateOverlay";
 
 /** The panel's one resolved state, from stores-derived truth — the chrome half
@@ -74,20 +76,32 @@ export function resolveProvisionPanelState(inputs: {
   return { kind: "not-managed", data: inputs.data };
 }
 
-/** Served `vaultspec.sync.v1` aggregate status → plain-language label
- *  (`.vaultspec/reference/cli.md` "Sync output vocabulary"; displayed-state-
- *  is-backend-served — the frontend maps ONLY presentation). Falls back to the
- *  raw token for a future value this map hasn't caught up to (additive-safe). */
-const SYNC_STATUS_LABEL: Record<string, string> = {
-  created: "Created",
-  updated: "Updated",
-  unchanged: "Already up to date",
-  removed: "Removed",
-  restored: "Restored",
-  skipped: "Skipped",
-  failed: "Failed",
-  mixed: "Mixed results",
+/** Known completion statuses map to bounded user-facing messages. Unknown
+ * statuses are intentionally omitted instead of exposing service vocabulary. */
+type KnownSyncStatus =
+  | "created"
+  | "updated"
+  | "unchanged"
+  | "removed"
+  | "restored"
+  | "skipped"
+  | "failed"
+  | "mixed";
+
+const SYNC_STATUS_LABEL: Record<KnownSyncStatus, MessageDescriptor> = {
+  created: { key: "projects:provisioning.result.status.created" },
+  updated: { key: "projects:provisioning.result.status.updated" },
+  unchanged: { key: "projects:provisioning.result.status.upToDate" },
+  removed: { key: "projects:provisioning.result.status.removed" },
+  restored: { key: "projects:provisioning.result.status.restored" },
+  skipped: { key: "projects:provisioning.result.status.skipped" },
+  failed: { key: "projects:provisioning.result.status.failed" },
+  mixed: { key: "projects:provisioning.result.status.mixed" },
 };
+
+function isKnownSyncStatus(status: string): status is KnownSyncStatus {
+  return Object.hasOwn(SYNC_STATUS_LABEL, status);
+}
 
 /** The ONE resolved-state read: wraps `useProvisionStatus` + `resolveProvisionPanelState`
  *  behind a single hook so `Stage.tsx` (which needs to know whether to SUPPRESS
@@ -135,17 +149,44 @@ function envelopeItemCount(
   return isRecord(data) && Array.isArray(data.items) ? data.items.length : undefined;
 }
 
-/** The terminal job outcome: the served sync vocabulary when the completed
- *  verb emitted one (install/migrate), or the raw captured output when it did
- *  not (uv acquisition speaks plain text, never sync-shaped) — rendered
- *  honestly as output, never dressed up as invented sync semantics. */
-export function JobOutcome({ job }: { job: ProvisionJob }) {
+/** Render only bounded outcome facts. Raw job labels, paths, service output,
+ * schema details, and unknown status values are never user-facing. */
+export function JobOutcome({
+  job,
+  onCheckStatus,
+}: {
+  job: ProvisionJob;
+  onCheckStatus?: () => void;
+}) {
+  const resolveMessage = useLocalizedMessageResolver();
   if (job.state === "running" || job.outcome === null) return null;
   const outcome = job.outcome;
   const envelope = isRecord(outcome.envelope) ? outcome.envelope : undefined;
   const syncStatus = typeof envelope?.status === "string" ? envelope.status : undefined;
   const items = envelopeItemCount(envelope);
   const failed = job.state === "failed";
+  const heading = resolveMessage({
+    key: failed
+      ? "projects:provisioning.result.failed"
+      : "projects:provisioning.result.completed",
+  });
+  const statusDescriptor =
+    syncStatus === undefined || !isKnownSyncStatus(syncStatus)
+      ? undefined
+      : SYNC_STATUS_LABEL[syncStatus];
+  const status =
+    statusDescriptor === undefined ? undefined : resolveMessage(statusDescriptor);
+  const itemCount =
+    items === undefined
+      ? undefined
+      : resolveMessage({
+          key: "projects:provisioning.result.itemCount",
+          values: { count: items },
+        });
+  const indeterminate = resolveMessage({
+    key: "projects:provisioning.result.indeterminate",
+  });
+  const checkStatus = resolveMessage({ key: "projects:actions.checkProjectStatus" });
   return (
     <div className="flex flex-col gap-fg-1" data-provision-outcome={job.state}>
       <div className="flex items-center gap-fg-1-5">
@@ -154,29 +195,25 @@ export function JobOutcome({ job }: { job: ProvisionJob }) {
         ) : (
           <Check aria-hidden size={14} className="shrink-0 text-state-active" />
         )}
-        <span className="text-meta text-ink">{job.label}</span>
-        {syncStatus !== undefined && (
-          <Badge tone={failed ? "neutral" : "accent"}>
-            {SYNC_STATUS_LABEL[syncStatus] ?? syncStatus}
-          </Badge>
+        <span className="text-meta text-ink">{heading.message}</span>
+        {status !== undefined && !status.usedFallback && (
+          <Badge tone={failed ? "neutral" : "accent"}>{status.message}</Badge>
         )}
       </div>
-      {items !== undefined && (
-        <p className="text-meta text-ink-muted">
-          {items} item{items === 1 ? "" : "s"}
-        </p>
+      {itemCount !== undefined && (
+        <p className="text-meta text-ink-muted">{itemCount.message}</p>
       )}
-      {envelope === undefined &&
-        typeof outcome.output === "string" &&
-        outcome.output.length > 0 && (
-          <pre className="max-h-[8rem] overflow-auto rounded-fg-sm bg-paper-sunken p-fg-2 text-caption text-ink-muted whitespace-pre-wrap">
-            {outcome.output}
-          </pre>
-        )}
       {outcome.outcome_indeterminate === true && (
-        <p className="text-caption text-ink-muted">
-          Couldn&apos;t confirm this finished cleanly on Windows — rechecking status…
-        </p>
+        <div className="flex flex-col items-center gap-fg-1">
+          <p className="text-caption text-ink-muted">{indeterminate.message}</p>
+          <Button
+            variant="secondary"
+            disabled={checkStatus.usedFallback || onCheckStatus === undefined}
+            onClick={checkStatus.usedFallback ? undefined : onCheckStatus}
+          >
+            {checkStatus.message}
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -185,12 +222,12 @@ export function JobOutcome({ job }: { job: ProvisionJob }) {
 /** Plain-language prose per served recommendation — never the raw token on
  *  screen (ui-labels-are-user-facing). Only the two hard dead-ends need extra
  *  context; every other recommendation is fully explained by the button label. */
-export function recommendationDetail(recommended: string): string | null {
+export function recommendationDetail(recommended: string): MessageDescriptor | null {
   switch (recommended) {
     case "not-a-git-project":
-      return "This folder isn't a git repository yet.";
+      return { key: "projects:provisioning.details.prepareFolderAsGitProject" };
     case "acquire-uv":
-      return "vaultspec needs uv to install its tools.";
+      return { key: "projects:provisioning.details.installRequiredProjectTools" };
     default:
       return null;
   }
@@ -213,8 +250,7 @@ export interface ProvisionPanelBodyProps {
   data: ProvisionStatus;
   job: ProvisionJob | undefined;
   busy: boolean;
-  runErrorMessage: string | null;
-  forceArmed: boolean;
+  runError: boolean;
   onPrimary: () => void;
   onForce: () => void;
   onRetryStatus?: () => void;
@@ -224,58 +260,100 @@ export function ProvisionPanelBody({
   data,
   job,
   busy,
-  runErrorMessage,
-  forceArmed,
+  runError,
   onPrimary,
   onForce,
+  onRetryStatus,
 }: ProvisionPanelBodyProps) {
   const resolveMessage = useLocalizedMessageResolver();
+  const [forceConfirmationOpen, setForceConfirmationOpen] = useState(false);
   const primary = provisionRecommendedAction(data);
   const force = provisionForceInstallAction(data);
   const primaryLabel = resolveActionPresentation(primary.label, resolveMessage);
+  const primaryReason =
+    primary.disabledReason === undefined
+      ? null
+      : resolveActionPresentation(primary.disabledReason, resolveMessage);
   const forceLabel = resolveActionPresentation(force.label, resolveMessage);
-  const forcePrompt = resolveMessage({
-    key: "common:accessibility.confirmAction",
-    values: { action: forceLabel.message },
-  });
-  const forcePresentationFallback = forceLabel.usedFallback || forcePrompt.usedFallback;
-  const detail = recommendationDetail(data.recommended);
+  const forceReason =
+    force.disabledReason === undefined
+      ? null
+      : resolveActionPresentation(force.disabledReason, resolveMessage);
+  const forceConfirmation = force.confirmation;
+  const forceConfirmationFallback =
+    forceConfirmation === undefined ||
+    [
+      forceConfirmation?.title,
+      forceConfirmation?.body,
+      forceConfirmation?.confirmLabel,
+      forceConfirmation?.cancelLabel,
+    ].some(
+      (descriptor) =>
+        descriptor === undefined || resolveMessage(descriptor).usedFallback,
+    );
+  const primaryPresentationFallback =
+    primaryLabel.usedFallback || primaryReason?.usedFallback === true;
+  const forcePresentationFallback =
+    forceLabel.usedFallback ||
+    forceReason?.usedFallback === true ||
+    forceConfirmationFallback;
+  const detailDescriptor = recommendationDetail(data.recommended);
+  const detail =
+    detailDescriptor === null
+      ? resolveMessage({ key: "projects:provisioning.description" })
+      : resolveMessage(detailDescriptor);
+  const title = resolveMessage({ key: "projects:provisioning.title" });
+  const startFailed = resolveMessage({ key: "projects:provisioning.startFailed" });
+  const progress = resolveMessage({ key: "projects:provisioning.progress" });
+  const cancelForce = useCallback(() => setForceConfirmationOpen(false), []);
+  const confirmForce = useCallback(() => {
+    setForceConfirmationOpen(false);
+    onForce();
+  }, [onForce]);
 
   return (
     <StateCard testid="not-managed" interactive>
-      <p className="text-body font-medium text-ink">Not a vaultspec-managed project</p>
-      <p className="text-meta text-ink-muted">
-        {detail ?? "vaultspec can install and manage this project for you."}
-      </p>
+      <p className="text-body font-medium text-ink">{title.message}</p>
+      <p className="text-meta text-ink-muted">{detail.message}</p>
       <div className="flex flex-wrap items-center justify-center gap-fg-1-5">
         <Button
           variant="primary"
-          disabled={primaryLabel.usedFallback || !isRunnable(primary) || busy}
-          onClick={primaryLabel.usedFallback ? undefined : onPrimary}
+          disabled={primaryPresentationFallback || !isRunnable(primary) || busy}
+          onClick={primaryPresentationFallback ? undefined : onPrimary}
         >
           {primaryLabel.message}
         </Button>
         {data.framework.vaultspec_present && (
           <Button
-            variant={forceArmed ? "danger" : "ghost"}
+            variant="ghost"
             disabled={forcePresentationFallback || !isRunnable(force) || busy}
-            onClick={forcePresentationFallback ? undefined : onForce}
+            onClick={
+              forcePresentationFallback
+                ? undefined
+                : () => setForceConfirmationOpen(true)
+            }
           >
-            {forceArmed ? forcePrompt.message : forceLabel.message}
+            {forceLabel.message}
           </Button>
         )}
       </div>
-      {runErrorMessage !== null && (
-        <p className="text-caption text-state-broken">
-          Couldn&apos;t start: {runErrorMessage}
-        </p>
+      {runError && (
+        <p className="text-caption text-state-broken">{startFailed.message}</p>
       )}
       {busy && (
-        <Skeleton label="Provisioning…" className="items-center">
+        <Skeleton label={progress.message} className="items-center">
           <SkeletonBar width="w-[12.5rem]" height="h-[0.625rem]" />
         </Skeleton>
       )}
-      {job && <JobOutcome job={job} />}
+      {job && <JobOutcome job={job} onCheckStatus={onRetryStatus} />}
+      {forceConfirmation !== undefined && (
+        <ActionConfirmationDialog
+          open={forceConfirmationOpen}
+          confirmation={forceConfirmation}
+          onConfirm={confirmForce}
+          onCancel={cancelForce}
+        />
+      )}
     </StateCard>
   );
 }
@@ -288,19 +366,25 @@ export function ProvisionPanel({ scope }: { scope: string | null }) {
   const { state: panelState, refetchStatus } = useProvisionPanelState(scope);
   const run = useProvisionRun();
   const [jobId, setJobId] = useState<string | null>(null);
-  const [forceArmed, setForceArmed] = useState(false);
   const job = useProvisionJob(jobId);
+  const resolveMessage = useLocalizedMessageResolver();
 
   if (panelState.kind === "hidden") return null;
   if (panelState.kind === "unavailable") {
+    const unavailable = resolveMessage({
+      key: "projects:provisioning.statusUnavailable",
+    });
+    const retry = resolveMessage({ key: "common:actions.retry" });
     return (
       <StateCard testid="provision-unavailable" interactive>
         <TriangleAlert aria-hidden size={20} className="shrink-0 text-state-stale" />
-        <p className="text-body font-medium text-state-stale">
-          Provisioning status is unavailable
-        </p>
-        <Button variant="secondary" onClick={refetchStatus}>
-          Retry
+        <p className="text-body font-medium text-state-stale">{unavailable.message}</p>
+        <Button
+          variant="secondary"
+          disabled={retry.usedFallback}
+          onClick={retry.usedFallback ? undefined : refetchStatus}
+        >
+          {retry.message}
         </Button>
       </StateCard>
     );
@@ -315,31 +399,18 @@ export function ProvisionPanel({ scope }: { scope: string | null }) {
   };
   const handlePrimary = () =>
     dispatchAndTrack(dispatchPayload(provisionRecommendedAction(panelState.data)));
-  const handleForce = () => {
-    const force = provisionForceInstallAction(panelState.data);
-    if (force.confirm === true && !forceArmed) {
-      setForceArmed(true);
-      return;
-    }
-    setForceArmed(false);
-    dispatchAndTrack(dispatchPayload(force));
-  };
+  const handleForce = () =>
+    dispatchAndTrack(dispatchPayload(provisionForceInstallAction(panelState.data)));
 
   return (
     <ProvisionPanelBody
       data={panelState.data}
       job={job.data}
       busy={busy}
-      runErrorMessage={
-        run.isError
-          ? run.error instanceof Error
-            ? run.error.message
-            : "unknown error"
-          : null
-      }
-      forceArmed={forceArmed}
+      runError={run.isError}
       onPrimary={handlePrimary}
       onForce={handleForce}
+      onRetryStatus={refetchStatus}
     />
   );
 }

@@ -8,9 +8,15 @@
 // touch the engine wire — the live dispatch seam is proven separately
 // (`stores/server/provisionActions.test.ts`).
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render as renderView,
+  screen,
+} from "@testing-library/react";
+import type { ReactElement } from "react";
 import { I18nextProvider } from "react-i18next";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { ProvisionJob, ProvisionStatus } from "../../stores/server/engine";
 import { PROVISION_FORCE_CONFIRM } from "../../stores/server/provisionControl";
@@ -29,6 +35,14 @@ import {
 } from "../../localization/testing";
 
 afterEach(cleanup);
+
+const noOp = () => undefined;
+
+function render(ui: ReactElement) {
+  return renderView(
+    <I18nextProvider i18n={createTestLocalizationRuntime()}>{ui}</I18nextProvider>,
+  );
+}
 
 function status(overrides: Partial<ProvisionStatus> = {}): ProvisionStatus {
   return {
@@ -105,8 +119,12 @@ describe("resolveProvisionPanelState", () => {
 
 describe("recommendationDetail", () => {
   it("adds context prose only for the two hard dead-ends", () => {
-    expect(recommendationDetail("not-a-git-project")).toMatch(/git repository/);
-    expect(recommendationDetail("acquire-uv")).toMatch(/uv/);
+    expect(recommendationDetail("not-a-git-project")).toEqual({
+      key: "projects:provisioning.details.prepareFolderAsGitProject",
+    });
+    expect(recommendationDetail("acquire-uv")).toEqual({
+      key: "projects:provisioning.details.installRequiredProjectTools",
+    });
     expect(recommendationDetail("install-framework")).toBeNull();
     expect(recommendationDetail("managed")).toBeNull();
   });
@@ -142,31 +160,31 @@ describe("ProvisionPanelBody", () => {
         data={status()}
         job={undefined}
         busy={false}
-        runErrorMessage={null}
-        forceArmed={false}
-        onPrimary={vi.fn()}
-        onForce={vi.fn()}
+        runError={false}
+        onPrimary={noOp}
+        onForce={noOp}
       />,
     );
-    expect(screen.getByText("Not a vaultspec-managed project")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Install the framework" })).toBeTruthy();
+    expect(screen.getByText("Project setup required")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Set up project" })).toBeTruthy();
   });
 
   it("clicking the primary affordance fires onPrimary", () => {
-    const onPrimary = vi.fn();
+    let primaryCount = 0;
     render(
       <ProvisionPanelBody
         data={status()}
         job={undefined}
         busy={false}
-        runErrorMessage={null}
-        forceArmed={false}
-        onPrimary={onPrimary}
-        onForce={vi.fn()}
+        runError={false}
+        onPrimary={() => {
+          primaryCount += 1;
+        }}
+        onForce={noOp}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Install the framework" }));
-    expect(onPrimary).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Set up project" }));
+    expect(primaryCount).toBe(1);
   });
 
   it("disables both buttons while a job is busy (single-flight)", () => {
@@ -175,64 +193,61 @@ describe("ProvisionPanelBody", () => {
         data={status()}
         job={undefined}
         busy
-        runErrorMessage={null}
-        forceArmed={false}
-        onPrimary={vi.fn()}
-        onForce={vi.fn()}
+        runError={false}
+        onPrimary={noOp}
+        onForce={noOp}
       />,
     );
     expect(
       (
         screen.getByRole("button", {
-          name: "Install the framework",
+          name: "Set up project",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
   });
 
-  it("relabels the force button once armed, and hides it when nothing is installed to overwrite", () => {
-    const { rerender } = render(
+  it("confirms replacement in the shared dialog and hides it when no setup exists", () => {
+    let forceCount = 0;
+    const { unmount } = render(
       <ProvisionPanelBody
         data={status()}
         job={undefined}
         busy={false}
-        runErrorMessage={null}
-        forceArmed={false}
-        onPrimary={vi.fn()}
-        onForce={vi.fn()}
+        runError={false}
+        onPrimary={noOp}
+        onForce={() => {
+          forceCount += 1;
+        }}
       />,
     );
-    expect(screen.getByRole("button", { name: "Reinstall (overwrite)" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Replace project setup" }));
+    expect(screen.getByRole("dialog").textContent).toContain("Replace project setup?");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(forceCount).toBe(0);
 
-    rerender(
-      <ProvisionPanelBody
-        data={status()}
-        job={undefined}
-        busy={false}
-        runErrorMessage={null}
-        forceArmed
-        onPrimary={vi.fn()}
-        onForce={vi.fn()}
-      />,
-    );
-    expect(
-      screen.getByRole("button", { name: "Confirm Reinstall (overwrite)?" }),
-    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Replace project setup" }));
+    const replaceButtons = screen.getAllByRole("button", {
+      name: "Replace project setup",
+    });
+    fireEvent.click(replaceButtons[replaceButtons.length - 1]!);
+    expect(forceCount).toBe(1);
 
-    rerender(
+    unmount();
+    render(
       <ProvisionPanelBody
         data={status({
           framework: { vaultspec_present: false, vault_present: false, providers: [] },
         })}
         job={undefined}
         busy={false}
-        runErrorMessage={null}
-        forceArmed={false}
-        onPrimary={vi.fn()}
-        onForce={vi.fn()}
+        runError={false}
+        onPrimary={noOp}
+        onForce={noOp}
       />,
     );
-    expect(screen.queryByText(/Reinstall/)).toBeNull();
+    expect(screen.queryByText(/Replace project setup/)).toBeNull();
   });
 
   it("fails closed when the localized force confirmation prompt is unavailable", () => {
@@ -247,8 +262,7 @@ describe("ProvisionPanelBody", () => {
           data={status()}
           job={undefined}
           busy={false}
-          runErrorMessage={null}
-          forceArmed
+          runError={false}
           onPrimary={() => undefined}
           onForce={() => {
             forceCount += 1;
@@ -286,17 +300,17 @@ describe("ProvisionPanelBody", () => {
         data={status()}
         job={job}
         busy={false}
-        runErrorMessage={null}
-        forceArmed={false}
-        onPrimary={vi.fn()}
-        onForce={vi.fn()}
+        runError={false}
+        onPrimary={noOp}
+        onForce={noOp}
       />,
     );
+    expect(screen.getByText("Project setup completed")).toBeTruthy();
     expect(screen.getByText("Created")).toBeTruthy();
     expect(screen.getByText("3 items")).toBeTruthy();
   });
 
-  it("renders a failed job honestly, with the raw output when no sync envelope parsed", () => {
+  it("renders a safe failed result without raw job or service details", () => {
     const job: ProvisionJob = {
       id: "job-2",
       label: "Install vaultspec-core",
@@ -313,13 +327,58 @@ describe("ProvisionPanelBody", () => {
         data={status()}
         job={job}
         busy={false}
-        runErrorMessage={null}
-        forceArmed={false}
-        onPrimary={vi.fn()}
-        onForce={vi.fn()}
+        runError={false}
+        onPrimary={noOp}
+        onForce={noOp}
       />,
     );
-    expect(screen.getByText(/could not find/)).toBeTruthy();
+    expect(screen.getByText("Project setup failed")).toBeTruthy();
+    expect(screen.queryByText(/could not find/)).toBeNull();
+    expect(screen.queryByText(/vaultspec-core/)).toBeNull();
+    expect(screen.queryByText(/machine/)).toBeNull();
+  });
+
+  it("omits unknown status tokens and offers a localized status check when completion is uncertain", () => {
+    let statusChecks = 0;
+    const job: ProvisionJob = {
+      id: "internal-job-74",
+      label: "internal acquisition task",
+      target: "/private/project/path",
+      state: "failed",
+      outcome: {
+        exit_code: 77,
+        outcome_indeterminate: true,
+        output: "private service traceback",
+        envelope: {
+          schema: "internal.schema.v99",
+          status: "future_internal_state",
+          data: { items: ["provider-version-secret"] },
+        },
+      },
+    };
+    const { container } = render(
+      <ProvisionPanelBody
+        data={status()}
+        job={job}
+        busy={false}
+        runError={false}
+        onPrimary={noOp}
+        onForce={noOp}
+        onRetryStatus={() => {
+          statusChecks += 1;
+        }}
+      />,
+    );
+
+    expect(container.textContent).not.toContain("internal-job-74");
+    expect(container.textContent).not.toContain("internal acquisition task");
+    expect(container.textContent).not.toContain("/private/project/path");
+    expect(container.textContent).not.toContain("private service traceback");
+    expect(container.textContent).not.toContain("internal.schema.v99");
+    expect(container.textContent).not.toContain("future_internal_state");
+    expect(container.textContent).not.toContain("provider-version-secret");
+    fireEvent.click(screen.getByRole("button", { name: "Check project status" }));
+    expect(statusChecks).toBe(1);
   });
 
   it("surfaces a run-start failure honestly, never silently", () => {
@@ -328,13 +387,12 @@ describe("ProvisionPanelBody", () => {
         data={status()}
         job={undefined}
         busy={false}
-        runErrorMessage="network error"
-        forceArmed={false}
-        onPrimary={vi.fn()}
-        onForce={vi.fn()}
+        runError
+        onPrimary={noOp}
+        onForce={noOp}
       />,
     );
-    expect(screen.getByText(/Couldn.t start: network error/)).toBeTruthy();
+    expect(screen.getByText("Project setup could not start. Try again.")).toBeTruthy();
   });
 });
 
@@ -364,10 +422,9 @@ function StageOverlayHarness({
           data={panelState.data}
           job={undefined}
           busy={false}
-          runErrorMessage={null}
-          forceArmed={false}
-          onPrimary={vi.fn()}
-          onForce={vi.fn()}
+          runError={false}
+          onPrimary={noOp}
+          onForce={noOp}
         />
       )}
     </>

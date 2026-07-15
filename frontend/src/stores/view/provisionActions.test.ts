@@ -1,5 +1,5 @@
 // Provisioning ActionDescriptor builders (project-provisioning ADR D7): pure
-// function tests over a served ProvisionStatus fixture — no wire, mirroring
+// function tests over a served ProvisionStatus fixture, mirroring
 // `degradedBannerCopy`'s pure+testable precedent. The wire-routed dispatch
 // effect itself is covered live in `stores/server/provisionActions.test.ts`.
 
@@ -37,7 +37,11 @@ describe("provisionRecommendedAction", () => {
   it("is disabled while status is loading, never a stale verb", () => {
     const action = provisionRecommendedAction(undefined);
     expect(action.id).toBe(PROVISION_RECOMMENDED_ACTION_ID);
+    expect(action.label).toEqual({ key: "projects:actions.setUpProject" });
     expect(action.disabled).toBe(true);
+    expect(action.disabledReason).toEqual({
+      key: "projects:disabledReasons.waitForProjectStatus",
+    });
     expect(action.dispatch).toBeUndefined();
   });
 
@@ -48,39 +52,66 @@ describe("provisionRecommendedAction", () => {
       type: PROVISION_RUN_ACTION,
       payload: { action: "install", provider: "all", workspace: undefined },
     });
-    expect(action.label).toBe("Install the framework");
+    expect(action.label).toEqual({ key: "projects:actions.setUpProject" });
   });
 
   it("states the two hard dead-ends rather than dispatching a no-op", () => {
     const gitless = provisionRecommendedAction(status("not-a-git-project"));
+    expect(gitless.label).toEqual({ key: "projects:actions.prepareProjectTools" });
     expect(gitless.disabled).toBe(true);
-    expect(gitless.disabledReason).toMatch(/git repository/);
+    expect(gitless.disabledReason).toEqual({
+      key: "projects:disabledReasons.prepareFolderAsGitProject",
+    });
     expect(gitless.dispatch).toBeUndefined();
 
     const noUv = provisionRecommendedAction(status("acquire-uv"));
+    expect(noUv.label).toEqual({ key: "projects:actions.prepareProjectTools" });
     expect(noUv.disabled).toBe(true);
-    expect(noUv.disabledReason).toMatch(/uv/);
+    expect(noUv.disabledReason).toEqual({
+      key: "projects:disabledReasons.installRequiredProjectTools",
+    });
     expect(noUv.dispatch).toBeUndefined();
   });
 
   it("is disabled with a reason once already managed (nothing left to fix)", () => {
     const action = provisionRecommendedAction(status("managed"));
+    expect(action.label).toEqual({ key: "projects:actions.setUpProject" });
     expect(action.disabled).toBe(true);
+    expect(action.disabledReason).toEqual({
+      key: "projects:disabledReasons.noSetupChangesNeeded",
+    });
     expect(action.dispatch).toBeUndefined();
   });
 
-  it("carries an every-recommendation label, never the raw served token", () => {
-    const recommendations: ProvisionRecommendation[] = [
-      "acquire-core",
-      "install-framework",
-      "run-migrations",
-      "upgrade-core",
-    ];
-    for (const recommended of recommendations) {
-      const action = provisionRecommendedAction(status(recommended));
-      expect(action.label).not.toBe(recommended);
-      expect(typeof action.label === "string" && action.label.length > 0).toBe(true);
-    }
+  it("maps each actionable recommendation to the canonical project action", () => {
+    expect(provisionRecommendedAction(status("acquire-core")).label).toEqual({
+      key: "projects:actions.setUpProject",
+    });
+    expect(provisionRecommendedAction(status("install-framework")).label).toEqual({
+      key: "projects:actions.setUpProject",
+    });
+    expect(provisionRecommendedAction(status("run-migrations")).label).toEqual({
+      key: "projects:actions.updateProject",
+    });
+    expect(provisionRecommendedAction(status("upgrade-core")).label).toEqual({
+      key: "projects:actions.updateProjectTools",
+    });
+  });
+
+  it("fails closed without exposing an unknown recommendation", () => {
+    const unknownStatus = {
+      ...status("managed"),
+      recommended: "future-internal-recommendation",
+      managed: false,
+    } as unknown as ProvisionStatus;
+    const action = provisionRecommendedAction(unknownStatus);
+
+    expect(action.label).toEqual({ key: "projects:actions.setUpProject" });
+    expect(action.disabled).toBe(true);
+    expect(action.disabledReason).toEqual({
+      key: "projects:disabledReasons.noSetupChangesNeeded",
+    });
+    expect(action.dispatch).toBeUndefined();
   });
 
   it("always carries the SAME id across recommendations (one shared verb)", () => {
@@ -97,7 +128,13 @@ describe("provisionForceInstallAction", () => {
   it("is disabled with a reason when nothing is installed to overwrite", () => {
     const action = provisionForceInstallAction(status("not-a-git-project"));
     expect(action.id).toBe(PROVISION_FORCE_INSTALL_ACTION_ID);
+    expect(action.label).toEqual({
+      key: "projects:destructiveActions.replaceSetup",
+    });
     expect(action.disabled).toBe(true);
+    expect(action.disabledReason).toEqual({
+      key: "projects:disabledReasons.setUpProjectFirst",
+    });
     expect(action.dispatch).toBeUndefined();
   });
 
@@ -106,13 +143,20 @@ describe("provisionForceInstallAction", () => {
     expect(action.disabled).toBe(true);
   });
 
-  it("carries the menu arm-to-confirm gate AND the engine-typed confirm token — never one alone", () => {
+  it("carries typed confirmation copy and the engine-required confirmation token", () => {
     const action = provisionForceInstallAction(
       status("run-migrations", {
         framework: { vaultspec_present: true, vault_present: true, providers: ["all"] },
       }),
     );
-    expect(action.confirm).toBe(true);
+    expect(action.confirm).toBeUndefined();
+    expect(action.confirmation).toEqual({
+      kind: "destructive",
+      title: { key: "projects:confirmations.replaceSetup.title" },
+      body: { key: "projects:confirmations.replaceSetup.body" },
+      confirmLabel: { key: "projects:destructiveActions.replaceSetup" },
+      cancelLabel: { key: "common:actions.cancel" },
+    });
     expect(action.dispatch).toEqual({
       type: PROVISION_RUN_ACTION,
       payload: {
@@ -126,7 +170,7 @@ describe("provisionForceInstallAction", () => {
     });
   });
 
-  it("a force with no confirm token would never be constructed (D5) — the builder always bakes it in", () => {
+  it("always includes the engine-required confirmation token", () => {
     const action = provisionForceInstallAction(
       status("acquire-core", {
         framework: { vaultspec_present: true, vault_present: false, providers: [] },

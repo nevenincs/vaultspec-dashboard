@@ -316,10 +316,43 @@ const EXPECTED_CATALOG_KEYS = [
   "operations:feedback.showWorkspaceDetails.running",
   "operations:feedback.showWorkspaceDetails.succeeded",
   "projects:actions.add",
+  "projects:actions.checkProjectStatus",
   "projects:actions.clearHistory",
+  "projects:actions.prepareProjectTools",
+  "projects:actions.setUpProject",
   "projects:actions.switch",
   "projects:actions.switchWorktree",
+  "projects:actions.updateProject",
+  "projects:actions.updateProjectTools",
+  "projects:confirmations.replaceSetup.body",
+  "projects:confirmations.replaceSetup.title",
+  "projects:destructiveActions.replaceSetup",
   "projects:disabledReasons.chooseWorktreeWithProjectFiles",
+  "projects:disabledReasons.installRequiredProjectTools",
+  "projects:disabledReasons.noSetupChangesNeeded",
+  "projects:disabledReasons.prepareFolderAsGitProject",
+  "projects:disabledReasons.setUpProjectFirst",
+  "projects:disabledReasons.waitForProjectStatus",
+  "projects:provisioning.description",
+  "projects:provisioning.details.installRequiredProjectTools",
+  "projects:provisioning.details.prepareFolderAsGitProject",
+  "projects:provisioning.progress",
+  "projects:provisioning.result.completed",
+  "projects:provisioning.result.failed",
+  "projects:provisioning.result.indeterminate",
+  "projects:provisioning.result.itemCount_one",
+  "projects:provisioning.result.itemCount_other",
+  "projects:provisioning.result.status.created",
+  "projects:provisioning.result.status.failed",
+  "projects:provisioning.result.status.mixed",
+  "projects:provisioning.result.status.removed",
+  "projects:provisioning.result.status.restored",
+  "projects:provisioning.result.status.skipped",
+  "projects:provisioning.result.status.updated",
+  "projects:provisioning.result.status.upToDate",
+  "projects:provisioning.startFailed",
+  "projects:provisioning.statusUnavailable",
+  "projects:provisioning.title",
   "projects:shortcutGroups.projects",
   "settings:actions.useDarkTheme",
   "settings:actions.useHighContrastTheme",
@@ -384,13 +417,14 @@ const EXPECTED_CATALOG_KEYS = [
 const EXPECTED_PUBLIC_MESSAGE_KEYS = [
   ...EXPECTED_CATALOG_KEYS.filter(
     (key) =>
-      !/^(?:common:(?:palette\.commandCount|commandPalette\.selectionAnnouncement)|graph:accessibility\.workingSetCount)_(?:one|other)$/u.test(
+      !/^(?:common:(?:palette\.commandCount|commandPalette\.selectionAnnouncement)|graph:accessibility\.workingSetCount|projects:provisioning\.result\.itemCount)_(?:one|other)$/u.test(
         key,
       ),
   ),
   "common:commandPalette.selectionAnnouncement",
   "common:palette.commandCount",
   "graph:accessibility.workingSetCount",
+  "projects:provisioning.result.itemCount",
 ] as readonly MessageKey[];
 
 function splitMessageKey(key: PhysicalMessageKey): {
@@ -443,8 +477,10 @@ describe("shipped localization catalog keys", () => {
       "common:commandPalette.selectionAnnouncement",
       "common:palette.commandCount",
       "graph:accessibility.workingSetCount",
+      "projects:provisioning.result.itemCount",
     ]);
     expect(isPluralMessageKey("common:palette.commandCount")).toBe(true);
+    expect(isPluralMessageKey("projects:provisioning.result.itemCount")).toBe(true);
     expect(isMessageKey("common:palette.commandCount_one")).toBe(false);
     for (const key of EXPECTED_PUBLIC_MESSAGE_KEYS) {
       expect(isMessageKey(key), key).toBe(true);

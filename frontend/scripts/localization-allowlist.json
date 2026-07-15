@@ -2595,67 +2595,12 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "eb70138bacc8bc7cc8793951",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
     "id": "015e37555bf9cc55f701b716",
     "path": "src/app/stage/ProvisionPanel.tsx",
     "rule": "jsx-text"
   },
   {
-    "id": "18625fa8bf35728d22b00ef8",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "1870046931203f38b2d995ea",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "32fc986be2d4068f929eb41f",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "3c00a211db3a721841a4e1a8",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "4649d8a797fc0cb3dcdaad61",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "650c6975f01b669d9d30b579",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "7416d80b0cb712d98b654080",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "7c389a1fdb1fe83879ef7307",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "8ac8efe1f990e66babd7d7e1",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "ce63a8a90ee697561e7ffa3d",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "dd2ee6aa89a5e19d18848df9",
     "path": "src/app/stage/ProvisionPanel.tsx",
     "rule": "jsx-text"
   },
@@ -4908,51 +4853,6 @@
     "id": "de76863cac9c0ac0f7859ebd",
     "path": "src/stores/view/nodeInterior.ts",
     "rule": "presentation-field"
-  },
-  {
-    "id": "06b8730c24d52af5e7518dae",
-    "path": "src/stores/view/provisionActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "55f86287e4de30c9787f9a72",
-    "path": "src/stores/view/provisionActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "66a3984bb09edfb904adb821",
-    "path": "src/stores/view/provisionActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "890cd00257834f86523d8af5",
-    "path": "src/stores/view/provisionActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "9a254ee358781869278e2f3f",
-    "path": "src/stores/view/provisionActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "9cd0b999378175dae0f6f06e",
-    "path": "src/stores/view/provisionActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "ca746f815892a53344e3be5d",
-    "path": "src/stores/view/provisionActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "e9803dcc672e209b48c2367d",
-    "path": "src/stores/view/provisionActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "f0381b87a2ca58aa0aacdf4f",
-    "path": "src/stores/view/provisionActions.ts",
-    "rule": "legacy-action-presentation"
   },
   {
     "id": "335c05ff1f25054efecfee4e",
