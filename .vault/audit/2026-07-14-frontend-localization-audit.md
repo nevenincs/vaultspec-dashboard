@@ -1661,3 +1661,29 @@ components without doubles, skips, or expected failures. Exact baseline reconcil
 removed six entries and added none, reducing the scanner from 1,415 to 1,409 findings
 and presentation-field entries from 360 to 354. S39 and S31 are accepted with no open
 findings.
+
+### W02.P05.S32 review | pass | Command palette messages resolve as complete localized units
+
+This step, implemented through delegated Terra rollout work, makes the command-plane
+store projection structural and moves shell, count, selection, status, footer, and
+accessibility copy to the React localization boundary.
+
+Review confirmed reuse of the canonical command-count plural family and one complete
+selection-announcement family. Count descriptors own the numeric value, allow only
+bounded additional values, and require exact template-token parity. Missing, extra,
+unsafe, accessor-backed, or count-overriding values fail closed without displaying keys
+or partial English.
+
+Unresolved family headings remain omitted while their rows stay usable. Typed operation
+feedback resolves visibly without raw metadata. Escape keycap copy fails closed. Loading,
+no-match, selected-row, and armed-confirmation announcements are coherent and preserve
+stable option IDs, active descendant, filtering, cursor, confirmation, and focus behavior.
+
+Independent Sol verification passed 117 tests across 12 files, TypeScript, targeted
+ESLint, the localization scanner, and diff checks. Terra's focused suite passed 77 tests.
+The complete frontend lint recipe passed. Review resolved three high-severity contract
+findings and several accessibility/test gaps before approval. Tests use real providers,
+catalogs, plural rules, runtime state, and React behavior without doubles, skips, or
+expected failures. Exact baseline reconciliation removed one Escape literal entry and
+added none, reducing the scanner from 1,409 to 1,408 findings. S32 is accepted with no
+open findings.
