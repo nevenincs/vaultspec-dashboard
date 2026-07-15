@@ -62,6 +62,7 @@ describe("right-rail actions", () => {
 
   it("routes exact tab actions with raw ids and rejects unsafe presentation inputs", () => {
     const selected: string[] = [];
+    const bindings = deriveRightRailKeybindings();
     const status = rightRailTabAction("status", (tab) => selected.push(tab));
     const changes = rightRailTabAction("changes", (tab) => selected.push(tab));
 
@@ -73,6 +74,8 @@ describe("right-rail actions", () => {
       id: "right-rail:show-changes",
       label: { key: "common:actions.showChanges" },
     });
+    expect(status!.label).toBe(bindings[0]!.label);
+    expect(changes!.label).toBe(bindings[1]!.label);
     status?.run?.();
     changes?.run?.();
     expect(selected).toEqual(["status", "changes"]);
