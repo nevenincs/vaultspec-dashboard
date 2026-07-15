@@ -1956,3 +1956,21 @@ resources, localStorage, browser events, and live settings derivation without do
 full frontend lint recipe, TypeScript, targeted ESLint, formatting, scanner, and diff
 checks passed. The scanner remained clean at 1,151 findings with no allowlist change. S10
 is accepted with no open findings.
+
+### W01.P02.S12 review | pass | Live engine truth replaces the cached locale hint
+
+The closing phase test writes literal System through the real engine, seeds a contrary
+English controller and cache hint, clears query state, and mounts the production
+settings-effects bridge. It independently observes literal System in the fetched settings,
+controller preference, and cache while the production runtime resolves shipped English.
+
+Review confirmed that the proof traverses the live engine, real TanStack queries, existing
+selector and bridge, application-lifetime controller, localStorage, and i18n singleton. It
+does not call duplicated derivation logic, inject invalid engine state, or use mocks, fakes,
+stubs, patches, skips, or expected failures. Engine, query, controller, runtime, and exact
+cache state are restored in `finally` without swallowing restoration failures.
+
+Independent Sol review passed with no findings. Sixty-one focused frontend tests, the
+engine language contract test, TypeScript, targeted ESLint, formatting, scanner, and diff
+checks passed. The scanner remained clean at 1,151 findings with no allowlist change. S12,
+phase W01.P02, and Wave W01 are accepted with no open findings.

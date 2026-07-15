@@ -67,7 +67,7 @@ Add the schema-owned locale preference, synchronous cache-and-reconcile behavior
 - [x] `W01.P02.S09` - Adapt settings wire types and selectors to expose locale identity without serving resolved English; `frontend/src/stores/server/engine/statusTypes.ts, frontend/src/stores/server/liveAdapters/session.ts, frontend/src/stores/server/settingsSelectors.ts`.
 - [x] `W01.P02.S10` - Implement the locale preference controller with system resolution and synchronous cache reconciliation; `frontend/src/platform/localization/localeController.ts, frontend/src/platform/localization/runtime.ts, frontend/src/stores/server/queries/settings.ts, frontend/src/stores/server/settingsSelectors.ts, frontend/src/app/settings/settingsEffects.ts`.
 - [x] `W01.P02.S11` - Render the schema-owned language control through localized setting metadata; `frontend/src/locales/en/settings.ts, frontend/src/localization/testing/resources.ts, frontend/src/stores/view/settingsPresentation.ts, frontend/src/stores/view/settingsControls.ts, frontend/src/app/settings/SettingsDialog.tsx, frontend/src/app/settings/controls`.
-- [ ] `W01.P02.S12` - Exercise the real settings wire and locale controller without mocks or frontend-only authority; `engine/crates/vaultspec-session/src/settings_schema.rs, frontend/src/stores/server/settingsSelectors.test.ts`.
+- [x] `W01.P02.S12` - Prove authoritative locale reconciliation through the real engine and application bridge; `frontend/src/app/settings/settingsEffects.test.tsx`.
 
 ### Phase `W01.P03` - catalog and source enforcement foundation
 
