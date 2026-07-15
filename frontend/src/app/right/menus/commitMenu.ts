@@ -6,12 +6,11 @@
 //
 // The right-rail history is READ-ONLY of GIT (engine-read-and-infer), so the menu
 // offers only non-mutating verbs — no checkout/cherry-pick/revert. The one
-// non-copy verb, "View corpus at this commit" (TTR-005a), is a NAVIGATE verb: it
+// non-copy verb, "View project at this version" (TTR-005a), is a NAVIGATE verb: it
 // writes the shared `timeline_mode` (dashboard state, not a git ref) so the graph
 // scrubs as-of that commit's instant. It is not a git mutation and is not
 // time-travel gated; the exit is the stage's "return to live" chip.
 
-import { legacyActionPresentation } from "../../../platform/actions/action";
 import { History } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -22,7 +21,7 @@ import { registerResolver } from "../../../platform/actions/registry";
 import { movePlayhead } from "../../../stores/view/timelineIntent";
 
 /**
- * The menu for a recent-commit row: view the corpus as-of this commit (time
+ * The menu for a recent-commit row: view the project as-of this commit (time
  * travel), then copy the full hash, the short hash, and the subject line. All
  * read-only of git — the right rail surfaces history, it does not mutate refs. (A
  * commit hash is the row's identity, so it copies under the `id` shape.)
@@ -48,7 +47,7 @@ export function commitMenu(entity: unknown, ctx?: ActionContext): ActionDescript
   if (typeof at === "number" && Number.isFinite(at) && scope !== null && !codeCorpus) {
     actions.push({
       id: "commit:view-at-commit",
-      label: legacyActionPresentation("View corpus at this commit"),
+      label: { key: "timeline:actions.viewProjectAtVersion" },
       section: "navigate",
       icon: History,
       run: () => movePlayhead(at, scope),
@@ -56,24 +55,24 @@ export function commitMenu(entity: unknown, ctx?: ActionContext): ActionDescript
   } else {
     actions.push({
       id: "commit:view-at-commit",
-      label: legacyActionPresentation("View corpus at this commit"),
+      label: { key: "timeline:actions.viewProjectAtVersion" },
       section: "navigate",
       icon: History,
       disabled: true,
-      disabledReason: legacyActionPresentation(
-        codeCorpus
-          ? "only the vault view has commit history"
+      disabledReason: {
+        key: codeCorpus
+          ? "timeline:disabledReasons.switchToDocumentsForHistory"
           : at === undefined
-            ? "no commit time"
-            : "no active scope",
-      ),
+            ? "timeline:disabledReasons.refreshHistory"
+            : "timeline:disabledReasons.chooseProject",
+      },
     });
   }
 
   actions.push(
     copyAction({
       id: "commit:copy-hash",
-      label: { key: "common:actions.copy" },
+      label: { key: "common:actions.copyCommitHash" },
       text: normalizedEntity.id,
       what: "id",
     }),
@@ -83,7 +82,7 @@ export function commitMenu(entity: unknown, ctx?: ActionContext): ActionDescript
     actions.push(
       copyAction({
         id: "commit:copy-short-hash",
-        label: { key: "common:actions.copy" },
+        label: { key: "common:actions.copyShortCommitHash" },
         text: normalizedEntity.shortHash,
         what: "id",
       }),
@@ -94,7 +93,7 @@ export function commitMenu(entity: unknown, ctx?: ActionContext): ActionDescript
     actions.push(
       copyAction({
         id: "commit:copy-subject",
-        label: { key: "common:actions.copyTitle" },
+        label: { key: "common:actions.copyCommitMessage" },
         text: normalizedEntity.subject,
         what: "title",
       }),

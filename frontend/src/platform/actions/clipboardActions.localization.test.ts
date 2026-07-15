@@ -5,7 +5,9 @@ import {
   ltrTestLocale,
   rtlTestLocale,
 } from "../../localization/testing";
+import { resolveMessageResult } from "../localization/fallback";
 import {
+  copyAction,
   copyLocalizedMessageAction,
   isCopyPayload,
   normalizeCopyPayload,
@@ -13,6 +15,29 @@ import {
 } from "./clipboardActions";
 
 describe("localized clipboard payloads", () => {
+  it("resolves commit and pull-request copy labels independently in each language", () => {
+    const runtimes = [
+      createTestLocalizationRuntime(),
+      createTestLocalizationRuntime(ltrTestLocale),
+      createTestLocalizationRuntime(rtlTestLocale),
+    ] as const;
+    const keys = [
+      "common:actions.copyCommitHash",
+      "common:actions.copyShortCommitHash",
+      "common:actions.copyCommitMessage",
+      "common:actions.copyPullRequestLink",
+      "common:actions.copyPullRequestNumber",
+    ] as const;
+
+    for (const key of keys) {
+      const action = copyAction({ label: { key } });
+      const messages = runtimes.map(
+        (runtime) => resolveMessageResult(runtime, action.label).message,
+      );
+      expect(new Set(messages).size, key).toBe(3);
+    }
+  });
+
   it("preserves raw caller text byte for byte", () => {
     const text = "\t  node:alpha  \r\n";
 

@@ -1,4 +1,4 @@
-// TTR-005a: the commit row's "View corpus at this commit" verb is the sole
+// TTR-005a: the commit row's "View project at this version" verb is the sole
 // time-travel ENTRY point. This proves the entry WIRING — invoking the built
 // descriptor's `run` writes the shared timeline_mode through `movePlayhead(ts,
 // scope)`, the one canonical timeline_mode writer (never a second writer).

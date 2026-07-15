@@ -49,9 +49,14 @@ export const ENGLISH_MESSAGE_POLICY = {
   "common:actions.copy": { role: "action" },
   "common:actions.copyBranchName": { role: "action" },
   "common:actions.copyCategoryName": { role: "action" },
+  "common:actions.copyCommitHash": { role: "action" },
+  "common:actions.copyCommitMessage": { role: "action" },
   "common:actions.copyDocumentName": { role: "action" },
   "common:actions.copyFeatureTag": { role: "action" },
   "common:actions.copyPath": { role: "action" },
+  "common:actions.copyPullRequestLink": { role: "action" },
+  "common:actions.copyPullRequestNumber": { role: "action" },
+  "common:actions.copyShortCommitHash": { role: "action" },
   "common:actions.copySummary": { role: "action" },
   "common:actions.copyTitle": { role: "action" },
   "common:actions.disableFollowMode": { role: "action" },
@@ -354,6 +359,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "projects:actions.add": { role: "action" },
   "projects:actions.checkProjectStatus": { role: "action" },
   "projects:actions.clearHistory": { role: "action" },
+  "projects:actions.openPullRequest": { role: "action" },
   "projects:actions.prepareProjectTools": { role: "action" },
   "projects:actions.setUpProject": { role: "action" },
   "projects:actions.switch": { role: "action" },
@@ -373,6 +379,9 @@ export const ENGLISH_MESSAGE_POLICY = {
   "projects:disabledReasons.prepareFolderAsGitProject": {
     role: "disabled-reason",
     allowedTerms: ["Git"],
+  },
+  "projects:disabledReasons.refreshProjectForPullRequest": {
+    role: "disabled-reason",
   },
   "projects:disabledReasons.setUpProjectFirst": { role: "disabled-reason" },
   "projects:disabledReasons.waitForProjectStatus": { role: "disabled-reason" },
@@ -448,6 +457,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "timeline:actions.showLast7Days": { role: "action" },
   "timeline:actions.showLast30Days": { role: "action" },
   "timeline:actions.showLast90Days": { role: "action" },
+  "timeline:actions.viewProjectAtVersion": { role: "action" },
   "timeline:criteria.created": { role: "label" },
   "timeline:criteria.modified": { role: "label" },
   "timeline:criteria.stamped": { role: "label" },
@@ -455,11 +465,16 @@ export const ENGLISH_MESSAGE_POLICY = {
   "timeline:descriptions.useEditDateForRange": { role: "description" },
   "timeline:descriptions.useUpdateDateForRange": { role: "description" },
   "timeline:disabledReasons.codeFiles": { role: "disabled-reason" },
+  "timeline:disabledReasons.chooseProject": { role: "disabled-reason" },
   "timeline:disabledReasons.current": { role: "disabled-reason" },
   "timeline:disabledReasons.modifiedUnavailable": {
     role: "disabled-reason",
   },
+  "timeline:disabledReasons.refreshHistory": { role: "disabled-reason" },
   "timeline:disabledReasons.stampedUnavailable": {
+    role: "disabled-reason",
+  },
+  "timeline:disabledReasons.switchToDocumentsForHistory": {
     role: "disabled-reason",
   },
   "timeline:labels.timeline": { role: "label" },
@@ -521,6 +536,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Unpin",
   "Update",
   "Use",
+  "View",
   "Zoom",
 ] as const;
 
@@ -547,6 +563,7 @@ export const RECOVERY_VERBS = [
   "Save",
   "Select",
   "Set",
+  "Switch",
   "Try",
   "Update",
 ] as const;

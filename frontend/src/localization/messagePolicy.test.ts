@@ -141,8 +141,12 @@ const DISABLED_REASON_KEYS = [
   "projects:disabledReasons.installRequiredProjectTools",
   "projects:disabledReasons.noSetupChangesNeeded",
   "projects:disabledReasons.prepareFolderAsGitProject",
+  "projects:disabledReasons.refreshProjectForPullRequest",
   "projects:disabledReasons.setUpProjectFirst",
   "projects:disabledReasons.waitForProjectStatus",
+  "timeline:disabledReasons.chooseProject",
+  "timeline:disabledReasons.refreshHistory",
+  "timeline:disabledReasons.switchToDocumentsForHistory",
 ] as const satisfies readonly MessageKey[];
 
 describe("source-locale message policy", () => {
@@ -227,6 +231,34 @@ describe("source-locale message policy", () => {
         en.projects.disabledReasons.prepareFolderAsGitProject,
       ],
       ["projects:provisioning.startFailed", en.projects.provisioning.startFailed],
+    ] as const satisfies readonly (readonly [MessageKey, string])[]) {
+      expect(validateEnglishMessage(key, template)).toEqual([]);
+    }
+  });
+
+  it("accepts canonical history and pull-request actions and recovery copy", () => {
+    for (const [key, template] of [
+      [
+        "timeline:actions.viewProjectAtVersion",
+        en.timeline.actions.viewProjectAtVersion,
+      ],
+      [
+        "timeline:disabledReasons.chooseProject",
+        en.timeline.disabledReasons.chooseProject,
+      ],
+      [
+        "timeline:disabledReasons.refreshHistory",
+        en.timeline.disabledReasons.refreshHistory,
+      ],
+      [
+        "timeline:disabledReasons.switchToDocumentsForHistory",
+        en.timeline.disabledReasons.switchToDocumentsForHistory,
+      ],
+      ["projects:actions.openPullRequest", en.projects.actions.openPullRequest],
+      [
+        "projects:disabledReasons.refreshProjectForPullRequest",
+        en.projects.disabledReasons.refreshProjectForPullRequest,
+      ],
     ] as const satisfies readonly (readonly [MessageKey, string])[]) {
       expect(validateEnglishMessage(key, template)).toEqual([]);
     }

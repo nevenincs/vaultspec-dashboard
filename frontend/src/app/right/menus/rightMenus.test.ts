@@ -247,6 +247,7 @@ describe("commitMenu", () => {
 
   it("view-at-commit is a runnable navigate verb when ts + scope are present", () => {
     const view = find(commitMenu(commit, ctx), "commit:view-at-commit");
+    expect(view.label).toEqual({ key: "timeline:actions.viewProjectAtVersion" });
     expect(view.section).toBe("navigate");
     expect(view.disabled).toBeUndefined();
     expect(typeof view.run).toBe("function");
@@ -258,14 +259,30 @@ describe("commitMenu", () => {
       "commit:view-at-commit",
     );
     expect(view.disabled).toBe(true);
-    expect(view.disabledReason).toBe("no commit time");
+    expect(view.disabledReason).toEqual({
+      key: "timeline:disabledReasons.refreshHistory",
+    });
     expect(view.run).toBeUndefined();
   });
 
-  it("disables view-at-commit with a reason when there is no active scope", () => {
+  it("disables view-at-commit with guidance when no project is selected", () => {
     const view = find(commitMenu(commit), "commit:view-at-commit");
     expect(view.disabled).toBe(true);
-    expect(view.disabledReason).toBe("no active scope");
+    expect(view.disabledReason).toEqual({
+      key: "timeline:disabledReasons.chooseProject",
+    });
+    expect(view.run).toBeUndefined();
+  });
+
+  it("guides code viewers to documents for project history", () => {
+    const view = find(
+      commitMenu(commit, { ...ctx, corpus: "code" }),
+      "commit:view-at-commit",
+    );
+    expect(view.disabled).toBe(true);
+    expect(view.disabledReason).toEqual({
+      key: "timeline:disabledReasons.switchToDocumentsForHistory",
+    });
     expect(view.run).toBeUndefined();
   });
 
@@ -305,6 +322,7 @@ describe("prMenu", () => {
 
   it("open is a non-mutating navigate verb (not time-travel gated)", () => {
     const open = find(prMenu(pr), "pull-request:open");
+    expect(open.label).toEqual({ key: "projects:actions.openPullRequest" });
     expect(open.section).toBe("navigate");
     expect(open.disabled).toBeUndefined();
     expect(open.disabledInTimeTravel).toBeUndefined();
@@ -315,7 +333,9 @@ describe("prMenu", () => {
     const noUrl = prMenu({ kind: "pull-request", id: "7" });
     expect(byId(noUrl)).toEqual(["pull-request:open", "pull-request:copy-number"]);
     expect(find(noUrl, "pull-request:open").disabled).toBe(true);
-    expect(find(noUrl, "pull-request:open").disabledReason).toBe("no remote link");
+    expect(find(noUrl, "pull-request:open").disabledReason).toEqual({
+      key: "projects:disabledReasons.refreshProjectForPullRequest",
+    });
   });
 
   it("copies the PR number from the descriptor id", () => {

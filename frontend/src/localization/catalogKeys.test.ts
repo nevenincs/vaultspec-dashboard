@@ -46,9 +46,14 @@ const EXPECTED_CATALOG_KEYS = [
   "common:actions.copy",
   "common:actions.copyBranchName",
   "common:actions.copyCategoryName",
+  "common:actions.copyCommitHash",
+  "common:actions.copyCommitMessage",
   "common:actions.copyDocumentName",
   "common:actions.copyFeatureTag",
   "common:actions.copyPath",
+  "common:actions.copyPullRequestLink",
+  "common:actions.copyPullRequestNumber",
+  "common:actions.copyShortCommitHash",
   "common:actions.copySummary",
   "common:actions.copyTitle",
   "common:actions.disableFollowMode",
@@ -322,6 +327,7 @@ const EXPECTED_CATALOG_KEYS = [
   "projects:actions.add",
   "projects:actions.checkProjectStatus",
   "projects:actions.clearHistory",
+  "projects:actions.openPullRequest",
   "projects:actions.prepareProjectTools",
   "projects:actions.setUpProject",
   "projects:actions.switch",
@@ -335,6 +341,7 @@ const EXPECTED_CATALOG_KEYS = [
   "projects:disabledReasons.installRequiredProjectTools",
   "projects:disabledReasons.noSetupChangesNeeded",
   "projects:disabledReasons.prepareFolderAsGitProject",
+  "projects:disabledReasons.refreshProjectForPullRequest",
   "projects:disabledReasons.setUpProjectFirst",
   "projects:disabledReasons.waitForProjectStatus",
   "projects:provisioning.description",
@@ -405,6 +412,7 @@ const EXPECTED_CATALOG_KEYS = [
   "timeline:actions.showLast7Days",
   "timeline:actions.showLast30Days",
   "timeline:actions.showLast90Days",
+  "timeline:actions.viewProjectAtVersion",
   "timeline:criteria.created",
   "timeline:criteria.modified",
   "timeline:criteria.stamped",
@@ -412,9 +420,12 @@ const EXPECTED_CATALOG_KEYS = [
   "timeline:descriptions.useEditDateForRange",
   "timeline:descriptions.useUpdateDateForRange",
   "timeline:disabledReasons.codeFiles",
+  "timeline:disabledReasons.chooseProject",
   "timeline:disabledReasons.current",
   "timeline:disabledReasons.modifiedUnavailable",
+  "timeline:disabledReasons.refreshHistory",
   "timeline:disabledReasons.stampedUnavailable",
+  "timeline:disabledReasons.switchToDocumentsForHistory",
   "timeline:labels.timeline",
 ] as const satisfies readonly PhysicalMessageKey[];
 
@@ -642,6 +653,27 @@ describe("shipped localization catalog keys", () => {
       expect(frenchMessage, key).not.toBe(englishMessage);
       expect(arabicMessage, key).not.toBe(englishMessage);
       expect(arabicMessage, key).not.toBe(frenchMessage);
+    }
+  });
+
+  it("resolves history and pull-request actions independently in each language", () => {
+    const keys = [
+      "timeline:actions.viewProjectAtVersion",
+      "timeline:disabledReasons.chooseProject",
+      "timeline:disabledReasons.refreshHistory",
+      "timeline:disabledReasons.switchToDocumentsForHistory",
+      "projects:actions.openPullRequest",
+      "projects:disabledReasons.refreshProjectForPullRequest",
+    ] as const satisfies readonly MessageKey[];
+    const runtimes = [
+      createTestLocalizationRuntime(sourceLocale),
+      createTestLocalizationRuntime(ltrTestLocale),
+      createTestLocalizationRuntime(rtlTestLocale),
+    ] as const;
+
+    for (const key of keys) {
+      const messages = runtimes.map((runtime) => runtime.t(key));
+      expect(new Set(messages).size, key).toBe(3);
     }
   });
 });

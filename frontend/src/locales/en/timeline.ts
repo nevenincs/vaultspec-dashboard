@@ -14,6 +14,7 @@ export const timeline = {
     showLast7Days: "Show the last 7 days",
     showLast30Days: "Show the last 30 days",
     showLast90Days: "Show the last 90 days",
+    viewProjectAtVersion: "View project at this version",
   },
   criteria: {
     created: "Created",
@@ -27,9 +28,12 @@ export const timeline = {
   },
   disabledReasons: {
     codeFiles: "Choose the edit date. Code files use edit dates.",
+    chooseProject: "Choose a project, then try again.",
     current: "Choose another date option to change the timeline.",
     modifiedUnavailable: "Choose the creation date. Edit dates aren't available here.",
+    refreshHistory: "Refresh project history, then try again.",
     stampedUnavailable: "Choose the creation date. Update dates aren't available here.",
+    switchToDocumentsForHistory: "Switch to documents to view project history.",
   },
   labels: {
     timeline: "Timeline",

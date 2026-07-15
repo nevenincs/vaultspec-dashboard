@@ -1930,21 +1930,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "7b1ea88f0cfae2915577564e",
-    "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "c4a3fed3379b5bfd7de34d28",
-    "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "d66f158c0080a6136ad3d504",
-    "path": "src/app/right/menus/commitMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "44106bf2ad19cb471dcdd0dc",
     "path": "src/app/right/menus/edgeMenu.ts",
     "rule": "legacy-action-presentation"
@@ -2003,21 +1988,6 @@
     "id": "f04138c6c7535d879ad32045",
     "path": "src/app/right/menus/HoverCard.tsx",
     "rule": "jsx-text"
-  },
-  {
-    "id": "85e6ef3ef10864d646b0587c",
-    "path": "src/app/right/menus/prMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "b487d81c00b35a3a74ff97bc",
-    "path": "src/app/right/menus/prMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "e2b8d902193a98bcadf76eed",
-    "path": "src/app/right/menus/prMenu.ts",
-    "rule": "legacy-action-presentation"
   },
   {
     "id": "063c90a2222bae51763aba8e",

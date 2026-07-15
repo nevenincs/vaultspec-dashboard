@@ -23,7 +23,12 @@ export const ltrTestResources = {
       collapseNavigationPanel: "Réduire le panneau de navigation",
       copyBranchName: "Copier le nom de la branche",
       copyCategoryName: "Copier le nom de la catégorie",
+      copyCommitHash: "Copier l’empreinte de validation",
+      copyCommitMessage: "Copier le message de validation",
       copyFeatureTag: "Copier l’étiquette de la fonctionnalité",
+      copyPullRequestLink: "Copier le lien de la demande de fusion",
+      copyPullRequestNumber: "Copier le numéro de la demande de fusion",
+      copyShortCommitHash: "Copier l’empreinte courte de validation",
       hideActivityPanel: "Masquer le panneau d’activité",
       hideNavigationPanel: "Masquer le panneau de navigation",
       hideTimeline: "Masquer la chronologie",
@@ -379,6 +384,7 @@ export const ltrTestResources = {
       add: "Ajouter un projet…",
       checkProjectStatus: "Vérifier l’état du projet",
       clearHistory: "Effacer l’historique des projets",
+      openPullRequest: "Ouvrir la demande de fusion",
       prepareProjectTools: "Configurer les outils du projet",
       setUpProject: "Configurer le projet",
       switch: "Changer de projet…",
@@ -403,6 +409,7 @@ export const ltrTestResources = {
       noSetupChangesNeeded: "Revenez au projet pour continuer.",
       prepareFolderAsGitProject:
         "Préparez ce dossier comme projet Git, puis réessayez.",
+      refreshProjectForPullRequest: "Actualisez les données du projet, puis réessayez.",
       setUpProjectFirst: "Configurez le projet, puis réessayez.",
       waitForProjectStatus:
         "Attendez le chargement de l’état du projet, puis réessayez.",
@@ -523,6 +530,7 @@ export const ltrTestResources = {
       showLast7Days: "Afficher les 7 derniers jours",
       showLast30Days: "Afficher les 30 derniers jours",
       showLast90Days: "Afficher les 90 derniers jours",
+      viewProjectAtVersion: "Afficher le projet dans cette version",
     },
     criteria: {
       created: "Création",
@@ -537,11 +545,15 @@ export const ltrTestResources = {
     disabledReasons: {
       codeFiles:
         "Choisissez la date de modification. Les fichiers de code utilisent les dates de modification.",
+      chooseProject: "Choisissez un projet, puis réessayez.",
       current: "Choisissez une autre option de date pour modifier la chronologie.",
       modifiedUnavailable:
         "Choisissez la date de création. Les dates de modification ne sont pas disponibles ici.",
+      refreshHistory: "Actualisez l’historique du projet, puis réessayez.",
       stampedUnavailable:
         "Choisissez la date de création. Les dates de mise à jour ne sont pas disponibles ici.",
+      switchToDocumentsForHistory:
+        "Passez aux documents pour afficher l’historique du projet.",
     },
     labels: {
       timeline: "Chronologie",
@@ -569,7 +581,12 @@ export const rtlTestResources = {
       collapseNavigationPanel: "طي لوحة التنقل",
       copyBranchName: "نسخ اسم الفرع",
       copyCategoryName: "نسخ اسم الفئة",
+      copyCommitHash: "نسخ بصمة الالتزام",
+      copyCommitMessage: "نسخ رسالة الالتزام",
       copyFeatureTag: "نسخ وسم الميزة",
+      copyPullRequestLink: "نسخ رابط طلب الدمج",
+      copyPullRequestNumber: "نسخ رقم طلب الدمج",
+      copyShortCommitHash: "نسخ بصمة الالتزام المختصرة",
       hideActivityPanel: "إخفاء لوحة النشاط",
       hideNavigationPanel: "إخفاء لوحة التنقل",
       hideTimeline: "إخفاء المخطط الزمني",
@@ -905,6 +922,7 @@ export const rtlTestResources = {
       add: "إضافة مشروع…",
       checkProjectStatus: "التحقق من حالة المشروع",
       clearHistory: "مسح سجل المشاريع",
+      openPullRequest: "فتح طلب الدمج",
       prepareProjectTools: "إعداد أدوات المشروع",
       setUpProject: "إعداد المشروع",
       switch: "تبديل المشروع…",
@@ -926,6 +944,7 @@ export const rtlTestResources = {
       installRequiredProjectTools: "ثبّت أدوات المشروع المطلوبة، ثم حاول مرة أخرى.",
       noSetupChangesNeeded: "ارجع إلى المشروع للمتابعة.",
       prepareFolderAsGitProject: "جهّز هذا المجلد كمشروع Git، ثم حاول مرة أخرى.",
+      refreshProjectForPullRequest: "حدّث بيانات المشروع، ثم حاول مرة أخرى.",
       setUpProjectFirst: "أعدّ المشروع، ثم حاول مرة أخرى.",
       waitForProjectStatus: "انتظر حتى يتم تحميل حالة المشروع، ثم حاول مرة أخرى.",
     },
@@ -1037,6 +1056,7 @@ export const rtlTestResources = {
       showLast7Days: "عرض آخر 7 أيام",
       showLast30Days: "عرض آخر 30 يومًا",
       showLast90Days: "عرض آخر 90 يومًا",
+      viewProjectAtVersion: "عرض المشروع بهذا الإصدار",
     },
     criteria: {
       created: "الإنشاء",
@@ -1050,9 +1070,12 @@ export const rtlTestResources = {
     },
     disabledReasons: {
       codeFiles: "اختر تاريخ التعديل. تستخدم ملفات التعليمات البرمجية تواريخ التعديل.",
+      chooseProject: "اختر مشروعًا، ثم حاول مرة أخرى.",
       current: "اختر خيار تاريخ آخر لتغيير المخطط الزمني.",
       modifiedUnavailable: "اختر تاريخ الإنشاء. تواريخ التعديل غير متاحة هنا.",
+      refreshHistory: "حدّث سجل المشروع، ثم حاول مرة أخرى.",
       stampedUnavailable: "اختر تاريخ الإنشاء. تواريخ التحديث غير متاحة هنا.",
+      switchToDocumentsForHistory: "انتقل إلى المستندات لعرض سجل المشروع.",
     },
     labels: {
       timeline: "المخطط الزمني",
