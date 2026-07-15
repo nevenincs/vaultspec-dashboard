@@ -1886,3 +1886,51 @@ lint recipe. TypeScript, targeted ESLint, formatting, policy, scanner, and diff 
 passed. Tests contain no doubles, patches, skips, or expected failures. The scanner
 remained clean at 1,151 findings with no allowlist change, matching the documented scanner
 blind spot. S222 and phase W02.P06 are accepted with no open findings.
+
+### W01.P02.S09 review | pass | Settings wire identity is semantic and fail closed
+
+The frontend settings boundary now admits only a closed, resource-bounded structural
+contract for known settings. Exact semantic metadata and the exact legacy schema normalize
+to the same identity-only shape, while resolved English is discarded. Unknown keys,
+controls, groups, display IDs, enum metadata, malformed scope flags, and over-bound inputs
+are suppressed instead of humanized or downgraded to a visible generic control.
+
+Review confirmed that graph controls and activity-section state cannot re-enter the dialog,
+language reads only global authoritative state, invalid history resolves to the source
+locale without a persistence rewrite, and stores retain no translated copy. Terra found
+and verified fixes for hidden-control downgrade, input bounds, and exact boolean scope
+admission. Forty-eight focused real-engine tests, TypeScript, targeted ESLint, formatting,
+scanner, and diff checks passed. The scanner remained clean at 1,151 findings with no
+allowlist change. S09 is accepted with no open findings.
+
+### W01.P02.S11 review | pass | Settings metadata resolves through typed catalogs
+
+Every admitted settings group, field, description, placeholder, and enum member now maps
+through an exhaustive typed descriptor vocabulary. React resolves those descriptors only
+at the render boundary. Raw keys, group IDs, enum values, title-casing, missing descriptors,
+and malformed metadata cannot become visible or accessible copy.
+
+Review confirmed genuine English, French, and Arabic resources, concise sentence-case
+labels, no em dashes or development metadata in user-facing copy, and exact reuse of
+existing document, feature, code, and timeline concepts. The live dialog proves the
+schema-owned Language control with localized System and English options. Terra approved
+the final implementation after direct language coverage and clearer alternate-locale
+wording. Sixty-eight integrated tests plus eleven focused review tests, TypeScript,
+targeted ESLint, formatting, message policy, scanner, and diff checks passed. The scanner
+remained clean at 1,151 findings with no allowlist change. S11 is accepted with no open
+findings.
+
+### W01.P02.S08 review | pass | Engine settings metadata is language agnostic
+
+The engine settings registry now serves bounded semantic group, field, and enum identities
+instead of resolved English labels, descriptions, group wording, or placeholders. The new
+global Language setting defaults to System, accepts only `system` and shipped English,
+remains in the appearance order, and uses the existing validated settings write path.
+
+Review confirmed that existing keys, types, defaults, scope rules, controls, order, units,
+and validation remain stable. Semantic IDs use the same strict segmented grammar on both
+sides of the wire, enum presentation covers declared values exactly and in order, and
+identities are unique and length bounded. Sol found and verified the only low grammar
+mismatch. Twenty-five focused session tests, real route conformance, Rust formatting,
+workspace Clippy, frontend integration, and diff checks passed. S08 is accepted with no
+open findings.
