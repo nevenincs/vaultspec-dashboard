@@ -1,37 +1,22 @@
 import { describe, expect, it } from "vitest";
 
-import { DOC_TYPE_LABEL, DOC_TYPE_ORDER, docTypeLabel } from "./docTypeVocabulary";
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  rtlTestLocale,
+} from "../../localization/testing";
+import { resolveMessageResult } from "../../platform/localization/fallback";
+import {
+  DOC_TYPE_ORDER,
+  DOC_TYPE_PRESENTATION,
+  DOCUMENT_TYPE_MESSAGES,
+  docTypeLabel,
+  docTypePresentation,
+} from "./docTypeVocabulary";
 
 describe("canonical doc-type vocabulary (terminology-standardization ADR D1/D2)", () => {
-  it("maps every vault doc type to its canonical user-facing word", () => {
-    // The exact schema settled in ADR D1: plural, pipeline vocabulary.
-    expect(DOC_TYPE_LABEL).toMatchObject({
-      research: "Research",
-      adr: "Decisions",
-      plan: "Plans",
-      exec: "Steps",
-      audit: "Audits",
-      reference: "References",
-      index: "Index",
-    });
-  });
-
-  it("resolves known doc types through docTypeLabel", () => {
-    expect(docTypeLabel("research")).toBe("Research");
-    expect(docTypeLabel("adr")).toBe("Decisions");
-    expect(docTypeLabel("plan")).toBe("Plans");
-    expect(docTypeLabel("exec")).toBe("Steps");
-    expect(docTypeLabel("audit")).toBe("Audits");
-    expect(docTypeLabel("reference")).toBe("References");
-  });
-
-  it("Title-cases an unknown doc type as a graceful fallback (never a raw slug)", () => {
-    expect(docTypeLabel("summary")).toBe("Summary");
-    expect(docTypeLabel("custom")).toBe("Custom");
-  });
-
-  it("orders doc types by the pipeline reading order and excludes index (D2/D5)", () => {
-    expect([...DOC_TYPE_ORDER]).toEqual([
+  it("preserves the exact frozen raw identity order and presentation map", () => {
+    expect(DOC_TYPE_ORDER).toEqual([
       "research",
       "adr",
       "plan",
@@ -39,7 +24,80 @@ describe("canonical doc-type vocabulary (terminology-standardization ADR D1/D2)"
       "audit",
       "reference",
     ]);
-    // index is never a displayed group, so it is absent from the display order.
-    expect(DOC_TYPE_ORDER).not.toContain("index");
+    expect(Object.isFrozen(DOC_TYPE_ORDER)).toBe(true);
+    expect(Object.isFrozen(DOC_TYPE_PRESENTATION)).toBe(true);
+    for (const id of DOC_TYPE_ORDER) {
+      expect(Object.isFrozen(DOC_TYPE_PRESENTATION[id])).toBe(true);
+      expect(Object.isFrozen(DOC_TYPE_PRESENTATION[id].label)).toBe(true);
+      expect(docTypePresentation(id)).toBe(DOC_TYPE_PRESENTATION[id]);
+    }
+  });
+
+  it("rejects every non-displayable or inexact raw identity", () => {
+    expect(docTypePresentation("index")).toBeNull();
+    expect(docTypePresentation("code")).toBeNull();
+    expect(docTypePresentation("summary")).toBeNull();
+    expect(docTypePresentation("custom")).toBeNull();
+    expect(docTypePresentation(" research ")).toBeNull();
+    expect(docTypePresentation(null)).toBeNull();
+  });
+
+  it("resolves the six labels and separate generic label in English, French, and Arabic", () => {
+    const english = createTestLocalizationRuntime();
+    const french = createTestLocalizationRuntime(ltrTestLocale);
+    const arabic = createTestLocalizationRuntime(rtlTestLocale);
+    const expected = [
+      ["research", "Research", "Recherche", "البحث"],
+      ["adr", "Decisions", "Décisions", "القرارات"],
+      ["plan", "Plans", "Plans", "الخطط"],
+      ["exec", "Steps", "Étapes", "الخطوات"],
+      ["audit", "Audits", "Audits", "عمليات التدقيق"],
+      ["reference", "References", "Références", "المراجع"],
+    ] as const;
+
+    for (const [id, source, alternate, rtl] of expected) {
+      const presentation = docTypePresentation(id);
+      expect(presentation).not.toBeNull();
+      expect(resolveMessageResult(english, presentation!.label)).toEqual({
+        message: source,
+        usedFallback: false,
+      });
+      expect(resolveMessageResult(french, presentation!.label)).toEqual({
+        message: alternate,
+        usedFallback: false,
+      });
+      expect(resolveMessageResult(arabic, presentation!.label)).toEqual({
+        message: rtl,
+        usedFallback: false,
+      });
+    }
+    expect(resolveMessageResult(english, DOCUMENT_TYPE_MESSAGES.document)).toEqual({
+      message: "Document",
+      usedFallback: false,
+    });
+    expect(resolveMessageResult(french, DOCUMENT_TYPE_MESSAGES.document)).toEqual({
+      message: "Document",
+      usedFallback: false,
+    });
+    expect(resolveMessageResult(arabic, DOCUMENT_TYPE_MESSAGES.document)).toEqual({
+      message: "مستند",
+      usedFallback: false,
+    });
+  });
+
+  it("keeps the temporary source-locale bridge safe for legacy consumers", () => {
+    expect(DOC_TYPE_ORDER.map((id) => docTypeLabel(id))).toEqual([
+      "Research",
+      "Decisions",
+      "Plans",
+      "Steps",
+      "Audits",
+      "References",
+    ]);
+    expect(
+      ["index", "code", "summary", "arbitrary-internal-type", "   "].map((id) =>
+        docTypeLabel(id),
+      ),
+    ).toEqual(["Document", "Document", "Document", "Document", "Document"]);
   });
 });

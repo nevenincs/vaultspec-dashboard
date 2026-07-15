@@ -439,7 +439,7 @@ describe("filter sidebar view store", () => {
 
   it("normalizes served facet values into filter menu presentation", () => {
     expect(filterSidebarDocTypeLabel("adr")).toBe("Decisions");
-    expect(filterSidebarDocTypeLabel("custom")).toBe("Custom");
+    expect(filterSidebarDocTypeLabel("custom")).toBe("Document");
     expect(filterSidebarStatusDot("accepted")).toBe("complete");
     expect(filterSidebarStatusDot("in-progress")).toBe("active");
     expect(filterSidebarStatusDot("unknown")).toBe("provisional");

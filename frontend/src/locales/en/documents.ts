@@ -27,6 +27,14 @@ export const documents = {
     documents: "Documents",
     files: "Files",
   },
+  documentTypes: {
+    research: "Research",
+    adr: "Decisions",
+    plan: "Plans",
+    exec: "Steps",
+    audit: "Audits",
+    reference: "References",
+  },
   disabledReasons: {
     copyChangesBeforeReopening:
       "Copy your changes, then reopen the document before saving.",
@@ -43,6 +51,9 @@ export const documents = {
     linkFailed: "Couldn't link the documents. Try again.",
     linkInProgress: "Linking documents…",
     linkSucceeded: "Documents linked.",
+  },
+  labels: {
+    document: "Document",
   },
   shortcutGroups: {
     editing: "Document editing",

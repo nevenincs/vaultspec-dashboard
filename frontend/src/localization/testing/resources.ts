@@ -141,6 +141,14 @@ export const ltrTestResources = {
       documents: "Documents",
       files: "Fichiers",
     },
+    documentTypes: {
+      research: "Recherche",
+      adr: "Décisions",
+      plan: "Plans",
+      exec: "Étapes",
+      audit: "Audits",
+      reference: "Références",
+    },
     disabledReasons: {
       ...en.documents.disabledReasons,
       copyChangesBeforeReopening:
@@ -156,6 +164,9 @@ export const ltrTestResources = {
       linkFailed: "Impossible de lier les documents. Réessayez.",
       linkInProgress: "Liaison des documents…",
       linkSucceeded: "Documents liés.",
+    },
+    labels: {
+      document: "Document",
     },
     shortcutGroups: {
       editing: "Modification du document",
@@ -405,6 +416,14 @@ export const rtlTestResources = {
       documents: "المستندات",
       files: "الملفات",
     },
+    documentTypes: {
+      research: "البحث",
+      adr: "القرارات",
+      plan: "الخطط",
+      exec: "الخطوات",
+      audit: "عمليات التدقيق",
+      reference: "المراجع",
+    },
     disabledReasons: {
       ...en.documents.disabledReasons,
       copyChangesBeforeReopening: "انسخ تغييراتك، ثم أعد فتح المستند قبل الحفظ.",
@@ -418,6 +437,9 @@ export const rtlTestResources = {
       linkFailed: "تعذر ربط المستندات. حاول مرة أخرى.",
       linkInProgress: "جارٍ ربط المستندات…",
       linkSucceeded: "تم ربط المستندات.",
+    },
+    labels: {
+      document: "مستند",
     },
     shortcutGroups: {
       editing: "تحرير المستند",
