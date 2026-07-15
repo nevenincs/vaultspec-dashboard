@@ -31,6 +31,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 
@@ -87,6 +88,22 @@ import { useViewportClass } from "../../stores/view/viewportClass";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
 import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 import {
+  formatBytes,
+  formatDate,
+  formatNumber,
+  formatPercentage,
+} from "../../platform/localization/formatters";
+import {
+  useLocalizedMessageResolver,
+  type LocalizedMessageResolver,
+} from "../../platform/localization/LocalizationProvider";
+import type {
+  AnyMessageDescriptor,
+  MessageDescriptor,
+} from "../../platform/localization/message";
+import { createCountMessageDescriptor } from "../../platform/localization/message";
+import { localizationNamespaces } from "../../platform/localization/runtime";
+import {
   pathStem,
   pathToNodeId,
   useDashboardBrowserSelection,
@@ -104,24 +121,142 @@ import "./menus/vaultSectionMenu";
 import {
   CHEVRON_PX,
   STATUS_MARK_PX,
-  adrStatusLabel,
   adrStatusMark,
   adrStatusToneClass,
-  docDateLabel,
+  docDateTimestamp,
   docDisplayTitle,
-  docGroupLabel,
-  corpusWeightLabel,
-  docTooltip,
+  docGroupMessage,
   docTypeCategory,
   featureDisplayName,
   planStatus,
-  planStatusLabel,
   planStatusMark,
   planStatusToneClass,
-  byteSizeLabel,
   planTierLabel,
-  wordCountLabel,
 } from "./vaultRowPresentation";
+
+export const TREE_BROWSER_MESSAGES = {
+  addDocumentToFeature: {
+    key: "documents:accessibility.addDocumentToFeature",
+  },
+  degraded: { key: "documents:tree.degraded" },
+  emptyWorktree: { key: "documents:tree.emptyWorktree" },
+  features: { key: "features:labels.feature" },
+  loading: { key: "documents:tree.loading" },
+  noFilterMatches: { key: "documents:tree.noFilterMatches" },
+  noFilterMatchesYet: { key: "documents:tree.noFilterMatchesYet" },
+  partialAnnouncement: { key: "documents:tree.partialAnnouncement" },
+  retry: { key: "common:actions.retry" },
+  treeBrowser: { key: "documents:accessibility.treeBrowser" },
+  unavailable: { key: "documents:tree.unavailable" },
+  vaultBrowser: { key: "documents:tree.vaultBrowser" },
+  documents: { key: "documents:browserModes.documents" },
+} as const satisfies Record<string, MessageDescriptor>;
+
+export function treePartialCountMessage(count: number): AnyMessageDescriptor {
+  const descriptor = createCountMessageDescriptor("documents:tree.partialCount", count);
+  if (descriptor === null) return TREE_BROWSER_MESSAGES.partialAnnouncement;
+  return descriptor;
+}
+
+export function treeRowActionsMessage(item: string): MessageDescriptor {
+  return {
+    key: "common:accessibility.actionsForItem",
+    values: { item },
+  };
+}
+
+export function treePlanProgressMessage(
+  done: number,
+  total: number,
+): MessageDescriptor | null {
+  if (
+    !Number.isSafeInteger(done) ||
+    !Number.isSafeInteger(total) ||
+    done < 0 ||
+    total <= 0 ||
+    done > total
+  ) {
+    return null;
+  }
+  return { key: "documents:tree.planProgress", values: { done, total } };
+}
+
+export function treeWordCountMessage(count: number): AnyMessageDescriptor | null {
+  return createCountMessageDescriptor("documents:tree.wordCount", count);
+}
+
+export function treeSizeSummaryMessage(
+  count: number,
+  size: string,
+): AnyMessageDescriptor | null {
+  return createCountMessageDescriptor("documents:tree.sizeSummary", count, { size });
+}
+
+export function formatTreeWeight(
+  locale: string,
+  weightBytes: number,
+  totalBytes: number,
+  resolveMessage: LocalizedMessageResolver,
+): string {
+  if (
+    !Number.isFinite(weightBytes) ||
+    !Number.isFinite(totalBytes) ||
+    weightBytes <= 0 ||
+    totalBytes <= 0 ||
+    weightBytes > totalBytes
+  ) {
+    return "";
+  }
+  const ratio = weightBytes / totalBytes;
+  if (ratio < 0.01) {
+    const threshold = formatPercentage(locale, 0.01, { maximumFractionDigits: 0 });
+    return threshold
+      ? resolveMessage({
+          key: "documents:tree.weightBelowThreshold",
+          values: { threshold },
+        }).message
+      : "";
+  }
+  return formatPercentage(locale, ratio, { maximumFractionDigits: 1 }) ?? "";
+}
+
+const PLAN_STATUS_MESSAGES = {
+  complete: { key: "documents:accessibility.planComplete" },
+  "in-progress": { key: "documents:accessibility.planInProgress" },
+  "not-started": { key: "documents:accessibility.planNotStarted" },
+} as const satisfies Record<ReturnType<typeof planStatus>, MessageDescriptor>;
+
+const DECISION_STATUS_MESSAGES = {
+  accepted: { key: "documents:accessibility.decisionAccepted" },
+  deprecated: { key: "documents:accessibility.decisionDeprecated" },
+  proposed: { key: "documents:accessibility.decisionProposed" },
+  rejected: { key: "documents:accessibility.decisionRejected" },
+  superseded: { key: "documents:accessibility.decisionSuperseded" },
+} as const satisfies Record<string, MessageDescriptor>;
+
+const DECISION_STATUS_LABEL_MESSAGES = {
+  accepted: { key: "documents:tree.decisionStatusAccepted" },
+  deprecated: { key: "documents:tree.decisionStatusDeprecated" },
+  proposed: { key: "documents:tree.decisionStatusProposed" },
+  rejected: { key: "documents:tree.decisionStatusRejected" },
+  superseded: { key: "documents:tree.decisionStatusSuperseded" },
+} as const satisfies Record<string, MessageDescriptor>;
+
+export function treeDecisionStatusMessage(status: string): MessageDescriptor | null {
+  return (
+    DECISION_STATUS_MESSAGES[status as keyof typeof DECISION_STATUS_MESSAGES] ?? null
+  );
+}
+
+export function treeDecisionStatusLabelMessage(
+  status: string,
+): MessageDescriptor | null {
+  return (
+    DECISION_STATUS_LABEL_MESSAGES[
+      status as keyof typeof DECISION_STATUS_LABEL_MESSAGES
+    ] ?? null
+  );
+}
 
 /** Display stem — the shared derivation from the selection join. */
 export function entryStem(path: string): string {
@@ -247,6 +382,7 @@ export function TreeBrowser({
   highlightedPath,
   ariaLabel = "tree browser",
 }: TreeBrowserProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   const scope = useActiveScope();
   const { tree, availability, state, complete } = useVaultTreeSurface(scope);
   const facets = useVaultRailFacets(scope);
@@ -431,7 +567,9 @@ export function TreeBrowser({
 
   if (state === "loading") {
     // LOADING mode (binding `LeftRail` State=Loading): the shared designed skeleton.
-    return <RailSkeleton label="Loading the vault…" />;
+    return (
+      <RailSkeleton label={resolveMessage(TREE_BROWSER_MESSAGES.loading).message} />
+    );
   }
 
   if (state === "error") {
@@ -442,13 +580,15 @@ export function TreeBrowser({
         aria-live="polite"
         data-tree-error
       >
-        <p className="text-label text-state-broken">vault tree unavailable</p>
+        <p className="text-label text-state-broken">
+          {resolveMessage(TREE_BROWSER_MESSAGES.unavailable).message}
+        </p>
         <button
           type="button"
           onClick={tree.retry}
           className="rounded-fg-xs text-label text-ink-muted underline-offset-2 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
-          try again
+          {resolveMessage(TREE_BROWSER_MESSAGES.retry).message}
         </button>
       </div>
     );
@@ -460,7 +600,13 @@ export function TreeBrowser({
     <nav
       ref={rootRef}
       className="flex flex-col gap-fg-4 text-label"
-      aria-label={ariaLabel}
+      aria-label={
+        resolveMessage(
+          ariaLabel === "vault browser"
+            ? TREE_BROWSER_MESSAGES.vaultBrowser
+            : TREE_BROWSER_MESSAGES.treeBrowser,
+        ).message
+      }
       data-tree-browser={ariaLabel === "tree browser" ? "" : undefined}
       data-vault-browser={ariaLabel === "vault browser" ? "" : undefined}
     >
@@ -468,7 +614,9 @@ export function TreeBrowser({
           notice — an AlertTriangle and ONE plain sentence above whatever loaded.
           Never the raw tier reason. */}
       {availability.degraded && (
-        <RailDegradedNotice label="Some documents are temporarily unavailable." />
+        <RailDegradedNotice
+          label={resolveMessage(TREE_BROWSER_MESSAGES.degraded).message}
+        />
       )}
 
       {/* PARTIAL listing (universal-data-loading ADR D5): the first pages are
@@ -482,11 +630,13 @@ export function TreeBrowser({
               count is aria-hidden so per-page updates never queue repeated
               announcements (review nit: SR chattiness). */}
           <span role="status" className="sr-only">
-            Still loading the full list
+            {resolveMessage(TREE_BROWSER_MESSAGES.partialAnnouncement).message}
           </span>
           <span aria-hidden>
-            Still loading the full list —{" "}
-            {(tree.data?.entries.length ?? 0).toLocaleString()} documents so far…
+            {
+              resolveMessage(treePartialCountMessage(tree.data?.entries.length ?? 0))
+                .message
+            }
           </span>
         </p>
       )}
@@ -496,17 +646,17 @@ export function TreeBrowser({
           tone="empty"
           label={
             view.filteredToNothing && complete
-              ? "No documents match this filter."
+              ? resolveMessage(TREE_BROWSER_MESSAGES.noFilterMatches).message
               : view.filteredToNothing
-                ? "No matches yet — the list is still loading."
-                : "No documents in this worktree yet."
+                ? resolveMessage(TREE_BROWSER_MESSAGES.noFilterMatchesYet).message
+                : resolveMessage(TREE_BROWSER_MESSAGES.emptyWorktree).message
           }
         />
       ) : (
         <>
           {/* FEATURES — feature → category sub-folders → documents (ADR D4). */}
           <Section
-            title="Features"
+            title={resolveMessage(TREE_BROWSER_MESSAGES.features).message}
             count={view.featureCount}
             sectionKey="sec:features"
             entity={vaultSectionEntity("features", scope)}
@@ -537,7 +687,7 @@ export function TreeBrowser({
 
           {/* DOCUMENTS — category folder → its documents (ADR D4). */}
           <Section
-            title="Documents"
+            title={resolveMessage(TREE_BROWSER_MESSAGES.documents).message}
             count={view.docTypeCount}
             sectionKey="sec:documents"
             entity={vaultSectionEntity("documents", scope)}
@@ -658,6 +808,9 @@ function VaultTreeRow({
   nav,
   body,
 }: VaultTreeRowProps) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const { i18n } = useTranslation(localizationNamespaces, { useSuspense: false });
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const {
     ref,
     tabIndex,
@@ -761,9 +914,9 @@ function VaultTreeRow({
           {label}
         </span>
       )}
-      {count !== undefined && (
+      {count !== undefined && formatNumber(locale, count) !== null && (
         <span className="shrink-0 text-meta text-ink-muted" data-tabular>
-          {count}
+          {formatNumber(locale, count)}
         </span>
       )}
       {signal}
@@ -782,7 +935,12 @@ function VaultTreeRow({
     return (
       <li className="flex items-center">
         {button}
-        {entity && <RowMenuDisclosure entity={entity} label={`${label} actions`} />}
+        {entity && (
+          <RowMenuDisclosure
+            entity={entity}
+            label={resolveMessage(treeRowActionsMessage(label)).message}
+          />
+        )}
       </li>
     );
   }
@@ -798,7 +956,12 @@ function VaultTreeRow({
         className="flex items-center"
       >
         {button}
-        {entity && <RowMenuDisclosure entity={entity} label={`${label} actions`} />}
+        {entity && (
+          <RowMenuDisclosure
+            entity={entity}
+            label={resolveMessage(treeRowActionsMessage(label)).message}
+          />
+        )}
       </div>
       {expanded && (
         <div id={bodyId} data-vault-folder-body className="relative">
@@ -851,6 +1014,9 @@ function Section({
   onCreate,
   children,
 }: SectionProps) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const { i18n } = useTranslation(localizationNamespaces, { useSuspense: false });
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const open = deriveBrowserTreeExpansionItem(sectionKey, expanded).expanded;
   const { ref, tabIndex, onKeyDown } = nav.rove(sectionKey, {
     onArrowRight: open ? undefined : () => toggle(sectionKey),
@@ -859,7 +1025,7 @@ function Section({
   return (
     <RailSection
       title={title}
-      count={count}
+      count={formatNumber(locale, count) ?? undefined}
       open={open}
       onToggle={() => toggle(sectionKey)}
       bodyId={`vault-${sectionKey}`}
@@ -883,7 +1049,7 @@ function Section({
           onKeyDown(e);
         },
       }}
-      labelProps={{ "data-vault-section": title.toLowerCase() }}
+      labelProps={{ "data-vault-section": sectionKey.slice("sec:".length) }}
       // The section header's own coarse-pointer menu entry (touch-selectability
       // ADR D3): a deliberate tap target for the vault-section (expand/collapse-
       // all + new doc) menu, sibling of the header button. The Features section
@@ -893,7 +1059,7 @@ function Section({
         <>
           {onCreate && (
             <IconButton
-              label={`Add a document to ${title.toLowerCase()}`}
+              label={resolveMessage(TREE_BROWSER_MESSAGES.addDocumentToFeature).message}
               data-new-feature-document
               onClick={(event) => {
                 event.stopPropagation();
@@ -903,7 +1069,10 @@ function Section({
               <Plus size={14} aria-hidden />
             </IconButton>
           )}
-          <RowMenuDisclosure entity={entity} label={`${title} actions`} />
+          <RowMenuDisclosure
+            entity={entity}
+            label={resolveMessage(treeRowActionsMessage(title)).message}
+          />
         </>
       }
       data-vault-section-header
@@ -955,6 +1124,9 @@ function FeatureFolderRow({
   onOpen,
   nav,
 }: FeatureFolderRowProps) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const { i18n } = useTranslation(localizationNamespaces, { useSuspense: false });
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const folderKey = `feat:${group.feature}`;
   const open = deriveBrowserTreeExpansionItem(folderKey, expanded).expanded;
   return (
@@ -972,7 +1144,12 @@ function FeatureFolderRow({
       count={sortKey === "weight" ? undefined : group.count}
       meta={
         sortKey === "weight"
-          ? corpusWeightLabel(group.weightBytes, totalCorpusBytes)
+          ? formatTreeWeight(
+              locale,
+              group.weightBytes,
+              totalCorpusBytes,
+              resolveMessage,
+            ) || undefined
           : undefined
       }
       highlighted={normalizeFeatureTag(group.feature) === selectedFeatureTag}
@@ -1057,12 +1234,13 @@ function CategoryFolderRow({
   onOpen,
   nav,
 }: CategoryFolderRowProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   const open = deriveBrowserTreeExpansionItem(folderKey, expanded).expanded;
   return (
     <VaultTreeRow
       navKey={folderKey}
       level={level}
-      label={docGroupLabel(docType)}
+      label={resolveMessage(docGroupMessage(docType)).message}
       markKind={docType}
       markColor={folderCategory(docType)}
       expandable
@@ -1112,39 +1290,40 @@ interface DocumentRowProps {
   nav: RowNav;
 }
 
-/** The leaf's review-state signal (left-rail-tree-controls ADR D1): a plan row
- *  reads its checkbox progress as the designed status pip + a tabular done/total;
- *  an ADR row reads its acceptance status as a plain-language token. Other doc
- *  types carry no signal. Served facts only — nothing is guessed. */
-function docSignal(entry: VaultTreeEntry): ReactNode {
+function docSignal(
+  entry: VaultTreeEntry,
+  resolveMessage: LocalizedMessageResolver,
+): ReactNode {
   if (entry.doc_type === "plan") {
+    const progressMessage = entry.progress
+      ? treePlanProgressMessage(entry.progress.done, entry.progress.total)
+      : null;
+    if (entry.progress && !progressMessage) return null;
     const status = planStatus(entry.progress);
     const Mark = planStatusMark(status);
     return (
       <span
         className={`flex shrink-0 items-center gap-fg-1 text-meta ${planStatusToneClass(status)}`}
         data-plan-status={status}
-        aria-label={`plan ${planStatusLabel(status)}`}
+        aria-label={resolveMessage(PLAN_STATUS_MESSAGES[status]).message}
       >
         <Mark size={STATUS_MARK_PX} aria-hidden />
         {entry.progress && (
-          <span data-tabular>
-            {entry.progress.done}/{entry.progress.total}
-          </span>
+          <span data-tabular>{resolveMessage(progressMessage!).message}</span>
         )}
       </span>
     );
   }
   if (entry.doc_type === "adr" && entry.status) {
-    // Compact shape+tone MARK, not the word — the 16rem rail keeps the title
-    // first; the plain-language status rides the aria-label and the tooltip.
     const Mark = adrStatusMark(entry.status);
+    const statusMessage = treeDecisionStatusMessage(entry.status);
+    if (!Mark || !statusMessage) return null;
     return (
       <span
         className={`flex shrink-0 items-center ${adrStatusToneClass(entry.status)}`}
         data-adr-status={entry.status}
         role="img"
-        aria-label={`decision ${adrStatusLabel(entry.status).toLowerCase()}`}
+        aria-label={resolveMessage(statusMessage).message}
       >
         <Mark size={STATUS_MARK_PX} aria-hidden />
       </span>
@@ -1153,31 +1332,41 @@ function docSignal(entry: VaultTreeEntry): ReactNode {
   return null;
 }
 
-/** The compact (touch) second meta line (mobile-enrichment ADR D2): the authored
- *  date plus the plain-language review-status WORD — an ADR's acceptance
- *  (Accepted / Proposed / Superseded / …) or a plan's progress (done of total) —
- *  surfaced INLINE under the title so the fact is legible without the desktop hover
- *  tooltip. Served facts only (`wire-contract`: the engine serves `status` /
- *  `progress`; this maps presentation only); honest absence renders just the date,
- *  or nothing. */
-function docCompactSubMeta(entry: VaultTreeEntry): ReactNode | undefined {
-  const date = docDateLabel(entry.dates.created ?? entry.dates.modified);
+function docCompactSubMeta(
+  entry: VaultTreeEntry,
+  resolveMessage: LocalizedMessageResolver,
+  locale: string,
+): ReactNode | undefined {
+  const date = formatTreeDate(
+    locale,
+    entry.dates.created ?? entry.dates.modified,
+    "compact",
+  );
   const pillClass = "shrink-0 rounded-fg-xs bg-paper-sunken px-fg-1";
   let status: ReactNode = null;
   if (entry.doc_type === "adr" && entry.status) {
-    status = (
-      <span
-        className={`${pillClass} ${adrStatusToneClass(entry.status)}`}
-        data-adr-status={entry.status}
-      >
-        {adrStatusLabel(entry.status)}
-      </span>
-    );
+    const statusMessage = treeDecisionStatusLabelMessage(entry.status);
+    if (statusMessage && adrStatusMark(entry.status)) {
+      status = (
+        <span
+          className={`${pillClass} ${adrStatusToneClass(entry.status)}`}
+          data-adr-status={entry.status}
+        >
+          {resolveMessage(statusMessage).message}
+        </span>
+      );
+    }
   } else if (entry.doc_type === "plan") {
     const planState = planStatus(entry.progress);
+    const progressMessage = entry.progress
+      ? treePlanProgressMessage(entry.progress.done, entry.progress.total)
+      : null;
     const label = entry.progress
-      ? `${entry.progress.done} of ${entry.progress.total}`
-      : planStatusLabel(planState);
+      ? progressMessage
+        ? resolveMessage(progressMessage).message
+        : null
+      : resolveMessage(PLAN_STATUS_MESSAGES[planState]).message;
+    if (!label) return date ? <span>{date}</span> : undefined;
     status = (
       <span
         className={`${pillClass} ${planStatusToneClass(planState)}`}
@@ -1200,18 +1389,19 @@ function docCompactSubMeta(entry: VaultTreeEntry): ReactNode | undefined {
   );
 }
 
-/** The leaf's trailing meta: ONE value — the active sort key's field — so the
- *  title always leads and never collapses under a meta cluster (the 16rem rail
- *  cannot hold title + date + weight at depth). Default (recency/name) shows the
- *  AUTHORED date (the filename's stamp, served as `dates.created`); a modified
- *  sort shows the modified date; a Length sort shows the compact word count.
- *  The full card (all dates + weight) always rides the tooltip. Honest absence:
- *  an undated/unweighed entry renders nothing. */
-function docMetaLabel(entry: VaultTreeEntry, sortKey: RailSortKey): string {
-  if (sortKey === "size" && entry.size) return wordCountLabel(entry.size.words);
-  if (sortKey === "weight" && entry.size) return byteSizeLabel(entry.size.bytes);
-  // A plan row's progress signal IS its reviewable fact; under the default
-  // (non-date) sorts the date yields the width to it (tooltip keeps all dates).
+function docMetaLabel(
+  entry: VaultTreeEntry,
+  sortKey: RailSortKey,
+  resolveMessage: LocalizedMessageResolver,
+  locale: string,
+): string {
+  if (sortKey === "size" && entry.size) {
+    const message = treeWordCountMessage(entry.size.words);
+    return message ? resolveMessage(message).message : "";
+  }
+  if (sortKey === "weight" && entry.size) {
+    return formatBytes(locale, entry.size.bytes) ?? "";
+  }
   if (
     (sortKey === "recency" || sortKey === "docs" || sortKey === "name") &&
     entry.doc_type === "plan" &&
@@ -1223,23 +1413,53 @@ function docMetaLabel(entry: VaultTreeEntry, sortKey: RailSortKey): string {
     sortKey === "modified"
       ? (entry.dates.modified ?? entry.dates.created)
       : (entry.dates.created ?? entry.dates.modified);
-  return docDateLabel(date);
+  return formatTreeDate(locale, date, "compact");
 }
 
-/** The full-metadata hover card: path, the three date semantics, the weight,
- *  and a plan's plain-language tier. */
-function docTooltipLabel(entry: VaultTreeEntry): string {
-  const base = docTooltip(entry.path, entry.dates, entry.size);
+export function docTooltipLabel(
+  entry: VaultTreeEntry,
+  resolveMessage: LocalizedMessageResolver,
+  locale: string,
+): string {
+  const lines = [entry.path];
+  const dateMessages = [
+    ["documents:tree.created", entry.dates.created],
+    ["documents:tree.updated", entry.dates.stamped],
+    ["documents:tree.lastEdited", entry.dates.modified],
+  ] as const;
+  for (const [key, rawDate] of dateMessages) {
+    const date = formatTreeDate(locale, rawDate, "full");
+    if (date) lines.push(resolveMessage({ key, values: { date } }).message);
+  }
+  if (entry.size) {
+    const size = formatBytes(locale, entry.size.bytes);
+    if (size) {
+      const message = treeSizeSummaryMessage(entry.size.words, size);
+      if (message) lines.push(resolveMessage(message).message);
+    }
+  }
   const tier = entry.tier ? planTierLabel(entry.tier) : "";
-  return tier ? `${base}\n${tier}` : base;
+  if (tier) lines.push(tier);
+  return lines.join("\n");
 }
 
-/** One document leaf. Renders through the SAME `VaultTreeRow` shell as every folder
- *  — fully rounded, same selection — with an aligned spacer in place of the chevron,
- *  the doc-type mark in QUIET neutral ink (color is a top-level signal), the human
- *  title, the review-state signal (plan pip / ADR status), and the authored date +
- *  weight as trailing meta. Selection is the rounded accent tint + accent label,
- *  identical to any other selected row. */
+export function formatTreeDate(
+  locale: string,
+  iso: string | undefined,
+  style: "compact" | "full",
+): string {
+  const timestamp = docDateTimestamp(iso);
+  if (timestamp === null) return "";
+  return (
+    formatDate(locale, timestamp, {
+      day: "numeric",
+      month: "short",
+      ...(style === "full" ? { year: "numeric" as const } : {}),
+      timeZone: "UTC",
+    }) ?? ""
+  );
+}
+
 function DocumentRow({
   navKey,
   sortKey,
@@ -1252,22 +1472,21 @@ function DocumentRow({
   onOpen,
   nav,
 }: DocumentRowProps) {
-  // Compact (touch) surfaces the review metadata INLINE as a second line
-  // (mobile-enrichment ADR D2); desktop keeps the one-value + shape-mark + hover
-  // tooltip. The compact line replaces the desktop trailing signal/meta so the row
-  // never carries both.
+  const resolveMessage = useLocalizedMessageResolver();
+  const { i18n } = useTranslation(localizationNamespaces, { useSuspense: false });
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const compact = useViewportClass() === "compact";
   return (
     <VaultTreeRow
       navKey={navKey}
       level={level}
-      label={docDisplayTitle(entry.path)}
+      label={docDisplayTitle(entry.path, entry.title)}
       markKind={docType}
       expandable={false}
-      signal={compact ? undefined : docSignal(entry)}
-      meta={compact ? undefined : docMetaLabel(entry, sortKey)}
-      subMeta={compact ? docCompactSubMeta(entry) : undefined}
-      tooltip={docTooltipLabel(entry)}
+      signal={compact ? undefined : docSignal(entry, resolveMessage)}
+      meta={compact ? undefined : docMetaLabel(entry, sortKey, resolveMessage, locale)}
+      subMeta={compact ? docCompactSubMeta(entry, resolveMessage, locale) : undefined}
+      tooltip={docTooltipLabel(entry, resolveMessage, locale)}
       highlighted={highlighted}
       onActivate={onClick}
       onOpen={onOpen}

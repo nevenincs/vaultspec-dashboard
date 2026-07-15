@@ -88,7 +88,7 @@ describe("VaultBrowser compact inline metadata (live engine, ADR D2)", () => {
 
   it("surfaces the ADR acceptance WORD + authored date and the plan progress inline (not tooltip-only)", async () => {
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    await screen.findByRole("navigation", { name: "Vault browser" }, ENGINE_WAIT);
     // Open Documents, then every category folder, so the beta ADR + alpha plan
     // leaves mount.
     const documentsHeader = await waitFor(() => {

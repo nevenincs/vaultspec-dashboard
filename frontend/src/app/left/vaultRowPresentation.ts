@@ -24,7 +24,7 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 
-import { docTypeLabel } from "../../stores/server/docTypeVocabulary";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { featureTagDisplayName } from "../../stores/featureQuery";
 import type { Category } from "../kit";
 import { freshnessLabel, isFresh } from "../presentation/freshness";
@@ -84,8 +84,21 @@ export function docMark(docType: string): Icon {
  *  drift from the filter facets and search pills. The label text keeps catalog casing
  *  so the kit `SectionLabel` renders it verbatim. Kept exported here for the VAULT
  *  and TREE browser headers. */
-export function docGroupLabel(docType: string): string {
-  return docTypeLabel(docType);
+const DOC_GROUP_MESSAGES = {
+  adr: { key: "documents:documentTypes.adr" },
+  audit: { key: "documents:documentTypes.audit" },
+  exec: { key: "documents:documentTypes.exec" },
+  plan: { key: "documents:documentTypes.plan" },
+  reference: { key: "documents:documentTypes.reference" },
+  research: { key: "documents:documentTypes.research" },
+} as const satisfies Record<string, MessageDescriptor>;
+
+export function docGroupMessage(docType: string): MessageDescriptor {
+  return (
+    DOC_GROUP_MESSAGES[docType as keyof typeof DOC_GROUP_MESSAGES] ?? {
+      key: "documents:browserModes.documents",
+    }
+  );
 }
 
 // Doc-type → kit category token (binding board 135:2 StatusDot/Chip category set).
@@ -167,64 +180,27 @@ export function planStatusToneClass(status: PlanStatus): string {
   }
 }
 
-export function planStatusLabel(status: PlanStatus): string {
-  switch (status) {
-    case "complete":
-      return "complete";
-    case "in-progress":
-      return "in progress";
-    case "not-started":
-      return "not started";
-  }
-}
-
-// --- human display title (Figma rows show readable titles, not date-stems) -------
-//
-// The binding `LeftRail` rows (244:750) read as human titles ("Live delta sync",
-// "Graph scale"), but the `/vault-tree` wire carries only the path/stem — no title
-// field — so the readable title is DERIVED from the stem: drop the leading
-// `yyyy-mm-dd-` date prefix and a trailing doc-type token (adr/plan/research/…),
-// then de-kebab to sentence case. Canonical structural tokens (W##/P##/S##) keep
-// their uppercase form. Pure + deterministic; this is presentation only and never
-// the selection-join identity (that stays the real stem/path).
-
-const DOC_TYPE_SUFFIXES = new Set([
-  "research",
-  "adr",
-  "plan",
-  "exec",
-  "audit",
-  "reference",
-  "index",
-  "rule",
-  "summary",
-]);
-
 // Short absolute date label for a DocRow's meta line (binding `LeftRail` 238:600
 // shows "Jun 14", not a relative "2d"). Parsed from the ISO `yyyy-mm-dd` string
 // directly (no `Date` / timezone shift) so the printed day matches the stored day.
-const SHORT_MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-] as const;
-
-/** "Jun 14" from an ISO `yyyy-mm-dd` modified date; empty string when absent. */
-export function docDateLabel(iso?: string): string {
-  if (!iso) return "";
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  if (!match) return "";
-  const month = SHORT_MONTHS[Number(match[2]) - 1] ?? "";
-  return month ? `${month} ${Number(match[3])}` : "";
+/** Parse a strict ISO date-only prefix at UTC midnight; null for invalid dates. */
+export function docDateTimestamp(iso?: string): number | null {
+  if (!iso) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const timestamp = Date.UTC(year, month - 1, day);
+  const parsed = new Date(timestamp);
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return timestamp;
 }
 
 /** A readable FEATURE name for the Features section rows (binding `LeftRail`
@@ -239,21 +215,6 @@ export const featureDisplayName = featureTagDisplayName;
 // The served `status` vocabulary is the ADR H1 status set. Plain-language labels
 // only (ui-labels-are-user-facing): the wire token capitalizes to a readable word;
 // an unknown future token still reads as a word, never raw internal casing.
-
-const ADR_STATUS_LABELS: Record<string, string> = {
-  proposed: "Proposed",
-  accepted: "Accepted",
-  rejected: "Rejected",
-  superseded: "Superseded",
-  deprecated: "Deprecated",
-};
-
-/** The display label for a served ADR acceptance status. */
-export function adrStatusLabel(status: string): string {
-  const known = ADR_STATUS_LABELS[status];
-  if (known) return known;
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
 
 /** Tone class for the ADR status mark — sanctioned state tokens only:
  *  accepted reads settled-active, proposed reads in-flight amber, rejected
@@ -286,8 +247,8 @@ const ADR_STATUS_MARKS: Record<string, Icon> = {
 };
 
 /** The shape-distinct mark for a served ADR acceptance status. */
-export function adrStatusMark(status: string): Icon {
-  return ADR_STATUS_MARKS[status] ?? Circle;
+export function adrStatusMark(status: string): Icon | null {
+  return ADR_STATUS_MARKS[status] ?? null;
 }
 
 // --- plan tier + document weight labels (left-rail-tree-controls ADR D1/D2) --------
@@ -299,62 +260,9 @@ export function planTierLabel(tier: string): string {
   return match ? `Tier ${match[1]}` : "";
 }
 
-/** Compact human word count ("310 words", "1.2k words"). */
-export function wordCountLabel(words: number): string {
-  if (words >= 10_000) return `${Math.round(words / 1000)}k words`;
-  if (words >= 1000) return `${(words / 1000).toFixed(1)}k words`;
-  return `${words} ${words === 1 ? "word" : "words"}`;
-}
-
-/** Human byte size for the tooltip ("8.1 KB", "912 B"). */
-export function byteSizeLabel(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${bytes} B`;
-}
-
-/** A feature's corpus-weight share as a compact percent (left-rail-tree-controls
- *  corpus-weight sort): its summed member bytes normalized over the WHOLE vault's
- *  served bytes. "12%" / "4.2%" / "<1%"; empty when either side is unmeasured so
- *  an unserved weight never reads as a fabricated zero. */
-export function corpusWeightLabel(weightBytes: number, totalBytes: number): string {
-  if (totalBytes <= 0 || weightBytes <= 0) return "";
-  const percent = (weightBytes / totalBytes) * 100;
-  if (percent >= 10) return `${Math.round(percent)}%`;
-  if (percent >= 1) return `${percent.toFixed(1)}%`;
-  return "<1%";
-}
-
-/** The document leaf's full-metadata tooltip (left-rail-tree-controls ADR D1):
- *  path, then the three date semantics in plain language, then the weight —
- *  each line only when its fact is served (honest absence). */
-export function docTooltip(
-  path: string,
-  dates: { created?: string; modified?: string; stamped?: string },
-  size?: { bytes: number; words: number },
-): string {
-  const lines = [path];
-  const dateParts = [
-    dates.created ? `Authored ${dates.created}` : null,
-    dates.stamped ? `Updated ${dates.stamped}` : null,
-    dates.modified ? `Edited ${dates.modified}` : null,
-  ].filter((part): part is string => part !== null);
-  if (dateParts.length > 0) lines.push(dateParts.join(" · "));
-  if (size) lines.push(`${wordCountLabel(size.words)} · ${byteSizeLabel(size.bytes)}`);
-  return lines.join("\n");
-}
-
-/** A readable row title derived from the document stem (see note above). */
-export function docDisplayTitle(path: string): string {
-  let stem = pathStemLocal(path).replace(/^\d{4}-\d{2}-\d{2}-/, "");
-  const parts = stem.split("-");
-  if (parts.length > 1 && DOC_TYPE_SUFFIXES.has(parts[parts.length - 1]!)) {
-    parts.pop();
-  }
-  stem = parts.join(" ").trim();
-  if (stem.length === 0) return pathStemLocal(path);
-  // Sentence-case the first character; keep canonical W##/P##/S## tokens uppercase.
-  return stem.charAt(0).toUpperCase() + stem.slice(1);
+/** Preserve the authored H1 exactly; otherwise show the unchanged filename stem. */
+export function docDisplayTitle(path: string, title?: string): string {
+  return title && title.trim().length > 0 ? title : pathStemLocal(path);
 }
 
 /** Local stem helper (filename without directory or extension) — kept here so the

@@ -6,6 +6,7 @@ import {
   createCountMessageDescriptor,
   PLURAL_CATEGORIES,
   PLURAL_MESSAGE_KEYS,
+  type AdditionalCountMessageValues,
   type PluralCategory,
   type PluralMessageKey,
 } from "../platform/localization/message";
@@ -90,6 +91,11 @@ describe("plural catalog manifest", () => {
     expect(PLURAL_MESSAGE_KEYS).toEqual([
       "common:commandPalette.selectionAnnouncement",
       "common:palette.commandCount",
+      "documents:tree.partialCount",
+      "documents:tree.sizeSummary",
+      "documents:tree.wordCount",
+      "graph:accessibility.workingSetCount",
+      "projects:provisioning.result.itemCount",
     ]);
 
     for (const locale of Object.keys(testResources) as TestLocale[]) {
@@ -111,20 +117,21 @@ describe("plural catalog manifest", () => {
       for (const key of PLURAL_MESSAGE_KEYS) {
         for (const category of pluralCategories(locale)) {
           const count = countForCategory(locale, category);
-          const descriptor = createCountMessageDescriptor(
-            key,
-            count,
-            key === "common:commandPalette.selectionAnnouncement"
-              ? { command: "Open settings" }
-              : undefined,
-          );
+          let additionalValues: AdditionalCountMessageValues | undefined;
+          if (key === "common:commandPalette.selectionAnnouncement") {
+            additionalValues = { command: "Open settings" };
+          } else if (key === "documents:tree.sizeSummary") {
+            additionalValues = { size: "4 KB" };
+          }
+          const descriptor = createCountMessageDescriptor(key, count, additionalValues);
           expect(descriptor).not.toBeNull();
 
           const resolution = resolveMessageResult(runtime, descriptor);
           const formatted = formatNumber(locale, count);
           const expected = physicalTemplate(locale, key, category)
             .replace(/\{\{\s*count\s*,\s*number\s*\}\}/gu, formatted!)
-            .replace(/\{\{\s*command\s*\}\}/gu, "Open settings");
+            .replace(/\{\{\s*command\s*\}\}/gu, "Open settings")
+            .replace(/\{\{\s*size\s*\}\}/gu, "4 KB");
           expect(formatted).not.toBeNull();
           expect(resolution, `${locale}:${key}:${category}`).toEqual({
             message: expected,

@@ -17,8 +17,16 @@
 // this codebase is burning down.
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createElement } from "react";
+import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { dashboardDocumentStateResetPatch } from "../../stores/server/dashboardState";
@@ -29,13 +37,24 @@ import { useViewStore } from "../../stores/view/viewStore";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { VaultBrowser } from "./VaultBrowser";
 import { ENGINE_WAIT } from "../../testing/timing";
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  ltrTestResources,
+  rtlTestLocale,
+  rtlTestResources,
+} from "../../localization/testing";
 
-function renderBrowser() {
+function renderBrowser(runtime = createTestLocalizationRuntime()) {
   return render(
     createElement(
-      QueryClientProvider,
-      { client: queryClient },
-      createElement(VaultBrowser),
+      I18nextProvider,
+      { i18n: runtime },
+      createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(VaultBrowser),
+      ),
     ),
   );
 }
@@ -123,7 +142,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     renderBrowser();
     const nav = await screen.findByRole(
       "navigation",
-      { name: "vault browser" },
+      { name: "Vault browser" },
       ENGINE_WAIT,
     );
     expect(nav).toBeTruthy();
@@ -150,9 +169,63 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     }, ENGINE_WAIT);
   });
 
+  it("rerenders the live tree for locale changes without reloading its data", async () => {
+    const runtime = createTestLocalizationRuntime();
+    renderBrowser(runtime);
+    const nav = await screen.findByRole(
+      "navigation",
+      { name: "Vault browser" },
+      ENGINE_WAIT,
+    );
+    const entries = nav.querySelectorAll("[data-vault-section]").length;
+    const documentsHeader = await expandSection("documents");
+    const documentsBody = document.getElementById(
+      documentsHeader.getAttribute("aria-controls")!,
+    )!;
+    const folder = await waitFor(() => {
+      const button = documentsBody.querySelector<HTMLButtonElement>(
+        "[data-vault-folder] > button[aria-expanded='false']",
+      );
+      expect(button).toBeTruthy();
+      return button!;
+    }, ENGINE_WAIT);
+    fireEvent.click(folder);
+    const row = await waitFor(() => {
+      const button = documentsBody.querySelector<HTMLButtonElement>(
+        "button[title^='.vault/']",
+      );
+      expect(button).toBeTruthy();
+      return button!;
+    }, ENGINE_WAIT);
+    const englishTooltip = row.getAttribute("title")!;
+    expect(englishTooltip).toContain("Created");
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(
+      screen.getByRole("navigation", {
+        name: ltrTestResources.documents.tree.vaultBrowser,
+      }),
+    ).toBe(nav);
+    const frenchTooltip = row.getAttribute("title")!;
+    expect(frenchTooltip).toContain("Créé le");
+    expect(frenchTooltip).not.toBe(englishTooltip);
+
+    await act(async () => runtime.changeLanguage(rtlTestLocale));
+    expect(
+      screen.getByRole("navigation", {
+        name: rtlTestResources.documents.tree.vaultBrowser,
+      }),
+    ).toBe(nav);
+    const arabicTooltip = row.getAttribute("title")!;
+    expect(arabicTooltip).toContain("تم الإنشاء في");
+    expect(arabicTooltip).not.toBe(frenchTooltip);
+    expect(arabicTooltip.split("\n")[0]).toBe(englishTooltip.split("\n")[0]);
+    expect(nav.querySelectorAll("[data-vault-section]")).toHaveLength(entries);
+  });
+
   it("is ONE tab-stop: exactly one navigable element has tabIndex 0 at a time", async () => {
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    await screen.findByRole("navigation", { name: "Vault browser" }, ENGINE_WAIT);
     await waitFor(() => expect(navButtons().length).toBeGreaterThan(0), ENGINE_WAIT);
     expect(tabZero()).toHaveLength(1);
     const others = navButtons().filter((b) => b.tabIndex !== 0);
@@ -162,7 +235,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
 
   it("collapses then re-expands a section, and expands a folder to reveal document rows", async () => {
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    await screen.findByRole("navigation", { name: "Vault browser" }, ENGINE_WAIT);
     // Open the Documents section (collapsed by default), then round-trip its
     // disclosure: collapse → re-expand.
     const section = await expandSection("documents");
@@ -198,7 +271,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
 
   it("moves the roving tabIndex 0 with ArrowDown/ArrowUp across visible nodes", async () => {
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    await screen.findByRole("navigation", { name: "Vault browser" }, ENGINE_WAIT);
     await waitFor(() => expect(navButtons().length).toBeGreaterThan(1), ENGINE_WAIT);
     const first = tabZero()[0];
     expect(first.hasAttribute("aria-expanded")).toBe(true);
@@ -222,7 +295,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     // Decisions / …), NOT directly to documents; ADR D3: every folder row leads
     // with a centralized category icon, never a folder glyph or a dot.
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    await screen.findByRole("navigation", { name: "Vault browser" }, ENGINE_WAIT);
     // Open the Features section (collapsed by default) so its feature folder rows mount.
     await expandSection("features");
     const featureFolder = await waitFor(() => {
@@ -255,7 +328,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
 
   it("groups the Documents section by category and never surfaces an index row", async () => {
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    await screen.findByRole("navigation", { name: "Vault browser" }, ENGINE_WAIT);
     // Open the Documents section (collapsed by default) to mount its category folders.
     const documentsHeader = await expandSection("documents");
     // Its body's folder rows are category folders (each with a category icon), and an
@@ -277,7 +350,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
 
   it("clicking a document row drives the shared selection (doc:<stem>)", async () => {
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    await screen.findByRole("navigation", { name: "Vault browser" }, ENGINE_WAIT);
     // Open the Documents section (collapsed by default), then expand a category
     // folder, which reveals its documents directly.
     const documentsHeader = await expandSection("documents");
@@ -314,7 +387,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     // leaf's trailing meta leads with the AUTHORED created date (the filename
     // stamp) and the served word count; the tooltip is the full metadata card.
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    await screen.findByRole("navigation", { name: "Vault browser" }, ENGINE_WAIT);
     const documentsHeader = await expandSection("documents");
     const body = document.getElementById(
       documentsHeader.getAttribute("aria-controls")!,
@@ -337,12 +410,12 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
       return el!;
     }, ENGINE_WAIT);
     expect(planSignal.getAttribute("data-plan-status")).toBe("in-progress");
-    expect(planSignal.textContent).toContain("1/2");
+    expect(planSignal.textContent).toContain("1 of 2 completed");
     // ADR leaf: the acceptance status as a compact shape+tone mark whose
     // plain-language word rides the aria-label (title-first density).
     const adrSignal = body.querySelector("[data-adr-status]");
     expect(adrSignal?.getAttribute("data-adr-status")).toBe("accepted");
-    expect(adrSignal?.getAttribute("aria-label")).toBe("decision accepted");
+    expect(adrSignal?.getAttribute("aria-label")).toBe("Decision accepted");
     // A leaf's meta is ONE value — the AUTHORED date by default (fixture created
     // 2026-01-05 → "Jan 5"), never the checkout's worktree mtime; the weight
     // lives in the tooltip so the title never collapses (title-first density).
@@ -353,8 +426,8 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     // other suites key on), then dates, then weight.
     const tooltip = adrLeaf.getAttribute("title")!;
     expect(tooltip.startsWith(".vault/adr/2026-01-05-beta-adr.md")).toBe(true);
-    expect(tooltip).toContain("Authored 2026-01-05");
-    expect(tooltip).toMatch(/\d+ words? · [\d.]+ K?B/);
+    expect(tooltip).toContain("Created Jan 5, 2026");
+    expect(tooltip).toMatch(/\d+ words?, [\d.]+ (?:bytes?|kB|KB|MB)/);
   });
 
   it("renders folders and leaves through one fully-rounded row shell with one standardized selection", async () => {
@@ -364,7 +437,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     // bar (`border-l*`) or a half-rounded (`rounded-r*`) leaf, which is exactly the
     // divergence this guards against.
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    await screen.findByRole("navigation", { name: "Vault browser" }, ENGINE_WAIT);
     // Open the Documents section (collapsed by default) to reach a category folder.
     const documentsHeader = await expandSection("documents");
     const folder = await waitFor(() => {

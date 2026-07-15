@@ -765,97 +765,7 @@
     "rule": "jsx-text"
   },
   {
-    "id": "b3b0aa9d35c225518dd59b2d",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "direct-locale-format"
-  },
-  {
-    "id": "37dbe4a6f141bf81451bb78e",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "527305ec0558e7ee49c0aae7",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "5a2710c6316626c53eb72631",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "5c7a5278c27a4ae77b06f682",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "8a17a68f46402ddf69718d37",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "8ea43903db3a665a2aa28e1e",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "a93461802b9a4fe16166d8c0",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "b0e9923b38eeb686c6315555",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "ba58d74a6a90bc5d26f40d1b",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "bfbfe84aabca85817bad211c",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "c9c02a05e9c3f8930f919ce5",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "cc460a43c72279a8831100db",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "f74b0bab69ab764a747db15e",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "01e8fd0017e72908a500480e",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "032197862adee7b760362611",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "05b4c66aaa4b4b3de8c21c62",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "0c76adb9d63abfc4065be2e0",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "116d7d0652f2461463df89eb",
     "path": "src/app/left/TreeBrowser.tsx",
     "rule": "jsx-text"
   },
@@ -870,37 +780,7 @@
     "rule": "jsx-text"
   },
   {
-    "id": "29316cca4327c49fa38f1346",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "38c974e1bf4a107892f5dec0",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "3d37e8b0ae61849ccb45ca8e",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "4209c317d480467268c1967c",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "50962f93308f19098cbf19bf",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "595b475dc8efc29b4f4c0f5e",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "5faf8d6951060565c5f87113",
     "path": "src/app/left/TreeBrowser.tsx",
     "rule": "jsx-text"
   },
@@ -915,27 +795,7 @@
     "rule": "jsx-text"
   },
   {
-    "id": "81f1cd3ff40b8a172dd37d6f",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "850c540701fb1184c95c18cb",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "8f630624045f1c3dfebc8493",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "93293adf6e45917bcd695977",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "cc58eacf3afc3ad08c677187",
     "path": "src/app/left/TreeBrowser.tsx",
     "rule": "jsx-text"
   },
@@ -945,17 +805,7 @@
     "rule": "jsx-text"
   },
   {
-    "id": "da050d6fe0d127bc1ed8a12b",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "e6f9a2213e32121dc8b15055",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "fc92c59b738b10d5692941b2",
     "path": "src/app/left/TreeBrowser.tsx",
     "rule": "jsx-text"
   },

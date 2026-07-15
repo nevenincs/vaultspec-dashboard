@@ -9,7 +9,7 @@ import type { HTMLAttributes, ReactNode } from "react";
 export interface SectionLabelProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
   /** Optional trailing count displayed after the section label. */
-  count?: number;
+  count?: string | number;
 }
 
 export function SectionLabel({

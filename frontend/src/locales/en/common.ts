@@ -1,5 +1,6 @@
 export const common = {
   accessibility: {
+    actionsForItem: "Actions for {{item}}",
     actionsMenu: "Actions",
     back: "Back",
     confirmAction: "Confirm {{action}}?",

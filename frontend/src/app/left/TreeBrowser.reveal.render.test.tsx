@@ -108,7 +108,7 @@ describe("TreeBrowser reveal-on-selection scroll (GS-003, live engine)", () => {
 
   it("scrolls a collapsed-away selected document into view (ancestor-expanded, follow mode OFF)", async () => {
     renderBrowser();
-    await screen.findByRole("navigation", { name: "vault browser" }, ENGINE_WAIT);
+    await screen.findByRole("navigation", { name: "Vault browser" }, ENGINE_WAIT);
 
     // Discover a REAL document path from the live vault: open the Documents section and
     // a category folder, then read a document row's `.vault/` title.

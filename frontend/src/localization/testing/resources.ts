@@ -7,6 +7,7 @@ export const ltrTestResources = {
   common: {
     accessibility: {
       ...en.common.accessibility,
+      actionsForItem: "Actions pour {{item}}",
       back: "Retour",
       recordShortcut: "Enregistrer un raccourci pour {{action}}",
       resizeActivityPanel: "Redimensionner le panneau d’activité",
@@ -138,7 +139,17 @@ export const ltrTestResources = {
   documents: {
     ...en.documents,
     accessibility: {
+      addDocumentToFeature: "Ajouter un document à une fonctionnalité",
       browserView: "Vue du navigateur",
+      decisionAccepted: "Décision acceptée",
+      decisionDeprecated: "Décision retirée",
+      decisionProposed: "Décision proposée",
+      decisionRejected: "Décision rejetée",
+      decisionSuperseded: "Décision remplacée",
+      planComplete: "Plan terminé",
+      planInProgress: "Plan en cours",
+      planNotStarted: "Plan non commencé",
+      treeBrowser: "Arborescence des documents",
       switchReadingAndEditingShortcut:
         "Basculer entre la lecture et la modification ({{accelerator}})",
       treeOptionsSortedByLatestActivity:
@@ -329,6 +340,40 @@ export const ltrTestResources = {
       linkFailed: "Impossible de lier les documents. Réessayez.",
       linkInProgress: "Liaison des documents…",
       linkSucceeded: "Documents liés.",
+    },
+    tree: {
+      created: "Créé le {{date}}",
+      decisionStatusAccepted: "Acceptée",
+      decisionStatusDeprecated: "Retirée",
+      decisionStatusProposed: "Proposée",
+      decisionStatusRejected: "Rejetée",
+      decisionStatusSuperseded: "Remplacée",
+      degraded: "Certains documents sont temporairement indisponibles.",
+      lastEdited: "Dernière modification le {{date}}",
+      emptyWorktree: "Aucun document dans cet arbre de travail pour le moment.",
+      loading: "Chargement des documents…",
+      noFilterMatches: "Aucun document ne correspond à ce filtre.",
+      noFilterMatchesYet:
+        "Aucun résultat pour le moment. La liste est toujours en cours de chargement.",
+      partialAnnouncement: "Chargement des documents restants.",
+      partialCount_one:
+        "Chargement de la liste complète. {{count, number}} document disponible pour le moment.",
+      partialCount_other:
+        "Chargement de la liste complète. {{count, number}} documents disponibles pour le moment.",
+      partialCount_many:
+        "Chargement de la liste complète. {{count, number}} documents disponibles pour le moment.",
+      planProgress: "{{done, number}} sur {{total, number}} terminés",
+      sizeSummary_one: "{{count, number}} mot, {{size}}",
+      sizeSummary_many: "{{count, number}} mots, {{size}}",
+      sizeSummary_other: "{{count, number}} mots, {{size}}",
+      unavailable:
+        "Les documents sont indisponibles. Actualisez l’application, puis réessayez.",
+      updated: "Mis à jour le {{date}}",
+      vaultBrowser: "Navigateur du coffre",
+      wordCount_one: "{{count, number}} mot",
+      wordCount_many: "{{count, number}} mots",
+      wordCount_other: "{{count, number}} mots",
+      weightBelowThreshold: "Moins de {{threshold}}",
     },
     labels: {
       document: "Document",
@@ -669,6 +714,7 @@ export const rtlTestResources = {
   common: {
     accessibility: {
       ...en.common.accessibility,
+      actionsForItem: "إجراءات {{item}}",
       back: "رجوع",
       recordShortcut: "تسجيل اختصار لـ {{action}}",
       resizeActivityPanel: "تغيير حجم لوحة النشاط",
@@ -798,7 +844,17 @@ export const rtlTestResources = {
   documents: {
     ...en.documents,
     accessibility: {
+      addDocumentToFeature: "إضافة مستند إلى ميزة",
       browserView: "عرض المتصفح",
+      decisionAccepted: "القرار مقبول",
+      decisionDeprecated: "تم سحب القرار",
+      decisionProposed: "القرار مقترح",
+      decisionRejected: "القرار مرفوض",
+      decisionSuperseded: "تم استبدال القرار",
+      planComplete: "الخطة مكتملة",
+      planInProgress: "الخطة قيد التنفيذ",
+      planNotStarted: "لم تبدأ الخطة",
+      treeBrowser: "شجرة المستندات",
       switchReadingAndEditingShortcut: "التبديل بين القراءة والتحرير ({{accelerator}})",
       treeOptionsSortedByLatestActivity: "خيارات شجرة المستندات، مرتبة حسب أحدث نشاط",
       treeOptionsSortedByDocumentCount:
@@ -968,6 +1024,50 @@ export const rtlTestResources = {
       linkFailed: "تعذر ربط المستندات. حاول مرة أخرى.",
       linkInProgress: "جارٍ ربط المستندات…",
       linkSucceeded: "تم ربط المستندات.",
+    },
+    tree: {
+      created: "تم الإنشاء في {{date}}",
+      decisionStatusAccepted: "مقبول",
+      decisionStatusDeprecated: "مسحوب",
+      decisionStatusProposed: "مقترح",
+      decisionStatusRejected: "مرفوض",
+      decisionStatusSuperseded: "مستبدل",
+      degraded: "بعض المستندات غير متاحة مؤقتًا.",
+      lastEdited: "آخر تعديل في {{date}}",
+      emptyWorktree: "لا توجد مستندات في شجرة العمل هذه حتى الآن.",
+      loading: "جارٍ تحميل المستندات…",
+      noFilterMatches: "لا توجد مستندات تطابق هذا الفلتر.",
+      noFilterMatchesYet: "لا توجد نتائج حتى الآن. ما زال تحميل القائمة جاريًا.",
+      partialAnnouncement: "جارٍ تحميل المستندات المتبقية.",
+      partialCount_one:
+        "جارٍ تحميل القائمة الكاملة. يتوفر {{count, number}} مستند حتى الآن.",
+      partialCount_zero:
+        "جارٍ تحميل القائمة الكاملة. يتوفر {{count, number}} مستند حتى الآن.",
+      partialCount_two:
+        "جارٍ تحميل القائمة الكاملة. يتوفر {{count, number}} مستندان حتى الآن.",
+      partialCount_few:
+        "جارٍ تحميل القائمة الكاملة. تتوفر {{count, number}} مستندات حتى الآن.",
+      partialCount_many:
+        "جارٍ تحميل القائمة الكاملة. يتوفر {{count, number}} مستندًا حتى الآن.",
+      partialCount_other:
+        "جارٍ تحميل القائمة الكاملة. يتوفر {{count, number}} مستند حتى الآن.",
+      planProgress: "اكتمل {{done, number}} من {{total, number}}",
+      sizeSummary_one: "{{count, number}} كلمة، {{size}}",
+      sizeSummary_zero: "{{count, number}} كلمة، {{size}}",
+      sizeSummary_two: "{{count, number}} كلمتان، {{size}}",
+      sizeSummary_few: "{{count, number}} كلمات، {{size}}",
+      sizeSummary_many: "{{count, number}} كلمة، {{size}}",
+      sizeSummary_other: "{{count, number}} كلمة، {{size}}",
+      unavailable: "المستندات غير متاحة. حدّث التطبيق، ثم حاول مرة أخرى.",
+      updated: "تاريخ التحديث {{date}}",
+      vaultBrowser: "متصفح الخزنة",
+      wordCount_one: "{{count, number}} كلمة",
+      wordCount_zero: "{{count, number}} كلمة",
+      wordCount_two: "{{count, number}} كلمتان",
+      wordCount_few: "{{count, number}} كلمات",
+      wordCount_many: "{{count, number}} كلمة",
+      wordCount_other: "{{count, number}} كلمة",
+      weightBelowThreshold: "أقل من {{threshold}}",
     },
     labels: {
       document: "مستند",
@@ -1162,8 +1262,8 @@ export const rtlTestResources = {
         indeterminate:
           "قد يكون الإعداد لا يزال قيد التنفيذ. تحقق من حالة المشروع قبل المحاولة مرة أخرى.",
         itemCount_zero: "{{count, number}} عنصر",
-        itemCount_one: "عنصر واحد",
-        itemCount_two: "عنصران",
+        itemCount_one: "{{count, number}} عنصر",
+        itemCount_two: "{{count, number}} عنصران",
         itemCount_few: "{{count, number}} عناصر",
         itemCount_many: "{{count, number}} عنصرًا",
         itemCount_other: "{{count, number}} عنصر",

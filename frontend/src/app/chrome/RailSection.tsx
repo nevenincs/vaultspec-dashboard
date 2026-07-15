@@ -30,7 +30,7 @@ export interface RailSectionProps extends Omit<
   /** The section title — rendered as the centralized UPPERCASE eyebrow. */
   title: string;
   /** Optional trailing count rendered inside the eyebrow (e.g. "OPEN PLANS 3"). */
-  count?: number;
+  count?: string | number;
   /** Resting open/closed state — owned by the caller's disclosure store. */
   open: boolean;
   /** Toggle intent — the caller flips its own state. */
