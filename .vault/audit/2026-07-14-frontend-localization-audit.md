@@ -2245,3 +2245,26 @@ lint recipe. Root independently passed the same 103 tests and complete frontend 
 Independent review approved the architecture and behavior. Thirty-nine exact exemptions
 were removed, reducing the scanner from 1,024 to 985 findings. S172 is accepted with no
 open findings.
+
+### W03.P08.S47 partial review | pass | Tree metadata follows the active locale
+
+TreeBrowser now resolves loading, degraded, unavailable, partial, empty, section,
+accessible action, decision-state, plan-progress, and count copy through typed English,
+French, and Arabic descriptors. Dates, counts, byte sizes, percentages, word counts, and
+tooltips use the active locale. A live test changes English to French to Arabic on the
+same rendered document row without reloading its data.
+
+Unknown decision states, document types, invalid dates, invalid counts, invalid progress,
+invalid sizes, and invalid corpus shares fail closed. Authored document titles preserve
+their exact casing and non-Latin text; a missing title uses the unchanged filename stem.
+Tooltips use complete Created, Updated, and Last edited lines separated by newlines, with
+no em dashes, middle-dot fragments, raw tokens, or manual English units.
+
+Root passed 50 focused tests and the complete frontend lint recipe. Terra passed the live
+and catalog suites, and independent Sol review approved the non-tier implementation after
+the fail-closed and locale-reactivity corrections. Thirty exact exemptions were removed,
+reducing the scanner from 985 to 955 findings and the TreeBrowser baseline from 40 to 10.
+
+S47 remains open. The unchanged plan-tier tooltip is the only identified fence, pending
+explicit approval of the proposed left-rail-tier-presentation amendment. No S47 execution
+record is created until that clause is resolved and the full step can be accepted.
