@@ -37,7 +37,8 @@ use ingest_struct::reader::blob_oid;
 use super::api::{ChangesetOperationKind, FrontmatterEditFields};
 use super::approvals::{V1_POLICY_VERSION, automated_self_approval_blocker};
 use super::conflicts::{
-    MAX_CONFLICT_SIBLINGS, detect_conflicts, document_lease_scope, existing_node_id,
+    ConflictFinding, ConflictKind, MAX_CONFLICT_SIBLINGS, detect_conflicts, document_lease_scope,
+    existing_node_id,
 };
 use super::core_adapter::{CoreAdapter, CoreCapability, CoreInvocation, WriteArgs};
 use super::events::{apply_recorded_event, apply_started_event};
@@ -306,7 +307,19 @@ fn preflight_in_uow(
     let live_siblings = uow.ledger().latest_changesets(MAX_CONFLICT_SIBLINGS)?;
     let conflict_report =
         detect_conflicts(worktree_root, &latest, &live_siblings, &[], request.now_ms);
-    if let Some(finding) = conflict_report.findings.first() {
+    // A CreateDocument path-collision against a SIBLING blocks the apply only when that
+    // sibling can actually land at the path right now — i.e. it is Approved or Applying.
+    // A draft/proposed/needs_review sibling (e.g. a revision the reviewer rejected back
+    // to draft during a reject→revise cycle) cannot land without re-review, so it does
+    // not compete for THIS apply; were it later revived, the existing-file variant of the
+    // collision (which carries no sibling id) catches it. The served conflict projection
+    // still surfaces the softer draft-vs-draft collision for reviewers. Every other
+    // conflict kind blocks unchanged.
+    if let Some(finding) = conflict_report
+        .findings
+        .iter()
+        .find(|finding| conflict_blocks_apply(finding, &live_siblings))
+    {
         return Ok(Ok(Preflight::Denied(
             ActionEligibility::denied(CommandKind::RequestApply, finding.reason.clone()),
             classify_conflict_kind(finding.kind),
@@ -474,6 +487,36 @@ fn preflight_in_uow(
         invocation,
         follow_up_invocation,
     }))))
+}
+
+/// Whether a conflict finding BLOCKS an apply. Every finding blocks EXCEPT a
+/// CreateDocument path-collision whose competitor SIBLING cannot itself land right
+/// now: only an `Approved`/`Applying` sibling genuinely races to create the path at
+/// apply time. A `draft`/`proposed`/`needs_review` sibling (e.g. a revision the
+/// reviewer rejected back to draft during a reject→revise cycle) needs re-review
+/// before it could land, so it does not compete for THIS apply and must not deny it.
+/// The existing-file variant of the collision carries no `conflicting_changeset_id`
+/// and always blocks (core refuses to overwrite an on-disk file), so a revived dead
+/// sibling is still caught the moment it actually competes.
+fn conflict_blocks_apply(
+    finding: &ConflictFinding,
+    live_siblings: &[ChangesetAggregateRecord],
+) -> bool {
+    if finding.kind != ConflictKind::CreateDocumentPathCollision {
+        return true;
+    }
+    let Some(conflicting_id) = finding.conflicting_changeset_id.as_ref() else {
+        return true;
+    };
+    live_siblings
+        .iter()
+        .find(|sibling| &sibling.changeset_id == conflicting_id)
+        .is_some_and(|sibling| {
+            matches!(
+                sibling.status,
+                ChangesetStatus::Approved | ChangesetStatus::Applying
+            )
+        })
 }
 
 fn complete_in_uow(

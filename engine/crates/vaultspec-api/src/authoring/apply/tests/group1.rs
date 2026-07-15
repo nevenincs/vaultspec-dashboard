@@ -1256,3 +1256,118 @@ fn edit_frontmatter_out_of_band_edit_conflicts_and_refuses_the_apply_as_a_value(
         "the refused apply left the ledger untouched"
     );
 }
+
+#[test]
+fn approved_apply_is_not_blocked_by_a_non_landable_create_sibling() {
+    // Option C (reject→revise apply): a CreateDocument path-collision only DENIES the
+    // apply when the colliding sibling can itself land now (Approved/Applying). A
+    // rejected-back-to-draft sibling — the exact residue of a reject→revise cycle —
+    // must NOT block the approved revision's apply. The existing-file collision (no
+    // sibling id) and every other conflict kind still block.
+    use super::super::conflict_blocks_apply;
+    use crate::authoring::conflicts::{ConflictFinding, ConflictKind};
+
+    let path = ".vault/adr/2026-07-15-x-adr.md".to_string();
+    let sibling_id = ChangesetId::new("changeset:sibling-r1").unwrap();
+
+    let create_draft = ChangesetChildOperationDraft {
+        child_key: "child_1".to_string(),
+        operation: ChangesetOperationKind::CreateDocument,
+        target: TargetRevisionFence {
+            document: DocumentRef::ProvisionalCreate {
+                provisional_doc_id: "provisional:child_1".to_string(),
+                doc_type: "adr".to_string(),
+                feature: "x".to_string(),
+                title: "X ADR".to_string(),
+                collision_status: ProvisionalCollisionStatus::Unknown,
+                proposed_stem: None,
+            },
+            base_revision: None,
+            current_revision: None,
+        },
+        draft: DraftMutation {
+            mode: DraftMode::WholeDocument,
+            body: "preview\n".to_string(),
+            frontmatter: None,
+            new_stem: None,
+            section_selector: None,
+            plan_step: None,
+        },
+    };
+    let materialized = MaterializedProposalOperation::materialize_create_document(
+        &sibling_id,
+        create_draft,
+        1_768_435_200_000,
+    )
+    .unwrap();
+    let child = ChangesetChildOperationInput::from_materialized(
+        materialized,
+        "material:child_1".to_string(),
+        "validation:child_1".to_string(),
+    );
+    let build_sibling = |status: ChangesetStatus| {
+        ChangesetAggregateRecord::new(ChangesetRevisionInput {
+            changeset_id: sibling_id.clone(),
+            previous_revision: None,
+            kind: ChangesetKind::Authoring,
+            status,
+            session_id: Some(SessionId::new("session:x").unwrap()),
+            actor: actor("agent:other", ActorKind::Agent),
+            summary: "sibling".to_string(),
+            children: vec![child.clone()],
+            created_at_ms: 10,
+        })
+        .unwrap()
+    };
+
+    let collision = ConflictFinding {
+        child_key: "child_1".to_string(),
+        kind: ConflictKind::CreateDocumentPathCollision,
+        reason: "a different live proposal's create predicts the SAME path".to_string(),
+        document: child.target.document.clone(),
+        reviewed_base_revision: None,
+        current_revision: None,
+        recorded_path: None,
+        current_path: Some(path.clone()),
+        conflicting_changeset_id: Some(sibling_id.clone()),
+        conflicting_child_key: Some("child_1".to_string()),
+        lease_holder: None,
+    };
+
+    // A non-landable sibling (draft/proposed/needs_review) does NOT block the apply.
+    for status in [
+        ChangesetStatus::Draft,
+        ChangesetStatus::Proposed,
+        ChangesetStatus::NeedsReview,
+    ] {
+        assert!(
+            !conflict_blocks_apply(&collision, std::slice::from_ref(&build_sibling(status))),
+            "a {status:?} sibling must not block the approved revision's apply",
+        );
+    }
+
+    // A sibling that can actually land (Approved/Applying) DOES block.
+    for status in [ChangesetStatus::Approved, ChangesetStatus::Applying] {
+        assert!(
+            conflict_blocks_apply(&collision, std::slice::from_ref(&build_sibling(status))),
+            "an {status:?} sibling genuinely competes and must block",
+        );
+    }
+
+    // The existing-file variant (no sibling id) always blocks.
+    let existing_file = ConflictFinding {
+        conflicting_changeset_id: None,
+        ..collision.clone()
+    };
+    assert!(conflict_blocks_apply(&existing_file, &[]));
+
+    // A different conflict kind always blocks, regardless of sibling status.
+    let overlap = ConflictFinding {
+        kind: ConflictKind::OverlappingHunks,
+        ..collision.clone()
+    };
+    assert!(conflict_blocks_apply(
+        &overlap,
+        std::slice::from_ref(&build_sibling(ChangesetStatus::Draft))
+    ));
+}
