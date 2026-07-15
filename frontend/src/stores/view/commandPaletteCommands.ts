@@ -629,21 +629,12 @@ export interface CommandPaletteRowGroupView {
 export interface CommandPalettePresentationView {
   safeCursor: number;
   activeCommand: ResolvedPaletteCommand | undefined;
+  activeRow: CommandPaletteRowView | undefined;
+  resultCount: number;
   rowGroups: CommandPaletteRowGroupView[];
   noMatch: boolean;
   navLoading: boolean;
-  noMatchMessage: string;
-  navLoadingMessage: string;
-  inputPlaceholder: string;
-  dialogLabel: string;
-  listboxLabel: string;
-  liveMessage: string;
   activeOptionDomIdPart: string | null;
-  footerHints: {
-    navigate: string;
-    open: string;
-    close: string;
-  };
 }
 
 export type CommandPaletteActivationView =
@@ -835,41 +826,15 @@ export function deriveCommandPalettePresentationView(
       .map((command) => rowsById.get(command.id))
       .filter((row): row is CommandPaletteRowView => row !== undefined),
   }));
-  const resultCountLabel = `${commandView.matchedResults.length} command${
-    commandView.matchedResults.length === 1 ? "" : "s"
-  }`;
-
-  let liveMessage = resultCountLabel;
-  if (commandView.noMatch) {
-    liveMessage = "nothing matches";
-  } else if (
-    activeCommand &&
-    state.confirmArmed &&
-    state.armedCommandId === activeCommand.id
-  ) {
-    liveMessage = `${resultCountLabel}. ${commandPaletteRowLabel(activeCommand, true)}`;
-  } else if (activeCommand) {
-    liveMessage = `${resultCountLabel}. ${activeCommand.label}`;
-  }
-
   return {
     safeCursor,
     activeCommand,
+    activeRow,
+    resultCount: commandView.matchedResults.length,
     rowGroups,
     noMatch: commandView.noMatch,
     navLoading: commandView.navLoading,
-    noMatchMessage: "nothing matches",
-    navLoadingMessage: "loading navigation…",
-    inputPlaceholder: "Type a command or search…",
-    dialogLabel: "command palette",
-    listboxLabel: "commands",
-    liveMessage,
     activeOptionDomIdPart: activeRow?.optionDomIdPart ?? null,
-    footerHints: {
-      navigate: "navigate",
-      open: "open",
-      close: "close",
-    },
   };
 }
 

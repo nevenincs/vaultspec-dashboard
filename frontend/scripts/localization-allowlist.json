@@ -1955,11 +1955,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "2d256b6174b01889a1a3c43f",
-    "path": "src/app/palette/CommandPalette.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "38e5af3af1a7a22da2cbdb0a",
     "path": "src/app/palette/CommandPalette.tsx",
     "rule": "jsx-text"

@@ -424,7 +424,7 @@ describe("command palette command projection", () => {
     expect(deriveCommandPaletteKeyboardIntent({ key: "ArrowDown" })).toBeNull();
   });
 
-  it("projects rows, confirm labels, and live copy from one presentation seam", () => {
+  it("projects rows and confirm state without resolving live copy", () => {
     const ops = command("ops:rag:reindex", {
       label: "ops: reindex",
       family: "rag",
@@ -450,7 +450,8 @@ describe("command palette command projection", () => {
       confirmShortcutLabel: "⏎ ⏎",
       selectionHintVisible: false,
     });
-    expect(view.liveMessage).toBe("1 command. Confirm ops: reindex?");
+    expect(view.activeRow?.label).toBe("Confirm ops: reindex?");
+    expect(view.resultCount).toBe(1);
   });
 
   it("derives activation outcomes for disabled, confirm, and run commands", () => {

@@ -79,6 +79,7 @@ export function isSafeMessageTemplate(
 
   let cursor = 0;
   let tokenCount = 0;
+  const tokenNames = new Set<string>();
   while (cursor < template.length) {
     const opening = template.indexOf("{{", cursor);
     const closingBeforeOpening = template.indexOf("}}", cursor);
@@ -88,7 +89,7 @@ export function isSafeMessageTemplate(
     ) {
       return false;
     }
-    if (opening === -1) return true;
+    if (opening === -1) break;
 
     const closing = template.indexOf("}}", opening + 2);
     const nestedOpening = template.indexOf("{{", opening + 2);
@@ -113,11 +114,16 @@ export function isSafeMessageTemplate(
     ) {
       return false;
     }
+    tokenNames.add(name);
 
     cursor = closing + 2;
   }
 
-  return true;
+  const valueNames = values === undefined ? [] : Reflect.ownKeys(values);
+  return (
+    valueNames.length === tokenNames.size &&
+    valueNames.every((name) => typeof name === "string" && tokenNames.has(name))
+  );
 }
 
 function tryResolve(

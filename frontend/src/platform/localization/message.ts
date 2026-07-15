@@ -88,8 +88,10 @@ export interface CountMessageDescriptor<
   Key extends PluralMessageKey = PluralMessageKey,
 > {
   readonly key: Key;
-  readonly values: Readonly<{ count: number }>;
+  readonly values: MessageValues & Readonly<{ count: number }>;
 }
+
+export type AdditionalCountMessageValues = MessageValues & Readonly<{ count?: never }>;
 
 export type AnyMessageDescriptor = MessageDescriptor | CountMessageDescriptor;
 
@@ -341,26 +343,29 @@ export function normalizeCountMessageDescriptor(
   if (record === null || !hasExactFields(record, ["key", "values"])) return null;
   if (!isPluralMessageKey(record.key)) return null;
 
-  const values = ownDataRecord(record.values);
-  if (values === null || !hasExactFields(values, ["count"])) return null;
-  const count = values.count;
+  const normalizedValues = normalizeMessageValues(record.values);
+  if (normalizedValues === null) return null;
+  const count = normalizedValues.count;
   if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) {
     return null;
   }
 
   return Object.freeze({
     key: record.key,
-    values: Object.freeze({ count }),
+    values: Object.freeze({ ...normalizedValues, count }),
   });
 }
 
 export function createCountMessageDescriptor<const Key extends PluralMessageKey>(
   key: Key,
   count: number,
+  additionalValues?: AdditionalCountMessageValues,
 ): CountMessageDescriptor<Key> | null {
+  const values = normalizeMessageValues(additionalValues ?? {});
+  if (values === null || Object.hasOwn(values, "count")) return null;
   return normalizeCountMessageDescriptor({
     key,
-    values: { count },
+    values: { ...values, count },
   }) as CountMessageDescriptor<Key> | null;
 }
 

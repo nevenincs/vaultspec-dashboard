@@ -68,7 +68,7 @@ describe("command-palette toggle binding", () => {
       id: COMMAND_PALETTE_ACTION_ID,
       defaultChord: "Mod+K",
       label: COMMAND_PALETTE_SHORTCUT_LABEL,
-      group: "General",
+      group: { key: "common:shortcutGroups.general" },
       context: "global",
     });
   });
@@ -235,7 +235,7 @@ describe("groupByFamily", () => {
 });
 
 describe("deriveCommandPalettePresentationView", () => {
-  it("derives the selected command, labels, and live-region count", () => {
+  it("derives selected-row structure and result state without shell copy", () => {
     const ordered = filterCommands(sample(), "fit");
     const groups = groupByFamily(ordered);
     const view = deriveCommandPalettePresentationView(
@@ -251,10 +251,13 @@ describe("deriveCommandPalettePresentationView", () => {
 
     expect(view.safeCursor).toBe(0);
     expect(view.activeCommand?.id).toBe("graph:fit");
+    expect(view.activeRow?.id).toBe("graph:fit");
+    expect(view.resultCount).toBe(1);
+    expect(view.navLoading).toBe(true);
     expect(view.rowGroups).toEqual([
       {
         family: "navigate",
-        label: "navigate",
+        label: { key: "common:commandFamilies.navigation" },
         rows: [
           expect.objectContaining({
             id: "graph:fit",
@@ -272,16 +275,6 @@ describe("deriveCommandPalettePresentationView", () => {
         ],
       },
     ]);
-    expect(view.inputPlaceholder).toBe("Type a command or search…");
-    expect(view.dialogLabel).toBe("command palette");
-    expect(view.listboxLabel).toBe("commands");
-    expect(view.navLoadingMessage).toBe("loading navigation…");
-    expect(view.footerHints).toEqual({
-      navigate: "navigate",
-      open: "open",
-      close: "close",
-    });
-    expect(view.liveMessage).toBe("1 command. graph: fit to view");
   });
 
   it("projects DOM-safe option id parts for special-character command ids", () => {
@@ -312,7 +305,7 @@ describe("deriveCommandPalettePresentationView", () => {
     expect(view.activeOptionDomIdPart).toBe(rows[1]?.optionDomIdPart);
   });
 
-  it("announces the armed confirmation prompt through the presentation view", () => {
+  it("projects the armed confirmation prompt as the current row", () => {
     const ordered = filterCommands(sample(), "vault");
     const groups = groupByFamily(ordered);
     const active = ordered.find((command) => command.confirm)!;
@@ -342,6 +335,7 @@ describe("deriveCommandPalettePresentationView", () => {
       confirmShortcutLabel: "⏎ ⏎",
       selectionHintVisible: false,
     });
-    expect(view.liveMessage).toBe(`1 command. Confirm ${active.label}?`);
+    expect(view.activeRow?.label).toBe(`Confirm ${active.label}?`);
+    expect(view.resultCount).toBe(1);
   });
 });

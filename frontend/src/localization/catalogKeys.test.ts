@@ -77,6 +77,16 @@ const EXPECTED_CATALOG_KEYS = [
   "common:commandFamilies.searchMaintenance",
   "common:commandFamilies.settings",
   "common:commandFamilies.workspaceMaintenance",
+  "common:commandPalette.dialogLabel",
+  "common:commandPalette.inputPlaceholder",
+  "common:commandPalette.listboxLabel",
+  "common:commandPalette.noMatches",
+  "common:commandPalette.loading",
+  "common:commandPalette.selectionAnnouncement_one",
+  "common:commandPalette.selectionAnnouncement_other",
+  "common:commandPalette.footer.navigate",
+  "common:commandPalette.footer.open",
+  "common:commandPalette.footer.close",
   "common:disabledReasons.actionUnavailable",
   "common:disabledReasons.currentVersionRequired",
   "common:disabledReasons.desktopEditorRequired",
@@ -201,8 +211,12 @@ const EXPECTED_CATALOG_KEYS = [
 
 const EXPECTED_PUBLIC_MESSAGE_KEYS = [
   ...EXPECTED_CATALOG_KEYS.filter(
-    (key) => !/^common:palette\.commandCount_(?:one|other)$/u.test(key),
+    (key) =>
+      !/^common:(?:palette\.commandCount|commandPalette\.selectionAnnouncement)_(?:one|other)$/u.test(
+        key,
+      ),
   ),
+  "common:commandPalette.selectionAnnouncement",
   "common:palette.commandCount",
 ] as readonly MessageKey[];
 
@@ -252,7 +266,10 @@ describe("shipped localization catalog keys", () => {
       [...EXPECTED_CATALOG_KEYS].sort(),
     );
     expect([...MESSAGE_KEYS].sort()).toEqual([...EXPECTED_PUBLIC_MESSAGE_KEYS].sort());
-    expect(PLURAL_MESSAGE_KEYS).toEqual(["common:palette.commandCount"]);
+    expect(PLURAL_MESSAGE_KEYS).toEqual([
+      "common:commandPalette.selectionAnnouncement",
+      "common:palette.commandCount",
+    ]);
     expect(isPluralMessageKey("common:palette.commandCount")).toBe(true);
     expect(isMessageKey("common:palette.commandCount_one")).toBe(false);
     for (const key of EXPECTED_PUBLIC_MESSAGE_KEYS) {

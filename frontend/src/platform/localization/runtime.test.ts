@@ -164,11 +164,37 @@ describe("localization runtime and messages", () => {
         Number.MAX_SAFE_INTEGER + 1,
       ),
     ).toBeNull();
+    const selection = createCountMessageDescriptor(
+      "common:commandPalette.selectionAnnouncement",
+      2,
+      { command: "Open settings" },
+    );
+    expect(selection).toEqual({
+      key: "common:commandPalette.selectionAnnouncement",
+      values: { command: "Open settings", count: 2 },
+    });
+    expect(Object.isFrozen(selection)).toBe(true);
+    expect(Object.isFrozen(selection?.values)).toBe(true);
+    expect(
+      createCountMessageDescriptor("common:palette.commandCount", 1, {
+        count: 99,
+      } as never),
+    ).toBeNull();
     expect(
       normalizeCountMessageDescriptor({
-        key: "common:palette.commandCount",
-        values: { count: 1, privateValue: "hidden" },
+        key: "common:commandPalette.selectionAnnouncement",
+        values: { command: "Open settings" },
       }),
+    ).toBeNull();
+    expect(
+      createCountMessageDescriptor(
+        "common:commandPalette.selectionAnnouncement",
+        1,
+        Object.defineProperty({}, "command", {
+          enumerable: true,
+          get: () => "Open settings",
+        }) as never,
+      ),
     ).toBeNull();
   });
 
@@ -190,6 +216,13 @@ describe("localization runtime and messages", () => {
       expect(isSafeMessageTemplate(template, { count: 2, name: "item" })).toBe(false);
     }
     expect(isSafeMessageTemplate("{{count, number}}", { count: "2" })).toBe(false);
+    expect(
+      isSafeMessageTemplate("{{count, number}} commands", {
+        count: 2,
+        detail: "hidden",
+      }),
+    ).toBe(false);
+    expect(isSafeMessageTemplate("{{name}} and {{name}}", { name: "item" })).toBe(true);
   });
 
   it("prevents generic descriptors from bypassing plural selection", () => {
@@ -208,6 +241,26 @@ describe("localization runtime and messages", () => {
         createCountMessageDescriptor("common:palette.commandCount", 2),
       ),
     ).toBe("2 commands");
+    expect(
+      resolveMessage(
+        runtime,
+        createCountMessageDescriptor("common:commandPalette.selectionAnnouncement", 2, {
+          command: "Open settings",
+        }),
+      ),
+    ).toBe("2 commands. Open settings");
+    expect(
+      resolveMessage(
+        runtime,
+        createCountMessageDescriptor("common:commandPalette.selectionAnnouncement", 2),
+      ),
+    ).toBe(fallback);
+    expect(
+      resolveMessage(runtime, {
+        key: "common:commandPalette.selectionAnnouncement",
+        values: { count: 2, command: "Open settings", detail: "hidden" },
+      }),
+    ).toBe(fallback);
     expect(
       resolveMessage(runtime, {
         key: "common:palette.commandCount",

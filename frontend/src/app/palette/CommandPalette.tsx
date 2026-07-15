@@ -28,6 +28,7 @@ import { useTranslation } from "react-i18next";
 import { Kbd, Skeleton, SkeletonRow } from "../kit";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import type { MessageResolutionResult } from "../../platform/localization/fallback";
+import { createCountMessageDescriptor } from "../../platform/localization/message";
 import { resolveKeycapPresentations } from "../../platform/keymap/chord";
 import { isRunnable } from "../../platform/actions/action";
 import { localizationNamespaces } from "../../platform/localization/runtime";
@@ -44,6 +45,7 @@ import {
   useCommandPaletteCursor,
   useCommandPaletteMode,
   useCommandPaletteOpen,
+  useCommandPaletteOpsFeedback,
   useCommandPaletteQuery,
   useSearchPaletteGlobalShortcut,
   useDocumentSearchGlobalShortcut,
@@ -101,6 +103,7 @@ function CommandPaletteSurface() {
   const open = useCommandPaletteOpen();
   const query = useCommandPaletteQuery();
   const cursor = useCommandPaletteCursor();
+  const opsFeedback = useCommandPaletteOpsFeedback();
   const resolveMessage = useLocalizedMessageResolver();
   const { i18n } = useTranslation(localizationNamespaces, { useSuspense: false });
   const locale = i18n.resolvedLanguage ?? i18n.language;
@@ -208,6 +211,49 @@ function CommandPaletteSurface() {
     armedCommandId,
   });
   const { activeCommand, safeCursor } = presentation;
+  const dialogLabel = resolveMessage({ key: "common:commandPalette.dialogLabel" });
+  const inputPlaceholder = resolveMessage({
+    key: "common:commandPalette.inputPlaceholder",
+  });
+  const listboxLabel = resolveMessage({ key: "common:commandPalette.listboxLabel" });
+  const noMatches = resolveMessage({ key: "common:commandPalette.noMatches" });
+  const loading = resolveMessage({ key: "common:commandPalette.loading" });
+  const footerNavigate = resolveMessage({
+    key: "common:commandPalette.footer.navigate",
+  });
+  const footerOpen = resolveMessage({ key: "common:commandPalette.footer.open" });
+  const footerClose = resolveMessage({ key: "common:commandPalette.footer.close" });
+  const resultCountDescriptor = createCountMessageDescriptor(
+    "common:palette.commandCount",
+    presentation.resultCount,
+  );
+  const selectionAnnouncementDescriptor = presentation.activeRow
+    ? createCountMessageDescriptor(
+        "common:commandPalette.selectionAnnouncement",
+        presentation.resultCount,
+        { command: presentation.activeRow.label },
+      )
+    : null;
+  const liveMessage =
+    presentation.navLoading && presentation.noMatch
+      ? loading.message
+      : presentation.noMatch
+        ? noMatches.message
+        : resolveMessage(
+            selectionAnnouncementDescriptor ??
+              resultCountDescriptor ?? { key: "common:commandPalette.listboxLabel" },
+          ).message;
+  const escapeKeycap = resolveKeycapPresentations(
+    [{ key: "common:keycaps.escape" }],
+    resolveMessage,
+  ).join("");
+  const opsFeedbackResolution = opsFeedback
+    ? resolveMessage(opsFeedback.message)
+    : null;
+  const visibleOpsFeedback =
+    opsFeedbackResolution !== null && !opsFeedbackResolution.usedFallback
+      ? opsFeedbackResolution.message
+      : null;
 
   useEffect(() => {
     const nextCursor = safeCursor < 0 ? 0 : safeCursor;
@@ -316,7 +362,7 @@ function CommandPaletteSurface() {
             ref={panelRef}
             role="dialog"
             aria-modal="true"
-            aria-label={presentation.dialogLabel}
+            aria-label={dialogLabel.message}
             className="flex w-[32rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-fg-lg border border-rule bg-paper-raised shadow-fg-popover animate-slide-in-down"
             onMouseDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => trapTabFocus(panelRef.current, e)}
@@ -351,7 +397,7 @@ function CommandPaletteSurface() {
                   if (intent.kind === "move-cursor") moveCursor(intent.delta);
                   else runAt(safeCursor);
                 }}
-                placeholder={presentation.inputPlaceholder}
+                placeholder={inputPlaceholder.message}
                 className="w-full bg-transparent py-fg-3 text-body text-ink outline-none placeholder:text-ink-faint"
               />
             </div>
@@ -360,15 +406,15 @@ function CommandPaletteSurface() {
             <ul
               id={listboxId}
               role="listbox"
-              aria-label={presentation.listboxLabel}
+              aria-label={listboxLabel.message}
               className="max-h-80 overflow-y-auto py-fg-1 text-body"
             >
-              {presentation.noMatch && (
+              {presentation.noMatch && !presentation.navLoading && (
                 <li
                   role="presentation"
                   className="px-fg-4 py-fg-3 text-center text-ink-muted"
                 >
-                  {presentation.noMatchMessage}
+                  {noMatches.message}
                 </li>
               )}
               {presentation.rowGroups.map((group) => {
@@ -436,10 +482,7 @@ function CommandPaletteSurface() {
                 // standing in for result rows, the human search message only in the kit
                 // `Skeleton`'s sr-only — never on-screen "Searching…" text.
                 <li role="presentation" className="px-fg-4 py-fg-2">
-                  <Skeleton
-                    label={presentation.navLoadingMessage ?? "Searching…"}
-                    className="gap-fg-1-5"
-                  >
+                  <Skeleton label={loading.message} className="gap-fg-1-5">
                     <SkeletonRow width="w-3/4" />
                     <SkeletonRow width="w-1/2" />
                   </Skeleton>
@@ -447,23 +490,34 @@ function CommandPaletteSurface() {
               )}
             </ul>
 
+            {visibleOpsFeedback !== null && (
+              <div
+                role="status"
+                data-tone={opsFeedback?.tone}
+                className="border-t border-rule px-fg-4 py-fg-2 text-caption data-[tone=neutral]:text-ink-muted data-[tone=success]:text-state-complete data-[tone=error]:text-state-broken"
+              >
+                {visibleOpsFeedback}
+              </div>
+            )}
+
             {/* Footer hints (board 94:2): navigate / open / close with Kbd chips. */}
             <div className="flex items-center gap-fg-3 border-t border-rule px-fg-4 py-fg-2 text-caption text-ink-faint">
               <span className="flex items-center gap-fg-1">
-                {presentation.footerHints.navigate} <Kbd>↑</Kbd>
+                {footerNavigate.message} <Kbd>↑</Kbd>
                 <Kbd>↓</Kbd>
               </span>
               <span className="flex items-center gap-fg-1">
-                {presentation.footerHints.open} <Kbd>↵</Kbd>
+                {footerOpen.message} <Kbd>↵</Kbd>
               </span>
               <span className="flex items-center gap-fg-1">
-                {presentation.footerHints.close} <Kbd>esc</Kbd>
+                {footerClose.message}{" "}
+                {escapeKeycap.length > 0 && <Kbd>{escapeKeycap}</Kbd>}
               </span>
             </div>
 
             {/* Polite live region: result count, selection, and arm prompt. */}
             <div id={liveRegionId} aria-live="polite" className="sr-only">
-              {presentation.liveMessage}
+              {liveMessage}
             </div>
           </div>
         </div>

@@ -31,7 +31,10 @@ import {
 } from "../../stores/server/dashboardState";
 import { engineKeys } from "../../stores/server/queries";
 import { queryClient } from "../../stores/server/queryClient";
-import { useCommandPaletteStore } from "../../stores/view/commandPalette";
+import {
+  commandPaletteOpsFeedback,
+  useCommandPaletteStore,
+} from "../../stores/view/commandPalette";
 import {
   resetKeyActions,
   useKeymapDispatcher,
@@ -172,19 +175,46 @@ describe("CommandPalette lifecycle", () => {
     ]);
 
     try {
-      renderPalette();
+      const { container } = renderPalette();
       act(() => useCommandPaletteStore.getState().openPalette());
       fireEvent.change(screen.getByRole("combobox"), {
         target: { value: "archive feature" },
       });
-      fireEvent.click(screen.getByRole("option", { name: "Archive feature" }));
-      fireEvent.click(screen.getByRole("option", { name: "Confirm Archive feature?" }));
+      const option = screen.getByRole("option", { name: "Archive feature" });
+      const activeDescendant = screen
+        .getByRole("combobox")
+        .getAttribute("aria-activedescendant");
+      fireEvent.click(option);
+      const armedOption = screen.getByRole("option", {
+        name: "Confirm Archive feature?",
+      });
+      expect(armedOption).toBe(option);
+      expect(armedOption.id).toBe(activeDescendant);
+      expect(container.querySelector('[aria-live="polite"]')?.textContent).toBe(
+        "1 command. Confirm Archive feature?",
+      );
+      fireEvent.click(armedOption);
 
-      expect(screen.getByRole("dialog", { name: "command palette" })).toBeTruthy();
+      expect(screen.getByRole("dialog", { name: "Command palette" })).toBeTruthy();
       expect(appConfirmGuard.isArmed("ops:run")).toBe(false);
     } finally {
       dispose();
     }
+  });
+
+  it("announces loading instead of an empty result while vocabulary is pending", () => {
+    useViewStore.getState().setScope("palette-loading-scope");
+    const { container } = renderPalette(createTestLocalizationRuntime());
+    act(() => useCommandPaletteStore.getState().openPalette());
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "no matching command phrase" },
+    });
+
+    expect(screen.getByRole("status", { name: "Loading commands…" })).toBeTruthy();
+    expect(screen.queryByText("No matching commands")).toBeNull();
+    expect(container.querySelector('[aria-live="polite"]')?.textContent).toBe(
+      "Loading commands…",
+    );
   });
 
   it("uses the full typed confirmation dialog before running a command", async () => {
@@ -225,7 +255,7 @@ describe("CommandPalette lifecycle", () => {
 
       fireEvent.keyDown(document, { key: "Escape" });
       expect(screen.queryByRole("dialog", { name: "Repair feature?" })).toBeNull();
-      expect(screen.getByRole("dialog", { name: "command palette" })).toBeTruthy();
+      expect(screen.getByRole("dialog", { name: "Command palette" })).toBeTruthy();
       await waitFor(() => {
         expect(document.activeElement).toBe(screen.getByRole("combobox"));
       });
@@ -234,7 +264,7 @@ describe("CommandPalette lifecycle", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Repair feature" }));
       expect(runs).toBe(1);
-      expect(screen.queryByRole("dialog", { name: "command palette" })).toBeNull();
+      expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
     } finally {
       dispose();
     }
@@ -265,6 +295,92 @@ describe("CommandPalette lifecycle", () => {
     } finally {
       dispose();
     }
+  });
+
+  it("reacts to locale changes across the shell, live count, and Escape keycap", async () => {
+    const runtime = createTestLocalizationRuntime();
+    const { container } = renderPalette(runtime);
+    act(() => useCommandPaletteStore.getState().openPalette());
+
+    const dialog = screen.getByRole("dialog", { name: "Command palette" });
+    const input = screen.getByRole("combobox") as HTMLInputElement;
+    const liveRegion = container.querySelector('[aria-live="polite"]');
+    const optionCount = screen.getAllByRole("option").length;
+    expect(input.placeholder).toBe("Search commands");
+    expect(screen.getByText("Escape", { selector: "kbd" })).toBeTruthy();
+    expect(liveRegion?.textContent).toMatch(
+      new RegExp(`^${optionCount} commands?\\. `),
+    );
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+
+    expect(screen.getByRole("dialog", { name: "Palette de commandes" })).toBe(dialog);
+    expect(input.placeholder).toBe("Rechercher des commandes");
+    expect(screen.getByText("Échap", { selector: "kbd" })).toBeTruthy();
+    expect(liveRegion?.textContent).toMatch(
+      new RegExp(`^${optionCount} commandes?\\. `),
+    );
+  });
+
+  it("uses real singular and plural selection announcements", () => {
+    const dispose = registerCommandProvider("test:plural-announcements", () => [
+      {
+        id: "test:copy-document-name",
+        label: { key: "common:actions.copyDocumentName" },
+        family: "app",
+        run: () => undefined,
+      },
+      {
+        id: "test:copy-summary-a",
+        label: { key: "common:actions.copySummary" },
+        family: "app",
+        run: () => undefined,
+      },
+      {
+        id: "test:copy-summary-b",
+        label: { key: "common:actions.copySummary" },
+        family: "app",
+        run: () => undefined,
+      },
+    ]);
+
+    try {
+      const { container } = renderPalette(createTestLocalizationRuntime());
+      act(() => useCommandPaletteStore.getState().openPalette());
+      const input = screen.getByRole("combobox");
+      const liveRegion = container.querySelector('[aria-live="polite"]');
+
+      fireEvent.change(input, { target: { value: "Copy document name" } });
+      expect(screen.getAllByRole("option")).toHaveLength(1);
+      expect(liveRegion?.textContent).toBe("1 command. Copy document name");
+
+      fireEvent.change(input, { target: { value: "Copy summary" } });
+      expect(screen.getAllByRole("option")).toHaveLength(2);
+      expect(liveRegion?.textContent).toBe("2 commands. Copy summary");
+    } finally {
+      dispose();
+    }
+  });
+
+  it("renders typed operation feedback as a locale-reactive visible status", async () => {
+    const runtime = createTestLocalizationRuntime();
+    renderPalette(runtime);
+    act(() => useCommandPaletteStore.getState().openPalette());
+    act(() => {
+      useCommandPaletteStore.getState().beginOpsFeedback(
+        commandPaletteOpsFeedback({
+          concept: "check-workspace",
+          condition: "running",
+        }),
+      );
+    });
+
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("Checking workspace…");
+    expect(status.getAttribute("data-tone")).toBe("neutral");
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(status.textContent).toBe("Vérification de l’espace de travail…");
   });
 
   it("updates localized family headings without replacing their groups", async () => {
@@ -393,7 +509,7 @@ describe("CommandPalette lifecycle", () => {
       await waitFor(() => {
         expect(screen.queryByRole("dialog", { name: "Archive feature?" })).toBeNull();
       }, ENGINE_WAIT);
-      expect(screen.getByRole("dialog", { name: "command palette" })).toBeTruthy();
+      expect(screen.getByRole("dialog", { name: "Command palette" })).toBeTruthy();
 
       seedPaletteDashboardState(scope, { kind: "live" });
       fireEvent.change(screen.getByRole("combobox"), {
@@ -410,7 +526,7 @@ describe("CommandPalette lifecycle", () => {
       }, ENGINE_WAIT);
       expect(screen.queryByRole("dialog", { name: "Repair feature?" })).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-      expect(screen.getByRole("dialog", { name: "command palette" })).toBeTruthy();
+      expect(screen.getByRole("dialog", { name: "Command palette" })).toBeTruthy();
     } finally {
       dispose();
     }
@@ -422,7 +538,7 @@ describe("CommandPalette three planes", () => {
     renderPalette();
 
     act(() => useCommandPaletteStore.getState().openPalette());
-    expect(screen.getByRole("dialog", { name: "command palette" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeTruthy();
 
     act(() => useCommandPaletteStore.getState().openSearch());
     expect(

@@ -55,6 +55,20 @@ export const common = {
     settings: "Settings",
     workspaceMaintenance: "Workspace maintenance",
   },
+  commandPalette: {
+    dialogLabel: "Command palette",
+    inputPlaceholder: "Search commands",
+    listboxLabel: "Commands",
+    noMatches: "No matching commands",
+    loading: "Loading commands…",
+    selectionAnnouncement_one: "{{count, number}} command. {{command}}",
+    selectionAnnouncement_other: "{{count, number}} commands. {{command}}",
+    footer: {
+      navigate: "Navigate",
+      open: "Open",
+      close: "Close",
+    },
+  },
   palette: {
     commandCount_one: "{{count, number}} command",
     commandCount_other: "{{count, number}} commands",

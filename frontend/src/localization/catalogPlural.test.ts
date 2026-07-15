@@ -87,7 +87,10 @@ function physicalCategories(
 
 describe("plural catalog manifest", () => {
   it("provides every locale's complete cardinal category family", () => {
-    expect(PLURAL_MESSAGE_KEYS).toEqual(["common:palette.commandCount"]);
+    expect(PLURAL_MESSAGE_KEYS).toEqual([
+      "common:commandPalette.selectionAnnouncement",
+      "common:palette.commandCount",
+    ]);
 
     for (const locale of Object.keys(testResources) as TestLocale[]) {
       const required = pluralCategories(locale);
@@ -108,15 +111,20 @@ describe("plural catalog manifest", () => {
       for (const key of PLURAL_MESSAGE_KEYS) {
         for (const category of pluralCategories(locale)) {
           const count = countForCategory(locale, category);
-          const descriptor = createCountMessageDescriptor(key, count);
+          const descriptor = createCountMessageDescriptor(
+            key,
+            count,
+            key === "common:commandPalette.selectionAnnouncement"
+              ? { command: "Open settings" }
+              : undefined,
+          );
           expect(descriptor).not.toBeNull();
 
           const resolution = resolveMessageResult(runtime, descriptor);
           const formatted = formatNumber(locale, count);
-          const expected = physicalTemplate(locale, key, category).replace(
-            /\{\{\s*count\s*,\s*number\s*\}\}/gu,
-            formatted!,
-          );
+          const expected = physicalTemplate(locale, key, category)
+            .replace(/\{\{\s*count\s*,\s*number\s*\}\}/gu, formatted!)
+            .replace(/\{\{\s*command\s*\}\}/gu, "Open settings");
           expect(formatted).not.toBeNull();
           expect(resolution, `${locale}:${key}:${category}`).toEqual({
             message: expected,
