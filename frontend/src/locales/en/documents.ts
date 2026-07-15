@@ -59,6 +59,102 @@ export const documents = {
   categories: {
     code: "Code",
   },
+  createDialog: {
+    accessibility: {
+      addLinkedDocument: "Add a linked document",
+      backToFeature: "Back to feature",
+      documentType: "Document type",
+      feature: "Feature",
+      linkedDocuments: "Linked documents",
+      pipelineCoverage: "Pipeline progress",
+      removeLinkedDocument: "Remove {{document}}",
+      title: "Title",
+    },
+    actions: {
+      back: "Back",
+      continue: "Continue",
+      create: "Create",
+      creating: "Creating document…",
+    },
+    descriptions: {
+      documentStage:
+        "Choose an available document type. Links to recent related documents are added for you.",
+      featureStage:
+        "Choose the feature this work belongs to, or enter a new feature tag. New documents are added to the feature's workflow.",
+    },
+    documentTypes: {
+      adr: "Decision record",
+      audit: "Audit",
+      document: "Document",
+      exec: "Step record",
+      plan: "Plan",
+      reference: "Reference",
+      research: "Research",
+    },
+    emptyStates: {
+      createFeatureTag: "Enter a new feature tag",
+      noMatchingDocuments: "No matching documents",
+    },
+    errors: {
+      createFailed: "The document could not be created. Refresh the app and try again.",
+      inFlight: "This document is still being created. Wait a moment, then try again.",
+      pathCollision:
+        "A document of this type already exists for this feature today. Choose another type or try again tomorrow.",
+      projectChanged:
+        "The project changed before the document was created. Review your choices and try again.",
+      scopeChanged: "The project location changed. Reopen the project, then try again.",
+    },
+    hints: {
+      adr: "Record a decision",
+      audit: "Review completed work or start a workflow",
+      notAvailable: "This document type isn't available yet.",
+      plan: "Plan the work",
+      reference: "Connect the work to existing code",
+      requiresDecision: "Add a decision record first.",
+      requiresResearchOrReference: "Add a research or reference document first.",
+      research: "Explore the problem",
+    },
+    labels: {
+      documentType: "Document type",
+      feature: "Feature",
+      inThisFeature: "In this feature",
+      linkedDocuments: "Linked documents",
+      title: "Title",
+    },
+    placeholders: {
+      addLinkedDocument: "Add a linked document",
+      documentTitle: "Enter a document title",
+      featureTag: "Enter a feature tag",
+    },
+    stages: {
+      document: "Step 2 of 2: add a document",
+      feature: "Step 1 of 2: add to a feature",
+    },
+    states: {
+      checkingCoverage: "Checking feature progress…",
+      chooseFeatureForCoverage: "Choose or enter a feature to see its progress.",
+      coverageUnavailable:
+        "Project progress is unavailable. Refresh project data, then try again.",
+      emptyFeature:
+        "No documents yet. Add a research or reference document to start this feature.",
+      nextStep: "Next step",
+      notYet: "Not yet",
+      present: "Present",
+      selected: "Selected",
+    },
+    titles: {
+      document: "Add a document",
+      feature: "Add to a feature",
+    },
+    validation: {
+      chooseAvailableDocumentType: "Choose an available document type.",
+      chooseDocumentType: "Choose a document type.",
+      chooseFeature: "Choose or enter a feature.",
+      completeRequiredFields: "Enter a feature and title.",
+      requiresDecision: "Add a decision record first.",
+      requiresResearchOrReference: "Add a research or reference document first.",
+    },
+  },
   documentTypes: {
     research: "Research",
     adr: "Decisions",

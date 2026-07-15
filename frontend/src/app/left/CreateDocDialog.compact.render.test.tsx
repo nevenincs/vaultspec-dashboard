@@ -96,7 +96,7 @@ describe("CreateDocDialog compact presentation", () => {
   it("portals the feature-suggestion listbox out of the clipping scroll container", () => {
     renderCompact();
     act(() => openCreateDocDialog());
-    const input = screen.getByRole("combobox", { name: "feature" });
+    const input = screen.getByRole("combobox", { name: "Feature" });
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "anything" } });
     const listbox = screen.getByRole("listbox");

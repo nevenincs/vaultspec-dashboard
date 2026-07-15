@@ -23,6 +23,8 @@
 import { useEffect, useId, useMemo, useRef } from "react";
 import { ArrowLeft, X } from "lucide-react";
 
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import {
   useActiveScope,
   useCreateDoc,
@@ -33,6 +35,7 @@ import type { FeatureTypeCoverage } from "../../stores/server/engine";
 import {
   closeCreateDocDialog,
   consumeCreateDocFocusFeature,
+  type CreateDocIssue,
   type CreateDocType,
   deriveCreateDocSubmission,
   deriveOfferedCreateDocTypes,
@@ -66,34 +69,34 @@ const DOC_GLYPH_SIZE = 15;
 // Plain-language SINGULAR labels for a creation act ("Add a Decision record"),
 // distinct from the rail's plural GROUP headers ("Decisions"). Design-system law:
 // never render a `doc_type` token raw.
-const CREATE_DOC_TYPE_LABEL: Record<CreateDocType, string> = {
-  research: "Research",
-  reference: "Reference",
-  adr: "Decision record",
-  plan: "Plan",
-  audit: "Audit",
+const CREATE_DOC_TYPE_MESSAGE: Record<CreateDocType, MessageDescriptor> = {
+  research: { key: "documents:createDialog.documentTypes.research" },
+  reference: { key: "documents:createDialog.documentTypes.reference" },
+  adr: { key: "documents:createDialog.documentTypes.adr" },
+  plan: { key: "documents:createDialog.documentTypes.plan" },
+  audit: { key: "documents:createDialog.documentTypes.audit" },
 };
 
 // The coverage card iterates the FULL served pipeline (including `exec`, which the
 // read-only card honestly shows even though it is never a creation affordance),
 // so it carries its own complete label map.
-const COVERAGE_TYPE_LABEL: Record<string, string> = {
-  research: "Research",
-  reference: "Reference",
-  adr: "Decision record",
-  plan: "Plan",
-  exec: "Step record",
-  audit: "Audit",
+const COVERAGE_TYPE_MESSAGE: Record<string, MessageDescriptor> = {
+  research: { key: "documents:createDialog.documentTypes.research" },
+  reference: { key: "documents:createDialog.documentTypes.reference" },
+  adr: { key: "documents:createDialog.documentTypes.adr" },
+  plan: { key: "documents:createDialog.documentTypes.plan" },
+  exec: { key: "documents:createDialog.documentTypes.exec" },
+  audit: { key: "documents:createDialog.documentTypes.audit" },
 };
 
 // The advisory purpose line an ELIGIBLE type row reads (its pipeline role in plain
 // language). An INELIGIBLE row overrides this with its served-note reason below.
-const CREATE_DOC_TYPE_HINT: Record<CreateDocType, string> = {
-  research: "Explores the problem space",
-  reference: "Grounds the work in existing code",
-  adr: "Records the decision to make",
-  plan: "Structures the implementation",
-  audit: "Reviews delivered work, or opens a pipeline",
+const CREATE_DOC_TYPE_HINT: Record<CreateDocType, MessageDescriptor> = {
+  research: { key: "documents:createDialog.hints.research" },
+  reference: { key: "documents:createDialog.hints.reference" },
+  adr: { key: "documents:createDialog.hints.adr" },
+  plan: { key: "documents:createDialog.hints.plan" },
+  audit: { key: "documents:createDialog.hints.audit" },
 };
 
 /** Map a served eligibility `note` token to plain language (ADR D3/D6): the
@@ -103,25 +106,55 @@ function typeRowHint(row: {
   docType: CreateDocType;
   eligible: boolean;
   note: string | undefined;
-}): string {
+}): MessageDescriptor {
   if (!row.eligible) {
     switch (row.note) {
       case "requires-research-or-reference":
-        return "Needs a research or reference document first";
+        return { key: "documents:createDialog.hints.requiresResearchOrReference" };
       case "requires-adr":
-        return "Needs a decision record first";
+        return { key: "documents:createDialog.hints.requiresDecision" };
       default:
-        return "Not available yet in this feature's pipeline";
+        return { key: "documents:createDialog.hints.notAvailable" };
     }
   }
   return CREATE_DOC_TYPE_HINT[row.docType];
 }
 
-function coverageTypeLabel(docType: string): string {
-  return COVERAGE_TYPE_LABEL[docType] ?? docType;
+function coverageTypeMessage(docType: string): MessageDescriptor {
+  return (
+    COVERAGE_TYPE_MESSAGE[docType] ?? {
+      key: "documents:createDialog.documentTypes.document",
+    }
+  );
 }
 
+const CREATE_DOC_ISSUE_MESSAGE: Record<CreateDocIssue, MessageDescriptor> = {
+  "choose-feature": { key: "documents:createDialog.validation.chooseFeature" },
+  "complete-required-fields": {
+    key: "documents:createDialog.validation.completeRequiredFields",
+  },
+  "choose-document-type": {
+    key: "documents:createDialog.validation.chooseDocumentType",
+  },
+  "choose-available-document-type": {
+    key: "documents:createDialog.validation.chooseAvailableDocumentType",
+  },
+  "requires-research-or-reference": {
+    key: "documents:createDialog.validation.requiresResearchOrReference",
+  },
+  "requires-decision": {
+    key: "documents:createDialog.validation.requiresDecision",
+  },
+  "path-collision": { key: "documents:createDialog.errors.pathCollision" },
+  "scope-changed": { key: "documents:createDialog.errors.scopeChanged" },
+  "project-changed": { key: "documents:createDialog.errors.projectChanged" },
+  "in-flight": { key: "documents:createDialog.errors.inFlight" },
+  "create-failed": { key: "documents:createDialog.errors.createFailed" },
+};
+
 export function CreateDocDialog() {
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
   const scope = useActiveScope();
   const create = useCreateDoc();
   const { open, stage, docType, feature, title, related, error } = useCreateDocChrome();
@@ -228,7 +261,7 @@ export function CreateDocDialog() {
   const handleContinue = () => {
     const draft = useCreateDocChromeStore.getState();
     if (draft.feature.trim().length === 0) {
-      setCreateDocError("Pick or type a feature to continue");
+      setCreateDocError("choose-feature");
       return;
     }
     goToCreateDocDocumentStage();
@@ -245,15 +278,20 @@ export function CreateDocDialog() {
       related: draft.related,
     });
     if (!submission.ok) {
-      setCreateDocError(submission.error);
+      setCreateDocError(submission.issue);
       return;
     }
     // Presentational gate (ADR D3): the submission derivation deliberately does not
     // self-gate on eligibility, so the panel refuses an ineligible type here (the
     // Create button is also disabled — this guards the Enter path).
     if (!isCreateDocTypeEligible(submission.docType, coverage)) {
+      const note = offered.find((row) => row.docType === submission.docType)?.note;
       setCreateDocError(
-        `${CREATE_DOC_TYPE_LABEL[submission.docType]} needs an upstream document first`,
+        note === "requires-research-or-reference"
+          ? "requires-research-or-reference"
+          : note === "requires-adr"
+            ? "requires-decision"
+            : "choose-available-document-type",
       );
       return;
     }
@@ -267,7 +305,7 @@ export function CreateDocDialog() {
         related: submission.related,
       },
       {
-        onSuccess: ({ result, nodeId }) => {
+        onSuccess: ({ result, nodeId, failure }) => {
           // A `created` result IS success even on the rare `nodeId === null` (the
           // apply receipt echoes a server-resolved identity, fail-closed): the
           // document exists, so auto-open the tab only when the identity is known.
@@ -279,18 +317,9 @@ export function CreateDocDialog() {
             seedKeyRef.current = "";
             return;
           }
-          // Surface the served refusal reason verbatim (ADR constraint): core's
-          // same-day-duplicate message ("...already exists...") rides the refused
-          // result's `errors`; showing it honestly beats a fragile reason-substring
-          // match (the create mutation folds a path collision into a plain refusal
-          // with no structural kind, so the served text is the honest signal).
-          const reason =
-            result.kind === "refused" && result.errors.length > 0
-              ? result.errors[0]!
-              : "Could not create the document — check the feature and title.";
-          setCreateDocError(reason);
+          setCreateDocError(failure ?? "create-failed");
         },
-        onError: () => setCreateDocError("Create failed"),
+        onError: () => setCreateDocError("create-failed"),
       },
     );
   };
@@ -390,16 +419,20 @@ export function CreateDocDialog() {
     <Dialog
       open={open}
       onClose={closeCreateDocDialog}
-      title={isFeatureStage ? "Add to a feature" : "Add a document"}
-      description={
-        isFeatureStage
-          ? "Pick the feature this work belongs to, or type a new tag to start one. New documents join the feature's pipeline."
-          : "Only documents the pipeline is ready for can be added. Links to the newest upstream documents are pre-filled."
-      }
+      title={message({
+        key: isFeatureStage
+          ? "documents:createDialog.titles.feature"
+          : "documents:createDialog.titles.document",
+      })}
+      description={message({
+        key: isFeatureStage
+          ? "documents:createDialog.descriptions.featureStage"
+          : "documents:createDialog.descriptions.documentStage",
+      })}
       footer={
         <div className="flex items-center justify-end gap-fg-2">
           <Button variant="secondary" onClick={closeCreateDocDialog}>
-            Cancel
+            {message({ key: "common:actions.cancel" })}
           </Button>
           {isFeatureStage ? (
             <Button
@@ -407,7 +440,7 @@ export function CreateDocDialog() {
               onClick={handleContinue}
               disabled={featureTrimmed.length === 0}
             >
-              Continue
+              {message({ key: "documents:createDialog.actions.continue" })}
             </Button>
           ) : (
             <Button
@@ -415,7 +448,11 @@ export function CreateDocDialog() {
               onClick={submit}
               disabled={create.isPending || !selectedEligible}
             >
-              Create
+              {message({
+                key: create.isPending
+                  ? "documents:createDialog.actions.creating"
+                  : "documents:createDialog.actions.create",
+              })}
             </Button>
           )}
         </div>
@@ -427,8 +464,8 @@ export function CreateDocDialog() {
             announced through a visually-hidden polite live region. */}
         <span aria-live="polite" className="sr-only">
           {isFeatureStage
-            ? "Step 1 of 2: Add to a feature"
-            : "Step 2 of 2: Add a document"}
+            ? message({ key: "documents:createDialog.stages.feature" })
+            : message({ key: "documents:createDialog.stages.document" })}
         </span>
         {isFeatureStage ? (
           <FeatureStage
@@ -458,7 +495,7 @@ export function CreateDocDialog() {
 
         {error !== null && (
           <p role="alert" className="text-label text-state-broken">
-            {error}
+            {message(CREATE_DOC_ISSUE_MESSAGE[error])}
           </p>
         )}
       </div>
@@ -483,6 +520,8 @@ function FeatureStage({
   coverageView,
   onContinue,
 }: FeatureStageProps) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
   return (
     <>
       {/* Corpus-fed feature picker (ADR D6): the SAME combobox the editor's Feature
@@ -494,16 +533,20 @@ function FeatureStage({
         ref={featureFieldRef}
         data-create-feature-field
       >
-        Feature
+        {message({ key: "documents:createDialog.labels.feature" })}
         <AutocompleteCombobox
           options={featureOptions}
           onCommit={(value) => setCreateDocFeature(value)}
           onSubmit={onContinue}
-          placeholder="feature-tag"
-          ariaLabel="feature"
+          placeholder={message({
+            key: "documents:createDialog.placeholders.featureTag",
+          })}
+          ariaLabel={message({ key: "documents:createDialog.accessibility.feature" })}
           allowFreeText
           initialQuery={feature}
-          emptyLabel="Type to create a new feature tag"
+          emptyLabel={message({
+            key: "documents:createDialog.emptyStates.createFeatureTag",
+          })}
         />
       </div>
 
@@ -518,13 +561,17 @@ interface CoverageCardProps {
 }
 
 export function CoverageCard({ feature, coverageView }: CoverageCardProps) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
   const { coverage, loading, degraded } = coverageView;
   const hasFeature = feature.trim().length > 0;
   const anyPresent = coverage?.types.some((entry) => entry.present) ?? false;
 
   return (
     <section
-      aria-label="Pipeline coverage"
+      aria-label={message({
+        key: "documents:createDialog.accessibility.pipelineCoverage",
+      })}
       // Polite live region (audit coverage-arrival-silent): the async swap from
       // "Checking…" to rows (or the degraded line) is announced. State lines read
       // ink-muted, not ink-faint — they are information-bearing small text
@@ -533,20 +580,22 @@ export function CoverageCard({ feature, coverageView }: CoverageCardProps) {
       className="flex flex-col gap-fg-2 rounded-fg-md border border-rule bg-paper-sunken p-fg-3"
     >
       <p className="text-meta font-medium tracking-wide text-ink-faint">
-        In this feature
+        {message({ key: "documents:createDialog.labels.inThisFeature" })}
       </p>
 
       {!hasFeature ? (
         <p className="text-label text-ink-muted">
-          Pick or type a feature above to see its pipeline.
+          {message({
+            key: "documents:createDialog.states.chooseFeatureForCoverage",
+          })}
         </p>
       ) : degraded ? (
         <p className="text-label text-ink-muted">
-          Pipeline coverage is unavailable right now.
+          {message({ key: "documents:createDialog.states.coverageUnavailable" })}
         </p>
       ) : loading && !coverage ? (
         <p className="text-label text-ink-muted">
-          Checking this feature&rsquo;s pipeline&hellip;
+          {message({ key: "documents:createDialog.states.checkingCoverage" })}
         </p>
       ) : coverage && anyPresent ? (
         <ul className="flex flex-col gap-fg-1">
@@ -560,8 +609,7 @@ export function CoverageCard({ feature, coverageView }: CoverageCardProps) {
         </ul>
       ) : (
         <p className="text-label text-ink-muted">
-          No documents yet. A feature starts with a research or reference document
-          &mdash; it exists once the first one is created.
+          {message({ key: "documents:createDialog.states.emptyFeature" })}
         </p>
       )}
     </section>
@@ -575,7 +623,9 @@ function CoverageRow({
   entry: FeatureTypeCoverage;
   isNext: boolean;
 }) {
-  const label = coverageTypeLabel(entry.doc_type);
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
+  const label = message(coverageTypeMessage(entry.doc_type));
   return (
     <li
       className={`flex items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 ${
@@ -593,13 +643,17 @@ function CoverageRow({
       )}
       <span className="ml-auto shrink-0 pl-fg-2">
         {entry.present ? (
-          <span className="text-meta font-medium text-state-active">Present</span>
+          <span className="text-meta font-medium text-state-active">
+            {message({ key: "documents:createDialog.states.present" })}
+          </span>
         ) : isNext ? (
           <span className="rounded-fg-pill bg-accent-subtle px-fg-2 py-fg-0-5 text-meta font-medium text-accent-text">
-            Next step
+            {message({ key: "documents:createDialog.states.nextStep" })}
           </span>
         ) : (
-          <span className="text-meta text-ink-muted">Not yet</span>
+          <span className="text-meta text-ink-muted">
+            {message({ key: "documents:createDialog.states.notYet" })}
+          </span>
         )}
       </span>
     </li>
@@ -643,6 +697,8 @@ function DocumentStage({
   onRemoveRelated,
   onTitleEnter,
 }: DocumentStageProps) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
   const hintIdBase = useId();
   // Touch floors (audit touch-target-subminimum): the back affordance and chip
   // removal grow to the 2.75rem floor on coarse pointers; both keep a >=24px hit
@@ -657,13 +713,15 @@ function DocumentStage({
           ref={backRef}
           type="button"
           onClick={goToCreateDocFeatureStage}
-          aria-label="Back to feature"
+          aria-label={message({
+            key: "documents:createDialog.accessibility.backToFeature",
+          })}
           className={`inline-flex items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-1 text-label text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
             coarse ? "min-h-[2.75rem] min-w-[2.75rem]" : ""
           }`}
         >
           <ArrowLeft aria-hidden className="size-3.5" />
-          Back
+          {message({ key: "documents:createDialog.actions.back" })}
         </button>
         <span
           className="ml-auto inline-flex min-w-0 items-center rounded-fg-pill border border-rule bg-paper-sunken px-fg-2 py-fg-0-5 text-meta font-medium text-ink-muted"
@@ -674,17 +732,20 @@ function DocumentStage({
       </div>
 
       <div className="flex flex-col gap-fg-1 text-label text-ink-muted">
-        Document type
+        {message({ key: "documents:createDialog.labels.documentType" })}
         <div
           role="radiogroup"
-          aria-label="Document type"
+          aria-label={message({
+            key: "documents:createDialog.accessibility.documentType",
+          })}
           className="flex flex-col gap-fg-1"
           onKeyDown={onRadiogroupKeyDown}
         >
           {offered.map((row) => {
             const selected = row.docType === selectedType;
-            const hint = typeRowHint(row);
+            const hint = message(typeRowHint(row));
             const hintId = `${hintIdBase}-${row.docType}`;
+            const describedBy = { "aria-describedby": hintId } as const;
             return (
               <button
                 key={row.docType}
@@ -694,14 +755,14 @@ function DocumentStage({
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                aria-label={CREATE_DOC_TYPE_LABEL[row.docType]}
+                aria-label={message(CREATE_DOC_TYPE_MESSAGE[row.docType])}
                 // aria-disabled, NOT disabled (audit disabled-type-reason-unreachable
                 // HIGH): the row stays focusable and roving-reachable so keyboard and
                 // screen-reader users can reach it and hear WHY it is unavailable —
                 // the served reason is programmatically associated below. Activation
                 // is a no-op on an ineligible row.
                 aria-disabled={row.eligible ? undefined : true}
-                aria-describedby={hintId}
+                {...describedBy}
                 tabIndex={selected ? 0 : -1}
                 // Eligible: select. Ineligible: the one-click path to the
                 // prerequisite (ADR D3) — activation walks the reason chain and
@@ -720,9 +781,9 @@ function DocumentStage({
                 </span>
                 <span className="flex min-w-0 flex-col gap-fg-0-5">
                   <span className="text-body text-ink">
-                    {CREATE_DOC_TYPE_LABEL[row.docType]}
+                    {message(CREATE_DOC_TYPE_MESSAGE[row.docType])}
                   </span>
-                  <span id={hintId} className="text-meta text-ink-muted">
+                  <span {...{ id: hintId }} className="text-meta text-ink-muted">
                     {hint}
                   </span>
                 </span>
@@ -731,7 +792,7 @@ function DocumentStage({
                     aria-hidden
                     className="ml-auto shrink-0 text-meta font-medium text-accent-text"
                   >
-                    Selected
+                    {message({ key: "documents:createDialog.states.selected" })}
                   </span>
                 )}
               </button>
@@ -741,14 +802,16 @@ function DocumentStage({
       </div>
 
       <label className="flex flex-col gap-fg-1 text-label text-ink-muted">
-        Title
+        {message({ key: "documents:createDialog.labels.title" })}
         <input
           className="rounded-fg-xs border border-rule bg-paper px-fg-2 py-fg-1 text-body text-ink outline-none focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           value={title}
           onChange={(event) => setCreateDocTitle(event.target.value)}
           onKeyDown={onTitleEnter}
-          placeholder="Document title"
-          aria-label="title"
+          placeholder={message({
+            key: "documents:createDialog.placeholders.documentTitle",
+          })}
+          aria-label={message({ key: "documents:createDialog.accessibility.title" })}
         />
       </label>
 
@@ -756,9 +819,14 @@ function DocumentStage({
           keyboard (hardening follow-on) — the corpus-fed add field below re-adds
           any document, the same picker primitive the editor's Related field uses. */}
       <div className="flex flex-col gap-fg-1 text-label text-ink-muted">
-        Linked documents
+        {message({ key: "documents:createDialog.labels.linkedDocuments" })}
         {related.length > 0 && (
-          <ul className="flex flex-wrap gap-fg-1" aria-label="Linked documents">
+          <ul
+            className="flex flex-wrap gap-fg-1"
+            aria-label={message({
+              key: "documents:createDialog.accessibility.linkedDocuments",
+            })}
+          >
             {related.map((stem) => (
               <li key={stem}>
                 <span
@@ -770,7 +838,10 @@ function DocumentStage({
                   <button
                     type="button"
                     onClick={() => onRemoveRelated(stem)}
-                    aria-label={`Remove ${stem}`}
+                    aria-label={message({
+                      key: "documents:createDialog.accessibility.removeLinkedDocument",
+                      values: { document: stem },
+                    })}
                     className={`shrink-0 rounded-fg-xs p-fg-1 text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                       coarse ? "min-h-[2.75rem] min-w-[2.75rem]" : ""
                     }`}
@@ -792,9 +863,15 @@ function DocumentStage({
             }))}
           onCommit={onAddRelated}
           clearOnCommit
-          placeholder="Add a linked document"
-          ariaLabel="add a linked document"
-          emptyLabel="No matching documents"
+          placeholder={message({
+            key: "documents:createDialog.placeholders.addLinkedDocument",
+          })}
+          ariaLabel={message({
+            key: "documents:createDialog.accessibility.addLinkedDocument",
+          })}
+          emptyLabel={message({
+            key: "documents:createDialog.emptyStates.noMatchingDocuments",
+          })}
         />
       </div>
     </>

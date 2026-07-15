@@ -208,6 +208,68 @@ const EXPECTED_CATALOG_KEYS = [
   "documents:browserModes.documents",
   "documents:browserModes.files",
   "documents:categories.code",
+  "documents:createDialog.accessibility.addLinkedDocument",
+  "documents:createDialog.accessibility.backToFeature",
+  "documents:createDialog.accessibility.documentType",
+  "documents:createDialog.accessibility.feature",
+  "documents:createDialog.accessibility.linkedDocuments",
+  "documents:createDialog.accessibility.pipelineCoverage",
+  "documents:createDialog.accessibility.removeLinkedDocument",
+  "documents:createDialog.accessibility.title",
+  "documents:createDialog.actions.back",
+  "documents:createDialog.actions.continue",
+  "documents:createDialog.actions.create",
+  "documents:createDialog.actions.creating",
+  "documents:createDialog.descriptions.documentStage",
+  "documents:createDialog.descriptions.featureStage",
+  "documents:createDialog.documentTypes.adr",
+  "documents:createDialog.documentTypes.audit",
+  "documents:createDialog.documentTypes.document",
+  "documents:createDialog.documentTypes.exec",
+  "documents:createDialog.documentTypes.plan",
+  "documents:createDialog.documentTypes.reference",
+  "documents:createDialog.documentTypes.research",
+  "documents:createDialog.emptyStates.createFeatureTag",
+  "documents:createDialog.emptyStates.noMatchingDocuments",
+  "documents:createDialog.errors.createFailed",
+  "documents:createDialog.errors.inFlight",
+  "documents:createDialog.errors.pathCollision",
+  "documents:createDialog.errors.projectChanged",
+  "documents:createDialog.errors.scopeChanged",
+  "documents:createDialog.hints.adr",
+  "documents:createDialog.hints.audit",
+  "documents:createDialog.hints.notAvailable",
+  "documents:createDialog.hints.plan",
+  "documents:createDialog.hints.reference",
+  "documents:createDialog.hints.requiresDecision",
+  "documents:createDialog.hints.requiresResearchOrReference",
+  "documents:createDialog.hints.research",
+  "documents:createDialog.labels.documentType",
+  "documents:createDialog.labels.feature",
+  "documents:createDialog.labels.inThisFeature",
+  "documents:createDialog.labels.linkedDocuments",
+  "documents:createDialog.labels.title",
+  "documents:createDialog.placeholders.addLinkedDocument",
+  "documents:createDialog.placeholders.documentTitle",
+  "documents:createDialog.placeholders.featureTag",
+  "documents:createDialog.stages.document",
+  "documents:createDialog.stages.feature",
+  "documents:createDialog.states.checkingCoverage",
+  "documents:createDialog.states.chooseFeatureForCoverage",
+  "documents:createDialog.states.coverageUnavailable",
+  "documents:createDialog.states.emptyFeature",
+  "documents:createDialog.states.nextStep",
+  "documents:createDialog.states.notYet",
+  "documents:createDialog.states.present",
+  "documents:createDialog.states.selected",
+  "documents:createDialog.titles.document",
+  "documents:createDialog.titles.feature",
+  "documents:createDialog.validation.chooseAvailableDocumentType",
+  "documents:createDialog.validation.chooseDocumentType",
+  "documents:createDialog.validation.chooseFeature",
+  "documents:createDialog.validation.completeRequiredFields",
+  "documents:createDialog.validation.requiresDecision",
+  "documents:createDialog.validation.requiresResearchOrReference",
   "documents:documentTypes.adr",
   "documents:documentTypes.audit",
   "documents:documentTypes.exec",
@@ -630,6 +692,46 @@ describe("shipped localization catalog keys", () => {
     expect(arabic.t("common:disabledReasons.itemUnavailableOnCanvas")).toBe(
       "حدّث البيانات، ثم حاول إظهار هذا العنصر على اللوحة.",
     );
+  });
+
+  it("resolves create-document dialog copy and linked-document interpolation in each language", () => {
+    const keys = [
+      "documents:createDialog.accessibility.backToFeature",
+      "documents:createDialog.actions.create",
+      "documents:createDialog.descriptions.featureStage",
+      "documents:createDialog.documentTypes.adr",
+      "documents:createDialog.emptyStates.createFeatureTag",
+      "documents:createDialog.errors.pathCollision",
+      "documents:createDialog.hints.reference",
+      "documents:createDialog.labels.feature",
+      "documents:createDialog.placeholders.documentTitle",
+      "documents:createDialog.stages.feature",
+      "documents:createDialog.states.coverageUnavailable",
+      "documents:createDialog.titles.feature",
+      "documents:createDialog.validation.completeRequiredFields",
+    ] as const satisfies readonly MessageKey[];
+    const runtimes = [
+      createTestLocalizationRuntime(sourceLocale),
+      createTestLocalizationRuntime(ltrTestLocale),
+      createTestLocalizationRuntime(rtlTestLocale),
+    ] as const;
+
+    for (const key of keys) {
+      expect(new Set(runtimes.map((runtime) => runtime.t(key))).size, key).toBe(3);
+    }
+
+    const linkedDocument = "Customer roadmap";
+    expect(
+      runtimes.map((runtime) =>
+        runtime.t("documents:createDialog.accessibility.removeLinkedDocument", {
+          document: linkedDocument,
+        }),
+      ),
+    ).toEqual([
+      "Remove Customer roadmap",
+      "Supprimer Customer roadmap",
+      "إزالة Customer roadmap",
+    ]);
   });
 
   it("resolves stage-menu actions and recovery copy independently in each language", () => {

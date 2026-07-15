@@ -229,6 +229,104 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:browserModes.documents": { role: "label" },
   "documents:browserModes.files": { role: "label" },
   "documents:categories.code": { role: "label", allowedTerms: [] },
+  "documents:createDialog.accessibility.addLinkedDocument": {
+    role: "accessibility",
+  },
+  "documents:createDialog.accessibility.backToFeature": {
+    role: "accessibility",
+  },
+  "documents:createDialog.accessibility.documentType": {
+    role: "accessibility",
+  },
+  "documents:createDialog.accessibility.feature": { role: "accessibility" },
+  "documents:createDialog.accessibility.linkedDocuments": {
+    role: "accessibility",
+  },
+  "documents:createDialog.accessibility.pipelineCoverage": {
+    role: "accessibility",
+  },
+  "documents:createDialog.accessibility.removeLinkedDocument": {
+    role: "accessibility",
+  },
+  "documents:createDialog.accessibility.title": { role: "accessibility" },
+  "documents:createDialog.actions.back": { role: "action" },
+  "documents:createDialog.actions.continue": { role: "action" },
+  "documents:createDialog.actions.create": { role: "action" },
+  "documents:createDialog.actions.creating": { role: "status" },
+  "documents:createDialog.descriptions.documentStage": {
+    role: "description",
+  },
+  "documents:createDialog.descriptions.featureStage": {
+    role: "description",
+  },
+  "documents:createDialog.documentTypes.adr": { role: "label" },
+  "documents:createDialog.documentTypes.audit": { role: "label" },
+  "documents:createDialog.documentTypes.document": { role: "label" },
+  "documents:createDialog.documentTypes.exec": { role: "label" },
+  "documents:createDialog.documentTypes.plan": { role: "label" },
+  "documents:createDialog.documentTypes.reference": { role: "label" },
+  "documents:createDialog.documentTypes.research": { role: "label" },
+  "documents:createDialog.emptyStates.createFeatureTag": { role: "status" },
+  "documents:createDialog.emptyStates.noMatchingDocuments": { role: "status" },
+  "documents:createDialog.errors.createFailed": { role: "error-message" },
+  "documents:createDialog.errors.inFlight": { role: "error-message" },
+  "documents:createDialog.errors.pathCollision": { role: "error-message" },
+  "documents:createDialog.errors.projectChanged": { role: "error-message" },
+  "documents:createDialog.errors.scopeChanged": { role: "error-message" },
+  "documents:createDialog.hints.adr": { role: "description" },
+  "documents:createDialog.hints.audit": { role: "description" },
+  "documents:createDialog.hints.notAvailable": { role: "status" },
+  "documents:createDialog.hints.plan": { role: "description" },
+  "documents:createDialog.hints.reference": { role: "description" },
+  "documents:createDialog.hints.requiresDecision": {
+    role: "disabled-reason",
+  },
+  "documents:createDialog.hints.requiresResearchOrReference": {
+    role: "disabled-reason",
+  },
+  "documents:createDialog.hints.research": { role: "description" },
+  "documents:createDialog.labels.documentType": { role: "label" },
+  "documents:createDialog.labels.feature": { role: "label" },
+  "documents:createDialog.labels.inThisFeature": { role: "label" },
+  "documents:createDialog.labels.linkedDocuments": { role: "label" },
+  "documents:createDialog.labels.title": { role: "label" },
+  "documents:createDialog.placeholders.addLinkedDocument": { role: "label" },
+  "documents:createDialog.placeholders.documentTitle": { role: "label" },
+  "documents:createDialog.placeholders.featureTag": { role: "label" },
+  "documents:createDialog.stages.document": { role: "label" },
+  "documents:createDialog.stages.feature": { role: "label" },
+  "documents:createDialog.states.checkingCoverage": { role: "status" },
+  "documents:createDialog.states.chooseFeatureForCoverage": {
+    role: "disabled-reason",
+  },
+  "documents:createDialog.states.coverageUnavailable": {
+    role: "error-message",
+  },
+  "documents:createDialog.states.emptyFeature": { role: "description" },
+  "documents:createDialog.states.nextStep": { role: "status" },
+  "documents:createDialog.states.notYet": { role: "status" },
+  "documents:createDialog.states.present": { role: "status" },
+  "documents:createDialog.states.selected": { role: "status" },
+  "documents:createDialog.titles.document": { role: "label" },
+  "documents:createDialog.titles.feature": { role: "label" },
+  "documents:createDialog.validation.chooseAvailableDocumentType": {
+    role: "disabled-reason",
+  },
+  "documents:createDialog.validation.chooseDocumentType": {
+    role: "disabled-reason",
+  },
+  "documents:createDialog.validation.chooseFeature": {
+    role: "disabled-reason",
+  },
+  "documents:createDialog.validation.completeRequiredFields": {
+    role: "disabled-reason",
+  },
+  "documents:createDialog.validation.requiresDecision": {
+    role: "disabled-reason",
+  },
+  "documents:createDialog.validation.requiresResearchOrReference": {
+    role: "disabled-reason",
+  },
   "documents:documentTypes.adr": { role: "label" },
   "documents:documentTypes.audit": { role: "label" },
   "documents:documentTypes.exec": { role: "label" },
@@ -487,6 +585,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Apply",
   "Archive",
   "Ask",
+  "Back",
   "Browse",
   "Cancel",
   "Check",
@@ -495,6 +594,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Close",
   "Collapse",
   "Confirm",
+  "Continue",
   "Copy",
   "Create",
   "Delete",
@@ -551,15 +651,20 @@ export const DESTRUCTIVE_ACTION_VERBS = [
 ] as const;
 
 export const RECOVERY_VERBS = [
+  "Add",
   "Ask",
+  "Change",
   "Check",
   "Choose",
   "Close",
   "Copy",
+  "Enter",
   "Open",
   "Prepare",
   "Refresh",
   "Reload",
+  "Reopen",
+  "Review",
   "Return",
   "Retry",
   "Save",
@@ -568,6 +673,7 @@ export const RECOVERY_VERBS = [
   "Switch",
   "Try",
   "Update",
+  "Wait",
 ] as const;
 
 export interface ProhibitedUiTerm {
@@ -776,6 +882,9 @@ function isActionableRecoveryClause(clause: string): boolean {
 
   const words = wordsIn(complement).map((match) => match[0].toLocaleLowerCase("en"));
   const lead = words[0];
+  if (lead === "or") {
+    return isActionableRecoveryClause(complement.slice(words[0]!.length));
+  }
   if (canonicalVerb === "Refresh" && lead === "data") return true;
   if (lead === "again") {
     return words.length === 1 || RECOVERY_PREPOSITIONS.has(words[1]!);

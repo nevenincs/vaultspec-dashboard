@@ -30,7 +30,20 @@ export type CreateDocStage = (typeof CREATE_DOC_STAGES)[number];
 export const DEFAULT_CREATE_DOC_STAGE: CreateDocStage = "feature";
 
 export const CREATE_DOC_DRAFT_TEXT_MAX_CHARS = 512;
-export const CREATE_DOC_ERROR_MAX_CHARS = 1024;
+export const CREATE_DOC_ISSUES = [
+  "choose-feature",
+  "complete-required-fields",
+  "choose-document-type",
+  "choose-available-document-type",
+  "requires-research-or-reference",
+  "requires-decision",
+  "path-collision",
+  "scope-changed",
+  "project-changed",
+  "in-flight",
+  "create-failed",
+] as const;
+export type CreateDocIssue = (typeof CREATE_DOC_ISSUES)[number];
 /** Bound the editable related-links list (bounded-by-default): a cross-link pre-fill
  *  is a handful of upstream stems, never an unbounded paste. */
 export const CREATE_DOC_RELATED_MAX = 16;
@@ -45,7 +58,7 @@ export interface CreateDocChromeState {
   /** The editable cross-link pre-fill (ADR D5), seeded from served coverage and
    *  freely edited before submit. */
   related: string[];
-  error: string | null;
+  error: CreateDocIssue | null;
   /** A one-shot request to move focus to the feature field when the dialog opens
    *  (set by the Features-section create affordance, D5/D6). Cleared once consumed. */
   focusFeatureField: boolean;
@@ -119,13 +132,11 @@ export function normalizeCreateDocRelated(value: unknown): string[] {
   return out;
 }
 
-export function normalizeCreateDocError(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const normalized =
-    value.length <= CREATE_DOC_ERROR_MAX_CHARS
-      ? value
-      : value.slice(0, CREATE_DOC_ERROR_MAX_CHARS);
-  return normalized.trim().length > 0 ? normalized : null;
+export function normalizeCreateDocError(value: unknown): CreateDocIssue | null {
+  return typeof value === "string" &&
+    CREATE_DOC_ISSUES.includes(value as CreateDocIssue)
+    ? (value as CreateDocIssue)
+    : null;
 }
 
 export interface CreateDocChromeView {
@@ -135,7 +146,7 @@ export interface CreateDocChromeView {
   feature: string;
   title: string;
   related: string[];
-  error: string | null;
+  error: CreateDocIssue | null;
   focusFeatureField: boolean;
 }
 
@@ -326,7 +337,7 @@ export type CreateDocSubmission =
     }
   | {
       ok: false;
-      error: string;
+      issue: CreateDocIssue;
     };
 
 type CreateDocSubmissionDraft = Partial<
@@ -343,12 +354,12 @@ export function deriveCreateDocSubmission(draft: unknown): CreateDocSubmission {
   const value = createDocSubmissionDraftRecord(draft);
   const docType = normalizeCreateDocType(value.docType);
   if (docType === null) {
-    return { ok: false, error: "Unsupported document type" };
+    return { ok: false, issue: "choose-document-type" };
   }
   const feature = normalizeCreateDocDraftText(value.feature).trim();
   const title = normalizeCreateDocDraftText(value.title).trim();
   if (!feature || !title) {
-    return { ok: false, error: "Feature and title are required" };
+    return { ok: false, issue: "complete-required-fields" };
   }
   return {
     ok: true,

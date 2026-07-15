@@ -201,6 +201,108 @@ export const ltrTestResources = {
     categories: {
       code: "Code",
     },
+    createDialog: {
+      accessibility: {
+        addLinkedDocument: "Ajouter un document lié",
+        backToFeature: "Retour à la fonctionnalité",
+        documentType: "Type de document",
+        feature: "Fonctionnalité",
+        linkedDocuments: "Documents liés",
+        pipelineCoverage: "Progression du processus",
+        removeLinkedDocument: "Supprimer {{document}}",
+        title: "Titre",
+      },
+      actions: {
+        back: "Retour",
+        continue: "Continuer",
+        create: "Créer",
+        creating: "Création du document…",
+      },
+      descriptions: {
+        documentStage:
+          "Choisissez un type de document disponible. Les liens vers les documents associés récents sont ajoutés pour vous.",
+        featureStage:
+          "Choisissez la fonctionnalité à laquelle appartient ce travail, ou saisissez une nouvelle étiquette de fonctionnalité. Les nouveaux documents sont ajoutés au processus de la fonctionnalité.",
+      },
+      documentTypes: {
+        adr: "Compte rendu de décision",
+        audit: "Audit",
+        document: "Document",
+        exec: "Compte rendu d’étape",
+        plan: "Plan",
+        reference: "Référence",
+        research: "Recherche",
+      },
+      emptyStates: {
+        createFeatureTag: "Saisissez une nouvelle étiquette de fonctionnalité",
+        noMatchingDocuments: "Aucun document correspondant",
+      },
+      errors: {
+        createFailed:
+          "Le document n’a pas pu être créé. Actualisez l’application, puis réessayez.",
+        inFlight:
+          "Ce document est toujours en cours de création. Patientez un instant, puis réessayez.",
+        pathCollision:
+          "Un document de ce type existe déjà aujourd’hui pour cette fonctionnalité. Choisissez un autre type ou réessayez demain.",
+        projectChanged:
+          "Le projet a changé avant la création du document. Vérifiez vos choix, puis réessayez.",
+        scopeChanged:
+          "L’emplacement du projet a changé. Rouvrez le projet, puis réessayez.",
+      },
+      hints: {
+        adr: "Consigner une décision",
+        audit: "Examiner le travail terminé ou démarrer un processus",
+        notAvailable: "Ce type de document n’est pas encore disponible.",
+        plan: "Planifier le travail",
+        reference: "Relier le travail au code existant",
+        requiresDecision: "Ajoutez d’abord un compte rendu de décision.",
+        requiresResearchOrReference:
+          "Ajoutez d’abord un document de recherche ou de référence.",
+        research: "Explorer le problème",
+      },
+      labels: {
+        documentType: "Type de document",
+        feature: "Fonctionnalité",
+        inThisFeature: "Dans cette fonctionnalité",
+        linkedDocuments: "Documents liés",
+        title: "Titre",
+      },
+      placeholders: {
+        addLinkedDocument: "Ajouter un document lié",
+        documentTitle: "Saisissez un titre de document",
+        featureTag: "Saisissez une étiquette de fonctionnalité",
+      },
+      stages: {
+        document: "Étape 2 sur 2 : ajouter un document",
+        feature: "Étape 1 sur 2 : ajouter à une fonctionnalité",
+      },
+      states: {
+        checkingCoverage: "Vérification de la progression de la fonctionnalité…",
+        chooseFeatureForCoverage:
+          "Choisissez ou saisissez une fonctionnalité pour voir sa progression.",
+        coverageUnavailable:
+          "La progression du projet n’est pas disponible. Actualisez les données du projet, puis réessayez.",
+        emptyFeature:
+          "Aucun document pour le moment. Ajoutez un document de recherche ou de référence pour démarrer cette fonctionnalité.",
+        nextStep: "Étape suivante",
+        notYet: "Pas encore",
+        present: "Présent",
+        selected: "Sélectionné",
+      },
+      titles: {
+        document: "Ajouter un document",
+        feature: "Ajouter à une fonctionnalité",
+      },
+      validation: {
+        chooseAvailableDocumentType: "Choisissez un type de document disponible.",
+        chooseDocumentType: "Choisissez un type de document.",
+        chooseFeature: "Choisissez ou saisissez une fonctionnalité.",
+        completeRequiredFields: "Saisissez une fonctionnalité et un titre.",
+        requiresDecision: "Ajoutez d’abord un compte rendu de décision.",
+        requiresResearchOrReference:
+          "Ajoutez d’abord un document de recherche ou de référence.",
+      },
+    },
     documentTypes: {
       research: "Recherche",
       adr: "Décisions",
@@ -746,6 +848,101 @@ export const rtlTestResources = {
     },
     categories: {
       code: "التعليمات البرمجية",
+    },
+    createDialog: {
+      accessibility: {
+        addLinkedDocument: "إضافة مستند مرتبط",
+        backToFeature: "الرجوع إلى الميزة",
+        documentType: "نوع المستند",
+        feature: "الميزة",
+        linkedDocuments: "المستندات المرتبطة",
+        pipelineCoverage: "تقدم سير العمل",
+        removeLinkedDocument: "إزالة {{document}}",
+        title: "العنوان",
+      },
+      actions: {
+        back: "رجوع",
+        continue: "متابعة",
+        create: "إنشاء",
+        creating: "جارٍ إنشاء المستند…",
+      },
+      descriptions: {
+        documentStage:
+          "اختر نوع مستند متاحًا. ستُضاف لك روابط إلى المستندات الحديثة ذات الصلة.",
+        featureStage:
+          "اختر الميزة التي ينتمي إليها هذا العمل، أو أدخل وسم ميزة جديدًا. تُضاف المستندات الجديدة إلى سير عمل الميزة.",
+      },
+      documentTypes: {
+        adr: "سجل قرار",
+        audit: "تدقيق",
+        document: "مستند",
+        exec: "سجل خطوة",
+        plan: "خطة",
+        reference: "مرجع",
+        research: "بحث",
+      },
+      emptyStates: {
+        createFeatureTag: "أدخل وسم ميزة جديدًا",
+        noMatchingDocuments: "لا توجد مستندات مطابقة",
+      },
+      errors: {
+        createFailed: "تعذر إنشاء المستند. حدّث التطبيق، ثم حاول مرة أخرى.",
+        inFlight: "لا يزال هذا المستند قيد الإنشاء. انتظر لحظة، ثم حاول مرة أخرى.",
+        pathCollision:
+          "يوجد اليوم مستند من هذا النوع لهذه الميزة. اختر نوعًا آخر أو حاول مرة أخرى غدًا.",
+        projectChanged:
+          "تغيّر المشروع قبل إنشاء المستند. راجع اختياراتك، ثم حاول مرة أخرى.",
+        scopeChanged: "تغيّر موقع المشروع. أعد فتح المشروع، ثم حاول مرة أخرى.",
+      },
+      hints: {
+        adr: "تسجيل قرار",
+        audit: "مراجعة العمل المكتمل أو بدء سير عمل",
+        notAvailable: "نوع المستند هذا غير متاح بعد.",
+        plan: "تخطيط العمل",
+        reference: "ربط العمل بالتعليمات البرمجية الموجودة",
+        requiresDecision: "أضف سجل قرار أولاً.",
+        requiresResearchOrReference: "أضف مستند بحث أو مرجع أولاً.",
+        research: "استكشاف المشكلة",
+      },
+      labels: {
+        documentType: "نوع المستند",
+        feature: "الميزة",
+        inThisFeature: "في هذه الميزة",
+        linkedDocuments: "المستندات المرتبطة",
+        title: "العنوان",
+      },
+      placeholders: {
+        addLinkedDocument: "إضافة مستند مرتبط",
+        documentTitle: "أدخل عنوان مستند",
+        featureTag: "أدخل وسم ميزة",
+      },
+      stages: {
+        document: "الخطوة 2 من 2: إضافة مستند",
+        feature: "الخطوة 1 من 2: الإضافة إلى ميزة",
+      },
+      states: {
+        checkingCoverage: "جارٍ التحقق من تقدم الميزة…",
+        chooseFeatureForCoverage: "اختر ميزة أو أدخلها لرؤية تقدمها.",
+        coverageUnavailable:
+          "تقدم المشروع غير متاح. حدّث بيانات المشروع، ثم حاول مرة أخرى.",
+        emptyFeature: "لا توجد مستندات بعد. أضف مستند بحث أو مرجع لبدء هذه الميزة.",
+        nextStep: "الخطوة التالية",
+        notYet: "ليس بعد",
+        present: "موجود",
+        selected: "محدد",
+      },
+      titles: {
+        document: "إضافة مستند",
+        feature: "الإضافة إلى ميزة",
+      },
+      validation: {
+        chooseAvailableDocumentType: "اختر نوع مستند متاحًا.",
+        chooseDocumentType: "اختر نوع مستند.",
+        chooseFeature: "اختر ميزة أو أدخلها.",
+        completeRequiredFields: "أدخل ميزة وعنوانًا.",
+        requiresDecision: "أضف سجل قرار أولاً.",
+        requiresResearchOrReference: "أضف مستند بحث أو مرجع أولاً.",
+      },
     },
     documentTypes: {
       research: "البحث",

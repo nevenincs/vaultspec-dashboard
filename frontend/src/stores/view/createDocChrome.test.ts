@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { FeatureCoverage } from "../server/engine";
 import {
   CREATE_DOC_DRAFT_TEXT_MAX_CHARS,
-  CREATE_DOC_ERROR_MAX_CHARS,
   CREATE_DOC_RELATED_MAX,
   DEFAULT_CREATE_DOC_STAGE,
   DEFAULT_CREATE_DOC_TYPE,
@@ -72,7 +71,7 @@ describe("createDocChrome store", () => {
     setCreateDocFeature("dashboard");
     setCreateDocTitle("Boundary Decision");
     setCreateDocRelated(["2026-07-14-dashboard-research"]);
-    setCreateDocError("Feature and title are required");
+    setCreateDocError("complete-required-fields");
 
     expect(useCreateDocChromeStore.getState()).toMatchObject({
       open: true,
@@ -81,19 +80,19 @@ describe("createDocChrome store", () => {
       feature: "dashboard",
       title: "Boundary Decision",
       related: ["2026-07-14-dashboard-research"],
-      error: "Feature and title are required",
+      error: "complete-required-fields",
     });
   });
 
   it("advances to and returns from the document stage, clearing stale errors", () => {
     toggleCreateDocDialog();
-    setCreateDocError("stale");
+    setCreateDocError("project-changed");
     goToCreateDocDocumentStage();
     expect(useCreateDocChromeStore.getState()).toMatchObject({
       stage: "document",
       error: null,
     });
-    setCreateDocError("another");
+    setCreateDocError("create-failed");
     goToCreateDocFeatureStage();
     expect(useCreateDocChromeStore.getState()).toMatchObject({
       stage: "feature",
@@ -111,7 +110,7 @@ describe("createDocChrome store", () => {
     setCreateDocFeature("git");
     setCreateDocTitle("Git State");
     setCreateDocRelated(["2026-07-14-git-adr"]);
-    setCreateDocError("Create failed");
+    setCreateDocError("create-failed");
 
     closeCreateDocDialog();
 
@@ -190,7 +189,6 @@ describe("createDocChrome store", () => {
 
   it("normalizes corrupted chrome state before reopening the dialog", () => {
     const longDraft = "x".repeat(CREATE_DOC_DRAFT_TEXT_MAX_CHARS + 8);
-    const longError = "e".repeat(CREATE_DOC_ERROR_MAX_CHARS + 8);
     useCreateDocChromeStore.setState({
       open: false,
       stage: "wizard",
@@ -198,7 +196,7 @@ describe("createDocChrome store", () => {
       feature: longDraft,
       title: { value: "Bad" },
       related: "not-an-array",
-      error: longError,
+      error: "hostile backend diagnostic /private/path",
     } as unknown as ReturnType<typeof useCreateDocChromeStore.getState>);
 
     expect(normalizeCreateDocChromeView(useCreateDocChromeStore.getState())).toEqual({
@@ -208,7 +206,7 @@ describe("createDocChrome store", () => {
       feature: longDraft.slice(0, CREATE_DOC_DRAFT_TEXT_MAX_CHARS),
       title: "",
       related: [],
-      error: longError.slice(0, CREATE_DOC_ERROR_MAX_CHARS),
+      error: null,
       focusFeatureField: false,
     });
 
@@ -248,7 +246,8 @@ describe("createDocChrome store", () => {
   it("normalizes draft text and errors at the store boundary", () => {
     expect(normalizeCreateDocDraftText(" dashboard ")).toBe(" dashboard ");
     expect(normalizeCreateDocDraftText(null)).toBe("");
-    expect(normalizeCreateDocError("Create failed")).toBe("Create failed");
+    expect(normalizeCreateDocError("create-failed")).toBe("create-failed");
+    expect(normalizeCreateDocError("Create failed at /private/path")).toBeNull();
     expect(normalizeCreateDocError("   ")).toBeNull();
 
     setCreateDocFeature(null);
@@ -284,7 +283,7 @@ describe("createDocChrome store", () => {
         feature: " ",
         title: "Git State",
       }),
-    ).toEqual({ ok: false, error: "Feature and title are required" });
+    ).toEqual({ ok: false, issue: "complete-required-fields" });
 
     expect(
       deriveCreateDocSubmission({
@@ -292,11 +291,11 @@ describe("createDocChrome store", () => {
         feature: "dashboard",
         title: "Plan-derived",
       }),
-    ).toEqual({ ok: false, error: "Unsupported document type" });
+    ).toEqual({ ok: false, issue: "choose-document-type" });
 
     expect(deriveCreateDocSubmission(null)).toEqual({
       ok: false,
-      error: "Unsupported document type",
+      issue: "choose-document-type",
     });
   });
 });

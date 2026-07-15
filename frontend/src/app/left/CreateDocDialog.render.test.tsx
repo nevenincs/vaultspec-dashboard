@@ -25,7 +25,7 @@ import {
   within,
 } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { queryClient } from "../../stores/server/queryClient";
 import { deriveFeatureCoverageView } from "../../stores/server/queries";
@@ -74,11 +74,11 @@ describe("CreateDocDialog feature-group panel (store-driven mount)", () => {
     // Stage 1 header + the corpus-fed feature combobox seeded with the prefill.
     expect(screen.getByRole("dialog", { name: "Add to a feature" })).toBeTruthy();
     const feature = screen.getByRole("combobox", {
-      name: "feature",
+      name: "Feature",
     }) as HTMLInputElement;
     expect(feature.value).toBe("editor-demo");
     // The pipeline coverage card is present on stage 1.
-    expect(screen.getByRole("region", { name: "Pipeline coverage" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Pipeline progress" })).toBeTruthy();
   });
 
   it("takes focus on the feature field when opened with the focus request (D5)", () => {
@@ -86,14 +86,14 @@ describe("CreateDocDialog feature-group panel (store-driven mount)", () => {
     act(() => {
       openCreateDocDialog(undefined, { focusFeature: true });
     });
-    const feature = screen.getByRole("combobox", { name: "feature" });
+    const feature = screen.getByRole("combobox", { name: "Feature" });
     expect(document.activeElement).toBe(feature);
   });
 
   it("preserves free text so a new tag is committed to the draft (D6)", () => {
     renderSeeded();
     act(() => openCreateDocDialog());
-    const feature = screen.getByRole("combobox", { name: "feature" });
+    const feature = screen.getByRole("combobox", { name: "Feature" });
     fireEvent.focus(feature);
     fireEvent.change(feature, { target: { value: "brand-new-feature" } });
     // No option arrowed to: Enter commits the typed free text (a new feature tag) and,
@@ -129,7 +129,7 @@ describe("CreateDocDialog feature-group panel (store-driven mount)", () => {
     renderSeeded();
     act(() => openCreateDocDialog());
     expect(document.activeElement).toBe(
-      screen.getByRole("combobox", { name: "feature" }),
+      screen.getByRole("combobox", { name: "Feature" }),
     );
   });
 
@@ -144,7 +144,7 @@ describe("CreateDocDialog feature-group panel (store-driven mount)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to feature" }));
     // Returning focuses the feature combobox, never document.body.
     expect(document.activeElement).toBe(
-      screen.getByRole("combobox", { name: "feature" }),
+      screen.getByRole("combobox", { name: "Feature" }),
     );
   });
 
@@ -153,14 +153,17 @@ describe("CreateDocDialog feature-group panel (store-driven mount)", () => {
     act(() => openCreateDocDialog("some-feature"));
     const dialog = screen.getByRole("dialog");
     const live = dialog.querySelector('[aria-live="polite"].sr-only') as HTMLElement;
-    expect(live.textContent).toBe("Step 1 of 2: Add to a feature");
+    expect(live.textContent).toBe("Step 1 of 2: add to a feature");
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    expect(live.textContent).toBe("Step 2 of 2: Add a document");
+    expect(live.textContent).toBe("Step 2 of 2: add a document");
   });
 
   it("Home and End rove to the first and last type rows without leaking", () => {
-    const windowSpy = vi.fn();
-    window.addEventListener("keydown", windowSpy);
+    let windowKeydownCount = 0;
+    const countWindowKeydown = () => {
+      windowKeydownCount += 1;
+    };
+    window.addEventListener("keydown", countWindowKeydown);
     try {
       renderSeeded();
       act(() => openCreateDocDialog("some-feature"));
@@ -172,9 +175,9 @@ describe("CreateDocDialog feature-group panel (store-driven mount)", () => {
       expect(document.activeElement).toBe(
         screen.getByRole("radio", { name: "Research" }),
       );
-      expect(windowSpy).not.toHaveBeenCalled();
+      expect(windowKeydownCount).toBe(0);
     } finally {
-      window.removeEventListener("keydown", windowSpy);
+      window.removeEventListener("keydown", countWindowKeydown);
     }
   });
 
@@ -190,7 +193,7 @@ describe("CreateDocDialog feature-group panel (store-driven mount)", () => {
     act(() => openCreateDocDialog());
     expect(screen.getByRole("dialog", { name: "Add to a feature" })).toBeTruthy();
     expect(
-      (screen.getByRole("combobox", { name: "feature" }) as HTMLInputElement).value,
+      (screen.getByRole("combobox", { name: "Feature" }) as HTMLInputElement).value,
     ).toBe("kept-feature");
     expect(useCreateDocChromeStore.getState().related).toEqual([
       "2026-01-01-kept-research",
@@ -204,7 +207,7 @@ describe("CreateDocDialog feature-group panel (store-driven mount)", () => {
     // The affordance is always present (keyboard re-add, hardening follow-on);
     // the seeded no-scope corpus is empty so it degrades to the empty label.
     expect(
-      screen.getByRole("combobox", { name: "add a linked document" }),
+      screen.getByRole("combobox", { name: "Add a linked document" }),
     ).toBeTruthy();
   });
 
@@ -246,8 +249,11 @@ describe("CreateDocDialog feature-group panel (store-driven mount)", () => {
     // point. Arrowing between the type radios must move the selection AND be stopped
     // by the composite so it never reaches the window listener (actions-keymap-palette
     // law) — otherwise roving the radios would also mutate the graph selection.
-    const windowSpy = vi.fn();
-    window.addEventListener("keydown", windowSpy);
+    let windowKeydownCount = 0;
+    const countWindowKeydown = () => {
+      windowKeydownCount += 1;
+    };
+    window.addEventListener("keydown", countWindowKeydown);
     try {
       renderSeeded();
       act(() => openCreateDocDialog("some-feature"));
@@ -262,16 +268,16 @@ describe("CreateDocDialog feature-group panel (store-driven mount)", () => {
       // The selection moved (roving worked) ...
       expect(useCreateDocChromeStore.getState().docType).toBe("reference");
       // ... and the arrow was stopped before the window dispatcher.
-      expect(windowSpy).not.toHaveBeenCalled();
+      expect(windowKeydownCount).toBe(0);
 
       // Control: the SAME key on the title input (which does not consume arrows) DOES
       // reach the window listener — proving the spy is live and the radiogroup's
       // suppression is specific, not a dead assertion.
-      const title = screen.getByLabelText("title");
+      const title = screen.getByLabelText("Title");
       fireEvent.keyDown(title, { key: "ArrowDown" });
-      expect(windowSpy).toHaveBeenCalled();
+      expect(windowKeydownCount).toBe(1);
     } finally {
-      window.removeEventListener("keydown", windowSpy);
+      window.removeEventListener("keydown", countWindowKeydown);
     }
   });
 });
@@ -314,23 +320,23 @@ describe("CreateDocDialog coverage card renders distinct honest states", () => {
 
   it("loading shows the checking line only", () => {
     render(<CoverageCard feature="fresh" coverageView={loadingView()} />);
-    expect(screen.getByText(/Checking this feature/i)).toBeTruthy();
-    expect(screen.queryByText(/unavailable right now/i)).toBeNull();
+    expect(screen.getByText(/Checking feature progress/i)).toBeTruthy();
+    expect(screen.queryByText(/Project progress is unavailable/i)).toBeNull();
     expect(screen.queryByText(/No documents yet/i)).toBeNull();
   });
 
   it("degraded shows the honest unavailable line, never an empty-pipeline claim", () => {
     render(<CoverageCard feature="fresh" coverageView={degradedView()} />);
-    expect(screen.getByText(/unavailable right now/i)).toBeTruthy();
-    expect(screen.queryByText(/Checking this feature/i)).toBeNull();
+    expect(screen.getByText(/Project progress is unavailable/i)).toBeTruthy();
+    expect(screen.queryByText(/Checking feature progress/i)).toBeNull();
     expect(screen.queryByText(/No documents yet/i)).toBeNull();
   });
 
   it("a served all-missing feature shows the new-feature note (distinct from degraded)", () => {
     render(<CoverageCard feature="fresh" coverageView={newFeatureView()} />);
     expect(screen.getByText(/No documents yet/i)).toBeTruthy();
-    expect(screen.queryByText(/unavailable right now/i)).toBeNull();
-    expect(screen.queryByText(/Checking this feature/i)).toBeNull();
+    expect(screen.queryByText(/Project progress is unavailable/i)).toBeNull();
+    expect(screen.queryByText(/Checking feature progress/i)).toBeNull();
   });
 });
 
@@ -361,7 +367,7 @@ describe("CreateDocDialog feature-group panel (live engine coverage)", () => {
     useViewStore.getState().setScope(scope);
     renderLive();
     act(() => openCreateDocDialog());
-    const feature = screen.getByRole("combobox", { name: "feature" });
+    const feature = screen.getByRole("combobox", { name: "Feature" });
     fireEvent.focus(feature);
     await waitFor(
       () => expect(screen.getByRole("option", { name: "alpha" })).toBeTruthy(),
@@ -374,7 +380,7 @@ describe("CreateDocDialog feature-group panel (live engine coverage)", () => {
     renderLive();
     // The fixture "alpha" feature carries research/adr/plan/exec/audit.
     act(() => openCreateDocDialog("alpha"));
-    const card = screen.getByRole("region", { name: "Pipeline coverage" });
+    const card = screen.getByRole("region", { name: "Pipeline progress" });
     await waitFor(
       () => expect(within(card).getByText("2026-01-01-alpha-research")).toBeTruthy(),
       ENGINE_WAIT,
@@ -390,7 +396,7 @@ describe("CreateDocDialog feature-group panel (live engine coverage)", () => {
     // research/reference are the always-open entry points; adr is ineligible.
     act(() => openCreateDocDialog("fresh-unseen-feature"));
     // Wait for served coverage so eligibility comes from the wire, not the fallback.
-    const card = screen.getByRole("region", { name: "Pipeline coverage" });
+    const card = screen.getByRole("region", { name: "Pipeline progress" });
     await waitFor(
       () => expect(within(card).getByText(/No documents yet/i)).toBeTruthy(),
       ENGINE_WAIT,
@@ -407,7 +413,7 @@ describe("CreateDocDialog feature-group panel (live engine coverage)", () => {
     expect(adr.disabled).toBe(false);
     expect(adr.getAttribute("aria-disabled")).toBe("true");
     const reason = within(group).getByText(
-      "Needs a research or reference document first",
+      "Add a research or reference document first.",
     );
     expect(reason).toBeTruthy();
     expect(adr.getAttribute("aria-describedby")).toBe(reason.id);
@@ -424,7 +430,7 @@ describe("CreateDocDialog feature-group panel (live engine coverage)", () => {
     useViewStore.getState().setScope(scope);
     renderLive();
     act(() => openCreateDocDialog("fresh-unseen-feature"));
-    const card = screen.getByRole("region", { name: "Pipeline coverage" });
+    const card = screen.getByRole("region", { name: "Pipeline progress" });
     await waitFor(
       () => expect(within(card).getByText(/No documents yet/i)).toBeTruthy(),
       ENGINE_WAIT,
@@ -446,7 +452,7 @@ describe("CreateDocDialog feature-group panel (live engine coverage)", () => {
     useViewStore.getState().setScope(scope);
     renderLive();
     act(() => openCreateDocDialog("alpha"));
-    const card = screen.getByRole("region", { name: "Pipeline coverage" });
+    const card = screen.getByRole("region", { name: "Pipeline progress" });
     await waitFor(
       () => expect(within(card).getByText("2026-01-01-alpha-research")).toBeTruthy(),
       ENGINE_WAIT,
@@ -454,7 +460,7 @@ describe("CreateDocDialog feature-group panel (live engine coverage)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     // The default type (research) seeds no links; pick a stem from the live corpus
     // through the add field and commit it — the chip appears, removable again.
-    const add = screen.getByRole("combobox", { name: "add a linked document" });
+    const add = screen.getByRole("combobox", { name: "Add a linked document" });
     fireEvent.focus(add);
     fireEvent.change(add, { target: { value: "alpha-research" } });
     await waitFor(() => expect(screen.getByRole("listbox")).toBeTruthy(), ENGINE_WAIT);

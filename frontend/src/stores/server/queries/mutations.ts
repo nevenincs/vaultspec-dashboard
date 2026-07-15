@@ -742,6 +742,33 @@ export interface NormalizedCreateDocArgs {
   related?: string[];
 }
 
+export type CreateDocFailureKind =
+  | "path-collision"
+  | "scope-changed"
+  | "project-changed"
+  | "in-flight"
+  | "create-failed";
+
+/** Preserve only the closed create recovery category, never refusal prose. */
+export function createDocFailureKind(
+  outcome: DirectWriteOutcome,
+): CreateDocFailureKind | null {
+  if (outcome.kind === "applied") return null;
+  if (outcome.kind === "conflict") return "project-changed";
+  if (outcome.kind === "in_flight") return "in-flight";
+  if (outcome.kind !== "denied") return "create-failed";
+  switch (outcome.denialKind) {
+    case "path_collision":
+      return "path-collision";
+    case "scope_mismatch":
+      return "scope-changed";
+    case "stale_base":
+      return "project-changed";
+    default:
+      return "create-failed";
+  }
+}
+
 export function normalizeCreateDocArgs(args: unknown): NormalizedCreateDocArgs {
   const value = writeArgsRecord(args);
   return {
@@ -784,12 +811,14 @@ export function useCreateDoc() {
       result: OpsWriteResult;
       tiers: TiersBlock;
       nodeId: string | null;
+      failure: CreateDocFailureKind | null;
     }> => {
       const normalized = normalizeCreateDocArgs(args);
       if (normalized.docType.length === 0 || normalized.feature.length === 0) {
         return {
           ...refusedWriteResult("Document type and feature are required"),
           nodeId: null,
+          failure: "create-failed",
         };
       }
       const outcome = await authoringClient.directWrite(
@@ -817,6 +846,7 @@ export function useCreateDoc() {
           },
           tiers: outcome.tiers,
           nodeId: outcome.resultNodeId ?? null,
+          failure: null,
         };
       }
       if (outcome.kind === "conflict") {
@@ -828,6 +858,7 @@ export function useCreateDoc() {
           },
           tiers: outcome.tiers,
           nodeId: null,
+          failure: createDocFailureKind(outcome),
         };
       }
       // A predicted-create-path collision (`denialKind === "path_collision"`,
@@ -843,6 +874,7 @@ export function useCreateDoc() {
         result: directWriteRefusedResult(reason),
         tiers: outcome.tiers,
         nodeId: null,
+        failure: createDocFailureKind(outcome),
       };
     },
     onSuccess: ({ result }, args) => {

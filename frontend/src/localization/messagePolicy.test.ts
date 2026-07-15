@@ -128,6 +128,15 @@ const DISABLED_REASON_KEYS = [
   "common:disabledReasons.desktopEditorRequired",
   "common:disabledReasons.desktopFileManagerRequired",
   "common:disabledReasons.selectItemToOpen",
+  "documents:createDialog.hints.requiresDecision",
+  "documents:createDialog.hints.requiresResearchOrReference",
+  "documents:createDialog.states.chooseFeatureForCoverage",
+  "documents:createDialog.validation.chooseAvailableDocumentType",
+  "documents:createDialog.validation.chooseDocumentType",
+  "documents:createDialog.validation.chooseFeature",
+  "documents:createDialog.validation.completeRequiredFields",
+  "documents:createDialog.validation.requiresDecision",
+  "documents:createDialog.validation.requiresResearchOrReference",
   "documents:disabledReasons.chooseTemporaryTab",
   "documents:disabledReasons.openAnotherDocument",
   "documents:disabledReasons.selectDifferentDocument",
@@ -212,6 +221,28 @@ describe("source-locale message policy", () => {
         en.documents.actions.openComments,
       ),
     ).toEqual([]);
+  });
+
+  it("accepts canonical create-document dialog copy", () => {
+    const messages = catalogMessages();
+    const keys = [...messages.keys()].filter((key) =>
+      key.startsWith("documents:createDialog."),
+    );
+
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) {
+      expect(
+        validateEnglishMessage(policyKeyForPhysical(key), messages.get(key)!),
+        key,
+      ).toEqual([]);
+    }
+
+    expect(
+      staticMessageParts(en.documents.createDialog.accessibility.removeLinkedDocument),
+    ).toEqual([
+      { kind: "text", value: "Remove " },
+      { kind: "value", name: "document" },
+    ]);
   });
 
   it("accepts canonical worktree actions and recovery copy", () => {
