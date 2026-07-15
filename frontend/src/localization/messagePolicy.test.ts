@@ -128,6 +128,8 @@ const DISABLED_REASON_KEYS = [
   "common:disabledReasons.desktopEditorRequired",
   "common:disabledReasons.desktopFileManagerRequired",
   "common:disabledReasons.selectItemToOpen",
+  "documents:disabledReasons.chooseTemporaryTab",
+  "documents:disabledReasons.openAnotherDocument",
   "documents:disabledReasons.selectDifferentDocument",
   "documents:disabledReasons.selectDocument",
   "features:disabledReasons.selectFeature",

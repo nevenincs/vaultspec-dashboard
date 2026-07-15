@@ -38,6 +38,13 @@ describe("docTabMenu", () => {
       "doc-tab:close-others",
       "doc-tab:close-all",
     ]);
+    expect(actions.map(({ label }) => label)).toEqual([
+      { key: "documents:actions.keepTabOpen" },
+      { key: "documents:actions.reloadDocument" },
+      { key: "common:actions.close" },
+      { key: "documents:actions.closeOtherDocuments" },
+      { key: "documents:actions.closeAllDocuments" },
+    ]);
     // doc:b IS provisional → keep-open enabled; another tab exists → close-others enabled.
     expect(actions.find((a) => a.id === "doc-tab:keep-open")?.disabled).toBeFalsy();
     expect(actions.find((a) => a.id === "doc-tab:close-others")?.disabled).toBeFalsy();
@@ -56,7 +63,12 @@ describe("docTabMenu", () => {
     const keep = actions.find((a) => a.id === "doc-tab:keep-open");
     const others = actions.find((a) => a.id === "doc-tab:close-others");
     expect(keep?.disabled).toBe(true);
-    expect(keep?.disabledReason).toBe("already a permanent tab");
+    expect(keep?.disabledReason).toEqual({
+      key: "documents:disabledReasons.chooseTemporaryTab",
+    });
     expect(others?.disabled).toBe(true);
+    expect(others?.disabledReason).toEqual({
+      key: "documents:disabledReasons.openAnotherDocument",
+    });
   });
 });

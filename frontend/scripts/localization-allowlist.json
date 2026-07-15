@@ -2560,41 +2560,6 @@
     "rule": "direct-locale-format"
   },
   {
-    "id": "3ff27ff8270448903690b885",
-    "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "4420169966b829f88b7e5e91",
-    "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "801ab631060c730e36625da8",
-    "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "d451c608b9c4e4b977541945",
-    "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "d67abe7fc7e5f6841f893eca",
-    "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "e56468d5d0169a2c4ef961ce",
-    "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "fcd6b8d2b424f45dc3661d40",
-    "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "015e37555bf9cc55f701b716",
     "path": "src/app/stage/ProvisionPanel.tsx",
     "rule": "jsx-text"

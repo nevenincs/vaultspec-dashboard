@@ -6,7 +6,6 @@
 // provisional/open-count gates are read from the tab store at resolve time (the menu
 // opens against a live snapshot), never a fresh-derived selector (stable-selectors).
 
-import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Pin, RotateCw, X } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -37,42 +36,42 @@ export function docTabMenu(entity: unknown): ActionDescriptor[] {
   return [
     {
       id: "doc-tab:keep-open",
-      label: legacyActionPresentation("Keep Open"),
+      label: { key: "documents:actions.keepTabOpen" },
       section: "transform",
       icon: Pin,
       disabled: !isProvisional,
       disabledReason: isProvisional
         ? undefined
-        : legacyActionPresentation("already a permanent tab"),
+        : { key: "documents:disabledReasons.chooseTemporaryTab" },
       run: () => promoteDocTab(nodeId),
     },
     {
       id: "doc-tab:reload",
-      label: legacyActionPresentation("Reload"),
+      label: { key: "documents:actions.reloadDocument" },
       section: "transform",
       icon: RotateCw,
       run: () => reloadDocTab(nodeId, scope),
     },
     {
       id: "doc-tab:close",
-      label: legacyActionPresentation("Close"),
+      label: { key: "common:actions.close" },
       section: "danger",
       icon: X,
       run: () => closeDocTab(nodeId),
     },
     {
       id: "doc-tab:close-others",
-      label: legacyActionPresentation("Close Others"),
+      label: { key: "documents:actions.closeOtherDocuments" },
       section: "danger",
       disabled: !hasOthers,
       disabledReason: hasOthers
         ? undefined
-        : legacyActionPresentation("no other tabs open"),
+        : { key: "documents:disabledReasons.openAnotherDocument" },
       run: () => closeOtherDocTabs(nodeId),
     },
     {
       id: "doc-tab:close-all",
-      label: legacyActionPresentation("Close All Documents"),
+      label: { key: "documents:actions.closeAllDocuments" },
       section: "danger",
       run: () => closeAllDocTabs(),
     },

@@ -17,6 +17,7 @@ export const documents = {
     browseFiles: "Browse files",
     closeAllDocuments: "Close all documents",
     closeDocument: "Close document",
+    closeOtherDocuments: "Close other documents",
     clearFilter: "Clear the document filter",
     closeActiveTab: "Close the active document tab",
     collapseCategory: "Collapse category",
@@ -28,6 +29,7 @@ export const documents = {
     finishEditing: "Finish editing",
     focusFilter: "Focus the document filter",
     keepDocumentOpen: "Keep document open",
+    keepTabOpen: "Keep tab open",
     linkToSelectedDocument: "Link to selected document",
     nextTab: "Move to next document tab",
     previousTab: "Move to previous document tab",
@@ -64,10 +66,12 @@ export const documents = {
     reference: "References",
   },
   disabledReasons: {
+    chooseTemporaryTab: "Choose a temporary tab to keep open.",
     copyChangesBeforeReopening:
       "Copy your changes, then reopen the document before saving.",
     openForEditing: "Open a document for editing.",
     openDocument: "Open a document first.",
+    openAnotherDocument: "Open another document, then try again.",
     selectDifferentDocument: "Select a different document.",
     selectDocument: "Select a document first.",
     tryAfterSaving: "Try again after saving finishes.",
